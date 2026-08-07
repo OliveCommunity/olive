@@ -152,6 +152,14 @@ inline void mark_container_owned(Handle h)
 }
 
 /**
+ * @brief Deleter for non-owning (borrowed) boxes: never deletes.
+ */
+inline void delete_noop(void *object)
+{
+	(void)object;
+}
+
+/**
  * @brief Deleter callback stamping the concrete C++ type.
  */
 template <typename T>

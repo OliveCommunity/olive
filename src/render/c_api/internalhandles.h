@@ -52,6 +52,8 @@
 
 #include "alivecount.h"
 
+#include "avframeptr.h"
+
 #include "codec/frame.h"
 #include "colorprocessor.h"
 #include "texture.h"
@@ -70,6 +72,7 @@ struct OakRenderTextureImpl {
  */
 struct OakCodecFrameImpl {
 	olive::FramePtr ptr;
+	olive::AVFramePtr avptr; /**< Set when wrapping a texture's CPU copy. */
 };
 
 /**

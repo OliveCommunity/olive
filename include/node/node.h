@@ -610,6 +610,39 @@ int oaknode_viewer_set_audio_params(OakNodeNode viewer,
 int oaknode_node_find_input_footage(OakNodeNode node, OakNodeFootage *out);
 
 /**
+ * @brief Value of an input at a specific time (Node::get_value_at_time(),
+ * element -1). Same POD rules as oaknode_node_get_input().
+ */
+int oaknode_node_get_input_at_time(OakNodeNode node,
+								   const char *input_id, int64_t time_num,
+								   int64_t time_den, oaknode_value *out);
+
+/**
+ * @brief Set an input's value at a specific time with keyframe logic
+ *        (Node::set_value_at_time(), element -1, track 0,
+ *        insert_on_all_tracks_if_no_key = true). `*out_command` receives
+ *        an owned undo command handle.
+ */
+int oaknode_node_set_input_at_time_undoable(OakNodeNode node,
+		const char *input_id, int64_t time_num, int64_t time_den,
+		const oaknode_value *v, int track, OakUndoCommand *out_command);
+
+/**
+ * @brief Identity of the underlying node object as an opaque integer
+ *        (address-cast; for registry keys only, never dereference).
+ */
+uintptr_t oaknode_node_identity(OakNodeNode node);
+
+/**
+ * @brief Append a value-at-time set into an existing multi command
+ *        (same semantics as oaknode_node_set_input_at_time_undoable but
+ *        batches into `multi_command` from oakundo_command_init_multi()).
+ */
+int oaknode_node_set_input_at_time_into(OakNodeNode node,
+		const char *input_id, int64_t time_num, int64_t time_den,
+		const oaknode_value *v, int track, OakUndoCommand multi_command);
+
+/**
  * @brief Create a command that removes a node from its graph together
  * with its exclusive dependencies and disconnects its edges
  * (NodeRemoveWithExclusiveDependenciesAndDisconnect).

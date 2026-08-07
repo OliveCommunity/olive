@@ -16,6 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 add_library(oakcommon SHARED
+        avframeptr.h
         commandlineparser.cpp
         commandlineparser.h
         colortransform.h

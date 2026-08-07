@@ -5,41 +5,39 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
 # (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 find_package(GTest REQUIRED)
 include(GoogleTest)
 
 # In a full-tree build the repo root is CMAKE_SOURCE_DIR; a standalone
-# build (see src/render/standalone) sets OAK_REPO_ROOT explicitly.
+# build (see src/plugin/standalone) sets OAK_REPO_ROOT explicitly.
 if(NOT DEFINED OAK_REPO_ROOT)
   set(OAK_REPO_ROOT ${CMAKE_SOURCE_DIR})
 endif()
 
-add_executable(oakrender-gtest
-        cache_test.cpp
-        cancelatom_test.cpp
-        ticket_test.cpp
-        color_test.cpp
-        manager_test.cpp
-        renderer_test.cpp
+add_executable(oakplugin-gtest
+        plugin_test.cpp
 )
 
-target_link_libraries(oakrender-gtest PRIVATE
-        oaktimeline
-        oakrender
-        oaknode
+target_link_libraries(oakplugin-gtest PRIVATE
         oakplugin
-        oakcommon
-        oakundo
-        olivecore
+        oakrender
         GTest::gtest
         GTest::gtest_main
 )
 
 # liboakrender/liboaknode dangle OFX host symbols (-undefined
 # dynamic_lookup); force-load the host support archive into the test
-# process so dyld finds them (and the OFX typeinfos) in the flat
-# namespace at startup. Mirrors src/node/tests/CMakeLists.txt.
+# process so dyld finds them in the flat namespace at startup. Mirrors
+# src/render/tests/CMakeLists.txt.
 if(NOT DEFINED OAKRENDER_OFX_HOST_ARCHIVE)
   find_library(OAKRENDER_OFX_HOST_ARCHIVE NAMES OfxHost
           PATHS ${OAK_REPO_ROOT}/build/third_party/openfx/HostSupport)
@@ -49,23 +47,19 @@ if(NOT OAKRENDER_OFX_HOST_ARCHIVE)
           "libOfxHost.a not found; run the full-tree build once or set "
           "OAKRENDER_OFX_HOST_ARCHIVE")
 endif()
-target_link_options(oakrender-gtest PRIVATE
+target_link_options(oakplugin-gtest PRIVATE
         "-Wl,-force_load,${OAKRENDER_OFX_HOST_ARCHIVE}")
 
 # liboakrender references the oakengine_ipc_* C ABI (worker IPC) via
-# dynamic_lookup; the real implementation is still Qt-based, so the test
-# binary links the inert shim from src/node/standalone instead.
-target_sources(oakrender-gtest PRIVATE
+# dynamic_lookup; the test binary links the inert shim from
+# src/node/standalone instead.
+target_sources(oakplugin-gtest PRIVATE
         ${OAK_REPO_ROOT}/src/node/standalone/oakengine_ipc_shim.cpp)
-target_include_directories(oakrender-gtest PRIVATE
+target_include_directories(oakplugin-gtest PRIVATE
         ${OAK_REPO_ROOT}/engine/include
 )
 
-# The color tests build OCIO processors against the engine's bundled
-# config; the OCIO environment variable is needed both at ctest time and
-# during PRE_TEST discovery (binary startup).
-gtest_discover_tests(oakrender-gtest
+gtest_discover_tests(oakplugin-gtest
         DISCOVERY_MODE PRE_TEST
         PROPERTIES ENVIRONMENT
-        "OCIO=${OAK_REPO_ROOT}/engine/render/ocioconf/config.ocio"
-)
+        "OCIO=${OAK_REPO_ROOT}/engine/render/ocioconf/config.ocio")

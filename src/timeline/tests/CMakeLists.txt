@@ -8,6 +8,7 @@ add_executable(oaktimeline-gtest
 
 target_link_libraries(oaktimeline-gtest PRIVATE
         oaktimeline
+        oakplugin
         GTest::gtest
         GTest::gtest_main
 )

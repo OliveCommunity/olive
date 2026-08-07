@@ -285,3 +285,35 @@ ColorManager）去Qt化过程中的删除与语义变化，迁移调用方时需
   必须同时链两个库（各 standalone 驱动已接线）。
 - oakcommon xml C API 新增 get_native 借用访问器（C++ only），
   oaktimeline 的 load/save 经它取回 XmlStreamReader/Writer。
+
+## oakplugin 去Qt化的删除与语义变更（2026-08-05）
+
+- olivehost/oliveplugininstance/oliveclip/paraminstance/image/
+  pluginprogressreporter 六个类去Qt：QMessageBox/QApplication 全部
+  删除，宿主消息与 undo 提交改为 facade 回调
+  （set_host_message_handler / set_undo_submit_callback /
+  ActiveViewerProvider / set_main_thread_id）。
+- paraminstance 的参数桥改走 oaknode C API（node_ 为 OakNodeNode
+  值句柄）；undo 命令走 oakundo C API；node↔instance 路由用新增的
+  oaknode_node_identity() 注册表。
+- oliveclip 的纹理改 OakRenderTexture 值句柄；为此 oakrender C API
+  新增 texture is_dummy/get_frame/width/height/fb_format/
+  wrap_native 与 copier/ticket 族。
+- oaknode C API 新增 get_input_at_time/set_input_at_time_undoable
+  (_into)/node_identity/sequence_from_node/
+  sequence_set_default_parameters/find_input_footage。
+- avframeptr.h 从 src/codec/src/ffmpeg/ 上移到 src/common/src/
+  （codec 与 render 共用），transition 里的旧拷贝已删。
+- 新 C ABI：include/plugin/{error,host,instance}.h，
+  OakPluginInstance 为引用计数值句柄。
+- oaknode 的 transition stub（src/node/transition/pluginSupport/
+  {oliveplugininstance,olivehost}.h）改为桥接 oakplugin 真身头，
+  liboaknode 因此引用 oakplugin 符号；凡构建 oaknode 的 standalone
+  树（codec/audio/task/render/timeline）都必须
+  add_subdirectory(src/plugin)，且测试二进制要链接 oakplugin，
+  否则 dynamic_lookup 悬空符号 jump-to-0（EXC_BAD_ACCESS
+  address=0x0）。
+- 修复 ffmpegdecoder.cpp 被 3d004c081 误删出
+  src/codec/src/ffmpeg/CMakeLists.txt 的回归：FFmpegDecoder 构造
+  函数在 flat namespace 悬空，decoder probe/decode/encoder
+  roundtrip 三个测试 jump-to-0。

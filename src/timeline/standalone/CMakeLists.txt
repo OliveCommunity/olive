@@ -51,6 +51,7 @@ set(BUILD_TESTS OFF)
 add_subdirectory(${OAK_REPO_ROOT}/src/undo ${CMAKE_BINARY_DIR}/undo)
 add_subdirectory(${OAK_REPO_ROOT}/src/common ${CMAKE_BINARY_DIR}/common)
 add_subdirectory(${OAK_REPO_ROOT}/src/render/src ${CMAKE_BINARY_DIR}/render)
+add_subdirectory(${OAK_REPO_ROOT}/src/render/c_api ${CMAKE_BINARY_DIR}/render_c_api)
 set(BUILD_TESTS ON)
 
 enable_testing()
@@ -156,3 +157,4 @@ target_link_options(oaknode-gtest PRIVATE
 # TimelineAddTrackCommand, which lives in liboaktimeline; the two
 # libraries resolve each other at runtime (dynamic_lookup).
 target_link_libraries(oaknode-gtest PRIVATE oaktimeline)
+add_subdirectory(${OAK_REPO_ROOT}/src/plugin ${CMAKE_BINARY_DIR}/plugin)

@@ -34,6 +34,7 @@ target_link_libraries(oakcodec-gtest PRIVATE
         oakcodec
         oakrender
         oaknode
+        oakplugin
         oakcommon
         oakundo
         olivecore

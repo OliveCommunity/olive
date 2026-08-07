@@ -22,7 +22,7 @@
 #ifndef OAK_RENDERTEXTURE_H
 #define OAK_RENDERTEXTURE_H
 
-#include "common/avframeptr.h"
+#include "avframeptr.h"
 
 #include <atomic>
 #include <memory>

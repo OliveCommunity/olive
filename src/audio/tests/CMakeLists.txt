@@ -36,6 +36,7 @@ target_link_libraries(oakaudio-gtest PRIVATE
         oakcodec
         oakrender
         oaknode
+        oakplugin
         oakcommon
         oakundo
         olivecore

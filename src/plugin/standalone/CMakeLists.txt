@@ -16,12 +16,12 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 cmake_minimum_required(VERSION 3.16)
-project(oaktask-standalone CXX)
+project(oakplugin-standalone CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# oaktask manipulates node graphs through the oaknode C ABI; the
+# oakplugin manipulates node graphs through the oaknode C ABI; the
 # not-yet-split engine modules' symbols are allowed to dangle, resolved
 # by transitional stubs in src/{node,render}/transition.
 set(OAK_REPO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
@@ -30,7 +30,7 @@ list(APPEND CMAKE_MODULE_PATH "${OAK_REPO_ROOT}/cmake")
 set(BUILD_TESTS ON CACHE BOOL "" FORCE)
 set(OLIVECORE_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 # The /opt/otio OpenTimelineIO dylibs use @loader_path install names that
-# break when linked from a build tree; oaktask does not need OTIO.
+# break when linked from a build tree; oakplugin does not need OTIO.
 set(CMAKE_DISABLE_FIND_PACKAGE_OpenTimelineIO ON)
 
 find_package(EXPAT REQUIRED)
@@ -60,7 +60,7 @@ add_subdirectory(${OAK_REPO_ROOT}/src/timeline ${CMAKE_BINARY_DIR}/timeline)
 add_subdirectory(${OAK_REPO_ROOT}/src/codec ${CMAKE_BINARY_DIR}/codec)
 set(BUILD_TESTS ON)
 add_subdirectory(${OAK_REPO_ROOT}/src/node ${CMAKE_BINARY_DIR}/node)
-add_subdirectory(${OAK_REPO_ROOT}/src/task ${CMAKE_BINARY_DIR}/task)
+add_subdirectory(${OAK_REPO_ROOT}/src/plugin ${CMAKE_BINARY_DIR}/task)
 
 target_include_directories(oakcodec PUBLIC
         ${OAK_REPO_ROOT}/src/render/transition
@@ -112,13 +112,13 @@ foreach(t oakrender oakgl oakgl2 oakvulkan)
   endif()
 endforeach()
 
-target_include_directories(oaktask PUBLIC
+target_include_directories(oakplugin PUBLIC
         ${OAK_REPO_ROOT}/src/render/transition
         ${OAK_REPO_ROOT}/src/node/transition
         ${OAK_REPO_ROOT}/src/render/src
         ${OAK_REPO_ROOT}/src/node/src
 )
-target_link_options(oaktask PRIVATE
+target_link_options(oakplugin PRIVATE
         "-undefined" "dynamic_lookup"
 )
 
@@ -149,16 +149,9 @@ target_include_directories(oaknode-gtest PRIVATE
 )
 
 
-target_link_libraries(oaktask-gtest PRIVATE oakrender)
-target_sources(oaktask-gtest PRIVATE
-        ${OAK_REPO_ROOT}/src/node/standalone/oakengine_ipc_shim.cpp
-)
-target_include_directories(oaktask-gtest PRIVATE
-        ${OAK_REPO_ROOT}/engine/include
-)
-
 # OFX typeinfo is referenced via dynamic_lookup; force-load the host
 # support archive so RTTI resolves (same as oaknode's test wiring).
+# oakplugin-gtest wires itself up in src/plugin/tests/CMakeLists.txt.
 find_library(OAKNODE_OFX_HOST_ARCHIVE NAMES OfxHost
         PATHS ${OAK_REPO_ROOT}/build/third_party/openfx/HostSupport
         NO_DEFAULT_PATH)
@@ -167,12 +160,9 @@ if(NOT OAKNODE_OFX_HOST_ARCHIVE)
           "libOfxHost.a not found; run the full-tree build once or set "
           "OAKNODE_OFX_HOST_ARCHIVE")
 endif()
-target_link_options(oaktask-gtest PRIVATE
-        "-Wl,-force_load,${OAKNODE_OFX_HOST_ARCHIVE}")
 target_link_options(oaknode-gtest PRIVATE
         "-Wl,-force_load,${OAKNODE_OFX_HOST_ARCHIVE}")
 
-# TimelineAddTrackCommand, which lives in liboaktask; the two
+# TimelineAddTrackCommand, which lives in liboakplugin; the two
 # libraries resolve each other at runtime (dynamic_lookup).
 target_link_libraries(oaknode-gtest PRIVATE oaktimeline)
-add_subdirectory(${OAK_REPO_ROOT}/src/plugin ${CMAKE_BINARY_DIR}/plugin)

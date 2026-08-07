@@ -353,3 +353,17 @@ int oaknode_sequence_set_default_parameters(OakNodeSequence sequence)
 		return OAKNODE_E_FAILED;
 	}
 }
+
+OakNodeSequence oaknode_sequence_from_node(OakNodeNode node)
+{
+	OakNodeSequence empty = {};
+	if (!node.ctx) {
+		return empty;
+	}
+	olive::Node *n = oaknode_c_api::to_native<olive::Node>(node);
+	if (!n || !dynamic_cast<olive::Sequence *>(n)) {
+		return empty;
+	}
+	return make_handle<OakNodeSequence>(n, false,
+										&oaknode_c_api::delete_noop);
+}

@@ -11,6 +11,7 @@ target_compile_definitions(oaktask-gtest PRIVATE
 target_link_libraries(oaktask-gtest PRIVATE
         oaktask
         oaktimeline
+        oakplugin
         GTest::gtest
         GTest::gtest_main
 )

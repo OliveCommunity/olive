@@ -112,6 +112,12 @@ int oaknode_sequence_set_default_parameters(OakNodeSequence sequence);
 OakNodeNode oaknode_sequence_as_node(OakNodeSequence sequence);
 
 /**
+ * @brief Non-owning cast from a node handle to a sequence handle (empty
+ *        ctx when the node is not a Sequence).
+ */
+OakNodeSequence oaknode_sequence_from_node(OakNodeNode node);
+
+/**
  * @brief Borrowed handle to the per-type track list.
  *
  * @param type One of OAKNODE_TRACK_TYPE_VIDEO / _AUDIO / _SUBTITLE.

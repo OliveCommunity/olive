@@ -98,3 +98,28 @@ ldd liboakengine.so | grep oak                               # 只见 oak* 模�
 - instance：Shadertoy 类插件（CI 里可用的）创建/参数/渲染一帧非空。
 - progress：回调触发与 cancel。
 - `oakplugin_debug_alive_count()` 泄漏断言。
+
+## 6. 实施现状（2026-08-05）
+
+已完成。src/plugin/src/ 六个类（olivehost/oliveplugininstance/
+oliveclip/paraminstance/image/pluginprogressreporter）全部去Qt，
+QMessageBox/QApplication 依赖删除，改为 §4 裁决的 facade 回调
+装配。C ABI 落在 include/plugin/{error,host,instance}.h，
+OakPluginInstance 为引用计数值句柄（ctx/addref/release/
+abi_version）。
+
+偏离手册之处：
+
+- paraminstance 不直接持有 Node*，改持 OakNodeNode 值句柄，参数
+  读写全部经 oaknode C ABI；node↔instance 的身份路由用新增的
+  oaknode_node_identity() 注册表实现。
+- oliveclip 的纹理为 OakRenderTexture 值句柄，oakrender 因此补了
+  texture/copier/ticket 一族 C API。
+- oaknode 的 transition stub（src/node/transition/pluginSupport/）
+  桥接 oakplugin 真身头，liboaknode 运行期引用 oakplugin 符号
+  （dynamic_lookup）；所有构建 oaknode 的 standalone 树都要把
+  src/plugin 加进构建，测试二进制必须链接 oakplugin。
+
+验证：build-oakplugin 100/100；codec 22/22、audio 40/40、
+task 110/110、render 49/49、timeline 121/121（均含 oakplugin
+接入后的全量回归）。

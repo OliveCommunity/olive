@@ -1429,3 +1429,97 @@ int oaknode_node_find_input_footage(OakNodeNode node, OakNodeFootage *out)
 		return OAKNODE_E_FAILED;
 	}
 }
+
+int oaknode_node_get_input_at_time(OakNodeNode node,
+								   const char *input_id, int64_t time_num,
+								   int64_t time_den, oaknode_value *out)
+{
+	if (!node.ctx || !input_id || !out) {
+		return OAKNODE_E_INVALID;
+	}
+	if (!has_input(oaknode_c_api::to_native<olive::Node>(node), input_id)) {
+		return OAKNODE_E_NOT_FOUND;
+	}
+
+	try {
+		olive::Node *n = oaknode_c_api::to_native<olive::Node>(node);
+		olive::Variant v = n->get_value_at_time(
+			input_id,
+			olive::core::Rational(int(time_num), int(time_den)));
+
+		olive::NodeValue::Type type = n->get_input_data_type(input_id);
+		return oaknode_c_api::value_from_variant(type, v, out);
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+int oaknode_node_set_input_at_time_undoable(OakNodeNode node,
+		const char *input_id, int64_t time_num, int64_t time_den,
+		const oaknode_value *v, int track, OakUndoCommand *out_command)
+{
+	if (!node.ctx || !input_id || !v || !out_command) {
+		return OAKNODE_E_INVALID;
+	}
+	if (!has_input(oaknode_c_api::to_native<olive::Node>(node), input_id)) {
+		return OAKNODE_E_NOT_FOUND;
+	}
+
+	try {
+		olive::Variant value;
+		if (!oaknode_c_api::variant_from_value(v, &value)) {
+			return OAKNODE_E_INVALID;
+		}
+
+		auto *multi = new olive::MultiUndoCommand();
+		olive::Node::set_value_at_time(
+			olive::NodeInput(oaknode_c_api::to_native<olive::Node>(node),
+							 input_id),
+			olive::core::Rational(int(time_num), int(time_den)), value, track,
+			multi, true);
+
+		*out_command = oaknode_c_api::wrap_command(multi);
+		return out_command->ctx ? OAKNODE_OK : OAKNODE_E_NOMEM;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+uintptr_t oaknode_node_identity(OakNodeNode node)
+{
+	return reinterpret_cast<uintptr_t>(
+		oaknode_c_api::to_native<olive::Node>(node));
+}
+
+int oaknode_node_set_input_at_time_into(OakNodeNode node,
+		const char *input_id, int64_t time_num, int64_t time_den,
+		const oaknode_value *v, int track, OakUndoCommand multi_command)
+{
+	if (!node.ctx || !input_id || !v || !multi_command.ctx) {
+		return OAKNODE_E_INVALID;
+	}
+	if (!has_input(oaknode_c_api::to_native<olive::Node>(node), input_id)) {
+		return OAKNODE_E_NOT_FOUND;
+	}
+
+	olive::UndoCommand *base = oakundo_capi::to_command(multi_command);
+	auto *multi = dynamic_cast<olive::MultiUndoCommand *>(base);
+	if (!multi) {
+		return OAKNODE_E_INVALID;
+	}
+
+	try {
+		olive::Variant value;
+		if (!oaknode_c_api::variant_from_value(v, &value)) {
+			return OAKNODE_E_INVALID;
+		}
+		olive::Node::set_value_at_time(
+			olive::NodeInput(oaknode_c_api::to_native<olive::Node>(node),
+							 input_id),
+			olive::core::Rational(int(time_num), int(time_den)), value, track,
+			multi, true);
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}

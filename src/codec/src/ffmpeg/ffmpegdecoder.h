@@ -31,7 +31,7 @@
 #include <ffmpeg_bridge/ffmpeg_bridge.h>
 
 #include "decoder.h"
-#include "ffmpeg/avframeptr.h"
+#include "avframeptr.h"
 
 namespace olive
 {

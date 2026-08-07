@@ -23,6 +23,10 @@
 
 #include <stdint.h>
 
+#ifdef __cplusplus
+#include <memory>
+#endif
+
 #include "error.h"
 
 #ifdef __cplusplus
@@ -229,8 +233,41 @@ int oakrender_display_texture_download(OakRenderTexture texture, void *pixels,
 int oakrender_display_texture_get_params(OakRenderTexture texture,
 										 oakrender_video_params *out);
 
+/** @brief Frame width/height in pixels (0 on empty). */
+int oakrender_codec_frame_width(OakCodecFrame frame);
+int oakrender_codec_frame_height(OakCodecFrame frame);
+
+/** @brief ffmpeg_bridge pixel format when the frame wraps a texture's
+ *        CPU copy (an AVFramePtr); -1 otherwise. */
+int oakrender_codec_frame_fb_format(OakCodecFrame frame);
+
 /** @brief Native texture id (0 on empty or a dummy/id-less texture). */
 int oakrender_display_texture_id(OakRenderTexture texture);
+
+/** @brief 1 when the texture is a placeholder dummy (Texture::is_dummy()). */
+int oakrender_display_texture_is_dummy(OakRenderTexture texture);
+
+/**
+ * @brief The CPU frame stored in the texture, if any (Texture::frame()).
+ *        *out receives a retained frame handle (empty when none).
+ */
+int oakrender_display_texture_get_frame(OakRenderTexture texture,
+										OakCodecFrame *out);
+
+#ifdef __cplusplus
+} /* extern "C" */
+
+namespace olive { class Texture; using TexturePtr = std::shared_ptr<Texture>; }
+
+/**
+ * @brief Wrap a native TexturePtr in a retained handle (C++ only; used
+ *        by oakrender internals when handing textures across the C ABI).
+ */
+OakRenderTexture oakrender_display_texture_wrap_native(
+	const olive::TexturePtr &texture);
+
+extern "C" {
+#endif
 
 /* ---- Frame handle -------------------------------------------------------- */
 

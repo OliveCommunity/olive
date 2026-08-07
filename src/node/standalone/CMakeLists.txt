@@ -111,6 +111,8 @@ target_link_options(oaknode PRIVATE
 # 把 oakrender 构建进来并链进测试二进制；未拆分模块符号同样悬置。
 set(BUILD_TESTS OFF)
 add_subdirectory(${OAK_REPO_ROOT}/src/render/src ${CMAKE_BINARY_DIR}/render)
+add_subdirectory(${OAK_REPO_ROOT}/src/render/c_api ${CMAKE_BINARY_DIR}/render_c_api)
+add_subdirectory(${OAK_REPO_ROOT}/src/plugin ${CMAKE_BINARY_DIR}/plugin)
 set(BUILD_TESTS ON)
 
 target_include_directories(oakrender BEFORE PUBLIC
@@ -148,7 +150,7 @@ target_link_libraries(oakrender PRIVATE
         "-framework QuartzCore"
 )
 
-target_link_libraries(oaknode-gtest PRIVATE oakrender oaktimeline)
+target_link_libraries(oaknode-gtest PRIVATE oakrender oaktimeline oakplugin)
 
 # liboakrender references the oakengine_ipc_* C ABI (worker IPC) via
 # dynamic_lookup; the real implementation (engine/src/capi/ipc.cpp) is still

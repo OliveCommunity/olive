@@ -363,6 +363,9 @@ void *oakrender_codec_frame_data(OakCodecFrame frame)
 	if (!f || !f->ptr) {
 		return nullptr;
 	}
+	if (f->avptr) {
+		return f->avptr->data(0);
+	}
 	return f->ptr->data();
 }
 
@@ -380,6 +383,9 @@ int oakrender_codec_frame_linesize_bytes(OakCodecFrame frame)
 {
 	OakCodecFrameImpl *f =
 		oakrender_c_api::to_native<OakCodecFrameImpl>(frame);
+	if (f && f->avptr) {
+		return f->avptr->linesize(0);
+	}
 	if (!f || !f->ptr) {
 		return 0;
 	}
@@ -507,4 +513,85 @@ int oakrender_current_backend(char *buf, int n)
 			buf, n);
 	}
 	return write_string(g_requested_backend, buf, n);
+}
+
+int oakrender_display_texture_is_dummy(OakRenderTexture texture)
+{
+	if (!texture.ctx) {
+		return 0;
+	}
+	return oakrender_c_api::to_native<OakRenderTextureImpl>(texture)
+				   ->ptr->is_dummy()
+			   ? 1
+			   : 0;
+}
+
+int oakrender_display_texture_get_frame(OakRenderTexture texture,
+										OakCodecFrame *out)
+{
+	if (!texture.ctx || !out) {
+		return OAKRENDER_E_INVALID;
+	}
+	*out = OakCodecFrame{};
+
+	olive::AVFramePtr frame =
+		oakrender_c_api::to_native<OakRenderTextureImpl>(texture)->ptr->frame();
+	if (!frame) {
+		return OAKRENDER_E_NOT_FOUND;
+	}
+	// The texture's CPU copy is an AVFramePtr (ffmpeg_bridge RAII); wrap
+	// the shared_ptr so the frame stays alive with the handle.
+	auto *fimpl = new OakCodecFrameImpl;
+	fimpl->avptr = frame;
+	*out = oakrender_c_api::make_handle<OakCodecFrame>(
+		fimpl, true, &oakrender_c_api::delete_as<OakCodecFrameImpl>);
+	return out->ctx ? OAKRENDER_OK : OAKRENDER_E_NOMEM;
+}
+
+OakRenderTexture oakrender_display_texture_wrap_native(
+	const olive::TexturePtr &texture)
+{
+	if (!texture) {
+		return OakRenderTexture{};
+	}
+	auto *impl = new OakRenderTextureImpl;
+	impl->ptr = texture;
+	return oakrender_c_api::make_handle<OakRenderTexture>(
+		impl, true, &oakrender_c_api::delete_as<OakRenderTextureImpl>);
+}
+
+int oakrender_codec_frame_width(OakCodecFrame frame)
+{
+	OakCodecFrameImpl *f =
+		oakrender_c_api::to_native<OakCodecFrameImpl>(frame);
+	if (!f) {
+		return 0;
+	}
+	if (f->avptr) {
+		return f->avptr->width();
+	}
+	return f->ptr ? f->ptr->width() : 0;
+}
+
+int oakrender_codec_frame_height(OakCodecFrame frame)
+{
+	OakCodecFrameImpl *f =
+		oakrender_c_api::to_native<OakCodecFrameImpl>(frame);
+	if (!f) {
+		return 0;
+	}
+	if (f->avptr) {
+		return f->avptr->height();
+	}
+	return f->ptr ? f->ptr->height() : 0;
+}
+
+int oakrender_codec_frame_fb_format(OakCodecFrame frame)
+{
+	OakCodecFrameImpl *f =
+		oakrender_c_api::to_native<OakCodecFrameImpl>(frame);
+	if (!f || !f->avptr) {
+		return -1;
+	}
+	return f->avptr->format();
 }
