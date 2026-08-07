@@ -25,9 +25,16 @@ target_include_directories(oaktask PUBLIC
         ${OAK_REPO_ROOT}/src/common/src
         ${OAK_REPO_ROOT}/src/undo/src
         ${OAK_REPO_ROOT}/core/include
+        ${OAK_REPO_ROOT}/otio-install/include
 )
 
+target_compile_definitions(oaktask PUBLIC USE_OTIO)
+
+target_link_directories(oaktask PUBLIC ${OAK_REPO_ROOT}/otio-install/lib)
+
 target_link_libraries(oaktask PUBLIC
+        opentimelineio
+        opentime
         oaknode
         oakrender
         oakcodec
@@ -35,3 +42,11 @@ target_link_libraries(oaktask PUBLIC
         oakcommon
         olivecore
 )
+
+# OTIO dylibs use @loader_path install names; they must sit next to
+# liboaktask.dylib (the loading object).
+add_custom_command(TARGET oaktask POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                ${OAK_REPO_ROOT}/otio-install/lib/libopentimelineio.dylib
+                ${OAK_REPO_ROOT}/otio-install/lib/libopentime.dylib
+                $<TARGET_FILE_DIR:oaktask>)

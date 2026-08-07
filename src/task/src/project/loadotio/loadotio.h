@@ -19,43 +19,43 @@
 
 ***/
 
-#ifndef OAK_PROJECTSAVEASOTIOTASK_H
-#define OAK_PROJECTSAVEASOTIOTASK_H
+#ifndef OAK_LOADOTIOTASK_H
+#define OAK_LOADOTIOTASK_H
 
-#ifdef USE_OTIO
+#include <functional>
+#include <string>
+#include <vector>
 
-#include <opentimelineio/timeline.h>
-#include <opentimelineio/track.h>
-
-#include "common/otioutils.h"
-#include "node/project.h"
-#include "task/task.h"
+#include "../load/load.h"
 
 namespace olive
 {
 
-class SaveOTIOTask : public Task {
-	Q_OBJECT
+class LoadOTIOTask : public ProjectLoadBaseTask {
 public:
-	SaveOTIOTask(Project *project);
+	LoadOTIOTask(const std::string &filename);
+
+	/**
+	 * @brief Ask the user which sequences to import (facade/UI concern).
+	 *
+	 * Receives the sequence labels, returns true to accept the import.
+	 * When no callback is installed, everything is imported (headless
+	 * default).
+	 */
+	using ImportConfirmFn = std::function<bool(
+		const std::vector<std::string> &sequence_names)>;
+	static void set_import_confirm_callback(ImportConfirmFn callback)
+	{
+		confirm_callback_ = std::move(callback);
+	}
 
 protected:
 	virtual bool run() override;
 
 private:
-	OTIO::Timeline *SerializeTimeline(Sequence *sequence);
-
-	OTIO::Track *SerializeTrack(Track *track, double sequence_rate,
-								Rational max_track_length);
-
-	bool SerializeTrackList(TrackList *list, OTIO::Timeline *otio_timeline,
-							double sequence_rate);
-
-	Project *project_;
+	static ImportConfirmFn confirm_callback_;
 };
 
 }
 
-#endif
-
-#endif // OAK_PROJECTSAVEASOTIOTASK_H
+#endif // OAK_LOADOTIOTASK_H

@@ -362,3 +362,63 @@ TEST(OakTaskRenderFamily, ExportTaskConstruction)
 
 	EXPECT_EQ(oaktask_debug_alive_count(), 0);
 }
+
+// ---- OTIO round trip -------------------------------------------------------
+
+TEST(OakTaskOTIO, SaveLoadRoundTrip)
+{
+	OakNodeProject *project = oaknode_project_init();
+	ASSERT_NE(project, nullptr);
+	ASSERT_EQ(oaknode_project_initialize(project), OAKNODE_OK);
+
+	// A sequence with a name so save has something to serialize
+	OakNodeSequence *sequence = oaknode_sequence_create();
+	ASSERT_NE(sequence, nullptr);
+	ASSERT_EQ(oaknode_project_add_node(project,
+									   oaknode_sequence_as_node(sequence)),
+			  OAKNODE_OK);
+	ASSERT_EQ(oaknode_sequence_set_default_parameters(sequence),
+			  OAKNODE_OK);
+	ASSERT_EQ(oaknode_node_set_label(oaknode_sequence_as_node(sequence),
+									 "OTIO Test Sequence"),
+			  OAKNODE_OK);
+
+	OakNodeFolder *root = oaknode_project_root(project);
+	ASSERT_NE(root, nullptr);
+	OakUndoCommand *add_seq = oaknode_command_create_folder_add_child(
+		root, oaknode_sequence_as_node(sequence));
+	ASSERT_NE(add_seq, nullptr);
+	oakundo_command_redo_now(add_seq);
+	oakundo_command_free(add_seq);
+
+	std::string path =
+		(std::filesystem::temp_directory_path() / "oaktask_otio_test.otio")
+			.string();
+	std::error_code ec;
+	std::filesystem::remove(path, ec);
+
+	OakTaskTask *save =
+		oaktask_create_project_save_otio(project, path.c_str());
+	ASSERT_NE(save, nullptr);
+	ASSERT_EQ(oaktask_task_start_sync(save), 1);
+	oaktask_task_free(save);
+
+	ASSERT_TRUE(std::filesystem::exists(path));
+
+	OakTaskTask *load = oaktask_create_project_load_otio(path.c_str());
+	ASSERT_NE(load, nullptr);
+	ASSERT_EQ(oaktask_task_start_sync(load), 1);
+
+	OakNodeProject *loaded = oaktask_load_otio_take_project(load);
+	ASSERT_NE(loaded, nullptr);
+	oaknode_project_free(loaded);
+	oaktask_task_free(load);
+
+	std::filesystem::remove(path, ec);
+	oaknode_project_free(project);
+
+	EXPECT_EQ(oaktask_debug_alive_count(), 0);
+
+	EXPECT_EQ(oaktask_create_project_load_otio(nullptr), nullptr);
+	EXPECT_EQ(oaktask_create_project_save_otio(nullptr, "x"), nullptr);
+}

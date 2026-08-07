@@ -103,6 +103,9 @@ typedef struct OakNodeNode OakNodeNode;
 /* Re-declared here so node.h is self-contained; see node/project.h. */
 typedef struct OakNodeProject OakNodeProject;
 
+/* Re-declared here so node.h is self-contained; see node/footage.h. */
+typedef struct OakNodeFootage OakNodeFootage;
+
 /**
  * @brief Opaque borrowed handles to the timeline data owned by viewer
  * nodes (TimelineMarkerList / TimelineWorkArea in oaktimeline).
@@ -587,6 +590,14 @@ int oaknode_viewer_set_video_params(OakNodeNode *viewer,
 									const OakVideoParams *params);
 int oaknode_viewer_set_audio_params(OakNodeNode *viewer,
 									const OakAudioParams *params);
+
+/**
+ * @brief Find a footage node upstream of this node's inputs
+ *        (Node::find_input_nodes<Footage>(), first match). *out is a
+ *        borrowed handle or NULL when none.
+ */
+int oaknode_node_find_input_footage(const OakNodeNode *node,
+									OakNodeFootage **out);
 
 /**
  * @brief Create a command that removes a node from its graph together

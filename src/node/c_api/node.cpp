@@ -32,6 +32,8 @@
 
 #include "output/viewer/viewer.h"
 
+#include "project/footage/footage.h"
+
 #include "valueconvert.h"
 
 namespace
@@ -1327,6 +1329,26 @@ int oaknode_viewer_set_audio_params(OakNodeNode *viewer,
 	try {
 		v->set_audio_params(olive::AudioParams::from_handle(
 			oakcore_audioparams_copy(params)));
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+int oaknode_node_find_input_footage(const OakNodeNode *node,
+									OakNodeFootage **out)
+{
+	if (!node || !out) {
+		return OAKNODE_E_INVALID;
+	}
+
+	*out = NULL;
+	try {
+		std::vector<olive::Footage *> found =
+			to_node(node)->find_input_nodes<olive::Footage>();
+		if (!found.empty()) {
+			*out = reinterpret_cast<OakNodeFootage *>(found.front());
+		}
 		return OAKNODE_OK;
 	} catch (...) {
 		return OAKNODE_E_FAILED;

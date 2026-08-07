@@ -25,6 +25,8 @@
 #include "../src/export/export.h"
 #include "../src/precache/precachetask.h"
 #include "../src/project/import/import.h"
+#include "../src/project/loadotio/loadotio.h"
+#include "../src/project/saveotio/saveotio.h"
 #include "../src/project/load/load.h"
 #include "../src/project/save/save.h"
 #include "taskhandle.h"
@@ -206,4 +208,56 @@ OakTaskTask *oaktask_create_export(OakNodeNode *viewer,
 	} catch (...) {
 		return NULL;
 	}
+}
+
+OakTaskTask *oaktask_create_project_load_otio(const char *filename)
+{
+	if (!filename) {
+		return NULL;
+	}
+	try {
+		return wrap(new olive::LoadOTIOTask(filename));
+	} catch (...) {
+		return NULL;
+	}
+}
+
+OakNodeProject *oaktask_load_otio_take_project(OakTaskTask *t)
+{
+	olive::ProjectLoadBaseTask *task = load_impl(t);
+	if (!task) {
+		return NULL;
+	}
+	return task->take_project();
+}
+
+OakTaskTask *oaktask_create_project_save_otio(OakNodeProject *project,
+											  const char *filename)
+{
+	if (!project || !filename) {
+		return NULL;
+	}
+	try {
+		return wrap(new olive::SaveOTIOTask(project, filename));
+	} catch (...) {
+		return NULL;
+	}
+}
+
+void oaktask_load_otio_set_confirm_cb(oaktask_otio_import_confirm_fn fn,
+									  void *userdata)
+{
+	if (!fn) {
+		olive::LoadOTIOTask::set_import_confirm_callback(nullptr);
+		return;
+	}
+	olive::LoadOTIOTask::set_import_confirm_callback(
+		[fn, userdata](const std::vector<std::string> &names) {
+			std::vector<const char *> ptrs;
+			ptrs.reserve(names.size());
+			for (const std::string &name : names) {
+				ptrs.push_back(name.c_str());
+			}
+			return fn(ptrs.data(), int(ptrs.size()), userdata) != 0;
+		});
 }

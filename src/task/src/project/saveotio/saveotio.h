@@ -19,29 +19,50 @@
 
 ***/
 
-#ifndef OAK_OTIODECODER_H
-#define OAK_OTIODECODER_H
+#ifndef OAK_SAVEOTIOTASK_H
+#define OAK_SAVEOTIOTASK_H
 
-#ifdef USE_OTIO
+#include <string>
 
-#include "common/otioutils.h"
+#include <opentimelineio/timeline.h>
+#include <opentimelineio/version.h>
+
+#include <olive/core/util/rational.h>
+
 #include "node/project.h"
-#include "task/project/load/loadbasetask.h"
+#include "node/sequence.h"
+#include "node/track.h"
+#include "task.h"
+
+namespace OTIO = opentimelineio::OPENTIMELINEIO_VERSION;
 
 namespace olive
 {
 
-class LoadOTIOTask : public ProjectLoadBaseTask {
-	Q_OBJECT
+using core::Rational;
+
+class SaveOTIOTask : public Task {
 public:
-	LoadOTIOTask(const QString &filename);
+	SaveOTIOTask(OakNodeProject *project, const std::string &filename);
 
 protected:
 	virtual bool run() override;
+
+private:
+	OTIO::Timeline *serialize_timeline(OakNodeSequence *sequence);
+
+	OTIO::Track *serialize_track(OakNodeTrack *track, double sequence_rate,
+								 Rational max_track_length);
+
+	bool serialize_track_list(OakNodeTrackList *list,
+							  OTIO::Timeline *otio_timeline,
+							  double sequence_rate);
+
+	OakNodeProject *project_;
+
+	std::string filename_;
 };
 
 }
 
-#endif
-
-#endif // OAK_OTIODECODER_H
+#endif // OAK_SAVEOTIOTASK_H

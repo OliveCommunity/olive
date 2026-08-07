@@ -323,3 +323,17 @@ OakNodeNode *oaknode_sequence_as_node(OakNodeSequence *sequence)
 {
 	return reinterpret_cast<OakNodeNode *>(sequence);
 }
+
+int oaknode_sequence_set_default_parameters(OakNodeSequence *sequence)
+{
+	if (!sequence) {
+		return OAKNODE_E_INVALID;
+	}
+
+	try {
+		impl(sequence)->set_default_parameters();
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}

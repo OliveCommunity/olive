@@ -84,6 +84,12 @@ void oaknode_sequence_free(OakNodeSequence *sequence);
  * @return OAKNODE_OK, OAKNODE_E_INVALID or OAKNODE_E_NOT_FOUND (bad type).
  */
 /**
+ * @brief Apply the default video/audio parameters
+ *        (ViewerOutput::set_default_parameters()).
+ */
+int oaknode_sequence_set_default_parameters(OakNodeSequence *sequence);
+
+/**
  * @brief Borrowed cast from a sequence handle to its node handle.
  * NULL for NULL.
  */

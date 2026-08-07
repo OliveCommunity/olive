@@ -70,6 +70,25 @@ int oaktask_import_invalid_count(OakTaskTask *t);
 int oaktask_import_invalid_at(OakTaskTask *t, int index, char *buf,
 							  int buf_size);
 
+/** @brief olive::LoadOTIOTask. */
+OakTaskTask *oaktask_create_project_load_otio(const char *filename);
+
+/** @brief Take the loaded project (ownership transfer). */
+OakNodeProject *oaktask_load_otio_take_project(OakTaskTask *t);
+
+/** @brief olive::SaveOTIOTask. */
+OakTaskTask *oaktask_create_project_save_otio(OakNodeProject *project,
+											  const char *filename);
+
+/**
+ * @brief OTIO import confirmation callback (facade concern; default
+ *        accepts everything). Return non-zero to accept.
+ */
+typedef int (*oaktask_otio_import_confirm_fn)(
+	const char *const *sequence_names, int count, void *userdata);
+void oaktask_load_otio_set_confirm_cb(oaktask_otio_import_confirm_fn fn,
+									  void *userdata);
+
 /** @brief olive::PreCacheTask. */
 OakTaskTask *oaktask_create_precache(OakNodeFootage *footage, int index,
 									 OakNodeSequence *sequence);

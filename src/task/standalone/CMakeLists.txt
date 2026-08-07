@@ -148,6 +148,7 @@ target_include_directories(oaknode-gtest PRIVATE
         ${OAK_REPO_ROOT}/engine/include
 )
 
+
 target_link_libraries(oaktask-gtest PRIVATE oakrender)
 target_sources(oaktask-gtest PRIVATE
         ${OAK_REPO_ROOT}/src/node/standalone/oakengine_ipc_shim.cpp
@@ -171,7 +172,6 @@ target_link_options(oaktask-gtest PRIVATE
 target_link_options(oaknode-gtest PRIVATE
         "-Wl,-force_load,${OAKNODE_OFX_HOST_ARCHIVE}")
 
-# oaknode's Sequence::add_default_nodes() constructs
 # TimelineAddTrackCommand, which lives in liboaktask; the two
 # libraries resolve each other at runtime (dynamic_lookup).
-target_link_libraries(oaknode-gtest PRIVATE oaktask)
+target_link_libraries(oaknode-gtest PRIVATE oaktimeline)
