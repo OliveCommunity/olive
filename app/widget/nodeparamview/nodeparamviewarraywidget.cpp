@@ -24,6 +24,8 @@
 #include <QEvent>
 #include <QHBoxLayout>
 
+#include "core.h"
+
 namespace olive
 {
 
@@ -47,6 +49,12 @@ NodeParamViewArrayWidget::NodeParamViewArrayWidget(oak::Node node,
 				   int new_size) {
 				update_counter(input_id, old_size, new_size);
 			});
+
+	// Issue 12: reuse the issue 7 undo signal so array size changes replayed
+	// from the undo stack update the counter.
+	connect(Core::instance(), &Core::undo_index_changed, this, [this](int) {
+		update_counter(input_, 0, oak::Input(node_.handle(), input_).array_size());
+	});
 
 	update_counter(input_, 0, oak::Input(node_.handle(), input_).array_size());
 }

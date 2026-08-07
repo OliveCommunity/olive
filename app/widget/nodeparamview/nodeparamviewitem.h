@@ -152,6 +152,8 @@ private:
 private slots:
 	void edge_changed(OakEngineNode *output, const oak::Input &input);
 
+	void refresh_from_undo(int index = -1);
+
 	void array_collapse_btn_pressed(bool checked);
 
 	void input_array_size_changed(OakEngineNode *source,

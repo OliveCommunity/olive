@@ -113,6 +113,15 @@ NodeParamViewItem::NodeParamViewItem(
 	connect(bridge_, &EngineEventBridge::node_input_flags_changed, this,
 			&NodeParamViewItem::recreate_body);
 
+	// Issue 12: reuse the issue 7 undo signal so label/array/message/flag
+	// changes replayed from the undo stack refresh the parameter panel.
+	connect(Core::instance(), &Core::undo_index_changed, this,
+			&NodeParamViewItem::retranslate);
+	connect(Core::instance(), &Core::undo_index_changed, this,
+			&NodeParamViewItem::recreate_body);
+	connect(Core::instance(), &Core::undo_index_changed, this,
+			&NodeParamViewItem::update_message_panel);
+
 	setBackgroundRole(QPalette::Window);
 
 	// Connect title bar enabled checkbox
@@ -280,6 +289,11 @@ NodeParamViewItemBody::NodeParamViewItemBody(
 				edge_changed(output,
 					oak::Input(source, input, element));
 			});
+
+	// Issue 12: reuse the issue 7 undo signal so array size and edge
+	// connection changes replayed from the undo stack refresh the body.
+	connect(Core::instance(), &Core::undo_index_changed, this,
+			&NodeParamViewItemBody::refresh_from_undo);
 
 	// Create widgets all root level components
 	const int node_input_count = node.input_count();
@@ -669,9 +683,25 @@ void NodeParamViewItemBody::array_collapse_btn_pressed(bool checked)
 	emit array_expanded_changed(checked);
 }
 
+void NodeParamViewItemBody::refresh_from_undo(int)
+{
+	// Refresh array sizes for every known array UI.
+	for (auto it = array_ui_.cbegin(); it != array_ui_.cend(); it++) {
+		input_array_size_changed_internal(
+			it.key().node_handle(),
+			it.key().input_id(),
+			oak::Input(it.key().node_handle(), it.key().input_id()).array_size());
+	}
+
+	// Refresh edge-connection visibility for every known input UI.
+	for (auto it = input_ui_map_.cbegin(); it != input_ui_map_.cend(); it++) {
+		update_ui_for_edge_connection(it.key());
+	}
+}
+
 void NodeParamViewItemBody::input_array_size_changed(OakEngineNode *source,
-												  const QString &input,
-												  int old_sz, int size)
+											  const QString &input,
+											  int old_sz, int size)
 {
 	Q_UNUSED(old_sz)
 

@@ -153,6 +153,11 @@ NodeParamViewKeyframeControl::NodeParamViewKeyframeControl(bool right_align,
 	connect(bridge_, &EngineEventBridge::node_keyframe_time_changed, this,
 			&NodeParamViewKeyframeControl::update_state);
 
+	// Issue 12: reuse the issue 7 undo signal so keyframe enable/add/remove/
+	// time changes replayed from the undo stack refresh the buttons.
+	connect(Core::instance(), &Core::undo_index_changed, this,
+			&NodeParamViewKeyframeControl::update_state);
+
 	// Set defaults
 	set_input(oak::Input());
 	show_buttons_from_keyframe_enable(false);
@@ -345,8 +350,18 @@ void NodeParamViewKeyframeControl::toggle_keyframe(bool e)
 
 void NodeParamViewKeyframeControl::update_state()
 {
-	if (!input_.is_valid() || !input_.is_keyframing() ||
-		!get_time_target()) {
+	if (!input_.is_valid()) {
+		return;
+	}
+
+	// Sync keyframing enable state (covers undo/redo).
+	const bool keyframing = input_.is_keyframing();
+	if (enable_key_btn_->isChecked() != keyframing) {
+		enable_key_btn_->setChecked(keyframing);
+	}
+	show_buttons_from_keyframe_enable(keyframing);
+
+	if (!keyframing || !get_time_target()) {
 		return;
 	}
 
