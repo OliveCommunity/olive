@@ -30,7 +30,7 @@
 namespace
 {
 
-void noop_frame_ready(OakCodecFrame *frame, int64_t ts, void *userdata)
+void noop_frame_ready(OakCodecFrame frame, int64_t ts, void *userdata)
 {
 	(void) frame;
 	(void) ts;
@@ -100,7 +100,7 @@ TEST(OakRenderManagerTest, CancelUnknownRequest)
 TEST(OakRenderManagerTest, CacherSettersRequireManager)
 {
 	EXPECT_EQ(oakrender_set_cacher_multicam(OakNodeNode{}), OAKRENDER_E_STATE);
-	EXPECT_EQ(oakrender_set_display_color_processor(nullptr),
+	EXPECT_EQ(oakrender_set_display_color_processor(OakColorProcessor{}),
 			  OAKRENDER_E_STATE);
 }
 

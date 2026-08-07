@@ -38,16 +38,6 @@ extern "C" {
 #endif
 
 /**
- * @brief Current ABI version stamped into every oakrender handle.
- *
- * Bump whenever a handle layout or the semantics of any exported function
- * change incompatibly. Consumers should compare a handle's abi_version
- * field against the value they were compiled with before dereferencing
- * ctx.
- */
-#define OAKRENDER_ABI_VERSION 1
-
-/**
  * @file cancelatom.h
  * @brief C ABI for the oakrender cancellation primitive
  *        (olive::CancelAtom), a thread-safe cancel flag shared between a

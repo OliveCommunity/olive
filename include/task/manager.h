@@ -42,8 +42,9 @@ int oaktask_register_codec_submitter(void);
 
 int oaktask_manager_count(void);
 
-/** @brief Borrowed task at index, or NULL when out of range. */
-OakTaskTask *oaktask_manager_at(int i);
+/** @brief Borrowed task at index (release only frees the box), empty
+ *        handle when out of range or no manager. */
+OakTaskTask oaktask_manager_at(int i);
 
 void oaktask_manager_delete_finished(void);
 

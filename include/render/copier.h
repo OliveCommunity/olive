@@ -30,35 +30,52 @@ extern "C" {
 #endif
 
 /**
- * @brief Opaque handle to a project copier (olive::ProjectCopier):
- *        deep-copies a project graph for background processing
- *        (export/precache).
+ * @brief Reference-counted handle to a project copier
+ *        (olive::ProjectCopier): deep-copies a project graph for
+ *        background processing (export/precache).
+ *
+ * By-value handle (shared_ptr semantics, see oakcommon's
+ * common/handle.h): oakrender_project_copier_create() returns a handle
+ * with reference count 1; release it with
+ * oakrender_project_copier_free().
  */
-typedef struct OakRenderProjectCopier OakRenderProjectCopier;
+typedef struct OakRenderProjectCopier {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKRENDER_ABI_VERSION. */
+} OakRenderProjectCopier;
 
 /**
  * @brief Create a copier. The copy is built by
  *        oakrender_project_copier_set_project().
+ *
+ * @return Copier handle with reference count 1; ctx is NULL on
+ *         allocation failure.
  */
-OakRenderProjectCopier *oakrender_project_copier_create(void);
+OakRenderProjectCopier oakrender_project_copier_create(void);
 
-/** @brief Free the copier AND its copied project. NULL-safe. */
+/**
+ * @brief Release one reference to a copier; the final release frees the
+ * copier AND its copied project. NULL / empty-handle no-op; clears
+ * copier->ctx after releasing.
+ */
 void oakrender_project_copier_free(OakRenderProjectCopier *copier);
 
 /** @brief (Re)build the copy from `project` (borrowed handle). */
-int oakrender_project_copier_set_project(OakRenderProjectCopier *copier,
+int oakrender_project_copier_set_project(OakRenderProjectCopier copier,
 										 OakNodeProject project);
 
 /** @brief The copied counterpart of an original node (borrowed handle;
  *        freeing it only releases the handle box), empty handle when the
  *        node is not in the copied project. */
 OakNodeNode oakrender_project_copier_get_copy(
-	OakRenderProjectCopier *copier, OakNodeNode original);
+	OakRenderProjectCopier copier, OakNodeNode original);
 
 /** @brief The copied project (borrowed handle; freeing it only releases
  *        the handle box). */
 OakNodeProject oakrender_project_copier_get_copied_project(
-	OakRenderProjectCopier *copier);
+	OakRenderProjectCopier copier);
 
 #ifdef __cplusplus
 }

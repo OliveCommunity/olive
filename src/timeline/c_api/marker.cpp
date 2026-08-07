@@ -24,23 +24,14 @@
 
 #include "../src/timelinemarker.h"
 #include "../../undo/c_api/commandhandle.h"
+#include "timelinehandle.h"
 
 namespace
 {
 
-olive::TimelineMarkerList *impl(OakTimelineMarkerList *h)
+olive::TimelineMarkerList *impl(OakTimelineMarkerList h)
 {
-	return reinterpret_cast<olive::TimelineMarkerList *>(h);
-}
-
-const olive::TimelineMarkerList *impl(const OakTimelineMarkerList *h)
-{
-	return reinterpret_cast<const olive::TimelineMarkerList *>(h);
-}
-
-OakTimelineMarkerList *wrap(olive::TimelineMarkerList *l)
-{
-	return reinterpret_cast<OakTimelineMarkerList *>(l);
+	return oaktimeline_capi::to_native<olive::TimelineMarkerList>(h);
 }
 
 OakUndoCommand wrap_command(olive::UndoCommand *command)
@@ -56,9 +47,9 @@ olive::core::Rational rat(int n, int d)
 	return olive::core::Rational(n, d);
 }
 
-olive::TimelineMarker *marker_at(OakTimelineMarkerList *list, int index)
+olive::TimelineMarker *marker_at(OakTimelineMarkerList list, int index)
 {
-	if (!list || index < 0 || index >= int(impl(list)->size())) {
+	if (!list.ctx || index < 0 || index >= int(impl(list)->size())) {
 		return nullptr;
 	}
 	return impl(list)->at(index);
@@ -66,34 +57,40 @@ olive::TimelineMarker *marker_at(OakTimelineMarkerList *list, int index)
 
 } // namespace
 
-OakTimelineMarkerList *oaktimeline_marker_list_of(OakNodeNode owner)
+OakTimelineMarkerList oaktimeline_marker_list_of(OakNodeNode owner)
 {
 	if (!owner.ctx) {
-		return NULL;
+		return OakTimelineMarkerList{};
 	}
 
 	OakNodeMarkerList *markers = NULL;
 	if (oaknode_node_get_markers(owner, &markers) != OAKNODE_OK) {
-		return NULL;
+		return OakTimelineMarkerList{};
 	}
-	return reinterpret_cast<OakTimelineMarkerList *>(markers);
+	// Borrowed box: the list stays owned by the viewer node.
+	return oaktimeline_capi::make_handle<OakTimelineMarkerList>(
+		reinterpret_cast<olive::TimelineMarkerList *>(markers));
 }
 
-int oaktimeline_marker_count(const OakTimelineMarkerList *list,
-							 int *out_count)
+void oaktimeline_marker_list_free(OakTimelineMarkerList *list)
 {
-	if (!list || !out_count) {
+	oaktimeline_capi::free_handle(list);
+}
+
+int oaktimeline_marker_count(OakTimelineMarkerList list, int *out_count)
+{
+	if (!list.ctx || !out_count) {
 		return OAKTIMELINE_E_INVALID;
 	}
 	*out_count = int(impl(list)->size());
 	return OAKTIMELINE_OK;
 }
 
-int oaktimeline_marker_at(const OakTimelineMarkerList *list, int index,
+int oaktimeline_marker_at(OakTimelineMarkerList list, int index,
 						  int *in_num, int *in_den, int *out_num, int *out_den,
 						  int *color, char *name_buf, int buf_size)
 {
-	if (!list) {
+	if (!list.ctx) {
 		return OAKTIMELINE_E_INVALID;
 	}
 	if (index < 0 || index >= int(impl(list)->size())) {
@@ -127,10 +124,10 @@ int oaktimeline_marker_at(const OakTimelineMarkerList *list, int index,
 }
 
 OakUndoCommand oaktimeline_marker_add_command(
-	OakTimelineMarkerList *list, int in_num, int in_den, int out_num,
+	OakTimelineMarkerList list, int in_num, int in_den, int out_num,
 	int out_den, const char *name, int color)
 {
-	if (!list) {
+	if (!list.ctx) {
 		return OakUndoCommand{};
 	}
 
@@ -146,7 +143,7 @@ OakUndoCommand oaktimeline_marker_add_command(
 }
 
 OakUndoCommand oaktimeline_marker_remove_at_command(
-	OakTimelineMarkerList *list, int index)
+	OakTimelineMarkerList list, int index)
 {
 	olive::TimelineMarker *m = marker_at(list, index);
 	if (!m) {
@@ -161,7 +158,7 @@ OakUndoCommand oaktimeline_marker_remove_at_command(
 }
 
 OakUndoCommand oaktimeline_marker_set_time_command(
-	OakTimelineMarkerList *list, int index, int in_num, int in_den,
+	OakTimelineMarkerList list, int index, int in_num, int in_den,
 	int out_num, int out_den)
 {
 	olive::TimelineMarker *m = marker_at(list, index);
@@ -179,7 +176,7 @@ OakUndoCommand oaktimeline_marker_set_time_command(
 }
 
 OakUndoCommand oaktimeline_marker_set_props_command(
-	OakTimelineMarkerList *list, int index, int color, const char *name)
+	OakTimelineMarkerList list, int index, int color, const char *name)
 {
 	olive::TimelineMarker *m = marker_at(list, index);
 	if (!m || (color < 0 && !name)) {
@@ -202,10 +199,10 @@ OakUndoCommand oaktimeline_marker_set_props_command(
 	}
 }
 
-int oaktimeline_marker_list_load(OakTimelineMarkerList *list,
+int oaktimeline_marker_list_load(OakTimelineMarkerList list,
 								 OakXmlReader reader)
 {
-	if (!list || !reader.ctx) {
+	if (!list.ctx || !reader.ctx) {
 		return OAKTIMELINE_E_INVALID;
 	}
 
@@ -222,10 +219,10 @@ int oaktimeline_marker_list_load(OakTimelineMarkerList *list,
 	}
 }
 
-int oaktimeline_marker_list_save(const OakTimelineMarkerList *list,
+int oaktimeline_marker_list_save(OakTimelineMarkerList list,
 								 OakXmlWriter writer)
 {
-	if (!list || !writer.ctx) {
+	if (!list.ctx || !writer.ctx) {
 		return OAKTIMELINE_E_INVALID;
 	}
 

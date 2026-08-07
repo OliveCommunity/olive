@@ -34,10 +34,11 @@ extern "C" {
  *        the process-wide default OCIO config (olive::ColorManager
  *        statics), M7 §2.3.
  *
- * An OakColorProcessor IS a wrapper allocation holding a
- * ColorProcessorPtr (ColorProcessor is shared_ptr-managed); release with
- * oakrender_color_processor_free(). NULL is accepted by every function
- * and yields a no-op / OAKRENDER_E_INVALID.
+ * An OakColorProcessor is a by-value reference-counted handle (shared_ptr
+ * semantics, see oakcommon's common/handle.h) boxing a ColorProcessorPtr
+ * (ColorProcessor is shared_ptr-managed); release with
+ * oakrender_color_processor_free(). Empty handles (ctx == NULL) are
+ * accepted by every function and yield a no-op / OAKRENDER_E_INVALID.
  *
  * Processors are built against the process-wide default OCIO config
  * (olive::ColorManager::get_default_config()): the $OCIO config when the
@@ -52,7 +53,12 @@ enum {
 	OAKRENDER_COLOR_DIRECTION_INVERSE = 1
 };
 
-typedef struct OakColorProcessor OakColorProcessor;
+typedef struct OakColorProcessor {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKRENDER_ABI_VERSION. */
+} OakColorProcessor;
 
 /**
  * @brief Create a colorspace-to-colorspace processor on the default
@@ -67,29 +73,34 @@ typedef struct OakColorProcessor OakColorProcessor;
  * still returned but oakrender_color_processor_is_valid() reports 0 and
  * conversions are pass-through.
  *
- * @return Processor handle, or NULL for NULL/empty strings, an unknown
- *         direction, no default config, or allocation failure.
+ * @return Processor handle with reference count 1; ctx is NULL for
+ *         NULL/empty strings, an unknown direction, no default config,
+ *         or allocation failure.
  */
-OakColorProcessor *oakrender_color_processor_create(const char *src_space,
-													const char *dst_transform,
-													int direction);
+OakColorProcessor oakrender_color_processor_create(const char *src_space,
+												   const char *dst_transform,
+												   int direction);
 
-/** @brief Release a processor handle. NULL-safe no-op. */
+/**
+ * @brief Release one reference to a processor handle. Convenience
+ * wrapper around processor->release(processor->ctx). NULL /
+ * empty-handle no-op; clears processor->ctx after releasing.
+ */
 void oakrender_color_processor_free(OakColorProcessor *processor);
 
 /**
  * @brief 1 when the processor holds a valid OCIO processor
- * (ColorProcessor::get_processor() != null), 0 otherwise / on NULL.
+ * (ColorProcessor::get_processor() != null), 0 otherwise / empty.
  */
-int oakrender_color_processor_is_valid(const OakColorProcessor *processor);
+int oakrender_color_processor_is_valid(OakColorProcessor processor);
 
 /**
  * @brief Convert a single RGBA color (ColorProcessor::convert_color()).
  * On an invalid processor the input is copied through.
  *
- * @return OAKRENDER_OK, or OAKRENDER_E_INVALID for NULL arguments.
+ * @return OAKRENDER_OK, or OAKRENDER_E_INVALID for empty/NULL arguments.
  */
-int oakrender_color_processor_convert(OakColorProcessor *processor,
+int oakrender_color_processor_convert(OakColorProcessor processor,
 									  double ir, double ig, double ib,
 									  double ia, double *out_r, double *out_g,
 									  double *out_b, double *out_a);
@@ -105,11 +116,11 @@ int oakrender_color_processor_convert(OakColorProcessor *processor,
  * non-fatal) is a pass-through and returns OAKRENDER_OK, mirroring the
  * C++ API.
  *
- * @return OAKRENDER_OK, OAKRENDER_E_INVALID for NULL/uninitialized
+ * @return OAKRENDER_OK, OAKRENDER_E_INVALID for empty/uninitialized
  *         arguments, or OAKRENDER_E_FAILED on an internal exception.
  */
-int oakrender_color_processor_convert_frame(OakColorProcessor *processor,
-											OakCodecFrame *frame);
+int oakrender_color_processor_convert_frame(OakColorProcessor processor,
+											OakCodecFrame frame);
 
 /* ---- ColorManager statics ------------------------------------------------- */
 

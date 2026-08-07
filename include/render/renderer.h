@@ -38,20 +38,25 @@ extern "C" {
  * (docs/zh/plans/completed/r7-pure-abi-plan.md §A.2) with the
  * oakrender_ prefix (M7 §2.1).
  *
- * Ownership protocol: textures and frames are opaque handles pointing to
- * oakrender-heap control blocks (internally holding std::shared_ptr;
- * invisible to the ABI). Ownership transfers via explicit retain/free.
- * Every retain must be paired with exactly one free. NULL is accepted by
- * every function and yields a no-op / zero result / OAKRENDER_E_INVALID.
+ * Ownership protocol: every public handle is a by-value
+ * reference-counted struct (see oakcommon's common/handle.h; shared_ptr
+ * semantics). init/create functions return a handle with reference
+ * count 1, handle.addref(handle.ctx) takes another reference, and
+ * handle.release(handle.ctx) (or the oakrender_*_free() convenience
+ * wrappers, which also null the caller's ctx) drops one; the object is
+ * destroyed in this library when the count reaches zero. Empty handles
+ * (ctx == NULL) are accepted by every function and yield a no-op / zero
+ * result / OAKRENDER_E_INVALID.
  *
- * Cross-thread handoff (§A.3): the producing side retains before
- * publishing a handle into a shared slot; the consuming side frees the
- * handle it replaced. The side holding the slot when it is torn down
- * frees the remaining handle.
+ * Cross-thread handoff (§A.3): the producing side addrefs before
+ * publishing a handle into a shared slot; the consuming side releases
+ * the handle it replaced. The side holding the slot when it is torn
+ * down releases the remaining handle.
  *
  * Handles:
- *   - OakRenderRenderer IS a reinterpreted olive::Renderer (no wrapper).
- *   - OakRenderTexture / OakCodecFrame are refcounted control blocks.
+ *   - OakRenderRenderer wraps a native olive::Renderer.
+ *   - OakRenderTexture / OakCodecFrame box shared_ptr-managed engine
+ *     objects.
  *   - `gl_context` is an opaque borrowed olive::OpenGLContext* (or NULL
  *     to let the backend create its own offscreen surface).
  */
@@ -81,17 +86,42 @@ typedef struct oakrender_video_params {
 	int premultiplied_alpha; /**< 0/1. */
 } oakrender_video_params;
 
-typedef struct OakRenderRenderer OakRenderRenderer;
-typedef struct OakRenderTexture OakRenderTexture;
+/**
+ * @brief Reference-counted handle to a display renderer
+ * (olive::Renderer). See the file-level ownership protocol.
+ */
+typedef struct OakRenderRenderer {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKRENDER_ABI_VERSION. */
+} OakRenderRenderer;
 
 /**
- * @brief Opaque CPU frame handle (refcounted control block around an
- * olive::FramePtr). Declared here so the cache family (render/cache.h)
- * can use the same type; the frame functions live in this header.
+ * @brief Reference-counted handle to a GPU texture (olive::Texture).
+ * See the file-level ownership protocol.
+ */
+typedef struct OakRenderTexture {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKRENDER_ABI_VERSION. */
+} OakRenderTexture;
+
+/**
+ * @brief Reference-counted handle to a CPU frame (an olive::FramePtr
+ * boxed in a control block). Declared here so the cache family
+ * (render/cache.h) can use the same type; the frame functions live in
+ * this header.
  * Named OakCodecFrame per the M7 §2.2 contract; the oakcodec wave (M5)
  * adopts the same handle.
  */
-typedef struct OakCodecFrame OakCodecFrame;
+typedef struct OakCodecFrame {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKRENDER_ABI_VERSION. */
+} OakCodecFrame;
 
 /**
  * @brief Flattened POD of olive::ColorTransformJob for the display blit
@@ -99,8 +129,8 @@ typedef struct OakCodecFrame OakCodecFrame;
  * means identity.
  */
 typedef struct oakrender_color_transform_job {
-	const void *processor; /**< OakColorProcessor* (borrowed), may be NULL. */
-	void *input_texture; /**< OakRenderTexture* (borrowed, not retained). */
+	const void *processor; /**< OakColorProcessor ctx (borrowed), may be NULL. */
+	void *input_texture; /**< OakRenderTexture ctx (borrowed, not retained). */
 	int input_alpha_association; /**< 0=none, 1=associated. */
 	int clear_destination; /**< 0/1. */
 	int force_opaque; /**< 0/1. */
@@ -115,116 +145,137 @@ typedef struct oakrender_color_transform_job {
  * "vulkan"; olive::DynamicRenderer). Loads the backend shared library;
  * falls back per DynamicRenderer rules.
  *
- * @return Renderer handle, or NULL on NULL/empty backend id, load
- *         failure, or allocation failure.
+ * @return Renderer handle with reference count 1; ctx is NULL on
+ *         NULL/empty backend id, load failure, or allocation failure.
  */
-OakRenderRenderer *oakrender_display_renderer_create_dynamic(
+OakRenderRenderer oakrender_display_renderer_create_dynamic(
 	const char *backend_id);
 
 /**
  * @brief Create an OpenGL renderer (olive::OpenGLRenderer). The renderer
  * is not initialized; call oakrender_display_renderer_init() before use.
  *
- * @return Renderer handle, or NULL on allocation failure.
+ * @return Renderer handle with reference count 1; ctx is NULL on
+ *         allocation failure.
  */
-OakRenderRenderer *oakrender_display_renderer_create_opengl(void);
+OakRenderRenderer oakrender_display_renderer_create_opengl(void);
 
 /**
  * @brief Initialize a renderer. `gl_context` is a borrowed opaque
  * olive::OpenGLContext*, or NULL to use the backend's default
  * device/context path (Renderer::init()).
  *
- * @return OAKRENDER_OK, OAKRENDER_E_INVALID (NULL renderer), or
+ * @return OAKRENDER_OK, OAKRENDER_E_INVALID (empty renderer), or
  *         OAKRENDER_E_FAILED (backend init failed).
  */
-int oakrender_display_renderer_init(OakRenderRenderer *renderer,
+int oakrender_display_renderer_init(OakRenderRenderer renderer,
 									void *gl_context);
 
 /**
- * @brief Destroy a renderer (Renderer::destroy() + delete). NULL-safe
- * no-op.
+ * @brief Release one reference to a renderer (the final release runs
+ * Renderer::destroy() + delete). Convenience wrapper around
+ * renderer->release(renderer->ctx): NULL / empty-handle no-op; clears
+ * renderer->ctx after releasing.
  */
 void oakrender_display_renderer_destroy(OakRenderRenderer *renderer);
 
 /* ---- Renderer queries ---------------------------------------------------- */
 
-/** @brief 1 when the renderer is OpenGL-based, 0 otherwise / on NULL. */
-int oakrender_display_renderer_is_open_gl(const OakRenderRenderer *renderer);
+/** @brief 1 when the renderer is OpenGL-based, 0 otherwise / empty. */
+int oakrender_display_renderer_is_open_gl(OakRenderRenderer renderer);
 
-/** @brief 1 when the renderer is Vulkan-based, 0 otherwise / on NULL. */
-int oakrender_display_renderer_is_vulkan(const OakRenderRenderer *renderer);
+/** @brief 1 when the renderer is Vulkan-based, 0 otherwise / empty. */
+int oakrender_display_renderer_is_vulkan(OakRenderRenderer renderer);
 
-/* ---- Texture handle (opaque, refcounted) --------------------------------- */
+/* ---- Texture handle ------------------------------------------------------ */
 
 /**
  * @brief Create a GPU texture on `renderer`.
  *
  * @param pixels Initial pixel data, or NULL for an uninitialized texture.
  * @param linesize Stride of `pixels` in bytes (0 when pixels is NULL).
- * @return New texture handle (refcount=1), or NULL on invalid arguments /
- *         allocation failure.
+ * @return New texture handle (reference count 1); ctx is NULL on invalid
+ *         arguments / allocation failure.
  */
-OakRenderTexture *oakrender_display_texture_create(
-	OakRenderRenderer *renderer, const oakrender_video_params *params,
+OakRenderTexture oakrender_display_texture_create(
+	OakRenderRenderer renderer, const oakrender_video_params *params,
 	const void *pixels, int linesize);
 
-/** @brief Increment refcount, return the same handle. NULL-safe. */
-OakRenderTexture *oakrender_display_texture_retain(OakRenderTexture *texture);
+/**
+ * @brief Take another reference to a texture and return the same handle.
+ *
+ * Convenience wrapper around handle.addref(handle.ctx). An empty handle
+ * in yields an empty handle out. Every retain must be paired with
+ * exactly one free/release.
+ */
+OakRenderTexture oakrender_display_texture_retain(OakRenderTexture texture);
 
-/** @brief Decrement refcount; frees at zero. NULL-safe. */
+/**
+ * @brief Release one reference to a texture. Convenience wrapper around
+ * texture->release(texture->ctx): frees the texture when the count
+ * reaches zero. NULL / empty-handle no-op; clears texture->ctx after
+ * releasing.
+ */
 void oakrender_display_texture_free(OakRenderTexture *texture);
 
-int oakrender_display_texture_upload(OakRenderTexture *texture,
+int oakrender_display_texture_upload(OakRenderTexture texture,
 									 const void *pixels, int linesize);
 
-int oakrender_display_texture_download(OakRenderTexture *texture, void *pixels,
+int oakrender_display_texture_download(OakRenderTexture texture, void *pixels,
 									   int linesize);
 
 /* ---- Texture queries ----------------------------------------------------- */
 
-int oakrender_display_texture_get_params(const OakRenderTexture *texture,
+int oakrender_display_texture_get_params(OakRenderTexture texture,
 										 oakrender_video_params *out);
 
-/** @brief Native texture id (0 on NULL or a dummy/id-less texture). */
-int oakrender_display_texture_id(const OakRenderTexture *texture);
+/** @brief Native texture id (0 on empty or a dummy/id-less texture). */
+int oakrender_display_texture_id(OakRenderTexture texture);
 
-/* ---- Frame handle (opaque, refcounted) ----------------------------------- */
+/* ---- Frame handle -------------------------------------------------------- */
 
-/** @brief Create an empty CPU frame. Returns handle (refcount=1). */
-OakCodecFrame *oakrender_codec_frame_create(void);
+/** @brief Create an empty CPU frame. Returns a handle with count 1. */
+OakCodecFrame oakrender_codec_frame_create(void);
 
-/** @brief Increment refcount, return the same handle. NULL-safe. */
-OakCodecFrame *oakrender_codec_frame_retain(OakCodecFrame *frame);
+/**
+ * @brief Take another reference to a frame and return the same handle.
+ * Empty in yields empty out (see oakrender_display_texture_retain()).
+ */
+OakCodecFrame oakrender_codec_frame_retain(OakCodecFrame frame);
 
-/** @brief Decrement refcount; frees at zero. NULL-safe. */
+/**
+ * @brief Release one reference to a frame. Convenience wrapper around
+ * frame->release(frame->ctx). NULL / empty-handle no-op; clears
+ * frame->ctx after releasing.
+ */
 void oakrender_codec_frame_free(OakCodecFrame *frame);
 
 int oakrender_codec_frame_set_video_params(
-	OakCodecFrame *frame, const oakrender_video_params *params);
+	OakCodecFrame frame, const oakrender_video_params *params);
 
-int oakrender_codec_frame_get_params(const OakCodecFrame *frame,
+int oakrender_codec_frame_get_params(OakCodecFrame frame,
 									 oakrender_video_params *out);
 
 /**
  * @brief Allocate the pixel buffer per the frame's video params
  * (Frame::allocate()).
  *
- * @return OAKRENDER_OK, OAKRENDER_E_INVALID (NULL frame), or
+ * @return OAKRENDER_OK, OAKRENDER_E_INVALID (empty frame), or
  *         OAKRENDER_E_FAILED (invalid params / allocation failed).
  */
-int oakrender_codec_frame_allocate(OakCodecFrame *frame);
+int oakrender_codec_frame_allocate(OakCodecFrame frame);
 
-/** @brief Borrowed pixel data pointer (valid until free). */
-void *oakrender_codec_frame_data(OakCodecFrame *frame);
+/** @brief Borrowed pixel data pointer (valid until the final release). */
+void *oakrender_codec_frame_data(OakCodecFrame frame);
 
 /** @brief Borrowed const pixel data pointer. */
-const void *oakrender_codec_frame_const_data(const OakCodecFrame *frame);
+const void *oakrender_codec_frame_const_data(OakCodecFrame frame);
 
 /** @brief Line stride in bytes. */
-int oakrender_codec_frame_linesize_bytes(const OakCodecFrame *frame);
+int oakrender_codec_frame_linesize_bytes(OakCodecFrame frame);
 
-/** @brief 1 when the pixel buffer is allocated, 0 otherwise / on NULL. */
-int oakrender_codec_frame_is_allocated(const OakCodecFrame *frame);
+/** @brief 1 when the pixel buffer is allocated, 0 otherwise / empty. */
+int oakrender_codec_frame_is_allocated(OakCodecFrame frame);
 
 /* ---- Color-managed blit -------------------------------------------------- */
 
@@ -232,18 +283,18 @@ int oakrender_codec_frame_is_allocated(const OakCodecFrame *frame);
  * @brief Blit a color-managed image through the OCIO pipeline
  * (Renderer::blit_color_managed()).
  *
- * @param dst_texture Destination texture handle, or NULL for the current
- *        output target.
+ * @param dst_texture Destination texture handle, or an empty handle for
+ *        the current output target.
  * @param params Destination video params, or NULL to use dst_texture's.
  */
 int oakrender_display_renderer_blit_color_managed(
-	OakRenderRenderer *renderer, const oakrender_color_transform_job *job,
-	OakRenderTexture *dst_texture, const oakrender_video_params *params);
+	OakRenderRenderer renderer, const oakrender_color_transform_job *job,
+	OakRenderTexture dst_texture, const oakrender_video_params *params);
 
 /* ---- Cross-backend texture download -------------------------------------- */
 
 int oakrender_display_renderer_download_from_texture(
-	OakRenderRenderer *renderer, int texture_id,
+	OakRenderRenderer renderer, int texture_id,
 	const oakrender_video_params *params, void *dst_pixels, int linesize);
 
 /* ---- Backend management (M7 §2.1) ---------------------------------------- */

@@ -65,19 +65,19 @@ protected:
 
 TEST_F(TimelineSequenceFixture, MarkerListOfReturnsList)
 {
-	EXPECT_NE(oaktimeline_marker_list_of(node_), nullptr);
-	EXPECT_EQ(oaktimeline_marker_list_of(OakNodeNode{}), nullptr);
+	EXPECT_NE(oaktimeline_marker_list_of(node_).ctx, nullptr);
+	EXPECT_EQ(oaktimeline_marker_list_of(OakNodeNode{}).ctx, nullptr);
 }
 
 TEST_F(TimelineSequenceFixture, MarkerAddCountAtRemove)
 {
-	OakTimelineMarkerList *list = oaktimeline_marker_list_of(node_);
-	ASSERT_NE(list, nullptr);
+	OakTimelineMarkerList list = oaktimeline_marker_list_of(node_);
+	ASSERT_NE(list.ctx, nullptr);
 
 	int count = -1;
 	EXPECT_EQ(oaktimeline_marker_count(list, &count), OAKTIMELINE_OK);
 	EXPECT_EQ(count, 0);
-	EXPECT_EQ(oaktimeline_marker_count(nullptr, &count),
+	EXPECT_EQ(oaktimeline_marker_count(OakTimelineMarkerList{}, &count),
 			  OAKTIMELINE_E_INVALID);
 	EXPECT_EQ(oaktimeline_marker_count(list, nullptr),
 			  OAKTIMELINE_E_INVALID);
@@ -106,8 +106,9 @@ TEST_F(TimelineSequenceFixture, MarkerAddCountAtRemove)
 	EXPECT_EQ(oaktimeline_marker_at(list, 9, &in_n, &in_d, &out_n,
 									&out_d, &color, name, sizeof(name)),
 			  OAKTIMELINE_E_NOT_FOUND);
-	EXPECT_EQ(oaktimeline_marker_at(nullptr, 0, &in_n, &in_d, &out_n,
-									&out_d, &color, name, sizeof(name)),
+	EXPECT_EQ(oaktimeline_marker_at(OakTimelineMarkerList{}, 0, &in_n,
+									&in_d, &out_n, &out_d, &color, name,
+									sizeof(name)),
 			  OAKTIMELINE_E_INVALID);
 
 	OakUndoCommand rm = oaktimeline_marker_remove_at_command(list, 0);
@@ -123,8 +124,8 @@ TEST_F(TimelineSequenceFixture, MarkerAddCountAtRemove)
 
 TEST_F(TimelineSequenceFixture, MarkerSetTimeAndPropsUndo)
 {
-	OakTimelineMarkerList *list = oaktimeline_marker_list_of(node_);
-	ASSERT_NE(list, nullptr);
+	OakTimelineMarkerList list = oaktimeline_marker_list_of(node_);
+	ASSERT_NE(list.ctx, nullptr);
 
 	OakUndoCommand add =
 		oaktimeline_marker_add_command(list, 0, 1, 1, 1, "a", 1);
@@ -174,8 +175,8 @@ TEST_F(TimelineSequenceFixture, MarkerSetTimeAndPropsUndo)
 
 TEST_F(TimelineSequenceFixture, MarkerListXmlRoundTrip)
 {
-	OakTimelineMarkerList *list = oaktimeline_marker_list_of(node_);
-	ASSERT_NE(list, nullptr);
+	OakTimelineMarkerList list = oaktimeline_marker_list_of(node_);
+	ASSERT_NE(list.ctx, nullptr);
 
 	OakUndoCommand add =
 		oaktimeline_marker_add_command(list, 1, 3, 2, 3, "xml", 4);
@@ -203,9 +204,9 @@ TEST_F(TimelineSequenceFixture, MarkerListXmlRoundTrip)
 	ASSERT_EQ(oaknode_project_add_node(project_,
 									 oaknode_sequence_as_node(seq2)),
 			  OAKNODE_OK);
-	OakTimelineMarkerList *list2 =
+	OakTimelineMarkerList list2 =
 		oaktimeline_marker_list_of(oaknode_sequence_as_node(seq2));
-	ASSERT_NE(list2, nullptr);
+	ASSERT_NE(list2.ctx, nullptr);
 
 	OakXmlReader reader = oakcommon_xml_reader_init(xml);
 	ASSERT_NE(reader.ctx, nullptr);
@@ -228,7 +229,7 @@ TEST_F(TimelineSequenceFixture, MarkerListXmlRoundTrip)
 	EXPECT_EQ(color, 4);
 	EXPECT_STREQ(name, "xml");
 
-	EXPECT_EQ(oaktimeline_marker_list_load(nullptr, reader),
+	EXPECT_EQ(oaktimeline_marker_list_load(OakTimelineMarkerList{}, reader),
 			  OAKTIMELINE_E_INVALID);
 
 }
@@ -237,9 +238,9 @@ TEST_F(TimelineSequenceFixture, MarkerListXmlRoundTrip)
 
 TEST_F(TimelineSequenceFixture, WorkareaGetSetLive)
 {
-	OakTimelineWorkArea *w = oaktimeline_workarea_of(node_);
-	ASSERT_NE(w, nullptr);
-	EXPECT_EQ(oaktimeline_workarea_of(OakNodeNode{}), nullptr);
+	OakTimelineWorkArea w = oaktimeline_workarea_of(node_);
+	ASSERT_NE(w.ctx, nullptr);
+	EXPECT_EQ(oaktimeline_workarea_of(OakNodeNode{}).ctx, nullptr);
 
 	int in_n = 0, in_d = 0, out_n = 0, out_d = 0, enabled = -1;
 	EXPECT_EQ(oaktimeline_workarea_get(w, &in_n, &in_d, &out_n, &out_d,
@@ -257,17 +258,18 @@ TEST_F(TimelineSequenceFixture, WorkareaGetSetLive)
 	EXPECT_EQ(out_n, 3);
 	EXPECT_EQ(out_d, 4);
 
-	EXPECT_EQ(oaktimeline_workarea_set_range(nullptr, 0, 1, 1, 1),
+	EXPECT_EQ(oaktimeline_workarea_set_range(OakTimelineWorkArea{}, 0, 1, 1,
+											 1),
 			  OAKTIMELINE_E_INVALID);
-	EXPECT_EQ(oaktimeline_workarea_get(nullptr, &in_n, &in_d, &out_n,
-									   &out_d, &enabled),
+	EXPECT_EQ(oaktimeline_workarea_get(OakTimelineWorkArea{}, &in_n, &in_d,
+									   &out_n, &out_d, &enabled),
 			  OAKTIMELINE_E_INVALID);
 }
 
 TEST_F(TimelineSequenceFixture, WorkareaUndoCommands)
 {
-	OakTimelineWorkArea *w = oaktimeline_workarea_of(node_);
-	ASSERT_NE(w, nullptr);
+	OakTimelineWorkArea w = oaktimeline_workarea_of(node_);
+	ASSERT_NE(w.ctx, nullptr);
 
 	OakUndoCommand range_cmd = oaktimeline_workarea_set_range_command(
 		w, 1, 2, 1, 1, 0, 1, 1, 1);
@@ -304,11 +306,13 @@ TEST_F(TimelineSequenceFixture, WorkareaUndoCommands)
 	EXPECT_EQ(enabled, 0);
 	oakundo_command_free(&enable_cmd);
 
-	EXPECT_EQ(oaktimeline_workarea_set_range_command(nullptr, 0, 1, 1, 1,
-													 0, 1, 1, 1)
+	EXPECT_EQ(oaktimeline_workarea_set_range_command(OakTimelineWorkArea{},
+													 0, 1, 1, 1, 0, 1, 1, 1)
 				  .ctx,
 			  nullptr);
-	EXPECT_EQ(oaktimeline_workarea_set_enabled_command(nullptr, 1).ctx,
+	EXPECT_EQ(oaktimeline_workarea_set_enabled_command(OakTimelineWorkArea{},
+													   1)
+				  .ctx,
 			  nullptr);
 }
 
@@ -326,8 +330,8 @@ TEST_F(TimelineSequenceFixture, WorkareaResetSentinels)
 
 TEST_F(TimelineSequenceFixture, WorkareaXmlRoundTrip)
 {
-	OakTimelineWorkArea *w = oaktimeline_workarea_of(node_);
-	ASSERT_NE(w, nullptr);
+	OakTimelineWorkArea w = oaktimeline_workarea_of(node_);
+	ASSERT_NE(w.ctx, nullptr);
 	EXPECT_EQ(oaktimeline_workarea_set_range(w, 1, 3, 2, 3),
 			  OAKTIMELINE_OK);
 
@@ -350,9 +354,9 @@ TEST_F(TimelineSequenceFixture, WorkareaXmlRoundTrip)
 	ASSERT_EQ(oaknode_project_add_node(project_,
 									 oaknode_sequence_as_node(seq2)),
 			  OAKNODE_OK);
-	OakTimelineWorkArea *w2 =
+	OakTimelineWorkArea w2 =
 		oaktimeline_workarea_of(oaknode_sequence_as_node(seq2));
-	ASSERT_NE(w2, nullptr);
+	ASSERT_NE(w2.ctx, nullptr);
 
 	OakXmlReader reader = oakcommon_xml_reader_init(xml);
 	ASSERT_NE(reader.ctx, nullptr);

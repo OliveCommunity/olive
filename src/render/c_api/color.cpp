@@ -46,21 +46,21 @@ int write_string(const std::string &s, char *buf, int n)
 
 } // namespace
 
-OakColorProcessor *oakrender_color_processor_create(const char *src_space,
-													const char *dst_transform,
-													int direction)
+OakColorProcessor oakrender_color_processor_create(const char *src_space,
+												   const char *dst_transform,
+												   int direction)
 {
 	if (!src_space || !*src_space || !dst_transform || !*dst_transform) {
-		return nullptr;
+		return OakColorProcessor{};
 	}
 	if (direction != OAKRENDER_COLOR_DIRECTION_NORMAL &&
 		direction != OAKRENDER_COLOR_DIRECTION_INVERSE) {
-		return nullptr;
+		return OakColorProcessor{};
 	}
 	try {
 		OCIO_NAMESPACE::ConstConfigRcPtr config = olive::ColorManager::get_default_config();
 		if (!config) {
-			return nullptr;
+			return OakColorProcessor{};
 		}
 
 		// Resolve role names (e.g. "scene_linear") to canonical colorspace
@@ -84,41 +84,40 @@ OakColorProcessor *oakrender_color_processor_create(const char *src_space,
 			processor = nullptr;
 		}
 
-		auto *block = new OakColorProcessor;
-		block->ptr = olive::ColorProcessor::create(processor);
-		oakrender_c_api::alive_inc();
-		return block;
+		auto *impl = new OakColorProcessorImpl;
+		impl->ptr = olive::ColorProcessor::create(processor);
+		return oakrender_c_api::make_handle<OakColorProcessor>(
+			impl, true, &oakrender_c_api::delete_as<OakColorProcessorImpl>);
 	} catch (...) {
-		return nullptr;
+		return OakColorProcessor{};
 	}
 }
 
 void oakrender_color_processor_free(OakColorProcessor *processor)
 {
-	if (!processor) {
-		return;
-	}
-	delete processor;
-	oakrender_c_api::alive_dec();
+	oakrender_c_api::free_handle(processor);
 }
 
-int oakrender_color_processor_is_valid(const OakColorProcessor *processor)
+int oakrender_color_processor_is_valid(OakColorProcessor processor)
 {
-	return processor && processor->ptr && processor->ptr->get_processor() ? 1 :
-																			0;
+	OakColorProcessorImpl *p =
+		oakrender_c_api::to_native<OakColorProcessorImpl>(processor);
+	return p && p->ptr && p->ptr->get_processor() ? 1 : 0;
 }
 
-int oakrender_color_processor_convert(OakColorProcessor *processor,
+int oakrender_color_processor_convert(OakColorProcessor processor,
 									  double ir, double ig, double ib,
 									  double ia, double *out_r, double *out_g,
 									  double *out_b, double *out_a)
 {
-	if (!processor || !processor->ptr || !out_r || !out_g || !out_b || !out_a) {
+	OakColorProcessorImpl *p =
+		oakrender_c_api::to_native<OakColorProcessorImpl>(processor);
+	if (!p || !p->ptr || !out_r || !out_g || !out_b || !out_a) {
 		return OAKRENDER_E_INVALID;
 	}
 	try {
 		olive::Color out =
-			processor->ptr->convert_color(olive::Color(ir, ig, ib, ia));
+			p->ptr->convert_color(olive::Color(ir, ig, ib, ia));
 		*out_r = out.red();
 		*out_g = out.green();
 		*out_b = out.blue();
@@ -221,10 +220,14 @@ int oakrender_color_manager_display_transform(const char *display,
 	}
 }
 
-int oakrender_color_processor_convert_frame(OakColorProcessor *processor,
-											OakCodecFrame *frame)
+int oakrender_color_processor_convert_frame(OakColorProcessor processor,
+											OakCodecFrame frame)
 {
-	if (!processor || !processor->ptr || !frame || !frame->ptr) {
+	OakColorProcessorImpl *p =
+		oakrender_c_api::to_native<OakColorProcessorImpl>(processor);
+	OakCodecFrameImpl *f =
+		oakrender_c_api::to_native<OakCodecFrameImpl>(frame);
+	if (!p || !p->ptr || !f || !f->ptr) {
 		return OAKRENDER_E_INVALID;
 	}
 	try {
@@ -233,7 +236,7 @@ int oakrender_color_processor_convert_frame(OakColorProcessor *processor,
 		// OCIO::PackedImageDesc view. A processor whose underlying OCIO
 		// processor is null (creation failure was non-fatal) is a
 		// pass-through and still reports success, mirroring the C++ API.
-		processor->ptr->convert_frame(frame->ptr);
+		p->ptr->convert_frame(f->ptr);
 		return OAKRENDER_OK;
 	} catch (...) {
 		return OAKRENDER_E_FAILED;

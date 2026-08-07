@@ -128,7 +128,7 @@ bool PreCacheTask::run()
 	// Get list of invalidated ranges
 	TimeRange intersection;
 
-	OakTimelineWorkArea *workarea =
+	OakTimelineWorkArea workarea =
 		oaktimeline_workarea_of(oaknode_footage_as_node(footage_));
 
 	int64_t len_n = 0, len_d = 1;
@@ -137,12 +137,12 @@ bool PreCacheTask::run()
 
 	int wa_enabled = 0;
 	int wa_in = 0, wa_ind = 1, wa_out = 0, wa_outd = 1;
-	if (workarea) {
+	if (workarea.ctx) {
 		oaktimeline_workarea_get(workarea, &wa_in, &wa_ind, &wa_out,
 								 &wa_outd, &wa_enabled);
 	}
 
-	if (workarea && wa_enabled) {
+	if (workarea.ctx && wa_enabled) {
 		// If we're caching only in-out, limit the range to that
 		intersection = TimeRange(Rational(wa_in, wa_ind),
 								 Rational(wa_out, wa_outd));
@@ -154,8 +154,11 @@ bool PreCacheTask::run()
 	OakNodeFrameCache *cache = nullptr;
 	oaknode_node_get_video_frame_cache(viewer(), &cache);
 
+	// Borrowed wrapper: the cache stays owned by the viewer node.
+	OakRenderCache cache_handle = oakrender_cache_wrap_borrowed(cache);
+
 	int range_count = oakrender_cache_get_invalidated_ranges(
-		reinterpret_cast<OakRenderCache *>(cache),
+		cache_handle,
 		intersection.in().numerator(), intersection.in().denominator(),
 		intersection.out().numerator(), intersection.out().denominator(),
 		nullptr, 0);
@@ -164,7 +167,7 @@ bool PreCacheTask::run()
 	if (range_count > 0) {
 		std::vector<int64_t> flat(size_t(range_count) * 4);
 		oakrender_cache_get_invalidated_ranges(
-			reinterpret_cast<OakRenderCache *>(cache),
+			cache_handle,
 			intersection.in().numerator(), intersection.in().denominator(),
 			intersection.out().numerator(), intersection.out().denominator(),
 			flat.data(), range_count);
@@ -184,10 +187,14 @@ bool PreCacheTask::run()
 
 	oaknode_colormanager_free(&color_manager);
 
+	// Release the borrowed boxes (the objects stay with their owners).
+	oaktimeline_workarea_free(&workarea);
+	oakrender_cache_free(&cache_handle);
+
 	return true;
 }
 
-bool PreCacheTask::frame_downloaded(OakCodecFrame *frame,
+bool PreCacheTask::frame_downloaded(OakCodecFrame frame,
 									const Rational &time)
 {
 	// Do nothing. Pre-cache essentially just creates more frames in the cache, it doesn't need to do

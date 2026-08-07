@@ -24,26 +24,28 @@
 
 TEST(OakRenderTicket, NullAndInvalidArgs)
 {
-	EXPECT_EQ(oakrender_ticket_render_frame(nullptr, nullptr, nullptr),
+	EXPECT_EQ(oakrender_ticket_render_frame(nullptr, nullptr, nullptr).ctx,
 			  nullptr);
 
 	oakrender_video_ticket_params params = {};
-	EXPECT_EQ(oakrender_ticket_render_frame(&params, nullptr, nullptr),
+	EXPECT_EQ(oakrender_ticket_render_frame(&params, nullptr, nullptr).ctx,
 			  nullptr);
 
-	EXPECT_EQ(oakrender_ticket_is_finished(nullptr), OAKRENDER_E_INVALID);
-	EXPECT_EQ(oakrender_ticket_wait(nullptr), OAKRENDER_E_INVALID);
-	EXPECT_EQ(oakrender_ticket_cancel(nullptr), OAKRENDER_E_INVALID);
-	EXPECT_EQ(oakrender_ticket_get_type(nullptr), OAKRENDER_E_INVALID);
-	EXPECT_EQ(oakrender_ticket_get_time(nullptr, nullptr, nullptr),
+	EXPECT_EQ(oakrender_ticket_is_finished(OakRenderTicket{}),
+			  OAKRENDER_E_INVALID);
+	EXPECT_EQ(oakrender_ticket_wait(OakRenderTicket{}), OAKRENDER_E_INVALID);
+	EXPECT_EQ(oakrender_ticket_cancel(OakRenderTicket{}), OAKRENDER_E_INVALID);
+	EXPECT_EQ(oakrender_ticket_get_type(OakRenderTicket{}),
+			  OAKRENDER_E_INVALID);
+	EXPECT_EQ(oakrender_ticket_get_time(OakRenderTicket{}, nullptr, nullptr),
 			  OAKRENDER_E_INVALID);
 
-	OakCodecFrame *frame = nullptr;
-	EXPECT_EQ(oakrender_ticket_get_frame(nullptr, &frame),
+	OakCodecFrame frame = {};
+	EXPECT_EQ(oakrender_ticket_get_frame(OakRenderTicket{}, &frame),
 			  OAKRENDER_E_INVALID);
 
 	OakSampleBuffer *samples = nullptr;
-	EXPECT_EQ(oakrender_ticket_get_samples(nullptr, &samples),
+	EXPECT_EQ(oakrender_ticket_get_samples(OakRenderTicket{}, &samples),
 			  OAKRENDER_E_INVALID);
 
 	oakrender_ticket_free(nullptr); // no-op

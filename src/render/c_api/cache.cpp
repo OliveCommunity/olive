@@ -49,14 +49,9 @@ public:
 	using olive::PlaybackCache::validate;
 };
 
-OakRenderCacheImpl *impl(OakRenderCache *c)
+OakRenderCacheImpl *impl(OakRenderCache c)
 {
-	return reinterpret_cast<OakRenderCacheImpl *>(c);
-}
-
-const OakRenderCacheImpl *impl(const OakRenderCache *c)
-{
-	return reinterpret_cast<const OakRenderCacheImpl *>(c);
+	return oakrender_c_api::to_native<OakRenderCacheImpl>(c);
 }
 
 /**
@@ -95,48 +90,52 @@ int oakrender_debug_alive_count(void)
 	return g_alive_count.load(std::memory_order_relaxed);
 }
 
-OakRenderCache *oakrender_cache_create(void)
+OakRenderCache oakrender_cache_create(void)
 {
 	try {
-		auto *c = new OakRenderCacheImpl();
-		oakrender_c_api::alive_inc();
-		return reinterpret_cast<OakRenderCache *>(c);
+		return oakrender_c_api::make_handle<OakRenderCache>(
+			new OakRenderCacheImpl(), true,
+			&oakrender_c_api::delete_as<OakRenderCacheImpl>);
 	} catch (...) {
-		return nullptr;
+		return OakRenderCache{};
 	}
 }
 
 void oakrender_cache_free(OakRenderCache *cache)
 {
-	if (!cache) {
-		return;
-	}
-	delete impl(cache);
-	oakrender_c_api::alive_dec();
+	oakrender_c_api::free_handle(cache);
 }
 
-int oakrender_cache_set_timebase(OakRenderCache *cache, int num, int den)
+OakRenderCache oakrender_cache_wrap_borrowed(void *native_cache)
 {
-	if (!cache || num <= 0 || den <= 0) {
+	// Borrowed: the cache is owned by its node; releasing this handle
+	// only frees the box.
+	return oakrender_c_api::make_handle<OakRenderCache>(
+		native_cache, false, nullptr);
+}
+
+int oakrender_cache_set_timebase(OakRenderCache cache, int num, int den)
+{
+	if (!cache.ctx || num <= 0 || den <= 0) {
 		return OAKRENDER_E_INVALID;
 	}
 	impl(cache)->set_timebase(olive::Rational(num, den));
 	return OAKRENDER_OK;
 }
 
-int oakrender_cache_set_uuid(OakRenderCache *cache, const char *uuid)
+int oakrender_cache_set_uuid(OakRenderCache cache, const char *uuid)
 {
-	if (!cache || !uuid) {
+	if (!cache.ctx || !uuid) {
 		return OAKRENDER_E_INVALID;
 	}
 	impl(cache)->set_uuid(uuid);
 	return OAKRENDER_OK;
 }
 
-void oakrender_cache_invalidate(OakRenderCache *cache, int64_t in_ts,
+void oakrender_cache_invalidate(OakRenderCache cache, int64_t in_ts,
 								int64_t out_ts)
 {
-	if (!cache) {
+	if (!cache.ctx) {
 		return;
 	}
 	OakRenderCacheImpl *c = impl(cache);
@@ -144,10 +143,10 @@ void oakrender_cache_invalidate(OakRenderCache *cache, int64_t in_ts,
 		olive::core::TimeRange(ts_to_time(c, in_ts), ts_to_time(c, out_ts)));
 }
 
-void oakrender_cache_validate(OakRenderCache *cache, int64_t in_ts,
+void oakrender_cache_validate(OakRenderCache cache, int64_t in_ts,
 							  int64_t out_ts)
 {
-	if (!cache) {
+	if (!cache.ctx) {
 		return;
 	}
 	OakRenderCacheImpl *c = impl(cache);
@@ -155,9 +154,9 @@ void oakrender_cache_validate(OakRenderCache *cache, int64_t in_ts,
 		olive::core::TimeRange(ts_to_time(c, in_ts), ts_to_time(c, out_ts)));
 }
 
-int oakrender_cache_has_validated_ranges(const OakRenderCache *cache)
+int oakrender_cache_has_validated_ranges(OakRenderCache cache)
 {
-	return cache && impl(cache)->has_validated_ranges() ? 1 : 0;
+	return cache.ctx && impl(cache)->has_validated_ranges() ? 1 : 0;
 }
 
 int oakrender_cache_indicator_height(void)
@@ -165,11 +164,11 @@ int oakrender_cache_indicator_height(void)
 	return olive::PlaybackCache::get_cache_indicator_height();
 }
 
-int oakrender_frame_cache_load(OakRenderCache *cache, const char *path,
+int oakrender_frame_cache_load(OakRenderCache cache, const char *path,
 							   const char *uuid, int64_t ts,
-							   OakCodecFrame **out_frame)
+							   OakCodecFrame *out_frame)
 {
-	if (!cache || !path || !uuid || !out_frame) {
+	if (!cache.ctx || !path || !uuid || !out_frame) {
 		return OAKRENDER_E_INVALID;
 	}
 	try {
@@ -178,20 +177,23 @@ int oakrender_frame_cache_load(OakRenderCache *cache, const char *path,
 		if (!f) {
 			return OAKRENDER_E_NOT_FOUND;
 		}
-		auto *block = new OakCodecFrame;
-		block->ptr = std::move(f);
-		oakrender_c_api::alive_inc();
-		*out_frame = block;
-		return OAKRENDER_OK;
+		auto *frame_impl = new OakCodecFrameImpl;
+		frame_impl->ptr = std::move(f);
+		*out_frame = oakrender_c_api::make_handle<OakCodecFrame>(
+			frame_impl, true,
+			&oakrender_c_api::delete_as<OakCodecFrameImpl>);
+		return out_frame->ctx ? OAKRENDER_OK : OAKRENDER_E_NOMEM;
 	} catch (...) {
 		return OAKRENDER_E_FAILED;
 	}
 }
 
-void oakrender_frame_cache_save(OakRenderCache *cache, const char *path,
-								const char *uuid, const OakCodecFrame *frame)
+void oakrender_frame_cache_save(OakRenderCache cache, const char *path,
+								const char *uuid, OakCodecFrame frame)
 {
-	if (!cache || !path || !uuid || !frame || !frame->ptr) {
+	OakCodecFrameImpl *f =
+		oakrender_c_api::to_native<OakCodecFrameImpl>(frame);
+	if (!cache.ctx || !path || !uuid || !f || !f->ptr) {
 		return;
 	}
 	try {
@@ -201,17 +203,17 @@ void oakrender_frame_cache_save(OakRenderCache *cache, const char *path,
 			tb = olive::Rational(1, 1);
 		}
 		olive::FrameHashCache::save_cache_frame(path, uuid,
-												frame->ptr->timestamp(), tb,
-												frame->ptr);
+												f->ptr->timestamp(), tb,
+												f->ptr);
 	} catch (...) {
 	}
 }
 
-int oakrender_cache_get_invalidated_ranges(OakRenderCache *cache,
+int oakrender_cache_get_invalidated_ranges(OakRenderCache cache,
 		int64_t in_num, int64_t in_den, int64_t out_num, int64_t out_den,
 		int64_t *ranges, int max_ranges)
 {
-	if (!cache || max_ranges < 0) {
+	if (!cache.ctx || max_ranges < 0) {
 		return OAKRENDER_E_INVALID;
 	}
 

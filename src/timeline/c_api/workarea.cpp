@@ -25,18 +25,14 @@
 #include "../src/timelineundoworkarea.h"
 #include "../src/timelineworkarea.h"
 #include "../../undo/c_api/commandhandle.h"
+#include "timelinehandle.h"
 
 namespace
 {
 
-olive::TimelineWorkArea *impl(OakTimelineWorkArea *h)
+olive::TimelineWorkArea *impl(OakTimelineWorkArea h)
 {
-	return reinterpret_cast<olive::TimelineWorkArea *>(h);
-}
-
-const olive::TimelineWorkArea *impl(const OakTimelineWorkArea *h)
-{
-	return reinterpret_cast<const olive::TimelineWorkArea *>(h);
+	return oaktimeline_capi::to_native<olive::TimelineWorkArea>(h);
 }
 
 OakUndoCommand wrap_command(olive::UndoCommand *command)
@@ -54,24 +50,31 @@ olive::core::Rational rat(int64_t n, int64_t d)
 
 } // namespace
 
-OakTimelineWorkArea *oaktimeline_workarea_of(OakNodeNode owner)
+OakTimelineWorkArea oaktimeline_workarea_of(OakNodeNode owner)
 {
 	if (!owner.ctx) {
-		return NULL;
+		return OakTimelineWorkArea{};
 	}
 
 	OakNodeWorkArea *workarea = NULL;
 	if (oaknode_node_get_work_area(owner, &workarea) != OAKNODE_OK) {
-		return NULL;
+		return OakTimelineWorkArea{};
 	}
-	return reinterpret_cast<OakTimelineWorkArea *>(workarea);
+	// Borrowed box: the work area stays owned by the viewer node.
+	return oaktimeline_capi::make_handle<OakTimelineWorkArea>(
+		reinterpret_cast<olive::TimelineWorkArea *>(workarea));
 }
 
-int oaktimeline_workarea_get(const OakTimelineWorkArea *w, int *in_num,
+void oaktimeline_workarea_free(OakTimelineWorkArea *w)
+{
+	oaktimeline_capi::free_handle(w);
+}
+
+int oaktimeline_workarea_get(OakTimelineWorkArea w, int *in_num,
 							 int *in_den, int *out_num, int *out_den,
 							 int *enabled)
 {
-	if (!w) {
+	if (!w.ctx) {
 		return OAKTIMELINE_E_INVALID;
 	}
 
@@ -93,10 +96,10 @@ int oaktimeline_workarea_get(const OakTimelineWorkArea *w, int *in_num,
 	return OAKTIMELINE_OK;
 }
 
-int oaktimeline_workarea_set_range(OakTimelineWorkArea *w, int in_num,
+int oaktimeline_workarea_set_range(OakTimelineWorkArea w, int in_num,
 								   int in_den, int out_num, int out_den)
 {
-	if (!w) {
+	if (!w.ctx) {
 		return OAKTIMELINE_E_INVALID;
 	}
 
@@ -110,11 +113,11 @@ int oaktimeline_workarea_set_range(OakTimelineWorkArea *w, int in_num,
 }
 
 OakUndoCommand oaktimeline_workarea_set_range_command(
-	OakTimelineWorkArea *w, int in_num, int in_den, int out_num,
+	OakTimelineWorkArea w, int in_num, int in_den, int out_num,
 	int out_den, int old_in_num, int old_in_den, int old_out_num,
 	int old_out_den)
 {
-	if (!w) {
+	if (!w.ctx) {
 		return OakUndoCommand{};
 	}
 
@@ -130,9 +133,9 @@ OakUndoCommand oaktimeline_workarea_set_range_command(
 }
 
 OakUndoCommand oaktimeline_workarea_set_enabled_command(
-	OakTimelineWorkArea *w, int enabled)
+	OakTimelineWorkArea w, int enabled)
 {
-	if (!w) {
+	if (!w.ctx) {
 		return OakUndoCommand{};
 	}
 
@@ -158,9 +161,9 @@ int oaktimeline_workarea_reset(int *in_num, int *in_den, int *out_num,
 	return OAKTIMELINE_OK;
 }
 
-int oaktimeline_workarea_load(OakTimelineWorkArea *w, OakXmlReader reader)
+int oaktimeline_workarea_load(OakTimelineWorkArea w, OakXmlReader reader)
 {
-	if (!w || !reader.ctx) {
+	if (!w.ctx || !reader.ctx) {
 		return OAKTIMELINE_E_INVALID;
 	}
 
@@ -176,10 +179,10 @@ int oaktimeline_workarea_load(OakTimelineWorkArea *w, OakXmlReader reader)
 	}
 }
 
-int oaktimeline_workarea_save(const OakTimelineWorkArea *w,
+int oaktimeline_workarea_save(OakTimelineWorkArea w,
 							  OakXmlWriter writer)
 {
-	if (!w || !writer.ctx) {
+	if (!w.ctx || !writer.ctx) {
 		return OAKTIMELINE_E_INVALID;
 	}
 

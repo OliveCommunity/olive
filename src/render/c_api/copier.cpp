@@ -24,36 +24,38 @@
 
 #include "../../node/c_api/nodehandle.h"
 #include "../src/projectcopier.h"
+#include "internalhandles.h"
 
 namespace
 {
 
-olive::ProjectCopier *impl(OakRenderProjectCopier *h)
+olive::ProjectCopier *impl(OakRenderProjectCopier h)
 {
-	return reinterpret_cast<olive::ProjectCopier *>(h);
+	return oakrender_c_api::to_native<olive::ProjectCopier>(h);
 }
 
 } // namespace
 
-OakRenderProjectCopier *oakrender_project_copier_create(void)
+OakRenderProjectCopier oakrender_project_copier_create(void)
 {
 	try {
-		return reinterpret_cast<OakRenderProjectCopier *>(
-			new olive::ProjectCopier());
+		return oakrender_c_api::make_handle<OakRenderProjectCopier>(
+			new olive::ProjectCopier(), true,
+			&oakrender_c_api::delete_as<olive::ProjectCopier>);
 	} catch (...) {
-		return NULL;
+		return OakRenderProjectCopier{};
 	}
 }
 
 void oakrender_project_copier_free(OakRenderProjectCopier *copier)
 {
-	delete impl(copier);
+	oakrender_c_api::free_handle(copier);
 }
 
-int oakrender_project_copier_set_project(OakRenderProjectCopier *copier,
+int oakrender_project_copier_set_project(OakRenderProjectCopier copier,
 										 OakNodeProject project)
 {
-	if (!copier || !project.ctx) {
+	if (!copier.ctx || !project.ctx) {
 		return OAKRENDER_E_INVALID;
 	}
 	try {
@@ -66,9 +68,9 @@ int oakrender_project_copier_set_project(OakRenderProjectCopier *copier,
 }
 
 OakNodeNode oakrender_project_copier_get_copy(
-	OakRenderProjectCopier *copier, OakNodeNode original)
+	OakRenderProjectCopier copier, OakNodeNode original)
 {
-	if (!copier || !original.ctx) {
+	if (!copier.ctx || !original.ctx) {
 		return OakNodeNode{};
 	}
 	// Borrowed handle: releasing it only destroys the handle box, never
@@ -79,9 +81,9 @@ OakNodeNode oakrender_project_copier_get_copy(
 }
 
 OakNodeProject oakrender_project_copier_get_copied_project(
-	OakRenderProjectCopier *copier)
+	OakRenderProjectCopier copier)
 {
-	if (!copier) {
+	if (!copier.ctx) {
 		return OakNodeProject{};
 	}
 	// Borrowed handle: the copied project is owned by the copier.

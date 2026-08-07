@@ -111,14 +111,16 @@ int64_t oakrender_request_frame(OakNodeNode viewer, int64_t ts,
 
 		olive::RenderTicket *raw_ticket = ticket.get();
 		ticket->set_finished_callback([ticket, cb, ts, userdata, id]() {
-			OakCodecFrame *handle = nullptr;
+			OakCodecFrame handle = {};
 			if (ticket->has_result()) {
 				olive::FramePtr f = ticket->get().value<olive::FramePtr>();
 				if (f) {
-					handle = new (std::nothrow) OakCodecFrame;
-					if (handle) {
-						handle->ptr = std::move(f);
-						oakrender_c_api::alive_inc();
+					auto *impl = new (std::nothrow) OakCodecFrameImpl;
+					if (impl) {
+						impl->ptr = std::move(f);
+						handle = oakrender_c_api::make_handle<OakCodecFrame>(
+							impl, true,
+							&oakrender_c_api::delete_as<OakCodecFrameImpl>);
 					}
 				}
 			}
@@ -172,14 +174,15 @@ int oakrender_set_cacher_multicam(OakNodeNode multicam_or_NULL)
 	return OAKRENDER_OK;
 }
 
-int oakrender_set_display_color_processor(OakColorProcessor *p_or_NULL)
+int oakrender_set_display_color_processor(OakColorProcessor p_or_NULL)
 {
 	olive::RenderManager *manager = olive::RenderManager::instance();
 	if (!manager) {
 		return OAKRENDER_E_STATE;
 	}
-	manager->get_cacher()->set_display_color_processor(
-		p_or_NULL ? p_or_NULL->ptr : nullptr);
+	OakColorProcessorImpl *p =
+		oakrender_c_api::to_native<OakColorProcessorImpl>(p_or_NULL);
+	manager->get_cacher()->set_display_color_processor(p ? p->ptr : nullptr);
 	return OAKRENDER_OK;
 }
 

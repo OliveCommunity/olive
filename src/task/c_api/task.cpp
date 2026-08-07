@@ -27,39 +27,36 @@ using namespace oaktask_capi;
 
 void oaktask_task_free(OakTaskTask *t)
 {
-	if (!t) {
+	if (!t || !t->ctx) {
 		return;
 	}
-	TaskHandle *h = impl(t);
-	if (h->owns_task) {
-		delete h->task;
-	}
-	delete h;
-	alive()--;
+	t->release(t->ctx);
+	t->ctx = nullptr;
 }
 
-int oaktask_task_start_sync(OakTaskTask *t)
+int oaktask_task_start_sync(OakTaskTask t)
 {
-	if (!t) {
+	TaskHandle *h = impl(t);
+	if (!h) {
 		return OAKTASK_E_INVALID;
 	}
 	try {
-		return impl(t)->task->start() ? 1 : 0;
+		return h->task->start() ? 1 : 0;
 	} catch (...) {
 		return OAKTASK_E_FAILED;
 	}
 }
 
-int oaktask_task_start(OakTaskTask *t)
+int oaktask_task_start(OakTaskTask t)
 {
-	if (!t) {
+	TaskHandle *h = impl(t);
+	if (!h) {
 		return OAKTASK_E_INVALID;
 	}
 	if (!olive::TaskManager::instance()) {
 		return OAKTASK_E_STATE;
 	}
 
-	TaskHandle *h = impl(t);
 	if (h->running_on_manager) {
 		return OAKTASK_E_STATE;
 	}
@@ -67,26 +64,27 @@ int oaktask_task_start(OakTaskTask *t)
 	olive::TaskManager::instance()->add_task(h->task);
 	h->running_on_manager = true;
 	// Ownership transfers to the manager (deleted by delete_finished() /
-	// shutdown); freeing this handle later only releases the wrapper.
+	// shutdown); releasing this handle later only releases the box.
 	h->owns_task = false;
 	return OAKTASK_OK;
 }
 
-int oaktask_task_cancel(OakTaskTask *t)
+int oaktask_task_cancel(OakTaskTask t)
 {
-	if (!t) {
+	TaskHandle *h = impl(t);
+	if (!h) {
 		return OAKTASK_E_INVALID;
 	}
-	impl(t)->task->cancel();
+	h->task->cancel();
 	return OAKTASK_OK;
 }
 
-int oaktask_task_wait(OakTaskTask *t)
+int oaktask_task_wait(OakTaskTask t)
 {
-	if (!t) {
+	TaskHandle *h = impl(t);
+	if (!h) {
 		return OAKTASK_E_INVALID;
 	}
-	TaskHandle *h = impl(t);
 	if (h->running_on_manager && olive::TaskManager::instance()) {
 		olive::TaskManager::instance()->cancel_task_and_wait(h->task);
 		h->finished = true;
@@ -94,47 +92,52 @@ int oaktask_task_wait(OakTaskTask *t)
 	return OAKTASK_OK;
 }
 
-int oaktask_task_is_finished(const OakTaskTask *t)
+int oaktask_task_is_finished(OakTaskTask t)
 {
-	if (!t) {
+	TaskHandle *h = impl(t);
+	if (!h) {
 		return OAKTASK_E_INVALID;
 	}
-	return impl(t)->finished.load() ? 1 : 0;
+	return h->finished.load() ? 1 : 0;
 }
 
-int oaktask_task_succeeded(const OakTaskTask *t)
+int oaktask_task_succeeded(OakTaskTask t)
 {
-	if (!t) {
+	TaskHandle *h = impl(t);
+	if (!h) {
 		return OAKTASK_E_INVALID;
 	}
-	return impl(t)->succeeded.load() ? 1 : 0;
+	return h->succeeded.load() ? 1 : 0;
 }
 
-int oaktask_task_title(OakTaskTask *t, char *buf, int buf_size)
+int oaktask_task_title(OakTaskTask t, char *buf, int buf_size)
 {
-	if (!t) {
+	TaskHandle *h = impl(t);
+	if (!h) {
 		return OAKTASK_E_INVALID;
 	}
-	return copy_string(impl(t)->task->get_title(), buf, buf_size);
+	return copy_string(h->task->get_title(), buf, buf_size);
 }
 
-int oaktask_task_error(OakTaskTask *t, char *buf, int buf_size)
+int oaktask_task_error(OakTaskTask t, char *buf, int buf_size)
 {
-	if (!t) {
+	TaskHandle *h = impl(t);
+	if (!h) {
 		return OAKTASK_E_INVALID;
 	}
-	return copy_string(impl(t)->task->get_error(), buf, buf_size);
+	return copy_string(h->task->get_error(), buf, buf_size);
 }
 
-int64_t oaktask_task_subscribe(OakTaskTask *t, oaktask_event_fn fn,
+int64_t oaktask_task_subscribe(OakTaskTask t, oaktask_event_fn fn,
 							   void *userdata)
 {
-	if (!t || !fn) {
+	TaskHandle *h = impl(t);
+	if (!h || !fn) {
 		return OAKTASK_E_INVALID;
 	}
 
 	try {
-		impl(t)->task->add_event_listener(
+		h->task->add_event_listener(
 			[fn, userdata](olive::Task::EventType type, double value) {
 				int event_id = OAKTASK_EVENT_PROGRESS;
 				switch (type) {

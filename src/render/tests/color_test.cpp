@@ -57,9 +57,9 @@ TEST(OakRenderColorTest, ProcessorCreateConvertKnownValue)
 {
 	const int alive_before = oakrender_debug_alive_count();
 
-	OakColorProcessor *p = oakrender_color_processor_create(
+	OakColorProcessor p = oakrender_color_processor_create(
 		"sRGB OETF", "Linear", OAKRENDER_COLOR_DIRECTION_NORMAL);
-	ASSERT_NE(p, nullptr);
+	ASSERT_NE(p.ctx, nullptr);
 	ASSERT_EQ(oakrender_color_processor_is_valid(p), 1);
 
 	// sRGB signal 0.5 -> linear 0.214041 (bundled sRGB_OETF_to_Linear
@@ -73,22 +73,25 @@ TEST(OakRenderColorTest, ProcessorCreateConvertKnownValue)
 	EXPECT_NEAR(b, 1.0, 1e-3);
 	EXPECT_NEAR(a, 0.75, 1e-9); // alpha passes through
 
-	oakrender_color_processor_free(p);
+	oakrender_color_processor_free(&p);
 	EXPECT_EQ(oakrender_debug_alive_count(), alive_before);
 }
 
 TEST(OakRenderColorTest, ProcessorCreateInvalidArgs)
 {
 	EXPECT_EQ(oakrender_color_processor_create(nullptr, "Linear",
-											   OAKRENDER_COLOR_DIRECTION_NORMAL),
+											   OAKRENDER_COLOR_DIRECTION_NORMAL)
+				  .ctx,
 			  nullptr);
 	EXPECT_EQ(oakrender_color_processor_create("sRGB OETF", nullptr,
-											   OAKRENDER_COLOR_DIRECTION_NORMAL),
+											   OAKRENDER_COLOR_DIRECTION_NORMAL)
+				  .ctx,
 			  nullptr);
 	EXPECT_EQ(oakrender_color_processor_create("", "Linear",
-											   OAKRENDER_COLOR_DIRECTION_NORMAL),
+											   OAKRENDER_COLOR_DIRECTION_NORMAL)
+				  .ctx,
 			  nullptr);
-	EXPECT_EQ(oakrender_color_processor_create("sRGB OETF", "Linear", 7),
+	EXPECT_EQ(oakrender_color_processor_create("sRGB OETF", "Linear", 7).ctx,
 			  nullptr);
 }
 
@@ -96,9 +99,9 @@ TEST(OakRenderColorTest, ProcessorUnknownColorspaceIsPassThrough)
 {
 	// OCIO failures are non-fatal: the handle exists, reports invalid,
 	// and conversions pass through (matching the C++ behavior).
-	OakColorProcessor *p = oakrender_color_processor_create(
+	OakColorProcessor p = oakrender_color_processor_create(
 		"No Such Colorspace", "Linear", OAKRENDER_COLOR_DIRECTION_NORMAL);
-	ASSERT_NE(p, nullptr);
+	ASSERT_NE(p.ctx, nullptr);
 	EXPECT_EQ(oakrender_color_processor_is_valid(p), 0);
 
 	double r = 0, g = 0, b = 0, a = 0;
@@ -111,23 +114,23 @@ TEST(OakRenderColorTest, ProcessorUnknownColorspaceIsPassThrough)
 	EXPECT_NEAR(b, 0.3, 1e-6);
 	EXPECT_NEAR(a, 0.4, 1e-6);
 
-	oakrender_color_processor_free(p);
+	oakrender_color_processor_free(&p);
 }
 
 TEST(OakRenderColorTest, ProcessorConvertInvalidArgs)
 {
 	double r, g, b, a;
-	EXPECT_EQ(oakrender_color_processor_convert(nullptr, 0, 0, 0, 0, &r, &g,
-												&b, &a),
+	EXPECT_EQ(oakrender_color_processor_convert(OakColorProcessor{}, 0, 0, 0,
+												0, &r, &g, &b, &a),
 			  OAKRENDER_E_INVALID);
 
-	OakColorProcessor *p = oakrender_color_processor_create(
+	OakColorProcessor p = oakrender_color_processor_create(
 		"Linear", "Linear", OAKRENDER_COLOR_DIRECTION_NORMAL);
-	ASSERT_NE(p, nullptr);
+	ASSERT_NE(p.ctx, nullptr);
 	EXPECT_EQ(oakrender_color_processor_convert(p, 0, 0, 0, 0, nullptr, &g,
 												&b, &a),
 			  OAKRENDER_E_INVALID);
-	oakrender_color_processor_free(p);
+	oakrender_color_processor_free(&p);
 
 	// NULL free is a no-op
 	oakrender_color_processor_free(nullptr);
@@ -135,9 +138,9 @@ TEST(OakRenderColorTest, ProcessorConvertInvalidArgs)
 
 TEST(OakRenderColorTest, ProcessorInverseDirection)
 {
-	OakColorProcessor *p = oakrender_color_processor_create(
+	OakColorProcessor p = oakrender_color_processor_create(
 		"Linear", "sRGB OETF", OAKRENDER_COLOR_DIRECTION_NORMAL);
-	ASSERT_NE(p, nullptr);
+	ASSERT_NE(p.ctx, nullptr);
 	ASSERT_EQ(oakrender_color_processor_is_valid(p), 1);
 
 	// Linear 0.214041 -> sRGB ~0.5 (inverse of the forward sample)
@@ -146,7 +149,7 @@ TEST(OakRenderColorTest, ProcessorInverseDirection)
 												&b, &a),
 			  OAKRENDER_OK);
 	EXPECT_NEAR(r, 0.5, 1e-3);
-	oakrender_color_processor_free(p);
+	oakrender_color_processor_free(&p);
 }
 
 TEST(OakRenderColorTest, DisplayTransformKnownDisplay)

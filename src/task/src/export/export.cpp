@@ -66,10 +66,10 @@ std::string encoder_error(OakEncoder encoder)
  *
  * Returns an empty OakFrame (ctx == NULL) on failure.
  */
-OakFrame copy_frame_to_codec(OakCodecFrame *render_frame)
+OakFrame copy_frame_to_codec(OakCodecFrame render_frame)
 {
 	OakFrame empty = {};
-	if (!render_frame) {
+	if (!render_frame.ctx) {
 		return empty;
 	}
 
@@ -145,12 +145,10 @@ OakNodeSequence sequence_alias_of(OakNodeNode node)
 ExportTask::ExportTask(OakNodeNode viewer_node,
 					   OakNodeColorManager color_manager,
 					   const oakcodec_encoding_params &params)
-	: copier_(nullptr)
-	, color_manager_({})
+	: color_manager_({})
 	, params_(params)
 	, encoder_({})
 	, subtitle_encoder_({})
-	, color_processor_(nullptr)
 	, frame_time_(0)
 	, null_frame_streak_(0)
 	, audio_time_(0)
@@ -162,7 +160,7 @@ ExportTask::ExportTask(OakNodeNode viewer_node,
 	oaknode_node_get_project(viewer_node, &source_project);
 
 	copier_ = oakrender_project_copier_create();
-	if (copier_ && source_project.ctx) {
+	if (copier_.ctx && source_project.ctx) {
 		oakrender_project_copier_set_project(copier_, source_project);
 	}
 	oaknode_project_free(&source_project);
@@ -203,11 +201,9 @@ ExportTask::~ExportTask()
 	if (subtitle_encoder_.ctx) {
 		oakcodec_encoder_free(&subtitle_encoder_);
 	}
-	if (color_processor_) {
-		oakrender_color_processor_free(color_processor_);
-	}
+	oakrender_color_processor_free(&color_processor_);
 	oaknode_colormanager_free(&color_manager_);
-	oakrender_project_copier_free(copier_);
+	oakrender_project_copier_free(&copier_);
 	if (audio_params()) {
 		oakcore_audioparams_free(audio_params());
 	}
@@ -411,13 +407,13 @@ bool ExportTask::run()
 	return success;
 }
 
-bool ExportTask::frame_downloaded(OakCodecFrame *f, const Rational &time)
+bool ExportTask::frame_downloaded(OakCodecFrame f, const Rational &time)
 {
 	// The worker pool finishes tickets without a result when no worker is
 	// available (or every worker crashed). Grinding through the whole
 	// timeline at several seconds per dead worker looks like a hang, so
 	// fail the export after a short streak of missing frames.
-	if (!f) {
+	if (!f.ctx) {
 		if (++null_frame_streak_ >= 8) {
 			set_error("Render workers failed to deliver " +
 					  std::to_string(null_frame_streak_) +
@@ -457,8 +453,8 @@ bool ExportTask::frame_downloaded(OakCodecFrame *f, const Rational &time)
 			set_error(encoder_error(encoder_));
 			return false;
 		}
-		if (it->second) {
-			oakrender_codec_frame_free(it->second);
+		if (it->second.ctx) {
+			oakrender_codec_frame_free(&it->second);
 		}
 		time_map_.erase(it);
 

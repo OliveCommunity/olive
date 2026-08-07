@@ -195,12 +195,12 @@ bool OIIODecoder::open_internal()
 	return open_image_handler(stream().filename(), stream().stream());
 }
 
-OakRenderTexture *
+OakRenderTexture
 OIIODecoder::retrieve_video_internal(const RetrieveVideoParams &p)
 {
 	FramePtr frame = retrieve_video_frame_internal(p);
 	if (!frame) {
-		return nullptr;
+		return OakRenderTexture{};
 	}
 
 	OakVideoParams frame_params = frame->video_params(); // addref'd copy

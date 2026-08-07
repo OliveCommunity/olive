@@ -31,28 +31,45 @@ extern "C" {
 #endif
 
 /**
- * @brief Borrowed handle to a timeline work area
+ * @brief Borrowed by-value handle to a timeline work area
  * (olive::TimelineWorkArea), owned by a viewer node.
+ *
+ * Obtained via oaktimeline_workarea_of(). The handle boxes a reference
+ * into the owning node: addref/release manage the box only, never the
+ * work area. Release the box with oaktimeline_workarea_free() (or
+ * handle.release(handle.ctx)) when done.
  */
-typedef struct OakTimelineWorkArea OakTimelineWorkArea;
+typedef struct OakTimelineWorkArea {
+	void *ctx; /**< Opaque pointer to the borrowed object's box. */
+	void (*addref)(void *ctx); /**< Atomically increments the box count. */
+	void (*release)(void *ctx); /**< Decrements the count, frees the box. */
+	uint32_t abi_version; /**< OAKTIMELINE_ABI_VERSION. */
+} OakTimelineWorkArea;
 
 /**
- * @brief Borrowed work area of a viewer node (sequence). NULL for an
- * empty handle or when the node is not a viewer.
+ * @brief Borrowed work area of a viewer node (sequence). Empty handle
+ * (ctx == NULL) for an empty node handle or when the node is not a
+ * viewer.
  */
-OakTimelineWorkArea *oaktimeline_workarea_of(OakNodeNode owner);
+OakTimelineWorkArea oaktimeline_workarea_of(OakNodeNode owner);
+
+/**
+ * @brief Release a borrowed work area box (never the work area itself).
+ * NULL / empty-handle no-op; clears w->ctx after releasing.
+ */
+void oaktimeline_workarea_free(OakTimelineWorkArea *w);
 
 /**
  * @brief Read the work area state. Out params may individually be NULL.
  */
-int oaktimeline_workarea_get(const OakTimelineWorkArea *w, int *in_num,
+int oaktimeline_workarea_get(OakTimelineWorkArea w, int *in_num,
 							 int *in_den, int *out_num, int *out_den,
 							 int *enabled);
 
 /**
  * @brief Set the range directly (live).
  */
-int oaktimeline_workarea_set_range(OakTimelineWorkArea *w, int in_num,
+int oaktimeline_workarea_set_range(OakTimelineWorkArea w, int in_num,
 								   int in_den, int out_num, int out_den);
 
 /**
@@ -61,7 +78,7 @@ int oaktimeline_workarea_set_range(OakTimelineWorkArea *w, int in_num,
  * changed from). Owned; free with oakundo_command_free().
  */
 OakUndoCommand oaktimeline_workarea_set_range_command(
-	OakTimelineWorkArea *w, int in_num, int in_den, int out_num,
+	OakTimelineWorkArea w, int in_num, int in_den, int out_num,
 	int out_den, int old_in_num, int old_in_den, int old_out_num,
 	int old_out_den);
 
@@ -69,7 +86,7 @@ OakUndoCommand oaktimeline_workarea_set_range_command(
  * @brief Create a set-enabled command (olive::WorkareaSetEnabledCommand).
  */
 OakUndoCommand oaktimeline_workarea_set_enabled_command(
-	OakTimelineWorkArea *w, int enabled);
+	OakTimelineWorkArea w, int enabled);
 
 /**
  * @brief The reset sentinel range (TimelineWorkArea::k_reset_in/out).
@@ -81,8 +98,8 @@ int oaktimeline_workarea_reset(int *in_num, int *in_den, int *out_num,
  * @brief Load/save through oakcommon XML handles. The reader must be
  * positioned on the "workarea" element.
  */
-int oaktimeline_workarea_load(OakTimelineWorkArea *w, OakXmlReader reader);
-int oaktimeline_workarea_save(const OakTimelineWorkArea *w,
+int oaktimeline_workarea_load(OakTimelineWorkArea w, OakXmlReader reader);
+int oaktimeline_workarea_save(OakTimelineWorkArea w,
 							  OakXmlWriter writer);
 
 #ifdef __cplusplus

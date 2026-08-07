@@ -38,54 +38,55 @@ extern "C" {
  * @brief Project task factories and result accessors (M8 §2.2).
  */
 
-/** @brief olive::ProjectLoadTask. */
-OakTaskTask *oaktask_create_project_load(const char *filename);
+/** @brief olive::ProjectLoadTask. Empty handle (ctx == NULL) on
+ *        failure. */
+OakTaskTask oaktask_create_project_load(const char *filename);
 
 /** @brief Take the loaded project (ownership transfer). Empty handle
  *        (ctx == NULL) when the task has not succeeded or the project was
  *        already taken. */
-OakNodeProject oaktask_load_take_project(OakTaskTask *t);
+OakNodeProject oaktask_load_take_project(OakTaskTask t);
 
 /** @brief olive::ProjectSaveTask. `filename_or_NULL` overrides the
  *        project's own filename. `project` is borrowed by the task. */
-OakTaskTask *oaktask_create_project_save(OakNodeProject project,
-										 const char *filename_or_NULL,
-										 int use_compression);
+OakTaskTask oaktask_create_project_save(OakNodeProject project,
+										const char *filename_or_NULL,
+										int use_compression);
 
 /** @brief olive::ProjectImportTask. `folder`/`project` are borrowed by
  *        the task. */
-OakTaskTask *oaktask_create_project_import(OakNodeFolder folder,
-										   OakNodeProject project,
-										   const char *const *urls,
-										   int url_count);
+OakTaskTask oaktask_create_project_import(OakNodeFolder folder,
+										  OakNodeProject project,
+										  const char *const *urls,
+										  int url_count);
 
 /** @brief Take the import's undo command (ownership transfer). */
-OakUndoCommand oaktask_import_take_command(OakTaskTask *t);
+OakUndoCommand oaktask_import_take_command(OakTaskTask t);
 
-int oaktask_import_footage_count(OakTaskTask *t);
+int oaktask_import_footage_count(OakTaskTask t);
 
 /** @brief Footage handle at index (addref'd; release with
  *        handle.release(handle.ctx) - box only, the project owns the
  *        footage). Empty handle when out of range. */
-OakNodeFootage oaktask_import_footage_at(OakTaskTask *t, int index);
+OakNodeFootage oaktask_import_footage_at(OakTaskTask t, int index);
 
-int oaktask_import_invalid_count(OakTaskTask *t);
+int oaktask_import_invalid_count(OakTaskTask t);
 
 /** @brief Invalid filename at index (two-stage). */
-int oaktask_import_invalid_at(OakTaskTask *t, int index, char *buf,
-							  int buf_size);
+int oaktask_import_invalid_at(OakTaskTask t, int index, char *buf,
+							 int buf_size);
 
-/** @brief olive::LoadOTIOTask. */
-OakTaskTask *oaktask_create_project_load_otio(const char *filename);
+/** @brief olive::LoadOTIOTask. Empty handle (ctx == NULL) on failure. */
+OakTaskTask oaktask_create_project_load_otio(const char *filename);
 
 /** @brief Take the loaded project (ownership transfer). Empty handle
  *        (ctx == NULL) when the task has not succeeded or the project was
  *        already taken. */
-OakNodeProject oaktask_load_otio_take_project(OakTaskTask *t);
+OakNodeProject oaktask_load_otio_take_project(OakTaskTask t);
 
 /** @brief olive::SaveOTIOTask. `project` is borrowed by the task. */
-OakTaskTask *oaktask_create_project_save_otio(OakNodeProject project,
-											  const char *filename);
+OakTaskTask oaktask_create_project_save_otio(OakNodeProject project,
+											 const char *filename);
 
 /**
  * @brief OTIO import confirmation callback (facade concern; default
@@ -98,14 +99,14 @@ void oaktask_load_otio_set_confirm_cb(oaktask_otio_import_confirm_fn fn,
 
 /** @brief olive::PreCacheTask. `footage`/`sequence` are borrowed by the
  *        task. */
-OakTaskTask *oaktask_create_precache(OakNodeFootage footage, int index,
-									 OakNodeSequence sequence);
+OakTaskTask oaktask_create_precache(OakNodeFootage footage, int index,
+									OakNodeSequence sequence);
 
 /** @brief olive::ExportTask (params POD from codec/encoder.h).
  *        `viewer`/`color_manager` are borrowed by the task. */
-OakTaskTask *oaktask_create_export(OakNodeNode viewer,
-								   OakNodeColorManager color_manager,
-								   const oakcodec_encoding_params *params);
+OakTaskTask oaktask_create_export(OakNodeNode viewer,
+								  OakNodeColorManager color_manager,
+								  const oakcodec_encoding_params *params);
 
 /**
  * @brief Image-sequence confirmation callback (facade/UI concern;

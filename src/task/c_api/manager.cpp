@@ -55,13 +55,13 @@ int oaktask_manager_count(void)
 	return olive::TaskManager::instance()->get_task_count();
 }
 
-OakTaskTask *oaktask_manager_at(int i)
+OakTaskTask oaktask_manager_at(int i)
 {
 	if (!olive::TaskManager::instance()) {
-		return NULL;
+		return OakTaskTask{};
 	}
 	olive::Task *task = olive::TaskManager::instance()->get_task_at(i);
-	// Borrowed wrapper: freeing it does not delete the task.
+	// Borrowed wrapper: releasing it does not delete the task.
 	return oaktask_capi::wrap_borrowed(task);
 }
 

@@ -49,7 +49,7 @@ public:
 protected:
 	virtual bool run() override;
 
-	virtual bool frame_downloaded(OakCodecFrame *frame,
+	virtual bool frame_downloaded(OakCodecFrame frame,
 								  const Rational &time) override;
 
 	virtual bool audio_downloaded(const TimeRange &range,
@@ -60,9 +60,10 @@ protected:
 private:
 	bool write_audio_loop(const TimeRange &time, OakSampleBuffer *samples);
 
-	OakRenderProjectCopier *copier_;
+	/** Owned handle; the final release frees the copied project too. */
+	OakRenderProjectCopier copier_ = {};
 
-	std::map<Rational, OakCodecFrame *> time_map_;
+	std::map<Rational, OakCodecFrame> time_map_;
 
 	struct TimeRangeLess {
 		bool operator()(const TimeRange &a, const TimeRange &b) const
@@ -81,7 +82,8 @@ private:
 
 	OakEncoder subtitle_encoder_;
 
-	OakColorProcessor *color_processor_;
+	/** Owned handle (empty ctx when color conversion is off). */
+	OakColorProcessor color_processor_ = {};
 
 	int64_t frame_time_;
 

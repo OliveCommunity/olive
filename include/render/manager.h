@@ -46,9 +46,9 @@ extern "C" {
  * The frame request callback is the asynchronous command return channel
  * (M7 §2.2 note): it fires on a render worker thread, possibly after
  * cancellation. The delivered OakCodecFrame is owned by the callback
- * recipient (release with oakrender_codec_frame_free()); a NULL frame
- * signals "no result" (cancelled or failed). Beyond this callback there
- * are no event subscription interfaces.
+ * recipient (release with oakrender_codec_frame_free()); an empty frame
+ * (ctx == NULL) signals "no result" (cancelled or failed). Beyond this
+ * callback there are no event subscription interfaces.
  */
 
 /**
@@ -69,11 +69,11 @@ void oakrender_manager_shutdown(void);
 /**
  * @brief Completion callback of an asynchronous frame request.
  *
- * @param frame Owned frame handle, or NULL when the request finished
- *        without a result (cancelled/failed).
+ * @param frame Owned frame handle, or an empty handle (ctx == NULL)
+ *        when the request finished without a result (cancelled/failed).
  * @param ts The request's timestamp, passed back verbatim.
  */
-typedef void (*oakrender_frame_ready_fn)(OakCodecFrame *frame, int64_t ts,
+typedef void (*oakrender_frame_ready_fn)(OakCodecFrame frame, int64_t ts,
 										 void *userdata);
 
 /**
@@ -114,11 +114,11 @@ int oakrender_set_cacher_multicam(OakNodeNode multicam_or_NULL);
 /**
  * @brief Set the display color processor on the manager's auto-cacher
  * (PreviewAutoCacher::set_display_color_processor()). Borrowed handle,
- * NULL to clear.
+ * empty ctx to clear.
  *
  * @return OAKRENDER_OK or OAKRENDER_E_STATE.
  */
-int oakrender_set_display_color_processor(OakColorProcessor *p_or_NULL);
+int oakrender_set_display_color_processor(OakColorProcessor p_or_NULL);
 
 /* ---- Disk cache (olive::DiskManager) -------------------------------------- */
 

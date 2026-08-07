@@ -200,7 +200,7 @@ public:
 	static const Rational k_any_timecode;
 
 	struct RetrieveVideoParams {
-		OakRenderRenderer *renderer = nullptr;
+		OakRenderRenderer renderer = {};
 		Rational time;
 		int divider = 1;
 		PixelFormat maximum_format = PixelFormat::invalid;
@@ -222,7 +222,7 @@ public:
    * The returned texture handle is owned by the caller and must be
    * released with oakrender_display_texture_free().
    */
-	OakRenderTexture *retrieve_video(const RetrieveVideoParams &p);
+	OakRenderTexture retrieve_video(const RetrieveVideoParams &p);
 
 	/**
    * @brief Retrieves a decoded video frame in CPU memory.
@@ -347,7 +347,7 @@ protected:
    * The returned texture handle is owned by the caller and must be
    * released with oakrender_display_texture_free().
    */
-	virtual OakRenderTexture *
+	virtual OakRenderTexture
 	retrieve_video_internal(const RetrieveVideoParams &p);
 
 	virtual FramePtr retrieve_video_frame_internal(const RetrieveVideoParams &p);
@@ -387,7 +387,7 @@ private:
 
 	std::atomic_int64_t last_accessed_;
 
-	OakRenderTexture *cached_texture_;
+	OakRenderTexture cached_texture_ = {};
 	Rational cached_time_;
 	int cached_divider_ = 0;
 

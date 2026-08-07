@@ -65,7 +65,7 @@ protected:
 		bool has_matrix = false;
 		int format = -1; /**< PixelFormat as int, -1 = off */
 		int channel_count = 0; /**< 0 = off */
-		OakColorProcessor *color_output = nullptr; /**< borrowed */
+		OakColorProcessor color_output = {}; /**< borrowed; empty ctx = none */
 		OakColorTransform color_transform = {}; /**< empty ctx = default */
 	};
 
@@ -76,9 +76,9 @@ protected:
 				OakNodeFrameCache *cache,
 				const ForceParams &force);
 
-	virtual bool download_frame(OakCodecFrame *frame, const Rational &time);
+	virtual bool download_frame(OakCodecFrame frame, const Rational &time);
 
-	virtual bool frame_downloaded(OakCodecFrame *frame,
+	virtual bool frame_downloaded(OakCodecFrame frame,
 								  const Rational &time) = 0;
 
 	virtual bool audio_downloaded(const TimeRange &range,
@@ -160,7 +160,7 @@ private:
 		Rational time;
 	};
 
-	void on_ticket_finished(OakRenderTicket *ticket);
+	void on_ticket_finished(OakRenderTicket ticket);
 
 	bool start_video_ticket(OakNodeColorManager manager,
 							const Rational &time, int mode,
@@ -175,8 +175,8 @@ private:
 
 	std::mutex finished_mutex_;
 	std::condition_variable finished_wait_cond_;
-	std::deque<OakRenderTicket *> finished_tickets_;
-	std::vector<OakRenderTicket *> running_ticket_list_;
+	std::deque<OakRenderTicket> finished_tickets_;
+	std::vector<OakRenderTicket> running_ticket_list_;
 	int running_tickets_;
 
 	bool native_progress_signalling_;

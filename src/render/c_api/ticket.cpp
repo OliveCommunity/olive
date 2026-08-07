@@ -39,25 +39,41 @@ struct TicketHandle {
 	olive::core::TimeRange range;
 };
 
-TicketHandle *impl(OakRenderTicket *t)
+TicketHandle *impl(OakRenderTicket t)
 {
-	return reinterpret_cast<TicketHandle *>(t);
+	return oakrender_c_api::to_native<TicketHandle>(t);
 }
 
-OakRenderTicket *wrap(olive::RenderTicketWatcher *w,
-					  olive::RenderManager::TicketType type)
+/**
+ * @brief Box deleter for tickets: cancels and waits on a running ticket,
+ *        then destroys the watcher and the wrapper.
+ */
+void ticket_delete(void *object)
+{
+	auto *h = static_cast<TicketHandle *>(object);
+	if (h->watcher->is_running()) {
+		h->watcher->cancel();
+		h->watcher->wait_for_finished();
+	}
+	delete h->watcher;
+	delete h;
+}
+
+OakRenderTicket wrap(olive::RenderTicketWatcher *w,
+					 olive::RenderManager::TicketType type)
 {
 	if (!w) {
-		return NULL;
+		return OakRenderTicket{};
 	}
 	TicketHandle *h = new (std::nothrow) TicketHandle{
 		w, type, olive::core::Rational(), olive::core::TimeRange()
 	};
 	if (!h) {
 		delete w;
-		return NULL;
+		return OakRenderTicket{};
 	}
-	return reinterpret_cast<OakRenderTicket *>(h);
+	return oakrender_c_api::make_handle<OakRenderTicket>(h, true,
+														 &ticket_delete);
 }
 
 olive::Node *to_node(OakNodeNode n)
@@ -67,17 +83,17 @@ olive::Node *to_node(OakNodeNode n)
 
 } // namespace
 
-OakRenderTicket *oakrender_ticket_render_frame(
+OakRenderTicket oakrender_ticket_render_frame(
 	const oakrender_video_ticket_params *params,
 	oakrender_ticket_finished_fn cb, void *userdata)
 {
 	if (!params || !params->output_node.ctx) {
-		return NULL;
+		return OakRenderTicket{};
 	}
 
 	olive::RenderManager *manager = olive::RenderManager::instance();
 	if (!manager) {
-		return NULL;
+		return OakRenderTicket{};
 	}
 
 	try {
@@ -86,7 +102,7 @@ OakRenderTicket *oakrender_ticket_render_frame(
 				? oakcommon_videoparams_get_native(params->video_params)
 				: nullptr;
 		if (!vp) {
-			return NULL;
+			return OakRenderTicket{};
 		}
 
 		olive::RenderManager::RenderVideoParams rvp(
@@ -119,8 +135,11 @@ OakRenderTicket *oakrender_ticket_render_frame(
 			params->force_format);
 		rvp.force_channel_count = params->force_channel_count;
 		rvp.force_color_output =
-			params->force_color_output ? params->force_color_output->ptr
-									   : nullptr;
+			params->force_color_output.ctx
+				? oakrender_c_api::to_native<OakColorProcessorImpl>(
+					params->force_color_output)
+					  ->ptr
+				: nullptr;
 		if (params->force_color_transform.ctx) {
 			const olive::ColorTransform *ct =
 				oakcommon_colortransform_get_native(
@@ -142,10 +161,10 @@ OakRenderTicket *oakrender_ticket_render_frame(
 			"time", olive::Variant::from_value(olive::core::Rational(
 						int(params->time_num), int(params->time_den))));
 
-		OakRenderTicket *handle =
+		OakRenderTicket handle =
 			wrap(watcher, olive::RenderManager::k_type_video);
-		if (!handle) {
-			return NULL;
+		if (!handle.ctx) {
+			return OakRenderTicket{};
 		}
 		impl(handle)->time = olive::core::Rational(
 			int(params->time_num), int(params->time_den));
@@ -160,22 +179,22 @@ OakRenderTicket *oakrender_ticket_render_frame(
 		watcher->set_ticket(manager->render_frame(rvp));
 		return handle;
 	} catch (...) {
-		return NULL;
+		return OakRenderTicket{};
 	}
 }
 
-OakRenderTicket *oakrender_ticket_render_audio(
+OakRenderTicket oakrender_ticket_render_audio(
 	OakNodeNode output_node, int64_t in_num, int64_t in_den,
 	int64_t out_num, int64_t out_den, const OakAudioParams *params,
 	int mode, oakrender_ticket_finished_fn cb, void *userdata)
 {
 	if (!output_node.ctx || !params) {
-		return NULL;
+		return OakRenderTicket{};
 	}
 
 	olive::RenderManager *manager = olive::RenderManager::instance();
 	if (!manager) {
-		return NULL;
+		return OakRenderTicket{};
 	}
 
 	try {
@@ -194,10 +213,10 @@ OakRenderTicket *oakrender_ticket_render_audio(
 										  int(olive::RenderManager::k_type_audio)));
 		watcher->set_property("range", olive::Variant::from_value(range));
 
-		OakRenderTicket *handle =
+		OakRenderTicket handle =
 			wrap(watcher, olive::RenderManager::k_type_audio);
-		if (!handle) {
-			return NULL;
+		if (!handle.ctx) {
+			return OakRenderTicket{};
 		}
 		impl(handle)->range = range;
 
@@ -211,48 +230,48 @@ OakRenderTicket *oakrender_ticket_render_audio(
 		watcher->set_ticket(manager->render_audio(rap));
 		return handle;
 	} catch (...) {
-		return NULL;
+		return OakRenderTicket{};
 	}
 }
 
-int oakrender_ticket_is_finished(OakRenderTicket *ticket)
+int oakrender_ticket_is_finished(OakRenderTicket ticket)
 {
-	if (!ticket) {
+	if (!ticket.ctx) {
 		return OAKRENDER_E_INVALID;
 	}
 	return impl(ticket)->watcher->is_running() ? 0 : 1;
 }
 
-int oakrender_ticket_wait(OakRenderTicket *ticket)
+int oakrender_ticket_wait(OakRenderTicket ticket)
 {
-	if (!ticket) {
+	if (!ticket.ctx) {
 		return OAKRENDER_E_INVALID;
 	}
 	impl(ticket)->watcher->wait_for_finished();
 	return OAKRENDER_OK;
 }
 
-int oakrender_ticket_cancel(OakRenderTicket *ticket)
+int oakrender_ticket_cancel(OakRenderTicket ticket)
 {
-	if (!ticket) {
+	if (!ticket.ctx) {
 		return OAKRENDER_E_INVALID;
 	}
 	impl(ticket)->watcher->cancel();
 	return OAKRENDER_OK;
 }
 
-int oakrender_ticket_get_type(OakRenderTicket *ticket)
+int oakrender_ticket_get_type(OakRenderTicket ticket)
 {
-	if (!ticket) {
+	if (!ticket.ctx) {
 		return OAKRENDER_E_INVALID;
 	}
 	return int(impl(ticket)->type);
 }
 
-int oakrender_ticket_get_time(OakRenderTicket *ticket, int64_t *out_num,
+int oakrender_ticket_get_time(OakRenderTicket ticket, int64_t *out_num,
 							  int64_t *out_den)
 {
-	if (!ticket || !out_num || !out_den) {
+	if (!ticket.ctx || !out_num || !out_den) {
 		return OAKRENDER_E_INVALID;
 	}
 	*out_num = impl(ticket)->time.numerator();
@@ -260,11 +279,11 @@ int oakrender_ticket_get_time(OakRenderTicket *ticket, int64_t *out_num,
 	return OAKRENDER_OK;
 }
 
-int oakrender_ticket_get_range(OakRenderTicket *ticket, int64_t *in_num,
+int oakrender_ticket_get_range(OakRenderTicket ticket, int64_t *in_num,
 							   int64_t *in_den, int64_t *out_num,
 							   int64_t *out_den)
 {
-	if (!ticket || !in_num || !in_den || !out_num || !out_den) {
+	if (!ticket.ctx || !in_num || !in_den || !out_num || !out_den) {
 		return OAKRENDER_E_INVALID;
 	}
 	*in_num = impl(ticket)->range.in().numerator();
@@ -274,12 +293,12 @@ int oakrender_ticket_get_range(OakRenderTicket *ticket, int64_t *in_num,
 	return OAKRENDER_OK;
 }
 
-int oakrender_ticket_get_frame(OakRenderTicket *ticket, OakCodecFrame **out)
+int oakrender_ticket_get_frame(OakRenderTicket ticket, OakCodecFrame *out)
 {
-	if (!ticket || !out) {
+	if (!ticket.ctx || !out) {
 		return OAKRENDER_E_INVALID;
 	}
-	*out = NULL;
+	*out = OakCodecFrame{};
 
 	TicketHandle *h = impl(ticket);
 	if (h->watcher->is_running()) {
@@ -296,19 +315,20 @@ int oakrender_ticket_get_frame(OakRenderTicket *ticket, OakCodecFrame **out)
 		return OAKRENDER_E_FAILED;
 	}
 
-	OakCodecFrame *handle = new (std::nothrow) OakCodecFrame;
-	if (!handle) {
+	auto *frame_impl = new (std::nothrow) OakCodecFrameImpl;
+	if (!frame_impl) {
 		return OAKRENDER_E_NOMEM;
 	}
-	handle->ptr = frame;
-	*out = handle;
-	return OAKRENDER_OK;
+	frame_impl->ptr = frame;
+	*out = oakrender_c_api::make_handle<OakCodecFrame>(
+		frame_impl, true, &oakrender_c_api::delete_as<OakCodecFrameImpl>);
+	return out->ctx ? OAKRENDER_OK : OAKRENDER_E_NOMEM;
 }
 
-int oakrender_ticket_get_samples(OakRenderTicket *ticket,
+int oakrender_ticket_get_samples(OakRenderTicket ticket,
 								 OakSampleBuffer **out)
 {
-	if (!ticket || !out) {
+	if (!ticket.ctx || !out) {
 		return OAKRENDER_E_INVALID;
 	}
 	*out = NULL;
@@ -330,17 +350,7 @@ int oakrender_ticket_get_samples(OakRenderTicket *ticket,
 
 void oakrender_ticket_free(OakRenderTicket *ticket)
 {
-	if (!ticket) {
-		return;
-	}
-
-	TicketHandle *h = impl(ticket);
-	if (h->watcher->is_running()) {
-		h->watcher->cancel();
-		h->watcher->wait_for_finished();
-	}
-	delete h->watcher;
-	delete h;
+	oakrender_c_api::free_handle(ticket);
 }
 
 int oakrender_manager_set_aggressive_gc(int enabled)

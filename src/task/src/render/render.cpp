@@ -71,7 +71,7 @@ RenderTask::~RenderTask()
 	}
 }
 
-void RenderTask::on_ticket_finished(OakRenderTicket *ticket)
+void RenderTask::on_ticket_finished(OakRenderTicket ticket)
 {
 	finished_mutex_.lock();
 	finished_tickets_.push_back(ticket);
@@ -112,16 +112,16 @@ bool RenderTask::start_video_ticket(OakNodeColorManager manager,
 	params.force_color_transform = force.color_transform;
 	params.cache = cache;
 
-	OakRenderTicket *ticket = oakrender_ticket_render_frame(
+	OakRenderTicket ticket = oakrender_ticket_render_frame(
 		&params,
-		[](OakRenderTicket *t, void *userdata) {
+		[](OakRenderTicket t, void *userdata) {
 			static_cast<RenderTask *>(userdata)->on_ticket_finished(t);
 		},
 		this);
 	// Per-frame call: release the borrowed handle box (the ticket keeps
 	// the native node, not the handle).
 	oaknode_node_free(&output_node);
-	if (!ticket) {
+	if (!ticket.ctx) {
 		return false;
 	}
 
@@ -152,15 +152,15 @@ bool RenderTask::render(OakNodeColorManager manager,
 			continue;
 		}
 
-		OakRenderTicket *ticket = oakrender_ticket_render_audio(
+		OakRenderTicket ticket = oakrender_ticket_render_audio(
 			output_node, range.in().numerator(), range.in().denominator(),
 			range.out().numerator(), range.out().denominator(),
 			audio_params_, render_mode,
-			[](OakRenderTicket *t, void *userdata) {
+			[](OakRenderTicket t, void *userdata) {
 				static_cast<RenderTask *>(userdata)->on_ticket_finished(t);
 			},
 			this);
-		if (ticket) {
+		if (ticket.ctx) {
 			finished_mutex_.lock();
 			running_ticket_list_.push_back(ticket);
 			running_tickets_++;
@@ -309,7 +309,7 @@ bool RenderTask::render(OakNodeColorManager manager,
 
 	while (result && !is_cancelled()) {
 		while (!finished_tickets_.empty() && !is_cancelled() && result) {
-			OakRenderTicket *ticket = finished_tickets_.front();
+			OakRenderTicket ticket = finished_tickets_.front();
 			finished_tickets_.pop_front();
 
 			loop_lock.unlock();
@@ -344,7 +344,7 @@ bool RenderTask::render(OakNodeColorManager manager,
 				oakrender_ticket_get_time(ticket, &tn, &td);
 				Rational time((int)tn, (int)td);
 
-				OakCodecFrame *frame = nullptr;
+				OakCodecFrame frame = {};
 				oakrender_ticket_get_frame(ticket, &frame);
 
 				if (two_step_frame_rendering() &&
@@ -363,8 +363,8 @@ bool RenderTask::render(OakNodeColorManager manager,
 					emit_progress(progress_counter / total_length);
 				}
 
-				if (frame) {
-					oakrender_codec_frame_free(frame);
+				if (frame.ctx) {
+					oakrender_codec_frame_free(&frame);
 				}
 
 				if (next_frame_index < frame_times.size()) {
@@ -374,7 +374,7 @@ bool RenderTask::render(OakNodeColorManager manager,
 				}
 			}
 
-			oakrender_ticket_free(ticket);
+			oakrender_ticket_free(&ticket);
 			loop_lock.lock();
 		}
 
@@ -393,10 +393,10 @@ bool RenderTask::render(OakNodeColorManager manager,
 
 	if (is_cancelled() || !result) {
 		// Cancel every ticket we created
-		for (OakRenderTicket *ticket : running_ticket_list_) {
+		for (OakRenderTicket &ticket : running_ticket_list_) {
 			oakrender_ticket_cancel(ticket);
 			oakrender_ticket_wait(ticket);
-			oakrender_ticket_free(ticket);
+			oakrender_ticket_free(&ticket);
 		}
 	}
 
@@ -405,7 +405,7 @@ bool RenderTask::render(OakNodeColorManager manager,
 	return result;
 }
 
-bool RenderTask::download_frame(OakCodecFrame *frame, const Rational &time)
+bool RenderTask::download_frame(OakCodecFrame frame, const Rational &time)
 {
 	(void)frame;
 	(void)time;

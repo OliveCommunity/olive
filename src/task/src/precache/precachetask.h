@@ -39,7 +39,7 @@ public:
 protected:
 	virtual bool run() override;
 
-	virtual bool frame_downloaded(OakCodecFrame *frame,
+	virtual bool frame_downloaded(OakCodecFrame frame,
 								  const Rational &time) override;
 
 	virtual bool audio_downloaded(const TimeRange &range,

@@ -53,8 +53,8 @@ TEST(OakRenderFrameTest, CreateRetainFree)
 {
 	const int alive_before = oakrender_debug_alive_count();
 
-	OakCodecFrame *frame = oakrender_codec_frame_create();
-	ASSERT_NE(frame, nullptr);
+	OakCodecFrame frame = oakrender_codec_frame_create();
+	ASSERT_NE(frame.ctx, nullptr);
 	EXPECT_EQ(oakrender_debug_alive_count(), alive_before + 1);
 
 	EXPECT_EQ(oakrender_codec_frame_is_allocated(frame), 0);
@@ -63,24 +63,26 @@ TEST(OakRenderFrameTest, CreateRetainFree)
 	EXPECT_EQ(oakrender_codec_frame_linesize_bytes(frame), 0);
 
 	// retain returns the same handle and pairs with exactly one free
-	EXPECT_EQ(oakrender_codec_frame_retain(frame), frame);
+	OakCodecFrame retained = oakrender_codec_frame_retain(frame);
+	EXPECT_EQ(retained.ctx, frame.ctx);
 	EXPECT_EQ(oakrender_debug_alive_count(), alive_before + 1);
-	oakrender_codec_frame_free(frame);
+	oakrender_codec_frame_free(&retained);
 	EXPECT_EQ(oakrender_debug_alive_count(), alive_before + 1);
 
-	oakrender_codec_frame_free(frame);
+	oakrender_codec_frame_free(&frame);
 	EXPECT_EQ(oakrender_debug_alive_count(), alive_before);
 
-	// NULL-safe no-ops
-	EXPECT_EQ(oakrender_codec_frame_retain(nullptr), nullptr);
+	// Empty-handle / NULL no-ops
+	EXPECT_EQ(oakrender_codec_frame_retain(OakCodecFrame{}).ctx, nullptr);
 	oakrender_codec_frame_free(nullptr);
+	oakrender_codec_frame_free(&frame); // already cleared
 	EXPECT_EQ(oakrender_debug_alive_count(), alive_before);
 }
 
 TEST(OakRenderFrameTest, SetGetParams)
 {
-	OakCodecFrame *frame = oakrender_codec_frame_create();
-	ASSERT_NE(frame, nullptr);
+	OakCodecFrame frame = oakrender_codec_frame_create();
+	ASSERT_NE(frame.ctx, nullptr);
 
 	const oakrender_video_params in = make_params();
 	EXPECT_EQ(oakrender_codec_frame_set_video_params(frame, &in),
@@ -92,30 +94,31 @@ TEST(OakRenderFrameTest, SetGetParams)
 	oakrender_video_params out = {};
 	EXPECT_EQ(oakrender_codec_frame_get_params(frame, &out), OAKRENDER_OK);
 
-	EXPECT_EQ(oakrender_codec_frame_set_video_params(nullptr, &in),
+	EXPECT_EQ(oakrender_codec_frame_set_video_params(OakCodecFrame{}, &in),
 			  OAKRENDER_E_INVALID);
 	EXPECT_EQ(oakrender_codec_frame_set_video_params(frame, nullptr),
 			  OAKRENDER_E_INVALID);
-	EXPECT_EQ(oakrender_codec_frame_get_params(nullptr, &out),
+	EXPECT_EQ(oakrender_codec_frame_get_params(OakCodecFrame{}, &out),
 			  OAKRENDER_E_INVALID);
 	EXPECT_EQ(oakrender_codec_frame_get_params(frame, nullptr),
 			  OAKRENDER_E_INVALID);
 
-	oakrender_codec_frame_free(frame);
+	oakrender_codec_frame_free(&frame);
 }
 
 TEST(OakRenderFrameTest, AllocateOnTransitionalFrameFails)
 {
 	// codec/frame.h is still the transition stub (oakcodec, M5): its
 	// allocate() reports failure, which the ABI surfaces as E_FAILED.
-	OakCodecFrame *frame = oakrender_codec_frame_create();
-	ASSERT_NE(frame, nullptr);
+	OakCodecFrame frame = oakrender_codec_frame_create();
+	ASSERT_NE(frame.ctx, nullptr);
 	EXPECT_EQ(oakrender_codec_frame_allocate(frame), OAKRENDER_E_FAILED);
-	EXPECT_EQ(oakrender_codec_frame_allocate(nullptr), OAKRENDER_E_INVALID);
-	oakrender_codec_frame_free(frame);
+	EXPECT_EQ(oakrender_codec_frame_allocate(OakCodecFrame{}),
+			  OAKRENDER_E_INVALID);
+	oakrender_codec_frame_free(&frame);
 }
 
-/* ---- Renderer / texture: NULL-argument error paths (no GL) ---------------- */
+/* ---- Renderer / texture: empty-handle error paths (no GL) ----------------- */
 
 TEST(OakRenderDisplayTest, NullArgumentErrorPaths)
 {
@@ -123,47 +126,50 @@ TEST(OakRenderDisplayTest, NullArgumentErrorPaths)
 	oakrender_video_params out = {};
 	char pixel[4] = {};
 
-	EXPECT_EQ(oakrender_display_texture_create(nullptr, &params, nullptr, 0),
+	EXPECT_EQ(oakrender_display_texture_create(OakRenderRenderer{}, &params,
+											   nullptr, 0)
+				  .ctx,
 			  nullptr);
-	EXPECT_EQ(oakrender_display_texture_retain(nullptr), nullptr);
+	EXPECT_EQ(oakrender_display_texture_retain(OakRenderTexture{}).ctx,
+			  nullptr);
 	oakrender_display_texture_free(nullptr);
-	EXPECT_EQ(oakrender_display_texture_upload(nullptr, pixel, 4),
+	EXPECT_EQ(oakrender_display_texture_upload(OakRenderTexture{}, pixel, 4),
 			  OAKRENDER_E_INVALID);
-	EXPECT_EQ(oakrender_display_texture_download(nullptr, pixel, 4),
+	EXPECT_EQ(oakrender_display_texture_download(OakRenderTexture{}, pixel, 4),
 			  OAKRENDER_E_INVALID);
-	EXPECT_EQ(oakrender_display_texture_get_params(nullptr, &out),
+	EXPECT_EQ(oakrender_display_texture_get_params(OakRenderTexture{}, &out),
 			  OAKRENDER_E_INVALID);
-	EXPECT_EQ(oakrender_display_texture_id(nullptr), 0);
+	EXPECT_EQ(oakrender_display_texture_id(OakRenderTexture{}), 0);
 
-	EXPECT_EQ(oakrender_display_renderer_init(nullptr, nullptr),
+	EXPECT_EQ(oakrender_display_renderer_init(OakRenderRenderer{}, nullptr),
 			  OAKRENDER_E_INVALID);
-	EXPECT_EQ(oakrender_display_renderer_is_open_gl(nullptr), 0);
-	EXPECT_EQ(oakrender_display_renderer_is_vulkan(nullptr), 0);
+	EXPECT_EQ(oakrender_display_renderer_is_open_gl(OakRenderRenderer{}), 0);
+	EXPECT_EQ(oakrender_display_renderer_is_vulkan(OakRenderRenderer{}), 0);
 	oakrender_display_renderer_destroy(nullptr);
 
 	oakrender_color_transform_job job = {};
-	EXPECT_EQ(oakrender_display_renderer_blit_color_managed(nullptr, &job,
-															nullptr, &params),
+	EXPECT_EQ(oakrender_display_renderer_blit_color_managed(
+				  OakRenderRenderer{}, &job, OakRenderTexture{}, &params),
 			  OAKRENDER_E_INVALID);
 	EXPECT_EQ(oakrender_display_renderer_download_from_texture(
-				  nullptr, 0, &params, pixel, 4),
+				  OakRenderRenderer{}, 0, &params, pixel, 4),
 			  OAKRENDER_E_INVALID);
 }
 
 TEST(OakRenderDisplayTest, CreateDynamicRejectsBadInput)
 {
-	EXPECT_EQ(oakrender_display_renderer_create_dynamic(nullptr), nullptr);
-	EXPECT_EQ(oakrender_display_renderer_create_dynamic(""), nullptr);
+	EXPECT_EQ(oakrender_display_renderer_create_dynamic(nullptr).ctx, nullptr);
+	EXPECT_EQ(oakrender_display_renderer_create_dynamic("").ctx, nullptr);
 }
 
 TEST(OakRenderDisplayTest, CreateOpenGLRenderer)
 {
 	// Construction must not require a GL context; init() would.
-	OakRenderRenderer *r = oakrender_display_renderer_create_opengl();
-	ASSERT_NE(r, nullptr);
+	OakRenderRenderer r = oakrender_display_renderer_create_opengl();
+	ASSERT_NE(r.ctx, nullptr);
 	EXPECT_EQ(oakrender_display_renderer_is_open_gl(r), 1);
 	EXPECT_EQ(oakrender_display_renderer_is_vulkan(r), 0);
-	oakrender_display_renderer_destroy(r);
+	oakrender_display_renderer_destroy(&r);
 }
 
 TEST(OakRenderDisplayTest, InitAndTextureLifecycle)

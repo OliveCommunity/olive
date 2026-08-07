@@ -30,12 +30,21 @@ extern "C" {
 #endif
 
 /**
- * @brief Opaque handle to a background task (olive::Task).
+ * @brief Reference-counted handle to a background task (olive::Task).
  *
- * Tasks are created through the factories in task/project.h (and future
- * family headers) and must be released with oaktask_task_free().
+ * By-value handle (shared_ptr semantics, see oakcommon's
+ * common/handle.h). Tasks are created through the factories in
+ * task/project.h (and future family headers) with reference count 1 and
+ * must be released with oaktask_task_free(). oaktask_task_start()
+ * transfers the task's lifetime to the task manager: releasing the
+ * handle afterwards only frees the box.
  */
-typedef struct OakTaskTask OakTaskTask;
+typedef struct OakTaskTask {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKTASK_ABI_VERSION. */
+} OakTaskTask;
 
 /** @brief Lifecycle event ids for oaktask_task_subscribe(). */
 enum OakTaskEvent {
@@ -55,36 +64,38 @@ typedef void (*oaktask_event_fn)(int event_id, double value,
 								 void *userdata);
 
 /**
- * @brief Free a task. No-op on NULL. The task must not be running on the
- *        manager (oaktask_task_cancel + wait first if it is).
+ * @brief Release one reference to a task. Convenience wrapper around
+ *        t->release(t->ctx): NULL / empty-handle no-op; clears t->ctx
+ *        after releasing. The task must not be running on the manager
+ *        (oaktask_task_cancel + wait first if it is).
  */
 void oaktask_task_free(OakTaskTask *t);
 
 /** @brief Run synchronously in the calling thread. 1 = succeeded. */
-int oaktask_task_start_sync(OakTaskTask *t);
+int oaktask_task_start_sync(OakTaskTask t);
 
 /** @brief Run asynchronously on the task manager. */
-int oaktask_task_start(OakTaskTask *t);
+int oaktask_task_start(OakTaskTask t);
 
-int oaktask_task_cancel(OakTaskTask *t);
+int oaktask_task_cancel(OakTaskTask t);
 
 /** @brief Wait for an asynchronously started task. */
-int oaktask_task_wait(OakTaskTask *t);
+int oaktask_task_wait(OakTaskTask t);
 
-int oaktask_task_is_finished(const OakTaskTask *t);
+int oaktask_task_is_finished(OakTaskTask t);
 
-int oaktask_task_succeeded(const OakTaskTask *t);
+int oaktask_task_succeeded(OakTaskTask t);
 
 /** @brief Two-stage string getters. */
-int oaktask_task_title(OakTaskTask *t, char *buf, int buf_size);
-int oaktask_task_error(OakTaskTask *t, char *buf, int buf_size);
+int oaktask_task_title(OakTaskTask t, char *buf, int buf_size);
+int oaktask_task_error(OakTaskTask t, char *buf, int buf_size);
 
 /**
  * @brief Subscribe to lifecycle events (returns a subscription id >= 0,
  *        or a negative error code). One-shot per event stream: the
  *        subscription is dropped after OAKTASK_EVENT_FINISHED.
  */
-int64_t oaktask_task_subscribe(OakTaskTask *t, oaktask_event_fn fn,
+int64_t oaktask_task_subscribe(OakTaskTask t, oaktask_event_fn fn,
 							   void *userdata);
 
 /** @brief Alive-count for leak assertions in tests. */

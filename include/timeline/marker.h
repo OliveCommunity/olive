@@ -31,31 +31,45 @@ extern "C" {
 #endif
 
 /**
- * @brief Borrowed handle to a timeline marker list
+ * @brief Borrowed by-value handle to a timeline marker list
  * (olive::TimelineMarkerList), owned by a viewer node.
  *
- * Obtained via oaktimeline_marker_list_of(); never freed by the caller.
+ * Obtained via oaktimeline_marker_list_of(). The handle boxes a
+ * reference into the owning node: addref/release manage the box only,
+ * never the list. Release the box with oaktimeline_marker_list_free()
+ * (or handle.release(handle.ctx)) when done.
  */
-typedef struct OakTimelineMarkerList OakTimelineMarkerList;
+typedef struct OakTimelineMarkerList {
+	void *ctx; /**< Opaque pointer to the borrowed object's box. */
+	void (*addref)(void *ctx); /**< Atomically increments the box count. */
+	void (*release)(void *ctx); /**< Decrements the count, frees the box. */
+	uint32_t abi_version; /**< OAKTIMELINE_ABI_VERSION. */
+} OakTimelineMarkerList;
 
 /**
- * @brief Borrowed marker list of a viewer node (sequence). NULL for an
- * empty handle or when the node is not a viewer.
+ * @brief Borrowed marker list of a viewer node (sequence). Empty handle
+ * (ctx == NULL) for an empty node handle or when the node is not a
+ * viewer.
  */
-OakTimelineMarkerList *oaktimeline_marker_list_of(OakNodeNode owner);
+OakTimelineMarkerList oaktimeline_marker_list_of(OakNodeNode owner);
+
+/**
+ * @brief Release a borrowed marker list box (never the list itself).
+ * NULL / empty-handle no-op; clears list->ctx after releasing.
+ */
+void oaktimeline_marker_list_free(OakTimelineMarkerList *list);
 
 /**
  * @brief Number of markers. Out-param convention; OAKTIMELINE_E_INVALID
- * for NULL arguments.
+ * for empty/NULL arguments.
  */
-int oaktimeline_marker_count(const OakTimelineMarkerList *list,
-							 int *out_count);
+int oaktimeline_marker_count(OakTimelineMarkerList list, int *out_count);
 
 /**
  * @brief Marker at index: time as num/den pairs, color and name
  * (two-stage string). OAKTIMELINE_E_NOT_FOUND when out of range.
  */
-int oaktimeline_marker_at(const OakTimelineMarkerList *list, int index,
+int oaktimeline_marker_at(OakTimelineMarkerList list, int index,
 						  int *in_num, int *in_den, int *out_num, int *out_den,
 						  int *color, char *name_buf, int buf_size);
 
@@ -63,25 +77,25 @@ int oaktimeline_marker_at(const OakTimelineMarkerList *list, int index,
  * @brief Create a command that adds a marker (olive::MarkerAddCommand).
  *
  * Owned command; free with oakundo_command_free(). Redo it directly or
- * push it on an undo stack. Returns NULL on failure.
+ * push it on an undo stack. Empty handle on failure.
  */
 OakUndoCommand oaktimeline_marker_add_command(
-	OakTimelineMarkerList *list, int in_num, int in_den, int out_num,
+	OakTimelineMarkerList list, int in_num, int in_den, int out_num,
 	int out_den, const char *name, int color);
 
 /**
  * @brief Create a command that removes the marker at `index`.
- * OAKTIMELINE_E_NOT_FOUND (as NULL result documented by error) is
- * reported by returning NULL.
+ * OAKTIMELINE_E_NOT_FOUND (as an empty result documented by error) is
+ * reported by returning an empty handle.
  */
 OakUndoCommand oaktimeline_marker_remove_at_command(
-	OakTimelineMarkerList *list, int index);
+	OakTimelineMarkerList list, int index);
 
 /**
  * @brief Create a command that sets a marker's time range.
  */
 OakUndoCommand oaktimeline_marker_set_time_command(
-	OakTimelineMarkerList *list, int index, int in_num, int in_den,
+	OakTimelineMarkerList list, int index, int in_num, int in_den,
 	int out_num, int out_den);
 
 /**
@@ -90,15 +104,15 @@ OakUndoCommand oaktimeline_marker_set_time_command(
  * when >= 0; both NULL-name and color < 0 is a no-op error).
  */
 OakUndoCommand oaktimeline_marker_set_props_command(
-	OakTimelineMarkerList *list, int index, int color, const char *name);
+	OakTimelineMarkerList list, int index, int color, const char *name);
 
 /**
  * @brief Load/save the list through oakcommon XML handles. The reader
  * must be positioned on the wrapping element (e.g. "markers").
  */
-int oaktimeline_marker_list_load(OakTimelineMarkerList *list,
+int oaktimeline_marker_list_load(OakTimelineMarkerList list,
 								 OakXmlReader reader);
-int oaktimeline_marker_list_save(const OakTimelineMarkerList *list,
+int oaktimeline_marker_list_save(OakTimelineMarkerList list,
 								 OakXmlWriter writer);
 
 #ifdef __cplusplus

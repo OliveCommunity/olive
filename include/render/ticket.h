@@ -38,19 +38,29 @@ extern "C" {
 #endif
 
 /**
- * @brief Opaque handle to a render ticket (olive::RenderTicketWatcher).
+ * @brief Reference-counted handle to a render ticket
+ *        (olive::RenderTicketWatcher).
  *
- * Created by oakrender_ticket_render_frame() /
- * oakrender_ticket_render_audio(); free with oakrender_ticket_free().
+ * By-value handle (shared_ptr semantics, see oakcommon's
+ * common/handle.h). Created by oakrender_ticket_render_frame() /
+ * oakrender_ticket_render_audio() with reference count 1; release with
+ * oakrender_ticket_free().
  */
-typedef struct OakRenderTicket OakRenderTicket;
+typedef struct OakRenderTicket {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKRENDER_ABI_VERSION. */
+} OakRenderTicket;
 
 /**
  * @brief Finished callback (async command return channel, 01 §4
  *        exception). Fires on the ticket's finishing thread, exactly
- *        once (cancelled tickets fire with a NULL result).
+ *        once (cancelled tickets fire with a NULL result). The ticket
+ *        handle is a borrowed copy of the submitter's handle; the
+ *        submitter keeps ownership and releases it.
  */
-typedef void (*oakrender_ticket_finished_fn)(OakRenderTicket *ticket,
+typedef void (*oakrender_ticket_finished_fn)(OakRenderTicket ticket,
 											 void *userdata);
 
 /** @brief Ticket types (RenderManager::TicketType). */
@@ -77,7 +87,7 @@ typedef struct oakrender_video_ticket_params {
 	int has_force_matrix;
 	int force_format; /**< PixelFormat as int, -1 = off. */
 	int force_channel_count; /**< 0 = off. */
-	OakColorProcessor *force_color_output; /**< May be NULL. */
+	OakColorProcessor force_color_output; /**< Borrowed; empty ctx = none. */
 	OakColorTransform force_color_transform; /**< By value; empty ctx = default. */
 	OakNodeFrameCache *cache; /**< Borrowed frame cache, may be NULL. */
 } oakrender_video_ticket_params;
@@ -85,11 +95,12 @@ typedef struct oakrender_video_ticket_params {
 /**
  * @brief Submit a video frame render ticket.
  *
- * @return Ticket handle (caller frees), or NULL on failure. The finished
- *         callback fires exactly once; NULL `cb` is allowed (poll with
+ * @return Ticket handle with reference count 1 (caller releases); ctx is
+ *         NULL on failure. The finished callback fires exactly once;
+ *         NULL `cb` is allowed (poll with
  *         oakrender_ticket_wait()/oakrender_ticket_is_finished()).
  */
-OakRenderTicket *oakrender_ticket_render_frame(
+OakRenderTicket oakrender_ticket_render_frame(
 	const oakrender_video_ticket_params *params,
 	oakrender_ticket_finished_fn cb, void *userdata);
 
@@ -99,48 +110,51 @@ OakRenderTicket *oakrender_ticket_render_frame(
  * @param output_node Connected sample output node.
  * @param params Audio params (borrowed oakcore handle).
  */
-OakRenderTicket *oakrender_ticket_render_audio(
+OakRenderTicket oakrender_ticket_render_audio(
 	OakNodeNode output_node, int64_t in_num, int64_t in_den,
 	int64_t out_num, int64_t out_den, const OakAudioParams *params,
 	int mode, oakrender_ticket_finished_fn cb, void *userdata);
 
-int oakrender_ticket_is_finished(OakRenderTicket *ticket);
+int oakrender_ticket_is_finished(OakRenderTicket ticket);
 
 /** @brief Block until the ticket finishes. */
-int oakrender_ticket_wait(OakRenderTicket *ticket);
+int oakrender_ticket_wait(OakRenderTicket ticket);
 
-int oakrender_ticket_cancel(OakRenderTicket *ticket);
+int oakrender_ticket_cancel(OakRenderTicket ticket);
 
 /** @brief OAKRENDER_TICKET_* or negative error. */
-int oakrender_ticket_get_type(OakRenderTicket *ticket);
+int oakrender_ticket_get_type(OakRenderTicket ticket);
 
 /** @brief Ticket timestamp (video tickets). */
-int oakrender_ticket_get_time(OakRenderTicket *ticket, int64_t *out_num,
+int oakrender_ticket_get_time(OakRenderTicket ticket, int64_t *out_num,
 							  int64_t *out_den);
 
 /** @brief Ticket time range (audio tickets). */
-int oakrender_ticket_get_range(OakRenderTicket *ticket, int64_t *in_num,
+int oakrender_ticket_get_range(OakRenderTicket ticket, int64_t *in_num,
 							   int64_t *in_den, int64_t *out_num,
 							   int64_t *out_den);
 
 /**
- * @brief The resulting frame (video tickets). *out receives a retained
+ * @brief The resulting frame (video tickets). *out receives an owned
  *        OakCodecFrame (release with oakrender_codec_frame_free()).
  *        OAKRENDER_E_STATE when unfinished, OAKRENDER_E_FAILED when the
  *        ticket has no frame result.
  */
-int oakrender_ticket_get_frame(OakRenderTicket *ticket,
-							   OakCodecFrame **out);
+int oakrender_ticket_get_frame(OakRenderTicket ticket, OakCodecFrame *out);
 
 /**
  * @brief The resulting samples (audio tickets). *out receives a copy
  *        (release with oakcore_samplebuffer_free()).
  */
-int oakrender_ticket_get_samples(OakRenderTicket *ticket,
+int oakrender_ticket_get_samples(OakRenderTicket ticket,
 								 OakSampleBuffer **out);
 
-/** @brief Free the ticket handle (safe on finished tickets; cancels and
- *        waits on running ones). No-op on NULL. */
+/**
+ * @brief Release one reference to a ticket (the final release is safe on
+ * finished tickets; cancels and waits on running ones). Convenience
+ * wrapper around ticket->release(ticket->ctx). NULL / empty-handle
+ * no-op; clears ticket->ctx after releasing.
+ */
 void oakrender_ticket_free(OakRenderTicket *ticket);
 
 /**

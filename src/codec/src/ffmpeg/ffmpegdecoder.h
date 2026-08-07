@@ -66,7 +66,7 @@ public:
 
 protected:
 	virtual bool open_internal() override;
-	virtual OakRenderTexture *
+	virtual OakRenderTexture
 	retrieve_video_internal(const RetrieveVideoParams &p) override;
 	virtual FramePtr
 	retrieve_video_frame_internal(const RetrieveVideoParams &p) override;
@@ -104,7 +104,7 @@ private:
 
 	AVFramePtr pre_process_frame(AVFramePtr f, const RetrieveVideoParams &p);
 
-	OakRenderTexture *process_frame_into_texture(AVFramePtr f,
+	OakRenderTexture process_frame_into_texture(AVFramePtr f,
 											 const RetrieveVideoParams &p,
 											 const AVFramePtr original);
 

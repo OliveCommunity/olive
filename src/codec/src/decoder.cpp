@@ -55,14 +55,13 @@ bool cancel_atom_is_cancelled(const OakCancelAtom *cancelled)
 const Rational Decoder::k_any_timecode = RATIONAL_MIN;
 
 Decoder::Decoder()
-	: cached_texture_(nullptr)
 {
 	update_last_accessed();
 }
 
 Decoder::~Decoder()
 {
-	oakrender_display_texture_free(cached_texture_);
+	oakrender_display_texture_free(&cached_texture_);
 }
 
 void Decoder::increment_access_time(int64_t t)
@@ -115,7 +114,7 @@ bool Decoder::open(const CodecStream &stream)
 	}
 }
 
-OakRenderTexture *Decoder::retrieve_video(const RetrieveVideoParams &p)
+OakRenderTexture Decoder::retrieve_video(const RetrieveVideoParams &p)
 {
 	std::lock_guard<std::mutex> locker(mutex_);
 
@@ -123,28 +122,29 @@ OakRenderTexture *Decoder::retrieve_video(const RetrieveVideoParams &p)
 
 	if (!stream_.is_valid()) {
 		fprintf(stderr, "Can't retrieve video on a closed decoder\n");
-		return nullptr;
+		return OakRenderTexture{};
 	}
 
 	if (!supports_video()) {
 		fprintf(stderr, "Decoder doesn't support video\n");
-		return nullptr;
+		return OakRenderTexture{};
 	}
 
 	if (cancel_atom_is_cancelled(p.cancelled)) {
-		return nullptr;
+		return OakRenderTexture{};
 	}
 
-	if (cached_texture_ && cached_time_ == p.time &&
+	if (cached_texture_.ctx && cached_time_ == p.time &&
 		cached_divider_ == p.divider) {
 		// Hand the caller its own reference; the cache keeps its own
 		return oakrender_display_texture_retain(cached_texture_);
 	}
 
-	OakRenderTexture *texture = retrieve_video_internal(p);
-	oakrender_display_texture_free(cached_texture_);
-	cached_texture_ = texture ? oakrender_display_texture_retain(texture) :
-								nullptr;
+	OakRenderTexture texture = retrieve_video_internal(p);
+	oakrender_display_texture_free(&cached_texture_);
+	cached_texture_ = texture.ctx ?
+						  oakrender_display_texture_retain(texture) :
+						  OakRenderTexture{};
 	cached_time_ = p.time;
 	cached_divider_ = p.divider;
 
@@ -227,8 +227,7 @@ void Decoder::close()
 
 	update_last_accessed();
 
-	oakrender_display_texture_free(cached_texture_);
-	cached_texture_ = nullptr;
+	oakrender_display_texture_free(&cached_texture_);
 
 	if (stream_.is_valid()) {
 		close_internal();
@@ -363,10 +362,10 @@ int64_t Decoder::get_image_sequence_index(const std::string &filename)
 	return strtoll(number_only.c_str(), nullptr, 10);
 }
 
-OakRenderTexture *Decoder::retrieve_video_internal(const RetrieveVideoParams &p)
+OakRenderTexture Decoder::retrieve_video_internal(const RetrieveVideoParams &p)
 {
 	(void) p;
-	return nullptr;
+	return OakRenderTexture{};
 }
 
 FramePtr Decoder::retrieve_video_frame_internal(const RetrieveVideoParams &p)

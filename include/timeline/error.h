@@ -29,6 +29,8 @@
  * failure. String getters return the required buffer size in bytes
  * (including the terminating NUL) as a non-negative value instead.
  */
+#define OAKTIMELINE_ABI_VERSION 1
+
 #define OAKTIMELINE_OK 0 /**< Success. */
 #define OAKTIMELINE_E_INVALID (-1) /**< NULL handle or invalid argument. */
 #define OAKTIMELINE_E_STATE (-2) /**< Call not valid in the current state. */

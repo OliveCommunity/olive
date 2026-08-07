@@ -71,24 +71,19 @@ oakrender_video_params cpp_to_pod(const olive::VideoParams &vp)
 	return p;
 }
 
-OakRenderTexture *tex(OakRenderTexture *h)
+olive::Renderer *ren(OakRenderRenderer h)
 {
-	return h;
+	return oakrender_c_api::to_native<olive::Renderer>(h);
 }
 
-OakCodecFrame *frm(OakCodecFrame *h)
+void renderer_delete(void *object)
 {
-	return h;
-}
-
-olive::Renderer *ren(OakRenderRenderer *h)
-{
-	return reinterpret_cast<olive::Renderer *>(h);
-}
-
-const olive::Renderer *ren(const OakRenderRenderer *h)
-{
-	return reinterpret_cast<const olive::Renderer *>(h);
+	auto *r = static_cast<olive::Renderer *>(object);
+	try {
+		r->destroy();
+		delete r;
+	} catch (...) {
+	}
 }
 
 olive::Matrix4x4 mat_from_float(const float *f)
@@ -134,34 +129,36 @@ std::string g_requested_backend = "opengl";
 
 /* ---- Renderer lifecycle -------------------------------------------------- */
 
-OakRenderRenderer *oakrender_display_renderer_create_dynamic(
+OakRenderRenderer oakrender_display_renderer_create_dynamic(
 	const char *backend_id)
 {
 	if (!backend_id || !*backend_id) {
-		return nullptr;
+		return OakRenderRenderer{};
 	}
 	try {
 		auto *r = new olive::DynamicRenderer(backend_id);
 		if (!r->load()) {
 			delete r;
-			return nullptr;
+			return OakRenderRenderer{};
 		}
-		return reinterpret_cast<OakRenderRenderer *>(r);
+		return oakrender_c_api::make_handle<OakRenderRenderer>(
+			r, true, &renderer_delete);
 	} catch (...) {
-		return nullptr;
+		return OakRenderRenderer{};
 	}
 }
 
-OakRenderRenderer *oakrender_display_renderer_create_opengl(void)
+OakRenderRenderer oakrender_display_renderer_create_opengl(void)
 {
 	try {
-		return reinterpret_cast<OakRenderRenderer *>(new olive::OpenGLRenderer());
+		return oakrender_c_api::make_handle<OakRenderRenderer>(
+			new olive::OpenGLRenderer(), true, &renderer_delete);
 	} catch (...) {
-		return nullptr;
+		return OakRenderRenderer{};
 	}
 }
 
-int oakrender_display_renderer_init(OakRenderRenderer *renderer,
+int oakrender_display_renderer_init(OakRenderRenderer renderer,
 									void *gl_context)
 {
 	olive::Renderer *r = ren(renderer);
@@ -189,220 +186,221 @@ int oakrender_display_renderer_init(OakRenderRenderer *renderer,
 
 void oakrender_display_renderer_destroy(OakRenderRenderer *renderer)
 {
-	olive::Renderer *r = ren(renderer);
-	if (!r) {
-		return;
-	}
-	try {
-		r->destroy();
-		delete r;
-	} catch (...) {
-	}
+	oakrender_c_api::free_handle(renderer);
 }
 
 /* ---- Renderer queries ---------------------------------------------------- */
 
-int oakrender_display_renderer_is_open_gl(const OakRenderRenderer *renderer)
+int oakrender_display_renderer_is_open_gl(OakRenderRenderer renderer)
 {
-	return renderer && ren(renderer)->is_open_gl() ? 1 : 0;
+	olive::Renderer *r = ren(renderer);
+	return r && r->is_open_gl() ? 1 : 0;
 }
 
-int oakrender_display_renderer_is_vulkan(const OakRenderRenderer *renderer)
+int oakrender_display_renderer_is_vulkan(OakRenderRenderer renderer)
 {
-	return renderer && ren(renderer)->is_vulkan() ? 1 : 0;
+	olive::Renderer *r = ren(renderer);
+	return r && r->is_vulkan() ? 1 : 0;
 }
 
 /* ---- Texture handle ------------------------------------------------------ */
 
-OakRenderTexture *oakrender_display_texture_create(
-	OakRenderRenderer *renderer, const oakrender_video_params *params,
+OakRenderTexture oakrender_display_texture_create(
+	OakRenderRenderer renderer, const oakrender_video_params *params,
 	const void *pixels, int linesize)
 {
 	olive::Renderer *r = ren(renderer);
 	if (!r || !params) {
-		return nullptr;
+		return OakRenderTexture{};
 	}
 	try {
 		olive::TexturePtr t = r->create_texture(pod_to_cpp(*params), pixels,
 												linesize);
 		if (!t) {
-			return nullptr;
+			return OakRenderTexture{};
 		}
-		auto *block = new OakRenderTexture;
-		block->ptr = std::move(t);
-		oakrender_c_api::alive_inc();
-		return block;
+		auto *impl = new OakRenderTextureImpl;
+		impl->ptr = std::move(t);
+		return oakrender_c_api::make_handle<OakRenderTexture>(
+			impl, true, &oakrender_c_api::delete_as<OakRenderTextureImpl>);
 	} catch (...) {
-		return nullptr;
+		return OakRenderTexture{};
 	}
 }
 
-OakRenderTexture *oakrender_display_texture_retain(OakRenderTexture *texture)
+OakRenderTexture oakrender_display_texture_retain(OakRenderTexture texture)
 {
-	if (!texture) {
-		return nullptr;
+	if (texture.ctx) {
+		texture.addref(texture.ctx);
 	}
-	tex(texture)->refcount.fetch_add(1, std::memory_order_relaxed);
 	return texture;
 }
 
 void oakrender_display_texture_free(OakRenderTexture *texture)
 {
-	if (!texture) {
-		return;
-	}
-	if (tex(texture)->refcount.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-		delete tex(texture);
-		oakrender_c_api::alive_dec();
-	}
+	oakrender_c_api::free_handle(texture);
 }
 
-int oakrender_display_texture_upload(OakRenderTexture *texture,
+int oakrender_display_texture_upload(OakRenderTexture texture,
 									 const void *pixels, int linesize)
 {
-	if (!texture || !pixels || !tex(texture)->ptr) {
+	OakRenderTextureImpl *t =
+		oakrender_c_api::to_native<OakRenderTextureImpl>(texture);
+	if (!t || !pixels || !t->ptr) {
 		return OAKRENDER_E_INVALID;
 	}
 	try {
-		tex(texture)->ptr->upload(const_cast<void *>(pixels), linesize);
+		t->ptr->upload(const_cast<void *>(pixels), linesize);
 		return OAKRENDER_OK;
 	} catch (...) {
 		return OAKRENDER_E_FAILED;
 	}
 }
 
-int oakrender_display_texture_download(OakRenderTexture *texture, void *pixels,
+int oakrender_display_texture_download(OakRenderTexture texture, void *pixels,
 									   int linesize)
 {
-	if (!texture || !pixels || !tex(texture)->ptr) {
+	OakRenderTextureImpl *t =
+		oakrender_c_api::to_native<OakRenderTextureImpl>(texture);
+	if (!t || !pixels || !t->ptr) {
 		return OAKRENDER_E_INVALID;
 	}
 	try {
-		tex(texture)->ptr->download(pixels, linesize);
+		t->ptr->download(pixels, linesize);
 		return OAKRENDER_OK;
 	} catch (...) {
 		return OAKRENDER_E_FAILED;
 	}
 }
 
-int oakrender_display_texture_get_params(const OakRenderTexture *texture,
+int oakrender_display_texture_get_params(OakRenderTexture texture,
 										 oakrender_video_params *out)
 {
-	if (!texture || !out || !tex(const_cast<OakRenderTexture *>(texture))->ptr) {
+	OakRenderTextureImpl *t =
+		oakrender_c_api::to_native<OakRenderTextureImpl>(texture);
+	if (!t || !out || !t->ptr) {
 		return OAKRENDER_E_INVALID;
 	}
-	*out = cpp_to_pod(tex(const_cast<OakRenderTexture *>(texture))->ptr->params());
+	*out = cpp_to_pod(t->ptr->params());
 	return OAKRENDER_OK;
 }
 
-int oakrender_display_texture_id(const OakRenderTexture *texture)
+int oakrender_display_texture_id(OakRenderTexture texture)
 {
-	if (!texture || !tex(const_cast<OakRenderTexture *>(texture))->ptr) {
+	OakRenderTextureImpl *t =
+		oakrender_c_api::to_native<OakRenderTextureImpl>(texture);
+	if (!t || !t->ptr) {
 		return 0;
 	}
-	return tex(const_cast<OakRenderTexture *>(texture))->ptr->id().to_int();
+	return t->ptr->id().to_int();
 }
 
 /* ---- Frame handle -------------------------------------------------------- */
 
-OakCodecFrame *oakrender_codec_frame_create(void)
+OakCodecFrame oakrender_codec_frame_create(void)
 {
 	try {
-		auto *block = new OakCodecFrame;
-		block->ptr = olive::Frame::create();
-		oakrender_c_api::alive_inc();
-		return block;
+		auto *impl = new OakCodecFrameImpl;
+		impl->ptr = olive::Frame::create();
+		return oakrender_c_api::make_handle<OakCodecFrame>(
+			impl, true, &oakrender_c_api::delete_as<OakCodecFrameImpl>);
 	} catch (...) {
-		return nullptr;
+		return OakCodecFrame{};
 	}
 }
 
-OakCodecFrame *oakrender_codec_frame_retain(OakCodecFrame *frame)
+OakCodecFrame oakrender_codec_frame_retain(OakCodecFrame frame)
 {
-	if (!frame) {
-		return nullptr;
+	if (frame.ctx) {
+		frame.addref(frame.ctx);
 	}
-	frm(frame)->refcount.fetch_add(1, std::memory_order_relaxed);
 	return frame;
 }
 
 void oakrender_codec_frame_free(OakCodecFrame *frame)
 {
-	if (!frame) {
-		return;
-	}
-	if (frm(frame)->refcount.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-		delete frm(frame);
-		oakrender_c_api::alive_dec();
-	}
+	oakrender_c_api::free_handle(frame);
 }
 
 int oakrender_codec_frame_set_video_params(
-	OakCodecFrame *frame, const oakrender_video_params *params)
+	OakCodecFrame frame, const oakrender_video_params *params)
 {
-	if (!frame || !params || !frm(frame)->ptr) {
+	OakCodecFrameImpl *f =
+		oakrender_c_api::to_native<OakCodecFrameImpl>(frame);
+	if (!f || !params || !f->ptr) {
 		return OAKRENDER_E_INVALID;
 	}
-	frm(frame)->ptr->set_video_params(pod_to_cpp(*params));
+	f->ptr->set_video_params(pod_to_cpp(*params));
 	return OAKRENDER_OK;
 }
 
-int oakrender_codec_frame_get_params(const OakCodecFrame *frame,
+int oakrender_codec_frame_get_params(OakCodecFrame frame,
 									 oakrender_video_params *out)
 {
-	if (!frame || !out || !frm(const_cast<OakCodecFrame *>(frame))->ptr) {
+	OakCodecFrameImpl *f =
+		oakrender_c_api::to_native<OakCodecFrameImpl>(frame);
+	if (!f || !out || !f->ptr) {
 		return OAKRENDER_E_INVALID;
 	}
-	*out = cpp_to_pod(
-		frm(const_cast<OakCodecFrame *>(frame))->ptr->video_params());
+	*out = cpp_to_pod(f->ptr->video_params());
 	return OAKRENDER_OK;
 }
 
-int oakrender_codec_frame_allocate(OakCodecFrame *frame)
+int oakrender_codec_frame_allocate(OakCodecFrame frame)
 {
-	if (!frame || !frm(frame)->ptr) {
+	OakCodecFrameImpl *f =
+		oakrender_c_api::to_native<OakCodecFrameImpl>(frame);
+	if (!f || !f->ptr) {
 		return OAKRENDER_E_INVALID;
 	}
-	return frm(frame)->ptr->allocate() ? OAKRENDER_OK : OAKRENDER_E_FAILED;
+	return f->ptr->allocate() ? OAKRENDER_OK : OAKRENDER_E_FAILED;
 }
 
-void *oakrender_codec_frame_data(OakCodecFrame *frame)
+void *oakrender_codec_frame_data(OakCodecFrame frame)
 {
-	if (!frame || !frm(frame)->ptr) {
+	OakCodecFrameImpl *f =
+		oakrender_c_api::to_native<OakCodecFrameImpl>(frame);
+	if (!f || !f->ptr) {
 		return nullptr;
 	}
-	return frm(frame)->ptr->data();
+	return f->ptr->data();
 }
 
-const void *oakrender_codec_frame_const_data(const OakCodecFrame *frame)
+const void *oakrender_codec_frame_const_data(OakCodecFrame frame)
 {
-	if (!frame || !frm(const_cast<OakCodecFrame *>(frame))->ptr) {
+	OakCodecFrameImpl *f =
+		oakrender_c_api::to_native<OakCodecFrameImpl>(frame);
+	if (!f || !f->ptr) {
 		return nullptr;
 	}
-	return frm(const_cast<OakCodecFrame *>(frame))->ptr->const_data();
+	return f->ptr->const_data();
 }
 
-int oakrender_codec_frame_linesize_bytes(const OakCodecFrame *frame)
+int oakrender_codec_frame_linesize_bytes(OakCodecFrame frame)
 {
-	if (!frame || !frm(const_cast<OakCodecFrame *>(frame))->ptr) {
+	OakCodecFrameImpl *f =
+		oakrender_c_api::to_native<OakCodecFrameImpl>(frame);
+	if (!f || !f->ptr) {
 		return 0;
 	}
-	return frm(const_cast<OakCodecFrame *>(frame))->ptr->linesize_bytes();
+	return f->ptr->linesize_bytes();
 }
 
-int oakrender_codec_frame_is_allocated(const OakCodecFrame *frame)
+int oakrender_codec_frame_is_allocated(OakCodecFrame frame)
 {
-	if (!frame || !frm(const_cast<OakCodecFrame *>(frame))->ptr) {
+	OakCodecFrameImpl *f =
+		oakrender_c_api::to_native<OakCodecFrameImpl>(frame);
+	if (!f || !f->ptr) {
 		return 0;
 	}
-	return frm(const_cast<OakCodecFrame *>(frame))->ptr->is_allocated() ? 1 : 0;
+	return f->ptr->is_allocated() ? 1 : 0;
 }
 
 /* ---- Color-managed blit -------------------------------------------------- */
 
 int oakrender_display_renderer_blit_color_managed(
-	OakRenderRenderer *renderer, const oakrender_color_transform_job *job,
-	OakRenderTexture *dst_texture, const oakrender_video_params *params)
+	OakRenderRenderer renderer, const oakrender_color_transform_job *job,
+	OakRenderTexture dst_texture, const oakrender_video_params *params)
 {
 	olive::Renderer *r = ren(renderer);
 	if (!r || !job) {
@@ -412,11 +410,15 @@ int oakrender_display_renderer_blit_color_managed(
 		olive::ColorTransformJob ctj;
 		if (job->processor) {
 			ctj.set_color_processor(
-				static_cast<const OakColorProcessor *>(job->processor)->ptr);
+				static_cast<OakColorProcessorImpl *>(
+					oakrender_c_api::box_object(job->processor))
+					->ptr);
 		}
 		if (job->input_texture) {
 			ctj.set_input_texture(
-				static_cast<OakRenderTexture *>(job->input_texture)->ptr);
+				static_cast<OakRenderTextureImpl *>(
+					oakrender_c_api::box_object(job->input_texture))
+					->ptr);
 		}
 		ctj.set_input_alpha_association(
 			static_cast<olive::AlphaAssociated>(job->input_alpha_association));
@@ -425,7 +427,9 @@ int oakrender_display_renderer_blit_color_managed(
 		ctj.set_transform_matrix(mat_from_float(job->matrix));
 		ctj.set_crop_matrix(mat_from_float(job->crop_matrix));
 
-		olive::Texture *dst = dst_texture ? tex(dst_texture)->ptr.get() : nullptr;
+		OakRenderTextureImpl *dst_impl =
+			oakrender_c_api::to_native<OakRenderTextureImpl>(dst_texture);
+		olive::Texture *dst = dst_impl ? dst_impl->ptr.get() : nullptr;
 		if (params) {
 			r->blit_color_managed(ctj, dst, pod_to_cpp(*params));
 		} else if (dst) {
@@ -442,7 +446,7 @@ int oakrender_display_renderer_blit_color_managed(
 /* ---- Cross-backend texture download -------------------------------------- */
 
 int oakrender_display_renderer_download_from_texture(
-	OakRenderRenderer *renderer, int texture_id,
+	OakRenderRenderer renderer, int texture_id,
 	const oakrender_video_params *params, void *dst_pixels, int linesize)
 {
 	olive::Renderer *r = ren(renderer);

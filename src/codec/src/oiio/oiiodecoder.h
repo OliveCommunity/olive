@@ -52,7 +52,7 @@ public:
 
 protected:
 	virtual bool open_internal() override;
-	virtual OakRenderTexture *
+	virtual OakRenderTexture
 	retrieve_video_internal(const RetrieveVideoParams &p) override;
 	virtual FramePtr
 	retrieve_video_frame_internal(const RetrieveVideoParams &p) override;

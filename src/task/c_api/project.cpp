@@ -36,37 +36,39 @@ using namespace oaktask_capi;
 namespace
 {
 
-olive::ProjectImportTask *import_impl(OakTaskTask *t)
+olive::ProjectImportTask *import_impl(OakTaskTask t)
 {
-	if (!t) {
+	TaskHandle *h = impl(t);
+	if (!h) {
 		return nullptr;
 	}
-	return dynamic_cast<olive::ProjectImportTask *>(impl(t)->task);
+	return dynamic_cast<olive::ProjectImportTask *>(h->task);
 }
 
-olive::ProjectLoadBaseTask *load_impl(OakTaskTask *t)
+olive::ProjectLoadBaseTask *load_impl(OakTaskTask t)
 {
-	if (!t) {
+	TaskHandle *h = impl(t);
+	if (!h) {
 		return nullptr;
 	}
-	return dynamic_cast<olive::ProjectLoadBaseTask *>(impl(t)->task);
+	return dynamic_cast<olive::ProjectLoadBaseTask *>(h->task);
 }
 
 } // namespace
 
-OakTaskTask *oaktask_create_project_load(const char *filename)
+OakTaskTask oaktask_create_project_load(const char *filename)
 {
 	if (!filename) {
-		return NULL;
+		return OakTaskTask{};
 	}
 	try {
 		return wrap(new olive::ProjectLoadTask(filename));
 	} catch (...) {
-		return NULL;
+		return OakTaskTask{};
 	}
 }
 
-OakNodeProject oaktask_load_take_project(OakTaskTask *t)
+OakNodeProject oaktask_load_take_project(OakTaskTask t)
 {
 	olive::ProjectLoadBaseTask *task = load_impl(t);
 	if (!task) {
@@ -75,12 +77,12 @@ OakNodeProject oaktask_load_take_project(OakTaskTask *t)
 	return task->take_project();
 }
 
-OakTaskTask *oaktask_create_project_save(OakNodeProject project,
-										 const char *filename_or_NULL,
-										 int use_compression)
+OakTaskTask oaktask_create_project_save(OakNodeProject project,
+										const char *filename_or_NULL,
+										int use_compression)
 {
 	if (!project.ctx) {
-		return NULL;
+		return OakTaskTask{};
 	}
 	try {
 		auto *task = new olive::ProjectSaveTask(project,
@@ -90,36 +92,36 @@ OakTaskTask *oaktask_create_project_save(OakNodeProject project,
 		}
 		return wrap(task);
 	} catch (...) {
-		return NULL;
+		return OakTaskTask{};
 	}
 }
 
-OakTaskTask *oaktask_create_project_import(OakNodeFolder folder,
-										   OakNodeProject project,
-										   const char *const *urls,
-										   int url_count)
+OakTaskTask oaktask_create_project_import(OakNodeFolder folder,
+										  OakNodeProject project,
+										  const char *const *urls,
+										  int url_count)
 {
 	if (!folder.ctx || !project.ctx || (!urls && url_count > 0) ||
 		url_count < 0) {
-		return NULL;
+		return OakTaskTask{};
 	}
 	try {
 		std::vector<std::string> filenames;
 		filenames.reserve(size_t(url_count));
 		for (int i = 0; i < url_count; i++) {
 			if (!urls[i]) {
-				return NULL;
+				return OakTaskTask{};
 			}
 			filenames.emplace_back(urls[i]);
 		}
 		return wrap(
 			new olive::ProjectImportTask(folder, project, filenames));
 	} catch (...) {
-		return NULL;
+		return OakTaskTask{};
 	}
 }
 
-OakUndoCommand oaktask_import_take_command(OakTaskTask *t)
+OakUndoCommand oaktask_import_take_command(OakTaskTask t)
 {
 	olive::ProjectImportTask *task = import_impl(t);
 	if (!task) {
@@ -128,7 +130,7 @@ OakUndoCommand oaktask_import_take_command(OakTaskTask *t)
 	return task->take_command();
 }
 
-int oaktask_import_footage_count(OakTaskTask *t)
+int oaktask_import_footage_count(OakTaskTask t)
 {
 	olive::ProjectImportTask *task = import_impl(t);
 	if (!task) {
@@ -137,7 +139,7 @@ int oaktask_import_footage_count(OakTaskTask *t)
 	return int(task->get_imported_footage().size());
 }
 
-OakNodeFootage oaktask_import_footage_at(OakTaskTask *t, int index)
+OakNodeFootage oaktask_import_footage_at(OakTaskTask t, int index)
 {
 	olive::ProjectImportTask *task = import_impl(t);
 	if (!task || index < 0 ||
@@ -151,7 +153,7 @@ OakNodeFootage oaktask_import_footage_at(OakTaskTask *t, int index)
 	return footage;
 }
 
-int oaktask_import_invalid_count(OakTaskTask *t)
+int oaktask_import_invalid_count(OakTaskTask t)
 {
 	olive::ProjectImportTask *task = import_impl(t);
 	if (!task) {
@@ -160,8 +162,8 @@ int oaktask_import_invalid_count(OakTaskTask *t)
 	return int(task->get_invalid_files().size());
 }
 
-int oaktask_import_invalid_at(OakTaskTask *t, int index, char *buf,
-							  int buf_size)
+int oaktask_import_invalid_at(OakTaskTask t, int index, char *buf,
+							 int buf_size)
 {
 	olive::ProjectImportTask *task = import_impl(t);
 	if (!task) {
@@ -188,46 +190,46 @@ void oaktask_import_set_image_sequence_confirm_cb(
 		});
 }
 
-OakTaskTask *oaktask_create_precache(OakNodeFootage footage, int index,
-									 OakNodeSequence sequence)
+OakTaskTask oaktask_create_precache(OakNodeFootage footage, int index,
+									OakNodeSequence sequence)
 {
 	if (!footage.ctx || !sequence.ctx) {
-		return NULL;
+		return OakTaskTask{};
 	}
 	try {
 		return wrap(new olive::PreCacheTask(footage, index, sequence));
 	} catch (...) {
-		return NULL;
+		return OakTaskTask{};
 	}
 }
 
-OakTaskTask *oaktask_create_export(OakNodeNode viewer,
-								   OakNodeColorManager color_manager,
-								   const oakcodec_encoding_params *params)
+OakTaskTask oaktask_create_export(OakNodeNode viewer,
+								  OakNodeColorManager color_manager,
+								  const oakcodec_encoding_params *params)
 {
 	if (!viewer.ctx || !params) {
-		return NULL;
+		return OakTaskTask{};
 	}
 	try {
 		return wrap(new olive::ExportTask(viewer, color_manager, *params));
 	} catch (...) {
-		return NULL;
+		return OakTaskTask{};
 	}
 }
 
-OakTaskTask *oaktask_create_project_load_otio(const char *filename)
+OakTaskTask oaktask_create_project_load_otio(const char *filename)
 {
 	if (!filename) {
-		return NULL;
+		return OakTaskTask{};
 	}
 	try {
 		return wrap(new olive::LoadOTIOTask(filename));
 	} catch (...) {
-		return NULL;
+		return OakTaskTask{};
 	}
 }
 
-OakNodeProject oaktask_load_otio_take_project(OakTaskTask *t)
+OakNodeProject oaktask_load_otio_take_project(OakTaskTask t)
 {
 	olive::ProjectLoadBaseTask *task = load_impl(t);
 	if (!task) {
@@ -236,16 +238,16 @@ OakNodeProject oaktask_load_otio_take_project(OakTaskTask *t)
 	return task->take_project();
 }
 
-OakTaskTask *oaktask_create_project_save_otio(OakNodeProject project,
-											  const char *filename)
+OakTaskTask oaktask_create_project_save_otio(OakNodeProject project,
+											 const char *filename)
 {
 	if (!project.ctx || !filename) {
-		return NULL;
+		return OakTaskTask{};
 	}
 	try {
 		return wrap(new olive::SaveOTIOTask(project, filename));
 	} catch (...) {
-		return NULL;
+		return OakTaskTask{};
 	}
 }
 

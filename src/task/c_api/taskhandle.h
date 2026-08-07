@@ -29,8 +29,14 @@
 #include "../src/task.h"
 
 /**
- * @brief Internal handle layout shared by oaktask's c_api translation
- *        units
+ * @brief Internal control block behind OakTaskTask, shared by oaktask's
+ *        c_api translation units.
+ *
+ * `owns_task` is the owns role: true for factory-created tasks (the last
+ * release deletes the task) and false once the task runs on the manager
+ * (oaktask_task_start() flips it; the manager deletes the task) or for
+ * borrowed wrappers (oaktask_manager_at()): releasing those only
+ * destroys the box.
  */
 namespace oaktask_capi
 {
@@ -41,6 +47,7 @@ struct TaskHandle {
 	bool running_on_manager;
 	std::atomic<bool> finished;
 	std::atomic<bool> succeeded;
+	std::atomic<uint32_t> refs;
 };
 
 inline std::atomic<int> &alive()
@@ -49,26 +56,56 @@ inline std::atomic<int> &alive()
 	return g_alive;
 }
 
-inline TaskHandle *impl(OakTaskTask *t)
+inline void task_addref(void *ctx)
 {
-	return reinterpret_cast<TaskHandle *>(t);
+	if (ctx) {
+		static_cast<TaskHandle *>(ctx)->refs.fetch_add(1);
+	}
 }
 
-inline const TaskHandle *impl(const OakTaskTask *t)
+inline void task_release(void *ctx)
 {
-	return reinterpret_cast<const TaskHandle *>(t);
+	if (!ctx) {
+		return;
+	}
+	TaskHandle *h = static_cast<TaskHandle *>(ctx);
+	if (h->refs.fetch_sub(1) == 1) {
+		if (h->owns_task) {
+			delete h->task;
+		}
+		delete h;
+		alive()--;
+	}
 }
 
-inline OakTaskTask *wrap(olive::Task *task)
+inline TaskHandle *impl(OakTaskTask t)
+{
+	if (!t.ctx) {
+		return nullptr;
+	}
+	return static_cast<TaskHandle *>(t.ctx);
+}
+
+inline OakTaskTask make_task_handle(TaskHandle *h)
+{
+	OakTaskTask handle = {};
+	handle.ctx = h;
+	handle.addref = task_addref;
+	handle.release = task_release;
+	handle.abi_version = OAKTASK_ABI_VERSION;
+	return handle;
+}
+
+inline OakTaskTask wrap(olive::Task *task)
 {
 	if (!task) {
-		return NULL;
+		return OakTaskTask{};
 	}
 	TaskHandle *h = new (std::nothrow) TaskHandle{ task, true, false,
-												   false, false };
+												   false, false, 1 };
 	if (!h) {
 		delete task;
-		return NULL;
+		return OakTaskTask{};
 	}
 	alive()++;
 
@@ -82,26 +119,26 @@ inline OakTaskTask *wrap(olive::Task *task)
 			}
 		});
 
-	return reinterpret_cast<OakTaskTask *>(h);
+	return make_task_handle(h);
 }
 
 /**
- * @brief Wrap a manager-owned (borrowed) task. Freeing the handle does
+ * @brief Wrap a manager-owned (borrowed) task. Releasing the handle does
  *        NOT delete the task.
  */
-inline OakTaskTask *wrap_borrowed(olive::Task *task)
+inline OakTaskTask wrap_borrowed(olive::Task *task)
 {
 	if (!task) {
-		return NULL;
+		return OakTaskTask{};
 	}
 	TaskHandle *h = new (std::nothrow) TaskHandle{ task, false, true,
 												   task->get_start_time() != 0,
-												   false };
+												   false, 1 };
 	if (!h) {
-		return NULL;
+		return OakTaskTask{};
 	}
 	alive()++;
-	return reinterpret_cast<OakTaskTask *>(h);
+	return make_task_handle(h);
 }
 
 inline int copy_string(const std::string &value, char *buf, int buf_size)

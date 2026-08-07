@@ -29,6 +29,8 @@
  * failure. String getters return the required buffer size in bytes
  * (including the terminating NUL) as a non-negative value instead.
  */
+#define OAKTASK_ABI_VERSION 1
+
 #define OAKTASK_OK 0 /**< Success. */
 #define OAKTASK_E_INVALID (-1) /**< NULL handle or invalid argument. */
 #define OAKTASK_E_STATE (-2) /**< Call not valid in the current state. */

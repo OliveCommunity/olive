@@ -274,7 +274,7 @@ bool FFmpegDecoder::open_internal()
 	return false;
 }
 
-OakRenderTexture *
+OakRenderTexture
 FFmpegDecoder::process_frame_into_texture(AVFramePtr f,
 										  const RetrieveVideoParams &p,
 										  const AVFramePtr original)
@@ -312,27 +312,27 @@ FFmpegDecoder::process_frame_into_texture(AVFramePtr f,
 	fill_render_params(vp, &rvp);
 	oakcommon_videoparams_free(&vp);
 
-	OakRenderTexture *tex =
+	OakRenderTexture tex =
 		oakrender_display_texture_create(p.renderer, &rvp, nullptr, 0);
-	if (!tex) {
-		return nullptr;
+	if (!tex.ctx) {
+		return OakRenderTexture{};
 	}
 
 	if (oakrender_display_texture_upload(tex, f->data(0), f->linesize(0)) !=
 		0) {
-		oakrender_display_texture_free(tex);
-		return nullptr;
+		oakrender_display_texture_free(&tex);
+		return OakRenderTexture{};
 	}
 
 	return tex;
 }
 
-OakRenderTexture *
+OakRenderTexture
 FFmpegDecoder::retrieve_video_internal(const RetrieveVideoParams &p)
 {
 	if (AVFramePtr f = retrieve_frame(p.time, p.cancelled)) {
 		if (cancel_atom_is_cancelled(p.cancelled)) {
-			return nullptr;
+			return OakRenderTexture{};
 		}
 
 		AVFramePtr original = f;
@@ -350,20 +350,20 @@ FFmpegDecoder::retrieve_video_internal(const RetrieveVideoParams &p)
 		f = std::move(ptr);
 		if (!f) {
 			fprintf(stderr, "PreProcessFrame failed\n");
-			return nullptr;
+			return OakRenderTexture{};
 		}
 
 		// Finally, upload to a texture
-		OakRenderTexture *texture = process_frame_into_texture(f, p, original);
+		OakRenderTexture texture = process_frame_into_texture(f, p, original);
 
-		if (!texture) {
+		if (!texture.ctx) {
 			fprintf(stderr, "ProcessFrameIntoTexture returned null\n");
 		}
 
 		return texture;
 	}
 
-	return nullptr;
+	return OakRenderTexture{};
 }
 
 FramePtr FFmpegDecoder::retrieve_video_frame_internal(const RetrieveVideoParams &p)
