@@ -171,7 +171,6 @@ private:
 	bool marker_editing_enabled_;
 
 	QVector<int64_t> marker_list_subs_;
-	bool marker_connects_done_ = false;
 
 	EngineEventBridge *bridge_ = nullptr;
 

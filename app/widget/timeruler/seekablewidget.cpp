@@ -74,6 +74,25 @@ SeekableWidget::SeekableWidget(QWidget *parent)
 	selection_manager_.set_snap_mask(TimeBasedWidget::k_snap_all);
 
 	set_is_timeline_axes(true);
+
+	// Issue 9: refresh the ruler whenever markers or the workarea change.
+	// Connections are made once here; subscriptions follow the active marker
+	// list / workarea in set_markers() / set_work_area().
+	connect(bridge_, &EngineEventBridge::marker_list_marker_added, viewport(),
+			static_cast<void (QWidget::*)()>(&QWidget::update));
+	connect(bridge_, &EngineEventBridge::marker_list_marker_removed, viewport(),
+			static_cast<void (QWidget::*)()>(&QWidget::update));
+	connect(bridge_, &EngineEventBridge::marker_list_marker_modified, viewport(),
+			static_cast<void (QWidget::*)()>(&QWidget::update));
+	connect(bridge_, &EngineEventBridge::workarea_range_changed, viewport(),
+			static_cast<void (QWidget::*)()>(&QWidget::update));
+	connect(bridge_, &EngineEventBridge::workarea_enabled_changed, viewport(),
+			static_cast<void (QWidget::*)()>(&QWidget::update));
+
+	// Reuse issue 7 signal: refresh after undo/redo so marker/workarea
+	// changes replayed from the undo stack are visible immediately.
+	connect(Core::instance(), &Core::undo_index_changed, viewport(),
+			static_cast<void (QWidget::*)()>(&QWidget::update));
 }
 
 void SeekableWidget::set_markers(OakEngineMarkerList *markers)
@@ -91,7 +110,9 @@ void SeekableWidget::set_markers(OakEngineMarkerList *markers)
 	markers_ = markers;
 
 	if (markers_) {
-		// Subscribe to marker list events via bridge instead of direct marker list signals
+		// Subscribe to marker list events via bridge. The corresponding Qt
+		// signal connections live in the constructor so they are not duplicated
+		// when the observed marker list changes.
 		marker_list_subs_.append(bridge_->subscribe(
 			markers_,
 			OAKENGINE_EVENT_MARKER_LIST_MARKER_ADDED));
@@ -101,25 +122,6 @@ void SeekableWidget::set_markers(OakEngineMarkerList *markers)
 		marker_list_subs_.append(bridge_->subscribe(
 			markers_,
 			OAKENGINE_EVENT_MARKER_LIST_MARKER_MODIFIED));
-
-		// Wire the bridge signals once — bridge_ outlives individual marker
-		// list subscriptions, re-connecting on every set_markers() would
-		// stack duplicate viewport updates.
-		if (!marker_connects_done_) {
-			marker_connects_done_ = true;
-			connect(bridge_, &EngineEventBridge::marker_list_marker_added, this,
-					[this](OakEngineMarkerList *, OakEngineMarker *) {
-						viewport()->update();
-					});
-			connect(bridge_, &EngineEventBridge::marker_list_marker_removed, this,
-					[this](OakEngineMarkerList *, OakEngineMarker *) {
-						viewport()->update();
-					});
-			connect(bridge_, &EngineEventBridge::marker_list_marker_modified, this,
-					[this](OakEngineMarkerList *, OakEngineMarker *) {
-						viewport()->update();
-					});
-		}
 	}
 
 	viewport()->update();
@@ -143,16 +145,15 @@ void SeekableWidget::set_work_area(OakEngineWorkarea *workarea)
 	workarea_ = workarea;
 
 	if (workarea_) {
+		// Subscribe to workarea events via bridge. The corresponding Qt signal
+		// connections live in the constructor so they are not duplicated when
+		// the observed workarea changes.
 		workarea_range_sub_ = bridge_->subscribe(
 			reinterpret_cast<void *>(workarea_),
 			OAKENGINE_EVENT_WORKAREA_RANGE_CHANGED);
 		workarea_enabled_sub_ = bridge_->subscribe(
 			reinterpret_cast<void *>(workarea_),
 			OAKENGINE_EVENT_WORKAREA_ENABLED_CHANGED);
-		connect(bridge_, &EngineEventBridge::workarea_range_changed, viewport(),
-				static_cast<void (QWidget::*)()>(&QWidget::update));
-		connect(bridge_, &EngineEventBridge::workarea_enabled_changed, viewport(),
-				static_cast<void (QWidget::*)()>(&QWidget::update));
 	}
 
 	viewport()->update();

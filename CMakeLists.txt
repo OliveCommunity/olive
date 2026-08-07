@@ -33,7 +33,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DOFX_SUPPORTS_OPENGLRENDER")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DOFX_SUPPORTS_OPENGLRENDER")
 option(BUILD_QT6 "Build with Qt 6 over 5 (experimental)" ON)
 option(BUILD_DOXYGEN "Build Doxygen documentation" OFF)
-option(BUILD_TESTS "Build unit tests" OFF)
+option(BUILD_TESTS "Build unit tests" ON)
 option(USE_WERROR "Error on compile warning" OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 17)
@@ -341,15 +341,30 @@ list(APPEND OLIVE_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/third_party)
 
 # Google Test discovery (shared by core/tests, engine/tests, tests/)
 if (BUILD_TESTS)
-  include(FetchContent)
-  find_package(GTest QUIET)
-  if (NOT GTest_FOUND)
-    FetchContent_Declare(
-      googletest
-      URL https://github.com/google/googletest/archive/refs/tags/v1.15.2.zip
+  # 使用 MSYS2 安装的 GTest，避开 PyTorch 的 MSVC 版本
+  find_path(GTEST_INCLUDE_DIR gtest/gtest.h PATHS C:/msys64/ucrt64/include NO_DEFAULT_PATH)
+  find_library(GTEST_LIBRARY gtest PATHS C:/msys64/ucrt64/lib NO_DEFAULT_PATH)
+  find_library(GTEST_MAIN_LIBRARY gtest_main PATHS C:/msys64/ucrt64/lib NO_DEFAULT_PATH)
+
+  if(NOT GTEST_INCLUDE_DIR OR NOT GTEST_LIBRARY OR NOT GTEST_MAIN_LIBRARY)
+    message(FATAL_ERROR "GTest not found in MSYS2. Run: pacman -S mingw-w64-ucrt-x86_64-gtest")
+  endif()
+
+  if(NOT TARGET GTest::gtest)
+    add_library(GTest::gtest UNKNOWN IMPORTED)
+    set_target_properties(GTest::gtest PROPERTIES
+            IMPORTED_LOCATION "${GTEST_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${GTEST_INCLUDE_DIR}"
     )
-    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-    FetchContent_MakeAvailable(googletest)
+  endif()
+
+  if(NOT TARGET GTest::gtest_main)
+    add_library(GTest::gtest_main UNKNOWN IMPORTED)
+    set_target_properties(GTest::gtest_main PROPERTIES
+            IMPORTED_LOCATION "${GTEST_MAIN_LIBRARY}"
+            INTERFACE_INCLUDE_DIRECTORIES "${GTEST_INCLUDE_DIR}"
+            INTERFACE_LINK_LIBRARIES "GTest::gtest"
+    )
   endif()
 endif()
 

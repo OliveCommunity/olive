@@ -126,7 +126,7 @@ TEST(MainWindowStatusBar, ReflectsTaskManagerState)
 	auto *progress = bar.findChild<QProgressBar *>();
 	ASSERT_NE(progress, nullptr);
 
-	bar.connect_task_manager(&bridge);
+
 
 	auto *task = new DummyTask();
 	oakengine_task_manager_add(
