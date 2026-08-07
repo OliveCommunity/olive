@@ -27,6 +27,7 @@
 #include <QtMath>
 
 #include "common/colorcodingapp.h"
+#include "core.h"
 #include "oakengine/timeline.h"
 #include "oakutil/qtutils.h"
 #include "widget/timeruler/markerhandle.h"
@@ -41,6 +42,7 @@ ResizableTimelineScrollBar::ResizableTimelineScrollBar(QWidget *parent)
 	, scale_(1.0)
 	, bridge_(new EngineEventBridge(this))
 {
+	init_connections();
 }
 
 ResizableTimelineScrollBar::ResizableTimelineScrollBar(
@@ -51,54 +53,65 @@ ResizableTimelineScrollBar::ResizableTimelineScrollBar(
 	, scale_(1.0)
 	, bridge_(new EngineEventBridge(this))
 {
+	init_connections();
 }
 
 ResizableTimelineScrollBar::~ResizableTimelineScrollBar()
 {
-	// Raw workarea subscriptions carry `this` as userdata; unlike the
-	// bridge (which dies with us), they must be cancelled explicitly or the
-	// engine would call back into a dead widget.
-	if (workarea_range_sub_ > 0) {
-		oakengine_event_unsubscribe(workarea_range_sub_);
-	}
-	if (workarea_enabled_sub_ > 0) {
-		oakengine_event_unsubscribe(workarea_enabled_sub_);
-	}
+	// bridge_ unsubscribes all subscriptions on destruction.
+}
+
+void ResizableTimelineScrollBar::init_connections()
+{
+	// Issue 10: refresh the scrollbar whenever markers or the workarea
+	// change. The bridge_ signals carry engine object pointers that Qt
+	// ignores when connecting to the no-arg QWidget::update() slot.
+	connect(bridge_, &EngineEventBridge::marker_list_marker_added, this,
+			static_cast<void (QWidget::*)()>(&QWidget::update));
+	connect(bridge_, &EngineEventBridge::marker_list_marker_removed, this,
+			static_cast<void (QWidget::*)()>(&QWidget::update));
+	connect(bridge_, &EngineEventBridge::marker_list_marker_modified, this,
+			static_cast<void (QWidget::*)()>(&QWidget::update));
+	connect(bridge_, &EngineEventBridge::workarea_range_changed, this,
+			static_cast<void (QWidget::*)()>(&QWidget::update));
+	connect(bridge_, &EngineEventBridge::workarea_enabled_changed, this,
+			static_cast<void (QWidget::*)()>(&QWidget::update));
+
+	// Reuse issue 7 signal: refresh after undo/redo so marker/workarea
+	// changes replayed from the undo stack are visible on the scrollbar.
+	connect(Core::instance(), &Core::undo_index_changed, this,
+			static_cast<void (QWidget::*)()>(&QWidget::update));
 }
 
 void ResizableTimelineScrollBar::connect_markers(OakEngineMarkerList *markers)
 {
 	if (markers_) {
-		if (marker_sub_add_)
+		if (marker_sub_add_) {
 			bridge_->unsubscribe(marker_sub_add_);
-		if (marker_sub_rem_)
+			marker_sub_add_ = 0;
+		}
+		if (marker_sub_rem_) {
 			bridge_->unsubscribe(marker_sub_rem_);
-		if (marker_sub_mod_)
+			marker_sub_rem_ = 0;
+		}
+		if (marker_sub_mod_) {
 			bridge_->unsubscribe(marker_sub_mod_);
+			marker_sub_mod_ = 0;
+		}
 	}
 
 	markers_ = markers;
 
 	if (markers_) {
+		// Subscribe through the bridge. Corresponding Qt signal connections
+		// live in init_connections() so they are not duplicated when the
+		// observed marker list changes.
 		marker_sub_add_ = bridge_->subscribe(
 			markers_, OAKENGINE_EVENT_MARKER_LIST_MARKER_ADDED);
 		marker_sub_rem_ = bridge_->subscribe(
 			markers_, OAKENGINE_EVENT_MARKER_LIST_MARKER_REMOVED);
 		marker_sub_mod_ = bridge_->subscribe(
 			markers_, OAKENGINE_EVENT_MARKER_LIST_MARKER_MODIFIED);
-
-		connect(bridge_, &EngineEventBridge::marker_list_marker_added, this,
-				[this](OakEngineMarkerList *, OakEngineMarker *) {
-					update();
-				});
-		connect(bridge_, &EngineEventBridge::marker_list_marker_removed, this,
-				[this](OakEngineMarkerList *, OakEngineMarker *) {
-					update();
-				});
-		connect(bridge_, &EngineEventBridge::marker_list_marker_modified, this,
-				[this](OakEngineMarkerList *, OakEngineMarker *) {
-					update();
-				});
 	}
 
 	update();
@@ -108,11 +121,11 @@ void ResizableTimelineScrollBar::connect_work_area(OakEngineWorkarea *workarea)
 {
 	if (workarea_) {
 		if (workarea_range_sub_ > 0) {
-			oakengine_event_unsubscribe(workarea_range_sub_);
+			bridge_->unsubscribe(workarea_range_sub_);
 			workarea_range_sub_ = 0;
 		}
 		if (workarea_enabled_sub_ > 0) {
-			oakengine_event_unsubscribe(workarea_enabled_sub_);
+			bridge_->unsubscribe(workarea_enabled_sub_);
 			workarea_enabled_sub_ = 0;
 		}
 	}
@@ -120,17 +133,15 @@ void ResizableTimelineScrollBar::connect_work_area(OakEngineWorkarea *workarea)
 	workarea_ = workarea;
 
 	if (workarea_) {
-		void *handle = workarea_;
-		workarea_range_sub_ = oakengine_event_subscribe(
-			handle, OAKENGINE_EVENT_WORKAREA_RANGE_CHANGED,
-			[](const oakengine_event *, void *userdata) {
-				static_cast<ResizableTimelineScrollBar *>(userdata)->update();
-			}, this);
-		workarea_enabled_sub_ = oakengine_event_subscribe(
-			handle, OAKENGINE_EVENT_WORKAREA_ENABLED_CHANGED,
-			[](const oakengine_event *, void *userdata) {
-				static_cast<ResizableTimelineScrollBar *>(userdata)->update();
-			}, this);
+		// Subscribe through the bridge. Corresponding Qt signal connections
+		// live in init_connections() so they are not duplicated when the
+		// observed workarea changes.
+		workarea_range_sub_ = bridge_->subscribe(
+			reinterpret_cast<void *>(workarea_),
+			OAKENGINE_EVENT_WORKAREA_RANGE_CHANGED);
+		workarea_enabled_sub_ = bridge_->subscribe(
+			reinterpret_cast<void *>(workarea_),
+			OAKENGINE_EVENT_WORKAREA_ENABLED_CHANGED);
 	}
 
 	update();

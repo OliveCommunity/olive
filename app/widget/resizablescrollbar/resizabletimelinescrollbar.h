@@ -49,6 +49,8 @@ protected:
 	virtual void paintEvent(QPaintEvent *event) override;
 
 private:
+	void init_connections();
+
 	OakEngineMarkerList *markers_;
 
 	OakEngineWorkarea *workarea_;
