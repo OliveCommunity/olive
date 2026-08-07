@@ -22,13 +22,12 @@
 #ifndef OAK_TASKMANAGER_PANEL_H
 #define OAK_TASKMANAGER_PANEL_H
 
+#include "asyncengineevents.h"
 #include "panel/panel.h"
 #include "widget/taskview/taskview.h"
 
 namespace olive
 {
-
-class EngineEventBridge;
 
 /**
  * @brief A PanelWidget wrapper around a TaskView widget
@@ -42,8 +41,6 @@ private:
 	virtual void retranslate() override;
 
 	TaskView *view_;
-
-	EngineEventBridge *bridge_;
 };
 
 }

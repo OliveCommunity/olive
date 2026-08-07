@@ -21,6 +21,8 @@
 
 #include "core.h"
 
+#include "asyncengineevents.h"
+
 #include <QApplication>
 #include <QDebug>
 #include <QDir>
@@ -77,6 +79,12 @@ namespace olive
 {
 
 Core *Core::instance_ = nullptr;
+
+Core::~Core()
+{
+	AsyncEngineEvents::destroy();
+	instance_ = nullptr;
+}
 
 Core::Core(const OakEngineAppParams *params)
 	: QObject(nullptr)
@@ -228,6 +236,9 @@ void Core::start()
 {
 	// Start the engine (config, locale, managers, autorecovery, recent projects)
 	oakengine_app_start();
+
+	// Create the single async event dispatcher once the task manager exists.
+	AsyncEngineEvents::create(this);
 
 	//
 	// Start application
@@ -762,6 +773,9 @@ void Core::start_gui(bool full_screen)
 
 	// Initialize audio service
 	oakengine_audio_create_instance();
+	if (AsyncEngineEvents *async = AsyncEngineEvents::instance()) {
+		async->subscribe_audio_manager();
+	}
 
 	// Initialize disk service
 	oakengine_disk_create_instance();

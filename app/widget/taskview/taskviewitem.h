@@ -28,8 +28,8 @@
 #include <QStackedWidget>
 #include <QWidget>
 
+#include "asyncengineevents.h"
 #include "elapsedcounterwidget.h"
-#include "engineeventbridge.h"
 #include "oakengine/task.h"
 
 namespace olive
@@ -55,8 +55,6 @@ private:
 	QLabel *task_error_lbl_;
 
 	OakEngineTask *task_;
-
-	EngineEventBridge *bridge_;
 
 private slots:
 	void update_progress(double d);

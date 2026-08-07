@@ -82,9 +82,7 @@ MainWindow::MainWindow(QWidget *parent)
 	load_custom_shortcuts();
 
 	// Create and set status bar
-	event_bridge_ = new EngineEventBridge(this);
 	status_bar_ = new MainStatusBar(this);
-	status_bar_->connect_task_manager(event_bridge_);
 	connect(status_bar_, &MainStatusBar::double_clicked, this,
 			&MainWindow::status_bar_double_clicked);
 	setStatusBar(status_bar_);

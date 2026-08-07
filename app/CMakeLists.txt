@@ -19,6 +19,8 @@
 set(OLIVE_SOURCES
         core.h
         core.cpp
+        asyncengineevents.h
+        asyncengineevents.cpp
         engineeventbridge.h
         engineeventbridge.cpp
         common/colorcodingapp.h

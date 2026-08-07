@@ -261,17 +261,22 @@ endif()
 if (OAK_BUNDLE_OTIO AND (APPLE OR WIN32) AND OTIO_LIBRARY_DIR)
   if (APPLE)
     file(GLOB OAK_OTIO_DYLIBS
-      "${OTIO_LIBRARY_DIR}/libopentimelineio*.dylib"
-      "${OTIO_LIBRARY_DIR}/libopentime*.dylib")
+            "${OTIO_LIBRARY_DIR}/libopentimelineio*.dylib"
+            "${OTIO_LIBRARY_DIR}/libopentime*.dylib")
   else()
     file(GLOB OAK_OTIO_DYLIBS
-      "${OTIO_LIBRARY_DIR}/libopentimelineio*.dll"
-      "${OTIO_LIBRARY_DIR}/libopentime*.dll")
+            "${OTIO_LIBRARY_DIR}/libopentimelineio*.dll"
+            "${OTIO_LIBRARY_DIR}/libopentime*.dll"
+            "${OTIO_LIBRARY_DIR}/../bin/libopentimelineio*.dll"
+            "${OTIO_LIBRARY_DIR}/../bin/libopentime*.dll")
   endif()
+
   function(oak_copy_otio_runtime target)
-    add_custom_command(TARGET ${target} POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    if (OAK_OTIO_DYLIBS)
+      add_custom_command(TARGET ${target} POST_BUILD
+              COMMAND ${CMAKE_COMMAND} -E copy_if_different
               ${OAK_OTIO_DYLIBS} $<TARGET_FILE_DIR:${target}>)
+    endif()
   endfunction()
 endif()
 

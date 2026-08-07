@@ -371,7 +371,7 @@ private:
 
 	EngineEventBridge *bridge_;
 
-	int64_t audio_notify_sub_ = 0;
+	int64_t frame_cache_sub_ = 0;
 
 private slots:
 	void playback_timer_update();

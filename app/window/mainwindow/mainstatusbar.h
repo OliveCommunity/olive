@@ -26,12 +26,11 @@
 #include <QProgressBar>
 #include <QStatusBar>
 
+#include "asyncengineevents.h"
 #include "oakengine/task.h"
 
 namespace olive
 {
-
-class EngineEventBridge;
 
 /**
  * @brief Shows abbreviated information from the global TaskManager
@@ -44,8 +43,6 @@ class MainStatusBar : public QStatusBar {
 	Q_OBJECT
 public:
 	MainStatusBar(QWidget *parent = nullptr);
-
-	void connect_task_manager(EngineEventBridge *bridge);
 
 	/**
 	 * @brief Update the permanent right-hand sequence info chips.
@@ -69,18 +66,12 @@ private slots:
 	void connected_task_finished();
 
 private:
-	EngineEventBridge *bridge_;
-
 	QProgressBar *bar_;
 
 	QLabel *resolution_label_;
 	QLabel *fps_label_;
 
 	OakEngineTask *connected_task_;
-
-	int64_t task_progress_sub_;
-
-	int64_t task_finished_sub_;
 };
 
 }

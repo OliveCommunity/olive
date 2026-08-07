@@ -23,17 +23,12 @@
 
 #include <QCoreApplication>
 
-#include "engineeventbridge.h"
-
 namespace olive
 {
 
 MainStatusBar::MainStatusBar(QWidget *parent)
 	: QStatusBar(parent)
-	, bridge_(nullptr)
 	, connected_task_(nullptr)
-	, task_progress_sub_(0)
-	, task_finished_sub_(0)
 {
 	setSizeGripEnabled(false);
 
@@ -58,6 +53,24 @@ MainStatusBar::MainStatusBar(QWidget *parent)
 					.arg(QCoreApplication::applicationName(),
 						 QCoreApplication::applicationVersion()),
 				10000);
+
+	// Connect to the single async event dispatcher (issue 0b).
+	if (AsyncEngineEvents *async = AsyncEngineEvents::instance()) {
+		connect(async, &AsyncEngineEvents::task_manager_list_changed, this,
+				&MainStatusBar::update_status);
+		connect(async, &AsyncEngineEvents::task_progress, this,
+				[this](OakEngineTask *task, double d) {
+					if (task == connected_task_) {
+						set_progress_bar_value(d);
+					}
+				});
+		connect(async, &AsyncEngineEvents::task_finished, this,
+				[this](OakEngineTask *task, bool) {
+					if (task == connected_task_) {
+						connected_task_finished();
+					}
+				});
+	}
 }
 
 void MainStatusBar::set_sequence_info(int width, int height, double fps)
@@ -80,29 +93,6 @@ void MainStatusBar::set_sequence_info(int width, int height, double fps)
 
 	resolution_label_->setVisible(true);
 	fps_label_->setVisible(true);
-}
-
-void MainStatusBar::connect_task_manager(EngineEventBridge *bridge)
-{
-	bridge_ = bridge;
-	bridge_->subscribe(oakengine_task_manager_handle(),
-					   OAKENGINE_EVENT_TASK_MANAGER_LIST_CHANGED);
-	connect(bridge_, &EngineEventBridge::task_manager_list_changed,
-			this, &MainStatusBar::update_status);
-
-	// Route progress/finished events for any task we track
-	connect(bridge_, &EngineEventBridge::task_progress,
-			this, [this](OakEngineTask *task, double d) {
-				if (task == connected_task_) {
-					set_progress_bar_value(d);
-				}
-			});
-	connect(bridge_, &EngineEventBridge::task_finished,
-			this, [this](OakEngineTask *task, bool) {
-				if (task == connected_task_) {
-					connected_task_finished();
-				}
-			});
 }
 
 void MainStatusBar::update_status()
@@ -128,23 +118,7 @@ void MainStatusBar::update_status()
 
 	bar_->setVisible(true);
 
-	// Unsubscribe from previous task events
-	if (task_progress_sub_ > 0) {
-		bridge_->unsubscribe(task_progress_sub_);
-		task_progress_sub_ = 0;
-	}
-	if (task_finished_sub_ > 0) {
-		bridge_->unsubscribe(task_finished_sub_);
-		task_finished_sub_ = 0;
-	}
-
 	connected_task_ = t;
-
-	// Subscribe to progress and finished events on this task
-	task_progress_sub_ = bridge_->subscribe(
-		t, OAKENGINE_EVENT_TASK_PROGRESS);
-	task_finished_sub_ = bridge_->subscribe(
-		t, OAKENGINE_EVENT_TASK_FINISHED);
 }
 
 void MainStatusBar::set_progress_bar_value(double d)

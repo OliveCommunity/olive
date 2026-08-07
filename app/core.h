@@ -34,6 +34,8 @@
 #include "oakengine/init.h"
 #include "oakengine/task.h"
 
+#include "asyncengineevents.h"
+
 namespace olive
 {
 
@@ -65,9 +67,14 @@ public:
 	 */
 	Core(const OakEngineAppParams *params = nullptr);
 
-	~Core()
+	~Core();
+
+	/**
+	 * @brief The single async event dispatcher (issue 0b).
+	 */
+	static AsyncEngineEvents *async_events()
 	{
-		instance_ = nullptr;
+		return AsyncEngineEvents::instance();
 	}
 
 	/**

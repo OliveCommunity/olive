@@ -43,12 +43,15 @@ TaskDialog::TaskDialog(OakEngineTask *task, const QString &title, QWidget *paren
 	, already_shown_(false)
 	, task_finished_(false)
 {
-	bridge_ = new EngineEventBridge(this);
-	bridge_->subscribe(task, OAKENGINE_EVENT_TASK_PROGRESS);
-	connect(bridge_, &EngineEventBridge::task_progress, this,
-			[this](OakEngineTask *, double progress) {
-				set_progress(progress);
-			}, Qt::QueuedConnection);
+	// Connect to the single async event dispatcher (issue 0b).
+	if (AsyncEngineEvents *async = AsyncEngineEvents::instance()) {
+		connect(async, &AsyncEngineEvents::task_progress, this,
+				[this](OakEngineTask *t, double progress) {
+					if (t == task_) {
+						set_progress(progress);
+					}
+				}, Qt::QueuedConnection);
+	}
 
 	connect(this, &TaskDialog::cancelled, this, [this]() {
 		oakengine_task_cancel(task_);

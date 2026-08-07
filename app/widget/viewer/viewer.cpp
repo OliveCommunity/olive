@@ -22,6 +22,8 @@
 #include <utility>
 #include "viewer.h"
 
+#include "asyncengineevents.h"
+
 #include <QDateTime>
 #include <QFontDialog>
 #include <QGuiApplication>
@@ -302,8 +304,17 @@ ViewerWidget::ViewerWidget(ViewerDisplayWidget *display, QWidget *parent)
 			&ViewerWidget::set_signal_cursor_color_enabled);
 	connect(this, &ViewerWidget::cursor_color, Core::instance(),
 			&Core::color_picker_color_emitted);
-	connect(bridge_, &EngineEventBridge::audio_output_params_changed, this,
-			&ViewerWidget::update_audio_processor);
+	// Connect to the single async event dispatcher (issue 0b).
+	if (AsyncEngineEvents *async = AsyncEngineEvents::instance()) {
+		connect(async, &AsyncEngineEvents::audio_output_params_changed, this,
+				&ViewerWidget::update_audio_processor);
+		connect(async, &AsyncEngineEvents::audio_output_notify, this,
+				[this]() {
+					if (is_playing()) {
+						queue_next_audio_buffer();
+					}
+				});
+	}
 }
 
 ViewerWidget::~ViewerWidget()
@@ -391,13 +402,16 @@ void ViewerWidget::ConnectNodeEvent(OakEngineNode *handle)
 			&ViewerWidget::update_waveform_view_from_mode);
 
 	// FrameHashCache invalidated events
-	if (OakEngineFrameCache *cache = oakengine_viewer_get_frame_cache(handle)) {
-		bridge_->subscribe(cache, OAKENGINE_EVENT_FRAME_CACHE_INVALIDATED);
-		connect(bridge_, &EngineEventBridge::frame_cache_invalidated, this,
-				[this](void *, qint64 a, qint64 b) {
-					viewer_invalidated_video_range(
-						TimeRange(Rational(a, 1), Rational(b, 1)));
-				});
+	if (AsyncEngineEvents *async = AsyncEngineEvents::instance()) {
+		if (OakEngineFrameCache *cache = oakengine_viewer_get_frame_cache(handle)) {
+			frame_cache_sub_ = async->subscribe(
+				cache, OAKENGINE_EVENT_FRAME_CACHE_INVALIDATED);
+			connect(async, &AsyncEngineEvents::frame_cache_invalidated, this,
+					[this](void *, qint64 a, qint64 b) {
+						viewer_invalidated_video_range(
+							TimeRange(Rational(a, 1), Rational(b, 1)));
+					});
+		}
 	}
 
 	// Connect controls to set_playhead via facade
@@ -447,16 +461,20 @@ void ViewerWidget::ConnectNodeEvent(OakEngineNode *handle)
 
 void ViewerWidget::DisconnectNodeEvent(OakEngineNode *n)
 {
+	Q_UNUSED(n)
+
 	pause_internal();
 
 	// Disconnect all bridge signal connections to this receiver
 	disconnect(bridge_, nullptr, this, nullptr);
 
-	// Unsubscribe all bridge subscriptions
-	// (EngineEventBridge does not expose bulk unsubscribe; the bridge
-	//  is per-widget so stale subscriptions are harmless until the next
-	//  ConnectNodeEvent, but we clear the ones we know about)
-	// For now the subscription callbacks filter by source handle internally.
+	// Unsubscribe from the previous frame cache.
+	if (AsyncEngineEvents *async = AsyncEngineEvents::instance()) {
+		if (frame_cache_sub_ > 0) {
+			async->unsubscribe(frame_cache_sub_);
+			frame_cache_sub_ = 0;
+		}
+	}
 
 	timeline_selected_blocks_.clear();
 	node_view_selected_.clear();
@@ -1405,14 +1423,6 @@ void ViewerWidget::play_internal(int speed, bool in_to_out_only)
 			oakengine_audio_set_output_notify_interval(
 				oakcore_audioparams_time_to_bytes(
 					output_params, k_audio_playback_interval.to_double()));
-			audio_notify_sub_ = oakengine_event_subscribe(
-				oakengine_audio_manager_handle(),
-				OAKENGINE_EVENT_AUDIO_MANAGER_OUTPUT_NOTIFY,
-				[](const oakengine_event *, void *userdata) {
-					static_cast<ViewerWidget *>(userdata)->queue_next_audio_buffer();
-				},
-				this);
-
 			static const int prequeue_count = 2;
 			prequeuing_audio_ =
 				prequeue_count; // Queue two buffers ahead of time
@@ -1474,10 +1484,6 @@ void ViewerWidget::pause_internal()
 		oakengine_audio_stop_output();
 		AudioMonitor::stop_on_all();
 		prequeued_audio_.clear();
-		if (audio_notify_sub_ > 0) {
-			oakengine_event_unsubscribe(audio_notify_sub_);
-			audio_notify_sub_ = 0;
-		}
 		for (auto *req : audio_playback_queue_) { oakengine_preview_request_free(req); }
 		audio_playback_queue_.clear();
 		update_audio_processor();

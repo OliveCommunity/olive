@@ -163,7 +163,6 @@ private:
 	QList<TimelinePanel *> timeline_panels_;
 	AudioMonitorPanel *audio_monitor_panel_;
 	TaskManagerPanel *task_man_panel_;
-	EngineEventBridge *event_bridge_;
 	MainStatusBar *status_bar_;
 	PixelSamplerPanel *pixel_sampler_panel_;
 	ScopePanel *scope_panel_;

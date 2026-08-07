@@ -45,6 +45,7 @@ TimeRuler::TimeRuler(bool text_visible, bool cache_status_visible,
 	, centered_text_(true)
 	, show_cache_status_(cache_status_visible)
 	, playback_cache_(nullptr)
+	, async_events_(AsyncEngineEvents::instance())
 {
 	QFontMetrics fm = fontMetrics();
 
@@ -78,11 +79,13 @@ TimeRuler::TimeRuler(bool text_visible, bool cache_status_visible,
 	//       from a QWidget's paintEvent.
 	setAlignment(Qt::AlignLeft | Qt::AlignTop);
 
-	bridge_ = new EngineEventBridge(this);
-	connect(bridge_, &EngineEventBridge::playback_cache_invalidated,
-			viewport(), [this]() { viewport()->update(); });
-	connect(bridge_, &EngineEventBridge::playback_cache_validated,
-			viewport(), [this]() { viewport()->update(); });
+	// Connect to the single async event dispatcher (issue 0b).
+	if (async_events_) {
+		connect(async_events_, &AsyncEngineEvents::playback_cache_invalidated,
+				viewport(), [this](void *, qint64, qint64) { viewport()->update(); });
+		connect(async_events_, &AsyncEngineEvents::playback_cache_validated,
+				viewport(), [this](void *, qint64, qint64) { viewport()->update(); });
+	}
 }
 
 void TimeRuler::set_centered_text(bool c)
@@ -98,19 +101,19 @@ void TimeRuler::set_playback_cache(void *cache)
 		return;
 	}
 
-	if (playback_cache_) {
-		bridge_->unsubscribe(cache_sub_invalidated_);
-		bridge_->unsubscribe(cache_sub_validated_);
+	if (playback_cache_ && async_events_) {
+		async_events_->unsubscribe(cache_sub_invalidated_);
+		async_events_->unsubscribe(cache_sub_validated_);
 		cache_sub_invalidated_ = 0;
 		cache_sub_validated_ = 0;
 	}
 
 	playback_cache_ = cache;
 
-	if (playback_cache_) {
-		cache_sub_invalidated_ = bridge_->subscribe(
+	if (playback_cache_ && async_events_) {
+		cache_sub_invalidated_ = async_events_->subscribe(
 			playback_cache_, OAKENGINE_EVENT_PLAYBACK_CACHE_INVALIDATED);
-		cache_sub_validated_ = bridge_->subscribe(
+		cache_sub_validated_ = async_events_->subscribe(
 			playback_cache_, OAKENGINE_EVENT_PLAYBACK_CACHE_VALIDATED);
 	}
 

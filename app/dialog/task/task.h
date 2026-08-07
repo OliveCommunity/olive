@@ -22,8 +22,8 @@
 #ifndef OAK_TASKDIALOG_H
 #define OAK_TASKDIALOG_H
 
+#include "asyncengineevents.h"
 #include "dialog/progress/progress.h"
-#include "engineeventbridge.h"
 #include "oakengine/task.h"
 
 namespace olive
@@ -58,8 +58,6 @@ signals:
 
 private:
 	OakEngineTask *task_;
-
-	EngineEventBridge *bridge_ = nullptr;
 
 	bool destroy_on_close_;
 

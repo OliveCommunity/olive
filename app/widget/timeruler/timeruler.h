@@ -25,7 +25,7 @@
 #include <QTimer>
 #include <QWidget>
 
-#include "engineeventbridge.h"
+#include "asyncengineevents.h"
 #include "seekablewidget.h"
 
 namespace olive
@@ -70,7 +70,7 @@ private:
 
 	void *playback_cache_;
 
-	EngineEventBridge *bridge_;
+	AsyncEngineEvents *async_events_;
 	int64_t cache_sub_invalidated_ = 0;
 	int64_t cache_sub_validated_ = 0;
 };

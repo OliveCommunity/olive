@@ -77,18 +77,21 @@ TaskViewItem::TaskViewItem(OakEngineTask *task, QWidget *parent)
 	// Set up elapsed timer
 	status_stack_->setCurrentWidget(elapsed_timer_lbl_);
 
-	// Connect to the task via EngineEventBridge
-	bridge_ = new EngineEventBridge(this);
-	bridge_->subscribe(task_, OAKENGINE_EVENT_TASK_STARTED);
-	bridge_->subscribe(task_, OAKENGINE_EVENT_TASK_PROGRESS);
-	connect(bridge_, &EngineEventBridge::task_started, this,
-			[this](OakEngineTask *, qint64 start_time) {
-				elapsed_timer_lbl_->start(start_time);
-			});
-	connect(bridge_, &EngineEventBridge::task_progress, this,
-			[this](OakEngineTask *, double progress) {
-				update_progress(progress);
-			});
+	// Connect to the single async event dispatcher (issue 0b).
+	if (AsyncEngineEvents *async = AsyncEngineEvents::instance()) {
+		connect(async, &AsyncEngineEvents::task_started, this,
+				[this](OakEngineTask *t, qint64 start_time) {
+					if (t == task_) {
+						elapsed_timer_lbl_->start(start_time);
+					}
+				});
+		connect(async, &AsyncEngineEvents::task_progress, this,
+				[this](OakEngineTask *t, double progress) {
+					if (t == task_) {
+						update_progress(progress);
+					}
+				});
+	}
 	connect(cancel_btn_, &QPushButton::clicked, this,
 			[this] { emit task_cancelled(task_); });
 }
