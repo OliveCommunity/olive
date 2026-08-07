@@ -20,6 +20,8 @@
 ***/
 
 #include "ociogradingtransformlog.h"
+#include "node/colormanager.h"
+#include "render/color.h"
 
 #include <cmath>
 #include <iostream>
@@ -190,16 +192,13 @@ void OCIOGradingTransformLogNode::update_clamp_white_minimum()
 void OCIOGradingTransformLogNode::generate_processor()
 {
 	if (manager()) {
-		OCIO_NAMESPACE::GradingPrimaryTransformRcPtr gp =
-			OCIO_NAMESPACE::GradingPrimaryTransform::Create(OCIO_NAMESPACE::GRADING_LOG);
-		gp->makeDynamic();
-		gp->setDirection(OCIO_NAMESPACE::TransformDirection::TRANSFORM_DIR_FORWARD);
-
-		try {
-			set_processor(ColorProcessor::create(
-				manager()->get_config()->getProcessor(gp)));
-		} catch (const OCIO_NAMESPACE::Exception &e) {
-			std::cerr << std::endl << e.what() << std::endl;
+		OakNodeColorManager mgr =
+			oaknode_colormanager_wrap_borrowed(manager());
+		OakColorProcessor processor =
+			oakrender_color_processor_create_grading_primary(mgr, OAKRENDER_GRADING_PRIMARY_LOG);
+		mgr.release(mgr.ctx);
+		if (processor.ctx) {
+			set_processor(processor);
 		}
 	}
 }
@@ -209,10 +208,11 @@ void OCIOGradingTransformLogNode::value(const NodeValueRow &value,
 										NodeValueTable *table) const
 {
 	if (TexturePtr tex = value.at(k_texture_input).to_texture()) {
-		if (processor()) {
+		if (processor().ctx) {
 			ColorTransformJob job(value);
 
-			job.set_color_processor(processor());
+			job.set_color_processor(
+				oakrender_color_processor_get_native(processor()));
 			job.set_input_texture(value.at(k_texture_input));
 
 			// Vector4D components stand in for the former QVector4D indices:

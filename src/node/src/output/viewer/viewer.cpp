@@ -23,6 +23,28 @@
 
 #include "common/xmlutils.h"
 #include "configaccessor.h"
+#include "../../../c_api/nodehandle.h"
+
+namespace
+{
+
+/**
+ * @brief PlaybackCache::request(context, range) through the oakrender
+ *        C ABI; the context handle is a borrowed box made on the spot.
+ */
+void request_cache_range(const OakRenderCache &cache, olive::Node *context,
+						 const olive::TimeRange &range)
+{
+	OakNodeNode ctx = oaknode_c_api::make_handle<OakNodeNode>(
+		context, false, nullptr);
+	oakrender_cache_request(cache, ctx, range.in().numerator(),
+							range.in().denominator(),
+							range.out().numerator(),
+							range.out().denominator());
+	ctx.release(ctx.ctx);
+}
+
+} // namespace
 #include "coreengine.h"
 #include "traverser.h"
 #include "olive/core/util/timecodefunctions.h"
@@ -263,19 +285,19 @@ void ViewerOutput::invalidate_cache(const TimeRange &range,
 			if (autocache_input_video_) {
 				TimeRange max_range = input_time_adjustment(
 					from, element, TimeRange(0, get_video_length()), false);
-				connected->video_frame_cache()->request(
-					this, range.intersected(max_range));
+				request_cache_range(connected->video_frame_cache(), this,
+									range.intersected(max_range));
 			}
 		} else if (from == k_samples_input) {
 			TimeRange max_range = input_time_adjustment(
 				from, element, TimeRange(0, get_audio_length()), false);
 			if (waveform_requests_enabled_) {
-				connected->waveform_cache()->request(
-					this, range.intersected(max_range));
+				request_cache_range(connected->waveform_cache(), this,
+									range.intersected(max_range));
 			}
 			if (autocache_input_audio_) {
-				connected->audio_playback_cache()->request(
-					this, range.intersected(max_range));
+				request_cache_range(connected->audio_playback_cache(), this,
+									range.intersected(max_range));
 			}
 		}
 	}
@@ -434,10 +456,26 @@ void ViewerOutput::set_waveform_enabled(bool e)
 		if (Node *connected = this->get_connected_sample_output()) {
 			TimeRange max_range = input_time_adjustment(
 				k_samples_input, -1, TimeRange(0, get_audio_length()), false);
-			core::TimeRangeList invalid =
-				connected->waveform_cache()->get_invalidated_ranges(max_range);
-			for (const TimeRange &r : invalid) {
-				connected->waveform_cache()->request(this, r);
+			const OakRenderCache &wave_cache =
+				connected->waveform_cache();
+			int n = oakrender_cache_get_invalidated_ranges(
+				wave_cache, max_range.in().numerator(),
+				max_range.in().denominator(), max_range.out().numerator(),
+				max_range.out().denominator(), NULL, 0);
+			if (n > 0) {
+				std::vector<int64_t> ranges(size_t(n) * 4);
+				oakrender_cache_get_invalidated_ranges(
+					wave_cache, max_range.in().numerator(),
+					max_range.in().denominator(),
+					max_range.out().numerator(),
+					max_range.out().denominator(), ranges.data(), n);
+				for (int i = 0; i < n; i++) {
+					request_cache_range(
+						wave_cache, this,
+						TimeRange(Rational(ranges[i * 4], ranges[i * 4 + 1]),
+								  Rational(ranges[i * 4 + 2],
+										   ranges[i * 4 + 3])));
+				}
 			}
 		}
 	}

@@ -352,3 +352,46 @@ ColorManager）去Qt化过程中的删除与语义变化，迁移调用方时需
   oakcommon_xml_writer_wrap_native（C++ only 借用包装），
   XmlReaderState/XmlWriterState 支持 owning/borrowed 双模式。
 - liboaknode 对 liboaktimeline 的 C++ 符号引用降为 0（nm 验证）。
+
+## oaknode→oakrender 切到 C ABI（2026-08-07）
+
+- oakrender cache C API 大扩（include/render/cache.h）：
+  cache_create_for_node(parent, kind)（四种缓存：视频帧/缩略图/音频
+  播放/波形，parent 的原生回指针留在 oakrender 内部）、get_uuid
+  （两段式）、request、load/save_state、set_saving_enabled、
+  set_passthrough、get_passthroughs、get_valid_cache_filename、
+  get_timebase、lock/unlock（替代直交 std::mutex）、
+  invalidate_range（有理数版，原有 invalidate 是时间戳制）、
+  get_native（C++ only，供 oakrender 内部的 PreviewAutoCacher 用）。
+- Node 的四个缓存成员（video_cache_/thumbnail_cache_/audio_cache_/
+  waveform_cache_）从原生指针改为 OakRenderCache 拥有型值句柄，
+  访问器返回借用副本；构造/析构/拷贝 UUID/加载保存全部走 C ABI。
+- ClipBlock 的 connected_video_cache()/thumbnails()/waveform() 等
+  返回借用句柄；request/invalidate/passthrough 流程走 C ABI；
+  passthrough 列表查询只传 range（原 Passthrough::cache 文本不出界）。
+- oaknode_node_get_video_frame_cache 改为返回 addref 后的
+  OakRenderCache（out 参数，node.h 前置声明 struct OakRenderCache）；
+  OakNodeFrameCache 不透明指针类型删除；oaktask 的 precachetask
+  直接收句柄，不再 wrap_borrowed；RenderTask::render/
+  start_video_ticket 的 cache 参数与 oakrender_video_ticket_params.cache
+  改为 OakRenderCache 值（借用语义，空 ctx=无）。
+- 色彩：OCIOBaseNode 的 processor_ 改 OakColorProcessor 拥有型句柄
+  （新增析构释放；OCIOLutNode 同理并补了 ~OCIOLutNode）；
+  job.set_color_processor 经 C++-only
+  oakrender_color_processor_get_native 取 shared_ptr。
+  oakrender 新增 color_processor_create_transform/create_lut/
+  create_grading_primary/get_native 与 lut_is_supported_extension/
+  supported_extensions_count/at；oaknode 新增
+  colormanager_wrap_borrowed/get_native（C++ only）。
+  OCIO 的 FileTransform/GradingPrimaryTransform 构造全部内收到
+  oakrender（grading log/linear、LUT 加载）。
+- RenderManager::instance() 空检查 → oakrender_manager_available()；
+  PreviewAutoCacher::cancel_video_tasks → oakrender_cancel_video_tasks；
+  DiskManager 默认缓存路径 → 已有 oakrender_disk_cache_path。
+- PreviewAutoCacher（oakrender 内部）改用 oakrender_cache_get_native
+  解包节点缓存，回调接线保持模块内 C++。
+- **例外（记录为 01 §5 例外）**：NodeValue 的纹理载荷
+  TexturePtr=shared_ptr<olive::Texture> 经 Variant 类型擦除流经
+  oaknode 的 35 个 TU，析构引用 olive::Texture::~Texture——值系统
+  载荷问题，与 UndoCommand 跨模块继承同类，留待值系统重做。
+  除此之外 liboaknode→liboakrender 的 C++ 符号引用为 0。

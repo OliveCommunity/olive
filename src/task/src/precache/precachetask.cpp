@@ -151,11 +151,10 @@ bool PreCacheTask::run()
 		intersection = TimeRange(Rational(0), video_length);
 	}
 
-	OakNodeFrameCache *cache = nullptr;
-	oaknode_node_get_video_frame_cache(viewer(), &cache);
-
-	// Borrowed wrapper: the cache stays owned by the viewer node.
-	OakRenderCache cache_handle = oakrender_cache_wrap_borrowed(cache);
+	// Addref'd handle: the cache itself stays owned by the viewer node,
+	// this box is released at the end of the scope.
+	OakRenderCache cache_handle = {};
+	oaknode_node_get_video_frame_cache(viewer(), &cache_handle);
 
 	int range_count = oakrender_cache_get_invalidated_ranges(
 		cache_handle,
@@ -183,7 +182,7 @@ bool PreCacheTask::run()
 		oaknode_colormanager_init(project_);
 
 	render(color_manager, video_range, TimeRangeList(), TimeRange(),
-		   0 /* RenderMode::k_online */, cache, ForceParams());
+		   0 /* RenderMode::k_online */, cache_handle, ForceParams());
 
 	oaknode_colormanager_free(&color_manager);
 

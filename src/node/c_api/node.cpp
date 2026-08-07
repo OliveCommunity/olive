@@ -24,6 +24,7 @@
 #include "node/footage.h"
 #include "node/project.h"
 #include "olive/core/oakcore/audioparams.h"
+#include "render/cache.h"
 #include "timeline/marker.h"
 #include "timeline/workarea.h"
 
@@ -1320,13 +1321,20 @@ int oaknode_node_get_work_area(OakNodeNode node,
 }
 
 int oaknode_node_get_video_frame_cache(OakNodeNode node,
-									   OakNodeFrameCache **out)
+									   struct OakRenderCache *out)
 {
 	if (!node.ctx || !out) {
 		return OAKNODE_E_INVALID;
 	}
-	*out = reinterpret_cast<OakNodeFrameCache *>(
-		oaknode_c_api::to_native<olive::Node>(node)->video_frame_cache());
+	olive::Node *n = oaknode_c_api::to_native<olive::Node>(node);
+	if (!n) {
+		*out = OakRenderCache{};
+		return OAKNODE_OK;
+	}
+	*out = n->video_frame_cache();
+	if (out->ctx) {
+		out->addref(out->ctx);
+	}
 	return OAKNODE_OK;
 }
 

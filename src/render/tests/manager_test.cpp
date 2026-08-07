@@ -129,3 +129,18 @@ TEST(OakRenderDiskCacheTest, SizeAndClear)
 	// Clearing an existing (possibly empty) default folder succeeds.
 	EXPECT_EQ(oakrender_disk_cache_clear(), OAKRENDER_OK);
 }
+
+TEST(OakRenderManagerTest, AvailableReturnsBool)
+{
+	int available = oakrender_manager_available();
+	EXPECT_TRUE(available == 0 || available == 1);
+}
+
+TEST(OakRenderManagerTest, CancelVideoTasksWithoutManagerIsNoOp)
+{
+	if (oakrender_manager_available()) {
+		GTEST_SKIP() << "manager exists in this process";
+	}
+	oakrender_cancel_video_tasks(0);
+	oakrender_cancel_video_tasks(1);
+}

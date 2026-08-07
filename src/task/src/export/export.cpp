@@ -363,7 +363,7 @@ bool ExportTask::run()
 	}
 
 	render(color_manager_, video_range, audio_range, subtitle_range,
-		   0 /* RenderMode::k_online */, nullptr, force);
+		   0 /* RenderMode::k_online */, {}, force);
 
 	bool success = true;
 

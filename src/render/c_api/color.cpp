@@ -30,6 +30,7 @@
 
 #include "color/colormanager/colormanager.h"
 #include "filefunctions.h"
+#include "lutlibrary.h"
 #include <OpenColorIO/OpenColorIO.h>
 
 namespace
@@ -103,6 +104,129 @@ int oakrender_color_processor_is_valid(OakColorProcessor processor)
 	OakColorProcessorImpl *p =
 		oakrender_c_api::to_native<OakColorProcessorImpl>(processor);
 	return p && p->ptr && p->ptr->get_processor() ? 1 : 0;
+}
+
+OakColorProcessor oakrender_color_processor_create_transform(
+	OakNodeColorManager manager, const char *input,
+	OakColorTransform dest, int direction)
+{
+	olive::ColorManager *native_manager =
+		oaknode_colormanager_get_native(manager);
+	const olive::ColorTransform *native_dest =
+		oakcommon_colortransform_get_native(dest);
+	if (!native_manager || !input || !*input || !native_dest) {
+		return OakColorProcessor{};
+	}
+	if (direction != OAKRENDER_COLOR_DIRECTION_NORMAL &&
+		direction != OAKRENDER_COLOR_DIRECTION_INVERSE) {
+		return OakColorProcessor{};
+	}
+	try {
+		auto *impl = new OakColorProcessorImpl;
+		impl->ptr = olive::ColorProcessor::create(
+			native_manager, input, *native_dest,
+			direction == OAKRENDER_COLOR_DIRECTION_NORMAL ?
+				olive::ColorProcessor::k_normal :
+				olive::ColorProcessor::k_inverse);
+		return oakrender_c_api::make_handle<OakColorProcessor>(
+			impl, true, &oakrender_c_api::delete_as<OakColorProcessorImpl>);
+	} catch (...) {
+		return OakColorProcessor{};
+	}
+}
+
+OakColorProcessor oakrender_color_processor_create_lut(
+	OakNodeColorManager manager, const char *path, int direction)
+{
+	olive::ColorManager *native_manager =
+		oaknode_colormanager_get_native(manager);
+	if (!native_manager || !path || !*path) {
+		return OakColorProcessor{};
+	}
+	if (direction != OAKRENDER_COLOR_DIRECTION_NORMAL &&
+		direction != OAKRENDER_COLOR_DIRECTION_INVERSE) {
+		return OakColorProcessor{};
+	}
+	try {
+		OCIO_NAMESPACE::FileTransformRcPtr transform =
+			OCIO_NAMESPACE::FileTransform::Create();
+		transform->setSrc(path);
+		transform->setInterpolation(OCIO_NAMESPACE::INTERP_LINEAR);
+		transform->setDirection(
+			direction == OAKRENDER_COLOR_DIRECTION_NORMAL ?
+				OCIO_NAMESPACE::TRANSFORM_DIR_FORWARD :
+				OCIO_NAMESPACE::TRANSFORM_DIR_INVERSE);
+
+		auto *impl = new OakColorProcessorImpl;
+		impl->ptr = olive::ColorProcessor::create(
+			native_manager->get_config()->getProcessor(transform));
+		return oakrender_c_api::make_handle<OakColorProcessor>(
+			impl, true, &oakrender_c_api::delete_as<OakColorProcessorImpl>);
+	} catch (...) {
+		return OakColorProcessor{};
+	}
+}
+
+OakColorProcessor oakrender_color_processor_create_grading_primary(
+	OakNodeColorManager manager, int style)
+{
+	olive::ColorManager *native_manager =
+		oaknode_colormanager_get_native(manager);
+	if (!native_manager || (style != OAKRENDER_GRADING_PRIMARY_LIN &&
+							style != OAKRENDER_GRADING_PRIMARY_LOG)) {
+		return OakColorProcessor{};
+	}
+	try {
+		OCIO_NAMESPACE::GradingPrimaryTransformRcPtr gp =
+			OCIO_NAMESPACE::GradingPrimaryTransform::Create(
+				style == OAKRENDER_GRADING_PRIMARY_LIN ?
+					OCIO_NAMESPACE::GRADING_LIN :
+					OCIO_NAMESPACE::GRADING_LOG);
+		gp->makeDynamic();
+		gp->setDirection(
+			OCIO_NAMESPACE::TransformDirection::TRANSFORM_DIR_FORWARD);
+
+		auto *impl = new OakColorProcessorImpl;
+		impl->ptr = olive::ColorProcessor::create(
+			native_manager->get_config()->getProcessor(gp));
+		return oakrender_c_api::make_handle<OakColorProcessor>(
+			impl, true, &oakrender_c_api::delete_as<OakColorProcessorImpl>);
+	} catch (...) {
+		return OakColorProcessor{};
+	}
+}
+
+std::shared_ptr<olive::ColorProcessor> oakrender_color_processor_get_native(
+	OakColorProcessor processor)
+{
+	OakColorProcessorImpl *p =
+		oakrender_c_api::to_native<OakColorProcessorImpl>(processor);
+	return p ? p->ptr : nullptr;
+}
+
+int oakrender_lut_is_supported_extension(const char *extension)
+{
+	if (!extension) {
+		return 0;
+	}
+	return olive::LUTLibrary::is_supported_extension(extension) ? 1 : 0;
+}
+
+int oakrender_lut_supported_extensions_count(void)
+{
+	return static_cast<int>(
+		olive::LUTLibrary::supported_extensions().size());
+}
+
+int oakrender_lut_supported_extension_at(int index, char *buf,
+										 int buf_size)
+{
+	const std::vector<std::string> &all =
+		olive::LUTLibrary::supported_extensions();
+	if (index < 0 || index >= static_cast<int>(all.size())) {
+		return OAKRENDER_E_NOT_FOUND;
+	}
+	return write_string(all[size_t(index)], buf, buf_size);
 }
 
 int oakrender_color_processor_convert(OakColorProcessor processor,

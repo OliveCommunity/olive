@@ -149,9 +149,11 @@ OakRenderTicket oakrender_ticket_render_frame(
 			}
 		}
 
-		if (params->cache) {
-			rvp.add_cache(reinterpret_cast<olive::FrameHashCache *>(
-				params->cache));
+		if (params->cache.ctx) {
+			if (auto *fc = dynamic_cast<olive::FrameHashCache *>(
+					oakrender_cache_get_native(params->cache))) {
+				rvp.add_cache(fc);
+			}
 		}
 
 		auto *watcher = new olive::RenderTicketWatcher();

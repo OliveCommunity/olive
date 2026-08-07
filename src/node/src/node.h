@@ -37,9 +37,7 @@
 #include "param.h"
 #include "ofxhImageEffectAPI.h"
 #include "olive/core/util/timerange.h"
-#include "render/audioplaybackcache.h"
-#include "render/audiowaveformcache.h"
-#include "render/framehashcache.h"
+#include "render/cache.h"
 #include "render/job/generatejob.h"
 #include "render/job/samplejob.h"
 #include "render/job/shaderjob.h"
@@ -293,22 +291,27 @@ public:
 		return has_input_with_id(id);
 	}
 
-	FrameHashCache *video_frame_cache() const
+	/**
+	 * @brief Borrowed copies of the cache handles owned by this node
+	 *        (oakrender caches). Callers must NOT free them; addref
+	 *        first to keep one beyond the node's lifetime.
+	 */
+	const OakRenderCache &video_frame_cache() const
 	{
 		return video_cache_;
 	}
 
-	ThumbnailCache *thumbnail_cache() const
+	const OakRenderCache &thumbnail_cache() const
 	{
 		return thumbnail_cache_;
 	}
 
-	AudioPlaybackCache *audio_playback_cache() const
+	const OakRenderCache &audio_playback_cache() const
 	{
 		return audio_cache_;
 	}
 
-	AudioWaveformCache *waveform_cache() const
+	const OakRenderCache &waveform_cache() const
 	{
 		return waveform_cache_;
 	}
@@ -1505,11 +1508,11 @@ private:
 
 	std::string effect_input_;
 
-	FrameHashCache *video_cache_;
-	ThumbnailCache *thumbnail_cache_;
+	OakRenderCache video_cache_ = {};
+	OakRenderCache thumbnail_cache_ = {};
 
-	AudioPlaybackCache *audio_cache_;
-	AudioWaveformCache *waveform_cache_;
+	OakRenderCache audio_cache_ = {};
+	OakRenderCache waveform_cache_ = {};
 
 	bool caches_enabled_;
 };

@@ -30,6 +30,7 @@
 #include "olive/core/oakcore/audioparams.h"
 #include "olive/core/oakcore/samplebuffer.h"
 #include "render/error.h"
+#include "render/cache.h"
 #include "render/color.h"
 #include "render/renderer.h"
 
@@ -89,7 +90,7 @@ typedef struct oakrender_video_ticket_params {
 	int force_channel_count; /**< 0 = off. */
 	OakColorProcessor force_color_output; /**< Borrowed; empty ctx = none. */
 	OakColorTransform force_color_transform; /**< By value; empty ctx = default. */
-	OakNodeFrameCache *cache; /**< Borrowed frame cache, may be NULL. */
+	OakRenderCache cache; /**< Borrowed frame cache; empty ctx = none. */
 } oakrender_video_ticket_params;
 
 /**

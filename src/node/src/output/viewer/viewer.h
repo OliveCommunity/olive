@@ -27,8 +27,6 @@
 #include "codec/encoder.h"
 #include "node.h"
 #include "output/track/track.h"
-#include "render/audioplaybackcache.h"
-#include "render/framehashcache.h"
 #include "subtitleparams.h"
 #include "videoparams.h"
 #include "timeline/marker.h"
@@ -145,12 +143,17 @@ public:
 			   get_subtitle_stream_count();
 	}
 
-	const AudioWaveformCache *get_connected_waveform()
+	/**
+	 * @brief Borrowed copy of the connected node's waveform cache handle
+	 *        (empty handle when nothing is connected). Callers must NOT
+	 *        free it.
+	 */
+	OakRenderCache get_connected_waveform()
 	{
 		if (Node *n = get_connected_sample_output()) {
 			return n->waveform_cache();
 		} else {
-			return nullptr;
+			return {};
 		}
 	}
 

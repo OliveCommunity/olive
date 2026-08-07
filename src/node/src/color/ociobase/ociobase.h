@@ -23,6 +23,7 @@
 #define OAK_OCIOBASENODE_H
 
 #include "node.h"
+#include "render/color.h"
 #include "render/job/colortransformjob.h"
 
 namespace olive
@@ -31,6 +32,7 @@ namespace olive
 class OCIOBaseNode : public Node {
 public:
 	OCIOBaseNode();
+	virtual ~OCIOBaseNode() override;
 
 	virtual void AddedToGraphEvent(Project *p) override;
 	virtual void RemovedFromGraphEvent(Project *p) override;
@@ -51,19 +53,29 @@ protected:
 		return manager_;
 	}
 
-	ColorProcessorPtr processor() const
+	/**
+	 * @brief Borrowed copy of the processor handle owned by this node.
+	 *        Callers must NOT free it.
+	 */
+	const OakColorProcessor &processor() const
 	{
 		return processor_;
 	}
-	void set_processor(ColorProcessorPtr p)
+
+	/**
+	 * @brief Take ownership of a processor handle (the old one is
+	 *        released).
+	 */
+	void set_processor(OakColorProcessor p)
 	{
+		oakrender_color_processor_free(&processor_);
 		processor_ = p;
 	}
 
 private:
 	ColorManager *manager_;
 
-	ColorProcessorPtr processor_;
+	OakColorProcessor processor_ = {};
 };
 
 }

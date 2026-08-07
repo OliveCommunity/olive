@@ -31,7 +31,6 @@ const std::string OCIOBaseNode::k_texture_input = "tex_in";
 
 OCIOBaseNode::OCIOBaseNode()
 	: manager_(nullptr)
-	, processor_(nullptr)
 {
 	add_input(k_texture_input, NodeValue::k_texture,
 			 InputFlags(k_input_flag_not_keyframable));
@@ -39,6 +38,11 @@ OCIOBaseNode::OCIOBaseNode()
 	set_effect_input(k_texture_input);
 
 	set_flag(k_video_effect);
+}
+
+OCIOBaseNode::~OCIOBaseNode()
+{
+	oakrender_color_processor_free(&processor_);
 }
 
 void OCIOBaseNode::AddedToGraphEvent(Project *p)
@@ -60,10 +64,11 @@ void OCIOBaseNode::value(const NodeValueRow &value, const NodeGlobals &globals,
 	auto tex_met = value.at(k_texture_input);
 	TexturePtr t = tex_met.to_texture();
 	if (t) {
-		if (processor_) {
+		if (processor_.ctx) {
 			ColorTransformJob job;
 
-			job.set_color_processor(processor_);
+			job.set_color_processor(
+				oakrender_color_processor_get_native(processor_));
 			job.set_input_texture(tex_met);
 
 			table->push(NodeValue::k_texture, t->to_job(job), this);

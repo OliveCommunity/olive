@@ -326,3 +326,35 @@ TEST_F(ColorManagerTest, CompliantColorTransform)
 	oaknode_colormanager_free(&m);
 	release_borrowed(ph);
 }
+
+TEST_F(ColorManagerTest, WrapBorrowedNull)
+{
+	EXPECT_EQ(oaknode_colormanager_wrap_borrowed(nullptr).ctx, nullptr);
+}
+
+TEST_F(ColorManagerTest, WrapBorrowedAndGetNative)
+{
+	olive::Project project;
+	OakNodeProject ph = borrow_project(&project);
+
+	OakNodeColorManager m = oaknode_colormanager_init(ph);
+	ASSERT_NE(m.ctx, nullptr);
+
+	olive::ColorManager *native = oaknode_colormanager_get_native(m);
+	ASSERT_NE(native, nullptr);
+
+	OakNodeColorManager borrowed =
+		oaknode_colormanager_wrap_borrowed(native);
+	ASSERT_NE(borrowed.ctx, nullptr);
+	EXPECT_EQ(oaknode_colormanager_get_native(borrowed), native);
+
+	// Releasing the borrowed box must not destroy the object
+	borrowed.release(borrowed.ctx);
+	EXPECT_EQ(oaknode_colormanager_get_native(m), native);
+
+	EXPECT_EQ(oaknode_colormanager_get_native(OakNodeColorManager{}),
+			  nullptr);
+
+	oaknode_colormanager_free(&m);
+	release_borrowed(ph);
+}

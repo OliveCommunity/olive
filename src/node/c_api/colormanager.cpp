@@ -75,6 +75,19 @@ void oaknode_colormanager_free(OakNodeColorManager *manager)
 	oaknode_c_api::free_handle(manager);
 }
 
+OakNodeColorManager oaknode_colormanager_wrap_borrowed(
+	void *native_manager)
+{
+	return oaknode_c_api::make_handle<OakNodeColorManager>(
+		native_manager, false, nullptr);
+}
+
+olive::ColorManager *oaknode_colormanager_get_native(
+	OakNodeColorManager manager)
+{
+	return oaknode_c_api::to_native<olive::ColorManager>(manager);
+}
+
 int oaknode_colormanager_initialize(OakNodeColorManager manager)
 {
 	olive::ColorManager *cm =

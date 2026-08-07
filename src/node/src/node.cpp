@@ -32,6 +32,7 @@
 
 #include "lerp.h"
 #include "configaccessor.h"
+#include "../c_api/nodehandle.h"
 #include "group/group.h"
 #include "project/serializer/typeserializer.h"
 #include "nodeundo.h"
@@ -54,6 +55,39 @@ static std::string number_to_string(double d)
 
 const std::string Node::k_enabled_input = "enabled_in";
 
+namespace
+{
+
+/**
+ * @brief Invalidate a node-owned cache over a rational time range
+ *        through the oakrender C ABI.
+ */
+void invalidate_handle_cache(const OakRenderCache &cache,
+							 const olive::TimeRange &range)
+{
+	oakrender_cache_invalidate_range(cache, range.in().numerator(),
+									 range.in().denominator(),
+									 range.out().numerator(),
+									 range.out().denominator());
+}
+
+/**
+ * @brief Fetch a cache UUID through the two-stage string API.
+ */
+std::string cache_uuid_string(const OakRenderCache &cache)
+{
+	int needed = oakrender_cache_get_uuid(cache, nullptr, 0);
+	if (needed <= 0) {
+		return std::string();
+	}
+	std::string uuid(size_t(needed), '\0');
+	oakrender_cache_get_uuid(cache, uuid.data(), needed);
+	uuid.resize(size_t(needed - 1));
+	return uuid;
+}
+
+} // namespace
+
 Node::Node()
 	: override_color_(-1)
 	, folder_(nullptr)
@@ -63,12 +97,21 @@ Node::Node()
 {
 	add_input(k_enabled_input, NodeValue::k_boolean, true);
 
-	video_cache_ = new FrameHashCache(this);
-	thumbnail_cache_ = new ThumbnailCache(this);
-	audio_cache_ = new AudioPlaybackCache(this);
-	waveform_cache_ = new AudioWaveformCache(this);
+	// Borrowed self-handle: the caches keep a native back-pointer
+	// inside oakrender, the box goes away right here
+	OakNodeNode self = oaknode_c_api::make_handle<OakNodeNode>(
+		this, false, nullptr);
+	video_cache_ = oakrender_cache_create_for_node(
+		self, OAKRENDER_CACHE_VIDEO_FRAME);
+	thumbnail_cache_ = oakrender_cache_create_for_node(
+		self, OAKRENDER_CACHE_THUMBNAIL);
+	audio_cache_ = oakrender_cache_create_for_node(
+		self, OAKRENDER_CACHE_AUDIO_PLAYBACK);
+	waveform_cache_ = oakrender_cache_create_for_node(
+		self, OAKRENDER_CACHE_AUDIO_WAVEFORM);
+	self.release(self.ctx);
 
-	waveform_cache_->set_saving_enabled(false);
+	oakrender_cache_set_saving_enabled(waveform_cache_, 0);
 }
 
 Node::~Node()
@@ -89,6 +132,11 @@ Node::~Node()
 			delete i;
 		}
 	}
+
+	oakrender_cache_free(&video_cache_);
+	oakrender_cache_free(&thumbnail_cache_);
+	oakrender_cache_free(&audio_cache_);
+	oakrender_cache_free(&waveform_cache_);
 }
 
 std::string Node::short_name() const
@@ -225,10 +273,14 @@ void Node::disconnect_edge(Node *output, const NodeInput &input, bool silent)
 
 void Node::copy_cache_uuids_from(Node *n)
 {
-	video_cache_->set_uuid(n->video_cache_->get_uuid());
-	audio_cache_->set_uuid(n->audio_cache_->get_uuid());
-	thumbnail_cache_->set_uuid(n->thumbnail_cache_->get_uuid());
-	waveform_cache_->set_uuid(n->waveform_cache_->get_uuid());
+	auto copy_cache_uuid = [](const OakRenderCache &from, OakRenderCache *to) {
+		oakrender_cache_set_uuid(*to, cache_uuid_string(from).c_str());
+	};
+
+	copy_cache_uuid(n->video_cache_, &video_cache_);
+	copy_cache_uuid(n->audio_cache_, &audio_cache_);
+	copy_cache_uuid(n->thumbnail_cache_, &thumbnail_cache_);
+	copy_cache_uuid(n->waveform_cache_, &waveform_cache_);
 }
 
 std::string Node::get_input_name(const std::string &id) const
@@ -996,13 +1048,13 @@ void Node::invalidate_cache(const TimeRange &range, const std::string &from,
 		if (range.in() != range.out()) {
 			TimeRange vr = range.intersected(get_video_cache_range());
 			if (vr.length() != 0) {
-				video_frame_cache()->invalidate(vr);
-				thumbnail_cache()->invalidate(vr);
+				invalidate_handle_cache(video_cache_, vr);
+				invalidate_handle_cache(thumbnail_cache_, vr);
 			}
 			TimeRange ar = range.intersected(get_audio_cache_range());
 			if (ar.length() != 0) {
-				audio_playback_cache()->invalidate(ar);
-				waveform_cache()->invalidate(ar);
+				invalidate_handle_cache(audio_cache_, ar);
+				invalidate_handle_cache(waveform_cache_, ar);
 			}
 		}
 	}
@@ -1410,13 +1462,17 @@ bool Node::load(XmlStreamReader *reader, SerializedData *data)
 		} else if (reader->name() == "caches") {
 			while (xml_read_next_start_element(reader)) {
 				if (reader->name() == "audio") {
-					this->audio_playback_cache()->set_uuid(reader->read_element_text());
+					oakrender_cache_set_uuid(
+						audio_cache_, reader->read_element_text().c_str());
 				} else if (reader->name() == "video") {
-					this->video_frame_cache()->set_uuid(reader->read_element_text());
+					oakrender_cache_set_uuid(
+						video_cache_, reader->read_element_text().c_str());
 				} else if (reader->name() == "thumb") {
-					this->thumbnail_cache()->set_uuid(reader->read_element_text());
+					oakrender_cache_set_uuid(
+						thumbnail_cache_, reader->read_element_text().c_str());
 				} else if (reader->name() == "waveform") {
-					this->waveform_cache()->set_uuid(reader->read_element_text());
+					oakrender_cache_set_uuid(
+						waveform_cache_, reader->read_element_text().c_str());
 				} else {
 					reader->skip_current_element();
 				}
@@ -1518,14 +1574,11 @@ void Node::save(XmlStreamWriter *writer) const
 
 	writer->write_start_element("caches");
 
-	writer->write_text_element("audio",
-							   this->audio_playback_cache()->get_uuid());
-	writer->write_text_element("video",
-							   this->video_frame_cache()->get_uuid());
-	writer->write_text_element("thumb",
-							   this->thumbnail_cache()->get_uuid());
+	writer->write_text_element("audio", cache_uuid_string(audio_cache_));
+	writer->write_text_element("video", cache_uuid_string(video_cache_));
+	writer->write_text_element("thumb", cache_uuid_string(thumbnail_cache_));
 	writer->write_text_element("waveform",
-							   this->waveform_cache()->get_uuid());
+							   cache_uuid_string(waveform_cache_));
 
 	writer->write_end_element(); // caches
 

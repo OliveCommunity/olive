@@ -19,6 +19,9 @@
 ***/
 
 #include "ociolut.h"
+#include "node/colormanager.h"
+#include "render/color.h"
+#include "render/manager.h"
 
 #include <algorithm>
 #include <cctype>
@@ -47,8 +50,19 @@ bool is_main_process()
 	// Qt-free replacement for qobject_cast<QApplication*>(QCoreApplication::instance()):
 	// only the main GUI process creates a RenderManager (the render worker
 	// never does), so its presence identifies the main process.
-	return RenderManager::instance() != nullptr;
+	return oakrender_manager_available() != 0;
 }
+
+} // namespace
+
+OCIOLutNode::~OCIOLutNode()
+{
+	disconnect_all();
+	oakrender_color_processor_free(&last_processor_);
+}
+
+namespace
+{
 
 int read_direction_input(const Node *node)
 {
@@ -82,13 +96,21 @@ OCIOLutNode::OCIOLutNode()
 {
 	add_input(k_file_input, NodeValue::k_file, std::string(),
 			 InputFlags(k_input_flag_not_keyframable | k_input_flag_not_connectable));
-	const StringList &extensions = LUTLibrary::supported_extensions();
-	std::string all_luts = "*.";
-	for (size_t i = 0; i < extensions.size(); i++) {
-		if (i > 0) {
-			all_luts += " *.";
+	std::string all_luts;
+	int ext_count = oakrender_lut_supported_extensions_count();
+	for (int i = 0; i < ext_count; i++) {
+		char ext[32];
+		if (oakrender_lut_supported_extension_at(i, ext, sizeof(ext)) <= 0) {
+			continue;
 		}
-		all_luts += extensions[i];
+		if (!all_luts.empty()) {
+			all_luts += " ";
+		}
+		all_luts += "*.";
+		all_luts += ext;
+	}
+	if (all_luts.empty()) {
+		all_luts = "*.*";
 	}
 	set_input_property(k_file_input, "filter",
 					 "LUT Files (" + all_luts + ");;All Files (*)");
@@ -180,11 +202,7 @@ void OCIOLutNode::generate_processor()
 	// RenderManager/PreviewAutoCacher, so skip this step to avoid crashing.
 	if (is_main_process()) {
 		invalidate_all(k_texture_input);
-		if (RenderManager *rm = RenderManager::instance()) {
-			if (PreviewAutoCacher *cacher = rm->get_cacher()) {
-				cacher->cancel_video_tasks(false);
-			}
-		}
+		oakrender_cancel_video_tasks(0);
 	}
 }
 
@@ -192,7 +210,7 @@ void OCIOLutNode::ensure_processor() const
 {
 	std::lock_guard<std::mutex> locker(gen_mutex_);
 
-	if (!processor_dirty_ && last_processor_ &&
+	if (!processor_dirty_ && last_processor_.ctx &&
 		get_standard_value(k_file_input).to_string() == last_path_ &&
 		read_direction_input(this) == last_direction_) {
 		return;
@@ -217,8 +235,8 @@ void OCIOLutNode::set_last_error(const std::string &error) const
 bool OCIOLutNode::create_processor_from_inputs() const
 {
 	if (!manager()) {
-		const_cast<OCIOLutNode *>(this)->set_processor(nullptr);
-		last_processor_.reset();
+		const_cast<OCIOLutNode *>(this)->set_processor(OakColorProcessor{});
+		oakrender_color_processor_free(&last_processor_);
 		last_path_.clear();
 		last_direction_ = -1;
 		processor_dirty_ = false;
@@ -229,8 +247,8 @@ bool OCIOLutNode::create_processor_from_inputs() const
 	const int direction = read_direction_input(this);
 
 	if (path.empty()) {
-		const_cast<OCIOLutNode *>(this)->set_processor(nullptr);
-		last_processor_.reset();
+		const_cast<OCIOLutNode *>(this)->set_processor(OakColorProcessor{});
+		oakrender_color_processor_free(&last_processor_);
 		last_path_.clear();
 		last_direction_ = -1;
 		processor_dirty_ = false;
@@ -239,7 +257,8 @@ bool OCIOLutNode::create_processor_from_inputs() const
 	}
 
 	// Re-use the existing processor if the file and direction haven't changed.
-	if (path == last_path_ && direction == last_direction_ && last_processor_) {
+	if (path == last_path_ && direction == last_direction_ &&
+		last_processor_.ctx) {
 		processor_dirty_ = false;
 		return false;
 	}
@@ -249,8 +268,8 @@ bool OCIOLutNode::create_processor_from_inputs() const
 		std::filesystem::is_regular_file(path, fs_ec) && !fs_ec;
 	if (!is_file) {
 		fprintf(stderr, "OCIO LUT file does not exist: %s\n", path.c_str());
-		const_cast<OCIOLutNode *>(this)->set_processor(nullptr);
-		last_processor_.reset();
+		const_cast<OCIOLutNode *>(this)->set_processor(OakColorProcessor{});
+		oakrender_color_processor_free(&last_processor_);
 		last_path_.clear();
 		last_direction_ = -1;
 		processor_dirty_ = false;
@@ -262,11 +281,11 @@ bool OCIOLutNode::create_processor_from_inputs() const
 	if (!suffix.empty() && suffix.front() == '.') {
 		suffix.erase(suffix.begin());
 	}
-	if (!LUTLibrary::is_supported_extension(suffix)) {
+	if (!oakrender_lut_is_supported_extension(suffix.c_str())) {
 		fprintf(stderr, "Unsupported OCIO LUT file extension: %s\n",
 				path.c_str());
-		const_cast<OCIOLutNode *>(this)->set_processor(nullptr);
-		last_processor_.reset();
+		const_cast<OCIOLutNode *>(this)->set_processor(OakColorProcessor{});
+		oakrender_color_processor_free(&last_processor_);
 		last_path_.clear();
 		last_direction_ = -1;
 		processor_dirty_ = false;
@@ -274,30 +293,23 @@ bool OCIOLutNode::create_processor_from_inputs() const
 		return false;
 	}
 
-	ColorProcessorPtr processor;
-	try {
-		const bool forward = static_cast<ColorProcessor::Direction>(
-								 direction) == ColorProcessor::k_normal;
-		fprintf(stderr,
-				"OCIOLutNode: creating processor for %s direction=%d "
-				"ocio_dir=%s process=%s\n",
-				path.c_str(), direction, forward ? "FORWARD" : "INVERSE",
-				is_main_process() ? "main" : "worker");
+	const bool forward = direction == 0; // ColorProcessor::k_normal
+	fprintf(stderr,
+			"OCIOLutNode: creating processor for %s direction=%d "
+			"ocio_dir=%s process=%s\n",
+			path.c_str(), direction, forward ? "FORWARD" : "INVERSE",
+			is_main_process() ? "main" : "worker");
 
-		ocio::FileTransformRcPtr transform = ocio::FileTransform::Create();
-		transform->setSrc(path.c_str());
-		transform->setInterpolation(ocio::INTERP_LINEAR);
-		transform->setDirection(forward ? ocio::TRANSFORM_DIR_FORWARD :
-										  ocio::TRANSFORM_DIR_INVERSE);
+	OakNodeColorManager mgr =
+		oaknode_colormanager_wrap_borrowed(manager());
+	OakColorProcessor processor = oakrender_color_processor_create_lut(
+		mgr, path.c_str(),
+		forward ? OAKRENDER_COLOR_DIRECTION_NORMAL :
+				  OAKRENDER_COLOR_DIRECTION_INVERSE);
+	mgr.release(mgr.ctx);
 
-		processor = ColorProcessor::create(
-			manager()->get_config()->getProcessor(transform));
-	} catch (const std::exception &e) {
-		fprintf(stderr, "OCIO LUT processor error: %s\n", e.what());
-		processor = nullptr;
-	}
-
-	if (!processor) {
+	if (!processor.ctx) {
+		fprintf(stderr, "OCIO LUT processor error for %s\n", path.c_str());
 		set_last_error("OCIO LUT: failed to load LUT file: " + path);
 	} else {
 		set_last_error(std::string());
@@ -305,6 +317,7 @@ bool OCIOLutNode::create_processor_from_inputs() const
 
 	last_path_ = path;
 	last_direction_ = direction;
+	oakrender_color_processor_free(&last_processor_);
 	last_processor_ = processor;
 	const_cast<OCIOLutNode *>(this)->set_processor(processor);
 	processor_dirty_ = false;

@@ -31,6 +31,7 @@
 #include <set>
 
 #include "current.h"
+#include "render/manager.h"
 #include "xmlutils.h"
 #include "color/ociobase/ociobase.h"
 #include "factory.h"
@@ -469,9 +470,14 @@ std::string Project::cache_path() const
 	}
 	}
 
-	// ADAPT(M7): render/diskmanager.h is converted in M7; it must return
-	// std::string here.
-	return DiskManager::instance()->get_default_cache_path();
+	int needed = oakrender_disk_cache_path(NULL, 0);
+	if (needed <= 0) {
+		return std::string();
+	}
+	std::string path(size_t(needed), '\0');
+	oakrender_disk_cache_path(path.data(), needed);
+	path.resize(size_t(needed - 1));
+	return path;
 }
 
 void Project::regenerate_uuid()

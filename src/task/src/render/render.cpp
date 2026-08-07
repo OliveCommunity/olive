@@ -82,7 +82,7 @@ void RenderTask::on_ticket_finished(OakRenderTicket ticket)
 
 bool RenderTask::start_video_ticket(OakNodeColorManager manager,
 									const Rational &time, int mode,
-									OakNodeFrameCache *cache,
+									OakRenderCache cache,
 									const ForceParams &force)
 {
 	OakNodeNode output_node = {};
@@ -136,7 +136,7 @@ bool RenderTask::render(OakNodeColorManager manager,
 						const TimeRangeList &video_range,
 						const TimeRangeList &audio_range,
 						const TimeRange &subtitle_range, int render_mode,
-						OakNodeFrameCache *cache, const ForceParams &force)
+						OakRenderCache cache, const ForceParams &force)
 {
 	oakrender_manager_set_aggressive_gc(1);
 

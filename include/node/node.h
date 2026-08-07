@@ -134,7 +134,7 @@ struct OakTimelineWorkArea;
  * (olive::FrameHashCache in oakrender). oakrender reinterprets this into
  * its own handle types.
  */
-typedef struct OakNodeFrameCache OakNodeFrameCache;
+struct OakRenderCache;
 
 /* oakcore handles used by the viewer setters. */
 typedef struct OakAudioParams OakAudioParams;
@@ -575,11 +575,14 @@ int oaknode_node_get_work_area(OakNodeNode node,
 							   struct OakTimelineWorkArea *out);
 
 /**
- * @brief Borrowed video frame cache of a node (NULL when the node has
- *        none or for an empty handle).
+ * @brief Video frame cache of a node as an addref'd oakrender value
+ *        handle (release with oakrender_cache_free()). *out is an
+ *        empty handle (ctx == NULL) when the node has none or for an
+ *        empty node handle. struct OakRenderCache is forward-declared
+ *        here; include render/cache.h for the definition.
  */
 int oaknode_node_get_video_frame_cache(OakNodeNode node,
-									   OakNodeFrameCache **out);
+									   struct OakRenderCache *out);
 
 /**
  * @brief Copy input values/connections from one node to another

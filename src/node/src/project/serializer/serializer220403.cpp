@@ -516,17 +516,17 @@ void ProjectSerializer220403::load_node(Node *node, XMLNodeData &xml_node_data,
 		} else if (reader->name() == "caches") {
 			while (xml_read_next_start_element(reader)) {
 				if (reader->name() == "audio") {
-					node->audio_playback_cache()->set_uuid(
-						reader->read_element_text());
+					oakrender_cache_set_uuid(node->audio_playback_cache(),
+											 reader->read_element_text().c_str());
 				} else if (reader->name() == "video") {
-					node->video_frame_cache()->set_uuid(
-						reader->read_element_text());
+					oakrender_cache_set_uuid(node->video_frame_cache(),
+											 reader->read_element_text().c_str());
 				} else if (reader->name() == "thumb") {
-					node->thumbnail_cache()->set_uuid(
-						reader->read_element_text());
+					oakrender_cache_set_uuid(node->thumbnail_cache(),
+											 reader->read_element_text().c_str());
 				} else if (reader->name() == "waveform") {
-					node->waveform_cache()->set_uuid(
-						reader->read_element_text());
+					oakrender_cache_set_uuid(node->waveform_cache(),
+											 reader->read_element_text().c_str());
 				} else {
 					reader->skip_current_element();
 				}

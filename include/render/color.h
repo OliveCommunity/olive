@@ -23,6 +23,8 @@
 
 #include "error.h"
 #include "renderer.h"
+#include "common/colortransform.h" /* OakColorTransform */
+#include "node/colormanager.h" /* OakNodeColorManager */
 
 #ifdef __cplusplus
 extern "C" {
@@ -95,6 +97,75 @@ void oakrender_color_processor_free(OakColorProcessor *processor);
 int oakrender_color_processor_is_valid(OakColorProcessor processor);
 
 /**
+ * @brief Create a processor from an input colorspace and a destination
+ *        transform on a node's color manager
+ *        (ColorProcessor::create(ColorManager*, input, dest, dir)).
+ *
+ * @param manager Borrowed manager handle (e.g.
+ *        oaknode_colormanager_wrap_borrowed()).
+ * @param direction OAKRENDER_COLOR_DIRECTION_NORMAL / _INVERSE.
+ * @return Processor handle with reference count 1; ctx is NULL for
+ *         empty/invalid arguments or allocation failure.
+ */
+OakColorProcessor oakrender_color_processor_create_transform(
+	OakNodeColorManager manager, const char *input,
+	OakColorTransform dest, int direction);
+
+/**
+ * @brief Create a processor from a LUT file on a node's color manager
+ *        (OCIO FileTransform with linear interpolation; direction
+ *        selects forward/inverse).
+ *
+ * @return Processor handle with reference count 1; ctx is NULL for
+ *         empty/invalid arguments, an unreadable LUT, or allocation
+ *         failure.
+ */
+OakColorProcessor oakrender_color_processor_create_lut(
+	OakNodeColorManager manager, const char *path, int direction);
+
+/**
+ * @brief Grading-primary transform styles for
+ *        oakrender_color_processor_create_grading_primary().
+ */
+enum OakRenderGradingPrimaryStyle {
+	OAKRENDER_GRADING_PRIMARY_LIN = 0, /**< OCIO GRADING_LIN */
+	OAKRENDER_GRADING_PRIMARY_LOG = 1 /**< OCIO GRADING_LOG */
+};
+
+/**
+ * @brief Create a dynamic grading-primary processor on a node's color
+ *        manager (OCIO GradingPrimaryTransform, forward direction).
+ *
+ * @return Processor handle with reference count 1; ctx is NULL for
+ *         invalid arguments or allocation failure.
+ */
+OakColorProcessor oakrender_color_processor_create_grading_primary(
+	OakNodeColorManager manager, int style);
+
+/* ---- LUT library ---------------------------------------------------- */
+
+/**
+ * @brief 1 when `extension` (without dot, case-insensitive) is a
+ *        supported LUT extension (LUTLibrary::is_supported_extension()).
+ */
+int oakrender_lut_is_supported_extension(const char *extension);
+
+/**
+ * @brief Number of supported LUT extensions
+ *        (LUTLibrary::supported_extensions()).
+ */
+int oakrender_lut_supported_extensions_count(void);
+
+/**
+ * @brief Supported LUT extension at `index`, two-stage string.
+ *
+ * @return Required buffer size in bytes (including NUL), or a negative
+ *         OAKRENDER_E_* code for an out-of-range index.
+ */
+int oakrender_lut_supported_extension_at(int index, char *buf,
+										 int buf_size);
+
+/**
  * @brief Convert a single RGBA color (ColorProcessor::convert_color()).
  * On an invalid processor the input is copied through.
  *
@@ -159,6 +230,23 @@ int oakrender_color_manager_get_config(char *buf, int n);
 int oakrender_color_manager_display_transform(const char *display,
 											  const char *view, char *buf,
 											  int n);
+
+#ifdef __cplusplus
+} /* extern "C" */
+
+#include <memory>
+namespace olive { class ColorProcessor; }
+
+extern "C" {
+#endif
+
+/**
+ * @brief Borrowed access to the underlying C++ processor (C++ only, for
+ *        adapter layers; a shared_ptr copy keeps the object alive).
+ *        Empty shared_ptr for an empty handle.
+ */
+std::shared_ptr<olive::ColorProcessor> oakrender_color_processor_get_native(
+	OakColorProcessor processor);
 
 #ifdef __cplusplus
 }

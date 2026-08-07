@@ -33,8 +33,9 @@ namespace olive
 class OCIOLutNode : public OCIOBaseNode {
 public:
 	OCIOLutNode();
+	virtual ~OCIOLutNode() override;
 
-	NODE_DEFAULT_FUNCTIONS(OCIOLutNode)
+	NODE_COPY_FUNCTION(OCIOLutNode)
 
 	virtual std::string name() const override;
 	virtual std::string id() const override;
@@ -76,7 +77,7 @@ private:
 	mutable bool processor_dirty_ = true;
 	mutable std::string last_path_;
 	mutable int last_direction_ = -1;
-	mutable ColorProcessorPtr last_processor_;
+	mutable OakColorProcessor last_processor_ = {};
 	mutable std::string last_error_;
 };
 

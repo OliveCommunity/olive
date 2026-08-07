@@ -73,7 +73,7 @@ protected:
 				const TimeRangeList &video_range,
 				const TimeRangeList &audio_range,
 				const TimeRange &subtitle_range, int render_mode,
-				OakNodeFrameCache *cache,
+				OakRenderCache cache,
 				const ForceParams &force);
 
 	virtual bool download_frame(OakCodecFrame frame, const Rational &time);
@@ -164,7 +164,7 @@ private:
 
 	bool start_video_ticket(OakNodeColorManager manager,
 							const Rational &time, int mode,
-							OakNodeFrameCache *cache,
+							OakRenderCache cache,
 							const ForceParams &force);
 
 	OakNodeNode viewer_;

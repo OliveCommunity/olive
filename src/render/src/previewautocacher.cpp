@@ -31,6 +31,7 @@
 #include "inputdragger.h"
 #include "input/multicam/multicamnode.h"
 #include "playbackcache.h"
+#include "render/cache.h"
 #include "project.h"
 #include "qtutils.h"
 #include "rendermanager.h"
@@ -338,10 +339,12 @@ void PreviewAutoCacher::connect_to_node_cache(Node *node)
 		return;
 	}
 
-	PlaybackCache *video_cache = node->video_frame_cache();
-	PlaybackCache *thumb_cache = node->thumbnail_cache();
-	PlaybackCache *audio_cache = node->audio_playback_cache();
-	PlaybackCache *wave_cache = node->waveform_cache();
+	// The caches live behind oakrender handles on the node; unwrap the
+	// natives for the in-module callback wiring.
+	PlaybackCache *video_cache = oakrender_cache_get_native(node->video_frame_cache());
+	PlaybackCache *thumb_cache = oakrender_cache_get_native(node->thumbnail_cache());
+	PlaybackCache *audio_cache = oakrender_cache_get_native(node->audio_playback_cache());
+	PlaybackCache *wave_cache = oakrender_cache_get_native(node->waveform_cache());
 
 	video_cache->set_requested_callback(
 		[this, video_cache](ViewerOutput *context, const TimeRange &range) {
@@ -369,21 +372,26 @@ void PreviewAutoCacher::connect_to_node_cache(Node *node)
 	audio_cache->set_cancel_all_callback(
 		[this, audio_cache]() { cancel_for_cache(audio_cache); });
 
-	node->video_frame_cache()->resignal_requests();
-	node->thumbnail_cache()->resignal_requests();
-	node->audio_playback_cache()->resignal_requests();
-	node->waveform_cache()->resignal_requests();
+	video_cache->resignal_requests();
+	thumb_cache->resignal_requests();
+	audio_cache->resignal_requests();
+	wave_cache->resignal_requests();
 }
 
 void PreviewAutoCacher::disconnect_from_node_cache(Node *node)
 {
-	node->video_frame_cache()->set_requested_callback(nullptr);
-	node->thumbnail_cache()->set_requested_callback(nullptr);
-	node->audio_playback_cache()->set_requested_callback(nullptr);
-	node->waveform_cache()->set_requested_callback(nullptr);
+	PlaybackCache *video_cache = oakrender_cache_get_native(node->video_frame_cache());
+	PlaybackCache *thumb_cache = oakrender_cache_get_native(node->thumbnail_cache());
+	PlaybackCache *audio_cache = oakrender_cache_get_native(node->audio_playback_cache());
+	PlaybackCache *wave_cache = oakrender_cache_get_native(node->waveform_cache());
 
-	node->video_frame_cache()->set_cancel_all_callback(nullptr);
-	node->audio_playback_cache()->set_cancel_all_callback(nullptr);
+	video_cache->set_requested_callback(nullptr);
+	thumb_cache->set_requested_callback(nullptr);
+	audio_cache->set_requested_callback(nullptr);
+	wave_cache->set_requested_callback(nullptr);
+
+	video_cache->set_cancel_all_callback(nullptr);
+	audio_cache->set_cancel_all_callback(nullptr);
 }
 
 void PreviewAutoCacher::cancel_queued_single_frame_render()
@@ -816,7 +824,9 @@ void PreviewAutoCacher::force_cache_range(ViewerOutput *context,
 	custom_autocache_range_ = range;
 
 	// Re-hash these frames and start rendering
-	start_caching_video_range(context, context->video_frame_cache(), range);
+	start_caching_video_range(
+		context, oakrender_cache_get_native(context->video_frame_cache()),
+		range);
 }
 
 void PreviewAutoCacher::project_destroyed()

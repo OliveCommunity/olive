@@ -161,6 +161,22 @@ int oakrender_cancel_request(int64_t request_id)
 	return OAKRENDER_OK;
 }
 
+int oakrender_manager_available(void)
+{
+	return olive::RenderManager::instance() != nullptr ? 1 : 0;
+}
+
+void oakrender_cancel_video_tasks(int wait_for_done)
+{
+	olive::RenderManager *manager = olive::RenderManager::instance();
+	if (!manager) {
+		return;
+	}
+	if (olive::PreviewAutoCacher *cacher = manager->get_cacher()) {
+		cacher->cancel_video_tasks(wait_for_done != 0);
+	}
+}
+
 int oakrender_set_cacher_multicam(OakNodeNode multicam_or_NULL)
 {
 	olive::RenderManager *manager = olive::RenderManager::instance();

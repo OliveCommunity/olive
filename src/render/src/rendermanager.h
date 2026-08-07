@@ -31,6 +31,7 @@
 
 #include "configaccessor.h"
 #include "colorprocessorcache.h"
+#include "framehashcache.h"
 #include "output/viewer/viewer.h"
 #include "project.h"
 #include "traverser.h"

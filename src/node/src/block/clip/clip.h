@@ -25,6 +25,7 @@
 #include "audio/audiovisualwaveform.h"
 #include "codec/decoder.h"
 #include "block/block.h"
+#include "render/cache.h"
 #include "input/multicam/multicamnode.h"
 #include "output/track/track.h"
 
@@ -143,39 +144,44 @@ public:
 		return block_links_;
 	}
 
-	FrameHashCache *connected_video_cache() const
+	/**
+	 * @brief Borrowed copies of the connected node's cache handles
+	 *        (empty handle when nothing is connected). Callers must NOT
+	 *        free them.
+	 */
+	OakRenderCache connected_video_cache() const
 	{
 		if (Node *n = get_connected_output(k_buffer_in)) {
 			return n->video_frame_cache();
 		} else {
-			return nullptr;
+			return {};
 		}
 	}
 
-	AudioPlaybackCache *connected_audio_cache() const
+	OakRenderCache connected_audio_cache() const
 	{
 		if (Node *n = get_connected_output(k_buffer_in)) {
 			return n->audio_playback_cache();
 		} else {
-			return nullptr;
+			return {};
 		}
 	}
 
-	ThumbnailCache *thumbnails()
+	OakRenderCache thumbnails()
 	{
 		if (Node *n = get_connected_output(k_buffer_in)) {
 			return n->thumbnail_cache();
 		} else {
-			return nullptr;
+			return {};
 		}
 	}
 
-	AudioWaveformCache *waveform()
+	OakRenderCache waveform()
 	{
 		if (Node *n = get_connected_output(k_buffer_in)) {
 			return n->waveform_cache();
 		} else {
-			return nullptr;
+			return {};
 		}
 	}
 
@@ -251,10 +257,11 @@ private:
 
 	void request_range_from_connected(const TimeRange &range);
 
-	void request_range_for_cache(PlaybackCache *cache, const TimeRange &max_range,
+	void request_range_for_cache(const OakRenderCache &cache,
+							  const TimeRange &max_range,
 							  const TimeRange &range, bool invalidate,
 							  bool request);
-	void request_invalidated_for_cache(PlaybackCache *cache,
+	void request_invalidated_for_cache(const OakRenderCache &cache,
 									const TimeRange &max_range);
 
 	bool get_adjusted_thumbnail_range(TimeRange *r) const;

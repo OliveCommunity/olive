@@ -147,12 +147,25 @@ NodeValue NodeTraverser::generate_row_value_element(const Node *node,
 
 	if (value.type() == NodeValue::k_texture && use_cache()) {
 		if (TexturePtr tex = value.to_texture()) {
-			std::lock_guard<std::mutex> locker(node->video_frame_cache()->mutex());
+			const OakRenderCache &frame_cache = node->video_frame_cache();
+			oakrender_cache_lock(frame_cache);
 
-			node->video_frame_cache()->load_state();
+			oakrender_cache_load_state(frame_cache);
 
-			std::string cache =
-				node->video_frame_cache()->get_valid_cache_filename(time.in());
+			std::string cache;
+			int needed = oakrender_cache_get_valid_cache_filename(
+				frame_cache, time.in().numerator(), time.in().denominator(),
+				nullptr, 0);
+			if (needed > 0) {
+				cache.resize(size_t(needed), '\0');
+				oakrender_cache_get_valid_cache_filename(
+					frame_cache, time.in().numerator(),
+					time.in().denominator(), cache.data(), needed);
+				cache.resize(size_t(needed - 1));
+			}
+
+			oakrender_cache_unlock(frame_cache);
+
 			if (!cache.empty()) {
 				value.set_value(tex->to_job(CacheJob(cache, value)));
 			}

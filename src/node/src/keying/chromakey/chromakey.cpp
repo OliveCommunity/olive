@@ -15,6 +15,9 @@
 ***/
 
 #include "chromakey.h"
+#include "common/colortransform.h"
+#include "node/colormanager.h"
+#include "render/color.h"
 
 #include "color/colormanager/colormanager.h"
 #include "render/colorprocessor.h"
@@ -134,12 +137,25 @@ ShaderCode ChromaKeyNode::get_shader_code(const ShaderRequest &request) const
 void ChromaKeyNode::generate_processor()
 {
 	if (manager()) {
-		try {
-			ColorTransform transform("cie_xyz_d65_interchange");
-			set_processor(ColorProcessor::create(
-				manager(), manager()->get_reference_color_space(), transform));
-		} catch (const ocio::Exception &e) {
-			std::cerr << std::endl << e.what() << std::endl;
+		OakNodeColorManager mgr =
+			oaknode_colormanager_wrap_borrowed(manager());
+		OakColorTransform transform =
+			oakcommon_colortransform_init_output("cie_xyz_d65_interchange");
+
+		char ref_space[256];
+		int needed = oaknode_colormanager_get_reference_color_space(
+			mgr, ref_space, sizeof(ref_space));
+		OakColorProcessor processor = {};
+		if (needed > 0 && needed <= int(sizeof(ref_space))) {
+			processor = oakrender_color_processor_create_transform(
+				mgr, ref_space, transform, OAKRENDER_COLOR_DIRECTION_NORMAL);
+		}
+
+		oakcommon_colortransform_free(&transform);
+		mgr.release(mgr.ctx);
+
+		if (processor.ctx) {
+			set_processor(processor);
 		}
 	}
 }
@@ -148,10 +164,11 @@ void ChromaKeyNode::value(const NodeValueRow &value, const NodeGlobals &globals,
 						  NodeValueTable *table) const
 {
 	if (TexturePtr tex = value.at(k_texture_input).to_texture()) {
-		if (processor()) {
+		if (processor().ctx) {
 			ColorTransformJob job(value);
 
-			job.set_color_processor(processor());
+			job.set_color_processor(
+				oakrender_color_processor_get_native(processor()));
 			job.set_input_texture(value.at(k_texture_input));
 			job.set_needs_custom_shader(this);
 			job.set_function_name("SceneLinearToCIEXYZ_d65");

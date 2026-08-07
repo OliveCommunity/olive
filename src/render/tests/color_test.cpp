@@ -190,3 +190,139 @@ TEST(OakRenderColorTest, DisplayTransformInvalidArgs)
 														sizeof(buf)),
 			  OAKRENDER_E_NOT_FOUND);
 }
+
+namespace
+{
+
+/**
+ * @brief Project + initialized color manager for processor factories.
+ */
+class ColorProcessorFactoryFixture : public ::testing::Test {
+protected:
+	void SetUp() override
+	{
+		project_ = oaknode_project_init();
+		ASSERT_NE(project_.ctx, nullptr);
+		manager_ = oaknode_colormanager_init(project_);
+		ASSERT_NE(manager_.ctx, nullptr);
+		ASSERT_EQ(oaknode_colormanager_initialize(manager_), OAKNODE_OK);
+	}
+
+	void TearDown() override
+	{
+		oaknode_colormanager_free(&manager_);
+		oaknode_project_free(&project_);
+	}
+
+	OakNodeProject project_ = {};
+	OakNodeColorManager manager_ = {};
+};
+
+} // namespace
+
+TEST_F(ColorProcessorFactoryFixture, CreateTransformInvalidArgs)
+{
+	OakColorTransform t =
+		oakcommon_colortransform_init_display("sRGB", "sRGB OETF", "");
+	ASSERT_NE(t.ctx, nullptr);
+
+	EXPECT_EQ(oakrender_color_processor_create_transform(
+				  OakNodeColorManager{}, "Linear", t,
+				  OAKRENDER_COLOR_DIRECTION_NORMAL)
+				  .ctx,
+			  nullptr);
+	EXPECT_EQ(oakrender_color_processor_create_transform(
+				  manager_, nullptr, t, OAKRENDER_COLOR_DIRECTION_NORMAL)
+				  .ctx,
+			  nullptr);
+	EXPECT_EQ(oakrender_color_processor_create_transform(
+				  manager_, "Linear", OakColorTransform{},
+				  OAKRENDER_COLOR_DIRECTION_NORMAL)
+				  .ctx,
+			  nullptr);
+	EXPECT_EQ(oakrender_color_processor_create_transform(
+				  manager_, "Linear", t, 42)
+				  .ctx,
+			  nullptr);
+
+	oakcommon_colortransform_free(&t);
+}
+
+TEST_F(ColorProcessorFactoryFixture, CreateTransformHappyPath)
+{
+	OakColorTransform t =
+		oakcommon_colortransform_init_display("sRGB", "sRGB OETF", "");
+	ASSERT_NE(t.ctx, nullptr);
+
+	const int alive_before = oakrender_debug_alive_count();
+	OakColorProcessor p = oakrender_color_processor_create_transform(
+		manager_, "Linear", t, OAKRENDER_COLOR_DIRECTION_NORMAL);
+	ASSERT_NE(p.ctx, nullptr);
+	EXPECT_EQ(oakrender_color_processor_is_valid(p), 1);
+	EXPECT_NE(oakrender_color_processor_get_native(p), nullptr);
+
+	oakrender_color_processor_free(&p);
+	EXPECT_EQ(oakrender_debug_alive_count(), alive_before);
+	oakcommon_colortransform_free(&t);
+
+	EXPECT_TRUE(oakrender_color_processor_get_native(OakColorProcessor{}) ==
+				nullptr);
+}
+
+TEST_F(ColorProcessorFactoryFixture, CreateGradingPrimary)
+{
+	OakColorProcessor p = oakrender_color_processor_create_grading_primary(
+		manager_, OAKRENDER_GRADING_PRIMARY_LIN);
+	ASSERT_NE(p.ctx, nullptr);
+	EXPECT_EQ(oakrender_color_processor_is_valid(p), 1);
+	oakrender_color_processor_free(&p);
+
+	EXPECT_EQ(oakrender_color_processor_create_grading_primary(manager_, 9)
+				  .ctx,
+			  nullptr);
+	EXPECT_EQ(oakrender_color_processor_create_grading_primary(
+				  OakNodeColorManager{}, OAKRENDER_GRADING_PRIMARY_LOG)
+				  .ctx,
+			  nullptr);
+}
+
+TEST_F(ColorProcessorFactoryFixture, CreateLutErrorPaths)
+{
+	// Nonexistent LUT file fails cleanly
+	EXPECT_EQ(oakrender_color_processor_create_lut(
+				  manager_, "/nonexistent/never.cube",
+				  OAKRENDER_COLOR_DIRECTION_NORMAL)
+				  .ctx,
+			  nullptr);
+	EXPECT_EQ(oakrender_color_processor_create_lut(
+				  OakNodeColorManager{}, "x.cube",
+				  OAKRENDER_COLOR_DIRECTION_NORMAL)
+				  .ctx,
+			  nullptr);
+	EXPECT_EQ(oakrender_color_processor_create_lut(
+				  manager_, nullptr, OAKRENDER_COLOR_DIRECTION_NORMAL)
+				  .ctx,
+			  nullptr);
+	EXPECT_EQ(oakrender_color_processor_create_lut(manager_, "x.cube", 7)
+				  .ctx,
+			  nullptr);
+}
+
+TEST(OakRenderLutTest, SupportedExtensions)
+{
+	int count = oakrender_lut_supported_extensions_count();
+	ASSERT_GT(count, 0);
+
+	char ext[32];
+	ASSERT_GT(oakrender_lut_supported_extension_at(0, ext, sizeof(ext)),
+			  0);
+	EXPECT_EQ(oakrender_lut_is_supported_extension(ext), 1);
+
+	EXPECT_EQ(oakrender_lut_is_supported_extension("definitely-not-a-lut"),
+			  0);
+	EXPECT_EQ(oakrender_lut_is_supported_extension(nullptr), 0);
+	EXPECT_LT(oakrender_lut_supported_extension_at(-1, ext, sizeof(ext)),
+			  0);
+	EXPECT_LT(oakrender_lut_supported_extension_at(count, ext, sizeof(ext)),
+			  0);
+}

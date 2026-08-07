@@ -20,6 +20,9 @@
 ***/
 
 #include "displaytransform.h"
+#include "common/colortransform.h"
+#include "node/colormanager.h"
+#include "render/color.h"
 
 #include "color/colormanager/colormanager.h"
 
@@ -146,10 +149,24 @@ void DisplayTransformNode::config_changed()
 void DisplayTransformNode::generate_processor()
 {
 	if (manager()) {
-		ColorTransform transform(get_display(), get_view(), std::string());
-		set_processor(ColorProcessor::create(
-			manager(), manager()->get_reference_color_space(), transform,
-			get_direction()));
+		OakNodeColorManager mgr =
+			oaknode_colormanager_wrap_borrowed(manager());
+		OakColorTransform transform = oakcommon_colortransform_init_display(
+			get_display().c_str(), get_view().c_str(), "");
+
+		char ref_space[256];
+		int needed = oaknode_colormanager_get_reference_color_space(
+			mgr, ref_space, sizeof(ref_space));
+		if (needed > 0 && needed <= int(sizeof(ref_space))) {
+			set_processor(oakrender_color_processor_create_transform(
+				mgr, ref_space, transform,
+				get_direction() == ColorProcessor::k_normal ?
+					OAKRENDER_COLOR_DIRECTION_NORMAL :
+					OAKRENDER_COLOR_DIRECTION_INVERSE));
+		}
+
+		oakcommon_colortransform_free(&transform);
+		mgr.release(mgr.ctx);
 	}
 }
 

@@ -73,6 +73,16 @@ OakNodeColorManager oaknode_colormanager_init(OakNodeProject project);
 void oaknode_colormanager_free(OakNodeColorManager *manager);
 
 /**
+ * @brief Borrowed handle wrapping a native manager pointer held by a
+ *        node (olive::OCIOBaseNode::manager()).
+ *
+ * The manager stays owned by its project: release() on this handle
+ * only frees the box. Empty handle (ctx == NULL) for a NULL native
+ * pointer.
+ */
+OakNodeColorManager oaknode_colormanager_wrap_borrowed(void *native_manager);
+
+/**
  * @brief Load the built-in default OCIO config and set the default input
  * colorspace (olive::ColorManager::init()).
  *
@@ -188,6 +198,21 @@ int oaknode_colormanager_get_default_luma_coefs(OakNodeColorManager manager,
 int oaknode_colormanager_get_compliant_color_transform(
 	OakNodeColorManager manager, OakColorTransform transform,
 	int force_display, OakColorTransform *out);
+
+#ifdef __cplusplus
+} /* extern "C" */
+
+namespace olive { class ColorManager; }
+
+extern "C" {
+#endif
+
+/**
+ * @brief Borrowed access to the underlying C++ manager (C++ only, for
+ *        adapter layers). Valid while the handle is held. NULL-safe.
+ */
+olive::ColorManager *oaknode_colormanager_get_native(
+	OakNodeColorManager manager);
 
 #ifdef __cplusplus
 }

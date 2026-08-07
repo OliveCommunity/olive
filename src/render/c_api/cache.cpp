@@ -21,13 +21,18 @@
 #include "../../../include/render/cache.h"
 
 #include <atomic>
+#include <cstring>
 #include <new>
 
 #include "alivecount.h"
 #include "internalhandles.h"
 
+#include "audioplaybackcache.h"
+#include "audiowaveformcache.h"
 #include "framehashcache.h"
 #include "playbackcache.h"
+#include "output/viewer/viewer.h"
+#include "../../node/c_api/nodehandle.h"
 
 namespace
 {
@@ -112,6 +117,231 @@ OakRenderCache oakrender_cache_wrap_borrowed(void *native_cache)
 	// only frees the box.
 	return oakrender_c_api::make_handle<OakRenderCache>(
 		native_cache, false, nullptr);
+}
+
+namespace
+{
+
+/**
+ * @brief Recover the boxed cache as its PlaybackCache base (NULL-safe).
+ */
+olive::PlaybackCache *base(OakRenderCache c)
+{
+	if (!c.ctx) {
+		return nullptr;
+	}
+	return static_cast<olive::PlaybackCache *>(
+		oakrender_c_api::box_object(c.ctx));
+}
+
+/**
+ * @brief Copy @p value into the two-stage string buffer.
+ *
+ * @return Required buffer size in bytes (including NUL). The buffer is
+ *         only written to when it is large enough.
+ */
+int copy_string(const std::string &value, char *buf, int buf_size)
+{
+	int needed = static_cast<int>(value.size()) + 1;
+	if (buf && buf_size >= needed) {
+		memcpy(buf, value.c_str(), needed);
+	}
+	return needed;
+}
+
+} // namespace
+
+OakRenderCache oakrender_cache_create_for_node(OakNodeNode parent, int kind)
+{
+	olive::Node *native_parent =
+		oaknode_c_api::to_native<olive::Node>(parent);
+	if (!native_parent) {
+		return OakRenderCache{};
+	}
+
+	olive::PlaybackCache *cache = nullptr;
+	switch (kind) {
+	case OAKRENDER_CACHE_VIDEO_FRAME:
+		cache = new (std::nothrow) olive::FrameHashCache(native_parent);
+		break;
+	case OAKRENDER_CACHE_THUMBNAIL:
+		cache = new (std::nothrow) olive::ThumbnailCache(native_parent);
+		break;
+	case OAKRENDER_CACHE_AUDIO_PLAYBACK:
+		cache = new (std::nothrow) olive::AudioPlaybackCache(native_parent);
+		break;
+	case OAKRENDER_CACHE_AUDIO_WAVEFORM:
+		cache = new (std::nothrow) olive::AudioWaveformCache(native_parent);
+		break;
+	default:
+		return OakRenderCache{};
+	}
+	if (!cache) {
+		return OakRenderCache{};
+	}
+
+	return oakrender_c_api::make_handle<OakRenderCache>(
+		cache, true, &oakrender_c_api::delete_as<olive::PlaybackCache>);
+}
+
+int oakrender_cache_get_uuid(OakRenderCache cache, char *buf, int buf_size)
+{
+	olive::PlaybackCache *c = base(cache);
+	if (!c) {
+		return OAKRENDER_E_INVALID;
+	}
+	return copy_string(c->get_uuid(), buf, buf_size);
+}
+
+void oakrender_cache_invalidate_range(OakRenderCache cache,
+									  int64_t in_num, int64_t in_den,
+									  int64_t out_num, int64_t out_den)
+{
+	olive::PlaybackCache *c = base(cache);
+	if (!c) {
+		return;
+	}
+	c->invalidate(
+		olive::core::TimeRange(olive::Rational(in_num, in_den),
+							   olive::Rational(out_num, out_den)));
+}
+
+int oakrender_cache_request(OakRenderCache cache, OakNodeNode context,
+							int64_t in_num, int64_t in_den,
+							int64_t out_num, int64_t out_den)
+{
+	olive::PlaybackCache *c = base(cache);
+	olive::Node *native_context =
+		oaknode_c_api::to_native<olive::Node>(context);
+	auto *viewer = dynamic_cast<olive::ViewerOutput *>(native_context);
+	if (!c || !viewer) {
+		return OAKRENDER_E_INVALID;
+	}
+	c->request(viewer,
+			   olive::core::TimeRange(olive::Rational(in_num, in_den),
+									  olive::Rational(out_num, out_den)));
+	return OAKRENDER_OK;
+}
+
+int oakrender_cache_load_state(OakRenderCache cache)
+{
+	olive::PlaybackCache *c = base(cache);
+	if (!c) {
+		return OAKRENDER_E_INVALID;
+	}
+	try {
+		c->load_state();
+		return OAKRENDER_OK;
+	} catch (...) {
+		return OAKRENDER_E_FAILED;
+	}
+}
+
+int oakrender_cache_save_state(OakRenderCache cache)
+{
+	olive::PlaybackCache *c = base(cache);
+	if (!c) {
+		return OAKRENDER_E_INVALID;
+	}
+	try {
+		c->save_state();
+		return OAKRENDER_OK;
+	} catch (...) {
+		return OAKRENDER_E_FAILED;
+	}
+}
+
+int oakrender_cache_set_saving_enabled(OakRenderCache cache, int enabled)
+{
+	olive::PlaybackCache *c = base(cache);
+	if (!c) {
+		return OAKRENDER_E_INVALID;
+	}
+	c->set_saving_enabled(enabled != 0);
+	return OAKRENDER_OK;
+}
+
+int oakrender_cache_set_passthrough(OakRenderCache cache,
+									OakRenderCache other)
+{
+	olive::PlaybackCache *c = base(cache);
+	olive::PlaybackCache *o = base(other);
+	if (!c || !o) {
+		return OAKRENDER_E_INVALID;
+	}
+	c->set_passthrough(o);
+	return OAKRENDER_OK;
+}
+
+int oakrender_cache_get_valid_cache_filename(OakRenderCache cache,
+											 int64_t time_num,
+											 int64_t time_den, char *buf,
+											 int buf_size)
+{
+	auto *c = dynamic_cast<olive::FrameHashCache *>(base(cache));
+	if (!c) {
+		return OAKRENDER_E_INVALID;
+	}
+	return copy_string(
+		c->get_valid_cache_filename(olive::Rational(time_num, time_den)),
+		buf, buf_size);
+}
+
+int oakrender_cache_get_passthroughs(OakRenderCache cache, int64_t *ranges,
+									 int max_ranges)
+{
+	olive::PlaybackCache *c = base(cache);
+	if (!c) {
+		return OAKRENDER_E_INVALID;
+	}
+
+	const std::vector<olive::PlaybackCache::Passthrough> &all =
+		c->get_passthroughs();
+	int count = static_cast<int>(all.size());
+	if (ranges && max_ranges > 0) {
+		int n = count < max_ranges ? count : max_ranges;
+		for (int i = 0; i < n; i++) {
+			ranges[i * 4] = all[i].in().numerator();
+			ranges[i * 4 + 1] = all[i].in().denominator();
+			ranges[i * 4 + 2] = all[i].out().numerator();
+			ranges[i * 4 + 3] = all[i].out().denominator();
+		}
+	}
+	return count;
+}
+
+int oakrender_cache_get_timebase(OakRenderCache cache, int *num, int *den)
+{
+	auto *c = dynamic_cast<olive::FrameHashCache *>(base(cache));
+	if (!c) {
+		return OAKRENDER_E_INVALID;
+	}
+	if (num) {
+		*num = c->get_timebase().numerator();
+	}
+	if (den) {
+		*den = c->get_timebase().denominator();
+	}
+	return OAKRENDER_OK;
+}
+
+void oakrender_cache_lock(OakRenderCache cache)
+{
+	if (olive::PlaybackCache *c = base(cache)) {
+		c->mutex().lock();
+	}
+}
+
+void oakrender_cache_unlock(OakRenderCache cache)
+{
+	if (olive::PlaybackCache *c = base(cache)) {
+		c->mutex().unlock();
+	}
+}
+
+olive::PlaybackCache *oakrender_cache_get_native(OakRenderCache cache)
+{
+	return base(cache);
 }
 
 int oakrender_cache_set_timebase(OakRenderCache cache, int num, int den)

@@ -120,6 +120,20 @@ int oakrender_set_cacher_multicam(OakNodeNode multicam_or_NULL);
  */
 int oakrender_set_display_color_processor(OakColorProcessor p_or_NULL);
 
+/**
+ * @brief 1 when the process-wide RenderManager singleton exists
+ *        (RenderManager::instance() != nullptr; only the main GUI
+ *        process creates one), 0 otherwise.
+ */
+int oakrender_manager_available(void);
+
+/**
+ * @brief Cancel in-flight video cache tasks on the manager's
+ *        auto-cacher (PreviewAutoCacher::cancel_video_tasks()). No-op
+ *        when no manager/auto-cacher exists (e.g. a worker process).
+ */
+void oakrender_cancel_video_tasks(int wait_for_done);
+
 /* ---- Disk cache (olive::DiskManager) -------------------------------------- */
 
 /**

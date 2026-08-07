@@ -31,6 +31,7 @@
 #include "project/sequence/sequence.h"
 #include "sliderdisplaytype.h"
 #include "timeline/displaymode.h"
+#include "../../../c_api/nodehandle.h"
 
 namespace olive
 {
@@ -185,11 +186,17 @@ void ClipBlock::discard_cache()
 	if (Node *connected = get_connected_output(k_buffer_in)) {
 		Track::Type type = get_track_type();
 		if (type == Track::k_video) {
-			connected->video_frame_cache()->invalidate(
-				TimeRange(RATIONAL_MIN, RATIONAL_MAX));
+			oakrender_cache_invalidate_range(connected->video_frame_cache(),
+											 RATIONAL_MIN.numerator(),
+											 RATIONAL_MIN.denominator(),
+											 RATIONAL_MAX.numerator(),
+											 RATIONAL_MAX.denominator());
 		} else if (type == Track::k_audio) {
-			connected->audio_playback_cache()->invalidate(
-				TimeRange(RATIONAL_MIN, RATIONAL_MAX));
+			oakrender_cache_invalidate_range(connected->audio_playback_cache(),
+											 RATIONAL_MIN.numerator(),
+											 RATIONAL_MIN.denominator(),
+											 RATIONAL_MAX.numerator(),
+											 RATIONAL_MAX.denominator());
 		}
 	}
 }
@@ -284,8 +291,9 @@ void ClipBlock::request_range_from_connected(const TimeRange &range)
 				{
 					TimeRange thumb_range = range.intersected(max_range);
 					if (get_adjusted_thumbnail_range(&thumb_range)) {
-						connected->thumbnail_cache()->request(
-							this->track()->sequence(), thumb_range);
+						request_range_for_cache(connected->thumbnail_cache(),
+												max_range, thumb_range, false,
+												true);
 					}
 				}
 
@@ -351,29 +359,69 @@ void ClipBlock::request_invalidated_from_connected(bool force_all,
 	}
 }
 
-void ClipBlock::request_range_for_cache(PlaybackCache *cache,
+void ClipBlock::request_range_for_cache(const OakRenderCache &cache,
 									 const TimeRange &max_range,
 									 const TimeRange &range, bool invalidate,
 									 bool request)
 {
+	if (!cache.ctx) {
+		return;
+	}
+
 	TimeRange r = range.intersected(max_range);
 
 	if (invalidate) {
-		cache->invalidate(r);
+		oakrender_cache_invalidate_range(cache, r.in().numerator(),
+										 r.in().denominator(),
+										 r.out().numerator(),
+										 r.out().denominator());
 	}
 
 	if (request) {
-		cache->request(this->track()->sequence(), r);
+		// Borrowed context handle: the sequence outlives the call
+		OakNodeNode context = oaknode_c_api::make_handle<OakNodeNode>(
+			this->track()->sequence(), false, nullptr);
+		oakrender_cache_request(cache, context, r.in().numerator(),
+								r.in().denominator(), r.out().numerator(),
+								r.out().denominator());
+		context.release(context.ctx);
 	}
 }
 
-void ClipBlock::request_invalidated_for_cache(PlaybackCache *cache,
+void ClipBlock::request_invalidated_for_cache(const OakRenderCache &cache,
 										   const TimeRange &max_range)
 {
-	core::TimeRangeList invalid = cache->get_invalidated_ranges(max_range);
+	if (!cache.ctx) {
+		return;
+	}
 
-	for (const PlaybackCache::Passthrough &p : cache->get_passthroughs()) {
-		invalid.remove(p);
+	core::TimeRangeList invalid;
+	int n = oakrender_cache_get_invalidated_ranges(
+		cache, max_range.in().numerator(), max_range.in().denominator(),
+		max_range.out().numerator(), max_range.out().denominator(), NULL, 0);
+	if (n > 0) {
+		std::vector<int64_t> ranges(size_t(n) * 4);
+		oakrender_cache_get_invalidated_ranges(
+			cache, max_range.in().numerator(), max_range.in().denominator(),
+			max_range.out().numerator(), max_range.out().denominator(),
+			ranges.data(), n);
+		for (int i = 0; i < n; i++) {
+			invalid.insert(TimeRange(Rational(ranges[i * 4],
+											  ranges[i * 4 + 1]),
+									 Rational(ranges[i * 4 + 2],
+											  ranges[i * 4 + 3])));
+		}
+	}
+
+	int np = oakrender_cache_get_passthroughs(cache, NULL, 0);
+	if (np > 0) {
+		std::vector<int64_t> passthroughs(size_t(np) * 4);
+		oakrender_cache_get_passthroughs(cache, passthroughs.data(), np);
+		for (int i = 0; i < np; i++) {
+			invalid.remove(TimeRange(
+				Rational(passthroughs[i * 4], passthroughs[i * 4 + 1]),
+				Rational(passthroughs[i * 4 + 2], passthroughs[i * 4 + 3])));
+		}
 	}
 
 	for (const TimeRange &r : invalid) {
@@ -392,7 +440,9 @@ bool ClipBlock::get_adjusted_thumbnail_range(TimeRange *r) const
 		Rational in = this->media_range().in();
 		if (r->contains(in)) {
 			// Cache only the in point
-			*r = TimeRange(in, in + thumbnail_cache()->get_timebase());
+			int tb_num = 0, tb_den = 1;
+			oakrender_cache_get_timebase(thumbnail_cache(), &tb_num, &tb_den);
+			*r = TimeRange(in, in + Rational(tb_num, tb_den));
 			return true;
 		} else {
 			// Cache nothing
@@ -541,29 +591,12 @@ void ClipBlock::retranslate()
 
 void ClipBlock::add_cache_passthrough_from(ClipBlock *other)
 {
-	if (auto tc = this->video_frame_cache()) {
-		if (auto oc = other->video_frame_cache()) {
-			tc->set_passthrough(oc);
-		}
-	}
-
-	if (auto tc = this->audio_playback_cache()) {
-		if (auto oc = other->audio_playback_cache()) {
-			tc->set_passthrough(oc);
-		}
-	}
-
-	if (auto tc = this->thumbnails()) {
-		if (auto oc = other->thumbnails()) {
-			tc->set_passthrough(oc);
-		}
-	}
-
-	if (auto tc = this->waveform()) {
-		if (auto oc = other->waveform()) {
-			tc->set_passthrough(oc);
-		}
-	}
+	oakrender_cache_set_passthrough(this->video_frame_cache(),
+									other->video_frame_cache());
+	oakrender_cache_set_passthrough(this->audio_playback_cache(),
+									other->audio_playback_cache());
+	oakrender_cache_set_passthrough(this->thumbnails(), other->thumbnails());
+	oakrender_cache_set_passthrough(this->waveform(), other->waveform());
 }
 
 void ClipBlock::ConnectedToPreviewEvent()
