@@ -26,6 +26,8 @@
 
 #include "common/xmlutils.h"
 
+#include "../src/xmlutils.h"
+
 namespace
 {
 
@@ -325,4 +327,53 @@ TEST(CommonXmlUtilsCApi, WriterRoundTrip)
 	EXPECT_EQ(found, 0);
 
 	oakcommon_xml_reader_free(&r);
+}
+
+TEST(CommonXmlUtilsCApi, WrapNativeNull)
+{
+	EXPECT_EQ(oakcommon_xml_reader_wrap_native(nullptr).ctx, nullptr);
+	EXPECT_EQ(oakcommon_xml_writer_wrap_native(nullptr).ctx, nullptr);
+}
+
+TEST(CommonXmlUtilsCApi, WrapNativeReaderRoundTrip)
+{
+	olive::XmlStreamReader native("<root><child>text</child></root>");
+	OakXmlReader r = oakcommon_xml_reader_wrap_native(&native);
+	ASSERT_NE(r.ctx, nullptr);
+
+	// Borrowed box and native object must observe the same stream
+	EXPECT_EQ(oakcommon_xml_reader_get_native(r), &native);
+
+	int found = 0;
+	EXPECT_EQ(oakcommon_xml_reader_read_next_start_element(r, &found),
+			  OAKCOMMON_OK);
+	EXPECT_EQ(found, 1);
+
+	char name[32];
+	EXPECT_GT(oakcommon_xml_reader_name(r, name, sizeof(name)), 0);
+	EXPECT_STREQ(name, "root");
+
+	oakcommon_xml_reader_free(&r);
+	EXPECT_EQ(r.ctx, nullptr);
+}
+
+TEST(CommonXmlUtilsCApi, WrapNativeWriterRoundTrip)
+{
+	olive::XmlStreamWriter native;
+	OakXmlWriter w = oakcommon_xml_writer_wrap_native(&native);
+	ASSERT_NE(w.ctx, nullptr);
+
+	EXPECT_EQ(oakcommon_xml_writer_get_native(w), &native);
+	EXPECT_EQ(oakcommon_xml_writer_write_start_element(w, "root"),
+			  OAKCOMMON_OK);
+	EXPECT_EQ(oakcommon_xml_writer_write_end_element(w), OAKCOMMON_OK);
+
+	char out[64];
+	int needed = oakcommon_xml_writer_output(w, out, sizeof(out));
+	EXPECT_GT(needed, 0);
+	EXPECT_LT(needed, int(sizeof(out)));
+	EXPECT_NE(strstr(out, "root"), nullptr);
+
+	oakcommon_xml_writer_free(&w);
+	EXPECT_EQ(w.ctx, nullptr);
 }

@@ -20,6 +20,7 @@
 
 #include "timeline/marker.h"
 
+#include <memory>
 #include <new>
 
 #include "../src/timelinemarker.h"
@@ -57,24 +58,52 @@ olive::TimelineMarker *marker_at(OakTimelineMarkerList list, int index)
 
 } // namespace
 
+OakTimelineMarkerList oaktimeline_marker_list_create(void)
+{
+	olive::TimelineMarkerList *list =
+		new (std::nothrow) olive::TimelineMarkerList();
+	if (!list) {
+		return OakTimelineMarkerList{};
+	}
+	return oaktimeline_capi::make_handle<OakTimelineMarkerList>(
+		list, [](void *p) { delete static_cast<olive::TimelineMarkerList *>(p); });
+}
+
 OakTimelineMarkerList oaktimeline_marker_list_of(OakNodeNode owner)
 {
 	if (!owner.ctx) {
 		return OakTimelineMarkerList{};
 	}
 
-	OakNodeMarkerList *markers = NULL;
+	// The viewer node keeps the owning handle; oaknode returns an
+	// addref'd copy (still the same box; the list itself is owned by the
+	// node's own handle).
+	OakTimelineMarkerList markers = {};
 	if (oaknode_node_get_markers(owner, &markers) != OAKNODE_OK) {
 		return OakTimelineMarkerList{};
 	}
-	// Borrowed box: the list stays owned by the viewer node.
-	return oaktimeline_capi::make_handle<OakTimelineMarkerList>(
-		reinterpret_cast<olive::TimelineMarkerList *>(markers));
+	return markers;
 }
 
 void oaktimeline_marker_list_free(OakTimelineMarkerList *list)
 {
 	oaktimeline_capi::free_handle(list);
+}
+
+int oaktimeline_marker_add(OakTimelineMarkerList list, int in_num,
+						   int in_den, int out_num, int out_den,
+						   const char *name, int color)
+{
+	if (!list.ctx) {
+		return OAKTIMELINE_E_INVALID;
+	}
+
+	auto marker = std::make_unique<olive::TimelineMarker>(
+		color,
+		olive::core::TimeRange(rat(in_num, in_den), rat(out_num, out_den)),
+		name ? name : "");
+	impl(list)->add_marker(std::move(marker));
+	return OAKTIMELINE_OK;
 }
 
 int oaktimeline_marker_count(OakTimelineMarkerList list, int *out_count)

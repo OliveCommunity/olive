@@ -80,6 +80,16 @@ olive::XmlStreamReader *oakcommon_xml_reader_get_native(OakXmlReader reader);
 olive::XmlStreamWriter *oakcommon_xml_writer_get_native(OakXmlWriter writer);
 
 /**
+ * @brief Wrap an existing C++ reader/writer in a borrowed handle (C++
+ * only, for adapter layers). The box never owns the object; the caller
+ * must keep it alive and release the box with
+ * oakcommon_xml_reader_free()/oakcommon_xml_writer_free(). Empty handle
+ * for a NULL object or on allocation failure.
+ */
+OakXmlReader oakcommon_xml_reader_wrap_native(olive::XmlStreamReader *reader);
+OakXmlWriter oakcommon_xml_writer_wrap_native(olive::XmlStreamWriter *writer);
+
+/**
  * @brief Release one reference to a reader.
  *
  * Convenience wrapper around handle.release(handle.ctx): decrements the

@@ -92,10 +92,10 @@ private:
 							ViewerOutput *points) const;
 
 	void load_work_area(XmlStreamReader *reader,
-					  TimelineWorkArea *workarea) const;
+					  const OakTimelineWorkArea &workarea) const;
 
 	void load_marker_list(XmlStreamReader *reader,
-						TimelineMarkerList *markers) const;
+						const OakTimelineMarkerList &markers) const;
 
 	void load_value_hint(Node::ValueHint *hint, XmlStreamReader *reader) const;
 };

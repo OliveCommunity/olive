@@ -31,8 +31,8 @@
 #include "render/framehashcache.h"
 #include "subtitleparams.h"
 #include "videoparams.h"
-#include "timeline/timelinemarker.h"
-#include "timeline/timelineworkarea.h"
+#include "timeline/marker.h"
+#include "timeline/workarea.h"
 
 namespace olive
 {
@@ -48,8 +48,9 @@ class ViewerOutput : public Node {
 public:
 	ViewerOutput(bool create_buffer_inputs = true,
 				 bool create_default_streams = true);
+	virtual ~ViewerOutput() override;
 
-	NODE_DEFAULT_FUNCTIONS(ViewerOutput)
+	NODE_COPY_FUNCTION(ViewerOutput)
 
 	virtual std::string name() const override;
 	virtual std::string id() const override;
@@ -174,13 +175,18 @@ public:
 		return audio_length_;
 	}
 
-	TimelineWorkArea *get_work_area() const
+	/**
+	 * @brief Borrowed copies of the timeline handles owned by this
+	 *        viewer. Callers must NOT free them; addref first to keep
+	 *        one beyond the viewer's lifetime.
+	 */
+	const OakTimelineWorkArea &workarea_handle() const
 	{
-		return workarea_.get();
+		return workarea_;
 	}
-	TimelineMarkerList *get_markers() const
+	const OakTimelineMarkerList &markers_handle() const
 	{
-		return markers_.get();
+		return markers_;
 	}
 
 	virtual TimeRange get_video_cache_range() const override
@@ -275,8 +281,8 @@ private:
 
 	AudioParams cached_audio_params_;
 
-	std::unique_ptr<TimelineWorkArea> workarea_;
-	std::unique_ptr<TimelineMarkerList> markers_;
+	OakTimelineWorkArea workarea_ = {};
+	OakTimelineMarkerList markers_ = {};
 
 	bool autocache_input_video_;
 	bool autocache_input_audio_;

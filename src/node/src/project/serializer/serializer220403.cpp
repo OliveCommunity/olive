@@ -267,8 +267,9 @@ ProjectSerializer220403::load(Project *project, XmlStreamReader *reader,
 			} else if (reader->name() == "markers") {
 				while (xml_read_next_start_element(reader)) {
 					if (reader->name() == "marker") {
-						TimelineMarker *marker = new TimelineMarker();
-						load_marker(reader, marker);
+						SerializedMarker marker;
+						marker.color = OAK_CONFIG("MarkerColor").toInt();
+						load_marker(reader, &marker);
 						load_data.markers.push_back(marker);
 					} else {
 						reader->skip_current_element();
@@ -1103,9 +1104,9 @@ void ProjectSerializer220403::load_timeline_points(XmlStreamReader *reader,
 {
 	while (xml_read_next_start_element(reader)) {
 		if (reader->name() == "markers") {
-			load_marker_list(reader, viewer->get_markers());
+			load_marker_list(reader, viewer->markers_handle());
 		} else if (reader->name() == "workarea") {
-			load_work_area(reader, viewer->get_work_area());
+			load_work_area(reader, viewer->workarea_handle());
 		} else {
 			reader->skip_current_element();
 		}
@@ -1113,37 +1114,42 @@ void ProjectSerializer220403::load_timeline_points(XmlStreamReader *reader,
 }
 
 void ProjectSerializer220403::load_marker(XmlStreamReader *reader,
-										 TimelineMarker *marker) const
+										 SerializedMarker *marker) const
 {
-	Rational in, out;
-
 	for (const XmlStreamAttribute &attr : reader->attributes()) {
 		if (attr.name == "name") {
-			marker->set_name(attr.value);
+			marker->name = attr.value;
 		} else if (attr.name == "in") {
-			in = Rational::from_string(attr.value);
+			marker->in = Rational::from_string(attr.value);
 		} else if (attr.name == "out") {
-			out = Rational::from_string(attr.value);
+			marker->out = Rational::from_string(attr.value);
 		} else if (attr.name == "color") {
-			marker->set_color(atoi(attr.value.c_str()));
+			marker->color = atoi(attr.value.c_str());
 		}
 	}
-
-	marker->set_time(TimeRange(in, out));
 
 	// This element has no inner text, so just skip it
 	reader->skip_current_element();
 }
 
 void ProjectSerializer220403::load_work_area(XmlStreamReader *reader,
-										   TimelineWorkArea *workarea) const
+										   const OakTimelineWorkArea &workarea) const
 {
-	Rational range_in = workarea->in();
-	Rational range_out = workarea->out();
+	int cur_in_num, cur_in_den, cur_out_num, cur_out_den;
+	if (oaktimeline_workarea_get(workarea, &cur_in_num, &cur_in_den,
+								 &cur_out_num, &cur_out_den,
+								 NULL) != OAKTIMELINE_OK) {
+		reader->skip_current_element();
+		return;
+	}
+
+	Rational range_in(cur_in_num, cur_in_den);
+	Rational range_out(cur_out_num, cur_out_den);
 
 	for (const XmlStreamAttribute &attr : reader->attributes()) {
 		if (attr.name == "enabled") {
-			workarea->set_enabled(attr.value != "0");
+			oaktimeline_workarea_set_enabled(workarea,
+											 attr.value != "0");
 		} else if (attr.name == "in") {
 			range_in = Rational::from_string(attr.value);
 		} else if (attr.name == "out") {
@@ -1151,23 +1157,30 @@ void ProjectSerializer220403::load_work_area(XmlStreamReader *reader,
 		}
 	}
 
-	TimeRange loaded_workarea(range_in, range_out);
-
-	if (loaded_workarea != workarea->range()) {
-		workarea->set_range(loaded_workarea);
+	if (range_in != Rational(cur_in_num, cur_in_den) ||
+		range_out != Rational(cur_out_num, cur_out_den)) {
+		oaktimeline_workarea_set_range(workarea, range_in.numerator(),
+									   range_in.denominator(),
+									   range_out.numerator(),
+									   range_out.denominator());
 	}
 
 	reader->skip_current_element();
 }
 
 void ProjectSerializer220403::load_marker_list(XmlStreamReader *reader,
-											 TimelineMarkerList *markers) const
+											 const OakTimelineMarkerList &markers) const
 {
 	while (xml_read_next_start_element(reader)) {
 		if (reader->name() == "marker") {
-			auto marker = std::make_unique<TimelineMarker>();
-			load_marker(reader, marker.get());
-			markers->add_marker(std::move(marker));
+			SerializedMarker marker;
+			marker.color = OAK_CONFIG("MarkerColor").toInt();
+			load_marker(reader, &marker);
+			oaktimeline_marker_add(markers, marker.in.numerator(),
+								   marker.in.denominator(),
+								   marker.out.numerator(),
+								   marker.out.denominator(),
+								   marker.name.c_str(), marker.color);
 		} else {
 			reader->skip_current_element();
 		}

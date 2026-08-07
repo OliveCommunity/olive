@@ -617,3 +617,57 @@ TEST_F(TimelineSequenceFixture, SlideAndInsertGapsAndRippleDeleteGapsFactories)
 }
 
 } // namespace
+
+TEST(OakTimelineOwningHandles, MarkerListCreateAddFree)
+{
+	OakTimelineMarkerList list = oaktimeline_marker_list_create();
+	ASSERT_NE(list.ctx, nullptr);
+
+	EXPECT_EQ(oaktimeline_marker_add(list, 1, 2, 3, 4, "owned", 5),
+			  OAKTIMELINE_OK);
+	EXPECT_EQ(oaktimeline_marker_add(OakTimelineMarkerList{}, 0, 1, 1, 1,
+									 "x", 0),
+			  OAKTIMELINE_E_INVALID);
+
+	int count = -1;
+	EXPECT_EQ(oaktimeline_marker_count(list, &count), OAKTIMELINE_OK);
+	EXPECT_EQ(count, 1);
+
+	int in_n = 0, in_d = 0, out_n = 0, out_d = 0, color = -1;
+	char name[32];
+	EXPECT_GT(oaktimeline_marker_at(list, 0, &in_n, &in_d, &out_n, &out_d,
+									&color, name, sizeof(name)),
+			  0);
+	EXPECT_EQ(in_n, 1);
+	EXPECT_EQ(in_d, 2);
+	EXPECT_EQ(out_n, 3);
+	EXPECT_EQ(out_d, 4);
+	EXPECT_EQ(color, 5);
+	EXPECT_STREQ(name, "owned");
+
+	oaktimeline_marker_list_free(&list);
+	EXPECT_EQ(list.ctx, nullptr);
+	oaktimeline_marker_list_free(nullptr);
+}
+
+TEST(OakTimelineOwningHandles, WorkareaCreateSetEnabledFree)
+{
+	OakTimelineWorkArea w = oaktimeline_workarea_create();
+	ASSERT_NE(w.ctx, nullptr);
+
+	int enabled = -1;
+	EXPECT_EQ(oaktimeline_workarea_get(w, NULL, NULL, NULL, NULL, &enabled),
+			  OAKTIMELINE_OK);
+	EXPECT_EQ(enabled, 0);
+
+	EXPECT_EQ(oaktimeline_workarea_set_enabled(w, 1), OAKTIMELINE_OK);
+	EXPECT_EQ(oaktimeline_workarea_get(w, NULL, NULL, NULL, NULL, &enabled),
+			  OAKTIMELINE_OK);
+	EXPECT_EQ(enabled, 1);
+
+	EXPECT_EQ(oaktimeline_workarea_set_enabled(OakTimelineWorkArea{}, 1),
+			  OAKTIMELINE_E_INVALID);
+
+	oaktimeline_workarea_free(&w);
+	EXPECT_EQ(w.ctx, nullptr);
+}

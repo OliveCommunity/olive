@@ -31,20 +31,27 @@ extern "C" {
 #endif
 
 /**
- * @brief Borrowed by-value handle to a timeline marker list
- * (olive::TimelineMarkerList), owned by a viewer node.
+ * @brief By-value handle to a timeline marker list
+ * (olive::TimelineMarkerList).
  *
- * Obtained via oaktimeline_marker_list_of(). The handle boxes a
- * reference into the owning node: addref/release manage the box only,
- * never the list. Release the box with oaktimeline_marker_list_free()
- * (or handle.release(handle.ctx)) when done.
+ * Borrowed handles are obtained via oaktimeline_marker_list_of() and box
+ * a reference into the owning node; owning handles are created by
+ * oaktimeline_marker_list_create(). Either way, release with
+ * oaktimeline_marker_list_free() (or handle.release(handle.ctx)) when
+ * done — release destroys the list only for owning handles.
  */
 typedef struct OakTimelineMarkerList {
-	void *ctx; /**< Opaque pointer to the borrowed object's box. */
+	void *ctx; /**< Opaque pointer to the object's box. */
 	void (*addref)(void *ctx); /**< Atomically increments the box count. */
 	void (*release)(void *ctx); /**< Decrements the count, frees the box. */
 	uint32_t abi_version; /**< OAKTIMELINE_ABI_VERSION. */
 } OakTimelineMarkerList;
+
+/**
+ * @brief Create an owning handle to a new, empty marker list. Empty
+ * handle (ctx == NULL) on allocation failure.
+ */
+OakTimelineMarkerList oaktimeline_marker_list_create(void);
 
 /**
  * @brief Borrowed marker list of a viewer node (sequence). Empty handle
@@ -54,10 +61,19 @@ typedef struct OakTimelineMarkerList {
 OakTimelineMarkerList oaktimeline_marker_list_of(OakNodeNode owner);
 
 /**
- * @brief Release a borrowed marker list box (never the list itself).
- * NULL / empty-handle no-op; clears list->ctx after releasing.
+ * @brief Release a marker list handle (destroys the list itself only
+ *        for owning handles). NULL / empty-handle no-op; clears
+ *        list->ctx after releasing.
  */
 void oaktimeline_marker_list_free(OakTimelineMarkerList *list);
+
+/**
+ * @brief Append a marker directly (no undo command). name may be NULL
+ *        for an empty name.
+ */
+int oaktimeline_marker_add(OakTimelineMarkerList list, int in_num,
+						   int in_den, int out_num, int out_den,
+						   const char *name, int color);
 
 /**
  * @brief Number of markers. Out-param convention; OAKTIMELINE_E_INVALID

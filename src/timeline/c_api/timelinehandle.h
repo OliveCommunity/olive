@@ -30,18 +30,21 @@
  * @brief Internal control block behind the oaktimeline value handles,
  *        shared between the c_api translation units.
  *
- * Both public handle types (OakTimelineMarkerList, OakTimelineWorkArea)
- * are borrowed references into viewer nodes: the box never owns the
- * underlying object, so release() only destroys the box. A single
- * generic box and addref/release pair serves both families (identical
+ * Handles are either borrowed references into viewer nodes (destroy ==
+ * nullptr: release() only frees the box) or owning handles created by
+ * oaktimeline_marker_list_create()/oaktimeline_workarea_create()
+ * (destroy deletes the native object). A single generic box and
+ * addref/release pair serves both families (identical
  * ctx/addref/release/abi_version layout).
  */
 struct OakTimelineBox {
 	void *object;
+	void (*destroy)(void *object); /**< NULL for borrowed boxes. */
 	std::atomic<uint32_t> refs;
 
-	explicit OakTimelineBox(void *o)
+	explicit OakTimelineBox(void *o, void (*d)(void *) = nullptr)
 		: object(o)
+		, destroy(d)
 		, refs(1)
 	{
 	}
@@ -64,25 +67,32 @@ inline void handle_release(void *ctx)
 	}
 	OakTimelineBox *box = static_cast<OakTimelineBox *>(ctx);
 	if (box->refs.fetch_sub(1) == 1) {
+		if (box->destroy) {
+			box->destroy(box->object);
+		}
 		delete box;
 	}
 }
 
 /**
- * @brief Wrap a borrowed native object in a value handle with reference
- *        count 1. Returns an empty handle (ctx == nullptr) for a null
- *        object or on allocation failure.
+ * @brief Wrap a native object in a value handle with reference count 1.
+ * Returns an empty handle (ctx == nullptr) for a null object or on
+ * allocation failure. Pass a non-null deleter for an owning handle
+ * (release() destroys the object with the box).
  */
 template <typename Handle>
-inline Handle make_handle(void *object)
+inline Handle make_handle(void *object, void (*destroy)(void *) = nullptr)
 {
 	Handle handle = {};
 	if (!object) {
 		return handle;
 	}
 
-	OakTimelineBox *box = new (std::nothrow) OakTimelineBox(object);
+	OakTimelineBox *box = new (std::nothrow) OakTimelineBox(object, destroy);
 	if (!box) {
+		if (destroy) {
+			destroy(object);
+		}
 		return handle;
 	}
 

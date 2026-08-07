@@ -121,12 +121,13 @@ typedef struct OakNodeProject OakNodeProject;
 typedef struct OakNodeFootage OakNodeFootage;
 
 /**
- * @brief Opaque borrowed handles to the timeline data owned by viewer
- * nodes (TimelineMarkerList / TimelineWorkArea in oaktimeline).
- * oaktimeline reinterprets these into its own handle types.
+ * @brief Timeline data owned by viewer nodes (TimelineMarkerList /
+ * TimelineWorkArea in oaktimeline) cross the boundary as oaktimeline
+ * value handles. Forward-declared here so node.h stays self-contained;
+ * include timeline/marker.h / timeline/workarea.h for the definitions.
  */
-typedef struct OakNodeMarkerList OakNodeMarkerList;
-typedef struct OakNodeWorkArea OakNodeWorkArea;
+struct OakTimelineMarkerList;
+struct OakTimelineWorkArea;
 
 /**
  * @brief Opaque borrowed handle to a node's video frame cache
@@ -562,11 +563,16 @@ OakUndoCommand oaknode_command_create_set_position_recursive(
 	OakNodeNode node, OakNodeNode context, double x, double y);
 
 /**
- * @brief Borrowed marker list / work area of a viewer node. *out is NULL
- * when the node is not a viewer (or for an empty handle).
+ * @brief Marker list / work area of a viewer node, as addref'd
+ * oaktimeline value handles (release with
+ * oaktimeline_marker_list_free()/oaktimeline_workarea_free()). *out is
+ * an empty handle (ctx == NULL) when the node is not a viewer or for
+ * an empty node handle.
  */
-int oaknode_node_get_markers(OakNodeNode node, OakNodeMarkerList **out);
-int oaknode_node_get_work_area(OakNodeNode node, OakNodeWorkArea **out);
+int oaknode_node_get_markers(OakNodeNode node,
+							 struct OakTimelineMarkerList *out);
+int oaknode_node_get_work_area(OakNodeNode node,
+							   struct OakTimelineWorkArea *out);
 
 /**
  * @brief Borrowed video frame cache of a node (NULL when the node has

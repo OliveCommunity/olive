@@ -21,6 +21,7 @@
 #include "common/xmlutils.h"
 
 #include <cstring>
+#include <memory>
 #include <new>
 
 #include "../src/xmlutils.h"
@@ -31,14 +32,45 @@ namespace
 
 /**
  * @brief Reader state boxed behind the handle's ctx pointer.
+ *
+ * Owning states (oakcommon_xml_reader_init) hold the reader via
+ * `owned`; borrowed states (oakcommon_xml_reader_wrap_native) leave it
+ * null and never delete the reader.
  */
 struct XmlReaderState {
-	olive::XmlStreamReader reader;
+	olive::XmlStreamReader *reader;
+	std::unique_ptr<olive::XmlStreamReader> owned;
 	std::string cached_text;
 	bool has_cached_text = false;
 
 	explicit XmlReaderState(const char *data)
-		: reader(data)
+		: reader(new olive::XmlStreamReader(data))
+		, owned(reader)
+	{
+	}
+
+	explicit XmlReaderState(olive::XmlStreamReader *borrowed)
+		: reader(borrowed)
+	{
+	}
+};
+
+/**
+ * @brief Writer state boxed behind the handle's ctx pointer (same
+ *        owning/borrowed split as XmlReaderState).
+ */
+struct XmlWriterState {
+	olive::XmlStreamWriter *writer;
+	std::unique_ptr<olive::XmlStreamWriter> owned;
+
+	XmlWriterState()
+		: writer(new olive::XmlStreamWriter())
+		, owned(writer)
+	{
+	}
+
+	explicit XmlWriterState(olive::XmlStreamWriter *borrowed)
+		: writer(borrowed)
 	{
 	}
 };
@@ -56,7 +88,8 @@ XmlReaderState *xr(OakXmlReader reader)
  */
 olive::XmlStreamWriter *xw(OakXmlWriter writer)
 {
-	return oakcommon::handle_impl<olive::XmlStreamWriter>(writer.ctx);
+	XmlWriterState *state = oakcommon::handle_impl<XmlWriterState>(writer.ctx);
+	return state ? state->writer : nullptr;
 }
 
 /**
@@ -84,8 +117,8 @@ OakXmlReader oakcommon_xml_reader_init(const char *data)
 	if (!data)
 		return h;
 	try {
-		return oakcommon::make_handle<OakXmlReader>(
-			XmlReaderState(data));
+		return oakcommon::make_handle_in_place<OakXmlReader, XmlReaderState>(
+			data);
 	} catch (...) {
 		OakXmlReader empty = {};
 		return empty;
@@ -104,7 +137,7 @@ int oakcommon_xml_reader_read_next_start_element(OakXmlReader reader,
 		return OAKCOMMON_E_INVALID;
 	try {
 		xr(reader)->has_cached_text = false;
-		*found = olive::xml_read_next_start_element(&xr(reader)->reader) ? 1 : 0;
+		*found = olive::xml_read_next_start_element(xr(reader)->reader) ? 1 : 0;
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
@@ -117,7 +150,7 @@ int oakcommon_xml_reader_name(OakXmlReader reader, char *buf,
 	if (!xr(reader))
 		return OAKCOMMON_E_INVALID;
 	try {
-		return copy_string(xr(reader)->reader.name(), buf, buf_size);
+		return copy_string(xr(reader)->reader->name(), buf, buf_size);
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
 	}
@@ -132,7 +165,7 @@ int oakcommon_xml_reader_read_element_text(OakXmlReader reader,
 		// read_element_text() consumes the stream, so cache the result to
 		// keep the two-stage (size query then copy) buffer convention working.
 		if (!xr(reader)->has_cached_text) {
-			xr(reader)->cached_text = xr(reader)->reader.read_element_text();
+			xr(reader)->cached_text = xr(reader)->reader->read_element_text();
 			xr(reader)->has_cached_text = true;
 		}
 		return copy_string(xr(reader)->cached_text, buf, buf_size);
@@ -147,7 +180,7 @@ int oakcommon_xml_reader_skip_current_element(OakXmlReader reader)
 		return OAKCOMMON_E_INVALID;
 	try {
 		xr(reader)->has_cached_text = false;
-		xr(reader)->reader.skip_current_element();
+		xr(reader)->reader->skip_current_element();
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
@@ -160,7 +193,7 @@ int oakcommon_xml_reader_attribute_count(OakXmlReader reader,
 	if (!xr(reader) || !count)
 		return OAKCOMMON_E_INVALID;
 	try {
-		*count = static_cast<int>(xr(reader)->reader.attributes().size());
+		*count = static_cast<int>(xr(reader)->reader->attributes().size());
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
@@ -173,7 +206,7 @@ int oakcommon_xml_reader_attribute_name(OakXmlReader reader, int index,
 	if (!xr(reader))
 		return OAKCOMMON_E_INVALID;
 	try {
-		const auto &attrs = xr(reader)->reader.attributes();
+		const auto &attrs = xr(reader)->reader->attributes();
 		if (index < 0 || index >= static_cast<int>(attrs.size()))
 			return OAKCOMMON_E_NOT_FOUND;
 		return copy_string(attrs[index].name, buf, buf_size);
@@ -188,7 +221,7 @@ int oakcommon_xml_reader_attribute_value(OakXmlReader reader,
 	if (!xr(reader))
 		return OAKCOMMON_E_INVALID;
 	try {
-		const auto &attrs = xr(reader)->reader.attributes();
+		const auto &attrs = xr(reader)->reader->attributes();
 		if (index < 0 || index >= static_cast<int>(attrs.size()))
 			return OAKCOMMON_E_NOT_FOUND;
 		return copy_string(attrs[index].value, buf, buf_size);
@@ -203,7 +236,7 @@ int oakcommon_xml_reader_has_error(OakXmlReader reader,
 	if (!xr(reader) || !has_error)
 		return OAKCOMMON_E_INVALID;
 	try {
-		*has_error = xr(reader)->reader.has_error() ? 1 : 0;
+		*has_error = xr(reader)->reader->has_error() ? 1 : 0;
 		return OAKCOMMON_OK;
 	} catch (...) {
 		return OAKCOMMON_E_FAILED;
@@ -213,8 +246,7 @@ int oakcommon_xml_reader_has_error(OakXmlReader reader,
 OakXmlWriter oakcommon_xml_writer_init(void)
 {
 	try {
-		return oakcommon::make_handle<OakXmlWriter>(
-			olive::XmlStreamWriter());
+		return oakcommon::make_handle_in_place<OakXmlWriter, XmlWriterState>();
 	} catch (...) {
 		OakXmlWriter h = {};
 		return h;
@@ -322,7 +354,7 @@ olive::XmlStreamReader *oakcommon_xml_reader_get_native(OakXmlReader reader)
 	if (!reader.ctx) {
 		return nullptr;
 	}
-	return &oakcommon::handle_impl<XmlReaderState>(reader.ctx)->reader;
+	return oakcommon::handle_impl<XmlReaderState>(reader.ctx)->reader;
 }
 
 olive::XmlStreamWriter *oakcommon_xml_writer_get_native(OakXmlWriter writer)
@@ -330,5 +362,31 @@ olive::XmlStreamWriter *oakcommon_xml_writer_get_native(OakXmlWriter writer)
 	if (!writer.ctx) {
 		return nullptr;
 	}
-	return oakcommon::handle_impl<olive::XmlStreamWriter>(writer.ctx);
+	return xw(writer);
+}
+
+OakXmlReader oakcommon_xml_reader_wrap_native(olive::XmlStreamReader *reader)
+{
+	if (!reader) {
+		return OakXmlReader{};
+	}
+	try {
+		return oakcommon::make_handle_in_place<OakXmlReader, XmlReaderState>(
+			reader);
+	} catch (...) {
+		return OakXmlReader{};
+	}
+}
+
+OakXmlWriter oakcommon_xml_writer_wrap_native(olive::XmlStreamWriter *writer)
+{
+	if (!writer) {
+		return OakXmlWriter{};
+	}
+	try {
+		return oakcommon::make_handle_in_place<OakXmlWriter, XmlWriterState>(
+			writer);
+	} catch (...) {
+		return OakXmlWriter{};
+	}
 }

@@ -317,3 +317,38 @@ ColorManager）去Qt化过程中的删除与语义变化，迁移调用方时需
   src/codec/src/ffmpeg/CMakeLists.txt 的回归：FFmpegDecoder 构造
   函数在 flat namespace 悬空，decoder probe/decode/encoder
   roundtrip 三个测试 jump-to-0。
+
+## oaknode→oaktimeline 切到 C ABI（2026-08-07）
+
+- ViewerOutput 不再持有 TimelineWorkArea/TimelineMarkerList 的 C++
+  对象，改持 OakTimelineWorkArea/OakTimelineMarkerList 拥有型值句柄
+  （oaktimeline_workarea_create/marker_list_create，析构时 free）；
+  workarea_handle()/markers_handle() 返回借用副本（调用方不得
+  free）。
+- oaktimeline C API 新增：marker_list_create/marker_add/
+  workarea_create/workarea_set_enabled；句柄 box 增加可选 deleter
+  区分借用/拥有（timelinehandle.h）。
+- oaknode_node_get_markers/get_work_area 改为经 out 参数返回
+  addref 后的 OakTimeline* 句柄（include/node/node.h 只做具名
+  struct 前置声明，公开 C 头互相 include 构成环，前置声明规避）；
+  timeline/marker.h、timeline/workarea.h 的 typedef 改为具名
+  struct。OakNodeMarkerList/OakNodeWorkArea 不透明指针类型删除。
+- 4 个旧项目序列化器（210528/210907/211228/220403）的
+  load_work_area/load_marker_list 改走 oaktimeline C API；
+  ProjectSerializer::SerializedMarker POD 取代
+  std::vector<TimelineMarker*>（LoadData::markers 与
+  only_serialize_markers_），serializer230220 的 marker 读写直接
+  展开为 XML 属性读写。**行为变化**：app 层 paste/markers 接口
+  签名改变（app 尚未拆分，编译点留待 facade 阶段）。
+- Sequence::add_default_nodes 的 TimelineAddTrackCommand 改为
+  oaktimeline_add_track_command + oakundo_capi::to_command/
+  mark_container_owned 转入 MultiUndoCommand。
+- clip.cpp 的 Timeline::ThumbnailMode/WaveformMode 枚举改自新中立
+  头 include/timeline/displaymode.h（OAK_TIMELINE_THUMBNAIL_*/
+  OAK_TIMELINE_WAVEFORMS_*，值与 olive::Timeline 枚举保持兼容）。
+- tracklist.h/block.h 里 timelinecommon.h 的死引用删除；
+  src/node/transition/timeline/ 四个 stub 头删除。
+- oakcommon xml C API 新增 oakcommon_xml_reader_wrap_native/
+  oakcommon_xml_writer_wrap_native（C++ only 借用包装），
+  XmlReaderState/XmlWriterState 支持 owning/borrowed 双模式。
+- liboaknode 对 liboaktimeline 的 C++ 符号引用降为 0（nm 验证）。

@@ -30,6 +30,8 @@
 #include "define.h"
 #include "project.h"
 #include "project/serializer/serializedlayoutinfo.h"
+#include "timeline/marker.h"
+#include "timeline/workarea.h"
 #include "typeserializer.h"
 
 namespace olive
@@ -75,13 +77,27 @@ public:
 	using SerializedKeyframes =
 		std::map<std::string, std::vector<NodeKeyframe *>>;
 
+	/**
+	 * @brief Plain-data snapshot of a timeline marker.
+	 *
+	 * Markers live in oaktimeline; serializers ferry them across the
+	 * module boundary as plain data instead of C++ TimelineMarker
+	 * pointers (01 §0 铁律 6).
+	 */
+	struct SerializedMarker {
+		core::Rational in;
+		core::Rational out;
+		std::string name;
+		int color = 0;
+	};
+
 	class LoadData {
 	public:
 		LoadData() = default;
 
 		SerializedProperties properties;
 
-		std::vector<TimelineMarker *> markers;
+		std::vector<SerializedMarker> markers;
 
 		SerializedKeyframes keyframes;
 
@@ -198,12 +214,12 @@ public:
 		void set_only_serialize_nodes_and_resolve_groups(
 			std::vector<Node *> only);
 
-		const std::vector<TimelineMarker *> &get_only_serialize_markers() const
+		const std::vector<SerializedMarker> &get_only_serialize_markers() const
 		{
 			return only_serialize_markers_;
 		}
 		void set_only_serialize_markers(
-			const std::vector<TimelineMarker *> &only)
+			const std::vector<SerializedMarker> &only)
 		{
 			only_serialize_markers_ = only;
 		}
@@ -240,7 +256,7 @@ public:
 
 		SerializedProperties properties_;
 
-		std::vector<TimelineMarker *> only_serialize_markers_;
+		std::vector<SerializedMarker> only_serialize_markers_;
 
 		std::vector<NodeKeyframe *> only_serialize_keyframes_;
 	};

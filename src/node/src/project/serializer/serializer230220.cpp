@@ -68,8 +68,21 @@ ProjectSerializer230220::load(Project *project, XmlStreamReader *reader,
 		if (reader->name() == "markers") {
 			while (xml_read_next_start_element(reader)) {
 				if (reader->name() == "marker") {
-					TimelineMarker *marker = new TimelineMarker();
-					marker->load(reader);
+					SerializedMarker marker;
+					marker.color = OAK_CONFIG("MarkerColor").toInt();
+					for (const XmlStreamAttribute &attr :
+						 reader->attributes()) {
+						if (attr.name == "name") {
+							marker.name = attr.value;
+						} else if (attr.name == "in") {
+							marker.in = Rational::from_string(attr.value);
+						} else if (attr.name == "out") {
+							marker.out = Rational::from_string(attr.value);
+						} else if (attr.name == "color") {
+							marker.color = atoi(attr.value.c_str());
+						}
+					}
+					reader->skip_current_element();
 					load_data.markers.push_back(marker);
 				} else {
 					reader->skip_current_element();
@@ -404,9 +417,12 @@ void ProjectSerializer230220::save(XmlStreamWriter *writer,
 
 		for (auto it = data.get_only_serialize_markers().cbegin();
 			 it != data.get_only_serialize_markers().cend(); it++) {
-			TimelineMarker *marker = *it;
+			const SerializedMarker &marker = *it;
 			writer->write_start_element("marker");
-			marker->save(writer);
+			writer->write_attribute("name", marker.name);
+			writer->write_attribute("in", marker.in.to_string());
+			writer->write_attribute("out", marker.out.to_string());
+			writer->write_attribute("color", std::to_string(marker.color));
 			writer->write_end_element(); // marker
 		}
 

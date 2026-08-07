@@ -24,6 +24,8 @@
 #include "node/footage.h"
 #include "node/project.h"
 #include "olive/core/oakcore/audioparams.h"
+#include "timeline/marker.h"
+#include "timeline/workarea.h"
 
 #include <atomic>
 #include <string>
@@ -1279,7 +1281,8 @@ OakUndoCommand oaknode_command_create_set_position_recursive(
 	}
 }
 
-int oaknode_node_get_markers(OakNodeNode node, OakNodeMarkerList **out)
+int oaknode_node_get_markers(OakNodeNode node,
+							 struct OakTimelineMarkerList *out)
 {
 	if (!node.ctx || !out) {
 		return OAKNODE_E_INVALID;
@@ -1287,14 +1290,18 @@ int oaknode_node_get_markers(OakNodeNode node, OakNodeMarkerList **out)
 
 	const olive::Node *n = oaknode_c_api::to_native<olive::Node>(node);
 	if (auto *v = dynamic_cast<const olive::ViewerOutput *>(n)) {
-		*out = reinterpret_cast<OakNodeMarkerList *>(v->get_markers());
+		*out = v->markers_handle();
+		if (out->ctx) {
+			out->addref(out->ctx);
+		}
 	} else {
-		*out = NULL;
+		*out = OakTimelineMarkerList{};
 	}
 	return OAKNODE_OK;
 }
 
-int oaknode_node_get_work_area(OakNodeNode node, OakNodeWorkArea **out)
+int oaknode_node_get_work_area(OakNodeNode node,
+							   struct OakTimelineWorkArea *out)
 {
 	if (!node.ctx || !out) {
 		return OAKNODE_E_INVALID;
@@ -1302,9 +1309,12 @@ int oaknode_node_get_work_area(OakNodeNode node, OakNodeWorkArea **out)
 
 	const olive::Node *n = oaknode_c_api::to_native<olive::Node>(node);
 	if (auto *v = dynamic_cast<const olive::ViewerOutput *>(n)) {
-		*out = reinterpret_cast<OakNodeWorkArea *>(v->get_work_area());
+		*out = v->workarea_handle();
+		if (out->ctx) {
+			out->addref(out->ctx);
+		}
 	} else {
-		*out = NULL;
+		*out = OakTimelineWorkArea{};
 	}
 	return OAKNODE_OK;
 }

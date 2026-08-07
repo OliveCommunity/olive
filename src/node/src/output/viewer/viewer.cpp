@@ -21,6 +21,7 @@
 
 #include "viewer.h"
 
+#include "common/xmlutils.h"
 #include "configaccessor.h"
 #include "coreengine.h"
 #include "traverser.h"
@@ -77,8 +78,15 @@ ViewerOutput::ViewerOutput(bool create_buffer_inputs,
 
 	set_flag(k_dont_show_in_param_view);
 
-	workarea_ = std::make_unique<TimelineWorkArea>();
-	markers_ = std::make_unique<TimelineMarkerList>();
+	workarea_ = oaktimeline_workarea_create();
+	markers_ = oaktimeline_marker_list_create();
+}
+
+ViewerOutput::~ViewerOutput()
+{
+	disconnect_all();
+	oaktimeline_workarea_free(&workarea_);
+	oaktimeline_marker_list_free(&markers_);
 }
 
 std::string ViewerOutput::name() const
@@ -452,32 +460,44 @@ void ViewerOutput::value(const NodeValueRow &value, const NodeGlobals &globals,
 
 bool ViewerOutput::load_custom(XmlStreamReader *reader, SerializedData *data)
 {
-	while (xml_read_next_start_element(reader)) {
+	OakXmlReader xml = oakcommon_xml_reader_wrap_native(reader);
+	if (!xml.ctx) {
+		return false;
+	}
+
+	bool ok = true;
+	while (ok && xml_read_next_start_element(reader)) {
 		if (reader->name() == "markers") {
-			if (!this->get_markers()->load(reader)) {
-				return false;
-			}
+			ok = oaktimeline_marker_list_load(markers_, xml) ==
+				OAKTIMELINE_OK;
 		} else if (reader->name() == "workarea") {
-			if (!this->get_work_area()->load(reader)) {
-				return false;
-			}
+			ok = oaktimeline_workarea_load(workarea_, xml) ==
+				OAKTIMELINE_OK;
 		} else {
 			reader->skip_current_element();
 		}
 	}
 
-	return true;
+	oakcommon_xml_reader_free(&xml);
+	return ok;
 }
 
 void ViewerOutput::save_custom(XmlStreamWriter *writer) const
 {
+	OakXmlWriter xml = oakcommon_xml_writer_wrap_native(writer);
+	if (!xml.ctx) {
+		return;
+	}
+
 	writer->write_start_element("workarea");
-	this->get_work_area()->save(writer);
+	oaktimeline_workarea_save(workarea_, xml);
 	writer->write_end_element(); // workarea
 
 	writer->write_start_element("markers");
-	this->get_markers()->save(writer);
+	oaktimeline_marker_list_save(markers_, xml);
 	writer->write_end_element(); // markers
+
+	oakcommon_xml_writer_free(&xml);
 }
 
 void ViewerOutput::InputValueChangedEvent(const std::string &input, int element)

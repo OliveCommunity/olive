@@ -23,12 +23,12 @@
 #define OAK_BLOCK_H
 
 #include "node.h"
-#include "timeline/timelinecommon.h"
 
 namespace olive
 {
 
 class TransitionBlock;
+class Track;
 
 /**
  * @brief A Node that represents a block of time, also displayable on a Timeline

@@ -31,20 +31,27 @@ extern "C" {
 #endif
 
 /**
- * @brief Borrowed by-value handle to a timeline work area
- * (olive::TimelineWorkArea), owned by a viewer node.
+ * @brief By-value handle to a timeline work area
+ * (olive::TimelineWorkArea).
  *
- * Obtained via oaktimeline_workarea_of(). The handle boxes a reference
- * into the owning node: addref/release manage the box only, never the
- * work area. Release the box with oaktimeline_workarea_free() (or
- * handle.release(handle.ctx)) when done.
+ * Borrowed handles are obtained via oaktimeline_workarea_of() and box a
+ * reference into the owning node; owning handles are created by
+ * oaktimeline_workarea_create(). Either way, release with
+ * oaktimeline_workarea_free() (or handle.release(handle.ctx)) when
+ * done — release destroys the work area only for owning handles.
  */
 typedef struct OakTimelineWorkArea {
-	void *ctx; /**< Opaque pointer to the borrowed object's box. */
+	void *ctx; /**< Opaque pointer to the object's box. */
 	void (*addref)(void *ctx); /**< Atomically increments the box count. */
 	void (*release)(void *ctx); /**< Decrements the count, frees the box. */
 	uint32_t abi_version; /**< OAKTIMELINE_ABI_VERSION. */
 } OakTimelineWorkArea;
+
+/**
+ * @brief Create an owning handle to a new, default-constructed work
+ * area. Empty handle (ctx == NULL) on allocation failure.
+ */
+OakTimelineWorkArea oaktimeline_workarea_create(void);
 
 /**
  * @brief Borrowed work area of a viewer node (sequence). Empty handle
@@ -54,10 +61,16 @@ typedef struct OakTimelineWorkArea {
 OakTimelineWorkArea oaktimeline_workarea_of(OakNodeNode owner);
 
 /**
- * @brief Release a borrowed work area box (never the work area itself).
- * NULL / empty-handle no-op; clears w->ctx after releasing.
+ * @brief Release a work area handle (destroys the work area itself only
+ *        for owning handles). NULL / empty-handle no-op; clears w->ctx
+ *        after releasing.
  */
 void oaktimeline_workarea_free(OakTimelineWorkArea *w);
+
+/**
+ * @brief Set enabled directly (live).
+ */
+int oaktimeline_workarea_set_enabled(OakTimelineWorkArea w, int enabled);
 
 /**
  * @brief Read the work area state. Out params may individually be NULL.

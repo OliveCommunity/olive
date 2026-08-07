@@ -50,24 +50,46 @@ olive::core::Rational rat(int64_t n, int64_t d)
 
 } // namespace
 
+OakTimelineWorkArea oaktimeline_workarea_create(void)
+{
+	olive::TimelineWorkArea *workarea =
+		new (std::nothrow) olive::TimelineWorkArea();
+	if (!workarea) {
+		return OakTimelineWorkArea{};
+	}
+	return oaktimeline_capi::make_handle<OakTimelineWorkArea>(
+		workarea,
+		[](void *p) { delete static_cast<olive::TimelineWorkArea *>(p); });
+}
+
 OakTimelineWorkArea oaktimeline_workarea_of(OakNodeNode owner)
 {
 	if (!owner.ctx) {
 		return OakTimelineWorkArea{};
 	}
 
-	OakNodeWorkArea *workarea = NULL;
+	// The viewer node keeps the owning handle; oaknode returns an
+	// addref'd copy (still the same box; the work area itself is owned
+	// by the node's own handle).
+	OakTimelineWorkArea workarea = {};
 	if (oaknode_node_get_work_area(owner, &workarea) != OAKNODE_OK) {
 		return OakTimelineWorkArea{};
 	}
-	// Borrowed box: the work area stays owned by the viewer node.
-	return oaktimeline_capi::make_handle<OakTimelineWorkArea>(
-		reinterpret_cast<olive::TimelineWorkArea *>(workarea));
+	return workarea;
 }
 
 void oaktimeline_workarea_free(OakTimelineWorkArea *w)
 {
 	oaktimeline_capi::free_handle(w);
+}
+
+int oaktimeline_workarea_set_enabled(OakTimelineWorkArea w, int enabled)
+{
+	if (!w.ctx) {
+		return OAKTIMELINE_E_INVALID;
+	}
+	impl(w)->set_enabled(enabled != 0);
+	return OAKTIMELINE_OK;
 }
 
 int oaktimeline_workarea_get(OakTimelineWorkArea w, int *in_num,

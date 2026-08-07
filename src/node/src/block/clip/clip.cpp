@@ -30,7 +30,7 @@
 #include "output/viewer/viewer.h"
 #include "project/sequence/sequence.h"
 #include "sliderdisplaytype.h"
-#include "sliderdisplaytype.h"
+#include "timeline/displaymode.h"
 
 namespace olive
 {
@@ -297,7 +297,7 @@ void ClipBlock::request_range_from_connected(const TimeRange &range)
 				request_range_for_cache(
 					connected->waveform_cache(), max_range, range, true,
 					(OAK_CONFIG("TimelineWaveformMode").to_int() ==
-					 Timeline::k_waveforms_enabled));
+					 OAK_TIMELINE_WAVEFORMS_ENABLED));
 
 				// Handle audio cache
 				request_range_for_cache(connected->audio_playback_cache(),
@@ -336,7 +336,7 @@ void ClipBlock::request_invalidated_from_connected(bool force_all,
 			} else if (type == Track::k_audio) {
 				// Handle waveforms
 				if (OAK_CONFIG("TimelineWaveformMode").to_int() ==
-					Timeline::k_waveforms_enabled) {
+					OAK_TIMELINE_WAVEFORMS_ENABLED) {
 					request_invalidated_for_cache(connected->waveform_cache(),
 											   max_range);
 				}
@@ -383,12 +383,11 @@ void ClipBlock::request_invalidated_for_cache(PlaybackCache *cache,
 
 bool ClipBlock::get_adjusted_thumbnail_range(TimeRange *r) const
 {
-	switch (static_cast<Timeline::ThumbnailMode>(
-		OAK_CONFIG("TimelineThumbnailMode").to_int())) {
-	case Timeline::k_thumbnail_off:
+	switch (OAK_CONFIG("TimelineThumbnailMode").to_int()) {
+	case OAK_TIMELINE_THUMBNAIL_OFF:
 		// Don't cache any range
 		return false;
-	case Timeline::k_thumbnail_in_out: {
+	case OAK_TIMELINE_THUMBNAIL_IN_OUT: {
 		// Only cache in point
 		Rational in = this->media_range().in();
 		if (r->contains(in)) {
@@ -400,7 +399,7 @@ bool ClipBlock::get_adjusted_thumbnail_range(TimeRange *r) const
 			return false;
 		}
 	}
-	case Timeline::k_thumbnail_on:
+	case OAK_TIMELINE_THUMBNAIL_ON:
 		// Cache entire range
 		return true;
 	}

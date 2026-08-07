@@ -21,7 +21,10 @@
 
 #include "sequence.h"
 
-#include "timeline/timelineundogeneral.h"
+#include "timeline/edit.h"
+#include "undo/undocommand.h"
+#include "../../../c_api/nodehandle.h"
+#include "../../../../undo/c_api/commandhandle.h"
 
 namespace olive
 {
@@ -85,21 +88,25 @@ void Sequence::add_default_nodes(MultiUndoCommand *command)
 {
 	// Create tracks and connect them to the viewer
 	// (borrowed handles: the track lists are owned by this sequence)
-	UndoCommand *video_track_command = new TimelineAddTrackCommand(
+	OakUndoCommand video_track_command = oaktimeline_add_track_command(
 		oaknode_c_api::make_handle<OakNodeTrackList>(
 			track_list(Track::k_video), false, nullptr));
-	UndoCommand *audio_track_command = new TimelineAddTrackCommand(
+	OakUndoCommand audio_track_command = oaktimeline_add_track_command(
 		oaknode_c_api::make_handle<OakNodeTrackList>(
 			track_list(Track::k_audio), false, nullptr));
 
 	if (command) {
-		command->add_child(video_track_command);
-		command->add_child(audio_track_command);
+		command->add_child(oakundo_capi::to_command(video_track_command));
+		oakundo_capi::mark_container_owned(video_track_command);
+		command->add_child(oakundo_capi::to_command(audio_track_command));
+		oakundo_capi::mark_container_owned(audio_track_command);
+		oakundo_command_free(&video_track_command);
+		oakundo_command_free(&audio_track_command);
 	} else {
-		video_track_command->redo_now();
-		audio_track_command->redo_now();
-		delete video_track_command;
-		delete audio_track_command;
+		oakundo_command_redo_now(video_track_command);
+		oakundo_command_redo_now(audio_track_command);
+		oakundo_command_free(&video_track_command);
+		oakundo_command_free(&audio_track_command);
 	}
 }
 

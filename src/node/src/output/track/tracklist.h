@@ -27,7 +27,6 @@
 #include <vector>
 
 #include "output/track/track.h"
-#include "timeline/timelinecommon.h"
 
 namespace olive
 {
