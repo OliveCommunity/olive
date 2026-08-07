@@ -28,6 +28,7 @@
 #include <QSet>
 #include <QSplitter>
 
+#include "core.h"
 #include "oakengine/footage.h"
 #include "oakengine/node.h"
 #include "oakengine/undo.h"
@@ -206,6 +207,12 @@ NodeParamView::NodeParamView(bool create_keyframe_view, QWidget *parent)
 			[this](OakEngineNode *source, OakEngineNode *node) {
 				node_removed_from_context(node, source);
 			}, Qt::QueuedConnection);
+
+	// Issue 14: reuse the issue 7 undo signal so group open/close and
+	// context node add/remove changes replayed from the undo stack refresh
+	// the parameter view.
+	connect(Core::instance(), &Core::undo_index_changed, this,
+			&NodeParamView::update_contexts);
 }
 
 NodeParamView::~NodeParamView()
