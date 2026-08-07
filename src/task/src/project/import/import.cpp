@@ -65,7 +65,7 @@ ProjectImportTask::ImageSequenceConfirmFn ProjectImportTask::confirm_callback_;
 ProjectImportTask::ProjectImportTask(
 	OakNodeFolder *folder, OakNodeProject *project,
 	const std::vector<std::string> &filenames)
-	: command_(nullptr)
+	: command_({})
 	, folder_(folder)
 	, project_(project)
 	, filenames_(filenames)
@@ -80,8 +80,8 @@ ProjectImportTask::ProjectImportTask(
 
 ProjectImportTask::~ProjectImportTask()
 {
-	if (command_) {
-		oakundo_command_free(command_);
+	if (command_.ctx) {
+		oakundo_command_free(&command_);
 	}
 }
 
@@ -93,7 +93,7 @@ const int &ProjectImportTask::get_file_count() const
 bool ProjectImportTask::run()
 {
 	command_ = oakundo_command_init_multi();
-	if (!command_) {
+	if (!command_.ctx) {
 		set_error("Failed to create import command");
 		return false;
 	}
@@ -103,8 +103,8 @@ bool ProjectImportTask::run()
 	import(folder_, filenames_, imported, command_);
 
 	if (is_cancelled()) {
-		oakundo_command_free(command_);
-		command_ = nullptr;
+		oakundo_command_free(&command_);
+		command_ = OakUndoCommand{};
 		return false;
 	}
 	return true;
@@ -112,7 +112,7 @@ bool ProjectImportTask::run()
 
 void ProjectImportTask::import(OakNodeFolder *folder,
 							   const std::vector<std::string> &entries,
-							   int &counter, OakUndoCommand *parent_command)
+							   int &counter, OakUndoCommand parent_command)
 {
 	std::vector<std::string> mutable_entries = entries;
 
@@ -336,11 +336,11 @@ void ProjectImportTask::validate_image_sequence(
 
 void ProjectImportTask::add_item_to_folder(OakNodeFolder *folder,
 										   OakNodeNode *item,
-										   OakUndoCommand *command)
+										   OakUndoCommand command)
 {
-	OakUndoCommand *child =
+	OakUndoCommand child =
 		oaknode_command_create_folder_add_child(folder, item);
-	if (child) {
+	if (child.ctx) {
 		oakundo_command_multi_add_child(command, child);
 	}
 }

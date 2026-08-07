@@ -124,10 +124,10 @@ TEST(NodeKeyframeTest, TimeLiveAndUndoable)
 	EXPECT_EQ(num, 1);
 	EXPECT_EQ(den, 2);
 
-	OakUndoCommand *command = nullptr;
+	OakUndoCommand command = {};
 	EXPECT_EQ(oaknode_keyframe_set_time_undoable(key, 5, 1, &command),
 			  OAKNODE_OK);
-	ASSERT_NE(command, nullptr);
+	ASSERT_NE(command.ctx, nullptr);
 	EXPECT_EQ(oaknode_keyframe_get_time(key, &num, &den), OAKNODE_OK);
 	EXPECT_EQ(num, 1); // not yet executed
 
@@ -138,7 +138,7 @@ TEST(NodeKeyframeTest, TimeLiveAndUndoable)
 	EXPECT_EQ(oaknode_keyframe_get_time(key, &num, &den), OAKNODE_OK);
 	EXPECT_EQ(num, 1);
 
-	oakundo_command_free(command);
+	oakundo_command_free(&command);
 	oaknode_keyframe_free(key);
 
 	EXPECT_EQ(oaknode_keyframe_set_time(nullptr, 0, 1), OAKNODE_E_INVALID);
@@ -163,17 +163,17 @@ TEST(NodeKeyframeTest, ValueLiveAndUndoable)
 	EXPECT_DOUBLE_EQ(out.f[0], 3.25);
 
 	in = make_float(7.0);
-	OakUndoCommand *command = nullptr;
+	OakUndoCommand command = {};
 	EXPECT_EQ(oaknode_keyframe_set_value_undoable(key, &in, &command),
 			  OAKNODE_OK);
-	ASSERT_NE(command, nullptr);
+	ASSERT_NE(command.ctx, nullptr);
 	EXPECT_EQ(oakundo_command_redo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_keyframe_get_value(key, &out), OAKNODE_OK);
 	EXPECT_DOUBLE_EQ(out.f[0], 7.0);
 	EXPECT_EQ(oakundo_command_undo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_keyframe_get_value(key, &out), OAKNODE_OK);
 	EXPECT_DOUBLE_EQ(out.f[0], 3.25);
-	oakundo_command_free(command);
+	oakundo_command_free(&command);
 
 	// STRING rejected by the POD setter.
 	in.type = OAKNODE_VALUE_STRING;
@@ -195,18 +195,18 @@ TEST(NodeKeyframeTest, StringValueLiveAndUndoable)
 	EXPECT_EQ(oaknode_keyframe_get_value_string(key, buf, sizeof(buf)), 6);
 	EXPECT_STREQ(buf, "hello");
 
-	OakUndoCommand *command = nullptr;
+	OakUndoCommand command = {};
 	EXPECT_EQ(oaknode_keyframe_set_value_string_undoable(key, "world",
 														 &command),
 			  OAKNODE_OK);
-	ASSERT_NE(command, nullptr);
+	ASSERT_NE(command.ctx, nullptr);
 	EXPECT_EQ(oakundo_command_redo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_keyframe_get_value_string(key, buf, sizeof(buf)), 6);
 	EXPECT_STREQ(buf, "world");
 	EXPECT_EQ(oakundo_command_undo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_keyframe_get_value_string(key, buf, sizeof(buf)), 6);
 	EXPECT_STREQ(buf, "hello");
-	oakundo_command_free(command);
+	oakundo_command_free(&command);
 
 	EXPECT_EQ(oaknode_keyframe_set_value_string(key, nullptr),
 			  OAKNODE_E_INVALID);
@@ -229,18 +229,18 @@ TEST(NodeKeyframeTest, TypeLiveAndUndoable)
 	EXPECT_EQ(oaknode_keyframe_get_type(key, &type), OAKNODE_OK);
 	EXPECT_EQ(type, OAKNODE_KEYFRAME_HOLD);
 
-	OakUndoCommand *command = nullptr;
+	OakUndoCommand command = {};
 	EXPECT_EQ(oaknode_keyframe_set_type_undoable(key, OAKNODE_KEYFRAME_BEZIER,
 												 &command),
 			  OAKNODE_OK);
-	ASSERT_NE(command, nullptr);
+	ASSERT_NE(command.ctx, nullptr);
 	EXPECT_EQ(oakundo_command_redo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_keyframe_get_type(key, &type), OAKNODE_OK);
 	EXPECT_EQ(type, OAKNODE_KEYFRAME_BEZIER);
 	EXPECT_EQ(oakundo_command_undo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_keyframe_get_type(key, &type), OAKNODE_OK);
 	EXPECT_EQ(type, OAKNODE_KEYFRAME_HOLD);
-	oakundo_command_free(command);
+	oakundo_command_free(&command);
 
 	EXPECT_EQ(oaknode_keyframe_set_type(key, 99), OAKNODE_E_INVALID);
 	EXPECT_EQ(oaknode_keyframe_set_type(nullptr, OAKNODE_KEYFRAME_HOLD),
@@ -266,11 +266,11 @@ TEST(NodeKeyframeTest, BezierControlLiveAndUndoable)
 	EXPECT_DOUBLE_EQ(x, -1.0);
 	EXPECT_DOUBLE_EQ(y, 0.5);
 
-	OakUndoCommand *command = nullptr;
+	OakUndoCommand command = {};
 	EXPECT_EQ(oaknode_keyframe_set_bezier_control_undoable(
 				  key, OAKNODE_KEYFRAME_OUT_HANDLE, 2.0, -0.5, &command),
 			  OAKNODE_OK);
-	ASSERT_NE(command, nullptr);
+	ASSERT_NE(command.ctx, nullptr);
 	EXPECT_EQ(oakundo_command_redo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_keyframe_get_bezier_control(
 				  key, OAKNODE_KEYFRAME_OUT_HANDLE, &x, &y),
@@ -283,7 +283,7 @@ TEST(NodeKeyframeTest, BezierControlLiveAndUndoable)
 			  OAKNODE_OK);
 	EXPECT_DOUBLE_EQ(x, 0.0);
 	EXPECT_DOUBLE_EQ(y, 0.0);
-	oakundo_command_free(command);
+	oakundo_command_free(&command);
 
 	EXPECT_EQ(oaknode_keyframe_set_bezier_control(key, 99, 0.0, 0.0),
 			  OAKNODE_E_INVALID);

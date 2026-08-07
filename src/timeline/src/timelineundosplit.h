@@ -48,7 +48,7 @@ public:
 		: block_(block)
 		, new_block_(nullptr)
 		, point_(point)
-		, reconnect_tree_command_(nullptr)
+		, reconnect_tree_command_({})
 		, moved_transition_(nullptr)
 	{
 	}
@@ -77,7 +77,7 @@ private:
 	Rational old_length_;
 	Rational point_;
 
-	OakUndoCommand *reconnect_tree_command_;
+	OakUndoCommand reconnect_tree_command_;
 
 	OakNodeBlock *moved_transition_;
 	std::string moved_transition_input_;

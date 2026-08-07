@@ -136,11 +136,11 @@ TEST(NodeGroupTest, PassthroughAddUndoable)
 	OakNodeGroup *group = make_group_with_inner(as_handle(&inner));
 	ASSERT_NE(group, nullptr);
 
-	OakUndoCommand *command = nullptr;
+	OakUndoCommand command = {};
 	EXPECT_EQ(oaknode_group_add_input_passthrough_undoable(
 				  group, as_handle(&inner), "float_in", -1, &command),
 			  OAKNODE_OK);
-	ASSERT_NE(command, nullptr);
+	ASSERT_NE(command.ctx, nullptr);
 
 	int count = 0;
 	EXPECT_EQ(oaknode_group_passthrough_count(group, &count), OAKNODE_OK);
@@ -154,7 +154,7 @@ TEST(NodeGroupTest, PassthroughAddUndoable)
 	EXPECT_EQ(oaknode_group_passthrough_count(group, &count), OAKNODE_OK);
 	EXPECT_EQ(count, 0);
 
-	oakundo_command_free(command);
+	oakundo_command_free(&command);
 	oaknode_group_free(group);
 }
 
@@ -174,18 +174,18 @@ TEST(NodeGroupTest, OutputPassthroughLiveAndUndoable)
 	EXPECT_EQ(oaknode_group_get_output_passthrough(group, &out), OAKNODE_OK);
 	EXPECT_EQ(out, inner_handle);
 
-	OakUndoCommand *command = nullptr;
+	OakUndoCommand command = {};
 	EXPECT_EQ(oaknode_group_set_output_passthrough_undoable(group, nullptr,
 															&command),
 			  OAKNODE_OK);
-	ASSERT_NE(command, nullptr);
+	ASSERT_NE(command.ctx, nullptr);
 	EXPECT_EQ(oakundo_command_redo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_group_get_output_passthrough(group, &out), OAKNODE_OK);
 	EXPECT_EQ(out, nullptr);
 	EXPECT_EQ(oakundo_command_undo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_group_get_output_passthrough(group, &out), OAKNODE_OK);
 	EXPECT_EQ(out, inner_handle);
-	oakundo_command_free(command);
+	oakundo_command_free(&command);
 
 	EXPECT_EQ(oaknode_group_set_output_passthrough(nullptr, inner_handle),
 			  OAKNODE_E_INVALID);

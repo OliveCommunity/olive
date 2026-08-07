@@ -21,21 +21,100 @@
 #ifndef OAK_UNDO_COMMANDHANDLE_H
 #define OAK_UNDO_COMMANDHANDLE_H
 
+#include <atomic>
+
 #include "undo/undocommand.h"
 
 #include "../src/undocommand.h"
 
 /**
- * @brief Internal layout of the OakUndoCommand handle, shared between the
- * c_api translation units.
+ * @brief Internal control block behind OakUndoCommand, shared between
+ * the c_api translation units.
  *
- * `owned` is true for handles created by oakundo_command_init() /
- * oakundo_command_init_multi() and false for borrowed wrappers handed out
- * by oakundo_command_multi_child().
+ * `owns` is true for commands created through init factories (the box
+ * deletes the command when the count reaches zero) and false for
+ * references into library-owned structures (multi children, stack
+ * entries): releasing those only destroys the box.
  */
-struct OakUndoCommand {
+struct OakUndoCommandBox {
 	olive::UndoCommand *command;
-	bool owned;
+	bool owns;
+	std::atomic<uint32_t> refs;
+
+	OakUndoCommandBox(olive::UndoCommand *c, bool o)
+		: command(c)
+		, owns(o)
+		, refs(1)
+	{
+	}
 };
+
+namespace oakundo_capi
+{
+
+inline OakUndoCommand make_command_handle(olive::UndoCommand *command,
+										  bool owns);
+
+inline void command_addref(void *ctx)
+{
+	if (ctx) {
+		static_cast<OakUndoCommandBox *>(ctx)->refs.fetch_add(1);
+	}
+}
+
+inline void command_release(void *ctx)
+{
+	if (!ctx) {
+		return;
+	}
+	OakUndoCommandBox *box = static_cast<OakUndoCommandBox *>(ctx);
+	if (box->refs.fetch_sub(1) == 1) {
+		if (box->owns) {
+			delete box->command;
+		}
+		delete box;
+	}
+}
+
+inline OakUndoCommand make_command_handle(olive::UndoCommand *command,
+										  bool owns)
+{
+	OakUndoCommand handle = {};
+	if (!command) {
+		return handle;
+	}
+
+	OakUndoCommandBox *box = new (std::nothrow) OakUndoCommandBox(command,
+																  owns);
+	if (!box) {
+		if (owns) {
+			delete command;
+		}
+		return handle;
+	}
+
+	handle.ctx = box;
+	handle.addref = command_addref;
+	handle.release = command_release;
+	handle.abi_version = OAKUNDO_ABI_VERSION;
+	return handle;
+}
+
+inline olive::UndoCommand *to_command(OakUndoCommand h)
+{
+	if (!h.ctx) {
+		return nullptr;
+	}
+	return static_cast<OakUndoCommandBox *>(h.ctx)->command;
+}
+
+inline void mark_container_owned(OakUndoCommand h)
+{
+	if (h.ctx) {
+		static_cast<OakUndoCommandBox *>(h.ctx)->owns = false;
+	}
+}
+
+} // namespace oakundo_capi
 
 #endif // OAK_UNDO_COMMANDHANDLE_H

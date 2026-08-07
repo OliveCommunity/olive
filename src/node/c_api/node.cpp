@@ -167,16 +167,16 @@ int oaknode_node_set_label(OakNodeNode *node, const char *label)
 }
 
 int oaknode_node_set_label_undoable(OakNodeNode *node, const char *label,
-									OakUndoCommand **out_command)
+									OakUndoCommand *out_command)
 {
 	if (!node || !label || !out_command) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		OakUndoCommand *handle = oaknode_c_api::wrap_command(
+		OakUndoCommand handle = oaknode_c_api::wrap_command(
 			new olive::NodeRenameCommand(to_node(node), label));
-		if (!handle) {
+		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
 		*out_command = handle;
@@ -215,16 +215,16 @@ int oaknode_node_set_override_color(OakNodeNode *node, int index)
 }
 
 int oaknode_node_set_override_color_undoable(OakNodeNode *node, int index,
-											 OakUndoCommand **out_command)
+											 OakUndoCommand *out_command)
 {
 	if (!node || !out_command) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		OakUndoCommand *handle = oaknode_c_api::wrap_command(
+		OakUndoCommand handle = oaknode_c_api::wrap_command(
 			new olive::NodeOverrideColorCommand(to_node(node), index));
-		if (!handle) {
+		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
 		*out_command = handle;
@@ -268,7 +268,7 @@ int oaknode_node_set_enabled(OakNodeNode *node, int enabled)
 }
 
 int oaknode_node_set_enabled_undoable(OakNodeNode *node, int enabled,
-									  OakUndoCommand **out_command)
+									  OakUndoCommand *out_command)
 {
 	if (!node || !out_command) {
 		return OAKNODE_E_INVALID;
@@ -279,9 +279,9 @@ int oaknode_node_set_enabled_undoable(OakNodeNode *node, int enabled,
 		olive::SplitValue split =
 			olive::NodeValue::split_normal_value_into_track_values(
 				olive::NodeValue::k_boolean, olive::Variant(enabled != 0));
-		OakUndoCommand *handle = oaknode_c_api::wrap_command(
+		OakUndoCommand handle = oaknode_c_api::wrap_command(
 			new olive::NodeParamSetSplitStandardValueCommand(ref, split));
-		if (!handle) {
+		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
 		*out_command = handle;
@@ -464,7 +464,7 @@ int oaknode_node_set_input(OakNodeNode *node, const char *input_id,
 
 int oaknode_node_set_input_undoable(OakNodeNode *node, const char *input_id,
 									const oaknode_value *v,
-									OakUndoCommand **out_command)
+									OakUndoCommand *out_command)
 {
 	if (!node || !out_command) {
 		return OAKNODE_E_INVALID;
@@ -485,9 +485,9 @@ int oaknode_node_set_input_undoable(OakNodeNode *node, const char *input_id,
 		olive::SplitValue split =
 			olive::NodeValue::split_normal_value_into_track_values(type, variant);
 
-		OakUndoCommand *handle = oaknode_c_api::wrap_command(
+		OakUndoCommand handle = oaknode_c_api::wrap_command(
 			new olive::NodeParamSetSplitStandardValueCommand(ref, split));
-		if (!handle) {
+		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
 		*out_command = handle;
@@ -545,7 +545,7 @@ int oaknode_node_set_input_string(OakNodeNode *node, const char *input_id,
 int oaknode_node_set_input_string_undoable(OakNodeNode *node,
 										   const char *input_id,
 										   const char *value,
-										   OakUndoCommand **out_command)
+										   OakUndoCommand *out_command)
 {
 	if (!node || !value || !out_command) {
 		return OAKNODE_E_INVALID;
@@ -566,9 +566,9 @@ int oaknode_node_set_input_string_undoable(OakNodeNode *node,
 				to_node(node)->get_input_data_type(input_id),
 				olive::Variant(value));
 
-		OakUndoCommand *handle = oaknode_c_api::wrap_command(
+		OakUndoCommand handle = oaknode_c_api::wrap_command(
 			new olive::NodeParamSetSplitStandardValueCommand(ref, split));
-		if (!handle) {
+		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
 		*out_command = handle;
@@ -610,7 +610,7 @@ int oaknode_node_connect(OakNodeNode *output_node, OakNodeNode *input_node,
 int oaknode_node_connect_undoable(OakNodeNode *output_node,
 								  OakNodeNode *input_node,
 								  const char *input_id,
-								  OakUndoCommand **out_command)
+								  OakUndoCommand *out_command)
 {
 	if (!output_node || !input_node || !out_command) {
 		return OAKNODE_E_INVALID;
@@ -624,11 +624,11 @@ int oaknode_node_connect_undoable(OakNodeNode *output_node,
 			return OAKNODE_E_INVALID;
 		}
 
-		OakUndoCommand *handle = oaknode_c_api::wrap_command(
+		OakUndoCommand handle = oaknode_c_api::wrap_command(
 			new olive::NodeEdgeAddCommand(
 				to_node(output_node),
 				olive::NodeInput(to_node(input_node), input_id)));
-		if (!handle) {
+		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
 		*out_command = handle;
@@ -663,7 +663,7 @@ int oaknode_node_disconnect(OakNodeNode *input_node, const char *input_id)
 
 int oaknode_node_disconnect_undoable(OakNodeNode *input_node,
 									 const char *input_id,
-									 OakUndoCommand **out_command)
+									 OakUndoCommand *out_command)
 {
 	if (!input_node || !out_command) {
 		return OAKNODE_E_INVALID;
@@ -678,10 +678,10 @@ int oaknode_node_disconnect_undoable(OakNodeNode *input_node,
 			return OAKNODE_E_NOT_FOUND;
 		}
 
-		OakUndoCommand *handle = oaknode_c_api::wrap_command(
+		OakUndoCommand handle = oaknode_c_api::wrap_command(
 			new olive::NodeEdgeRemoveCommand(
 				output, olive::NodeInput(to_node(input_node), input_id)));
-		if (!handle) {
+		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
 		*out_command = handle;
@@ -804,16 +804,16 @@ int oaknode_node_unlink(OakNodeNode *a, OakNodeNode *b, int *out_unlinked)
 }
 
 int oaknode_node_link_undoable(OakNodeNode *a, OakNodeNode *b, int link,
-							   OakUndoCommand **out_command)
+							   OakUndoCommand *out_command)
 {
 	if (!a || !b || !out_command) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		OakUndoCommand *handle = oaknode_c_api::wrap_command(
+		OakUndoCommand handle = oaknode_c_api::wrap_command(
 			new olive::NodeLinkCommand(to_node(a), to_node(b), link != 0));
-		if (!handle) {
+		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
 		*out_command = handle;
@@ -964,7 +964,7 @@ int oaknode_node_set_context_position(OakNodeNode *node, OakNodeNode *context,
 int oaknode_node_set_context_position_undoable(OakNodeNode *node,
 											   OakNodeNode *context, double x,
 											   double y, int expanded,
-											   OakUndoCommand **out_command)
+											   OakUndoCommand *out_command)
 {
 	if (!node || !context || !out_command) {
 		return OAKNODE_E_INVALID;
@@ -977,10 +977,10 @@ int oaknode_node_set_context_position_undoable(OakNodeNode *node,
 		// position map lives on the positioned node keyed by the context,
 		// so the command's (node, context) arguments are swapped relative
 		// to this function's signature.
-		OakUndoCommand *handle = oaknode_c_api::wrap_command(
+		OakUndoCommand handle = oaknode_c_api::wrap_command(
 			new olive::NodeSetPositionCommand(to_node(context), to_node(node),
 											  position));
-		if (!handle) {
+		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
 		*out_command = handle;
@@ -1039,7 +1039,7 @@ void oaknode_node_free(OakNodeNode *node)
 }
 
 OakNodeNode *oaknode_node_copy_in_graph(OakNodeNode *node,
-										OakUndoCommand **out_command)
+										OakUndoCommand *out_command)
 {
 	if (!node || !out_command) {
 		return NULL;
@@ -1054,7 +1054,7 @@ OakNodeNode *oaknode_node_copy_in_graph(OakNodeNode *node,
 			return NULL;
 		}
 		*out_command = oaknode_c_api::wrap_command(command);
-		if (!*out_command) {
+		if (!out_command->ctx) {
 			delete command;
 			return NULL;
 		}
@@ -1065,10 +1065,10 @@ OakNodeNode *oaknode_node_copy_in_graph(OakNodeNode *node,
 	}
 }
 
-OakUndoCommand *oaknode_command_create_remove_node(OakNodeNode *node)
+OakUndoCommand oaknode_command_create_remove_node(OakNodeNode *node)
 {
 	if (!node) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 
 	try {
@@ -1076,7 +1076,7 @@ OakUndoCommand *oaknode_command_create_remove_node(OakNodeNode *node)
 			new olive::NodeRemoveWithExclusiveDependenciesAndDisconnect(
 				to_node(node)));
 	} catch (...) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 }
 
@@ -1171,11 +1171,11 @@ int oaknode_node_disconnect_element(OakNodeNode *input_node,
 	}
 }
 
-OakUndoCommand *oaknode_command_create_add_node(OakNodeProject *graph,
+OakUndoCommand oaknode_command_create_add_node(OakNodeProject *graph,
 												OakNodeNode *node)
 {
 	if (!graph || !node) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 
 	try {
@@ -1183,15 +1183,15 @@ OakUndoCommand *oaknode_command_create_add_node(OakNodeProject *graph,
 			new olive::NodeAddCommand(
 				reinterpret_cast<olive::Project *>(graph), to_node(node)));
 	} catch (...) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 }
 
-OakUndoCommand *oaknode_command_create_set_position_recursive(
+OakUndoCommand oaknode_command_create_set_position_recursive(
 	OakNodeNode *node, OakNodeNode *context, double x, double y)
 {
 	if (!node || !context) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 
 	try {
@@ -1200,7 +1200,7 @@ OakUndoCommand *oaknode_command_create_set_position_recursive(
 				to_node(node), to_node(context),
 				olive::Node::Position(olive::PointF(x, y))));
 	} catch (...) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 }
 

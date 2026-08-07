@@ -43,16 +43,12 @@ OakTimelineMarkerList *wrap(olive::TimelineMarkerList *l)
 	return reinterpret_cast<OakTimelineMarkerList *>(l);
 }
 
-OakUndoCommand *wrap_command(olive::UndoCommand *command)
+OakUndoCommand wrap_command(olive::UndoCommand *command)
 {
 	if (!command) {
-		return NULL;
+		return OakUndoCommand{};
 	}
-	OakUndoCommand *handle = new (std::nothrow) OakUndoCommand{command, true};
-	if (!handle) {
-		delete command;
-	}
-	return handle;
+	return oakundo_capi::make_command_handle(command, true);
 }
 
 olive::core::Rational rat(int n, int d)
@@ -130,12 +126,12 @@ int oaktimeline_marker_at(const OakTimelineMarkerList *list, int index,
 	return needed;
 }
 
-OakUndoCommand *oaktimeline_marker_add_command(
+OakUndoCommand oaktimeline_marker_add_command(
 	OakTimelineMarkerList *list, int in_num, int in_den, int out_num,
 	int out_den, const char *name, int color)
 {
 	if (!list) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 
 	try {
@@ -145,32 +141,32 @@ OakUndoCommand *oaktimeline_marker_add_command(
 								   rat(int(out_num), int(out_den))),
 			name ? name : "", color));
 	} catch (...) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 }
 
-OakUndoCommand *oaktimeline_marker_remove_at_command(
+OakUndoCommand oaktimeline_marker_remove_at_command(
 	OakTimelineMarkerList *list, int index)
 {
 	olive::TimelineMarker *m = marker_at(list, index);
 	if (!m) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 
 	try {
 		return wrap_command(new olive::MarkerRemoveCommand(m, impl(list)));
 	} catch (...) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 }
 
-OakUndoCommand *oaktimeline_marker_set_time_command(
+OakUndoCommand oaktimeline_marker_set_time_command(
 	OakTimelineMarkerList *list, int index, int in_num, int in_den,
 	int out_num, int out_den)
 {
 	olive::TimelineMarker *m = marker_at(list, index);
 	if (!m) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 
 	try {
@@ -178,16 +174,16 @@ OakUndoCommand *oaktimeline_marker_set_time_command(
 			m, olive::core::TimeRange(rat(int(in_num), int(in_den)),
 									  rat(int(out_num), int(out_den)))));
 	} catch (...) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 }
 
-OakUndoCommand *oaktimeline_marker_set_props_command(
+OakUndoCommand oaktimeline_marker_set_props_command(
 	OakTimelineMarkerList *list, int index, int color, const char *name)
 {
 	olive::TimelineMarker *m = marker_at(list, index);
 	if (!m || (color < 0 && !name)) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 
 	try {
@@ -202,7 +198,7 @@ OakUndoCommand *oaktimeline_marker_set_props_command(
 		}
 		return wrap_command(new olive::MarkerChangeNameCommand(m, name));
 	} catch (...) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 }
 

@@ -60,7 +60,7 @@ int oaktimeline_workarea_set_range(OakTimelineWorkArea *w, int in_num,
  * The old range must be supplied by the caller (facade knows what it
  * changed from). Owned; free with oakundo_command_free().
  */
-OakUndoCommand *oaktimeline_workarea_set_range_command(
+OakUndoCommand oaktimeline_workarea_set_range_command(
 	OakTimelineWorkArea *w, int in_num, int in_den, int out_num,
 	int out_den, int old_in_num, int old_in_den, int old_out_num,
 	int old_out_den);
@@ -68,7 +68,7 @@ OakUndoCommand *oaktimeline_workarea_set_range_command(
 /**
  * @brief Create a set-enabled command (olive::WorkareaSetEnabledCommand).
  */
-OakUndoCommand *oaktimeline_workarea_set_enabled_command(
+OakUndoCommand oaktimeline_workarea_set_enabled_command(
 	OakTimelineWorkArea *w, int enabled);
 
 /**

@@ -111,18 +111,18 @@ int oaknode_group_add_input_passthrough_undoable(OakNodeGroup *group,
 												 OakNodeNode *node,
 												 const char *input_id,
 												 int element,
-												 OakUndoCommand **out_command)
+												 OakUndoCommand *out_command)
 {
 	if (!group || !node || !input_id || !out_command) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		OakUndoCommand *handle = oaknode_c_api::wrap_command(
+		OakUndoCommand handle = oaknode_c_api::wrap_command(
 			new olive::NodeGroupAddInputPassthrough(
 				to_group(group),
 				olive::NodeInput(to_node(node), input_id, element)));
-		if (!handle) {
+		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
 		*out_command = handle;
@@ -246,17 +246,17 @@ int oaknode_group_set_output_passthrough(OakNodeGroup *group,
 }
 
 int oaknode_group_set_output_passthrough_undoable(
-	OakNodeGroup *group, OakNodeNode *node, OakUndoCommand **out_command)
+	OakNodeGroup *group, OakNodeNode *node, OakUndoCommand *out_command)
 {
 	if (!group || !out_command) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		OakUndoCommand *handle = oaknode_c_api::wrap_command(
+		OakUndoCommand handle = oaknode_c_api::wrap_command(
 			new olive::NodeGroupSetOutputPassthrough(to_group(group),
 													 to_node(node)));
-		if (!handle) {
+		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
 		*out_command = handle;

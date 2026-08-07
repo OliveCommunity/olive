@@ -53,36 +53,36 @@ OakUndoCommandVtable make_vtable()
 	return vtable;
 }
 
-OakUndoCommand *make_command(CommandLog &log)
+OakUndoCommand make_command(CommandLog &log)
 {
 	OakUndoCommandVtable vtable = make_vtable();
-	OakUndoCommand *command = oakundo_command_init(&vtable, &log);
-	EXPECT_NE(command, nullptr);
+	OakUndoCommand command = oakundo_command_init(&vtable, &log);
+	EXPECT_NE(command.ctx, nullptr);
 	return command;
 }
 
-int64_t stack_index(OakUndoStack *stack)
+int64_t stack_index(OakUndoStack stack)
 {
 	int64_t index = -1;
 	EXPECT_EQ(oakundo_undostack_index(stack, &index), OAKUNDO_OK);
 	return index;
 }
 
-int64_t stack_count(OakUndoStack *stack)
+int64_t stack_count(OakUndoStack stack)
 {
 	int64_t count = -1;
 	EXPECT_EQ(oakundo_undostack_count(stack, &count), OAKUNDO_OK);
 	return count;
 }
 
-int stack_can_undo(OakUndoStack *stack)
+int stack_can_undo(OakUndoStack stack)
 {
 	int value = -1;
 	EXPECT_EQ(oakundo_undostack_can_undo(stack, &value), OAKUNDO_OK);
 	return value;
 }
 
-int stack_can_redo(OakUndoStack *stack)
+int stack_can_redo(OakUndoStack stack)
 {
 	int value = -1;
 	EXPECT_EQ(oakundo_undostack_can_redo(stack, &value), OAKUNDO_OK);
@@ -93,8 +93,8 @@ int stack_can_redo(OakUndoStack *stack)
 
 TEST(OakUndoStack, InitFree)
 {
-	OakUndoStack *stack = oakundo_undostack_init();
-	ASSERT_NE(stack, nullptr);
+	OakUndoStack stack = oakundo_undostack_init();
+	ASSERT_NE(stack.ctx, nullptr);
 
 	// A fresh stack holds the "New/Open Project" empty command.
 	EXPECT_EQ(stack_count(stack), 1);
@@ -102,12 +102,12 @@ TEST(OakUndoStack, InitFree)
 	EXPECT_EQ(stack_can_undo(stack), 0);
 	EXPECT_EQ(stack_can_redo(stack), 0);
 
-	oakundo_undostack_free(stack);
+	oakundo_undostack_free(&stack);
 }
 
 TEST(OakUndoStack, FreeNullIsNoOp)
 {
-	oakundo_undostack_free(nullptr);
+	{ OakUndoStack h = {}; oakundo_undostack_free(&h); }
 }
 
 TEST(OakUndoStack, NullHandleFails)
@@ -117,39 +117,39 @@ TEST(OakUndoStack, NullHandleFails)
 	int value = 0;
 	char buf[8];
 
-	EXPECT_EQ(oakundo_undostack_push(nullptr, make_command(log), "x"),
+	EXPECT_EQ(oakundo_undostack_push(OakUndoStack{}, make_command(log), "x"),
 			  OAKUNDO_E_INVALID);
-	EXPECT_EQ(oakundo_undostack_push_pre_executed(nullptr, make_command(log),
+	EXPECT_EQ(oakundo_undostack_push_pre_executed(OakUndoStack{}, make_command(log),
 												  "x"),
 			  OAKUNDO_E_INVALID);
-	EXPECT_EQ(oakundo_undostack_undo(nullptr), OAKUNDO_E_INVALID);
-	EXPECT_EQ(oakundo_undostack_redo(nullptr), OAKUNDO_E_INVALID);
-	EXPECT_EQ(oakundo_undostack_jump(nullptr, 0), OAKUNDO_E_INVALID);
-	EXPECT_EQ(oakundo_undostack_clear(nullptr), OAKUNDO_E_INVALID);
-	EXPECT_EQ(oakundo_undostack_can_undo(nullptr, &value), OAKUNDO_E_INVALID);
-	EXPECT_EQ(oakundo_undostack_can_redo(nullptr, &value), OAKUNDO_E_INVALID);
-	EXPECT_EQ(oakundo_undostack_count(nullptr, &value64), OAKUNDO_E_INVALID);
-	EXPECT_EQ(oakundo_undostack_index(nullptr, &value64), OAKUNDO_E_INVALID);
-	EXPECT_EQ(oakundo_undostack_command_text(nullptr, 0, buf, sizeof(buf)),
+	EXPECT_EQ(oakundo_undostack_undo(OakUndoStack{}), OAKUNDO_E_INVALID);
+	EXPECT_EQ(oakundo_undostack_redo(OakUndoStack{}), OAKUNDO_E_INVALID);
+	EXPECT_EQ(oakundo_undostack_jump(OakUndoStack{}, 0), OAKUNDO_E_INVALID);
+	EXPECT_EQ(oakundo_undostack_clear(OakUndoStack{}), OAKUNDO_E_INVALID);
+	EXPECT_EQ(oakundo_undostack_can_undo(OakUndoStack{}, &value), OAKUNDO_E_INVALID);
+	EXPECT_EQ(oakundo_undostack_can_redo(OakUndoStack{}, &value), OAKUNDO_E_INVALID);
+	EXPECT_EQ(oakundo_undostack_count(OakUndoStack{}, &value64), OAKUNDO_E_INVALID);
+	EXPECT_EQ(oakundo_undostack_index(OakUndoStack{}, &value64), OAKUNDO_E_INVALID);
+	EXPECT_EQ(oakundo_undostack_command_text(OakUndoStack{}, 0, buf, sizeof(buf)),
 			  OAKUNDO_E_INVALID);
-	EXPECT_EQ(oakundo_undostack_command_is_done(nullptr, 0, &value),
+	EXPECT_EQ(oakundo_undostack_command_is_done(OakUndoStack{}, 0, &value),
 			  OAKUNDO_E_INVALID);
 
-	OakUndoStack *stack = oakundo_undostack_init();
-	ASSERT_NE(stack, nullptr);
-	EXPECT_EQ(oakundo_undostack_push(stack, nullptr, "x"), OAKUNDO_E_INVALID);
-	EXPECT_EQ(oakundo_undostack_push_pre_executed(stack, nullptr, "x"),
+	OakUndoStack stack = oakundo_undostack_init();
+	ASSERT_NE(stack.ctx, nullptr);
+	EXPECT_EQ(oakundo_undostack_push(stack, OakUndoCommand{}, "x"), OAKUNDO_E_INVALID);
+	EXPECT_EQ(oakundo_undostack_push_pre_executed(stack, OakUndoCommand{}, "x"),
 			  OAKUNDO_E_INVALID);
 	EXPECT_EQ(oakundo_undostack_can_undo(stack, nullptr), OAKUNDO_E_INVALID);
 	EXPECT_EQ(oakundo_undostack_count(stack, nullptr), OAKUNDO_E_INVALID);
-	oakundo_undostack_free(stack);
+	oakundo_undostack_free(&stack);
 }
 
 TEST(OakUndoStack, PushUndoRedoRoundtrip)
 {
 	CommandLog log;
-	OakUndoStack *stack = oakundo_undostack_init();
-	ASSERT_NE(stack, nullptr);
+	OakUndoStack stack = oakundo_undostack_init();
+	ASSERT_NE(stack.ctx, nullptr);
 
 	ASSERT_EQ(oakundo_undostack_push(stack, make_command(log), "edit"),
 			  OAKUNDO_OK);
@@ -171,7 +171,7 @@ TEST(OakUndoStack, PushUndoRedoRoundtrip)
 	EXPECT_EQ(stack_can_undo(stack), 1);
 	EXPECT_EQ(stack_can_redo(stack), 0);
 
-	oakundo_undostack_free(stack);
+	oakundo_undostack_free(&stack);
 	EXPECT_EQ(log.free_count, 1);
 }
 
@@ -179,8 +179,8 @@ TEST(OakUndoStack, PushClearsRedoable)
 {
 	CommandLog log_a;
 	CommandLog log_b;
-	OakUndoStack *stack = oakundo_undostack_init();
-	ASSERT_NE(stack, nullptr);
+	OakUndoStack stack = oakundo_undostack_init();
+	ASSERT_NE(stack.ctx, nullptr);
 
 	ASSERT_EQ(oakundo_undostack_push(stack, make_command(log_a), "a"),
 			  OAKUNDO_OK);
@@ -194,14 +194,14 @@ TEST(OakUndoStack, PushClearsRedoable)
 	EXPECT_EQ(stack_can_redo(stack), 0);
 	EXPECT_EQ(stack_count(stack), 2);
 
-	oakundo_undostack_free(stack);
+	oakundo_undostack_free(&stack);
 }
 
 TEST(OakUndoStack, PushPreExecutedSkipsRedo)
 {
 	CommandLog log;
-	OakUndoStack *stack = oakundo_undostack_init();
-	ASSERT_NE(stack, nullptr);
+	OakUndoStack stack = oakundo_undostack_init();
+	ASSERT_NE(stack.ctx, nullptr);
 
 	ASSERT_EQ(oakundo_undostack_push_pre_executed(stack, make_command(log),
 												  "done elsewhere"),
@@ -215,33 +215,33 @@ TEST(OakUndoStack, PushPreExecutedSkipsRedo)
 	ASSERT_EQ(oakundo_undostack_redo(stack), OAKUNDO_OK);
 	EXPECT_EQ(log.redo_count, 1);
 
-	oakundo_undostack_free(stack);
+	oakundo_undostack_free(&stack);
 }
 
 TEST(OakUndoStack, EmptyMultiIsDiscarded)
 {
-	OakUndoStack *stack = oakundo_undostack_init();
-	ASSERT_NE(stack, nullptr);
+	OakUndoStack stack = oakundo_undostack_init();
+	ASSERT_NE(stack.ctx, nullptr);
 
-	OakUndoCommand *multi = oakundo_command_init_multi();
-	ASSERT_NE(multi, nullptr);
+	OakUndoCommand multi = oakundo_command_init_multi();
+	ASSERT_NE(multi.ctx, nullptr);
 	ASSERT_EQ(oakundo_undostack_push(stack, multi, "empty"), OAKUNDO_OK);
 	EXPECT_EQ(stack_count(stack), 1);
 
 	multi = oakundo_command_init_multi();
-	ASSERT_NE(multi, nullptr);
+	ASSERT_NE(multi.ctx, nullptr);
 	ASSERT_EQ(oakundo_undostack_push_pre_executed(stack, multi, "empty"),
 			  OAKUNDO_OK);
 	EXPECT_EQ(stack_count(stack), 1);
 
-	oakundo_undostack_free(stack);
+	oakundo_undostack_free(&stack);
 }
 
 TEST(OakUndoStack, Jump)
 {
 	CommandLog logs[3];
-	OakUndoStack *stack = oakundo_undostack_init();
-	ASSERT_NE(stack, nullptr);
+	OakUndoStack stack = oakundo_undostack_init();
+	ASSERT_NE(stack.ctx, nullptr);
 
 	for (int i = 0; i < 3; i++) {
 		char name[8];
@@ -271,14 +271,14 @@ TEST(OakUndoStack, Jump)
 	ASSERT_EQ(oakundo_undostack_jump(stack, -5), OAKUNDO_OK);
 	EXPECT_EQ(stack_index(stack), 1);
 
-	oakundo_undostack_free(stack);
+	oakundo_undostack_free(&stack);
 }
 
 TEST(OakUndoStack, Clear)
 {
 	CommandLog log;
-	OakUndoStack *stack = oakundo_undostack_init();
-	ASSERT_NE(stack, nullptr);
+	OakUndoStack stack = oakundo_undostack_init();
+	ASSERT_NE(stack.ctx, nullptr);
 
 	ASSERT_EQ(oakundo_undostack_push(stack, make_command(log), "edit"),
 			  OAKUNDO_OK);
@@ -294,14 +294,14 @@ TEST(OakUndoStack, Clear)
 			  int(strlen("New/Open Project")) + 1);
 	EXPECT_STREQ(buf, "New/Open Project");
 
-	oakundo_undostack_free(stack);
+	oakundo_undostack_free(&stack);
 }
 
 TEST(OakUndoStack, CommandTextTwoStage)
 {
 	CommandLog log;
-	OakUndoStack *stack = oakundo_undostack_init();
-	ASSERT_NE(stack, nullptr);
+	OakUndoStack stack = oakundo_undostack_init();
+	ASSERT_NE(stack.ctx, nullptr);
 
 	ASSERT_EQ(oakundo_undostack_push(stack, make_command(log), "hello"),
 			  OAKUNDO_OK);
@@ -333,14 +333,14 @@ TEST(OakUndoStack, CommandTextTwoStage)
 			  OAKUNDO_OK);
 	EXPECT_EQ(oakundo_undostack_command_text(stack, 2, nullptr, 0), 1);
 
-	oakundo_undostack_free(stack);
+	oakundo_undostack_free(&stack);
 }
 
 TEST(OakUndoStack, CommandIsDone)
 {
 	CommandLog log;
-	OakUndoStack *stack = oakundo_undostack_init();
-	ASSERT_NE(stack, nullptr);
+	OakUndoStack stack = oakundo_undostack_init();
+	ASSERT_NE(stack.ctx, nullptr);
 
 	ASSERT_EQ(oakundo_undostack_push(stack, make_command(log), "edit"),
 			  OAKUNDO_OK);
@@ -359,13 +359,13 @@ TEST(OakUndoStack, CommandIsDone)
 	EXPECT_EQ(oakundo_undostack_command_is_done(stack, 0, nullptr),
 			  OAKUNDO_E_INVALID);
 
-	oakundo_undostack_free(stack);
+	oakundo_undostack_free(&stack);
 }
 
 TEST(OakUndoStack, MaxUndoCommands)
 {
-	OakUndoStack *stack = oakundo_undostack_init();
-	ASSERT_NE(stack, nullptr);
+	OakUndoStack stack = oakundo_undostack_init();
+	ASSERT_NE(stack.ctx, nullptr);
 
 	// The fresh stack holds 1 empty command; push well past the 200 cap.
 	std::vector<std::unique_ptr<CommandLog>> logs;
@@ -397,7 +397,7 @@ TEST(OakUndoStack, MaxUndoCommands)
 	EXPECT_EQ(stack_can_undo(stack), 0);
 	EXPECT_EQ(stack_count(stack), 200);
 
-	oakundo_undostack_free(stack);
+	oakundo_undostack_free(&stack);
 }
 
 namespace

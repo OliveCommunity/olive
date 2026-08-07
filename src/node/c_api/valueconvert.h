@@ -250,22 +250,15 @@ inline int value_from_variant(olive::NodeValue::Type type, const olive::Variant 
 
 /**
  * @brief Wrap a freshly created olive::UndoCommand in an owned
- * OakUndoCommand handle. Returns NULL on allocation failure.
+ * OakUndoCommand handle (reference count 1). Returns an empty handle
+ * (ctx == NULL) on allocation failure.
  */
-inline OakUndoCommand *wrap_command(olive::UndoCommand *command)
+inline OakUndoCommand wrap_command(olive::UndoCommand *command)
 {
 	if (!command) {
-		return NULL;
+		return OakUndoCommand{};
 	}
-
-	OakUndoCommand *handle = new (std::nothrow) OakUndoCommand();
-	if (!handle) {
-		delete command;
-		return NULL;
-	}
-	handle->command = command;
-	handle->owned = true;
-	return handle;
+	return oakundo_capi::make_command_handle(command, true);
 }
 
 }

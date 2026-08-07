@@ -213,19 +213,19 @@ int oaknode_keyframe_set_time(OakNodeKeyframe *keyframe, int64_t time_num,
 
 int oaknode_keyframe_set_time_undoable(OakNodeKeyframe *keyframe,
 									   int64_t time_num, int64_t time_den,
-									   OakUndoCommand **out_command)
+									   OakUndoCommand *out_command)
 {
 	if (!keyframe || !out_command) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		OakUndoCommand *handle = oaknode_c_api::wrap_command(
+		OakUndoCommand handle = oaknode_c_api::wrap_command(
 			new olive::NodeParamSetKeyframeTimeCommand(
 				to_key(keyframe),
 				olive::core::Rational(static_cast<int>(time_num),
 									  static_cast<int>(time_den))));
-		if (!handle) {
+		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
 		*out_command = handle;
@@ -316,7 +316,7 @@ int oaknode_keyframe_set_value(OakNodeKeyframe *keyframe,
 
 int oaknode_keyframe_set_value_undoable(OakNodeKeyframe *keyframe,
 										const oaknode_value *v,
-										OakUndoCommand **out_command)
+										OakUndoCommand *out_command)
 {
 	if (!keyframe || !v || !out_command) {
 		return OAKNODE_E_INVALID;
@@ -328,10 +328,10 @@ int oaknode_keyframe_set_value_undoable(OakNodeKeyframe *keyframe,
 			return OAKNODE_E_INVALID;
 		}
 
-		OakUndoCommand *handle = oaknode_c_api::wrap_command(
+		OakUndoCommand handle = oaknode_c_api::wrap_command(
 			new olive::NodeParamSetKeyframeValueCommand(to_key(keyframe),
 														variant));
-		if (!handle) {
+		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
 		*out_command = handle;
@@ -373,17 +373,17 @@ int oaknode_keyframe_set_value_string(OakNodeKeyframe *keyframe,
 
 int oaknode_keyframe_set_value_string_undoable(OakNodeKeyframe *keyframe,
 											   const char *value,
-											   OakUndoCommand **out_command)
+											   OakUndoCommand *out_command)
 {
 	if (!keyframe || !value || !out_command) {
 		return OAKNODE_E_INVALID;
 	}
 
 	try {
-		OakUndoCommand *handle = oaknode_c_api::wrap_command(
+		OakUndoCommand handle = oaknode_c_api::wrap_command(
 			new olive::NodeParamSetKeyframeValueCommand(
 				to_key(keyframe), olive::Variant(value)));
-		if (!handle) {
+		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
 		*out_command = handle;
@@ -426,7 +426,7 @@ int oaknode_keyframe_set_type(OakNodeKeyframe *keyframe, int type)
 }
 
 int oaknode_keyframe_set_type_undoable(OakNodeKeyframe *keyframe, int type,
-									   OakUndoCommand **out_command)
+									   OakUndoCommand *out_command)
 {
 	if (!keyframe || !out_command) {
 		return OAKNODE_E_INVALID;
@@ -438,9 +438,9 @@ int oaknode_keyframe_set_type_undoable(OakNodeKeyframe *keyframe, int type,
 			return OAKNODE_E_INVALID;
 		}
 
-		OakUndoCommand *handle = oaknode_c_api::wrap_command(
+		OakUndoCommand handle = oaknode_c_api::wrap_command(
 			new KeyframeSetTypeCommand(to_key(keyframe), keyframe_type));
-		if (!handle) {
+		if (!handle.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
 		*out_command = handle;
@@ -498,7 +498,7 @@ int oaknode_keyframe_set_bezier_control(OakNodeKeyframe *keyframe, int handle,
 
 int oaknode_keyframe_set_bezier_control_undoable(OakNodeKeyframe *keyframe,
 												 int handle, double x, double y,
-												 OakUndoCommand **out_command)
+												 OakUndoCommand *out_command)
 {
 	if (!keyframe || !out_command) {
 		return OAKNODE_E_INVALID;
@@ -514,10 +514,10 @@ int oaknode_keyframe_set_bezier_control_undoable(OakNodeKeyframe *keyframe,
 			return OAKNODE_E_INVALID;
 		}
 
-		OakUndoCommand *handle_ptr = oaknode_c_api::wrap_command(
+		OakUndoCommand handle_ptr = oaknode_c_api::wrap_command(
 			new KeyframeSetBezierControlCommand(to_key(keyframe), bezier_handle,
 												olive::PointF(x, y)));
-		if (!handle_ptr) {
+		if (!handle_ptr.ctx) {
 			return OAKNODE_E_NOMEM;
 		}
 		*out_command = handle_ptr;

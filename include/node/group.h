@@ -88,7 +88,7 @@ int oaknode_group_add_input_passthrough_undoable(OakNodeGroup *group,
 												 OakNodeNode *node,
 												 const char *input_id,
 												 int element,
-												 OakUndoCommand **out_command);
+												 OakUndoCommand *out_command);
 
 /**
  * @brief Remove the passthrough for (`node`, `input_id`, `element`)
@@ -137,7 +137,7 @@ int oaknode_group_set_output_passthrough(OakNodeGroup *group,
  * (olive::NodeGroupSetOutputPassthrough).
  */
 int oaknode_group_set_output_passthrough_undoable(
-	OakNodeGroup *group, OakNodeNode *node, OakUndoCommand **out_command);
+	OakNodeGroup *group, OakNodeNode *node, OakUndoCommand *out_command);
 
 /**
  * @brief Resolve an input through group passthroughs

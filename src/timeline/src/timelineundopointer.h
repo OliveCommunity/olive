@@ -56,7 +56,7 @@ public:
 		, block_(block)
 		, new_length_(new_length)
 		, mode_(mode)
-		, deleted_adjacent_command_(nullptr)
+		, deleted_adjacent_command_({})
 		, trim_is_a_roll_edit_(false)
 		, remove_block_from_graph_(true)
 		, doing_nothing_(false)
@@ -109,7 +109,7 @@ private:
 	bool needs_adjacent_;
 	bool we_created_adjacent_;
 	bool we_removed_adjacent_;
-	OakUndoCommand *deleted_adjacent_command_;
+	OakUndoCommand deleted_adjacent_command_;
 
 	bool trim_is_a_roll_edit_;
 	bool remove_block_from_graph_;
@@ -130,12 +130,12 @@ public:
 		, we_created_in_adjacent_(false)
 		, we_removed_in_adjacent_(false)
 		, in_adjacent_(in_adjacent)
-		, in_adjacent_remove_command_(nullptr)
+		, in_adjacent_remove_command_({})
 		, in_adjacent_orphaned_(false)
 		, we_created_out_adjacent_(false)
 		, we_removed_out_adjacent_(false)
 		, out_adjacent_(out_adjacent)
-		, out_adjacent_remove_command_(nullptr)
+		, out_adjacent_remove_command_({})
 		, out_adjacent_orphaned_(false)
 	{
 	}
@@ -157,12 +157,12 @@ private:
 	bool we_created_in_adjacent_;
 	bool we_removed_in_adjacent_;
 	OakNodeBlock *in_adjacent_;
-	OakUndoCommand *in_adjacent_remove_command_;
+	OakUndoCommand in_adjacent_remove_command_;
 	bool in_adjacent_orphaned_;
 	bool we_created_out_adjacent_;
 	bool we_removed_out_adjacent_;
 	OakNodeBlock *out_adjacent_;
-	OakUndoCommand *out_adjacent_remove_command_;
+	OakUndoCommand out_adjacent_remove_command_;
 	bool out_adjacent_orphaned_;
 };
 

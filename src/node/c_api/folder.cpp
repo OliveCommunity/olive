@@ -238,24 +238,20 @@ OakNodeNode *oaknode_folder_as_node(OakNodeFolder *folder)
 	return reinterpret_cast<OakNodeNode *>(folder);
 }
 
-OakUndoCommand *oaknode_command_create_folder_add_child(
+OakUndoCommand oaknode_command_create_folder_add_child(
 	OakNodeFolder *folder, OakNodeNode *child)
 {
 	if (!folder || !child) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 
 	try {
-		OakUndoCommand *handle =
-			new (std::nothrow) OakUndoCommand{ nullptr, true };
-		if (!handle) {
-			return NULL;
-		}
-		handle->command = new olive::FolderAddChild(
-			reinterpret_cast<olive::Folder *>(folder),
-			reinterpret_cast<olive::Node *>(child));
-		return handle;
+		return oakundo_capi::make_command_handle(
+			new olive::FolderAddChild(
+				reinterpret_cast<olive::Folder *>(folder),
+				reinterpret_cast<olive::Node *>(child)),
+			true);
 	} catch (...) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 }

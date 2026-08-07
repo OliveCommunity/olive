@@ -31,50 +31,59 @@ extern "C" {
 #endif
 
 /**
- * @brief Opaque handle to an undo stack (olive::UndoStack).
+ * @brief Reference-counted handle to an undo stack (olive::UndoStack).
+ *
+ * Same ownership/count semantics as OakUndoCommand (see
+ * undo/undocommand.h).
  */
-typedef struct OakUndoStack OakUndoStack;
+typedef struct OakUndoStack {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKUNDO_ABI_VERSION. */
+} OakUndoStack;
 
 /**
- * @brief Create an undo stack.
+ * @brief Create an undo stack (count 1).
  *
  * A fresh stack contains a single "New/Open Project" empty command,
  * matching olive::UndoStack::clear().
  *
- * @return Stack handle, or NULL on allocation failure.
+ * @return Stack handle; ctx is NULL on allocation failure.
  */
-OakUndoStack *oakundo_undostack_init(void);
+OakUndoStack oakundo_undostack_init(void);
 
 /**
- * @brief Destroy an undo stack and all commands it owns.
+ * @brief Release one reference to an undo stack.
  *
- * NULL is a no-op.
+ * NULL handle or NULL ctx is a no-op; clears `stack->ctx` after
+ * releasing.
  */
 void oakundo_undostack_free(OakUndoStack *stack);
 
 /**
  * @brief Push `command` onto the stack and execute its redo.
  *
- * On success the stack takes ownership of the underlying command; the
- * handle wrapper is consumed and must not be used or freed afterwards.
- * An empty multi command is deleted immediately (not pushed), matching
- * olive::UndoStack::push. `name` is the user-visible label (NULL behaves
- * like an empty label).
+ * The stack takes one reference to the command; the caller keeps its
+ * own reference and may release it after the call. An empty multi
+ * command is deleted immediately (not pushed), matching
+ * olive::UndoStack::push. `name` is the user-visible label (NULL
+ * behaves like an empty label).
  *
  * @return OAKUNDO_OK or a negative OAKUNDO_E_* error code.
  */
-int oakundo_undostack_push(OakUndoStack *stack, OakUndoCommand *command,
+int oakundo_undostack_push(OakUndoStack stack, OakUndoCommand command,
 						   const char *name);
 
 /**
  * @brief Push a command that has already been executed (redo skipped).
  *
- * Ownership rules match oakundo_undostack_push().
+ * Reference rules match oakundo_undostack_push().
  *
  * @return OAKUNDO_OK or a negative OAKUNDO_E_* error code.
  */
-int oakundo_undostack_push_pre_executed(OakUndoStack *stack,
-										OakUndoCommand *command,
+int oakundo_undostack_push_pre_executed(OakUndoStack stack,
+										OakUndoCommand command,
 										const char *name);
 
 /**
@@ -82,14 +91,14 @@ int oakundo_undostack_push_pre_executed(OakUndoStack *stack,
  *
  * @return OAKUNDO_OK or a negative OAKUNDO_E_* error code.
  */
-int oakundo_undostack_undo(OakUndoStack *stack);
+int oakundo_undostack_undo(OakUndoStack stack);
 
 /**
  * @brief Redo the most recently undone command, if any.
  *
  * @return OAKUNDO_OK or a negative OAKUNDO_E_* error code.
  */
-int oakundo_undostack_redo(OakUndoStack *stack);
+int oakundo_undostack_redo(OakUndoStack stack);
 
 /**
  * @brief Undo/redo until the done-command count equals `index`
@@ -97,7 +106,7 @@ int oakundo_undostack_redo(OakUndoStack *stack);
  *
  * @return OAKUNDO_OK or a negative OAKUNDO_E_* error code.
  */
-int oakundo_undostack_jump(OakUndoStack *stack, int64_t index);
+int oakundo_undostack_jump(OakUndoStack stack, int64_t index);
 
 /**
  * @brief Delete all commands and push the fresh "New/Open Project" empty
@@ -105,7 +114,7 @@ int oakundo_undostack_jump(OakUndoStack *stack, int64_t index);
  *
  * @return OAKUNDO_OK or a negative OAKUNDO_E_* error code.
  */
-int oakundo_undostack_clear(OakUndoStack *stack);
+int oakundo_undostack_clear(OakUndoStack stack);
 
 /**
  * @brief Query whether undo (redo) is currently possible.
@@ -114,8 +123,8 @@ int oakundo_undostack_clear(OakUndoStack *stack);
  *
  * @return OAKUNDO_OK or a negative OAKUNDO_E_* error code.
  */
-int oakundo_undostack_can_undo(OakUndoStack *stack, int *out_value);
-int oakundo_undostack_can_redo(OakUndoStack *stack, int *out_value);
+int oakundo_undostack_can_undo(OakUndoStack stack, int *out_value);
+int oakundo_undostack_can_redo(OakUndoStack stack, int *out_value);
 
 /**
  * @brief Total number of history rows (done + undone commands).
@@ -124,7 +133,7 @@ int oakundo_undostack_can_redo(OakUndoStack *stack, int *out_value);
  *
  * @return OAKUNDO_OK or a negative OAKUNDO_E_* error code.
  */
-int oakundo_undostack_count(OakUndoStack *stack, int64_t *out_count);
+int oakundo_undostack_count(OakUndoStack stack, int64_t *out_count);
 
 /**
  * @brief Current position in the history: the number of done commands
@@ -134,7 +143,7 @@ int oakundo_undostack_count(OakUndoStack *stack, int64_t *out_count);
  *
  * @return OAKUNDO_OK or a negative OAKUNDO_E_* error code.
  */
-int oakundo_undostack_index(OakUndoStack *stack, int64_t *out_index);
+int oakundo_undostack_index(OakUndoStack stack, int64_t *out_index);
 
 /**
  * @brief Label of the history row at `row` (0-based, two-stage getter).
@@ -143,7 +152,7 @@ int oakundo_undostack_index(OakUndoStack *stack, int64_t *out_index);
  *         (non-negative), OAKUNDO_E_NOT_FOUND for an invalid row, or
  *         another negative OAKUNDO_E_* error code.
  */
-int oakundo_undostack_command_text(OakUndoStack *stack, int64_t row,
+int oakundo_undostack_command_text(OakUndoStack stack, int64_t row,
 								   char *buf, int buf_size);
 
 /**
@@ -154,7 +163,7 @@ int oakundo_undostack_command_text(OakUndoStack *stack, int64_t row,
  * @return OAKUNDO_OK, OAKUNDO_E_NOT_FOUND for an invalid row, or another
  *         negative OAKUNDO_E_* error code.
  */
-int oakundo_undostack_command_is_done(OakUndoStack *stack, int64_t row,
+int oakundo_undostack_command_is_done(OakUndoStack stack, int64_t row,
 									  int *out_value);
 
 #ifdef __cplusplus

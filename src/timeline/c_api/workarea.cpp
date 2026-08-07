@@ -39,16 +39,12 @@ const olive::TimelineWorkArea *impl(const OakTimelineWorkArea *h)
 	return reinterpret_cast<const olive::TimelineWorkArea *>(h);
 }
 
-OakUndoCommand *wrap_command(olive::UndoCommand *command)
+OakUndoCommand wrap_command(olive::UndoCommand *command)
 {
 	if (!command) {
-		return NULL;
+		return OakUndoCommand{};
 	}
-	OakUndoCommand *handle = new (std::nothrow) OakUndoCommand{command, true};
-	if (!handle) {
-		delete command;
-	}
-	return handle;
+	return oakundo_capi::make_command_handle(command, true);
 }
 
 olive::core::Rational rat(int64_t n, int64_t d)
@@ -113,13 +109,13 @@ int oaktimeline_workarea_set_range(OakTimelineWorkArea *w, int in_num,
 	}
 }
 
-OakUndoCommand *oaktimeline_workarea_set_range_command(
+OakUndoCommand oaktimeline_workarea_set_range_command(
 	OakTimelineWorkArea *w, int in_num, int in_den, int out_num,
 	int out_den, int old_in_num, int old_in_den, int old_out_num,
 	int old_out_den)
 {
 	if (!w) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 
 	try {
@@ -129,22 +125,22 @@ OakUndoCommand *oaktimeline_workarea_set_range_command(
 		return wrap_command(
 			new olive::WorkareaSetRangeCommand(impl(w), range, old_range));
 	} catch (...) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 }
 
-OakUndoCommand *oaktimeline_workarea_set_enabled_command(
+OakUndoCommand oaktimeline_workarea_set_enabled_command(
 	OakTimelineWorkArea *w, int enabled)
 {
 	if (!w) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 
 	try {
 		return wrap_command(
 			new olive::WorkareaSetEnabledCommand(impl(w), enabled != 0));
 	} catch (...) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 }
 

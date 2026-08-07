@@ -45,10 +45,10 @@ public:
 
 	/** Take ownership of the import command. After this call the task no
 	 *  longer owns (and will not free) the returned command. */
-	OakUndoCommand *take_command()
+	OakUndoCommand take_command()
 	{
-		OakUndoCommand *c = command_;
-		command_ = nullptr;
+		OakUndoCommand c = command_;
+		command_ = OakUndoCommand{};
 		return c;
 	}
 
@@ -87,14 +87,14 @@ protected:
 private:
 	void import(OakNodeFolder *folder,
 				const std::vector<std::string> &entries, int &counter,
-				OakUndoCommand *parent_command);
+				OakUndoCommand parent_command);
 
 	void validate_image_sequence(OakNodeFootage *footage,
 								 std::vector<std::string> &info_list,
 								 size_t index);
 
 	void add_item_to_folder(OakNodeFolder *folder, OakNodeNode *item,
-							OakUndoCommand *command);
+							OakUndoCommand command);
 
 	static bool item_is_still_image_footage_only(OakNodeFootage *footage);
 
@@ -104,7 +104,7 @@ private:
 	static int64_t get_image_sequence_limit(const std::string &start_fn,
 											int64_t start, bool up);
 
-	OakUndoCommand *command_;
+	OakUndoCommand command_;
 
 	OakNodeFolder *folder_;
 

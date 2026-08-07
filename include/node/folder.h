@@ -84,7 +84,7 @@ OakNodeNode *oaknode_folder_as_node(OakNodeFolder *folder);
  * @brief Create an undoable FolderAddChild command. Owned; free with
  *        oakundo_command_free().
  */
-OakUndoCommand *oaknode_command_create_folder_add_child(
+OakUndoCommand oaknode_command_create_folder_add_child(
 	OakNodeFolder *folder, OakNodeNode *child);
 
 /**

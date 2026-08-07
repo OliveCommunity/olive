@@ -164,9 +164,9 @@ TEST_F(OakTaskFixture, ImportDemoFootage)
 			  OAKTASK_E_NOT_FOUND);
 
 	// The import command adds the footage to the folder; undo removes it
-	OakUndoCommand *cmd = oaktask_import_take_command(t);
-	ASSERT_NE(cmd, nullptr);
-	EXPECT_EQ(oaktask_import_take_command(t), nullptr);
+	OakUndoCommand cmd = oaktask_import_take_command(t);
+	ASSERT_NE(cmd.ctx, nullptr);
+	EXPECT_EQ(oaktask_import_take_command(t).ctx, nullptr);
 
 	EXPECT_EQ(oaknode_folder_child_count(folder), 0); // not yet redone
 
@@ -176,7 +176,7 @@ TEST_F(OakTaskFixture, ImportDemoFootage)
 	oakundo_command_undo_now(cmd);
 	EXPECT_EQ(oaknode_folder_child_count(folder), 0);
 
-	oakundo_command_free(cmd);
+	oakundo_command_free(&cmd);
 	oaktask_task_free(t);
 
 	EXPECT_EQ(oaktask_create_project_import(nullptr, project_, urls, 1),
@@ -385,11 +385,11 @@ TEST(OakTaskOTIO, SaveLoadRoundTrip)
 
 	OakNodeFolder *root = oaknode_project_root(project);
 	ASSERT_NE(root, nullptr);
-	OakUndoCommand *add_seq = oaknode_command_create_folder_add_child(
+	OakUndoCommand add_seq = oaknode_command_create_folder_add_child(
 		root, oaknode_sequence_as_node(sequence));
-	ASSERT_NE(add_seq, nullptr);
+	ASSERT_NE(add_seq.ctx, nullptr);
 	oakundo_command_redo_now(add_seq);
-	oakundo_command_free(add_seq);
+	oakundo_command_free(&add_seq);
 
 	std::string path =
 		(std::filesystem::temp_directory_path() / "oaktask_otio_test.otio")

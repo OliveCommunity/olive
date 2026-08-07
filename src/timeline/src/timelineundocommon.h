@@ -40,29 +40,29 @@ inline bool node_can_be_removed(OakNodeBlock *b)
 	return node_can_be_removed(oaknode_block_as_node(b));
 }
 
-inline OakUndoCommand *create_remove_command(OakNodeNode *n)
+inline OakUndoCommand create_remove_command(OakNodeNode *n)
 {
 	return oaknode_command_create_remove_node(n);
 }
 
-inline OakUndoCommand *create_remove_command(OakNodeBlock *b)
+inline OakUndoCommand create_remove_command(OakNodeBlock *b)
 {
 	return oaknode_command_create_remove_node(oaknode_block_as_node(b));
 }
 
-inline OakUndoCommand *create_and_run_remove_command(OakNodeNode *n)
+inline OakUndoCommand create_and_run_remove_command(OakNodeNode *n)
 {
-	OakUndoCommand *command = create_remove_command(n);
+	OakUndoCommand command = create_remove_command(n);
 	oakundo_command_redo_now(command);
 	return command;
 }
 
-inline OakUndoCommand *create_and_run_remove_command(OakNodeBlock *b)
+inline OakUndoCommand create_and_run_remove_command(OakNodeBlock *b)
 {
 	return create_and_run_remove_command(oaknode_block_as_node(b));
 }
 
-inline void free_remove_command(OakUndoCommand *command)
+inline void free_command_handle(OakUndoCommand *command)
 {
 	oakundo_command_free(command);
 }
@@ -73,35 +73,40 @@ inline void free_remove_command(OakUndoCommand *command)
  */
 class CHandleCommandWrapper : public UndoCommand {
 public:
-	CHandleCommandWrapper(OakUndoCommand *command)
+	CHandleCommandWrapper(OakUndoCommand command)
 		: command_(command)
 	{
 	}
 
 	virtual ~CHandleCommandWrapper() override
 	{
-		if (command_) {
-			oakundo_command_free(command_);
+		if (command_.ctx) {
+			oakundo_command_free(&command_);
 		}
+	}
+
+	bool is_valid() const
+	{
+		return command_.ctx != nullptr;
 	}
 
 protected:
 	virtual void redo() override
 	{
-		if (command_) {
+		if (command_.ctx) {
 			oakundo_command_redo_now(command_);
 		}
 	}
 
 	virtual void undo() override
 	{
-		if (command_) {
+		if (command_.ctx) {
 			oakundo_command_undo_now(command_);
 		}
 	}
 
 private:
-	OakUndoCommand *command_;
+	OakUndoCommand command_;
 };
 
 }

@@ -83,8 +83,8 @@ private:
 //
 BlockSplitCommand::~BlockSplitCommand()
 {
-	if (reconnect_tree_command_) {
-		oakundo_command_free(reconnect_tree_command_);
+	if (reconnect_tree_command_.ctx) {
+		oakundo_command_free(&reconnect_tree_command_);
 	}
 }
 
@@ -110,7 +110,7 @@ void BlockSplitCommand::redo()
 
 	assert(point_ > block_in && point_ < block_out);
 
-	if (reconnect_tree_command_) {
+	if (reconnect_tree_command_.ctx) {
 		oakundo_command_redo_now(reconnect_tree_command_);
 	}
 
@@ -193,7 +193,7 @@ void BlockSplitCommand::undo()
 	oaknode_track_ripple_remove_block(track, new_block_);
 
 	// If we ran a reconnect command, disconnect now
-	if (reconnect_tree_command_) {
+	if (reconnect_tree_command_.ctx) {
 		oakundo_command_undo_now(reconnect_tree_command_);
 	}
 }

@@ -33,8 +33,8 @@ namespace olive
 //
 BlockTrimCommand::~BlockTrimCommand()
 {
-	if (deleted_adjacent_command_) {
-		free_remove_command(deleted_adjacent_command_);
+	if (deleted_adjacent_command_.ctx) {
+		free_command_handle(&deleted_adjacent_command_);
 	}
 	if (adjacent_orphaned_ && adjacent_) {
 		oaknode_block_free(adjacent_);
@@ -68,7 +68,7 @@ void BlockTrimCommand::redo()
 
 			// It no longer inputs/outputs anything, remove it
 			if (remove_block_from_graph_ && node_can_be_removed(adjacent_)) {
-				if (!deleted_adjacent_command_) {
+				if (!deleted_adjacent_command_.ctx) {
 					deleted_adjacent_command_ =
 						create_and_run_remove_command(adjacent_);
 				} else {
@@ -102,7 +102,7 @@ void BlockTrimCommand::undo()
 			adjacent_orphaned_ = true;
 		} else {
 			if (we_removed_adjacent_) {
-				if (deleted_adjacent_command_) {
+				if (deleted_adjacent_command_.ctx) {
 					// We deleted adjacent, restore it now
 					oakundo_command_undo_now(deleted_adjacent_command_);
 				}
@@ -188,11 +188,11 @@ void BlockTrimCommand::prepare()
 //
 TrackSlideCommand::~TrackSlideCommand()
 {
-	if (in_adjacent_remove_command_) {
-		free_remove_command(in_adjacent_remove_command_);
+	if (in_adjacent_remove_command_.ctx) {
+		free_command_handle(&in_adjacent_remove_command_);
 	}
-	if (out_adjacent_remove_command_) {
-		free_remove_command(out_adjacent_remove_command_);
+	if (out_adjacent_remove_command_.ctx) {
+		free_command_handle(&out_adjacent_remove_command_);
 	}
 	if (in_adjacent_orphaned_ && in_adjacent_) {
 		oaknode_block_free(in_adjacent_);
@@ -216,7 +216,7 @@ void TrackSlideCommand::redo()
 		oaknode_track_ripple_remove_block(track_, in_adjacent_);
 
 		if (node_can_be_removed(in_adjacent_)) {
-			if (!in_adjacent_remove_command_) {
+			if (!in_adjacent_remove_command_.ctx) {
 				in_adjacent_remove_command_ =
 					create_remove_command(in_adjacent_);
 			}
@@ -244,7 +244,7 @@ void TrackSlideCommand::redo()
 			oaknode_track_ripple_remove_block(track_, out_adjacent_);
 
 			if (node_can_be_removed(out_adjacent_)) {
-				if (!out_adjacent_remove_command_) {
+				if (!out_adjacent_remove_command_.ctx) {
 					out_adjacent_remove_command_ =
 						create_remove_command(out_adjacent_);
 				}
@@ -270,7 +270,7 @@ void TrackSlideCommand::undo()
 		block_remove_from_graph(in_adjacent_, track_);
 		in_adjacent_orphaned_ = true;
 	} else if (we_removed_in_adjacent_) {
-		if (in_adjacent_remove_command_) {
+		if (in_adjacent_remove_command_.ctx) {
 			// We removed this, so we can restore it now
 			oakundo_command_undo_now(in_adjacent_remove_command_);
 		}
@@ -290,7 +290,7 @@ void TrackSlideCommand::undo()
 			block_remove_from_graph(out_adjacent_, track_);
 			out_adjacent_orphaned_ = true;
 		} else if (we_removed_out_adjacent_) {
-			if (out_adjacent_remove_command_) {
+			if (out_adjacent_remove_command_.ctx) {
 				oakundo_command_undo_now(out_adjacent_remove_command_);
 			}
 

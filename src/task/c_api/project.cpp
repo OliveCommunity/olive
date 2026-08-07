@@ -118,11 +118,11 @@ OakTaskTask *oaktask_create_project_import(OakNodeFolder *folder,
 	}
 }
 
-OakUndoCommand *oaktask_import_take_command(OakTaskTask *t)
+OakUndoCommand oaktask_import_take_command(OakTaskTask *t)
 {
 	olive::ProjectImportTask *task = import_impl(t);
 	if (!task) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 	return task->take_command();
 }

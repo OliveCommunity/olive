@@ -171,7 +171,7 @@ int oaknode_node_set_label(OakNodeNode *node, const char *label);
  * @return OAKNODE_OK or a negative OAKNODE_E_* error code.
  */
 int oaknode_node_set_label_undoable(OakNodeNode *node, const char *label,
-									OakUndoCommand **out_command);
+									OakUndoCommand *out_command);
 
 /**
  * @brief The node's override color index (Node::get_override_color();
@@ -196,7 +196,7 @@ int oaknode_node_set_override_color(OakNodeNode *node, int index);
  * @return OAKNODE_OK or a negative OAKNODE_E_* error code.
  */
 int oaknode_node_set_override_color_undoable(OakNodeNode *node, int index,
-											 OakUndoCommand **out_command);
+											 OakUndoCommand *out_command);
 
 /**
  * @brief 1 if the node is enabled (the boolean "enabled_in" input's
@@ -220,7 +220,7 @@ int oaknode_node_set_enabled(OakNodeNode *node, int enabled);
  * @return OAKNODE_OK or a negative OAKNODE_E_* error code.
  */
 int oaknode_node_set_enabled_undoable(OakNodeNode *node, int enabled,
-									  OakUndoCommand **out_command);
+									  OakUndoCommand *out_command);
 
 /* ---- Input introspection ------------------------------------------------ */
 
@@ -310,7 +310,7 @@ int oaknode_node_set_input(OakNodeNode *node, const char *input_id,
  */
 int oaknode_node_set_input_undoable(OakNodeNode *node, const char *input_id,
 									const oaknode_value *v,
-									OakUndoCommand **out_command);
+									OakUndoCommand *out_command);
 
 /**
  * @brief Read a string-family input's standard value. Two-stage getter.
@@ -331,7 +331,7 @@ int oaknode_node_set_input_string(OakNodeNode *node, const char *input_id,
 int oaknode_node_set_input_string_undoable(OakNodeNode *node,
 										   const char *input_id,
 										   const char *value,
-										   OakUndoCommand **out_command);
+										   OakUndoCommand *out_command);
 
 /* ---- Graph editing -------------------------------------------------------- */
 
@@ -356,7 +356,7 @@ int oaknode_node_connect(OakNodeNode *output_node, OakNodeNode *input_node,
 int oaknode_node_connect_undoable(OakNodeNode *output_node,
 								  OakNodeNode *input_node,
 								  const char *input_id,
-								  OakUndoCommand **out_command);
+								  OakUndoCommand *out_command);
 
 /**
  * @brief Remove the edge feeding `input_node`'s `input_id` directly
@@ -371,7 +371,7 @@ int oaknode_node_disconnect(OakNodeNode *input_node, const char *input_id);
  */
 int oaknode_node_disconnect_undoable(OakNodeNode *input_node,
 									 const char *input_id,
-									 OakUndoCommand **out_command);
+									 OakUndoCommand *out_command);
 
 /**
  * @brief Number of outgoing edges (Node::output_connections()).
@@ -422,7 +422,7 @@ int oaknode_node_unlink(OakNodeNode *a, OakNodeNode *b, int *out_unlinked);
  * `link` != 0 links, 0 unlinks).
  */
 int oaknode_node_link_undoable(OakNodeNode *a, OakNodeNode *b, int link,
-							   OakUndoCommand **out_command);
+							   OakUndoCommand *out_command);
 
 /**
  * @brief 1 if the two nodes are linked (Node::are_linked()).
@@ -477,7 +477,7 @@ int oaknode_node_set_context_position(OakNodeNode *node, OakNodeNode *context,
 int oaknode_node_set_context_position_undoable(OakNodeNode *node,
 											   OakNodeNode *context, double x,
 											   double y, int expanded,
-											   OakUndoCommand **out_command);
+											   OakUndoCommand *out_command);
 
 /**
  * @brief Remove the node from `context` directly (live).
@@ -504,7 +504,7 @@ OakNodeNode *oaknode_node_create_copy(const OakNodeNode *node);
  * until then. Returns NULL on failure.
  */
 OakNodeNode *oaknode_node_copy_in_graph(OakNodeNode *node,
-										OakUndoCommand **out_command);
+										OakUndoCommand *out_command);
 
 /**
  * @brief Get the project this node belongs to (borrowed). *out may be
@@ -537,7 +537,7 @@ int oaknode_node_disconnect_element(OakNodeNode *input_node,
  * @brief Create a command that adds a node to a project's graph
  * (olive::NodeAddCommand). Owned; free with oakundo_command_free().
  */
-OakUndoCommand *oaknode_command_create_add_node(OakNodeProject *graph,
+OakUndoCommand oaknode_command_create_add_node(OakNodeProject *graph,
 												OakNodeNode *node);
 
 /**
@@ -545,7 +545,7 @@ OakUndoCommand *oaknode_command_create_add_node(OakNodeProject *graph,
  * repositions its dependencies recursively
  * (olive::NodeSetPositionAndDependenciesRecursivelyCommand). Owned.
  */
-OakUndoCommand *oaknode_command_create_set_position_recursive(
+OakUndoCommand oaknode_command_create_set_position_recursive(
 	OakNodeNode *node, OakNodeNode *context, double x, double y);
 
 /**
@@ -607,7 +607,7 @@ int oaknode_node_find_input_footage(const OakNodeNode *node,
  * Owned command handle; free with oakundo_command_free(). Returns NULL
  * on failure.
  */
-OakUndoCommand *oaknode_command_create_remove_node(OakNodeNode *node);
+OakUndoCommand oaknode_command_create_remove_node(OakNodeNode *node);
 
 /**
  * @brief Destroy an OWNED node immediately (C++ delete). NULL is a no-op.

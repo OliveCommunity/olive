@@ -20,9 +20,16 @@
 
 #include "undo/undocommand.h"
 
+#include <atomic>
 #include <new>
 
+#include "../src/undocommand.h"
+
 #include "commandhandle.h"
+
+using oakundo_capi::make_command_handle;
+using oakundo_capi::mark_container_owned;
+using oakundo_capi::to_command;
 
 namespace
 {
@@ -33,7 +40,8 @@ namespace
 class CallbackUndoCommand : public olive::UndoCommand {
 public:
 	CallbackUndoCommand(const OakUndoCommandVtable &vtable, void *userdata)
-		: vtable_(vtable), userdata_(userdata)
+		: vtable_(vtable)
+		, userdata_(userdata)
 	{
 	}
 
@@ -64,75 +72,66 @@ private:
 	void *userdata_;
 };
 
-}
+} // namespace
 
-OakUndoCommand *oakundo_command_init(const OakUndoCommandVtable *vtable,
-									 void *userdata)
+OakUndoCommand oakundo_command_init(const OakUndoCommandVtable *vtable,
+									void *userdata)
 {
 	if (!vtable) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 
 	try {
-		OakUndoCommand *handle = new (std::nothrow) OakUndoCommand();
-		if (!handle) {
-			return NULL;
-		}
-		handle->command = new CallbackUndoCommand(*vtable, userdata);
-		handle->owned = true;
-		return handle;
+		return make_command_handle(new CallbackUndoCommand(*vtable, userdata), true);
 	} catch (...) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 }
 
-OakUndoCommand *oakundo_command_init_multi(void)
+OakUndoCommand oakundo_command_init_multi(void)
 {
 	try {
-		OakUndoCommand *handle = new (std::nothrow) OakUndoCommand();
-		if (!handle) {
-			return NULL;
-		}
-		handle->command = new olive::MultiUndoCommand();
-		handle->owned = true;
-		return handle;
+		return make_command_handle(new olive::MultiUndoCommand(), true);
 	} catch (...) {
-		return NULL;
+		return OakUndoCommand{};
 	}
 }
 
-int oakundo_command_multi_add_child(OakUndoCommand *multi,
-									OakUndoCommand *child)
+int oakundo_command_multi_add_child(OakUndoCommand multi,
+									OakUndoCommand child)
 {
-	if (!multi || !multi->command || !child || !child->command) {
+	olive::UndoCommand *parent = to_command(multi);
+	olive::UndoCommand *child_cmd = to_command(child);
+	if (!parent || !child_cmd) {
 		return OAKUNDO_E_INVALID;
 	}
 
 	olive::MultiUndoCommand *mcu =
-		dynamic_cast<olive::MultiUndoCommand *>(multi->command);
+		dynamic_cast<olive::MultiUndoCommand *>(parent);
 	if (!mcu) {
 		return OAKUNDO_E_INVALID;
 	}
 
 	try {
-		mcu->add_child(child->command);
-		// Ownership of the underlying command moved to the multi command;
-		// consume the wrapper.
-		delete child;
+		mcu->add_child(child_cmd);
+		// The multi command now owns the C++ object; the caller's box
+		// becomes a non-owning reference (its release no longer deletes).
+		mark_container_owned(child);
 		return OAKUNDO_OK;
 	} catch (...) {
 		return OAKUNDO_E_FAILED;
 	}
 }
 
-int oakundo_command_multi_child_count(OakUndoCommand *multi, int *out_count)
+int oakundo_command_multi_child_count(OakUndoCommand multi, int *out_count)
 {
-	if (!multi || !multi->command || !out_count) {
+	olive::UndoCommand *parent = to_command(multi);
+	if (!parent || !out_count) {
 		return OAKUNDO_E_INVALID;
 	}
 
 	olive::MultiUndoCommand *mcu =
-		dynamic_cast<olive::MultiUndoCommand *>(multi->command);
+		dynamic_cast<olive::MultiUndoCommand *>(parent);
 	if (!mcu) {
 		return OAKUNDO_E_INVALID;
 	}
@@ -145,15 +144,16 @@ int oakundo_command_multi_child_count(OakUndoCommand *multi, int *out_count)
 	}
 }
 
-int oakundo_command_multi_child(OakUndoCommand *multi, int index,
-								OakUndoCommand **out_child)
+int oakundo_command_multi_child(OakUndoCommand multi, int index,
+								OakUndoCommand *out_child)
 {
-	if (!multi || !multi->command || !out_child) {
+	olive::UndoCommand *parent = to_command(multi);
+	if (!parent || !out_child) {
 		return OAKUNDO_E_INVALID;
 	}
 
 	olive::MultiUndoCommand *mcu =
-		dynamic_cast<olive::MultiUndoCommand *>(multi->command);
+		dynamic_cast<olive::MultiUndoCommand *>(parent);
 	if (!mcu) {
 		return OAKUNDO_E_INVALID;
 	}
@@ -163,41 +163,38 @@ int oakundo_command_multi_child(OakUndoCommand *multi, int index,
 			return OAKUNDO_E_NOT_FOUND;
 		}
 
-		OakUndoCommand *handle = new (std::nothrow) OakUndoCommand();
-		if (!handle) {
-			return OAKUNDO_E_NOMEM;
-		}
-		handle->command = mcu->child(index);
-		handle->owned = false;
-		*out_child = handle;
+		// Non-owning reference; the child stays owned by the multi command
+		*out_child = make_command_handle(mcu->child(index), false);
+		return out_child->ctx ? OAKUNDO_OK : OAKUNDO_E_NOMEM;
+	} catch (...) {
+		return OAKUNDO_E_FAILED;
+	}
+}
+
+int oakundo_command_redo_now(OakUndoCommand command)
+{
+	olive::UndoCommand *c = to_command(command);
+	if (!c) {
+		return OAKUNDO_E_INVALID;
+	}
+
+	try {
+		c->redo_now();
 		return OAKUNDO_OK;
 	} catch (...) {
 		return OAKUNDO_E_FAILED;
 	}
 }
 
-int oakundo_command_redo_now(OakUndoCommand *command)
+int oakundo_command_undo_now(OakUndoCommand command)
 {
-	if (!command || !command->command) {
+	olive::UndoCommand *c = to_command(command);
+	if (!c) {
 		return OAKUNDO_E_INVALID;
 	}
 
 	try {
-		command->command->redo_now();
-		return OAKUNDO_OK;
-	} catch (...) {
-		return OAKUNDO_E_FAILED;
-	}
-}
-
-int oakundo_command_undo_now(OakUndoCommand *command)
-{
-	if (!command || !command->command) {
-		return OAKUNDO_E_INVALID;
-	}
-
-	try {
-		command->command->undo_now();
+		c->undo_now();
 		return OAKUNDO_OK;
 	} catch (...) {
 		return OAKUNDO_E_FAILED;
@@ -206,12 +203,10 @@ int oakundo_command_undo_now(OakUndoCommand *command)
 
 void oakundo_command_free(OakUndoCommand *command)
 {
-	if (!command) {
+	if (!command || !command->ctx) {
 		return;
 	}
 
-	if (command->owned) {
-		delete command->command;
-	}
-	delete command;
+	command->release(command->ctx);
+	command->ctx = NULL;
 }

@@ -135,7 +135,7 @@ private:
 
 	std::string direct_input_;
 
-	OakUndoCommand *position_command_;
+	OakUndoCommand position_command_;
 
 	bool automerge_tracks_;
 
@@ -151,7 +151,7 @@ public:
 		: track_(track)
 		, list_(nullptr)
 		, index_(0)
-		, remove_command_(nullptr)
+		, remove_command_({})
 	{
 	}
 
@@ -171,7 +171,7 @@ private:
 
 	int index_;
 
-	OakUndoCommand *remove_command_;
+	OakUndoCommand remove_command_;
 };
 
 class TransitionRemoveCommand : public UndoCommand {
@@ -182,7 +182,7 @@ public:
 		, out_block_(nullptr)
 		, in_block_(nullptr)
 		, remove_from_graph_(remove_from_graph)
-		, remove_command_(nullptr)
+		, remove_command_({})
 	{
 	}
 
@@ -202,7 +202,7 @@ private:
 	OakNodeBlock *in_block_;
 
 	bool remove_from_graph_;
-	OakUndoCommand *remove_command_;
+	OakUndoCommand remove_command_;
 };
 
 class TrackReplaceBlockWithGapCommand : public UndoCommand {

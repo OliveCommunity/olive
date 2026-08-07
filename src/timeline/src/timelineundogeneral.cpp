@@ -45,9 +45,9 @@ const char *k_merge_blend_input = "blend_in";
 const char *k_math_param_a_input = "param_a_in";
 const char *k_math_param_b_input = "param_b_in";
 
-void add_multi_child(OakUndoCommand *multi, OakUndoCommand *child)
+void add_multi_child(OakUndoCommand multi, OakUndoCommand child)
 {
-	if (multi && child) {
+	if (multi.ctx && child.ctx) {
 		oakundo_command_multi_add_child(multi, child);
 	}
 }
@@ -116,7 +116,7 @@ TimelineAddTrackCommand::TimelineAddTrackCommand(
 	: timeline_(timeline)
 	, track_(nullptr)
 	, merge_(nullptr)
-	, position_command_(nullptr)
+	, position_command_({})
 	, automerge_tracks_(automerge_tracks)
 	, track_orphaned_(false)
 	, merge_orphaned_(false)
@@ -164,8 +164,8 @@ TimelineAddTrackCommand::TimelineAddTrackCommand(
 
 TimelineAddTrackCommand::~TimelineAddTrackCommand()
 {
-	if (position_command_) {
-		oakundo_command_free(position_command_);
+	if (position_command_.ctx) {
+		oakundo_command_free(&position_command_);
 	}
 	if (track_orphaned_ && track_) {
 		oaknode_track_free(track_);
@@ -221,7 +221,7 @@ void TimelineAddTrackCommand::redo()
 		position_factor = -position_factor;
 	}
 	bool create_pos_command =
-		(!position_command_ && (type == OAKNODE_TRACK_TYPE_VIDEO ||
+		(!position_command_.ctx && (type == OAKNODE_TRACK_TYPE_VIDEO ||
 								type == OAKNODE_TRACK_TYPE_AUDIO));
 	if (create_pos_command) {
 		position_command_ = oakundo_command_init_multi();
@@ -250,19 +250,19 @@ void TimelineAddTrackCommand::redo()
 		}
 		oaknode_node_connect(track_node, merge_, blend_input_.c_str());
 
-		if (create_pos_command && position_command_) {
+		if (create_pos_command && position_command_.ctx) {
 			double sx = 0, sy = 0;
 			oaknode_node_get_context_position(sequence_node, sequence_node,
 											  &sx, &sy, NULL);
 
-			OakUndoCommand *child = nullptr;
+			OakUndoCommand child = {};
 			if (oaknode_node_set_context_position_undoable(
 					track_node, sequence_node, sx - 1,
 					sy - position_factor, 0,
 					&child) == OAKNODE_OK) {
 				add_multi_child(position_command_, child);
 			}
-			child = nullptr;
+			child = OakUndoCommand{};
 			if (oaknode_node_set_context_position_undoable(
 					merge_, sequence_node, sx, sy, 0, &child) == OAKNODE_OK) {
 				add_multi_child(position_command_, child);
@@ -285,14 +285,14 @@ void TimelineAddTrackCommand::redo()
 			oaknode_node_connect(track_node, sequence_node,
 								 direct_input_.c_str());
 
-			if (create_pos_command && position_command_) {
+			if (create_pos_command && position_command_.ctx) {
 				// Just position directly next to the context node
 				double sx = 0, sy = 0;
 				oaknode_node_get_context_position(sequence_node,
 												  sequence_node, &sx, &sy,
 												  NULL);
 
-				OakUndoCommand *child = nullptr;
+				OakUndoCommand child = {};
 				if (oaknode_node_set_context_position_undoable(
 						track_node, sequence_node, sx - 1,
 						sy + position_factor, 0,
@@ -304,14 +304,14 @@ void TimelineAddTrackCommand::redo()
 	}
 
 	// Run position command if we created one
-	if (position_command_) {
+	if (position_command_.ctx) {
 		oakundo_command_redo_now(position_command_);
 	}
 }
 
 void TimelineAddTrackCommand::undo()
 {
-	if (position_command_) {
+	if (position_command_.ctx) {
 		oakundo_command_undo_now(position_command_);
 	}
 
@@ -371,8 +371,8 @@ void TimelineAddTrackCommand::undo()
 //
 TransitionRemoveCommand::~TransitionRemoveCommand()
 {
-	if (remove_command_) {
-		free_remove_command(remove_command_);
+	if (remove_command_.ctx) {
+		free_command_handle(&remove_command_);
 	}
 }
 
@@ -409,7 +409,7 @@ void TransitionRemoveCommand::redo()
 	oaknode_track_ripple_remove_block(track_, block_);
 
 	if (remove_from_graph_) {
-		if (!remove_command_) {
+		if (!remove_command_.ctx) {
 			remove_command_ = create_remove_command(block_);
 		}
 
@@ -789,8 +789,8 @@ void TrackReplaceBlockWithGapCommand::create_remove_transition_command_if_necess
 //
 TimelineRemoveTrackCommand::~TimelineRemoveTrackCommand()
 {
-	if (remove_command_) {
-		free_remove_command(remove_command_);
+	if (remove_command_.ctx) {
+		free_command_handle(&remove_command_);
 	}
 }
 
@@ -996,7 +996,7 @@ void TimelineAddDefaultTransitionCommand::add_transition(
 		new TrackInsertBlockAfterCommand(t, transition, insert_after));
 
 	// Connect
-	OakUndoCommand *edge_command = nullptr;
+	OakUndoCommand edge_command = {};
 	switch (mode) {
 	case k_in:
 		if (oaknode_node_connect_undoable(
@@ -1015,7 +1015,7 @@ void TimelineAddDefaultTransitionCommand::add_transition(
 		}
 		/* fall through */
 	case k_out:
-		edge_command = nullptr;
+		edge_command = OakUndoCommand{};
 		if (oaknode_node_connect_undoable(
 				oaknode_block_as_node(c), p,
 				OAKNODE_TRANSITION_OUT_BLOCK_INPUT,

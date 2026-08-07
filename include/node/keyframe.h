@@ -109,7 +109,7 @@ int oaknode_keyframe_set_time(OakNodeKeyframe *keyframe, int64_t time_num,
  */
 int oaknode_keyframe_set_time_undoable(OakNodeKeyframe *keyframe,
 									   int64_t time_num, int64_t time_den,
-									   OakUndoCommand **out_command);
+									   OakUndoCommand *out_command);
 
 /**
  * @brief Read the keyframe's value mapped into `out`. Values without a
@@ -132,7 +132,7 @@ int oaknode_keyframe_set_value(OakNodeKeyframe *keyframe,
  */
 int oaknode_keyframe_set_value_undoable(OakNodeKeyframe *keyframe,
 										const oaknode_value *v,
-										OakUndoCommand **out_command);
+										OakUndoCommand *out_command);
 
 /**
  * @brief Read a string value. Two-stage getter.
@@ -154,7 +154,7 @@ int oaknode_keyframe_set_value_string(OakNodeKeyframe *keyframe,
  */
 int oaknode_keyframe_set_value_string_undoable(OakNodeKeyframe *keyframe,
 											   const char *value,
-											   OakUndoCommand **out_command);
+											   OakUndoCommand *out_command);
 
 /**
  * @brief The keyframe's interpolation type (oaknode_keyframe_type).
@@ -171,7 +171,7 @@ int oaknode_keyframe_set_type(OakNodeKeyframe *keyframe, int type);
  * @brief Create a set-type command (same semantics as the live variant).
  */
 int oaknode_keyframe_set_type_undoable(OakNodeKeyframe *keyframe, int type,
-									   OakUndoCommand **out_command);
+									   OakUndoCommand *out_command);
 
 /**
  * @brief A bezier control point (`handle` is an
@@ -192,7 +192,7 @@ int oaknode_keyframe_set_bezier_control(OakNodeKeyframe *keyframe, int handle,
  */
 int oaknode_keyframe_set_bezier_control_undoable(OakNodeKeyframe *keyframe,
 												 int handle, double x, double y,
-												 OakUndoCommand **out_command);
+												 OakUndoCommand *out_command);
 
 /**
  * @brief The keyframe's track index.

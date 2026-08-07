@@ -80,11 +80,11 @@ TEST_F(TimelineSequenceFixture, MarkerAddCountAtRemove)
 	EXPECT_EQ(oaktimeline_marker_count(list, nullptr),
 			  OAKTIMELINE_E_INVALID);
 
-	OakUndoCommand *cmd =
+	OakUndoCommand cmd =
 		oaktimeline_marker_add_command(list, 1, 2, 3, 4, "mark", 5);
-	ASSERT_NE(cmd, nullptr);
+	ASSERT_NE(cmd.ctx, nullptr);
 	oakundo_command_redo_now(cmd);
-	oakundo_command_free(cmd);
+	oakundo_command_free(&cmd);
 
 	EXPECT_EQ(oaktimeline_marker_count(list, &count), OAKTIMELINE_OK);
 	ASSERT_EQ(count, 1);
@@ -108,15 +108,15 @@ TEST_F(TimelineSequenceFixture, MarkerAddCountAtRemove)
 									&out_d, &color, name, sizeof(name)),
 			  OAKTIMELINE_E_INVALID);
 
-	OakUndoCommand *rm = oaktimeline_marker_remove_at_command(list, 0);
-	ASSERT_NE(rm, nullptr);
+	OakUndoCommand rm = oaktimeline_marker_remove_at_command(list, 0);
+	ASSERT_NE(rm.ctx, nullptr);
 	oakundo_command_redo_now(rm);
-	oakundo_command_free(rm);
+	oakundo_command_free(&rm);
 
 	EXPECT_EQ(oaktimeline_marker_count(list, &count), OAKTIMELINE_OK);
 	EXPECT_EQ(count, 0);
 
-	EXPECT_EQ(oaktimeline_marker_remove_at_command(list, 4), nullptr);
+	EXPECT_EQ(oaktimeline_marker_remove_at_command(list, 4).ctx, nullptr);
 }
 
 TEST_F(TimelineSequenceFixture, MarkerSetTimeAndPropsUndo)
@@ -124,15 +124,15 @@ TEST_F(TimelineSequenceFixture, MarkerSetTimeAndPropsUndo)
 	OakTimelineMarkerList *list = oaktimeline_marker_list_of(node_);
 	ASSERT_NE(list, nullptr);
 
-	OakUndoCommand *add =
+	OakUndoCommand add =
 		oaktimeline_marker_add_command(list, 0, 1, 1, 1, "a", 1);
-	ASSERT_NE(add, nullptr);
+	ASSERT_NE(add.ctx, nullptr);
 	oakundo_command_redo_now(add);
-	oakundo_command_free(add);
+	oakundo_command_free(&add);
 
-	OakUndoCommand *set_time =
+	OakUndoCommand set_time =
 		oaktimeline_marker_set_time_command(list, 0, 10, 1, 20, 1);
-	ASSERT_NE(set_time, nullptr);
+	ASSERT_NE(set_time.ctx, nullptr);
 	oakundo_command_redo_now(set_time);
 
 	int in_n = 0;
@@ -146,13 +146,13 @@ TEST_F(TimelineSequenceFixture, MarkerSetTimeAndPropsUndo)
 									NULL, NULL, 0),
 			  0);
 	EXPECT_EQ(in_n, 0);
-	oakundo_command_free(set_time);
+	oakundo_command_free(&set_time);
 
-	OakUndoCommand *props =
+	OakUndoCommand props =
 		oaktimeline_marker_set_props_command(list, 0, 7, "renamed");
-	ASSERT_NE(props, nullptr);
+	ASSERT_NE(props.ctx, nullptr);
 	oakundo_command_redo_now(props);
-	oakundo_command_free(props);
+	oakundo_command_free(&props);
 
 	int color = 0;
 	char name[32];
@@ -162,9 +162,11 @@ TEST_F(TimelineSequenceFixture, MarkerSetTimeAndPropsUndo)
 	EXPECT_EQ(color, 7);
 	EXPECT_STREQ(name, "renamed");
 
-	EXPECT_EQ(oaktimeline_marker_set_props_command(list, 0, -1, NULL),
+	EXPECT_EQ(oaktimeline_marker_set_props_command(list, 0, -1, NULL)
+				  .ctx,
 			  nullptr);
-	EXPECT_EQ(oaktimeline_marker_set_time_command(list, 9, 0, 1, 1, 1),
+	EXPECT_EQ(oaktimeline_marker_set_time_command(list, 9, 0, 1, 1, 1)
+				  .ctx,
 			  nullptr);
 }
 
@@ -173,11 +175,11 @@ TEST_F(TimelineSequenceFixture, MarkerListXmlRoundTrip)
 	OakTimelineMarkerList *list = oaktimeline_marker_list_of(node_);
 	ASSERT_NE(list, nullptr);
 
-	OakUndoCommand *add =
+	OakUndoCommand add =
 		oaktimeline_marker_add_command(list, 1, 3, 2, 3, "xml", 4);
-	ASSERT_NE(add, nullptr);
+	ASSERT_NE(add.ctx, nullptr);
 	oakundo_command_redo_now(add);
-	oakundo_command_free(add);
+	oakundo_command_free(&add);
 
 	OakXmlWriter writer = oakcommon_xml_writer_init();
 	ASSERT_NE(writer.ctx, nullptr);
@@ -265,9 +267,9 @@ TEST_F(TimelineSequenceFixture, WorkareaUndoCommands)
 	OakTimelineWorkArea *w = oaktimeline_workarea_of(node_);
 	ASSERT_NE(w, nullptr);
 
-	OakUndoCommand *range_cmd = oaktimeline_workarea_set_range_command(
+	OakUndoCommand range_cmd = oaktimeline_workarea_set_range_command(
 		w, 1, 2, 1, 1, 0, 1, 1, 1);
-	ASSERT_NE(range_cmd, nullptr);
+	ASSERT_NE(range_cmd.ctx, nullptr);
 	oakundo_command_redo_now(range_cmd);
 
 	int in_n = 0, out_n = 0;
@@ -280,11 +282,11 @@ TEST_F(TimelineSequenceFixture, WorkareaUndoCommands)
 	EXPECT_EQ(oaktimeline_workarea_get(w, &in_n, NULL, &out_n, NULL, NULL),
 			  OAKTIMELINE_OK);
 	EXPECT_EQ(in_n, 0);
-	oakundo_command_free(range_cmd);
+	oakundo_command_free(&range_cmd);
 
-	OakUndoCommand *enable_cmd =
+	OakUndoCommand enable_cmd =
 		oaktimeline_workarea_set_enabled_command(w, 1);
-	ASSERT_NE(enable_cmd, nullptr);
+	ASSERT_NE(enable_cmd.ctx, nullptr);
 	oakundo_command_redo_now(enable_cmd);
 
 	int enabled = 0;
@@ -298,12 +300,13 @@ TEST_F(TimelineSequenceFixture, WorkareaUndoCommands)
 									   &enabled),
 			  OAKTIMELINE_OK);
 	EXPECT_EQ(enabled, 0);
-	oakundo_command_free(enable_cmd);
+	oakundo_command_free(&enable_cmd);
 
 	EXPECT_EQ(oaktimeline_workarea_set_range_command(nullptr, 0, 1, 1, 1,
-													 0, 1, 1, 1),
+													 0, 1, 1, 1)
+				  .ctx,
 			  nullptr);
-	EXPECT_EQ(oaktimeline_workarea_set_enabled_command(nullptr, 1),
+	EXPECT_EQ(oaktimeline_workarea_set_enabled_command(nullptr, 1).ctx,
 			  nullptr);
 }
 
@@ -381,8 +384,8 @@ TEST_F(TimelineSequenceFixture, AddAndRemoveTrackCommands)
 	EXPECT_EQ(oaknode_tracklist_get_track_count(list, &count), OAKNODE_OK);
 	const int before = count;
 
-	OakUndoCommand *add = oaktimeline_add_track_command(list);
-	ASSERT_NE(add, nullptr);
+	OakUndoCommand add = oaktimeline_add_track_command(list);
+	ASSERT_NE(add.ctx, nullptr);
 	oakundo_command_redo_now(add);
 
 	EXPECT_EQ(oaknode_tracklist_get_track_count(list, &count), OAKNODE_OK);
@@ -393,8 +396,8 @@ TEST_F(TimelineSequenceFixture, AddAndRemoveTrackCommands)
 			  OAKNODE_OK);
 	ASSERT_NE(track, nullptr);
 
-	OakUndoCommand *rm = oaktimeline_remove_track_command(track);
-	ASSERT_NE(rm, nullptr);
+	OakUndoCommand rm = oaktimeline_remove_track_command(track);
+	ASSERT_NE(rm.ctx, nullptr);
 	oakundo_command_redo_now(rm);
 
 	EXPECT_EQ(oaknode_tracklist_get_track_count(list, &count), OAKNODE_OK);
@@ -408,11 +411,11 @@ TEST_F(TimelineSequenceFixture, AddAndRemoveTrackCommands)
 	EXPECT_EQ(oaknode_tracklist_get_track_count(list, &count), OAKNODE_OK);
 	EXPECT_EQ(count, before);
 
-	oakundo_command_free(add);
-	oakundo_command_free(rm);
+	oakundo_command_free(&add);
+	oakundo_command_free(&rm);
 
-	EXPECT_EQ(oaktimeline_add_track_command(nullptr), nullptr);
-	EXPECT_EQ(oaktimeline_remove_track_command(nullptr), nullptr);
+	EXPECT_EQ(oaktimeline_add_track_command(nullptr).ctx, nullptr);
+	EXPECT_EQ(oaktimeline_remove_track_command(nullptr).ctx, nullptr);
 }
 
 TEST_F(TimelineSequenceFixture, PlaceTrimSplitRemoveAreaCommands)
@@ -437,9 +440,9 @@ TEST_F(TimelineSequenceFixture, PlaceTrimSplitRemoveAreaCommands)
 									 oaknode_block_as_node(clip)),
 			  OAKNODE_OK);
 
-	OakUndoCommand *place =
+	OakUndoCommand place =
 		oaktimeline_place_block_command(list, 0, clip, 0, 1);
-	ASSERT_NE(place, nullptr);
+	ASSERT_NE(place.ctx, nullptr);
 	oakundo_command_redo_now(place);
 
 	int block_count = 0;
@@ -448,9 +451,9 @@ TEST_F(TimelineSequenceFixture, PlaceTrimSplitRemoveAreaCommands)
 	ASSERT_EQ(block_count, 1);
 
 	// Trim out to length 4
-	OakUndoCommand *trim = oaktimeline_trim_command(
+	OakUndoCommand trim = oaktimeline_trim_command(
 		track, clip, 4, 1, OAKTIMELINE_MOVEMENT_TRIM_OUT);
-	ASSERT_NE(trim, nullptr);
+	ASSERT_NE(trim.ctx, nullptr);
 	oakundo_command_redo_now(trim);
 
 	int n = 0, d = 0;
@@ -460,13 +463,13 @@ TEST_F(TimelineSequenceFixture, PlaceTrimSplitRemoveAreaCommands)
 	oakundo_command_undo_now(trim);
 	EXPECT_EQ(oaknode_block_get_length(clip, &n, &d), OAKNODE_OK);
 	EXPECT_EQ(n, 10);
-	oakundo_command_free(trim);
+	oakundo_command_free(&trim);
 
 	// Split at 5: two blocks of 5
 	OakNodeBlock *blocks[] = { clip };
-	OakUndoCommand *split =
+	OakUndoCommand split =
 		oaktimeline_split_command(blocks, 1, 5, 1);
-	ASSERT_NE(split, nullptr);
+	ASSERT_NE(split.ctx, nullptr);
 	oakundo_command_redo_now(split);
 
 	EXPECT_EQ(oaknode_track_get_block_count(track, &block_count),
@@ -477,12 +480,12 @@ TEST_F(TimelineSequenceFixture, PlaceTrimSplitRemoveAreaCommands)
 	EXPECT_EQ(oaknode_track_get_block_count(track, &block_count),
 			  OAKNODE_OK);
 	ASSERT_EQ(block_count, 1);
-	oakundo_command_free(split);
+	oakundo_command_free(&split);
 
 	// Ripple remove [3..5] then undo
-	OakUndoCommand *remove_area =
+	OakUndoCommand remove_area =
 		oaktimeline_ripple_remove_area_command(track, 3, 1, 5, 1);
-	ASSERT_NE(remove_area, nullptr);
+	ASSERT_NE(remove_area.ctx, nullptr);
 	oakundo_command_redo_now(remove_area);
 
 	// Removing [3..5] from [0..10] splices it into [0..3] + [5..10]
@@ -501,19 +504,21 @@ TEST_F(TimelineSequenceFixture, PlaceTrimSplitRemoveAreaCommands)
 	oakundo_command_undo_now(remove_area);
 	EXPECT_EQ(oaknode_block_get_length(clip, &n, &d), OAKNODE_OK);
 	EXPECT_EQ(n, 10);
-	oakundo_command_free(remove_area);
+	oakundo_command_free(&remove_area);
 
 	oakundo_command_undo_now(place);
 	EXPECT_EQ(oaknode_track_get_block_count(track, &block_count),
 			  OAKNODE_OK);
 	EXPECT_EQ(block_count, 0);
-	oakundo_command_free(place);
+	oakundo_command_free(&place);
 
-	EXPECT_EQ(oaktimeline_place_block_command(nullptr, 0, clip, 0, 1),
+	EXPECT_EQ(oaktimeline_place_block_command(nullptr, 0, clip, 0, 1)
+				  .ctx,
 			  nullptr);
-	EXPECT_EQ(oaktimeline_trim_command(track, clip, 1, 1, 99), nullptr);
-	EXPECT_EQ(oaktimeline_split_command(blocks, 0, 1, 1), nullptr);
-	EXPECT_EQ(oaktimeline_ripple_remove_area_command(nullptr, 0, 1, 1, 1),
+	EXPECT_EQ(oaktimeline_trim_command(track, clip, 1, 1, 99).ctx, nullptr);
+	EXPECT_EQ(oaktimeline_split_command(blocks, 0, 1, 1).ctx, nullptr);
+	EXPECT_EQ(oaktimeline_ripple_remove_area_command(nullptr, 0, 1, 1, 1)
+				  .ctx,
 			  nullptr);
 }
 
@@ -550,9 +555,9 @@ TEST_F(TimelineSequenceFixture, ReplaceWithGapCommand)
 			  OAKNODE_OK);
 	EXPECT_EQ(oaknode_track_append_block(track, clip2), OAKNODE_OK);
 
-	OakUndoCommand *replace =
+	OakUndoCommand replace =
 		oaktimeline_replace_block_with_gap_command(track, clip);
-	ASSERT_NE(replace, nullptr);
+	ASSERT_NE(replace.ctx, nullptr);
 	oakundo_command_redo_now(replace);
 
 	int block_count = 0;
@@ -569,9 +574,10 @@ TEST_F(TimelineSequenceFixture, ReplaceWithGapCommand)
 	oakundo_command_undo_now(replace);
 	EXPECT_EQ(oaknode_track_get_block_at(track, 0, &first), OAKNODE_OK);
 	EXPECT_EQ(first, clip);
-	oakundo_command_free(replace);
+	oakundo_command_free(&replace);
 
-	EXPECT_EQ(oaktimeline_replace_block_with_gap_command(nullptr, clip),
+	EXPECT_EQ(oaktimeline_replace_block_with_gap_command(nullptr, clip)
+				  .ctx,
 			  nullptr);
 
 	EXPECT_EQ(oaknode_track_ripple_remove_block(track, clip), OAKNODE_OK);
@@ -582,18 +588,20 @@ TEST_F(TimelineSequenceFixture, SlideAndInsertGapsAndRippleDeleteGapsFactories)
 {
 	OakNodeBlock *clip = oaknode_block_clip_create();
 	EXPECT_EQ(oaktimeline_slide_command(nullptr, &clip, 1, nullptr,
-										nullptr, 1, 1),
+										nullptr, 1, 1)
+				  .ctx,
 			  nullptr);
 
 	OakNodeTrackList *list = nullptr;
 	ASSERT_EQ(oaknode_sequence_get_track_list(
 				  sequence_, OAKNODE_TRACK_TYPE_VIDEO, &list),
 			  OAKNODE_OK);
-	EXPECT_EQ(oaktimeline_insert_gaps_command(nullptr, 0, 1, 1, 1),
+	EXPECT_EQ(oaktimeline_insert_gaps_command(nullptr, 0, 1, 1, 1).ctx,
 			  nullptr);
 
 	EXPECT_EQ(oaktimeline_ripple_delete_gaps_command(
-				  sequence_, nullptr, nullptr, nullptr, nullptr, nullptr, 0),
+				  sequence_, nullptr, nullptr, nullptr, nullptr, nullptr, 0)
+				  .ctx,
 			  nullptr);
 
 	oaknode_block_free(clip);

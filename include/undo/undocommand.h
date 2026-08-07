@@ -21,31 +21,43 @@
 #ifndef OAK_EDITOR_UNDO_UNDOCOMMAND_H
 #define OAK_EDITOR_UNDO_UNDOCOMMAND_H
 
+#include <stdint.h>
+
 #include "undo/error.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+#define OAKUNDO_ABI_VERSION 1
+
 /**
- * @brief Opaque handle to an undo command (olive::UndoCommand).
+ * @brief Reference-counted handle to an undo command
+ * (olive::UndoCommand).
  *
- * Handles created by oakundo_command_init() /
- * oakundo_command_init_multi() own the underlying command and must be
- * released with oakundo_command_free() UNLESS they are pushed onto an
- * OakUndoStack, which takes ownership. Handles returned by
- * oakundo_command_multi_child() are borrowed wrappers: free the wrapper
- * with oakundo_command_free(), the underlying command stays owned by the
- * multi command.
+ * The object never leaves the library that created it; every external
+ * reference is one of these handles. Semantics are shared_ptr-like:
+ * init/factory functions return a handle with count 1, addref(ctx)
+ * takes another reference, release(ctx) drops one and the library
+ * destroys the object when the count reaches zero.
+ *
+ * Pushing a command onto an OakUndoStack transfers one reference to the
+ * stack (the stack releases it when the command is discarded); callers
+ * may keep their own reference or release it right after the push.
  */
-typedef struct OakUndoCommand OakUndoCommand;
+typedef struct OakUndoCommand {
+	void *ctx; /**< Opaque pointer to the reference-counted object. */
+	void (*addref)(void *ctx); /**< Atomically increments the count. */
+	void (*release)(void *ctx); /**< Decrements the count, destroys at 0. */
+	uint32_t abi_version; /**< OAKUNDO_ABI_VERSION. */
+} OakUndoCommand;
 
 /**
  * @brief Callback table backing a caller-defined undo command.
  *
  * Any callback may be NULL; a NULL redo/undo makes that direction a
- * no-op. free_fn is invoked when the command is destroyed (whether pushed
- * onto a stack or freed directly) and releases userdata.
+ * no-op. free_fn is invoked when the command is destroyed (whether held
+ * by a stack or released directly) and releases userdata.
  */
 typedef struct OakUndoCommandVtable {
 	void (*redo)(void *userdata);
@@ -58,30 +70,30 @@ typedef struct OakUndoCommandVtable {
  *
  * The command takes ownership of `userdata`; `vtable` is copied.
  *
- * @return Command handle, or NULL on invalid argument or allocation
- *         failure.
+ * @return Command handle with count 1; ctx is NULL on invalid argument
+ *         or allocation failure.
  */
-OakUndoCommand *oakundo_command_init(const OakUndoCommandVtable *vtable,
-									 void *userdata);
+OakUndoCommand oakundo_command_init(const OakUndoCommandVtable *vtable,
+									void *userdata);
 
 /**
  * @brief Create an empty multi command (olive::MultiUndoCommand).
  *
- * @return Command handle, or NULL on allocation failure.
+ * @return Command handle with count 1; ctx is NULL on allocation
+ *         failure.
  */
-OakUndoCommand *oakundo_command_init_multi(void);
+OakUndoCommand oakundo_command_init_multi(void);
 
 /**
  * @brief Add `child` to the multi command `multi`.
  *
- * On success the multi command takes ownership of the underlying child
- * command; the child handle wrapper is consumed and must not be used or
- * freed afterwards.
+ * The multi command takes one reference to the child; the caller keeps
+ * its own reference and may release it after the call.
  *
  * @return OAKUNDO_OK or a negative OAKUNDO_E_* error code.
  */
-int oakundo_command_multi_add_child(OakUndoCommand *multi,
-									OakUndoCommand *child);
+int oakundo_command_multi_add_child(OakUndoCommand multi,
+									OakUndoCommand child);
 
 /**
  * @brief Query the number of children in a multi command.
@@ -90,19 +102,20 @@ int oakundo_command_multi_add_child(OakUndoCommand *multi,
  *
  * @return OAKUNDO_OK or a negative OAKUNDO_E_* error code.
  */
-int oakundo_command_multi_child_count(OakUndoCommand *multi, int *out_count);
+int oakundo_command_multi_child_count(OakUndoCommand multi,
+									  int *out_count);
 
 /**
- * @brief Borrow a handle to the child at `index` of a multi command.
+ * @brief Reference to the child at `index` of a multi command.
  *
- * The returned handle is a wrapper owned by the caller (free with
- * oakundo_command_free()); the underlying command is owned by `multi`.
+ * The returned handle carries its own reference; release it with
+ * oakundo_command_free().
  *
  * @return OAKUNDO_OK, OAKUNDO_E_NOT_FOUND for an out-of-range index, or
  *         another negative OAKUNDO_E_* error code.
  */
-int oakundo_command_multi_child(OakUndoCommand *multi, int index,
-								OakUndoCommand **out_child);
+int oakundo_command_multi_child(OakUndoCommand multi, int index,
+								OakUndoCommand *out_child);
 
 /**
  * @brief Execute the command's redo without a stack
@@ -110,7 +123,7 @@ int oakundo_command_multi_child(OakUndoCommand *multi, int index,
  *
  * @return OAKUNDO_OK or a negative OAKUNDO_E_* error code.
  */
-int oakundo_command_redo_now(OakUndoCommand *command);
+int oakundo_command_redo_now(OakUndoCommand command);
 
 /**
  * @brief Execute the command's undo without a stack
@@ -118,15 +131,14 @@ int oakundo_command_redo_now(OakUndoCommand *command);
  *
  * @return OAKUNDO_OK or a negative OAKUNDO_E_* error code.
  */
-int oakundo_command_undo_now(OakUndoCommand *command);
+int oakundo_command_undo_now(OakUndoCommand command);
 
 /**
- * @brief Destroy a command handle.
+ * @brief Release one reference to a command handle.
  *
- * Owned handles destroy the underlying command; borrowed handles (from
- * oakundo_command_multi_child()) only destroy the wrapper. Commands
- * pushed onto an OakUndoStack are owned by the stack and must not be
- * freed by the caller. NULL is a no-op.
+ * Convenience wrapper around handle.release(handle.ctx): destroys the
+ * command when the count reaches zero. NULL handle or NULL ctx is a
+ * no-op; clears `command->ctx` after releasing.
  */
 void oakundo_command_free(OakUndoCommand *command);
 

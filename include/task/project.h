@@ -57,7 +57,7 @@ OakTaskTask *oaktask_create_project_import(OakNodeFolder *folder,
 										   int url_count);
 
 /** @brief Take the import's undo command (ownership transfer). */
-OakUndoCommand *oaktask_import_take_command(OakTaskTask *t);
+OakUndoCommand oaktask_import_take_command(OakTaskTask *t);
 
 int oaktask_import_footage_count(OakTaskTask *t);
 

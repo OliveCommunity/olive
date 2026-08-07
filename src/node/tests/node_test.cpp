@@ -117,10 +117,10 @@ TEST(NodeMetadataTest, LabelUndoableSymmetry)
 
 	EXPECT_EQ(oaknode_node_set_label(handle, "before"), OAKNODE_OK);
 
-	OakUndoCommand *command = nullptr;
+	OakUndoCommand command = {};
 	EXPECT_EQ(oaknode_node_set_label_undoable(handle, "after", &command),
 			  OAKNODE_OK);
-	ASSERT_NE(command, nullptr);
+	ASSERT_NE(command.ctx, nullptr);
 	EXPECT_EQ(get_string(oaknode_node_get_label, handle), "before");
 
 	EXPECT_EQ(oakundo_command_redo_now(command), OAKUNDO_OK);
@@ -128,7 +128,7 @@ TEST(NodeMetadataTest, LabelUndoableSymmetry)
 	EXPECT_EQ(oakundo_command_undo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(get_string(oaknode_node_get_label, handle), "before");
 
-	oakundo_command_free(command);
+	oakundo_command_free(&command);
 }
 
 TEST(NodeMetadataTest, OverrideColorLiveAndUndoable)
@@ -144,17 +144,17 @@ TEST(NodeMetadataTest, OverrideColorLiveAndUndoable)
 	EXPECT_EQ(oaknode_node_get_override_color(handle, &color), OAKNODE_OK);
 	EXPECT_EQ(color, 3);
 
-	OakUndoCommand *command = nullptr;
+	OakUndoCommand command = {};
 	EXPECT_EQ(oaknode_node_set_override_color_undoable(handle, 7, &command),
 			  OAKNODE_OK);
-	ASSERT_NE(command, nullptr);
+	ASSERT_NE(command.ctx, nullptr);
 	EXPECT_EQ(oakundo_command_redo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_node_get_override_color(handle, &color), OAKNODE_OK);
 	EXPECT_EQ(color, 7);
 	EXPECT_EQ(oakundo_command_undo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_node_get_override_color(handle, &color), OAKNODE_OK);
 	EXPECT_EQ(color, 3);
-	oakundo_command_free(command);
+	oakundo_command_free(&command);
 }
 
 TEST(NodeMetadataTest, EnabledLiveAndUndoable)
@@ -170,17 +170,17 @@ TEST(NodeMetadataTest, EnabledLiveAndUndoable)
 	EXPECT_EQ(oaknode_node_is_enabled(handle, &enabled), OAKNODE_OK);
 	EXPECT_EQ(enabled, 0);
 
-	OakUndoCommand *command = nullptr;
+	OakUndoCommand command = {};
 	EXPECT_EQ(oaknode_node_set_enabled_undoable(handle, 1, &command),
 			  OAKNODE_OK);
-	ASSERT_NE(command, nullptr);
+	ASSERT_NE(command.ctx, nullptr);
 	EXPECT_EQ(oakundo_command_redo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_node_is_enabled(handle, &enabled), OAKNODE_OK);
 	EXPECT_EQ(enabled, 1);
 	EXPECT_EQ(oakundo_command_undo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_node_is_enabled(handle, &enabled), OAKNODE_OK);
 	EXPECT_EQ(enabled, 0);
-	oakundo_command_free(command);
+	oakundo_command_free(&command);
 }
 
 TEST(NodeInputTest, EnumerateInputs)
@@ -302,10 +302,10 @@ TEST(NodeInputTest, ValueUndoableSymmetry)
 	OakNodeNode *handle = as_handle(&node);
 
 	oaknode_value in = make_float(9.0);
-	OakUndoCommand *command = nullptr;
+	OakUndoCommand command = {};
 	EXPECT_EQ(oaknode_node_set_input_undoable(handle, "float_in", &in, &command),
 			  OAKNODE_OK);
-	ASSERT_NE(command, nullptr);
+	ASSERT_NE(command.ctx, nullptr);
 
 	oaknode_value out;
 	EXPECT_EQ(oaknode_node_get_input(handle, "float_in", &out), OAKNODE_OK);
@@ -317,7 +317,7 @@ TEST(NodeInputTest, ValueUndoableSymmetry)
 	EXPECT_EQ(oakundo_command_undo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_node_get_input(handle, "float_in", &out), OAKNODE_OK);
 	EXPECT_DOUBLE_EQ(out.f[0], 0.0);
-	oakundo_command_free(command);
+	oakundo_command_free(&command);
 }
 
 TEST(NodeInputTest, StringValueLiveAndUndoable)
@@ -343,11 +343,11 @@ TEST(NodeInputTest, StringValueLiveAndUndoable)
 	EXPECT_EQ(oaknode_node_set_input_string(handle, "unknown_in", "x"),
 			  OAKNODE_E_NOT_FOUND);
 
-	OakUndoCommand *command = nullptr;
+	OakUndoCommand command = {};
 	EXPECT_EQ(oaknode_node_set_input_string_undoable(handle, "text_in",
 													 "world", &command),
 			  OAKNODE_OK);
-	ASSERT_NE(command, nullptr);
+	ASSERT_NE(command.ctx, nullptr);
 	EXPECT_EQ(oakundo_command_redo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_node_get_input_string(handle, "text_in", buf,
 											sizeof(buf)),
@@ -358,7 +358,7 @@ TEST(NodeInputTest, StringValueLiveAndUndoable)
 											sizeof(buf)),
 			  6);
 	EXPECT_STREQ(buf, "hello");
-	oakundo_command_free(command);
+	oakundo_command_free(&command);
 }
 
 TEST(NodeGraphTest, ConnectDisconnectLive)
@@ -424,10 +424,10 @@ TEST(NodeGraphTest, ConnectDisconnectUndoable)
 	OakNodeNode *src = as_handle(&source);
 	OakNodeNode *dst = as_handle(&dest);
 
-	OakUndoCommand *add = nullptr;
+	OakUndoCommand add = {};
 	EXPECT_EQ(oaknode_node_connect_undoable(src, dst, "float_in", &add),
 			  OAKNODE_OK);
-	ASSERT_NE(add, nullptr);
+	ASSERT_NE(add.ctx, nullptr);
 
 	int connected = 0;
 	EXPECT_EQ(oakundo_command_redo_now(add), OAKUNDO_OK);
@@ -442,10 +442,10 @@ TEST(NodeGraphTest, ConnectDisconnectUndoable)
 	// Redo again so the remove command has an edge to work on.
 	EXPECT_EQ(oakundo_command_redo_now(add), OAKUNDO_OK);
 
-	OakUndoCommand *remove = nullptr;
+	OakUndoCommand remove = {};
 	EXPECT_EQ(oaknode_node_disconnect_undoable(dst, "float_in", &remove),
 			  OAKNODE_OK);
-	ASSERT_NE(remove, nullptr);
+	ASSERT_NE(remove.ctx, nullptr);
 	EXPECT_EQ(oakundo_command_redo_now(remove), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_node_input_is_connected(dst, "float_in", &connected),
 			  OAKNODE_OK);
@@ -458,8 +458,8 @@ TEST(NodeGraphTest, ConnectDisconnectUndoable)
 	EXPECT_EQ(oaknode_node_disconnect_undoable(dst, "int_in", &remove),
 			  OAKNODE_E_NOT_FOUND);
 
-	oakundo_command_free(remove);
-	oakundo_command_free(add);
+	oakundo_command_free(&remove);
+	oakundo_command_free(&add);
 }
 
 TEST(NodeLinkTest, LinkUnlinkLiveAndUndoable)
@@ -492,16 +492,16 @@ TEST(NodeLinkTest, LinkUnlinkLiveAndUndoable)
 	EXPECT_EQ(oaknode_node_are_linked(a, b, &linked), OAKNODE_OK);
 	EXPECT_EQ(linked, 0);
 
-	OakUndoCommand *command = nullptr;
+	OakUndoCommand command = {};
 	EXPECT_EQ(oaknode_node_link_undoable(a, b, 1, &command), OAKNODE_OK);
-	ASSERT_NE(command, nullptr);
+	ASSERT_NE(command.ctx, nullptr);
 	EXPECT_EQ(oakundo_command_redo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_node_are_linked(a, b, &linked), OAKNODE_OK);
 	EXPECT_EQ(linked, 1);
 	EXPECT_EQ(oakundo_command_undo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_node_are_linked(a, b, &linked), OAKNODE_OK);
 	EXPECT_EQ(linked, 0);
-	oakundo_command_free(command);
+	oakundo_command_free(&command);
 
 	EXPECT_EQ(oaknode_node_link(nullptr, b, &done), OAKNODE_E_INVALID);
 }
@@ -534,11 +534,11 @@ TEST(NodeContextTest, PositionsLiveAndUndoable)
 	EXPECT_EQ(entry, ctx);
 	EXPECT_EQ(oaknode_node_context_node_at(n, 1, &entry), OAKNODE_E_NOT_FOUND);
 
-	OakUndoCommand *command = nullptr;
+	OakUndoCommand command = {};
 	EXPECT_EQ(oaknode_node_set_context_position_undoable(n, ctx, 1.0, 2.0, 0,
 														 &command),
 			  OAKNODE_OK);
-	ASSERT_NE(command, nullptr);
+	ASSERT_NE(command.ctx, nullptr);
 	EXPECT_EQ(oakundo_command_redo_now(command), OAKUNDO_OK);
 	EXPECT_EQ(oaknode_node_get_context_position(n, ctx, &x, &y, &expanded),
 			  OAKNODE_OK);
@@ -549,7 +549,7 @@ TEST(NodeContextTest, PositionsLiveAndUndoable)
 	EXPECT_EQ(oaknode_node_get_context_position(n, ctx, &x, &y, &expanded),
 			  OAKNODE_OK);
 	EXPECT_DOUBLE_EQ(x, 10.5);
-	oakundo_command_free(command);
+	oakundo_command_free(&command);
 
 	EXPECT_EQ(oaknode_node_remove_from_context(n, ctx), OAKNODE_OK);
 	EXPECT_EQ(oaknode_node_remove_from_context(n, ctx), OAKNODE_E_NOT_FOUND);

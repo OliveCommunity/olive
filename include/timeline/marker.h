@@ -65,7 +65,7 @@ int oaktimeline_marker_at(const OakTimelineMarkerList *list, int index,
  * Owned command; free with oakundo_command_free(). Redo it directly or
  * push it on an undo stack. Returns NULL on failure.
  */
-OakUndoCommand *oaktimeline_marker_add_command(
+OakUndoCommand oaktimeline_marker_add_command(
 	OakTimelineMarkerList *list, int in_num, int in_den, int out_num,
 	int out_den, const char *name, int color);
 
@@ -74,13 +74,13 @@ OakUndoCommand *oaktimeline_marker_add_command(
  * OAKTIMELINE_E_NOT_FOUND (as NULL result documented by error) is
  * reported by returning NULL.
  */
-OakUndoCommand *oaktimeline_marker_remove_at_command(
+OakUndoCommand oaktimeline_marker_remove_at_command(
 	OakTimelineMarkerList *list, int index);
 
 /**
  * @brief Create a command that sets a marker's time range.
  */
-OakUndoCommand *oaktimeline_marker_set_time_command(
+OakUndoCommand oaktimeline_marker_set_time_command(
 	OakTimelineMarkerList *list, int index, int in_num, int in_den,
 	int out_num, int out_den);
 
@@ -89,7 +89,7 @@ OakUndoCommand *oaktimeline_marker_set_time_command(
  * `name` may be NULL to leave the name unchanged (color still applies
  * when >= 0; both NULL-name and color < 0 is a no-op error).
  */
-OakUndoCommand *oaktimeline_marker_set_props_command(
+OakUndoCommand oaktimeline_marker_set_props_command(
 	OakTimelineMarkerList *list, int index, int color, const char *name);
 
 /**

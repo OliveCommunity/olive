@@ -192,12 +192,12 @@ bool LoadOTIOTask::run()
 		OakNodeNode *sequence_node = oaknode_sequence_as_node(sequence);
 
 		oaknode_project_add_node(project_, sequence_node);
-		OakUndoCommand *add_seq = oaknode_command_create_folder_add_child(
+		OakUndoCommand add_seq = oaknode_command_create_folder_add_child(
 			oaknode_project_root(project_), sequence_node);
-		if (add_seq) {
+		if (add_seq.ctx) {
 			oakundo_command_redo_now(add_seq);
-			oakundo_command_free(add_seq);
-		}
+			oakundo_command_free(&add_seq);
+	}
 
 		// Create a folder for this sequence's footage
 		OakNodeFolder *sequence_footage =
@@ -205,14 +205,14 @@ bool LoadOTIOTask::run()
 		if (sequence_footage) {
 			oaknode_node_set_label(oaknode_folder_as_node(sequence_footage),
 								   timeline->name().c_str());
-			OakUndoCommand *add_folder =
+			OakUndoCommand add_folder =
 				oaknode_command_create_folder_add_child(
 					oaknode_project_root(project_),
 					oaknode_folder_as_node(sequence_footage));
-			if (add_folder) {
+			if (add_folder.ctx) {
 				oakundo_command_redo_now(add_folder);
-				oakundo_command_free(add_folder);
-			}
+				oakundo_command_free(&add_folder);
+	}
 		}
 
 		// Iterate through tracks
@@ -238,12 +238,12 @@ bool LoadOTIOTask::run()
 				OakNodeTrackList *track_list = nullptr;
 				oaknode_sequence_get_track_list(sequence, track_type,
 												&track_list);
-				OakUndoCommand *add_track =
+				OakUndoCommand add_track =
 					oaktimeline_add_track_command(track_list);
-				if (add_track) {
+				if (add_track.ctx) {
 					oakundo_command_redo_now(add_track);
-					oakundo_command_free(add_track);
-				}
+					oakundo_command_free(&add_track);
+	}
 
 				int count = 0;
 				oaknode_tracklist_get_track_count(track_list, &count);
@@ -403,15 +403,15 @@ bool LoadOTIOTask::run()
 									label.c_str());
 
 								if (sequence_footage) {
-									OakUndoCommand *add_footage =
+									OakUndoCommand add_footage =
 										oaknode_command_create_folder_add_child(
 											sequence_footage,
 											oaknode_footage_as_node(
 												probed_item));
-									if (add_footage) {
+									if (add_footage.ctx) {
 										oakundo_command_redo_now(add_footage);
-										oakundo_command_free(add_footage);
-									}
+										oakundo_command_free(&add_footage);
+	}
 								}
 							}
 						}

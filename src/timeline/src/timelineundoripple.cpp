@@ -49,8 +49,8 @@ TrackRippleRemoveAreaCommand::TrackRippleRemoveAreaCommand(
 TrackRippleRemoveAreaCommand::~TrackRippleRemoveAreaCommand()
 {
 	delete splice_split_command_;
-	for (OakUndoCommand *c : remove_block_commands_) {
-		free_remove_command(c);
+	for (OakUndoCommand &c : remove_block_commands_) {
+		free_command_handle(&c);
 	}
 }
 
@@ -170,7 +170,7 @@ void TrackRippleRemoveAreaCommand::redo()
 				}
 			}
 
-			for (OakUndoCommand *c : remove_block_commands_) {
+			for (OakUndoCommand &c : remove_block_commands_) {
 				oakundo_command_redo_now(c);
 			}
 		}

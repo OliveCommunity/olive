@@ -106,7 +106,7 @@ private:
 	bool allow_splitting_gaps_;
 
 	BlockSplitCommand *splice_split_command_;
-	std::vector<OakUndoCommand *> remove_block_commands_;
+	std::vector<OakUndoCommand > remove_block_commands_;
 };
 
 class TrackListRippleRemoveAreaCommand : public UndoCommand {
