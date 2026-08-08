@@ -30,10 +30,10 @@
  * (including the terminating NUL) as a non-negative value instead.
  */
 #define OAKUNDO_OK 0 /**< Success. */
-#define OAKUNDO_E_INVALID (-1) /**< NULL handle or invalid argument. */
-#define OAKUNDO_E_STATE (-2) /**< Call not valid in the current state. */
-#define OAKUNDO_E_FAILED (-3) /**< The underlying operation failed. */
-#define OAKUNDO_E_NOT_FOUND (-4) /**< Index out of range / entry not found. */
-#define OAKUNDO_E_NOMEM (-5) /**< Allocation failed. */
+#define OAKUNDO_E_INVALID (-20001) /**< NULL handle or invalid argument. */
+#define OAKUNDO_E_STATE (-20002) /**< Call not valid in the current state. */
+#define OAKUNDO_E_FAILED (-20003) /**< The underlying operation failed. */
+#define OAKUNDO_E_NOT_FOUND (-20004) /**< Index out of range / entry not found. */
+#define OAKUNDO_E_NOMEM (-20005) /**< Allocation failed. */
 
 #endif //OAK_EDITOR_UNDO_ERROR_H

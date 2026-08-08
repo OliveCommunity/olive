@@ -46,6 +46,7 @@
 | M7 | oakrender | `render/`（Renderer/PlaybackCache/ColorManager/帧缓存/job） | render→node 38、render→codec 9、render→task 2、render→undo 1、render→src 1（违规） |
 | M8 | oaktask | `task/`（Task/TaskManager/项目任务编排/cache 任务；**工程文件 IO 已划给 oakstorage，M3a**） | task→node 38、task→codec 4、task→render 4、task→storage（load/save 委托） |
 | M9 | oakplugin | `pluginSupport/`（OpenFX host） | plugin→node 6、plugin→render 6、plugin→undo 2、plugin→coreengine 2 |
+| M11 | oakplugin Rust 重写 | 整个模块换 Rust（含自研 OFX host 取代 HostSupport；0-2 期已立项：golden master、crate 落地、GL+ofxColour+render 驱动收编） | 手册 M11；项目 Rust 化滩头模块，完成后 node/render→plugin C++ 引用归零 |
 | — | liboakengine | `src/capi` + `coreengine` + `tool/` + `ui/` 残余 | 纯装配层：facade 内部调用改经各模块 C ABI（或保持现状直接链，见 M9 §4 裁决） |
 
 **M3.5（伴随 M3 的类型下沉）**：`render/videoparams.h`、

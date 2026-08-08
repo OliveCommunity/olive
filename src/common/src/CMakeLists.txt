@@ -32,6 +32,8 @@ add_library(oakcommon SHARED
         loopmode.h
         subtitleparams.cpp
         subtitleparams.h
+        variant.cpp
+        variant.h
         videoparams.cpp
         videoparams.h
         ffmpegutils.cpp

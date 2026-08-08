@@ -40,10 +40,10 @@
 #define OAKNODE_ABI_VERSION 1
 
 #define OAKNODE_OK 0 /**< Success. */
-#define OAKNODE_E_INVALID (-1) /**< NULL handle or invalid argument. */
-#define OAKNODE_E_STATE (-2) /**< Call not valid in the current state. */
-#define OAKNODE_E_FAILED (-3) /**< The underlying operation failed. */
-#define OAKNODE_E_NOT_FOUND (-4) /**< Index out of range / entry not found. */
-#define OAKNODE_E_NOMEM (-5) /**< Allocation failed. */
+#define OAKNODE_E_INVALID (-30001) /**< NULL handle or invalid argument. */
+#define OAKNODE_E_STATE (-30002) /**< Call not valid in the current state. */
+#define OAKNODE_E_FAILED (-30003) /**< The underlying operation failed. */
+#define OAKNODE_E_NOT_FOUND (-30004) /**< Index out of range / entry not found. */
+#define OAKNODE_E_NOMEM (-30005) /**< Allocation failed. */
 
 #endif //OAK_EDITOR_NODE_ERROR_H

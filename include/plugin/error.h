@@ -27,12 +27,12 @@
  * @brief Status and error codes shared by all oakplugin C API families.
  */
 #define OAKPLUGIN_OK 0 /**< Success. */
-#define OAKPLUGIN_E_INVALID (-1) /**< NULL handle or invalid argument. */
-#define OAKPLUGIN_E_STATE (-2) /**< Call not valid in the current state. */
-#define OAKPLUGIN_E_FAILED (-3) /**< The underlying operation failed. */
-#define OAKPLUGIN_E_NOT_FOUND (-4) /**< Entry not found. */
-#define OAKPLUGIN_E_NOMEM (-5) /**< Allocation failed. */
-#define OAKPLUGIN_E_CANCELLED (-6) /**< The operation was cancelled. */
+#define OAKPLUGIN_E_INVALID (-90001) /**< NULL handle or invalid argument. */
+#define OAKPLUGIN_E_STATE (-90002) /**< Call not valid in the current state. */
+#define OAKPLUGIN_E_FAILED (-90003) /**< The underlying operation failed. */
+#define OAKPLUGIN_E_NOT_FOUND (-90004) /**< Entry not found. */
+#define OAKPLUGIN_E_NOMEM (-90005) /**< Allocation failed. */
+#define OAKPLUGIN_E_CANCELLED (-90006) /**< The operation was cancelled. */
 
 /** @brief ABI version stamped into every oakplugin handle. */
 #define OAKPLUGIN_ABI_VERSION 1

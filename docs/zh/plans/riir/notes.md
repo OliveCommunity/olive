@@ -395,3 +395,122 @@ ColorManager）去Qt化过程中的删除与语义变化，迁移调用方时需
   oaknode 的 35 个 TU，析构引用 olive::Texture::~Texture——值系统
   载荷问题，与 UndoCommand 跨模块继承同类，留待值系统重做。
   除此之外 liboaknode→liboakrender 的 C++ 符号引用为 0。
+
+## ③ C ABI 接线冻结线（2026-08-07）
+
+③（模块间调用切 C ABI）完成两整块后冻结，剩余部分改由各模块的
+Rust 重写驱动（RIIR 后调用方只能走 C ABI，接线自动发生且被类型
+强制做对）：
+
+- 已切：oaknode→oaktimeline（81431d180）、oaknode→oakrender
+  （5a564f30c，缓存体系/色彩/单例全部 C ABI 化）。
+- olive::Variant 从 oaknode 下沉到 oakcommon（src/common/src/
+  variant.{h,cpp}）——它本是跨模块值类型。
+- 冻结时点的残留（nm 可查）：
+  - render→node 41 个 C++ 符号：ProjectCopier 深拷贝族、
+    NodeTraverser（RenderProcessor 跨模块继承）、ColorManager、
+    Footage/MultiCam/ViewerOutput 常量、oaknode_c_api::alive_*。
+    → 在 oaknode/oakrender Rust 重写中消解（架构底稿：
+    src/node/rust、src/render/rust；ProjectCopier 反转为
+    oaknode_project_deep_copy/sync_copy，traverser 改 hook 制）。
+  - node/render→plugin 的 OFX C++ 符号：随 M11（DeepSeek 实现中）
+    落地消解。
+  - 各模块→oakcommon 的 XmlStreamReader/FileFunctions/VideoParams
+    C++ 调用：随 oakcommon Rust 化消解。
+  - 文档化例外：Texture 的 Variant 载荷（Rust 侧不存在此问题）、
+    UndoCommand 跨模块继承、oakgl2/oakvulkan 后端插件接口。
+- ④（隐藏 C++ API）同步搁置：模块 Rust 化后 C++ 符号自然消失。
+
+## oakcommon Rust 测试：ffmpeg_bridge 符号依赖（2026-08-08）
+
+`oakcommon_ffmpegutils_get_compatible_bridge_pixel_format` 在非测试构建
+中会经 `find_best_pix_fmt_of_list` 引用 ffmpeg_bridge 的
+`fb_find_best_pix_fmt_of_list` 符号。集成测试二进制不链接 libffmpeg_bridge，
+实验证实直接调用该 FFI 导出会在链接期报 `_fb_find_best_pix_fmt_of_list`
+undefined symbol（cargo test --test link_exp 复现，随后已删）。
+
+因此该函数不能走普通集成测试。处理方式（与 oakplugin/oaktimeline 的
+test-stubs 约定一致）：
+
+- `src/common/rust/Cargo.toml` 新增 `test-stubs` feature；
+- `find_best_pix_fmt_of_list` 的 extern 声明/调用改为
+  `#[cfg(all(not(test), not(feature = "test-stubs")))]`，桩改为
+  `#[cfg(any(test, feature = "test-stubs"))]`——`cargo test --lib`
+  无需 flag 仍走桩，集成测试 `cargo test --features test-stubs` 也可链接；
+- `tests/ffi_ffmpegutils.rs` 覆盖 ffmpegutils 全部 6 个 FFI 导出
+  （成功路径 + null out-param 的 E_INVALID 路径），需带
+  `--features test-stubs` 运行；不带 flag 时该文件整体为空（cfg 门控）。
+
+## oakcommon Rust：ocioutils/oiioutils 吸收 oakoci（2026-08-08 接手笔记）
+
+### 基线
+
+`src/common/rust` 全量测试：`cargo test --features test-stubs` **497 个全部通过**
+（314 lib + 12 contract + 8 ffi_colortransform + 61 ffi_commandlineparser +
+24 ffi_config + 8 ffi_ffmpegutils + 21 ffi_misc + 12 ffi_subtitleparams +
+15 ffi_videoparams + 22 ffi_xmlutils + 集成 real_ocio 等）。TODO 中旧快照
+"476"已过时；后续验收以"保持 497+ 全绿"为准。
+
+### oakoci shim crate 的拆解去向
+
+`src/bindings/oakoci/`（untracked，纯 Rust shim，曾用于给
+oakrender Rust 提供 OCIO/图像能力）内容已全部内收进
+`src/common/rust`，然后整目录删除：
+
+| oakoci 内容 | 去向 | 落点 |
+|---|---|---|
+| `oci.rs` OcioConfig / OcioProcessor（包 `ocio_rs::Config`/`CPUProcessor`） | 重写为 `ocioutils.rs` 的 `OcioConfig`/`OcioProcessor`，错误从消息包装 `Error` 改为 `crate::error::Error::Failed`（新增 `From<ocio_rs::OcioError>`） | `src/common/rust/src/ocioutils.rs` |
+| `image.rs` F32Image + read/write_image_f32（image 0.25 tiff） | 原样并入 `oiioutils.rs`，错误统一走 `Error::Failed` | `src/common/rust/src/oiioutils.rs` |
+| `error.rs` 消息包装 Error | 并入 `error.rs`（`Error::new` 便捷构造） | `src/common/rust/src/error.rs` |
+| `tests/smoke.rs`（5 OCIO + 1 TIF round-trip） | 移植为 `tests/real_ocio.rs`，config 用 `env!("CARGO_MANIFEST_DIR")/../../../engine/render/ocioconf/config.ocio`，断言改为 `Error::Failed(_)` | `src/common/rust/tests/real_ocio.rs` |
+
+### 位深判别值（已验证）
+
+`ocio_rs::BitDepth` 是 `#[repr(i32)]`，判别值即 OCIO 码：Unknown=0,
+Uint8=1, Uint10=2, Uint16=5, F16=7, F32=8。`ocioutils.rs` 直接
+`depth as i32`，单测锁死 1/2/5/7/8/0，与 C++ 的
+`OCIOUtils::get_ocio_bit_depth_from_pixel_format`（CPP-PARITY）一致。
+
+### 决策：不引入 ffmpeg-next（偏差，已落定）
+
+TODO 原计划用 `ffmpeg-next` 的 `av_d2q` 做 aspect-ratio 换算。复查发现
+C++ 侧 `Rational::from_double`（`core/src/util/rational.cpp:39`）本身就是
+**av_d2q 的移植**（文件内注释 "ported from FFmpeg's av_d2q"），oakcore-rs
+的 `Rational::from_double` 与之对等，且现有 12 个单测已锁死行为
+（NaN/超界→(0,0)、0.0→(0,1)、约分）。因此**保留手写移植，走
+`oakcore_rs::Rational::from_double`**，不把 ffmpeg-sys-next（bindgen +
+系统 FFmpeg）拖进叶子 crate——守住 README 的 "narrow extern C" 纪律。
+`oiioutils.rs` 的实现已如此；文档残留的 "via ffmpeg-next" 说法待清。
+
+### OCIO 环境依赖
+
+`ocio-sys` 不自探测系统 OCIO：无配置时构建的是 stub bridge（调用全失败）。
+`src/common/rust/.cargo/config.toml`（从 oakoci 抄入）固定三个变量：
+`OCIO_RS_ENABLE_REAL=1`、`OCIO_INSTALL_DIR=/opt/homebrew`、
+`OCIO_RS_LINK=dynamic`。机器上 OpenColorIO 2.5.2（Homebrew）、
+libavutil 60.26.102、~/.cargo/registry 已缓存 ocio-rs/ocio-sys/
+image/ffmpeg-next 全套。
+
+### 待办（后续会话）
+
+1. 全量验证：`cargo test --features test-stubs` ≥497 绿；`cargo build --release`。
+2. 清文档残留：`oiioutils.rs` 模块注释与 `README.md` 依赖表/决策 6 的
+   "ffmpeg-next" 说法改为 oakcore-rs 手写移植。
+3. `rm -rf src/bindings/oakoci`（已确认无 CMake/workspace/源码引用，仅
+   oakotio/oakaudioout 两个 sibling README 提到，删前先改）。
+4. `cargo tarpaulin --features test-stubs` 覆盖率 ≥80%（tarpaulin 默认只
+   跑 lib 单测，新并入代码已带模块内单测，见 ocioutils.rs/oiioutils.rs）。
+5. 不做任何 git 提交；分支 refactor/split-oakengine 上的既有暂存改动
+   （variant.cpp/h 移动、include/*/error.h）不触碰。
+
+## 技术债登记（2026-08-09）
+
+- **oaktask 渲染循环同步化**：src/task/rust/src/render.rs 目前是
+  "一帧一 ticket、wait 到底"的同步循环（C++ 原版是最多
+  hardware_concurrency 个 ticket 并发 + 完成队列 + condvar）。
+  可观察契约不变但导出/预缓存吞吐下降。修复方案：oakrender
+  ticket arena 本就支持多 ticket 在飞 + 回调，改为 N 并发 +
+  按序交付，并发度参数照 C++。待 render crate 落定后立即派代理
+  补上（测试已就绪）。
+- **oaktask 导出缺口**：临时文件重命名（失败不留半成品）与
+  sidecar 字幕编码器未实现；precache 缺项目深拷贝。

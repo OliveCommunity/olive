@@ -1,0 +1,22 @@
+[package]
+name = "oaktimeline"
+version = "0.1.0"
+edition = "2021"
+description = "Oak Video Editor timeline edit primitives (Rust)"
+license = "GPL-3.0-or-later"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[profile.release]
+# FFI discipline: panics must be catchable at every exported entry.
+panic = "unwind"
+
+[features]
+# Compile the in-crate C ABI mocks (src/bridge/teststubs.rs) so the unit and
+# integration tests can link without the oaknode/oakundo/oakcommon DLLs.
+# Every test run must pass this flag (see README.md "testing").
+test-stubs = []
+
+[dependencies]
+oakcore-rs = { path = "../../oakcore-rs" }

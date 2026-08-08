@@ -50,10 +50,10 @@
  * (including the terminating NUL) as a non-negative value instead.
  */
 #define OAKAUDIO_OK 0 /**< Success. */
-#define OAKAUDIO_E_INVALID (-1) /**< NULL handle or invalid argument. */
-#define OAKAUDIO_E_STATE (-2) /**< Call not valid in the current state. */
-#define OAKAUDIO_E_FAILED (-3) /**< The underlying operation failed. */
-#define OAKAUDIO_E_NOT_FOUND (-4) /**< Index out of range / entry not found. */
-#define OAKAUDIO_E_NOMEM (-5) /**< Allocation failed. */
+#define OAKAUDIO_E_INVALID (-60001) /**< NULL handle or invalid argument. */
+#define OAKAUDIO_E_STATE (-60002) /**< Call not valid in the current state. */
+#define OAKAUDIO_E_FAILED (-60003) /**< The underlying operation failed. */
+#define OAKAUDIO_E_NOT_FOUND (-60004) /**< Index out of range / entry not found. */
+#define OAKAUDIO_E_NOMEM (-60005) /**< Allocation failed. */
 
 #endif //OAK_EDITOR_AUDIO_ERROR_H

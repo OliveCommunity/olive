@@ -28,13 +28,38 @@
  * 0 (OAKCOMMON_OK) on success, a negative OAKCOMMON_E_* error code on
  * failure. String getters return the required buffer size in bytes
  * (including the terminating NUL) as a non-negative value instead.
+ *
+ * Project-wide error code scheme (-MMCCCC, 2026-08):
+ * every module's error codes are negative integers of the form
+ * -(MM * 10000 + CCCC), where MM is the module number from the registry
+ * below and CCCC is a module-local code. The first module-local codes
+ * are reserved and identical across modules: 0001 INVALID, 0002 STATE,
+ * 0003 FAILED, 0004 NOT_FOUND, 0005 NOMEM, 0006 CANCELLED.
+ *
+ * An error code crossing a module boundary is passed through
+ * UNTRANSLATED — the numeric module prefix preserves provenance
+ * (e.g. -30004 is oaknode's NOT_FOUND no matter which module reports it
+ * to the caller).
+ *
+ * Module number registry (only ever appended to; numbers are frozen):
  */
+#define OAK_ERROR_MODULE_COMMON 1   /**< oakcommon */
+#define OAK_ERROR_MODULE_UNDO 2     /**< oakundo */
+#define OAK_ERROR_MODULE_NODE 3     /**< oaknode */
+#define OAK_ERROR_MODULE_TIMELINE 4 /**< oaktimeline */
+#define OAK_ERROR_MODULE_CODEC 5    /**< oakcodec */
+#define OAK_ERROR_MODULE_AUDIO 6    /**< oakaudio */
+#define OAK_ERROR_MODULE_RENDER 7   /**< oakrender */
+#define OAK_ERROR_MODULE_TASK 8     /**< oaktask */
+#define OAK_ERROR_MODULE_PLUGIN 9   /**< oakplugin */
+#define OAK_ERROR_MODULE_STORAGE 10 /**< oakstorage (reserved) */
+
 #define OAKCOMMON_OK 0 /**< Success. */
-#define OAKCOMMON_E_INVALID (-1) /**< Empty handle (ctx == NULL) or invalid argument. */
-#define OAKCOMMON_E_STATE (-2) /**< Call not valid in the current state. */
-#define OAKCOMMON_E_FAILED (-3) /**< The underlying operation failed. */
-#define OAKCOMMON_E_NOT_FOUND (-4) /**< Index out of range / entry not found. */
-#define OAKCOMMON_E_NOMEM (-5) /**< Allocation failed. */
+#define OAKCOMMON_E_INVALID (-10001) /**< Empty handle (ctx == NULL) or invalid argument. */
+#define OAKCOMMON_E_STATE (-10002) /**< Call not valid in the current state. */
+#define OAKCOMMON_E_FAILED (-10003) /**< The underlying operation failed. */
+#define OAKCOMMON_E_NOT_FOUND (-10004) /**< Index out of range / entry not found. */
+#define OAKCOMMON_E_NOMEM (-10005) /**< Allocation failed. */
 
 #define SUCCESS OAKCOMMON_OK /**< @deprecated Use OAKCOMMON_OK. */
 

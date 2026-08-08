@@ -32,10 +32,10 @@
 #define OAKTIMELINE_ABI_VERSION 1
 
 #define OAKTIMELINE_OK 0 /**< Success. */
-#define OAKTIMELINE_E_INVALID (-1) /**< NULL handle or invalid argument. */
-#define OAKTIMELINE_E_STATE (-2) /**< Call not valid in the current state. */
-#define OAKTIMELINE_E_FAILED (-3) /**< The underlying operation failed. */
-#define OAKTIMELINE_E_NOT_FOUND (-4) /**< Index out of range / entry not found. */
-#define OAKTIMELINE_E_NOMEM (-5) /**< Allocation failed. */
+#define OAKTIMELINE_E_INVALID (-40001) /**< NULL handle or invalid argument. */
+#define OAKTIMELINE_E_STATE (-40002) /**< Call not valid in the current state. */
+#define OAKTIMELINE_E_FAILED (-40003) /**< The underlying operation failed. */
+#define OAKTIMELINE_E_NOT_FOUND (-40004) /**< Index out of range / entry not found. */
+#define OAKTIMELINE_E_NOMEM (-40005) /**< Allocation failed. */
 
 #endif //OAK_EDITOR_TIMELINE_ERROR_H
