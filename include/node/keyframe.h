@@ -235,6 +235,59 @@ int oaknode_keyframe_get_input(OakNodeKeyframe keyframe, char *buf,
 int oaknode_keyframe_get_parent(OakNodeKeyframe keyframe,
 								OakNodeNode *out_node);
 
+/**
+ * @brief A bezier control point guaranteed valid for animation
+ * (NodeKeyframe::valid_bezier_control_in()/out()).
+ *
+ * Unlike oaknode_keyframe_get_bezier_control(), the returned point is
+ * clamped so the curve never overlaps: the in-handle's x cannot pass the
+ * previous keyframe's time and the out-handle's x cannot pass the next
+ * keyframe's time. `handle` is an oaknode_keyframe_bezier.
+ */
+int oaknode_keyframe_get_valid_bezier_control(OakNodeKeyframe keyframe,
+											   int handle, double *out_x,
+											   double *out_y);
+
+/**
+ * @brief The opposing bezier handle type
+ * (NodeKeyframe::get_opposing_bezier_type): OAKNODE_KEYFRAME_IN_HANDLE
+ * (0) <-> OAKNODE_KEYFRAME_OUT_HANDLE (1).
+ *
+ * @return The opposing handle type, or OAKNODE_E_INVALID for a type
+ *         outside the two handle values.
+ */
+int oaknode_keyframe_opposing_bezier_type(int type);
+
+/**
+ * @brief Compute the combined node value to use when inserting
+ * `keyframe` onto `target_node` (the keyframe paste path).
+ *
+ * Takes the target node's split value at the keyframe's time, replaces
+ * the keyframe's own track with the keyframe's value, and combines the
+ * per-track components into a single normal value (mirrors the facade's
+ * oakengine_keyframe_compute_paste_value). OAKNODE_E_NOT_FOUND when the
+ * keyframe's input id does not exist on `target_node`; OAKNODE_E_FAILED
+ * for input types without a POD representation.
+ */
+int oaknode_keyframe_compute_paste_value(OakNodeNode target_node,
+										 OakNodeKeyframe keyframe,
+										 oaknode_value *out);
+
+/**
+ * @brief 1 if a sibling keyframe exists at the given rational time on
+ * this keyframe's own track (NodeKeyframe::has_sibling_at_time(): the
+ * track's key at `time` that is not this keyframe — the move-collision
+ * check). Unlike the facade, the time is an exact rational rather than a
+ * whole-second frame timestamp, and no track argument is needed (the
+ * lookup is relative to this keyframe's track).
+ *
+ * An orphaned keyframe (no parent node) has no siblings: `*out_value`
+ * is set to 0 and OAKNODE_OK is returned.
+ */
+int oaknode_keyframe_has_sibling_at_time(OakNodeKeyframe keyframe,
+										 int64_t time_num, int64_t time_den,
+										 int *out_value);
+
 #ifdef __cplusplus
 }
 #endif

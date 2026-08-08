@@ -1,0 +1,16 @@
+[package]
+name = "oaknode"
+version = "0.1.0"
+edition = "2021"
+description = "Oak Video Editor node graph engine (Rust)"
+license = "GPL-3.0-or-later"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[profile.release]
+# FFI discipline: panics must be catchable at every exported entry.
+panic = "unwind"
+
+[dependencies]
+oakcore-rs = { path = "../../oakcore-rs" }

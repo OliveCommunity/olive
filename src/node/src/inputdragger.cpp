@@ -61,11 +61,17 @@ void NodeInputDragger::start(const NodeKeyframeTrackReference &input,
 		dragging_key_ = node->get_keyframe_at_time_on_track(input_, time);
 
 		if (!dragging_key_) {
+			// Keys are created WITHOUT a parent: this fork's
+			// NodeParamInsertKeyframeCommand takes ownership of the key at
+			// end() (its constructor unparents/removes a pre-parented key,
+			// which would touch a track the key is not registered on), and
+			// Node::add_keyframe() establishes the parent when the command
+			// is redone.
 			dragging_key_ = new NodeKeyframe(
 				time, start_value_,
 				node->get_best_keyframe_type_for_time_on_track(input_, time),
 				input_.track(), input_.input().element(),
-				input_.input().input(), node);
+				input_.input().input());
 			created_keys_.push_back(dragging_key_);
 
 			if (create_key_on_all_tracks) {
@@ -80,8 +86,7 @@ void NodeInputDragger::start(const NodeKeyframeTrackReference &input,
 							node->get_split_value_at_time_on_track(this_ref, time),
 							node->get_best_keyframe_type_for_time_on_track(this_ref,
 																	time),
-							i, input.input().element(), input.input().input(),
-							node));
+							i, input.input().element(), input.input().input()));
 					}
 				}
 			}

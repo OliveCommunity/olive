@@ -1,0 +1,30 @@
+[package]
+name = "oakplugin"
+version = "0.1.0"
+edition = "2021"
+description = "Oak Video Editor plugin module: self-contained OFX host and plugin bridge (Rust)"
+license = "GPL-3.0-or-later"
+
+# staticlib: linked into liboakplugin by CMake (see M11 §3.3).
+# cdylib is NOT used: the module dylib stays a CMake target so the
+# standalone-tree wiring (rpath, force_load, tests) is unchanged.
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[profile.release]
+# FFI 纪律（M11 §0）：panic 必须能被 catch_unwind 兜住并映射为错误码，
+# 绝不允许 unwind/abort 出 FFI 边界。
+panic = "unwind"
+
+[dependencies]
+# 只允许零依赖起步。确需引入的 crate 必须在 README 登记理由。
+
+[features]
+# oakrender 测试桩（库内 no_mangle 符号 + 状态访问器）：cargo test
+# --features test-stubs 时桥直连桩，像素路径可在无 liboakrender 的
+# 环境下跑通；真实链路仍走 dlsym 解析。
+test-stubs = []
+
+[build-dependencies]
+# C shim 编译（message suite 的 variadic 入口）；理由已登记 README。
+cc = "1"

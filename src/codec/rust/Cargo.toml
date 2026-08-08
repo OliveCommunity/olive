@@ -1,0 +1,19 @@
+[package]
+name = "oakcodec"
+version = "0.1.0"
+edition = "2021"
+description = "Oak Video Editor media codec module (Rust)"
+license = "GPL-3.0-or-later"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[profile.release]
+# FFI discipline: panics must be catchable at every exported entry.
+panic = "unwind"
+
+[dependencies]
+oakcore-rs = { path = "../../oakcore-rs" }
+# Real media decode/encode. The C++ ffmpeg_bridge library existed only to
+# absorb FFmpeg API churn; the Rust crate calls ffmpeg-next directly.
+ffmpeg-next = "9"

@@ -18,11 +18,13 @@ endif()
 add_executable(oaknode-gtest
         block_test.cpp
         colormanager_test.cpp
+        dragger_test.cpp
         factory_test.cpp
         folder_test.cpp
         footage_test.cpp
         group_test.cpp
         keyframe_test.cpp
+        multicam_test.cpp
         node_test.cpp
         project_test.cpp
         sequence_test.cpp

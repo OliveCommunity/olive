@@ -1,0 +1,22 @@
+[package]
+name = "oaktask"
+version = "0.1.0"
+edition = "2021"
+description = "Oak Video Editor task execution module (Rust)"
+license = "GPL-3.0-or-later"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[profile.release]
+# FFI discipline: panics must be catchable at every exported entry.
+panic = "unwind"
+
+[dependencies]
+oakcore-rs = { path = "../../oakcore-rs" }
+
+# Pure-Rust OpenTimelineIO JSON binding (serde model of the OTIO JSON format
+# covering exactly the object graph the C++ loadotio/saveotio tasks use).
+# Registered in README decision #6: OTIO no longer stays on the C++ side —
+# LoadOTIOTask/SaveOTIOTask parse/serialize through this crate.
+oakotio = { path = "../../bindings/oakotio" }

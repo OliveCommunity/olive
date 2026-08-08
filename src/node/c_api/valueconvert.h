@@ -249,6 +249,67 @@ inline int value_from_variant(olive::NodeValue::Type type, const olive::Variant 
 }
 
 /**
+ * @brief Map an oaknode_value POD carrying ONE per-track component into
+ * an olive::Variant of the input's declared type (the dragger's drag
+ * path; mirrors the facade's component_from_c helper).
+ *
+ * For scalar types (INT/COMBO/FLOAT/BOOLEAN/RATIONAL) the whole POD is
+ * the component; for split-track types (COLOR/VEC2/3/4) `component`
+ * selects which component's value is carried in f[0] (the facade passes
+ * 0 -- the POD's f[0] holds the dragged component). The POD type must
+ * match the declared type.
+ */
+inline bool component_from_value(const oaknode_value *value,
+								 olive::NodeValue::Type declared,
+								 int component, olive::Variant *out)
+{
+	using olive::core::Rational;
+
+	switch (declared) {
+	case olive::NodeValue::k_int:
+	case olive::NodeValue::k_combo:
+		if (value->type != OAKNODE_VALUE_INT &&
+			value->type != OAKNODE_VALUE_COMBO) {
+			return false;
+		}
+		*out = olive::Variant(value->num);
+		return true;
+	case olive::NodeValue::k_float:
+	case olive::NodeValue::k_bezier:
+		if (value->type != OAKNODE_VALUE_FLOAT) {
+			return false;
+		}
+		*out = olive::Variant(value->f[0]);
+		return true;
+	case olive::NodeValue::k_boolean:
+		if (value->type != OAKNODE_VALUE_BOOL) {
+			return false;
+		}
+		*out = olive::Variant(value->num != 0);
+		return true;
+	case olive::NodeValue::k_rational:
+		if (value->type != OAKNODE_VALUE_RATIONAL) {
+			return false;
+		}
+		*out = olive::Variant::from_value(
+			Rational(static_cast<int>(value->num),
+					 static_cast<int>(value->den)));
+		return true;
+	case olive::NodeValue::k_color:
+	case olive::NodeValue::k_vec2:
+	case olive::NodeValue::k_vec3:
+	case olive::NodeValue::k_vec4:
+		if (value->type != value_type_to_oak(declared)) {
+			return false;
+		}
+		*out = olive::Variant(value->f[component]);
+		return true;
+	default:
+		return false;
+	}
+}
+
+/**
  * @brief Wrap a freshly created olive::UndoCommand in an owned
  * OakUndoCommand handle (reference count 1). Returns an empty handle
  * (ctx == NULL) on allocation failure.

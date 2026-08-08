@@ -579,3 +579,101 @@ int oaknode_keyframe_get_parent(OakNodeKeyframe keyframe,
 		return OAKNODE_E_FAILED;
 	}
 }
+
+int oaknode_keyframe_get_valid_bezier_control(OakNodeKeyframe keyframe,
+											   int handle, double *out_x,
+											   double *out_y)
+{
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key || !out_x || !out_y) {
+		return OAKNODE_E_INVALID;
+	}
+
+	try {
+		olive::PointF point;
+		if (handle == OAKNODE_KEYFRAME_IN_HANDLE) {
+			point = key->valid_bezier_control_in();
+		} else if (handle == OAKNODE_KEYFRAME_OUT_HANDLE) {
+			point = key->valid_bezier_control_out();
+		} else {
+			return OAKNODE_E_INVALID;
+		}
+		*out_x = point.x();
+		*out_y = point.y();
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+int oaknode_keyframe_opposing_bezier_type(int type)
+{
+	if (type != OAKNODE_KEYFRAME_IN_HANDLE &&
+		type != OAKNODE_KEYFRAME_OUT_HANDLE) {
+		return OAKNODE_E_INVALID;
+	}
+
+	try {
+		return int(olive::NodeKeyframe::get_opposing_bezier_type(
+			olive::NodeKeyframe::BezierType(type)));
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+int oaknode_keyframe_compute_paste_value(OakNodeNode target_node,
+										 OakNodeKeyframe keyframe,
+										 oaknode_value *out)
+{
+	olive::Node *node = to_native<olive::Node>(target_node);
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!node || !key || !out) {
+		return OAKNODE_E_INVALID;
+	}
+
+	try {
+		const std::string &input_id = key->input();
+		if (input_id.empty() || !node->has_input_with_id(input_id)) {
+			return OAKNODE_E_NOT_FOUND;
+		}
+
+		const olive::NodeValue::Type type =
+			node->get_input_data_type(input_id);
+		olive::SplitValue split = node->get_split_value_at_time(
+			olive::NodeInput(node, input_id, key->element()), key->time());
+		if (key->track() >= 0 && key->track() < int(split.size())) {
+			split[key->track()] = key->value();
+		}
+
+		const olive::Variant combined =
+			olive::NodeValue::combine_track_values_into_normal_value(type,
+																	 split);
+		return oaknode_c_api::value_from_variant(type, combined, out);
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}
+
+int oaknode_keyframe_has_sibling_at_time(OakNodeKeyframe keyframe,
+										 int64_t time_num, int64_t time_den,
+										 int *out_value)
+{
+	olive::NodeKeyframe *key = to_native<olive::NodeKeyframe>(keyframe);
+	if (!key || !out_value) {
+		return OAKNODE_E_INVALID;
+	}
+
+	try {
+		// An orphaned keyframe (no parent node) cannot have siblings.
+		*out_value = 0;
+		if (key->parent()) {
+			*out_value = key->has_sibling_at_time(
+							 olive::core::Rational(static_cast<int>(time_num),
+												   static_cast<int>(time_den)))
+							 ? 1 : 0;
+		}
+		return OAKNODE_OK;
+	} catch (...) {
+		return OAKNODE_E_FAILED;
+	}
+}

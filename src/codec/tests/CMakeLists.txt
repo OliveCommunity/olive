@@ -27,6 +27,7 @@ add_executable(oakcodec-gtest
         frame_test.cpp
         decoder_test.cpp
         encoder_test.cpp
+        format_test.cpp
         task_test.cpp
 )
 

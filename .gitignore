@@ -109,3 +109,7 @@ act
 
 # Local OpenTimelineIO build (see docs/build.md)
 otio-install/
+
+# Rust
+**/target/
+tarpaulin-out/

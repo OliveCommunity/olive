@@ -505,12 +505,52 @@ image/ffmpeg-next 全套。
 
 ## 技术债登记（2026-08-09）
 
-- **oaktask 渲染循环同步化**：src/task/rust/src/render.rs 目前是
-  "一帧一 ticket、wait 到底"的同步循环（C++ 原版是最多
-  hardware_concurrency 个 ticket 并发 + 完成队列 + condvar）。
-  可观察契约不变但导出/预缓存吞吐下降。修复方案：oakrender
-  ticket arena 本就支持多 ticket 在飞 + 回调，改为 N 并发 +
-  按序交付，并发度参数照 C++。待 render crate 落定后立即派代理
-  补上（测试已就绪）。
+- **oaktask 渲染循环同步化 ✅（2026-08-09 修复）**：src/task/rust/src/render.rs
+  的同步循环（"一帧一 ticket、wait 到底"）已改为并发循环，与 C++
+  原版一致：最多 `max_inflight`（默认 `available_parallelism`，照 C++
+  `max(1, hardware_concurrency)`）个 ticket 在飞，ticket 完成回调
+  （`oakrender_ticket_finished_fn`）把完成的 ticket 推进完成队列并唤醒
+  渲染线程（队列 + condvar）；乱序完成经 reorder buffer 按时间戳序
+  （音频先、帧按时间升序）交付给 behavior 钩子；取消/钩子错误会
+  cancel+wait 全部在飞 ticket（其完成回调仍然恰好触发一次）后再返回。
+  可观察契约不变。配套：tests/common/mod.rs 的 ticket stub 升级为
+  模拟 ticket arena（按提交序分配 id、可脚本化乱序完成 `stub_complete`、
+  DEFER 模式、取消原子会完成在飞 ticket）；新增
+  tests/render_loop_test.rs（乱序交付、音频优先、取消 drain、进度单调、
+  错误停止派发、窗口化）。bridge/render.rs 的
+  `oakrender_ticket_finished_fn` 由 3 参修正为 2 参
+  `(ticket, userdata)`，与 include/render/ticket.h 及 oakrender 实现一致
+  （原 3 参镜像与实际 ABI 不符）。
+  遗留注意：ticket.h 规定回调收到的 ticket 是"提交者句柄的借用副本，
+  提交者持有并释放"，因此渲染循环只释放 submit 函数返回的那一份句柄、
+  不释放队列里的借用副本（C++ 原版对两者都调 free，若真实 oakrender 的
+  句柄副本不各自计数，则 C++ 路径存在双释放风险，Rust 侧按头文件契约
+  规避）；ticket.h 无 poll/try_wait 查询，等待完全走完成回调 + condvar。
 - **oaktask 导出缺口**：临时文件重命名（失败不留半成品）与
   sidecar 字幕编码器未实现；precache 缺项目深拷贝。
+
+## engine/ vs src/ 模块覆盖比对（2026-08-09）
+
+对照 engine/include/oakengine/*.h（facade 头）与 include/<mod>/*.h
+（模块 C ABI）的缺口：
+
+**模块侧真实缺口（要补）**：
+- oaknode：NodeInputDragger 族（oakengine_dragger_*，6 函数）未迁；
+  keyframe 辅助 4 个（compute_paste_value/get_valid_bezier_point/
+  has_sibling_at_time/opposing_bezier_type）未迁；MultiCam 族
+  （oakengine_multicam_*，9 函数）未迁（oakrender 只有
+  set_cacher_multicam 一个入口）。
+- oakcodec：格式/编解码器枚举族（oakengine_encoding_format_* /
+  codec_*，12 函数）未迁——oakcodec 只有
+  export_format_get_extension 一个。
+- oaktimeline/oaknode：engine/timeline.h 的 sequence/clip 便捷层
+  （add_footage_clip/ripple_delete_*/move_clip/trim 等 ~90 函数）
+  大部分是 facade 便捷封装，底层原语（edit 命令族）已齐，facade
+  包装时按需下沉或留在 facade。
+
+**属于 facade 层（不进模块，属预期）**：viewer/playback/preview/
+display/gizmo/app/worker/ipc/config/disk/lut/events/exporter ——
+即 M9 §4 裁决的 liboakengine 装配层职责。
+
+**已核对无缺口**：undo（39 vs 26 系 facade 组合函数）、audio、
+group passthrough、keyframe 主体、project/footage 主体。

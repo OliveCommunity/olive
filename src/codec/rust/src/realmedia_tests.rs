@@ -1,0 +1,253 @@
+// Oak Video Editor - Non-Linear Video Editor
+// Copyright (C) 2026 Oak Team
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+//! Real-media tests for the FFmpeg decoder/encoder (`#[cfg(test)]` module).
+//!
+//! These exercise the real `ffmpeg-next` implementation against
+//! `tests/demo.mp4` at the repository root (H.264 1920x1080@25fps + AAC
+//! 48kHz stereo) and a full H.264 encode round-trip through `/tmp`.
+//!
+//! They live inside the crate (not `tests/`) because the crate's
+//! `#[cfg(test)]` in-memory oakcommon/oakrender stubs — which the
+//! `Frame`/`FootageDescription` paths need — are only linked for the lib
+//! test binary (`tests/` is compiled without `#[cfg(test)]` and cannot
+//! resolve those symbols; see `tests/ffi_contract_test.rs`).
+
+use crate::bridge::common::{
+	oakcommon_videoparams_get_duration, oakcommon_videoparams_get_frame_rate,
+	oakcommon_videoparams_get_height, oakcommon_videoparams_get_width,
+	oakcommon_videoparams_init_basic, oakcommon_videoparams_set_format,
+};
+use crate::decoder::{
+	CodecStream, Decoder, K_COLOR_RANGE_DEFAULT, RenderMode, RetrieveAudioStatus,
+	RetrieveVideoParams,
+};
+use crate::encoder::create_from_params;
+use crate::ffmpeg::FFmpegDecoder;
+use crate::frame::Frame;
+use oakcore_rs::{PixelFormat, Rational, TimeRange};
+
+/// `tests/demo.mp4` at the repository root.
+fn demo_path() -> std::path::PathBuf {
+	std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../tests/demo.mp4")
+}
+
+fn video_params(stream: CodecStream, time: Rational) -> RetrieveVideoParams {
+	RetrieveVideoParams {
+		stream,
+		time,
+		length: TimeRange::default(),
+		force_range: K_COLOR_RANGE_DEFAULT,
+		is_image_sequence: false,
+		image_sequence_digits: 0,
+		image_sequence_number: 0,
+		mode: RenderMode::Offline,
+		alpha_is_premultiplied: false,
+	}
+}
+
+/// H.264 encoder parameters: 64x64, 10 fps, `out` as the target file.
+fn h264_params(out: &std::path::Path) -> crate::encodingparams::EncodingParams {
+	let mut p = crate::encodingparams::EncodingParams::default();
+	let name = out.as_os_str().as_encoded_bytes();
+	p.filename[..name.len()].copy_from_slice(name);
+	p.format = 2; // MPEG-4 video
+	p.video_enabled = 1;
+	p.video_codec = 1; // H.264
+	p.video_width = 64;
+	p.video_height = 64;
+	p.video_time_base_num = 1;
+	p.video_time_base_den = 10;
+	p.video_pixel_format = PixelFormat::F32;
+	p.video_interlacing = 0;
+	p.video_pixel_aspect_num = 1;
+	p.video_pixel_aspect_den = 1;
+	p
+}
+
+/// Build an allocated F32-RGBA frame with a moving color pattern.
+fn pattern_frame(i: i32) -> Frame {
+	let vp = unsafe { oakcommon_videoparams_init_basic(64, 64) };
+	unsafe { oakcommon_videoparams_set_format(vp.clone(), PixelFormat::F32 as i32) };
+	let mut f = Frame::with_params(vp);
+	f.set_timestamp(Rational::new(i as i64, 10));
+	f.allocate().unwrap();
+
+	let linesize = f.linesize_bytes() as usize;
+	let data = f.data_mut().unwrap();
+	for y in 0..64usize {
+		for x in 0..64usize {
+			let off = y * linesize + x * 16;
+			let r: f32 = if x < 32 { 0.4 + i as f32 * 0.05 } else { 0.1 };
+			let g: f32 = y as f32 / 64.0;
+			let b: f32 = if x >= 32 { 0.7 } else { 0.2 };
+			data[off..off + 4].copy_from_slice(&r.to_le_bytes());
+			data[off + 4..off + 8].copy_from_slice(&g.to_le_bytes());
+			data[off + 8..off + 12].copy_from_slice(&b.to_le_bytes());
+			data[off + 12..off + 16].copy_from_slice(&1.0f32.to_le_bytes());
+		}
+	}
+	f
+}
+
+#[test]
+fn probe_reports_streams_and_duration() {
+	let d = FFmpegDecoder::new();
+	let desc = d
+		.probe(demo_path().to_str().unwrap(), None)
+		.expect("demo.mp4 should probe");
+	assert_eq!(desc.decoder(), "ffmpeg");
+	// video + audio + data (timecode) stream.
+	assert_eq!(desc.total_stream_count(), 3);
+	assert_eq!(desc.video_stream_count(), 1);
+	assert_eq!(desc.audio_stream_count(), 1);
+
+	// Video stream: 1920x1080, 25fps, 17s at 1/12800 time base.
+	let vp = desc.get_video_stream(0).expect("video stream");
+	assert_eq!(unsafe { oakcommon_videoparams_get_width(vp.clone()) }, 1920);
+	assert_eq!(unsafe { oakcommon_videoparams_get_height(vp.clone()) }, 1080);
+	assert_eq!(unsafe { oakcommon_videoparams_get_duration(vp.clone()) }, 17 * 12800);
+
+	let mut num: i32 = 0;
+	let mut den: i32 = 0;
+	unsafe { oakcommon_videoparams_get_frame_rate(vp.clone(), &mut num, &mut den) };
+	assert_eq!((num, den), (25, 1));
+}
+
+#[test]
+fn decode_first_video_frame_has_dimensions_and_content() {
+	let d = FFmpegDecoder::new();
+	let s = CodecStream::with_block(demo_path().to_string_lossy().into_owned(), 0, None);
+	d.open(&s).expect("open video stream");
+
+	let f = d
+		.retrieve_video_frame(&video_params(s, Rational::new(0, 1)))
+		.expect("decode first frame");
+	assert_eq!(f.width(), 1920);
+	assert_eq!(f.height(), 1080);
+	assert_eq!(f.format(), PixelFormat::F32);
+	assert!(f.is_allocated());
+	// Expected size: 4 channels x 4 bytes, linesize 32-byte aligned.
+	assert_eq!(f.allocated_size(), (16 * 1920) * 1080);
+
+	// The frame must contain non-zero pixels.
+	let data = f.data().expect("allocated data");
+	assert!(data.iter().any(|&b| b != 0), "decoded frame is all zeros");
+}
+
+#[test]
+fn decode_video_frame_at_midpoint() {
+	let d = FFmpegDecoder::new();
+	let s = CodecStream::with_block(demo_path().to_string_lossy().into_owned(), 0, None);
+	d.open(&s).expect("open video stream");
+
+	let f = d
+		.retrieve_video_frame(&video_params(s, Rational::new(8, 1)))
+		.expect("decode mid frame");
+	assert_eq!(f.width(), 1920);
+	assert_eq!(f.height(), 1080);
+	assert!(f.data().unwrap().iter().any(|&b| b != 0));
+}
+
+#[test]
+fn audio_decode_is_non_empty() {
+	let d = FFmpegDecoder::new();
+	let s = CodecStream::with_block(demo_path().to_string_lossy().into_owned(), 1, None);
+	d.open(&s).expect("open audio stream");
+
+	// One second of stereo at 48 kHz.
+	let mut dest = vec![0f32; 48000 * 2];
+	let status = d
+		.retrieve_audio(
+			&mut dest,
+			&TimeRange::new(Rational::new(0, 1), Rational::new(1, 1)),
+			48000,
+			0x3, // stereo mask
+		)
+		.expect("retrieve audio");
+	assert_eq!(status, RetrieveAudioStatus::Success);
+
+	let peak = dest.iter().fold(0.0f32, |a, &s| a.max(s.abs()));
+	assert!(peak > 0.0, "decoded audio is all silence");
+}
+
+#[test]
+fn encode_h264_roundtrip_to_tmp() {
+	let out = std::env::temp_dir().join(format!("oakcodec_roundtrip_{}.mp4", std::process::id()));
+	let params = h264_params(&out);
+	let out_str = out.to_str().expect("utf8 temp path").to_string();
+
+	let e = create_from_params(&params).expect("create ffmpeg encoder");
+	assert_eq!(e.id(), "ffmpeg");
+	e.configure(&params).expect("configure");
+	e.open().expect("open output");
+
+	// Encode 10 frames with a moving pattern.
+	for i in 0..10 {
+		let f = pattern_frame(i);
+		e.write_video(&f).expect("write video frame");
+	}
+	e.flush().expect("flush");
+
+	// The output exists and has a plausible size.
+	assert!(out.exists(), "round-trip file was not created");
+	assert!(out.metadata().unwrap().len() > 1000, "round-trip file is empty");
+
+	// Probe the result: one 64x64 video stream.
+	let d = FFmpegDecoder::new();
+	let desc = d.probe(&out_str, None).expect("probe round-trip output");
+	assert_eq!(desc.video_stream_count(), 1);
+	let vp = desc.get_video_stream(0).expect("video stream");
+	assert_eq!(unsafe { oakcommon_videoparams_get_width(vp.clone()) }, 64);
+	assert_eq!(unsafe { oakcommon_videoparams_get_height(vp.clone()) }, 64);
+
+	// Decode the first frame of the result.
+	let s = CodecStream::with_block(out_str.clone(), 0, None);
+	d.open(&s).expect("open round-trip video");
+	let f = d
+		.retrieve_video_frame(&video_params(s, Rational::new(0, 1)))
+		.expect("decode round-trip first frame");
+	assert_eq!(f.width(), 64);
+	assert_eq!(f.height(), 64);
+	assert_eq!(f.format(), PixelFormat::F32);
+	assert!(f.data().unwrap().iter().any(|&b| b != 0));
+
+	let _ = std::fs::remove_file(&out);
+}
+
+#[test]
+fn audio_conform_writes_planar_pcm() {
+	let d = FFmpegDecoder::new();
+	let s = CodecStream::with_block(demo_path().to_string_lossy().into_owned(), 1, None);
+	d.open(&s).expect("open audio stream");
+
+	let dir = std::env::temp_dir().join(format!("oakcodec_conform_{}", std::process::id()));
+	std::fs::create_dir_all(&dir).unwrap();
+	let ch0 = dir.join("0.pcm").to_string_lossy().into_owned();
+	let ch1 = dir.join("1.pcm").to_string_lossy().into_owned();
+
+	d.conform_audio(&[ch0.clone(), ch1.clone()], 48000, 0x3, 4, None)
+		.expect("conform to f32 planar");
+
+	for path in [&ch0, &ch1] {
+		let meta = std::fs::metadata(path).expect("conform output exists");
+		assert!(meta.len() > 0, "conform file is empty");
+		// 1 second at 48kHz * 4 bytes = 192 KB minimum.
+		assert!(meta.len() >= 192_000, "conform file too short: {}", meta.len());
+	}
+
+	let _ = std::fs::remove_dir_all(&dir);
+}
