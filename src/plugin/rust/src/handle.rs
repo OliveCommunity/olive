@@ -53,44 +53,12 @@ pub struct RefBox<T: ?Sized> {
 /// C 句柄的 Rust 镜像。`#[repr(C)]`，与 C 头文件布局一致。
 ///
 /// 生命周期：`*_init`/`*_create` 返回计数 1 的拥有型句柄；
-/// `*_free(&h)` 释放一次并清空 `ctx`；`free(NULL)`/空句柄是 no-op。
-/// 值型（Clone/Copy：C 侧按值传句柄，复制后再 addref 是调用方
-/// 契约）。
-#[derive(Clone, Copy)]
-#[repr(C)]
-pub struct CHandle {
-	/// 不透明盒子指针（`RefBox<T>` 擦型后的 `*mut c_void`）。
-	pub ctx: *mut std::ffi::c_void,
-	/// 原子 +1。
-	pub addref: Option<unsafe extern "C" fn(*mut std::ffi::c_void)>,
-	/// 原子 -1，归零销毁。
-	pub release: Option<unsafe extern "C" fn(*mut std::ffi::c_void)>,
-	/// [`OAKPLUGIN_ABI_VERSION`]。
-	pub abi_version: u32,
-}
-
-// CHandle 是 C 侧值型句柄（按值传、可跨线程复制）；`ctx` 是
-// 不透明盒子指针，跨线程搬运是宿主分发语义（multithread suite
-// 允许插件线程回调任意 suite）。
-unsafe impl Send for CHandle {}
-unsafe impl Sync for CHandle {}
-
-impl CHandle {
-	/// 空句柄（`ctx == NULL`）。
-	pub fn null() -> Self {
-		Self {
-			ctx: std::ptr::null_mut(),
-			addref: None,
-			release: None,
-			abi_version: OAKPLUGIN_ABI_VERSION,
-		}
-	}
-
-	/// 是否为空调用面（`ctx` 为空）。
-	pub fn is_null(&self) -> bool {
-		self.ctx.is_null()
-	}
-}
+/// The shared ABI value-handle type (single-lib unification, see
+/// `docs/zh/plans/riir/single-lib.md`): one canonical
+/// `{ctx, addref, release, abi_version}` type in `oakcore-rs`, re-exported
+/// here so the crate's `ffi.rs` signatures and handle scaffolding stay
+/// source-compatible. `Send + Sync` come from the shared type.
+pub use oakcore_rs::handle::CHandle;
 
 /// addref 的实现：原子 +1。拥有型与借用型共用——借用型只延长盒子
 /// 的寿命，不延长被借用对象。

@@ -920,3 +920,16 @@ mod tests {
 		let _ = std::fs::remove_dir_all(&b);
 	}
 }
+
+/// The default disk cache directory (C++ `DiskManager::
+/// get_default_disk_cache_path`): `<configuration location>/mediacache`.
+///
+/// Single-lib unification: this used to live in the oakrender crate's
+/// `bridge::common` fallback (see `docs/zh/plans/riir/single-lib.md`);
+/// oaknode and oakrender both call it directly now.
+pub fn default_disk_cache_path() -> String {
+	Path::new(&FileFunctions::new().get_configuration_location().unwrap_or_default())
+		.join("mediacache")
+		.to_string_lossy()
+		.into_owned()
+}

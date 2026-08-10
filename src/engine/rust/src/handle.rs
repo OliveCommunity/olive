@@ -40,63 +40,13 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use crate::error::{Error, Result};
 
-/// ABI-neutral mirror of the module handle struct
-/// (`{ctx, addref, release, abi_version}`). Structurally identical to
-/// every `Oak<Mod><Type>` value handle in `include/<mod>/*.h`, so the
-/// facade can copy a handle across the module boundary without knowing
-/// the module's concrete type names.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct CHandle {
-	/// Opaque box pointer.
-	pub ctx: *mut c_void,
-	/// Atomic increment.
-	pub addref: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// Atomic decrement; destroys at zero.
-	pub release: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// ABI version.
-	pub abi_version: u32,
-}
-
-impl CHandle {
-	/// The empty handle.
-	pub const fn null() -> Self {
-		CHandle {
-			ctx: std::ptr::null_mut(),
-			addref: None,
-			release: None,
-			abi_version: 0,
-		}
-	}
-
-	/// Whether this is the empty (zero) handle.
-	pub fn is_null(&self) -> bool {
-		self.ctx.is_null()
-	}
-
-	/// Take an additional reference through the handle's `addref` and
-	/// return the (now refcount-incremented) copy.
-	///
-	/// # Safety
-	/// `self` must be a live handle returned by a module function.
-	pub unsafe fn addref(&self) -> Self {
-		let mut copy = *self;
-		if let Some(addref) = copy.addref {
-			let _ = &mut copy;
-			unsafe {
-				addref(copy.ctx);
-			}
-		}
-		copy
-	}
-}
-
-// Module handles follow the shared_ptr-like convention of
-// `include/common/handle.h`: they are opaque, refcounted and safe to
-// share across threads (the module crates themselves use them behind
-// mutexes). The facade therefore declares them Send + Sync.
-unsafe impl Send for CHandle {}
-unsafe impl Sync for CHandle {}
+/// The shared ABI value-handle type (single-lib unification, see
+/// `docs/zh/plans/riir/single-lib.md`): one canonical
+/// `{ctx, addref, release, abi_version}` type in `oakcore-rs`, re-exported
+/// by every module crate, so the facade can pass a handle straight into a
+/// module's `pub` Rust functions without an `extern "C"` declaration.
+/// `Clone + Copy + Send + Sync` come from the shared type.
+pub use oakcore_rs::handle::CHandle;
 
 /// Engine opaque handle types, one per `typedef struct OakEngine*` in
 /// `engine/include/oakengine/*.h`. All are thin newtype wrappers around a

@@ -53,20 +53,15 @@ fn abi_version_is_one() {
 	assert_eq!(OAKTASK_ABI_VERSION, 1);
 }
 
-/// Given a null handle, `CHandle::null()` has a null ctx, non-null
-/// addref/release, and the stamped ABI version.
+/// Given a null handle, `CHandle::null()` has a null ctx, no addref/
+/// release fn pointers and no ABI version (single-lib unification).
 #[test]
 fn null_handle_contract() {
 	let h = CHandle::null();
 	assert!(h.ctx.is_null());
-	assert!(h.addref.is_some(), "null handle addref must be callable");
-	assert!(h.release.is_some(), "null handle release must be callable");
-	assert_eq!(h.abi_version, OAKTASK_ABI_VERSION);
-	// The empty handle is a no-op for both ops (never touches memory).
-	unsafe {
-		h.addref.unwrap()(h.ctx);
-		h.release.unwrap()(h.ctx);
-	}
+	assert!(h.addref.is_none(), "null handle addref is empty");
+	assert!(h.release.is_none(), "null handle release is empty");
+	assert_eq!(h.abi_version, 0);
 	// `is_null` reflects the ctx.
 	assert!(h.is_null());
 }
@@ -91,7 +86,11 @@ fn handle_size_and_owned_release() {
 	}
 	// The boxed value was dropped; a null handle still works afterwards.
 	let null_h = CHandle::null();
-	unsafe {
-		null_h.release.unwrap()(null_h.ctx);
+	// The shared null() carries no fn pointers; releasing goes through
+	// the `if let Some` path (a no-op for empty handles).
+	if let Some(release) = null_h.release {
+		unsafe {
+			release(null_h.ctx);
+		}
 	}
 }

@@ -17,7 +17,9 @@ crate-type = ["staticlib", "rlib"]
 panic = "unwind"
 
 [dependencies]
+# 共享 ABI 类型（CHandle 等，单库化统一，见 docs/zh/plans/riir/single-lib.md）。
 # 只允许零依赖起步。确需引入的 crate 必须在 README 登记理由。
+oakcore-rs = { path = "../../oakcore-rs" }
 
 [features]
 # oakrender 测试桩（库内 no_mangle 符号 + 状态访问器）：cargo test

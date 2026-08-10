@@ -23,6 +23,7 @@
 
 pub mod colortransform;
 pub mod commandlineparser;
+pub mod cancelatom;
 pub mod configstore;
 pub mod debug;
 pub mod error;

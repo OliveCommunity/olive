@@ -33,20 +33,11 @@ use crate::undo::push_or_run;
 
 /// `engine/include/oakengine/node.h` — POD mirror of `oak_node_value`.
 ///
-/// Layout-identical to the module's `oaknode_value`, so the facade hands
-/// the engine POD straight to the oaknode bridge.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct OakNodeValue {
-	/// `oak_node_value_type`.
-	pub type_: c_int,
-	/// INT/COMBO value, BOOL 0/1, RATIONAL numerator.
-	pub num: i64,
-	/// RATIONAL denominator.
-	pub den: i64,
-	/// FLOAT f[0]; VEC2/3/4 f[0..n-1]; COLOR r,g,b,a.
-	pub f: [f64; 4],
-}
+/// Single-lib unification: aliases the oaknode crate's POD (the module
+/// C ABI struct `oak_node_value`), so the facade can pass it straight
+/// into `oaknode::ffi` functions without an `extern "C"` declaration.
+/// The field is named `kind` on the shared type (was `type_`).
+pub type OakNodeValue = oaknode::value::OakNodeValue;
 
 /// `engine/include/oakengine/footage.h` — POD mirror of
 /// `oak_footage_video_info` (olive::VideoParams stream description).
@@ -5584,7 +5575,7 @@ pub unsafe extern "C" fn oakengine_node_value_split_to_tracks(
 		let count = oakengine_node_value_keyframe_track_count(c_type).min(track_count);
 		for i in 0..count as usize {
 			let mut t = OakNodeValue {
-				type_: c_type,
+				kind: c_type,
 				num: 0,
 				den: 0,
 				f: [0.0; 4],
@@ -5604,7 +5595,7 @@ pub unsafe extern "C" fn oakengine_node_value_split_to_tracks(
 					t.f[0] = n.f[0];
 				}
 				_ => {
-					t.type_ = c_type;
+					t.kind = c_type;
 					t.f = n.f;
 				}
 			}
@@ -5627,7 +5618,7 @@ pub unsafe extern "C" fn oakengine_node_value_combine_tracks(
 			return Err(Error::Invalid);
 		}
 		let mut out = OakNodeValue {
-			type_: c_type,
+			kind: c_type,
 			num: 0,
 			den: 0,
 			f: [0.0; 4],

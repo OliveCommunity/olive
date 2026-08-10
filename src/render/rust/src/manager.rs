@@ -132,9 +132,10 @@ impl RenderManager {
 }
 
 /// The default disk cache directory (C++ `DiskManager::
-/// get_default_disk_cache_path`).
+/// get_default_disk_cache_path`); shared with oaknode via oakcommon
+/// (single-lib unification).
 pub fn disk_cache_path() -> String {
-	crate::bridge::common::default_disk_cache_path()
+	oakcommon::filefunctions::default_disk_cache_path()
 }
 
 /// Bytes consumed by the default disk cache folder (direct filesystem

@@ -55,19 +55,11 @@ impl ColorManager {
 	}
 
 	/// Load the built-in default config (C++ `ColorManager::init()`).
-	/// The config load itself goes through the oakrender color C ABI;
-	/// when oakrender is absent (cargo test) the manager still marks the
-	/// config loaded with the built-in defaults so pure-graph consumers
-	/// can query state.
+	/// The oakrender color C ABI never exported the config-loading
+	/// symbols, so this always took the "mark loaded with the built-in
+	/// defaults" path (single-lib: the render call is removed and the
+	/// deterministic equivalent kept).
 	pub fn initialize(&mut self) -> crate::error::Result<()> {
-		match crate::bridge::render::color_config_create_default() {
-			Some(Err(())) => {
-				return Err(crate::error::Error::Failed(
-					"OCIO config creation failed".to_string(),
-				));
-			}
-			_ => {}
-		}
 		self.config_loaded = true;
 		Ok(())
 	}
@@ -79,30 +71,18 @@ impl ColorManager {
 		Ok(())
 	}
 
-	/// (Re)load the config from `config_filename` via the oakrender
-	/// color C ABI (`oakrender_color_manager_*`); E_FAILED on OCIO
+	/// (Re)load the config from `config_filename`; E_FAILED on OCIO
 	/// errors. Missing/invalid files keep the previous config (C++
-	/// `update_config_from_filename()`).
+	/// `update_config_from_filename()`). The oakrender color C ABI never
+	/// implemented the load, so the file-loaded path always kept the
+	/// previous state (single-lib: the render call is removed).
 	pub fn update_config_from_filename(&mut self) -> crate::error::Result<()> {
 		if self.config_filename.is_empty() {
 			// Empty filename selects the bundled default.
 			self.config_loaded = true;
 			return Ok(());
 		}
-		match crate::bridge::render::color_config_load(&self.config_filename) {
-			Some(Ok(())) => {
-				self.config_loaded = true;
-				Ok(())
-			}
-			Some(Err(())) => {
-				// Invalid file: keep the previous config (C++ tolerance).
-				Ok(())
-			}
-			None => {
-				// oakrender absent (tests): keep the previous state.
-				Ok(())
-			}
-		}
+		Ok(())
 	}
 
 	/// Enumerate colorspaces of the active config (two-stage lists are

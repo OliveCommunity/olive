@@ -93,7 +93,8 @@ fn manager_singleton_and_alive_count() {
 	unsafe { oakaudio_manager_destroy_instance() };
 	let none = unsafe { oakaudio_manager_instance() };
 	assert!(none.ctx.is_null());
-	assert_eq!(none.abi_version, oakaudio::handle::OAKAUDIO_ABI_VERSION);
+	// The empty instance handle is the shared `null()` (no ABI version).
+	assert_eq!(none.abi_version, 0);
 
 	unsafe { oakaudio_manager_create_instance() };
 	let m1 = unsafe { oakaudio_manager_instance() };

@@ -311,11 +311,9 @@ impl Project {
 			}
 			_ => {}
 		}
-		// Default location: ask oakrender via the C ABI.
-		match crate::bridge::render::disk_cache_path() {
-			Some(path) => path,
-			None => String::new(),
-		}
+		// Default location: the shared disk-cache directory (single-lib:
+		// lives in oakcommon, used by oaknode and oakrender alike).
+		oakcommon::filefunctions::default_disk_cache_path()
 	}
 
 	/// Copy all settings from `src` into `self` (C++

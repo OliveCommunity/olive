@@ -34,36 +34,12 @@ pub struct RefBox<T: ?Sized> {
 	pub value: T,
 }
 
-/// `#[repr(C)]` mirror of the public handle structs
-/// (`{ctx, addref, release, abi_version}`).
-#[repr(C)]
-pub struct CHandle {
-	/// Opaque box pointer.
-	pub ctx: *mut std::ffi::c_void,
-	/// Atomic increment.
-	pub addref: Option<unsafe extern "C" fn(*mut std::ffi::c_void)>,
-	/// Atomic decrement; destroys at zero.
-	pub release: Option<unsafe extern "C" fn(*mut std::ffi::c_void)>,
-	/// ABI version.
-	pub abi_version: u32,
-}
-
-impl CHandle {
-	/// The empty handle.
-	pub fn null() -> Self {
-		CHandle {
-			ctx: std::ptr::null_mut(),
-			addref: None,
-			release: None,
-			abi_version: 0,
-		}
-	}
-
-	/// Whether this is the empty (zero) handle.
-	pub fn is_null(&self) -> bool {
-		self.ctx.is_null()
-	}
-}
+/// The shared ABI value-handle type (single-lib unification, see
+/// `docs/zh/plans/riir/single-lib.md`): one canonical
+/// `{ctx, addref, release, abi_version}` type in `oakcore-rs`, re-exported
+/// here so the crate's `ffi.rs` signatures and handle scaffolding stay
+/// source-compatible.
+pub use oakcore_rs::handle::CHandle;
 
 /// Owned handle with count 1; empty on allocation failure.
 pub fn make_owned<T: Send + 'static>(value: T) -> CHandle {

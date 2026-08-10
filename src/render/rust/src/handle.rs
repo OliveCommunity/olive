@@ -42,42 +42,12 @@ pub struct RefBox<T: ?Sized> {
 	pub value: T,
 }
 
-/// `#[repr(C)]` mirror of the public handle structs.
-#[derive(Clone, Copy)]
-#[repr(C)]
-pub struct CHandle {
-	/// Opaque box pointer.
-	pub ctx: *mut std::ffi::c_void,
-	/// Atomic increment.
-	pub addref: Option<unsafe extern "C" fn(*mut std::ffi::c_void)>,
-	/// Atomic decrement; destroys at zero.
-	pub release: Option<unsafe extern "C" fn(*mut std::ffi::c_void)>,
-	/// ABI version.
-	pub abi_version: u32,
-}
-
-// CHandle is a by-value handle (copied across threads per the shared_ptr
-// semantics documented in the public headers); `ctx` is an opaque box
-// pointer, and moving the struct itself never dereferences it.
-unsafe impl Send for CHandle {}
-unsafe impl Sync for CHandle {}
-
-impl CHandle {
-	/// The empty handle.
-	pub fn null() -> Self {
-		Self {
-			ctx: std::ptr::null_mut(),
-			addref: None,
-			release: None,
-			abi_version: OAKRENDER_ABI_VERSION,
-		}
-	}
-
-	/// True when `ctx` is null.
-	pub fn is_null(&self) -> bool {
-		self.ctx.is_null()
-	}
-}
+/// The shared ABI value-handle type (single-lib unification, see
+/// `docs/zh/plans/riir/single-lib.md`): one canonical
+/// `{ctx, addref, release, abi_version}` type in `oakcore-rs`, re-exported
+/// here so the crate's `ffi.rs` signatures and handle scaffolding stay
+/// source-compatible. `Send + Sync` come from the shared type.
+pub use oakcore_rs::handle::CHandle;
 
 /// Global live-object count (owned handles + cancel-atom boxes).
 static ALIVE_COUNT: AtomicUsize = AtomicUsize::new(0);

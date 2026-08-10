@@ -38,6 +38,7 @@ use oakundo::ffi::undostack::{
     oakundo_undostack_redo, oakundo_undostack_undo,
 };
 use oakundo::ffi::{OakUndoCommand, OakUndoStack};
+use oakundo::handle::CHandle;
 use oakundo::handle::OAKUNDO_ABI_VERSION;
 use oakundo::undocommand::OakUndoCommandVtable;
 
@@ -103,7 +104,7 @@ unsafe fn make_cmd(probe: *mut Probe) -> OakUndoCommand {
 
 /// An empty (all-zero) command handle.
 fn empty_cmd() -> OakUndoCommand {
-	OakUndoCommand {
+	CHandle {
 		ctx: std::ptr::null_mut(),
 		addref: None,
 		release: None,
@@ -113,7 +114,7 @@ fn empty_cmd() -> OakUndoCommand {
 
 /// An empty (all-zero) stack handle.
 fn empty_stack() -> OakUndoStack {
-	OakUndoStack {
+	CHandle {
 		ctx: std::ptr::null_mut(),
 		addref: None,
 		release: None,

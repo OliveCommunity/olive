@@ -14,19 +14,19 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! oakundo C ABI imports. Undo commands are created through the C ABI
-//! vtable (`oakundo_command_init` with Rust closures as userdata) — no
-//! C++ UndoCommand subclassing exists on this side. Symbols resolve via
-//! `dlsym(RTLD_DEFAULT)` (see [`super`]).
+//! oakundo C ABI calls — now direct Rust calls into the oakundo crate
+//! (single-lib unification, see `docs/zh/plans/riir/single-lib.md`).
+//! Undo commands are created through the C ABI vtable
+//! (`oakundo_command_init` with Rust closures as userdata) — no C++
+//! UndoCommand subclassing exists on this side.
 //!
 //! ## Test stubs (`--features test-stubs`)
 //!
-//! `cargo test` builds without liboakundo, so the feature compiles
-//! in-crate `#[no_mangle]` implementations of the undo C ABI
-//! (see [`stub`]) that run Rust closures directly. `dlsym` then resolves
-//! the stub symbols from the test binary's global scope, so the undoable
-//! exports run end-to-end in tests. Real module builds (feature off)
-//! resolve the actual oakundo library.
+//! With the direct dependency, the real oakundo rlib is linked into
+//! every build and test; the `test-stubs` feature still compiles
+//! in-crate `#[no_mangle]` implementations of the undo C ABI (see
+//! [`stub`]) for environments that link without oakundo. Do not enable
+//! the feature in a binary that also links oakundo (duplicate symbols).
 
 use std::ffi::c_int;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -34,17 +34,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use crate::handle::CHandle;
 
 /// `OakUndoCommandVtable` (include/undo/undocommand.h) — the callback
-/// table backing a caller-defined undo command.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct Vtable {
-	/// Execute the redo.
-	pub redo: Option<unsafe extern "C" fn(*mut std::ffi::c_void)>,
-	/// Execute the undo.
-	pub undo: Option<unsafe extern "C" fn(*mut std::ffi::c_void)>,
-	/// Release `userdata` (invoked when the command is destroyed).
-	pub free_fn: Option<unsafe extern "C" fn(*mut std::ffi::c_void)>,
-}
+/// table backing a caller-defined undo command. Single-lib unification:
+/// aliases the oakundo crate's vtable POD (identical layout).
+pub type Vtable = oakundo::undocommand::OakUndoCommandVtable;
 
 /// Rust closure state behind a vtable command's `userdata` pointer.
 ///
@@ -130,11 +122,13 @@ pub fn command_init(vtable: &Vtable, userdata: *mut std::ffi::c_void) -> Option<
 /// `oakundo_command_init` (vtable command).
 #[cfg(not(feature = "test-stubs"))]
 pub fn command_init(vtable: &Vtable, userdata: *mut std::ffi::c_void) -> Option<CHandle> {
-	use crate::bridge::dlsym;
-	type F = unsafe extern "C" fn(*const Vtable, *mut std::ffi::c_void) -> CHandle;
-	dlsym::call::<F, CHandle>("oakundo_command_init", |f| unsafe {
-		f(vtable as *const Vtable, userdata)
-	})
+	// Direct call into the oakundo crate (single-lib unification).
+	let h = unsafe { oakundo::ffi::command::oakundo_command_init(vtable, userdata) };
+	if h.is_null() {
+		None
+	} else {
+		Some(h)
+	}
 }
 
 /// `oakundo_command_init_multi`.
@@ -146,9 +140,13 @@ pub fn command_init_multi() -> Option<CHandle> {
 /// `oakundo_command_init_multi`.
 #[cfg(not(feature = "test-stubs"))]
 pub fn command_init_multi() -> Option<CHandle> {
-	use crate::bridge::dlsym;
-	type F = unsafe extern "C" fn() -> CHandle;
-	dlsym::call::<F, CHandle>("oakundo_command_init_multi", |f| unsafe { f() })
+	// Direct call into the oakundo crate (single-lib unification).
+	let h = unsafe { oakundo::ffi::command::oakundo_command_init_multi() };
+	if h.is_null() {
+		None
+	} else {
+		Some(h)
+	}
 }
 
 /// `oakundo_command_multi_add_child`.
@@ -160,11 +158,8 @@ pub fn command_multi_add_child(multi: CHandle, child: CHandle) -> Option<c_int> 
 /// `oakundo_command_multi_add_child`.
 #[cfg(not(feature = "test-stubs"))]
 pub fn command_multi_add_child(multi: CHandle, child: CHandle) -> Option<c_int> {
-	use crate::bridge::dlsym;
-	type F = unsafe extern "C" fn(CHandle, CHandle) -> c_int;
-	dlsym::call::<F, c_int>("oakundo_command_multi_add_child", |f| unsafe {
-		f(multi, child)
-	})
+	// Direct call into the oakundo crate (single-lib unification).
+	Some(unsafe { oakundo::ffi::command::oakundo_command_multi_add_child(multi, child) })
 }
 
 /// `oakundo_command_redo_now`.
@@ -176,9 +171,8 @@ pub fn command_redo_now(command: CHandle) -> Option<c_int> {
 /// `oakundo_command_redo_now`.
 #[cfg(not(feature = "test-stubs"))]
 pub fn command_redo_now(command: CHandle) -> Option<c_int> {
-	use crate::bridge::dlsym;
-	type F = unsafe extern "C" fn(CHandle) -> c_int;
-	dlsym::call::<F, c_int>("oakundo_command_redo_now", |f| unsafe { f(command) })
+	// Direct call into the oakundo crate (single-lib unification).
+	Some(unsafe { oakundo::ffi::command::oakundo_command_redo_now(command) })
 }
 
 /// `oakundo_command_undo_now`.
@@ -190,9 +184,8 @@ pub fn command_undo_now(command: CHandle) -> Option<c_int> {
 /// `oakundo_command_undo_now`.
 #[cfg(not(feature = "test-stubs"))]
 pub fn command_undo_now(command: CHandle) -> Option<c_int> {
-	use crate::bridge::dlsym;
-	type F = unsafe extern "C" fn(CHandle) -> c_int;
-	dlsym::call::<F, c_int>("oakundo_command_undo_now", |f| unsafe { f(command) })
+	// Direct call into the oakundo crate (single-lib unification).
+	Some(unsafe { oakundo::ffi::command::oakundo_command_undo_now(command) })
 }
 
 /// `oakundo_command_free`.
@@ -204,22 +197,14 @@ pub fn command_free(command: *mut CHandle) {
 /// `oakundo_command_free`.
 #[cfg(not(feature = "test-stubs"))]
 pub fn command_free(command: *mut CHandle) {
-	use crate::bridge::dlsym;
-	type F = unsafe extern "C" fn(*mut CHandle);
-	if let Some(f) = dlsym::call::<F, ()>("oakundo_command_free", |f| unsafe {
-		f(command)
-	}) {
-		let _ = f;
-	}
+	// Direct call into the oakundo crate (single-lib unification).
+	unsafe { oakundo::ffi::command::oakundo_command_free(command) }
 }
 
 /// `oakundo_stack_push` (facade-owned stack).
 pub fn stack_push(stack: CHandle, command: CHandle, text: *const std::ffi::c_char) -> Option<c_int> {
-	use crate::bridge::dlsym;
-	type F = unsafe extern "C" fn(CHandle, CHandle, *const std::ffi::c_char) -> c_int;
-	dlsym::call::<F, c_int>("oakundo_stack_push", |f| unsafe {
-		f(stack, command, text)
-	})
+	// Direct call into the oakundo crate (single-lib unification).
+	Some(unsafe { oakundo::ffi::undostack::oakundo_undostack_push(stack, command, text) })
 }
 
 /// In-crate implementations of the undo C ABI for `cargo test`

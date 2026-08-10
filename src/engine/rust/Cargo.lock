@@ -806,7 +806,9 @@ dependencies = [
 name = "oaknode"
 version = "0.1.0"
 dependencies = [
+ "oakcommon",
  "oakcore-rs",
+ "oakundo",
 ]
 
 [[package]]
@@ -824,12 +826,14 @@ name = "oakplugin"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "oakcore-rs",
 ]
 
 [[package]]
 name = "oakrender"
 version = "0.1.0"
 dependencies = [
+ "oakcommon",
  "oakcore-rs",
  "ocio-rs",
  "wgpu",

@@ -926,13 +926,8 @@ pub mod cache {
 			if !std::path::Path::new(&filename).exists() {
 				return Err(crate::error::Error::NotFound);
 			}
-			// Payload decode belongs to the oakcodec crate (EXR/JPEG).
-			// Without it the file exists but cannot be decoded.
-			if !crate::bridge::codec::codec_abi_available() {
-				return Err(crate::error::Error::Failed(
-					"oakcodec C ABI not present (frame decode pending)".into(),
-				));
-			}
+			// Payload decode belongs to the oakcodec crate (EXR/JPEG),
+			// deferred; without it the file exists but cannot be decoded.
 			Err(crate::error::Error::Failed(
 				"oakcodec frame decode bridge pending".into(),
 			))

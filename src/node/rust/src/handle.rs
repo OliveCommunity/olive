@@ -37,45 +37,12 @@ pub struct RefBox<T: ?Sized> {
 	pub value: T,
 }
 
-/// `#[repr(C)]` mirror of the public handle structs
-/// (`{ctx, addref, release, abi_version}`).
-#[repr(C)]
-#[derive(Clone, Debug)]
-pub struct CHandle {
-	/// Opaque box pointer.
-	pub ctx: *mut std::ffi::c_void,
-	/// Atomic increment.
-	pub addref: Option<unsafe extern "C" fn(*mut std::ffi::c_void)>,
-	/// Atomic decrement; destroys at zero.
-	pub release: Option<unsafe extern "C" fn(*mut std::ffi::c_void)>,
-	/// ABI version.
-	pub abi_version: u32,
-}
-
-impl CHandle {
-	/// The empty handle.
-	pub fn null() -> Self {
-		Self {
-			ctx: std::ptr::null_mut(),
-			addref: None,
-			release: None,
-			abi_version: OAKNODE_ABI_VERSION,
-		}
-	}
-
-	/// True when `ctx` is null.
-	pub fn is_null(&self) -> bool {
-		self.ctx.is_null()
-	}
-}
-
-// CHandle is the C-side value handle (passed by value, copyable across
-// threads); `ctx` is an opaque box pointer. The addref/release functions
-// are atomic, so sharing the box between threads is the host's
-// dispatching contract (same rationale as the oakplugin crate's
-// handle.rs).
-unsafe impl Send for CHandle {}
-unsafe impl Sync for CHandle {}
+/// The shared ABI value-handle type (single-lib unification, see
+/// `docs/zh/plans/riir/single-lib.md`): one canonical
+/// `{ctx, addref, release, abi_version}` type in `oakcore-rs`, re-exported
+/// here so the crate's `ffi.rs` signatures and handle scaffolding stay
+/// source-compatible.
+pub use oakcore_rs::handle::CHandle;
 
 /// addref 的实现：原子 +1。拥有型与借用型共用——借用型只延长盒子
 /// 的寿命，不延长被借用对象。

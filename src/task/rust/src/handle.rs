@@ -33,29 +33,12 @@ pub struct RefBox<T: ?Sized> {
 	pub value: T,
 }
 
-/// `#[repr(C)]` mirror of the public handle structs
-/// (`{ctx, addref, release, abi_version}`).
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-pub struct CHandle {
-	/// Opaque box pointer.
-	pub ctx: *mut std::ffi::c_void,
-	/// Atomic increment.
-	pub addref: Option<unsafe extern "C" fn(*mut std::ffi::c_void)>,
-	/// Atomic decrement; destroys at zero.
-	pub release: Option<unsafe extern "C" fn(*mut std::ffi::c_void)>,
-	/// ABI version.
-	pub abi_version: u32,
-}
-
-// Handles are shared between the calling thread and the manager worker
-// threads (same ownership model as a C++ shared_ptr). The raw pointer and
-// function-pointer fields are inherently `!Send`/`!Sync`; the box behind
-// `ctx` is either `Send + Sync` (task state, atomics) or a plain pointer
-// (borrowed handles), both of which are safe to share through the
-// refcounted handle.
-unsafe impl Send for CHandle {}
-unsafe impl Sync for CHandle {}
+/// The shared ABI value-handle type (single-lib unification, see
+/// `docs/zh/plans/riir/single-lib.md`): one canonical
+/// `{ctx, addref, release, abi_version}` type in `oakcore-rs`, re-exported
+/// here so the crate's `ffi.rs` signatures and handle scaffolding stay
+/// source-compatible. `Send + Sync` come from the shared type.
+pub use oakcore_rs::handle::CHandle;
 
 unsafe extern "C" fn noop_addref(_ctx: *mut std::ffi::c_void) {}
 
@@ -98,24 +81,6 @@ unsafe extern "C" fn borrowed_release<T: 'static>(ctx: *mut std::ffi::c_void) {
 		unsafe {
 			drop(Box::from_raw(ctx as *mut RefBox<*mut T>));
 		}
-	}
-}
-
-impl CHandle {
-	/// The empty handle. `ctx` is null but the fn pointers and ABI version
-	/// are stamped so callers can unconditionally call `release`.
-	pub fn null() -> Self {
-		CHandle {
-			ctx: std::ptr::null_mut(),
-			addref: Some(noop_addref),
-			release: Some(noop_release),
-			abi_version: OAKTASK_ABI_VERSION,
-		}
-	}
-
-	/// Whether the handle is empty (`ctx == NULL`).
-	pub fn is_null(&self) -> bool {
-		self.ctx.is_null()
 	}
 }
 

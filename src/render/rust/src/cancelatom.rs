@@ -16,79 +16,11 @@
 
 //! The cancellation primitive (`olive::CancelAtom`): a thread-safe cancel
 //! flag shared between a render/encode caller and its worker.
+//!
+//! Single-lib unification (see `docs/zh/plans/riir/single-lib.md`): the
+//! implementation moved to oakcommon; this module re-exports it so the
+//! render ffi's `oakrender_cancelatom_*` exports (and their C-ABI
+//! consumers, e.g. oakcodec) keep working unchanged.
 
-use std::sync::{Mutex, MutexGuard};
-
-/// A cancellation atom (C++ `CancelAtom`). Reading a set flag also records
-/// that a consumer heard the cancellation.
-#[derive(Default)]
-pub struct CancelAtom {
-	state: Mutex<AtomState>,
-}
-
-#[derive(Default)]
-struct AtomState {
-	cancelled: bool,
-	heard: bool,
-}
-
-fn lock(m: &Mutex<AtomState>) -> MutexGuard<'_, AtomState> {
-	m.lock().unwrap_or_else(|e| e.into_inner())
-}
-
-impl CancelAtom {
-	/// A not-cancelled atom.
-	pub fn new() -> Self {
-		Self::default()
-	}
-
-	/// Set the cancel flag (C++ `CancelAtom::cancel()`).
-	pub fn cancel(&self) {
-		lock(&self.state).cancelled = true;
-	}
-
-	/// Read the cancel flag; reading a set flag records that the
-	/// cancellation was heard (C++ `is_cancelled()`).
-	pub fn is_cancelled(&self) -> bool {
-		let mut s = lock(&self.state);
-		if s.cancelled {
-			s.heard = true;
-		}
-		s.cancelled
-	}
-
-	/// Whether any consumer has observed the cancel flag through
-	/// [`CancelAtom::is_cancelled`] (C++ `heard_cancel()`).
-	pub fn heard_cancel(&self) -> bool {
-		lock(&self.state).heard
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn fresh_atom_is_not_cancelled() {
-		let a = CancelAtom::new();
-		assert!(!a.is_cancelled());
-		assert!(!a.heard_cancel());
-	}
-
-	#[test]
-	fn cancel_sets_flag_and_reading_marks_heard() {
-		let a = CancelAtom::new();
-		a.cancel();
-		assert!(!a.heard_cancel(), "not heard until read");
-		assert!(a.is_cancelled());
-		assert!(a.heard_cancel(), "reading a set flag marks it heard");
-	}
-
-	#[test]
-	fn repeated_cancel_is_idempotent() {
-		let a = CancelAtom::new();
-		a.cancel();
-		a.cancel();
-		assert!(a.is_cancelled());
-	}
-}
+/// Shared cancellation atom (oakcommon).
+pub use oakcommon::cancelatom::CancelAtom;

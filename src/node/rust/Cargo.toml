@@ -14,6 +14,8 @@ panic = "unwind"
 
 [dependencies]
 oakcore-rs = { path = "../../oakcore-rs" }
+oakcommon = { path = "../../common/rust" }
+oakundo = { path = "../../undo/rust" }
 
 [features]
 # In-crate stubs for the oakundo C ABI (and other module bridges) so

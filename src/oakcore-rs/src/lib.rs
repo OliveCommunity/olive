@@ -25,6 +25,10 @@ mod rational;
 mod samplefmt;
 mod timerange;
 
+/// Shared ABI value-handle type (see [`handle::CHandle`]).
+pub mod handle;
+
+pub use handle::CHandle;
 pub use rational::Rational;
 pub use samplefmt::{PixelFormat, SampleFormat};
 pub use timerange::{TimeRange, TimeRangeList};

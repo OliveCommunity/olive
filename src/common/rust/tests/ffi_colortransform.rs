@@ -126,7 +126,8 @@ fn init_output_null_yields_null_handle() {
 	assert!(h.ctx.is_null());
 	assert!(h.addref.is_none());
 	assert!(h.release.is_none());
-	assert_eq!(h.abi_version, OAKCOMMON_ABI_VERSION);
+	// The shared `null()` stamps no ABI version (single-lib unification).
+	assert_eq!(h.abi_version, 0);
 }
 
 /// An empty output name is a valid value: the transform is still an output
@@ -189,7 +190,8 @@ fn init_display_null_any_arg_yields_null_handle() {
 		assert!(h.ctx.is_null());
 		assert!(h.addref.is_none());
 		assert!(h.release.is_none());
-		assert_eq!(h.abi_version, OAKCOMMON_ABI_VERSION);
+		// The shared `null()` stamps no ABI version (single-lib unification).
+		assert_eq!(h.abi_version, 0);
 	}
 }
 

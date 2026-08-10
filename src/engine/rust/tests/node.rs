@@ -75,7 +75,7 @@ fn force_oakundo_command_link() -> usize {
 /// A float POD value.
 fn float_value(x: f64) -> OakNodeValue {
 	OakNodeValue {
-		type_: 2, // OAK_NODE_VALUE_FLOAT
+		kind: 2, // OAK_NODE_VALUE_FLOAT
 		num: 0,
 		den: 0,
 		f: [x, 0.0, 0.0, 0.0],
@@ -229,7 +229,7 @@ fn project_node_keyframe_lifecycle() {
 		unsafe { oakengine_node_get_input(value, c"value_in".as_ptr(), &mut out) },
 		0
 	);
-	assert_eq!(out.type_, 2);
+	assert_eq!(out.kind, 2);
 	assert!((out.f[0] - 3.5).abs() < 1e-6);
 
 	// ---- connect / disconnect -------------------------------------------
@@ -265,7 +265,7 @@ fn project_node_keyframe_lifecycle() {
 		unsafe { oakengine_node_get_input_at_time(value, c"value_in".as_ptr(), -1, -1, 0, 0, &mut at) },
 		0
 	);
-	assert_eq!(at.type_, 2);
+	assert_eq!(at.kind, 2);
 	assert!((at.f[0] - 0.5).abs() < 1e-6);
 
 	// ---- project save → fresh load round-trip ---------------------------

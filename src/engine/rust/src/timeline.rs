@@ -4794,7 +4794,7 @@ pub unsafe extern "C" fn oakengine_track_block_at_time(
 unsafe fn track_nearest_boxed(
 	track: *const OakEngineTrack,
 	timestamp: i64,
-	via: unsafe extern "C" fn(CHandle, c_int, c_int, *mut CHandle) -> c_int,
+	via: fn(CHandle, c_int, c_int, *mut CHandle) -> c_int,
 ) -> *mut OakEngineBlock {
 	guard_ptr(|| unsafe {
 		if track.is_null() {

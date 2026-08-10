@@ -54,47 +54,13 @@ pub struct RefBox<T: ?Sized> {
 	pub value: T,
 }
 
-/// `#[repr(C)]` mirror of the public handle structs
-/// (`{ctx, addref, release, abi_version}`).
-///
-/// Handles cross the C ABI by value (the C caller copies the 4-field
-/// struct), so the type is `Copy`/`Clone` — the oaknode crate only derives
-/// `Clone`, but `Copy` matches the C semantics exactly and lets exports and
-/// tests pass the same handle around freely. No `Drop`: releasing goes
-/// through the explicit `free_*`/`release` path, never on scope exit.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct CHandle {
-	/// Opaque box pointer.
-	pub ctx: *mut std::ffi::c_void,
-	/// Atomic increment.
-	pub addref: Option<unsafe extern "C" fn(*mut std::ffi::c_void)>,
-	/// Atomic decrement; destroys at zero.
-	pub release: Option<unsafe extern "C" fn(*mut std::ffi::c_void)>,
-	/// ABI version.
-	pub abi_version: u32,
-}
-
-// Handles are passed by value across the C ABI and used from the caller's
-// thread; the objects behind them synchronize their own state.
-unsafe impl Send for CHandle {}
-
-impl CHandle {
-	/// The empty handle.
-	pub fn null() -> Self {
-		CHandle {
-			ctx: std::ptr::null_mut(),
-			addref: None,
-			release: None,
-			abi_version: OAKAUDIO_ABI_VERSION,
-		}
-	}
-
-	/// True when the handle carries no object.
-	pub fn is_null(&self) -> bool {
-		self.ctx.is_null()
-	}
-}
+/// The shared ABI value-handle type (single-lib unification, see
+/// `docs/zh/plans/riir/single-lib.md`): one canonical
+/// `{ctx, addref, release, abi_version}` type in `oakcore-rs`, re-exported
+/// here so the crate's `ffi.rs` signatures and handle scaffolding stay
+/// source-compatible. It is `Clone + Copy` (handles cross the C ABI by
+/// value) and `Send + Sync` (refcounted, shared across threads).
+pub use oakcore_rs::handle::CHandle;
 
 /// `// CPP-PARITY: src/audio/c_api/refcounted.h` (`ref_counted_addref`).
 unsafe extern "C" fn owned_addref<T: Send + 'static>(ctx: *mut std::ffi::c_void) {

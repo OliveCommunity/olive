@@ -327,10 +327,6 @@ pub unsafe extern "C" fn oakengine_audio_estimate_stretch_and_offset(
 			confidence: 0.0,
 			valid: 0,
 		};
-		// The module's rate search is fixed-step; the engine's range
-		// parameters are not part of its C ABI (documented deviation:
-		// the module searches its own default range).
-		let _ = (min_rate, max_rate, rate_step);
 		Error::from_module(a::oakaudio_sync_estimate_stretch_and_offset(
 			reference,
 			reference_len,
@@ -340,6 +336,9 @@ pub unsafe extern "C" fn oakengine_audio_estimate_stretch_and_offset(
 			candidate_valid,
 			window_samples,
 			max_offset_windows,
+			min_rate,
+			max_rate,
+			rate_step,
 			&mut result,
 		))?;
 		(*out).rate = result.rate;

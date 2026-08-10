@@ -79,7 +79,8 @@ fn borrowed_release() {
 fn null_and_guard_ok() {
 	let null = CHandle::null();
 	assert!(null.is_null());
-	assert_eq!(null.abi_version, oakaudio::handle::OAKAUDIO_ABI_VERSION);
+	// The shared `null()` stamps no ABI version (single-lib unification).
+	assert_eq!(null.abi_version, 0);
 
 	assert_eq!(guard(|| Ok(())), OAKAUDIO_OK);
 

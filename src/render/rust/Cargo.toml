@@ -15,6 +15,7 @@ panic = "unwind"
 
 [dependencies]
 oakcore-rs = { path = "../../oakcore-rs" }
+oakcommon = { path = "../../common/rust" }
 # wgpu: portable GPU backend (Metal/Vulkan/GL/DX12 in one safe API) — the
 # direct replacement for the C++ liboakgl2/liboakvulkan backend plugins.
 # Version 25 (2025 stable line); the only GPU dependency.

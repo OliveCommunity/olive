@@ -59,36 +59,12 @@ pub struct RefBox<T: Sized> {
 	pub refs: AtomicU32,
 }
 
-/// `#[repr(C)]` mirror of the public handle structs
-/// (`{ctx, addref, release, abi_version}`).
-#[repr(C)]
-pub struct CHandle {
-	/// Opaque box pointer.
-	pub ctx: *mut std::ffi::c_void,
-	/// Atomic increment.
-	pub addref: Option<unsafe extern "C" fn(*mut std::ffi::c_void)>,
-	/// Atomic decrement; destroys at zero.
-	pub release: Option<unsafe extern "C" fn(*mut std::ffi::c_void)>,
-	/// ABI version.
-	pub abi_version: u32,
-}
-
-impl CHandle {
-	/// The empty handle.
-	pub fn null() -> Self {
-		Self {
-			ctx: std::ptr::null_mut(),
-			addref: None,
-			release: None,
-			abi_version: OAKCOMMON_ABI_VERSION,
-		}
-	}
-
-	/// Whether this is an empty handle (`ctx == NULL`).
-	pub fn is_null(&self) -> bool {
-		self.ctx.is_null()
-	}
-}
+/// The shared ABI value-handle type (single-lib unification, see
+/// `docs/zh/plans/riir/single-lib.md`): one canonical
+/// `{ctx, addref, release, abi_version}` type in `oakcore-rs`, re-exported
+/// here so the crate's `ffi.rs` signatures and handle scaffolding stay
+/// source-compatible.
+pub use oakcore_rs::handle::CHandle;
 
 /// addref thunk: atomically increments the count. Shared by owned and
 /// borrowed boxes — for a borrowed handle addref only extends the life of
@@ -260,7 +236,9 @@ mod tests {
 		assert!(h.ctx.is_null());
 		assert!(h.addref.is_none());
 		assert!(h.release.is_none());
-		assert_eq!(h.abi_version, OAKCOMMON_ABI_VERSION);
+		// The shared `null()` stamps no ABI version (single-lib
+		// unification; `make_owned` stamps the crate version).
+		assert_eq!(h.abi_version, 0);
 	}
 
 	#[test]

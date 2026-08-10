@@ -48,63 +48,14 @@ use crate::undostack::UndoStack;
 /// [`crate::handle`].
 
 /// `include/undo/undocommand.h` handle type — `OakUndoCommand`
-/// (`{ctx, addref, release, abi_version}`).
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct OakUndoCommand {
-	/// Opaque box pointer.
-	pub ctx: *mut c_void,
-	/// Atomic increment.
-	pub addref: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// Atomic decrement; destroys at zero.
-	pub release: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// OAKUNDO_ABI_VERSION.
-	pub abi_version: u32,
-}
+/// (`{ctx, addref, release, abi_version}`). Single-lib unification:
+/// aliases the shared [`CHandle`] (identical layout; the C ABI is
+/// unchanged).
+pub type OakUndoCommand = CHandle;
 
-/// `include/undo/undostack.h` handle type — `OakUndoStack`.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct OakUndoStack {
-	/// Opaque box pointer.
-	pub ctx: *mut c_void,
-	/// Atomic increment.
-	pub addref: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// Atomic decrement; destroys at zero.
-	pub release: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// OAKUNDO_ABI_VERSION.
-	pub abi_version: u32,
-}
-
-/// Field-copy [`OakUndoStack`] into a [`CHandle`].
-fn chandle_from_stack(stack: OakUndoStack) -> CHandle {
-	CHandle {
-		ctx: stack.ctx,
-		addref: stack.addref,
-		release: stack.release,
-		abi_version: stack.abi_version,
-	}
-}
-
-/// Field-copy a [`CHandle`] into an [`OakUndoStack`].
-fn stack_from_chandle(handle: CHandle) -> OakUndoStack {
-	OakUndoStack {
-		ctx: handle.ctx,
-		addref: handle.addref,
-		release: handle.release,
-		abi_version: handle.abi_version,
-	}
-}
-
-/// Field-copy a [`CHandle`] into an [`OakUndoCommand`].
-fn command_from_chandle(handle: CHandle) -> OakUndoCommand {
-	OakUndoCommand {
-		ctx: handle.ctx,
-		addref: handle.addref,
-		release: handle.release,
-		abi_version: handle.abi_version,
-	}
-}
+/// `include/undo/undostack.h` handle type — `OakUndoStack`. Single-lib
+/// unification: aliases the shared [`CHandle`].
+pub type OakUndoStack = CHandle;
 
 /// Lock the stack behind `stack` and run `f` on it. `E_INVALID` for an
 /// empty handle. A poisoned mutex is recovered (its inner value is
@@ -112,7 +63,7 @@ fn command_from_chandle(handle: CHandle) -> OakUndoCommand {
 fn with_stack<R>(stack: OakUndoStack, f: impl FnOnce(&mut UndoStack) -> Result<R>) -> Result<R> {
 	// Keep a local handle so `get`'s returned reference lives for the
 	// whole call (its lifetime ties to the `&CHandle` argument).
-	let ch = chandle_from_stack(stack);
+	let ch = stack;
 	let m = unsafe { crate::handle::get::<Mutex<UndoStack>>(&ch) }.ok_or(Error::Invalid)?;
 	let mut guard = m.lock().unwrap_or_else(|e| e.into_inner());
 	f(&mut guard)
@@ -143,21 +94,21 @@ pub mod command {
 		vtable: *const OakUndoCommandVtable,
 		userdata: *mut c_void,
 	) -> OakUndoCommand {
-		command_from_chandle(guard_handle(|| unsafe {
+		guard_handle(|| unsafe {
 			if vtable.is_null() {
 				return Ok(CHandle::null());
 			}
 			let table = *vtable;
 			Ok(command_from_owned(UndoCommand::from_vtable(table, userdata)))
-		}))
+		})
 	}
 
 	/// `oakundo_command_init_multi`: empty multi command, refcount 1.
 	#[no_mangle]
 	pub unsafe extern "C" fn oakundo_command_init_multi() -> OakUndoCommand {
-		command_from_chandle(guard_handle(|| unsafe {
+		guard_handle(|| unsafe {
 			Ok(command_from_owned(UndoCommand::multi()))
-		}))
+		})
 	}
 
 	/// `oakundo_command_multi_add_child` (stack takes one child ref).
@@ -216,7 +167,7 @@ pub mod command {
 			}
 			let child = parent.multi_child(index as usize)?;
 			let ptr = child as *const UndoCommand as *mut UndoCommand;
-			*out_child = command_from_chandle(command_from_borrowed(ptr));
+			*out_child = command_from_borrowed(ptr);
 			Ok(())
 		})
 	}
@@ -272,9 +223,9 @@ pub mod undostack {
 	/// `oakundo_undostack_init`: fresh stack, refcount 1.
 	#[no_mangle]
 	pub unsafe extern "C" fn oakundo_undostack_init() -> OakUndoStack {
-		stack_from_chandle(guard_handle(|| {
+		guard_handle(|| {
 			Ok(make_owned(Mutex::new(UndoStack::new())))
-		}))
+		})
 	}
 
 	/// `oakundo_undostack_free`: NULL/empty no-op; clears `stack->ctx`.
