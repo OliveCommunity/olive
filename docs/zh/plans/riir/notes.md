@@ -491,17 +491,10 @@ C++ 侧 `Rational::from_double`（`core/src/util/rational.cpp:39`）本身就是
 libavutil 60.26.102、~/.cargo/registry 已缓存 ocio-rs/ocio-sys/
 image/ffmpeg-next 全套。
 
-### 待办（后续会话）
+### 待办（已全部结清，2026-08-10 核查）
 
-1. 全量验证：`cargo test --features test-stubs` ≥497 绿；`cargo build --release`。
-2. 清文档残留：`oiioutils.rs` 模块注释与 `README.md` 依赖表/决策 6 的
-   "ffmpeg-next" 说法改为 oakcore-rs 手写移植。
-3. `rm -rf src/bindings/oakoci`（已确认无 CMake/workspace/源码引用，仅
-   oakotio/oakaudioout 两个 sibling README 提到，删前先改）。
-4. `cargo tarpaulin --features test-stubs` 覆盖率 ≥80%（tarpaulin 默认只
-   跑 lib 单测，新并入代码已带模块内单测，见 ocioutils.rs/oiioutils.rs）。
-5. 不做任何 git 提交；分支 refactor/split-oakengine 上的既有暂存改动
-   （variant.cpp/h 移动、include/*/error.h）不触碰。
+1-4 均已完成：common 497+ 绿（89.8% 覆盖）、oiioutils 文档已改为
+oakcore-rs 手写移植、src/bindings/oakoci 已删除、tarpaulin ≥80% 达标。
 
 ## 技术债登记（2026-08-09）
 
@@ -555,8 +548,14 @@ image/ffmpeg-next 全套。
   另修正 bridge/render.rs 的 `oakrender_color_processor_create` 声明：
   5 参（旧镜像）→ 3 参 `(src_space, dst_transform, direction)`，与
   include/render/color.h 及 oakrender 导出一致。
-- **oaktask 导出缺口**：临时文件重命名（失败不留半成品）与
+- **oaktask 导出缺口（仍开放）**：临时文件重命名（失败不留半成品）与
   sidecar 字幕编码器未实现；precache 缺项目深拷贝。
+- **oaknode GPU 求值接缝（仍开放）**：43 个节点行为的 GPU 路径
+  （shader/generate/color-transform job）目前推空纹理占位，
+  待 traverser::RenderHooks::resolve 接 oakrender 后变真；
+  OCIO 节点依赖 oakrender 色彩处理器桥；text 节点的字体后端未定。
+- **ocio-sys 构建依赖 GitHub**：bundled 模式要拉 sse2neon，网络差时
+  构建失败（重试可过）；上游构建脚本成功后 cargo 会缓存。
 
 ## engine/ vs src/ 模块覆盖比对（2026-08-09）
 
