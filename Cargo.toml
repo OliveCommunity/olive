@@ -33,7 +33,12 @@
 [workspace]
 members = ["crates/*"]
 exclude = ["crates/oakstorage", "gpui"]
-default-members = [".", "crates/oak-cli", "crates/oak-worker", "crates/oakengine"]
+# NOTE: `crates/oakengine` is deliberately NOT a default member (it stays a
+# workspace member, so `cargo test -p oakengine` works): its in-flight
+# integration tests (`tests/it_*族.rs`, an ongoing rewrite) share temp files
+# and process-global facade state, which makes the parallel default-members
+# run flaky. The app builds it as a regular path dependency instead.
+default-members = [".", "crates/oak-cli", "crates/oak-worker"]
 resolver = "2"
 
 [profile.release]
@@ -47,7 +52,7 @@ panic = "unwind"
 
 [package]
 name = "oak"
-version = "0.1.0"
+version = "0.5.0"
 edition = "2021"
 description = "Oak Video Editor"
 license = "GPL-3.0-or-later"
@@ -55,9 +60,13 @@ license = "GPL-3.0-or-later"
 [lib]
 name = "oakapp"
 path = "src/lib.rs"
+# Doctests are disabled: the real engine binding links the `liboakengine`
+# cdylib (see build.rs), which the doctest binary would have to resolve as
+# well for every doc example. The doc examples' assertions are covered by
+# unit tests instead (see `oakui/timecode`).
 
 [[bin]]
-name = "oakapp"
+name = "oak-editor"
 path = "src/main.rs"
 
 [dependencies]
@@ -72,6 +81,25 @@ gpui_widgets = { path = "gpui/crates/gpui_widgets" }
 # `RenderImage`), matching the versions gpui itself uses.
 image = "0.25"
 smallvec = "1"
+# Editable-text widget (used by the file / export dialogs' path fields, the
+# same gpui-elements crate gpui_widgets builds on).
+gpui_elements = { path = "gpui/crates/gpui_elements" }
+
+[build-dependencies]
+# The real engine is NOT linked as an rlib: the app binds only the frozen
+# `oakengine_*` C ABI through the built `liboakengine` cdylib (build.rs
+# emits the link-search path / rpath / `#[link(name = "oakengine")]`
+# externs). This build-dependency only orders the build — cargo compiles
+# the engine's cdylib before the app's build script runs, so a fresh
+# `cargo build` at the repo root always finds `liboakengine.dylib`.
+oakengine = { path = "crates/oakengine" }
+
+[features]
+default = []
+# Force the mock engine even though the real facade is linked. Off by
+# default: the app runs on the real engine unless `--mock` / `OAK_ENGINE=mock`
+# is given at runtime (or this feature is enabled at build time).
+mock-engine = []
 
 [dev-dependencies]
 # `#[gpui::test]` harness for engine-seam smoke tests (test-support feature).

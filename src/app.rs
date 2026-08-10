@@ -14,8 +14,14 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! The application shell: menu bar, dock layout, status bar and the tick
-//! loop that drives playback, playhead sync and the audio meter.
+//! The application shell: menu bar, dock layout, status bar, modal dialogs
+//! and the tick loop that drives playback, playhead sync, the audio meter
+//! and the export progress.
+//!
+//! The shell is generic over the engine backend ([`AppEngine`]); [`run`]
+//! picks the backend at startup: the real engine by default, the mock when
+//! the `--mock` flag / `OAK_ENGINE=mock` env var is given or the
+//! `mock-engine` cargo feature is enabled.
 //!
 //! Layout per the design (`design/Oak-UI设计图-主界面-标注版.png`):
 //!
@@ -25,9 +31,10 @@
 //! │ dock: 项目 | 素材查看器 | 序列查看器+节点编辑器 | 检查器+历史记录
 //! │       (vertical split) 时间线 (full width, 31px toolbar on top)
 //! ├─────────────────────────────────────────────────────
-//! └ status bar: 就绪 | 缓存 | 代理 | 自动保存 || 时间码/时长 | 帧率 | 分辨率
+//! └ status bar: 就绪 | 缓存 | 代理 | 自动保存 || 时间码/时长 | 帧率 | 分辨率 | 引擎
 //! ```
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -40,10 +47,15 @@ use gpui::{
 	WindowBounds, WindowOptions,
 };
 use gpui_widgets::audio_meter::AudioLevelMeter;
+use gpui_widgets::viewer::PlaybackClock;
+use gpui_widgets::dialog::file_dialog::FileDialogContent;
+use gpui_widgets::dialog::progress::{ProgressContent, progress_dialog};
+use gpui_widgets::dialog::{DialogButton, Modal, ModalEvent, ModalOptions};
 use gpui_widgets::menu::{Menu, MenuBar, MenuBarEntry, MenuBarEvent, MenuItem};
 use gpui_widgets::theme::{apply_theme, OakTheme};
 
-use crate::oakui::{EngineGateway, MockClock, MockEngine, Monitor};
+use crate::dialogs::{ExportDialogContent, PreferencesContent};
+use crate::oakui::{AppEngine, ExportSession, MockEngine, Monitor, RealEngine};
 use crate::panels::history::HistoryPanel;
 use crate::panels::ids::*;
 use crate::panels::inspector::InspectorPanel;
@@ -59,8 +71,10 @@ mod menu_ids {
 	pub const NEW_PROJECT: usize = 101;
 	pub const OPEN_PROJECT: usize = 102;
 	pub const SAVE: usize = 103;
-	pub const EXPORT: usize = 104;
-	pub const QUIT: usize = 105;
+	pub const SAVE_AS: usize = 104;
+	pub const CLOSE: usize = 105;
+	pub const EXPORT: usize = 106;
+	pub const QUIT: usize = 107;
 
 	pub const UNDO: usize = 201;
 	pub const REDO: usize = 202;
@@ -68,11 +82,13 @@ mod menu_ids {
 	pub const COPY: usize = 204;
 	pub const PASTE: usize = 205;
 	pub const DELETE: usize = 206;
+	pub const RIPPLE_DELETE: usize = 207;
 
 	pub const THEME_DARK: usize = 301;
 	pub const THEME_LIGHT: usize = 302;
 	pub const LANG_ZH: usize = 303;
 	pub const LANG_EN: usize = 304;
+	pub const PREFERENCES: usize = 305;
 
 	pub const PLAY_PAUSE: usize = 401;
 	pub const PREV_FRAME: usize = 402;
@@ -81,6 +97,8 @@ mod menu_ids {
 
 	pub const ADD_VIDEO_TRACK: usize = 501;
 	pub const ADD_AUDIO_TRACK: usize = 502;
+	pub const REMOVE_TRACK: usize = 503;
+	pub const SPLIT_AT_PLAYHEAD: usize = 504;
 
 	pub const FOCUS_PROJECT: usize = 601;
 	pub const FOCUS_SOURCE_VIEWER: usize = 602;
@@ -93,15 +111,71 @@ mod menu_ids {
 	pub const ABOUT: usize = 801;
 }
 
-/// The panel registry: string keys for layout persistence, and the ability
-/// to rebuild any panel from its key.
-struct AppPanelRegistry {
-	engine: Entity<MockEngine>,
-	source_clock: Entity<MockClock>,
-	program_clock: Entity<MockClock>,
+/// Modal-dialog control ids (see [`ModalEvent::control`]).
+mod modal_ids {
+	pub const FILE_OPEN: usize = 1;
+	pub const FILE_SAVE_AS: usize = 2;
+	pub const PREFERENCES: usize = 3;
+	pub const EXPORT: usize = 4;
+	pub const EXPORT_PROGRESS: usize = 5;
 }
 
-impl PanelRegistry for AppPanelRegistry {
+/// What a file dialog's OK button should do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum FileAction {
+	Open,
+	SaveAs,
+}
+
+/// The modal currently layered on top of the shell, if any.
+enum ModalState {
+	None,
+	FileDialog {
+		modal: Entity<Modal>,
+		content: Entity<FileDialogContent>,
+		action: FileAction,
+	},
+	Preferences {
+		modal: Entity<Modal>,
+		content: Entity<PreferencesContent>,
+	},
+	Export {
+		modal: Entity<Modal>,
+		content: Entity<ExportDialogContent>,
+	},
+	Progress {
+		modal: Entity<Modal>,
+		content: Entity<ProgressContent>,
+	},
+}
+
+/// A running export: the session the tick loop drains for progress.
+struct ExportRun {
+	session: ExportSession,
+}
+
+impl ModalState {
+	/// The modal entity currently shown, if any.
+	fn modal_entity(&self) -> Option<Entity<Modal>> {
+		match self {
+			ModalState::None => None,
+			ModalState::FileDialog { modal, .. }
+			| ModalState::Preferences { modal, .. }
+			| ModalState::Export { modal, .. }
+			| ModalState::Progress { modal, .. } => Some(modal.clone()),
+		}
+	}
+}
+
+/// The panel registry: string keys for layout persistence, and the ability
+/// to rebuild any panel from its key.
+struct AppPanelRegistry<E: AppEngine> {
+	engine: Entity<E>,
+	source_clock: Entity<E::Clock>,
+	program_clock: Entity<E::Clock>,
+}
+
+impl<E: AppEngine> PanelRegistry for AppPanelRegistry<E> {
 	fn panel_key(&self, id: gpui::dock::PanelId) -> Option<String> {
 		Some(
 			match id {
@@ -119,8 +193,6 @@ impl PanelRegistry for AppPanelRegistry {
 	}
 
 	fn build_panel(&self, key: &str, window: &mut Window, cx: &mut App) -> Option<PanelHandle> {
-		// Each arm builds its own `PanelHandle` because the panel views have
-		// different entity types.
 		match key {
 			"project" => Some(PanelHandle::new(
 				cx.new(|cx| ProjectExplorerPanel::new(self.engine.clone(), window, cx)),
@@ -177,27 +249,37 @@ impl PanelRegistry for AppPanelRegistry {
 }
 
 /// The application root view.
-pub struct OakApp {
-	engine: Entity<MockEngine>,
-	program_clock: Entity<MockClock>,
-	timeline: Entity<TimelineView<MockEngine>>,
-	meter: Entity<AudioLevelMeter<MockEngine>>,
+pub struct OakApp<E: AppEngine> {
+	engine: Entity<E>,
+	program_clock: Entity<E::Clock>,
+	timeline: Entity<TimelineView<E>>,
+	meter: Entity<AudioLevelMeter<E>>,
 	menu_bar: Entity<MenuBar>,
 	dock: Entity<DockArea>,
-	status_bar: Entity<StatusBar>,
+	status_bar: Entity<StatusBar<E>>,
 	/// Whether the dark theme is active (toggles via 视图 → 主题).
 	dark: bool,
+	/// The modal currently shown on top of the shell, if any.
+	modal: ModalState,
+	/// The running export session, if any.
+	export: Option<ExportRun>,
 }
 
-impl OakApp {
-	/// Builds the whole shell.
-	pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+impl<E: AppEngine> OakApp<E> {
+	/// Builds the whole shell. `initial_path` (a CLI argument) is opened
+	/// after the layout is up.
+	pub fn new(
+		window: &mut Window,
+		initial_path: Option<PathBuf>,
+		cx: &mut Context<Self>,
+	) -> Self {
 		apply_theme(cx, &OakTheme::olive_dark());
+		crate::oakui::icons::init(cx);
 
 		// --- engine and shared state ---------------------------------------
-		let engine = cx.new(|cx| MockEngine::demo(cx));
-		let source_clock = engine.read(cx).source_clock.clone();
-		let program_clock = engine.read(cx).program_clock.clone();
+		let engine = cx.new(|cx| E::create(cx));
+		let source_clock = engine.read(cx).source_clock().clone();
+		let program_clock = engine.read(cx).program_clock().clone();
 		let timeline = cx.new(|cx| TimelineView::new(engine.clone(), window, cx).zoom(2.0));
 		let meter = cx.new(|cx| AudioLevelMeter::new(3, engine.clone(), window, cx));
 
@@ -312,27 +394,21 @@ impl OakApp {
 		.detach();
 
 		// --- timeline events -----------------------------------------------
-		// The playhead is driven by the program monitor; seeking the timeline
-		// (ruler click, keyboard) is routed back to the engine, guarded so
-		// clock-driven syncs are no-ops.
+		// Every timeline widget request (playhead seek, trim, move, track
+		// height) is applied by the engine through its backend's edit
+		// commands; the playhead is routed to the program monitor.
 		cx.subscribe(
 			&timeline,
-			|this, _timeline, event: &TimelineEvent, cx| match event {
-				TimelineEvent::PlayheadChanged(frame) => {
-					let current = this.engine.read(cx).clock_frame(Monitor::Program, cx);
-					if *frame != current {
-						this.engine.update(cx, |engine, cx| {
-							engine.request_frame(Monitor::Program, *frame, cx)
-						});
-					}
-				}
-				other => println!("[timeline] request: {other:?} (not applied by the mock)"),
+			|this, _timeline, event: &TimelineEvent, cx| {
+				this.engine
+					.update(cx, |engine, cx| engine.apply_timeline_event(event, cx));
 			},
 		)
 		.detach();
 
 		// --- tick loop -----------------------------------------------------
-		// Drives playback clocks, playhead sync and the audio meter at ~60Hz.
+		// Drives playback clocks, playhead sync, the audio meter and the
+		// export progress at ~60Hz.
 		let this = cx.weak_entity();
 		window
 			.spawn(cx, async move |cx: &mut AsyncWindowContext| loop {
@@ -347,7 +423,7 @@ impl OakApp {
 			})
 			.detach();
 
-		Self {
+		let shell = Self {
 			engine,
 			program_clock,
 			timeline,
@@ -356,17 +432,32 @@ impl OakApp {
 			dock,
 			status_bar,
 			dark: true,
+			modal: ModalState::None,
+			export: None,
+		};
+
+		// Open the CLI-provided project once the shell is up.
+		if let Some(path) = initial_path {
+			shell.engine.update(cx, |engine, cx| {
+				if let Err(err) = engine.open_project_path(path.clone(), cx) {
+					println!("[app] failed to open {}: {err}", path.display());
+				}
+			});
 		}
+
+		shell
 	}
 
 	/// One animation-frame tick: advance the engine, sync the timeline
-	/// playhead to the program clock, and refresh the audio meter.
+	/// playhead to the program clock, refresh the audio meter and drain the
+	/// export progress events.
 	fn tick(&mut self, cx: &mut Context<Self>) {
 		self.engine.update(cx, |engine, cx| engine.tick(cx));
-		let frame = self.program_clock.read(cx).transport.frame();
+		let frame = self.program_clock.read(cx).current_frame();
 		self.timeline
 			.update(cx, |timeline, cx| timeline.seek(frame, cx));
 		self.meter.update(cx, |meter, cx| meter.update(cx));
+		self.poll_export(cx);
 		cx.notify();
 	}
 
@@ -374,8 +465,41 @@ impl OakApp {
 	fn on_menu(&mut self, item: usize, cx: &mut Context<Self>) {
 		use menu_ids::*;
 		match item {
+			// --- File ------------------------------------------------------
+			NEW_PROJECT => self.engine.update(cx, |engine, cx| engine.new_project(cx)),
+			OPEN_PROJECT => self.open_file_dialog(FileAction::Open, cx),
+			SAVE => self.save_project(None, cx),
+			SAVE_AS => self.open_file_dialog(FileAction::SaveAs, cx),
+			CLOSE => self.engine.update(cx, |engine, cx| engine.close_project(cx)),
+			EXPORT => self.open_export_dialog(cx),
+			QUIT => cx.quit(),
+			// --- Edit ------------------------------------------------------
+			UNDO => self.engine.update(cx, |engine, cx| engine.undo(cx)),
+			REDO => self.engine.update(cx, |engine, cx| engine.redo(cx)),
+			DELETE => self.delete_timeline_selection(false, cx),
+			RIPPLE_DELETE => self.delete_timeline_selection(true, cx),
+			CUT | COPY | PASTE => {
+				println!("[menu] clipboard action {item} not wired yet");
+			}
+			// --- View ------------------------------------------------------
+			THEME_DARK => {
+				self.dark = true;
+				apply_theme(cx, &OakTheme::olive_dark());
+				self.rebuild_menu_bar(cx);
+				cx.notify();
+			}
+			THEME_LIGHT => {
+				self.dark = false;
+				apply_theme(cx, &OakTheme::olive_light());
+				self.rebuild_menu_bar(cx);
+				cx.notify();
+			}
+			LANG_ZH => self.switch_language(crate::i18n::Language::ZhCN, cx),
+			LANG_EN => self.switch_language(crate::i18n::Language::EnUs, cx),
+			PREFERENCES => self.open_preferences(cx),
+			// --- Playback --------------------------------------------------
 			PLAY_PAUSE => {
-				let playing = self.program_clock.read(cx).transport.is_playing();
+				let playing = self.program_clock.read(cx).is_playing();
 				let monitor = Monitor::Program;
 				self.engine.update(cx, |engine, cx| {
 					if playing {
@@ -401,20 +525,7 @@ impl OakApp {
 					engine.request_frame(monitor, Frame::ZERO, cx)
 				});
 			}
-			THEME_DARK => {
-				self.dark = true;
-				apply_theme(cx, &OakTheme::olive_dark());
-				self.rebuild_menu_bar(cx);
-				cx.notify();
-			}
-			THEME_LIGHT => {
-				self.dark = false;
-				apply_theme(cx, &OakTheme::olive_light());
-				self.rebuild_menu_bar(cx);
-				cx.notify();
-			}
-			LANG_ZH => self.switch_language(crate::i18n::Language::ZhCN, cx),
-			LANG_EN => self.switch_language(crate::i18n::Language::EnUs, cx),
+			// --- Sequence --------------------------------------------------
 			ADD_VIDEO_TRACK => {
 				let kind = gpui::timeline::TrackKind::Video;
 				self.engine
@@ -425,6 +536,11 @@ impl OakApp {
 				self.engine
 					.update(cx, |engine, cx| engine.add_track(kind, cx));
 			}
+			REMOVE_TRACK => self.remove_selected_track(cx),
+			SPLIT_AT_PLAYHEAD => {
+				self.engine.update(cx, |engine, cx| engine.split_at_playhead(cx))
+			}
+			// --- Window ----------------------------------------------------
 			FOCUS_PROJECT => self.focus_panel(PROJECT, cx),
 			FOCUS_SOURCE_VIEWER => self.focus_panel(SOURCE_VIEWER, cx),
 			FOCUS_PROGRAM_VIEWER => self.focus_panel(PROGRAM_VIEWER, cx),
@@ -434,6 +550,46 @@ impl OakApp {
 			FOCUS_TIMELINE => self.focus_panel(TIMELINE, cx),
 			other => println!("[menu] placeholder action for item {other}"),
 		}
+	}
+
+	/// Saves the project (to its own filename, or the given `path`).
+	fn save_project(&mut self, path: Option<PathBuf>, cx: &mut Context<Self>) {
+		let result = self
+			.engine
+			.update(cx, |engine, cx| engine.save_project(path, cx));
+		if let Err(err) = result {
+			println!("[file] save failed: {err}");
+		}
+	}
+
+	/// Deletes the timeline's selected clips (ripple or gap) through the
+	/// engine's edit commands.
+	fn delete_timeline_selection(&mut self, ripple: bool, cx: &mut Context<Self>) {
+		let ids: Vec<gpui::timeline::ClipId> = self
+			.timeline
+			.read(cx)
+			.selection()
+			.iter()
+			.copied()
+			.collect();
+		if ids.is_empty() {
+			println!("[timeline] delete: nothing selected");
+			return;
+		}
+		for id in ids {
+			self.engine
+				.update(cx, |engine, cx| engine.delete_clip(id, ripple, cx));
+		}
+	}
+
+	/// Removes the first track selected in the timeline header.
+	fn remove_selected_track(&mut self, cx: &mut Context<Self>) {
+		let Some(&index) = self.timeline.read(cx).selected_tracks().iter().next() else {
+			println!("[timeline] remove track: nothing selected");
+			return;
+		};
+		self.engine
+			.update(cx, |engine, cx| engine.remove_track(index, cx));
 	}
 
 	/// Focuses a dock panel (used by the 窗口 menu).
@@ -448,8 +604,7 @@ impl OakApp {
 
 	/// Switches the UI language live: updates the [`i18n`] global, rebuilds
 	/// the menu bar (so the menu labels and the language checkmark move
-	/// immediately), and repaints the whole shell — every label goes through
-	/// [`crate::i18n::tr`] at render time, so panels flip without a restart.
+	/// immediately), and repaints the whole shell.
 	fn switch_language(&mut self, language: crate::i18n::Language, cx: &mut Context<Self>) {
 		crate::i18n::set_language(language);
 		self.rebuild_menu_bar(cx);
@@ -481,17 +636,311 @@ impl OakApp {
 		)
 		.detach();
 	}
+
+	// -----------------------------------------------------------------------
+	// Modal dialogs
+	// -----------------------------------------------------------------------
+
+	/// Closes the current modal.
+	fn close_modal(&mut self, cx: &mut Context<Self>) {
+		self.modal = ModalState::None;
+		cx.notify();
+	}
+
+	/// Builds a modal on the main window, subscribes it to
+	/// [`Self::on_modal`] and layers it onto the shell.
+	///
+	/// The modal is created inside `update_window` (modal widgets need a
+	/// `&mut Window`); the state swap and the subscription happen *after* the
+	/// window update returns, on this entity's own `Context` — swapping state
+	/// through a weak handle *inside* the window callback would re-enter this
+	/// entity while it is already being updated (the crash seen when opening
+	/// Preferences from a menu action).
+	fn spawn_modal(
+		&mut self,
+		cx: &mut Context<Self>,
+		build: impl FnOnce(&mut Window, &mut App) -> ModalState,
+	) {
+		let windows = cx.windows();
+		let Some(handle) = windows.first() else {
+			return;
+		};
+		let Ok(state) = cx.update_window(*handle, |_root, window, app| build(window, app)) else {
+			return;
+		};
+		let modal = state
+			.modal_entity()
+			.expect("spawned modal always carries a Modal");
+		cx.subscribe(&modal, |this, _entity, event: &ModalEvent, cx| {
+			this.on_modal(event, cx);
+		})
+		.detach();
+		self.modal = state;
+		cx.notify();
+	}
+
+	/// Opens the file open / save-as dialog.
+	fn open_file_dialog(&mut self, action: FileAction, cx: &mut Context<Self>) {
+		let (title, control) = match action {
+			FileAction::Open => (
+				crate::i18n::tr("file.open.title"),
+				modal_ids::FILE_OPEN,
+			),
+			FileAction::SaveAs => (
+				crate::i18n::tr("file.save_as.title"),
+				modal_ids::FILE_SAVE_AS,
+			),
+		};
+		let current_path = self
+			.engine
+			.read(cx)
+			.project()
+			.map(|p| p.path.clone())
+			.filter(|p| !p.as_os_str().is_empty());
+		self.spawn_modal(cx, move |window, app| {
+			let (modal, content) =
+				gpui_widgets::dialog::file_dialog::file_dialog(control, title, window, app);
+			if action == FileAction::SaveAs {
+				if let Some(path) = &current_path {
+					content.update(app, |content, cx| content.set_path(path.to_string_lossy().into_owned(), cx));
+				}
+			}
+			ModalState::FileDialog {
+				modal,
+				content,
+				action,
+			}
+		});
+	}
+
+	/// Opens the preferences dialog.
+	fn open_preferences(&mut self, cx: &mut Context<Self>) {
+		self.spawn_modal(cx, |window, app| {
+			let content = app.new(|cx| PreferencesContent::new(window, cx));
+			let modal = app.new(|cx| {
+				Modal::new(
+					modal_ids::PREFERENCES,
+					ModalOptions::new(crate::i18n::tr("preferences.title"), px(380.0))
+						.with_button(DialogButton::primary(crate::i18n::tr("dialog.close"))),
+					window,
+					cx,
+				)
+				.with_content(content.clone())
+			});
+			ModalState::Preferences { modal, content }
+		});
+	}
+
+	/// Opens the export dialog.
+	fn open_export_dialog(&mut self, cx: &mut Context<Self>) {
+		if self.engine.read(cx).current_sequence().is_none() {
+			println!("[export] no sequence open");
+			return;
+		}
+		let default_path = self.default_export_path(cx);
+		self.spawn_modal(cx, move |window, app| {
+			let content = app.new(|cx| ExportDialogContent::new(window, cx));
+			content.update(app, |content, cx| {
+				content.set_path(default_path.clone(), cx)
+			});
+			let modal = app.new(|cx| {
+				Modal::new(
+					modal_ids::EXPORT,
+					ModalOptions::new(crate::i18n::tr("export.title"), px(440.0))
+						.with_button(DialogButton::primary(crate::i18n::tr("export.run")))
+						.with_button(DialogButton::cancel(crate::i18n::tr("dialog.cancel"))),
+					window,
+					cx,
+				)
+				.with_content(content.clone())
+			});
+			ModalState::Export { modal, content }
+		});
+	}
+
+	/// A default output path for the export dialog: the project name with
+	/// the format's extension, next to the project file.
+	fn default_export_path(&self, cx: &App) -> String {
+		let project = self.engine.read(cx).project();
+		let name = project
+			.map(|p| p.name.clone())
+			.filter(|n| !n.is_empty())
+			.unwrap_or_else(|| "untitled".to_string());
+		let dir = project
+			.and_then(|p| p.path.parent().map(|d| d.to_path_buf()))
+			.unwrap_or_else(|| PathBuf::from("."));
+		dir.join(format!("{name}.mp4"))
+			.to_string_lossy()
+			.into_owned()
+	}
+
+	/// Starts the export from the export dialog's state and swaps the dialog
+	/// for the progress dialog.
+	fn begin_export(&mut self, cx: &mut Context<Self>) {
+		let ModalState::Export { content, .. } = &self.modal else {
+			return;
+		};
+		let format = content.read(cx).format(cx);
+		let ext = content.read(cx).extension(cx);
+		let mut path = content.read(cx).path(cx).to_string();
+		if path.trim().is_empty() {
+			return;
+		}
+		// Append the format's extension when the user left it off.
+		let has_ext = std::path::Path::new(&path)
+			.extension()
+			.map(|e| !e.to_string_lossy().is_empty())
+			.unwrap_or(false);
+		if !has_ext {
+			path = format!("{path}.{ext}");
+		}
+
+		let result = self.engine.update(cx, |engine, _cx| {
+			engine.start_export(format, PathBuf::from(&path))
+		});
+		match result {
+			Ok(session) => {
+				self.export = Some(ExportRun { session });
+				self.spawn_modal(cx, |window, app| {
+					let (modal, content) = progress_dialog(
+						modal_ids::EXPORT_PROGRESS,
+						crate::i18n::tr("export.progress.title"),
+						crate::i18n::tr("export.progress.label"),
+						window,
+						app,
+					);
+					ModalState::Progress { modal, content }
+				});
+			}
+			Err(err) => {
+				println!("[export] failed to start: {err}");
+				self.close_modal(cx);
+			}
+		}
+	}
+
+	/// Cancels the running export (the task aborts at the next frame).
+	fn cancel_export(&mut self, cx: &mut Context<Self>) {
+		if let Some(run) = &self.export {
+			(run.session.cancel)();
+		}
+		let _ = cx;
+	}
+
+	/// Drains the export progress events on the tick loop: updates the
+	/// progress bar and closes the dialog when the task finishes.
+	fn poll_export(&mut self, cx: &mut Context<Self>) {
+		let Some(run) = &self.export else {
+			return;
+		};
+		let mut events = Vec::new();
+		while let Ok(event) = run.session.events.try_recv() {
+			events.push(event);
+		}
+		if events.is_empty() {
+			return;
+		}
+		let mut finished: Option<(bool, String)> = None;
+		for event in events {
+			match event {
+				crate::oakui::ExportEvent::Started => {}
+				crate::oakui::ExportEvent::Progress(fraction) => {
+					if let ModalState::Progress { content, .. } = &self.modal {
+						let fraction = fraction as f32;
+						content.update(cx, |content, cx| content.set_progress(fraction, cx));
+					}
+				}
+				crate::oakui::ExportEvent::Finished(ok, err) => finished = Some((ok, err)),
+			}
+		}
+		if let Some((ok, err)) = finished {
+			self.export = None;
+			self.modal = ModalState::None;
+			if ok {
+				println!("[export] finished");
+			} else {
+				println!("[export] failed: {err}");
+			}
+			cx.notify();
+		}
+	}
+
+	/// Routes a modal dialog event.
+	fn on_modal(&mut self, event: &ModalEvent, cx: &mut Context<Self>) {
+		match event {
+			ModalEvent::ButtonClicked { control, button } => match *control {
+				modal_ids::FILE_OPEN | modal_ids::FILE_SAVE_AS => {
+					self.on_file_dialog_button(*button, cx);
+				}
+				modal_ids::EXPORT => {
+					if *button == 0 {
+						self.begin_export(cx);
+					} else {
+						self.close_modal(cx);
+					}
+				}
+				modal_ids::EXPORT_PROGRESS => {
+					if *button == 1 {
+						// Cancel button: ask the task to abort; the finished
+						// event closes the dialog.
+						self.cancel_export(cx);
+					}
+				}
+				modal_ids::PREFERENCES => self.close_modal(cx),
+				_ => {}
+			},
+			ModalEvent::Dismissed { control } => match *control {
+				modal_ids::EXPORT_PROGRESS => {
+					// Escape cancels the running export and closes the dialog.
+					self.cancel_export(cx);
+					self.close_modal(cx);
+				}
+				_ => self.close_modal(cx),
+			},
+		}
+	}
+
+	/// Handles the file dialog's OK/Cancel.
+	fn on_file_dialog_button(&mut self, button: usize, cx: &mut Context<Self>) {
+		let ModalState::FileDialog {
+			content, action, ..
+		} = &self.modal
+		else {
+			return;
+		};
+		if button != 0 {
+			self.close_modal(cx);
+			return;
+		}
+		let path = PathBuf::from(content.read(cx).path(cx).to_string());
+		let action = *action;
+		if path.as_os_str().is_empty() {
+			return;
+		}
+		let result = self.engine.update(cx, |engine, cx| match action {
+			FileAction::Open => engine.open_project_path(path.clone(), cx),
+			FileAction::SaveAs => engine.save_project(Some(path.clone()), cx),
+		});
+		if let Err(err) = result {
+			println!("[file] {action:?} failed: {err}");
+		}
+		self.close_modal(cx);
+	}
 }
 
-impl Render for OakApp {
+impl<E: AppEngine> Render for OakApp<E> {
 	fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-		div()
+		let mut root = div()
 			.size_full()
 			.flex()
 			.flex_col()
 			.child(self.menu_bar.clone())
 			.child(div().flex_1().child(self.dock.clone()))
-			.child(self.status_bar.clone())
+			.child(self.status_bar.clone());
+		if let Some(modal) = self.modal.modal_entity() {
+			root = root.child(modal);
+		}
+		root
 	}
 }
 
@@ -523,8 +972,10 @@ fn make_menus(dark: bool) -> Vec<MenuBarEntry> {
 			Menu::new(vec![
 				MenuItem::new(NEW_PROJECT, tr("menu.file.new_project")).with_shortcut("⌘N"),
 				MenuItem::new(OPEN_PROJECT, tr("menu.file.open_project")).with_shortcut("⌘O"),
-				MenuItem::new(SAVE, tr("menu.file.save")).with_shortcut("⌘S").separated(),
-				MenuItem::new(EXPORT, tr("menu.file.export")).disabled(),
+				MenuItem::new(SAVE, tr("menu.file.save")).with_shortcut("⌘S"),
+				MenuItem::new(SAVE_AS, tr("menu.file.save_as")).with_shortcut("⇧⌘S").separated(),
+				MenuItem::new(CLOSE, tr("menu.file.close")),
+				MenuItem::new(EXPORT, tr("menu.file.export")).with_shortcut("⌘E").separated(),
 				MenuItem::new(QUIT, tr("menu.file.quit")).with_shortcut("⌘Q").separated(),
 			]),
 		),
@@ -536,7 +987,8 @@ fn make_menus(dark: bool) -> Vec<MenuBarEntry> {
 				MenuItem::new(CUT, tr("menu.edit.cut")).with_shortcut("⌘X"),
 				MenuItem::new(COPY, tr("menu.edit.copy")).with_shortcut("⌘C"),
 				MenuItem::new(PASTE, tr("menu.edit.paste")).with_shortcut("⌘V"),
-				MenuItem::new(DELETE, tr("menu.edit.delete")).separated(),
+				MenuItem::new(DELETE, tr("menu.edit.delete")).with_shortcut("⌫").separated(),
+				MenuItem::new(RIPPLE_DELETE, tr("menu.edit.ripple_delete")),
 			]),
 		),
 		MenuBarEntry::new(
@@ -544,6 +996,7 @@ fn make_menus(dark: bool) -> Vec<MenuBarEntry> {
 			Menu::new(vec![
 				MenuItem::new(THEME_DARK, tr("menu.view.theme")).with_submenu(theme_submenu),
 				MenuItem::new(LANG_ZH, tr("menu.view.language")).with_submenu(language_submenu),
+				MenuItem::new(PREFERENCES, tr("menu.view.preferences")).separated(),
 			]),
 		),
 		MenuBarEntry::new(
@@ -562,7 +1015,9 @@ fn make_menus(dark: bool) -> Vec<MenuBarEntry> {
 			Menu::new(vec![
 				MenuItem::new(ADD_VIDEO_TRACK, tr("menu.sequence.add_video_track")),
 				MenuItem::new(ADD_AUDIO_TRACK, tr("menu.sequence.add_audio_track")),
-				MenuItem::new(503, tr("menu.sequence.settings")).disabled(),
+				MenuItem::new(REMOVE_TRACK, tr("menu.sequence.remove_track")).separated(),
+				MenuItem::new(SPLIT_AT_PLAYHEAD, tr("menu.sequence.split_at_playhead")),
+				MenuItem::new(704, tr("menu.sequence.settings")).disabled(),
 			]),
 		),
 		MenuBarEntry::new(
@@ -592,21 +1047,82 @@ fn make_menus(dark: bool) -> Vec<MenuBarEntry> {
 	]
 }
 
+/// Command-line arguments the app accepts.
+#[derive(Debug, Clone, Default)]
+struct AppArgs {
+	/// A project file to open at startup.
+	project: Option<PathBuf>,
+	/// Force the mock engine.
+	mock: bool,
+}
+
+impl AppArgs {
+	/// Parses `std::env::args` plus the `OAK_ENGINE` override:
+	/// `oakapp [project.ove] [--mock]`.
+	fn from_env() -> Self {
+		let mut args = AppArgs::default();
+		for arg in std::env::args_os().skip(1) {
+			let text = arg.to_string_lossy();
+			match text.as_ref() {
+				"--mock" => args.mock = true,
+				"--help" | "-h" => {
+					println!("oakapp — Oak Video Editor");
+					println!("usage: oakapp [project.ove] [--mock]");
+					println!("  --mock   use the mock engine (or set OAK_ENGINE=mock)");
+					std::process::exit(0);
+				}
+				_ if args.project.is_none() => args.project = Some(arg.into()),
+				other => println!("[app] ignoring unknown argument {other:?}"),
+			}
+		}
+		if std::env::var("OAK_ENGINE")
+			.map(|v| v.eq_ignore_ascii_case("mock"))
+			.unwrap_or(false)
+		{
+			args.mock = true;
+		}
+		args
+	}
+}
+
+/// Builds the app root entity for the chosen backend.
+fn build_root<E: AppEngine>(
+	window: &mut Window,
+	initial: Option<PathBuf>,
+	cx: &mut App,
+) -> Entity<OakApp<E>> {
+	cx.new(|cx| OakApp::new(window, initial, cx))
+}
+
 /// The crate entry point: applies the olive-dark theme and opens the main
-/// window.
+/// window, running on the real engine by default (mock with `--mock` /
+/// `OAK_ENGINE=mock` / the `mock-engine` feature).
 pub fn run() {
-	gpui_platform::application().run(|cx: &mut App| {
-		// Restore the persisted UI language (oakcommon config `Language` key)
-		// before the first window renders.
+	let args = AppArgs::from_env();
+	let use_mock = args.mock || cfg!(feature = "mock-engine");
+	if use_mock {
+		run_with::<MockEngine>(args.clone());
+	} else {
+		run_with::<RealEngine>(args);
+	}
+}
+
+/// Runs the app window with `E` as the engine backend.
+fn run_with<E: AppEngine>(args: AppArgs) {
+	let initial = args.project.clone();
+	gpui_platform::application().run(move |cx: &mut App| {
+		// Restore the persisted UI language (config `Language` key) before the
+		// first window renders.
 		crate::i18n::init();
 		cx.init_colors();
 		let bounds = Bounds::centered(None, size(px(1600.0), px(900.0)), cx);
+		let initial = initial.clone();
 		cx.open_window(
 			WindowOptions {
 				window_bounds: Some(WindowBounds::Windowed(bounds)),
 				..Default::default()
 			},
-			|window, cx| cx.new(|cx| OakApp::new(window, cx)),
+			|window, cx| build_root::<E>(window, initial, cx),
 		)
 		.expect("failed to open the main window");
 
@@ -623,6 +1139,7 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use gpui::{TestAppContext, px, size};
 
 	/// The 视图/View menu carries a 语言/Language submenu whose items are
 	/// labeled in their own language and whose checkmark follows the active
@@ -713,5 +1230,122 @@ mod tests {
 		};
 		assert_eq!(dark_item(true).checked, Some(true));
 		assert_eq!(dark_item(false).checked, Some(false));
+	}
+
+	/// The File menu exposes the full project lifecycle actions (open /
+	/// save / save-as / close / export) and the Edit menu the undo stack
+	/// plus the delete variants, across both languages.
+	#[test]
+	fn file_and_edit_menus_cover_the_project_lifecycle() {
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+
+		let entry = |title: &str| -> MenuBarEntry {
+			make_menus(true)
+				.into_iter()
+				.find(|entry| entry.title == title)
+				.expect("menu exists")
+		};
+
+		crate::i18n::set_language(crate::i18n::Language::EnUs);
+		let file = entry("File(F)");
+		for id in [
+			menu_ids::NEW_PROJECT,
+			menu_ids::OPEN_PROJECT,
+			menu_ids::SAVE,
+			menu_ids::SAVE_AS,
+			menu_ids::CLOSE,
+			menu_ids::EXPORT,
+			menu_ids::QUIT,
+		] {
+			assert!(
+				file.menu.items.iter().any(|item| item.id == id),
+				"File menu is missing item {id}"
+			);
+		}
+		let edit = entry("Edit(E)");
+		for id in [
+			menu_ids::UNDO,
+			menu_ids::REDO,
+			menu_ids::DELETE,
+			menu_ids::RIPPLE_DELETE,
+		] {
+			assert!(
+				edit.menu.items.iter().any(|item| item.id == id),
+				"Edit menu is missing item {id}"
+			);
+		}
+
+		// The same ids exist in the zh-CN menu bar.
+		crate::i18n::set_language(crate::i18n::Language::ZhCN);
+		let file = entry("文件(F)");
+		assert!(file.menu.items.iter().any(|item| item.id == menu_ids::SAVE_AS));
+	}
+
+	/// Opening 视图 → Preferences… must not crash: the dialog content and the
+	/// modal are built on the main window and the shell state swaps over the
+	/// entity's weak handle (regression test for the Preferences crash).
+	#[gpui::test]
+	async fn preferences_dialog_opens_without_crashing(cx: &mut TestAppContext) {
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		crate::i18n::set_language(crate::i18n::Language::EnUs);
+
+		cx.update(|cx| cx.init_colors());
+		let window = cx.open_window(size(px(1600.0), px(900.0)), |window, cx| {
+			OakApp::<MockEngine>::new(window, None, cx)
+		});
+		cx.run_until_parked();
+		let root = window.root(cx).expect("app root");
+
+		cx.update(|app| {
+			root.update(app, |app, cx| app.on_menu(menu_ids::PREFERENCES, cx))
+		});
+		cx.run_until_parked();
+		// Force a draw so render-time panics in the dialog content surface.
+		cx.update_window(window.into(), |_root, window, cx| {
+			window.draw(cx).clear();
+		})
+		.expect("window is still open");
+
+		let has_modal = cx.read(|app| {
+			matches!(root.read(app).modal, ModalState::Preferences { .. })
+		});
+		assert!(
+			has_modal,
+			"preferences modal should be shown after the menu action"
+		);
+	}
+
+	/// The command-line parser understands the project path and the mock
+	/// flag, and the `OAK_ENGINE` env var forces the mock.
+	#[test]
+	fn app_args_parse_path_and_mock_flag() {
+		// Simulate argv without touching the real environment: parse a slice
+		// directly.
+		let parse = |argv: &[&str], env: Option<&str>| -> AppArgs {
+			let mut args = AppArgs::default();
+			for text in argv {
+				match *text {
+					"--mock" => args.mock = true,
+					other => args.project = Some(PathBuf::from(other)),
+				}
+			}
+			if env.map(|v| v.eq_ignore_ascii_case("mock")).unwrap_or(false) {
+				args.mock = true;
+			}
+			args
+		};
+		let a = parse(&["/tmp/a.ove"], None);
+		assert_eq!(a.project, Some(PathBuf::from("/tmp/a.ove")));
+		assert!(!a.mock);
+
+		let b = parse(&["/tmp/a.ove", "--mock"], None);
+		assert!(b.mock);
+
+		let c = parse(&["/tmp/a.ove"], Some("MOCK"));
+		assert!(c.mock);
+
+		let d = parse(&[], None);
+		assert!(d.project.is_none());
+		assert!(!d.mock);
 	}
 }

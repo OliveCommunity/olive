@@ -26,18 +26,18 @@ use gpui::{
 	div, prelude::*, AnyElement, App, Context, Entity, EventEmitter, Render, SharedString, Window,
 };
 
-use crate::oakui::MockEngine;
+use crate::oakui::AppEngine;
 use crate::panels::ids::INSPECTOR;
 
 /// The inspector / effect stack panel.
-pub struct InspectorPanel {
-	stack: Entity<EffectStackView<MockEngine>>,
-	engine: Entity<MockEngine>,
+pub struct InspectorPanel<E: AppEngine> {
+	stack: Entity<EffectStackView<E>>,
+	engine: Entity<E>,
 }
 
-impl InspectorPanel {
+impl<E: AppEngine> InspectorPanel<E> {
 	/// Builds the stack over `engine`'s effect model.
-	pub fn new(engine: Entity<MockEngine>, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+	pub fn new(engine: Entity<E>, _window: &mut Window, cx: &mut Context<Self>) -> Self {
 		let stack = cx.new(|cx| {
 			EffectStackView::new(engine.clone(), cx)
 				.params_renderer(|_effect, _window, cx| cx.new(|_cx| ParamPlaceholder).into())
@@ -54,15 +54,15 @@ impl InspectorPanel {
 	}
 }
 
-impl Render for InspectorPanel {
+impl<E: AppEngine> Render for InspectorPanel<E> {
 	fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
 		div().size_full().child(self.stack.clone())
 	}
 }
 
-impl EventEmitter<PanelEvent> for InspectorPanel {}
+impl<E: AppEngine> EventEmitter<PanelEvent> for InspectorPanel<E> {}
 
-impl DockPanel for InspectorPanel {
+impl<E: AppEngine> DockPanel for InspectorPanel<E> {
 	fn panel_id(&self) -> gpui::dock::PanelId {
 		INSPECTOR
 	}

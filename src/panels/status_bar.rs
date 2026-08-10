@@ -22,20 +22,22 @@ use gpui::colors::DefaultColors;
 use gpui::timeline::Frame;
 use gpui::{div, prelude::*, Context, Entity, Render, Window};
 
+use gpui_widgets::viewer::PlaybackClock;
+
 use crate::oakui::timecode::{format_duration, format_fps, format_resolution, format_timecode};
-use crate::oakui::{EngineGateway, MockClock, MockEngine};
+use crate::oakui::AppEngine;
 
 /// The global status bar.
-pub struct StatusBar {
-	engine: Entity<MockEngine>,
-	program_clock: Entity<MockClock>,
+pub struct StatusBar<E: AppEngine> {
+	engine: Entity<E>,
+	program_clock: Entity<E::Clock>,
 }
 
-impl StatusBar {
+impl<E: AppEngine> StatusBar<E> {
 	/// Builds the status bar over the engine and the program clock.
 	pub fn new(
-		engine: Entity<MockEngine>,
-		program_clock: Entity<MockClock>,
+		engine: Entity<E>,
+		program_clock: Entity<E::Clock>,
 		_cx: &mut Context<Self>,
 	) -> Self {
 		Self {
@@ -45,11 +47,11 @@ impl StatusBar {
 	}
 }
 
-impl Render for StatusBar {
+impl<E: AppEngine> Render for StatusBar<E> {
 	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let colors = cx.default_colors().clone();
 		let engine = self.engine.read(cx);
-		let frame = self.program_clock.read(cx).transport.frame();
+		let frame = self.program_clock.read(cx).current_frame();
 		let sequence = engine.current_sequence();
 		let format = sequence
 			.map(|s| s.format)
@@ -100,5 +102,15 @@ impl Render for StatusBar {
 				format_resolution(format.width, format.height),
 			))
 			.child(div().px_2().text_color(colors.disabled).child(project))
+			.child(
+				div()
+					.px_2()
+					.text_color(colors.disabled)
+					.child(format!(
+						"{} · {}",
+						crate::i18n::tr("status.backend"),
+						self.engine.read(cx).backend_name(),
+					)),
+			)
 	}
 }

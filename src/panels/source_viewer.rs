@@ -26,24 +26,24 @@ use gpui::{
 use gpui_widgets::viewer::{ViewerEvent, ViewerWidget};
 
 use crate::oakui::timecode::{format_fps, format_resolution};
-use crate::oakui::{EngineGateway, MockClock, MockEngine, Monitor};
+use crate::oakui::{AppEngine, Monitor};
 use crate::panels::chip;
 use crate::panels::ids::SOURCE_VIEWER;
 
 /// The source viewer panel.
-pub struct SourceViewerPanel {
-	viewer: Entity<ViewerWidget<MockClock>>,
-	engine: Entity<MockEngine>,
+pub struct SourceViewerPanel<E: AppEngine> {
+	viewer: Entity<ViewerWidget<E::Clock>>,
+	engine: Entity<E>,
 	/// The last CPU frame handed to the viewer (compared by `Arc` identity so
 	/// a paused playhead does not re-upload the picture every frame).
 	last_cpu_frame: Option<std::sync::Arc<gpui::RenderImage>>,
 }
 
-impl SourceViewerPanel {
+impl<E: AppEngine> SourceViewerPanel<E> {
 	/// Builds a viewer over `clock` (the source monitor's clock).
 	pub fn new(
-		engine: Entity<MockEngine>,
-		clock: Entity<MockClock>,
+		engine: Entity<E>,
+		clock: Entity<E::Clock>,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Self {
@@ -81,7 +81,7 @@ impl SourceViewerPanel {
 	}
 }
 
-impl Render for SourceViewerPanel {
+impl<E: AppEngine> Render for SourceViewerPanel<E> {
 	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.sync_frame(cx);
 
@@ -117,9 +117,9 @@ impl Render for SourceViewerPanel {
 	}
 }
 
-impl EventEmitter<PanelEvent> for SourceViewerPanel {}
+impl<E: AppEngine> EventEmitter<PanelEvent> for SourceViewerPanel<E> {}
 
-impl DockPanel for SourceViewerPanel {
+impl<E: AppEngine> DockPanel for SourceViewerPanel<E> {
 	fn panel_id(&self) -> gpui::dock::PanelId {
 		SOURCE_VIEWER
 	}

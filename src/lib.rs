@@ -19,25 +19,37 @@
 //!
 //! This is the start of the Rust rewrite of `app/` (Qt): a gpui window with
 //! the main layout from the design (`design/`), dockable panels built from
-//! the `gpui_widgets` library, and an engine seam (`oakui`) that currently
-//! feeds demo data through [`MockEngine`](oakui::MockEngine).
+//! the `gpui_widgets` library, and an engine seam (`oakui`) with two
+//! backends: the mock ([`oakui::MockEngine`]) feeding demo data, and the
+//! real engine ([`oakui::RealEngine`]) bound to the built `liboakengine`
+//! dylib through its frozen `oakengine_*` C ABI only (project open/save,
+//! sequence/track/clip data, timeline edits through the oaktimeline edit
+//! commands, the oaktask export path, and the config C ABI).
 //!
 //! # Layout
 //!
-//! * [`app`] — the window shell: menu bar, dock layout, status bar, tick
-//!   loop.
+//! * [`app`] — the window shell: menu bar, dock layout, status bar, modal
+//!   dialogs (file open/save-as, preferences, export), tick loop.
+//! * [`dialogs`] — the preferences and export dialog content views.
 //! * [`panels`] — the dockable panels (viewers, timeline, inspector, ...).
-//! * [`oakui`] — the engine gateway trait, the mock implementation, and the
-//!   pure view-state logic (timecode, transport).
+//! * [`oakui`] — the engine gateway trait, the mock + real implementations,
+//!   and the pure view-state logic (timecode, transport).
 //!
 //! # Running
 //!
 //! ```text
-//! cargo run --bin oakapp        # the demo window
-//! cargo test                    # unit tests (timecode, transport)
+//! cargo run --bin oak-editor                        # the real engine, no project
+//! cargo run --bin oak-editor -- path/to/project.ove    # open a project at startup
+//! cargo run --bin oak-editor -- --mock              # the demo (mock) engine
+//! cargo test                                         # unit tests (app + crates)
 //! ```
+//!
+//! The engine backend is selected at startup: the real engine by default,
+//! the mock with the `--mock` flag, `OAK_ENGINE=mock`, or the
+//! `mock-engine` cargo feature.
 
 pub mod app;
+pub mod dialogs;
 pub mod i18n;
 pub mod oakui;
 pub mod panels;

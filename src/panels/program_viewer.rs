@@ -28,7 +28,7 @@ use gpui_widgets::audio_meter::AudioLevelMeter;
 use gpui_widgets::viewer::{ViewerEvent, ViewerWidget};
 
 use crate::oakui::timecode::{format_fps, format_resolution};
-use crate::oakui::{EngineGateway, MockClock, MockEngine, Monitor};
+use crate::oakui::{AppEngine, Monitor};
 use crate::panels::chip;
 use crate::panels::ids::PROGRAM_VIEWER;
 
@@ -36,22 +36,22 @@ use crate::panels::ids::PROGRAM_VIEWER;
 const METER_WIDTH: f32 = 26.0;
 
 /// The program viewer panel.
-pub struct ProgramViewerPanel {
-	viewer: Entity<ViewerWidget<MockClock>>,
-	meter: Entity<AudioLevelMeter<MockEngine>>,
-	engine: Entity<MockEngine>,
+pub struct ProgramViewerPanel<E: AppEngine> {
+	viewer: Entity<ViewerWidget<E::Clock>>,
+	meter: Entity<AudioLevelMeter<E>>,
+	engine: Entity<E>,
 	/// The last CPU frame handed to the viewer (compared by `Arc` identity so
 	/// a paused playhead does not re-upload the picture every frame).
 	last_cpu_frame: Option<std::sync::Arc<gpui::RenderImage>>,
 }
 
-impl ProgramViewerPanel {
+impl<E: AppEngine> ProgramViewerPanel<E> {
 	/// Builds a viewer over `clock` (the program monitor's clock) with the
 	/// level meter `meter` (updated on the app's tick timer).
 	pub fn new(
-		engine: Entity<MockEngine>,
-		clock: Entity<MockClock>,
-		meter: Entity<AudioLevelMeter<MockEngine>>,
+		engine: Entity<E>,
+		clock: Entity<E::Clock>,
+		meter: Entity<AudioLevelMeter<E>>,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Self {
@@ -90,7 +90,7 @@ impl ProgramViewerPanel {
 	}
 }
 
-impl Render for ProgramViewerPanel {
+impl<E: AppEngine> Render for ProgramViewerPanel<E> {
 	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		self.sync_frame(cx);
 
@@ -138,9 +138,9 @@ impl Render for ProgramViewerPanel {
 	}
 }
 
-impl EventEmitter<PanelEvent> for ProgramViewerPanel {}
+impl<E: AppEngine> EventEmitter<PanelEvent> for ProgramViewerPanel<E> {}
 
-impl DockPanel for ProgramViewerPanel {
+impl<E: AppEngine> DockPanel for ProgramViewerPanel<E> {
 	fn panel_id(&self) -> gpui::dock::PanelId {
 		PROGRAM_VIEWER
 	}

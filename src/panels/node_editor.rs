@@ -27,32 +27,31 @@
 use gpui::colors::DefaultColors;
 use gpui::dock::{DockPanel, PanelEvent};
 use gpui::node_graph::{
-	MAX_ZOOM, MIN_ZOOM, NodeData, NodeElement, NodeGraphDataSource, NodeGraphEvent, NodeGraphView,
-	NodeVisualState,
+	MAX_ZOOM, MIN_ZOOM, NodeData, NodeElement, NodeGraphEvent, NodeGraphView, NodeVisualState,
 };
 use gpui::{
 	div, point, prelude::*, px, AnyElement, App, Bounds, ClickEvent, Context, Entity,
 	EventEmitter, Pixels, Render, SharedString, Window,
 };
 
-use crate::oakui::MockEngine;
+use crate::oakui::AppEngine;
 use crate::panels::ids::NODE_EDITOR;
 
 /// The node editor panel.
-pub struct NodeEditorPanel {
-	/// The node-graph canvas over the engine's mock graph.
-	graph: Entity<NodeGraphView<MockEngine>>,
-	engine: Entity<MockEngine>,
+pub struct NodeEditorPanel<E: AppEngine> {
+	/// The node-graph canvas over the engine's graph data.
+	graph: Entity<NodeGraphView<E>>,
+	engine: Entity<E>,
 	/// Whether the initial fit-to-window has been applied (the canvas size is
 	/// only known after the first layout).
 	fitted: bool,
 }
 
-impl NodeEditorPanel {
+impl<E: AppEngine> NodeEditorPanel<E> {
 	/// Builds the graph canvas over `engine` and routes its edit requests back
 	/// to the engine.
 	pub fn new(
-		engine: Entity<MockEngine>,
+		engine: Entity<E>,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Self {
@@ -134,7 +133,7 @@ impl NodeEditorPanel {
 	}
 }
 
-impl Render for NodeEditorPanel {
+impl<E: AppEngine> Render for NodeEditorPanel<E> {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		// Fit the graph once the canvas size is known (first layout). Before
 		// that the viewport is zero-sized, so ask for another frame instead.
@@ -161,16 +160,32 @@ impl Render for NodeEditorPanel {
 					.py_1()
 					.border_b_1()
 					.border_color(colors.border)
-					.child(zoom_button(cx, "node-zoom-in", "+", |this, window, cx| {
-						this.zoom(1.25, window, cx);
-					}))
-					.child(zoom_button(cx, "node-zoom-out", "−", |this, window, cx| {
-						this.zoom(1.0 / 1.25, window, cx);
-					}))
+					.child(zoom_button(
+						cx,
+						"node-zoom-in",
+						Some(crate::oakui::icons::ICON_ZOOM_IN),
+						"+",
+						"timeline.zoom_in",
+						|this, window, cx| {
+							this.zoom(1.25, window, cx);
+						},
+					))
+					.child(zoom_button(
+						cx,
+						"node-zoom-out",
+						Some(crate::oakui::icons::ICON_ZOOM_OUT),
+						"−",
+						"timeline.zoom_out",
+						|this, window, cx| {
+							this.zoom(1.0 / 1.25, window, cx);
+						},
+					))
 					.child(zoom_button(
 						cx,
 						"node-zoom-fit",
+						None,
 						crate::i18n::tr("node.fit"),
+						"node.fit",
 						|this, window, cx| this.fit_graph(window, cx),
 					))
 					.child(div().flex_1())
@@ -195,34 +210,52 @@ impl Render for NodeEditorPanel {
 	}
 }
 
-/// A small toolbar button driving the graph viewport.
-fn zoom_button(
-	cx: &mut Context<NodeEditorPanel>,
+/// A small toolbar button driving the graph viewport. With `icon_name`, the
+/// button shows the 16px icon on a 24px hit target; otherwise the `label`
+/// text. Both get a localized `tooltip`.
+fn zoom_button<E: AppEngine>(
+	cx: &mut Context<NodeEditorPanel<E>>,
 	id: &'static str,
+	icon_name: Option<&'static str>,
 	label: impl IntoElement,
-	action: impl Fn(&mut NodeEditorPanel, &mut Window, &mut Context<NodeEditorPanel>) + 'static,
+	tooltip: &'static str,
+	action: impl Fn(&mut NodeEditorPanel<E>, &mut Window, &mut Context<NodeEditorPanel<E>>) + 'static,
 ) -> impl gpui::IntoElement {
 	let colors = cx.default_colors().clone();
 	let container = colors.container;
-	div()
+	let tooltip_label = crate::i18n::tr(tooltip);
+	let mut el = div()
 		.id(id)
-		.px_2()
-		.py_1()
+		.size(px(24.0))
+		.flex()
+		.items_center()
+		.justify_center()
 		.rounded_md()
 		.border_1()
 		.border_color(colors.border)
 		.text_color(colors.text)
 		.cursor_pointer()
 		.hover(move |style| style.bg(container))
+		.tooltip(move |window, cx| {
+			gpui_widgets::tooltip::tooltip_view(tooltip_label.into(), window, cx)
+		})
 		.on_click(cx.listener(move |this, _event: &ClickEvent, window, cx| {
 			action(this, window, cx);
-		}))
-		.child(label)
+		}));
+	if let Some(name) = icon_name {
+		el = el.child(
+			gpui::img(crate::oakui::icons::icon_path(name, cx)).size(px(16.0)),
+		);
+	} else {
+		el = el.child(label);
+	}
+	el
 }
 
-impl EventEmitter<PanelEvent> for NodeEditorPanel {}
 
-impl DockPanel for NodeEditorPanel {
+impl<E: AppEngine> EventEmitter<PanelEvent> for NodeEditorPanel<E> {}
+
+impl<E: AppEngine> DockPanel for NodeEditorPanel<E> {
 	fn panel_id(&self) -> gpui::dock::PanelId {
 		NODE_EDITOR
 	}
@@ -241,13 +274,14 @@ impl DockPanel for NodeEditorPanel {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::oakui::MockEngine;
 	use gpui::{TestAppContext, VisualTestContext, size};
 
 	/// Builds the panel in a window and returns a `VisualTestContext` for
 	/// bounds assertions.
 	fn panel_window(
 		cx: &mut TestAppContext,
-	) -> (&'static mut VisualTestContext, Entity<NodeEditorPanel>) {
+	) -> (&'static mut VisualTestContext, Entity<NodeEditorPanel<MockEngine>>) {
 		cx.update(|cx| cx.init_colors());
 		let window = cx.open_window(size(px(640.0), px(480.0)), |window, cx| {
 			let engine = cx.new(|cx| crate::oakui::MockEngine::demo(cx));

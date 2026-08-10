@@ -3890,12 +3890,14 @@ dependencies = [
 
 [[package]]
 name = "oak"
-version = "0.1.0"
+version = "0.5.0"
 dependencies = [
  "gpui",
+ "gpui_elements",
  "gpui_platform",
  "gpui_widgets",
  "image",
+ "oakengine",
  "smallvec",
 ]
 

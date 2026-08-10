@@ -38,6 +38,7 @@
 
 use std::collections::{BTreeSet, HashMap};
 use std::path::PathBuf;
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
@@ -49,7 +50,8 @@ use gpui::node_graph::{
 	PortDataType, PortId, PortKind,
 };
 use gpui::timeline::{
-	ClipData, ClipId, Frame, FrameRange, FrameRate, TimelineDataSource, TrackData, TrackKind,
+	ClipData, ClipId, Frame, FrameRange, FrameRate, TimelineDataSource, TimelineEvent, TrackData,
+	TrackKind, TrimEdge,
 };
 use gpui::{
 	hsla, point, prelude::*, px, App, Context, Entity, Hsla, Pixels, Point, RenderImage,
@@ -59,17 +61,13 @@ use gpui_widgets::audio_meter::AudioMeterDataSource;
 use gpui_widgets::project_explorer::{ProjectDataSource, ProjectEntry};
 use gpui_widgets::viewer::PlaybackClock;
 
-use super::engine::{EngineGateway, Monitor, Project, Sequence, VideoFormat};
+use super::engine::{
+	AppEngine, EngineGateway, ExportEvent, ExportSession, Monitor, Project, Sequence, VideoFormat,
+};
 use super::transport::TransportState;
 
 /// The demo sequence length: 00:04:18:18 at 25 fps.
 const SEQUENCE_LENGTH: i64 = 6468;
-
-/// The synthetic viewer test frame is rendered at a small proxy size (the
-/// real engine will deliver full-resolution frames; the mock only needs to
-/// prove the CPU-frame path end to end).
-const SYNTH_FRAME_WIDTH: u32 = 384;
-const SYNTH_FRAME_HEIGHT: u32 = 216;
 
 // ---------------------------------------------------------------------------
 // Clocks
@@ -902,6 +900,52 @@ impl MockEngine {
 		cx.notify();
 	}
 
+	/// Finds the (track, clip) position of `clip` in the display list.
+	fn mock_clip_position(&self, clip: ClipId) -> Option<(usize, usize)> {
+		self.tracks
+			.iter()
+			.enumerate()
+			.find_map(|(track_index, track)| {
+				track
+					.clips
+					.iter()
+					.position(|c| c.id() == clip)
+					.map(|clip_index| (track_index, clip_index))
+			})
+	}
+
+	/// A clip id larger than every existing one (for splits).
+	fn next_mock_clip_id(&self) -> u64 {
+		self.tracks
+			.iter()
+			.flat_map(|t| t.clips.iter())
+			.map(|c| c.id().0)
+			.max()
+			.map(|max| max + 1)
+			.unwrap_or(1)
+	}
+
+	/// Splits the clip at (track, clip) position into two at `time`
+	/// (mock-apply, not undoable).
+	fn split_mock_clip(&mut self, track: usize, index: usize, time: Frame) {
+		let source = &self.tracks[track].clips[index];
+		if time.0 <= source.range.start.0 || time.0 >= source.range.end.0 {
+			return;
+		}
+		let new_id = ClipId(self.next_mock_clip_id());
+		let second = MockClip {
+			id: new_id,
+			range: FrameRange::new(time, source.range.end),
+			media_in: Frame(source.media_in.0 + (time.0 - source.range.start.0)),
+			label: source.label.clone(),
+			color: source.color,
+		};
+		let mut first = self.tracks[track].clips[index].clone();
+		first.range = FrameRange::new(source.range.start, time);
+		self.tracks[track].clips[index] = first;
+		self.tracks[track].clips.insert(index + 1, second);
+	}
+
 	/// The demo audio levels: animated while the program monitor plays.
 	fn meter_levels(&self) -> Vec<f32> {
 		if !self.program_playing {
@@ -1000,6 +1044,228 @@ impl EngineGateway for MockEngine {
 }
 
 // ---------------------------------------------------------------------------
+// AppEngine
+// ---------------------------------------------------------------------------
+
+impl AppEngine for MockEngine {
+	type Clock = MockClock;
+
+	fn create(cx: &mut Context<Self>) -> Self {
+		Self::demo(cx)
+	}
+
+	fn source_clock(&self) -> &Entity<Self::Clock> {
+		&self.source_clock
+	}
+
+	fn program_clock(&self) -> &Entity<Self::Clock> {
+		&self.program_clock
+	}
+
+	fn clock_frame(&self, monitor: Monitor, cx: &App) -> Frame {
+		self.clock_frame(monitor, cx)
+	}
+
+	fn cpu_frame(&self, monitor: Monitor, cx: &App) -> Arc<RenderImage> {
+		self.cpu_frame(monitor, cx)
+	}
+
+	fn add_track(&mut self, kind: TrackKind, cx: &mut Context<Self>) {
+		self.add_track(kind, cx);
+	}
+
+	fn remove_track(&mut self, index: usize, cx: &mut Context<Self>) {
+		if index < self.tracks.len() {
+			self.tracks.remove(index);
+		}
+		cx.notify();
+	}
+
+	fn set_track_height(&mut self, height: Pixels, cx: &mut Context<Self>) {
+		self.set_track_height(height, cx);
+	}
+
+	fn select_item(&mut self, id: u64, cx: &mut Context<Self>) {
+		self.select_item(id, cx);
+	}
+
+	fn apply_effect_event(&mut self, event: &EffectStackEvent, cx: &mut Context<Self>) {
+		self.apply_effect_event(event, cx);
+	}
+
+	fn apply_node_graph_event(&mut self, event: &NodeGraphEvent, cx: &mut Context<Self>) {
+		self.apply_node_graph_event(event, cx);
+	}
+
+	fn apply_timeline_event(&mut self, event: &TimelineEvent, cx: &mut Context<Self>) {
+		match event {
+			TimelineEvent::PlayheadChanged(frame) => {
+				let current = self.clock_frame(Monitor::Program, cx);
+				if *frame != current {
+					self.request_frame(Monitor::Program, *frame, cx);
+				}
+			}
+			TimelineEvent::ClipTrimRequested { clip, edge, new_frame } => {
+				if let Some((track, index)) = self.mock_clip_position(*clip) {
+					let clip = &mut self.tracks[track].clips[index];
+					match edge {
+						gpui::timeline::TrimEdge::Start => {
+							let delta = new_frame.0 - clip.range.start.0;
+							clip.range.start = *new_frame;
+							clip.media_in = Frame(clip.media_in.0 + delta);
+						}
+						gpui::timeline::TrimEdge::End => {
+							clip.range.end = *new_frame;
+						}
+					}
+				}
+				cx.notify();
+			}
+			TimelineEvent::ClipMoveRequested { clip, new_track, new_start } => {
+				let Some((track, index)) = self.mock_clip_position(*clip) else {
+					return;
+				};
+				let mut clip = self.tracks[track].clips.remove(index);
+				let length = clip.range.end.0 - clip.range.start.0;
+				clip.range = FrameRange::new(*new_start, Frame(new_start.0 + length));
+				if *new_track < self.tracks.len() {
+					self.tracks[*new_track].clips.push(clip);
+				}
+				cx.notify();
+			}
+			TimelineEvent::TrackHeightChanged { track, height } => {
+				if let Some(track) = self.tracks.get_mut(*track) {
+					track.height = *height;
+				}
+				cx.notify();
+			}
+			TimelineEvent::SelectionChanged
+			| TimelineEvent::TrackSelected { .. }
+			| TimelineEvent::TransitionChanged { .. }
+			| TimelineEvent::ZoomChanged(_) => {}
+		}
+	}
+
+	fn split_clip(&mut self, clip: ClipId, time: Frame, cx: &mut Context<Self>) {
+		let Some((track, index)) = self.mock_clip_position(clip) else {
+			return;
+		};
+		self.split_mock_clip(track, index, time);
+		cx.notify();
+	}
+
+	fn split_at_playhead(&mut self, cx: &mut Context<Self>) {
+		let frame = self.clock_frame(Monitor::Program, cx);
+		let targets: Vec<(usize, usize)> = self
+			.tracks
+			.iter()
+			.enumerate()
+			.flat_map(|(track_index, track)| {
+				track
+					.clips
+					.iter()
+					.enumerate()
+					.filter(|(_, clip)| {
+						clip.range.start.0 < frame.0 && frame.0 < clip.range.end.0
+					})
+					.map(|(clip_index, _)| (track_index, clip_index))
+					.collect::<Vec<_>>()
+			})
+			.collect();
+		for (track, index) in targets {
+			self.split_mock_clip(track, index, frame);
+		}
+		cx.notify();
+	}
+
+	fn delete_clip(&mut self, clip: ClipId, ripple: bool, cx: &mut Context<Self>) {
+		let Some((track, index)) = self.mock_clip_position(clip) else {
+			return;
+		};
+		let removed = self.tracks[track].clips.remove(index);
+		if ripple {
+			// Shift the following clips on the same track left by the removed
+			// clip's length (the mock ripples one track, not the whole
+			// sequence).
+			let shift = removed.range.end.0 - removed.range.start.0;
+			for later in &mut self.tracks[track].clips[index..] {
+				later.range = FrameRange::new(
+					Frame(later.range.start.0 - shift),
+					Frame(later.range.end.0 - shift),
+				);
+			}
+		}
+		cx.notify();
+	}
+
+	fn can_undo(&self) -> bool {
+		// The mock keeps no undo stack; the real engine's facade stack drives
+		// the Edit menu in real mode.
+		false
+	}
+
+	fn can_redo(&self) -> bool {
+		false
+	}
+
+	fn undo(&mut self, cx: &mut Context<Self>) {
+		println!("[mock engine] undo: no undo stack in mock mode");
+		cx.notify();
+	}
+
+	fn redo(&mut self, cx: &mut Context<Self>) {
+		println!("[mock engine] redo: no undo stack in mock mode");
+		cx.notify();
+	}
+
+	fn project_modified(&self) -> bool {
+		false
+	}
+
+	fn new_project(&mut self, cx: &mut Context<Self>) {
+		println!("[mock engine] new project: demo data stays (mock mode)");
+		cx.notify();
+	}
+
+	fn open_project_path(&mut self, path: PathBuf, cx: &mut Context<Self>) -> Result<(), String> {
+		self.open_project(path, cx);
+		Ok(())
+	}
+
+	fn save_project(&mut self, _path: Option<PathBuf>, cx: &mut Context<Self>) -> Result<(), String> {
+		println!("[mock engine] save: no persistence in mock mode");
+		cx.notify();
+		Ok(())
+	}
+
+	fn close_project(&mut self, cx: &mut Context<Self>) {
+		println!("[mock engine] close project: demo data stays (mock mode)");
+		cx.notify();
+	}
+
+	fn start_export(&mut self, _format: i32, _path: PathBuf) -> Result<ExportSession, String> {
+		// Mock export: fake progress on a background thread, no file.
+		let (tx, rx) = mpsc::channel::<ExportEvent>();
+		std::thread::spawn(move || {
+			let _ = tx.send(ExportEvent::Started);
+			for (delay_ms, fraction) in [(150u64, 0.33), (300, 0.66), (450, 1.0)] {
+				std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+				let _ = tx.send(ExportEvent::Progress(fraction));
+			}
+			let _ = tx.send(ExportEvent::Finished(true, String::new()));
+		});
+		Ok(ExportSession {
+			events: rx,
+			cancel: Box::new(|| {}),
+		})
+	}
+
+	fn backend_name(&self) -> &'static str {
+		"mock"
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Data-source traits
 // ---------------------------------------------------------------------------
 
@@ -1087,8 +1353,8 @@ impl NodeGraphDataSource for MockEngine {
 impl ProjectDataSource for MockEngine {
 	fn roots(&self) -> Vec<ProjectEntry> {
 		vec![
-			ProjectEntry::new(1, "素材", true),
-			ProjectEntry::new(2, "音乐", true),
+			ProjectEntry::new(1, crate::i18n::tr("bin.footage"), true),
+			ProjectEntry::new(2, crate::i18n::tr("bin.music"), true),
 			ProjectEntry::new(3, "第一稿.mp4", false),
 			ProjectEntry::new(4, "aaa.ove", false),
 		]
@@ -1137,7 +1403,8 @@ impl MockEngine {
 	/// The synthetic CPU test frame for `monitor`, cached per playhead frame so
 	/// a paused viewer never regenerates its picture. This is the frame the
 	/// source/program viewers display through [`ViewerWidget::set_cpu_frame`],
-	/// proving the CPU-frame path end to end before the real engine lands.
+	/// proving the CPU-frame path end to end (the real engine shows the same
+	/// pattern until the render-worker frame transport is bound).
 	pub fn cpu_frame(&self, monitor: Monitor, cx: &App) -> Arc<RenderImage> {
 		let frame = self.clock_frame(monitor, cx);
 		let mut cache = self.cpu_frame_cache.lock().unwrap();
@@ -1146,73 +1413,9 @@ impl MockEngine {
 				return image.clone();
 			}
 		}
-		let image = Arc::new(self.synthetic_frame(frame));
+		let image = Arc::new(crate::oakui::frames::synthetic_frame(frame));
 		cache.insert(monitor, (frame.0, image.clone()));
 		image
-	}
-
-	/// Generates a synthetic test frame: SMPTE-style color bars with a white
-	/// sweep whose x position follows `frame`, so playback is visibly moving.
-	///
-	/// Samples are computed as F32 RGBA (mirroring the real engine's pixel
-	/// pipeline) and downconverted to BGRA8 for the viewer's CPU-frame path.
-	/// The picture is rendered at a small proxy size ([`SYNTH_FRAME_WIDTH`] ×
-	/// [`SYNTH_FRAME_HEIGHT`]); the real engine delivers full resolution.
-	fn synthetic_frame(&self, frame: Frame) -> RenderImage {
-		let width = SYNTH_FRAME_WIDTH;
-		let height = SYNTH_FRAME_HEIGHT;
-
-		// F32 RGBA samples, then quantized to BGRA8 for the sprite atlas.
-		let mut samples = vec![0.0f32; (width * height * 4) as usize];
-		// SMPTE bars: 75% white, yellow, cyan, green, magenta, red, blue.
-		let bars: [(f32, f32, f32); 7] = [
-			(1.0, 1.0, 1.0),
-			(1.0, 1.0, 0.0),
-			(0.0, 1.0, 1.0),
-			(0.0, 1.0, 0.0),
-			(1.0, 0.0, 1.0),
-			(1.0, 0.0, 0.0),
-			(0.0, 0.0, 1.0),
-		];
-		// Bottom strip: blue, magenta, 75% white, black.
-		let strip: [(f32, f32, f32); 4] = [
-			(0.0, 0.0, 1.0),
-			(1.0, 0.0, 1.0),
-			(0.75, 0.75, 0.75),
-			(0.0, 0.0, 0.0),
-		];
-		// The sweep moves 6 px per frame and wraps around the width, so
-		// transport playback shows up as motion across the picture.
-		let sweep = (frame.0 as f32 * 6.0) % width as f32;
-		let bars_top = height as f32 * 0.66;
-
-		for y in 0..height {
-			for x in 0..width {
-				let in_sweep = (x as f32 - sweep).abs() < 6.0;
-				let color = if in_sweep {
-					(1.0, 1.0, 1.0)
-				} else if (y as f32) < bars_top {
-					bars[((x as f32 / width as f32) * 7.0) as usize]
-				} else {
-					strip[((x as f32 / width as f32) * 4.0) as usize]
-				};
-				let i = ((y * width + x) * 4) as usize;
-				samples[i] = color.0;
-				samples[i + 1] = color.1;
-				samples[i + 2] = color.2;
-				samples[i + 3] = 1.0;
-			}
-		}
-
-		let mut bytes = Vec::with_capacity((width * height * 4) as usize);
-		for i in (0..samples.len()).step_by(4) {
-			bytes.push((samples[i + 2] * 255.0) as u8); // B
-			bytes.push((samples[i + 1] * 255.0) as u8); // G
-			bytes.push((samples[i] * 255.0) as u8); // R
-			bytes.push((samples[i + 3] * 255.0) as u8); // A
-		}
-		let buffer = image::RgbaImage::from_raw(width, height, bytes).expect("synthetic frame");
-		RenderImage::new(smallvec::SmallVec::from_elem(image::Frame::new(buffer), 1))
 	}
 }
 
@@ -1303,16 +1506,92 @@ mod tests {
 	}
 
 	#[gpui::test]
-	async fn timeline_edits_are_requests_not_applied(cx: &mut TestAppContext) {
+	async fn timeline_edits_are_applied_to_the_mock_model(cx: &mut TestAppContext) {
 		cx.update(|app| {
 			let engine = demo_engine(app);
-			// The demo timeline model ignores edit requests: the mock keeps
-			// its clips where they are until a real engine applies them.
-			let before = engine.read(app).track(1).expect("V1").clips().len();
-			// (Nothing to assert beyond stability: the widget never mutates
-			// the data source directly — reads stay stable across reads.)
-			let after = engine.read(app).track(1).expect("V1").clips().len();
-			assert_eq!(before, after);
+
+			// Trim the V1 "B-roll.mp4" clip (id 12, 240–600) in by 40 frames.
+			engine.update(app, |engine, cx| {
+				engine.apply_timeline_event(
+					&TimelineEvent::ClipTrimRequested {
+						clip: ClipId(12),
+						edge: TrimEdge::Start,
+						new_frame: Frame(280),
+					},
+					cx,
+				);
+			});
+			let v1_track = engine.read(app).track(1).expect("V1");
+			let b_roll = v1_track
+				.clips()
+				.iter()
+				.find(|c| c.id() == ClipId(12))
+				.expect("B-roll clip");
+			assert_eq!(b_roll.range(), FrameRange::new(Frame(280), Frame(600)));
+			assert_eq!(b_roll.media_in(), Frame(140), "media-in follows the trim");
+
+			// Move the 开场 clip (id 11) onto the V2 track at frame 300.
+			engine.update(app, |engine, cx| {
+				engine.apply_timeline_event(
+					&TimelineEvent::ClipMoveRequested {
+						clip: ClipId(11),
+						new_track: 0,
+						new_start: Frame(300),
+					},
+					cx,
+				);
+			});
+			let v2 = engine.read(app).track(0).expect("V2");
+			assert!(
+				v2.clips().iter().any(|c| c.id() == ClipId(11) && c.range().start == Frame(300)),
+				"开场 moved to V2 at frame 300"
+			);
+			assert!(
+				!engine.read(app).track(1).expect("V1").clips().iter().any(|c| c.id() == ClipId(11)),
+				"开场 left V1"
+			);
+		});
+	}
+
+	#[gpui::test]
+	async fn mock_split_at_playhead_and_ripple_delete(cx: &mut TestAppContext) {
+		cx.update(|app| {
+			let engine = demo_engine(app);
+
+			// Park the program playhead inside 开场 (0–240) and split there.
+			engine.update(app, |engine, cx| {
+				engine.request_frame(Monitor::Program, Frame(120), cx);
+				engine.split_at_playhead(cx);
+			});
+			let v1 = engine.read(app).track(1).expect("V1");
+			assert_eq!(v1.clips().len(), 3, "开场 split into two");
+			let spanning = v1
+				.clips()
+				.iter()
+				.filter(|c| c.range().start.0 < 120 && 120 < c.range().end.0)
+				.count();
+			assert_eq!(spanning, 0, "no clip spans the split point");
+
+			// Ripple-delete the second half of 开场 (id 11's split tail).
+			let tail_id = v1
+				.clips()
+				.iter()
+				.find(|c| c.range().start == Frame(120))
+				.map(|c| c.id())
+				.expect("split tail");
+			engine.update(app, |engine, cx| {
+				engine.delete_clip(tail_id, true, cx);
+			});
+			let v1 = engine.read(app).track(1).expect("V1");
+			assert_eq!(v1.clips().len(), 2);
+			// The following B-roll (was 240–600) shifted left by the removed
+			// 120-frame tail: now starts at 120.
+			let b_roll = v1
+				.clips()
+				.iter()
+				.find(|c| c.id() == ClipId(12))
+				.expect("B-roll clip");
+			assert_eq!(b_roll.range().start, Frame(120), "ripple shifted B-roll left");
 		});
 	}
 
@@ -1487,10 +1766,13 @@ mod tests {
 
 			// The frame has the documented proxy size and opaque BGRA8 bytes.
 			let size = c.size(0);
-			assert_eq!(size.width, SYNTH_FRAME_WIDTH.into());
-			assert_eq!(size.height, SYNTH_FRAME_HEIGHT.into());
+			assert_eq!(size.width, crate::oakui::frames::SYNTH_FRAME_WIDTH.into());
+			assert_eq!(size.height, crate::oakui::frames::SYNTH_FRAME_HEIGHT.into());
 			let bytes = c.as_bytes(0).expect("single frame");
-			assert_eq!(bytes.len(), (SYNTH_FRAME_WIDTH * SYNTH_FRAME_HEIGHT * 4) as usize);
+			assert_eq!(
+				bytes.len(),
+				(crate::oakui::frames::SYNTH_FRAME_WIDTH * crate::oakui::frames::SYNTH_FRAME_HEIGHT * 4) as usize
+			);
 			assert!(bytes.chunks_exact(4).all(|px| px[3] == 255), "opaque alpha");
 		});
 	}

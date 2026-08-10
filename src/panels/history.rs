@@ -25,9 +25,11 @@ use crate::panels::ids::HISTORY;
 
 /// The undo-history placeholder panel.
 pub struct HistoryPanel {
-	/// Demo entries (newest first), matching the design's date format
-	/// `YYYY-MM-DD HH:mm`.
-	entries: Vec<(&'static str, &'static str)>,
+	/// Demo entries `(i18n key, label suffix, timestamp)`, newest first,
+	/// matching the design's date format `YYYY-MM-DD HH:mm`. The label is
+	/// `tr(key) + suffix`, so the verb is localized while clip names stay as
+	/// data.
+	entries: Vec<(&'static str, &'static str, &'static str)>,
 }
 
 impl HistoryPanel {
@@ -35,11 +37,11 @@ impl HistoryPanel {
 	pub fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
 		Self {
 			entries: vec![
-				("变换", "2026-06-03 20:25"),
-				("移动片段", "2026-06-03 20:24"),
-				("删除 B-roll.mp4", "2026-06-03 20:22"),
-				("添加 OCIO LUT", "2026-06-03 20:20"),
-				("设置入点", "2026-06-03 20:18"),
+				("history.transform", "", "2026-06-03 20:25"),
+				("history.move_clip", "", "2026-06-03 20:24"),
+				("history.delete_clip", " B-roll.mp4", "2026-06-03 20:22"),
+				("history.add_lut", "", "2026-06-03 20:20"),
+				("history.set_in_point", "", "2026-06-03 20:18"),
 			],
 		}
 	}
@@ -55,7 +57,8 @@ impl Render for HistoryPanel {
 			.flex_col()
 			.py_1()
 			.overflow_y_scroll();
-		for (label, timestamp) in &self.entries {
+		for (key, suffix, timestamp) in &self.entries {
+			let label = format!("{}{}", crate::i18n::tr(key), suffix);
 			list = list.child(
 				div()
 					.flex()
@@ -65,7 +68,7 @@ impl Render for HistoryPanel {
 					.px_3()
 					.py_1()
 					.text_color(colors.text)
-					.child(div().child(*label))
+					.child(div().child(label))
 					.child(div().text_color(colors.disabled).child(*timestamp)),
 			);
 		}

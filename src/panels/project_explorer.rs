@@ -23,18 +23,18 @@ use gpui::{
 };
 use gpui_widgets::project_explorer::{ProjectExplorer, ProjectExplorerEvent};
 
-use crate::oakui::MockEngine;
+use crate::oakui::AppEngine;
 use crate::panels::ids::PROJECT;
 
 /// The material bin panel.
-pub struct ProjectExplorerPanel {
-	explorer: Entity<ProjectExplorer<MockEngine>>,
-	engine: Entity<MockEngine>,
+pub struct ProjectExplorerPanel<E: AppEngine> {
+	explorer: Entity<ProjectExplorer<E>>,
+	engine: Entity<E>,
 }
 
-impl ProjectExplorerPanel {
+impl<E: AppEngine> ProjectExplorerPanel<E> {
 	/// Builds the explorer over `engine`'s project data.
-	pub fn new(engine: Entity<MockEngine>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+	pub fn new(engine: Entity<E>, window: &mut Window, cx: &mut Context<Self>) -> Self {
 		let explorer = cx.new(|cx| ProjectExplorer::new(1, engine.clone(), window, cx));
 		cx.subscribe(
 			&explorer,
@@ -53,15 +53,15 @@ impl ProjectExplorerPanel {
 	}
 }
 
-impl Render for ProjectExplorerPanel {
+impl<E: AppEngine> Render for ProjectExplorerPanel<E> {
 	fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
 		div().size_full().child(self.explorer.clone())
 	}
 }
 
-impl EventEmitter<PanelEvent> for ProjectExplorerPanel {}
+impl<E: AppEngine> EventEmitter<PanelEvent> for ProjectExplorerPanel<E> {}
 
-impl DockPanel for ProjectExplorerPanel {
+impl<E: AppEngine> DockPanel for ProjectExplorerPanel<E> {
 	fn panel_id(&self) -> gpui::dock::PanelId {
 		PROJECT
 	}

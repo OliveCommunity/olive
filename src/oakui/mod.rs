@@ -26,20 +26,32 @@
 //! * [`mock`] — [`MockEngine`](mock::MockEngine) and
 //!   [`MockClock`](mock::MockClock), the demo implementation feeding every
 //!   widget's data-source trait.
+//! * [`real`] — [`RealEngine`](real::RealEngine) and
+//!   [`RealClock`](real::RealClock), the real engine binding. It calls only
+//!   the frozen `oakengine_*` C ABI of the built `liboakengine` dylib (see
+//!   [`ffi`] and the crate's `build.rs`) behind the same
+//!   [`EngineGateway`](engine::EngineGateway) seam the mock implements.
+//! * [`ffi`] — the pure-C declarations of that ABI (extern imports, handle
+//!   layout mirrors, the `OakVideoParamsPod`).
 //! * [`transport`] — the play/pause/step/seek state machine (pure, unit
 //!   tested).
 //! * [`timecode`] — timecode / duration / fps / resolution formatting (pure,
 //!   unit tested).
-//!
-//! The real engine binding (the `liboakengine` C ABI through
-//! `src/facade/rust`) will implement [`EngineGateway`](engine::EngineGateway)
-//! later; nothing else in the crate needs to change for the swap.
 
 pub mod engine;
+pub mod ffi;
+pub mod frames;
+mod host_syms;
+pub mod icons;
 pub mod mock;
+pub mod real;
 pub mod timecode;
 pub mod transport;
 
-pub use engine::{EngineGateway, Monitor, Project, Sequence, VideoFormat};
+pub use engine::{
+	AppEngine, EngineClock, EngineGateway, ExportEvent, ExportSession, Monitor, Project,
+	Sequence, VideoFormat,
+};
 pub use mock::{MockClock, MockEngine};
+pub use real::{RealClock, RealEngine};
 pub use transport::{PlayState, TransportState};

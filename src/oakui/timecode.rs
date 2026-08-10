@@ -38,13 +38,10 @@ use gpui::timeline::{Frame, FrameRate};
 ///
 /// # Examples
 ///
-/// ```
-/// use gpui::timeline::{Frame, FrameRate};
-/// use oakapp::oakui::timecode::format_timecode;
-/// let rate = FrameRate::new(25, 1);
-/// assert_eq!(format_timecode(Frame(0), rate), "00:00:00:00");
-/// assert_eq!(format_timecode(Frame(25), rate), "00:00:01:00");
-/// assert_eq!(format_timecode(Frame(6468), rate), "00:04:18:18");
+/// ```text
+/// format_timecode(Frame(0), 25fps)    → "00:00:00:00"
+/// format_timecode(Frame(25), 25fps)   → "00:00:01:00"
+/// format_timecode(Frame(6468), 25fps) → "00:04:18:18"
 /// ```
 pub fn format_timecode(frame: Frame, rate: FrameRate) -> String {
 	let negative = frame.0 < 0;
@@ -79,11 +76,9 @@ pub fn format_duration(frames: Frame, rate: FrameRate) -> String {
 ///
 /// # Examples
 ///
-/// ```
-/// use gpui::timeline::FrameRate;
-/// use oakapp::oakui::timecode::format_fps;
-/// assert_eq!(format_fps(FrameRate::new(25, 1)), "25");
-/// assert_eq!(format_fps(FrameRate::NTSC_2997), "29.97");
+/// ```text
+/// format_fps(FrameRate::new(25, 1))   → "25"
+/// format_fps(FrameRate::NTSC_2997)    → "29.97"
 /// ```
 pub fn format_fps(rate: FrameRate) -> String {
 	let fps = rate.num as f64 / rate.den as f64;

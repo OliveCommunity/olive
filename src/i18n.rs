@@ -16,9 +16,9 @@
 
 //! Tiny localization layer: embedded en-US / zh-CN string tables, a
 //! [`tr`] lookup used by every user-visible label in the app, and a runtime
-//! language setting persisted through the oakcommon config C ABI
-//! (`oakcommon_config_get` / `oakcommon_config_set`, the process-wide
-//! `ConfigStore`).
+//! language setting persisted through the oakengine config C ABI
+//! (`oakengine_config_get_string` / `oakengine_config_set_string`, the
+//! process-wide `ConfigStore`).
 //!
 //! # The tables
 //!
@@ -31,18 +31,11 @@
 //!
 //! The language is a process-global [`Language`] (an atomic, so any thread
 //! can read it without locking). At startup [`init`] loads the persisted
-//! value from the oakcommon config key `Language` (`"zh-CN"` / `"en-US"`;
-//! empty or unknown values mean en-US). [`set_language`] flips the global
-//! and writes the new value back through the same key so the preference
-//! survives restarts.
-//!
-//! The oakcommon C ABI is resolved at runtime with `dlopen`/`dlsym`, so the
-//! app builds, tests and runs without liboakcommon present (e.g. under
-//! `cargo test`): when the library cannot be loaded the layer degrades to an
-//! in-process store and still switches languages live. Once the app is
-//! packaged with liboakcommon in the library search path (or
-//! `OAK_LIB_DIR` is set to a build tree), the setting round-trips through
-//! `config.ini`.
+//! value from the config key `Language` (`"zh-CN"` / `"en-US"`; empty or
+//! unknown values mean en-US). [`set_language`] flips the global and writes
+//! the new value back through the same key so the preference survives
+//! restarts. The preferences dialog drives the same setting through the
+//! config C ABI directly.
 
 use std::sync::atomic::{AtomicU8, Ordering};
 
@@ -88,7 +81,7 @@ pub fn language() -> Language {
 }
 
 /// Switches the active language live and persists the choice through the
-/// oakcommon config C ABI (when the library is loadable).
+/// oakengine config C ABI.
 pub fn set_language(language: Language) {
 	CURRENT.store(match language {
 		Language::EnUs => 0,
@@ -98,24 +91,21 @@ pub fn set_language(language: Language) {
 	sync_widgets();
 }
 
-/// Loads the persisted language from the oakcommon config C ABI. Called once
-/// at startup. Never fails: without liboakcommon the default (en-US) stays.
+/// Loads the persisted language from the oakengine config C ABI. Called once
+/// at startup. Never fails: a missing key keeps the default (en-US).
 pub fn init() {
-	let Some(store) = ConfigAbi::load() else {
+	let code = crate::oakui::real::config_get_string("Language");
+	if !code.is_empty() {
+		set_language(Language::from_code(&code));
+	} else {
 		sync_widgets();
-		return;
-	};
-	match store.get("Language") {
-		Some(code) if !code.is_empty() => set_language(Language::from_code(&code)),
-		_ => sync_widgets(),
 	}
 }
 
-/// Writes `language` back to the oakcommon config `Language` key.
+/// Writes `language` back to the config `Language` key through the facade
+/// config C ABI.
 fn persist_language(language: Language) {
-	if let Some(store) = ConfigAbi::load() {
-		store.set("Language", language.code());
-	}
+	crate::oakui::real::config_set_string("Language", language.code());
 }
 
 /// Translates `key` in the active language.
@@ -135,6 +125,13 @@ pub const WIDGET_KEYS: &[&str] = &[
 	"viewer.safe_frames",
 	"viewer.zoom",
 	"viewer.no_frame_source",
+	"viewer.in_point",
+	"viewer.step_back",
+	"viewer.play",
+	"viewer.pause",
+	"viewer.step_forward",
+	"viewer.out_point",
+	"viewer.clear_range",
 	"effect_stack.empty",
 	"effect_stack.add",
 ];
@@ -184,6 +181,8 @@ const EN: &[(&str, &str)] = &[
 	("menu.file.new_project", "New Project…"),
 	("menu.file.open_project", "Open Project…"),
 	("menu.file.save", "Save"),
+	("menu.file.save_as", "Save As…"),
+	("menu.file.close", "Close Project"),
 	("menu.file.export", "Export…"),
 	("menu.file.quit", "Quit"),
 	// --- Edit ---
@@ -193,6 +192,7 @@ const EN: &[(&str, &str)] = &[
 	("menu.edit.copy", "Copy"),
 	("menu.edit.paste", "Paste"),
 	("menu.edit.delete", "Delete"),
+	("menu.edit.ripple_delete", "Ripple Delete"),
 	// --- View ---
 	("menu.view.theme", "Theme"),
 	("menu.view.theme.dark", "Olive Dark"),
@@ -200,6 +200,7 @@ const EN: &[(&str, &str)] = &[
 	("menu.view.language", "Language"),
 	("menu.view.language.en", "English"),
 	("menu.view.language.zh", "简体中文"),
+	("menu.view.preferences", "Preferences…"),
 	// --- Playback ---
 	("menu.playback.play_pause", "Play/Pause"),
 	("menu.playback.prev_frame", "Previous Frame"),
@@ -208,6 +209,8 @@ const EN: &[(&str, &str)] = &[
 	// --- Sequence ---
 	("menu.sequence.add_video_track", "Add Video Track"),
 	("menu.sequence.add_audio_track", "Add Audio Track"),
+	("menu.sequence.remove_track", "Remove Selected Track"),
+	("menu.sequence.split_at_playhead", "Split Clips at Playhead"),
 	("menu.sequence.settings", "Sequence Settings…"),
 	// --- Window ---
 	("menu.window.project", "Project"),
@@ -237,6 +240,7 @@ const EN: &[(&str, &str)] = &[
 	("status.proxy", "Proxy: Off"),
 	("status.autosave", "Autosave: 3 min ago"),
 	("status.untitled", "Untitled Project"),
+	("status.backend", "Engine:"),
 	// --- timeline toolbar ---
 	("timeline.tool.select", "Select"),
 	("timeline.tool.razor", "Razor"),
@@ -244,16 +248,35 @@ const EN: &[(&str, &str)] = &[
 	("timeline.tool.slip", "Slip"),
 	("timeline.tool.roll", "Roll"),
 	("timeline.tool.zoom", "Zoom"),
-	("timeline.tool.knife", "Knife"),
-	("timeline.tool.marker", "Marker"),
+	("timeline.tool.slide", "Slide"),
+	("timeline.tool.track_select", "Track Select"),
 	("timeline.zoom", "Zoom"),
+	("timeline.zoom_in", "Zoom In"),
+	("timeline.zoom_out", "Zoom Out"),
 	("timeline.track_height", "Track Height"),
 	("timeline.snap", "Snap"),
+	// --- project bin ---
+	("bin.footage", "Footage"),
+	("bin.music", "Music"),
+	// --- history (undo stack demo entries) ---
+	("history.transform", "Transform"),
+	("history.move_clip", "Move Clip"),
+	("history.delete_clip", "Delete"),
+	("history.add_lut", "Add OCIO LUT"),
+	("history.set_in_point", "Set In Point"),
 	// --- node editor ---
 	("node.fit", "Fit"),
 	// --- viewer header chips ---
 	("viewer.source", "Source Viewer · Source"),
 	("viewer.program", "Program Viewer · Program"),
+	// --- viewer transport tooltips ---
+	("viewer.in_point", "Set In Point"),
+	("viewer.step_back", "Previous Frame"),
+	("viewer.play", "Play"),
+	("viewer.pause", "Pause"),
+	("viewer.step_forward", "Next Frame"),
+	("viewer.out_point", "Set Out Point"),
+	("viewer.clear_range", "Clear In/Out Range"),
 	// --- widget-baked strings (synced to gpui_widgets::i18n) ---
 	("viewer.safe_frames", "Safe Frames"),
 	("viewer.zoom", "Zoom"),
@@ -262,6 +285,25 @@ const EN: &[(&str, &str)] = &[
 	("effect_stack.add", "+ Add Effect"),
 	// --- inspector ---
 	("inspector.params", "Parameters (placeholder)"),
+	// --- dialogs ---
+	("dialog.cancel", "Cancel"),
+	("dialog.close", "Close"),
+	("file.open.title", "Open Project"),
+	("file.save_as.title", "Save Project As"),
+	("preferences.title", "Preferences"),
+	("preferences.backend", "Renderer backend"),
+	("preferences.backend.placeholder", "Select a backend…"),
+	("preferences.language", "Language"),
+	("preferences.language.placeholder", "Select a language…"),
+	("preferences.hint", "The renderer backend applies to the render worker at the next launch; the language switches immediately."),
+	("export.title", "Export Sequence"),
+	("export.format", "Format"),
+	("export.format.placeholder", "Select a format…"),
+	("export.path", "Output path"),
+	("export.run", "Export"),
+	("export.hint", "The sequence is exported through the oaktask export path; progress is shown in the dialog."),
+	("export.progress.title", "Exporting"),
+	("export.progress.label", "Rendering frames…"),
 ];
 
 /// The zh-CN table. Mirrors [`EN`] key-for-key.
@@ -279,6 +321,8 @@ const ZH: &[(&str, &str)] = &[
 	("menu.file.new_project", "新建项目…"),
 	("menu.file.open_project", "打开项目…"),
 	("menu.file.save", "保存"),
+	("menu.file.save_as", "另存为…"),
+	("menu.file.close", "关闭项目"),
 	("menu.file.export", "导出…"),
 	("menu.file.quit", "退出"),
 	// --- Edit ---
@@ -288,6 +332,7 @@ const ZH: &[(&str, &str)] = &[
 	("menu.edit.copy", "复制"),
 	("menu.edit.paste", "粘贴"),
 	("menu.edit.delete", "删除"),
+	("menu.edit.ripple_delete", "波纹删除"),
 	// --- View ---
 	("menu.view.theme", "主题"),
 	("menu.view.theme.dark", "Olive Dark"),
@@ -295,6 +340,7 @@ const ZH: &[(&str, &str)] = &[
 	("menu.view.language", "语言"),
 	("menu.view.language.en", "English"),
 	("menu.view.language.zh", "简体中文"),
+	("menu.view.preferences", "偏好设置…"),
 	// --- Playback ---
 	("menu.playback.play_pause", "播放/暂停"),
 	("menu.playback.prev_frame", "上一帧"),
@@ -303,6 +349,8 @@ const ZH: &[(&str, &str)] = &[
 	// --- Sequence ---
 	("menu.sequence.add_video_track", "添加视频轨道"),
 	("menu.sequence.add_audio_track", "添加音频轨道"),
+	("menu.sequence.remove_track", "删除所选轨道"),
+	("menu.sequence.split_at_playhead", "在播放头处分割片段"),
 	("menu.sequence.settings", "序列设置…"),
 	// --- Window ---
 	("menu.window.project", "项目"),
@@ -332,6 +380,7 @@ const ZH: &[(&str, &str)] = &[
 	("status.proxy", "代理:关"),
 	("status.autosave", "自动保存:3分钟前"),
 	("status.untitled", "未命名项目"),
+	("status.backend", "引擎:"),
 	// --- timeline toolbar ---
 	("timeline.tool.select", "选择"),
 	("timeline.tool.razor", "剃刀"),
@@ -339,16 +388,35 @@ const ZH: &[(&str, &str)] = &[
 	("timeline.tool.slip", "滑动"),
 	("timeline.tool.roll", "滚动"),
 	("timeline.tool.zoom", "缩放"),
-	("timeline.tool.knife", "刀"),
-	("timeline.tool.marker", "标记"),
+	("timeline.tool.slide", "滑移"),
+	("timeline.tool.track_select", "轨道选择"),
 	("timeline.zoom", "缩放"),
+	("timeline.zoom_in", "放大"),
+	("timeline.zoom_out", "缩小"),
 	("timeline.track_height", "轨道高"),
 	("timeline.snap", "吸附"),
+	// --- project bin ---
+	("bin.footage", "素材"),
+	("bin.music", "音乐"),
+	// --- history (undo stack demo entries) ---
+	("history.transform", "变换"),
+	("history.move_clip", "移动片段"),
+	("history.delete_clip", "删除"),
+	("history.add_lut", "添加 OCIO LUT"),
+	("history.set_in_point", "设置入点"),
 	// --- node editor ---
 	("node.fit", "适配"),
 	// --- viewer header chips ---
 	("viewer.source", "素材查看器 · 源"),
 	("viewer.program", "序列查看器 · 节目"),
+	// --- viewer transport tooltips ---
+	("viewer.in_point", "设置入点"),
+	("viewer.step_back", "上一帧"),
+	("viewer.play", "播放"),
+	("viewer.pause", "暂停"),
+	("viewer.step_forward", "下一帧"),
+	("viewer.out_point", "设置出点"),
+	("viewer.clear_range", "清除入出点"),
 	// --- widget-baked strings (synced to gpui_widgets::i18n) ---
 	("viewer.safe_frames", "安全框"),
 	("viewer.zoom", "缩放"),
@@ -357,127 +425,35 @@ const ZH: &[(&str, &str)] = &[
 	("effect_stack.add", "+ 添加效果"),
 	// --- inspector ---
 	("inspector.params", "参数（占位）"),
+	// --- dialogs ---
+	("dialog.cancel", "取消"),
+	("dialog.close", "关闭"),
+	("file.open.title", "打开项目"),
+	("file.save_as.title", "项目另存为"),
+	("preferences.title", "偏好设置"),
+	("preferences.backend", "渲染后端"),
+	("preferences.backend.placeholder", "选择一个后端…"),
+	("preferences.language", "语言"),
+	("preferences.language.placeholder", "选择语言…"),
+	("preferences.hint", "渲染后端在下次启动渲染工作进程时生效；语言立即切换。"),
+	("export.title", "导出序列"),
+	("export.format", "格式"),
+	("export.format.placeholder", "选择格式…"),
+	("export.path", "输出路径"),
+	("export.run", "导出"),
+	("export.hint", "序列通过 oaktask 导出路径导出；进度显示在对话框中。"),
+	("export.progress.title", "正在导出"),
+	("export.progress.label", "正在渲染帧…"),
 ];
 
 // ---------------------------------------------------------------------------
-// oakcommon config C ABI (runtime-resolved)
+// Config persistence
 // ---------------------------------------------------------------------------
-
-/// The subset of the oakcommon config C ABI the language setting needs. Each
-/// function pointer is optional: when liboakcommon cannot be loaded the whole
-/// struct is `None` and the in-process fallback store is used instead.
-struct ConfigAbi {
-	get: unsafe extern "C" fn(*const i8, *const i8, *mut i8, i32) -> i32,
-	set: unsafe extern "C" fn(*const i8, *const i8, *const i8),
-}
-
-impl ConfigAbi {
-	/// Resolves the ABI once (process-wide) and returns it when loadable.
-	fn load() -> Option<&'static ConfigAbi> {
-		static ABI: std::sync::OnceLock<Option<ConfigAbi>> = std::sync::OnceLock::new();
-		ABI.get_or_init(resolve_abi).as_ref()
-	}
-
-	/// Reads the string entry for a flat `key`, or `None` when absent.
-	fn get(&self, key: &str) -> Option<String> {
-		let key = to_c(key)?;
-		let mut buf = [0i8; 128];
-		let result = unsafe {
-			(self.get)(
-				std::ptr::null(),
-				key.as_ptr(),
-				buf.as_mut_ptr(),
-				buf.len() as i32,
-			)
-		};
-		if result <= 0 {
-			// Negative codes are OAKCOMMON_E_* errors (e.g. not-found).
-			return None;
-		}
-		Some(from_c(&buf))
-	}
-
-	/// Writes a string entry for a flat `key`.
-	fn set(&self, key: &str, value: &str) {
-		let (Some(key), Some(value)) = (to_c(key), to_c(value)) else {
-			return;
-		};
-		unsafe {
-			(self.set)(std::ptr::null(), key.as_ptr(), value.as_ptr());
-		}
-	}
-}
-
-/// Resolves the oakcommon config functions via `dlopen`/`dlsym`.
-///
-/// Candidate library names: `OAK_LIB_DIR` (build-tree override) first, then
-/// the bare `liboakcommon.dylib` name on the platform search path. When none
-/// loads (plain `cargo test`/`cargo run` without a built oakcommon), this
-/// returns `None` and [`ConfigAbi::load`] degrades to the fallback store.
-#[cfg(target_os = "macos")]
-fn resolve_abi() -> Option<ConfigAbi> {
-	use std::ffi::c_void;
-
-	const RTLD_LAZY: i32 = 0x1;
-	unsafe extern "C" {
-		fn dlopen(filename: *const i8, flag: i32) -> *mut c_void;
-		fn dlsym(handle: *mut c_void, symbol: *const i8) -> *mut c_void;
-	}
-
-	// Candidate handles; the first dlopen that succeeds wins.
-	let mut candidates: Vec<*mut c_void> = Vec::new();
-	let mut handle: *mut c_void = std::ptr::null_mut();
-
-	if let Ok(dir) = std::env::var("OAK_LIB_DIR") {
-		let path = format!("{dir}/liboakcommon.dylib");
-		if let Some(c) = to_c(&path) {
-			handle = unsafe { dlopen(c.as_ptr(), RTLD_LAZY) };
-			if !handle.is_null() {
-				candidates.push(handle);
-			}
-		}
-	}
-	if handle.is_null() {
-		if let Some(c) = to_c("liboakcommon.dylib") {
-			handle = unsafe { dlopen(c.as_ptr(), RTLD_LAZY) };
-		}
-	}
-	if handle.is_null() {
-		return None;
-	}
-
-	let get = unsafe { dlsym(handle, b"oakcommon_config_get\0".as_ptr() as *const i8) };
-	let set = unsafe { dlsym(handle, b"oakcommon_config_set\0".as_ptr() as *const i8) };
-	if get.is_null() || set.is_null() {
-		return None;
-	}
-
-	Some(ConfigAbi {
-		get: unsafe { std::mem::transmute(get) },
-		set: unsafe { std::mem::transmute(set) },
-	})
-}
-
-/// Non-macOS fallback: no dlopen plumbing here; the in-process store is
-/// always used.
-#[cfg(not(target_os = "macos"))]
-fn resolve_abi() -> Option<ConfigAbi> {
-	None
-}
-
-/// Turns a `&str` into a NUL-terminated C string.
-fn to_c(s: &str) -> Option<std::ffi::CString> {
-	std::ffi::CString::new(s).ok()
-}
-
-/// Reads a NUL-terminated buffer back into a `String`.
-fn from_c(buf: &[i8]) -> String {
-	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-	buf[..len]
-		.iter()
-		.map(|&c| c as u8 as char)
-		.collect()
-}
+//
+// The language setting round-trips through the oakengine config C ABI
+// (`oakengine_config_get_string` / `oakengine_config_set_string`, the
+// in-process `ConfigStore` backed by the linked oakcommon crate). See
+// [`real`](crate::oakui::real) for the facade-side helpers.
 
 /// Serializes every test that mutates the process-global language, so
 /// parallel tests (in this module and in [`crate::app`]) cannot race each
@@ -511,6 +487,48 @@ mod tests {
 				!zh_value.1.is_empty(),
 				"empty zh-CN value for {key}"
 			);
+		}
+	}
+
+	/// No table entry may be its own key, and identical en-US / zh-CN values
+	/// are only allowed for proper nouns that stay in their original language
+	/// (theme names, language names, codecs) — anything else means one side
+	/// was left untranslated.
+	#[test]
+	fn no_untranslated_values() {
+		// Values that are intentionally identical across languages.
+		let shared = [
+			"Olive Dark",
+			"Olive Light",
+			"English",
+			"简体中文",
+			"en-US",
+			"zh-CN",
+			"OpenGL",
+			"Metal",
+			"Vulkan",
+			"MP4",
+		];
+		for (key, en_value) in EN {
+			assert_ne!(
+				*en_value, *key,
+				"en-US value for {key} is still the raw key (untranslated)"
+			);
+			let zh_value = ZH
+				.iter()
+				.find(|(k, _)| *k == *key)
+				.map(|(_, v)| *v)
+				.unwrap();
+			assert_ne!(
+				zh_value, *key,
+				"zh-CN value for {key} is still the raw key (untranslated)"
+			);
+			if *en_value == zh_value && !shared.contains(en_value) {
+				panic!(
+					"key {key} has identical en-US and zh-CN values ({en_value:?}); \
+					 one side is untranslated"
+				);
+			}
 		}
 	}
 

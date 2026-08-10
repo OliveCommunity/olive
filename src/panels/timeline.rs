@@ -44,14 +44,16 @@
 use gpui::colors::DefaultColors;
 use gpui::dock::{DockPanel, PanelEvent};
 use gpui::timeline::TimelineView;
-use gpui::{div, prelude::*, px, Context, Entity, Window};
+use gpui::{div, img, prelude::*, px, Context, Entity, Window};
 use gpui::{AnyElement, App, ClickEvent, EventEmitter, Render, SharedString};
 use gpui_widgets::checkbox::{CheckBox, CheckBoxEvent, CheckState};
 use gpui_widgets::slider::{Slider, SliderEvent, SliderModel};
+use gpui_widgets::tooltip::tooltip_view;
 use gpui_widgets::value::ValueKind;
 
 use crate::i18n;
-use crate::oakui::MockEngine;
+use crate::oakui::icons;
+use crate::oakui::AppEngine;
 use crate::panels::ids::TIMELINE;
 
 /// Toolbar height, per the design (31px).
@@ -59,23 +61,24 @@ const TOOLBAR_HEIGHT: f32 = 31.0;
 /// Fixed width of the trailing controls slot (zoom / track-height sliders).
 /// Kept constant so the sliders can never intrude into the ruler's labels.
 const RIGHT_CONTROLS_WIDTH: f32 = 140.0;
-/// The demo tool set, by i18n key. Only the visual selection is implemented;
-/// each tool's behavior arrives with the real tool system later.
-const TOOL_KEYS: [&str; 8] = [
-	"timeline.tool.select",
-	"timeline.tool.razor",
-	"timeline.tool.ripple",
-	"timeline.tool.slip",
-	"timeline.tool.roll",
-	"timeline.tool.zoom",
-	"timeline.tool.knife",
-	"timeline.tool.marker",
+/// The demo tool set, by i18n key, with the matching toolbar icon (the
+/// legacy C++ icon set). Only the visual selection is implemented; each
+/// tool's behavior arrives with the real tool system later.
+const TOOLS: [(&str, &str); 8] = [
+	("timeline.tool.select", crate::oakui::icons::ICON_ARROW),
+	("timeline.tool.razor", crate::oakui::icons::ICON_RAZOR),
+	("timeline.tool.ripple", crate::oakui::icons::ICON_RIPPLE),
+	("timeline.tool.slip", crate::oakui::icons::ICON_SLIP),
+	("timeline.tool.roll", crate::oakui::icons::ICON_ROLLING),
+	("timeline.tool.zoom", crate::oakui::icons::ICON_ZOOM),
+	("timeline.tool.slide", crate::oakui::icons::ICON_SLIDE),
+	("timeline.tool.track_select", crate::oakui::icons::ICON_TRACK_SELECT),
 ];
 
 /// The timeline panel.
-pub struct TimelinePanel {
-	timeline: Entity<TimelineView<MockEngine>>,
-	engine: Entity<MockEngine>,
+pub struct TimelinePanel<E: AppEngine> {
+	timeline: Entity<TimelineView<E>>,
+	engine: Entity<E>,
 	zoom: Entity<Slider>,
 	height: Entity<Slider>,
 	snap: Entity<CheckBox>,
@@ -83,12 +86,12 @@ pub struct TimelinePanel {
 	selected_tool: usize,
 }
 
-impl TimelinePanel {
+impl<E: AppEngine> TimelinePanel<E> {
 	/// Builds the panel around `timeline` (created by the app shell so it can
 	/// sync the playhead).
 	pub fn new(
-		engine: Entity<MockEngine>,
-		timeline: Entity<TimelineView<MockEngine>>,
+		engine: Entity<E>,
+		timeline: Entity<TimelineView<E>>,
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Self {
@@ -155,7 +158,7 @@ impl TimelinePanel {
 	}
 }
 
-impl Render for TimelinePanel {
+impl<E: AppEngine> Render for TimelinePanel<E> {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let colors = cx.default_colors().clone();
 
@@ -179,74 +182,112 @@ impl Render for TimelinePanel {
 			.flex_shrink_0()
 			.flex()
 			.items_center()
-			.gap_1()
+			.gap_2()
 			.px_2()
 			.overflow_hidden()
 			.border_b_1()
 			.border_color(colors.border)
 			.bg(colors.container);
 
-		for (index, tool_key) in TOOL_KEYS.iter().enumerate() {
-			let tool = i18n::tr(tool_key);
+		// A tool button: a 16px icon on a 24px hit target with a localized
+		// tooltip; the selected tool is highlighted.
+		let tool_button = |index: usize,
+		                   icon_name: &'static str,
+		                   key: &'static str,
+		                   cx: &mut Context<Self>| {
+			let tool = i18n::tr(key);
 			let selected = self.selected_tool == index;
 			let background = if selected {
 				colors.selected
 			} else {
 				colors.background
 			};
-			let foreground = if selected {
-				colors.selected_text
-			} else {
-				colors.text
-			};
 			let hover_bg = colors.selected;
-			let hover_fg = colors.selected_text;
-			toolbar = toolbar.child(
-				div()
-					.id(SharedString::from(format!("tool-{index}")))
-					.px_2()
-					.py_1()
-					.rounded_sm()
-					.cursor_pointer()
-					.bg(background)
-					.text_color(foreground)
-					.hover(move |style| style.bg(hover_bg).text_color(hover_fg))
-					.on_click(cx.listener(move |this, _event: &ClickEvent, _window, _cx| {
-						println!("[timeline] tool: {tool} (placeholder)");
-						this.selected_tool = index;
-					}))
-					.child(tool),
-			);
-		}
-
-		let text = colors.text;
-		let container = colors.container;
-		let tool_btn = move |id: &'static str, label: &'static str| {
+			let path = icons::icon_path(icon_name, cx);
 			div()
-				.id(id)
-				.px_2()
-				.py_1()
+				.id(SharedString::from(format!("tool-{index}")))
+				.size(px(24.0))
+				.flex()
+				.items_center()
+				.justify_center()
 				.rounded_sm()
 				.cursor_pointer()
-				.text_color(text)
-				.hover(move |style| style.bg(container))
-				.child(label)
+				.bg(background)
+				.hover(move |style| style.bg(hover_bg))
+				.tooltip(move |window, cx| tooltip_view(tool.into(), window, cx))
+				.on_click(
+					cx.listener(move |this, _event: &ClickEvent, _window, _cx| {
+						println!("[timeline] tool: {tool} (placeholder)");
+						this.selected_tool = index;
+					}),
+				)
+				.child(img(path).size(px(16.0)))
 		};
 
-		// The snap toggle: a localized label next to the checkbox box. The
-		// label is a plain div so it follows the active language; the box
-		// itself is clickable as in the widget's default row.
+		for (index, (tool_key, icon_name)) in TOOLS.iter().enumerate() {
+			toolbar = toolbar.child(tool_button(index, icon_name, tool_key, cx));
+		}
+
+		// A plain icon button (no selection state), e.g. zoom in/out.
+		let icon_btn = |id: &'static str,
+		                icon_name: &'static str,
+		                key: &'static str,
+		                cx: &mut Context<Self>| {
+			let label = i18n::tr(key);
+			let hover_bg = colors.container;
+			let path = icons::icon_path(icon_name, cx);
+			div()
+				.id(id)
+				.size(px(24.0))
+				.flex()
+				.items_center()
+				.justify_center()
+				.rounded_sm()
+				.cursor_pointer()
+				.text_color(colors.text)
+				.hover(move |style| style.bg(hover_bg))
+				.tooltip(move |window, cx| tooltip_view(label.into(), window, cx))
+				.child(img(path).size(px(16.0)))
+		};
+
+		// The snap toggle: the magnet icon next to the checkbox box. The icon
+		// is decorative (the box itself is clickable, as in the widget's
+		// default row).
 		let snap_row = div()
 			.flex()
 			.items_center()
 			.gap_1()
 			.text_color(colors.text)
-			.child(div().child(i18n::tr("timeline.snap")))
+			.child(
+				div()
+					.id("snap-toggle")
+					.size(px(24.0))
+					.flex()
+					.items_center()
+					.justify_center()
+					.cursor_pointer()
+					.tooltip(move |window, cx| {
+						tooltip_view(i18n::tr("timeline.snap").into(), window, cx)
+					})
+					.child(
+						img(icons::icon_path(icons::ICON_SNAP, cx)).size(px(16.0)),
+					),
+			)
 			.child(self.snap.clone());
 
 		let toolbar = toolbar
-			.child(tool_btn("toolbar-zoom-in", "+"))
-			.child(tool_btn("toolbar-zoom-out", "−"))
+			.child(icon_btn(
+				"toolbar-zoom-in",
+				icons::ICON_ZOOM_IN,
+				"timeline.zoom_in",
+				cx,
+			))
+			.child(icon_btn(
+				"toolbar-zoom-out",
+				icons::ICON_ZOOM_OUT,
+				"timeline.zoom_out",
+				cx,
+			))
 			.child(
 				div()
 					.w_1()
@@ -316,9 +357,9 @@ impl Render for TimelinePanel {
 	}
 }
 
-impl EventEmitter<PanelEvent> for TimelinePanel {}
+impl<E: AppEngine> EventEmitter<PanelEvent> for TimelinePanel<E> {}
 
-impl DockPanel for TimelinePanel {
+impl<E: AppEngine> DockPanel for TimelinePanel<E> {
 	fn panel_id(&self) -> gpui::dock::PanelId {
 		TIMELINE
 	}
@@ -335,6 +376,7 @@ impl DockPanel for TimelinePanel {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::oakui::MockEngine;
 	use gpui::{TestAppContext, VisualTestContext, px, size};
 
 	/// Builds a `TimelinePanel` in a window of the given logical size and
@@ -343,7 +385,7 @@ mod tests {
 		cx: &mut TestAppContext,
 		width: f32,
 		height: f32,
-	) -> (&'static mut VisualTestContext, Entity<TimelinePanel>) {
+	) -> (&'static mut VisualTestContext, Entity<TimelinePanel<MockEngine>>) {
 		cx.update(|cx| cx.init_colors());
 		let window = cx.open_window(size(px(width), px(height)), |window, cx| {
 			let engine = cx.new(|cx| crate::oakui::MockEngine::demo(cx));
