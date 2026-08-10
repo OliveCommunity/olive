@@ -28,15 +28,15 @@
 //!   - `engine/include/oakengine/exporter.h`  (export options + render)
 //!
 //! All of these families are **deferred** in the Rust facade crate
-//! (`oakfacade`, `src/facade/rust/src/deferred.rs`), so none of the symbols
+//! (`oakengine`, `src/facade/rust/src/deferred.rs`), so none of the symbols
 //! below is referenced from this crate yet — the subcommands gate on
 //! [`crate::deferred`] and report "not yet available" instead of calling
 //! them. The declarations exist so that:
 //!
 //!   1. the exact contract the CLI expects is pinned in one place (types,
 //!      signatures, string conventions, error codes), and
-//!   2. when a family is wrapped by oakfacade, the call-through code in
-//!      `src/cmd/` resolves against the already-linked `oakfacade` rlib
+//!   2. when a family is wrapped by oakengine, the call-through code in
+//!      `src/cmd/` resolves against the already-linked `oakengine` rlib
 //!      without any manifest or signature churn.
 //!
 //! Nothing here is ever called today, so no symbol needs to exist in the

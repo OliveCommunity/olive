@@ -71,7 +71,9 @@ fn info_on_a_fixture_reports_not_yet_available() {
     let (code, _stdout, stderr) = run(&["info", "tests/project_with_footage.ove"]);
     assert_eq!(code, 1);
     assert!(stderr.contains("error: info: not yet available"), "stderr: {stderr}");
-    assert!(stderr.contains("oakfacade"));
+    // The crate was renamed oakfacade -> oakengine; the deferral reason
+    // names the current crate.
+    assert!(stderr.contains("oakengine"));
 }
 
 #[test]

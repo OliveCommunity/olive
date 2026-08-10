@@ -33,11 +33,11 @@ serde_json = "1"
 # The liboakengine facade (Rust): its worker module owns the whole worker
 # runtime — render backend selection through the oakrender module C ABI,
 # the startup handshake and the NDJSON control loop
-# (`oakfacade::worker::worker_main`, the port of engine/src/capi/worker.cpp).
+# (`oakengine::worker::worker_main`, the port of engine/src/capi/worker.cpp).
 # This binary is a thin shell over it, like worker/workermain.cpp. Its ipc
 # module provides the real shared-memory frame-slot transport
-# (`oakfacade::ipc`) that src/session.rs + src/transport.rs attach through.
-oakfacade = { path = "../../src/facade/rust" }
+# (`oakengine::ipc`) that src/session.rs + src/transport.rs attach through.
+oakengine = { path = "../../src/engine/rust" }
 
 # The oakrender module crate (the Rust rewrite of the oakrender module):
 # its C ABI (include/render/renderer.h) is how the facade's worker

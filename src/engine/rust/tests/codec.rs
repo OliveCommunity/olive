@@ -22,7 +22,7 @@ mod common;
 
 use std::ffi::{c_char, c_int};
 
-use oakfacade::codec::{
+use oakengine::codec::{
 	oakengine_encoding_codec_is_lossless, oakengine_encoding_codec_is_still_image,
 	oakengine_encoding_codec_name, oakengine_encoding_filename_contains_digit_placeholder,
 	oakengine_encoding_filename_remove_digit_placeholder, oakengine_encoding_format_audio_codec_count,
@@ -45,7 +45,7 @@ use oakfacade::codec::{
 	oakengine_encoding_params_video_pix_fmt, oakengine_encoding_params_set_video_pix_fmt,
 	oakengine_encoding_pix_fmt_index,
 };
-use oakfacade::common::OakVideoParamsPod;
+use oakengine::common::OakVideoParamsPod;
 
 /// Container format / codec metadata queries.
 #[test]
@@ -142,7 +142,7 @@ fn params_handle_round_trip() {
 	let mut vp: OakVideoParamsPod = unsafe { std::mem::zeroed() };
 	assert_eq!(
 		unsafe {
-			oakfacade::common::oakengine_video_params_make(&mut vp, 1920, 1080, 1001, 30000, 4, 1, 1, 0, 1, 1)
+			oakengine::common::oakengine_video_params_make(&mut vp, 1920, 1080, 1001, 30000, 4, 1, 1, 0, 1, 1)
 		},
 		0
 	);

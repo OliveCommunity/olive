@@ -17,7 +17,7 @@
 //! Facade-family availability, mirroring `src/facade/rust/src/deferred.rs`.
 //!
 //! Every `oak-cli` subcommand depends on one or more families of the
-//! `oakengine_*` C ABI. Those families live in the `oakfacade` crate, and
+//! `oakengine_*` C ABI. Those families live in the `oakengine` crate, and
 //! some of them are **deferred**: the facade does not wrap them yet, so the
 //! subcommands must report a clear "not yet available" error instead of
 //! calling into the facade (the calls would not link, and faking behavior
@@ -47,7 +47,7 @@ pub struct DeferredFamily {
 pub const INIT: DeferredFamily = DeferredFamily {
     name: "init",
     headers: "init.h",
-    reason: "the facade shell (oakengine_init/shutdown) is not wrapped in oakfacade yet (its scope table covers only undo/common/audio/plugin)",
+    reason: "the facade shell (oakengine_init/shutdown) is not wrapped in oakengine yet (its scope table covers only undo/common/audio/plugin)",
 };
 
 /// `project.h` + `footage.h` — the oaknode module family.
@@ -80,13 +80,13 @@ pub const TIMELINE: DeferredFamily = DeferredFamily {
 pub const RENDER: DeferredFamily = DeferredFamily {
     name: "render",
     headers: "renderer.h",
-    reason: "deferred for session scope: the engine renderer.h family is not wrapped in oakfacade yet (no structural blocker)",
+    reason: "deferred for session scope: the engine renderer.h family is not wrapped in oakengine yet (no structural blocker)",
 };
 
 /// `exporter.h` — export/encode family.
 ///
 /// Facade deferred.rs: exporter is a "genuinely facade-only area" (the
-/// liboakengine assembly layer) with no files in the oakfacade crate.
+/// liboakengine assembly layer) with no files in the oakengine crate.
 pub const EXPORT: DeferredFamily = DeferredFamily {
     name: "exporter",
     headers: "exporter.h",
@@ -107,7 +107,7 @@ pub fn require(families: &[&DeferredFamily]) -> Result<(), String> {
         detail.push_str(&format!("\n  - {} ({}): {}", f.name, f.headers, f.reason));
     }
     Err(format!(
-        "not yet available in the Rust facade (oakfacade): these family(ies) are still deferred \
+        "not yet available in the Rust facade (oakengine): these family(ies) are still deferred \
          (see src/facade/rust/src/deferred.rs):{detail}"
     ))
 }
@@ -126,7 +126,7 @@ mod tests {
         let err = require(&[&INIT]).unwrap_err();
         assert!(err.contains("not yet available"));
         assert!(err.contains("init"));
-        assert!(err.contains("oakfacade"));
+        assert!(err.contains("oakengine"));
     }
 
     #[test]

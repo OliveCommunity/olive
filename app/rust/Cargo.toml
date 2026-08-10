@@ -37,6 +37,10 @@ gpui = { path = "../../gpui/crates/gpui" }
 gpui_platform = { path = "../../gpui/crates/gpui_platform", features = ["font-kit"] }
 # Oak's widget library: menus, viewer, form controls, project explorer.
 gpui_widgets = { path = "../../gpui/crates/gpui_widgets" }
+# The mock engine's synthetic viewer frames (`image::Frame` in a
+# `RenderImage`), matching the versions gpui itself uses.
+image = "0.25"
+smallvec = "1"
 
 [dev-dependencies]
 # `#[gpui::test]` harness for engine-seam smoke tests (test-support feature).

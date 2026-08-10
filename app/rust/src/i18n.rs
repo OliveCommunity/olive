@@ -95,17 +95,19 @@ pub fn set_language(language: Language) {
 		Language::ZhCN => 1,
 	}, Ordering::Relaxed);
 	persist_language(language);
+	sync_widgets();
 }
 
 /// Loads the persisted language from the oakcommon config C ABI. Called once
 /// at startup. Never fails: without liboakcommon the default (en-US) stays.
 pub fn init() {
 	let Some(store) = ConfigAbi::load() else {
+		sync_widgets();
 		return;
 	};
 	match store.get("Language") {
 		Some(code) if !code.is_empty() => set_language(Language::from_code(&code)),
-		_ => {}
+		_ => sync_widgets(),
 	}
 }
 
@@ -125,6 +127,28 @@ pub fn tr(key: &'static str) -> &'static str {
 		Language::EnUs => en(key),
 		Language::ZhCN => zh(key).unwrap_or_else(|| en(key)),
 	}
+}
+
+/// The keys the gpui widget crates localize through
+/// `gpui_widgets::i18n` (viewer transport labels, effect-stack empty state).
+pub const WIDGET_KEYS: &[&str] = &[
+	"viewer.safe_frames",
+	"viewer.zoom",
+	"viewer.no_frame_source",
+	"effect_stack.empty",
+	"effect_stack.add",
+];
+
+/// Installs the active language's widget strings into the
+/// `gpui_widgets::i18n` string-table hook, so the widget-baked labels follow
+/// the app language on the next render. Called on startup and on every
+/// language switch; the widgets keep their built-in defaults otherwise.
+pub fn sync_widgets() {
+	let mut table = gpui_widgets::i18n::StringTable::new();
+	for key in WIDGET_KEYS {
+		table.insert((*key).to_string(), tr(key).to_string());
+	}
+	gpui_widgets::i18n::set_table(table);
 }
 
 /// Looks `key` up in the en-US table.
@@ -226,14 +250,16 @@ const EN: &[(&str, &str)] = &[
 	("timeline.track_height", "Track Height"),
 	("timeline.snap", "Snap"),
 	// --- node editor ---
-	("node.zoom_in", "Zoom In"),
-	("node.zoom_out", "Zoom Out"),
 	("node.fit", "Fit"),
-	("node.fit_window", "Fit Window"),
-	("node.placeholder", "Node Editor · Placeholder — gpui::node_graph not wired up yet"),
 	// --- viewer header chips ---
 	("viewer.source", "Source Viewer · Source"),
 	("viewer.program", "Program Viewer · Program"),
+	// --- widget-baked strings (synced to gpui_widgets::i18n) ---
+	("viewer.safe_frames", "Safe Frames"),
+	("viewer.zoom", "Zoom"),
+	("viewer.no_frame_source", "No frame source"),
+	("effect_stack.empty", "No selection"),
+	("effect_stack.add", "+ Add Effect"),
 	// --- inspector ---
 	("inspector.params", "Parameters (placeholder)"),
 ];
@@ -319,14 +345,16 @@ const ZH: &[(&str, &str)] = &[
 	("timeline.track_height", "轨道高"),
 	("timeline.snap", "吸附"),
 	// --- node editor ---
-	("node.zoom_in", "放大"),
-	("node.zoom_out", "缩小"),
 	("node.fit", "适配"),
-	("node.fit_window", "适配窗口"),
-	("node.placeholder", "节点编辑器 · 占位 — gpui::node_graph 尚未接入"),
 	// --- viewer header chips ---
 	("viewer.source", "素材查看器 · 源"),
 	("viewer.program", "序列查看器 · 节目"),
+	// --- widget-baked strings (synced to gpui_widgets::i18n) ---
+	("viewer.safe_frames", "安全框"),
+	("viewer.zoom", "缩放"),
+	("viewer.no_frame_source", "无帧源"),
+	("effect_stack.empty", "未选择"),
+	("effect_stack.add", "+ 添加效果"),
 	// --- inspector ---
 	("inspector.params", "参数（占位）"),
 ];
@@ -532,6 +560,40 @@ mod tests {
 		assert_eq!(tr("menu.file.save"), "保存");
 		set_language(Language::EnUs);
 		assert_eq!(tr("menu.file.save"), "Save");
+	}
+
+	/// `sync_widgets` installs the active language's strings into the widget
+	/// string-table hook, so the widget-baked labels follow the app language.
+	#[test]
+	fn sync_widgets_installs_the_active_language() {
+		let _guard = lang_lock().lock().unwrap();
+		set_language(Language::EnUs);
+		gpui_widgets::i18n::clear_table(); // simulate a fresh process
+		sync_widgets();
+		assert_eq!(
+			gpui_widgets::i18n::tr("viewer.safe_frames", "安全框").to_string(),
+			"Safe Frames"
+		);
+		assert_eq!(
+			gpui_widgets::i18n::tr("viewer.zoom", "缩放").to_string(),
+			"Zoom"
+		);
+		// Every widget key is covered by the installed table.
+		for key in WIDGET_KEYS {
+			let installed = gpui_widgets::i18n::tr(key, "fallback").to_string();
+			assert_ne!(installed, "fallback", "widget key {key} not synced");
+		}
+
+		set_language(Language::ZhCN);
+		assert_eq!(
+			gpui_widgets::i18n::tr("viewer.safe_frames", "Safe Frames").to_string(),
+			"安全框"
+		);
+		assert_eq!(
+			gpui_widgets::i18n::tr("effect_stack.add", "+ Add Effect").to_string(),
+			"+ 添加效果"
+		);
+		set_language(Language::EnUs);
 	}
 
 	/// The config code round-trips.

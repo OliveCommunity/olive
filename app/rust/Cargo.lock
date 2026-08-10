@@ -3636,6 +3636,7 @@ dependencies = [
  "gpui_platform",
  "gpui_widgets",
  "image",
+ "smallvec",
 ]
 
 [[package]]

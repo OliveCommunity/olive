@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! # oakfacade — the `liboakengine` facade (Rust)
+//! # oakengine — the `liboakengine` facade (Rust)
 //!
 //! Re-exports the frozen `oakengine_*` C ABI
 //! (`engine/include/oakengine/*.h`) verbatim on top of the module C ABIs
@@ -42,12 +42,17 @@
 //!
 //! ## Testing
 //!
-//! `cargo test` links the module crates' rlibs (dev-dependencies) so the
-//! bridge imports resolve; `tests/linkage.rs` references every crate to
-//! force rustc to pull the rlibs into the link. Where a wrapped family
-//! needs module behavior the crates do not implement yet, the engine
-//! function is a documented stub and its test carries `#[ignore]` with a
-//! reason (see README.md).
+//! The module crates are real dependencies (see Cargo.toml) and
+//! [`linkage`] anchors them into every link of this crate, so the module
+//! C ABIs are embedded in the `liboakengine` cdylib next to the facade's
+//! own exports. `cargo test` links the same crates' rlibs (plus the
+//! `test-stubs` feature union declared in the dev-dependencies, which
+//! compiles the oakcommon/oakplugin in-crate mocks); `tests/linkage.rs`
+//! additionally references every crate for the integration-test binaries
+//! and `test_link` (below) covers the unit-test binary. Where a wrapped
+//! family needs module behavior the crates do not implement yet, the
+//! engine function is a documented stub and its test carries `#[ignore]`
+//! with a reason (see README.md).
 
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]
@@ -60,6 +65,8 @@ pub mod deferred;
 pub mod error;
 pub mod handle;
 pub mod ipc;
+#[cfg(not(test))]
+pub mod linkage;
 pub mod node;
 pub mod plugin;
 pub mod render;

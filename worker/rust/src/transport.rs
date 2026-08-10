@@ -20,7 +20,7 @@
 //! shared-memory segments holding an `olive::ipc::FrameSlotPool` — a fixed
 //! pool of frame slots whose free/ready queues are synchronized by the
 //! lock-free single-producer/single-consumer `SpscRingBuffer`. That
-//! machinery is implemented in the facade crate (`oakfacade::ipc`, the
+//! machinery is implemented in the facade crate (`oakengine::ipc`, the
 //! Rust port of `engine/render/ipc/` behind
 //! `engine/include/oakengine/ipc.h`) — this module is the worker-side
 //! transport over it.
@@ -36,7 +36,7 @@
 //! as before: `oaknode` is a `todo!()` skeleton and the oakrender crate
 //! does not yet evaluate an arbitrary loaded graph to a frame.
 
-use oakfacade::ipc::{FrameSlotPool, SharedMemoryRegion, ShmMode};
+use oakengine::ipc::{FrameSlotPool, SharedMemoryRegion, ShmMode};
 
 use crate::ipc::HandshakeMsg;
 

@@ -34,11 +34,11 @@ mod common;
 
 use std::ffi::{c_char, c_int, c_void};
 
-use oakfacade::node::{
+use oakengine::node::{
 	oakengine_node_free, oakengine_project_create, oakengine_project_free, oakengine_project_new,
 	oakengine_project_root, oakengine_project_set_filename,
 };
-use oakfacade::task::{
+use oakengine::task::{
 	oakengine_cli_task_dialog_run, oakengine_task_cancel, oakengine_task_create_export,
 	oakengine_task_create_project_import, oakengine_task_create_project_load,
 	oakengine_task_create_project_load_otio, oakengine_task_create_project_save,
@@ -187,7 +187,7 @@ fn project_task_lifecycle() {
 
 	// ---- save task on a real project → sync run writes the file ----------
 	let save_path = std::env::temp_dir().join(format!(
-		"oakfacade_task_save_{}.ovexml",
+		"oakengine_task_save_{}.ovexml",
 		std::process::id()
 	));
 	let save_c = std::ffi::CString::new(save_path.to_str().unwrap()).unwrap();
@@ -217,7 +217,7 @@ fn project_task_lifecycle() {
 	// project's own filename; NULL without one, a real task with one. ------
 	assert!(unsafe { oakengine_task_create_project_save_otio(project) }.is_null());
 	assert_eq!(
-		unsafe { oakengine_project_set_filename(project, c"/tmp/oakfacade_task_otio.otio".as_ptr()) },
+		unsafe { oakengine_project_set_filename(project, c"/tmp/oakengine_task_otio.otio".as_ptr()) },
 		0
 	);
 	let otio_task = unsafe { oakengine_task_create_project_save_otio(project) };

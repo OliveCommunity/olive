@@ -43,7 +43,7 @@ pub mod ids {
 	pub const SOURCE_VIEWER: PanelId = PanelId::new(2);
 	/// The program viewer (序列查看器).
 	pub const PROGRAM_VIEWER: PanelId = PanelId::new(3);
-	/// The node editor placeholder (节点编辑器).
+	/// The node editor (节点编辑器).
 	pub const NODE_EDITOR: PanelId = PanelId::new(4);
 	/// The inspector / effect stack (检查器·效果栈).
 	pub const INSPECTOR: PanelId = PanelId::new(5);

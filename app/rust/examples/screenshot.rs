@@ -57,12 +57,16 @@ fn main() -> Result<()> {
 	})?;
 	let handle: AnyWindowHandle = window.into();
 
-	// Let the platform settle, then draw one full frame into the rendered
-	// scene so `render_to_image` has something to capture.
+	// Draw a few frames so the layout settles: the node editor fits its graph
+	// once the canvas size is known and the viewers upload their first CPU
+	// frame, both of which happen on the frame after the initial render.
+	for _ in 0..4 {
+		cx.run_until_parked();
+		cx.update_window(handle, |_root, window, app| {
+			let _ = window.draw(app);
+		})?;
+	}
 	cx.run_until_parked();
-	cx.update_window(handle, |_root, window, app| {
-		let _ = window.draw(app);
-	})?;
 
 	let image = cx.capture_screenshot(handle)?;
 	std::fs::create_dir_all(std::path::Path::new(OUT).parent().unwrap())?;

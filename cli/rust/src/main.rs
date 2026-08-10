@@ -30,7 +30,7 @@
 //! 64 usage error.
 //!
 //! The facade families every subcommand depends on (init/project/timeline/
-//! render/footage/exporter) are still **deferred** in the `oakfacade` crate
+//! render/footage/exporter) are still **deferred** in the `oakengine` crate
 //! (see `src/facade/rust/src/deferred.rs`), so each subcommand validates its
 //! arguments faithfully, then reports the deferral with its reason and exits
 //! with the C++-compatible code — never crashing, never faking output.

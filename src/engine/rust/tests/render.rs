@@ -26,7 +26,7 @@ mod common;
 
 use std::ffi::{c_char, c_double};
 
-use oakfacade::render::{
+use oakengine::render::{
 	oakengine_color_last_error, oakengine_color_manager_get_config_filename,
 	oakengine_color_processor_convert_color, oakengine_color_processor_create,
 	oakengine_color_processor_free, oakengine_color_processor_is_valid,

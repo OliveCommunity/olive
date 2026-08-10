@@ -784,13 +784,14 @@ name = "oakcore-rs"
 version = "0.1.0"
 
 [[package]]
-name = "oakfacade"
+name = "oakengine"
 version = "0.1.0"
 dependencies = [
  "libc",
  "oakaudio",
  "oakcodec",
  "oakcommon",
+ "oakcore-rs",
  "oaknode",
  "oakplugin",
  "oakrender",

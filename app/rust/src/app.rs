@@ -152,7 +152,7 @@ impl PanelRegistry for AppPanelRegistry {
 				cx,
 			)),
 			"node-editor" => Some(PanelHandle::new(
-				cx.new(|cx| NodeEditorPanel::new(window, cx)),
+				cx.new(|cx| NodeEditorPanel::new(self.engine.clone(), window, cx)),
 				cx,
 			)),
 			"inspector" => Some(PanelHandle::new(
@@ -234,7 +234,7 @@ impl OakApp {
 				cx,
 			)
 		});
-		let node_editor = cx.new(|cx| NodeEditorPanel::new(window, cx));
+		let node_editor = cx.new(|cx| NodeEditorPanel::new(engine.clone(), window, cx));
 		let inspector = cx.new(|cx| InspectorPanel::new(engine.clone(), window, cx));
 		let history = cx.new(|cx| HistoryPanel::new(window, cx));
 		let timeline_panel =

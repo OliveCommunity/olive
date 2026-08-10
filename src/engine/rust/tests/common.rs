@@ -25,7 +25,7 @@ mod common;
 
 use std::ffi::{c_char, c_int};
 
-use oakfacade::common::{
+use oakengine::common::{
 	oakengine_config_get_int, oakengine_config_get_string, oakengine_config_load,
 	oakengine_config_save, oakengine_config_set_error_handler, oakengine_config_set_int,
 	oakengine_config_set_string, oakengine_video_params_bytes_per_pixel,
@@ -87,12 +87,12 @@ fn config_error_handler() {
 	assert_eq!(unsafe { oakengine_config_set_error_handler(Some(handler), std::ptr::null_mut()) }, 0);
 	// Report an error through the handler.
 	assert_eq!(unsafe {
-		oakfacade::common::oakengine_config_report_error(c"t".as_ptr(), c"m".as_ptr())
+		oakengine::common::oakengine_config_report_error(c"t".as_ptr(), c"m".as_ptr())
 	}, 0);
 	assert_eq!(CALLED.load(std::sync::atomic::Ordering::SeqCst), 1);
 	// NULL handler clears; reporting then does not invoke.
 	assert_eq!(unsafe { oakengine_config_set_error_handler(None, std::ptr::null_mut()) }, 0);
-	unsafe { oakfacade::common::oakengine_config_report_error(c"t".as_ptr(), c"m".as_ptr()) };
+	unsafe { oakengine::common::oakengine_config_report_error(c"t".as_ptr(), c"m".as_ptr()) };
 	assert_eq!(CALLED.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
 

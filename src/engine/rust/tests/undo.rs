@@ -28,7 +28,7 @@ mod common;
 use std::ffi::{c_char, c_int, c_void};
 use std::sync::atomic::{AtomicI32, Ordering};
 
-use oakfacade::undo::{
+use oakengine::undo::{
 	oakengine_undo_can_redo, oakengine_undo_can_undo, oakengine_undo_clear,
 	oakengine_undo_command_create, oakengine_undo_command_create_multi,
 	oakengine_undo_command_free, oakengine_undo_command_multi_add_child,
@@ -53,14 +53,26 @@ static CMD_FREE_COUNT: AtomicI32 = AtomicI32::new(0);
 static STK_REDO_COUNT: AtomicI32 = AtomicI32::new(0);
 static STK_UNDO_COUNT: AtomicI32 = AtomicI32::new(0);
 
+/// Stack-test callbacks: bump only the `STK_*` counters. They must not
+/// touch the `CMD_*` counters — the command-lifecycle tests reset and
+/// assert those in parallel threads, so a stray bump here would race.
 unsafe extern "C" fn redo_cb(_userdata: *mut c_void) {
-	CMD_REDO_COUNT.fetch_add(1, Ordering::SeqCst);
 	STK_REDO_COUNT.fetch_add(1, Ordering::SeqCst);
 }
 
 unsafe extern "C" fn undo_cb(_userdata: *mut c_void) {
-	CMD_UNDO_COUNT.fetch_add(1, Ordering::SeqCst);
 	STK_UNDO_COUNT.fetch_add(1, Ordering::SeqCst);
+}
+
+/// Command-lifecycle-only callbacks: bump only the `CMD_*` counters. The
+/// serialized stack test runs in a parallel thread and must not flip
+/// these.
+unsafe extern "C" fn cmd_redo_cb(_userdata: *mut c_void) {
+	CMD_REDO_COUNT.fetch_add(1, Ordering::SeqCst);
+}
+
+unsafe extern "C" fn cmd_undo_cb(_userdata: *mut c_void) {
+	CMD_UNDO_COUNT.fetch_add(1, Ordering::SeqCst);
 }
 
 unsafe extern "C" fn free_cb(_userdata: *mut c_void) {
@@ -77,8 +89,8 @@ fn command_create_redo_undo_free() {
 	let cmd = unsafe {
 		oakengine_undo_command_create(
 			c"custom".as_ptr(),
-			Some(redo_cb),
-			Some(undo_cb),
+			Some(cmd_redo_cb),
+			Some(cmd_undo_cb),
 			Some(free_cb),
 			std::ptr::null_mut(),
 		)
@@ -108,8 +120,8 @@ fn multi_command_add_child_count_redo() {
 	let child = unsafe {
 		oakengine_undo_command_create(
 			c"child".as_ptr(),
-			Some(redo_cb),
-			Some(undo_cb),
+			Some(cmd_redo_cb),
+			Some(cmd_undo_cb),
 			None,
 			std::ptr::null_mut(),
 		)

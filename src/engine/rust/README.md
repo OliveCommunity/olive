@@ -42,9 +42,16 @@ tests/
 The facade's regular dependencies are `serde`/`serde_json` (the worker's
 NDJSON control-plane protocol, `src/worker.rs`) and `libc` (POSIX
 `shm_open`/`mmap`/`munmap`/`shm_unlink` for `src/ipc.rs`). Every module
-call still crosses the module C ABI as an `extern "C"` import
-(`src/bridge/`), resolved at the final app link against the module shared
-libraries.
+call crosses the module C ABI as an `extern "C"` import (`src/bridge/`),
+and the module crates themselves are real dependencies: [`linkage`](src/linkage.rs)
+anchors them so their `#[no_mangle]` exports are linked into the
+`liboakengine` cdylib — the dylib carries the module C ABIs (oakundo_*,
+oakcommon_*, oaktimeline_*, oakcodec_*, oakaudio_*, oakrender_*,
+oaktask_*, oakplugin_*, oaknode_*) next to the facade's oakengine_*
+exports. The only remaining imports are the C++ host symbols
+(`oakcore_*` from liboakcore, `fb_*` from ffmpeg_bridge), which
+`build.rs` leaves as runtime lookups (macOS `-undefined dynamic_lookup`)
+resolved from the host Oak process.
 
 ### Handle mapping
 
@@ -89,16 +96,16 @@ control-plane message serializers remain unwrapped.
 
 ## Testing
 
-`cargo test` links the module crates' rlibs (dev-dependencies) so the
-facade's bridge imports resolve:
+The module crates are real dependencies, so `cargo test` links the same
+rlibs the cdylib embeds; the dev-dependencies re-declare
+`oakcommon`/`oakplugin` with their `test-stubs` features so the test
+binaries keep the in-crate mocks (ffmpeg_bridge stub / render mocks):
 
-- `oakcommon`/`oakplugin` use their `test-stubs` features (ffmpeg_bridge
-  stub / in-crate render mocks).
 - `oaknode`/`oaktimeline`/`oaktask` are linked WITHOUT their `test-stubs`
   features: their in-crate mocks would collide with the real oakundo rlib
   in one test binary. Without test-stubs their real exports reference the
   oaknode/oakundo/oakcommon C ABI symbols as link-time externs, which the
-  dev-dependency rlibs provide; oaknode itself resolves cross-module
+  sibling crate rlibs provide; oaknode itself resolves cross-module
   symbols at runtime with `dlsym(RTLD_DEFAULT)`.
 - `tests/common/mod.rs` defines the `oakcore_*` (liboakcore) and `fb_*`
   (libffmpeg_bridge) symbols the oakcodec/oakaudio rlibs reference, and
@@ -106,7 +113,9 @@ facade's bridge imports resolve:
   factory so the oaknode serializer's dlsym lookups resolve in every test
   binary.
 - `src/lib.rs`'s test-only `test_link` forces the oakrender/oaknode/
-  oaktimeline/oaktask rlibs into the lib unit-test binary.
+  oaktimeline/oaktask rlibs into the lib unit-test binary (the always-on
+  `src/linkage.rs` anchors are `#[cfg(not(test))]`; they are what embeds
+  the module C ABIs in the cdylib for `cargo build`).
 
 Families whose wrapped behavior requires the real module dylibs carry
 `#[ignore]` tests with a documented reason; the smoke tests here exercise
@@ -118,7 +127,8 @@ payloads in both directions, including wraparound and full/empty edges.
 cargo test          # 71 tests green + 1 ignored (lib 35: ipc 17 + worker 18;
                     # integration: undo 3, common 4, audio 4, plugin 3, codec 5,
                     # render 6, linkage 1, node 3, timeline 2 + 1 ignored, task 5)
-cargo build         # staticlib + rlib; module symbols resolve at the final app link
+cargo build         # cdylib embeds the module C ABIs; oakcore_*/fb_* stay
+                    # runtime lookups (see build.rs)
 ```
 
 ## FFI discipline

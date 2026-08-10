@@ -37,7 +37,7 @@ clap = { version = "4", features = ["derive"] }
 # deferral (src/deferred.rs). The extern declarations in src/ffi.rs mirror
 # the engine headers verbatim and resolve against this rlib the moment a
 # family is wrapped -- no manifest change needed.
-oakfacade = { path = "../../src/facade/rust" }
+oakengine = { path = "../../src/engine/rust" }
 
 [profile.release]
 panic = "unwind"

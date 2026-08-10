@@ -19,7 +19,7 @@
 //! A thin shell over the facade, mirroring `worker/workermain.cpp`: all
 //! runtime logic — render backend selection (dynamic -> OpenGL fallback
 //! through the oakrender module C ABI), the startup handshake and the
-//! NDJSON control loop — lives in `oakfacade::worker` (the Rust port of
+//! NDJSON control loop — lives in `oakengine::worker` (the Rust port of
 //! `engine/src/capi/worker.cpp`, contract in
 //! `engine/include/oakengine/worker.h`). This crate keeps only the CLI
 //! surface (arg parsing) and the in-process session mirror
@@ -37,7 +37,7 @@ use std::process::exit;
 use clap::Parser;
 
 // Force-link the oakrender module crate: the facade's worker module
-// (oakfacade::worker) initializes the render backend through the oakrender
+// (oakengine::worker) initializes the render backend through the oakrender
 // C ABI, but its bridge imports are `extern "C"` declarations — nothing in
 // the worker source names the crate, so without this the oakrender rlib
 // would not be added to the link and those imports would stay undefined.
@@ -46,7 +46,7 @@ use oakrender as _;
 
 /// Protocol version announced in the startup handshake
 /// (`k_protocol_version` in worker.cpp). Mirrors
-/// `oakfacade::worker::PROTOCOL_VERSION`.
+/// `oakengine::worker::PROTOCOL_VERSION`.
 pub const PROTOCOL_VERSION: i32 = 1;
 
 /// CLI surface (the C++ worker scans argv for `--backend`; clap formalizes
@@ -68,7 +68,7 @@ fn main() {
     let args = Args::parse();
     // The facade's worker_main is the C++ oakengine_worker_main() — the
     // whole worker flow. Like workermain.cpp, this main only forwards.
-    exit(oakfacade::worker::worker_main(&args.backend.to_ascii_lowercase()));
+    exit(oakengine::worker::worker_main(&args.backend.to_ascii_lowercase()));
 }
 
 /// Log a worker-side message to stderr, mirroring worker.cpp `log_error()`

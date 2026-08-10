@@ -19,7 +19,7 @@
 #[path = "common/mod.rs"]
 mod common;
 
-use oakfacade::plugin::{
+use oakengine::plugin::{
 	oakengine_plugin_load_plugins, oakengine_plugin_node_push_button_clicked,
 	oakengine_plugin_set_active_viewer_provider, oakengine_plugin_set_progress_reporter_factory,
 };
@@ -27,7 +27,7 @@ use oakfacade::plugin::{
 /// Callback registration round-trips (NULL clears).
 #[test]
 fn provider_registration() {
-	unsafe extern "C" fn viewer(_userdata: *mut std::ffi::c_void) -> *mut oakfacade::handle::OakEngineNode {
+	unsafe extern "C" fn viewer(_userdata: *mut std::ffi::c_void) -> *mut oakengine::handle::OakEngineNode {
 		std::ptr::null_mut()
 	}
 	assert_eq!(unsafe {

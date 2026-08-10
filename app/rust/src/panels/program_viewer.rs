@@ -40,6 +40,9 @@ pub struct ProgramViewerPanel {
 	viewer: Entity<ViewerWidget<MockClock>>,
 	meter: Entity<AudioLevelMeter<MockEngine>>,
 	engine: Entity<MockEngine>,
+	/// The last CPU frame handed to the viewer (compared by `Arc` identity so
+	/// a paused playhead does not re-upload the picture every frame).
+	last_cpu_frame: Option<std::sync::Arc<gpui::RenderImage>>,
 }
 
 impl ProgramViewerPanel {
@@ -69,12 +72,28 @@ impl ProgramViewerPanel {
 			viewer,
 			meter,
 			engine,
+			last_cpu_frame: None,
+		}
+	}
+
+	/// Pushes the engine's synthetic test frame into the viewer, but only when
+	/// it actually changed (the engine caches one image per playhead frame).
+	fn sync_frame(&mut self, cx: &mut Context<Self>) {
+		let frame = self.engine.read(cx).cpu_frame(Monitor::Program, cx);
+		if self.last_cpu_frame.as_ref().is_none_or(|last| !std::sync::Arc::ptr_eq(last, &frame))
+		{
+			self.last_cpu_frame = Some(frame.clone());
+			let frame = frame.clone();
+			self.viewer
+				.update(cx, |viewer, cx| viewer.set_cpu_frame(Some(frame), cx));
 		}
 	}
 }
 
 impl Render for ProgramViewerPanel {
 	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		self.sync_frame(cx);
+
 		let colors = cx.default_colors().clone();
 		let format = self
 			.engine

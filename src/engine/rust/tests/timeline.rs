@@ -31,12 +31,12 @@ mod common;
 
 use std::ffi::{c_char, c_int};
 
-use oakfacade::handle::{box_handle, OakEngineNode};
-use oakfacade::node::{
+use oakengine::handle::{box_handle, OakEngineNode};
+use oakengine::node::{
 	oakengine_footage_borrow, oakengine_project_create, oakengine_project_free,
 	oakengine_project_new,
 };
-use oakfacade::timeline::{
+use oakengine::timeline::{
 	oakengine_block_get_range, oakengine_block_get_track, oakengine_block_is_enabled,
 	oakengine_block_is_gap, oakengine_block_link_count, oakengine_block_next,
 	oakengine_block_prev, oakengine_block_set_enabled, oakengine_block_set_length_and_media_out,
@@ -103,7 +103,7 @@ fn force_runtime_syms() -> usize {
 
 /// Convert a facade `CHandle` to the layout-identical oaknode `CHandle`
 /// (distinct Rust types over the same C ABI struct).
-fn to_node_handle(h: oakfacade::handle::CHandle) -> oaknode::handle::CHandle {
+fn to_node_handle(h: oakengine::handle::CHandle) -> oaknode::handle::CHandle {
 	oaknode::handle::CHandle {
 		ctx: h.ctx,
 		addref: h.addref,
@@ -113,8 +113,8 @@ fn to_node_handle(h: oakfacade::handle::CHandle) -> oaknode::handle::CHandle {
 }
 
 /// Convert an oaknode `CHandle` back to the facade `CHandle`.
-fn to_facade_handle(h: oaknode::handle::CHandle) -> oakfacade::handle::CHandle {
-	oakfacade::handle::CHandle {
+fn to_facade_handle(h: oaknode::handle::CHandle) -> oakengine::handle::CHandle {
+	oakengine::handle::CHandle {
 		ctx: h.ctx,
 		addref: h.addref,
 		release: h.release,

@@ -16,7 +16,7 @@
 
 //! The worker-side session state machine — the in-process mirror of
 //! `OakWorkerSession` in `engine/src/capi/worker.cpp` (whose production
-//! Rust port lives in `oakfacade::worker`).
+//! Rust port lives in `oakengine::worker`).
 //!
 //! The session holds the attached shared-memory frame-slot pools
 //! ([`crate::transport::AttachedPools`]) and the shutdown flag, and
@@ -61,7 +61,7 @@ impl WorkerSession {
 	}
 
 	/// The attached output pool (the worker->main frame-slot pool).
-	pub fn output_pool(&self) -> Option<&oakfacade::ipc::FrameSlotPool> {
+	pub fn output_pool(&self) -> Option<&oakengine::ipc::FrameSlotPool> {
 		self.pools.as_ref().map(|p| &p.output_pool)
 	}
 
@@ -196,7 +196,7 @@ impl Default for WorkerSession {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use oakfacade::ipc::{FrameSlotPool, SharedMemoryRegion, ShmMode};
+	use oakengine::ipc::{FrameSlotPool, SharedMemoryRegion, ShmMode};
 	use serde_json::json;
 
 	/// A unique, temporary POSIX segment key for a test.

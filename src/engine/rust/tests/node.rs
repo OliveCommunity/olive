@@ -28,7 +28,7 @@ mod common;
 
 use std::ffi::{c_char, c_int};
 
-use oakfacade::node::{
+use oakengine::node::{
 	oakengine_footage_borrow, oakengine_footage_last_error, oakengine_footage_probe,
 	oakengine_node_connect, oakengine_node_disconnect, oakengine_node_factory_create_from_id,
 	oakengine_node_factory_id_count, oakengine_node_factory_name_from_id,
@@ -83,7 +83,7 @@ fn float_value(x: f64) -> OakNodeValue {
 }
 
 /// The index of the first project node whose type id matches `id`, or -1.
-unsafe fn find_node(project: *mut oakfacade::handle::OakEngineProject, id: &str) -> c_int {
+unsafe fn find_node(project: *mut oakengine::handle::OakEngineProject, id: &str) -> c_int {
 	let count = unsafe { oakengine_project_node_count(project) };
 	for i in 0..count {
 		let node = unsafe { oakengine_project_node_at(project, i) };
@@ -137,15 +137,15 @@ fn project_node_keyframe_lifecycle() {
 		0
 	);
 	assert_eq!(
-		unsafe { oakengine_project_set_filename(project, c"/tmp/oakfacade_node_test.ovexml".as_ptr()) },
+		unsafe { oakengine_project_set_filename(project, c"/tmp/oakengine_node_test.ovexml".as_ptr()) },
 		0
 	);
 	let len = unsafe { oakengine_project_filename(project, buf.as_mut_ptr(), 256) };
 	assert!(len > 0);
-	assert!(unsafe { read_buf(&mut buf) }.ends_with("oakfacade_node_test.ovexml"));
+	assert!(unsafe { read_buf(&mut buf) }.ends_with("oakengine_node_test.ovexml"));
 	let len = unsafe { oakengine_project_name(project, buf.as_mut_ptr(), 256) };
 	assert!(len > 0);
-	assert_eq!(unsafe { read_buf(&mut buf) }, "oakfacade_node_test");
+	assert_eq!(unsafe { read_buf(&mut buf) }, "oakengine_node_test");
 
 	// ---- factory + node creation ---------------------------------------
 	let factory_count = oakengine_node_factory_id_count();
@@ -269,9 +269,9 @@ fn project_node_keyframe_lifecycle() {
 	assert!((at.f[0] - 0.5).abs() < 1e-6);
 
 	// ---- project save → fresh load round-trip ---------------------------
-	let path = c"/tmp/oakfacade_node_test.ovexml";
+	let path = c"/tmp/oakengine_node_test.ovexml";
 	assert_eq!(unsafe { oakengine_project_save(project, path.as_ptr()) }, 0);
-	assert!(std::path::Path::new("/tmp/oakfacade_node_test.ovexml").exists());
+	assert!(std::path::Path::new("/tmp/oakengine_node_test.ovexml").exists());
 
 	unsafe { oakengine_project_free(project) };
 
