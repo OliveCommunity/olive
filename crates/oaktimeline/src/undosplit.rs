@@ -74,6 +74,12 @@ impl BlockSplitCommand {
 
 	/// `redo`: shrink `block` to the first half, grow `new_block` to the
 	/// second half, and insert it after `block`.
+	///
+	/// The split keeps the ORIGINAL block anchored at its out-point (it
+	/// becomes the second half `[point, out)`) and anchors the fresh
+	/// `new_block` at its in-point (it becomes the first half
+	/// `[in, point)`), matching the C++ `Block::set_length_and_media_out` /
+	/// `set_length_and_media_in` semantics of the module.
 	pub fn redo(&mut self) {
 		// Create the second half if redo is invoked without a preceding
 		// prepare() (the C ABI command path may call redo directly).
@@ -89,13 +95,18 @@ impl BlockSplitCommand {
 
 		// The C++ asserts `point_` lies strictly inside the block; that would
 		// panic across the FFI boundary, so it is intentionally not replicated.
-		let new_length = self.point - block_in;
-		let new_part_length = block_out - self.point;
+		let first_half_length = self.point - block_in;
+		let second_half_length = block_out - self.point;
 
 		let track = block_track(self.block.clone());
 
-		block_set_length_and_media_out(self.block.clone(), new_length);
-		block_set_length_and_media_in(self.new_block.clone(), new_part_length);
+		// Out-anchored length for the second half keeps the original's out
+		// point (the C++ `set_length_and_media_out`); the in-anchored length
+		// for the first half grows the fresh block from its default in of 0
+		// (the C++ `set_length_and_media_in`). The two were previously
+		// swapped, which anchored the halves at the wrong points.
+		block_set_length_and_media_out(self.block.clone(), second_half_length);
+		block_set_length_and_media_in(self.new_block.clone(), first_half_length);
 
 		// SAFETY: bridge inserts `new_block` after `block` on `track`.
 		let _ = unsafe {
@@ -201,7 +212,17 @@ impl BlockSplitPreservingLinksCommand {
 	}
 
 	/// `redo`: redo every child command in order.
+	///
+	/// The C ABI command path never invokes `prepare()` (the oakundo vtable
+	/// wrapper only dispatches `redo`/`undo`), so the children are built on
+	/// first redo; `prepare` itself redoes each child as it builds it, so the
+	/// first redo has nothing left to run. Later redos (after an undo) run
+	/// the stored children directly.
 	pub fn redo(&mut self) {
+		if self.commands.is_empty() {
+			self.prepare();
+			return;
+		}
 		for c in self.commands.iter_mut() {
 			c.redo();
 		}

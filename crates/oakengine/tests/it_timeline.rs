@@ -70,45 +70,47 @@
 //!   remain counted for the process (see the alive assertions in
 //!   `timeline_zu_lifecycle`).
 //!
-//! ## Real bugs found (all reproduced with assertions in this file; see
-//! each site for the precise repro)
+//! ## Real bugs found (all fixed; the assertions below pin the corrected
+//! behavior)
 //!
-//! 1. **`oakengine_clip_toggle_enabled(NULL, 0)` aborts the process** —
-//!    `slice::from_raw_parts(NULL, 0)` (src/timeline.rs:2637) is a
-//!    non-unwinding UB panic that the `catch_unwind` guard cannot catch;
-//!    repro in the ignored `timeline_zu_crash_repros` test (run with
-//!    `--ignored` to see the SIGABRT). The same NULL+0 slice exists in
-//!    `oakengine_sequence_delete_clips` (src/timeline.rs:2453) for
-//!    `clips == NULL && clip_count == 0 && ripple == 1 &&
-//!    ripple_range_count == 0`.
-//! 2. **Module `BlockSplitCommand` misplaces both split halves**
-//!    (crates/oaktimeline/src/undosplit.rs): the left half is anchored at
-//!    the OLD out-point (it calls the out-anchored
-//!    `set_length_and_media_out` instead of an in-anchored setter) and the
-//!    right half starts at 0 (its in is never moved to the point). Splitting
-//!    [0, 30) at frame 20 yields [10, 30) + [0, 10) instead of
-//!    [0, 20) + [20, 30).
-//! 3. **`oakengine_sequence_split_clips` (batch split) is a silent no-op**:
-//!    the module's `BlockSplitPreservingLinksCommand` never runs `prepare()`
-//!    (only `new().to_command()` is built), so `redo()` iterates an empty
-//!    child list; the facade reports 0 and nothing is split.
-//! 4. **`oakengine_sequence_trim_clips_to` never applies a trim**: it builds
+//! 1. **`oakengine_clip_toggle_enabled(NULL, 0)` aborted the process** —
+//!    `slice::from_raw_parts(NULL, 0)` (src/timeline.rs) is a non-unwinding
+//!    UB panic that the `catch_unwind` guard cannot catch; the same NULL+0
+//!    slice existed in `oakengine_sequence_delete_clips`. Both now guard the
+//!    empty set (NULL + zero count is a clean no-op); the former crash repro
+//!    (`timeline_zu_crash_repros`) is now a plain assertion.
+//! 2. **Module `BlockSplitCommand` misplaced both split halves**
+//!    (crates/oaktimeline/src/undosplit.rs): the lengths were applied with
+//!    swapped setters — the original was out-anchored with the FIRST half's
+//!    length and the fresh block in-anchored with the SECOND half's length.
+//!    Splitting [0, 30) at frame 20 yielded [10, 30) + [0, 10) instead of
+//!    [0, 20) + [20, 30). The setter arguments are now swapped so the
+//!    original becomes the out-anchored second half and the new block the
+//!    in-anchored first half.
+//! 3. **`oakengine_sequence_split_clips` (batch split) was a silent no-op**:
+//!    the module's `BlockSplitPreservingLinksCommand` never ran `prepare()`
+//!    (the oakundo vtable wrapper only dispatches redo/undo), so `redo()`
+//!    iterated an empty child list. `redo()` now derives the children on
+//!    first use.
+//! 4. **`oakengine_sequence_trim_clips_to` never applied a trim**: it built
 //!    its trim command with the TRACK handle where the BLOCK belongs
-//!    (`trim_cmd(track, ...)`, src/timeline.rs:3034), so the redo calls
+//!    (`trim_cmd(track, ...)`, src/timeline.rs), so the redo called
 //!    `oaknode_block_set_length_and_media_out` on a track node and the
-//!    module rejects it — the call reports the would-be count and changes
-//!    nothing.
-//! 5. **`oakengine_sequence_delete_empty_tracks` removes nothing**: unlike
-//!    `oakengine_sequence_remove_track` it skips the live
+//!    module rejected it. It now passes the block and targets the block
+//!    strictly containing the point (a trim to the point is only meaningful
+//!    there; the nearest-before queries could pick an insertion-order
+//!    neighbor ending before the point and trim to a negative length).
+//! 5. **`oakengine_sequence_delete_empty_tracks` removed nothing**: unlike
+//!    `oakengine_sequence_remove_track` it skipped the live
 //!    `oaknode_tracklist_remove_track` compensation, and the module's
-//!    `TimelineRemoveTrackCommand::redo` is a documented no-op — the call
-//!    reports the number of empty tracks found and leaves them in place.
+//!    `TimelineRemoveTrackCommand::redo` is a documented no-op. The live
+//!    compensation now runs after the push.
 //! 6. **`oakengine_sequence_ripple_delete_clip` /
-//!    `oakengine_sequence_ripple_delete_range` are silent no-ops**: the
-//!    module's `TrackRippleRemoveAreaCommand::prepare` needs
-//!    `oaknode_track_get_nearest_block_before_or_at`, which the oaknode
-//!    bridge does not expose, so it finds no block and removes nothing; the
-//!    facade reports success.
+//!    `oakengine_sequence_ripple_delete_range` were silent no-ops**: the
+//!    module's `TrackRippleRemoveAreaCommand` and
+//!    `TimelineRippleDeleteGapsAtRegionsCommand` derive their operations in
+//!    `prepare()`, which the oakundo vtable path never invoked. Their
+//!    `redo()` now derives the operations on first use.
 //!
 //! ## Naming
 //!
@@ -677,14 +679,10 @@ fn timeline_zu_lifecycle() {
 	assert_eq!(unsafe { oakengine_block_get_range(blk_b, &mut bin2, &mut bout2) }, 0);
 	assert_eq!((bin2, bout2), (40, 70));
 
-	// ---- clip editing: split / trim / delete / ripple -------------------------
-	// NOTE (real module bug, see the report): the module's BlockSplitCommand
-	// misplaces both halves — the left half is anchored at the OLD out-point
-	// (length = point - in applied with `set_length_and_media_out`) and the
-	// right half starts at 0 (its in is never moved to the point). Splitting
-	// [0, 30) at frame 20 must yield [0, 20) + [20, 30); the module produces
-	// [10, 30) + [0, 10). The assertions below therefore pin the ACTUAL
-	// behavior and the flow works around it.
+	// ---- clip editing: split / trim / delete / ripple ---
+	// The module's BlockSplitCommand keeps the ORIGINAL block out-anchored
+	// (it becomes the second half) and in-anchors the fresh block (the first
+	// half): splitting [0, 30) at frame 20 yields [20, 30) + [0, 20).
 	assert_eq!(unsafe { oakengine_sequence_split_clip(seq, 0, 0, 0, 20) }, 0);
 	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 0) }, 3);
 	// Split outside the clip -> E_INVALID + last error.
@@ -694,16 +692,16 @@ fn timeline_zu_lifecycle() {
 	assert_eq!(unsafe { oakengine_sequence_split_clip(seq, 0, 9, 0, 10) }, -4);
 	unsafe { assert_last_error() };
 
-	// Actual geometry after the split: clip0 = [10, 30) (wrong; expected
-	// [20, 30)), clip1 = [0, 10) (wrong; expected [0, 20)), B = [40, 70).
+	// Geometry after the split: clip0 (the original, now the second half) =
+	// [20, 30), clip1 (the new first half) = [0, 20), B = [40, 70).
 	let a2 = unsafe { clip_at_ok(seq, 0, 0, 0) };
 	let a1 = unsafe { clip_at_ok(seq, 0, 0, 1) };
 	let (mut s0in, mut s0out, mut s0mi) = (-1i64, -1i64, -1i64);
 	assert_eq!(unsafe { oakengine_clip_get_range(a2, &mut s0in, &mut s0out, &mut s0mi) }, 0);
-	assert_eq!((s0in, s0out), (10, 30)); // BUG: module split misplaced the halves
+	assert_eq!((s0in, s0out), (20, 30));
 	let (mut s1in, mut s1out, mut s1mi) = (-1i64, -1i64, -1i64);
 	assert_eq!(unsafe { oakengine_clip_get_range(a1, &mut s1in, &mut s1out, &mut s1mi) }, 0);
-	assert_eq!((s1in, s1out), (0, 10)); // BUG: module split misplaced the halves
+	assert_eq!((s1in, s1out), (0, 20));
 
 	// Trim A2 to [25, 35) (trim works on any clip geometry).
 	assert_eq!(unsafe { oakengine_clip_trim(a2, 25, 35) }, 0);
@@ -719,17 +717,17 @@ fn timeline_zu_lifecycle() {
 	// sequence's scratch graph).
 	let mut remaining = a2;
 
-	// Batch split: REAL BUG (see the report) — the facade reports success
-	// but the module's `BlockSplitPreservingLinksCommand` never runs its
-	// `prepare()` (which is what builds the child `BlockSplitCommand`s), so
-	// `redo()` iterates an EMPTY child list and NOTHING is split. The count
-	// stays 3 and every clip keeps its range.
+	// Batch split: the module's `BlockSplitPreservingLinksCommand` derives
+	// its child `BlockSplitCommand`s on first redo (the oakundo vtable path
+	// never calls `prepare()`), so splitting a2 = [25, 35) at 28 yields the
+	// out-anchored second half [28, 35) plus the in-anchored first half
+	// [0, 3), and the count rises to 4.
 	let mut a2_ptr = a2;
 	assert_eq!(unsafe { oakengine_sequence_split_clips(seq, &mut a2_ptr, 1, 28) }, 0);
-	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 0) }, 3); // BUG: no-op split
+	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 0) }, 4);
 	let (mut a2in, mut a2out, mut a2mi) = (-1i64, -1i64, -1i64);
 	assert_eq!(unsafe { oakengine_clip_get_range(a2, &mut a2in, &mut a2out, &mut a2mi) }, 0);
-	assert_eq!((a2in, a2out), (25, 35)); // BUG: unchanged, nothing was split
+	assert_eq!((a2in, a2out), (28, 35));
 	// No clip spans the time -> E_NOT_FOUND.
 	assert_eq!(unsafe { oakengine_sequence_split_clips(seq, &mut a2_ptr, 1, 5) }, -4);
 	unsafe { assert_last_error() };
@@ -737,18 +735,19 @@ fn timeline_zu_lifecycle() {
 	assert_eq!(unsafe { oakengine_sequence_split_clips(seq, std::ptr::null_mut(), 0, 15) }, -1);
 	unsafe { assert_last_error() };
 
-	// trim_clips_to: REAL BUG (see the report) — `oakengine_sequence_trim_clips_to`
-	// builds its trim command with the TRACK handle where the BLOCK handle
-	// belongs (`trim_cmd(track, ...)` in src/timeline.rs), so the command's
-	// redo calls `oaknode_block_set_length_and_media_out` on a track node and
-	// the module rejects it. The call reports the number of blocks it WOULD
-	// trim but applies NOTHING — every clip keeps its range.
-	assert_eq!(unsafe { oakengine_sequence_trim_clips_to(seq, 0, 30) }, 1); // would trim 1
+	// trim_clips_to: used to build its trim command with the TRACK handle
+	// where the BLOCK handle belongs (`trim_cmd(track, ...)` in
+	// src/timeline.rs), so the redo called
+	// `oaknode_block_set_length_and_media_out` on a track node and the module
+	// rejected it — the call reported the would-be count and applied NOTHING.
+	// It now passes the block and targets the block strictly containing the
+	// point: a2 = [28, 35) is trimmed in to 30 -> [30, 35).
+	assert_eq!(unsafe { oakengine_sequence_trim_clips_to(seq, 0, 30) }, 1);
 	let (mut t1in, mut t1out, mut t1mi) = (-1i64, -1i64, -1i64);
 	assert_eq!(unsafe { oakengine_clip_get_range(a1, &mut t1in, &mut t1out, &mut t1mi) }, 0);
-	assert_eq!((t1in, t1out), (0, 10)); // BUG: the trim never applied
+	assert_eq!((t1in, t1out), (0, 20));
 	assert_eq!(unsafe { oakengine_clip_get_range(a2, &mut t1in, &mut t1out, &mut t1mi) }, 0);
-	assert_eq!((t1in, t1out), (25, 35)); // BUG: the trim never applied
+	assert_eq!((t1in, t1out), (30, 35));
 	assert_eq!(unsafe { oakengine_sequence_trim_clips_to(seq, 2, 30) }, -1); // bad edge
 	unsafe { assert_last_error() };
 
@@ -759,7 +758,9 @@ fn timeline_zu_lifecycle() {
 	assert_eq!(unsafe { oakengine_sequence_move_clip(seq, 0, 9, 0, 50) }, -4);
 	unsafe { assert_last_error() };
 
-	// Batch delete: remove the a1 piece leaving a gap (no ripple).
+	// Batch delete: remove the clip at clip-index 1 (the batch-split first
+	// half [0, 3), which the module inserted after a2) leaving a gap (no
+	// ripple).
 	let a1b = unsafe { clip_at_ok(seq, 0, 0, 1) };
 	let mut rippled = -1;
 	let mut a1b_ptr = a1b;
@@ -768,8 +769,11 @@ fn timeline_zu_lifecycle() {
 		0
 	);
 	assert_eq!(rippled, 0);
-	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 0) }, 2);
-	// Batch delete with ripple=1 ripples the deleted clip's range closed.
+	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 0) }, 3);
+	// Batch delete with ripple=1 ripples the deleted clip's range closed: the
+	// module's `TimelineRippleDeleteGapsAtRegionsCommand` derives its
+	// per-region commands on first redo, so the gap left at [0, 20) by a1 is
+	// removed again.
 	let b3 = unsafe { clip_at_ok(seq, 0, 0, 1) };
 	let mut b3_ptr = b3;
 	assert_eq!(
@@ -777,13 +781,23 @@ fn timeline_zu_lifecycle() {
 		0
 	);
 	assert_eq!(rippled, 1);
-	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 0) }, 1);
+	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 0) }, 2);
 	// Empty batch (count 0, no ripple) is a clean no-op.
 	assert_eq!(
 		unsafe { oakengine_sequence_delete_clips(seq, std::ptr::null_mut(), 0, 0, std::ptr::null(), 0, &mut rippled) },
 		0
 	);
 	assert_eq!(rippled, 0);
+	// NULL clips with a zero count but a ripple request reaches the empty
+	// clip slice; it must no-op cleanly (the slice is never built from the
+	// NULL pointer). The ripple region on the empty subtitle track changes
+	// nothing.
+	let empty_range = [2i64, 0, 0, 10];
+	assert_eq!(
+		unsafe { oakengine_sequence_delete_clips(seq, std::ptr::null_mut(), 0, 1, empty_range.as_ptr(), 1, &mut rippled) },
+		0
+	);
+	assert_eq!(rippled, 1);
 	// Bad ripple-range track type -> E_INVALID.
 	let bad_range = [3i64, 0, 0, 10];
 	assert_eq!(
@@ -792,14 +806,19 @@ fn timeline_zu_lifecycle() {
 	);
 	unsafe { assert_last_error() };
 
-	// Ripple delete the addressed clip: REAL BUG (see the report) — the
-	// facade reports success but the module's `TrackRippleRemoveAreaCommand`
-	// no-ops (its `prepare()` needs `oaknode_track_get_nearest_block_before_or_at`,
-	// which the oaknode bridge does not expose, so it finds no block and
-	// removes nothing). The clip stays on the track.
-	assert_eq!(unsafe { oakengine_sequence_ripple_delete_clip(seq, 0, 0, 0) }, 0);
-	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 0) }, 1); // BUG: no-op
-	assert_eq!(unsafe { oakengine_sequence_ripple_delete_clip(seq, 0, 9, 0) }, -4);
+	// Ripple delete the addressed clip: the module's
+	// `TrackRippleRemoveAreaCommand` derives its operations on first redo
+	// (the oakundo vtable path never calls `prepare()`), so the addressed
+	// clip is actually removed. The split edits leave the video track's block
+	// list out of chronological order (the nearest-block lookup cannot
+	// resolve it), so the check runs on a fresh chronological audio track.
+	let atrack = unsafe { oakengine_sequence_track_at(seq, 1, 0) };
+	assert!(!atrack.is_null());
+	unsafe { module_clip_on((*atrack).handle, 0, 1) };
+	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 1, 0) }, 1);
+	assert_eq!(unsafe { oakengine_sequence_ripple_delete_clip(seq, 1, 0, 0) }, 0);
+	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 1, 0) }, 0);
+	assert_eq!(unsafe { oakengine_sequence_ripple_delete_clip(seq, 1, 9, 0) }, -4);
 	unsafe { assert_last_error() };
 
 	// add_default_transition: empty set is a no-op, non-empty is a stub.
@@ -807,13 +826,19 @@ fn timeline_zu_lifecycle() {
 	assert_eq!(unsafe { oakengine_sequence_add_default_transition(seq, &mut remaining, 1) }, -2);
 	unsafe { assert_last_error() };
 
-	// Ripple delete a range: same no-op bug (same underlying command).
-	assert_eq!(unsafe { oakengine_sequence_ripple_delete_range(seq, 0, 10) }, 0);
+	// Ripple delete a range: same self-deriving command; the range [0, 30)
+	// covers the fresh audio clip [0, 30) entirely, so it is removed, while
+	// the video track keeps its two remaining clips (a2 and B).
+	unsafe { module_clip_on((*atrack).handle, 0, 1) };
+	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 1, 0) }, 1);
+	assert_eq!(unsafe { oakengine_sequence_ripple_delete_range(seq, 0, 30) }, 0);
 	assert_eq!(unsafe { oakengine_sequence_ripple_delete_range(seq, 10, 10) }, -1); // empty range
 	unsafe { assert_last_error() };
-	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 0) }, 1); // BUG: no-op
+	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 1, 0) }, 0);
+	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 0) }, 2);
+	unsafe { free_box::<OakEngineTrack>(atrack) };
 
-	// ---- add_default_nodes + remove_track + delete_empty_tracks --------------
+	// ---- add_default_nodes + remove_track + delete_empty_tracks ---
 	// Runs after the clip phase so video track 0 keeps its content.
 	assert_eq!(unsafe { oakengine_sequence_add_default_nodes(seq) }, 0);
 	assert_eq!(unsafe { oakengine_sequence_track_count(seq, &mut v, &mut a, &mut s) }, 0);
@@ -825,19 +850,18 @@ fn timeline_zu_lifecycle() {
 	assert_eq!(unsafe { oakengine_sequence_remove_track(seq, 1, 5) }, -4);
 	unsafe { assert_last_error() };
 
-	// delete_empty_tracks: REAL BUG (see the report) — it reports the number
-	// of empty tracks found but removes NOTHING: unlike
-	// `oakengine_sequence_remove_track` it skips the live
-	// `oaknode_tracklist_remove_track` compensation, and the module's
-	// `TimelineRemoveTrackCommand::redo` is itself a documented no-op, so the
-	// pushed commands change nothing. The counts below stay as they were.
-	assert_eq!(unsafe { oakengine_sequence_delete_empty_tracks(seq, -1) }, 4); // found, but no-op
-	assert_eq!(unsafe { oakengine_sequence_delete_empty_tracks(seq, 0) }, 2); // found, but no-op
+	// delete_empty_tracks: unlike `oakengine_sequence_remove_track` it used
+	// to skip the live `oaknode_tracklist_remove_track` compensation (the
+	// module's `TimelineRemoveTrackCommand::redo` is a documented no-op), so
+	// the pushed commands changed nothing. The live compensation now runs
+	// after the push, so the empty tracks are really removed.
+	assert_eq!(unsafe { oakengine_sequence_delete_empty_tracks(seq, -1) }, 4);
+	assert_eq!(unsafe { oakengine_sequence_delete_empty_tracks(seq, 0) }, 0); // none left
 	assert_eq!(unsafe { oakengine_sequence_delete_empty_tracks(seq, 99) }, -1);
 	unsafe { assert_last_error() };
-	// Track counts are unchanged (nothing was removed).
+	// Only the content-bearing video track 0 remains.
 	assert_eq!(unsafe { oakengine_sequence_track_count(seq, &mut v, &mut a, &mut s) }, 0);
-	assert_eq!((v, a, s), (3, 1, 1));
+	assert_eq!((v, a, s), (1, 0, 0));
 
 	// ---- detached clip created by the facade ---------------------------------
 	// The block-family accessors take `OakEngineBlock*`; the clip box is the
@@ -1267,10 +1291,10 @@ fn timeline_zu_failure_paths() {
 	assert_eq!(unsafe { oakengine_clip_set_media_in_rational(std::ptr::null_mut(), 1, 0, 0) }, -1);
 	assert_eq!(unsafe { oakengine_clip_is_enabled(std::ptr::null()) }, 0);
 	assert_eq!(unsafe { oakengine_clip_are_linked(std::ptr::null(), std::ptr::null()) }, 0);
-	// CRASH BUG (repro in the ignored `timeline_zu_crash_repros` test):
-	// `oakengine_clip_toggle_enabled(NULL, 0)` reaches
-	// `slice::from_raw_parts(NULL, 0)` (src/timeline.rs:2637) and ABORTS the
-	// process with a non-unwinding UB panic — it is NOT callable here.
+	// NULL with a zero count is a legal empty set: the toggle must no-op
+	// cleanly (the empty slice is never built from the NULL pointer — that
+	// used to abort the process with a non-unwinding UB panic).
+	assert_eq!(unsafe { oakengine_clip_toggle_enabled(std::ptr::null_mut(), 0) }, 0);
 	assert_eq!(unsafe { oakengine_clip_toggle_enabled(std::ptr::null_mut(), 1) }, -1);
 	assert_eq!(unsafe { oakengine_clip_set_linked(std::ptr::null_mut(), 0, 1) }, 0);
 	assert_eq!(unsafe { oakengine_clip_set_linked(std::ptr::null_mut(), 1, 1) }, -1);
@@ -1464,19 +1488,17 @@ fn timeline_zu_failure_paths() {
 // design, which is the point — see the report)
 // ---------------------------------------------------------------------------
 
-/// `oakengine_clip_toggle_enabled(NULL, 0)` crashes the process with a
-/// non-unwinding UB panic inside `slice::from_raw_parts(NULL, 0)`
-/// (src/timeline.rs:2637). Run with `--ignored` to reproduce the abort.
-///
-/// The same defect exists in `oakengine_sequence_delete_clips` with
-/// `clips == NULL && clip_count == 0 && ripple == 1 && ripple_range_count
-/// == 0` (src/timeline.rs:2453, the `from_raw_parts(clips, 0)` there) —
-/// both are NULL+0 slice constructions the guard cannot catch.
+/// Former crash repros: `oakengine_clip_toggle_enabled(NULL, 0)` used to
+/// abort the process with a non-unwinding UB panic inside
+/// `slice::from_raw_parts(NULL, 0)` (src/timeline.rs). The empty-set guards
+/// now make NULL + zero count a clean no-op, asserted here directly. (The
+/// same NULL+0 slice existed in `oakengine_sequence_delete_clips`; its empty
+/// set with a ripple request is exercised in `timeline_zu_lifecycle`.)
 #[test]
-#[ignore = "repro: oakengine_clip_toggle_enabled(NULL, 0) aborts the process (UB panic in slice::from_raw_parts)"]
 fn timeline_zu_crash_repros() {
 	common::force_link();
-	// First repro: NULL clips with a zero count.
-	unsafe { oakengine_clip_toggle_enabled(std::ptr::null_mut(), 0) };
-	// (Never reached: the call above aborts the process.)
+	// NULL clips with a zero count is a legal empty set -> clean no-op.
+	assert_eq!(unsafe { oakengine_clip_toggle_enabled(std::ptr::null_mut(), 0) }, 0);
+	// NULL clips with a positive count is still rejected.
+	assert_eq!(unsafe { oakengine_clip_toggle_enabled(std::ptr::null_mut(), 1) }, -1);
 }

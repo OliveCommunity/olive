@@ -2158,7 +2158,11 @@ pub unsafe extern "C" fn oakengine_sequence_ripple_delete_clip(
 			out_num as i64,
 			out_den as i64,
 		);
-		release_handle(track);
+		// NOTE: `track` is intentionally NOT released — the module command
+		// stores the borrowed handle for its whole lifetime (its `redo`/
+		// `undo` re-resolve the track), and the module model keeps such
+		// handles alive for the command's lifetime (same as
+		// `oakengine_sequence_delete_clips`).
 		if cmd.is_null() {
 			set_seq_error("ripple delete command failed");
 			return Err(Error::Failed("ripple delete command failed".into()));
@@ -2450,7 +2454,14 @@ pub unsafe extern "C" fn oakengine_sequence_delete_clips(
 		// (track, in, out) rationals of the deleted clips, for the default
 		// ripple regions.
 		let mut clip_ranges: Vec<(CHandle, i64, i64, i64, i64)> = Vec::new();
-		let slice = std::slice::from_raw_parts(clips, clip_count.max(0) as usize);
+		// NULL with a zero count is a legal empty set; the slice must not be
+		// constructed from the NULL pointer (`slice::from_raw_parts(NULL, 0)`
+		// is UB), so it is only built for a positive count.
+		let slice: &[*mut OakEngineClip] = if clip_count > 0 {
+			std::slice::from_raw_parts(clips, clip_count as usize)
+		} else {
+			&[]
+		};
 		for (i, clip) in slice.iter().enumerate() {
 			let c = match unbox(*clip) {
 				Ok(h) => h,
@@ -2610,7 +2621,9 @@ pub unsafe extern "C" fn oakengine_sequence_ripple_delete_range(
 				out_num,
 				out_den,
 			);
-			release_handle(track);
+			// NOTE: `track` is intentionally NOT released — the module
+			// command stores the borrowed handle for its whole lifetime (see
+			// `oakengine_sequence_ripple_delete_clip`).
 			if cmd.is_null() {
 				return Err(Error::Failed("ripple delete command failed".into()));
 			}
@@ -2634,7 +2647,14 @@ pub unsafe extern "C" fn oakengine_clip_toggle_enabled(
 			return Err(Error::Invalid);
 		}
 		let mut children: Vec<CHandle> = Vec::new();
-		let slice = std::slice::from_raw_parts(clips, count as usize);
+		// NULL with a zero count is a legal empty set; the slice must not be
+		// constructed from the NULL pointer (`slice::from_raw_parts(NULL, 0)`
+		// is UB), so it is only built for a positive count.
+		let slice: &[*mut OakEngineClip] = if count > 0 {
+			std::slice::from_raw_parts(clips, count as usize)
+		} else {
+			&[]
+		};
 		for (i, clip) in slice.iter().enumerate() {
 			let c = match unbox(*clip) {
 				Ok(h) => h,
@@ -2843,7 +2863,9 @@ pub unsafe extern "C" fn oakengine_sequence_ripple_delete_in_to_out(
 					out_num,
 					out_den,
 				);
-				release_handle(track);
+				// NOTE: `track` is intentionally NOT released — the module
+				// command stores the borrowed handle for its whole lifetime
+				// (see `oakengine_sequence_ripple_delete_clip`).
 				if cmd.is_null() {
 					release_handle(wa);
 					return Err(Error::Failed("ripple remove command failed".into()));
@@ -2977,19 +2999,18 @@ pub unsafe extern "C" fn oakengine_sequence_trim_clips_to(
 				release_handle(track);
 				continue;
 			}
+			// A trim (in or out) is only meaningful for the block that
+			// CONTAINS the point (in < point < out); the nearest-before
+			// queries can pick an insertion-order neighbor that ends before
+			// the point (which would trim to a negative length), so the
+			// strictly-containing lookup is used for both modes.
 			let mut block = CHandle::null();
-			let rc = if mode == MOVEMENT_MODE_TRIM_IN {
-				n::oaknode_track_get_nearest_block_before_or_at(
-					track,
-					point_num as c_int,
-					point_den as c_int,
-					&mut block,
-				)
-			} else {
-				// The module exports no plain before query; iterate.
-				block = nearest_block_before(track, point_num, point_den);
-				if block.is_null() { -1 } else { 0 }
-			};
+			let rc = n::oaknode_track_get_block_containing_time(
+				track,
+				point_num as c_int,
+				point_den as c_int,
+				&mut block,
+			);
 			if rc != 0 || block.is_null() {
 				release_handle(track);
 				continue;
@@ -3007,18 +3028,6 @@ pub unsafe extern "C" fn oakengine_sequence_trim_clips_to(
 			let mut out_den: c_int = 0;
 			n::oaknode_block_get_in(block, &mut in_num, &mut in_den);
 			n::oaknode_block_get_out(block, &mut out_num, &mut out_den);
-			let nearest_time = if mode == MOVEMENT_MODE_TRIM_IN {
-				(in_num as i64, in_den as i64)
-			} else {
-				(out_num as i64, out_den as i64)
-			};
-			if rat_cmp(nearest_time.0, nearest_time.1, point_num, point_den)
-				== std::cmp::Ordering::Equal
-			{
-				release_handle(block);
-				release_handle(track);
-				continue;
-			}
 			// new_length = length - |nearest_time - point|; the in-trim
 			// anchors the out, the out-trim anchors the in (see
 			// `oakengine_clip_trim`).
@@ -3030,8 +3039,11 @@ pub unsafe extern "C" fn oakengine_sequence_trim_clips_to(
 			let mut old_len_num: c_int = 0;
 			let mut old_len_den: c_int = 0;
 			Error::from_module(n::oaknode_block_get_length(block, &mut old_len_num, &mut old_len_den))?;
+			// Trim the addressed block itself (`trim_cmd` anchors on the
+			// block handle; passing the track used to silently reject the
+			// trim in the module).
 			let cmd = trim_cmd(
-				track,
+				block,
 				mode,
 				old_len_num,
 				old_len_den,
@@ -3071,6 +3083,10 @@ pub unsafe extern "C" fn oakengine_sequence_delete_empty_tracks(
 			return Err(Error::Invalid);
 		}
 		let mut children: Vec<CHandle> = Vec::new();
+		// (track, owning list) pairs for the live removal compensation
+		// (the module's `TimelineRemoveTrackCommand` redo is a no-op for the
+		// list structure; see below).
+		let mut to_remove: Vec<(CHandle, CHandle)> = Vec::new();
 		let mut removed: c_int = 0;
 		let mut all_count: c_int = 0;
 		Error::from_module(n::oaknode_sequence_get_all_track_count(sequence, &mut all_count))?;
@@ -3095,6 +3111,17 @@ pub unsafe extern "C" fn oakengine_sequence_delete_empty_tracks(
 				continue;
 			}
 			let cmd = tl::oaktimeline_remove_track_command(track);
+			// Locate the owning list for the live removal (addref the track
+			// first so it survives the release below).
+			let mut ttype: c_int = 0;
+			if n::oaknode_track_get_type(track, &mut ttype) == 0 {
+				let mut list = CHandle::null();
+				if n::oaknode_sequence_get_track_list(sequence, ttype, &mut list) == 0
+					&& !list.is_null()
+				{
+					to_remove.push((track.addref(), list));
+				}
+			}
 			release_handle(track);
 			if cmd.is_null() {
 				return Err(Error::Failed("remove track command failed".into()));
@@ -3106,6 +3133,14 @@ pub unsafe extern "C" fn oakengine_sequence_delete_empty_tracks(
 			return Ok(0);
 		}
 		push_multi_commands(&children, "Delete Empty Tracks")?;
+		// The module's TimelineRemoveTrackCommand redo is a no-op for the
+		// list structure (undogeneral.rs NOTE), so the removal is applied
+		// live as compensation (the same documented deviation as
+		// `oakengine_sequence_remove_track`).
+		for (track, list) in &to_remove {
+			n::oaknode_tracklist_remove_track(*list, *track);
+			release_handle(*list);
+		}
 		Ok(removed)
 	})
 }

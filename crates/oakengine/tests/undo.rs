@@ -230,6 +230,7 @@ fn undo_stack_lifecycle() {
 	assert_eq!(unsafe { oakengine_undo_count() }, 2); // one grouped row
 
 	// Abort path: group with a child is undone and discarded.
+	STK_UNDO_COUNT.store(0, Ordering::SeqCst);
 	assert_eq!(unsafe { oakengine_undo_group_begin(c"abort".as_ptr()) }, 0);
 	let c3 = unsafe {
 		oakengine_undo_command_create(

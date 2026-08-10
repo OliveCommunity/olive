@@ -311,9 +311,9 @@ fn renderer_lifecycle() {
 
 /// End-to-end CPU render: with the render manager up and a real sequence,
 /// `render_frame` produces a real F32 frame through the module's eval
-/// pipeline. Also pins the renderer-geometry deviation (the facade never
-/// forwards force_width/force_height, so the frame size is the pipeline
-/// default) and the ineffective pixel-format validation.
+/// pipeline. The renderer's geometry (width/height) is forwarded as
+/// force_width/force_height, so the frame size follows the renderer, and
+/// the pixel-format validation rejects codes outside the oakcore enum.
 #[test]
 fn renderer_render_frame_e2e() {
 	common::force_link();
@@ -370,41 +370,33 @@ fn renderer_render_frame_e2e() {
 	assert!(!f2.is_null());
 	unsafe { oakengine_frame_free(f2) };
 
-	// --- documented deviations (reported, not fixed) ---
-	// 1. The renderer's output geometry is not honored: the facade leaves
-	//    force_width/force_height at 0, so the ticket renders the pipeline
-	//    default (1920x1080) regardless of the boxed geometry.
+	// The renderer's output geometry is honored: the facade forwards the
+	// boxed size as force_width/force_height, so a 640x360 renderer
+	// produces a 640x360 frame.
 	let r_small =
 		unsafe { oakengine_renderer_create(seq, 640, 360, 0, 30000, 1001, std::ptr::null()) };
 	assert!(!r_small.is_null());
 	let f3 = unsafe { oakengine_renderer_render_frame(r_small, 0) };
 	assert!(!f3.is_null());
-	assert_eq!(
-		unsafe { oakengine_frame_width(f3) },
-		1920,
-		"deviation: renderer geometry (640x360) is ignored; the frame is the 1920x1080 pipeline default"
-	);
+	assert_eq!(unsafe { oakengine_frame_width(f3) }, 640);
+	assert_eq!(unsafe { oakengine_frame_height(f3) }, 360);
 	unsafe { oakengine_frame_free(f3) };
 	unsafe { oakengine_renderer_free(r_small) };
 
-	// 2. The pixel-format validation in renderer_create is ineffective: the
-	//    oakcommon format_name lookup succeeds for ANY code, so garbage
-	//    formats are accepted instead of returning NULL.
+	// The pixel-format validation in renderer_create rejects codes outside
+	// the oakcore enum: garbage formats and Invalid (-1) yield NULL.
 	let r_garbage_pf =
 		unsafe { oakengine_renderer_create(seq, 64, 48, 99999, 30000, 1001, std::ptr::null()) };
 	assert!(
-		!r_garbage_pf.is_null(),
-		"deviation: renderer_create accepts pixel_format=99999 (validation is a no-op)"
+		r_garbage_pf.is_null(),
+		"renderer_create must reject pixel_format=99999"
 	);
-	let f4 = unsafe { oakengine_renderer_render_frame(r_garbage_pf, 0) };
-	assert!(!f4.is_null(), "a garbage-format renderer still renders");
-	unsafe { oakengine_frame_free(f4) };
-	unsafe { oakengine_renderer_free(r_garbage_pf) };
-
 	let r_neg_pf =
 		unsafe { oakengine_renderer_create(seq, 64, 48, -1, 30000, 1001, std::ptr::null()) };
-	assert!(!r_neg_pf.is_null());
-	unsafe { oakengine_renderer_free(r_neg_pf) };
+	assert!(
+		r_neg_pf.is_null(),
+		"renderer_create must reject pixel_format=-1"
+	);
 
 	unsafe { oakengine_renderer_free(r) };
 	unsafe { oakengine_project_free(project) };

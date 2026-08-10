@@ -193,12 +193,13 @@ pub unsafe extern "C" fn oakengine_renderer_create(
 		if seq.is_null() || width <= 0 || height <= 0 || frame_rate_num <= 0 || frame_rate_den <= 0 {
 			return Ok(std::ptr::null_mut());
 		}
-		// Validate the pixel format against the oakcommon format enum.
-		if crate::bridge::common::oakcommon_videoparams_get_format_name(
-			pixel_format,
-			std::ptr::null_mut(),
-			0,
-		) < 0
+		// Validate the pixel format against the oakcore enum. The
+		// oakcommon format_name lookup succeeds for ANY code (unknowns
+		// format as "Unknown (0x…)"), so only the real formats (U8..F32)
+		// are accepted; Invalid (-1), the Count sentinel (5) and garbage
+		// codes are rejected.
+		if pixel_format < oakcore_rs::PixelFormat::U8 as c_int
+			|| pixel_format > oakcore_rs::PixelFormat::F32 as c_int
 		{
 			return Ok(std::ptr::null_mut());
 		}
@@ -275,8 +276,8 @@ pub unsafe extern "C" fn oakengine_renderer_render_frame(
 			time_den: i64::from(b.frame_rate_num),
 			color_manager: CHandle::null(),
 			mode: b.mode,
-			force_width: 0,
-			force_height: 0,
+			force_width: b.width,
+			force_height: b.height,
 			force_matrix: [0.0; 16],
 			has_force_matrix: 0,
 			force_format: -1,

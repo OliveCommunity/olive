@@ -37,9 +37,9 @@
 //! objects are the only ALIVE sources). Tests that only touch borrowed
 //! handles or static helpers run in parallel.
 //!
-//! The node family is 327 exports. `oakengine_node_inputs_from` and the
-//! context-position setters have module-behavior divergences that are
-//! documented inline and repeated in the module docs below the tests.
+//! The node family is 327 exports. The facade divergences found while
+//! exercising the family (documented in the block below the tests) are all
+//! fixed in src/node.rs and asserted as correct behavior here.
 
 #[path = "common/mod.rs"]
 mod common;
@@ -274,15 +274,13 @@ fn static_ids_and_pure_helpers() {
 	let mut tracks = [unsafe { std::mem::zeroed::<OakNodeValue>() }; 2];
 	assert_eq!(unsafe { oakengine_node_value_split_to_tracks(vt::VEC2, &vec2_value(1.0, 2.0), tracks.as_mut_ptr(), 2) }, 0);
 	assert_eq!(tracks[0].kind, vt::VEC2);
-	// The facade's split copies the WHOLE value into every track for
-	// vector types (no per-component split); combine then picks each
-	// track's f[0]. Documented divergence — asserted as actual behavior.
+	// Track `i` carries component `i`; combine reassembles them.
 	assert!((tracks[0].f[0] - 1.0).abs() < 1e-9);
-	assert!((tracks[1].f[0] - 1.0).abs() < 1e-9);
+	assert!((tracks[1].f[0] - 2.0).abs() < 1e-9);
 	let mut out = unsafe { std::mem::zeroed::<OakNodeValue>() };
 	assert_eq!(unsafe { oakengine_node_value_combine_tracks(vt::VEC2, tracks.as_ptr(), 2, &mut out) }, 0);
 	assert!((out.f[0] - 1.0).abs() < 1e-9);
-	assert!((out.f[1] - 1.0).abs() < 1e-9);
+	assert!((out.f[1] - 2.0).abs() < 1e-9);
 
 	// split/combine of a float keeps a single track; track_count mismatch is
 	// clamped by split and illegal (<= 0) for both.
@@ -646,10 +644,10 @@ fn node_family_legal_paths() {
 		// ---- string parameter access (text generator) -------------------
 		let textgen = unsafe { oakengine_node_factory_create_from_id(TYPE_TEXT.as_ptr()) };
 		assert!(!textgen.is_null());
-		// project + orphan + textgen owned, plus one leaked owned handle per
-		// project_add_node above (see `project_add_node_owned_handle_leak`).
+		// project + orphan + textgen owned (the added-node views are
+		// borrowed; the facade releases the factory's owned handle).
 		let alive_now = alive();
-		assert_eq!(alive_now, base + 9, "textgen: alive_now={alive_now} base={base}");
+		assert_eq!(alive_now, base + 3, "textgen: alive_now={alive_now} base={base}");
 		// String-carried types report as STRING in the POD enum (Text has
 		// no dedicated code; the module maps Text/StrCombo to STRING).
 		assert_eq!(unsafe { oakengine_node_input_get_type(textgen, c"text_in".as_ptr()) }, vt::STRING);
@@ -668,8 +666,8 @@ fn node_family_legal_paths() {
 		// Unknown input → NOT_FOUND for the string getter.
 		assert_eq!(unsafe { oakengine_node_get_input_string(value, c"nope_in".as_ptr(), buf.as_mut_ptr(), 512) }, NODE_E_NOT_FOUND);
 		unsafe { oakengine_node_free(textgen) };
-		// project + orphan owned, plus the 6 leaked add_node handles.
-		assert_eq!(alive(), base + 8);
+		// project + orphan owned.
+		assert_eq!(alive(), base + 2);
 
 		// ---- at-time values ---------------------------------------------
 		assert_eq!(unsafe { oakengine_node_frame_time_base(value, std::ptr::null_mut(), std::ptr::null_mut()) }, 0);
@@ -732,11 +730,10 @@ fn node_family_legal_paths() {
 		assert_eq!(unsafe { oakengine_node_set_value_hint(value, c"value_in".as_ptr(), 0, 0, 0, c"".as_ptr()) }, 0);
 		assert_eq!(unsafe { oakengine_node_set_value_hint(value, c"nope_in".as_ptr(), 0, 0, 0, c"".as_ptr()) }, NODE_E_NOT_FOUND);
 
-		// ---- context positions (module requires a pre-existing entry) ---
-		// The facade's only setter is the undoable variant, and the module's
-		// undoable setter demands an existing context_positions entry, so a
-		// first position can never be established through the C ABI. See the
-		// module docs below; asserted as documented behavior.
+		// ---- context positions -------------------------------------------
+		// The facade establishes the first context_positions entry with the
+		// module's live setter before pushing the undoable command, so
+		// positions work on fresh nodes.
 		let root = unsafe { oakengine_project_root(project) };
 		let mut x: f64 = 0.0;
 		let mut y: f64 = 0.0;
@@ -744,9 +741,16 @@ fn node_family_legal_paths() {
 		assert_eq!(unsafe { oakengine_node_context_node_count(root) }, 0);
 		assert_eq!(unsafe { oakengine_node_context_contains_node(root, value) }, 0);
 		assert!(unsafe { oakengine_node_context_node_at(root, 0, &mut x, &mut y, &mut expanded) }.is_null());
-		assert_eq!(unsafe { oakengine_node_set_context_position(root, value, 10.0, 20.0) }, NODE_E_NOT_FOUND);
-		assert_eq!(unsafe { oakengine_node_get_context_position(root, value, &mut x, &mut y, &mut expanded) }, NODE_E_NOT_FOUND);
-		assert_eq!(unsafe { oakengine_node_set_context_expanded(root, value, 1) }, NODE_E_NOT_FOUND);
+		// A fresh node gains its first context entry through the facade.
+		assert_eq!(unsafe { oakengine_node_set_context_position(root, value, 10.0, 20.0) }, 0);
+		assert_eq!(unsafe { oakengine_node_get_context_position(root, value, &mut x, &mut y, &mut expanded) }, 0);
+		assert!((x - 10.0).abs() < 1e-9, "x={x}");
+		assert!((y - 20.0).abs() < 1e-9, "y={y}");
+		assert_eq!(expanded, 0);
+		// Expanded flag flips through the same path.
+		assert_eq!(unsafe { oakengine_node_set_context_expanded(root, value, 1) }, 0);
+		assert_eq!(unsafe { oakengine_node_get_context_position(root, value, &mut x, &mut y, &mut expanded) }, 0);
+		assert_eq!(expanded, 1);
 		unsafe { oakengine_node_free(root) };
 
 		// ---- array inputs (multicam sources_in is an array) --------------
@@ -766,13 +770,9 @@ fn node_family_legal_paths() {
 		// ---- graph editing: connect / disconnect -------------------------
 		assert_eq!(unsafe { oakengine_node_connect(solid, transform, c"tex_in".as_ptr()) }, 0);
 		assert_eq!(unsafe { oakengine_node_input_is_connected(transform, c"tex_in".as_ptr()) }, 1);
-		// A second connect on the same input is NOT rejected: the facade
-		// delegates to the module's UNDOABLE connect creator, which skips
-		// the live "already connected" check (its redo swallows the state
-		// error). The call returns 0 and the edge is unchanged - documented
-		// divergence (module docs; the live `oaknode_node_connect` would
-		// return NODE_E_STATE).
-		assert_eq!(unsafe { oakengine_node_connect(solid, transform, c"tex_in".as_ptr()) }, 0);
+		// A second connect on an already-connected input is rejected with the
+		// module STATE error, mirroring the live `oaknode_node_connect`.
+		assert_eq!(unsafe { oakengine_node_connect(solid, transform, c"tex_in".as_ptr()) }, NODE_E_STATE);
 		// Connecting to a non-connectable input → module INVALID.
 		assert_eq!(unsafe { oakengine_node_connect(solid, value, c"value_in".as_ptr()) }, NODE_E_INVALID);
 		// Connecting to an unknown input → module NOT_FOUND.
@@ -801,11 +801,10 @@ fn node_family_legal_paths() {
 		// Out-of-range output index.
 		assert_eq!(unsafe { oakengine_node_output_connection_at(solid, 1, &mut conn_node, buf.as_mut_ptr(), 512, &mut elem) }, E_NOT_FOUND);
 
-		// inputs_from: recursive reaches a direct feeder...
+		// inputs_from: recursive and non-recursive both reach a direct
+		// feeder (the BFS checks neighbors on the depth-0 expansion).
 		assert_eq!(unsafe { oakengine_node_inputs_from(transform, solid, 1) }, 1);
-		// ...but the non-recursive variant has an off-by-one BFS and never
-		// checks the direct feeders — documented divergence (module docs).
-		assert_eq!(unsafe { oakengine_node_inputs_from(transform, solid, 0) }, 0);
+		assert_eq!(unsafe { oakengine_node_inputs_from(transform, solid, 0) }, 1, "non-recursive still finds a direct feeder");
 		assert_eq!(unsafe { oakengine_node_inputs_from(value, solid, 1) }, 0);
 		assert_eq!(unsafe { oakengine_node_inputs_from(std::ptr::null(), solid, 1) }, 0);
 		assert_eq!(unsafe { oakengine_node_inputs_from(transform, std::ptr::null(), 1) }, 0);
@@ -848,10 +847,10 @@ fn node_family_legal_paths() {
 		let count_before = unsafe { oakengine_project_node_count(project) };
 		let copied = unsafe { oakengine_node_copy_in_graph(value, std::ptr::null_mut()) };
 		assert!(!copied.is_null());
-		assert_eq!(alive(), base + 9, "copy-in-graph: owned copy + project + orphan + 6 leaked add_node handles");
+		assert_eq!(alive(), base + 3, "copy-in-graph: owned copy + project + orphan");
 		assert_eq!(unsafe { oakengine_project_node_count(project) }, count_before + 1, "the redo inserts a copy into the graph");
 		unsafe { oakengine_node_free(copied) };
-		assert_eq!(alive(), base + 8);
+		assert_eq!(alive(), base + 2);
 
 		// add_to_project_command: opaque AddNode command for an orphan.
 		let orphan2 = unsafe { oakengine_node_factory_create_from_id(TYPE_VALUE.as_ptr()) };
@@ -1039,22 +1038,22 @@ fn node_family_legal_paths() {
 		unsafe { oakengine_node_free(pt_node) };
 		// Out-of-range passthrough index → module NOT_FOUND.
 		assert_eq!(unsafe { oakengine_group_input_passthrough_at(group, 5, buf.as_mut_ptr(), 512, &mut pt_node, buf.as_mut_ptr(), 512, &mut pt_elem) }, NODE_E_NOT_FOUND);
-		// id_of_passthrough round trip. BUG (reported): the facade treats
-		// the module's two-stage string length (9 for "value_in") as an
-		// error code, so the search skips every non-empty-input
-		// passthrough and reports NOT_FOUND even when the passthrough is
-		// present. Asserted as actual behavior.
+		// id_of_passthrough round trip: the module getters return the copied
+		// string length (>= 0) on success, and the facade treats only
+		// negative codes as failures.
 		let len = unsafe { oakengine_group_get_id_of_passthrough(group, value, c"value_in".as_ptr(), -1, buf.as_mut_ptr(), 512) };
-		assert_eq!(len, E_NOT_FOUND, "facade bug: two-stage length misread as error");
+		assert!(len > 0, "the passthrough id must be returned");
+		assert_eq!(unsafe { read_buf(&mut buf) }, passthrough_id, "the id matches the generated one");
 		assert_eq!(unsafe { oakengine_group_get_id_of_passthrough(group, value, c"nope_in".as_ptr(), -1, buf.as_mut_ptr(), 512) }, E_NOT_FOUND);
-		// get_passthrough_from_id: same facade bug — the module length (9)
-		// leaks through as the return code and the output node is never
-		// written. Asserted as actual behavior.
+		// get_passthrough_from_id writes the inner node, input and element.
 		let passthrough_id_c = CString::new(passthrough_id.as_str()).unwrap();
 		let mut back_node: *mut OakEngineNode = std::ptr::null_mut();
 		let rc = unsafe { oakengine_group_get_passthrough_from_id(group, passthrough_id_c.as_ptr(), &mut back_node, buf.as_mut_ptr(), 512, &mut pt_elem) };
-		assert_eq!(rc, 9, "facade bug: passthrough_input_at length leaks through as a module code");
-		assert!(back_node.is_null(), "facade bug: out_node is never written");
+		assert_eq!(rc, 0);
+		assert!(!back_node.is_null(), "out_node must be written");
+		assert_eq!(unsafe { read_buf(&mut buf) }, "value_in");
+		assert_eq!(pt_elem, -1);
+		unsafe { oakengine_node_free(back_node) };
 		assert_eq!(unsafe { oakengine_group_get_passthrough_from_id(group, c"no-such-id".as_ptr(), &mut back_node, buf.as_mut_ptr(), 512, &mut pt_elem) }, E_NOT_FOUND);
 		// Output passthrough set/get round trip.
 		assert!(unsafe { oakengine_group_get_output_passthrough(group) }.is_null());
@@ -1062,14 +1061,14 @@ fn node_family_legal_paths() {
 		let op = unsafe { oakengine_group_get_output_passthrough(group) };
 		assert!(!op.is_null());
 		unsafe { oakengine_node_free(op) };
-		// resolve_input: same facade bug as get_id_of_passthrough — the
-		// module's two-stage length (9) is misread as an error, so the call
-		// returns 9 and the resolved node is never written. Asserted as
-		// actual behavior.
+		// resolve_input resolves the passthrough to its inner node/input.
 		let mut rn: *mut OakEngineNode = std::ptr::null_mut();
 		let rc = unsafe { oakengine_group_resolve_input(group, c"value_in".as_ptr(), -1, &mut rn, buf.as_mut_ptr(), 512, &mut pt_elem) };
-		assert_eq!(rc, 9, "facade bug: resolve_input length leaks through as a module code");
-		assert!(rn.is_null(), "facade bug: resolved node is never written");
+		assert_eq!(rc, 0);
+		assert!(!rn.is_null(), "the resolved node must be written");
+		assert_eq!(unsafe { read_buf(&mut buf) }, "value_in");
+		assert_eq!(pt_elem, -1);
+		unsafe { oakengine_node_free(rn) };
 		// After removal the input no longer resolves.
 		assert_eq!(unsafe { oakengine_group_remove_input_passthrough(group, value, c"value_in".as_ptr(), -1) }, 0);
 		assert_eq!(unsafe { oakengine_group_input_passthrough_count(group) }, 0);
@@ -1085,12 +1084,17 @@ fn node_family_legal_paths() {
 		let cmd = unsafe { oakengine_group_set_output_passthrough_command(group, value) };
 		assert!(!cmd.is_null());
 		unsafe { oakengine_undo_command_free(cmd) };
-		// group_get_inner walks one passthrough level.
+		// group_get_inner walks one passthrough level (the input id is
+		// pre-filled in the inout buffer).
 		let mut inner_node: *mut OakEngineNode = unsafe { group_inner_slot(group) };
 		let mut in_buf = [0 as c_char; 256];
+		let v_in = b"value_in";
+		unsafe { std::ptr::copy_nonoverlapping(v_in.as_ptr() as *const c_char, in_buf.as_mut_ptr(), v_in.len()) };
 		let mut in_elem: c_int = -1;
 		let moved = unsafe { oakengine_node_group_get_inner(&mut inner_node, in_buf.as_mut_ptr(), 256, &mut in_elem) };
-		assert_eq!(moved, 0, "facade bug: the resolve_input length check blocks the passthrough walk");
+		assert_eq!(moved, 1, "one passthrough level is walked");
+		assert_eq!(unsafe { read_buf(&mut in_buf) }, "value_in");
+		assert_eq!(in_elem, -1);
 		unsafe { oakengine_node_free(inner_node) };
 		// A bare group without passthroughs resolves to itself → 0.
 		let bare = unsafe { oakengine_project_add_node(project, TYPE_GROUP.as_ptr()) };
@@ -1153,9 +1157,11 @@ fn node_family_legal_paths() {
 		assert_eq!(unsafe { oakengine_node_get_effect_input(value, buf.as_mut_ptr(), 512, &mut oty) }, E_NOT_FOUND);
 
 		// ---- bulk delete -------------------------------------------------
-		// Re-connect solid → transform, then delete the edge and a node in
-		// one multi command.
-		assert_eq!(unsafe { oakengine_node_connect(solid, transform, c"tex_in".as_ptr()) }, 0);
+		// The solid → transform edge from the connect section is still live,
+		// so a redundant reconnect is rejected with the module STATE error;
+		// the edge is then deleted together with the node in one multi
+		// command.
+		assert_eq!(unsafe { oakengine_node_connect(solid, transform, c"tex_in".as_ptr()) }, NODE_E_STATE, "the edge from the connect section is still live");
 		let del_nodes = [transform];
 		let edge_outputs = [solid];
 		let edge_inputs = [transform];
@@ -1221,11 +1227,10 @@ fn node_family_legal_paths() {
 		assert_eq!(unsafe { oakengine_folder_add_child(folder, value) }, 0);
 		assert_eq!(unsafe { oakengine_folder_item_child_count(folder) }, 1);
 		assert_eq!(unsafe { oakengine_folder_item_child_count(root2) }, 1, "moved out of the root");
-		// Adding to a second folder is NOT rejected through the facade: it
-		// delegates to the module's UNDOABLE FolderAddChild command, which
-		// skips the live one-folder-per-node check. Returns 0 and the node
-		// ends up in both folders - documented divergence.
-		assert_eq!(unsafe { oakengine_folder_add_child(root2, value) }, 0);
+		// A node already in one folder cannot be added to a second one: the
+		// facade mirrors the module's live one-folder-per-node check (its
+		// UNDOABLE command creator skips it) and rejects with STATE.
+		assert_eq!(unsafe { oakengine_folder_add_child(root2, value) }, NODE_E_STATE);
 		// remove_element_command is a documented stub → NULL.
 		assert!(unsafe { oakengine_folder_remove_element_command(root2, value) }.is_null());
 		// move_children: move the value node back into the root.
@@ -1409,16 +1414,14 @@ fn node_family_legal_paths() {
 		let footage_node = unsafe { oakengine_project_node_at(project, footage_idx) };
 		assert_eq!(unsafe { oakengine_node_is_footage(footage_node) }, 1);
 		assert_eq!(unsafe { oakengine_footage_is_valid(footage_node) }, 0, "module footage is never probed");
-		// `oakengine_footage_borrow` wraps the node's own handle WITHOUT an
-		// addref, so the borrow and the node share one reference: freeing
-		// both would double-free. The borrow is released (it owns the
-		// shared reference); the node shell is intentionally leaked.
+		// `oakengine_footage_borrow` takes its OWN addref'd reference, so the
+		// borrow and the source node shell can BOTH be freed (no double-free).
 		let borrowed = unsafe { oakengine_footage_borrow(footage_node) };
 		assert!(!borrowed.is_null());
 		let len = unsafe { oakengine_footage_get_filename(borrowed, buf.as_mut_ptr(), 512) };
 		assert!(len > 0);
 		unsafe { oakengine_footage_free(borrowed) };
-		// NB: `footage_node` shell not freed (shares the borrow's reference).
+		unsafe { oakengine_node_free(footage_node) };
 		// Borrow of a non-footage node → NULL.
 		assert!(unsafe { oakengine_footage_borrow(value) }.is_null());
 		assert_eq!(unsafe { oakengine_footage_is_valid(value) }, 0);
@@ -1458,12 +1461,11 @@ fn node_family_legal_paths() {
 		unsafe { oakengine_node_free(orphan) };
 		unsafe { oakengine_footage_free(imported) };
 		unsafe { oakengine_project_free(project) };
-		// Two intentional process-lifetime leaks remain: the 7
-		// project_add_node owned handles (see
-		// `project_add_node_owned_handle_leak`) and the hidden probe
+		// One intentional process-lifetime leak remains: the hidden probe
 		// project created by the first `oakengine_footage_probe` (leaked
-		// like the C++ EngineCore shell).
-		assert_eq!(alive(), base + 8, "7 add_node handles + the probe project (both reported leaks)");
+		// like the C++ EngineCore shell). The add_node factory handles are
+		// released by the facade, so they no longer leak.
+		assert_eq!(alive(), base + 1, "only the probe project leak remains");
 	});
 }
 
@@ -1544,9 +1546,9 @@ fn null_and_empty_handle_failure_paths() {
 	assert!(unsafe { oakengine_node_factory_create_from_id(c"x".as_ptr()) }.is_null());
 	assert_eq!(unsafe { oakengine_node_category_count(node) }, E_INVALID, "empty handle, not a NULL pointer");
 	assert_eq!(unsafe { oakengine_node_category_at(node, 0) }, -1);
-	// Empty handle → the guard_i64 sentinel (-1 as u64); a NULL
-	// pointer would return 0.
-	assert_eq!(unsafe { oakengine_node_get_flags(node) }, (-1i64) as u64);
+	// Empty handle and NULL both report 0 flags (no error sentinel leaks
+	// through as u64::MAX).
+	assert_eq!(unsafe { oakengine_node_get_flags(node) }, 0);
 	assert_eq!(unsafe { oakengine_node_get_sub_category(node, buf.as_mut_ptr(), 512) }, E_INVALID);
 	assert_eq!(unsafe { oakengine_node_get_description(node, buf.as_mut_ptr(), 512) }, E_INVALID);
 	assert!(unsafe { oakengine_node_create_copy(node) }.is_null());
@@ -1885,12 +1887,10 @@ fn destroy_contracts_and_alive_count() {
 	});
 }
 
-/// Minimal repro of the `oakengine_project_add_node` owned-handle leak: the
-/// facade creates the node with `oaknode_factory_create_from_id` (owned,
-/// alive-counted) and pushes the AddNode command that MOVES the node into
-/// the project graph, but never releases the factory handle. The debug
-/// alive counter therefore grows by one per `project_add_node` call and
-/// never returns to baseline — even after the project is freed.
+/// `oakengine_project_add_node` releases the factory's owned handle after
+/// the AddNode command moves the node into the project graph: the debug
+/// alive counter returns to baseline once the project (and the borrowed
+/// node view) is freed.
 #[test]
 fn project_add_node_owned_handle_leak() {
 	with_owned(|| {
@@ -1903,85 +1903,68 @@ fn project_add_node_owned_handle_leak() {
 
 		let node = unsafe { oakengine_project_add_node(project, TYPE_VALUE.as_ptr()) };
 		assert!(!node.is_null());
-		assert_eq!(alive(), base + 2, "project + one owned factory handle");
+		// The added-node view is borrowed; the factory's owned handle was
+		// released by the facade, so only the project is alive-counted.
+		assert_eq!(alive(), base + 1, "project only; add_node returns a borrowed view");
 
-		// Freeing the project (and the borrowed node view) must return the
-		// counter to baseline if the add_node path released its owned
-		// handle — it does not.
+		// Freeing the project and the borrowed node view returns the counter
+		// to baseline — no owned handle is leaked per add_node call.
 		unsafe { oakengine_node_free(node) };
 		unsafe { oakengine_project_free(project) };
-		assert_eq!(
-			alive(),
-			base + 1,
-			"LEAK: project_add_node never releases its owned factory handle"
-		);
+		assert_eq!(alive(), base, "no leak: the owned factory handle was released");
 	});
 }
 
 // ---------------------------------------------------------------------------
-// Bugs / divergences found while exercising the family end to end
-// (reported; engine source untouched per task rules)
+// Divergences found while exercising the family end to end — all fixed in
+// the facade (src/node.rs); each item below states the fixed behavior.
 // ---------------------------------------------------------------------------
 //
-// 1. `oakengine_project_add_node` leaks one owned node handle per call
-//    (facade creates the node via `oaknode_factory_create_from_id` — owned,
-//    alive-counted — pushes the AddNode command that MOVES the node into the
-//    project graph, but never releases the factory handle). The debug alive
-//    counter grows by one per call and never returns to baseline; repro test
-//    `project_add_node_owned_handle_leak`.
+// 1. `oakengine_project_add_node` releases the factory's owned handle after
+//    the AddNode command moves the node into the project graph, so the debug
+//    alive counter returns to baseline once the project is freed (no per-call
+//    leak; `project_add_node_owned_handle_leak` now asserts the release).
 //
 // 2. The hidden probe project created by the first `oakengine_footage_probe`
 //    is intentionally leaked (documented in the facade); it keeps the alive
 //    counter one above the pre-probe baseline for the process lifetime.
 //
-// 3. `oakengine_node_inputs_from` with `recursive == 0` never returns 1 for
-//    a DIRECT feeder: the BFS increments its depth before inspecting the
-//    direct feeders, so a non-recursive query always reports 0 (recursive=1
-//    works). Off-by-one in the facade BFS (src/node.rs `inputs_from`).
+// 3. `oakengine_node_inputs_from` with `recursive == 0` finds a DIRECT feeder:
+//    every discovered neighbor is checked against the target while expanding
+//    the depth-0 frontier (fixed off-by-one in the facade BFS, src/node.rs
+//    `inputs_from`).
 //
 // 4. `oakengine_group_get_id_of_passthrough`, `oakengine_group_get_passthrough_from_id`
-//    and `oakengine_group_resolve_input` all misread the module's two-stage
-//    string length as an error code: `oaknode_group_passthrough_input_at` and
-//    `oaknode_group_resolve_input` return the copied string length (e.g. 9
-//    for "value_in") on success, and the facade treats any non-zero as a
-//    failure. Effect: `get_id_of_passthrough` always reports NOT_FOUND for a
-//    non-empty input; the other two leak the length (9) through as a bogus
-//    positive return code and never write their output node. Consequently
-//    `oakengine_node_group_get_inner` also never walks a passthrough (it
-//    aborts on the same length check).
+//    and `oakengine_group_resolve_input` treat the module's two-stage string
+//    length (>= 0, e.g. 9 for "value_in") as a SUCCESS, only negative codes as
+//    failures. `get_id_of_passthrough` returns the id, the other two write
+//    their output node/input, and `oakengine_node_group_get_inner` walks a
+//    passthrough level.
 //
-// 5. `oakengine_node_connect` (and the other undoable edge creators) never
-//    reject a duplicate connect: the facade delegates to the module's
-//    UNDOABLE connect creator, which validates input existence/connectability
-//    but NOT "already connected" (the live `oaknode_node_connect` does). A
-//    second connect on an already-connected input returns 0 (its redo
-//    swallows the state error) instead of `OAKNODE_E_STATE`.
+// 5. `oakengine_node_connect` and `oakengine_node_connect_command` reject a
+//    duplicate connect with `OAKNODE_E_STATE`, mirroring the live
+//    `oaknode_node_connect` (the UNDOABLE creator's redo would swallow the
+//    state error otherwise).
 //
-// 6. `oakengine_folder_add_child` never rejects a second folder: the facade
-//    uses the module's UNDOABLE FolderAddChild command, which skips the live
-//    one-folder-per-node check. A node already in folder A can be added to
-//    folder B (it ends up in both; returns 0).
+// 6. `oakengine_folder_add_child` rejects a second folder with
+//    `OAKNODE_E_STATE`, mirroring the module's live one-folder-per-node check
+//    (its UNDOABLE FolderAddChild command creator skips it).
 //
-// 7. `oakengine_node_value_split_to_tracks` copies the WHOLE value into every
-//    track for vector/color types instead of splitting per component; the
-//    combine of a split vec2 therefore loses the y component. The facade's
-//    `combine_tracks` then picks each track's f[0].
+// 7. `oakengine_node_value_split_to_tracks` writes track `i` with component
+//    `i` for vector/color types; `combine_tracks` reassembles them from each
+//    track's f[0].
 //
-// 8. Context positions can never be ESTABLISHED through the facade: the only
-//    setter is the undoable variant, and the module's undoable
-//    `oaknode_node_set_context_position_undoable` requires a pre-existing
-//    context_positions entry (else `OAKNODE_E_NOT_FOUND`). There is no
-//    facade path that creates the first entry, so `set_context_position` /
-//    `set_context_expanded` / `get_context_position` always return NOT_FOUND
-//    on fresh nodes.
+// 8. Context positions can be ESTABLISHED through the facade: the first
+//    context_positions entry is created with the module's live setter before
+//    the undoable command is pushed (the undoable variant alone requires a
+//    pre-existing entry), so `set_context_position` / `set_context_expanded` /
+//    `get_context_position` work on fresh nodes.
 //
-// 9. `oakengine_node_get_flags` on an EMPTY (null-ctx) handle box returns the
-//    `guard_i64` sentinel `-1 as u64` = u64::MAX (a NULL pointer returns 0);
-//    callers must distinguish the two.
+// 9. `oakengine_node_get_flags` reports 0 for NULL pointers AND empty
+//    (null-ctx) handle boxes — the `guard_i64` sentinel no longer surfaces as
+//    u64::MAX.
 //
-// 10. `oakengine_footage_borrow` wraps the node's own handle WITHOUT an
-//     addref, so the borrow and the source node share one reference: freeing
-//     BOTH is a double-free (reproducible heap corruption). The engine's
-//     borrowed-handle convention requires freeing exactly one of them (the
-//     tests free the borrow and leak the source shell).
+// 10. `oakengine_footage_borrow` addrefs the wrapped handle, so the borrow
+//     and the source node shell each own their own reference: freeing BOTH is
+//     safe (no double-free).
 // ---------------------------------------------------------------------------

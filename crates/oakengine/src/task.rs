@@ -82,6 +82,11 @@ struct TaskMeta {
 	/// The project a save task writes (addref'd at creation, released at
 	/// free) — the module has no save-project getter.
 	save_project: Option<CHandle>,
+	/// The project an import task borrows (addref'd at creation, released
+	/// at free): the module's import task stores its project handle WITHOUT
+	/// addref, so this facade-side ref keeps the shared box alive while the
+	/// task runs (see `oakengine_task_create_project_import`).
+	import_project: Option<CHandle>,
 	/// The encoding-params box an export task owns, dropped at free
 	/// (mirrors the C++ `FacadeExportTask` destructor; stored as `usize` so
 	/// the map stays `Send`).
@@ -97,6 +102,7 @@ impl TaskMeta {
 			started: false,
 			cancelled: false,
 			save_project: None,
+			import_project: None,
 			export_params: None,
 			export_color_manager: None,
 		}
@@ -141,11 +147,14 @@ fn meta_set_cancelled(key: usize) {
 }
 
 /// Release every facade-side sidecar of a task (called by
-/// [`oakengine_task_free`]): the addref'd save project, the owned
+/// [`oakengine_task_free`]): the addref'd save/import projects, the owned
 /// encoding-params box and the derived color manager of an export task.
 fn drop_task_meta(key: usize) {
 	if let Some(meta) = meta_lock().remove(&key) {
 		if let Some(mut project) = meta.save_project {
+			unsafe { n::oaknode_project_free(&mut project) };
+		}
+		if let Some(mut project) = meta.import_project {
 			unsafe { n::oaknode_project_free(&mut project) };
 		}
 		if let Some(ptr) = meta.export_params {
@@ -534,6 +543,13 @@ fn project_filename_of(project: CHandle) -> Result<String> {
 /// `oakengine_task_import_file_count` documents 0 as "nothing to import,
 /// free instead of run". `url_count < 0`, a NULL URL inside the array, or a
 /// folder with no project yield NULL.
+///
+/// The module's import task stores the project handle WITHOUT addref, so
+/// the facade keeps an addref'd copy in [`TaskMeta::import_project`]
+/// (released at free) — without it, releasing the transient borrowed
+/// handle here would drop the shared box while the task still references
+/// it, and the run would read freed memory (the former SIGSEGV reproduced
+/// by `it_task::import_run_single_file`).
 #[no_mangle]
 pub unsafe extern "C" fn oakengine_task_create_project_import(
 	folder: *mut OakEngineNode,
@@ -551,10 +567,22 @@ pub unsafe extern "C" fn oakengine_task_create_project_import(
 			return Ok(std::ptr::null_mut());
 		}
 		let h = t::oaktask_create_project_import(fh, project, urls, url_count);
-		// Release the transient borrowed project handle (the import task
-		// keeps its own copy).
+		if h.is_null() {
+			// Creation failed: release the transient borrowed handle.
+			n::oaknode_project_free(&mut project);
+			return Ok(std::ptr::null_mut());
+		}
+		// Keep the project borrowed for the task's lifetime (the module's
+		// import task stores the handle without addref): addref before the
+		// transient handle below is released, so the shared box stays alive
+		// until `oakengine_task_free` drops the meta-side copy.
+		let mut meta = TaskMeta::new();
+		meta.import_project = Some(project.addref());
+		// Release the transient borrowed project handle (the task's copy and
+		// the facade-side addref above keep the box alive).
 		n::oaknode_project_free(&mut project);
-		Ok(box_task(h))
+		meta_insert(h.ctx as usize, meta);
+		Ok(box_handle::<OakEngineTask>(h))
 	})
 }
 

@@ -911,6 +911,22 @@ pub unsafe extern "C" fn oakengine_folder_add_child(
 			return Err(Error::Invalid);
 		}
 		let c = unbox(child)?;
+		// Mirror the module's live one-folder-per-node check (its UNDOABLE
+		// FolderAddChild command creator skips it): a node already in
+		// another folder is rejected with the module STATE error.
+		let parent = n::oaknode_folder_parent_of(c);
+		if !parent.ctx.is_null() {
+			let already_here =
+				n::oaknode_node_identity(parent) != 0
+					&& n::oaknode_node_identity(parent) == n::oaknode_node_identity(f);
+			// The borrowed parent handle's shell is released here.
+			if let Some(release) = parent.release {
+				unsafe { release(parent.ctx) };
+			}
+			if !already_here {
+				return Err(Error::Module(oaknode::error::OAKNODE_E_STATE));
+			}
+		}
 		let cmd = n::oaknode_command_create_folder_add_child(f, c);
 		if cmd.ctx.is_null() {
 			return Err(Error::Failed("folder add child command failed".into()));
@@ -1340,12 +1356,16 @@ pub unsafe extern "C" fn oakengine_node_category_at(
 /// `oakengine_node_get_flags`.
 #[no_mangle]
 pub unsafe extern "C" fn oakengine_node_get_flags(self_: *const OakEngineNode) -> u64 {
-	// Stub: the oaknode module has no per-node flags export.
+	// Stub: the oaknode module has no per-node flags export. NULL and
+	// empty (null-ctx) handle boxes both report 0 — the `guard_i64`
+	// error sentinel would otherwise surface as u64::MAX to C callers.
 	crate::handle::guard_i64(|| unsafe {
 		if self_.is_null() {
 			return Ok(0);
 		}
-		let _ = unbox(self_)?;
+		if (*self_).handle.is_null() {
+			return Ok(0);
+		}
 		Ok(0)
 	}) as u64
 }
@@ -2188,6 +2208,12 @@ pub unsafe extern "C" fn oakengine_project_add_node(
 				continue;
 			}
 			if is_node_type(other, &type_id_str) {
+				// The AddNode command MOVED the node into the project graph,
+				// so the factory's owned handle is now just a stale view:
+				// release it (the node itself stays graph-owned) so the
+				// debug alive counter returns to baseline.
+				let mut owned = node;
+				n::oaknode_node_free(&mut owned);
 				return Ok(box_handle::<OakEngineNode>(other));
 			}
 		}
@@ -2262,6 +2288,20 @@ pub unsafe extern "C" fn oakengine_node_connect(
 		}
 		let out_h = unbox(output_node)?;
 		let in_h = unbox(input_node)?;
+		// Mirror the module's live connect rejection: an already-connected
+		// input is a STATE error. The UNDOABLE creator validates existence
+		// and connectability but not "already connected" (its redo swallows
+		// the state error), so the facade pre-checks like the live variant.
+		let mut connected: c_int = 0;
+		Error::from_module(n::oaknode_node_input_is_connected(
+			in_h,
+			input_id,
+			&mut connected,
+		))?;
+		if connected != 0 {
+			set_node_error("input is already connected");
+			return Err(Error::Module(oaknode::error::OAKNODE_E_STATE));
+		}
 		let mut cmd: CHandle = CHandle::null();
 		let rc = n::oaknode_node_connect_undoable(out_h, in_h, input_id, &mut cmd);
 		if rc != 0 {
@@ -2325,6 +2365,16 @@ pub unsafe extern "C" fn oakengine_node_connect_command(
 		let out_h = unbox(output_node)?;
 		let in_h = unbox(input_node)?;
 		let _ = element;
+		// Same duplicate-connect rejection as `oakengine_node_connect`.
+		let mut connected: c_int = 0;
+		Error::from_module(n::oaknode_node_input_is_connected(
+			in_h,
+			input_id,
+			&mut connected,
+		))?;
+		if connected != 0 {
+			return Ok(std::ptr::null_mut());
+		}
 		let mut cmd: CHandle = CHandle::null();
 		let rc = n::oaknode_node_connect_undoable(out_h, in_h, input_id, &mut cmd);
 		if rc != 0 {
@@ -3588,6 +3638,16 @@ pub unsafe extern "C" fn oakengine_node_set_context_position(
 		}
 		let ch = unbox(context)?;
 		let nh = unbox(node)?;
+		// The module's undoable setter requires a pre-existing
+		// context_positions entry (else NOT_FOUND); create the first entry
+		// with the live setter so positions can be ESTABLISHED through the
+		// facade (bug fix: they were previously impossible to create).
+		let mut x0: f64 = 0.0;
+		let mut y0: f64 = 0.0;
+		let mut e0: c_int = 0;
+		if n::oaknode_node_get_context_position(nh, ch, &mut x0, &mut y0, &mut e0) != 0 {
+			Error::from_module(n::oaknode_node_set_context_position(nh, ch, 0.0, 0.0, 0))?;
+		}
 		let mut cmd: CHandle = CHandle::null();
 		let rc = n::oaknode_node_set_context_position_undoable(nh, ch, x, y, 0, &mut cmd);
 		if rc != 0 {
@@ -3642,7 +3702,9 @@ pub unsafe extern "C" fn oakengine_node_set_context_expanded(
 		let mut was: c_int = 0;
 		let rc = n::oaknode_node_get_context_position(nh, ch, &mut x, &mut y, &mut was);
 		if rc != 0 {
-			return Err(Error::Module(rc));
+			// No entry yet: establish one (the module's undoable setter
+			// below demands a pre-existing context_positions entry).
+			Error::from_module(n::oaknode_node_set_context_position(nh, ch, 0.0, 0.0, 0))?;
 		}
 		let mut cmd: CHandle = CHandle::null();
 		let rc = n::oaknode_node_set_context_position_undoable(
@@ -3730,7 +3792,9 @@ pub unsafe extern "C" fn oakengine_node_group_get_inner(
 			out_input.len() as c_int,
 			&mut out_element,
 		);
-		if rc != 0 || out_node.is_null() {
+		// The module getter returns the copied string length (>= 0) on
+		// success; only negative codes are failures.
+		if rc < 0 || out_node.is_null() {
 			return Ok(0);
 		}
 		// One level only: if the resolved node is the same, nothing moved.
@@ -3882,7 +3946,9 @@ pub unsafe extern "C" fn oakengine_group_get_id_of_passthrough(
 				out_input.len() as c_int,
 				&mut out_element,
 			);
-			if rc != 0 || out_node.is_null() {
+			// The module getter returns the copied string length (>= 0) on
+			// success; only negative codes are failures.
+			if rc < 0 || out_node.is_null() {
 				continue;
 			}
 			if n::oaknode_node_identity(out_node) == n::oaknode_node_identity(ih)
@@ -3936,8 +4002,13 @@ pub unsafe extern "C" fn oakengine_group_get_passthrough_from_id(
 				out_input_size,
 				out_element,
 			);
-			if rc != 0 || node.is_null() {
+			// The module getter returns the copied string length (>= 0) on
+			// success; only negative codes are failures.
+			if rc < 0 {
 				return Err(Error::Module(rc));
+			}
+			if node.is_null() {
+				continue;
 			}
 			if !out_node.is_null() {
 				*out_node = box_handle::<OakEngineNode>(node);
@@ -4016,7 +4087,9 @@ pub unsafe extern "C" fn oakengine_group_resolve_input(
 			out_input_size,
 			out_element,
 		);
-		if rc != 0 {
+		// The module getter returns the copied string length (>= 0) on
+		// success; only negative codes are failures.
+		if rc < 0 {
 			return Err(Error::Module(rc));
 		}
 		if !out_node.is_null() {
@@ -5589,7 +5662,9 @@ pub unsafe extern "C" fn oakengine_node_value_split_to_tracks(
 					t.den = n.den;
 				}
 				value_type::COLOR | value_type::VEC2 | value_type::VEC3 | value_type::VEC4 => {
-					t.f = n.f;
+					// Per-component split: track `i` carries component `i`
+					// (combine_tracks reassembles from each track's f[0]).
+					t.f = [n.f[i], 0.0, 0.0, 0.0];
 				}
 				value_type::FLOAT | value_type::BEZIER => {
 					t.f[0] = n.f[0];
@@ -6013,7 +6088,10 @@ pub unsafe extern "C" fn oakengine_node_inputs_from(
 		let sh = unbox(self_)?;
 		let oh = unbox(other)?;
 		// BFS over the module's output connections starting at `other`
-		// (inputs_from: is `other` reachable feeding into `self`?).
+		// (inputs_from: is `other` reachable feeding into `self`?). Every
+		// discovered neighbor is checked against the target, so a DIRECT
+		// feeder is found while expanding the depth-0 frontier; recursion
+		// merely widens the search beyond it.
 		let target = n::oaknode_node_identity(sh);
 		let mut frontier = vec![oh];
 		let mut visited: Vec<usize> = Vec::new();
@@ -6038,6 +6116,12 @@ pub unsafe extern "C" fn oakengine_node_inputs_from(
 					if n::oaknode_node_output_connection_node_at(cur, i, &mut out) == 0
 						&& !out.is_null()
 					{
+						// Direct feeders are identified at discovery, before
+						// the depth counter advances (recursive == 0 must
+						// still inspect `other`'s own outputs).
+						if n::oaknode_node_identity(out) == target {
+							return Ok(1);
+						}
 						next.push(out);
 					}
 				}
@@ -6731,10 +6815,15 @@ pub unsafe extern "C" fn oakengine_footage_borrow(
 		if node.is_null() {
 			return Ok(std::ptr::null_mut());
 		}
-		let h = unbox(node)?;
+		let mut h = unbox(node)?;
 		if !is_node_type(h, TYPE_ID_FOOTAGE) {
 			set_footage_error("node is not a footage node");
 			return Ok(std::ptr::null_mut());
+		}
+		// The borrow takes its OWN reference (addref) so freeing both the
+		// borrow and the source node shell later is double-free-safe.
+		if let Some(addref) = h.addref {
+			unsafe { addref(h.ctx) };
 		}
 		Ok(box_handle::<OakEngineFootage>(h))
 	})

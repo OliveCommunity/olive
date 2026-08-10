@@ -30,12 +30,13 @@
 //! with asserted results, plus the illegal-input matrix (NULL pointers,
 //! empty `CHandle::null()` boxes, out-of-range rows, zero/negative buffer
 //! sizes) and the free/destroy contracts. No function in this family needs
-//! GPU/app state. The only `#[ignore]`d tests are the real-bug repros at
-//! the bottom ([`null_name_push_repro`], [`null_name_group_repro`],
-//! [`group_abort_undoes_children_repro`]) — a NULL/empty label to
-//! `oakengine_undo_push` / the group-end path crashes the process, and
-//! `oakengine_undo_group_abort` does not undo its children (see the
-//! report).
+//! GPU/app state. The regression tests at the bottom ([`null_name_push_repro`],
+//! [`null_name_group_repro`], [`group_abort_undoes_children_repro`]) lock
+//! three fixed facade bugs: a NULL/empty label to `oakengine_undo_push` /
+//! the group-end path used to hand the module a dangling
+//! `String::new().as_ptr()` (0x1) and SIGSEGV, and
+//! `oakengine_undo_group_abort` used to leave its executed children
+//! un-undone.
 
 #[path = "common/mod.rs"]
 mod common;
@@ -85,6 +86,14 @@ unsafe fn read_str(buf: *const c_char) -> String {
 // Command-lifecycle callbacks (parallel tests only; the serialized stack
 // test uses the STK_* counters below and never touches these).
 // ---------------------------------------------------------------------------
+
+/// Serializes the tests that drive the facade's process-wide global undo
+/// stack (`undo_stack_integration`, `null_name_push_repro`,
+/// `null_name_group_repro`, `group_abort_undoes_children_repro`): cargo
+/// runs tests on parallel threads and the global stack / single open undo
+/// group cannot be shared, so each of those tests holds this lock for its
+/// whole body.
+static GLOBAL_STACK_LOCK: Mutex<()> = Mutex::new(());
 
 static LIFECYCLE_REDO: AtomicI32 = AtomicI32::new(0);
 static LIFECYCLE_UNDO: AtomicI32 = AtomicI32::new(0);
@@ -539,6 +548,7 @@ fn free_contracts() {
 /// group begin/end/abort lifecycle.
 #[test]
 fn undo_stack_integration() {
+	let _lock = GLOBAL_STACK_LOCK.lock().unwrap();
 	common::force_link();
 
 	// --- Baseline: clear() resets to the single "New/Open Project" row.
@@ -701,8 +711,8 @@ fn undo_stack_integration() {
 	assert_eq!(unsafe { oakengine_undo_jump(3) }, 0);
 	assert_eq!(STK_UNDO.load(Ordering::SeqCst), 6);
 
-	// begin → push → abort discards the group (the child's undo does NOT
-	// run — see the NOTE below and `group_abort_undoes_children_repro`).
+	// begin → push → abort discards the group and undoes the executed
+	// child (see `group_abort_undoes_children_repro`).
 	assert_eq!(unsafe { oakengine_undo_group_begin(c"abort".as_ptr()) }, 0);
 	let c3 = unsafe {
 		oakengine_undo_command_create(
@@ -716,11 +726,10 @@ fn undo_stack_integration() {
 	assert_eq!(unsafe { oakengine_undo_push(c3, c"c3".as_ptr()) }, 0);
 	assert_eq!(STK_REDO.load(Ordering::SeqCst), 9);
 	assert_eq!(unsafe { oakengine_undo_group_abort() }, 0);
-	// NOTE: the abort does NOT run the child's undo — `undo_now` is a
-	// no-op on the never-done multi command (see
-	// `group_abort_undoes_children_repro`, ignored, for the full repro),
-	// so c3's side effect is not rolled back. Only the side-effect-free
-	// assertions follow.
+	// The abort rolls the executed child back: c3's undo ran exactly once.
+	// The group itself is discarded (no undo row), so count/index are
+	// unchanged.
+	assert_eq!(STK_UNDO.load(Ordering::SeqCst), 7);
 	assert_eq!(unsafe { oakengine_undo_count() }, 4); // unchanged
 	assert_eq!(unsafe { oakengine_undo_index() }, 3);
 
@@ -744,26 +753,27 @@ fn undo_stack_integration() {
 }
 
 // ---------------------------------------------------------------------------
-// Real-bug repros (ignored: they crash the process; see the report)
+// Real-bug regressions (previously `#[ignore]`d repros of facade bugs,
+// now fixed; kept as regression tests)
 // ---------------------------------------------------------------------------
 
-/// REAL BUG REPRO — `oakengine_undo_push(cmd, NULL)` segfaults the process.
+/// REGRESSION — `oakengine_undo_push(cmd, NULL)` (and an empty-string
+/// label) must not crash.
 ///
-/// The facade's `push_or_run` (src/undo.rs) turns a NULL name into
-/// `String::new()` and passes its DANGLING `as_ptr()` (address 0x1 — Rust
-/// empty-string pointers are never NULL) to the oakundo module's
+/// The facade's `push_or_run` (src/undo.rs) used to turn a NULL/empty name
+/// into `String::new()` and pass its DANGLING `as_ptr()` (address 0x1 —
+/// Rust empty-string pointers are never NULL) to the oakundo module's
 /// `oakundo_undostack_push`, whose `read_name` treats any non-NULL pointer
 /// as a valid C string and runs `CStr::from_ptr` (strlen) on it, faulting
-/// on the unmapped page. `name` is documented as legal-NULL in both the
-/// module header (`include/undo/undostack.h`: "NULL behaves like an empty
-/// label") and the facade docs, and the crash is NOT caught by the
-/// catch_unwind guards (it is a hard SIGSEGV, not a panic).
-///
-/// Verified: `cargo test -p oakengine --test it_undo null_name_push_repro -- --ignored`
-/// dies with signal 11 inside `oakundo::ffi::read_name`.
+/// on the unmapped page. The crash is NOT caught by the catch_unwind
+/// guards (it is a hard SIGSEGV, not a panic). Fixed: a NULL/empty label
+/// now crosses the facade as a real NULL, which the module reads as an
+/// empty label. `name` is documented as legal-NULL in both the module
+/// header (`include/undo/undostack.h`: "NULL behaves like an empty
+/// label") and the facade docs.
 #[test]
-#[ignore = "crashes the process: src/undo.rs push_or_run passes String::new().as_ptr() (0x1) to oakundo's read_name, which strlen's it -> SIGSEGV; needs the engine fix"]
 fn null_name_push_repro() {
+	let _lock = GLOBAL_STACK_LOCK.lock().unwrap();
 	common::force_link();
 	assert_eq!(unsafe { oakengine_undo_clear() }, 0);
 
@@ -779,20 +789,35 @@ fn null_name_push_repro() {
 	// NULL name is a documented-legal label; this must not crash.
 	assert_eq!(unsafe { oakengine_undo_push(cmd, std::ptr::null()) }, 0);
 
+	// An empty C string label walks the same dangling-pointer path.
+	let cmd = unsafe {
+		oakengine_undo_command_create(
+			c"x".as_ptr(),
+			None,
+			None,
+			None,
+			std::ptr::null_mut(),
+		)
+	};
+	assert_eq!(unsafe { oakengine_undo_push(cmd, c"".as_ptr()) }, 0);
+
 	assert_eq!(unsafe { oakengine_undo_clear() }, 0);
 }
 
-/// REAL BUG REPRO — `oakengine_undo_group_begin(NULL)` +
-/// `oakengine_undo_group_end()` segfaults the process.
+/// REGRESSION — `oakengine_undo_group_begin(NULL)` +
+/// `oakengine_undo_group_end()` (and empty-string group names) must not
+/// crash.
 ///
 /// Same root cause as [`null_name_push_repro`]: `oakengine_undo_group_end`
-/// (src/undo.rs) stores the group name as a Rust `String` and passes its
-/// `as_ptr()` to `oakundo_undostack_push_pre_executed`; a NULL (or empty)
-/// name is a dangling 0x1 pointer there, and the module's `read_name`
-/// crashes on it. The group-abort path never crosses the name and is safe.
+/// (src/undo.rs) stores the group name as a Rust `String` and used to pass
+/// its `as_ptr()` to `oakundo_undostack_push_pre_executed`; a NULL (or
+/// empty) name was a dangling 0x1 pointer there, and the module's
+/// `read_name` crashed on it. Fixed: the empty label now crosses the
+/// facade as a real NULL. The group-abort path never crosses the name and
+/// is safe.
 #[test]
-#[ignore = "crashes the process: src/undo.rs group_end passes String::new().as_ptr() (0x1) to oakundo's read_name, which strlen's it -> SIGSEGV; needs the engine fix"]
 fn null_name_group_repro() {
+	let _lock = GLOBAL_STACK_LOCK.lock().unwrap();
 	common::force_link();
 	assert_eq!(unsafe { oakengine_undo_clear() }, 0);
 
@@ -800,33 +825,38 @@ fn null_name_group_repro() {
 	// End of a NULL-named (empty) group must not crash.
 	assert_eq!(unsafe { oakengine_undo_group_end() }, 0);
 
+	// Same path with an empty C string name.
+	assert_eq!(unsafe { oakengine_undo_group_begin(c"".as_ptr()) }, 0);
+	assert_eq!(unsafe { oakengine_undo_group_end() }, 0);
+
 	assert_eq!(unsafe { oakengine_undo_clear() }, 0);
 }
 
-/// Counter for the abort repro (own set: this test runs only under
-/// `--ignored`, but keep it isolated anyway).
+/// Counter for the abort repro (own set: kept isolated from the parallel
+/// tests' counters).
 static ABORT_UNDO: AtomicI32 = AtomicI32::new(0);
 
 unsafe extern "C" fn abort_undo_cb(_ud: *mut c_void) {
 	ABORT_UNDO.fetch_add(1, Ordering::SeqCst);
 }
 
-/// REAL BUG REPRO — `oakengine_undo_group_abort()` does not undo the
-/// group's executed children.
+/// REGRESSION — `oakengine_undo_group_abort()` must undo the group's
+/// executed children.
 ///
-/// The facade (src/undo.rs) closes the abort with
+/// The facade (src/undo.rs) used to close the abort with
 /// `oakundo_command_undo_now(open.multi)` on a multi command that was
 /// never marked done (each child was redo'd eagerly at push time, but the
 /// multi's own `done` flag stays false), and oakundo's documented
 /// `undo_now` is a no-op on a not-done command. Net effect: the child's
-/// undo callback never fires, so the group's side effects are NOT rolled
+/// undo callback never fired, so the group's side effects were NOT rolled
 /// back — contradicting the documented "undo all executed children and
-/// discard the group". (The smoke test in tests/undo.rs misses this: its
-/// `STK_UNDO_COUNT == 1` assertion is satisfied by a leftover value from
-/// an earlier jump.)
+/// discard the group". Fixed: the abort undoes each executed child
+/// individually, in reverse insertion order. (The smoke test in
+/// tests/undo.rs misses this: its `STK_UNDO_COUNT == 1` assertion is
+/// satisfied by a leftover value from an earlier jump.)
 #[test]
-#[ignore = "fails: group_abort leaves children done (undo_now is a no-op on the never-done multi); needs the engine fix"]
 fn group_abort_undoes_children_repro() {
+	let _lock = GLOBAL_STACK_LOCK.lock().unwrap();
 	common::force_link();
 	assert_eq!(unsafe { oakengine_undo_clear() }, 0);
 

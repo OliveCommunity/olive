@@ -183,6 +183,9 @@ pub struct TrackRippleRemoveAreaCommand {
 	track: CHandle,
 	/// Area to clear.
 	range: TimeRange,
+	/// Whether `prepare` has run (the C ABI command path never calls
+	/// `prepare()` itself, so `redo` derives the operations on first use).
+	prepared: bool,
 	/// Out-point trim on the first block (`timelineundoripple.h` `trim_out_`).
 	trim_out_: Option<TrimOperation>,
 	/// Blocks fully inside the range to remove (`removals_`).
@@ -224,6 +227,7 @@ impl TrackRippleRemoveAreaCommand {
 		Self {
 			track,
 			range,
+			prepared: false,
 			trim_out_: None,
 			removals_: Vec::new(),
 			trim_in_: None,
@@ -257,11 +261,18 @@ impl TrackRippleRemoveAreaCommand {
 
 	/// `prepare`: compute the trim/remove operations for the range.
 	///
-	/// Mirrors the C++ algorithm; the leading block lookup requires
-	/// `oaknode_track_get_nearest_block_before_or_at`, which the bridge does
-	/// not yet expose, so this currently finds no block and no-ops (see the
-	/// module note).
+	/// Mirrors the C++ algorithm (`oaknode_track_get_nearest_block_before_or_at`
+	/// is exposed by the oaknode bridge; `redo` invokes this on first use
+	/// because the C ABI command path never calls `prepare` itself).
 	pub fn prepare(&mut self) {
+		// Idempotent: recompute from the current track state, discarding any
+		// previously derived operations.
+		self.trim_out_ = None;
+		self.removals_.clear();
+		self.trim_in_ = None;
+		self.insert_previous_ = CHandle::null();
+		self.splice_split_command_ = None;
+
 		let track = hdup(&self.track);
 		let in_ = self.range.in_();
 		let out = self.range.out();
@@ -351,10 +362,18 @@ impl TrackRippleRemoveAreaCommand {
 				}
 			}
 		}
+
+		self.prepared = true;
 	}
 
 	/// `redo`: apply the ripple removal.
 	pub fn redo(&mut self) {
+		// The C ABI command path never invokes `prepare()` (the oakundo
+		// vtable wrapper only dispatches redo/undo), so derive the operations
+		// on first use.
+		if !self.prepared {
+			self.prepare();
+		}
 		if self.splice_split_command_.is_some() {
 			// We're just splicing (C++ `redo_now` = prepare + redo)
 			let cmd = self.splice_split_command_.as_mut().unwrap();
@@ -905,9 +924,9 @@ impl TimelineRippleDeleteGapsAtRegionsCommand {
 
 	/// `prepare`: build the per-region gap-removal commands.
 	///
-	/// Requires the gap-kind, nearest-block, sequence-track and locked-flag
-	/// queries the bridge does not yet expose, so it currently produces no
-	/// commands (see the module note). The algorithm below mirrors the C++.
+	/// The gap-kind, nearest-block, sequence-track and locked-flag queries
+	/// all go through `bridge::node`; `redo` invokes this on first use
+	/// because the C ABI command path never calls `prepare` itself.
 	pub fn prepare(&mut self) {
 		self.commands_.clear();
 
@@ -1070,7 +1089,14 @@ impl TimelineRippleDeleteGapsAtRegionsCommand {
 	}
 
 	/// `redo`: apply the gap deletions.
+	///
+	/// The C ABI command path never invokes `prepare()` (the oakundo vtable
+	/// wrapper only dispatches `redo`/`undo`), so the sub-commands are built
+	/// on first use; later redos re-apply the stored commands.
 	pub fn redo(&mut self) {
+		if self.commands_.is_empty() {
+			self.prepare();
+		}
 		for i in 0..self.commands_.len() {
 			let c = hdup(&self.commands_[i]);
 			let _ = unsafe { oakundo_command_redo_now(c) };

@@ -47,10 +47,6 @@
 //! - [`export_task_run_ignored_environment_gated`]: running an export
 //!   needs a real GPU/OpenGL render and a real ffmpeg encoder; the host
 //!   stubs cannot encode. The creation path is covered in the main suite.
-//! - [`import_run_crashes_engine_bug`]: **real engine bug reproduction**
-//!   (see its docs): running a single-file import task crashes with
-//!   SIGSEGV because the facade frees the borrowed project handle the
-//!   import task still holds.
 
 #[path = "common/mod.rs"]
 mod common;
@@ -589,8 +585,8 @@ fn save_task_matrix() {
 }
 
 /// Import task creation against a real project and a real (non-decodable)
-/// file, plus the zero-file run that does not touch the (dangling —
-/// see [`import_run_crashes_engine_bug`]) borrowed project handle.
+/// file, plus the zero-file run. The single-file run (with its
+/// invalid-file result) is covered by [`import_run_single_file`].
 ///
 /// A single-file import task is created, reports the documented pre-run
 /// accessor states (empty footage / invalid lists, out-of-range codes,
@@ -680,29 +676,24 @@ fn import_flow_with_real_file() {
 	let _ = std::fs::remove_file(&media);
 }
 
-/// **Real engine bug — minimal reproduction.**
+/// A single-file import task runs end to end: the run succeeds (1) and
+/// records the undecodable file as invalid.
 ///
-/// Running a single-file import task crashes with SIGSEGV. The facade's
-/// `oakengine_task_create_project_import` (`src/task.rs`) hands the
+/// Regression for a former use-after-free: the facade's
+/// `oakengine_task_create_project_import` (`src/task.rs`) used to hand the
 /// borrowed project handle (from `oaknode_node_get_project`) to
 /// `oaktask_create_project_import`, which stores it WITHOUT addref, and
-/// then immediately calls `oaknode_project_free` on it: the shared
-/// `RefBox` refcount goes 1→0 and the box is freed while the task's copy
-/// still references it. The first thing the run does is
-/// `oaknode_footage_create(task.project, …)` → `project_arc()` reads the
-/// freed `RefBox<ProjectArc>` and clones the garbage `Arc` → `atomic_add`
-/// on a non-heap address → EXC_BAD_ACCESS.
+/// then immediately called `oaknode_project_free` on it: the shared
+/// `RefBox` refcount went 1→0 and the box was freed while the task's copy
+/// still referenced it, so the run's `oaknode_footage_create(task.project,
+/// …)` read the freed box → SIGSEGV.
 ///
-/// Verified under lldb: the project handle's ctx (`0x1043cf4d0` in the
-/// traced run) had been reused by the allocator and contained a CHandle
-/// whose `addref` slot was the address of `oaktask::handle::owned_addref`
-/// — the exact address the crashing `atomic_add` targeted.
-///
-/// The save creator is NOT affected: it addrefs the project
-/// (`meta.save_project = Some(ph.addref())`).
+/// The fix mirrors the save creator, which addrefs the project
+/// (`meta.save_project = Some(ph.addref())`): the import creator now keeps
+/// an addref'd copy in `TaskMeta::import_project`, released at free, so
+/// the project stays alive for the task's lifetime.
 #[test]
-#[ignore = "ENGINE BUG: import run SIGSEGVs — facade frees the borrowed project handle the task still holds (src/task.rs oakengine_task_create_project_import)"]
-fn import_run_crashes_engine_bug() {
+fn import_run_single_file() {
 	let _g = serial();
 	common::force_link();
 
@@ -716,9 +707,8 @@ fn import_run_crashes_engine_bug() {
 	std::fs::write(&media, b"not media").unwrap();
 	let media_c = std::ffi::CString::new(media.to_str().unwrap()).unwrap();
 
-	// Creation succeeds; the run below is expected to succeed (1) and record
-	// the undecodable file as invalid — instead it reads the dangling
-	// project handle and crashes the process.
+	// Creation succeeds; the run succeeds (1) and records the undecodable
+	// file as invalid.
 	let urls = [media_c.as_ptr()];
 	let task = unsafe { oakengine_task_create_project_import(root, urls.as_ptr(), 1) };
 	assert!(!task.is_null());

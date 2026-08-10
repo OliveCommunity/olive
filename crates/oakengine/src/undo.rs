@@ -93,7 +93,15 @@ pub(crate) unsafe fn push_or_run(command_box: *mut OakEngineClipboard, name: *co
 		return if rc == 0 { Ok(()) } else { Err(Error::Module(rc)) };
 	}
 	let stack = *global_stack();
-	let rc = unsafe { u::oakundo_undostack_push(stack, cmd, label.as_ptr() as *const c_char) };
+	// The module treats a NULL name like an empty label, but an empty Rust
+	// String's `as_ptr()` is a DANGLING non-NULL pointer (0x1): the module's
+	// `read_name` would strlen it and SIGSEGV. Pass a real NULL instead.
+	let label_ptr = if label.is_empty() {
+		std::ptr::null()
+	} else {
+		label.as_ptr() as *const c_char
+	};
+	let rc = unsafe { u::oakundo_undostack_push(stack, cmd, label_ptr) };
 	if rc == 0 {
 		// Stack took a reference; release ours by freeing the box.
 		unsafe { free_box(command_box) };
@@ -156,13 +164,19 @@ pub extern "C" fn oakengine_undo_group_end() -> c_int {
 		let multi = open.multi;
 		let name = open.name;
 		drop(g);
+		// Same NULL-for-empty convention as `push_or_run`: the module's
+		// `read_name` treats NULL like an empty label, while an empty String's
+		// dangling `as_ptr()` (0x1) would be strlen'd -> SIGSEGV.
+		let name_ptr = if name.is_empty() {
+			std::ptr::null()
+		} else {
+			name.as_ptr() as *const c_char
+		};
 		// push_pre_executed discards an empty multi command. Either way
 		// the stack took (or destroyed) the command; release our own
 		// reference to the multi handle.
 		let stack = *global_stack();
-		let rc = unsafe {
-			u::oakundo_undostack_push_pre_executed(stack, multi, name.as_ptr() as *const c_char)
-		};
+		let rc = unsafe { u::oakundo_undostack_push_pre_executed(stack, multi, name_ptr) };
 		let mut multi_handle = multi;
 		unsafe { u::oakundo_command_free(&mut multi_handle) };
 		if rc == 0 {
@@ -181,9 +195,36 @@ pub extern "C" fn oakengine_undo_group_abort() -> c_int {
 		let mut g = group_lock();
 		let open = g.take().ok_or(Error::State)?;
 		drop(g);
-		let rc = unsafe { u::oakundo_command_undo_now(open.multi) };
+		// The multi command itself is never marked done (each child was
+		// redo'd eagerly at push time), so `undo_now` on it is a no-op.
+		// Undo the executed children individually instead, in reverse
+		// insertion order (mirroring the multi's reverse-order undo), each
+		// through its own borrowed handle.
+		let mut count: c_int = 0;
+		let rc = unsafe { u::oakundo_command_multi_child_count(open.multi, &mut count) };
 		if rc != 0 {
+			let mut multi = open.multi;
+			unsafe { u::oakundo_command_free(&mut multi) };
 			return Err(Error::Module(rc));
+		}
+		for i in (0..count).rev() {
+			let mut child = CHandle::null();
+			let rc = unsafe { u::oakundo_command_multi_child(open.multi, i, &mut child) };
+			if rc != 0 {
+				let mut multi = open.multi;
+				unsafe { u::oakundo_command_free(&mut multi) };
+				return Err(Error::Module(rc));
+			}
+			let rc = unsafe { u::oakundo_command_undo_now(child) };
+			// The child handle is borrowed (owns:false): release only its
+			// shell — the child value lives on in the multi until the multi
+			// itself is freed below.
+			unsafe { u::oakundo_command_free(&mut child) };
+			if rc != 0 {
+				let mut multi = open.multi;
+				unsafe { u::oakundo_command_free(&mut multi) };
+				return Err(Error::Module(rc));
+			}
 		}
 		let mut multi = open.multi;
 		unsafe { u::oakundo_command_free(&mut multi) };
