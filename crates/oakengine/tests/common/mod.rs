@@ -94,10 +94,7 @@ fn audio_params_store() -> &'static Mutex<HashMap<usize, MockAudioParams>> {
 
 fn audio_params_get(ctx: *const c_void) -> MockAudioParams {
 	let store = audio_params_store().lock().unwrap();
-	store
-		.get(&(ctx as usize))
-		.cloned()
-		.unwrap_or_default()
+	store.get(&(ctx as usize)).cloned().unwrap_or_default()
 }
 
 fn audio_params_set(ctx: *mut c_void, f: impl FnOnce(&mut MockAudioParams)) {
@@ -153,7 +150,10 @@ pub extern "C" fn oakcore_audioparams_sample_rate(params: *const OakAudioParams)
 }
 
 #[no_mangle]
-pub extern "C" fn oakcore_audioparams_set_sample_rate(params: *mut OakAudioParams, sample_rate: c_int) {
+pub extern "C" fn oakcore_audioparams_set_sample_rate(
+	params: *mut OakAudioParams,
+	sample_rate: c_int,
+) {
 	audio_params_set(params as *mut c_void, |p| p.sample_rate = sample_rate);
 }
 
@@ -168,7 +168,11 @@ pub extern "C" fn oakcore_audioparams_set_channel_layout(params: *mut OakAudioPa
 }
 
 #[no_mangle]
-pub extern "C" fn oakcore_audioparams_set_time_base(params: *mut OakAudioParams, num: c_int, den: c_int) {
+pub extern "C" fn oakcore_audioparams_set_time_base(
+	params: *mut OakAudioParams,
+	num: c_int,
+	den: c_int,
+) {
 	audio_params_set(params as *mut c_void, |p| {
 		p.time_base_num = num;
 		p.time_base_den = den;
@@ -252,7 +256,10 @@ pub extern "C" fn oakcore_rational_free(rational: *mut c_void) {
 	if rational.is_null() {
 		return;
 	}
-	rational_store().lock().unwrap().remove(&(rational as usize));
+	rational_store()
+		.lock()
+		.unwrap()
+		.remove(&(rational as usize));
 	// SAFETY: produced by `oakcore_audioparams_time_base` as a boxed
 	// `(i32, i32)` pair; we hold the only reference after removal.
 	unsafe { drop(Box::from_raw(rational as *mut (i32, i32))) };
