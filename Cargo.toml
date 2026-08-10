@@ -46,10 +46,10 @@ resolver = "2"
 panic = "unwind"
 
 [package]
-name = "oakapp"
+name = "oak"
 version = "0.1.0"
 edition = "2021"
-description = "Oak Video Editor application layer (Rust, gpui-based)"
+description = "Oak Video Editor"
 license = "GPL-3.0-or-later"
 
 [lib]

@@ -3889,6 +3889,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "oak"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "gpui_platform",
+ "gpui_widgets",
+ "image",
+ "smallvec",
+]
+
+[[package]]
 name = "oak-cli"
 version = "0.1.0"
 dependencies = [
@@ -3905,17 +3916,6 @@ dependencies = [
  "oakrender",
  "serde",
  "serde_json",
-]
-
-[[package]]
-name = "oakapp"
-version = "0.1.0"
-dependencies = [
- "gpui",
- "gpui_platform",
- "gpui_widgets",
- "image",
- "smallvec",
 ]
 
 [[package]]
