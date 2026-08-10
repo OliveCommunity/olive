@@ -16,9 +16,16 @@ panic = "unwind"
 oakcore-rs = { path = "../../oakcore-rs" }
 oakcommon = { path = "../../common/rust" }
 oakundo = { path = "../../undo/rust" }
+oakcodec = { path = "../../codec/rust" }
 
 [features]
 # In-crate stubs for the oakundo C ABI (and other module bridges) so
 # cargo test can exercise the undoable exports end-to-end without the
 # module libraries; real builds (feature off) dlsym the actual modules.
 test-stubs = []
+
+[dev-dependencies]
+# oakcodec's oakcore_*/oakrender_* host-mocks (test-stubs feature): the
+# node test binaries link the real oakcodec (footage probe), whose ffmpeg
+# unit references those cross-crate symbols that no Rust crate provides.
+oakcodec = { path = "../../codec/rust", features = ["test-stubs"] }

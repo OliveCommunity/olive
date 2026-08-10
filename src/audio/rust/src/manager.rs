@@ -59,7 +59,7 @@ struct ManagerInner {
 	/// `Pa_IsStreamActive`).
 	output_started: bool,
 	/// Active oakcodec recording encoder (NULL when idle).
-	recording: Option<*mut c_void>,
+	recording: Option<CHandle>,
 }
 
 // SAFETY: the raw encoder pointer is only touched while the manager mutex is
@@ -290,7 +290,12 @@ pub fn start_recording(
 	if m.input_device == PA_NO_DEVICE {
 		return Err(Error::Failed("no input device".to_string()));
 	}
-	let enc = unsafe { crate::bridge::codec::oakcodec_encoder_init(params) };
+	eprintln!("MANAGER before encoder_init: audio_enabled={} codec={}", params.audio_enabled, params.audio_codec);
+	let mut enc = unsafe { crate::bridge::codec::oakcodec_encoder_init(params) };
+	eprintln!("MANAGER encoder_init null? {} ptr={:p} size={}", enc.is_null(), params as *const EncodingParams, std::mem::size_of::<EncodingParams>());
+	let direct = unsafe { oakcodec::ffi::encoder::oakcodec_encoder_init(params as *const EncodingParams) };
+	eprintln!("MANAGER direct init null? {}", direct.is_null());
+	if !direct.is_null() { let mut d = direct; unsafe { oakcodec::ffi::encoder::oakcodec_encoder_free(&mut d) }; }
 	if enc.is_null() {
 		return Err(Error::Failed(
 			"failed to open encoder for recording".to_string(),
@@ -313,7 +318,7 @@ pub fn start_recording(
 		} else {
 			"failed to open encoder for recording".to_string()
 		};
-		unsafe { crate::bridge::codec::oakcodec_encoder_free(enc) };
+		unsafe { crate::bridge::codec::oakcodec_encoder_free(&mut enc) };
 		return Err(Error::Failed(msg));
 	}
 	m.recording = Some(enc);
@@ -326,10 +331,10 @@ pub fn start_recording(
 /// stream is not bridged; the encoder is flushed and freed).
 pub fn stop_recording(self_: &CHandle) -> Result<()> {
 	let mut m = with_instance(self_)?;
-	if let Some(enc) = m.recording.take() {
+	if let Some(mut enc) = m.recording.take() {
 		unsafe {
 			crate::bridge::codec::oakcodec_encoder_flush(enc);
-			crate::bridge::codec::oakcodec_encoder_free(enc);
+			crate::bridge::codec::oakcodec_encoder_free(&mut enc);
 		}
 	}
 	Ok(())
@@ -360,3 +365,4 @@ pub fn find_device_by_name_s(name: &std::ffi::CStr, _is_output_device: bool) -> 
 pub fn debug_alive_count() -> i32 {
 	crate::handle::alive_count()
 }
+

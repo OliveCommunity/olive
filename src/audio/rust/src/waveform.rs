@@ -716,7 +716,7 @@ pub fn extract(filename: &CStr, stream_index: i32, samples_per_point: i32) -> Re
 	// Probe for the stream's native rate/layout (stateless).
 	// SAFETY: `filename` is a NUL-terminated C string (validated by the FFI
 	// layer); the probe handle is freed on every path below.
-	let probe = unsafe { crate::bridge::codec::oakcodec_decoder_probe(filename.as_ptr()) };
+	let mut probe = unsafe { crate::bridge::codec::oakcodec_decoder_probe(filename.as_ptr()) };
 	if probe.is_null() {
 		return Err(Error::NotFound);
 	}
@@ -729,7 +729,7 @@ pub fn extract(filename: &CStr, stream_index: i32, samples_per_point: i32) -> Re
 		)
 	};
 	// SAFETY: `probe` was created above and is no longer used.
-	unsafe { crate::bridge::codec::oakcodec_decoder_free(probe) };
+	unsafe { crate::bridge::codec::oakcodec_decoder_free(&mut probe) };
 	if r != 0 {
 		return Err(Error::NotFound);
 	}

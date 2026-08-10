@@ -184,12 +184,14 @@ mod tests {
 
 	#[test]
 	fn create_destroy_instance_ok() {
+		let _g = crate::ffi::lock_tests();
 		assert_eq!(unsafe { oakcodec_conform_create_instance() }, crate::error::OAKCODEC_OK);
 		assert_eq!(unsafe { oakcodec_conform_destroy_instance() }, crate::error::OAKCODEC_OK);
 	}
 
 	#[test]
 	fn get_state_maps_states() {
+		let _g = crate::ffi::lock_tests();
 		let _g = REG_LOCK.lock().unwrap();
 		// No registrar and no files -> UNAVAILABLE.
 		let cache = cstr(&temp_cache("state"));
@@ -218,6 +220,7 @@ mod tests {
 
 	#[test]
 	fn filename_count_and_at() {
+		let _g = crate::ffi::lock_tests();
 		let cache = cstr(&temp_cache("names"));
 		let src = cstr("media.mp4");
 

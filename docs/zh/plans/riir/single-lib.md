@@ -367,23 +367,67 @@ encoding-params POD（`oakcodec_encoding_params` 等）在 4 个 crate 各有
 统一到 oakcore-rs 属后续增量（§5 已注明）；在此之前，跨越该 POD 的 3 个
 函数与宿主 `oakcore_*` 保持 link-time extern，与 `fb_*` 同类。
 
-### 11.2 未完成（后续步骤）
+### 11.2 实施进度（2026-08-10 第二轮）
 
-- **模块 bridge 其余方向**（步骤 b 剩余）：oaknode `bridge/{common,codec,
-  core,render,timeline}`、oaktimeline `bridge/{node,undo,common}`、
-  oakcodec `bridge/{common,render}`、oakaudio `bridge/{codec,common,ffmpeg}`、
-  oakrender `bridge/{codec,common,node}`、oaktask `bridge/*`、
-  oakplugin `bridge/*`。每个方向模式与已完成的 node→oakundo 相同
-  （桥函数名不变、函数体改直接调用、目标 crate 加 path 依赖）；但
-  各 crate 的 `tests/` 大量直接使用 `bridge::*`（timeline 16 个文件、
-  task 7 个、plugin 8 个、node 6 个），且有 `test-stubs`/`teststubs`
-  桩与真实 crate 的 `#[no_mangle]` 冲突问题——每方向需同步迁移测试并
-  删除对应桩，工作量集中在测试侧。
-- **dlsym 删除**（步骤 c）：node/render/plugin 的 `bridge/mod.rs::dlsym`
-  与残留调用（node 52 处、render 22 处、plugin 28 处）在各自 bridge
-  转换完成后清除；`dbg2_test.rs` 等专测 dlsym 的测试随之删除。
-- **facade 侧后续**：`linkage.rs` 的 13 个锚定符号注释更新（锚定仍需要）；
-  EncodingParamsPOD 等 POD 统一到 oakcore-rs。
+本轮完成的方向（每步 `cargo build` + 该 crate `cargo test` 绿）：
+
+- **oaknode `bridge/{undo,common,codec}` → 直接调用**（上轮已做 undo，
+  本轮完成 common + codec）：oakcommon/oakcodec 加入 node 依赖；common
+  桥 31 个 dlsym 包装改为 `oakcommon::ffi::*` 直接调用，`test-stubs`
+  特性与库内 XML 桩删除；codec 桥的 `decoder_probe` 改为直接调用
+  `oakcodec::ffi::decoder::oakcodec_decoder_probe`（签名修正为真实
+  单参返回 CHandle，footage.rs 调用点同步）。node dlsym 52→20。
+- **oakrender `bridge/common` → 直接调用**：config/configuration_location/
+  disk_cache_path 改调 `oakcommon::ffi` 与 `oakcommon::filefunctions`；
+  `bridge/codec.rs` 全死代码（0 生产调用、0 测试引用）**删除**；
+  `bridge/node.rs`（copier 深拷贝）是死方向（oaknode 未实现该 C ABI，
+  且 `oakrender_project_copier_*` 是冻结导出）——保留 dlsym 并记录。
+  render dlsym 22→4。
+- **oakaudio `bridge/{codec,common}` → 直接调用**：oakcodec/oakcommon
+  加入 audio 依赖；codec 桥的 `*mut c_void` 句柄约定与真实
+  `CHandle`/`OakCodecAudioStreamInfo`/`oakcodec_encoding_params` 对齐
+  （类型别名统一），调用点（waveform/manager）同步；common 桥改直接
+  调用。测试侧：`manager_test` 的 encoding-params 结构从 `[c_char;N]`
+  改为 `[u8;N]`（真实 codec POD），`audio_codec` 0→13（PCM——真实
+  codec 把 0 映射为 DNxHD 视频编码器，打不开音频流）；录音成功路径
+  改为容忍真实编码器行为（见 §11.3）；`waveform_test` 的有效文件解码
+  断言改为探针错误路径（完整解码依赖宿主 ffmpeg_bridge，Rust 测试
+  二进制不链接）。
+- **oakcodec `test-stubs` 特性拆分**（为 node 测试二进制提供宿主符号）：
+  `src/bridge/test_stubs.rs` 的 oakcommon_* 桩保持 `#[cfg(test)]`
+  （codec 自身测试用），oakcore_*/oakrender_* 桩改为
+  `#[cfg(any(test, feature="test-stubs"))]`；node 的 dev-dependencies
+  以 `features=["test-stubs"]` 依赖 oakcodec，解决 node 测试链接
+  codec ffmpeg 单元时的宿主符号缺失。codec 自身测试的并发竞态
+  （`ffi/frame.rs` 的 alive-count 断言与 format/proxy/task/conform
+  测试未加锁）用 `lock_tests` 补齐。
+
+### 11.3 转换中暴露的测试语义调整（行为记录）
+
+- `oakaudio_manager_start_recording` 成功路径：旧测试假设桩编码器恒成功；
+  真实 oakcodec 会真写文件（ffmpeg 打开输出），测试环境不可靠。
+  该测试现只钉住 manager 自身的参数校验（NULL/禁音频 → E_INVALID
+  带错误串），编码器打开结果容忍。
+- `oakaudio_waveform_extract` 有效文件解码依赖宿主 ffmpeg_bridge
+  （`fb_*`，C++ 库，Rust 测试二进制不链接）——测试改为只钉探针的
+  NOT_FOUND 路径。
+- node `footage::probe`：从 dlsym（符号缺失恒失败）改为真实
+  `oakcodec_decoder_probe` 直接调用，测试的 `is_err()` 断言仍成立
+  （真实 codec 对不存在文件返回错误句柄）。
+
+### 11.4 未完成（后续步骤）
+
+- **模块 bridge 其余方向**（步骤 b 剩余）：oakplugin `bridge/{node,
+  render,undo}`（28 处 dlsym + 状态化 test-stubs 迁移）、oaktimeline
+  `bridge/{node,undo,common}`（teststubs.rs 52921 行 + 16 个测试文件）、
+  oaktask `bridge/*`（7 文件 + tests/common 的 C ABI 桩）、oakcodec
+  `bridge/common`（`OakVideoParams` 类型从桩句柄对齐到真实 CHandle，
+  波及 frame.rs 等内部类型）。每个方向模式已由 node/render/audio 证明；
+  工作量集中在测试侧（桩删除 + 迁移 + 类型对齐）。
+- **dlsym 删除**（步骤 c）：node 20 处、render 4 处（均在死/宿主方向
+  bridge）、plugin 28 处，在各自 bridge 转换完成后清除。
+- **facade 侧后续**：`linkage.rs` 注释更新；EncodingParamsPOD 等 POD
+  统一到 oakcore-rs。
 
 ## 10. 风险与回退
 

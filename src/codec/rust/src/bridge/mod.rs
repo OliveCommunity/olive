@@ -28,5 +28,8 @@ pub mod render;
 
 // In-memory mocks for the oakcommon/oakrender C ABI so the crate links
 // and is testable under `cargo test` (where those dylibs are absent).
-#[cfg(test)]
+// The `test-stubs` feature additionally compiles the oakcore_*/oakrender_*
+// host-mocks for consumer test binaries (e.g. oaknode's) that link this
+// crate directly — those symbols are not provided by any Rust crate.
+#[cfg(any(test, feature = "test-stubs"))]
 pub mod test_stubs;

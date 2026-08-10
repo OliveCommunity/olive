@@ -14,21 +14,19 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! oakcodec C ABI imports (footage probing). dlsym-resolved (see
-//! [`super`]).
+//! oakcodec C ABI calls (footage probing) — now direct Rust calls into
+//! the oakcodec crate (single-lib unification, see
+//! `docs/zh/plans/riir/single-lib.md`).
 
 use std::ffi::c_char;
-use std::ffi::c_int;
 
 use crate::handle::CHandle;
 
-/// `oakcodec_decoder_probe` — fills stream info for a media file.
-pub fn decoder_probe(path: &str, out: *mut CHandle) -> Option<c_int> {
-	use crate::bridge::dlsym;
+/// `oakcodec_decoder_probe` — probe a media file, returning the
+/// stream-list handle (`oakcodec_decoder_probe(filename)`). The caller
+/// owns the returned handle.
+pub fn decoder_probe(path: &str) -> Option<CHandle> {
 	use std::ffi::CString;
-	type F = unsafe extern "C" fn(*const c_char, *mut CHandle) -> c_int;
 	let c = CString::new(path).ok()?;
-	dlsym::call::<F, c_int>("oakcodec_decoder_probe", |f| unsafe {
-		f(c.as_ptr(), out)
-	})
+	Some(unsafe { oakcodec::ffi::decoder::oakcodec_decoder_probe(c.as_ptr()) })
 }

@@ -24,7 +24,6 @@
 //! the wrapper returns a documented fallback (empty handle / negative
 //! error code) instead of a link error.
 
-pub mod codec;
 pub mod common;
 pub mod node;
 

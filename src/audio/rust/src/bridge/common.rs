@@ -14,37 +14,38 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! oakcommon C ABI imports (config access + ffmpeg format conversion).
+//! oakcommon C ABI calls (config access + ffmpeg format conversion) —
+//! now direct Rust calls into the oakcommon crate (single-lib
+//! unification, see `docs/zh/plans/riir/single-lib.md`).
 
 use std::ffi::{c_char, c_int};
 
-// `oakcommon_config_get` — copy a config string value into `buf`.
-extern "C" {
-	/// `oakcommon_config_get` — copy a config string value into `buf`.
-	pub fn oakcommon_config_get(
-		group: *const c_char,
-		key: *const c_char,
-		buf: *mut c_char,
-		buf_size: c_int,
-	) -> c_int;
+/// `oakcommon_config_get` — copy a config string value into `buf`
+/// (two-stage; returns the required size including NUL).
+pub unsafe fn oakcommon_config_get(
+	group: *const c_char,
+	key: *const c_char,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe { oakcommon::ffi::config::oakcommon_config_get(group, key, buf, buf_size) }
 }
 
-// `oakcommon_config_get_int` — read an integer config value with a default.
-extern "C" {
-	/// `oakcommon_config_get_int` — read an integer config value with a
-	/// default.
-	pub fn oakcommon_config_get_int(
-		group: *const c_char,
-		key: *const c_char,
-		default: c_int,
-	) -> c_int;
+/// `oakcommon_config_get_int` — read an integer config value with a
+/// default.
+pub unsafe fn oakcommon_config_get_int(
+	group: *const c_char,
+	key: *const c_char,
+	default: c_int,
+) -> c_int {
+	unsafe { oakcommon::ffi::config::oakcommon_config_get_int(group, key, default) }
 }
 
-extern "C" {
-	/// `oakcommon_ffmpegutils_get_ffmpeg_sample_format` — map an ffmpeg
-	/// sample format enum to the oak core format, or the reverse.
-	pub fn oakcommon_ffmpegutils_get_ffmpeg_sample_format(
-		smp_fmt: c_int,
-		out: *mut c_int,
-	) -> c_int;
+/// `oakcommon_ffmpegutils_get_ffmpeg_sample_format` — map an ffmpeg
+/// sample format enum to the oak core format, or the reverse.
+pub unsafe fn oakcommon_ffmpegutils_get_ffmpeg_sample_format(
+	smp_fmt: c_int,
+	out: *mut c_int,
+) -> c_int {
+	unsafe { oakcommon::ffi::ffmpegutils::oakcommon_ffmpegutils_get_ffmpeg_sample_format(smp_fmt, out) }
 }

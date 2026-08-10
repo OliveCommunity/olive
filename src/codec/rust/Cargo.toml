@@ -12,6 +12,12 @@ crate-type = ["staticlib", "rlib"]
 # FFI discipline: panics must be catchable at every exported entry.
 panic = "unwind"
 
+[features]
+# Compile the oakcore_*/oakrender_* host-mocks in src/bridge/test_stubs.rs so
+# consumer test binaries that link this crate (e.g. oaknode's) can resolve
+# those cross-crate C-ABI symbols without the host dylibs.
+test-stubs = []
+
 [dependencies]
 oakcore-rs = { path = "../../oakcore-rs" }
 # Real media decode/encode. The C++ ffmpeg_bridge library existed only to

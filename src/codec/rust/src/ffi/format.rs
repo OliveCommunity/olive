@@ -350,6 +350,7 @@ mod tests {
 
 	#[test]
 	fn format_metadata_exports() {
+		let _g = crate::ffi::lock_tests();
 		let mut buf = [0i8; 64];
 
 		// Count matches the 15-entry table (0..=14, Count = 15).
@@ -385,6 +386,7 @@ mod tests {
 
 	#[test]
 	fn format_codec_lists_exports() {
+		let _g = crate::ffi::lock_tests();
 		// MPEG-4 video (2) carries H.264/H.264RGB/H.265.
 		assert_eq!(unsafe { oakcodec_encoding_format_video_codec_count(2) }, 3);
 		assert_eq!(
@@ -431,6 +433,7 @@ mod tests {
 
 	#[test]
 	fn codec_metadata_exports() {
+		let _g = crate::ffi::lock_tests();
 		let mut buf = [0i8; 64];
 
 		let rc = unsafe { oakcodec_encoding_codec_name(1, buf.as_mut_ptr(), 64) };
@@ -451,6 +454,7 @@ mod tests {
 
 	#[test]
 	fn pixel_and_sample_format_exports() {
+		let _g = crate::ffi::lock_tests();
 		let mut buf = [0i8; 64];
 
 		// Bad arguments -> E_INVALID.
@@ -497,6 +501,7 @@ mod tests {
 
 	#[test]
 	fn filename_helper_exports() {
+		let _g = crate::ffi::lock_tests();
 		let mut buf = [0i8; 128];
 
 		assert_eq!(

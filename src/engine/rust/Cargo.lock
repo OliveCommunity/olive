@@ -757,6 +757,8 @@ dependencies = [
 name = "oakaudio"
 version = "0.1.0"
 dependencies = [
+ "oakcodec",
+ "oakcommon",
  "oakcore-rs",
 ]
 
@@ -806,6 +808,7 @@ dependencies = [
 name = "oaknode"
 version = "0.1.0"
 dependencies = [
+ "oakcodec",
  "oakcommon",
  "oakcore-rs",
  "oakundo",

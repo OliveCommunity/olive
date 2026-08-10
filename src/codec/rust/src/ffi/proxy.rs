@@ -306,6 +306,7 @@ mod tests {
 
 	#[test]
 	fn create_destroy_and_params_default() {
+		let _g = crate::ffi::lock_tests();
 		assert_eq!(unsafe { oakcodec_proxy_create_instance() }, crate::error::OAKCODEC_OK);
 		assert_eq!(unsafe { oakcodec_proxy_destroy_instance() }, crate::error::OAKCODEC_OK);
 
@@ -325,6 +326,7 @@ mod tests {
 
 	#[test]
 	fn get_state_and_state_to_string() {
+		let _g = crate::ffi::lock_tests();
 		let cache = temp_cache("state");
 		let p = defaults();
 		let src = cstr("media.mp4");
@@ -358,6 +360,7 @@ mod tests {
 
 	#[test]
 	fn directory_working_and_get_or_start() {
+		let _g = crate::ffi::lock_tests();
 		let cache = temp_cache("getorstart");
 		let cache_c = cstr(&cache);
 		let src = cstr("media.mp4");
@@ -416,6 +419,7 @@ mod tests {
 
 	#[test]
 	fn find_ffmpeg_uses_configured_path() {
+		let _g = crate::ffi::lock_tests();
 		// The current test binary is a real executable: the configured
 		// path resolves to an absolute path.
 		let me = std::env::current_exe().unwrap();

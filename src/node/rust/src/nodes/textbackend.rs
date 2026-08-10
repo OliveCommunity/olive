@@ -170,8 +170,14 @@ static RENDER: std::sync::Mutex<Option<TextRenderBackend>> = std::sync::Mutex::n
 mod tests {
 	use super::*;
 
+	// The two tests below share the process-global backend statics; a
+	// lock serializes them so `backend_hooks_default_none` cannot observe
+	// the hooks installed by `backend_hooks_install_and_query`.
+	static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 	#[test]
 	fn backend_hooks_default_none() {
+		let _guard = LOCK.lock().unwrap();
 		set_text_backends(None, None);
 		assert_eq!(text_measure_backend(), None);
 		assert_eq!(text_render_backend(), None);
@@ -179,6 +185,7 @@ mod tests {
 
 	#[test]
 	fn backend_hooks_install_and_query() {
+		let _guard = LOCK.lock().unwrap();
 		fn measure(_r: &TextLayoutRequest) -> TextLayoutSize {
 			TextLayoutSize {
 				width: 12.0,

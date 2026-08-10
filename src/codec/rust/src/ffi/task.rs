@@ -56,6 +56,7 @@ mod tests {
 
 	#[test]
 	fn register_query_clear() {
+		let _g = crate::ffi::lock_tests();
 		let _g = REG_LOCK.lock().unwrap();
 
 		assert_eq!(unsafe { oakcodec_task_submit_is_registered() }, 0);

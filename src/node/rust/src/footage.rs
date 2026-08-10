@@ -89,33 +89,27 @@ impl FootageBehavior {
 	/// preserved on failure (no partial state).
 	pub fn probe(&mut self) -> crate::error::Result<()> {
 		use crate::error::Error;
-		let mut out = crate::handle::CHandle::null();
-		let rc = match crate::bridge::codec::decoder_probe(&self.filename, &mut out) {
-			Some(rc) => rc,
+		// Direct call into the oakcodec crate (single-lib unification):
+		// `oakcodec_decoder_probe(filename)` returns the stream-list
+		// handle (owned by the caller).
+		let out = match crate::bridge::codec::decoder_probe(&self.filename) {
+			Some(out) => out,
 			None => {
 				return Err(Error::Failed(
 					"oakcodec unavailable (not linked)".to_string(),
 				));
 			}
 		};
-		if rc != 0 {
-			return Err(Error::Failed(format!(
-				"oakcodec probe failed with code {}",
-				rc
-			)));
-		}
-		if out.ctx.is_null() {
+		if out.is_null() {
 			return Err(Error::Failed(
 				"oakcodec probe returned no streams".to_string(),
 			));
 		}
-		// The probe result handle is an oakcodec stream-list; without a
-		// codec module in tests it never gets here (symbol absent). The
-		// real bridge populates `streams` through the codec C ABI.
+		// The probe result handle is an oakcodec stream-list. Reading
+		// stream entries into `streams` is a Phase-2 follow-up (the
+		// exact accessor symbols are pinned when the codec module C ABI
+		// is finalized).
 		let _ = out;
-		// TODO(bridge::codec): read stream entries from the handle and
-		// fill `streams`; the exact accessor symbols are pinned when the
-		// codec module C ABI is finalized (Phase 2 follow-up).
 		self.valid = true;
 		Ok(())
 	}

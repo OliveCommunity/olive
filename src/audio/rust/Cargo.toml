@@ -14,3 +14,5 @@ panic = "unwind"
 
 [dependencies]
 oakcore-rs = { path = "../../oakcore-rs" }
+oakcommon = { path = "../../common/rust" }
+oakcodec = { path = "../../codec/rust" }
