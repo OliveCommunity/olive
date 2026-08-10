@@ -54,7 +54,7 @@ fn render_task(frames: i64, audio: bool) -> RenderTask {
 	VIDEO_TIME_BASE_NUM.store(1, Ordering::SeqCst);
 	VIDEO_TIME_BASE_DEN.store(1, Ordering::SeqCst);
 	let range = TimeRange::new(Rational::new(0, 1), Rational::new(frames, 1));
-	let base = Task::new("render-loop-test", fake_atom().to_chandle());
+	let base = Task::new("render-loop-test", fake_atom());
 	let mut rt = RenderTask::new(
 		base,
 		CHandle::null(),
@@ -190,7 +190,7 @@ fn render_cancel_drains_inflight_and_fires_their_completions() {
 	// the loop; the loop then sees the cancellation and drains.
 	unsafe {
 		oaktask::bridge::render::oakrender_cancelatom_cancel(
-			oaktask::bridge::render::OakCancelAtom::from_chandle(atom),
+			atom,
 		);
 	}
 

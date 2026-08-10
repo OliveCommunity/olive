@@ -122,7 +122,7 @@ impl Drop for Task {
 		// Free the cancellation atom only when we created it ourselves;
 		// borrowed atoms are released by their owner.
 		if self.owns_atom && !self.cancel_atom.is_null() {
-			let mut atom = bridge::render::OakCancelAtom::from_chandle(self.cancel_atom);
+			let mut atom = self.cancel_atom;
 			unsafe {
 				bridge::render::oakrender_cancelatom_free(&mut atom);
 			}
@@ -137,7 +137,7 @@ impl Task {
 	pub fn new(title: &str, cancel_atom: CHandle) -> Task {
 		let (cancel_atom, owns_atom) = if cancel_atom.is_null() {
 			let atom = unsafe { bridge::render::oakrender_cancelatom_init() };
-			(atom.to_chandle(), true)
+			(atom, true)
 		} else {
 			(cancel_atom, false)
 		};
@@ -210,7 +210,7 @@ impl Task {
 	/// invoke the cancel event callback if one is registered.
 	pub fn cancel(&mut self) {
 		if !self.cancel_atom.is_null() {
-			let atom = bridge::render::OakCancelAtom::from_chandle(self.cancel_atom);
+			let atom = self.cancel_atom;
 			unsafe {
 				bridge::render::oakrender_cancelatom_cancel(atom);
 			}
@@ -225,7 +225,7 @@ impl Task {
 		if self.cancel_atom.is_null() {
 			return false;
 		}
-		let atom = bridge::render::OakCancelAtom::from_chandle(self.cancel_atom);
+		let atom = self.cancel_atom;
 		let mut cancelled = 0;
 		unsafe {
 			bridge::render::oakrender_cancelatom_is_cancelled(atom, &mut cancelled);
@@ -243,7 +243,7 @@ impl Task {
 	/// between a task and its behavior's inner base task.
 	pub fn set_cancel_atom(&mut self, atom: CHandle) {
 		if self.owns_atom && !self.cancel_atom.is_null() {
-			let mut old = bridge::render::OakCancelAtom::from_chandle(self.cancel_atom);
+			let mut old = self.cancel_atom;
 			unsafe {
 				bridge::render::oakrender_cancelatom_free(&mut old);
 			}

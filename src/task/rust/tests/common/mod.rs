@@ -62,12 +62,12 @@ pub fn fake_atom() -> oaktask::bridge::render::OakCancelAtom {
 	}
 }
 
-pub fn write_cstr(s: &str, buf: *mut c_char, size: i32) -> i32 {
+pub fn write_cstr(s: &str, buf: *mut u8, size: i32) -> i32 {
 	let bytes = s.as_bytes();
 	let needed = bytes.len() as i32 + 1;
 	if !buf.is_null() && size >= needed {
 		unsafe {
-			std::ptr::copy_nonoverlapping(bytes.as_ptr() as *const c_char, buf, bytes.len());
+			std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf, bytes.len());
 			*buf.add(bytes.len()) = 0;
 		}
 	}
@@ -346,7 +346,7 @@ pub unsafe extern "C" fn oakcodec_decoder_last_error(
 	buf: *mut c_char,
 	size: c_int,
 ) -> c_int {
-	write_cstr(&DECODER_LAST_ERROR.lock().unwrap().clone(), buf, size)
+	write_cstr(&DECODER_LAST_ERROR.lock().unwrap().clone(), buf as *mut u8, size)
 }
 
 #[no_mangle]
@@ -390,7 +390,7 @@ pub unsafe extern "C" fn oakcodec_decoder_transform_image_sequence_file_name(
 	let count = digits.len().max(1);
 	let prefix = &stem[..stem.len() - digits.len()];
 	let out = format!("{prefix}{:0count$}{ext}", number);
-	write_cstr(&out, buf, size)
+	write_cstr(&out, buf as *mut u8, size)
 }
 
 #[no_mangle]
@@ -460,7 +460,7 @@ pub unsafe extern "C" fn oakcodec_encoder_last_error(
 	size: c_int,
 ) -> c_int {
 	if ENCODER_FLUSH_ERROR.load(Ordering::SeqCst) != 0 {
-		write_cstr(&ENCODER_LAST_ERROR.lock().unwrap().clone(), buf, size)
+		write_cstr(&ENCODER_LAST_ERROR.lock().unwrap().clone(), buf as *mut u8, size)
 	} else {
 		0
 	}
@@ -485,7 +485,7 @@ pub unsafe extern "C" fn oakcodec_encoding_generate_matrix(
 
 #[no_mangle]
 pub unsafe extern "C" fn oakcodec_export_format_get_extension(_format: c_int, buf: *mut c_char, size: c_int) -> c_int {
-	write_cstr("srt", buf, size)
+	write_cstr("srt", buf as *mut u8, size)
 }
 
 #[no_mangle]
@@ -498,7 +498,7 @@ pub unsafe extern "C" fn oakcodec_proxy_find_ffmpeg(
 	if path.is_empty() {
 		return 0;
 	}
-	write_cstr(&path, buf, size)
+	write_cstr(&path, buf as *mut u8, size)
 }
 
 #[no_mangle]
@@ -729,7 +729,7 @@ pub unsafe extern "C" fn oakcommon_config_get(
 	}
 	let key = std::ffi::CStr::from_ptr(key).to_string_lossy().into_owned();
 	if key == "DefaultSequenceFrameRate" && CONFIG_DEFAULT_SEQ_FRAME_RATE.load(Ordering::SeqCst) != 0 {
-		write_cstr("25/1", buf, size)
+		write_cstr("25/1", buf as *mut u8, size)
 	} else {
 		0
 	}
@@ -774,17 +774,17 @@ pub unsafe extern "C" fn oaknode_project_root(_project: oaktask::bridge::node::O
 
 #[no_mangle]
 pub unsafe extern "C" fn oaknode_project_name(_project: oaktask::bridge::node::OakNodeProject, buf: *mut c_char, size: c_int) -> c_int {
-	write_cstr("proj", buf, size)
+	write_cstr("proj", buf as *mut u8, size)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn oaknode_project_filename(_project: oaktask::bridge::node::OakNodeProject, buf: *mut c_char, size: c_int) -> c_int {
-	write_cstr(&PROJECT_FILENAME.lock().unwrap().clone(), buf, size)
+	write_cstr(&PROJECT_FILENAME.lock().unwrap().clone(), buf as *mut u8, size)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn oaknode_project_pretty_filename(_project: oaktask::bridge::node::OakNodeProject, buf: *mut c_char, size: c_int) -> c_int {
-	write_cstr("pretty", buf, size)
+	write_cstr("pretty", buf as *mut u8, size)
 }
 
 #[no_mangle]
@@ -809,7 +809,7 @@ pub unsafe extern "C" fn oaknode_project_is_new(_project: oaktask::bridge::node:
 
 #[no_mangle]
 pub unsafe extern "C" fn oaknode_project_cache_path(_project: oaktask::bridge::node::OakNodeProject, buf: *mut c_char, size: c_int) -> c_int {
-	write_cstr("/tmp/oak-cache", buf, size)
+	write_cstr("/tmp/oak-cache", buf as *mut u8, size)
 }
 
 #[no_mangle]
@@ -829,7 +829,7 @@ pub unsafe extern "C" fn oaknode_project_set_cache_location_setting(_project: oa
 
 #[no_mangle]
 pub unsafe extern "C" fn oaknode_project_get_custom_cache_path(_project: oaktask::bridge::node::OakNodeProject, buf: *mut c_char, size: c_int) -> c_int {
-	write_cstr("", buf, size)
+	write_cstr("", buf as *mut u8, size)
 }
 
 #[no_mangle]
@@ -839,7 +839,7 @@ pub unsafe extern "C" fn oaknode_project_set_custom_cache_path(_project: oaktask
 
 #[no_mangle]
 pub unsafe extern "C" fn oaknode_project_get_uuid(_project: oaktask::bridge::node::OakNodeProject, buf: *mut c_char, size: c_int) -> c_int {
-	write_cstr("uuid", buf, size)
+	write_cstr("uuid", buf as *mut u8, size)
 }
 
 #[no_mangle]
@@ -941,7 +941,7 @@ pub unsafe extern "C" fn oaknode_footage_as_node(footage: oaktask::bridge::node:
 
 #[no_mangle]
 pub unsafe extern "C" fn oaknode_footage_filename(_footage: oaktask::bridge::node::OakNodeFootage, buf: *mut c_char, size: c_int) -> c_int {
-	write_cstr(&FOOTAGE_FILENAME.lock().unwrap().clone(), buf, size)
+	write_cstr(&FOOTAGE_FILENAME.lock().unwrap().clone(), buf as *mut u8, size)
 }
 
 #[no_mangle]
@@ -973,7 +973,7 @@ pub unsafe extern "C" fn oaknode_footage_set_timestamp(_footage: oaktask::bridge
 
 #[no_mangle]
 pub unsafe extern "C" fn oaknode_footage_decoder(_footage: oaktask::bridge::node::OakNodeFootage, buf: *mut c_char, size: c_int) -> c_int {
-	write_cstr("ffmpeg", buf, size)
+	write_cstr("ffmpeg", buf as *mut u8, size)
 }
 
 #[no_mangle]
@@ -1023,7 +1023,7 @@ pub unsafe extern "C" fn oaknode_footage_set_proxy_enabled(_footage: oaktask::br
 
 #[no_mangle]
 pub unsafe extern "C" fn oaknode_footage_proxy_path(_footage: oaktask::bridge::node::OakNodeFootage, buf: *mut c_char, size: c_int) -> c_int {
-	write_cstr("", buf, size)
+	write_cstr("", buf as *mut u8, size)
 }
 
 #[no_mangle]
@@ -1335,7 +1335,7 @@ pub unsafe extern "C" fn oaknode_tracklist_get_sequence(_list: oaktask::bridge::
 
 #[no_mangle]
 pub unsafe extern "C" fn oaknode_tracklist_get_track_input_id(_list: oaktask::bridge::node::OakNodeTrackList, buf: *mut c_char, size: c_int) -> c_int {
-	write_cstr("sub_in", buf, size)
+	write_cstr("sub_in", buf as *mut u8, size)
 }
 
 #[no_mangle]
@@ -1648,7 +1648,7 @@ pub unsafe extern "C" fn oaknode_serializer_savedata_set_property(
 
 #[no_mangle]
 pub unsafe extern "C" fn oaknode_serializer_save_to_xml(_save_data: oaktask::bridge::node::OakNodeSerializerSaveData, buf: *mut c_char, size: c_int) -> c_int {
-	write_cstr("<oakproj/>", buf, size)
+	write_cstr("<oakproj/>", buf as *mut u8, size)
 }
 
 #[no_mangle]
@@ -1667,7 +1667,7 @@ pub unsafe extern "C" fn oaknode_serializer_load_from_xml(
 	if !_out_load_data.is_null() {
 		*_out_load_data = fake_handle();
 	}
-	write_cstr(&SERIALIZER_DETAILS.lock().unwrap().clone(), _details, _details_size);
+	write_cstr(&SERIALIZER_DETAILS.lock().unwrap().clone(), _details as *mut u8, _details_size);
 	SERIALIZER_LOAD_RET.load(Ordering::SeqCst)
 }
 
@@ -1692,7 +1692,7 @@ pub unsafe extern "C" fn oaknode_serializer_loaddata_get_property(
 	buf: *mut c_char,
 	size: c_int,
 ) -> c_int {
-	write_cstr("", buf, size)
+	write_cstr("", buf as *mut u8, size)
 }
 
 #[no_mangle]
@@ -1726,7 +1726,7 @@ pub unsafe extern "C" fn oaknode_serializer_save_to_file(
 	if !out_code.is_null() {
 		*out_code = code;
 	}
-	write_cstr(&SERIALIZER_DETAILS.lock().unwrap().clone(), _details, _details_size);
+	write_cstr(&SERIALIZER_DETAILS.lock().unwrap().clone(), _details as *mut u8, _details_size);
 	if code == 0 && !filename.is_null() {
 		// Success path writes a real file so tests can assert existence.
 		let name = std::ffi::CStr::from_ptr(filename).to_string_lossy().into_owned();
@@ -1755,13 +1755,13 @@ pub unsafe extern "C" fn oaknode_serializer_load_from_file(
 	if !out_code.is_null() {
 		*out_code = code;
 	}
-	write_cstr(&SERIALIZER_DETAILS.lock().unwrap().clone(), _details, _details_size);
+	write_cstr(&SERIALIZER_DETAILS.lock().unwrap().clone(), _details as *mut u8, _details_size);
 	SERIALIZER_LOAD_RET.load(Ordering::SeqCst)
 }
 
 #[no_mangle]
 pub unsafe extern "C" fn oaknode_node_get_label(_node: oaktask::bridge::node::OakNodeNode, buf: *mut c_char, size: c_int) -> c_int {
-	write_cstr(&NODE_LABEL.lock().unwrap().clone(), buf, size)
+	write_cstr(&NODE_LABEL.lock().unwrap().clone(), buf as *mut u8, size)
 }
 
 #[no_mangle]
@@ -1771,7 +1771,7 @@ pub unsafe extern "C" fn oaknode_node_set_label(_node: oaktask::bridge::node::Oa
 
 #[no_mangle]
 pub unsafe extern "C" fn oaknode_node_get_id(_node: oaktask::bridge::node::OakNodeNode, buf: *mut c_char, size: c_int) -> c_int {
-	write_cstr(&NODE_ID.lock().unwrap().clone(), buf, size)
+	write_cstr(&NODE_ID.lock().unwrap().clone(), buf as *mut u8, size)
 }
 
 #[no_mangle]
@@ -1831,7 +1831,7 @@ pub unsafe extern "C" fn oaknode_node_get_input_string(
 	buf: *mut c_char,
 	size: c_int,
 ) -> c_int {
-	write_cstr("subtitle text", buf, size)
+	write_cstr("subtitle text", buf as *mut u8, size)
 }
 
 #[no_mangle]

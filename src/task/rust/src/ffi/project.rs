@@ -386,8 +386,7 @@ unsafe fn convert_encoding_params(p: &OakCodecEncodingParams) -> EncodingParams 
 }
 
 /// Read a NUL-terminated char array into a String (lossy).
-unsafe fn c_char_array_to_string(buf: &[c_char]) -> String {
+unsafe fn c_char_array_to_string(buf: &[u8]) -> String {
 	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-	let bytes = unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, len) };
-	String::from_utf8_lossy(bytes).into_owned()
+	String::from_utf8_lossy(&buf[..len]).into_owned()
 }

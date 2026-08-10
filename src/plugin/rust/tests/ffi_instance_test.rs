@@ -208,7 +208,9 @@ fn instance_render_one_frame() {
 	});
 }
 
-/// render 无桩（默认构建）：桥符号缺失 → 明确失败码而非崩溃。
+/// render 默认构建（真实 oakrender 链接）：NULL 输出纹理在触达
+/// oakrender 之前被插件层校验拒绝（E_INVALID），不崩溃。真实纹理
+/// 路径需要 GL/GPU，属集成测试范畴。
 #[cfg(not(feature = "test-stubs"))]
 #[test]
 fn instance_render_one_frame() {
@@ -217,8 +219,8 @@ fn instance_render_one_frame() {
 		if h.is_null() {
 			return;
 		}
-		let dst = fake_texture(0xA1);
-		assert_eq!(unsafe { oakplugin_instance_render(h, dst, CHandle::null(), 0.0) }, -90003);
+		let dst = CHandle::null();
+		assert_eq!(unsafe { oakplugin_instance_render(h, dst, CHandle::null(), 0.0) }, -90001);
 		unsafe { oakplugin_instance_free(&mut h) };
 	});
 }

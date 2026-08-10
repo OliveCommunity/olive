@@ -105,7 +105,7 @@ pub fn free_detached_handle(h: *mut CHandle) {
 }
 
 /// Read a block time field as a `Rational`.
-fn block_pair(b: CHandle, f: unsafe extern "C" fn(CHandle, *mut i32, *mut i32) -> i32) -> Rational {
+fn block_pair(b: CHandle, f: fn(CHandle, *mut i32, *mut i32) -> i32) -> Rational {
 	let mut n = 0;
 	let mut d = 0;
 	// SAFETY: `n`/`d` are valid out pointers.

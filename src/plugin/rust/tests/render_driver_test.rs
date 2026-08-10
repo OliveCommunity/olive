@@ -207,11 +207,12 @@ fn render_job_graceful_without_bridge() {
 		if h.is_null() {
 			return;
 		}
-		let dst = fake_texture(0xA1);
+		// NULL 输出纹理在触达 oakrender 前被插件层校验拒绝（E_INVALID）。
+		let dst = CHandle::null();
 		let r = unsafe {
 			oakplugin_instance_render_job(h, dst, 0.0, 0, 0, std::ptr::null(), CHandle::null(), std::ptr::null(), 0, std::ptr::null(), 0, CHandle::null())
 		};
-		assert_eq!(r, -90003, "无 liboakrender 时输出纹理无 CPU 帧 → E_FAILED");
+		assert_eq!(r, -90001, "NULL 输出纹理 → E_INVALID（不崩溃）");
 		unsafe { oakplugin_instance_free(&mut h) };
 	});
 }

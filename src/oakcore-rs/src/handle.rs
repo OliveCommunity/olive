@@ -37,7 +37,7 @@ use std::ffi::c_void;
 /// empty handles). Structurally identical to every `Oak<Mod><Type>` value
 /// handle, so a handle can cross any module boundary by value.
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CHandle {
 	/// Opaque box pointer.
 	pub ctx: *mut c_void,

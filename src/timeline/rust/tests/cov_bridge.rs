@@ -107,8 +107,9 @@ fn xml_reader_accessors_missing() {
 	let mut buf = [0 as c_char; 16];
 	// No current element: every accessor returns 0.
 	let mut r = xml_reader_handle(Vec::new());
+	let mut found = 0;
 	unsafe { oaktimeline::bridge::common::oakcommon_xml_reader_read_next_start_element(
-		r.clone(), buf.as_mut_ptr(), 16,
+		r.clone(), &mut found,
 	) };
 	assert_eq!(unsafe { oakcommon_xml_reader_name(r.clone(), buf.as_mut_ptr(), 16) }, 0);
 	assert_eq!(unsafe { oakcommon_xml_reader_read_element_text(r.clone(), buf.as_mut_ptr(), 16) }, 0);
@@ -126,8 +127,9 @@ fn xml_reader_accessors_missing() {
 		text: String::new(),
 		attrs: Vec::new(),
 	}]);
+	let mut found = 0;
 	unsafe { oaktimeline::bridge::common::oakcommon_xml_reader_read_next_start_element(
-		r2.clone(), buf.as_mut_ptr(), 16,
+		r2.clone(), &mut found,
 	) };
 	unsafe { oakcommon_xml_reader_attribute_count(r2.clone(), &mut count) };
 	assert_eq!(count, 0);

@@ -35,74 +35,28 @@
 
 use std::ffi::{c_char, c_int, c_void};
 
+use crate::handle::CHandle;
+
 /// `OakVideoParams` — refcounted video-parameter handle.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[repr(C)]
-pub struct OakVideoParams {
-	/// Opaque object pointer.
-	pub ctx: *mut c_void,
-	/// Atomically increments the reference count.
-	pub addref: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// Decrements the count, destroys at zero.
-	pub release: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// ABI version (see [`OAKCODEC_ABI_VERSION`]).
-	pub abi_version: u32,
-}
+pub type OakVideoParams = CHandle;
+
 
 /// `OakAudioParams` — refcounted audio-parameter handle.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[repr(C)]
-pub struct OakAudioParams {
-	/// Opaque object pointer.
-	pub ctx: *mut c_void,
-	/// Atomically increments the reference count.
-	pub addref: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// Decrements the count, destroys at zero.
-	pub release: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// ABI version.
-	pub abi_version: u32,
-}
+pub type OakAudioParams = CHandle;
+
 
 /// `OakSubtitleParams` — refcounted subtitle-parameter handle.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[repr(C)]
-pub struct OakSubtitleParams {
-	/// Opaque object pointer.
-	pub ctx: *mut c_void,
-	/// Atomically increments the reference count.
-	pub addref: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// Decrements the count, destroys at zero.
-	pub release: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// ABI version.
-	pub abi_version: u32,
-}
+pub type OakSubtitleParams = CHandle;
+
 
 /// `OakNodeBlock` — opaque node-block handle (owned elsewhere; codec
 /// only stores and forwards it).
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[repr(C)]
-pub struct OakNodeBlock {
-	/// Opaque object pointer.
-	pub ctx: *mut c_void,
-	/// Atomically increments the reference count.
-	pub addref: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// Decrements the count, destroys at zero.
-	pub release: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// ABI version.
-	pub abi_version: u32,
-}
+pub type OakNodeBlock = CHandle;
+
 
 // The handle structs are opaque refcounted handles pointing into a C
 // library; the boxed objects are independently synchronized there, so
 // moving a handle between threads is sound.
-unsafe impl Send for OakVideoParams {}
-unsafe impl Sync for OakVideoParams {}
-unsafe impl Send for OakAudioParams {}
-unsafe impl Sync for OakAudioParams {}
-unsafe impl Send for OakSubtitleParams {}
-unsafe impl Sync for OakSubtitleParams {}
-unsafe impl Send for OakNodeBlock {}
-unsafe impl Sync for OakNodeBlock {}
 
 extern "C" {
 	/// `oakcommon_videoparams_init`.

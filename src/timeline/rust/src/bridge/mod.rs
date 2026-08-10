@@ -25,9 +25,10 @@ pub mod common;
 pub mod node;
 pub mod undo;
 
-/// In-crate C ABI mocks, compiled only for tests (feature `test-stubs`).
-/// Each `#[no_mangle]` function here provides a definition for the `extern
-/// "C"` symbol declared in the submodules above, so `cargo test
-/// --features test-stubs` links without the real oak DLLs.
-#[cfg(feature = "test-stubs")]
+/// In-crate mock implementations of the bridge surface, compiled for tests
+/// (`cfg(test)` or the `test-stubs` feature); the bridge fns route to them
+/// via their `#[cfg(any(test, feature = "test-stubs"))]` variants. Plain
+/// Rust (no `#[no_mangle]`), so they coexist with the real
+/// oaknode/oakundo/oakcommon rlibs linked in the same test binary.
+#[cfg(any(test, feature = "test-stubs"))]
 pub mod teststubs;

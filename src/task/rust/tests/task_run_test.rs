@@ -476,7 +476,7 @@ fn task_base_api_and_events() {
 	let _g = lock();
 	reset_stubs();
 
-	let mut task = Task::new("Base API", common::fake_atom().to_chandle());
+	let mut task = Task::new("Base API", common::fake_atom());
 	task.set_title("Renamed");
 	assert_eq!(task.title(), "Renamed");
 	assert!(task.error().is_none());
@@ -514,7 +514,7 @@ fn task_base_api_and_events() {
 	task.cancel();
 	assert!(task.is_cancelled());
 	unsafe {
-		oaktask::bridge::render::oakrender_cancelatom_cancel(oaktask::bridge::render::OakCancelAtom::from_chandle(atom));
+		oaktask::bridge::render::oakrender_cancelatom_cancel(atom);
 	}
 	assert!(task.is_cancelled());
 

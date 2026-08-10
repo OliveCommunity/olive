@@ -38,7 +38,7 @@ use std::collections::HashMap;
 use std::ffi::{c_char, c_int, c_void};
 
 use crate::bridge::codec as k;
-use crate::bridge::codec::EncodingParamsPOD;
+use crate::bridge::codec::{EncodingParamsPOD, zeroed_encoding_params};
 use crate::common::OakVideoParamsPod;
 use crate::error::{Error, Result};
 use crate::handle::{guard, guard_int, string_result};
@@ -59,7 +59,7 @@ struct ParamsBox {
 
 impl ParamsBox {
 	fn new() -> Self {
-		let mut pod = EncodingParamsPOD::zeroed();
+		let mut pod = zeroed_encoding_params();
 		pod.format = -1; // unset (POD 0 is a valid format, DNxHD)
 		ParamsBox {
 			pod,
@@ -89,23 +89,15 @@ unsafe fn params_mut(ptr: *mut OakEngineEncodingParams) -> Result<&'static mut P
 }
 
 /// Read a NUL-terminated fixed array field as a `String`.
-fn field_str(field: &[c_char]) -> String {
-	let bytes: Vec<u8> = field
-		.iter()
-		.take_while(|c| **c != 0)
-		.map(|c| *c as u8)
-		.collect();
+fn field_str(field: &[u8]) -> String {
+	let bytes: Vec<u8> = field.iter().take_while(|c| **c != 0).copied().collect();
 	String::from_utf8_lossy(&bytes).into_owned()
 }
 
 /// Write a string into a fixed array field (truncated, NUL-terminated).
-fn write_field(field: &mut [c_char], value: &str) {
+fn write_field(field: &mut [u8], value: &str) {
 	for (i, slot) in field.iter_mut().enumerate() {
-		*slot = if i < value.len() {
-			value.as_bytes()[i] as c_char
-		} else {
-			0
-		};
+		*slot = if i < value.len() { value.as_bytes()[i] } else { 0 };
 	}
 }
 
@@ -1075,7 +1067,7 @@ pub unsafe extern "C" fn oakengine_encoding_start_audio_recording(
 		}
 		let rc = crate::bridge::audio::oakaudio_manager_start_recording(
 			m,
-			&p.pod as *const EncodingParamsPOD as *const c_void as *const crate::bridge::audio::EncodingParams,
+			&p.pod as *const oakaudio::bridge::codec::EncodingParams,
 			errbuf,
 			errbuf_size,
 		);

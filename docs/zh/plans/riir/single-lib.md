@@ -415,19 +415,64 @@ encoding-params POD（`oakcodec_encoding_params` 等）在 4 个 crate 各有
   `oakcodec_decoder_probe` 直接调用，测试的 `is_err()` 断言仍成立
   （真实 codec 对不存在文件返回错误句柄）。
 
-### 11.4 未完成（后续步骤）
+### 11.4 第三轮完成（2026-08-10）
 
-- **模块 bridge 其余方向**（步骤 b 剩余）：oakplugin `bridge/{node,
-  render,undo}`（28 处 dlsym + 状态化 test-stubs 迁移）、oaktimeline
-  `bridge/{node,undo,common}`（teststubs.rs 52921 行 + 16 个测试文件）、
-  oaktask `bridge/*`（7 文件 + tests/common 的 C ABI 桩）、oakcodec
-  `bridge/common`（`OakVideoParams` 类型从桩句柄对齐到真实 CHandle，
-  波及 frame.rs 等内部类型）。每个方向模式已由 node/render/audio 证明；
-  工作量集中在测试侧（桩删除 + 迁移 + 类型对齐）。
-- **dlsym 删除**（步骤 c）：node 20 处、render 4 处（均在死/宿主方向
-  bridge）、plugin 28 处，在各自 bridge 转换完成后清除。
-- **facade 侧后续**：`linkage.rs` 注释更新；EncodingParamsPOD 等 POD
-  统一到 oakcore-rs。
+本轮完成的方向（每步 `cargo build` + 该 crate `cargo test` 绿）：
+
+- **oakplugin `bridge/{node,render,undo}` → 直接调用**（28 处 dlsym → 0）：
+  oaknode/oakrender/oakundo 加入依赖；28 个桥函数直接调 `oaknode::ffi`/
+  `oakrender::ffi`/`oakundo::ffi`。`Value` 桥接用布局一致的指针 cast
+  （避免 49 处 `r#type`→`kind` 改名）；`VideoParams` 别名到
+  `oakrender::ffi::OakRenderVideoParams`。`test-stubs` 特性保留，桩改为
+  纯 Rust（无 `#[no_mangle]`，与真实 crate 导出不冲突）；`dlsym` 模块
+  删除。测试迁移：两个"符号缺失"单测改为空/NULL 句柄经真实 crate 的
+  容错路径（`texture_is_dummy` 空句柄 0、`instance_render` 空 dst 被
+  插件层 E_INVALID 拒绝、`render_job` 同）；OFX suites 层未触碰。
+- **oaktimeline `bridge/{node,undo,common}` → 直接调用**：oaknode/
+  oakundo/oakcommon 加入依赖；81 个桥函数直接调用。`teststubs.rs`
+  （1658 行）改为纯 Rust mock（去 `#[no_mangle]`），桥函数加
+  `#[cfg(any(test, feature="test-stubs"))]` mock 变体 / 真实变体，
+  测试二进制（cfg(test) 对依赖关）经 `--features test-stubs` 解析
+  `bridge::teststubs`——与真实 crate 导出共存无冲突。修复桥签名漂移：
+  `oakcommon_xml_reader_read_next_start_element` 2 参（found 标志，
+  调用点 ffi.rs/tests 同步）；`oakundo_stack_push`→真实
+  `oakundo_undostack_push`。260 测试绿。
+- **oaktask `bridge/*` → 直接调用**（240 个桥函数）：oaknode/oakundo/
+  oakcommon/oakcodec/oakrender/oaktimeline 加入依赖（oakrender 由可选
+  转必选，`real-oakrender` 特性改为标记）。镜像类型对齐真实 crate：
+  `OakCancelAtom`/`OakRenderTicket`/`OakRenderCache`/`OakColorProcessor`
+  等 → CHandle 别名，`OakCodecEncodingParams`/`OakCodecProxyParams`/
+  `OakCodecTaskRequest`/`OakRenderVideoTicketParams`/`OakUndoCommandVtable`
+  → 真实 crate 类型；`from_chandle`/`to_chandle` 助手删除（恒等）。
+  测试侧：encoding-params 结构从 `[c_char;N]`→`[u8;N]`，`write_cstr`
+  改 u8，`fake_atom` 等 fixtures 仍可用（真实 crate 的 cancel 路径由
+  task 内部创建真实 atom）。90 测试绿。
+- **oakcodec `bridge/{common,render}` 句柄类型对齐**：`OakVideoParams`/
+  `OakAudioParams`/`OakSubtitleParams`/`OakNodeBlock`/`OakRenderTexture`/
+  `OakCancelAtom`/`OakRenderRenderer`/`OakCodecFrame` → CHandle 别名
+  （删除其上的 `unsafe impl Send/Sync` 与固有 impl）；共享
+  `oakcore_rs::handle::CHandle` 增补 `PartialEq, Eq`（codec 的
+  `CodecStream` 派生比较）。
+- **facade EncodingParamsPOD 统一**（步骤 c 的 POD 部分）：facade 的
+  `EncodingParamsPOD`（41 字段 c_char 镜像）→ 别名
+  `oakcodec::ffi::encoder::oakcodec_encoding_params`（u8）；`zeroed()`
+  → `zeroed_encoding_params()` 自由函数；`write_field`/`field_str` 改
+  u8；`oakcodec_encoder_init`/`oaktask_create_export`/
+  `oakaudio_manager_start_recording` 三个 encoding-params link-time
+  extern 全部改直接调用（audio 的 `EncodingParams` 同别名后打通）。
+  facade bridge 仅剩宿主 `oakcore_audioparams_*` extern（C++ lib，非
+  Rust crate）。
+
+### 11.5 未完成（后续步骤）
+
+- **dlsym 残留**（node 20、render 4）：全在死/宿主方向——node
+  `bridge/core.rs`（`oakcore_audioparams_*` 宿主符号）、
+  `bridge/render.rs`+`bridge/timeline.rs`（死方向，node 测试
+  `ffi_timeline_test` 使用）、render `bridge/node.rs`（copier 死方向，
+  `copier_test` 使用）。这些是文档化的"保留 dlsym"（死/宿主），转换
+  需同步迁移对应测试；`linkage.rs` 锚定注释可更新。
+- `oakcodec::bridge::render` 的 cancel-atom C 边界（设计 §4.2）保持。
+- OFX suites 层保持 C（冻结，未触碰）。
 
 ## 10. 风险与回退
 

@@ -259,14 +259,14 @@ impl RenderTask {
 			has_force_matrix: if force.has_force_matrix { 1 } else { 0 },
 			force_format: force.force_format,
 			force_channel_count: force.force_channel_count,
-			force_color_output: bridge::render::OakColorProcessor::from_chandle(force.force_color_output),
+			force_color_output: force.force_color_output,
 			force_color_transform: OakColorTransform {
 				ctx: std::ptr::null_mut(),
 				addref: None,
 				release: None,
 				abi_version: 0,
 			},
-			cache: bridge::render::OakRenderCache::from_chandle(self.cache),
+			cache: self.cache,
 		};
 
 		let ticket = unsafe {

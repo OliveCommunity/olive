@@ -66,14 +66,9 @@ pub type SourceClip = oakaudio::ffi::sync::SourceClip;
 
 
 
-/// Opaque mirror of the oakaudio recording-params POD
-/// (`include/audio/manager.h`). The facade passes the engine's
-/// `OakEngineEncodingParams*` through untouched — both are the same C ABI
-/// mirror of `olive::EncodingParams`.
-#[repr(C)]
-pub struct EncodingParams {
-	_opaque: [u8; 0],
-}
+/// `oakaudio` recording-params POD — single-lib unification: aliases the
+/// oakaudio crate's type (itself the oakcodec `oakcodec_encoding_params`).
+pub type EncodingParams = oakaudio::bridge::codec::EncodingParams;
 
 extern "C" {
 	pub fn oakcore_audioparams_create(sample_rate: c_int, channel_layout: u64, format: c_int) -> *mut c_void;
@@ -188,17 +183,7 @@ pub fn oakaudio_manager_start_recording(
 	error_buf: *mut c_char,
 	error_buf_size: c_int,
 ) -> c_int {
-	unsafe { oakaudio_start_recording_extern(_self, params, error_buf, error_buf_size) }
-}
-
-extern "C" {
-	#[link_name = "oakaudio_manager_start_recording"]
-	pub fn oakaudio_start_recording_extern(
-		_self: CHandle,
-		params: *const EncodingParams,
-		error_buf: *mut c_char,
-		error_buf_size: c_int,
-	) -> c_int;
+	unsafe { oakaudio::ffi::manager::oakaudio_manager_start_recording(_self, params, error_buf, error_buf_size) }
 }
 
 /// Direct call into the `oakaudio` crate (single-lib unification; the

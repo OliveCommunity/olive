@@ -23,71 +23,25 @@
 
 use std::ffi::{c_char, c_int, c_void};
 
+use crate::handle::CHandle;
+
 /// `OakRenderTexture` — refcounted GPU texture handle.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[repr(C)]
-pub struct OakRenderTexture {
-	/// Opaque object pointer.
-	pub ctx: *mut c_void,
-	/// Atomically increments the reference count.
-	pub addref: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// Decrements the count, destroys at zero.
-	pub release: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// ABI version.
-	pub abi_version: u32,
-}
+pub type OakRenderTexture = CHandle;
+
 
 /// `OakCancelAtom` — refcounted cancellation atom handle.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[repr(C)]
-pub struct OakCancelAtom {
-	/// Opaque object pointer.
-	pub ctx: *mut c_void,
-	/// Atomically increments the reference count.
-	pub addref: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// Decrements the count, destroys at zero.
-	pub release: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// ABI version.
-	pub abi_version: u32,
-}
+pub type OakCancelAtom = CHandle;
+
 
 /// `OakRenderRenderer` — refcounted display-renderer handle.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[repr(C)]
-pub struct OakRenderRenderer {
-	/// Opaque object pointer.
-	pub ctx: *mut c_void,
-	/// Atomically increments the reference count.
-	pub addref: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// Decrements the count, destroys at zero.
-	pub release: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// ABI version.
-	pub abi_version: u32,
-}
+pub type OakRenderRenderer = CHandle;
+
 
 /// `OakCodecFrame` — refcounted CPU-frame handle shared with oakrender.
-#[derive(Clone, Debug, PartialEq, Eq)]
-#[repr(C)]
-pub struct OakCodecFrame {
-	/// Opaque object pointer.
-	pub ctx: *mut c_void,
-	/// Atomically increments the reference count.
-	pub addref: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// Decrements the count, destroys at zero.
-	pub release: Option<unsafe extern "C" fn(*mut c_void)>,
-	/// ABI version.
-	pub abi_version: u32,
-}
+pub type OakCodecFrame = CHandle;
+
 
 // Refcounted opaque handles; thread-safe in the C library.
-unsafe impl Send for OakRenderTexture {}
-unsafe impl Sync for OakRenderTexture {}
-unsafe impl Send for OakCancelAtom {}
-unsafe impl Sync for OakCancelAtom {}
-unsafe impl Send for OakRenderRenderer {}
-unsafe impl Sync for OakRenderRenderer {}
-unsafe impl Send for OakCodecFrame {}
-unsafe impl Sync for OakCodecFrame {}
 
 /// `oakrender_video_params` — flattened POD of `olive::VideoParams`
 /// passed into oakrender; see `include/render/renderer.h`.

@@ -16,10 +16,12 @@
 
 //! In-crate C ABI mocks, compiled only with `--features test-stubs`.
 //!
-//! Each `#[no_mangle]` function here supplies a definition for the `extern
-//! "C"` symbol declared in [`super::undo`] / [`super::common`] /
-//! [`super::node`], so unit and integration tests link without the real
-//! oaknode / oakundo / oakcommon DLLs.
+//! In-crate mock implementations of the oaknode/oakundo/oakcommon bridge
+//! surface, called directly by the bridge fns' `#[cfg(test)]` variants.
+//! The mocks are plain Rust (no `#[no_mangle]`/`extern "C"`), so they
+//! coexist with the real oaknode/oakundo/oakcommon rlibs linked in the
+//! same test binary. Timeline's tests build fixtures with these mocks; the
+//! production (non-test) bridge fns call the real crates.
 //!
 //! The mocks are intentionally simple and single-threaded. Handles box a
 //! [`MockNode`] (for every node-graph kind), a [`MockMarkerList`], a
@@ -59,8 +61,7 @@ unsafe impl Send for MockUndoCommand {}
 
 /// `oakundo_command_init`: box the vtable + userdata and hand back an owning
 /// handle.
-#[no_mangle]
-pub extern "C" fn oakundo_command_init(
+pub fn oakundo_command_init(
     vtable: *const super::undo::OakUndoCommandVtable,
     userdata: *mut c_void,
 ) -> CHandle {
@@ -78,8 +79,7 @@ pub extern "C" fn oakundo_command_init(
 }
 
 /// `oakundo_command_init_multi`: an empty multi command (no-op here).
-#[no_mangle]
-pub extern "C" fn oakundo_command_init_multi() -> CHandle {
+pub fn oakundo_command_init_multi() -> CHandle {
     make_owned(MockUndoCommand {
         vtable: super::undo::OakUndoCommandVtable {
             redo: None,
@@ -91,14 +91,12 @@ pub extern "C" fn oakundo_command_init_multi() -> CHandle {
 }
 
 /// `oakundo_command_multi_add_child`: no-op in the mock (returns 0).
-#[no_mangle]
-pub extern "C" fn oakundo_command_multi_add_child(_multi: CHandle, _child: CHandle) -> c_int {
+pub fn oakundo_command_multi_add_child(_multi: CHandle, _child: CHandle) -> c_int {
     0
 }
 
 /// `oakundo_command_redo_now`: invoke the redo callback.
-#[no_mangle]
-pub extern "C" fn oakundo_command_redo_now(command: CHandle) -> c_int {
+pub fn oakundo_command_redo_now(command: CHandle) -> c_int {
     // SAFETY: the handle boxes a MockUndoCommand (created by init above).
     if let Some(m) = unsafe { get_mut::<MockUndoCommand>(&command) } {
         if let Some(f) = m.vtable.redo {
@@ -111,8 +109,7 @@ pub extern "C" fn oakundo_command_redo_now(command: CHandle) -> c_int {
 }
 
 /// `oakundo_command_undo_now`: invoke the undo callback.
-#[no_mangle]
-pub extern "C" fn oakundo_command_undo_now(command: CHandle) -> c_int {
+pub fn oakundo_command_undo_now(command: CHandle) -> c_int {
     // SAFETY: the handle boxes a MockUndoCommand.
     if let Some(m) = unsafe { get_mut::<MockUndoCommand>(&command) } {
         if let Some(f) = m.vtable.undo {
@@ -125,8 +122,7 @@ pub extern "C" fn oakundo_command_undo_now(command: CHandle) -> c_int {
 
 /// `oakundo_command_free`: run `free_fn`, drop the box and clear the handle.
 /// NULL / empty-handle is a no-op.
-#[no_mangle]
-pub extern "C" fn oakundo_command_free(command: *mut CHandle) {
+pub fn oakundo_command_free(command: *mut CHandle) {
     if command.is_null() {
         return;
     }
@@ -153,8 +149,7 @@ pub extern "C" fn oakundo_command_free(command: *mut CHandle) {
 }
 
 /// `oakundo_stack_push`: record the push into the stack's mock (returns 0).
-#[no_mangle]
-pub extern "C" fn oakundo_stack_push(
+pub fn oakundo_stack_push(
     stack: CHandle,
     _command: CHandle,
     _text: *const c_char,
@@ -216,47 +211,41 @@ pub fn xml_reader_handle(nodes: Vec<MockXmlNode>) -> CHandle {
 /// `oakcommon_xml_reader_init`: build an empty reader over a NUL-terminated
 /// document. The mock only supports the `reader_handle` builder, so a
 /// document string yields an empty reader.
-#[no_mangle]
-pub extern "C" fn oakcommon_xml_reader_init(_data: *const c_char) -> CHandle {
+pub fn oakcommon_xml_reader_init(_data: *const c_char) -> CHandle {
     make_owned(MockXmlReader::new(Vec::new()))
 }
 
 /// `oakcommon_xml_reader_free`: release and clear; NULL / empty no-op.
-#[no_mangle]
-pub extern "C" fn oakcommon_xml_reader_free(reader: *mut CHandle) {
+pub fn oakcommon_xml_reader_free(reader: *mut CHandle) {
     free_box::<MockXmlReader>(reader);
 }
 
 /// `oakcommon_xml_reader_skip_current_element`: no-op (flat model).
-#[no_mangle]
-pub extern "C" fn oakcommon_xml_reader_skip_current_element(_reader: CHandle) -> c_int {
+pub fn oakcommon_xml_reader_skip_current_element(_reader: CHandle) -> c_int {
     0
 }
 
 /// `oakcommon_xml_reader_read_next_start_element`: advance and write the
 /// element name. Returns 1 while elements remain, else 0.
-#[no_mangle]
-pub extern "C" fn oakcommon_xml_reader_read_next_start_element(
-    reader: CHandle,
-    name: *mut c_char,
-    buf_size: c_int,
-) -> c_int {
+pub fn oakcommon_xml_reader_read_next_start_element(reader: CHandle, found: *mut c_int) -> c_int {
     // SAFETY: handle boxes a MockXmlReader.
     let Some(r) = (unsafe { get_mut::<MockXmlReader>(&reader) }) else {
         return 0;
     };
-    if r.cur >= r.nodes.len() {
+    if found.is_null() {
         return 0;
     }
-    let n = r.nodes[r.cur].name.clone();
+    if r.cur >= r.nodes.len() {
+        // End of stream: no element yielded (0), found stays 0.
+        return 0;
+    }
     r.cur += 1;
-    write_cstr(name, buf_size, &n);
+    unsafe { *found = 1 };
     1
 }
 
 /// `oakcommon_xml_reader_name`: the current element's name.
-#[no_mangle]
-pub extern "C" fn oakcommon_xml_reader_name(reader: CHandle, name: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oakcommon_xml_reader_name(reader: CHandle, name: *mut c_char, buf_size: c_int) -> c_int {
     // SAFETY: handle boxes a MockXmlReader.
     let Some(r) = (unsafe { get::<MockXmlReader>(&reader) }) else {
         return 0;
@@ -269,8 +258,7 @@ pub extern "C" fn oakcommon_xml_reader_name(reader: CHandle, name: *mut c_char, 
 }
 
 /// `oakcommon_xml_reader_read_element_text`: the current element's text.
-#[no_mangle]
-pub extern "C" fn oakcommon_xml_reader_read_element_text(
+pub fn oakcommon_xml_reader_read_element_text(
     reader: CHandle,
     text: *mut c_char,
     buf_size: c_int,
@@ -288,8 +276,7 @@ pub extern "C" fn oakcommon_xml_reader_read_element_text(
 
 /// `oakcommon_xml_reader_attribute_count`: attribute count on the current
 /// element.
-#[no_mangle]
-pub extern "C" fn oakcommon_xml_reader_attribute_count(reader: CHandle, count: *mut c_int) -> c_int {
+pub fn oakcommon_xml_reader_attribute_count(reader: CHandle, count: *mut c_int) -> c_int {
     // SAFETY: caller passes a valid count pointer.
     let c = match unsafe { get::<MockXmlReader>(&reader) } {
         Some(r) => r
@@ -305,8 +292,7 @@ pub extern "C" fn oakcommon_xml_reader_attribute_count(reader: CHandle, count: *
 }
 
 /// `oakcommon_xml_reader_attribute_name`: name of attribute `i`.
-#[no_mangle]
-pub extern "C" fn oakcommon_xml_reader_attribute_name(
+pub fn oakcommon_xml_reader_attribute_name(
     reader: CHandle,
     index: c_int,
     name: *mut c_char,
@@ -327,8 +313,7 @@ pub extern "C" fn oakcommon_xml_reader_attribute_name(
 }
 
 /// `oakcommon_xml_reader_attribute_value`: value of attribute `i`.
-#[no_mangle]
-pub extern "C" fn oakcommon_xml_reader_attribute_value(
+pub fn oakcommon_xml_reader_attribute_value(
     reader: CHandle,
     index: c_int,
     value: *mut c_char,
@@ -349,8 +334,7 @@ pub extern "C" fn oakcommon_xml_reader_attribute_value(
 }
 
 /// `oakcommon_xml_reader_has_error`: whether the reader errored.
-#[no_mangle]
-pub extern "C" fn oakcommon_xml_reader_has_error(reader: CHandle, has_error: *mut c_int) -> c_int {
+pub fn oakcommon_xml_reader_has_error(reader: CHandle, has_error: *mut c_int) -> c_int {
     let e = match unsafe { get::<MockXmlReader>(&reader) } {
         Some(r) => r.error as c_int,
         None => 0,
@@ -367,20 +351,17 @@ pub struct MockXmlWriter {
 }
 
 /// `oakcommon_xml_writer_init`: a new writer.
-#[no_mangle]
-pub extern "C" fn oakcommon_xml_writer_init() -> CHandle {
+pub fn oakcommon_xml_writer_init() -> CHandle {
     make_owned(MockXmlWriter { buf: String::new() })
 }
 
 /// `oakcommon_xml_writer_free`: release and clear; NULL / empty no-op.
-#[no_mangle]
-pub extern "C" fn oakcommon_xml_writer_free(writer: *mut CHandle) {
+pub fn oakcommon_xml_writer_free(writer: *mut CHandle) {
     free_box::<MockXmlWriter>(writer);
 }
 
 /// `oakcommon_xml_writer_write_start_element`: append `<name>`.
-#[no_mangle]
-pub extern "C" fn oakcommon_xml_writer_write_start_element(writer: CHandle, name: *const c_char) -> c_int {
+pub fn oakcommon_xml_writer_write_start_element(writer: CHandle, name: *const c_char) -> c_int {
     // SAFETY: caller passes a NUL-terminated string.
     let n = unsafe { cstr(name) };
     // SAFETY: handle boxes a MockXmlWriter.
@@ -391,8 +372,7 @@ pub extern "C" fn oakcommon_xml_writer_write_start_element(writer: CHandle, name
 }
 
 /// `oakcommon_xml_writer_write_end_element`: append `</>`.
-#[no_mangle]
-pub extern "C" fn oakcommon_xml_writer_write_end_element(writer: CHandle) -> c_int {
+pub fn oakcommon_xml_writer_write_end_element(writer: CHandle) -> c_int {
     // SAFETY: handle boxes a MockXmlWriter.
     if let Some(w) = unsafe { get_mut::<MockXmlWriter>(&writer) } {
         w.buf.push_str("</>");
@@ -401,14 +381,12 @@ pub extern "C" fn oakcommon_xml_writer_write_end_element(writer: CHandle) -> c_i
 }
 
 /// `oakcommon_xml_writer_write_end_document`: no-op.
-#[no_mangle]
-pub extern "C" fn oakcommon_xml_writer_write_end_document(_writer: CHandle) -> c_int {
+pub fn oakcommon_xml_writer_write_end_document(_writer: CHandle) -> c_int {
     0
 }
 
 /// `oakcommon_xml_writer_write_attribute`: append ` key="value"`.
-#[no_mangle]
-pub extern "C" fn oakcommon_xml_writer_write_attribute(
+pub fn oakcommon_xml_writer_write_attribute(
     writer: CHandle,
     key: *const c_char,
     value: *const c_char,
@@ -423,8 +401,7 @@ pub extern "C" fn oakcommon_xml_writer_write_attribute(
 }
 
 /// `oakcommon_xml_writer_write_characters`: append raw text.
-#[no_mangle]
-pub extern "C" fn oakcommon_xml_writer_write_characters(writer: CHandle, text: *const c_char) -> c_int {
+pub fn oakcommon_xml_writer_write_characters(writer: CHandle, text: *const c_char) -> c_int {
     // SAFETY: caller passes a NUL-terminated string.
     let t = unsafe { cstr(text) };
     // SAFETY: handle boxes a MockXmlWriter.
@@ -435,8 +412,7 @@ pub extern "C" fn oakcommon_xml_writer_write_characters(writer: CHandle, text: *
 }
 
 /// `oakcommon_xml_writer_write_text_element`: append `<name>text</name>`.
-#[no_mangle]
-pub extern "C" fn oakcommon_xml_writer_write_text_element(
+pub fn oakcommon_xml_writer_write_text_element(
     writer: CHandle,
     name: *const c_char,
     text: *const c_char,
@@ -452,8 +428,7 @@ pub extern "C" fn oakcommon_xml_writer_write_text_element(
 
 /// `oakcommon_config_get_int`: return the supplied default (the mock keeps no
 /// config store; the marker default colour path uses the default).
-#[no_mangle]
-pub extern "C" fn oakcommon_config_get_int(
+pub fn oakcommon_config_get_int(
     _group: *const c_char,
     _key: *const c_char,
     default: c_int,
@@ -554,8 +529,7 @@ impl Default for MockNode {
 }
 
 /// `oaknode_block_clip_create`: a new clip block.
-#[no_mangle]
-pub extern "C" fn oaknode_block_clip_create() -> CHandle {
+pub fn oaknode_block_clip_create() -> CHandle {
     make_owned(MockNode {
         kind: MockKind::Clip,
         ..Default::default()
@@ -563,8 +537,7 @@ pub extern "C" fn oaknode_block_clip_create() -> CHandle {
 }
 
 /// `oaknode_block_gap_create`: a new gap block.
-#[no_mangle]
-pub extern "C" fn oaknode_block_gap_create() -> CHandle {
+pub fn oaknode_block_gap_create() -> CHandle {
     make_owned(MockNode {
         kind: MockKind::Gap,
         ..Default::default()
@@ -572,14 +545,12 @@ pub extern "C" fn oaknode_block_gap_create() -> CHandle {
 }
 
 /// `oaknode_block_as_node`: a borrowed generic-node view of a block.
-#[no_mangle]
-pub extern "C" fn oaknode_block_as_node(block: CHandle) -> CHandle {
+pub fn oaknode_block_as_node(block: CHandle) -> CHandle {
     ref_clone(&block)
 }
 
 /// `oaknode_block_get_in`: read the in point as an int pair.
-#[no_mangle]
-pub extern "C" fn oaknode_block_get_in(
+pub fn oaknode_block_get_in(
     block: CHandle,
     numerator: *mut c_int,
     denominator: *mut c_int,
@@ -593,8 +564,7 @@ pub extern "C" fn oaknode_block_get_in(
 }
 
 /// `oaknode_block_get_out`: read the out point as an int pair.
-#[no_mangle]
-pub extern "C" fn oaknode_block_get_out(
+pub fn oaknode_block_get_out(
     block: CHandle,
     numerator: *mut c_int,
     denominator: *mut c_int,
@@ -608,8 +578,7 @@ pub extern "C" fn oaknode_block_get_out(
 }
 
 /// `oaknode_block_get_length`: read the length as an int pair.
-#[no_mangle]
-pub extern "C" fn oaknode_block_get_length(
+pub fn oaknode_block_get_length(
     block: CHandle,
     numerator: *mut c_int,
     denominator: *mut c_int,
@@ -624,8 +593,7 @@ pub extern "C" fn oaknode_block_get_length(
 
 /// `oaknode_block_set_length_and_media_out`: set length, keeping the media-in
 /// fixed (the out point follows).
-#[no_mangle]
-pub extern "C" fn oaknode_block_set_length_and_media_out(
+pub fn oaknode_block_set_length_and_media_out(
     block: CHandle,
     numerator: c_int,
     denominator: c_int,
@@ -641,8 +609,7 @@ pub extern "C" fn oaknode_block_set_length_and_media_out(
 
 /// `oaknode_block_set_length_and_media_in`: set length, keeping the out point
 /// fixed (the media-in follows).
-#[no_mangle]
-pub extern "C" fn oaknode_block_set_length_and_media_in(
+pub fn oaknode_block_set_length_and_media_in(
     block: CHandle,
     numerator: c_int,
     denominator: c_int,
@@ -657,8 +624,7 @@ pub extern "C" fn oaknode_block_set_length_and_media_in(
 }
 
 /// `oaknode_block_get_enabled`: read the enabled flag.
-#[no_mangle]
-pub extern "C" fn oaknode_block_get_enabled(block: CHandle, enabled: *mut c_int) -> c_int {
+pub fn oaknode_block_get_enabled(block: CHandle, enabled: *mut c_int) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(b) = (unsafe { get::<MockNode>(&block) }) else {
         return -1;
@@ -669,8 +635,7 @@ pub extern "C" fn oaknode_block_get_enabled(block: CHandle, enabled: *mut c_int)
 }
 
 /// `oaknode_block_set_enabled`: set the enabled flag.
-#[no_mangle]
-pub extern "C" fn oaknode_block_set_enabled(block: CHandle, enabled: c_int) -> c_int {
+pub fn oaknode_block_set_enabled(block: CHandle, enabled: c_int) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(b) = (unsafe { get_mut::<MockNode>(&block) }) else {
         return -1;
@@ -680,8 +645,7 @@ pub extern "C" fn oaknode_block_set_enabled(block: CHandle, enabled: c_int) -> c
 }
 
 /// `oaknode_block_get_previous`: write a borrowed handle to the previous block.
-#[no_mangle]
-pub extern "C" fn oaknode_block_get_previous(block: CHandle, out: *mut CHandle) -> c_int {
+pub fn oaknode_block_get_previous(block: CHandle, out: *mut CHandle) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(b) = (unsafe { get::<MockNode>(&block) }) else {
         return -1;
@@ -691,8 +655,7 @@ pub extern "C" fn oaknode_block_get_previous(block: CHandle, out: *mut CHandle) 
 }
 
 /// `oaknode_block_get_next`: write a borrowed handle to the next block.
-#[no_mangle]
-pub extern "C" fn oaknode_block_get_next(block: CHandle, out: *mut CHandle) -> c_int {
+pub fn oaknode_block_get_next(block: CHandle, out: *mut CHandle) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(b) = (unsafe { get::<MockNode>(&block) }) else {
         return -1;
@@ -702,8 +665,7 @@ pub extern "C" fn oaknode_block_get_next(block: CHandle, out: *mut CHandle) -> c
 }
 
 /// `oaknode_block_get_track`: write a borrowed handle to the owning track.
-#[no_mangle]
-pub extern "C" fn oaknode_block_get_track(block: CHandle, out: *mut CHandle) -> c_int {
+pub fn oaknode_block_get_track(block: CHandle, out: *mut CHandle) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(b) = (unsafe { get::<MockNode>(&block) }) else {
         return -1;
@@ -713,8 +675,7 @@ pub extern "C" fn oaknode_block_get_track(block: CHandle, out: *mut CHandle) -> 
 }
 
 /// `oaknode_block_link`: link two blocks so they move together.
-#[no_mangle]
-pub extern "C" fn oaknode_block_link(a: CHandle, b: CHandle) -> c_int {
+pub fn oaknode_block_link(a: CHandle, b: CHandle) -> c_int {
     // SAFETY: both handles box MockNodes.
     let (pa, pb) = unsafe {
         match (get_mut::<MockNode>(&a), get_mut::<MockNode>(&b)) {
@@ -734,8 +695,7 @@ pub extern "C" fn oaknode_block_link(a: CHandle, b: CHandle) -> c_int {
 }
 
 /// `oaknode_block_unlink`: unlink two blocks.
-#[no_mangle]
-pub extern "C" fn oaknode_block_unlink(a: CHandle, b: CHandle) -> c_int {
+pub fn oaknode_block_unlink(a: CHandle, b: CHandle) -> c_int {
     // SAFETY: both handles box MockNodes.
     let (pa, pb) = unsafe {
         match (get_mut::<MockNode>(&a), get_mut::<MockNode>(&b)) {
@@ -753,8 +713,7 @@ pub extern "C" fn oaknode_block_unlink(a: CHandle, b: CHandle) -> c_int {
 }
 
 /// `oaknode_track_get_length`: read the track length as an int pair.
-#[no_mangle]
-pub extern "C" fn oaknode_track_get_length(track: CHandle, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub fn oaknode_track_get_length(track: CHandle, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(t) = (unsafe { get::<MockNode>(&track) }) else {
         return -1;
@@ -770,8 +729,7 @@ pub extern "C" fn oaknode_track_get_length(track: CHandle, numerator: *mut c_int
 }
 
 /// `oaknode_track_get_sequence`: write a borrowed handle to the owning sequence.
-#[no_mangle]
-pub extern "C" fn oaknode_track_get_sequence(track: CHandle, out: *mut CHandle) -> c_int {
+pub fn oaknode_track_get_sequence(track: CHandle, out: *mut CHandle) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(t) = (unsafe { get::<MockNode>(&track) }) else {
         return -1;
@@ -781,8 +739,7 @@ pub extern "C" fn oaknode_track_get_sequence(track: CHandle, out: *mut CHandle) 
 }
 
 /// `oaknode_track_prepend_block`: insert a block at the front of the track.
-#[no_mangle]
-pub extern "C" fn oaknode_track_prepend_block(track: CHandle, block: CHandle) -> c_int {
+pub fn oaknode_track_prepend_block(track: CHandle, block: CHandle) -> c_int {
     // SAFETY: both handles box MockNodes.
     let (pt, pb) = unsafe {
         match (get_mut::<MockNode>(&track), get_mut::<MockNode>(&block)) {
@@ -808,8 +765,7 @@ pub extern "C" fn oaknode_track_prepend_block(track: CHandle, block: CHandle) ->
 }
 
 /// `oaknode_track_insert_block_after`: insert `block` after `before` on `track`.
-#[no_mangle]
-pub extern "C" fn oaknode_track_insert_block_after(
+pub fn oaknode_track_insert_block_after(
     track: CHandle,
     block: CHandle,
     before: CHandle,
@@ -866,8 +822,7 @@ pub extern "C" fn oaknode_track_insert_block_after(
 
 /// `oaknode_track_ripple_remove_block`: remove a block, shifting later ones
 /// earlier; ownership returns to the caller (the caller keeps its handle).
-#[no_mangle]
-pub extern "C" fn oaknode_track_ripple_remove_block(track: CHandle, block: CHandle) -> c_int {
+pub fn oaknode_track_ripple_remove_block(track: CHandle, block: CHandle) -> c_int {
     // SAFETY: handles box MockNodes.
     let (pt, pb) = unsafe {
         match (get_mut::<MockNode>(&track), get_mut::<MockNode>(&block)) {
@@ -900,8 +855,7 @@ pub extern "C" fn oaknode_track_ripple_remove_block(track: CHandle, block: CHand
 }
 
 /// `oaknode_track_replace_block`: replace `old_block` with `new_block`.
-#[no_mangle]
-pub extern "C" fn oaknode_track_replace_block(
+pub fn oaknode_track_replace_block(
     track: CHandle,
     old_block: CHandle,
     new_block: CHandle,
@@ -948,20 +902,17 @@ pub extern "C" fn oaknode_track_replace_block(
 }
 
 /// `oaknode_sequence_as_node`: a borrowed generic-node view of a sequence.
-#[no_mangle]
-pub extern "C" fn oaknode_sequence_as_node(sequence: CHandle) -> CHandle {
+pub fn oaknode_sequence_as_node(sequence: CHandle) -> CHandle {
     ref_clone(&sequence)
 }
 
 /// `oaknode_sequence_from_node`: a borrowed sequence view of a generic node.
-#[no_mangle]
-pub extern "C" fn oaknode_sequence_from_node(node: CHandle) -> CHandle {
+pub fn oaknode_sequence_from_node(node: CHandle) -> CHandle {
     ref_clone(&node)
 }
 
 /// `oaknode_node_get_project`: write a borrowed handle to the owning project.
-#[no_mangle]
-pub extern "C" fn oaknode_node_get_project(node: CHandle, out: *mut CHandle) -> c_int {
+pub fn oaknode_node_get_project(node: CHandle, out: *mut CHandle) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(n) = (unsafe { get::<MockNode>(&node) }) else {
         return -1;
@@ -971,8 +922,7 @@ pub extern "C" fn oaknode_node_get_project(node: CHandle, out: *mut CHandle) -> 
 }
 
 /// `oaknode_node_output_connection_count`: read the output connection count.
-#[no_mangle]
-pub extern "C" fn oaknode_node_output_connection_count(node: CHandle, out_count: *mut c_int) -> c_int {
+pub fn oaknode_node_output_connection_count(node: CHandle, out_count: *mut c_int) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(n) = (unsafe { get::<MockNode>(&node) }) else {
         return -1;
@@ -983,8 +933,7 @@ pub extern "C" fn oaknode_node_output_connection_count(node: CHandle, out_count:
 }
 
 /// `oaknode_node_get_markers`: write a borrowed handle to the node's markers.
-#[no_mangle]
-pub extern "C" fn oaknode_node_get_markers(node: CHandle, out: *mut CHandle) -> c_int {
+pub fn oaknode_node_get_markers(node: CHandle, out: *mut CHandle) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(n) = (unsafe { get::<MockNode>(&node) }) else {
         return -1;
@@ -995,8 +944,7 @@ pub extern "C" fn oaknode_node_get_markers(node: CHandle, out: *mut CHandle) -> 
 }
 
 /// `oaknode_node_get_work_area`: write a borrowed handle to the node's work area.
-#[no_mangle]
-pub extern "C" fn oaknode_node_get_work_area(node: CHandle, out: *mut CHandle) -> c_int {
+pub fn oaknode_node_get_work_area(node: CHandle, out: *mut CHandle) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(n) = (unsafe { get::<MockNode>(&node) }) else {
         return -1;
@@ -1007,8 +955,7 @@ pub extern "C" fn oaknode_node_get_work_area(node: CHandle, out: *mut CHandle) -
 }
 
 /// `oaknode_project_add_node`: adopt a node into a project.
-#[no_mangle]
-pub extern "C" fn oaknode_project_add_node(project: CHandle, node: CHandle) -> c_int {
+pub fn oaknode_project_add_node(project: CHandle, node: CHandle) -> c_int {
     // SAFETY: handles box MockNodes.
     let (pp, pn) = unsafe {
         match (get_mut::<MockNode>(&project), get_mut::<MockNode>(&node)) {
@@ -1022,8 +969,7 @@ pub extern "C" fn oaknode_project_add_node(project: CHandle, node: CHandle) -> c
 }
 
 /// `oaknode_project_remove_node`: remove a node from a project.
-#[no_mangle]
-pub extern "C" fn oaknode_project_remove_node(project: CHandle, node: CHandle) -> c_int {
+pub fn oaknode_project_remove_node(project: CHandle, node: CHandle) -> c_int {
     // SAFETY: handles box MockNodes.
     let (pp, pn) = unsafe {
         match (get_mut::<MockNode>(&project), get_mut::<MockNode>(&node)) {
@@ -1043,8 +989,7 @@ pub extern "C" fn oaknode_project_remove_node(project: CHandle, node: CHandle) -
 /// `oaknode_command_create_remove_node`: a command that removes a node. The
 /// mock returns a command handle whose redo/undo no-op, but whose free drops
 /// the wrapped node handle it borrows.
-#[no_mangle]
-pub extern "C" fn oaknode_command_create_remove_node(node: CHandle) -> CHandle {
+pub fn oaknode_command_create_remove_node(node: CHandle) -> CHandle {
     let node_owned = ref_clone(&node);
     make_owned(MockUndoCommand {
         vtable: super::undo::OakUndoCommandVtable {
@@ -1064,8 +1009,7 @@ extern "C" fn free_owned_handle(userdata: *mut c_void) {
 }
 
 /// `oaknode_block_get_kind`: map a block's kind to an `OAKNODE_BLOCK_*` int.
-#[no_mangle]
-pub extern "C" fn oaknode_block_get_kind(block: CHandle, out_kind: *mut c_int) -> c_int {
+pub fn oaknode_block_get_kind(block: CHandle, out_kind: *mut c_int) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(b) = (unsafe { get::<MockNode>(&block) }) else {
         return -1;
@@ -1082,8 +1026,7 @@ pub extern "C" fn oaknode_block_get_kind(block: CHandle, out_kind: *mut c_int) -
 
 /// `oaknode_block_from_node`: a borrowed block view of a generic node (empty
 /// when the node is not a block).
-#[no_mangle]
-pub extern "C" fn oaknode_block_from_node(node: CHandle) -> CHandle {
+pub fn oaknode_block_from_node(node: CHandle) -> CHandle {
     // SAFETY: handle boxes a MockNode.
     let Some(n) = (unsafe { get::<MockNode>(&node) }) else {
         return CHandle::null();
@@ -1096,8 +1039,7 @@ pub extern "C" fn oaknode_block_from_node(node: CHandle) -> CHandle {
 
 /// `oaknode_block_are_linked`: whether `a` and `b` are linked (`linked` gets
 /// 1/0).
-#[no_mangle]
-pub extern "C" fn oaknode_block_are_linked(a: CHandle, b: CHandle, linked: *mut c_int) -> c_int {
+pub fn oaknode_block_are_linked(a: CHandle, b: CHandle, linked: *mut c_int) -> c_int {
     // SAFETY: both handles box MockNodes.
     let (pa, pb) = unsafe {
         match (get::<MockNode>(&a), get::<MockNode>(&b)) {
@@ -1119,14 +1061,12 @@ pub extern "C" fn oaknode_block_are_linked(a: CHandle, b: CHandle, linked: *mut 
 
 /// `oaknode_clip_add_cache_passthrough_from`: copy render-cache passthroughs
 /// from `other`. The mock has no cache model, so this is a no-op.
-#[no_mangle]
-pub extern "C" fn oaknode_clip_add_cache_passthrough_from(_clip: CHandle, _other: CHandle) -> c_int {
+pub fn oaknode_clip_add_cache_passthrough_from(_clip: CHandle, _other: CHandle) -> c_int {
     0
 }
 
 /// `oaknode_clip_get_media_in`: read a clip's media-in as an int pair.
-#[no_mangle]
-pub extern "C" fn oaknode_clip_get_media_in(
+pub fn oaknode_clip_get_media_in(
     clip: CHandle,
     numerator: *mut c_int,
     denominator: *mut c_int,
@@ -1143,8 +1083,7 @@ pub extern "C" fn oaknode_clip_get_media_in(
 }
 
 /// `oaknode_clip_set_media_in`: set a clip's media-in as an int pair.
-#[no_mangle]
-pub extern "C" fn oaknode_clip_set_media_in(
+pub fn oaknode_clip_set_media_in(
     clip: CHandle,
     numerator: c_int,
     denominator: c_int,
@@ -1161,8 +1100,7 @@ pub extern "C" fn oaknode_clip_set_media_in(
 }
 
 /// `oaknode_track_create`: a new detached track of the given type.
-#[no_mangle]
-pub extern "C" fn oaknode_track_create(kind: c_int) -> CHandle {
+pub fn oaknode_track_create(kind: c_int) -> CHandle {
     make_owned(MockNode {
         kind: MockKind::Track,
         track_type: kind,
@@ -1171,8 +1109,7 @@ pub extern "C" fn oaknode_track_create(kind: c_int) -> CHandle {
 }
 
 /// `oaknode_track_get_locked`: read a track's locked flag (`locked` gets 1/0).
-#[no_mangle]
-pub extern "C" fn oaknode_track_get_locked(track: CHandle, locked: *mut c_int) -> c_int {
+pub fn oaknode_track_get_locked(track: CHandle, locked: *mut c_int) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(t) = (unsafe { get::<MockNode>(&track) }) else {
         return -1;
@@ -1186,8 +1123,7 @@ pub extern "C" fn oaknode_track_get_locked(track: CHandle, locked: *mut c_int) -
 }
 
 /// `oaknode_track_set_locked`: set a track's locked flag.
-#[no_mangle]
-pub extern "C" fn oaknode_track_set_locked(track: CHandle, locked: c_int) -> c_int {
+pub fn oaknode_track_set_locked(track: CHandle, locked: c_int) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(t) = (unsafe { get_mut::<MockNode>(&track) }) else {
         return -1;
@@ -1200,8 +1136,7 @@ pub extern "C" fn oaknode_track_set_locked(track: CHandle, locked: c_int) -> c_i
 }
 
 /// `oaknode_track_get_block_count`: number of blocks on a track.
-#[no_mangle]
-pub extern "C" fn oaknode_track_get_block_count(track: CHandle, count: *mut c_int) -> c_int {
+pub fn oaknode_track_get_block_count(track: CHandle, count: *mut c_int) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(t) = (unsafe { get::<MockNode>(&track) }) else {
         return -1;
@@ -1215,8 +1150,7 @@ pub extern "C" fn oaknode_track_get_block_count(track: CHandle, count: *mut c_in
 }
 
 /// `oaknode_track_get_block_at`: borrowed block at `index` on a track.
-#[no_mangle]
-pub extern "C" fn oaknode_track_get_block_at(track: CHandle, index: c_int, out: *mut CHandle) -> c_int {
+pub fn oaknode_track_get_block_at(track: CHandle, index: c_int, out: *mut CHandle) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(t) = (unsafe { get::<MockNode>(&track) }) else {
         return -1;
@@ -1233,8 +1167,7 @@ pub extern "C" fn oaknode_track_get_block_at(track: CHandle, index: c_int, out: 
 
 /// `oaknode_track_get_block_containing_time`: the block strictly containing
 /// `time` (in < t < out); writes null and returns -1 when none.
-#[no_mangle]
-pub extern "C" fn oaknode_track_get_block_containing_time(
+pub fn oaknode_track_get_block_containing_time(
     track: CHandle,
     numerator: c_int,
     denominator: c_int,
@@ -1264,8 +1197,7 @@ pub extern "C" fn oaknode_track_get_block_containing_time(
 
 /// `oaknode_track_get_nearest_block_before_or_at`: the block whose in point is
 /// at or before `time` (the latest such); null when none.
-#[no_mangle]
-pub extern "C" fn oaknode_track_get_nearest_block_before_or_at(
+pub fn oaknode_track_get_nearest_block_before_or_at(
     track: CHandle,
     numerator: c_int,
     denominator: c_int,
@@ -1295,8 +1227,7 @@ pub extern "C" fn oaknode_track_get_nearest_block_before_or_at(
 
 /// `oaknode_track_get_nearest_block_after_or_at`: the block whose in point is
 /// at or after `time` (the earliest such); null when none.
-#[no_mangle]
-pub extern "C" fn oaknode_track_get_nearest_block_after_or_at(
+pub fn oaknode_track_get_nearest_block_after_or_at(
     track: CHandle,
     numerator: c_int,
     denominator: c_int,
@@ -1325,8 +1256,7 @@ pub extern "C" fn oaknode_track_get_nearest_block_after_or_at(
 }
 
 /// `oaknode_tracklist_get_type`: the track list's track type.
-#[no_mangle]
-pub extern "C" fn oaknode_tracklist_get_type(list: CHandle, kind: *mut c_int) -> c_int {
+pub fn oaknode_tracklist_get_type(list: CHandle, kind: *mut c_int) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(l) = (unsafe { get::<MockNode>(&list) }) else {
         return -1;
@@ -1340,8 +1270,7 @@ pub extern "C" fn oaknode_tracklist_get_type(list: CHandle, kind: *mut c_int) ->
 }
 
 /// `oaknode_tracklist_get_track_count`: number of tracks in a track list.
-#[no_mangle]
-pub extern "C" fn oaknode_tracklist_get_track_count(list: CHandle, count: *mut c_int) -> c_int {
+pub fn oaknode_tracklist_get_track_count(list: CHandle, count: *mut c_int) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(l) = (unsafe { get::<MockNode>(&list) }) else {
         return -1;
@@ -1355,8 +1284,7 @@ pub extern "C" fn oaknode_tracklist_get_track_count(list: CHandle, count: *mut c
 }
 
 /// `oaknode_tracklist_get_track_at`: borrowed track at `index` in a track list.
-#[no_mangle]
-pub extern "C" fn oaknode_tracklist_get_track_at(list: CHandle, index: c_int, out: *mut CHandle) -> c_int {
+pub fn oaknode_tracklist_get_track_at(list: CHandle, index: c_int, out: *mut CHandle) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(l) = (unsafe { get::<MockNode>(&list) }) else {
         return -1;
@@ -1374,22 +1302,19 @@ pub extern "C" fn oaknode_tracklist_get_track_at(list: CHandle, index: c_int, ou
 /// `oaknode_tracklist_array_append`: append a track-array element on the
 /// parent sequence. The mock keeps track lists as plain vectors, so this is a
 /// no-op.
-#[no_mangle]
-pub extern "C" fn oaknode_tracklist_array_append(_list: CHandle) -> c_int {
+pub fn oaknode_tracklist_array_append(_list: CHandle) -> c_int {
     0
 }
 
 /// `oaknode_tracklist_array_remove_last`: remove the last track-array element.
 /// No-op in the mock (see `oaknode_tracklist_array_append`).
-#[no_mangle]
-pub extern "C" fn oaknode_tracklist_array_remove_last(_list: CHandle) -> c_int {
+pub fn oaknode_tracklist_array_remove_last(_list: CHandle) -> c_int {
     0
 }
 
 /// `oaknode_sequence_get_track_list`: the borrowed per-type track list, or
 /// null when the sequence has no list of that type.
-#[no_mangle]
-pub extern "C" fn oaknode_sequence_get_track_list(
+pub fn oaknode_sequence_get_track_list(
     sequence: CHandle,
     kind: c_int,
     out: *mut CHandle,
@@ -1416,8 +1341,7 @@ pub extern "C" fn oaknode_sequence_get_track_list(
 
 /// `oaknode_sequence_get_all_track_count`: total connected tracks across all
 /// types.
-#[no_mangle]
-pub extern "C" fn oaknode_sequence_get_all_track_count(sequence: CHandle, count: *mut c_int) -> c_int {
+pub fn oaknode_sequence_get_all_track_count(sequence: CHandle, count: *mut c_int) -> c_int {
     // SAFETY: handle boxes a MockNode.
     let Some(s) = (unsafe { get::<MockNode>(&sequence) }) else {
         return -1;
@@ -1440,8 +1364,7 @@ pub extern "C" fn oaknode_sequence_get_all_track_count(sequence: CHandle, count:
 
 /// `oaknode_sequence_get_all_track_at`: borrowed track at `index` across the
 /// flat, all-types track list.
-#[no_mangle]
-pub extern "C" fn oaknode_sequence_get_all_track_at(
+pub fn oaknode_sequence_get_all_track_at(
     sequence: CHandle,
     index: c_int,
     out: *mut CHandle,
@@ -1471,8 +1394,7 @@ pub extern "C" fn oaknode_sequence_get_all_track_at(
 /// `oaknode_node_connect`: connect `output_node` to `input_node`'s `input_id`.
 /// The mock tracks only the output connection count (input edge table is not
 /// modelled), so this bumps `output_conns`.
-#[no_mangle]
-pub extern "C" fn oaknode_node_connect(
+pub fn oaknode_node_connect(
     output_node: CHandle,
     _input_node: CHandle,
     _input_id: *const c_char,
@@ -1487,16 +1409,14 @@ pub extern "C" fn oaknode_node_connect(
 
 /// `oaknode_node_disconnect`: remove the edge feeding `input_node`'s
 /// `input_id`. The mock has no input-edge table, so this is a no-op.
-#[no_mangle]
-pub extern "C" fn oaknode_node_disconnect(_input_node: CHandle, _input_id: *const c_char) -> c_int {
+pub fn oaknode_node_disconnect(_input_node: CHandle, _input_id: *const c_char) -> c_int {
     0
 }
 
 /// `oaknode_node_copy_in_graph`: clone `node` in its graph; `*out_command`
 /// receives an owned undo handle. The mock clones the node box and hands back
 /// a no-op command.
-#[no_mangle]
-pub extern "C" fn oaknode_node_copy_in_graph(node: CHandle, out_command: *mut CHandle) -> CHandle {
+pub fn oaknode_node_copy_in_graph(node: CHandle, out_command: *mut CHandle) -> CHandle {
     // SAFETY: handle boxes a MockNode.
     let Some(n) = (unsafe { get::<MockNode>(&node) }) else {
         return CHandle::null();

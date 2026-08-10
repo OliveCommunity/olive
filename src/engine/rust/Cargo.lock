@@ -830,6 +830,9 @@ version = "0.1.0"
 dependencies = [
  "cc",
  "oakcore-rs",
+ "oaknode",
+ "oakrender",
+ "oakundo",
 ]
 
 [[package]]
@@ -846,15 +849,24 @@ dependencies = [
 name = "oaktask"
 version = "0.1.0"
 dependencies = [
+ "oakcodec",
+ "oakcommon",
  "oakcore-rs",
+ "oaknode",
  "oakotio",
+ "oakrender",
+ "oaktimeline",
+ "oakundo",
 ]
 
 [[package]]
 name = "oaktimeline"
 version = "0.1.0"
 dependencies = [
+ "oakcommon",
  "oakcore-rs",
+ "oaknode",
+ "oakundo",
 ]
 
 [[package]]

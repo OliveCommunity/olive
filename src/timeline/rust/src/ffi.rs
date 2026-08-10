@@ -976,12 +976,18 @@ fn write_cstr(dst: *mut c_char, size: c_int, s: &str) {
 
 /// Read the next start element's name from `reader`; empty at EOF/error.
 fn xml_read_next(reader: &H) -> String {
+  // Advance to the next start element (the real ABI writes a 1/0 flag).
+  let mut found = 0;
+  // SAFETY: `found` is a valid out pointer; `reader` is a valid handle.
+  let r = unsafe { xml::oakcommon_xml_reader_read_next_start_element(reader.clone(), &mut found) };
+  if r <= 0 || found == 0 {
+    return String::new();
+  }
+  // Read the current element's name (two-stage).
   let mut buf = [0 as c_char; 4096];
   // SAFETY: `buf` is a valid writable buffer; `reader` is a valid handle.
-  let r = unsafe {
-    xml::oakcommon_xml_reader_read_next_start_element(reader.clone(), buf.as_mut_ptr(), buf.len() as c_int)
-  };
-  if r <= 0 {
+  let n = unsafe { xml::oakcommon_xml_reader_name(reader.clone(), buf.as_mut_ptr(), buf.len() as c_int) };
+  if n <= 0 {
     return String::new();
   }
   // SAFETY: the reader wrote a NUL-terminated string into `buf`.

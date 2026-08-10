@@ -208,8 +208,9 @@ fn xml_bridge_validate_handles() {
 
 	// A null reader is an invalid argument: read fails cleanly (0).
 	let mut buf = [0i8; 64];
+	let mut found = 0;
 	assert_eq!(
-		unsafe { oakcommon_xml_reader_read_next_start_element(CHandle::null(), buf.as_mut_ptr(), 64) },
+		unsafe { oakcommon_xml_reader_read_next_start_element(CHandle::null(), &mut found) },
 		0
 	);
 
@@ -217,8 +218,9 @@ fn xml_bridge_validate_handles() {
 	// elements it reports end-of-stream for every accessor.
 	let mut reader = unsafe { oakcommon_xml_reader_init(b"<project/>\0".as_ptr() as *const std::ffi::c_char) };
 	assert!(!reader.is_null());
+	let mut found = 0;
 	assert_eq!(
-		unsafe { oakcommon_xml_reader_read_next_start_element(reader.clone(), buf.as_mut_ptr(), 64) },
+		unsafe { oakcommon_xml_reader_read_next_start_element(reader.clone(), &mut found) },
 		0
 	);
 	assert_eq!(unsafe { oakcommon_xml_reader_name(reader.clone(), buf.as_mut_ptr(), 64) }, 0);
@@ -242,8 +244,14 @@ fn xml_bridge_validate_handles() {
 			text: "hello".to_string(),
 			attrs: vec![("color".to_string(), "red".to_string())],
 		}]);
+		let mut found = 0;
 		assert_eq!(
-			unsafe { oakcommon_xml_reader_read_next_start_element(r.clone(), buf.as_mut_ptr(), 64) },
+			unsafe { oakcommon_xml_reader_read_next_start_element(r.clone(), &mut found) },
+			1
+		);
+		assert_eq!(found, 1);
+		assert_eq!(
+			unsafe { oakcommon_xml_reader_name(r.clone(), buf.as_mut_ptr(), 64) },
 			1
 		);
 		assert_eq!(

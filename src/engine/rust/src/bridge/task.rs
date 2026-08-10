@@ -256,24 +256,15 @@ pub fn oaktask_create_precache(footage: CHandle, index: c_int, sequence: CHandle
 
 /// Direct call into the `oaktask` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-/// `oaktask_create_export` — crosses the encoding-params C ABI POD
-/// (the facade keeps its own POD mirror). Kept as a link-time
-/// `extern "C"` declaration against the frozen module C ABI.
+/// `oaktask_create_export` — direct call into the `oaktask` crate
+/// (single-lib unification; the encoding-params POD is the shared
+/// oakcodec type).
 pub fn oaktask_create_export(
 		viewer: CHandle,
 		color_manager: CHandle,
 		params: *const crate::bridge::codec::EncodingParamsPOD,
 	) -> CHandle {
-	unsafe { oaktask_create_export_extern(viewer, color_manager, params) }
-}
-
-extern "C" {
-	#[link_name = "oaktask_create_export"]
-	pub fn oaktask_create_export_extern(
-		viewer: CHandle,
-		color_manager: CHandle,
-		params: *const crate::bridge::codec::EncodingParamsPOD,
-	) -> CHandle;
+	unsafe { oaktask::ffi::project::oaktask_create_export(viewer, color_manager, params) }
 }
 
 /// Direct call into the `oaktask` crate (single-lib unification; the

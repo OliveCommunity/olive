@@ -18,13 +18,18 @@ panic = "unwind"
 
 [dependencies]
 # 共享 ABI 类型（CHandle 等，单库化统一，见 docs/zh/plans/riir/single-lib.md）。
+# 模块桥改直接 Rust 调用（单库化，见 docs/zh/plans/riir/single-lib.md）；
 # 只允许零依赖起步。确需引入的 crate 必须在 README 登记理由。
 oakcore-rs = { path = "../../oakcore-rs" }
+oakundo = { path = "../../undo/rust" }
+oaknode = { path = "../../node/rust" }
+oakrender = { path = "../../render/rust" }
 
 [features]
-# oakrender 测试桩（库内 no_mangle 符号 + 状态访问器）：cargo test
-# --features test-stubs 时桥直连桩，像素路径可在无 liboakrender 的
-# 环境下跑通；真实链路仍走 dlsym 解析。
+# 测试桩（库内状态访问器）：cargo test --features test-stubs 时桥直连
+# 桩，像素路径可在无真实 GL/GPU 的环境下跑通。桩的 C ABI 符号不再
+# no_mangle（真实 oaknode/oakrender/oakundo 已作为 path 依赖链接，
+# 避免重复符号）；真实链路走直接 Rust 调用。
 test-stubs = []
 
 [build-dependencies]

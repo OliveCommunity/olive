@@ -43,7 +43,7 @@ use std::ffi::{c_char, c_int, c_void};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::bridge::codec::EncodingParamsPOD;
+use crate::bridge::codec::{EncodingParamsPOD, zeroed_encoding_params};
 use crate::bridge::node as n;
 use crate::bridge::task as t;
 use crate::codec::OakEngineEncodingParams;
@@ -622,7 +622,7 @@ pub unsafe extern "C" fn oakengine_task_create_export(
 /// them is behaviorally identical to the original for the export task; all
 /// other POD fields stay zeroed.
 fn export_params_pod(params: *const OakEngineEncodingParams) -> Result<EncodingParamsPOD> {
-	let mut pod = EncodingParamsPOD::zeroed();
+	let mut pod = zeroed_encoding_params();
 
 	// filename (two-stage; writes NUL-terminated into `buf`)
 	let mut buf = [0 as c_char; 1024];
@@ -633,7 +633,7 @@ fn export_params_pod(params: *const OakEngineEncodingParams) -> Result<EncodingP
 		return Err(Error::Invalid);
 	}
 	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-	unsafe { std::ptr::copy_nonoverlapping(buf.as_ptr(), pod.filename.as_mut_ptr(), len) };
+	unsafe { std::ptr::copy_nonoverlapping(buf.as_ptr() as *const u8, pod.filename.as_mut_ptr(), len) };
 
 	pod.format = unsafe { crate::codec::oakengine_encoding_params_format(params) };
 	pod.video_enabled = unsafe { crate::codec::oakengine_encoding_params_video_enabled(params) };

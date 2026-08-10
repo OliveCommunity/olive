@@ -49,7 +49,7 @@ impl CustomCacheState {
 	pub fn finish(&self) {
 		*self.cancelled_through_finish.lock().unwrap() = true;
 		if !self.atom.is_null() {
-			let atom = crate::bridge::render::OakCancelAtom::from_chandle(self.atom);
+			let atom = self.atom;
 			unsafe {
 				crate::bridge::render::oakrender_cancelatom_cancel(atom);
 			}
@@ -72,7 +72,7 @@ impl CustomCacheState {
 	/// hook. Used by the owning cache to abort a fill.
 	pub fn cancel(&self) {
 		if !self.atom.is_null() {
-			let atom = crate::bridge::render::OakCancelAtom::from_chandle(self.atom);
+			let atom = self.atom;
 			unsafe {
 				crate::bridge::render::oakrender_cancelatom_cancel(atom);
 			}

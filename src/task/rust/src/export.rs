@@ -165,7 +165,7 @@ impl ExportTask {
 		};
 		let bytes = self.encoding_params.filename.as_bytes();
 		let n = bytes.len().min(1023);
-		params.filename[..n].copy_from_slice(unsafe { std::slice::from_raw_parts(bytes.as_ptr() as *const i8, n) });
+		params.filename[..n].copy_from_slice(&bytes[..n]);
 		params.format = self.encoding_params.format;
 		params.video_enabled = self.encoding_params.video_enabled as i32;
 		params.video_codec = self.encoding_params.video_codec;

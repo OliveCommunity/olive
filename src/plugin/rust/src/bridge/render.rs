@@ -26,45 +26,19 @@
 //!
 //! ## 双态实现
 //!
-//! - 默认：`dlsym(RTLD_DEFAULT)` 运行时解析（本模块被 force_load
-//!   进宿主进程，符号在全局作用域；cargo test 无 liboakrender 时
-//!   符号缺失 → 可解释错误，测试可走通至渲染边界）；
-//! - `--features test-stubs`：库内 no_mangle 桩 + 状态访问器
-//!   （[`stub`]）——像素路径在 cargo test 里全链路可跑。
-//!   两种形态的调用面（`texture_get_frame` 等）完全一致。
+//! - 默认：直接 Rust 调用 oakrender 的 `ffi`（单库化，见
+//!   `docs/zh/plans/riir/single-lib.md`）；
+//! - `--features test-stubs`：库内状态桩 + 状态访问器（[`stub`]，纯
+//!   Rust、无 `#[no_mangle]`，与真实 oakrender 的导出不冲突）——像素
+//!   路径在 cargo test 里全链路可跑。两种形态的调用面
+//!   （`texture_get_frame` 等）完全一致。
 
 use std::ffi::c_void;
 
-/// oakrender 视频参数（include/render/renderer.h:78，字段逐字一致）。
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default)]
-pub struct VideoParams {
-	/// 宽。
-	pub width: i32,
-	/// 高。
-	pub height: i32,
-	/// 帧时长分子（如 1001/30000 秒）。
-	pub time_base_num: i32,
-	/// 帧时长分母。
-	pub time_base_den: i32,
-	/// `olive::PixelFormat::Format`（invalid=-1, u8=0, u10=1, u16=2,
-	/// f16=3, f32=4）。
-	pub format: i32,
-	/// 像素比分子。
-	pub pixel_aspect_num: i32,
-	/// 像素比分母。
-	pub pixel_aspect_den: i32,
-	/// `olive::VideoParams::Interlacing`。
-	pub interlacing: i32,
-	/// `olive::VideoParams::ColorRange`。
-	pub color_range: i32,
-	/// 预览分辨率除数（1 = 全分辨率）。
-	pub divider: i32,
-	/// `olive::VideoParams::Type`（0 = video）。
-	pub video_type: i32,
-	/// 预乘 alpha（0/1）。
-	pub premultiplied_alpha: i32,
-}
+/// `oakrender_video_params` POD — single-lib unification: aliases the
+/// oakrender crate's struct (identical layout; include/render/renderer.h:78).
+pub type VideoParams = oakrender::ffi::OakRenderVideoParams;
+
 
 /// olive::PixelFormat::Format 的 f32 值。
 pub const PIXEL_FORMAT_F32: i32 = 4;
@@ -90,11 +64,7 @@ pub(crate) unsafe fn texture_get_frame(texture: TextureHandle, out: *mut FrameHa
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(TextureHandle, *mut FrameHandle) -> i32;
-		crate::bridge::dlsym::call::<F, i32>("oakrender_display_texture_get_frame", |f| {
-			unsafe { f(texture, out) }
-		})
-		.unwrap_or(-1)
+		unsafe { oakrender::ffi::renderer::oakrender_display_texture_get_frame(texture, out) }
 	}
 }
 
@@ -106,9 +76,7 @@ pub(crate) unsafe fn texture_is_dummy(texture: TextureHandle) -> i32 {
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(TextureHandle) -> i32;
-		crate::bridge::dlsym::call::<F, i32>("oakrender_display_texture_is_dummy", |f| unsafe { f(texture) })
-			.unwrap_or(1)
+		unsafe { oakrender::ffi::renderer::oakrender_display_texture_is_dummy(texture) }
 	}
 }
 
@@ -120,9 +88,7 @@ pub(crate) unsafe fn frame_width(frame: FrameHandle) -> i32 {
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(FrameHandle) -> i32;
-		crate::bridge::dlsym::call::<F, i32>("oakrender_codec_frame_width", |f| unsafe { f(frame) })
-			.unwrap_or(0)
+		unsafe { oakrender::ffi::renderer::oakrender_codec_frame_width(frame) }
 	}
 }
 
@@ -134,9 +100,7 @@ pub(crate) unsafe fn frame_height(frame: FrameHandle) -> i32 {
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(FrameHandle) -> i32;
-		crate::bridge::dlsym::call::<F, i32>("oakrender_codec_frame_height", |f| unsafe { f(frame) })
-			.unwrap_or(0)
+		unsafe { oakrender::ffi::renderer::oakrender_codec_frame_height(frame) }
 	}
 }
 
@@ -148,9 +112,7 @@ pub(crate) unsafe fn frame_data(frame: FrameHandle) -> *mut c_void {
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(FrameHandle) -> *mut c_void;
-		crate::bridge::dlsym::call::<F, *mut c_void>("oakrender_codec_frame_data", |f| unsafe { f(frame) })
-			.unwrap_or(std::ptr::null_mut())
+		unsafe { oakrender::ffi::renderer::oakrender_codec_frame_data(frame) }
 	}
 }
 
@@ -162,9 +124,7 @@ pub(crate) unsafe fn frame_get_params(frame: FrameHandle, out: *mut VideoParams)
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(FrameHandle, *mut VideoParams) -> i32;
-		crate::bridge::dlsym::call::<F, i32>("oakrender_codec_frame_get_params", |f| unsafe { f(frame, out) })
-			.unwrap_or(-1)
+		unsafe { oakrender::ffi::renderer::oakrender_codec_frame_get_params(frame, out) }
 	}
 }
 
@@ -176,9 +136,7 @@ pub(crate) unsafe fn frame_allocate(frame: FrameHandle) -> i32 {
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(FrameHandle) -> i32;
-		crate::bridge::dlsym::call::<F, i32>("oakrender_codec_frame_allocate", |f| unsafe { f(frame) })
-			.unwrap_or(-1)
+		unsafe { oakrender::ffi::renderer::oakrender_codec_frame_allocate(frame) }
 	}
 }
 
@@ -190,13 +148,7 @@ pub(crate) unsafe fn frame_free(frame: *mut FrameHandle) {
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(*mut FrameHandle);
-		if let Some(f) = crate::bridge::dlsym::call::<F, ()>("oakrender_codec_frame_free", |f| {
-			unsafe { f(frame) }
-		}) {
-			// 调用已完成；返回值忽略。
-			let _ = f;
-		}
+		unsafe { oakrender::ffi::renderer::oakrender_codec_frame_free(frame) }
 	}
 }
 
@@ -211,11 +163,7 @@ pub(crate) unsafe fn frame_linesize_bytes(frame: FrameHandle) -> i32 {
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(FrameHandle) -> i32;
-		crate::bridge::dlsym::call::<F, i32>("oakrender_codec_frame_linesize_bytes", |f| {
-			unsafe { f(frame) }
-		})
-		.unwrap_or(0)
+		unsafe { oakrender::ffi::renderer::oakrender_codec_frame_linesize_bytes(frame) }
 	}
 }
 
@@ -231,11 +179,7 @@ pub(crate) unsafe fn renderer_create_dynamic(backend: *const std::ffi::c_char) -
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(*const std::ffi::c_char) -> RendererHandle;
-		crate::bridge::dlsym::call::<F, RendererHandle>("oakrender_display_renderer_create_dynamic", |f| {
-			unsafe { f(backend) }
-		})
-		.unwrap_or_else(RendererHandle::null)
+		unsafe { oakrender::ffi::renderer::oakrender_display_renderer_create_dynamic(backend) }
 	}
 }
 
@@ -252,11 +196,7 @@ pub(crate) unsafe fn renderer_init(
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(RendererHandle, *mut std::ffi::c_void) -> i32;
-		crate::bridge::dlsym::call::<F, i32>("oakrender_display_renderer_init", |f| {
-			unsafe { f(renderer, gl_context) }
-		})
-		.unwrap_or(-1)
+		unsafe { oakrender::ffi::renderer::oakrender_display_renderer_init(renderer, gl_context) }
 	}
 }
 
@@ -269,11 +209,7 @@ pub(crate) unsafe fn renderer_is_open_gl(renderer: RendererHandle) -> i32 {
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(RendererHandle) -> i32;
-		crate::bridge::dlsym::call::<F, i32>("oakrender_display_renderer_is_open_gl", |f| {
-			unsafe { f(renderer) }
-		})
-		.unwrap_or(0)
+		unsafe { oakrender::ffi::renderer::oakrender_display_renderer_is_open_gl(renderer) }
 	}
 }
 
@@ -287,12 +223,7 @@ pub(crate) unsafe fn renderer_destroy(renderer: *mut RendererHandle) {
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(*mut RendererHandle);
-		if let Some(f) = crate::bridge::dlsym::call::<F, ()>("oakrender_display_renderer_destroy", |f| {
-			unsafe { f(renderer) }
-		}) {
-			let _ = f;
-		}
+		unsafe { oakrender::ffi::renderer::oakrender_display_renderer_destroy(renderer) }
 	}
 }
 
@@ -315,11 +246,11 @@ pub(crate) unsafe fn texture_create(
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(RendererHandle, *const VideoParams, *const std::ffi::c_void, i32) -> TextureHandle;
-		crate::bridge::dlsym::call::<F, TextureHandle>("oakrender_display_texture_create", |f| {
-			unsafe { f(renderer, params, pixels, linesize) }
-		})
-		.unwrap_or_else(TextureHandle::null)
+		unsafe {
+			oakrender::ffi::renderer::oakrender_display_texture_create(
+				renderer, params, pixels, linesize,
+			)
+		}
 	}
 }
 
@@ -332,9 +263,7 @@ pub(crate) unsafe fn texture_id(texture: TextureHandle) -> i32 {
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(TextureHandle) -> i32;
-		crate::bridge::dlsym::call::<F, i32>("oakrender_display_texture_id", |f| unsafe { f(texture) })
-			.unwrap_or(0)
+		unsafe { oakrender::ffi::renderer::oakrender_display_texture_id(texture) }
 	}
 }
 
@@ -346,11 +275,7 @@ pub(crate) unsafe fn texture_get_params(texture: TextureHandle, out: *mut VideoP
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(TextureHandle, *mut VideoParams) -> i32;
-		crate::bridge::dlsym::call::<F, i32>("oakrender_display_texture_get_params", |f| {
-			unsafe { f(texture, out) }
-		})
-		.unwrap_or(-1)
+		unsafe { oakrender::ffi::renderer::oakrender_display_texture_get_params(texture, out) }
 	}
 }
 
@@ -368,11 +293,7 @@ pub(crate) unsafe fn texture_download(
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(TextureHandle, *mut std::ffi::c_void, i32) -> i32;
-		crate::bridge::dlsym::call::<F, i32>("oakrender_display_texture_download", |f| {
-			unsafe { f(texture, pixels, linesize) }
-		})
-		.unwrap_or(-1)
+		unsafe { oakrender::ffi::renderer::oakrender_display_texture_download(texture, pixels, linesize) }
 	}
 }
 
@@ -385,11 +306,7 @@ pub(crate) unsafe fn texture_retain(texture: TextureHandle) -> TextureHandle {
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(TextureHandle) -> TextureHandle;
-		crate::bridge::dlsym::call::<F, TextureHandle>("oakrender_display_texture_retain", |f| {
-			unsafe { f(texture) }
-		})
-		.unwrap_or_else(TextureHandle::null)
+		unsafe { oakrender::ffi::renderer::oakrender_display_texture_retain(texture) }
 	}
 }
 
@@ -402,12 +319,7 @@ pub(crate) unsafe fn texture_free(texture: *mut TextureHandle) {
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(*mut TextureHandle);
-		if let Some(f) = crate::bridge::dlsym::call::<F, ()>("oakrender_display_texture_free", |f| {
-			unsafe { f(texture) }
-		}) {
-			let _ = f;
-		}
+		unsafe { oakrender::ffi::renderer::oakrender_display_texture_free(texture) }
 	}
 }
 
@@ -425,11 +337,7 @@ pub(crate) unsafe fn texture_upload(
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(TextureHandle, *const std::ffi::c_void, i32) -> i32;
-		crate::bridge::dlsym::call::<F, i32>("oakrender_display_texture_upload", |f| {
-			unsafe { f(texture, pixels, linesize) }
-		})
-		.unwrap_or(-1)
+		unsafe { oakrender::ffi::renderer::oakrender_display_texture_upload(texture, pixels, linesize) }
 	}
 }
 
@@ -449,11 +357,11 @@ pub(crate) unsafe fn renderer_download_from_texture(
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(RendererHandle, i32, *const VideoParams, *mut std::ffi::c_void, i32) -> i32;
-		crate::bridge::dlsym::call::<F, i32>("oakrender_display_renderer_download_from_texture", |f| {
-			unsafe { f(renderer, texture_id, params, dst, linesize) }
-		})
-		.unwrap_or(-1)
+		unsafe {
+			oakrender::ffi::renderer::oakrender_display_renderer_download_from_texture(
+				renderer, texture_id, params, dst, linesize,
+			)
+		}
 	}
 }
 
@@ -949,26 +857,27 @@ pub mod stub {
 	}
 }
 
-// ---- 默认模式单测（无桩；dlsym 缺失的可解释失败路径）----------------------
+// ---- 默认模式单测（无桩；空/NULL 句柄经真实 crate 的可解释失败路径）----------------------
 
 #[cfg(all(test, not(feature = "test-stubs")))]
 mod tests {
 	use super::*;
 
-	/// cargo test 无 liboakrender：符号缺失 → 明确错误码/空指针/占位
-	/// 判定（1），全部生命周期函数对空句柄容错不崩。
+	/// 空/NULL 句柄经真实 oakrender 全部容错不崩：返回
+	/// `OAKRENDER_E_INVALID`（-70001）或空值。
 	#[test]
-	fn dlsym_missing_error_paths() {
+	fn empty_handle_error_paths() {
 		let mut frame = FrameHandle::null();
 		let tex = TextureHandle::null();
 		unsafe {
-			assert_eq!(texture_get_frame(tex, &mut frame), -1);
-			assert_eq!(texture_is_dummy(tex), 1, "符号缺失 → 视为占位");
+			assert_eq!(texture_get_frame(tex, &mut frame), -70001);
+			// 空句柄不是占位纹理：真实 oakrender 返回 0。
+			assert_eq!(texture_is_dummy(tex), 0);
 			assert_eq!(frame_width(frame), 0);
 			assert_eq!(frame_height(frame), 0);
 			assert!(frame_data(frame).is_null());
-			assert_eq!(frame_get_params(frame, &mut VideoParams::default()), -1);
-			assert_eq!(frame_allocate(frame), -1);
+			assert_eq!(frame_get_params(frame, &mut VideoParams::default()), -70001);
+			assert_eq!(frame_allocate(frame), -70001);
 			frame_free(&mut frame); // 空句柄 no-op
 			frame_free(std::ptr::null_mut()); // NULL no-op
 		}

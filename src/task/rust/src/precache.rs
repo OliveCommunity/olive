@@ -97,7 +97,7 @@ impl TaskBehavior for PreCacheTask {
 			bridge::node::oaknode_node_get_video_frame_cache(self.sequence, &mut cache);
 		}
 
-		self.render.set_render_inputs(color_manager, cache.to_chandle(), 0 /* k_online */, false, range);
+		self.render.set_render_inputs(color_manager, cache, 0 /* k_online */, false, range);
 
 		// Drive the render with `self` as the subclass behavior (the C++
 		// virtual dispatch receiver); the render is temporarily moved out to

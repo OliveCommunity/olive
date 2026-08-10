@@ -142,7 +142,7 @@ impl TaskBehavior for ConformTask {
 					self.sample_rate,
 					self.channel_layout,
 					self.sample_format,
-					bridge::render::OakCancelAtom::from_chandle(task.get_cancel_atom()),
+					task.get_cancel_atom(),
 				)
 			};
 			unsafe {

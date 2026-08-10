@@ -27,8 +27,10 @@
 //!
 //! ## 双态实现（同 [`crate::bridge::render`]）
 //!
-//! - 默认：`dlsym(RTLD_DEFAULT)` 运行时解析；
-//! - `--features test-stubs`：库内桩（[`stub`]）——命令表 + undo/redo
+//! - 默认：直接 Rust 调用 oakundo 的 `ffi`（单库化，见
+//!   `docs/zh/plans/riir/single-lib.md`）；
+//! - `--features test-stubs`：库内状态桩（[`stub`]，纯 Rust、无
+//!   `#[no_mangle]`，与真实 oakundo 的导出不冲突）——命令表 + undo/redo
 //!   语义在 cargo test 里全链路可跑。两种形态的调用面完全一致。
 
 use crate::handle::CHandle;
@@ -46,9 +48,7 @@ pub(crate) unsafe fn command_init_multi() -> CommandHandle {
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn() -> CommandHandle;
-		crate::bridge::dlsym::call::<F, CommandHandle>("oakundo_command_init_multi", |f| unsafe { f() })
-			.unwrap_or_else(CHandle::null)
+		unsafe { oakundo::ffi::command::oakundo_command_init_multi() }
 	}
 }
 
@@ -60,9 +60,7 @@ pub(crate) unsafe fn command_redo_now(command: CommandHandle) -> i32 {
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(CommandHandle) -> i32;
-		crate::bridge::dlsym::call::<F, i32>("oakundo_command_redo_now", |f| unsafe { f(command) })
-			.unwrap_or(-40001)
+		unsafe { oakundo::ffi::command::oakundo_command_redo_now(command) }
 	}
 }
 
@@ -74,11 +72,7 @@ pub(crate) unsafe fn command_multi_add_child(multi: CommandHandle, child: Comman
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(CommandHandle, CommandHandle) -> i32;
-		crate::bridge::dlsym::call::<F, i32>("oakundo_command_multi_add_child", |f| unsafe {
-			f(multi, child)
-		})
-		.unwrap_or(-40001)
+		unsafe { oakundo::ffi::command::oakundo_command_multi_add_child(multi, child) }
 	}
 }
 
@@ -90,12 +84,7 @@ pub(crate) unsafe fn command_free(command: *mut CommandHandle) {
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(*mut CommandHandle);
-		if let Some(f) = crate::bridge::dlsym::call::<F, ()>("oakundo_command_free", |f| {
-			unsafe { f(command) }
-		}) {
-			let _ = f;
-		}
+		unsafe { oakundo::ffi::command::oakundo_command_free(command) }
 	}
 }
 
@@ -364,23 +353,23 @@ pub mod stub {
 	}
 }
 
-// ---- 默认模式单测（无桩；dlsym 缺失的可解释失败路径）----------------------
+// ---- 默认模式单测（无桩；空/NULL 句柄经真实 crate 的可解释失败路径）----------------------
 
 #[cfg(all(test, not(feature = "test-stubs")))]
 mod tests {
 	use super::*;
 
-	/// cargo test 无 liboakundo：符号缺失 → 空句柄/负错误码，命令
-	/// 生命周期函数对空句柄/NULL 容错不崩。
+	/// 空/NULL 句柄经真实 oakundo 全部容错不崩：`init_multi` 产生
+	/// 真实命令，空句柄操作返回 `OAKUNDO_E_INVALID`（-20001）。
 	#[test]
-	fn dlsym_missing_error_paths() {
+	fn empty_handle_error_paths() {
 		unsafe {
 			let mut m = command_init_multi();
-			assert!(m.is_null(), "无 liboakundo 时 init_multi 应返回空句柄");
-			assert_eq!(command_redo_now(CommandHandle::null()), -40001);
+			assert!(!m.is_null(), "init_multi 应产生真实命令句柄");
+			assert_eq!(command_redo_now(CommandHandle::null()), -20001);
 			assert_eq!(
 				command_multi_add_child(CommandHandle::null(), CommandHandle::null()),
-				-40001
+				-20001
 			);
 			command_free(&mut m); // 空句柄 no-op
 			command_free(std::ptr::null_mut()); // NULL no-op

@@ -28,10 +28,11 @@
 //!
 //! ## 双态实现（同 [`crate::bridge::render`]）
 //!
-//! - 默认：`dlsym(RTLD_DEFAULT)` 运行时解析（cargo test 无 liboaknode
-//!   时符号缺失 → 错误码/空句柄，桥路径可解释地失败）；
-//! - `--features test-stubs`：库内桩（[`stub`]）——节点值、undo 命令
-//!   全链路可在 cargo test 跑通。两种形态的调用面完全一致。
+//! - 默认：直接 Rust 调用 oaknode 的 `ffi`（单库化，见
+//!   `docs/zh/plans/riir/single-lib.md`）；
+//! - `--features test-stubs`：库内状态桩（[`stub`]，纯 Rust、无
+//!   `#[no_mangle]`，与真实 oaknode 的导出不冲突）——节点值、undo
+//!   命令全链路可在 cargo test 跑通。两种形态的调用面完全一致。
 
 use std::ffi::c_char;
 
@@ -177,9 +178,7 @@ pub(crate) unsafe fn node_from_identity(id: usize) -> NodeHandle {
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(usize) -> NodeHandle;
-		crate::bridge::dlsym::call::<F, NodeHandle>("oaknode_node_from_identity", |f| unsafe { f(id) })
-			.unwrap_or_else(CHandle::null)
+		unsafe { oaknode::ffi::node::oaknode_node_from_identity(id) }
 	}
 }
 
@@ -201,11 +200,14 @@ pub(crate) unsafe fn set_input_undoable(
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(NodeHandle, *const c_char, *const Value, *mut CommandHandle) -> i32;
-		crate::bridge::dlsym::call::<F, i32>("oaknode_node_set_input_undoable", |f| {
-			unsafe { f(node, input, value, out) }
-		})
-		.unwrap_or(-30001)
+		unsafe {
+		oaknode::ffi::node::oaknode_node_set_input_undoable(
+			node,
+			input,
+			value as *const oaknode::value::OakNodeValue,
+			out,
+		)
+	}
 	}
 }
 
@@ -226,11 +228,14 @@ pub(crate) unsafe fn set_input_string_undoable(
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		type F = unsafe fn(NodeHandle, *const c_char, *const c_char, *mut CommandHandle) -> i32;
-		crate::bridge::dlsym::call::<F, i32>("oaknode_node_set_input_string_undoable", |f| {
-			unsafe { f(node, input, value, out) }
-		})
-		.unwrap_or(-30001)
+		unsafe {
+		oaknode::ffi::node::oaknode_node_set_input_string_undoable(
+			node,
+			input,
+			value,
+			out,
+		)
+	}
 	}
 }
 
@@ -389,16 +394,16 @@ pub mod stub {
 	}
 }
 
-// ---- 默认模式单测（无桩；dlsym 缺失的可解释失败路径）----------------------
+// ---- 默认模式单测（无桩；空/NULL 句柄经真实 crate 的可解释失败路径）----------------------
 
 #[cfg(all(test, not(feature = "test-stubs")))]
 mod tests {
 	use super::*;
 
-	/// cargo test 无 liboaknode：符号缺失 → 空句柄/负错误码；空句柄
-	/// 与空指针参数被拒。
+	/// 空/NULL 句柄经真实 oaknode 容错：未登记身份 → 空句柄；空句柄
+	/// 与空指针参数被拒（OAKNODE_E_INVALID）。
 	#[test]
-	fn dlsym_missing_error_paths() {
+	fn empty_handle_error_paths() {
 		let mut cmd = CommandHandle::null();
 		unsafe {
 			assert!(node_from_identity(0xDEAD).is_null(), "未登记身份 → 空句柄");

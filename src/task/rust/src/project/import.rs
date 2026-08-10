@@ -197,7 +197,7 @@ impl ProjectImportTask {
 				}
 
 				unsafe {
-					bridge::node::oaknode_footage_set_cancel_atom(footage, bridge::render::OakCancelAtom::from_chandle(task.get_cancel_atom()));
+					bridge::node::oaknode_footage_set_cancel_atom(footage, task.get_cancel_atom());
 				}
 				let ok = unsafe { bridge::node::oaknode_footage_set_filename(footage, cstr(file_path)) } == 0;
 				unsafe {
