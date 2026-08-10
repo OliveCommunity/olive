@@ -1,0 +1,84 @@
+# Oak Video Editor - Non-Linear Video Editor
+# Copyright (C) 2026 Oak Team
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Root manifest: the `oakapp` package (the gpui-based application) plus the
+# Cargo workspace over every crate under crates/.
+#
+# oakstorage (crates/oakstorage) is deliberately excluded: it is a work in
+# progress whose contract tests are still `todo!()` stubs (they cannot pass
+# yet), and it pulls heavy database backends (sea-orm). It stays a
+# standalone crate with its own Cargo.lock; build it with
+# `cd crates/oakstorage && cargo build`.
+#
+# gpui (the oak-gpui fork at gpui/) is excluded too: it is a separate git
+# repository with its own workspace (resolver 3, edition 2024,
+# workspace.package/workspace.dependencies). Without the exclusion its
+# crates would be auto-included here via oakapp's path dependencies and
+# would inherit from THIS workspace's [workspace.package] (which lacks the
+# keys gpui expects). Excluded, each gpui crate resolves against gpui's own
+# workspace root, exactly as before the monorepo workspace existed.
+[workspace]
+members = ["crates/*"]
+exclude = ["crates/oakstorage", "gpui"]
+default-members = [".", "crates/oak-cli", "crates/oak-worker", "crates/oakengine"]
+resolver = "2"
+
+[profile.release]
+# FFI discipline: every module crate exports an `extern "C"` ABI whose
+# entry points must never unwind/abort across the boundary; panics are
+# caught by catch_unwind and mapped to error codes instead. `unwind` is
+# also rustc's default, but this makes the project-wide policy explicit
+# (it used to live in each member's Cargo.toml, which a workspace root
+# ignores).
+panic = "unwind"
+
+[package]
+name = "oakapp"
+version = "0.1.0"
+edition = "2021"
+description = "Oak Video Editor application layer (Rust, gpui-based)"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "oakapp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "oakapp"
+path = "src/main.rs"
+
+[dependencies]
+# gpui: the GPU-accelerated UI framework (oak-gpui fork, git submodule at gpui/).
+gpui = { path = "gpui/crates/gpui" }
+# Convenience entry point: `gpui_platform::application()` picks the platform
+# backend. font-kit enables text shaping/rendering on macOS.
+gpui_platform = { path = "gpui/crates/gpui_platform", features = ["font-kit"] }
+# Oak's widget library: menus, viewer, form controls, project explorer.
+gpui_widgets = { path = "gpui/crates/gpui_widgets" }
+# The mock engine's synthetic viewer frames (`image::Frame` in a
+# `RenderImage`), matching the versions gpui itself uses.
+image = "0.25"
+smallvec = "1"
+
+[dev-dependencies]
+# `#[gpui::test]` harness for engine-seam smoke tests (test-support feature).
+gpui = { path = "gpui/crates/gpui", features = ["test-support"] }
+# `test-support` also enables `gpui_macos/test-support`, which is what makes
+# `render_to_image` (the screenshot example) available.
+gpui_platform = { path = "gpui/crates/gpui_platform", features = ["test-support"] }
+# Screenshot capture: `examples/screenshot.rs` saves the rendered window PNG
+# (the `image` crate is already in the lockfile through gpui).
+image = "0.25"

@@ -1,6 +1,0 @@
-add_subdirectory(src)
-add_subdirectory(c_api)
-add_subdirectory(wrappers)
-if(BUILD_TESTS)
-  add_subdirectory(tests)
-endif()

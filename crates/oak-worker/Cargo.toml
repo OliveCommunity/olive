@@ -1,0 +1,47 @@
+# Oak - Non-Linear Video Editor
+# Copyright (C) 2026 Oak Team
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+[package]
+name = "oak-worker"
+version = "0.1.0"
+edition = "2021"
+description = "Oak Video Editor headless render worker process (Rust)"
+license = "GPL-3.0-or-later"
+
+[[bin]]
+name = "oak-worker"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# The liboakengine facade (Rust): its worker module owns the whole worker
+# runtime — render backend selection through the oakrender module C ABI,
+# the startup handshake and the NDJSON control loop
+# (`oakengine::worker::worker_main`, the port of engine/src/capi/worker.cpp).
+# This binary is a thin shell over it, like worker/workermain.cpp. Its ipc
+# module provides the real shared-memory frame-slot transport
+# (`oakengine::ipc`) that src/session.rs + src/transport.rs attach through.
+oakengine = { path = "../oakengine" }
+
+# The oakrender module crate (the Rust rewrite of the oakrender module):
+# its C ABI (include/render/renderer.h) is how the facade's worker
+# initializes the render backend — oakrender_display_renderer_create_dynamic()
+# /_init() — the Rust equivalent of the C++ worker's DynamicRenderer/
+# OpenGLRenderer. Linked here so those facade imports resolve in the binary.
+oakrender = { path = "../oakrender" }

@@ -1,0 +1,72 @@
+[package]
+name = "oakengine"
+version = "0.1.0"
+edition = "2021"
+description = "Oak Video Editor facade: re-exports the frozen oakengine_* C ABI over the module C ABIs (Rust)"
+license = "GPL-3.0-or-later"
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+
+[dependencies]
+# NDJSON control-plane protocol for the worker session (src/worker.rs) and
+# the shm error formatting in src/ipc.rs.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# POSIX shm_open/mmap/munmap/shm_unlink constants + syscalls for the
+# shared-memory frame-slot transport (src/ipc.rs).
+libc = "0.2"
+
+# Every module call crosses the module C ABI as an `extern "C"` import
+# (src/bridge/). The module crates below are REAL dependencies so their
+# `#[no_mangle]` exports are linked into the final `liboakengine` cdylib:
+# the dylib then carries the module C ABIs itself (oakundo_*, oakcommon_*,
+# oaktimeline_*, oakcodec_*, oakaudio_*, oakrender_*, oaktask_*,
+# oakplugin_*, oaknode_*) alongside the facade's oakengine_* exports.
+#
+# The crates are linked WITHOUT their `test-stubs` features so the real
+# exports ship. Cross-module calls that the modules resolve with
+# dlsym(RTLD_DEFAULT) (oaknode, oakplugin, oakrender) now resolve against
+# the sibling modules inside the same dylib; the remaining undefined
+# imports are the C++ host-provided symbols (`oakcore_audioparams_*`,
+# `oakcore_rational_*` from liboakcore, `fb_*` from ffmpeg_bridge), which
+# build.rs leaves as runtime lookups for the host app.
+#
+# Tests link the same crates; the dev-dependencies below re-declare
+# oakcommon/oakplugin WITH `test-stubs` so their in-crate C ABI mocks
+# (the ffmpeg_bridge replacement and the oakrender dlsym stubs) are
+# compiled into the test binaries (features union with the normal
+# dependencies for test builds).
+#
+# NOTE (oaktimeline/oaktask): their `test-stubs` features are never used
+# here — the in-crate mocks define `oakundo_command_init` etc., which
+# would collide with the real oakundo rlib in one binary. Without
+# test-stubs their real exports reference the oaknode/oakundo/oakcommon
+# C ABI symbols as link-time externs, provided by the sibling crates in
+# the same dylib (or by the dev-dependency rlibs in a test binary).
+#
+# rustc would normally prune rlibs that are only touched through
+# `extern "C"` imports from the link; src/linkage.rs anchors every crate
+# (and oakcore-rs) so the linker pulls their object files.
+oakcore-rs = { path = "../oakcore" }
+oakundo = { path = "../oakundo" }
+oakcommon = { path = "../oakcommon" }
+oaktimeline = { path = "../oaktimeline" }
+oakcodec = { path = "../oakcodec" }
+oakaudio = { path = "../oakaudio" }
+oakrender = { path = "../oakrender" }
+oaktask = { path = "../oaktask" }
+oakplugin = { path = "../oakplugin" }
+oaknode = { path = "../oaknode" }
+
+[dev-dependencies]
+# The module crates as plain dependencies (no `test-stubs`): the C ABI
+# mocks the test binaries need (the ffmpeg_bridge `fb_*` replacement and
+# the oakcore_* symbols) are provided by the crate's own test support
+# (tests/common/mod.rs), which is force-linked into every integration
+# test. Keeping the dev-deps feature-free also stops Cargo's workspace
+# feature unification from forcing `test-stubs` onto the oakcommon/oakplugin
+# member builds during `cargo test --workspace` (their own tests then run
+# in the real dlsym mode and stay green).
+oakcommon = { path = "../oakcommon" }
+oakplugin = { path = "../oakplugin" }

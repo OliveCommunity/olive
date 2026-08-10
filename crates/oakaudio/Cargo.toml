@@ -1,0 +1,14 @@
+[package]
+name = "oakaudio"
+version = "0.1.0"
+edition = "2021"
+description = "Oak Video Editor audio I/O, processing, synchronization and waveform engine (Rust)"
+license = "GPL-3.0-or-later"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+oakcore-rs = { path = "../oakcore" }
+oakcommon = { path = "../oakcommon" }
+oakcodec = { path = "../oakcodec" }
