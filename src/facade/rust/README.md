@@ -1,0 +1,129 @@
+# oakfacade — the `liboakengine` facade (Rust)
+
+Re-exports the frozen `oakengine_*` C ABI (`engine/include/oakengine/*.h`)
+verbatim on top of the module C ABIs (`include/<mod>/*.h`, implemented by
+the oakundo/oaknode/oaktimeline/oakcodec/oakaudio/oakrender/oaktask/
+oakcommon/oakplugin crates). This is the M9 §4 assembly layer: every
+module call crosses the module C ABI as an `extern "C"` import; the
+facade itself owns only cross-cutting state.
+
+## Architecture
+
+```
+src/
+  lib.rs          crate docs, module list
+  error.rs        OAKENGINE error codes (module 00 → -1..-6)
+  handle.rs       CHandle mirror, OakEngine* opaque wrappers, box/unbox,
+                  catch_unwind guards, buf/size string helpers
+  bridge/         extern "C" imports per module crate (the only way the
+                  facade talks to modules)
+  undo.rs         engine/include/oakengine/undo.h
+  common.rs       config.h + videoparams.h (facade-static tables + POD↔handle)
+  audio.rs        audio.h (manager + sync + processor)
+  codec.rs        encoding.h (metadata over oakcodec + facade params POD box)
+  render.rs       renderer.h + color.h + lut.h (renderer/frame/color processor)
+  plugin.rs       plugin.h
+  node.rs         node.h + project.h + footage.h (node graph / project / footage)
+  timeline.rs     timeline.h (sequences, clips, tracks, markers, workarea)
+  task.rs         task.h (background tasks over oaktask)
+  ipc.rs          ipc.h (shm/framepool half): SpscRingBuffer + FrameSlotPool
+                  + POSIX SharedMemoryRegion (the real frame-slot transport)
+  worker.rs       worker.h (render worker): backend selection via the
+                  oakrender module C ABI + fallback, session, NDJSON main
+  deferred.rs     documented deferrals (stub detail lives here and in the
+                  family modules' stub bodies)
+tests/
+  common/mod.rs   test support: force-link + oakcore/ffmpeg_bridge stubs
+  undo.rs, common.rs, audio.rs, codec.rs, render.rs, plugin.rs, linkage.rs
+```
+
+### Dependencies
+
+The facade's regular dependencies are `serde`/`serde_json` (the worker's
+NDJSON control-plane protocol, `src/worker.rs`) and `libc` (POSIX
+`shm_open`/`mmap`/`munmap`/`shm_unlink` for `src/ipc.rs`). Every module
+call still crosses the module C ABI as an `extern "C"` import
+(`src/bridge/`), resolved at the final app link against the module shared
+libraries.
+
+### Handle mapping
+
+The engine headers' opaque pointers (`OakEngineNode*`, `OakEngineTrack*`,
+...) are thin newtype wrappers around the module C ABI's `CHandle`
+(`{ctx, addref, release, abi_version}`) values. A box is created by
+`handle::box_handle` and freed by `handle::free_box` (release + dealloc);
+consuming exports (`oakengine_*_free`, `oakengine_undo_push`, ...) free
+their box, borrowed results never are. The facade's own process-wide undo
+stack and open undo group live in `undo.rs` (module 00 analogues of
+`EngineCore::undo_stack()` and the C++ capi's `g_undo_group`).
+
+### Error codes
+
+Facade-local codes are -1..-6 (`OAKENGINE_E_*`); module codes pass
+through **untranslated** (the -MMCCCC prefix preserves provenance, e.g.
+-20004 is oakundo's NOT_FOUND). String getters follow the engine buf/size
+convention: the return value is the length excluding the NUL
+(`handle::string_result` converts the modules' size-including-NUL).
+
+## Scope
+
+| Family | Header | Wrapped | Notes |
+|---|---|---|---|
+| undo | undo.h | 37 | stack/group/command lifecycle + Qt leftovers (update_actions/actions → no-op/NULL) |
+| common | config.h, videoparams.h | 34 | config over oakcommon; videoparams static tables ported from `engine/render/videoparams.cpp` |
+| audio | audio.h | 26 | manager + sync; processor convert/output_params stubbed (interface mismatch) |
+| plugin | plugin.h | 4 | callbacks are facade state; push_button stubbed (no module API) |
+| codec | encoding.h | 81/85 | metadata family over oakcodec (`include/codec/format.h`); params handle is a facade box over the `oakcodec_encoding_params` POD; presets/load-save/export stubs |
+| render | renderer.h, color.h, lut.h | 60/60 | renderer over oakrender tickets; frame accessors over `OakCodecFrame`; color processor over `oakrender_color_processor_*`; color-manager list queries + LUT library stubs |
+| worker | worker.h | 8 | the render worker: `oakengine_worker_main` + the session family over the oakrender display renderer C ABI (dynamic → OpenGL fallback) and the ipc transport (see `src/worker.rs`) |
+| ipc | ipc.h (shm/framepool) | 28 | named shared-memory segments + frame-slot pools over `SpscRingBuffer` — the real frame-slot transport (see `src/ipc.rs`); the control-plane message serializers (`oakengine_ipc_*_to_json/parse`) are not wrapped (the worker speaks the NDJSON protocol with serde) |
+| node | node.h, project.h, footage.h | 226/327 | the node graph, project and footage families over the oaknode C ABI (`include/node/*.h`); 101 documented stubs where the module lacks the surface (gizmos, plugin messages, input properties, brush, thumbnail/waveform caches, shape/subtitle, keyframe enumeration, ...) — see the stub bodies |
+| timeline | timeline.h | 126/139 | sequences/clips/tracks/markers/workarea over oaknode + oaktimeline; 13 documented stubs (ripple-tracks command, default transitions, move-track/clip, marker-create, auto-cache, cache invalidation, multicam find/switch — module-surface gaps, see the stub bodies) |
+| task | task.h | 27 | the background-task system over oaktask (manager + load/save/import/export creators + result accessors); `create_proxy` stubbed (the module has no proxy-task C creator); start-time/is-cancelled are facade-approximated |
+
+Deferred/stub detail lives in [`deferred`] and in the stub bodies' doc
+comments. `worker` and `ipc` were in the deferred list until the render
+worker landed here — the worker's runtime and the shared-memory frame-slot
+transport are now real (see `src/worker.rs` / `src/ipc.rs`); the ipc.h
+control-plane message serializers remain unwrapped.
+
+## Testing
+
+`cargo test` links the module crates' rlibs (dev-dependencies) so the
+facade's bridge imports resolve:
+
+- `oakcommon`/`oakplugin` use their `test-stubs` features (ffmpeg_bridge
+  stub / in-crate render mocks).
+- `oaknode`/`oaktimeline`/`oaktask` are linked WITHOUT their `test-stubs`
+  features: their in-crate mocks would collide with the real oakundo rlib
+  in one test binary. Without test-stubs their real exports reference the
+  oaknode/oakundo/oakcommon C ABI symbols as link-time externs, which the
+  dev-dependency rlibs provide; oaknode itself resolves cross-module
+  symbols at runtime with `dlsym(RTLD_DEFAULT)`.
+- `tests/common/mod.rs` defines the `oakcore_*` (liboakcore) and `fb_*`
+  (libffmpeg_bridge) symbols the oakcodec/oakaudio rlibs reference, and
+  force-links the oakcommon XML writer/reader + the oakundo command
+  factory so the oaknode serializer's dlsym lookups resolve in every test
+  binary.
+- `src/lib.rs`'s test-only `test_link` forces the oakrender/oaknode/
+  oaktimeline/oaktask rlibs into the lib unit-test binary.
+
+Families whose wrapped behavior requires the real module dylibs carry
+`#[ignore]` tests with a documented reason; the smoke tests here exercise
+the module crates' real implementations. The ipc tests create+attach two
+in-process mappings of real POSIX segments and exchange slot indices and
+payloads in both directions, including wraparound and full/empty edges.
+
+```
+cargo test          # 71 tests green + 1 ignored (lib 35: ipc 17 + worker 18;
+                    # integration: undo 3, common 4, audio 4, plugin 3, codec 5,
+                    # render 6, linkage 1, node 3, timeline 2 + 1 ignored, task 5)
+cargo build         # staticlib + rlib; module symbols resolve at the final app link
+```
+
+## FFI discipline
+
+Every export goes through a `catch_unwind` guard
+(`handle::guard*`); `*_free` is a NULL no-op; strings use the two-stage
+buf/size convention; module error codes pass through untranslated;
+handles are refcounted module values wrapped in opaque boxes.

@@ -29,8 +29,8 @@
 //! `oakrender_color_processor_*` / `oaknode_colormanager_*` C functions
 //! instead of using OCIO directly.
 
-use crate::node::{NodeCore, NodeBehavior};
-use crate::value::{NodeValueRow, NodeValueTable};
+use crate::node::NodeCore;
+use crate::value::{NodeValue, NodeValueRow, NodeValueTable};
 
 /// Texture input id shared by all OCIO nodes (C++
 /// `OCIOBaseNode::k_texture_input`). Type: texture; flags:
@@ -69,13 +69,13 @@ impl OcioBase {
 	/// [`TEXTURE_INPUT`], marks it the effect input and sets the
 	/// video-effect flag happens in each node's `create()`.
 	pub fn new() -> Self {
-		todo!()
+		OcioBase { processor: None }
 	}
 
 	/// Borrowed view of the owned processor handle (C++
 	/// `OCIOBaseNode::processor()`; callers must NOT free it).
 	pub fn processor(&self) -> Option<&crate::bridge::render::ColorProcessorHandle> {
-		todo!()
+		self.processor.as_ref()
 	}
 
 	/// Take ownership of a new processor handle, releasing the old one
@@ -85,7 +85,11 @@ impl OcioBase {
 		&mut self,
 		processor: Option<crate::bridge::render::ColorProcessorHandle>,
 	) {
-		todo!()
+		// The C++ frees the previous processor via
+		// `oakrender_color_processor_free`; the Rust handle is a
+		// refcounted `CHandle` released on drop, so replacing the field
+		// drops the old one automatically.
+		self.processor = processor;
 	}
 
 	/// Shared output evaluation (C++ `OCIOBaseNode::value()`): no texture
@@ -94,6 +98,12 @@ impl OcioBase {
 	/// processor and the input texture; texture present but processor not
 	/// ready (e.g. still being generated asynchronously) -> pass the
 	/// input texture through unchanged.
+	///
+	/// The Rust model has no color-transform job payload: the ready case
+	/// pushes a null texture handle marking a renderer-deferred job
+	/// (the C++ `t->to_job(ColorTransformJob)` resolved by the renderer
+	/// via the processor); the not-ready case pushes the input texture.
+	/// `// CPP-PARITY: ociobase.cpp` `value()`.
 	pub fn value(
 		&self,
 		core: &NodeCore,
@@ -101,7 +111,21 @@ impl OcioBase {
 		time: oakcore_rs::Rational,
 		table: &mut NodeValueTable,
 	) {
-		todo!()
+		let _ = (core, time);
+		match inputs.get(TEXTURE_INPUT) {
+			Some(tex @ NodeValue::Texture(_)) => {
+				if self.processor.is_some() {
+					table.push(
+						crate::value::ValueType::Texture,
+						NodeValue::Texture(crate::handle::CHandle::null()),
+						None,
+					);
+				} else {
+					table.push(crate::value::ValueType::Texture, tex.clone(), None);
+				}
+			}
+			_ => {}
+		}
 	}
 
 	/// Graph-entry hook (C++ `OCIOBaseNode::AddedToGraphEvent`):
@@ -109,14 +133,90 @@ impl OcioBase {
 	/// `config_changed()` (a per-subclass method here, since the C++
 	/// pure virtual has no trait home). Subclasses call this from their
 	/// [`NodeBehavior::added_to_graph`] override.
+	///
+	/// The Rust model has no borrowed-manager field (see the type doc),
+	/// so this only forwards the subclass hook call sites.
 	pub fn added_to_graph(&mut self, core: &mut NodeCore) {
-		todo!()
+		let _ = (self, core);
 	}
 
 	/// Graph-exit hook (C++ `OCIOBaseNode::RemovedFromGraphEvent`):
 	/// clears the captured color manager pointer. Subclasses call this
 	/// from their [`NodeBehavior::removed_from_graph`] override.
 	pub fn removed_from_graph(&mut self, core: &mut NodeCore) {
-		todo!()
+		let _ = (self, core);
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::node::NodeCore;
+	use crate::value::{NodeValueRow, NodeValueTable, ValueType};
+
+	#[test]
+	fn processor_state_transitions() {
+		let mut base = OcioBase::new();
+		assert!(base.processor().is_none());
+		base.set_processor(Some(crate::handle::CHandle::null()));
+		assert!(base.processor().is_some());
+		base.set_processor(None);
+		assert!(base.processor().is_none());
+	}
+
+	#[test]
+	fn value_no_texture_pushes_nothing() {
+		let base = OcioBase::new();
+		let mut table = NodeValueTable::default();
+		base.value(
+			&NodeCore::new(),
+			&NodeValueRow::default(),
+			oakcore_rs::Rational::new(0, 1),
+			&mut table,
+		);
+		assert!(table.is_empty());
+	}
+
+	#[test]
+	fn value_passes_through_without_processor() {
+		let base = OcioBase::new();
+		let mut table = NodeValueTable::default();
+		let tex = NodeValue::Texture(crate::handle::CHandle::null());
+		let inputs = NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex.clone())]);
+		base.value(
+			&NodeCore::new(),
+			&inputs,
+			oakcore_rs::Rational::new(0, 1),
+			&mut table,
+		);
+		// Pass-through keeps the input texture value.
+		assert_eq!(table.get(ValueType::Texture), Some(&tex));
+	}
+
+	#[test]
+	fn value_pushes_deferred_job_with_processor() {
+		let mut base = OcioBase::new();
+		base.set_processor(Some(crate::handle::CHandle::null()));
+		let mut table = NodeValueTable::default();
+		let inputs = NodeValueRow::from([(
+			TEXTURE_INPUT.to_string(),
+			NodeValue::Texture(crate::handle::CHandle::null()),
+		)]);
+		base.value(
+			&NodeCore::new(),
+			&inputs,
+			oakcore_rs::Rational::new(0, 1),
+			&mut table,
+		);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn graph_hooks_are_noops() {
+		let mut base = OcioBase::new();
+		let mut core = NodeCore::new();
+		base.added_to_graph(&mut core);
+		base.removed_from_graph(&mut core);
+		assert!(base.processor().is_none());
 	}
 }

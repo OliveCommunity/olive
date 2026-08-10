@@ -19,6 +19,15 @@
 //! (frame/audio render tickets), `include/render/copier.h` (export project
 //! copy) and `include/render/color.h` (color processor). Signatures mirror
 //! the headers verbatim.
+//!
+//! Resolution is at link time (the crate's existing pattern, see
+//! `bridge/codec.rs`): the symbols are satisfied by the real `liboakrender`
+//! when it is linked into the same binary (the app links the module dylibs;
+//! the `real-oakrender` integration test links the oakrender crate directly),
+//! and by the `#[no_mangle]` stubs in `tests/common/mod.rs` in plain
+//! `cargo test`. The real-oakrender ticket contract — in particular the
+//! 2-argument `oakrender_ticket_finished_fn` — is verified by
+//! `tests/render_real_integration_test.rs` against the actual exports.
 
 use std::ffi::{c_char, c_int, c_void};
 
@@ -191,7 +200,8 @@ impl OakColorProcessor {
 
 /// Mirror of `oakrender_ticket_finished_fn` (`include/render/ticket.h`).
 ///
-/// Two arguments — `(ticket, userdata)` — mirroring the header verbatim.
+/// Two arguments — `(ticket, userdata)` — mirroring the header verbatim and
+/// matching the oakrender implementation (`src/render/rust/src/ffi.rs`).
 /// The ticket is a borrowed copy of the submitter's handle (the submitter
 /// keeps ownership and releases it); cancelled tickets fire with a NULL
 /// result observed through `oakrender_ticket_get_frame`.
@@ -312,13 +322,13 @@ extern "C" {
 	) -> OakNodeProject;
 
 	// --- color.h ---
-	/// `oakrender_color_processor_create`.
+	/// `oakrender_color_processor_create` — builds a processor between two
+	/// color spaces; `direction` is `OAKRENDER_COLOR_DIRECTION_*`
+	/// (include/render/color.h).
 	pub fn oakrender_color_processor_create(
 		src_space: *const c_char,
-		dst_space: *const c_char,
-		display: *const c_char,
-		view: *const c_char,
-		look: *const c_char,
+		dst_transform: *const c_char,
+		direction: c_int,
 	) -> OakColorProcessor;
 	/// `oakrender_color_processor_free`.
 	pub fn oakrender_color_processor_free(processor: *mut OakColorProcessor);

@@ -19,7 +19,7 @@
 //! `PolygonGenerator` (which derives from `GeneratorWithMerge`), so the
 //! polygon point editing, the `base_in` merge input and the
 //! `points_in`/`color_in` inputs are inherited; the base's Rust home is
-//! `super::polygon`.
+//! `crate::nodes::polygon`.
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, NodeBehavior, NodeCore};
@@ -39,7 +39,7 @@ pub struct MaskDistortNode {
 	/// Inherited polygon-generator state (C++ base class
 	/// `PolygonGenerator`; provides `points_in`, `color_in`, the base
 	/// merge input `base_in` and the polygon shape shader).
-	pub polygon: super::polygon::PolygonGenerator,
+	pub polygon: crate::nodes::polygon::PolygonGenerator,
 }
 
 /// Merge fragment shader for the `"mrg"` shader id (C++ loads
@@ -302,7 +302,14 @@ impl NodeBehavior for MaskDistortNode {
 	/// "Feather" (plus the `PolygonGenerator` names via its own
 	/// retranslate).
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			crate::nodes::generatorwithmerge::BASE_INPUT => "Texture",
+			INVERT_INPUT => "Invert",
+			FEATHER_INPUT => "Feather",
+			crate::nodes::polygon::POINTS_INPUT => "Points",
+			crate::nodes::polygon::COLOR_INPUT => "Color",
+			_ => id,
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): generates the polygon matte
@@ -323,7 +330,22 @@ impl NodeBehavior for MaskDistortNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		let _ = (core, time);
+		let _ = inputs;
+		// `// CPP-PARITY: mask.cpp` `value()` — the C++ rasterizes the
+		// polygon matte via the inherited `get_generate_job`, optionally
+		// wraps it in an `"invert"` shader job, then pushes an `"mrg"`
+		// multiply merge over `base_in` (nesting a two-iteration
+		// gaussian `"feather"` blur job when `feather_in` > 0.0) — or
+		// the bare matte job when there is no base texture. Every
+		// outcome is a renderer-deferred job in the Rust model (the
+		// Rust polygon base provides no generate job either), so a
+		// single null texture handle marks the result.
+		table.push(
+			crate::value::ValueType::Texture,
+			crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+			None,
+		);
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): dispatches on the
@@ -331,12 +353,19 @@ impl NodeBehavior for MaskDistortNode {
 	/// blur shader, `"invert"` -> invert RGBA shader, anything else ->
 	/// the inherited `PolygonGenerator` shader.
 	fn shader_code(&self, request: &str) -> Option<String> {
-		todo!()
+		match request {
+			"mrg" => Some(SHADER_MRG_FRAG.to_string()),
+			"feather" => Some(SHADER_FEATHER_FRAG.to_string()),
+			"invert" => Some(SHADER_INVERT_FRAG.to_string()),
+			_ => self.polygon.shader_code(request),
+		}
 	}
 
 	/// Deep copy (C++ `copy()`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(MaskDistortNode {
+			polygon: crate::nodes::polygon::PolygonGenerator,
+		}))
 	}
 }
 
@@ -348,7 +377,73 @@ impl NodeBehavior for MaskDistortNode {
 /// flag or an effect input here — that state comes from the
 /// `PolygonGenerator`/`GeneratorWithMerge` base.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	// Inherited from the `GeneratorWithMerge` / `PolygonGenerator` base
+	// chain, mirrored here because the base constructors are not callable
+	// in the Rust model (`// CPP-PARITY: generatorwithmerge.cpp` /
+	// `polygon.cpp` constructors). `base_in` is the effect input and sets
+	// the video-effect flag.
+	let mut base = crate::input::Input::new(
+		crate::nodes::generatorwithmerge::BASE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	base.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(base);
+	core.effect_input = crate::nodes::generatorwithmerge::BASE_INPUT.to_string();
+	core.flags |= crate::node::flags::VIDEO_EFFECT;
+
+	// `points_in` is a bezier array in C++; the Rust value model has no
+	// bezier type, so it is declared as a Vec2 array with the default
+	// pentagon positions (the bezier control handles are not
+	// representable). The array element count matches the C++ default of
+	// 5 (`// CPP-PARITY: polygon.cpp` constructor).
+	let mut points = crate::input::Input::new(
+		crate::nodes::polygon::POINTS_INPUT,
+		crate::value::ValueType::Vec2,
+		crate::value::NodeValue::Vec2([0.0, 0.0]),
+	);
+	points.flags |= crate::input::flags::ARRAY;
+	points.array_size = 5;
+	core.add_input(points);
+	for (i, (x, y)) in [(0.0, -135.0), (135.0, -45.0), (90.0, 120.0), (-90.0, 120.0), (-135.0, -45.0)]
+		.iter()
+		.enumerate()
+	{
+		core.set_standard_value(
+			crate::nodes::polygon::POINTS_INPUT,
+			i as i32,
+			crate::value::NodeValue::Vec2([*x, *y]),
+		);
+	}
+
+	// Mask should always be (1.0, 1.0, 1.0) for multiply to work correctly
+	let mut color = crate::input::Input::new(
+		crate::nodes::polygon::COLOR_INPUT,
+		crate::value::ValueType::Color,
+		crate::value::NodeValue::Color([1.0, 1.0, 1.0, 1.0]),
+	);
+	color.flags |= crate::input::flags::HIDDEN;
+	core.add_input(color);
+
+	core.add_input(crate::input::Input::new(
+		INVERT_INPUT,
+		crate::value::ValueType::Boolean,
+		crate::value::NodeValue::Boolean(false),
+	));
+
+	let mut feather = crate::input::Input::new(
+		FEATHER_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(0.0),
+	);
+	feather.properties = vec![("min".to_string(), crate::value::NodeValue::Float(0.0))];
+	core.add_input(feather);
+
+	(core, Box::new(MaskDistortNode {
+		polygon: crate::nodes::polygon::PolygonGenerator,
+	}))
 }
 
 /// Register this node type (C++ factory entry for
@@ -360,4 +455,99 @@ pub fn register(meta: &mut Vec<NodeMeta>) {
 		categories: &[Category::Distort],
 		create,
 	});
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	#[test]
+	fn input_names() {
+		let n = MaskDistortNode {
+			polygon: crate::nodes::polygon::PolygonGenerator,
+		};
+		assert_eq!(n.input_name(crate::nodes::generatorwithmerge::BASE_INPUT), "Texture");
+		assert_eq!(n.input_name(INVERT_INPUT), "Invert");
+		assert_eq!(n.input_name(FEATHER_INPUT), "Feather");
+		assert_eq!(n.input_name(crate::nodes::polygon::POINTS_INPUT), "Points");
+		assert_eq!(n.input_name(crate::nodes::polygon::COLOR_INPUT), "Color");
+		assert_eq!(n.input_name("other_in"), "other_in");
+	}
+
+	#[test]
+	fn create_wires_inputs_flags_and_properties() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.mask");
+		// Inherited base wiring.
+		assert_ne!(
+			core.get_input(crate::nodes::generatorwithmerge::BASE_INPUT).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE,
+			0
+		);
+		assert_eq!(core.effect_input, crate::nodes::generatorwithmerge::BASE_INPUT);
+		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
+		// The inherited color input is hidden (mask is always white).
+		let color = core.get_input(crate::nodes::polygon::COLOR_INPUT).unwrap();
+		assert_ne!(color.flags & crate::input::flags::HIDDEN, 0);
+		assert_eq!(color.default, NodeValue::Color([1.0, 1.0, 1.0, 1.0]));
+		// points_in: 5-element array with the default pentagon positions.
+		let points = core.get_input(crate::nodes::polygon::POINTS_INPUT).unwrap();
+		assert_ne!(points.flags & crate::input::flags::ARRAY, 0);
+		assert_eq!(points.array_size, 5);
+		assert_eq!(
+			core.standard_value(crate::nodes::polygon::POINTS_INPUT, 0),
+			NodeValue::Vec2([0.0, -135.0])
+		);
+		assert_eq!(
+			core.standard_value(crate::nodes::polygon::POINTS_INPUT, 4),
+			NodeValue::Vec2([-135.0, -45.0])
+		);
+		// Mask-specific inputs.
+		assert_eq!(core.get_input(INVERT_INPUT).unwrap().default, NodeValue::Boolean(false));
+		let feather = core.get_input(FEATHER_INPUT).unwrap();
+		assert_eq!(feather.default, NodeValue::Float(0.0));
+		assert!(feather
+			.properties
+			.iter()
+			.any(|(k, v)| k == "min" && *v == NodeValue::Float(0.0)));
+	}
+
+	#[test]
+	fn value_always_pushes_deferred_matte_or_merge() {
+		let (core, behavior) = create();
+		// No inputs at all: the matte is generated and pushed.
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+
+		// With a base texture: an "mrg" merge job is pushed instead.
+		let inputs = crate::value::NodeValueRow::from([(
+			crate::nodes::generatorwithmerge::BASE_INPUT.to_string(),
+			NodeValue::Texture(crate::handle::CHandle::null()),
+		)]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn shader_code_dispatches_on_request() {
+		let n = MaskDistortNode {
+			polygon: crate::nodes::polygon::PolygonGenerator,
+		};
+		let mrg = n.shader_code("mrg").unwrap();
+		assert!(mrg.contains("texture(tex_a, ove_texcoord) * texture(tex_b, ove_texcoord)"));
+		let feather = n.shader_code("feather").unwrap();
+		assert!(feather.contains("gaussian2"));
+		let invert = n.shader_code("invert").unwrap();
+		assert!(invert.contains("color = 1.0 - color;"));
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Mask");
+	}
 }

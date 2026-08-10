@@ -35,6 +35,7 @@ pub mod flags {
 }
 
 /// One input (scalar) or one array element slot's descriptor.
+#[derive(Clone)]
 pub struct Input {
 	/// Input id (e.g. "tex_in").
 	pub id: String,
@@ -50,6 +51,36 @@ pub struct Input {
 	pub properties: Vec<(String, NodeValue)>,
 	/// Array size for ARRAY inputs (0 otherwise).
 	pub array_size: usize,
+}
+
+impl Input {
+	/// New input with the given id/type/default and normal flags.
+	pub fn new(id: &str, value_type: ValueType, default: NodeValue) -> Input {
+		Input {
+			id: id.to_string(),
+			value_type,
+			default,
+			flags: 0,
+			display_name: id.to_string(),
+			properties: Vec::new(),
+			array_size: 0,
+		}
+	}
+
+	/// Convenience accessor for the flag bits.
+	pub fn flags(&self) -> u32 {
+		self.flags
+	}
+
+	/// True when this is an array input (elements addressable).
+	pub fn is_array(&self) -> bool {
+		self.flags & flags::ARRAY != 0
+	}
+
+	/// True when the input accepts connections.
+	pub fn is_connectable(&self) -> bool {
+		self.flags & flags::NOT_CONNECTABLE == 0
+	}
 }
 
 /// Value hint (C++ `Node::ValueHint`): accepted type set per input,

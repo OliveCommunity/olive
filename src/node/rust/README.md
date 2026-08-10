@@ -1,10 +1,19 @@
-# oaknode Rust crate (declaration draft, for review)
+# oaknode Rust crate (implementation)
 
-> Status: **declaration draft**. Signatures + doc comments are the
-> spec; every body is `todo!()`. Not wired into any build.
-> This is the second Rust module after oakplugin (M11) and the largest
-> one; the crate template (FFI discipline, testing layers) follows
-> `src/plugin/rust/README.md`.
+> Status: **all FFI headers implemented**. Phase 1 (core engine: graph
+> arena, values, keyframes, project, factory, ~55 FFI exports), Phase 2
+> (sequence/track/block/footage/colormanager + traverser + serializer,
+> the folder/group/keyframe/dragger FFI families, the undo/XML bridges
+> with test stubs, and the contract tests) and Phase 3 (the multicam
+> grid family and the deferred bridge exports: markers/work-area/frame
+> cache accessors, viewer params, sequence/footage stream params via
+> the videoparams/audioparams C ABIs, and the colormanager compliant
+> transform) are complete; `cargo test --features test-stubs` is green
+> (84 tests, 1 ignored byte-exact golden). The remaining `todo!()`s are
+> the concrete node-type behaviors under `src/nodes/` (registered in
+> the factory, bodies deferred) — the multicam node behavior and the
+> effect/generator nodes. The crate template (FFI discipline, testing
+> layers) follows `src/plugin/rust/README.md`.
 
 ## Scope
 

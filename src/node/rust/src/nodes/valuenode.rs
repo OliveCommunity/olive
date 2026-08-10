@@ -81,7 +81,11 @@ impl NodeBehavior for ValueNode {
 	/// `type_in` combo strings to the pretty names of the supported
 	/// types — that part has no trait surface and is noted here only.
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			TYPE_INPUT => "Type",
+			VALUE_INPUT => "Value",
+			_ => id,
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): pushes the `value_in` value
@@ -93,7 +97,9 @@ impl NodeBehavior for ValueNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		let _ = inputs;
+		let v = core.value_at_time(VALUE_INPUT, -1, time);
+		table.push(v.value_type(), v, None);
 	}
 
 	/// Input value changed (C++ `InputValueChangedEvent()`): when
@@ -101,12 +107,19 @@ impl NodeBehavior for ValueNode {
 	/// `SUPPORTED_TYPES[type index]`; then defers to the base-class
 	/// behavior.
 	fn input_value_changed(&mut self, core: &mut NodeCore, input: &str, element: i32) {
-		todo!()
+		if input == TYPE_INPUT && element == -1 {
+			let idx = core.standard_value(TYPE_INPUT, -1).to_double() as usize;
+			if let Some(ty) = SUPPORTED_TYPES.get(idx) {
+				if let Some(value_in) = core.get_input_mut(VALUE_INPUT) {
+					value_in.value_type = *ty;
+				}
+			}
+		}
 	}
 
 	/// Deep copy (C++ `copy()` via `NODE_DEFAULT_FUNCTIONS`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(ValueNode))
 	}
 }
 
@@ -114,7 +127,97 @@ impl NodeBehavior for ValueNode {
 /// `value_in` with the defaults, flags and properties documented on the
 /// constants.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	let mut type_input = crate::input::Input::new(
+		TYPE_INPUT,
+		ValueType::Combo,
+		crate::value::NodeValue::Combo(0),
+	);
+	type_input.flags |= crate::input::flags::NOT_CONNECTABLE | crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(type_input);
+
+	let mut value_input = crate::input::Input::new(
+		VALUE_INPUT,
+		SUPPORTED_TYPES[0],
+		crate::value::NodeValue::None,
+	);
+	value_input.flags |= crate::input::flags::NOT_CONNECTABLE;
+	core.add_input(value_input);
+
+	(core, Box::new(ValueNode))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::node::NodeBehavior;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	#[test]
+	fn input_names() {
+		let n = ValueNode;
+		assert_eq!(n.input_name(TYPE_INPUT), "Type");
+		assert_eq!(n.input_name(VALUE_INPUT), "Value");
+	}
+
+	#[test]
+	fn create_wires_inputs() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.value");
+		assert_eq!(core.get_input(VALUE_INPUT).unwrap().value_type, ValueType::Float);
+		assert_eq!(
+			core.get_input(TYPE_INPUT).unwrap().flags & crate::input::flags::NOT_CONNECTABLE,
+			crate::input::flags::NOT_CONNECTABLE
+		);
+	}
+
+	#[test]
+	fn value_pushes_standard_value() {
+		let (mut core, behavior) = create();
+		core.set_standard_value(VALUE_INPUT, -1, NodeValue::Float(3.5));
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		assert_eq!(table.get(ValueType::Float), Some(&NodeValue::Float(3.5)));
+	}
+
+	#[test]
+	fn value_pushes_keyframed_value() {
+		let (mut core, behavior) = create();
+		core.keyframe_track_mut(VALUE_INPUT, -1).set_key(crate::keyframe::Keyframe {
+			time: Rational::new(10, 1),
+			value: NodeValue::Float(9.0),
+			interpolation: crate::keyframe::Interpolation::Linear,
+			bezier_in: (0.0, 0.0),
+			bezier_out: (0.0, 0.0),
+		});
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(10, 1), &mut table);
+		assert_eq!(table.get(ValueType::Float), Some(&NodeValue::Float(9.0)));
+	}
+
+	#[test]
+	fn input_value_changed_switches_type() {
+		let (mut core, behavior) = create();
+		let mut behavior = behavior;
+		// Change type_in to vec2 (index 3) and fire the event.
+		core.set_standard_value(TYPE_INPUT, -1, NodeValue::Combo(3));
+		behavior.input_value_changed(&mut core, TYPE_INPUT, -1);
+		assert_eq!(core.get_input(VALUE_INPUT).unwrap().value_type, ValueType::Vec2);
+
+		// Out-of-range index leaves the type unchanged.
+		core.set_standard_value(TYPE_INPUT, -1, NodeValue::Combo(99));
+		behavior.input_value_changed(&mut core, TYPE_INPUT, -1);
+		assert_eq!(core.get_input(VALUE_INPUT).unwrap().value_type, ValueType::Vec2);
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Value");
+	}
 }
 
 /// Register this node type (C++ `k_value_node` in

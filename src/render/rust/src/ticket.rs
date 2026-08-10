@@ -1,0 +1,592 @@
+// Oak Video Editor - Non-Linear Video Editor
+// Copyright (C) 2026 Oak Team
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+//! Render tickets: async render requests with completion delivery
+//! (C++ `RenderTicket`/`RenderTicketWatcher`, Qt signals replaced by
+//! boxed callbacks on a delivery thread).
+//!
+//! Exactly-once contract: a ticket's completion fires exactly once — on
+//! success with the result, on cancel (or pool shutdown) with
+//! `Error::State`. Cancellation never races the delivery: `cancel` only
+//! sets a flag that `finish` honors, and `finish` is the single delivery
+//! point.
+
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+
+use oakcore_rs::{Rational, TimeRange};
+
+use crate::error::{Error, Result};
+use crate::texture::Texture;
+use crate::worker::WorkerPool;
+
+/// Ticket parameters (Rust view of `oakrender_video_ticket_params`).
+#[derive(Clone, Debug)]
+pub struct VideoTicketParams {
+	/// Node graph context (copied project identity).
+	pub viewer: u64,
+	/// Frame time.
+	pub time: Rational,
+	/// Forced size override (None = sequence size).
+	pub force_size: Option<(i32, i32)>,
+	/// Forced pixel format (None = pipeline default F32).
+	pub force_format: Option<oakcore_rs::PixelFormat>,
+	/// Frame cache to record into (cache identity).
+	pub cache: Option<u64>,
+	/// Cache directory (marshalled from the cache handle; frame-cache
+	/// write path).
+	pub cache_dir: Option<String>,
+	/// Cache uuid.
+	pub cache_id: Option<String>,
+	/// Cache timebase.
+	pub cache_timebase: Option<oakcore_rs::Rational>,
+}
+
+impl VideoTicketParams {
+	/// The render size: force_size when set, else the pipeline default.
+	pub fn render_size(&self) -> (i32, i32) {
+		self.force_size.unwrap_or((
+			crate::frame::VideoParamsPod::DEFAULT_WIDTH,
+			crate::frame::VideoParamsPod::DEFAULT_HEIGHT,
+		))
+	}
+}
+
+/// Completion payload: the rendered texture or the failure reason.
+pub type TicketResult = Result<Texture>;
+
+/// Completion callback (exactly-once delivery).
+pub type Completion = Box<dyn FnOnce(TicketResult) + Send>;
+
+/// Frame producer: renders the frame for a ticket. Installed by the
+/// manager (eval-based CPU generation for this pass); tests install
+/// custom producers.
+pub type Producer = Arc<dyn Fn(Rational, &VideoTicketParams) -> TicketResult + Send + Sync>;
+
+/// Ticket metadata: the closed set of C++ `set_property` keys
+/// (no Variant property bag).
+#[derive(Clone, Debug, Default)]
+pub struct TicketMeta {
+	/// Ticket kind (video/audio).
+	pub kind: Option<i32>,
+	/// Frame time.
+	pub time: Option<Rational>,
+	/// Cache directory/uuid/timebase (video tickets writing the frame
+	/// cache).
+	pub cache_dir: Option<String>,
+	/// Cache uuid.
+	pub cache_id: Option<String>,
+	/// Cache timebase.
+	pub cache_timebase: Option<Rational>,
+}
+
+/// Ticket kinds (C++ `RenderManager::TicketType`).
+pub mod ticket_kind {
+	/// Video ticket.
+	pub const VIDEO: i32 = 0;
+	/// Audio ticket.
+	pub const AUDIO: i32 = 1;
+}
+
+/// A submitted ticket (arena id).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct TicketId(pub u64);
+
+enum SlotState {
+	Running,
+	Finished,
+}
+
+/// A single in-flight ticket (shared between the arena, the worker's job
+/// closure and the FFI ticket handle).
+struct TicketSlot {
+	id: TicketId,
+	kind: i32,
+	time: Rational,
+	range: TimeRange,
+	meta: Mutex<TicketMeta>,
+	state: Mutex<SlotState>,
+	cv: Condvar,
+	cancel: AtomicBool,
+	delivered: AtomicBool,
+	completion: Mutex<Option<Completion>>,
+	result: Mutex<Option<Arc<TicketResult>>>,
+}
+
+impl TicketSlot {
+	fn finish(&self, mut result: TicketResult) {
+		if self.cancel.load(Ordering::Acquire) {
+			result = Err(Error::State);
+		}
+		// Publish the result before flipping the state flag: `wait()` only
+		// observes the state, so a waiter must never see `Finished` before
+		// the result is readable (otherwise `wait()` → `result()` races).
+		{
+			let mut s = lock(&self.state);
+			if !matches!(*s, SlotState::Running) {
+				return; // already finished: keep exactly-once
+			}
+			*lock(&self.result) = Some(Arc::new(result));
+			*s = SlotState::Finished;
+		}
+		self.cv.notify_all();
+
+		if self.delivered.swap(true, Ordering::AcqRel) {
+			return;
+		}
+		let done = lock(&self.completion).take();
+		if let Some(done) = done {
+			let stored = lock(&self.result).clone();
+			match stored {
+				Some(r) => done((*r).clone()),
+				None => done(Err(Error::State)),
+			}
+		}
+	}
+
+	fn is_finished(&self) -> bool {
+		matches!(*lock(&self.state), SlotState::Finished)
+	}
+
+	fn result(&self) -> Option<TicketResult> {
+		lock(&self.result).as_ref().map(|r| (**r).clone())
+	}
+}
+
+fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+	m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// The ticket arena (owned by the manager).
+pub struct TicketArena {
+	next: AtomicU64,
+	pool: WorkerPool,
+	slots: Mutex<HashMap<TicketId, Arc<TicketSlot>>>,
+	shutting_down: AtomicBool,
+	producer: Producer,
+}
+
+impl TicketArena {
+	/// Arena dispatching through `pool`; `producer` renders frames.
+	pub fn new(pool: WorkerPool, producer: Producer) -> Self {
+		Self {
+			next: AtomicU64::new(1),
+			pool,
+			slots: Mutex::new(HashMap::new()),
+			shutting_down: AtomicBool::new(false),
+			producer,
+		}
+	}
+
+	/// A producer that always fails (audio rendering is not implemented in
+	/// this pass; used for audio tickets).
+	fn audio_producer() -> Producer {
+		Arc::new(|_, _| Err(Error::Failed("audio rendering not implemented".into())))
+	}
+
+	fn allocate(&self, slot: Arc<TicketSlot>) -> TicketId {
+		let id = slot.id;
+		lock(&self.slots).insert(id, slot);
+		id
+	}
+
+	/// Allocate the next ticket id without submitting a job. Used by the
+	/// FFI ticket layer to stamp its handle *before* the job is posted —
+	/// a fast worker must never observe the placeholder id in a completion
+	/// callback (see `oakrender_ticket_render_frame` in ffi.rs).
+	pub fn next_id(&self) -> TicketId {
+		TicketId(self.next.fetch_add(1, Ordering::Relaxed))
+	}
+
+	/// Submit a video ticket with a caller-reserved id (allocated by
+	/// [`TicketArena::next_id`]); completion fires exactly once, including
+	/// on cancellation (with `Error::State`).
+	pub fn submit_video_with_id(
+		&self,
+		id: TicketId,
+		params: VideoTicketParams,
+		done: Completion,
+	) -> TicketId {
+		let meta = TicketMeta {
+			kind: Some(ticket_kind::VIDEO),
+			time: Some(params.time),
+			cache_dir: params.cache_dir.clone(),
+			cache_id: params.cache_id.clone(),
+			cache_timebase: params.cache_timebase,
+		};
+		let slot = Arc::new(TicketSlot {
+			id,
+			kind: ticket_kind::VIDEO,
+			time: params.time,
+			range: TimeRange::new(params.time, params.time),
+			meta: Mutex::new(meta),
+			state: Mutex::new(SlotState::Running),
+			cv: Condvar::new(),
+			cancel: AtomicBool::new(false),
+			delivered: AtomicBool::new(false),
+			completion: Mutex::new(Some(done)),
+			result: Mutex::new(None),
+		});
+		self.allocate(slot.clone());
+
+		let params = Arc::new(params);
+		let producer = self.producer.clone();
+		let slot_done = slot.clone();
+		let job = crate::worker::Job {
+			node_identity: params.viewer,
+			time: params.time,
+			params,
+			produce: producer,
+			done: Box::new(move |result| slot_done.finish(result)),
+		};
+		if !self.pool.post(job) {
+			// Pool is gone (shutdown raced the submit): deliver now.
+			slot.finish(Err(Error::State));
+		}
+		id
+	}
+
+	/// Submit a video ticket; completion fires exactly once, including
+	/// on cancellation (with `Error::State`).
+	pub fn submit_video(&self, params: VideoTicketParams, done: Completion) -> TicketId {
+		let id = self.next_id();
+		self.submit_video_with_id(id, params, done)
+	}
+
+	/// Submit an audio ticket (range pull; C++ render_audio) with a
+	/// caller-reserved id (allocated by [`TicketArena::next_id`]). Audio
+	/// rendering is not implemented in this pass; the completion still
+	/// fires exactly once with `Error::Failed`.
+	pub fn submit_audio_with_id(
+		&self,
+		id: TicketId,
+		viewer: u64,
+		range: TimeRange,
+		done: Completion,
+	) -> TicketId {
+		let meta = TicketMeta {
+			kind: Some(ticket_kind::AUDIO),
+			time: Some(range.in_()),
+			..Default::default()
+		};
+		let slot = Arc::new(TicketSlot {
+			id,
+			kind: ticket_kind::AUDIO,
+			time: range.in_(),
+			range,
+			meta: Mutex::new(meta),
+			state: Mutex::new(SlotState::Running),
+			cv: Condvar::new(),
+			cancel: AtomicBool::new(false),
+			delivered: AtomicBool::new(false),
+			completion: Mutex::new(Some(done)),
+			result: Mutex::new(None),
+		});
+		self.allocate(slot.clone());
+
+		let producer = Self::audio_producer();
+		let slot_done = slot.clone();
+		let job = crate::worker::Job {
+			node_identity: viewer,
+			time: range.in_(),
+			params: Arc::new(VideoTicketParams {
+				viewer,
+				time: range.in_(),
+				force_size: None,
+				force_format: None,
+				cache: None,
+				cache_dir: None,
+				cache_id: None,
+				cache_timebase: None,
+			}),
+			produce: producer,
+			done: Box::new(move |result| slot_done.finish(result)),
+		};
+		if !self.pool.post(job) {
+			slot.finish(Err(Error::State));
+		}
+		id
+	}
+
+	/// Submit an audio ticket (range pull; C++ render_audio). Audio
+	/// rendering is not implemented in this pass; the completion still
+	/// fires exactly once with `Error::Failed`.
+	pub fn submit_audio(&self, viewer: u64, range: TimeRange, done: Completion) -> TicketId {
+		let id = self.next_id();
+		self.submit_audio_with_id(id, viewer, range, done)
+	}
+
+	/// True when the ticket has finished.
+	pub fn is_finished(&self, id: TicketId) -> bool {
+		match lock(&self.slots).get(&id) {
+			Some(slot) => slot.is_finished(),
+			None => false,
+		}
+	}
+
+	/// Blocking wait for completion (C++ wait_for_finished).
+	pub fn wait(&self, id: TicketId) -> Result<()> {
+		let slot = lock(&self.slots)
+			.get(&id)
+			.cloned()
+			.ok_or(Error::NotFound)?;
+		let mut state = lock(&slot.state);
+		while !matches!(*state, SlotState::Finished) {
+			state = slot.cv.wait(state).unwrap_or_else(|e| e.into_inner());
+		}
+		Ok(())
+	}
+
+	/// The ticket result, when finished (clone; unknown/unfinished ids give
+	/// `None`).
+	pub fn result(&self, id: TicketId) -> Option<TicketResult> {
+		lock(&self.slots).get(&id).and_then(|s| s.result())
+	}
+
+	/// Ticket metadata query (C++ property()).
+	pub fn meta(&self, id: TicketId) -> Option<TicketMeta> {
+		lock(&self.slots)
+			.get(&id)
+			.map(|s| lock(&s.meta).clone())
+	}
+
+	/// The ticket's kind.
+	pub fn kind(&self, id: TicketId) -> Option<i32> {
+		lock(&self.slots).get(&id).map(|s| s.kind)
+	}
+
+	/// The ticket's time (video tickets).
+	pub fn time(&self, id: TicketId) -> Option<Rational> {
+		lock(&self.slots).get(&id).map(|s| s.time)
+	}
+
+	/// The ticket's range (audio tickets).
+	pub fn range(&self, id: TicketId) -> Option<TimeRange> {
+		lock(&self.slots).get(&id).map(|s| s.range)
+	}
+
+	/// Cancel a pending ticket (its completion still fires with
+	/// `Error::State`; unknown ids are ignored).
+	pub fn cancel(&self, id: TicketId) {
+		if let Some(slot) = lock(&self.slots).get(&id) {
+			slot.cancel.store(true, Ordering::Release);
+		}
+	}
+
+	/// Cancel all pending tickets (manager shutdown path). Delivery happens
+	/// when the pool drains the queued jobs (or the running jobs finish);
+	/// call [`WorkerPool::shutdown`] afterwards to guarantee all
+	/// completions have fired.
+	pub fn cancel_all(&self) {
+		self.shutting_down.store(true, Ordering::Release);
+		for slot in lock(&self.slots).values() {
+			slot.cancel.store(true, Ordering::Release);
+		}
+	}
+
+	/// True after [`TicketArena::cancel_all`].
+	pub fn is_shutting_down(&self) -> bool {
+		self.shutting_down.load(Ordering::Acquire)
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use std::sync::mpsc;
+	use std::time::Duration;
+
+	use crate::frame::VideoParamsPod;
+	use crate::texture::Frame;
+
+	fn small_frame() -> Frame {
+		let mut f = Frame::new();
+		let mut p = VideoParamsPod::default();
+		p.width = 4;
+		p.height = 4;
+		f.set_video_params(p);
+		f.allocate();
+		f
+	}
+
+	fn ok_producer() -> Producer {
+		Arc::new(|_, _| Ok(Texture::wrap_frame(small_frame())))
+	}
+
+	#[test]
+	fn completion_fires_exactly_once_on_success() {
+		let pool = WorkerPool::new(2);
+		let mut pool = pool;
+		pool.start();
+		let arena = TicketArena::new(pool.clone(), ok_producer());
+
+		let (tx, rx) = mpsc::channel();
+		let id = arena.submit_video(
+			VideoTicketParams {
+				viewer: 1,
+				time: Rational::new(0, 1),
+				force_size: Some((4, 4)),
+				force_format: None,
+				cache: None,
+				cache_dir: None,
+				cache_id: None,
+				cache_timebase: None,
+			},
+			Box::new(move |r| {
+				let _ = tx.send(r.is_ok());
+			}),
+		);
+
+		arena.wait(id).unwrap();
+		let ok = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+		assert!(ok, "completion fired with success");
+		assert!(rx.recv_timeout(Duration::from_millis(50)).is_err(), "exactly once");
+
+		let res = arena.result(id).unwrap().unwrap();
+		assert_eq!(res.size(), (4, 4));
+		assert!(arena.is_finished(id));
+		pool.shutdown();
+	}
+
+	#[test]
+	fn completion_fires_exactly_once_on_cancel() {
+		let pool = WorkerPool::new(1);
+		let mut pool = pool;
+		pool.start();
+		// Producer blocks until cancelled: exercises the cancel race.
+		let release = Arc::new(std::sync::atomic::AtomicBool::new(false));
+		let release2 = release.clone();
+		let producer: Producer = Arc::new(move |_, _| {
+			while !release2.load(Ordering::Acquire) {
+				std::thread::sleep(Duration::from_millis(1));
+			}
+			Ok(Texture::wrap_frame(small_frame()))
+		});
+		let arena = TicketArena::new(pool.clone(), producer);
+
+		let (tx, rx) = mpsc::channel();
+		let id = arena.submit_video(
+			VideoTicketParams {
+				viewer: 1,
+				time: Rational::new(0, 1),
+				force_size: None,
+				force_format: None,
+				cache: None,
+				cache_dir: None,
+				cache_id: None,
+				cache_timebase: None,
+			},
+			Box::new(move |r| {
+				let _ = tx.send(r);
+			}),
+		);
+
+		// Cancel while the job is running, then release the job.
+		arena.cancel(id);
+		release.store(true, Ordering::Release);
+		arena.wait(id).unwrap();
+
+		let res = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+		assert_eq!(res.unwrap_err().code(), Error::State.code());
+		assert!(rx.recv_timeout(Duration::from_millis(50)).is_err(), "exactly once");
+		pool.shutdown();
+	}
+
+	#[test]
+	fn cancel_of_unknown_id_is_ignored() {
+		let pool = WorkerPool::new(1);
+		let mut pool = pool;
+		pool.start();
+		let arena = TicketArena::new(pool.clone(), ok_producer());
+		arena.cancel(TicketId(12345));
+		assert!(!arena.is_finished(TicketId(12345)));
+		pool.shutdown();
+	}
+
+	#[test]
+	fn wait_unknown_id_errors() {
+		let pool = WorkerPool::new(1);
+		let mut pool = pool;
+		pool.start();
+		let arena = TicketArena::new(pool.clone(), ok_producer());
+		assert_eq!(arena.wait(TicketId(999)).unwrap_err().code(), Error::NotFound.code());
+		pool.shutdown();
+	}
+
+	#[test]
+	fn audio_ticket_meta_and_kind() {
+		let pool = WorkerPool::new(1);
+		let mut pool = pool;
+		pool.start();
+		let arena = TicketArena::new(pool.clone(), ok_producer());
+
+		let (tx, rx) = mpsc::channel();
+		let range = TimeRange::new(Rational::new(0, 1), Rational::new(10, 1));
+		let id = arena.submit_audio(
+			7,
+			range,
+			Box::new(move |r| {
+				let _ = tx.send(r.is_err());
+			}),
+		);
+		assert_eq!(arena.kind(id), Some(ticket_kind::AUDIO));
+		assert_eq!(arena.meta(id).unwrap().kind, Some(ticket_kind::AUDIO));
+		assert_eq!(arena.range(id), Some(range));
+		arena.wait(id).unwrap();
+		assert!(rx.recv_timeout(Duration::from_secs(5)).unwrap());
+		// get_time equivalent: audio tickets report range.in.
+		assert_eq!(arena.time(id), Some(range.in_()));
+		pool.shutdown();
+	}
+
+	#[test]
+	fn ticket_ids_are_monotonic() {
+		let pool = WorkerPool::new(1);
+		let mut pool = pool;
+		pool.start();
+		let arena = TicketArena::new(pool.clone(), ok_producer());
+		let a = arena.submit_video(
+			VideoTicketParams {
+				viewer: 1,
+				time: Rational::new(0, 1),
+				force_size: None,
+				force_format: None,
+				cache: None,
+				cache_dir: None,
+				cache_id: None,
+				cache_timebase: None,
+			},
+			Box::new(|_| {}),
+		);
+		let b = arena.submit_video(
+			VideoTicketParams {
+				viewer: 1,
+				time: Rational::new(1, 1),
+				force_size: None,
+				force_format: None,
+				cache: None,
+				cache_dir: None,
+				cache_id: None,
+				cache_timebase: None,
+			},
+			Box::new(|_| {}),
+		);
+		assert!(b.0 > a.0);
+		assert_ne!(a, b);
+		pool.shutdown();
+	}
+}

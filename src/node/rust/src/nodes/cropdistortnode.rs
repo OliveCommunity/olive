@@ -157,7 +157,15 @@ impl NodeBehavior for CropDistortNode {
 	/// "Texture", `left_in` -> "Left", `top_in` -> "Top", `right_in` ->
 	/// "Right", `bottom_in` -> "Bottom", `feather_in` -> "Feather".
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			TEXTURE_INPUT => "Texture",
+			LEFT_INPUT => "Left",
+			TOP_INPUT => "Top",
+			RIGHT_INPUT => "Right",
+			BOTTOM_INPUT => "Bottom",
+			FEATHER_INPUT => "Feather",
+			_ => id,
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): copies the whole value row into
@@ -165,6 +173,10 @@ impl NodeBehavior for CropDistortNode {
 	/// no texture -> push nothing; any of left/right/top/bottom != 0.0 ->
 	/// shader job; all zero -> pass-through push of the input texture
 	/// unchanged.
+	///
+	/// The Rust model has no shader-job payload: the job (including the
+	/// `resolution_in` value) is deferred to the renderer seam
+	/// (`// CPP-PARITY: cropdistortnode.cpp` value()).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -172,13 +184,43 @@ impl NodeBehavior for CropDistortNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		let tex = match inputs.get(TEXTURE_INPUT) {
+			Some(tex @ crate::value::NodeValue::Texture(_)) => tex.clone(),
+			_ => return,
+		};
+
+		let left = match inputs.get(LEFT_INPUT) {
+			Some(v) => v.to_double(),
+			None => core.value_at_time(LEFT_INPUT, -1, time).to_double(),
+		};
+		let right = match inputs.get(RIGHT_INPUT) {
+			Some(v) => v.to_double(),
+			None => core.value_at_time(RIGHT_INPUT, -1, time).to_double(),
+		};
+		let top = match inputs.get(TOP_INPUT) {
+			Some(v) => v.to_double(),
+			None => core.value_at_time(TOP_INPUT, -1, time).to_double(),
+		};
+		let bottom = match inputs.get(BOTTOM_INPUT) {
+			Some(v) => v.to_double(),
+			None => core.value_at_time(BOTTOM_INPUT, -1, time).to_double(),
+		};
+
+		if left != 0.0 || right != 0.0 || top != 0.0 || bottom != 0.0 {
+			table.push(
+				crate::value::ValueType::Texture,
+				crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+				None,
+			);
+		} else {
+			table.push(crate::value::ValueType::Texture, tex, None);
+		}
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): ignores the
 	/// request id and always returns the crop fragment shader.
-	fn shader_code(&self, request: &str) -> Option<String> {
-		todo!()
+	fn shader_code(&self, _request: &str) -> Option<String> {
+		Some(Self::shader_frag().to_string())
 	}
 
 	/// Gizmo positions (C++ `update_gizmo_positions()`): with a texture,
@@ -186,21 +228,36 @@ impl NodeBehavior for CropDistortNode {
 	/// crop values to pixel points (left/top straight, right/bottom as
 	/// `1.0 - value`), places the eight edge/corner point gizmos (center
 	/// handles at the midpoints) and the rectangle polygon gizmo.
+	///
+	/// The pixel points need the texture's virtual resolution (the Rust
+	/// texture handle carries no params), the `temp_resolution` cache
+	/// needs `&mut self` (the trait hands out `&self`), and the gizmo
+	/// point positions have no storage in [`Gizmo`] — so the update is
+	/// not representable here (`// CPP-PARITY: cropdistortnode.cpp`
+	/// `update_gizmo_positions`).
 	fn gizmo_update(&self, core: &NodeCore, row: &crate::value::NodeValueRow) {
-		todo!()
+		let _ = (core, row);
 	}
 
 	/// Gizmo drag (C++ `gizmo_drag_move()`): normalizes the mouse delta
 	/// by `temp_resolution`, then for each dragger of the current gizmo
 	/// adds the delta to its drag-start value with a per-input sign
 	/// (left `+x`, top `+y`, right `-x`, bottom `-y`).
+	///
+	/// The draggers hold per-drag start values and write keyframe tracks,
+	/// neither of which the Rust data model carries — not representable
+	/// here (`// CPP-PARITY: cropdistortnode.cpp` `gizmo_drag_move`).
 	fn gizmo_drag(&mut self, core: &mut NodeCore, start: bool, x: f64, y: f64, modifiers: u32) {
-		todo!()
+		let _ = (core, start, x, y, modifiers);
 	}
 
 	/// Deep copy (C++ `copy()`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(CropDistortNode {
+			point_gizmo: self.point_gizmo.clone(),
+			poly_gizmo: self.poly_gizmo.clone(),
+			temp_resolution: self.temp_resolution,
+		}))
 	}
 }
 
@@ -212,7 +269,222 @@ impl NodeBehavior for CropDistortNode {
 /// to their crop inputs; sets the video-effect flag and the effect
 /// input.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	let mut tex = crate::input::Input::new(
+		TEXTURE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	tex.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(tex);
+
+	create_crop_side_input(&mut core, LEFT_INPUT);
+	create_crop_side_input(&mut core, TOP_INPUT);
+	create_crop_side_input(&mut core, RIGHT_INPUT);
+	create_crop_side_input(&mut core, BOTTOM_INPUT);
+
+	let mut feather = crate::input::Input::new(
+		FEATHER_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(0.0),
+	);
+	feather.properties = vec![("min".to_string(), crate::value::NodeValue::Float(0.0))];
+	core.add_input(feather);
+
+	// Gizmos, in C++ add order: the rectangle polygon gizmo first, then
+	// the eight edge/corner point gizmos in `k_gizmo_scale_*` order. Each
+	// gizmo records the crop inputs it drags (float inputs, one track).
+	let poly_gizmo = Gizmo {
+		position_inputs: vec![
+			(LEFT_INPUT.to_string(), -1, 0),
+			(TOP_INPUT.to_string(), -1, 0),
+			(RIGHT_INPUT.to_string(), -1, 0),
+			(BOTTOM_INPUT.to_string(), -1, 0),
+		],
+		drag_point: (0.0, 0.0),
+	};
+	let tl = Gizmo {
+		position_inputs: vec![(LEFT_INPUT.to_string(), -1, 0), (TOP_INPUT.to_string(), -1, 0)],
+		drag_point: (0.0, 0.0),
+	};
+	let tc = Gizmo {
+		position_inputs: vec![(TOP_INPUT.to_string(), -1, 0)],
+		drag_point: (0.0, 0.0),
+	};
+	let tr = Gizmo {
+		position_inputs: vec![(RIGHT_INPUT.to_string(), -1, 0), (TOP_INPUT.to_string(), -1, 0)],
+		drag_point: (0.0, 0.0),
+	};
+	let bl = Gizmo {
+		position_inputs: vec![(LEFT_INPUT.to_string(), -1, 0), (BOTTOM_INPUT.to_string(), -1, 0)],
+		drag_point: (0.0, 0.0),
+	};
+	let bc = Gizmo {
+		position_inputs: vec![(BOTTOM_INPUT.to_string(), -1, 0)],
+		drag_point: (0.0, 0.0),
+	};
+	let br = Gizmo {
+		position_inputs: vec![(RIGHT_INPUT.to_string(), -1, 0), (BOTTOM_INPUT.to_string(), -1, 0)],
+		drag_point: (0.0, 0.0),
+	};
+	let cl = Gizmo {
+		position_inputs: vec![(LEFT_INPUT.to_string(), -1, 0)],
+		drag_point: (0.0, 0.0),
+	};
+	let cr = Gizmo {
+		position_inputs: vec![(RIGHT_INPUT.to_string(), -1, 0)],
+		drag_point: (0.0, 0.0),
+	};
+
+	core.gizmos = vec![
+		poly_gizmo.clone(),
+		tl.clone(),
+		tc.clone(),
+		tr.clone(),
+		bl.clone(),
+		bc.clone(),
+		br.clone(),
+		cl.clone(),
+		cr.clone(),
+	];
+
+	core.flags |= crate::node::flags::VIDEO_EFFECT;
+	core.effect_input = TEXTURE_INPUT.to_string();
+
+	(
+		core,
+		Box::new(CropDistortNode {
+			point_gizmo: [tl, tc, tr, bl, bc, br, cl, cr],
+			poly_gizmo,
+			temp_resolution: (0.0, 0.0),
+		}),
+	)
+}
+
+/// Helper mirroring the C++ `create_crop_side_input()`: a float input
+/// with default 0.0 and `min = 0.0`, `max = 1.0`, `view = percentage`
+/// properties.
+fn create_crop_side_input(core: &mut NodeCore, id: &str) {
+	let mut input = crate::input::Input::new(
+		id,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(0.0),
+	);
+	input.properties = vec![
+		("min".to_string(), crate::value::NodeValue::Float(0.0)),
+		("max".to_string(), crate::value::NodeValue::Float(1.0)),
+		("view".to_string(), crate::value::NodeValue::Text("percentage".into())),
+	];
+	core.add_input(input);
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::node::NodeBehavior;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	fn tex() -> NodeValue {
+		NodeValue::Texture(crate::handle::CHandle::null())
+	}
+
+	fn empty_gizmo() -> Gizmo {
+		Gizmo {
+			position_inputs: vec![],
+			drag_point: (0.0, 0.0),
+		}
+	}
+
+	#[test]
+	fn input_names() {
+		let n = CropDistortNode {
+			point_gizmo: std::array::from_fn(|_| empty_gizmo()),
+			poly_gizmo: empty_gizmo(),
+			temp_resolution: (0.0, 0.0),
+		};
+		assert_eq!(n.input_name(TEXTURE_INPUT), "Texture");
+		assert_eq!(n.input_name(LEFT_INPUT), "Left");
+		assert_eq!(n.input_name(TOP_INPUT), "Top");
+		assert_eq!(n.input_name(RIGHT_INPUT), "Right");
+		assert_eq!(n.input_name(BOTTOM_INPUT), "Bottom");
+		assert_eq!(n.input_name(FEATHER_INPUT), "Feather");
+	}
+
+	#[test]
+	fn create_wires_inputs_and_flags() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.crop");
+		assert_eq!(
+			core.get_input(LEFT_INPUT).unwrap().default,
+			NodeValue::Float(0.0)
+		);
+		assert_eq!(
+			core.get_input(BOTTOM_INPUT).unwrap().default,
+			NodeValue::Float(0.0)
+		);
+		assert_eq!(
+			core.get_input(FEATHER_INPUT).unwrap().default,
+			NodeValue::Float(0.0)
+		);
+		// Nine gizmos: one polygon + eight points.
+		assert_eq!(core.gizmos.len(), 9);
+		assert_eq!(core.effect_input, TEXTURE_INPUT);
+		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
+	}
+
+	#[test]
+	fn value_no_texture_pushes_nothing() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
+		assert!(table.is_empty());
+	}
+
+	#[test]
+	fn value_all_zero_crops_passes_texture_through() {
+		let (mut core, behavior) = create();
+		core.set_standard_value(LEFT_INPUT, -1, NodeValue::Float(0.0));
+		core.set_standard_value(TOP_INPUT, -1, NodeValue::Float(0.0));
+		core.set_standard_value(RIGHT_INPUT, -1, NodeValue::Float(0.0));
+		core.set_standard_value(BOTTOM_INPUT, -1, NodeValue::Float(0.0));
+		let tex = tex();
+		let inputs = crate::value::NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex.clone())]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert_eq!(table.get(ValueType::Texture), Some(&tex));
+	}
+
+	#[test]
+	fn value_any_crop_pushes_deferred_job() {
+		let (mut core, behavior) = create();
+		core.set_standard_value(LEFT_INPUT, -1, NodeValue::Float(0.25));
+		let inputs = crate::value::NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex())]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn shader_code_returns_crop_shader() {
+		let (_, behavior) = create();
+		let code = behavior.shader_code("anything").unwrap();
+		assert!(code.contains("uniform float feather_in;"));
+		assert!(code.contains("multiplier *= left_adjustment;"));
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Crop");
+	}
 }
 
 /// Register this node type (C++ factory entry for

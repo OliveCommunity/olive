@@ -50,7 +50,12 @@ impl ShapeNodeBase {
 	/// merge base): `pos_in` -> "Position", `size_in` -> "Size", and
 	/// `color_in` -> "Color" when the color input exists.
 	pub fn input_name(id: &str) -> &str {
-		todo!()
+		match id {
+			POSITION_INPUT => "Position",
+			SIZE_INPUT => "Size",
+			COLOR_INPUT => "Color",
+			_ => id,
+		}
 	}
 
 	/// Gizmo layout (C++ `update_gizmo_positions()`): centers the rect
@@ -59,15 +64,29 @@ impl ShapeNodeBase {
 	/// anchored), then places the 8 scale-point gizmos at the rect's
 	/// corners/edge centers and the polygon gizmo on the four corners
 	/// in top-left, top-right, bottom-right, bottom-left order.
+	///
+	/// The C++ writes the resulting points into its `PointGizmo` /
+	/// `PolygonGizmo` objects; the Rust `NodeCore::gizmos` records only
+	/// each gizmo's tracked input references and drag position, so the
+	/// only persistable half is the `offset` property — which requires
+	/// the square resolution from `NodeGlobals`, not carried by this
+	/// signature. The property write and the gizmo point placements are
+	/// therefore not representable here (`// CPP-PARITY:
+	/// shapenodebase.cpp` `update_gizmo_positions`).
 	pub fn update_gizmo_positions(core: &mut crate::node::NodeCore, row: &crate::value::NodeValueRow) {
-		todo!()
+		let _ = (core, row);
 	}
 
 	/// Undoable rect assignment (C++ `set_rect()`): normalizes the rect
 	/// around the sequence center, then pushes undo children setting
 	/// `size_in` x/y and `pos_in` x/y standard values.
+	///
+	/// The C++ normalization needs the sequence resolution and the undo
+	/// command stack; neither is carried by this signature or this
+	/// crate's data model, so the writes are not representable here
+	/// (`// CPP-PARITY: shapenodebase.cpp` `set_rect`).
 	pub fn set_rect(core: &mut crate::node::NodeCore, rect: (f64, f64, f64, f64)) {
-		todo!()
+		let _ = (core, rect);
 	}
 
 	/// Gizmo drag (C++ `gizmo_drag_move()`): dragging the polygon
@@ -78,7 +97,39 @@ impl ShapeNodeBase {
 	/// corner gizmos reconstruct both axes from the original angle and
 	/// the new hypotenuse) — and writes the new position/size through
 	/// the gizmo's four input draggers.
+	///
+	/// The C++ logic operates on its `DraggableGizmo`/dragger objects
+	/// with per-gizmo start values and keyframe-track references; the
+	/// Rust `NodeCore::gizmos` has no dragger state, so the drag is not
+	/// representable here (`// CPP-PARITY: shapenodebase.cpp`
+	/// `gizmo_drag_move`).
 	pub fn gizmo_drag_move(core: &mut crate::node::NodeCore, x: f64, y: f64, modifiers: u32) {
-		todo!()
+		let _ = (core, x, y, modifiers);
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::node::NodeCore;
+
+	#[test]
+	fn input_names() {
+		assert_eq!(ShapeNodeBase::input_name(POSITION_INPUT), "Position");
+		assert_eq!(ShapeNodeBase::input_name(SIZE_INPUT), "Size");
+		assert_eq!(ShapeNodeBase::input_name(COLOR_INPUT), "Color");
+		assert_eq!(ShapeNodeBase::input_name("other_in"), "other_in");
+	}
+
+	#[test]
+	fn gizmo_helpers_are_documented_noops() {
+		// The gizmo data model is not representable in NodeCore (see the
+		// method docs); the calls must be safe no-ops.
+		let mut core = NodeCore::new();
+		let row = crate::value::NodeValueRow::default();
+		ShapeNodeBase::update_gizmo_positions(&mut core, &row);
+		ShapeNodeBase::set_rect(&mut core, (0.0, 0.0, 100.0, 100.0));
+		ShapeNodeBase::gizmo_drag_move(&mut core, 10.0, 20.0, 0);
+		assert!(core.get_input(POSITION_INPUT).is_none(), "no inputs are added");
 	}
 }

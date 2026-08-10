@@ -14,6 +14,11 @@ shortest float representation, no trailing newline); the reader tolerates
 hand-written files, preserving unknown fields verbatim across a round-trip
 and defaulting missing fields.
 
+The crate also ships an **FCPXML** (Final Cut Pro X `.fcpxml`) interchange
+layer (`src/fcpxml.rs`) that maps the FCP X document format onto the *same*
+model types, so an importer/exporter can offer `.fcpxml` alongside `.otio`
+with a single object graph. See [FCPXML](#fcpxml) below.
+
 Part of the Oak `src/bindings/` family (siblings: `oakaudioout`).
 This is an **rlib** — nothing is exported dynamically.
 
@@ -21,12 +26,15 @@ This is an **rlib** — nothing is exported dynamically.
 
 ```
 src/bindings/oakotio/
-├── Cargo.toml            # rlib; deps: serde, serde_json (crates.io), oakcore-rs (path)
+├── Cargo.toml            # rlib; deps: serde, serde_json, quick-xml (crates.io),
+│                         #   oakcore-rs (path); dev-dep: oakcore-rs (path)
 ├── src/
 │   ├── lib.rs            # crate docs + module wiring + re-exports + from_json_* entry points
 │   ├── error.rs          # OtioError (Json | Io) + Result<T>
-│   └── model.rs          # serde structs for the 10 OTIO schemas + value types +
-│                         #   Rational::from_double port + in-crate unit tests
+│   ├── model.rs          # serde structs for the 10 OTIO schemas + value types +
+│   │                     #   Rational::from_double port + in-crate unit tests
+│   └── fcpxml.rs         # FCPXML reader/writer (quick-xml) mapped onto model types +
+│                         #   FcpxmlError + in-crate unit tests
 └── tests/
     ├── data/             # C++-writer golden files (golden_timeline.json,
     │                     #   golden_collection.json, golden_typed_transition.json,
@@ -34,8 +42,10 @@ src/bindings/oakotio/
     ├── parity.rs         # read parity: every golden file parses and round-trips
     ├── semantic.rs       # semantic checks over golden_timeline.json (what the
     │                     #   C++ load task reads back)
-    └── save_parity.rs    # save parity: a built Timeline serializes byte-identical
-                          #   to golden_timeline.json and re-parses identically
+    ├── save_parity.rs    # save parity: a built Timeline serializes byte-identical
+    │                     #   to golden_timeline.json and re-parses identically
+    └── fcpxml.rs         # FCPXML: synthetic-document parse, model round-trip,
+                          #   NTSC precision, error paths, leniency
 ```
 
 ## API summary
@@ -66,6 +76,23 @@ src/bindings/oakotio/
 
 All fallible operations return `Result<T, OtioError>`.
 
+### FCPXML API (`fcpxml` module)
+
+- `from_fcpxml_string(&str) -> Result<Vec<Timeline>, FcpxmlError>` /
+  `from_fcpxml_file(path)` — parse an FCPXML document; one `Timeline` per
+  `<sequence>`.
+- `to_fcpxml_string(&[Timeline]) -> Result<String, FcpxmlError>` /
+  `to_fcpxml_file(&[Timeline], path)` — serialize timelines to an FCPXML
+  1.10 document (formats and assets deduplicated across timelines).
+- `FcpxmlError` — `Xml` (malformed markup), `Malformed` (wrong root,
+  missing attributes, unknown format resources, bad time values),
+  `UnsupportedVersion`, `Io`.
+
+The FCPXML layer reads through the same model types as the OTIO layer:
+`Timeline`/`Track`/`Clip`/`Gap`/`Transition` with `RationalTime` time
+values, so a single object graph feeds both `.otio` and `.fcpxml`
+import/export.
+
 ## Backend choice: hand-written serde over the `opentimelineio` crate
 
 | Option | Verdict |
@@ -88,9 +115,17 @@ Runtime dependencies (crates.io):
 - `serde_json` 1 (with `preserve_order`) — JSON codec; `preserve_order` keeps
   map insertion order so metadata and unknown fields round-trip in file
   order.
+- `quick-xml` 0.41 — streaming XML codec for the FCPXML layer
+  (`src/fcpxml.rs`). Same major version the other Rust modules use
+  (`src/common/rust/Cargo.toml`).
 - `oakcore-rs` (path: `../../oakcore-rs`) — shared `Rational` value type
-  (used by the `Rational::from_double` port); same path dependency the other
-  bindings use.
+  (used by the `Rational::from_double` port and for exact FCPXML
+  rational-time conversion); same path dependency the other bindings use.
+
+Dev-dependencies (tests only):
+
+- `oakcore-rs` (path: `../../oakcore-rs`) — exact `Rational` comparisons in
+  `tests/fcpxml.rs`.
 
 Build and test:
 
@@ -137,8 +172,81 @@ The C++ anchors this crate reproduces:
   `duration()`, ...) take `&self` and return clones; the C++ value semantics
   (`to_seconds`, `rescaled_to`) are unaffected.
 
+## FCPXML
+
+The `fcpxml` module reads and writes Final Cut Pro X's `.fcpxml`
+interchange format (the version-1.x XML documents produced by FCP X and,
+with some tolerance, by DaVinci Resolve). It maps the FCPXML structure onto
+the same model types as the OTIO layer:
+
+| FCPXML element | Model mapping |
+| --- | --- |
+| `<fcpxml>` root `version` | validated (1.0 – 1.11); recorded in timeline metadata |
+| `<resources>`/`<format>` | frame rate (from `frameDuration`) |
+| `<resources>`/`<asset>` | `ExternalReference` (`src` → `target_url`, `duration` → `available_range`) |
+| `<library>`/`<event>`/`<project>` | timeline name + `metadata["fcpxml"]` (event/project name, version) |
+| `<sequence>` | `Timeline` (`tcStart` → `global_start_time`, `tcFormat`/`audioLayout`/`audioRate` → metadata) |
+| `<spine>` | `Track` kind "Video" (the primary storyline) |
+| secondary `<video>` / `<audio>` | additional `Track`s (kind "Video"/"Audio", nested lanes flattened) |
+| `<asset-clip>` | `Clip` (`offset`+`duration`+`start` → `source_range`, `ref` → media reference, `enabled` preserved) |
+| `<gap>` | `Gap` |
+| `<transition>` | `Transition` with `in_offset == out_offset == duration/2` (FCP X centers its transitions) |
+
+**Time values.** FCPXML times are rational seconds ("100/3000s",
+"0s", "1001/30000s", ...). They are parsed into `oakcore_rs::Rational` and
+converted to/from `RationalTime` with exact rational arithmetic, so NTSC
+rates (30000/1001, 60000/1001, 24000/1001) stay frame-accurate in both
+directions — a 3-frame clip at 29.97fps round-trips as exactly 3 frames.
+The reader also tolerates integer seconds ("48s"), bare rationals
+("1/24") and decimal seconds ("1.5s").
+
+**Leniency.** Unknown elements and attributes are skipped with a log line
+(`eprintln!`) instead of failing, so real-world documents from other NLEs
+import without crashing. Unmapped *timed* blocks (`<sync-clip>`,
+`<title>`, `<generator>`, ...) are imported as `Gap`s that preserve their
+timing; dangling `ref`s become `MissingReference`s. Hard errors are
+reserved for genuinely broken documents: non-FCPXML roots, unsupported or
+missing `version`, a `<sequence>` referencing an unknown format, and
+unparseable time values.
+
+**Writer output.** `to_fcpxml_string` emits FCPXML 1.10 with 2-space
+indentation (the FCP X convention): `<?xml?>`, `<!DOCTYPE fcpxml>`,
+`<resources>` with `<format>`s first then `<asset>`s (both deduplicated,
+formats by frame duration and assets by `src`), one `<event>`/`<project>`/
+`<sequence>` group per timeline, the first video track as `<spine>`, the
+rest as `<video>`/`<audio>` elements. Interchange hints stored in
+`metadata["fcpxml"]` (event/project names, `tcFormat`, `audioLayout`,
+`audioRate`) are reproduced on export.
+
+### FCPXML deviations (deliberate)
+
+- **Reduced time spellings** — the writer emits reduced rational seconds
+  ("48s", "1/30s", "1001/30000s") instead of FCP X's scaled "value/rate"
+  spellings ("1440/30s"). Semantically identical.
+- **`<format>` dimensions** — the OTIO model carries no frame size, so
+  exported formats use `width="1920" height="1080"` (name
+  "FFVideoFormat1920x1080p<rate>"). Importers derive the rate from
+  `frameDuration`, which is exact.
+- **Audio components** — a clip's embedded audio components are not split
+  out; the spine keeps only the video track, audio lives in `<audio>`
+  elements. `audioStart`/`audioDuration`/`audioOffset` are not written.
+- **`<sync-clip>`/`<title>`/`<generator>`** — imported as timing-preserving
+  gaps (their content is not mapped to a model type).
+- **Track names** — FCPXML has no track names; imported tracks are unnamed.
+- **Transitions** — FCP X transitions are centered, so the importer sets
+  `in_offset == out_offset == duration/2`. Asymmetric transitions from
+  other tools are approximated this way.
+- **Missing media** — clips without an `ExternalReference` are written as
+  `asset-clip` elements without a `ref` (technically schema-invalid but
+  tolerated by importers; logged).
+- **Unknown resource types** (`<effect>`, `<filter>`, ...) are skipped on
+  import and not written on export.
+
 ## Scope
 
-Covers only what `loadotio.cpp` / `saveotio.cpp` touch. No media-resolution,
-no `Marker`/`Effect` schemas (kept as raw `Value` for round-tripping), and no
-plugin API — `src/plugin/` is intentionally untouched.
+Covers only what `loadotio.cpp` / `saveotio.cpp` touch, plus the FCPXML
+interchange layer. No media-resolution, no `Marker`/`Effect` schemas (kept
+as raw `Value` for round-tripping), and no plugin API — `src/plugin/` is
+intentionally untouched. OTIO JSON behavior is unchanged by the FCPXML
+layer (it only adds public accessors: `Clip::enabled`/`set_enabled`,
+`Timeline::metadata`/`metadata_mut`/`set_global_start_time`).

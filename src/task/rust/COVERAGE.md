@@ -18,6 +18,7 @@ touching a task class so you rewrite the right module.
 | `render/render.h` — `RenderTask` base      | `src/render.rs`                             |
 | `project/import/import.h`                  | `src/project/import.rs`                     |
 | `project/load/load.h`                      | `src/project/load.rs`                       |
+| interchange-format dispatch (task-side)    | `src/project/format.rs`                     |
 | `project/loadotio/loadotio.h`              | `src/project/loadotio.rs`                   |
 | `project/save/save.h`                      | `src/project/save.rs`                       |
 | `project/saveotio/saveotio.h`              | `src/project/saveotio.rs`                   |
@@ -31,8 +32,9 @@ touching a task class so you rewrite the right module.
 | `ProxyTask::parse_progress` (proxy.h)          | `tests/parity_test.rs::proxy_parse_progress` |
 | `src/task/tests/task_test.cpp` (manager/task)  | `tests/manager_test.rs`, `tests/ffi_contract_test.rs` |
 | `include/task/*.h` (C ABI contract)            | `tests/ffi_contract_test.rs`               |
-| `loadotio.cpp` (OTIO -> project)               | `tests/otio_test.rs::otio_load_*` (synthetic documents built with `oakotio`) |
-| `saveotio.cpp` (project -> OTIO)               | `tests/otio_test.rs::otio_save_*` (exports re-parsed with `oakotio`) |
+| `loadotio.cpp` (OTIO -> project)           | `tests/otio_test.rs::otio_load_*`, `fcpxml_load_*` (synthetic documents built with `oakotio`) |
+| `saveotio.cpp` (project -> OTIO)           | `tests/otio_test.rs::otio_save_*`, `fcpxml_save_*` (exports re-parsed with `oakotio`) |
+| extension dispatch (`.otio`/`.fcpxml`)     | `tests/otio_test.rs::otio_load_extension_dispatch_matrix` (+ unknown-extension failures on both tasks) |
 
 ## Couplings handled through other modules' C ABIs
 
@@ -68,25 +70,34 @@ in-progress variants; `src/export.rs` is mapped to the canonical `export.h`.
 OpenTimelineIO was previously out of scope (OTIO parsing stayed in the C++
 impl); since `oakotio` landed it is covered: `LoadOTIOTask`/`SaveOTIOTask`
 parse/serialize through `oakotio` (see README decision #6) and the project
-graph still moves across the oaknode/oaktimeline C ABIs only.
+graph still moves across the oaknode/oaktimeline C ABIs only. The tasks
+are format-aware: `src/project/format.rs` dispatches `.otio` (OpenTimelineIO
+JSON) vs `.fcpxml` (FCPXML) from the filename extension (case-insensitive)
+at the parse/serialize call; the track/clip/footage code is shared, and
+the C ABI is unchanged (the format parameter is the filename itself).
 
 ## Test strategy
 
 - `tests/common/mod.rs` provides `#[no_mangle]` stubs for every extern C
   symbol the crate imports (test binaries link the rlib without the real
   module DLLs). Each stub family exposes `set_*` controls so tests drive
-  both the success and the failure path.
+  both the success and the failure path. The oakrender ticket stubs are
+  compiled out when the `real-oakrender` feature is on.
 - `tests/manager_test.rs` drives the codec submitter end-to-end: a real
   shell script stands in for ffmpeg (proxy success + 3 failure modes), and
   conform success/failure/cancellation are exercised through real file
   renames.
+- `tests/render_real_integration_test.rs` (feature `real-oakrender` +
+  `--test` filter; links the real oakrender crate) drives
+  `RenderTask::render` against the actual ticket arena — frames arrive in
+  timestamp order through the CPU path, no GPU.
 - Every exported `oaktask_*` symbol has at least one success and one
   failure-path test (`tests/ffi_contract_test.rs`,
   `tests/project_task_test.rs`).
 
 ## Coverage (cargo tarpaulin, 2026-08)
 
-`86.44%` line coverage (1817/2102). Per-file (lines covered/total):
+`86.53%` line coverage (1850/2138). Per-file (lines covered/total):
 
 | File                     | Covered |
 |--------------------------|---------|
@@ -104,11 +115,12 @@ graph still moves across the oaknode/oaktimeline C ABIs only.
 | src/handle.rs            | 29/56   |
 | src/manager.rs           | 67/89   |
 | src/precache.rs          | 33/43   |
+| src/project/format.rs    | 8/8     |
 | src/project/import.rs    | 184/235 |
 | src/project/load.rs      | 36/51   |
-| src/project/loadotio.rs  | 186/209 |
+| src/project/loadotio.rs  | 201/224 |
 | src/project/save.rs      | 28/41   |
-| src/project/saveotio.rs  | 186/207 |
+| src/project/saveotio.rs  | 196/220 |
 | src/proxy.rs             | 114/141 |
 | src/render.rs            | 215/242 |
 | src/task.rs              | 98/103  |

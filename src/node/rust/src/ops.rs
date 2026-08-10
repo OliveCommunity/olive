@@ -25,7 +25,20 @@ use crate::node::Category;
 
 /// Human-readable category name (C++ `Node::get_category_name`).
 pub fn category_name(c: Category) -> &'static str {
-	todo!()
+	match c {
+		Category::Output => "Output",
+		Category::Effect => "Effect",
+		Category::Generator => "Generator",
+		Category::Input => "Input",
+		Category::Math => "Math",
+		Category::Color => "Color",
+		Category::Distort => "Distort",
+		Category::Filter => "Filter",
+		Category::Keying => "Keying",
+		Category::OpenFx => "OpenFX",
+		Category::Timeline => "Timeline",
+		Category::Group => "Group",
+	}
 }
 
 /// Copy inputs (and optionally connections) between two nodes
@@ -37,7 +50,57 @@ pub fn copy_inputs(
 	dst: NodeId,
 	include_connections: bool,
 ) -> crate::error::Result<()> {
-	todo!()
+	use crate::error::Error;
+	if graph.get(src).is_none() || graph.get(dst).is_none() {
+		return Err(Error::NotFound);
+	}
+	let src_inputs: Vec<String> = graph
+		.get(src)
+		.map(|e| e.core.inputs.iter().map(|i| i.id.clone()).collect())
+		.ok_or(Error::NotFound)?;
+
+	// Copy every declared input's standard value (whole-value semantics;
+	// C++ copies per-element too — array elements are covered when the
+	// array family lands).
+	for id in &src_inputs {
+		if !graph.get(dst).map(|e| e.core.has_input(id)).unwrap_or(false) {
+			continue;
+		}
+		let value = {
+			let entry = graph.get(src).ok_or(Error::NotFound)?;
+			entry.core.standard_value(id, -1)
+		};
+		let declared = {
+			let entry = graph.get(src).ok_or(Error::NotFound)?;
+			entry.core.input_data_type(id).unwrap_or(crate::value::ValueType::None)
+		};
+		let value = {
+			// Re-quantize to the destination's declared type so the copy
+			// never stores a mismatched payload.
+			let entry = graph.get(dst).ok_or(Error::NotFound)?;
+			let dst_declared = entry
+				.core
+				.input_data_type(id)
+				.ok_or(Error::NotFound)?;
+			if dst_declared == declared {
+				value
+			} else {
+				crate::value::NodeValue::with_scalar(&value, dst_declared, value.to_double())
+			}
+		};
+		let entry = graph.get_mut(dst).ok_or(Error::NotFound)?;
+		entry.core.set_standard_value(id, -1, value);
+	}
+
+	if include_connections {
+		// Recreate src's scalar input connections on dst.
+		for id in &src_inputs {
+			if let Some(from) = graph.connected_output(src, id, -1) {
+				graph.connect(from, dst, id, -1).ok();
+			}
+		}
+	}
+	Ok(())
 }
 
 /// Copy a node with its upstream dependency subgraph
@@ -75,16 +138,167 @@ pub fn disconnect_command_string(output: NodeId, input: NodeId, input_id: &str) 
 	todo!()
 }
 
-/// Set a keyframed/standard value at a time, returning the undo
-/// command (C++ `Node::set_value_at_time` static; command creation
-/// via bridge::undo).
+/// Lock a project mutex (poison-tolerant).
+fn lock_any<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+	m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Set a keyframed/standard value at a time, returning an un-executed
+/// undo command (C++ `Node::set_value_at_time` static; command creation
+/// via bridge::undo). The mutation is chosen from the current state at
+/// creation time, like the C++ (`// CPP-PARITY: node.cpp:1782`):
+/// - keyframing input with a key at `time` -> replace the key's value;
+/// - keyframing input without a key -> insert a key (best type =
+///   closest key's type, default Linear);
+/// - non-keyframing input -> set the standard value.
+///
+/// `project` is the project owning `graph`; the returned command's
+/// closures lock it on redo/undo.
 pub fn set_value_at_time_command(
-	graph: &mut Graph,
+	project: &std::sync::Arc<std::sync::Mutex<crate::project::Project>>,
+	graph: &Graph,
 	node: NodeId,
 	input: &str,
 	element: i32,
 	time: oakcore_rs::Rational,
 	value: &crate::value::NodeValue,
 ) -> crate::error::Result<crate::handle::CHandle> {
-	todo!()
+	use crate::error::Error;
+	use crate::keyframe::{Interpolation, Keyframe};
+
+	// Determine the mutation from the current state.
+	let declared = graph
+		.get(node)
+		.and_then(|e| e.core.input_data_type(input))
+		.ok_or(Error::NotFound)?;
+	let keyframing = graph
+		.get(node)
+		.and_then(|e| e.core.keyframe_track(input, element))
+		.map(|t| !t.keys().is_empty())
+		.unwrap_or(false);
+
+	let project = project.clone();
+	let node = node;
+	let input = input.to_string();
+	let value = value.clone();
+	let element = element;
+
+	if keyframing {
+		let existing = graph
+			.get(node)
+			.and_then(|e| e.core.keyframe_track(&input, element))
+			.and_then(|t| {
+				t.keys()
+					.iter()
+					.find(|k| k.time == time)
+					.map(|k| (k.time, k.value.clone(), k.interpolation))
+			});
+		match existing {
+			Some((key_time, old_value, _interp)) => {
+				// Replace the key's value (preserving type/handles).
+				let project_redo = project.clone();
+				let project_undo = project.clone();
+				Ok(crate::bridge::undo::command_from_closures(
+					{
+						let value = value.clone();
+						let input = input.clone();
+						let project = project_redo;
+						move || {
+							let mut g = lock_any(&project);
+							if let Some(e) = g.graph.get_mut(node) {
+								e.core
+									.keyframe_track_mut(&input, element)
+									.set_key_value(key_time, value.clone());
+							}
+						}
+					},
+					{
+						let old_value = old_value.clone();
+						let input = input.clone();
+						let project = project_undo;
+						move || {
+							let mut g = lock_any(&project);
+							if let Some(e) = g.graph.get_mut(node) {
+								e.core
+									.keyframe_track_mut(&input, element)
+									.set_key_value(key_time, old_value.clone());
+							}
+						}
+					},
+				)
+				.ok_or(Error::NoMem)?)
+			}
+			None => {
+				let input_redo = input.clone();
+				let input_undo = input.clone();
+				// Insert a new key.
+				let interp = graph
+					.get(node)
+					.and_then(|e| e.core.keyframe_track(&input, element))
+					.and_then(|t| {
+						t.keys()
+							.iter()
+							.filter(|k| k.time <= time)
+							.next_back()
+							.map(|k| k.interpolation)
+					})
+					.unwrap_or(Interpolation::Linear);
+				let project_redo = project.clone();
+				let project_undo = project.clone();
+				let value_redo = value.clone();
+				Ok(crate::bridge::undo::command_from_closures(
+					move || {
+						let mut g = lock_any(&project_redo);
+						if let Some(e) = g.graph.get_mut(node) {
+							let track = e.core.keyframe_track_mut(&input_redo, element);
+							track.set_key(Keyframe {
+								time,
+								value: value_redo.clone(),
+								interpolation: interp,
+								bezier_in: (0.0, 0.0),
+								bezier_out: (0.0, 0.0),
+							});
+						}
+					},
+					move || {
+						let mut g = lock_any(&project_undo);
+						if let Some(e) = g.graph.get_mut(node) {
+							e.core
+								.keyframe_track_mut(&input_undo, element)
+								.remove_key(time);
+						}
+					},
+				)
+				.ok_or(Error::NoMem)?)
+			}
+		}
+	} else {
+		// Set the standard value.
+		let old = graph
+			.get(node)
+			.map(|e| e.core.standard_value(&input, element))
+			.unwrap_or(crate::value::NodeValue::None);
+		let project_redo = project.clone();
+		let project_undo = project.clone();
+		let input_redo = input.clone();
+		let input_undo = input.clone();
+		let value_redo = value.clone();
+		Ok(crate::bridge::undo::command_from_closures(
+			move || {
+				let mut g = lock_any(&project_redo);
+				if let Some(e) = g.graph.get_mut(node) {
+					e.core
+						.set_standard_value(&input_redo, element, value_redo.clone());
+				}
+			},
+			move || {
+				let mut g = lock_any(&project_undo);
+				if let Some(e) = g.graph.get_mut(node) {
+					e.core
+						.set_standard_value(&input_undo, element, old.clone());
+				}
+			},
+		)
+		.ok_or(Error::NoMem)?)
+	}
 }

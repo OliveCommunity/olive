@@ -22,6 +22,8 @@
 //! base texture. Not instantiable, so this is a helper module, not a
 //! [`NodeBehavior`] implementation.
 
+use crate::value::NodeValue;
+
 /// Base texture input id (C++ `k_base_input`). Type: texture; flags:
 /// not-keyframable; the base constructor makes it the effect input and
 /// sets the video-effect flag.
@@ -84,11 +86,67 @@ impl GeneratorWithMerge {
 	/// `MergeNode::k_base_in` and the generated job as
 	/// `MergeNode::k_blend_in`, pushing `base->to_job(merge)`; without
 	/// a base, pushes the generated job unchanged.
+	///
+	/// The Rust model has no shader-job payload (see
+	/// [`crate::nodes::mathbase`]): the merged case pushes a null
+	/// texture handle marking a renderer-deferred `"mrg"` shader job,
+	/// and the un-merged case pushes `job` itself.
 	pub fn push_mergable_job(
 		inputs: &crate::value::NodeValueRow,
 		job: crate::bridge::render::TextureHandle,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		match inputs.get(BASE_INPUT) {
+			Some(NodeValue::Texture(_)) => {
+				// A base is connected: the C++ pushes
+				// `base->to_job(ShaderJob("mrg"))` — a deferred alpha-over
+				// merge of the generated texture over the base.
+				// `// CPP-PARITY: generatorwithmerge.cpp` push_mergable_job.
+				table.push(
+					crate::value::ValueType::Texture,
+					NodeValue::Texture(crate::handle::CHandle::null()),
+					None,
+				);
+			}
+			_ => {
+				table.push(crate::value::ValueType::Texture, NodeValue::Texture(job), None);
+			}
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+
+	#[test]
+	fn push_job_without_base_pushes_job() {
+		let job = crate::handle::CHandle::null();
+		let mut table = NodeValueTable::default();
+		GeneratorWithMerge::push_mergable_job(
+			&crate::value::NodeValueRow::default(),
+			job,
+			&mut table,
+		);
+		match table.get(ValueType::Texture) {
+			Some(NodeValue::Texture(h)) => assert!(h.is_null()),
+			_ => panic!("texture expected"),
+		}
+	}
+
+	#[test]
+	fn push_job_with_base_pushes_deferred_merge() {
+		let job = crate::handle::CHandle::null();
+		let inputs = crate::value::NodeValueRow::from([(
+			BASE_INPUT.to_string(),
+			NodeValue::Texture(crate::handle::CHandle::null()),
+		)]);
+		let mut table = NodeValueTable::default();
+		GeneratorWithMerge::push_mergable_job(&inputs, job, &mut table);
+		assert!(
+			table.get(ValueType::Texture).is_some(),
+			"merge job placeholder pushed"
+		);
 	}
 }

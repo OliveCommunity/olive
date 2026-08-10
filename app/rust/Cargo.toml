@@ -1,0 +1,49 @@
+# Oak Video Editor - Non-Linear Video Editor
+# Copyright (C) 2026 Oak Team
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+[package]
+name = "oakapp"
+version = "0.1.0"
+edition = "2021"
+description = "Oak Video Editor application layer (Rust, gpui-based)"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "oakapp"
+path = "src/lib.rs"
+
+[[bin]]
+name = "oakapp"
+path = "src/main.rs"
+
+[dependencies]
+# gpui: the GPU-accelerated UI framework (oak-gpui fork, git submodule at gpui/).
+gpui = { path = "../../gpui/crates/gpui" }
+# Convenience entry point: `gpui_platform::application()` picks the platform
+# backend. font-kit enables text shaping/rendering on macOS.
+gpui_platform = { path = "../../gpui/crates/gpui_platform", features = ["font-kit"] }
+# Oak's widget library: menus, viewer, form controls, project explorer.
+gpui_widgets = { path = "../../gpui/crates/gpui_widgets" }
+
+[dev-dependencies]
+# `#[gpui::test]` harness for engine-seam smoke tests (test-support feature).
+gpui = { path = "../../gpui/crates/gpui", features = ["test-support"] }
+# `test-support` also enables `gpui_macos/test-support`, which is what makes
+# `render_to_image` (the screenshot example) available.
+gpui_platform = { path = "../../gpui/crates/gpui_platform", features = ["test-support"] }
+# Screenshot capture: `examples/screenshot.rs` saves the rendered window PNG
+# (the `image` crate is already in the lockfile through gpui).
+image = "0.25"

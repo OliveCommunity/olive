@@ -110,7 +110,16 @@ impl NodeBehavior for WaveDistortNode {
 	/// "Intensity", `evolution_in` -> "Evolution", `vertical_in` ->
 	/// "Direction" (combo strings "Horizontal"/"Vertical").
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			TEXTURE_INPUT => "Input",
+			FREQUENCY_INPUT => "Frequency",
+			INTENSITY_INPUT => "Intensity",
+			EVOLUTION_INPUT => "Evolution",
+			// The `vertical_in` combo strings "Horizontal"/"Vertical" are a
+			// UI-level property of the input (C++ `set_combo_box_strings`).
+			VERTICAL_INPUT => "Direction",
+			_ => id,
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): no texture -> push nothing;
@@ -124,18 +133,39 @@ impl NodeBehavior for WaveDistortNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		let tex = match inputs.get(TEXTURE_INPUT) {
+			Some(tex @ crate::value::NodeValue::Texture(_)) => tex.clone(),
+			_ => return,
+		};
+
+		let intensity = match inputs.get(INTENSITY_INPUT) {
+			Some(v) => v.to_double(),
+			None => core.value_at_time(INTENSITY_INPUT, -1, time).to_double(),
+		};
+
+		if intensity != 0.0 {
+			// C++ pushes `Texture::job(texture->params(), ShaderJob(value))`;
+			// the deferred job is resolved by the renderer seam
+			// (`// CPP-PARITY: wavedistortnode.cpp` value()).
+			table.push(
+				crate::value::ValueType::Texture,
+				crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+				None,
+			);
+		} else {
+			table.push(crate::value::ValueType::Texture, tex, None);
+		}
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): ignores the
 	/// request id and always returns the wave fragment shader.
-	fn shader_code(&self, request: &str) -> Option<String> {
-		todo!()
+	fn shader_code(&self, _request: &str) -> Option<String> {
+		Some(Self::shader_frag().to_string())
 	}
 
 	/// Deep copy (C++ `copy()`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(WaveDistortNode))
 	}
 }
 
@@ -144,7 +174,134 @@ impl NodeBehavior for WaveDistortNode {
 /// `vertical_in` with the defaults documented on the constants, sets
 /// the video-effect flag and the effect input.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	let mut tex = crate::input::Input::new(
+		TEXTURE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	tex.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(tex);
+
+	core.add_input(crate::input::Input::new(
+		FREQUENCY_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(10.0),
+	));
+	core.add_input(crate::input::Input::new(
+		INTENSITY_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(10.0),
+	));
+	core.add_input(crate::input::Input::new(
+		EVOLUTION_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(0.0),
+	));
+	core.add_input(crate::input::Input::new(
+		VERTICAL_INPUT,
+		crate::value::ValueType::Combo,
+		crate::value::NodeValue::Combo(0),
+	));
+
+	core.flags |= crate::node::flags::VIDEO_EFFECT;
+	core.effect_input = TEXTURE_INPUT.to_string();
+
+	(core, Box::new(WaveDistortNode))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::node::NodeBehavior;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	fn tex() -> NodeValue {
+		NodeValue::Texture(crate::handle::CHandle::null())
+	}
+
+	#[test]
+	fn input_names() {
+		let n = WaveDistortNode;
+		assert_eq!(n.input_name(TEXTURE_INPUT), "Input");
+		assert_eq!(n.input_name(FREQUENCY_INPUT), "Frequency");
+		assert_eq!(n.input_name(INTENSITY_INPUT), "Intensity");
+		assert_eq!(n.input_name(EVOLUTION_INPUT), "Evolution");
+		assert_eq!(n.input_name(VERTICAL_INPUT), "Direction");
+	}
+
+	#[test]
+	fn create_wires_inputs_and_flags() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.wave");
+		assert_eq!(
+			core.get_input(FREQUENCY_INPUT).unwrap().default,
+			NodeValue::Float(10.0)
+		);
+		assert_eq!(
+			core.get_input(INTENSITY_INPUT).unwrap().default,
+			NodeValue::Float(10.0)
+		);
+		assert_eq!(
+			core.get_input(VERTICAL_INPUT).unwrap().default,
+			NodeValue::Combo(0)
+		);
+		assert_eq!(core.effect_input, TEXTURE_INPUT);
+		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
+	}
+
+	#[test]
+	fn value_no_texture_pushes_nothing() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
+		assert!(table.is_empty());
+	}
+
+	#[test]
+	fn value_zero_intensity_passes_texture_through() {
+		let (mut core, behavior) = create();
+		core.set_standard_value(INTENSITY_INPUT, -1, NodeValue::Float(0.0));
+		let tex = tex();
+		let inputs = crate::value::NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex.clone())]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert_eq!(table.get(ValueType::Texture), Some(&tex));
+	}
+
+	#[test]
+	fn value_nonzero_intensity_pushes_deferred_job() {
+		let (core, behavior) = create();
+		let inputs = crate::value::NodeValueRow::from([
+			(TEXTURE_INPUT.to_string(), tex()),
+			(INTENSITY_INPUT.to_string(), NodeValue::Float(10.0)),
+		]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn shader_code_returns_wave_shader() {
+		let n = WaveDistortNode;
+		let code = n.shader_code("anything").unwrap();
+		assert!(code.contains("uniform float frequency_in;"));
+		assert!(code.contains("if (vertical_in)"));
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Wave");
+	}
 }
 
 /// Register this node type (C++ factory entry for

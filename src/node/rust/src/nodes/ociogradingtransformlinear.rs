@@ -26,7 +26,7 @@
 use crate::factory::NodeMeta;
 use crate::node::{Category, NodeBehavior, NodeCore};
 
-use super::ociobase::OcioBase;
+use crate::nodes::ociobase::OcioBase;
 
 /// Contrast input id (C++ `k_contrast_input`). Type: vec4 (x = master,
 /// y/z/w = R/G/B); default `{1, 1, 1, 1}`; properties: `min =
@@ -82,12 +82,31 @@ pub struct OCIOGradingTransformLinearNode {
 	base: OcioBase,
 }
 
+/// Set or replace an input property (C++ `set_input_property`).
+fn set_input_property(
+	core: &mut NodeCore,
+	input: &str,
+	key: &str,
+	value: crate::value::NodeValue,
+) {
+	if let Some(input) = core.get_input_mut(input) {
+		if let Some(slot) = input.properties.iter_mut().find(|(k, _)| k == key) {
+			slot.1 = value;
+		} else {
+			input.properties.push((key.to_string(), value));
+		}
+	}
+}
+
 impl OCIOGradingTransformLinearNode {
 	/// Set the per-component widget colors of a vec4 input (C++
 	/// `set_vec4_input_colors()`): master `#c0c0c0`, R `#ff0000`, G
 	/// `#00ff00`, B `#0000ff`.
 	fn set_vec4_input_colors(core: &mut NodeCore, input: &str) {
-		todo!()
+		set_input_property(core, input, "color0", crate::value::NodeValue::Text("#c0c0c0".into()));
+		set_input_property(core, input, "color1", crate::value::NodeValue::Text("#ff0000".into()));
+		set_input_property(core, input, "color2", crate::value::NodeValue::Text("#00ff00".into()));
+		set_input_property(core, input, "color3", crate::value::NodeValue::Text("#0000ff".into()));
 	}
 
 	/// Constrain the white clamp UI minimum to just above the black
@@ -97,7 +116,20 @@ impl OCIOGradingTransformLinearNode {
 	/// animated value, so the invariant is enforced per frame in
 	/// `value()` instead.
 	fn update_clamp_white_minimum(&mut self, core: &mut NodeCore) {
-		todo!()
+		let _ = self;
+		// The C++ also returns while the black clamp is *connected*
+		// (`is_input_connected`); edge state is not carried by NodeCore
+		// (the C++ InputConnectedEvent/InputDisconnectedEvent call sites
+		// re-run this), so only the keyframing half of the guard is
+		// representable here — a connected black clamp would update the
+		// static minimum where C++ would not.
+		// `// CPP-PARITY: ociogradingtransformlinear.cpp`
+		// update_clamp_white_minimum.
+		if core.is_input_keyframing(CLAMP_BLACK_INPUT, -1) {
+			return;
+		}
+		let min = core.standard_value(CLAMP_BLACK_INPUT, -1).to_double() + 0.000001;
+		set_input_property(core, CLAMP_WHITE_INPUT, "min", crate::value::NodeValue::Float(min));
 	}
 
 	/// (Re)build the color processor (C++ `generate_processor()`):
@@ -106,13 +138,23 @@ impl OCIOGradingTransformLinearNode {
 	/// stores it with [`OcioBase::set_processor`] when creation
 	/// succeeds.
 	fn generate_processor(&mut self, core: &mut NodeCore) {
-		todo!()
+		let _ = core;
+		// The C++ wraps the color manager and creates a grading-primary
+		// processor of style `OAKRENDER_GRADING_PRIMARY_LIN` via
+		// `oakrender_color_processor_create_grading_primary`, storing it
+		// with OcioBase::set_processor when `processor.ctx` is non-null.
+		// Without a manager (the Rust model reaches the manager through
+		// the oakrender bridge, absent here) the C++ guard
+		// `if (manager())` fails, so this is a no-op and the processor
+		// stays empty — `value()` then pushes nothing.
+		// `// CPP-PARITY: ociogradingtransformlinear.cpp`
+		// generate_processor.
 	}
 
 	/// OCIO config change hook (C++ `config_changed()` override):
 	/// regenerates the processor.
 	fn config_changed(&mut self, core: &mut NodeCore) {
-		todo!()
+		self.generate_processor(core);
 	}
 }
 
@@ -143,7 +185,19 @@ impl NodeBehavior for OCIOGradingTransformLinearNode {
 	/// pivot -> "Pivot", clamp enables -> "Enable Black/White Clamp",
 	/// clamps -> "Black Clamp"/"White Clamp".
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			crate::nodes::ociobase::TEXTURE_INPUT => "Input",
+			CONTRAST_INPUT => "Contrast",
+			OFFSET_INPUT => "Offset",
+			EXPOSURE_INPUT => "Exposure",
+			SATURATION_INPUT => "Saturation",
+			PIVOT_INPUT => "Pivot",
+			CLAMP_BLACK_ENABLE_INPUT => "Enable Black Clamp",
+			CLAMP_BLACK_INPUT => "Black Clamp",
+			CLAMP_WHITE_ENABLE_INPUT => "Enable White Clamp",
+			CLAMP_WHITE_INPUT => "White Clamp",
+			_ => id,
+		}
 	}
 
 	/// Input value changed (C++ `InputValueChangedEvent`): toggling a
@@ -151,21 +205,55 @@ impl NodeBehavior for OCIOGradingTransformLinearNode {
 	/// property; a black-clamp change re-constrains the white clamp
 	/// minimum; any change regenerates the processor.
 	fn input_value_changed(&mut self, core: &mut NodeCore, input: &str, element: i32) {
-		todo!()
+		let _ = element;
+		if input == CLAMP_WHITE_ENABLE_INPUT {
+			set_input_property(
+				core,
+				CLAMP_WHITE_INPUT,
+				"enabled",
+				crate::value::NodeValue::Boolean(
+					core.standard_value(CLAMP_WHITE_ENABLE_INPUT, -1).to_double() != 0.0,
+				),
+			);
+		} else if input == CLAMP_BLACK_ENABLE_INPUT {
+			set_input_property(
+				core,
+				CLAMP_BLACK_INPUT,
+				"enabled",
+				crate::value::NodeValue::Boolean(
+					core.standard_value(CLAMP_BLACK_ENABLE_INPUT, -1).to_double() != 0.0,
+				),
+			);
+		} else if input == CLAMP_BLACK_INPUT {
+			// Ensure the white clamp is always greater than the black
+			// clamp as per ocio::GradingPrimary::validate.
+			self.update_clamp_white_minimum(core);
+		}
+
+		self.generate_processor(core);
 	}
 
 	/// Edge connected (C++ `InputConnectedEvent`): forwards to the base
 	/// class and, for the black clamp input, re-constrains the white
 	/// clamp minimum.
 	fn input_connected(&mut self, core: &mut NodeCore, input: &str, element: i32, source: crate::id::NodeId) {
-		todo!()
+		let _ = (element, source);
+		// C++ forwards to the base class first; OCIOBaseNode does not
+		// override the event, so that half is a no-op here.
+		if input == CLAMP_BLACK_INPUT {
+			self.update_clamp_white_minimum(core);
+		}
 	}
 
 	/// Edge disconnected (C++ `InputDisconnectedEvent`): forwards to the
 	/// base class and, for the black clamp input, re-constrains the
 	/// white clamp minimum.
 	fn input_disconnected(&mut self, core: &mut NodeCore, input: &str, element: i32, source: crate::id::NodeId) {
-		todo!()
+		let _ = (element, source);
+		// See [`NodeBehavior::input_connected`].
+		if input == CLAMP_BLACK_INPUT {
+			self.update_clamp_white_minimum(core);
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): no texture -> push nothing;
@@ -185,25 +273,57 @@ impl NodeBehavior for OCIOGradingTransformLinearNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		let _ = (core, time);
+		match inputs.get(crate::nodes::ociobase::TEXTURE_INPUT) {
+			Some(crate::value::NodeValue::Texture(_)) => {
+				if self.base.processor().is_some() {
+					// `// CPP-PARITY: ociogradingtransformlinear.cpp`
+					// `value()` — the C++ builds a ColorTransformJob and
+					// rewrites the vec4 (RGBM: x = master) inputs into the
+					// vec3 GPU uniform form: offset RGB = channel +
+					// master, exposure RGB = 2^(channel + master),
+					// contrast RGB = channel * master. Disabled clamps
+					// are pushed as `ocio::GradingPrimary::NoClampBlack()`
+					// (-1.0) / `NoClampWhite()` (2.0), and when both
+					// clamps are enabled the white clamp is raised to
+					// black + 0.000001 per frame if keyframed/connected
+					// values violate white > black. The Rust model has no
+					// color-transform job payload: the renderer seam
+					// resolves the deferred job from this null handle.
+					table.push(
+						crate::value::ValueType::Texture,
+						crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+						None,
+					);
+				}
+				// Processor not ready: push nothing (no pass-through).
+			}
+			_ => {}
+		}
 	}
 
 	/// Added to a graph (C++ base `AddedToGraphEvent`): captures the
 	/// project's color manager and runs `config_changed()` via
 	/// [`OcioBase::added_to_graph`].
 	fn added_to_graph(&mut self, core: &mut NodeCore) {
-		todo!()
+		self.base.added_to_graph(core);
+		self.config_changed(core);
 	}
 
 	/// Removed from a graph (C++ base `RemovedFromGraphEvent`): clears
 	/// the color manager pointer via [`OcioBase::removed_from_graph`].
 	fn removed_from_graph(&mut self, core: &mut NodeCore) {
-		todo!()
+		self.base.removed_from_graph(core);
 	}
 
 	/// Deep copy (C++ `copy()` via `NODE_DEFAULT_FUNCTIONS`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		// The C++ copy constructor copies the embedded OCIO base state;
+		// a fresh base with no processor is the safe Rust port (the
+		// processor is never populated without the render bridge).
+		Some(Box::new(OCIOGradingTransformLinearNode {
+			base: OcioBase::new(),
+		}))
 	}
 }
 
@@ -215,7 +335,130 @@ impl NodeBehavior for OCIOGradingTransformLinearNode {
 /// documented on the constants, and applies the initial white-clamp
 /// minimum constraint.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	// OCIOBaseNode base constructor.
+	let mut tex = crate::input::Input::new(
+		crate::nodes::ociobase::TEXTURE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	tex.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(tex);
+	core.effect_input = crate::nodes::ociobase::TEXTURE_INPUT.to_string();
+	core.flags |= crate::node::flags::VIDEO_EFFECT;
+
+	let component_colors = vec![
+		("color0".to_string(), crate::value::NodeValue::Text("#c0c0c0".into())),
+		("color1".to_string(), crate::value::NodeValue::Text("#ff0000".into())),
+		("color2".to_string(), crate::value::NodeValue::Text("#00ff00".into())),
+		("color3".to_string(), crate::value::NodeValue::Text("#0000ff".into())),
+	];
+
+	let mut contrast = crate::input::Input::new(
+		CONTRAST_INPUT,
+		crate::value::ValueType::Vec4,
+		crate::value::NodeValue::Vec4([1.0, 1.0, 1.0, 1.0]),
+	);
+	contrast.properties = vec![
+		(
+			"min".to_string(),
+			crate::value::NodeValue::Vec4([0.01, 0.01, 0.01, 0.01]),
+		),
+		("base".to_string(), crate::value::NodeValue::Float(0.01)),
+	];
+	contrast.properties.extend(component_colors.clone());
+	core.add_input(contrast);
+
+	let mut offset = crate::input::Input::new(
+		OFFSET_INPUT,
+		crate::value::ValueType::Vec4,
+		crate::value::NodeValue::Vec4([0.0, 0.0, 0.0, 0.0]),
+	);
+	offset.properties = vec![("base".to_string(), crate::value::NodeValue::Float(0.01))];
+	offset.properties.extend(component_colors.clone());
+	core.add_input(offset);
+
+	let mut exposure = crate::input::Input::new(
+		EXPOSURE_INPUT,
+		crate::value::ValueType::Vec4,
+		crate::value::NodeValue::Vec4([0.0, 0.0, 0.0, 0.0]),
+	);
+	exposure.properties = vec![("base".to_string(), crate::value::NodeValue::Float(0.01))];
+	exposure.properties.extend(component_colors);
+	core.add_input(exposure);
+
+	let mut saturation = crate::input::Input::new(
+		SATURATION_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(1.0),
+	);
+	saturation.properties = vec![
+		("view".to_string(), crate::value::NodeValue::Text("percentage".into())),
+		("min".to_string(), crate::value::NodeValue::Float(0.0)),
+	];
+	core.add_input(saturation);
+
+	let mut pivot = crate::input::Input::new(
+		PIVOT_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(0.18),
+	);
+	pivot.properties = vec![("base".to_string(), crate::value::NodeValue::Float(0.01))];
+	core.add_input(pivot);
+
+	core.add_input(crate::input::Input::new(
+		CLAMP_BLACK_ENABLE_INPUT,
+		crate::value::ValueType::Boolean,
+		crate::value::NodeValue::Boolean(false),
+	));
+	let mut clamp_black = crate::input::Input::new(
+		CLAMP_BLACK_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(0.0),
+	);
+	clamp_black.properties = vec![
+		(
+			"enabled".to_string(),
+			crate::value::NodeValue::Boolean(
+				core.standard_value(CLAMP_BLACK_ENABLE_INPUT, -1).to_double() != 0.0,
+			),
+		),
+		("base".to_string(), crate::value::NodeValue::Float(0.01)),
+	];
+	core.add_input(clamp_black);
+
+	core.add_input(crate::input::Input::new(
+		CLAMP_WHITE_ENABLE_INPUT,
+		crate::value::ValueType::Boolean,
+		crate::value::NodeValue::Boolean(false),
+	));
+	let mut clamp_white = crate::input::Input::new(
+		CLAMP_WHITE_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(1.0),
+	);
+	clamp_white.properties = vec![
+		(
+			"enabled".to_string(),
+			crate::value::NodeValue::Boolean(
+				core.standard_value(CLAMP_WHITE_ENABLE_INPUT, -1).to_double() != 0.0,
+			),
+		),
+		("base".to_string(), crate::value::NodeValue::Float(0.01)),
+	];
+	core.add_input(clamp_white);
+
+	// Constrain the white clamp minimum to just above the (static) black
+	// clamp as per ocio::GradingPrimary::validate. When the black clamp
+	// is keyframed or connected, Value() enforces the invariant per frame
+	// instead.
+	let mut node = OCIOGradingTransformLinearNode {
+		base: OcioBase::new(),
+	};
+	node.update_clamp_white_minimum(&mut core);
+
+	(core, Box::new(node))
 }
 
 /// Register this node type (C++ factory entry for
@@ -227,4 +470,223 @@ pub fn register(meta: &mut Vec<NodeMeta>) {
 		categories: &[Category::Color],
 		create,
 	});
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::keyframe::{Interpolation, Keyframe};
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	fn node() -> OCIOGradingTransformLinearNode {
+		OCIOGradingTransformLinearNode {
+			base: OcioBase::new(),
+		}
+	}
+
+	/// Property value lookup helper for tests.
+	fn property(core: &NodeCore, input: &str, key: &str) -> Option<NodeValue> {
+		core.get_input(input)
+			.and_then(|i| i.properties.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()))
+	}
+
+	#[test]
+	fn input_names() {
+		let n = node();
+		assert_eq!(n.input_name(crate::nodes::ociobase::TEXTURE_INPUT), "Input");
+		assert_eq!(n.input_name(CONTRAST_INPUT), "Contrast");
+		assert_eq!(n.input_name(OFFSET_INPUT), "Offset");
+		assert_eq!(n.input_name(EXPOSURE_INPUT), "Exposure");
+		assert_eq!(n.input_name(SATURATION_INPUT), "Saturation");
+		assert_eq!(n.input_name(PIVOT_INPUT), "Pivot");
+		assert_eq!(n.input_name(CLAMP_BLACK_ENABLE_INPUT), "Enable Black Clamp");
+		assert_eq!(n.input_name(CLAMP_BLACK_INPUT), "Black Clamp");
+		assert_eq!(n.input_name(CLAMP_WHITE_ENABLE_INPUT), "Enable White Clamp");
+		assert_eq!(n.input_name(CLAMP_WHITE_INPUT), "White Clamp");
+		assert_eq!(n.input_name("other_in"), "other_in");
+	}
+
+	#[test]
+	fn create_wires_inputs_flags_and_properties() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.ociogradingtransformlinear");
+		assert_ne!(
+			core.get_input(crate::nodes::ociobase::TEXTURE_INPUT).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE,
+			0
+		);
+		assert_eq!(
+			core.get_input(CONTRAST_INPUT).unwrap().default,
+			NodeValue::Vec4([1.0, 1.0, 1.0, 1.0])
+		);
+		assert_eq!(core.get_input(OFFSET_INPUT).unwrap().default, NodeValue::Vec4([0.0; 4]));
+		assert_eq!(core.get_input(EXPOSURE_INPUT).unwrap().default, NodeValue::Vec4([0.0; 4]));
+		assert_eq!(core.get_input(SATURATION_INPUT).unwrap().default, NodeValue::Float(1.0));
+		assert_eq!(core.get_input(PIVOT_INPUT).unwrap().default, NodeValue::Float(0.18));
+		assert_eq!(
+			core.get_input(CLAMP_BLACK_ENABLE_INPUT).unwrap().default,
+			NodeValue::Boolean(false)
+		);
+		assert_eq!(core.get_input(CLAMP_BLACK_INPUT).unwrap().default, NodeValue::Float(0.0));
+		assert_eq!(
+			core.get_input(CLAMP_WHITE_ENABLE_INPUT).unwrap().default,
+			NodeValue::Boolean(false)
+		);
+		assert_eq!(core.get_input(CLAMP_WHITE_INPUT).unwrap().default, NodeValue::Float(1.0));
+		// Component colors on every vec4 grading input.
+		for id in [CONTRAST_INPUT, OFFSET_INPUT, EXPOSURE_INPUT] {
+			let input = core.get_input(id).unwrap();
+			assert!(input.properties.iter().any(|(k, v)| k == "color0" && *v == NodeValue::Text("#c0c0c0".into())));
+			assert!(input.properties.iter().any(|(k, v)| k == "color3" && *v == NodeValue::Text("#0000ff".into())));
+		}
+		// Initial white-clamp minimum constraint: black (0.0) + 0.000001.
+		assert_eq!(property(&core, CLAMP_WHITE_INPUT, "min"), Some(NodeValue::Float(0.000001)));
+		// Clamp enabled properties mirror the enable inputs (false at
+		// construction).
+		assert_eq!(property(&core, CLAMP_BLACK_INPUT, "enabled"), Some(NodeValue::Boolean(false)));
+		assert_eq!(property(&core, CLAMP_WHITE_INPUT, "enabled"), Some(NodeValue::Boolean(false)));
+		assert_eq!(core.effect_input, crate::nodes::ociobase::TEXTURE_INPUT);
+		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
+	}
+
+	#[test]
+	fn update_clamp_white_minimum_tracks_black_clamp() {
+		let mut core = NodeCore::new();
+		// Provide the clamp inputs so the property write lands.
+		core.add_input(crate::input::Input::new(
+			CLAMP_WHITE_INPUT,
+			crate::value::ValueType::Float,
+			crate::value::NodeValue::Float(1.0),
+		));
+		core.add_input(crate::input::Input::new(
+			CLAMP_BLACK_INPUT,
+			crate::value::ValueType::Float,
+			crate::value::NodeValue::Float(0.0),
+		));
+		core.set_standard_value(CLAMP_BLACK_INPUT, -1, NodeValue::Float(0.5));
+		let mut n = node();
+		n.update_clamp_white_minimum(&mut core);
+		assert_eq!(property(&core, CLAMP_WHITE_INPUT, "min"), Some(NodeValue::Float(0.500001)));
+	}
+
+	#[test]
+	fn update_clamp_white_minimum_skips_keyframed_black_clamp() {
+		let mut core = NodeCore::new();
+		core.add_input(crate::input::Input::new(
+			CLAMP_WHITE_INPUT,
+			crate::value::ValueType::Float,
+			crate::value::NodeValue::Float(1.0),
+		));
+		core.add_input(crate::input::Input::new(
+			CLAMP_BLACK_INPUT,
+			crate::value::ValueType::Float,
+			crate::value::NodeValue::Float(0.0),
+		));
+		core.keyframe_track_mut(CLAMP_BLACK_INPUT, -1).set_key(Keyframe {
+			time: Rational::new(0, 1),
+			value: NodeValue::Float(0.5),
+			interpolation: Interpolation::Hold,
+			bezier_in: (0.0, 0.0),
+			bezier_out: (0.0, 0.0),
+		});
+		let mut n = node();
+		n.update_clamp_white_minimum(&mut core);
+		// Keyframed: the static minimum is not updated.
+		assert_eq!(property(&core, CLAMP_WHITE_INPUT, "min"), None);
+	}
+
+	#[test]
+	fn input_value_changed_mirrors_enable_toggles() {
+		let mut core = NodeCore::new();
+		core.add_input(crate::input::Input::new(
+			CLAMP_BLACK_ENABLE_INPUT,
+			crate::value::ValueType::Boolean,
+			crate::value::NodeValue::Boolean(false),
+		));
+		core.add_input(crate::input::Input::new(
+			CLAMP_BLACK_INPUT,
+			crate::value::ValueType::Float,
+			crate::value::NodeValue::Float(0.0),
+		));
+		core.add_input(crate::input::Input::new(
+			CLAMP_WHITE_ENABLE_INPUT,
+			crate::value::ValueType::Boolean,
+			crate::value::NodeValue::Boolean(false),
+		));
+		core.add_input(crate::input::Input::new(
+			CLAMP_WHITE_INPUT,
+			crate::value::ValueType::Float,
+			crate::value::NodeValue::Float(1.0),
+		));
+		core.set_standard_value(CLAMP_BLACK_ENABLE_INPUT, -1, NodeValue::Boolean(true));
+		let mut n = node();
+		n.input_value_changed(&mut core, CLAMP_BLACK_ENABLE_INPUT, 0);
+		assert_eq!(property(&core, CLAMP_BLACK_INPUT, "enabled"), Some(NodeValue::Boolean(true)));
+		// White enable mirrors too.
+		core.set_standard_value(CLAMP_WHITE_ENABLE_INPUT, -1, NodeValue::Boolean(true));
+		n.input_value_changed(&mut core, CLAMP_WHITE_ENABLE_INPUT, 0);
+		assert_eq!(property(&core, CLAMP_WHITE_INPUT, "enabled"), Some(NodeValue::Boolean(true)));
+	}
+
+	#[test]
+	fn input_value_changed_black_clamp_reconstrains_white_minimum() {
+		let mut core = NodeCore::new();
+		core.add_input(crate::input::Input::new(
+			CLAMP_BLACK_INPUT,
+			crate::value::ValueType::Float,
+			crate::value::NodeValue::Float(0.0),
+		));
+		core.add_input(crate::input::Input::new(
+			CLAMP_WHITE_INPUT,
+			crate::value::ValueType::Float,
+			crate::value::NodeValue::Float(1.0),
+		));
+		core.set_standard_value(CLAMP_BLACK_INPUT, -1, NodeValue::Float(0.2));
+		let mut n = node();
+		n.input_value_changed(&mut core, CLAMP_BLACK_INPUT, 0);
+		assert_eq!(property(&core, CLAMP_WHITE_INPUT, "min"), Some(NodeValue::Float(0.200001)));
+	}
+
+	#[test]
+	fn value_no_texture_pushes_nothing() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		assert!(table.is_empty());
+	}
+
+	#[test]
+	fn value_texture_without_processor_pushes_nothing() {
+		// Unlike the OCIO base, grading has no pass-through branch.
+		let core = NodeCore::new();
+		let n = node();
+		let inputs = crate::value::NodeValueRow::from([(
+			crate::nodes::ociobase::TEXTURE_INPUT.to_string(),
+			NodeValue::Texture(crate::handle::CHandle::null()),
+		)]);
+		let mut table = NodeValueTable::default();
+		n.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.is_empty());
+	}
+
+	#[test]
+	fn value_texture_with_processor_pushes_deferred_job() {
+		let core = NodeCore::new();
+		let mut n = node();
+		n.base.set_processor(Some(crate::handle::CHandle::null()));
+		let inputs = crate::value::NodeValueRow::from([(
+			crate::nodes::ociobase::TEXTURE_INPUT.to_string(),
+			NodeValue::Texture(crate::handle::CHandle::null()),
+		)]);
+		let mut table = NodeValueTable::default();
+		n.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "OCIO Color Grading (Linear)");
+	}
 }

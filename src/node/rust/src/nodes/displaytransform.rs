@@ -26,7 +26,7 @@
 use crate::factory::NodeMeta;
 use crate::node::{Category, NodeBehavior, NodeCore};
 
-use super::ociobase::OcioBase;
+use crate::nodes::ociobase::OcioBase;
 
 /// Display combo input id (C++ `k_display_input`). Type: combo; default
 /// `0`; flags: not-keyframable, not-connectable. Combo strings are the
@@ -56,33 +56,50 @@ impl DisplayTransformNode {
 	/// index mapped through the color manager's display list; empty
 	/// string when no manager is attached or the index is out of range.
 	fn get_display(&self, core: &NodeCore) -> String {
-		todo!()
+		// The C++ reads the display combo index through
+		// `manager()->list_available_displays()`. The Rust model has no
+		// attached color manager (the manager lives per-project behind
+		// the oakrender bridge, absent here), so the C++ guard
+		// `if (manager())` fails and the empty string is returned.
+		// `// CPP-PARITY: displaytransform.cpp` get_display.
+		let _ = core;
+		String::new()
 	}
 
 	/// Selected view name (C++ `get_view()`): the view combo index
 	/// mapped through the manager's views for [`Self::get_display`];
 	/// empty when unavailable.
 	fn get_view(&self, core: &NodeCore) -> String {
-		todo!()
+		// See [`Self::get_display`]: no manager is ever attached in the
+		// Rust model, so the empty string is returned.
+		// `// CPP-PARITY: displaytransform.cpp` get_view.
+		let _ = core;
+		String::new()
 	}
 
 	/// Transform direction (C++ `get_direction()`): the direction combo
 	/// value cast to `ColorProcessor::Direction` (`0` = normal/forward,
 	/// `1` = inverse).
 	fn get_direction(&self, core: &NodeCore) -> i64 {
-		todo!()
+		core.standard_value(DIRECTION_INPUT, -1).to_double() as i64
 	}
 
 	/// Refresh the display combo strings from the manager (C++
 	/// `update_displays()`); no-op without a manager.
 	fn update_displays(&mut self, core: &mut NodeCore) {
-		todo!()
+		let _ = (self, core);
+		// The C++ sets the display combo strings from
+		// `manager()->list_available_displays()`; without a manager
+		// (Rust model: no bridge) this is a no-op.
+		// `// CPP-PARITY: displaytransform.cpp` update_displays.
 	}
 
 	/// Refresh the view combo strings for the current display (C++
 	/// `update_views()`); no-op without a manager.
 	fn update_views(&mut self, core: &mut NodeCore) {
-		todo!()
+		let _ = (self, core);
+		// See [`Self::update_displays`]: no-op without a manager.
+		// `// CPP-PARITY: displaytransform.cpp` update_views.
 	}
 
 	/// (Re)build the color processor (C++ `generate_processor()`): wraps
@@ -91,13 +108,25 @@ impl DisplayTransformNode {
 	/// `oakrender_color_processor_create_transform`, and stores it with
 	/// [`OcioBase::set_processor`].
 	fn generate_processor(&mut self, core: &mut NodeCore) {
-		todo!()
+		let _ = core;
+		// The C++ wraps the color manager, builds a display transform
+		// (`oakcommon_colortransform_init_display`) for the selected
+		// display/view, resolves the reference color space and creates
+		// the processor via `oakrender_color_processor_create_transform`,
+		// storing it with OcioBase::set_processor. Without a manager (the
+		// Rust model reaches the manager through the oakrender bridge,
+		// absent here) the C++ guard `if (manager())` fails, so this is a
+		// no-op and the processor stays empty — [`OcioBase::value`] then
+		// passes the input texture through unchanged.
+		// `// CPP-PARITY: displaytransform.cpp` generate_processor.
 	}
 
 	/// OCIO config change hook (C++ `config_changed()` override):
 	/// refreshes displays and views, then regenerates the processor.
 	fn config_changed(&mut self, core: &mut NodeCore) {
-		todo!()
+		self.update_displays(core);
+		self.update_views(core);
+		self.generate_processor(core);
 	}
 }
 
@@ -127,14 +156,26 @@ impl NodeBehavior for DisplayTransformNode {
 	/// "Direction" (also sets the direction combo strings
 	/// "Forward"/"Inverse").
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			crate::nodes::ociobase::TEXTURE_INPUT => "Input",
+			DISPLAY_INPUT => "Display",
+			VIEW_INPUT => "View",
+			DIRECTION_INPUT => "Direction",
+			_ => id,
+		}
 	}
 
 	/// Input value changed (C++ `InputValueChangedEvent`): for
 	/// `display_in`, `view_in` or `dir_in` regenerates the processor;
 	/// a `display_in` change additionally refreshes the view combo.
 	fn input_value_changed(&mut self, core: &mut NodeCore, input: &str, element: i32) {
-		todo!()
+		let _ = element;
+		if input == DISPLAY_INPUT || input == VIEW_INPUT || input == DIRECTION_INPUT {
+			if input == DISPLAY_INPUT {
+				self.update_views(core);
+			}
+			self.generate_processor(core);
+		}
 	}
 
 	/// Evaluate outputs: inherited from the C++ base
@@ -148,25 +189,31 @@ impl NodeBehavior for DisplayTransformNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		self.base.value(core, inputs, time, table);
 	}
 
 	/// Added to a graph (C++ base `AddedToGraphEvent`): captures the
 	/// project's color manager and runs `config_changed()` via
 	/// [`OcioBase::added_to_graph`].
 	fn added_to_graph(&mut self, core: &mut NodeCore) {
-		todo!()
+		self.base.added_to_graph(core);
+		self.config_changed(core);
 	}
 
 	/// Removed from a graph (C++ base `RemovedFromGraphEvent`): clears
 	/// the color manager pointer via [`OcioBase::removed_from_graph`].
 	fn removed_from_graph(&mut self, core: &mut NodeCore) {
-		todo!()
+		self.base.removed_from_graph(core);
 	}
 
 	/// Deep copy (C++ `copy()` via `NODE_DEFAULT_FUNCTIONS`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		// The C++ copy constructor copies the embedded OCIO base state;
+		// a fresh base with no processor is the safe Rust port (the
+		// processor is never populated without the render bridge).
+		Some(Box::new(DisplayTransformNode {
+			base: OcioBase::new(),
+		}))
 	}
 }
 
@@ -175,7 +222,32 @@ impl NodeBehavior for DisplayTransformNode {
 /// flag) and adds the `display_in`/`view_in`/`dir_in` combo inputs with
 /// the defaults and flags documented on the constants.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	// OCIOBaseNode base constructor.
+	let mut tex = crate::input::Input::new(
+		crate::nodes::ociobase::TEXTURE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	tex.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(tex);
+	core.effect_input = crate::nodes::ociobase::TEXTURE_INPUT.to_string();
+	core.flags |= crate::node::flags::VIDEO_EFFECT;
+
+	for id in [DISPLAY_INPUT, VIEW_INPUT, DIRECTION_INPUT] {
+		let mut combo = crate::input::Input::new(
+			id,
+			crate::value::ValueType::Combo,
+			crate::value::NodeValue::Combo(0),
+		);
+		combo.flags |= crate::input::flags::NOT_KEYFRAMABLE | crate::input::flags::NOT_CONNECTABLE;
+		core.add_input(combo);
+	}
+
+	(core, Box::new(DisplayTransformNode {
+		base: OcioBase::new(),
+	}))
 }
 
 /// Register this node type (C++ factory entry for
@@ -187,4 +259,137 @@ pub fn register(meta: &mut Vec<NodeMeta>) {
 		categories: &[Category::Color],
 		create,
 	});
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	fn node() -> DisplayTransformNode {
+		DisplayTransformNode {
+			base: OcioBase::new(),
+		}
+	}
+
+	#[test]
+	fn input_names() {
+		let n = node();
+		assert_eq!(n.input_name(crate::nodes::ociobase::TEXTURE_INPUT), "Input");
+		assert_eq!(n.input_name(DISPLAY_INPUT), "Display");
+		assert_eq!(n.input_name(VIEW_INPUT), "View");
+		assert_eq!(n.input_name(DIRECTION_INPUT), "Direction");
+		assert_eq!(n.input_name("other_in"), "other_in");
+	}
+
+	#[test]
+	fn create_wires_inputs_flags_and_properties() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.displaytransform");
+		assert_ne!(
+			core.get_input(crate::nodes::ociobase::TEXTURE_INPUT).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE,
+			0
+		);
+		for id in [DISPLAY_INPUT, VIEW_INPUT, DIRECTION_INPUT] {
+			let input = core.get_input(id).unwrap();
+			assert_eq!(input.default, NodeValue::Combo(0));
+			assert_ne!(input.flags & crate::input::flags::NOT_KEYFRAMABLE, 0);
+			assert_ne!(input.flags & crate::input::flags::NOT_CONNECTABLE, 0);
+		}
+		assert_eq!(core.effect_input, crate::nodes::ociobase::TEXTURE_INPUT);
+		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
+	}
+
+	#[test]
+	fn get_direction_reads_combo_value() {
+		let mut core = NodeCore::new();
+		let n = node();
+		assert_eq!(n.get_direction(&core), 0);
+		core.set_standard_value(DIRECTION_INPUT, -1, NodeValue::Combo(1));
+		assert_eq!(n.get_direction(&core), 1);
+	}
+
+	#[test]
+	fn get_display_and_view_empty_without_manager() {
+		// No color manager is ever attached in the Rust model, so the
+		// C++ `if (manager())` guard fails and both return empty strings.
+		let core = NodeCore::new();
+		let n = node();
+		assert_eq!(n.get_display(&core), "");
+		assert_eq!(n.get_view(&core), "");
+	}
+
+	#[test]
+	fn value_no_texture_pushes_nothing() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		assert!(table.is_empty());
+	}
+
+	#[test]
+	fn value_passes_texture_through_without_processor() {
+		let core = NodeCore::new();
+		let n = node();
+		let tex = NodeValue::Texture(crate::handle::CHandle::null());
+		let inputs = crate::value::NodeValueRow::from([(
+			crate::nodes::ociobase::TEXTURE_INPUT.to_string(),
+			tex.clone(),
+		)]);
+		let mut table = NodeValueTable::default();
+		n.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert_eq!(table.get(ValueType::Texture), Some(&tex));
+	}
+
+	#[test]
+	fn value_pushes_deferred_job_with_processor() {
+		let core = NodeCore::new();
+		let mut n = node();
+		n.base.set_processor(Some(crate::handle::CHandle::null()));
+		let inputs = crate::value::NodeValueRow::from([(
+			crate::nodes::ociobase::TEXTURE_INPUT.to_string(),
+			NodeValue::Texture(crate::handle::CHandle::null()),
+		)]);
+		let mut table = NodeValueTable::default();
+		n.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn input_value_changed_regenerates_processor_and_views() {
+		let mut core = NodeCore::new();
+		let mut n = node();
+		// display_in change refreshes views + regenerates (all no-ops
+		// without a manager; must not panic).
+		n.input_value_changed(&mut core, DISPLAY_INPUT, 0);
+		n.input_value_changed(&mut core, VIEW_INPUT, 0);
+		n.input_value_changed(&mut core, DIRECTION_INPUT, 0);
+		// Other inputs are ignored.
+		n.input_value_changed(&mut core, crate::nodes::ociobase::TEXTURE_INPUT, 0);
+		assert!(n.base.processor().is_none());
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Display Transform");
+	}
+
+	#[test]
+	fn config_and_graph_hooks_are_safe_noops() {
+		let mut core = NodeCore::new();
+		let mut n = node();
+		// Without a manager all refresh/regenerate helpers are no-ops;
+		// they must run without panicking and leave the processor empty.
+		n.update_displays(&mut core);
+		n.update_views(&mut core);
+		n.generate_processor(&mut core);
+		n.config_changed(&mut core);
+		assert!(n.base.processor().is_none());
+		n.added_to_graph(&mut core);
+		n.removed_from_graph(&mut core);
+		assert!(n.base.processor().is_none());
+	}
 }

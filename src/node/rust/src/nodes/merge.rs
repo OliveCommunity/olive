@@ -103,7 +103,11 @@ impl NodeBehavior for MergeNode {
 	/// Localized input names (C++ `retranslate()`): `base_in` ->
 	/// "Base", `blend_in` -> "Blend".
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			BASE_INPUT => "Base",
+			BLEND_INPUT => "Blend",
+			_ => id,
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): if only the blend texture is
@@ -112,6 +116,14 @@ impl NodeBehavior for MergeNode {
 	/// base texture is present, push the base input as-is; if both are
 	/// present, push a shader job over the base texture with the whole
 	/// input row as job values; if neither, push nothing.
+	///
+	/// The Rust model has no shader-job payload: the both-present case
+	/// pushes a null texture handle marking a renderer-deferred
+	/// alpha-over job resolved via [`Self::shader_code`]
+	/// (`// CPP-PARITY: merge.cpp` `value()`). The "blend has fewer
+	/// than 4 channels" check needs the texture's channel count, which
+	/// the Rust texture handle does not carry, so the alpha-less blend
+	/// case is only distinguishable by presence here.
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -119,18 +131,43 @@ impl NodeBehavior for MergeNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		let _ = (core, time);
+		let base = inputs.get(BASE_INPUT);
+		let blend = inputs.get(BLEND_INPUT);
+
+		match (base, blend) {
+			(Some(b @ crate::value::NodeValue::Texture(_)), Some(bl @ crate::value::NodeValue::Texture(_))) => {
+				// Both present: alpha-over shader job. The C++ checks
+				// the blend channel count here (RGBA required for an
+				// alpha to over with) and pushes the blend as-is when it
+				// has no alpha channel — not representable without the
+				// texture params (`// CPP-PARITY: merge.cpp`).
+				let _ = (b, bl);
+				table.push(
+					crate::value::ValueType::Texture,
+					crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+					None,
+				);
+			}
+			(Some(b @ crate::value::NodeValue::Texture(_)), None) => {
+				table.push(crate::value::ValueType::Texture, b.clone(), None);
+			}
+			(None, Some(bl @ crate::value::NodeValue::Texture(_))) => {
+				table.push(crate::value::ValueType::Texture, bl.clone(), None);
+			}
+			_ => {}
+		}
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): always returns
 	/// the alpha-over fragment shader regardless of the request id.
-	fn shader_code(&self, request: &str) -> Option<String> {
-		todo!()
+	fn shader_code(&self, _request: &str) -> Option<String> {
+		Some(SHADER_FRAG.to_string())
 	}
 
 	/// Deep copy (C++ `copy()`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(MergeNode))
 	}
 }
 
@@ -138,7 +175,109 @@ impl NodeBehavior for MergeNode {
 /// `blend_in` as not-keyframable texture inputs and sets the
 /// dont-show-in-param-view flag.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	let mut base = crate::input::Input::new(
+		BASE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	base.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(base);
+
+	let mut blend = crate::input::Input::new(
+		BLEND_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	blend.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(blend);
+
+	core.flags |= crate::node::flags::DONT_SHOW_IN_PARAM_VIEW;
+
+	(core, Box::new(MergeNode))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::node::NodeBehavior;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	fn tex() -> NodeValue {
+		NodeValue::Texture(crate::handle::CHandle::null())
+	}
+
+	#[test]
+	fn input_names() {
+		let n = MergeNode;
+		assert_eq!(n.input_name(BASE_INPUT), "Base");
+		assert_eq!(n.input_name(BLEND_INPUT), "Blend");
+	}
+
+	#[test]
+	fn create_wires_inputs_and_flag() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.merge");
+		assert!(core.get_input(BASE_INPUT).is_some());
+		assert!(core.get_input(BLEND_INPUT).is_some());
+		assert_ne!(core.flags & crate::node::flags::DONT_SHOW_IN_PARAM_VIEW, 0);
+	}
+
+	#[test]
+	fn value_neither_pushes_nothing() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		assert!(table.is_empty());
+	}
+
+	#[test]
+	fn value_base_only_pushes_base() {
+		let (core, behavior) = create();
+		let base = tex();
+		let inputs = crate::value::NodeValueRow::from([(BASE_INPUT.to_string(), base.clone())]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert_eq!(table.get(ValueType::Texture), Some(&base));
+	}
+
+	#[test]
+	fn value_blend_only_pushes_blend() {
+		let (core, behavior) = create();
+		let blend = tex();
+		let inputs = crate::value::NodeValueRow::from([(BLEND_INPUT.to_string(), blend.clone())]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert_eq!(table.get(ValueType::Texture), Some(&blend));
+	}
+
+	#[test]
+	fn value_both_pushes_deferred_job() {
+		let (core, behavior) = create();
+		let inputs = crate::value::NodeValueRow::from([
+			(BASE_INPUT.to_string(), tex()),
+			(BLEND_INPUT.to_string(), tex()),
+		]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn shader_code_always_alphaover() {
+		let n = MergeNode;
+		let code = n.shader_code("anything").unwrap();
+		assert!(code.contains("base_col *= 1.0 - blend_col.a;"));
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Merge");
+	}
 }
 
 /// Register this node type (C++ `k_merge_node` in

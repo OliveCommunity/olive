@@ -139,21 +139,103 @@ pub type TextRenderBackend =
 /// Install the backend hooks (C++ `set_text_backends()`). When a hook
 /// is `None` the caller falls back to a zero size / leaves the (already
 /// cleared) buffer untouched — a documented behavior gap until the
-/// facade installs a text engine.
+/// facade installs a text engine. Setting a hook to `None` uninstalls
+/// it (the C++ global is a plain function pointer, assignable any
+/// number of times; a `Mutex` keeps the tests able to reset it).
 pub fn set_text_backends(
 	measure: Option<TextMeasureBackend>,
 	render: Option<TextRenderBackend>,
 ) {
-	let _ = (measure, render);
-	todo!()
+	*MEASURE.lock().unwrap() = measure;
+	*RENDER.lock().unwrap() = render;
 }
 
 /// Currently installed measure hook (C++ `text_measure_backend()`).
 pub fn text_measure_backend() -> Option<TextMeasureBackend> {
-	todo!()
+	*MEASURE.lock().unwrap()
 }
 
 /// Currently installed render hook (C++ `text_render_backend()`).
 pub fn text_render_backend() -> Option<TextRenderBackend> {
-	todo!()
+	*RENDER.lock().unwrap()
+}
+
+/// Installed measure hook (C++ global `g_text_measure_backend`).
+static MEASURE: std::sync::Mutex<Option<TextMeasureBackend>> = std::sync::Mutex::new(None);
+
+/// Installed render hook (C++ global `g_text_render_backend`).
+static RENDER: std::sync::Mutex<Option<TextRenderBackend>> = std::sync::Mutex::new(None);
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn backend_hooks_default_none() {
+		set_text_backends(None, None);
+		assert_eq!(text_measure_backend(), None);
+		assert_eq!(text_render_backend(), None);
+	}
+
+	#[test]
+	fn backend_hooks_install_and_query() {
+		fn measure(_r: &TextLayoutRequest) -> TextLayoutSize {
+			TextLayoutSize {
+				width: 12.0,
+				height: 34.0,
+			}
+		}
+		fn render(_r: &TextLayoutRequest, _t: &TextRenderTransform, mut target: TextRenderTarget) {
+			for b in target.data.iter_mut() {
+				*b = 255;
+			}
+		}
+		set_text_backends(Some(measure), Some(render));
+		assert_eq!(text_measure_backend().unwrap()(&TextLayoutRequest {
+			text: String::new(),
+			mode: TextLayoutMode::PlainText,
+			font_family: String::new(),
+			font_size_pt: 0.0,
+			dots_per_meter: 0,
+			wrap_width: 0.0,
+			center_horizontally: false,
+		}).width, 12.0);
+		assert_eq!(
+			text_measure_backend().unwrap()(&TextLayoutRequest {
+				text: String::new(),
+				mode: TextLayoutMode::Html,
+				font_family: String::new(),
+				font_size_pt: 0.0,
+				dots_per_meter: 0,
+				wrap_width: 0.0,
+				center_horizontally: false,
+			})
+			.height,
+			34.0
+		);
+		let mut buf = vec![0u8; 4];
+		text_render_backend().unwrap()(
+			&TextLayoutRequest {
+				text: String::new(),
+				mode: TextLayoutMode::PlainText,
+				font_family: String::new(),
+				font_size_pt: 0.0,
+				dots_per_meter: 0,
+				wrap_width: 0.0,
+				center_horizontally: false,
+			},
+			&TextRenderTransform::default(),
+			TextRenderTarget {
+				data: &mut buf,
+				width: 2,
+				height: 2,
+				linesize_bytes: 2,
+				channel_count: 1,
+			},
+		);
+		assert_eq!(buf, vec![255u8; 4]);
+		// Restore the uninstalled state so other tests observe the
+		// no-backend fallback.
+		set_text_backends(None, None);
+	}
 }

@@ -8,6 +8,21 @@ license = "GPL-3.0-or-later"
 [lib]
 crate-type = ["staticlib", "rlib"]
 
+[features]
+# Link the real oakrender crate (dev-dependency) into the integration test
+# binary and drop the oakrender ticket stubs from tests/common, so
+# `tests/render_real_integration_test.rs` drives oaktask's render loop
+# against the actual oakrender ticket arena (CPU path, no GPU).
+#
+# Build it with:
+#   cargo test --features real-oakrender --test render_real_integration_test
+#
+# The flag is per-binary: `cargo test --features real-oakrender` (without
+# `--test`) also compiles the stub-based tests, which cannot coexist with
+# the real oakrender exports in one binary (duplicate `#[no_mangle]`
+# symbols), so always pass the `--test` filter when the feature is on.
+real-oakrender = ["dep:oakrender"]
+
 [profile.release]
 # FFI discipline: panics must be catchable at every exported entry.
 panic = "unwind"
@@ -20,3 +35,9 @@ oakcore-rs = { path = "../../oakcore-rs" }
 # Registered in README decision #6: OTIO no longer stays on the C++ side —
 # LoadOTIOTask/SaveOTIOTask parse/serialize through this crate.
 oakotio = { path = "../../bindings/oakotio" }
+
+# Optional: only built when the `real-oakrender` feature is on, which links
+# the real oakrender crate into the integration-test binary. The library
+# itself never references it (all render access goes through the C ABI in
+# `bridge/render.rs`); plain `cargo test`/`cargo build` do not compile it.
+oakrender = { path = "../../render/rust", optional = true }

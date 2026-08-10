@@ -23,8 +23,14 @@
 #![allow(non_snake_case, dead_code, unused_variables, clippy::missing_safety_doc)]
 
 use std::ffi::{c_char, c_int, c_void};
-use std::sync::atomic::{AtomicI32, AtomicI64, AtomicUsize, Ordering};
-use std::sync::{Condvar, Mutex};
+use std::sync::atomic::{AtomicI32, AtomicI64, Ordering};
+// AtomicUsize/Condvar are only used by the simulated oakrender ticket
+// arena, which the `real-oakrender` feature compiles out.
+#[cfg(not(feature = "real-oakrender"))]
+use std::sync::atomic::AtomicUsize;
+use std::sync::Mutex;
+#[cfg(not(feature = "real-oakrender"))]
+use std::sync::Condvar;
 
 // ---------------------------------------------------------------------------
 // Fake handle helpers
@@ -116,14 +122,22 @@ pub static CONFIG_DEFAULT_SEQ_FRAME_RATE: AtomicI32 = AtomicI32::new(0); // 0 =>
 pub static PROXY_FFMPEG_PATH: Mutex<String> = Mutex::new(String::new());
 pub static SUBMIT_CB: Mutex<Option<unsafe extern "C" fn(*const oaktask::bridge::codec::OakCodecTaskRequest, *mut c_void) -> c_int>> =
 	Mutex::new(None);
+// Simulated-oakrender-arena state below is only linked in stub mode: the
+// `real-oakrender` feature replaces the render stubs with the real
+// oakrender exports, so these statics and the `#[no_mangle]` render stubs
+// are compiled out together.
+#[cfg(not(feature = "real-oakrender"))]
 pub static ATOM_CANCELLED: AtomicI32 = AtomicI32::new(0);
+#[cfg(not(feature = "real-oakrender"))]
 pub static TICKET_FRAME_VALID: AtomicI32 = AtomicI32::new(1); // 0 => get_frame returns empty frame
+#[cfg(not(feature = "real-oakrender"))]
 pub static TICKET_GET_FRAME_RESULT: AtomicI32 = AtomicI32::new(0);
 // Simulated ticket arena (bridge::render ticket stubs below).
 // 0 = tickets complete synchronously on submit (the deterministic
 // single-thread path the export/task tests rely on); 1 = tickets stay in
 // flight until the test fires them with `stub_complete` (scrambled
 // completion-order tests).
+#[cfg(not(feature = "real-oakrender"))]
 pub static TICKET_DEFER: AtomicI32 = AtomicI32::new(0);
 pub static NODE_ID: Mutex<String> = Mutex::new(String::new());
 pub static AUDIO_TRACK_LIST_NULL: AtomicI32 = AtomicI32::new(1); // 1 => sequence audio track list is empty (null handle)
@@ -195,14 +209,22 @@ pub fn reset_stubs() {
 	CONFIG_DEFAULT_SEQ_FRAME_RATE.store(0, Ordering::SeqCst);
 	PROXY_FFMPEG_PATH.lock().unwrap().clear();
 	*SUBMIT_CB.lock().unwrap() = None;
+	#[cfg(not(feature = "real-oakrender"))]
 	ATOM_CANCELLED.store(0, Ordering::SeqCst);
+	#[cfg(not(feature = "real-oakrender"))]
 	TICKET_FRAME_VALID.store(1, Ordering::SeqCst);
+	#[cfg(not(feature = "real-oakrender"))]
 	TICKET_GET_FRAME_RESULT.store(0, Ordering::SeqCst);
 	// Ticket arena state: back to immediate-completion mode, no tickets.
+	#[cfg(not(feature = "real-oakrender"))]
 	TICKET_DEFER.store(0, Ordering::SeqCst);
+	#[cfg(not(feature = "real-oakrender"))]
 	TICKET_NEXT_ID.store(0, Ordering::SeqCst);
+	#[cfg(not(feature = "real-oakrender"))]
 	TICKET_SUBMITTED.store(0, Ordering::SeqCst);
+	#[cfg(not(feature = "real-oakrender"))]
 	TICKET_COMPLETED.store(0, Ordering::SeqCst);
+	#[cfg(not(feature = "real-oakrender"))]
 	TICKETS.lock().unwrap_or_else(|e| e.into_inner()).clear();
 	NODE_ID.lock().unwrap().clear();
 	AUDIO_TRACK_LIST_NULL.store(1, Ordering::SeqCst);
@@ -1899,25 +1921,34 @@ fn oakrender_cache_from_fake() -> oaktask::bridge::render::OakRenderCache {
 // ---------------------------------------------------------------------------
 
 /// OAKRENDER_TICKET_VIDEO (include/render/ticket.h).
+#[cfg(not(feature = "real-oakrender"))]
 const OAKRENDER_TICKET_VIDEO: c_int = 0;
 /// OAKRENDER_TICKET_AUDIO (include/render/ticket.h).
+#[cfg(not(feature = "real-oakrender"))]
 const OAKRENDER_TICKET_AUDIO: c_int = 1;
 /// Base of the ticket handle ctx (0x6000 + id).
+#[cfg(not(feature = "real-oakrender"))]
 const STUB_TICKET_CTX_BASE: usize = 0x6000;
 /// Base of the frame handle ctx (0x10000 + ticket id), so tests can tell
 /// which frame a delivered result came from.
+#[cfg(not(feature = "real-oakrender"))]
 const STUB_FRAME_CTX_BASE: usize = 0x10000;
 
 /// Next ticket id (submission order).
+#[cfg(not(feature = "real-oakrender"))]
 static TICKET_NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 /// Tickets submitted so far (for [`stub_wait_submitted`]).
+#[cfg(not(feature = "real-oakrender"))]
 static TICKET_SUBMITTED: AtomicUsize = AtomicUsize::new(0);
 /// Completions fired so far (callbacks invoked).
+#[cfg(not(feature = "real-oakrender"))]
 static TICKET_COMPLETED: AtomicUsize = AtomicUsize::new(0);
 /// Submitted-count condvar (test sync point).
+#[cfg(not(feature = "real-oakrender"))]
 static TICKET_SUBMIT_CV: (Mutex<()>, Condvar) = (Mutex::new(()), Condvar::new());
 
 /// A simulated in-flight ticket.
+#[cfg(not(feature = "real-oakrender"))]
 struct StubTicket {
 	id: usize,
 	kind: c_int,
@@ -1932,14 +1963,19 @@ struct StubTicket {
 // The userdata is an opaque pointer handed through the ticket's finished
 // callback (the same contract as the real C ABI, where tickets complete on
 // worker threads); it is never dereferenced by the stub.
+#[cfg(not(feature = "real-oakrender"))]
 unsafe impl Send for StubTicket {}
+#[cfg(not(feature = "real-oakrender"))]
 unsafe impl Sync for StubTicket {}
 
 /// The registry (guarded; ticket queries/cancel/wait race the render loop).
+#[cfg(not(feature = "real-oakrender"))]
 static TICKETS: Mutex<Vec<StubTicket>> = Mutex::new(Vec::new());
 /// Wakes `oakrender_ticket_wait` callers when a ticket finishes.
+#[cfg(not(feature = "real-oakrender"))]
 static TICKET_CV: Condvar = Condvar::new();
 
+#[cfg(not(feature = "real-oakrender"))]
 fn stub_ticket_handle(id: usize) -> oaktask::bridge::render::OakRenderTicket {
 	unsafe extern "C" fn noop(_ctx: *mut c_void) {}
 	oaktask::bridge::render::OakRenderTicket {
@@ -1950,6 +1986,7 @@ fn stub_ticket_handle(id: usize) -> oaktask::bridge::render::OakRenderTicket {
 	}
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 fn stub_ticket_id(ticket: oaktask::bridge::render::OakRenderTicket) -> Option<usize> {
 	let v = ticket.ctx as usize;
 	if v >= STUB_TICKET_CTX_BASE && v < STUB_TICKET_CTX_BASE + 1_000_000 {
@@ -1959,6 +1996,7 @@ fn stub_ticket_id(ticket: oaktask::bridge::render::OakRenderTicket) -> Option<us
 	}
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 fn stub_frame_handle(id: usize) -> oaktask::bridge::codec::OakFrame {
 	unsafe extern "C" fn noop(_ctx: *mut c_void) {}
 	oaktask::bridge::codec::OakFrame {
@@ -1971,6 +2009,7 @@ fn stub_frame_handle(id: usize) -> oaktask::bridge::codec::OakFrame {
 
 /// Register a submitted ticket; in immediate mode its completion fires
 /// synchronously (before this returns).
+#[cfg(not(feature = "real-oakrender"))]
 fn stub_register_ticket(
 	kind: c_int,
 	time_num: i64,
@@ -2007,6 +2046,7 @@ fn stub_register_ticket(
 
 /// Fire the finished callback of ticket `id` (exactly once). Tests call
 /// this to drive completion in any order.
+#[cfg(not(feature = "real-oakrender"))]
 pub fn stub_complete(id: usize) {
 	let to_fire = {
 		let mut tickets = TICKETS.lock().unwrap_or_else(|e| e.into_inner());
@@ -2028,6 +2068,7 @@ pub fn stub_complete(id: usize) {
 }
 
 /// Block until at least `count` tickets have been submitted.
+#[cfg(not(feature = "real-oakrender"))]
 pub fn stub_wait_submitted(count: usize) {
 	let mut guard = TICKET_SUBMIT_CV.0.lock().unwrap_or_else(|e| e.into_inner());
 	while TICKET_SUBMITTED.load(Ordering::SeqCst) < count {
@@ -2036,23 +2077,28 @@ pub fn stub_wait_submitted(count: usize) {
 }
 
 /// Tickets submitted so far.
+#[cfg(not(feature = "real-oakrender"))]
 pub fn stub_submitted_count() -> usize {
 	TICKET_SUBMITTED.load(Ordering::SeqCst)
 }
 
 /// Completions fired so far (callbacks invoked).
+#[cfg(not(feature = "real-oakrender"))]
 pub fn stub_completed_count() -> usize {
 	TICKET_COMPLETED.load(Ordering::SeqCst)
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_cancelatom_init() -> oaktask::bridge::render::OakCancelAtom {
 	fake_atom()
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_cancelatom_free(_atom: *mut oaktask::bridge::render::OakCancelAtom) {}
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_cancelatom_cancel(_atom: oaktask::bridge::render::OakCancelAtom) -> c_int {
 	ATOM_CANCELLED.store(1, Ordering::SeqCst);
@@ -2070,6 +2116,7 @@ pub unsafe extern "C" fn oakrender_cancelatom_cancel(_atom: oaktask::bridge::ren
 	0
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_cancelatom_is_cancelled(_atom: oaktask::bridge::render::OakCancelAtom, cancelled: *mut c_int) -> c_int {
 	if !cancelled.is_null() {
@@ -2078,6 +2125,7 @@ pub unsafe extern "C" fn oakrender_cancelatom_is_cancelled(_atom: oaktask::bridg
 	0
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_cancelatom_heard_cancel(_atom: oaktask::bridge::render::OakCancelAtom, heard: *mut c_int) -> c_int {
 	if !heard.is_null() {
@@ -2086,6 +2134,7 @@ pub unsafe extern "C" fn oakrender_cancelatom_heard_cancel(_atom: oaktask::bridg
 	0
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_ticket_render_frame(
 	params: *const oaktask::bridge::render::OakRenderVideoTicketParams,
@@ -2100,6 +2149,7 @@ pub unsafe extern "C" fn oakrender_ticket_render_frame(
 	stub_register_ticket(OAKRENDER_TICKET_VIDEO, time_num, time_den, (0, 1, 0, 1), cb, userdata)
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_ticket_render_audio(
 	_output_node: oaktask::bridge::node::OakNodeNode,
@@ -2122,6 +2172,7 @@ pub unsafe extern "C" fn oakrender_ticket_render_audio(
 	)
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_ticket_is_finished(ticket: oaktask::bridge::render::OakRenderTicket) -> c_int {
 	match stub_ticket_id(ticket) {
@@ -2137,6 +2188,7 @@ pub unsafe extern "C" fn oakrender_ticket_is_finished(ticket: oaktask::bridge::r
 	}
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_ticket_wait(ticket: oaktask::bridge::render::OakRenderTicket) -> c_int {
 	if let Some(id) = stub_ticket_id(ticket) {
@@ -2148,6 +2200,7 @@ pub unsafe extern "C" fn oakrender_ticket_wait(ticket: oaktask::bridge::render::
 	0
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_ticket_cancel(ticket: oaktask::bridge::render::OakRenderTicket) -> c_int {
 	if let Some(id) = stub_ticket_id(ticket) {
@@ -2158,6 +2211,7 @@ pub unsafe extern "C" fn oakrender_ticket_cancel(ticket: oaktask::bridge::render
 	0
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_ticket_get_type(ticket: oaktask::bridge::render::OakRenderTicket) -> c_int {
 	match stub_ticket_id(ticket) {
@@ -2172,6 +2226,7 @@ pub unsafe extern "C" fn oakrender_ticket_get_type(ticket: oaktask::bridge::rend
 	}
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_ticket_get_frame(
 	ticket: oaktask::bridge::render::OakRenderTicket,
@@ -2192,6 +2247,7 @@ pub unsafe extern "C" fn oakrender_ticket_get_frame(
 	TICKET_GET_FRAME_RESULT.load(Ordering::SeqCst)
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_ticket_get_time(
 	ticket: oaktask::bridge::render::OakRenderTicket,
@@ -2216,6 +2272,7 @@ pub unsafe extern "C" fn oakrender_ticket_get_time(
 	0
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_ticket_get_range(
 	ticket: oaktask::bridge::render::OakRenderTicket,
@@ -2248,6 +2305,7 @@ pub unsafe extern "C" fn oakrender_ticket_get_range(
 	0
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_ticket_get_samples(_ticket: oaktask::bridge::render::OakRenderTicket, out: *mut *mut c_void) -> c_int {
 	if !out.is_null() {
@@ -2256,9 +2314,11 @@ pub unsafe extern "C" fn oakrender_ticket_get_samples(_ticket: oaktask::bridge::
 	0
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_ticket_free(_ticket: *mut oaktask::bridge::render::OakRenderTicket) {}
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_project_copier_create() -> oaktask::bridge::render::OakRenderProjectCopier {
 	unsafe extern "C" fn noop(_ctx: *mut c_void) {}
@@ -2270,31 +2330,34 @@ pub unsafe extern "C" fn oakrender_project_copier_create() -> oaktask::bridge::r
 	}
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_project_copier_free(_copier: *mut oaktask::bridge::render::OakRenderProjectCopier) {}
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_project_copier_set_project(_copier: oaktask::bridge::render::OakRenderProjectCopier, _project: oaktask::bridge::node::OakNodeProject) -> c_int {
 	0
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_project_copier_get_copy(_copier: oaktask::bridge::render::OakRenderProjectCopier, original: oaktask::bridge::node::OakNodeNode) -> oaktask::bridge::node::OakNodeNode {
 	original
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_project_copier_get_copied_project(_copier: oaktask::bridge::render::OakRenderProjectCopier) -> oaktask::bridge::node::OakNodeProject {
 	fake_handle()
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_color_processor_create(
 	_src_space: *const c_char,
-	_dst_space: *const c_char,
-	_display: *const c_char,
-	_view: *const c_char,
-	_look: *const c_char,
+	_dst_transform: *const c_char,
+	_direction: c_int,
 ) -> oaktask::bridge::render::OakColorProcessor {
 	unsafe extern "C" fn noop(_ctx: *mut c_void) {}
 	oaktask::bridge::render::OakColorProcessor {
@@ -2305,22 +2368,27 @@ pub unsafe extern "C" fn oakrender_color_processor_create(
 	}
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_color_processor_free(_processor: *mut oaktask::bridge::render::OakColorProcessor) {}
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_color_processor_is_valid(_processor: oaktask::bridge::render::OakColorProcessor) -> c_int {
 	1
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_codec_frame_free(_frame: *mut oaktask::bridge::codec::OakFrame) {}
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_manager_set_aggressive_gc(_enabled: c_int) -> c_int {
 	0
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_cache_get_invalidated_ranges(
 	_cache: oaktask::bridge::render::OakRenderCache,
@@ -2334,6 +2402,7 @@ pub unsafe extern "C" fn oakrender_cache_get_invalidated_ranges(
 	0
 }
 
+#[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
 pub unsafe extern "C" fn oakrender_cache_free(_cache: *mut oaktask::bridge::render::OakRenderCache) {}
 

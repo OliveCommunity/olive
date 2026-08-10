@@ -16,11 +16,13 @@
 
 //! `LoadOTIOTask`, mirroring `src/task/src/project/loadotio/loadotio.h`.
 //!
-//! Loads an OpenTimelineIO file into a new `OakNodeProject`, with a
-//! configurable import-confirmation callback. The OTIO document is parsed
-//! with the pure-Rust `oakotio` binding (see `README` decision #6); the
-//! project is built through the oaknode / oaktimeline C ABIs exactly like
-//! the C++ task, so no OTIO type crosses the oaktask C ABI.
+//! Loads an OpenTimelineIO (`.otio`) or FCPXML (`.fcpxml`) file into a new
+//! `OakNodeProject`, with a configurable import-confirmation callback. The
+//! format is dispatched from the filename extension (see
+//! [`crate::project::format`]); the document is parsed with the pure-Rust
+//! `oakotio` binding (see `README` decision #6) and the project is built
+//! through the oaknode / oaktimeline C ABIs exactly like the C++ task, so
+//! no OTIO or FCPXML type crosses the oaktask C ABI.
 //!
 //! CPP-PARITY: src/task/src/project/loadotio/loadotio.cpp
 
@@ -34,6 +36,7 @@ use crate::bridge;
 use crate::error::{Error, Result};
 use crate::ffi::taskhandle::cstr;
 use crate::handle::CHandle;
+use crate::project::format::InterchangeFormat;
 use crate::project::load::ProjectLoadBaseTask;
 use crate::task::{Task, TaskBehavior};
 
@@ -69,16 +72,25 @@ impl LoadOTIOTask {
 }
 
 impl TaskBehavior for LoadOTIOTask {
-	/// Load and parse the OTIO file (`oakotio`), then convert it into the
+	/// Load and parse the document (`oakotio`), then convert it into the
 	/// project stored on the base task.
 	fn run(&mut self, task: &mut Task) -> Result<()> {
-		let root = oakotio::from_json_file(&self.base.filename).map_err(|e| {
-			task.set_error(&format!(
-				"Failed to load OpenTimelineIO from file \"{}\" \n\nOpenTimelineIO Error:\n\n{}",
-				self.base.filename, e
-			));
-			Error::Failed("Failed to load OpenTimelineIO".to_string())
-		})?;
+		// Dispatch the interchange format from the filename extension.
+		// Format handling ends here: `parse_timelines` returns one
+		// `oakotio::Timeline` per sequence whatever the source format, so
+		// the project building below is shared between `.otio` and
+		// `.fcpxml` (C++ parity for the track/clip/footage code).
+		let format = match InterchangeFormat::of(&self.base.filename) {
+			Ok(f) => f,
+			Err(e) => {
+				if let Error::Failed(msg) = &e {
+					task.set_error(msg);
+				}
+				return Err(e);
+			}
+		};
+
+		let timelines = parse_timelines(task, &self.base.filename, format)?;
 
 		let mut project = unsafe { bridge::node::oaknode_project_init() };
 		if project.ctx.is_null() {
@@ -89,26 +101,6 @@ impl TaskBehavior for LoadOTIOTask {
 			bridge::node::oaknode_project_initialize(project);
 			bridge::node::oaknode_project_set_modified(project, 1);
 		}
-
-		// Collect the timelines: a SerializableCollection holds several,
-		// a Timeline root holds one, anything else is unsupported.
-		let timelines: Vec<oakotio::Timeline> = match &root {
-			Serializable::SerializableCollection(collection) => collection
-				.children()
-				.iter()
-				.filter_map(|child| child.as_timeline().cloned())
-				.collect(),
-			Serializable::Timeline(timeline) => vec![timeline.clone()],
-			_ => {
-				task.set_error("Unknown OpenTimelineIO root element");
-				if !project.ctx.is_null() {
-					unsafe {
-						bridge::node::oaknode_project_free(&mut project);
-					}
-				}
-				return Err(Error::Failed("Unknown OpenTimelineIO root element".to_string()));
-			}
-		};
 
 		// Keep track of imported footage
 		let mut imported_footage: HashMap<String, CHandle> = HashMap::new();
@@ -505,6 +497,50 @@ impl TaskBehavior for LoadOTIOTask {
 unsafe fn set_own_context_position(node: CHandle) {
 	unsafe {
 		bridge::node::oaknode_node_set_context_position(node, node, 0.0, 0.0, 0);
+	}
+}
+
+/// Parse the document into one `oakotio::Timeline` per sequence, dispatching
+/// on the filename extension:
+///
+/// - `.otio`: OpenTimelineIO JSON. A `Timeline` root yields one timeline, a
+///   `SerializableCollection` yields one timeline per `Timeline` child, and
+///   any other root is the C++ "Unknown OpenTimelineIO root element" error.
+/// - `.fcpxml`: FCPXML (`oakotio::fcpxml`), one timeline per `<sequence>`.
+///
+/// Format handling ends here — the caller builds the project from the
+/// returned timelines regardless of the source format (C++ parity), so the
+/// track/clip/footage code never forks.
+fn parse_timelines(task: &mut Task, filename: &str, format: InterchangeFormat) -> Result<Vec<oakotio::Timeline>> {
+	match format {
+		InterchangeFormat::OtioJson => {
+			let root = oakotio::from_json_file(filename).map_err(|e| {
+				task.set_error(&format!(
+					"Failed to load OpenTimelineIO from file \"{}\" \n\nOpenTimelineIO Error:\n\n{}",
+					filename, e
+				));
+				Error::Failed("Failed to load OpenTimelineIO".to_string())
+			})?;
+			match &root {
+				Serializable::SerializableCollection(collection) => Ok(collection
+					.children()
+					.iter()
+					.filter_map(|child| child.as_timeline().cloned())
+					.collect()),
+				Serializable::Timeline(timeline) => Ok(vec![timeline.clone()]),
+				_ => {
+					task.set_error("Unknown OpenTimelineIO root element");
+					Err(Error::Failed("Unknown OpenTimelineIO root element".to_string()))
+				}
+			}
+		}
+		InterchangeFormat::Fcpxml => oakotio::from_fcpxml_file(filename).map_err(|e| {
+			task.set_error(&format!(
+				"Failed to load FCPXML from file \"{}\" \n\nFCPXML Error:\n\n{}",
+				filename, e
+			));
+			Error::Failed("Failed to load FCPXML".to_string())
+		}),
 	}
 }
 

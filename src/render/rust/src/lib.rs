@@ -1,0 +1,56 @@
+// Oak Video Editor - Non-Linear Video Editor
+// Copyright (C) 2026 Oak Team
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+//! # oakrender — the render engine (Rust)
+//!
+//! Reimplements the C++ oakrender module behind its frozen C ABI
+//! (`include/render/*.h`). See README.md for the architectural mapping.
+//!
+//! Module map (mirrors `COVERAGE.md`):
+//! - `handle` — refcounted C-handle scaffolding (C++ internalhandles.h)
+//! - `texture`/`frame` — Texture + CPU Frame values (C++ texture.h/frame)
+//! - `cache` — PlaybackCache/FrameHashCache family + disk state
+//! - `color` — ColorProcessor over `ocio-rs` + LUT library
+//! - `ticket` — ticket arena with exactly-once completion
+//! - `worker` — worker pool + graph snapshot store
+//! - `manager` — RenderManager singleton + disk cache
+//! - `autocacher` — PreviewAutoCacher
+//! - `eval` — the evaluation seam (RenderHooks)
+//! - `backend` — wgpu GPU context + display renderer
+//! - `copier` — render-side project-copy client (oaknode C ABI)
+//! - `cancelatom` — the cancellation primitive
+//! - `bridge` — C ABI imports (oakcommon/oaknode/oakcodec, dlsym-resolved)
+//! - `ffi` — the `include/render/*.h` export layer
+
+#![deny(unsafe_op_in_unsafe_fn)]
+#![warn(missing_docs)]
+
+pub mod autocacher;
+pub mod backend;
+pub mod bridge;
+pub mod cache;
+pub mod cancelatom;
+pub mod color;
+pub mod copier;
+pub mod error;
+pub mod eval;
+pub mod ffi;
+pub mod frame;
+pub mod handle;
+pub mod manager;
+pub mod texture;
+pub mod ticket;
+pub mod worker;

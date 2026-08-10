@@ -149,7 +149,13 @@ impl NodeBehavior for DespillNode {
 	/// "Average"/"Double Red Average"/"Double Average"/"Limit"),
 	/// `preserve_luminance_input` -> "Preserve Luminance".
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			TEXTURE_INPUT => "Input",
+			COLOR_INPUT => "Key Color",
+			METHOD_INPUT => "Method",
+			PRESERVE_LUMINANCE_INPUT => "Preserve Luminance",
+			_ => id,
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): builds a `ShaderJob` from
@@ -165,18 +171,36 @@ impl NodeBehavior for DespillNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		let _ = (core, time);
+		match inputs.get(TEXTURE_INPUT) {
+			Some(crate::value::NodeValue::Texture(_)) => {}
+			_ => return,
+		}
+
+		// `// CPP-PARITY: despill.cpp` `value()` — the C++ inserts
+		// `luma_coeffs` (Rec. 709 {0.2126, 0.7152, 0.0722}, or the project
+		// color manager's default luma coefficients when one is attached —
+		// the Rust model has no project/manager access, so the fallback
+		// always applies) into a ShaderJob over the whole input row and
+		// pushes `tex->to_job(job)`. The Rust model has no shader-job
+		// payload: the renderer seam resolves the deferred job from this
+		// null handle.
+		table.push(
+			crate::value::ValueType::Texture,
+			crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+			None,
+		);
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): returns the
 	/// single fragment shader regardless of the request id.
-	fn shader_code(&self, request: &str) -> Option<String> {
-		todo!()
+	fn shader_code(&self, _request: &str) -> Option<String> {
+		Some(SHADER_FRAG.to_string())
 	}
 
 	/// Deep copy (C++ `copy()` via `NODE_DEFAULT_FUNCTIONS`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(DespillNode))
 	}
 }
 
@@ -185,7 +209,36 @@ impl NodeBehavior for DespillNode {
 /// defaults documented on the constants, sets the video-effect flag,
 /// and makes `tex_in` the effect input.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	let mut tex = crate::input::Input::new(
+		TEXTURE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	tex.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(tex);
+
+	core.add_input(crate::input::Input::new(
+		COLOR_INPUT,
+		crate::value::ValueType::Combo,
+		crate::value::NodeValue::Combo(0),
+	));
+	core.add_input(crate::input::Input::new(
+		METHOD_INPUT,
+		crate::value::ValueType::Combo,
+		crate::value::NodeValue::Combo(0),
+	));
+	core.add_input(crate::input::Input::new(
+		PRESERVE_LUMINANCE_INPUT,
+		crate::value::ValueType::Boolean,
+		crate::value::NodeValue::Boolean(false),
+	));
+
+	core.flags |= crate::node::flags::VIDEO_EFFECT;
+	core.effect_input = TEXTURE_INPUT.to_string();
+
+	(core, Box::new(DespillNode))
 }
 
 /// Register this node type (C++ factory entry for
@@ -197,4 +250,69 @@ pub fn register(meta: &mut Vec<NodeMeta>) {
 		categories: &[Category::Keying],
 		create,
 	});
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	#[test]
+	fn input_names() {
+		let n = DespillNode;
+		assert_eq!(n.input_name(TEXTURE_INPUT), "Input");
+		assert_eq!(n.input_name(COLOR_INPUT), "Key Color");
+		assert_eq!(n.input_name(METHOD_INPUT), "Method");
+		assert_eq!(n.input_name(PRESERVE_LUMINANCE_INPUT), "Preserve Luminance");
+		assert_eq!(n.input_name("other_in"), "other_in");
+	}
+
+	#[test]
+	fn create_wires_inputs_flags_and_defaults() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.despill");
+		assert_ne!(core.get_input(TEXTURE_INPUT).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE, 0);
+		assert_eq!(core.get_input(COLOR_INPUT).unwrap().default, NodeValue::Combo(0));
+		assert_eq!(core.get_input(METHOD_INPUT).unwrap().default, NodeValue::Combo(0));
+		assert_eq!(
+			core.get_input(PRESERVE_LUMINANCE_INPUT).unwrap().default,
+			NodeValue::Boolean(false)
+		);
+		assert_eq!(core.effect_input, TEXTURE_INPUT);
+		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
+	}
+
+	#[test]
+	fn shader_code_returns_despill_frag() {
+		let code = DespillNode.shader_code("anything").unwrap();
+		assert!(code.contains("color_average = dot(tex_col.rb, vec2(0.5));"));
+	}
+
+	#[test]
+	fn value_no_texture_pushes_nothing() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		assert!(table.is_empty());
+	}
+
+	#[test]
+	fn value_with_texture_pushes_deferred_shader_job() {
+		let (core, behavior) = create();
+		let inputs = crate::value::NodeValueRow::from([(
+			TEXTURE_INPUT.to_string(),
+			NodeValue::Texture(crate::handle::CHandle::null()),
+		)]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Despill");
+	}
 }

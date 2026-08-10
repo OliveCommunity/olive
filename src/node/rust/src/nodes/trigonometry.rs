@@ -85,7 +85,11 @@ impl NodeBehavior for TrigonometryNode {
 	/// `method_in` to the nine function names documented on
 	/// [`METHOD_INPUT`].
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			METHOD_INPUT => "Method",
+			X_INPUT => "Value",
+			_ => id,
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): reads `x_in` as a double,
@@ -99,12 +103,47 @@ impl NodeBehavior for TrigonometryNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		let mut x = match inputs.get(X_INPUT) {
+			Some(v) => v.to_double(),
+			None => core.value_at_time(X_INPUT, -1, time).to_double(),
+		};
+
+		match self.operation(core) {
+			Operation::Sine => x = x.sin(),
+			Operation::Cosine => x = x.cos(),
+			Operation::Tangent => x = x.tan(),
+			Operation::ArcSine => x = x.asin(),
+			Operation::ArcCosine => x = x.acos(),
+			Operation::ArcTangent => x = x.atan(),
+			Operation::HyperbolicSine => x = x.sinh(),
+			Operation::HyperbolicCosine => x = x.cosh(),
+			Operation::HyperbolicTangent => x = x.tanh(),
+		}
+
+		table.push(crate::value::ValueType::Float, crate::value::NodeValue::Float(x), None);
 	}
 
 	/// Deep copy (C++ `copy()`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(TrigonometryNode))
+	}
+}
+
+impl TrigonometryNode {
+	/// The operation selected by the `method_in` combo (C++
+	/// `TrigonometryNode::get_operation()`).
+	pub fn operation(&self, core: &NodeCore) -> Operation {
+		match core.standard_value(METHOD_INPUT, -1).to_double() as usize {
+			0 => Operation::Sine,
+			1 => Operation::Cosine,
+			2 => Operation::Tangent,
+			3 => Operation::ArcSine,
+			4 => Operation::ArcCosine,
+			5 => Operation::ArcTangent,
+			6 => Operation::HyperbolicSine,
+			7 => Operation::HyperbolicCosine,
+			_ => Operation::HyperbolicTangent,
+		}
 	}
 }
 
@@ -112,7 +151,177 @@ impl NodeBehavior for TrigonometryNode {
 /// `method_in` as a not-connectable/not-keyframable combo and `x_in`
 /// as a float input defaulting to 0.0.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	let mut method = crate::input::Input::new(
+		METHOD_INPUT,
+		crate::value::ValueType::Combo,
+		crate::value::NodeValue::Combo(0),
+	);
+	method.flags |= crate::input::flags::NOT_CONNECTABLE | crate::input::flags::NOT_KEYFRAMABLE;
+	method.properties = vec![(
+		"combobox_strings".to_string(),
+		crate::value::NodeValue::Binary(
+			OPERATION_NAMES
+				.concat()
+				.into_bytes(),
+		),
+	)];
+	core.add_input(method);
+
+	let mut x = crate::input::Input::new(
+		X_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(0.0),
+	);
+	core.add_input(x);
+
+	(core, Box::new(TrigonometryNode))
+}
+
+/// Operation combo strings (C++ `retranslate` order).
+pub const OPERATION_NAMES: [&str; 9] = [
+	"Sine",
+	"Cosine",
+	"Tangent",
+	"Inverse Sine",
+	"Inverse Cosine",
+	"Inverse Tangent",
+	"Hyperbolic Sine",
+	"Hyperbolic Cosine",
+	"Hyperbolic Tangent",
+];
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::node::NodeBehavior;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	#[test]
+	fn input_names() {
+		let n = TrigonometryNode;
+		assert_eq!(n.input_name(METHOD_INPUT), "Method");
+		assert_eq!(n.input_name(X_INPUT), "Value");
+	}
+
+	#[test]
+	fn create_wires_inputs() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.trigonometry");
+		assert_eq!(core.get_input(X_INPUT).unwrap().default, NodeValue::Float(0.0));
+		let method = core.get_input(METHOD_INPUT).unwrap();
+		assert_ne!(method.flags & crate::input::flags::NOT_CONNECTABLE, 0);
+	}
+
+	#[test]
+	fn value_sine() {
+		let (core, behavior) = create();
+		let inputs = crate::value::NodeValueRow::from([(
+			X_INPUT.to_string(),
+			NodeValue::Float(std::f64::consts::FRAC_PI_2),
+		)]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert_eq!(table.get(ValueType::Float), Some(&NodeValue::Float(1.0)));
+	}
+
+	#[test]
+	fn value_cosine_and_tangent() {
+		let (mut core, behavior) = create();
+		core.set_standard_value(METHOD_INPUT, -1, NodeValue::Combo(1));
+		let inputs = crate::value::NodeValueRow::from([(
+			X_INPUT.to_string(),
+			NodeValue::Float(0.0),
+		)]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert_eq!(table.get(ValueType::Float), Some(&NodeValue::Float(1.0)));
+
+		core.set_standard_value(METHOD_INPUT, -1, NodeValue::Combo(2));
+		let inputs = crate::value::NodeValueRow::from([(
+			X_INPUT.to_string(),
+			NodeValue::Float(std::f64::consts::FRAC_PI_4),
+		)]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		let v = table.get(ValueType::Float).unwrap().to_double();
+		assert!((v - 1.0).abs() < 1e-9);
+	}
+
+	#[test]
+	fn value_uses_standard_operand() {
+		let (mut core, behavior) = create();
+		core.set_standard_value(X_INPUT, -1, NodeValue::Float(0.0));
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		assert_eq!(table.get(ValueType::Float), Some(&NodeValue::Float(0.0)));
+	}
+
+	#[test]
+	fn operation_mapping() {
+		let (mut core, _) = create();
+		let n = TrigonometryNode;
+		core.set_standard_value(METHOD_INPUT, -1, NodeValue::Combo(3));
+		assert_eq!(n.operation(&core), Operation::ArcSine);
+		core.set_standard_value(METHOD_INPUT, -1, NodeValue::Combo(8));
+		assert_eq!(n.operation(&core), Operation::HyperbolicTangent);
+		core.set_standard_value(METHOD_INPUT, -1, NodeValue::Combo(99));
+		assert_eq!(n.operation(&core), Operation::HyperbolicTangent, "clamped");
+	}
+
+	#[test]
+	fn value_all_operations() {
+		use std::f64::consts::FRAC_PI_4;
+		let (mut core, behavior) = create();
+		// (combo index, input, expected fn applied)
+		let cases: [(i64, f64, fn(f64) -> f64); 9] = [
+			(0, FRAC_PI_4, f64::sin),
+			(1, FRAC_PI_4, f64::cos),
+			(2, FRAC_PI_4, f64::tan),
+			(3, 0.5, f64::asin),
+			(4, 0.5, f64::acos),
+			(5, 0.5, f64::atan),
+			(6, 0.5, f64::sinh),
+			(7, 0.5, f64::cosh),
+			(8, 0.5, f64::tanh),
+		];
+		for (op, x, f) in cases {
+			core.set_standard_value(METHOD_INPUT, -1, NodeValue::Combo(op));
+			let inputs = crate::value::NodeValueRow::from([(
+				X_INPUT.to_string(),
+				NodeValue::Float(x),
+			)]);
+			let mut table = NodeValueTable::default();
+			behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+			let got = table.get(ValueType::Float).unwrap().to_double();
+			assert!((got - f(x)).abs() < 1e-12, "op {}: got {}, want {}", op, got, f(x));
+		}
+	}
+
+	#[test]
+	fn value_keyframed_operand() {
+		let (mut core, behavior) = create();
+		core.keyframe_track_mut(X_INPUT, -1).set_key(crate::keyframe::Keyframe {
+			time: Rational::new(0, 1),
+			value: NodeValue::Float(1.0),
+			interpolation: crate::keyframe::Interpolation::Linear,
+			bezier_in: (0.0, 0.0),
+			bezier_out: (0.0, 0.0),
+		});
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		let v = table.get(ValueType::Float).unwrap().to_double();
+		assert!((v - 1.0_f64.sin()).abs() < 1e-12);
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Trigonometry");
+	}
 }
 
 /// Register this node type (C++ `k_trigonometry_node` in

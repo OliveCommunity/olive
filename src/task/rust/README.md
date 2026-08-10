@@ -63,13 +63,20 @@ load/save/import/OTIO tasks). The behavior it reproduces is defined by:
 
 6. **OTIO load/save parses with the pure-Rust `oakotio` binding.**
    `SaveOTIOTask` / `LoadOTIOTask` parse and serialize OpenTimelineIO JSON
-   through the `oakotio` crate (`src/bindings/oakotio`, a self-contained
-   serde model of exactly the object graph the C++ loadotio/saveotio tasks
-   use) instead of the C++ OTIO library. No OTIO type crosses the oaktask C
-   ABI — the tasks build the project through the oaknode/oaktimeline C ABIs
-   (load) and write `oakotio::Timeline`/`SerializableCollection` documents
-   (save), mirroring the C++ `serialize_*` helpers. `ExportTask`/`PreCacheTask`
-   use `oakcore_rs::{Rational, TimeRange}` for their frame/audio timing (the
+   (`.otio`) and FCPXML (`.fcpxml`) through the `oakotio` crate
+   (`src/bindings/oakotio`, a self-contained serde model of exactly the
+   object graph the C++ loadotio/saveotio tasks use) instead of the C++
+   OTIO library. The format is inferred from the filename extension
+   (case-insensitive; `src/project/format.rs`), so the frozen C ABI
+   (`include/task/project.h`) needs no format parameter. Format handling
+   ends at the `oakotio` parse/serialize call — the track/clip/footage
+   building (load) and the `serialize_*` helpers (save) are shared between
+   both formats, mirroring the C++ tasks. No OTIO or FCPXML type crosses
+   the oaktask C ABI — the tasks build the project through the
+   oaknode/oaktimeline C ABIs (load) and write `oakotio::Timeline` /
+   `SerializableCollection` documents (save), mirroring the C++
+   `serialize_*` helpers. `ExportTask`/`PreCacheTask` use
+   `oakcore_rs::{Rational, TimeRange}` for their frame/audio timing (the
    reason this crate depends on `oakcore-rs`).
 
 ## Layout
@@ -92,6 +99,7 @@ src/
   project/load.rs   ProjectLoadBaseTask + ProjectLoadTask
   project/save.rs   ProjectSaveTask
   project/import.rs ProjectImportTask
+  project/format.rs interchange-format dispatch (.otio / .fcpxml)
   project/loadotio.rs LoadOTIOTask
   project/saveotio.rs SaveOTIOTask
   bridge/           extern "C" imports of other modules' C ABIs
@@ -126,12 +134,35 @@ conform/proxy requests into the task module, and a fake `ffmpeg` executable
 drives the proxy run end to end. The same scenarios against the real dylibs
 are covered by the C++ gtest suite (`src/task/tests/task_test.cpp`).
 
+Since oakrender's ticket C ABI is live, the render loop is also verified
+against the **real** oakrender arena (no stubs): `tests/
+render_real_integration_test.rs` links the oakrender crate into the test
+binary and drives `RenderTask::render` through `bridge::render`'s
+`extern "C"` declarations, getting real frames back in timestamp order via
+the CPU path (no GPU). Both rlibs expose `#[no_mangle]` exports that cannot
+coexist with the stub-based test binaries in one link, so the test is gated
+behind the `real-oakrender` feature and built alone:
+
+```text
+cargo test --features real-oakrender --test render_real_integration_test
+```
+
+The render stubs in `tests/common/mod.rs` are compiled out under the same
+feature (`#[cfg(not(feature = "real-oakrender"))]`), so plain `cargo test`
+is unaffected.
+
 OTIO load/save is implemented end to end: `oakotio` (path dep,
 `src/bindings/oakotio`) parses the document inside `LoadOTIOTask::run` and
 serializes the project in `SaveOTIOTask::run`; the tasks keep driving the
 oaknode/oaktimeline C ABIs exactly like the C++ implementations. `tests/
 otio_test.rs` builds synthetic documents with the `oakotio` model, imports
 them, and re-parses exports for a round-trip check (README decision #6).
+The tasks are format-aware (`.otio` → OpenTimelineIO JSON, `.fcpxml` →
+FCPXML, dispatched from the extension in `src/project/format.rs`): the
+FCPXML tests build documents with `oakotio`'s fcpxml writer, cover the
+extension dispatch matrix (`.otio`/`.fcpxml`/`.OTIO`/`.FCPXML`/unknown)
+and the FCPXML error paths (corrupt XML, unsupported version), and run a
+save → load cycle through both tasks.
 
 ## Dependency policy
 
@@ -145,3 +176,7 @@ Current dependency inventory:
 - `oakotio` (path dep, `src/bindings/oakotio` — pure-Rust serde model of the
   OpenTimelineIO JSON format used by `LoadOTIOTask`/`SaveOTIOTask`; brings in
   `serde`/`serde_json` transitively).
+- `oakrender` (path dep, **optional**, enabled only by the
+  `real-oakrender` feature): links the real oakrender crate into the
+  `render_real_integration_test` binary. The library never references it —
+  all render access stays on the `bridge::render` C ABI.

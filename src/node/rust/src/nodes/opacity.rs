@@ -123,13 +123,22 @@ impl NodeBehavior for OpacityEffect {
 	/// Localized input names (C++ `retranslate()`): `tex_in` ->
 	/// "Texture", `opacity_in` -> "Opacity".
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			TEXTURE_INPUT => "Texture",
+			VALUE_INPUT => "Opacity",
+			_ => id,
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): no texture -> push nothing;
 	/// texture opacity input -> `rgbmult` shader job; scalar opacity
 	/// != 1.0 -> plain shader job; opacity == 1.0 -> pass-through push
 	/// of the input texture unchanged.
+	///
+	/// The Rust model has no shader-job payload: the two job cases push
+	/// a null texture handle marking a renderer-deferred job resolved
+	/// via [`Self::shader_code`] (`// CPP-PARITY: opacityeffect.cpp`
+	/// `value()`).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -137,19 +146,66 @@ impl NodeBehavior for OpacityEffect {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		let _ = (core, time);
+		let tex = match inputs.get(TEXTURE_INPUT) {
+			Some(tex @ crate::value::NodeValue::Texture(_)) => tex.clone(),
+			_ => return,
+		};
+
+		match inputs.get(VALUE_INPUT) {
+			Some(crate::value::NodeValue::Texture(_)) => {
+				// Texture opacity input: rgbmult shader job.
+				table.push(
+					crate::value::ValueType::Texture,
+					crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+					None,
+				);
+			}
+			Some(v) => {
+				let opacity = v.to_double();
+				// Same semantics as `!qFuzzyCompare(opacity, 1.0)`
+				// (double overload).
+				if (opacity - 1.0).abs() * 1e12 > opacity.abs().min(1.0) {
+					table.push(
+						crate::value::ValueType::Texture,
+						crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+						None,
+					);
+				} else {
+					table.push(crate::value::ValueType::Texture, tex, None);
+				}
+			}
+			None => {
+				let opacity = core.value_at_time(VALUE_INPUT, -1, time).to_double();
+				if (opacity - 1.0).abs() * 1e12 > opacity.abs().min(1.0) {
+					table.push(
+						crate::value::ValueType::Texture,
+						crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+						None,
+					);
+				} else {
+					table.push(crate::value::ValueType::Texture, tex, None);
+				}
+			}
+		}
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): dispatch on
 	/// request id (`"rgbmult"` vs default) between the two fragment
 	/// shaders above.
 	fn shader_code(&self, request: &str) -> Option<String> {
-		todo!()
+		if request == "rgbmult" {
+			Some(SHADER_RGB_MULT_FRAG.to_string())
+		} else {
+			Some(SHADER_FRAG.to_string())
+		}
 	}
 
 	/// Deep copy (C++ `copy()`); clones the owned child math node too.
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(OpacityEffect {
+			math: super::math::MathNode::new(),
+		}))
 	}
 }
 
@@ -158,7 +214,154 @@ impl NodeBehavior for OpacityEffect {
 /// properties documented on the constants, sets the video-effect flag
 /// and the effect input.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	let mut tex = crate::input::Input::new(
+		TEXTURE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	tex.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(tex);
+
+	let mut opacity = crate::input::Input::new(
+		VALUE_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(1.0),
+	);
+	opacity.properties = vec![
+		("view".to_string(), crate::value::NodeValue::Text("percentage".into())),
+		("min".to_string(), crate::value::NodeValue::Float(0.0)),
+		("max".to_string(), crate::value::NodeValue::Float(1.0)),
+	];
+	core.add_input(opacity);
+
+	core.flags |= crate::node::flags::VIDEO_EFFECT;
+	core.effect_input = TEXTURE_INPUT.to_string();
+
+	(core, Box::new(OpacityEffect {
+		math: super::math::MathNode::new(),
+	}))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::node::NodeBehavior;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	#[test]
+	fn input_names() {
+		let n = OpacityEffect {
+			math: super::super::math::MathNode::new(),
+		};
+		assert_eq!(n.input_name(TEXTURE_INPUT), "Texture");
+		assert_eq!(n.input_name(VALUE_INPUT), "Opacity");
+	}
+
+	#[test]
+	fn create_wires_inputs_and_flags() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.opacity");
+		assert_eq!(core.get_input(VALUE_INPUT).unwrap().default, NodeValue::Float(1.0));
+		assert_eq!(core.effect_input, TEXTURE_INPUT);
+		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
+	}
+
+	#[test]
+	fn value_no_texture_pushes_nothing() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		assert!(table.is_empty());
+	}
+
+	#[test]
+	fn value_opacity_unity_passes_texture_through() {
+		let (mut core, behavior) = create();
+		core.set_standard_value(VALUE_INPUT, -1, NodeValue::Float(1.0));
+		let tex = NodeValue::Texture(crate::handle::CHandle::null());
+		let inputs = crate::value::NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex.clone())]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert_eq!(table.get(ValueType::Texture), Some(&tex));
+	}
+
+	#[test]
+	fn value_opacity_scaled_pushes_job_placeholder() {
+		let (mut core, behavior) = create();
+		core.set_standard_value(VALUE_INPUT, -1, NodeValue::Float(0.5));
+		let inputs = crate::value::NodeValueRow::from([(
+			TEXTURE_INPUT.to_string(),
+			NodeValue::Texture(crate::handle::CHandle::null()),
+		)]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn value_opacity_in_row_scaled_pushes_job_placeholder() {
+		let (core, behavior) = create();
+		let inputs = crate::value::NodeValueRow::from([
+			(
+				TEXTURE_INPUT.to_string(),
+				NodeValue::Texture(crate::handle::CHandle::null()),
+			),
+			(VALUE_INPUT.to_string(), NodeValue::Float(0.5)),
+		]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn value_opacity_in_row_unity_passes_through() {
+		let (core, behavior) = create();
+		let tex = NodeValue::Texture(crate::handle::CHandle::null());
+		let inputs = crate::value::NodeValueRow::from([
+			(TEXTURE_INPUT.to_string(), tex.clone()),
+			(VALUE_INPUT.to_string(), NodeValue::Float(1.0)),
+		]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert_eq!(table.get(ValueType::Texture), Some(&tex));
+	}
+
+	#[test]
+	fn value_texture_opacity_pushes_rgbmult_placeholder() {
+		let (core, behavior) = create();
+		let inputs = crate::value::NodeValueRow::from([
+			(
+				TEXTURE_INPUT.to_string(),
+				NodeValue::Texture(crate::handle::CHandle::null()),
+			),
+			(
+				VALUE_INPUT.to_string(),
+				NodeValue::Texture(crate::handle::CHandle::null()),
+			),
+		]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn shader_code_dispatches() {
+		let n = OpacityEffect {
+			math: super::super::math::MathNode::new(),
+		};
+		assert!(n.shader_code("rgbmult").unwrap().contains("rgb2hsv"));
+		assert!(n.shader_code("other").unwrap().contains("opacity_in"));
+	}
+
+	#[test]
+	fn duplicate_clones_behavior() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Opacity");
+	}
 }
 
 /// Register this node type (C++ `k_opacity_effect` in

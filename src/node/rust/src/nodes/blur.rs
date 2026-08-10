@@ -18,7 +18,7 @@
 //! `olive::BlurFilterNode`).
 
 use crate::factory::NodeMeta;
-use crate::node::{Category, NodeBehavior, NodeCore};
+use crate::node::{Category, Gizmo, NodeBehavior, NodeCore};
 
 /// Texture input id (C++ `k_texture_input`). Type: texture; flags:
 /// not-keyframable; this is the node's effect input.
@@ -290,7 +290,19 @@ impl NodeBehavior for BlurFilterNode {
 	/// "Repeat Edge Pixels", `directional_degrees_in` -> "Direction",
 	/// `radial_center_in` -> "Center".
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			TEXTURE_INPUT => "Input",
+			// The `method_in` combo strings "Box"/"Gaussian"/"Directional"/
+			// "Radial" are a UI-level property (C++ `set_combo_box_strings`).
+			METHOD_INPUT => "Method",
+			RADIUS_INPUT => "Radius",
+			HORIZ_INPUT => "Horizontal",
+			VERT_INPUT => "Vertical",
+			REPEAT_EDGE_PIXELS_INPUT => "Repeat Edge Pixels",
+			DIRECTIONAL_DEGREES_INPUT => "Direction",
+			RADIAL_CENTER_INPUT => "Center",
+			_ => id,
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): no texture -> push nothing;
@@ -299,6 +311,10 @@ impl NodeBehavior for BlurFilterNode {
 	/// job with `resolution_in` set to the texture's virtual resolution,
 	/// running 2 iterations for box/gaussian when both horiz and vert are
 	/// checked (1 otherwise).
+	///
+	/// The Rust model has no shader-job payload: the job (including the
+	/// `resolution_in` value and the iteration count) is deferred to the
+	/// renderer seam (`// CPP-PARITY: blur.cpp` value()).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -306,13 +322,56 @@ impl NodeBehavior for BlurFilterNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		let tex = match inputs.get(TEXTURE_INPUT) {
+			Some(tex @ crate::value::NodeValue::Texture(_)) => tex.clone(),
+			_ => return,
+		};
+
+		let method = match inputs.get(METHOD_INPUT) {
+			Some(v) => v.to_double() as i64,
+			None => core.value_at_time(METHOD_INPUT, -1, time).to_double() as i64,
+		};
+		let radius = match inputs.get(RADIUS_INPUT) {
+			Some(v) => v.to_double(),
+			None => core.value_at_time(RADIUS_INPUT, -1, time).to_double(),
+		};
+		let horiz = match inputs.get(HORIZ_INPUT) {
+			Some(v) => v.to_double() != 0.0,
+			None => core.value_at_time(HORIZ_INPUT, -1, time).to_double() != 0.0,
+		};
+		let vert = match inputs.get(VERT_INPUT) {
+			Some(v) => v.to_double() != 0.0,
+			None => core.value_at_time(VERT_INPUT, -1, time).to_double() != 0.0,
+		};
+
+		let mut can_push_job = true;
+		if radius > 0.0 {
+			// Method-specific considerations.
+			if method == Method::Box as i64 || method == Method::Gaussian as i64 {
+				if !horiz && !vert {
+					// Disable the job if both directions are unchecked.
+					can_push_job = false;
+				}
+			}
+		} else {
+			can_push_job = false;
+		}
+
+		if can_push_job {
+			table.push(
+				crate::value::ValueType::Texture,
+				crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+				None,
+			);
+		} else {
+			table.push(crate::value::ValueType::Texture, tex, None);
+		}
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): the request id is
 	/// ignored; always returns the blur fragment shader.
-	fn shader_code(&self, request: &str) -> Option<String> {
-		todo!()
+	fn shader_code(&self, _request: &str) -> Option<String> {
+		Some(Self::shader_frag().to_string())
 	}
 
 	/// Gizmo positions (C++ `update_gizmo_positions()`): when the method
@@ -320,15 +379,24 @@ impl NodeBehavior for BlurFilterNode {
 	/// at half the texture resolution plus the center input, and set the
 	/// input's `offset` property to half the resolution; otherwise hide
 	/// the gizmo.
+	///
+	/// The placement and the `offset` property need the texture's virtual
+	/// resolution (the Rust texture handle carries no params), and the
+	/// gizmo visibility has no storage in [`Gizmo`] — not representable
+	/// here (`// CPP-PARITY: blur.cpp` `update_gizmo_positions`).
 	fn gizmo_update(&self, core: &NodeCore, row: &crate::value::NodeValueRow) {
-		todo!()
+		let _ = (core, row);
 	}
 
 	/// Gizmo drag (C++ `gizmo_drag_move()`): when the current gizmo is
 	/// the radial-center gizmo, drag its x/y input draggers by the drag
 	/// delta.
+	///
+	/// The draggers hold per-drag start values and write keyframe tracks,
+	/// neither of which the Rust data model carries — not representable
+	/// here (`// CPP-PARITY: blur.cpp` `gizmo_drag_move`).
 	fn gizmo_drag(&mut self, core: &mut NodeCore, start: bool, x: f64, y: f64, modifiers: u32) {
-		todo!()
+		let _ = (core, start, x, y, modifiers);
 	}
 
 	/// Input value changed (C++ `InputValueChangedEvent()`): on
@@ -337,12 +405,40 @@ impl NodeBehavior for BlurFilterNode {
 	/// only for directional, `radial_center_in` only for radial), then
 	/// defer to the base implementation.
 	fn input_value_changed(&mut self, core: &mut NodeCore, input: &str, element: i32) {
-		todo!()
+		if input == METHOD_INPUT && element == -1 {
+			let method = core.standard_value(METHOD_INPUT, -1).to_double() as i64;
+			Self::update_inputs(core, method);
+		}
 	}
 
 	/// Deep copy (C++ `copy()`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(BlurFilterNode))
+	}
+}
+
+impl BlurFilterNode {
+	/// Hidden-flag update for the method-specific inputs (C++
+	/// `update_inputs(Method)`): `horiz_in`/`vert_in` are shown only for
+	/// box/gaussian, `directional_degrees_in` only for directional, and
+	/// `radial_center_in` only for radial.
+	fn update_inputs(core: &mut NodeCore, method: i64) {
+		set_hidden(core, HORIZ_INPUT, !(method == Method::Box as i64 || method == Method::Gaussian as i64));
+		set_hidden(core, VERT_INPUT, !(method == Method::Box as i64 || method == Method::Gaussian as i64));
+		set_hidden(core, DIRECTIONAL_DEGREES_INPUT, method != Method::Directional as i64);
+		set_hidden(core, RADIAL_CENTER_INPUT, method != Method::Radial as i64);
+	}
+}
+
+/// Set or clear the hidden input flag on `id` (C++
+/// `set_input_flag(id, k_input_flag_hidden, hidden)`).
+fn set_hidden(core: &mut NodeCore, id: &str, hidden: bool) {
+	if let Some(input) = core.get_input_mut(id) {
+		if hidden {
+			input.flags |= crate::input::flags::HIDDEN;
+		} else {
+			input.flags &= !crate::input::flags::HIDDEN;
+		}
 	}
 }
 
@@ -354,7 +450,228 @@ impl NodeBehavior for BlurFilterNode {
 /// the video-effect flag and the effect input, and adds a draggable
 /// anchor-point gizmo bound to both tracks of `radial_center_in`.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	let mut tex = crate::input::Input::new(
+		TEXTURE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	tex.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(tex);
+
+	let mut method = crate::input::Input::new(
+		METHOD_INPUT,
+		crate::value::ValueType::Combo,
+		crate::value::NodeValue::Combo(Method::Gaussian as i64),
+	);
+	method.flags |= crate::input::flags::NOT_KEYFRAMABLE | crate::input::flags::NOT_CONNECTABLE;
+	core.add_input(method);
+
+	let mut radius = crate::input::Input::new(
+		RADIUS_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(10.0),
+	);
+	radius.properties = vec![("min".to_string(), crate::value::NodeValue::Float(0.0))];
+	core.add_input(radius);
+
+	// Box and gaussian only.
+	core.add_input(crate::input::Input::new(
+		HORIZ_INPUT,
+		crate::value::ValueType::Boolean,
+		crate::value::NodeValue::Boolean(true),
+	));
+	core.add_input(crate::input::Input::new(
+		VERT_INPUT,
+		crate::value::ValueType::Boolean,
+		crate::value::NodeValue::Boolean(true),
+	));
+
+	// Directional only.
+	core.add_input(crate::input::Input::new(
+		DIRECTIONAL_DEGREES_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(0.0),
+	));
+
+	// Radial only.
+	core.add_input(crate::input::Input::new(
+		RADIAL_CENTER_INPUT,
+		crate::value::ValueType::Vec2,
+		crate::value::NodeValue::Vec2([0.0, 0.0]),
+	));
+
+	// Hide the method-specific inputs for the default (gaussian) method.
+	BlurFilterNode::update_inputs(&mut core, Method::Gaussian as i64);
+
+	core.add_input(crate::input::Input::new(
+		REPEAT_EDGE_PIXELS_INPUT,
+		crate::value::ValueType::Boolean,
+		crate::value::NodeValue::Boolean(true),
+	));
+
+	core.flags |= crate::node::flags::VIDEO_EFFECT;
+	core.effect_input = TEXTURE_INPUT.to_string();
+
+	// Anchor-shaped radial-center point gizmo dragging both tracks.
+	let gizmo = Gizmo {
+		position_inputs: vec![
+			(RADIAL_CENTER_INPUT.to_string(), -1, 0),
+			(RADIAL_CENTER_INPUT.to_string(), -1, 1),
+		],
+		drag_point: (0.0, 0.0),
+	};
+	core.gizmos = vec![gizmo];
+
+	(core, Box::new(BlurFilterNode))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::node::NodeBehavior;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	fn tex() -> NodeValue {
+		NodeValue::Texture(crate::handle::CHandle::null())
+	}
+
+	fn is_hidden(core: &NodeCore, id: &str) -> bool {
+		core.get_input(id).unwrap().flags & crate::input::flags::HIDDEN != 0
+	}
+
+	#[test]
+	fn input_names() {
+		let n = BlurFilterNode;
+		assert_eq!(n.input_name(TEXTURE_INPUT), "Input");
+		assert_eq!(n.input_name(METHOD_INPUT), "Method");
+		assert_eq!(n.input_name(RADIUS_INPUT), "Radius");
+		assert_eq!(n.input_name(HORIZ_INPUT), "Horizontal");
+		assert_eq!(n.input_name(VERT_INPUT), "Vertical");
+		assert_eq!(n.input_name(REPEAT_EDGE_PIXELS_INPUT), "Repeat Edge Pixels");
+		assert_eq!(n.input_name(DIRECTIONAL_DEGREES_INPUT), "Direction");
+		assert_eq!(n.input_name(RADIAL_CENTER_INPUT), "Center");
+	}
+
+	#[test]
+	fn create_wires_inputs_and_flags() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.blur");
+		assert_eq!(
+			core.get_input(METHOD_INPUT).unwrap().default,
+			NodeValue::Combo(1)
+		);
+		assert_eq!(
+			core.get_input(RADIUS_INPUT).unwrap().default,
+			NodeValue::Float(10.0)
+		);
+		assert_eq!(
+			core.get_input(REPEAT_EDGE_PIXELS_INPUT).unwrap().default,
+			NodeValue::Boolean(true)
+		);
+		// Default method (gaussian): directional/radial inputs hidden.
+		assert!(!is_hidden(&core, HORIZ_INPUT));
+		assert!(!is_hidden(&core, VERT_INPUT));
+		assert!(is_hidden(&core, DIRECTIONAL_DEGREES_INPUT));
+		assert!(is_hidden(&core, RADIAL_CENTER_INPUT));
+		// One radial-center gizmo bound to both tracks.
+		assert_eq!(core.gizmos.len(), 1);
+		assert_eq!(core.gizmos[0].position_inputs.len(), 2);
+		assert_eq!(core.effect_input, TEXTURE_INPUT);
+		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
+	}
+
+	#[test]
+	fn value_no_texture_pushes_nothing() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
+		assert!(table.is_empty());
+	}
+
+	#[test]
+	fn value_zero_radius_passes_texture_through() {
+		let (mut core, behavior) = create();
+		core.set_standard_value(RADIUS_INPUT, -1, NodeValue::Float(0.0));
+		let tex = tex();
+		let inputs = crate::value::NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex.clone())]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert_eq!(table.get(ValueType::Texture), Some(&tex));
+	}
+
+	#[test]
+	fn value_box_no_directions_passes_texture_through() {
+		let (mut core, behavior) = create();
+		core.set_standard_value(METHOD_INPUT, -1, NodeValue::Combo(0));
+		core.set_standard_value(HORIZ_INPUT, -1, NodeValue::Boolean(false));
+		core.set_standard_value(VERT_INPUT, -1, NodeValue::Boolean(false));
+		core.set_standard_value(RADIUS_INPUT, -1, NodeValue::Float(10.0));
+		let tex = tex();
+		let inputs = crate::value::NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex.clone())]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert_eq!(table.get(ValueType::Texture), Some(&tex));
+	}
+
+	#[test]
+	fn value_gaussian_pushes_deferred_job() {
+		let (mut core, behavior) = create();
+		core.set_standard_value(RADIUS_INPUT, -1, NodeValue::Float(10.0));
+		let inputs = crate::value::NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex())]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn input_value_changed_toggles_method_inputs() {
+		let (mut core, behavior) = create();
+		let mut b = behavior;
+
+		// Directional: horiz/vert hidden, directional shown.
+		core.set_standard_value(METHOD_INPUT, -1, NodeValue::Combo(2));
+		b.input_value_changed(&mut core, METHOD_INPUT, -1);
+		assert!(is_hidden(&core, HORIZ_INPUT));
+		assert!(is_hidden(&core, VERT_INPUT));
+		assert!(!is_hidden(&core, DIRECTIONAL_DEGREES_INPUT));
+		assert!(is_hidden(&core, RADIAL_CENTER_INPUT));
+
+		// Radial: radial shown.
+		core.set_standard_value(METHOD_INPUT, -1, NodeValue::Combo(3));
+		b.input_value_changed(&mut core, METHOD_INPUT, -1);
+		assert!(!is_hidden(&core, RADIAL_CENTER_INPUT));
+
+		// Back to box: horiz/vert shown again.
+		core.set_standard_value(METHOD_INPUT, -1, NodeValue::Combo(0));
+		b.input_value_changed(&mut core, METHOD_INPUT, -1);
+		assert!(!is_hidden(&core, HORIZ_INPUT));
+		assert!(!is_hidden(&core, VERT_INPUT));
+		assert!(is_hidden(&core, DIRECTIONAL_DEGREES_INPUT));
+		assert!(is_hidden(&core, RADIAL_CENTER_INPUT));
+	}
+
+	#[test]
+	fn shader_code_returns_blur_shader() {
+		let n = BlurFilterNode;
+		let code = n.shader_code("anything").unwrap();
+		assert!(code.contains("uniform int method_in;"));
+		assert!(code.contains("METHOD_GAUSSIAN_BLUR 1"));
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Blur");
+	}
 }
 
 /// Register this node type (C++ `k_blur_filter` in

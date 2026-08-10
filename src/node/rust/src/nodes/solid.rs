@@ -71,11 +71,18 @@ impl NodeBehavior for SolidGenerator {
 	/// Localized input names (C++ `retranslate()`): `color_in` ->
 	/// "Color".
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			COLOR_INPUT => "Color",
+			_ => id,
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): pushes a texture job built
 	/// from the whole input row at the sequence video params.
+	///
+	/// The Rust model has no shader-job payload: the job is deferred to
+	/// the renderer seam, so a null texture handle marks "renderer must
+	/// produce this texture" (`// CPP-PARITY: solid.cpp` value()).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -83,25 +90,91 @@ impl NodeBehavior for SolidGenerator {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		let _ = (core, inputs, time);
+		table.push(
+			crate::value::ValueType::Texture,
+			crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+			None,
+		);
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): returns the solid
 	/// fragment shader for any request id.
 	fn shader_code(&self, request: &str) -> Option<String> {
-		todo!()
+		let _ = request;
+		Some(Self::shader_frag().to_string())
 	}
 
 	/// Deep copy (C++ `copy()`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(SolidGenerator))
 	}
 }
 
 /// Constructor (C++ `SolidGenerator::SolidGenerator()`): adds
 /// `color_in` with the default documented on the constant.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+	let mut color = crate::input::Input::new(
+		COLOR_INPUT,
+		crate::value::ValueType::Color,
+		crate::value::NodeValue::Color([1.0, 0.0, 0.0, 1.0]),
+	);
+	color.properties = vec![("view".to_string(), crate::value::NodeValue::Text("color".into()))];
+	core.add_input(color);
+	(core, Box::new(SolidGenerator))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::node::NodeBehavior;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	#[test]
+	fn input_names() {
+		let n = SolidGenerator;
+		assert_eq!(n.input_name(COLOR_INPUT), "Color");
+		assert_eq!(n.input_name("other_in"), "other_in");
+	}
+
+	#[test]
+	fn create_wires_inputs() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.solidgenerator");
+		assert_eq!(
+			core.get_input(COLOR_INPUT).unwrap().default,
+			NodeValue::Color([1.0, 0.0, 0.0, 1.0])
+		);
+	}
+
+	#[test]
+	fn value_pushes_deferred_job() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn shader_code_returns_solid_shader() {
+		let n = SolidGenerator;
+		let code = n.shader_code("anything").unwrap();
+		assert!(code.contains("uniform vec4 color_in;"));
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Solid");
+	}
 }
 
 /// Register this node type (C++ factory entry for

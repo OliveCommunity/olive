@@ -18,6 +18,11 @@
 //! `oakotio` model, loaded through `oaktask_create_project_load_otio` /
 //! `oaktask_create_project_save_otio` (driving the oaknode C ABI stubs), and
 //! exports are re-parsed with `oakotio` for a round-trip check.
+//!
+//! The tasks dispatch on the filename extension (see
+//! `oaktask::project::format`): `.otio` parses/serializes OpenTimelineIO
+//! JSON, `.fcpxml` the FCPXML interchange. The FCPXML tests build documents
+//! with `oakotio`'s fcpxml writer and re-parse exports with its reader.
 
 mod common;
 
@@ -600,5 +605,269 @@ fn otio_save_unknown_track_type_fails() {
 	assert!(cstr_read(&buf).contains("Failed to serialize sequence"), "error was: {}", cstr_read(&buf));
 
 	free(&mut task);
+	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
+}
+
+// ---------------------------------------------------------------------------
+// FCPXML load/save
+// ---------------------------------------------------------------------------
+
+/// Write a timeline to a temp `.fcpxml` file (via the `oakotio` fcpxml
+/// writer) and load it through the OTIO task, returning the task handle.
+fn load_fcpxml(timeline: &Timeline) -> (oaktask::handle::CHandle, std::path::PathBuf) {
+	let path = std::env::temp_dir().join(format!("oak-fcpxml-load-{}.fcpxml", std::process::id()));
+	oakotio::to_fcpxml_file(&[timeline.clone()], &path).unwrap();
+	let path_str = path.to_string_lossy().into_owned();
+	let task = unsafe { oaktask_create_project_load_otio(common::cstr_of(&path_str)) };
+	(task, path)
+}
+
+/// A synthetic FCPXML document (built with the `oakotio` fcpxml writer)
+/// imports into a new project exactly like the OTIO document: the same
+/// track/clip/footage code produces the same numbers, so the two formats
+/// share one code path after the parse.
+#[test]
+fn fcpxml_load_builds_project_from_synthetic_document() {
+	let _guard = MANAGER_LOCK.lock().unwrap();
+	reset_stubs();
+
+	let (mut task, path) = load_fcpxml(&synthetic_timeline("Seq A", "file:///tmp/oak-otio-test.mp4"));
+	assert!(!task.ctx.is_null());
+	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 1);
+
+	// Clip + gap appended to the track.
+	assert_eq!(APPENDED_BLOCKS.load(Ordering::SeqCst), 2);
+	// One footage created for the clip's ExternalReference.
+	assert_eq!(FOOTAGE_CREATE_COUNT.load(Ordering::SeqCst), 1);
+	// Clip media in: 576/24 = 24s -> Rational(24, 1).
+	assert_eq!(MEDIA_IN_NUM.load(Ordering::SeqCst), 24);
+	assert_eq!(MEDIA_IN_DEN.load(Ordering::SeqCst), 1);
+	// The last length write is the gap's: 576/24 = 24s.
+	assert_eq!(SET_LENGTH_NUM.load(Ordering::SeqCst), 24);
+	assert_eq!(SET_LENGTH_DEN.load(Ordering::SeqCst), 1);
+	// Video track wiring: transform connected between footage and block.
+	assert!(CONNECT_INPUT_IDS.lock().unwrap().iter().any(|id| id == "tex_in"));
+	assert!(CONNECT_INPUT_IDS.lock().unwrap().iter().any(|id| id == "buffer_in"));
+
+	let project = unsafe { oaktask_load_otio_take_project(task) };
+	assert!(!project.ctx.is_null());
+	// Second take is empty (ownership transferred).
+	assert!(unsafe { oaktask_load_otio_take_project(task) }.ctx.is_null());
+
+	free(&mut task);
+	let _ = std::fs::remove_file(&path);
+	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
+}
+
+/// An FCPXML export of one sequence re-parses with the `oakotio` fcpxml
+/// reader: the timeline/track/clip/media values match the OTIO export
+/// (same serialization, different codec).
+#[test]
+fn fcpxml_save_round_trips_through_parse() {
+	let _guard = MANAGER_LOCK.lock().unwrap();
+	reset_stubs();
+	configure_one_sequence_save();
+
+	let out = std::env::temp_dir().join(format!("oak-fcpxml-save-{}.fcpxml", std::process::id()));
+	let out_str = out.to_string_lossy().into_owned();
+	let _ = std::fs::remove_file(&out);
+
+	let mut task = unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
+	let started = unsafe { oaktask_task_start_sync(task) };
+	let text = std::fs::read_to_string(&out).unwrap_or_default();
+	free(&mut task);
+	assert_eq!(started, 1, "save task should succeed; file was: {text}");
+
+	let timelines = oakotio::from_fcpxml_string(&text).expect("saved file parses as FCPXML");
+	assert_eq!(timelines.len(), 1);
+	let timeline = &timelines[0];
+	assert_eq!(timeline.name(), "My Sequence");
+	let tracks = timeline.tracks().children();
+	assert_eq!(tracks.len(), 1);
+	let track = tracks[0].as_track().expect("track");
+	assert_eq!(track.kind(), "Video");
+	assert_eq!(track.children().len(), 1, "no trailing gap: track length 0 < clip duration");
+
+	let clip = track.children()[0].as_clip().expect("clip");
+	assert_eq!(clip.name(), "My Sequence");
+	let range = clip.source_range().expect("clip source_range");
+	// 576/24 = 24s at 25fps -> {600, 25}; 25/1 = 25s at 25fps -> {625, 25}.
+	assert_eq!((range.start_time().value(), range.start_time().rate()), (600.0, 25.0));
+	assert_eq!((range.duration().value(), range.duration().rate()), (625.0, 25.0));
+
+	let external = clip.media_reference().expect("media reference").as_external_reference().expect("ExternalReference");
+	assert_eq!(external.target_url(), "file:///tmp/video.mp4");
+	let available = external.available_range().expect("available_range");
+	// Asset duration 100/25 = 4s at 25fps -> {0, 25} .. {100, 25}.
+	assert_eq!((available.start_time().value(), available.start_time().rate()), (0.0, 25.0));
+	assert_eq!((available.duration().value(), available.duration().rate()), (100.0, 25.0));
+
+	let _ = std::fs::remove_file(&out);
+	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
+}
+
+/// A full save -> load cycle through the tasks: the FCPXML file written by
+/// the save task is imported by the load task with the same track/clip/
+/// footage structure.
+#[test]
+fn fcpxml_save_reimports_through_load_task() {
+	let _guard = MANAGER_LOCK.lock().unwrap();
+	reset_stubs();
+	configure_one_sequence_save();
+
+	let out = std::env::temp_dir().join(format!("oak-fcpxml-cycle-{}.fcpxml", std::process::id()));
+	let out_str = out.to_string_lossy().into_owned();
+	let _ = std::fs::remove_file(&out);
+
+	let mut save = unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
+	assert_eq!(unsafe { oaktask_task_start_sync(save) }, 1);
+	free(&mut save);
+
+	reset_stubs();
+	let mut load = unsafe { oaktask_create_project_load_otio(common::cstr_of(&out_str)) };
+	assert_eq!(unsafe { oaktask_task_start_sync(load) }, 1);
+	assert_eq!(APPENDED_BLOCKS.load(Ordering::SeqCst), 1, "one clip re-imported");
+	assert_eq!(FOOTAGE_CREATE_COUNT.load(Ordering::SeqCst), 1);
+	assert!(!(unsafe { oaktask_load_otio_take_project(load) }).ctx.is_null());
+
+	free(&mut load);
+	let _ = std::fs::remove_file(&out);
+	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
+}
+
+// ---------------------------------------------------------------------------
+// Extension dispatch matrix
+// ---------------------------------------------------------------------------
+
+/// The load task dispatches on the filename extension, case-insensitively:
+/// `.otio`/`.OTIO` parse OpenTimelineIO JSON, `.fcpxml`/`.FCPXML` parse
+/// FCPXML, and any other extension fails with "Unknown project file
+/// format".
+#[test]
+fn otio_load_extension_dispatch_matrix() {
+	let _guard = MANAGER_LOCK.lock().unwrap();
+	reset_stubs();
+
+	for (ext, is_otio) in [(".otio", true), (".OTIO", true), (".fcpxml", false), (".FCPXML", false)] {
+		let timeline = synthetic_timeline("Seq A", "file:///tmp/oak-dispatch.mp4");
+		let path = std::env::temp_dir().join(format!("oak-dispatch-{}{ext}", std::process::id()));
+		if is_otio {
+			timeline.to_json_file(&path).unwrap();
+		} else {
+			oakotio::to_fcpxml_file(&[timeline], &path).unwrap();
+		}
+		let path_str = path.to_string_lossy().into_owned();
+
+		let mut task = unsafe { oaktask_create_project_load_otio(common::cstr_of(&path_str)) };
+		assert_eq!(unsafe { oaktask_task_start_sync(task) }, 1, "extension {ext} should import");
+		assert_eq!(APPENDED_BLOCKS.load(Ordering::SeqCst), 2, "extension {ext}: clip + gap");
+		assert!(!(unsafe { oaktask_load_otio_take_project(task) }).ctx.is_null(), "extension {ext}");
+
+		free(&mut task);
+		let _ = std::fs::remove_file(&path);
+		reset_stubs();
+	}
+	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
+}
+
+/// An unknown extension fails the load with a clear format error.
+#[test]
+fn otio_load_unknown_extension_fails() {
+	let _guard = MANAGER_LOCK.lock().unwrap();
+	reset_stubs();
+
+	let path = std::env::temp_dir().join(format!("oak-otio-unknown-ext-{}.txt", std::process::id()));
+	std::fs::write(&path, "whatever").unwrap();
+	let path_str = path.to_string_lossy().into_owned();
+
+	let mut task = unsafe { oaktask_create_project_load_otio(common::cstr_of(&path_str)) };
+	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 0);
+	let needed = unsafe { oaktask_task_error(task, std::ptr::null_mut(), 0) };
+	let mut buf = vec![0i8; needed as usize];
+	unsafe { oaktask_task_error(task, buf.as_mut_ptr(), needed) };
+	assert!(cstr_read(&buf).contains("Unknown project file format"), "error was: {}", cstr_read(&buf));
+	assert!(unsafe { oaktask_load_otio_take_project(task) }.ctx.is_null());
+
+	free(&mut task);
+	let _ = std::fs::remove_file(&path);
+	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
+}
+
+/// An unknown extension fails the save with a clear format error, before any
+/// serialization work happens.
+#[test]
+fn otio_save_unknown_extension_fails() {
+	let _guard = MANAGER_LOCK.lock().unwrap();
+	reset_stubs();
+	configure_one_sequence_save();
+
+	let out = std::env::temp_dir().join(format!("oak-otio-save-unknown-{}.xyz", std::process::id()));
+	let out_str = out.to_string_lossy().into_owned();
+	let mut task = unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
+	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 0);
+	let needed = unsafe { oaktask_task_error(task, std::ptr::null_mut(), 0) };
+	let mut buf = vec![0i8; needed as usize];
+	unsafe { oaktask_task_error(task, buf.as_mut_ptr(), needed) };
+	assert!(cstr_read(&buf).contains("Unknown project file format"), "error was: {}", cstr_read(&buf));
+
+	free(&mut task);
+	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
+}
+
+// ---------------------------------------------------------------------------
+// FCPXML error paths
+// ---------------------------------------------------------------------------
+
+/// A corrupt `.fcpxml` document fails with a clear FCPXML parse error.
+#[test]
+fn fcpxml_load_corrupt_xml_fails() {
+	let _guard = MANAGER_LOCK.lock().unwrap();
+	reset_stubs();
+
+	let path = std::env::temp_dir().join(format!("oak-fcpxml-corrupt-{}.fcpxml", std::process::id()));
+	std::fs::write(&path, "<fcpxml version=\"1.10\"><resources>").unwrap();
+	let path_str = path.to_string_lossy().into_owned();
+
+	let mut task = unsafe { oaktask_create_project_load_otio(common::cstr_of(&path_str)) };
+	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 0);
+	let needed = unsafe { oaktask_task_error(task, std::ptr::null_mut(), 0) };
+	let mut buf = vec![0i8; needed as usize];
+	unsafe { oaktask_task_error(task, buf.as_mut_ptr(), needed) };
+	let msg = cstr_read(&buf);
+	assert!(msg.contains("Failed to load FCPXML"), "error was: {msg}");
+	assert!(unsafe { oaktask_load_otio_take_project(task) }.ctx.is_null());
+
+	free(&mut task);
+	let _ = std::fs::remove_file(&path);
+	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
+}
+
+/// An FCPXML version this crate cannot read fails the load with the
+/// underlying version error surfaced in the task message.
+#[test]
+fn fcpxml_load_unknown_version_fails() {
+	let _guard = MANAGER_LOCK.lock().unwrap();
+	reset_stubs();
+
+	let path = std::env::temp_dir().join(format!("oak-fcpxml-version-{}.fcpxml", std::process::id()));
+	std::fs::write(
+		&path,
+		"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE fcpxml>\n<fcpxml version=\"2.0\"><library/></fcpxml>",
+	)
+	.unwrap();
+	let path_str = path.to_string_lossy().into_owned();
+
+	let mut task = unsafe { oaktask_create_project_load_otio(common::cstr_of(&path_str)) };
+	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 0);
+	let needed = unsafe { oaktask_task_error(task, std::ptr::null_mut(), 0) };
+	let mut buf = vec![0i8; needed as usize];
+	unsafe { oaktask_task_error(task, buf.as_mut_ptr(), needed) };
+	let msg = cstr_read(&buf);
+	assert!(msg.contains("Failed to load FCPXML"), "error was: {msg}");
+	assert!(msg.contains("version"), "error was: {msg}");
+	assert!(unsafe { oaktask_load_otio_take_project(task) }.ctx.is_null());
+
+	free(&mut task);
+	let _ = std::fs::remove_file(&path);
 	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
 }

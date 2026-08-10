@@ -20,6 +20,7 @@
 //! while running and take ownership only on the `take_*` accessors
 //! (architectural decision #5 in README.md).
 
+pub mod format;
 pub mod import;
 pub mod load;
 pub mod loadotio;

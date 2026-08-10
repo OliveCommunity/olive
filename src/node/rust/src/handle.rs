@@ -62,7 +62,20 @@ impl CHandle {
 			abi_version: OAKNODE_ABI_VERSION,
 		}
 	}
+
+	/// True when `ctx` is null.
+	pub fn is_null(&self) -> bool {
+		self.ctx.is_null()
+	}
 }
+
+// CHandle is the C-side value handle (passed by value, copyable across
+// threads); `ctx` is an opaque box pointer. The addref/release functions
+// are atomic, so sharing the box between threads is the host's
+// dispatching contract (same rationale as the oakplugin crate's
+// handle.rs).
+unsafe impl Send for CHandle {}
+unsafe impl Sync for CHandle {}
 
 /// addref 的实现：原子 +1。拥有型与借用型共用——借用型只延长盒子
 /// 的寿命，不延长被借用对象。
@@ -109,6 +122,25 @@ pub fn make_owned<T: Any + Send>(value: T) -> CHandle {
 		ctx: rb as *mut std::ffi::c_void,
 		addref: Some(refbox_addref::<T>),
 		release: Some(refbox_release_owned::<T>),
+		abi_version: OAKNODE_ABI_VERSION,
+	}
+}
+
+/// Owned handle with count 1 and a caller-provided release routine
+/// (used by the ffi layer's alive-counted node/project boxes, where the
+/// release must also update the debug counter).
+pub fn make_owned_with<T: Any + Send>(
+	value: T,
+	release: unsafe extern "C" fn(*mut std::ffi::c_void),
+) -> CHandle {
+	let rb = Box::into_raw(Box::new(RefBox {
+		refs: AtomicU32::new(1),
+		value,
+	}));
+	CHandle {
+		ctx: rb as *mut std::ffi::c_void,
+		addref: Some(refbox_addref::<T>),
+		release: Some(release),
 		abi_version: OAKNODE_ABI_VERSION,
 	}
 }

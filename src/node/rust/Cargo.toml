@@ -14,3 +14,9 @@ panic = "unwind"
 
 [dependencies]
 oakcore-rs = { path = "../../oakcore-rs" }
+
+[features]
+# In-crate stubs for the oakundo C ABI (and other module bridges) so
+# cargo test can exercise the undoable exports end-to-end without the
+# module libraries; real builds (feature off) dlsym the actual modules.
+test-stubs = []

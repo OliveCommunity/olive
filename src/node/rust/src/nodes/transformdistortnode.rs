@@ -51,7 +51,7 @@ pub const GIZMO_SCALE_COUNT: usize = 8;
 
 /// Auto-scale mode (C++ `AutoScaleType`); values match the
 /// `autoscale_in` combo indices.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AutoScaleType {
 	/// No auto-scaling.
 	None = 0,
@@ -65,7 +65,7 @@ pub enum AutoScaleType {
 
 /// Rotation direction for wrap-around detection (C++ private enum
 /// `RotationDirection`).
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RotationDirection {
 	/// No direction established yet.
 	None,
@@ -76,7 +76,7 @@ enum RotationDirection {
 }
 
 /// Which axes a scale gizmo drags (C++ private enum `GizmoScaleType`).
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum GizmoScaleType {
 	/// Horizontal center handles (C++ `k_gizmo_scale_x_only`).
 	XOnly,
@@ -153,11 +153,116 @@ impl TransformDistortNode {
 	/// auto-scale mode (stretch: per-axis; fit/fill: uniform by width
 	/// or height depending on the aspect-ratio comparison).
 	///
-	/// Also covers the C++ private helpers `generate_auto_scaled_matrix`,
-	/// `create_scale_point`, `is_a_scale_gizmo` and
-	/// `get_direction_from_angles`.
-	fn adjust_matrix_by_resolutions() {
-		todo!()
+	/// Also covers the C++ private helpers `create_scale_point` and
+	/// `get_direction_from_angles` (below). The remaining helpers are not
+	/// representable: `generate_auto_scaled_matrix` needs the texture
+	/// params from the C++ `VideoParams` (the Rust texture handle carries
+	/// no params) and `is_a_scale_gizmo` compares gizmo pointers.
+	fn adjust_matrix_by_resolutions(
+		mat: [f64; 16],
+		sequence_res: (f64, f64),
+		texture_res: (f64, f64),
+		offset: (f64, f64),
+		autoscale_type: AutoScaleType,
+	) -> [f64; 16] {
+		// First, create an identity matrix.
+		let mut adjusted_matrix = super::mathbase::identity_matrix();
+
+		// Scale it to a square based on the sequence's resolution.
+		adjusted_matrix = super::matrix::matrix_scale(
+			adjusted_matrix,
+			2.0 / sequence_res.0,
+			2.0 / sequence_res.1,
+			1.0,
+		);
+
+		// Apply offset if applicable.
+		adjusted_matrix = super::matrix::matrix_translate(
+			adjusted_matrix,
+			offset.0,
+			offset.1,
+		);
+
+		// Adjust by the matrix we generated earlier.
+		adjusted_matrix = super::matrix::matrix_mul(adjusted_matrix, mat);
+
+		// Scale back out to texture size (adjusted by pixel aspect).
+		adjusted_matrix = super::matrix::matrix_scale(
+			adjusted_matrix,
+			texture_res.0 * 0.5,
+			texture_res.1 * 0.5,
+			1.0,
+		);
+
+		// If auto-scale is enabled, fit the texture to the sequence
+		// (without cropping).
+		if autoscale_type != AutoScaleType::None {
+			if autoscale_type == AutoScaleType::Stretch {
+				adjusted_matrix = super::matrix::matrix_scale(
+					adjusted_matrix,
+					sequence_res.0 / texture_res.0,
+					sequence_res.1 / texture_res.1,
+					1.0,
+				);
+			} else {
+				let footage_real_ar = texture_res.0 / texture_res.1;
+				let sequence_real_ar = sequence_res.0 / sequence_res.1;
+
+				let scale_by_x = sequence_res.0 / texture_res.0;
+				let scale_by_y = sequence_res.1 / texture_res.1;
+				let autoscale_val;
+
+				if (autoscale_type == AutoScaleType::Fit) == (sequence_real_ar > footage_real_ar) {
+					// Scale by height. Either the sequence is wider than
+					// the footage or we're using fill and cutting off the
+					// sides.
+					autoscale_val = scale_by_y;
+				} else {
+					// Scale by width. Either the footage is wider than the
+					// sequence or we're using fill and cutting off the top
+					// and bottom.
+					autoscale_val = scale_by_x;
+				}
+
+				adjusted_matrix =
+					super::matrix::matrix_scale(adjusted_matrix, autoscale_val, autoscale_val, 1.0);
+			}
+		}
+
+		adjusted_matrix
+	}
+
+	/// C++ `Matrix4x4::map(PointF)` equivalent: maps `p` through the
+	/// row-major matrix treating it as `(x, y, 0, 1)`, dividing by the
+	/// resulting `w` whenever it is not exactly 1.
+	fn map_point(mat: [f64; 16], p: (f64, f64)) -> (f64, f64) {
+		let x = p.0 * mat[0] + p.1 * mat[1] + mat[3];
+		let y = p.0 * mat[4] + p.1 * mat[5] + mat[7];
+		let w = p.0 * mat[12] + p.1 * mat[13] + mat[15];
+		if w == 1.0 {
+			(x, y)
+		} else {
+			(x / w, y / w)
+		}
+	}
+
+	/// Scale-point gizmo placement (C++ `create_scale_point()`): maps the
+	/// unit-square position through `mat` and adds the sequence half
+	/// resolution.
+	fn create_scale_point(x: f64, y: f64, half_res: (f64, f64), mat: [f64; 16]) -> (f64, f64) {
+		let p = Self::map_point(mat, (x, y));
+		(p.0 + half_res.0, p.1 + half_res.1)
+	}
+
+	/// Rotation direction of a mouse angle step (C++
+	/// `get_direction_from_angles()`): positive when `current` is greater
+	/// than `last`, negative otherwise.
+	fn get_direction_from_angles(last: f64, current: f64) -> RotationDirection {
+		if current > last {
+			RotationDirection::Positive
+		} else {
+			RotationDirection::Negative
+		}
 	}
 }
 
@@ -195,7 +300,15 @@ impl NodeBehavior for TransformDistortNode {
 	/// Neighbor", "Bilinear", "Mipmapped Bilinear"), plus the inherited
 	/// `MatrixGenerator` input names via its retranslate.
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			PARENT_INPUT => "Parent",
+			AUTOSCALE_INPUT => "Auto-Scale",
+			TEXTURE_INPUT => "Texture",
+			INTERPOLATION_INPUT => "Interpolation",
+			// The inherited MatrixGenerator input names (the combo strings
+			// above are UI-level properties, C++ `set_combo_box_strings`).
+			_ => self.matrix.input_name(id),
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): generates the matrix from the
@@ -208,6 +321,13 @@ impl NodeBehavior for TransformDistortNode {
 	/// interpolation selected by `interpolation_in`, and pushes that;
 	/// identity matrix (or no texture) -> pass-through push of the
 	/// input texture value.
+	///
+	/// The real matrix needs the texture's params and the sequence
+	/// resolution (the Rust texture handle carries no params and the
+	/// value() signature no globals), so the identity check — and thus
+	/// the pass-through-vs-job decision — is not representable here: with
+	/// a texture the job is always queued for the renderer seam
+	/// (`// CPP-PARITY: transformdistortnode.cpp` value()).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -215,7 +335,49 @@ impl NodeBehavior for TransformDistortNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		let parent = match inputs.get(PARENT_INPUT) {
+			Some(crate::value::NodeValue::Matrix(m)) => *m,
+			_ => match core.value_at_time(PARENT_INPUT, -1, time) {
+				crate::value::NodeValue::Matrix(m) => m,
+				_ => super::mathbase::identity_matrix(),
+			},
+		};
+
+		// Generate matrix.
+		let generated_matrix = super::matrix::MatrixGenerator::generate_matrix(
+			inputs,
+			core,
+			time,
+			false,
+			false,
+			false,
+			parent,
+		);
+		table.push(
+			crate::value::ValueType::Matrix,
+			crate::value::NodeValue::Matrix(generated_matrix),
+			None,
+		);
+
+		match inputs.get(TEXTURE_INPUT) {
+			Some(tex @ crate::value::NodeValue::Texture(_)) => {
+				// C++ builds the auto-scaled real matrix and pushes a job
+				// at the global video params binding `ove_maintex` /
+				// `ove_mvpmat`; the deferred job is resolved by the
+				// renderer seam (`// CPP-PARITY: transformdistortnode.cpp`
+				// value()).
+				let _ = tex;
+				table.push(
+					crate::value::ValueType::Texture,
+					crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+					None,
+				);
+			}
+			_ => {
+				// No texture: C++ re-pushes the input value (k_none),
+				// which is a no-op here.
+			}
+		}
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): ignores the
@@ -223,7 +385,8 @@ impl NodeBehavior for TransformDistortNode {
 	/// node relies on the renderer's default vertex/fragment shaders,
 	/// so this maps to `None`.
 	fn shader_code(&self, request: &str) -> Option<String> {
-		todo!()
+		let _ = request;
+		None
 	}
 
 	/// Gizmo transform/positions (C++ `update_gizmo_positions()` and
@@ -238,8 +401,14 @@ impl NodeBehavior for TransformDistortNode {
 	/// auto-scaled generated matrix (generated with an identity parent);
 	/// without one falls back to the base `MatrixGenerator`
 	/// transformation.
+	///
+	/// Every placement needs the texture's params and the sequence
+	/// resolution (neither available here), and the gizmo point
+	/// positions have no storage in [`Gizmo`] — not representable
+	/// (`// CPP-PARITY: transformdistortnode.cpp`
+	/// `update_gizmo_positions` / `gizmo_transformation`).
 	fn gizmo_update(&self, core: &NodeCore, row: &crate::value::NodeValueRow) {
-		todo!()
+		let _ = (core, row);
 	}
 
 	/// Gizmo drag callbacks (C++ `gizmo_drag_start()` /
@@ -262,13 +431,35 @@ impl NodeBehavior for TransformDistortNode {
 	/// scale tracks by the normalized magnitude per the handle's axes,
 	/// collapsing to a single uniform value (diagonal ratio for corner
 	/// handles) when uniform scale is on.
+	///
+	/// The drags write keyframe tracks through `NodeInputDragger`s with
+	/// per-drag start values, which the Rust data model does not carry —
+	/// not representable here (`// CPP-PARITY: transformdistortnode.cpp`
+	/// `gizmo_drag_start` / `gizmo_drag_move`). The drag-state fields
+	/// above mirror the C++ members but are never written.
 	fn gizmo_drag(&mut self, core: &mut NodeCore, start: bool, x: f64, y: f64, modifiers: u32) {
-		todo!()
+		let _ = (core, start, x, y, modifiers);
 	}
 
 	/// Deep copy (C++ `copy()`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(TransformDistortNode {
+			matrix: super::matrix::MatrixGenerator,
+			gizmo_start_angle: self.gizmo_start_angle,
+			gizmo_anchor_pt: self.gizmo_anchor_pt,
+			gizmo_scale_uniform: self.gizmo_scale_uniform,
+			gizmo_last_angle: self.gizmo_last_angle,
+			gizmo_last_alt_angle: self.gizmo_last_alt_angle,
+			gizmo_rotate_wrap: self.gizmo_rotate_wrap,
+			gizmo_rotate_last_dir: self.gizmo_rotate_last_dir,
+			gizmo_rotate_last_alt_dir: self.gizmo_rotate_last_alt_dir,
+			gizmo_scale_axes: self.gizmo_scale_axes,
+			gizmo_scale_anchor: self.gizmo_scale_anchor,
+			point_gizmo: self.point_gizmo.clone(),
+			anchor_gizmo: self.anchor_gizmo.clone(),
+			poly_gizmo: self.poly_gizmo.clone(),
+			rotation_gizmo: self.rotation_gizmo.clone(),
+		}))
 	}
 }
 
@@ -282,7 +473,364 @@ impl NodeBehavior for TransformDistortNode {
 /// and the eight scale point gizmos (absolute drag behavior, bound to
 /// `scale_in`); sets the video-effect flag and the effect input.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	// Inherit the MatrixGenerator inputs (pos/rot/scale/uniform/anchor).
+	let (mut core, _) = super::matrix::create();
+
+	let mut tex = crate::input::Input::new(
+		TEXTURE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	tex.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	let parent_input = crate::input::Input::new(
+		PARENT_INPUT,
+		crate::value::ValueType::Matrix,
+		crate::value::NodeValue::None,
+	);
+	let autoscale_input = crate::input::Input::new(
+		AUTOSCALE_INPUT,
+		crate::value::ValueType::Combo,
+		crate::value::NodeValue::Combo(AutoScaleType::None as i64),
+	);
+	let interpolation_input = crate::input::Input::new(
+		INTERPOLATION_INPUT,
+		crate::value::ValueType::Combo,
+		crate::value::NodeValue::Combo(2),
+	);
+
+	// The C++ input order is `enabled_in`, `tex_in` (prepended), the
+	// node's own inputs, then the inherited matrix inputs. `tex_in` goes
+	// right after `enabled_in`; `parent_in`/`autoscale_in`/
+	// `interpolation_in` go between it and the matrix inputs (inserted
+	// in reverse at index 2 to keep that order).
+	core.inputs.insert(1, tex);
+	core.inputs.insert(2, interpolation_input);
+	core.inputs.insert(2, autoscale_input);
+	core.inputs.insert(2, parent_input);
+
+	// Gizmos, in C++ add order: the rotation screen gizmo (absolute drag
+	// behavior, bound to `rot_in`), the frame polygon gizmo (bound to
+	// `pos_in`), the anchor point gizmo (bound to `anchor_in` and
+	// `pos_in`), and the eight scale point gizmos (absolute drag
+	// behavior, bound to `scale_in`) in `k_gizmo_scale_*` order.
+	let rotation_gizmo = Gizmo {
+		position_inputs: vec![(
+			super::matrix::ROTATION_INPUT.to_string(),
+			-1,
+			0,
+		)],
+		drag_point: (0.0, 0.0),
+	};
+	let poly_gizmo = Gizmo {
+		position_inputs: vec![
+			(super::matrix::POSITION_INPUT.to_string(), -1, 0),
+			(super::matrix::POSITION_INPUT.to_string(), -1, 1),
+		],
+		drag_point: (0.0, 0.0),
+	};
+	let anchor_gizmo = Gizmo {
+		position_inputs: vec![
+			(super::matrix::ANCHOR_INPUT.to_string(), -1, 0),
+			(super::matrix::ANCHOR_INPUT.to_string(), -1, 1),
+			(super::matrix::POSITION_INPUT.to_string(), -1, 0),
+			(super::matrix::POSITION_INPUT.to_string(), -1, 1),
+		],
+		drag_point: (0.0, 0.0),
+	};
+	let scale_gizmo = |_i: usize| Gizmo {
+		position_inputs: vec![
+			(super::matrix::SCALE_INPUT.to_string(), -1, 0),
+			(super::matrix::SCALE_INPUT.to_string(), -1, 1),
+		],
+		drag_point: (0.0, 0.0),
+	};
+	let point_gizmo: [Gizmo; GIZMO_SCALE_COUNT] = [
+		scale_gizmo(0),
+		scale_gizmo(1),
+		scale_gizmo(2),
+		scale_gizmo(3),
+		scale_gizmo(4),
+		scale_gizmo(5),
+		scale_gizmo(6),
+		scale_gizmo(7),
+	];
+
+	core.gizmos = vec![
+		rotation_gizmo.clone(),
+		poly_gizmo.clone(),
+		anchor_gizmo.clone(),
+		point_gizmo[0].clone(),
+		point_gizmo[1].clone(),
+		point_gizmo[2].clone(),
+		point_gizmo[3].clone(),
+		point_gizmo[4].clone(),
+		point_gizmo[5].clone(),
+		point_gizmo[6].clone(),
+		point_gizmo[7].clone(),
+	];
+
+	core.flags |= crate::node::flags::VIDEO_EFFECT;
+	core.effect_input = TEXTURE_INPUT.to_string();
+
+	(
+		core,
+		Box::new(TransformDistortNode {
+			matrix: super::matrix::MatrixGenerator,
+			gizmo_start_angle: 0.0,
+			gizmo_anchor_pt: (0.0, 0.0),
+			gizmo_scale_uniform: false,
+			gizmo_last_angle: 0.0,
+			gizmo_last_alt_angle: 0.0,
+			gizmo_rotate_wrap: 0,
+			gizmo_rotate_last_dir: RotationDirection::None,
+			gizmo_rotate_last_alt_dir: RotationDirection::None,
+			gizmo_scale_axes: GizmoScaleType::Both,
+			gizmo_scale_anchor: (0.0, 0.0),
+			point_gizmo,
+			anchor_gizmo,
+			poly_gizmo,
+			rotation_gizmo,
+		}),
+	)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::node::NodeBehavior;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	fn tex() -> NodeValue {
+		NodeValue::Texture(crate::handle::CHandle::null())
+	}
+
+	fn empty_gizmo() -> Gizmo {
+		Gizmo {
+			position_inputs: vec![],
+			drag_point: (0.0, 0.0),
+		}
+	}
+
+	fn empty_node() -> TransformDistortNode {
+		TransformDistortNode {
+			matrix: super::super::matrix::MatrixGenerator,
+			gizmo_start_angle: 0.0,
+			gizmo_anchor_pt: (0.0, 0.0),
+			gizmo_scale_uniform: false,
+			gizmo_last_angle: 0.0,
+			gizmo_last_alt_angle: 0.0,
+			gizmo_rotate_wrap: 0,
+			gizmo_rotate_last_dir: RotationDirection::None,
+			gizmo_rotate_last_alt_dir: RotationDirection::None,
+			gizmo_scale_axes: GizmoScaleType::Both,
+			gizmo_scale_anchor: (0.0, 0.0),
+			point_gizmo: std::array::from_fn(|_| empty_gizmo()),
+			anchor_gizmo: empty_gizmo(),
+			poly_gizmo: empty_gizmo(),
+			rotation_gizmo: empty_gizmo(),
+		}
+	}
+
+	#[test]
+	fn input_names() {
+		let n = empty_node();
+		assert_eq!(n.input_name(PARENT_INPUT), "Parent");
+		assert_eq!(n.input_name(AUTOSCALE_INPUT), "Auto-Scale");
+		assert_eq!(n.input_name(TEXTURE_INPUT), "Texture");
+		assert_eq!(n.input_name(INTERPOLATION_INPUT), "Interpolation");
+		// Inherited matrix-generator names.
+		assert_eq!(n.input_name(super::super::matrix::POSITION_INPUT), "Position");
+		assert_eq!(n.input_name(super::super::matrix::ROTATION_INPUT), "Rotation");
+		assert_eq!(n.input_name(super::super::matrix::SCALE_INPUT), "Scale");
+		assert_eq!(
+			n.input_name(super::super::matrix::UNIFORM_SCALE_INPUT),
+			"Uniform Scale"
+		);
+		assert_eq!(n.input_name(super::super::matrix::ANCHOR_INPUT), "Anchor Point");
+	}
+
+	#[test]
+	fn create_wires_inputs_and_flags() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.transform");
+		// C++ input order: enabled_in, tex_in (prepended), parent_in,
+		// autoscale_in, interpolation_in, then the inherited matrix inputs.
+		let ids: Vec<&str> = core.inputs.iter().map(|i| i.id.as_str()).collect();
+		assert_eq!(
+			ids,
+			vec![
+				crate::node::ENABLED_INPUT,
+				TEXTURE_INPUT,
+				PARENT_INPUT,
+				AUTOSCALE_INPUT,
+				INTERPOLATION_INPUT,
+				super::super::matrix::POSITION_INPUT,
+				super::super::matrix::ROTATION_INPUT,
+				super::super::matrix::SCALE_INPUT,
+				super::super::matrix::UNIFORM_SCALE_INPUT,
+				super::super::matrix::ANCHOR_INPUT,
+			]
+		);
+		assert_eq!(
+			core.get_input(AUTOSCALE_INPUT).unwrap().default,
+			NodeValue::Combo(0)
+		);
+		assert_eq!(
+			core.get_input(INTERPOLATION_INPUT).unwrap().default,
+			NodeValue::Combo(2)
+		);
+		// Eleven gizmos: rotation + polygon + anchor + eight scale points.
+		assert_eq!(core.gizmos.len(), 11);
+		assert_eq!(core.effect_input, TEXTURE_INPUT);
+		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
+	}
+
+	#[test]
+	fn value_pushes_matrix_and_job_with_texture() {
+		let (core, behavior) = create();
+		let inputs = crate::value::NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex())]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		// Matrix output always pushed; texture job queued for the seam.
+		assert!(table.get(ValueType::Matrix).is_some());
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn value_without_texture_pushes_matrix_only() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
+		assert!(table.get(ValueType::Matrix).is_some());
+		assert!(table.get(ValueType::Texture).is_none());
+	}
+
+	#[test]
+	fn value_folds_parent_matrix() {
+		let (mut core, behavior) = create();
+		let mut parent = super::super::mathbase::identity_matrix();
+		parent[3] = 50.0;
+		core.set_standard_value(PARENT_INPUT, -1, NodeValue::Matrix(parent));
+		let mut table = NodeValueTable::default();
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
+		let m = match table.get(ValueType::Matrix).unwrap() {
+			NodeValue::Matrix(m) => *m,
+			_ => panic!("matrix expected"),
+		};
+		assert_eq!(m[3], 50.0, "parent translation folds through");
+	}
+
+	#[test]
+	fn shader_code_returns_none() {
+		let n = empty_node();
+		assert!(n.shader_code("anything").is_none());
+	}
+
+	#[test]
+	fn adjust_matrix_identity_when_matching_resolutions() {
+		// sequence == texture at a power-of-two resolution: the
+		// scale(2/res) * scale(res/2) composition is exactly identity.
+		let m = TransformDistortNode::adjust_matrix_by_resolutions(
+			super::super::mathbase::identity_matrix(),
+			(640.0, 360.0),
+			(640.0, 360.0),
+			(0.0, 0.0),
+			AutoScaleType::None,
+		);
+		assert!(super::super::mathbase::matrix_is_identity(m));
+	}
+
+	#[test]
+	fn adjust_matrix_translation_and_scale() {
+		// sequence (640, 360), texture (320, 180), offset (10, 20):
+		// scale(2/640) * translate(10, 20) * scale(160, 90) = diag(0.5)
+		// with m[0][3] = 10*2/640 and m[1][3] = 20*2/360.
+		let m = TransformDistortNode::adjust_matrix_by_resolutions(
+			super::super::mathbase::identity_matrix(),
+			(640.0, 360.0),
+			(320.0, 180.0),
+			(10.0, 20.0),
+			AutoScaleType::None,
+		);
+		assert!((m[0] - 0.5).abs() < 1e-12);
+		assert!((m[5] - 0.5).abs() < 1e-12);
+		assert!((m[3] - 10.0 * 2.0 / 640.0).abs() < 1e-12);
+		assert!((m[7] - 20.0 * 2.0 / 360.0).abs() < 1e-12);
+	}
+
+	#[test]
+	fn adjust_matrix_stretch_autoscale() {
+		// Stretch scales per-axis to the sequence size on top of the
+		// base composition: with sequence == texture the base is already
+		// identity, and stretch adds scale(seq/tex) = 1 — identity.
+		let m = TransformDistortNode::adjust_matrix_by_resolutions(
+			super::super::mathbase::identity_matrix(),
+			(640.0, 360.0),
+			(640.0, 360.0),
+			(0.0, 0.0),
+			AutoScaleType::Stretch,
+		);
+		assert!(super::super::mathbase::matrix_is_identity(m));
+
+		// Half-size texture with a position offset: the base composition
+		// halves the texture (0.5) and stretch's (2, 2) brings it back to
+		// unit scale. The offset lives in the pre-scale matrix, so the
+		// sequence-space scale (2/640) applies to it: 100 * 2/640 = 0.3125
+		// (post-multiplied scales preserve the translation column).
+		let mat = super::super::matrix::matrix_translate(
+			super::super::mathbase::identity_matrix(),
+			100.0,
+			0.0,
+		);
+		let m = TransformDistortNode::adjust_matrix_by_resolutions(
+			mat,
+			(640.0, 360.0),
+			(320.0, 180.0),
+			(0.0, 0.0),
+			AutoScaleType::Stretch,
+		);
+		assert!((m[0] - 1.0).abs() < 1e-12);
+		assert!((m[5] - 1.0).abs() < 1e-12);
+		assert!((m[3] - 100.0 * 2.0 / 640.0).abs() < 1e-12, "offset scaled into sequence units");
+	}
+
+	#[test]
+	fn create_scale_point_maps_and_offsets() {
+		let m = super::super::mathbase::identity_matrix();
+		let pt = TransformDistortNode::create_scale_point(1.0, -1.0, (320.0, 180.0), m);
+		assert_eq!(pt, (321.0, 179.0));
+	}
+
+	#[test]
+	fn get_direction_from_angles() {
+		assert_eq!(
+			TransformDistortNode::get_direction_from_angles(0.0, 1.0),
+			RotationDirection::Positive
+		);
+		assert_eq!(
+			TransformDistortNode::get_direction_from_angles(1.0, 0.0),
+			RotationDirection::Negative
+		);
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Transform");
+		assert_eq!(dup.short_name(), "Transform");
+	}
 }
 
 /// Register this node type (C++ factory entry for

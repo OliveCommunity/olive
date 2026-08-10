@@ -29,7 +29,7 @@ mod displaytransform;
 mod dropshadowfilter;
 mod flipdistortnode;
 mod generatorwithmerge;
-mod group;
+pub mod group;
 mod mask;
 mod math;
 mod mathbase;
@@ -70,6 +70,26 @@ mod wavedistortnode;
 mod whitebalance;
 
 use crate::factory::NodeMeta;
+use crate::node::{NodeBehavior, NodeCore};
+
+/// A no-op behavior for vacant arena slots (graph internal; never
+/// observable through the public API — a vacant slot is only reachable
+/// by a stale id, which `Graph::get` rejects).
+pub struct EmptyBehavior;
+
+impl NodeBehavior for EmptyBehavior {
+	fn name(&self) -> &str {
+		""
+	}
+
+	fn type_id(&self) -> &str {
+		""
+	}
+
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(EmptyBehavior))
+	}
+}
 
 /// Register every built-in node type with the global factory.
 /// Registration order matches the C++ menu order

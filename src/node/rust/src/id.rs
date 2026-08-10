@@ -30,9 +30,22 @@ pub struct NodeId {
 }
 
 impl NodeId {
+	/// Sentinel marking "no node" (project without a root folder, empty
+	/// references). Not a valid arena slot: the arena never produces this
+	/// value (an index of `u32::MAX` is rejected by [`NodeId::valid`]).
+	pub const INVALID: NodeId = NodeId {
+		index: u32::MAX,
+		generation: 0,
+	};
+
 	/// Construct from raw parts (arena-internal use).
 	pub(crate) fn new(index: u32, generation: u32) -> NodeId {
 		NodeId { index, generation }
+	}
+
+	/// True when this id names a real arena slot (not [`NodeId::INVALID`]).
+	pub fn valid(self) -> bool {
+		self.index != u32::MAX
 	}
 
 	/// Slot index.
@@ -50,5 +63,16 @@ impl NodeId {
 	/// NOT an address, safe to persist within a session).
 	pub fn identity(self) -> u64 {
 		((self.generation as u64) << 32) | self.index as u64
+	}
+
+	/// Inverse of [`NodeId::identity`]: rebuild an id from its packed
+	/// form. `None` for the invalid sentinel.
+	pub fn from_identity(id: u64) -> Option<NodeId> {
+		let index = (id & 0xffff_ffff) as u32;
+		let generation = (id >> 32) as u32;
+		if index == u32::MAX {
+			return None;
+		}
+		Some(NodeId { index, generation })
 	}
 }

@@ -1,0 +1,55 @@
+[package]
+name = "oakfacade"
+version = "0.1.0"
+edition = "2021"
+description = "Oak Video Editor facade: re-exports the frozen oakengine_* C ABI over the module C ABIs (Rust)"
+license = "GPL-3.0-or-later"
+
+[lib]
+crate-type = ["staticlib", "rlib"]
+
+[profile.release]
+# FFI discipline: panics must be catchable at every exported entry.
+panic = "unwind"
+
+[dependencies]
+# NDJSON control-plane protocol for the worker session (src/worker.rs) and
+# the shm error formatting in src/ipc.rs.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# POSIX shm_open/mmap/munmap/shm_unlink constants + syscalls for the
+# shared-memory frame-slot transport (src/ipc.rs).
+libc = "0.2"
+
+# Every module call crosses the module C ABI as an `extern "C"` import
+# (src/bridge/), resolved at the final link against the module shared
+# libraries (see README.md).
+#
+# `cargo test` links the module crates' rlibs instead (dev-dependencies
+# below): the crates' `#[no_mangle]` exports satisfy the facade's bridge
+# imports, so the smoke tests exercise the real module code where the
+# crates implement it. Tests reference every crate so rustc pulls the
+# rlibs into the link (see tests/common/mod.rs).
+#
+# test-stubs on oakcommon/oakplugin compiles those crates' in-crate C ABI
+# mocks: oakcommon's stub replaces the ffmpeg_bridge symbol, and
+# oakplugin's stubs replace its runtime dlsym lookups.
+#
+# NOTE (oaktimeline/oaktask): linked WITHOUT their `test-stubs` features.
+# Their in-crate mocks define `oakundo_command_init` etc., which would
+# collide with the real oakundo rlib in one test binary; without
+# test-stubs their real exports reference the oaknode/oakundo/oakcommon
+# C ABI symbols as link-time externs, which the dev-dependency rlibs
+# (oaknode, oakundo, oakcommon[test-stubs]) provide. oaknode itself
+# resolves cross-module symbols at runtime with dlsym(RTLD_DEFAULT), which
+# finds the linked rlibs in the test binary (see src/bridge/node.rs).
+[dev-dependencies]
+oakundo = { path = "../../undo/rust" }
+oakcodec = { path = "../../codec/rust" }
+oakaudio = { path = "../../audio/rust" }
+oakrender = { path = "../../render/rust" }
+oakcommon = { path = "../../common/rust", features = ["test-stubs"] }
+oakplugin = { path = "../../plugin/rust", features = ["test-stubs"] }
+oaknode = { path = "../../node/rust" }
+oaktimeline = { path = "../../timeline/rust" }
+oaktask = { path = "../../task/rust" }

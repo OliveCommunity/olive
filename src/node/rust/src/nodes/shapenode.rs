@@ -164,7 +164,15 @@ impl NodeBehavior for ShapeNode {
 	/// "Radius"; also sets the `type_in` combo strings to
 	/// "Rectangle"/"Ellipse"/"Rounded Rectangle".
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		// The base names come from `ShapeNodeBase::input_name` plus the
+		// merge base's `base_in` "Base" (the C++ retranslate chain runs
+		// `GeneratorWithMerge::retranslate` first).
+		match id {
+			TYPE_INPUT => "Type",
+			RADIUS_INPUT => "Radius",
+			super::generatorwithmerge::BASE_INPUT => "Base",
+			_ => super::shapenodebase::ShapeNodeBase::input_name(id),
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): builds a `"shape"` shader job
@@ -173,6 +181,12 @@ impl NodeBehavior for ShapeNode {
 	/// square resolution), renders it at the base texture's params (or
 	/// the sequence video params), and pushes it through
 	/// `push_mergable_job` (merged over `base_in` when connected).
+	///
+	/// The Rust model has no shader-job payload: the deferred job
+	/// (including the `resolution_in` value and the `"shape"` shader id)
+	/// is resolved by the renderer seam, so a null texture handle marks
+	/// "renderer must produce this texture" (`// CPP-PARITY: shapenode.cpp`
+	/// `value()`).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -180,14 +194,23 @@ impl NodeBehavior for ShapeNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		let _ = (core, time);
+		super::generatorwithmerge::GeneratorWithMerge::push_mergable_job(
+			inputs,
+			crate::handle::CHandle::null(),
+			table,
+		);
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): `"shape"` returns
 	/// the shape fragment shader; any other request falls through to
 	/// the merge base (`"mrg"` -> alpha-over shader, else empty).
 	fn shader_code(&self, request: &str) -> Option<String> {
-		todo!()
+		match request {
+			"shape" => Some(Self::shader_frag().to_string()),
+			"mrg" => Some(super::generatorwithmerge::merge_shader_frag().to_string()),
+			_ => None,
+		}
 	}
 
 	/// Input value changed (C++ `InputValueChangedEvent`): when
@@ -195,12 +218,21 @@ impl NodeBehavior for ShapeNode {
 	/// the selected type is `k_rounded_rectangle` (2); then chains to
 	/// the base implementation.
 	fn input_value_changed(&mut self, core: &mut NodeCore, input: &str, element: i32) {
-		todo!()
+		if input == TYPE_INPUT && element == -1 {
+			let ty = core.standard_value(TYPE_INPUT, -1).to_double() as i64;
+			if let Some(radius) = core.get_input_mut(RADIUS_INPUT) {
+				if ty == 2 {
+					radius.flags &= !crate::input::flags::HIDDEN;
+				} else {
+					radius.flags |= crate::input::flags::HIDDEN;
+				}
+			}
+		}
 	}
 
 	/// Deep copy (C++ `copy()`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(ShapeNode))
 	}
 }
 
@@ -209,8 +241,162 @@ impl NodeBehavior for ShapeNode {
 /// `size_in`, `color_in` and the gizmos), prepends the `type_in` combo
 /// and adds `radius_in` with the default and property documented on the
 /// constant.
+///
+/// Input order matches the C++: `enabled_in`, `type_in` (prepended
+/// ahead of the base inputs), `base_in`, `pos_in`, `size_in`,
+/// `color_in`, `radius_in`. The base's gizmos are GUI gizmos with no
+/// Rust equivalent (see [`super::shapenodebase`]), so no gizmos are
+/// registered.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	// ShapeNodeBase constructor (GeneratorWithMerge + shape inputs).
+	let mut base = crate::input::Input::new(
+		super::generatorwithmerge::BASE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	base.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(base);
+
+	let pos = crate::input::Input::new(
+		super::shapenodebase::POSITION_INPUT,
+		crate::value::ValueType::Vec2,
+		crate::value::NodeValue::Vec2([0.0, 0.0]),
+	);
+	core.add_input(pos);
+
+	let mut size = crate::input::Input::new(
+		super::shapenodebase::SIZE_INPUT,
+		crate::value::ValueType::Vec2,
+		crate::value::NodeValue::Vec2([100.0, 100.0]),
+	);
+	size.properties = vec![("min".to_string(), crate::value::NodeValue::Vec2([0.0, 0.0]))];
+	core.add_input(size);
+
+	let color = crate::input::Input::new(
+		super::shapenodebase::COLOR_INPUT,
+		crate::value::ValueType::Color,
+		crate::value::NodeValue::Color([1.0, 0.0, 0.0, 1.0]),
+	);
+	core.add_input(color);
+
+	// ShapeNode: prepend `type_in` ahead of the base inputs (index 1,
+	// after `enabled_in`), then append `radius_in`.
+	core.inputs.insert(
+		1,
+		crate::input::Input::new(
+			TYPE_INPUT,
+			crate::value::ValueType::Combo,
+			crate::value::NodeValue::Combo(0),
+		),
+	);
+
+	let mut radius = crate::input::Input::new(
+		RADIUS_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(20.0),
+	);
+	radius.properties = vec![("min".to_string(), crate::value::NodeValue::Float(0.0))];
+	core.add_input(radius);
+
+	// GeneratorWithMerge constructor side effects.
+	core.flags |= crate::node::flags::VIDEO_EFFECT;
+	core.effect_input = super::generatorwithmerge::BASE_INPUT.to_string();
+
+	(core, Box::new(ShapeNode))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::node::NodeBehavior;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	#[test]
+	fn input_names() {
+		let n = ShapeNode;
+		assert_eq!(n.input_name(TYPE_INPUT), "Type");
+		assert_eq!(n.input_name(RADIUS_INPUT), "Radius");
+		assert_eq!(n.input_name(super::super::generatorwithmerge::BASE_INPUT), "Base");
+		assert_eq!(n.input_name(super::super::shapenodebase::POSITION_INPUT), "Position");
+		assert_eq!(n.input_name(super::super::shapenodebase::SIZE_INPUT), "Size");
+		assert_eq!(n.input_name(super::super::shapenodebase::COLOR_INPUT), "Color");
+	}
+
+	#[test]
+	fn create_wires_inputs_and_flags() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.shape");
+		// `type_in` is prepended right after `enabled_in`.
+		assert_eq!(core.inputs[1].id, TYPE_INPUT);
+		assert_eq!(core.inputs[1].default, NodeValue::Combo(0));
+		assert_eq!(
+			core.get_input(RADIUS_INPUT).unwrap().default,
+			NodeValue::Float(20.0)
+		);
+		assert_eq!(
+			core.get_input(super::super::shapenodebase::SIZE_INPUT).unwrap().default,
+			NodeValue::Vec2([100.0, 100.0])
+		);
+		assert_eq!(
+			core.get_input(super::super::shapenodebase::COLOR_INPUT).unwrap().default,
+			NodeValue::Color([1.0, 0.0, 0.0, 1.0])
+		);
+		assert_eq!(core.effect_input, super::super::generatorwithmerge::BASE_INPUT);
+		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
+	}
+
+	#[test]
+	fn value_pushes_deferred_job() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn shader_code_dispatches() {
+		let n = ShapeNode;
+		let shape = n.shader_code("shape").unwrap();
+		assert!(shape.contains("const int SHAPE_RECTANGLE = 0;"));
+		let mrg = n.shader_code("mrg").unwrap();
+		assert!(mrg.contains("base_col *= 1.0 - blend_col.a;"));
+		assert!(n.shader_code("other").is_none());
+	}
+
+	#[test]
+	fn input_value_changed_toggles_radius_hidden() {
+		let (mut core, behavior) = create();
+		let mut b = behavior;
+		// Default type is rectangle (0): radius_in becomes hidden.
+		b.input_value_changed(&mut core, TYPE_INPUT, -1);
+		assert_ne!(
+			core.get_input(RADIUS_INPUT).unwrap().flags & crate::input::flags::HIDDEN,
+			0
+		);
+
+		// Rounded rectangle (2): radius_in is shown.
+		core.set_standard_value(TYPE_INPUT, -1, NodeValue::Combo(2));
+		b.input_value_changed(&mut core, TYPE_INPUT, -1);
+		assert_eq!(
+			core.get_input(RADIUS_INPUT).unwrap().flags & crate::input::flags::HIDDEN,
+			0
+		);
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Shape");
+	}
 }
 
 /// Register this node type (C++ factory entry for

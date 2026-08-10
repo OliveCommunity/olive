@@ -94,7 +94,12 @@ impl NodeBehavior for FlipDistortNode {
 	/// Localized input names (C++ `retranslate()`): `tex_in` ->
 	/// "Input", `horiz_in` -> "Horizontal", `vert_in` -> "Vertical".
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			TEXTURE_INPUT => "Input",
+			HORIZONTAL_INPUT => "Horizontal",
+			VERTICAL_INPUT => "Vertical",
+			_ => id,
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): no texture -> push nothing;
@@ -107,18 +112,44 @@ impl NodeBehavior for FlipDistortNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		let tex = match inputs.get(TEXTURE_INPUT) {
+			Some(tex @ crate::value::NodeValue::Texture(_)) => tex.clone(),
+			_ => return,
+		};
+
+		let horiz = match inputs.get(HORIZONTAL_INPUT) {
+			Some(v) => v.to_double() != 0.0,
+			None => core.value_at_time(HORIZONTAL_INPUT, -1, time).to_double() != 0.0,
+		};
+		let vert = match inputs.get(VERTICAL_INPUT) {
+			Some(v) => v.to_double() != 0.0,
+			None => core.value_at_time(VERTICAL_INPUT, -1, time).to_double() != 0.0,
+		};
+
+		if horiz || vert {
+			// C++ pushes `tex->to_job(ShaderJob(value))` (the whole row as
+			// job values); the Rust model defers the job to the renderer
+			// seam, so a null handle marks "renderer must produce this
+			// texture" (`// CPP-PARITY: flipdistortnode.cpp` value()).
+			table.push(
+				crate::value::ValueType::Texture,
+				crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+				None,
+			);
+		} else {
+			table.push(crate::value::ValueType::Texture, tex, None);
+		}
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): ignores the
 	/// request id and always returns the flip fragment shader.
-	fn shader_code(&self, request: &str) -> Option<String> {
-		todo!()
+	fn shader_code(&self, _request: &str) -> Option<String> {
+		Some(Self::shader_frag().to_string())
 	}
 
 	/// Deep copy (C++ `copy()`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(FlipDistortNode))
 	}
 }
 
@@ -127,7 +158,130 @@ impl NodeBehavior for FlipDistortNode {
 /// documented on the constants, sets the video-effect flag and the
 /// effect input.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	let mut tex = crate::input::Input::new(
+		TEXTURE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	tex.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(tex);
+
+	core.add_input(crate::input::Input::new(
+		HORIZONTAL_INPUT,
+		crate::value::ValueType::Boolean,
+		crate::value::NodeValue::Boolean(false),
+	));
+	core.add_input(crate::input::Input::new(
+		VERTICAL_INPUT,
+		crate::value::ValueType::Boolean,
+		crate::value::NodeValue::Boolean(false),
+	));
+
+	core.flags |= crate::node::flags::VIDEO_EFFECT;
+	core.effect_input = TEXTURE_INPUT.to_string();
+
+	(core, Box::new(FlipDistortNode))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::node::NodeBehavior;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	fn tex() -> NodeValue {
+		NodeValue::Texture(crate::handle::CHandle::null())
+	}
+
+	#[test]
+	fn input_names() {
+		let n = FlipDistortNode;
+		assert_eq!(n.input_name(TEXTURE_INPUT), "Input");
+		assert_eq!(n.input_name(HORIZONTAL_INPUT), "Horizontal");
+		assert_eq!(n.input_name(VERTICAL_INPUT), "Vertical");
+		assert_eq!(n.input_name("other_in"), "other_in");
+	}
+
+	#[test]
+	fn create_wires_inputs_and_flags() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.flip");
+		assert_eq!(
+			core.get_input(HORIZONTAL_INPUT).unwrap().default,
+			NodeValue::Boolean(false)
+		);
+		assert_eq!(
+			core.get_input(VERTICAL_INPUT).unwrap().default,
+			NodeValue::Boolean(false)
+		);
+		assert_eq!(core.effect_input, TEXTURE_INPUT);
+		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
+	}
+
+	#[test]
+	fn value_no_texture_pushes_nothing() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
+		assert!(table.is_empty());
+	}
+
+	#[test]
+	fn value_no_flip_passes_texture_through() {
+		let (mut core, behavior) = create();
+		core.set_standard_value(HORIZONTAL_INPUT, -1, NodeValue::Boolean(false));
+		core.set_standard_value(VERTICAL_INPUT, -1, NodeValue::Boolean(false));
+		let tex = tex();
+		let inputs = crate::value::NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex.clone())]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert_eq!(table.get(ValueType::Texture), Some(&tex));
+	}
+
+	#[test]
+	fn value_flip_pushes_deferred_job() {
+		let (mut core, behavior) = create();
+		core.set_standard_value(VERTICAL_INPUT, -1, NodeValue::Boolean(true));
+		let inputs = crate::value::NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex())]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn value_connected_horizontal_flip_pushes_deferred_job() {
+		let (core, behavior) = create();
+		let inputs = crate::value::NodeValueRow::from([
+			(TEXTURE_INPUT.to_string(), tex()),
+			(HORIZONTAL_INPUT.to_string(), NodeValue::Boolean(true)),
+		]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn shader_code_returns_flip_shader() {
+		let n = FlipDistortNode;
+		let code = n.shader_code("anything").unwrap();
+		assert!(code.contains("uniform sampler2D tex_in;"));
+		assert!(code.contains("if (horiz_in) new_coord.x = 1.0 - new_coord.x;"));
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Flip");
+	}
 }
 
 /// Register this node type (C++ factory entry for

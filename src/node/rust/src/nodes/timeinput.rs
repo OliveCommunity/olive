@@ -19,6 +19,8 @@
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, NodeBehavior, NodeCore};
+use crate::value::{NodeValue, NodeValueRow, NodeValueTable};
+use oakcore_rs::Rational;
 
 /// Time input node. Emits the current time (in seconds) as a float.
 /// The C++ class has no own members (no inputs, no caches of its own),
@@ -51,26 +53,25 @@ impl NodeBehavior for TimeInput {
 	/// Evaluate outputs (C++ `value()`): pushes the current global time
 	/// (`globals.time().in().to_double()`, here the `time` argument) as a
 	/// float value, not marked as a texture, with the push tag `"time"`.
-	fn value(
-		&self,
-		core: &NodeCore,
-		inputs: &crate::value::NodeValueRow,
-		time: oakcore_rs::Rational,
-		table: &mut crate::value::NodeValueTable,
-	) {
-		todo!()
+	fn value(&self, core: &NodeCore, inputs: &NodeValueRow, time: Rational, table: &mut NodeValueTable) {
+		let _ = (core, inputs);
+		table.push(
+			crate::value::ValueType::Float,
+			NodeValue::Float(time.to_f64()),
+			Some("time".to_string()),
+		);
 	}
 
 	/// Deep copy (C++ `copy()` via `NODE_DEFAULT_FUNCTIONS`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(TimeInput))
 	}
 }
 
 /// Constructor (C++ `TimeInput::TimeInput()`): trivial — the node has no
 /// inputs to wire up.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	(NodeCore::new(), Box::new(TimeInput))
 }
 
 /// Register this node type (C++ `k_time` in
@@ -84,4 +85,48 @@ pub fn register(meta: &mut Vec<NodeMeta>) {
 		categories: &[],
 		create,
 	});
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::value::{NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	#[test]
+	fn value_pushes_current_time_as_float() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(15, 2), &mut table);
+		assert_eq!(table.get(ValueType::Float), Some(&NodeValue::Float(7.5)));
+		// The pushed row carries the "time" tag (C++ push tag).
+		let (_, _, tag) = &table.rows()[0];
+		assert_eq!(tag.as_deref(), Some("time"));
+	}
+
+	#[test]
+	fn value_ignores_inputs() {
+		let (core, behavior) = create();
+		let mut row = crate::value::NodeValueRow::default();
+		row.insert("some_in".to_string(), NodeValue::Float(99.0));
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &row, Rational::new(3, 1), &mut table);
+		assert_eq!(table.get(ValueType::Float), Some(&NodeValue::Float(3.0)));
+	}
+
+	#[test]
+	fn create_has_only_enabled_input() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.time");
+		assert_eq!(core.inputs.len(), 1);
+		assert_eq!(core.inputs[0].id, crate::node::ENABLED_INPUT);
+	}
+
+	#[test]
+	fn duplicate_copies_node() {
+		let (_core, behavior) = create();
+		let copy = behavior.duplicate(&_core).unwrap();
+		assert_eq!(copy.type_id(), "org.olivevideoeditor.Olive.time");
+		assert_eq!(copy.name(), "Time");
+	}
 }

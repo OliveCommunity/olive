@@ -34,7 +34,7 @@ pub const OAKNODE_E_NOMEM: i32 = -30005;
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Crate-internal error.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Error {
 	/// Null handle or invalid argument.
 	Invalid,

@@ -246,7 +246,10 @@ pub unsafe extern "C" fn oaktask_import_invalid_at(
 	copy_string(task.invalid_file_at(index as usize), buf, buf_size)
 }
 
-/// `oaktask_create_project_load_otio` (`include/task/project.h`).
+/// `oaktask_create_project_load_otio` (`include/task/project.h`). The
+/// interchange format is inferred from the filename extension (`.otio` /
+/// `.fcpxml`, case-insensitive; see `crate::project::format`), so the C
+/// ABI needs no format parameter.
 #[no_mangle]
 pub unsafe extern "C" fn oaktask_create_project_load_otio(filename: *const c_char) -> CHandle {
 	if filename.is_null() {
@@ -272,7 +275,10 @@ pub unsafe extern "C" fn oaktask_load_otio_take_project(t: CHandle) -> CHandle {
 	load_take_project(&t)
 }
 
-/// `oaktask_create_project_save_otio` (`include/task/project.h`).
+/// `oaktask_create_project_save_otio` (`include/task/project.h`). The
+/// interchange format is inferred from the filename extension (`.otio` /
+/// `.fcpxml`, case-insensitive; see `crate::project::format`), so the C
+/// ABI needs no format parameter.
 #[no_mangle]
 pub unsafe extern "C" fn oaktask_create_project_save_otio(project: CHandle, filename: *const c_char) -> CHandle {
 	if project.ctx.is_null() || filename.is_null() {

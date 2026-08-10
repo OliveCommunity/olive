@@ -203,7 +203,17 @@ impl NodeBehavior for DropShadowFilter {
 	/// `angle_in` -> "Angle", `radius_in` -> "Softness", `opacity_in` ->
 	/// "Opacity", `fast_in` -> "Faster (Lower Quality)".
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			TEXTURE_INPUT => "Texture",
+			COLOR_INPUT => "Color",
+			DISTANCE_INPUT => "Distance",
+			ANGLE_INPUT => "Angle",
+			// The C++ softness input id is `radius_in` (k_softness_input).
+			SOFTNESS_INPUT => "Softness",
+			OPACITY_INPUT => "Opacity",
+			FAST_INPUT => "Faster (Lower Quality)",
+			_ => id,
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): no texture -> push nothing;
@@ -211,6 +221,11 @@ impl NodeBehavior for DropShadowFilter {
 	/// texture's virtual resolution and `previous_iteration_in` bound to
 	/// the input texture; when softness is non-zero the job runs 3
 	/// iterations feeding back through `previous_iteration_in`.
+	///
+	/// The Rust model has no shader-job payload: the job (including the
+	/// `resolution_in` / `previous_iteration_in` bindings and the 3-iteration
+	/// feedback when softness != 0) is deferred to the renderer seam
+	/// (`// CPP-PARITY: dropshadowfilter.cpp` value()).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -218,18 +233,26 @@ impl NodeBehavior for DropShadowFilter {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		if !matches!(inputs.get(TEXTURE_INPUT), Some(crate::value::NodeValue::Texture(_))) {
+			return;
+		}
+		let _ = (core, time, inputs);
+		table.push(
+			crate::value::ValueType::Texture,
+			crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+			None,
+		);
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): the request id is
 	/// ignored; always returns the dropshadow fragment shader.
-	fn shader_code(&self, request: &str) -> Option<String> {
-		todo!()
+	fn shader_code(&self, _request: &str) -> Option<String> {
+		Some(Self::shader_frag().to_string())
 	}
 
 	/// Deep copy (C++ `copy()`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(DropShadowFilter))
 	}
 }
 
@@ -239,7 +262,144 @@ impl NodeBehavior for DropShadowFilter {
 /// documented on the constants, then sets the effect input and the
 /// video-effect flag.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	let mut tex = crate::input::Input::new(
+		TEXTURE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	tex.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(tex);
+
+	let color = crate::input::Input::new(
+		COLOR_INPUT,
+		crate::value::ValueType::Color,
+		crate::value::NodeValue::Color([0.0, 0.0, 0.0, 1.0]),
+	);
+	core.add_input(color);
+
+	core.add_input(crate::input::Input::new(
+		DISTANCE_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(10.0),
+	));
+	core.add_input(crate::input::Input::new(
+		ANGLE_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(135.0),
+	));
+
+	let mut softness = crate::input::Input::new(
+		SOFTNESS_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(10.0),
+	);
+	softness.properties = vec![("min".to_string(), crate::value::NodeValue::Float(0.0))];
+	core.add_input(softness);
+
+	let mut opacity = crate::input::Input::new(
+		OPACITY_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(1.0),
+	);
+	opacity.properties = vec![
+		("min".to_string(), crate::value::NodeValue::Float(0.0)),
+		("view".to_string(), crate::value::NodeValue::Text("percentage".into())),
+	];
+	core.add_input(opacity);
+
+	core.add_input(crate::input::Input::new(
+		FAST_INPUT,
+		crate::value::ValueType::Boolean,
+		crate::value::NodeValue::Boolean(false),
+	));
+
+	core.flags |= crate::node::flags::VIDEO_EFFECT;
+	core.effect_input = TEXTURE_INPUT.to_string();
+
+	(core, Box::new(DropShadowFilter))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::node::NodeBehavior;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	fn tex() -> NodeValue {
+		NodeValue::Texture(crate::handle::CHandle::null())
+	}
+
+	#[test]
+	fn input_names() {
+		let n = DropShadowFilter;
+		assert_eq!(n.input_name(TEXTURE_INPUT), "Texture");
+		assert_eq!(n.input_name(COLOR_INPUT), "Color");
+		assert_eq!(n.input_name(DISTANCE_INPUT), "Distance");
+		assert_eq!(n.input_name(ANGLE_INPUT), "Angle");
+		assert_eq!(n.input_name(SOFTNESS_INPUT), "Softness");
+		assert_eq!(n.input_name(OPACITY_INPUT), "Opacity");
+		assert_eq!(n.input_name(FAST_INPUT), "Faster (Lower Quality)");
+	}
+
+	#[test]
+	fn create_wires_inputs_and_flags() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.dropshadow");
+		assert_eq!(
+			core.get_input(COLOR_INPUT).unwrap().default,
+			NodeValue::Color([0.0, 0.0, 0.0, 1.0])
+		);
+		assert_eq!(
+			core.get_input(DISTANCE_INPUT).unwrap().default,
+			NodeValue::Float(10.0)
+		);
+		assert_eq!(
+			core.get_input(ANGLE_INPUT).unwrap().default,
+			NodeValue::Float(135.0)
+		);
+		assert_eq!(core.effect_input, TEXTURE_INPUT);
+		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
+	}
+
+	#[test]
+	fn value_no_texture_pushes_nothing() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
+		assert!(table.is_empty());
+	}
+
+	#[test]
+	fn value_with_texture_pushes_deferred_job() {
+		let (core, behavior) = create();
+		let inputs = crate::value::NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex())]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn shader_code_returns_dropshadow_shader() {
+		let n = DropShadowFilter;
+		let code = n.shader_code("anything").unwrap();
+		assert!(code.contains("uniform float distance_in;"));
+		assert!(code.contains("shadow_color.rgb = color_in.rgb * shadow_color.a;"));
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Drop Shadow");
+	}
 }
 
 /// Register this node type (C++ `k_drop_shadow_filter` in

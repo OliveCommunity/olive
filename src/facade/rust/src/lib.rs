@@ -1,0 +1,89 @@
+// Oak Video Editor - Non-Linear Video Editor
+// Copyright (C) 2026 Oak Team
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+//! # oakfacade — the `liboakengine` facade (Rust)
+//!
+//! Re-exports the frozen `oakengine_*` C ABI
+//! (`engine/include/oakengine/*.h`) verbatim on top of the module C ABIs
+//! (`include/<mod>/*.h`, implemented by the oakundo/oaknode/oaktimeline/
+//! oakcodec/oakaudio/oakrender/oaktask/oakcommon/oakplugin crates). It is
+//! the M9 §4 assembly layer: every module call crosses the module C ABI as
+//! an `extern "C"` import (see [`bridge`]); the facade itself owns only
+//! cross-cutting state (the process-wide undo stack and the open undo
+//! group, see [`undo`]).
+//!
+//! ## Handle mapping
+//!
+//! The engine headers' opaque pointers (`OakEngineNode*`, `OakEngineTrack*`,
+//! ...) become thin newtype wrappers around module [`handle::CHandle`]
+//! values (see [`handle`]). Each exported function keeps the exact
+//! signature from the engine header; inside, it unboxes the module handle,
+//! calls the module C ABI and boxes the result.
+//!
+//! ## FFI discipline
+//!
+//! Every export goes through a `catch_unwind` guard ([`handle::guard*`]),
+//! `free` functions are NULL no-ops, strings use the two-stage buf/size
+//! convention ([`handle::write_string`]), and module error codes pass
+//! through untranslated ([`error`], facade module 00 → -1..-6).
+//!
+//! ## Testing
+//!
+//! `cargo test` links the module crates' rlibs (dev-dependencies) so the
+//! bridge imports resolve; `tests/linkage.rs` references every crate to
+//! force rustc to pull the rlibs into the link. Where a wrapped family
+//! needs module behavior the crates do not implement yet, the engine
+//! function is a documented stub and its test carries `#[ignore]` with a
+//! reason (see README.md).
+
+#![deny(unsafe_op_in_unsafe_fn)]
+#![warn(missing_docs)]
+
+pub mod audio;
+pub mod bridge;
+pub mod codec;
+pub mod common;
+pub mod deferred;
+pub mod error;
+pub mod handle;
+pub mod ipc;
+pub mod node;
+pub mod plugin;
+pub mod render;
+pub mod task;
+pub mod timeline;
+pub mod undo;
+pub mod worker;
+
+#[cfg(test)]
+mod test_link {
+	// The lib's own unit-test binary must link the module crates' rlibs to
+	// satisfy the facade's `extern "C"` imports that the unit tests compile
+	// in — e.g. the worker session's oakrender display renderer (src/worker.rs).
+	// The integration tests do the same through tests/common/mod.rs
+	// `force_link()`; this covers the `cargo test` unit-test binary.
+	#![allow(dead_code)]
+	fn force_link() -> usize {
+		let fns: [usize; 4] = [
+			oakrender::ffi::renderer::oakrender_display_renderer_create_opengl
+				as *const () as usize,
+			oaknode::ffi::project::oaknode_project_init as *const () as usize,
+			oaktimeline::ffi::marker::oaktimeline_marker_list_create as *const () as usize,
+			oaktask::ffi::manager::oaktask_manager_init as *const () as usize,
+		];
+		fns.iter().sum()
+	}
+}

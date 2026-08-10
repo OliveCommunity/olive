@@ -130,7 +130,15 @@ impl NodeBehavior for RippleDistortNode {
 	/// "Intensity", `evolution_in` -> "Evolution", `position_in` ->
 	/// "Position", `stretch_in` -> "Stretch".
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			TEXTURE_INPUT => "Input",
+			FREQUENCY_INPUT => "Frequency",
+			INTENSITY_INPUT => "Intensity",
+			EVOLUTION_INPUT => "Evolution",
+			POSITION_INPUT => "Position",
+			STRETCH_INPUT => "Stretch",
+			_ => id,
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): no texture -> push nothing;
@@ -138,6 +146,10 @@ impl NodeBehavior for RippleDistortNode {
 	/// `resolution_in` inserted from the texture's virtual resolution;
 	/// intensity == 0.0 -> pass-through push of the input texture
 	/// unchanged.
+	///
+	/// The Rust model has no shader-job payload: the job (including the
+	/// `resolution_in` value) is deferred to the renderer seam
+	/// (`// CPP-PARITY: rippledistortnode.cpp` value()).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -145,32 +157,62 @@ impl NodeBehavior for RippleDistortNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		let tex = match inputs.get(TEXTURE_INPUT) {
+			Some(tex @ crate::value::NodeValue::Texture(_)) => tex.clone(),
+			_ => return,
+		};
+
+		let intensity = match inputs.get(INTENSITY_INPUT) {
+			Some(v) => v.to_double(),
+			None => core.value_at_time(INTENSITY_INPUT, -1, time).to_double(),
+		};
+
+		if intensity != 0.0 {
+			table.push(
+				crate::value::ValueType::Texture,
+				crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+				None,
+			);
+		} else {
+			table.push(crate::value::ValueType::Texture, tex, None);
+		}
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): ignores the
 	/// request id and always returns the ripple fragment shader.
-	fn shader_code(&self, request: &str) -> Option<String> {
-		todo!()
+	fn shader_code(&self, _request: &str) -> Option<String> {
+		Some(Self::shader_frag().to_string())
 	}
 
 	/// Gizmo positions (C++ `update_gizmo_positions()`): with a texture,
 	/// places the position gizmo at the texture's half resolution plus
 	/// the `position_in` offset.
+	///
+	/// The placement needs the texture's virtual resolution (the Rust
+	/// texture handle carries no params) and the resulting point has no
+	/// storage in [`Gizmo`] — not representable here
+	/// (`// CPP-PARITY: rippledistortnode.cpp`
+	/// `update_gizmo_positions`).
 	fn gizmo_update(&self, core: &NodeCore, row: &crate::value::NodeValueRow) {
-		todo!()
+		let _ = (core, row);
 	}
 
 	/// Gizmo drag (C++ `gizmo_drag_move()`): drags the position input's
 	/// X and Y track draggers by the mouse delta added to their
 	/// drag-start values.
+	///
+	/// The draggers hold per-drag start values and write keyframe tracks,
+	/// neither of which the Rust data model carries — not representable
+	/// here (`// CPP-PARITY: rippledistortnode.cpp` `gizmo_drag_move`).
 	fn gizmo_drag(&mut self, core: &mut NodeCore, start: bool, x: f64, y: f64, modifiers: u32) {
-		todo!()
+		let _ = (core, start, x, y, modifiers);
 	}
 
 	/// Deep copy (C++ `copy()`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(RippleDistortNode {
+			gizmo: self.gizmo.clone(),
+		}))
 	}
 }
 
@@ -181,7 +223,159 @@ impl NodeBehavior for RippleDistortNode {
 /// gizmo bound to both tracks of `position_in`; sets the video-effect
 /// flag and the effect input.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	let mut tex = crate::input::Input::new(
+		TEXTURE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	tex.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(tex);
+
+	core.add_input(crate::input::Input::new(
+		EVOLUTION_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(0.0),
+	));
+	core.add_input(crate::input::Input::new(
+		INTENSITY_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(100.0),
+	));
+
+	let mut frequency = crate::input::Input::new(
+		FREQUENCY_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(1.0),
+	);
+	frequency.properties = vec![("base".to_string(), crate::value::NodeValue::Float(0.01))];
+	core.add_input(frequency);
+
+	core.add_input(crate::input::Input::new(
+		POSITION_INPUT,
+		crate::value::ValueType::Vec2,
+		crate::value::NodeValue::Vec2([0.0, 0.0]),
+	));
+	core.add_input(crate::input::Input::new(
+		STRETCH_INPUT,
+		crate::value::ValueType::Boolean,
+		crate::value::NodeValue::Boolean(false),
+	));
+
+	// Anchor-shaped position point gizmo (C++ `PointGizmo` with
+	// `k_anchor_point` shape) dragging both tracks of `position_in`.
+	let gizmo = Gizmo {
+		position_inputs: vec![
+			(POSITION_INPUT.to_string(), -1, 0),
+			(POSITION_INPUT.to_string(), -1, 1),
+		],
+		drag_point: (0.0, 0.0),
+	};
+	core.gizmos = vec![gizmo.clone()];
+
+	core.flags |= crate::node::flags::VIDEO_EFFECT;
+	core.effect_input = TEXTURE_INPUT.to_string();
+
+	(core, Box::new(RippleDistortNode { gizmo }))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::node::NodeBehavior;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	fn tex() -> NodeValue {
+		NodeValue::Texture(crate::handle::CHandle::null())
+	}
+
+	#[test]
+	fn input_names() {
+		let n = RippleDistortNode {
+			gizmo: Gizmo {
+				position_inputs: vec![],
+				drag_point: (0.0, 0.0),
+			},
+		};
+		assert_eq!(n.input_name(TEXTURE_INPUT), "Input");
+		assert_eq!(n.input_name(FREQUENCY_INPUT), "Frequency");
+		assert_eq!(n.input_name(INTENSITY_INPUT), "Intensity");
+		assert_eq!(n.input_name(EVOLUTION_INPUT), "Evolution");
+		assert_eq!(n.input_name(POSITION_INPUT), "Position");
+		assert_eq!(n.input_name(STRETCH_INPUT), "Stretch");
+	}
+
+	#[test]
+	fn create_wires_inputs_and_flags() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.ripple");
+		assert_eq!(
+			core.get_input(INTENSITY_INPUT).unwrap().default,
+			NodeValue::Float(100.0)
+		);
+		assert_eq!(
+			core.get_input(FREQUENCY_INPUT).unwrap().default,
+			NodeValue::Float(1.0)
+		);
+		// One anchor-shaped position gizmo bound to both tracks.
+		assert_eq!(core.gizmos.len(), 1);
+		assert_eq!(core.gizmos[0].position_inputs.len(), 2);
+		assert_eq!(core.effect_input, TEXTURE_INPUT);
+		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
+	}
+
+	#[test]
+	fn value_no_texture_pushes_nothing() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
+		assert!(table.is_empty());
+	}
+
+	#[test]
+	fn value_zero_intensity_passes_texture_through() {
+		let (mut core, behavior) = create();
+		core.set_standard_value(INTENSITY_INPUT, -1, NodeValue::Float(0.0));
+		let tex = tex();
+		let inputs = crate::value::NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex.clone())]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert_eq!(table.get(ValueType::Texture), Some(&tex));
+	}
+
+	#[test]
+	fn value_nonzero_intensity_pushes_deferred_job() {
+		let (core, behavior) = create();
+		let inputs = crate::value::NodeValueRow::from([
+			(TEXTURE_INPUT.to_string(), tex()),
+			(INTENSITY_INPUT.to_string(), NodeValue::Float(100.0)),
+		]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn shader_code_returns_ripple_shader() {
+		let (_, behavior) = create();
+		let code = behavior.shader_code("anything").unwrap();
+		assert!(code.contains("uniform float intensity_in;"));
+		assert!(code.contains("adj_texcoord -= center;"));
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Ripple");
+	}
 }
 
 /// Register this node type (C++ factory entry for

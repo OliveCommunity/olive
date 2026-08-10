@@ -88,7 +88,34 @@ impl WhiteBalanceNode {
 	/// green channel gain is 1.0 at tint 0, then tint scales the green
 	/// channel by `clamp(1.0 + tint, 0.0, 2.0)` (green-magenta axis).
 	pub fn gain_for_temperature(kelvin: f64, tint: f64) -> [f64; 3] {
-		todo!()
+		let kelvin = kelvin.clamp(1000.0, 40000.0);
+		let t = kelvin / 100.0;
+
+		let red = if t <= 66.0 {
+			255.0
+		} else {
+			329.698727446 * (t - 60.0).powf(-0.1332047592)
+		};
+
+		let green = if t <= 66.0 {
+			99.4708025861 * t.ln() - 161.1195681661
+		} else {
+			288.1221695283 * (t - 60.0).powf(-0.0755148492)
+		};
+
+		let blue = if t >= 66.0 {
+			255.0
+		} else if t <= 19.0 {
+			0.0
+		} else {
+			138.5177312231 * (t - 10.0).ln() - 305.0447927307
+		};
+
+		// Normalize to the green channel so temperature shifts do not change
+		// exposure, then let tint move along the green-magenta axis.
+		let tint_gain = (1.0 + tint).clamp(0.0, 2.0);
+
+		[red / green, green / green * tint_gain, blue / green]
 	}
 }
 
@@ -116,13 +143,18 @@ impl NodeBehavior for WhiteBalanceNode {
 	/// Localized input names (C++ `retranslate()`): `tex_in` -> "Input",
 	/// `temperature_in` -> "Temperature (K)", `tint_in` -> "Tint".
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			TEXTURE_INPUT => "Input",
+			TEMPERATURE_INPUT => "Temperature (K)",
+			TINT_INPUT => "Tint",
+			_ => id,
+		}
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): the request id is
 	/// ignored; always returns [`SHADER_FRAG`].
-	fn shader_code(&self, request: &str) -> Option<String> {
-		todo!()
+	fn shader_code(&self, _request: &str) -> Option<String> {
+		Some(SHADER_FRAG.to_string())
 	}
 
 	/// Evaluate outputs (C++ `value()`): no texture -> push nothing;
@@ -137,12 +169,38 @@ impl NodeBehavior for WhiteBalanceNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		match inputs.get(TEXTURE_INPUT) {
+			Some(crate::value::NodeValue::Texture(_)) => {}
+			_ => return,
+		}
+
+		let temperature = match inputs.get(TEMPERATURE_INPUT) {
+			Some(v) => v.to_double(),
+			None => core.value_at_time(TEMPERATURE_INPUT, -1, time).to_double(),
+		};
+		let tint = match inputs.get(TINT_INPUT) {
+			Some(v) => v.to_double(),
+			None => core.value_at_time(TINT_INPUT, -1, time).to_double(),
+		};
+		let gain = Self::gain_for_temperature(temperature, tint);
+		let _ = gain;
+
+		// `// CPP-PARITY: whitebalance.cpp` `value()` — the C++ builds a
+		// ShaderJob from the whole input row, inserts `wb_gain_in` as the
+		// per-frame vec3 gain, and pushes `tex->to_job(job)`. The Rust
+		// model has no shader-job payload: the renderer seam resolves the
+		// deferred job from this null handle, recomputing the gain from
+		// the same inputs.
+		table.push(
+			crate::value::ValueType::Texture,
+			crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+			None,
+		);
 	}
 
 	/// Deep copy (C++ `copy()` via `NODE_DEFAULT_FUNCTIONS`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(WhiteBalanceNode))
 	}
 }
 
@@ -151,7 +209,44 @@ impl NodeBehavior for WhiteBalanceNode {
 /// with the defaults and properties documented on the constants, and
 /// sets the video-effect flag.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	let mut tex = crate::input::Input::new(
+		TEXTURE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	tex.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(tex);
+
+	let mut temperature = crate::input::Input::new(
+		TEMPERATURE_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(6500.0),
+	);
+	temperature.properties = vec![
+		("min".to_string(), crate::value::NodeValue::Float(1000.0)),
+		("max".to_string(), crate::value::NodeValue::Float(40000.0)),
+		("view".to_string(), crate::value::NodeValue::Text("normal".into())),
+	];
+	core.add_input(temperature);
+
+	let mut tint = crate::input::Input::new(
+		TINT_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(0.0),
+	);
+	tint.properties = vec![
+		("min".to_string(), crate::value::NodeValue::Float(-1.0)),
+		("max".to_string(), crate::value::NodeValue::Float(1.0)),
+		("base".to_string(), crate::value::NodeValue::Float(0.01)),
+	];
+	core.add_input(tint);
+
+	core.effect_input = TEXTURE_INPUT.to_string();
+	core.flags |= crate::node::flags::VIDEO_EFFECT;
+
+	(core, Box::new(WhiteBalanceNode))
 }
 
 /// Register this node type (C++ factory entry for
@@ -163,4 +258,123 @@ pub fn register(meta: &mut Vec<NodeMeta>) {
 		categories: &[Category::Color],
 		create,
 	});
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	#[test]
+	fn input_names() {
+		let n = WhiteBalanceNode;
+		assert_eq!(n.input_name(TEXTURE_INPUT), "Input");
+		assert_eq!(n.input_name(TEMPERATURE_INPUT), "Temperature (K)");
+		assert_eq!(n.input_name(TINT_INPUT), "Tint");
+		assert_eq!(n.input_name("other_in"), "other_in");
+	}
+
+	#[test]
+	fn create_wires_inputs_flags_and_properties() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.whitebalance");
+		let tex = core.get_input(TEXTURE_INPUT).unwrap();
+		assert_ne!(tex.flags & crate::input::flags::NOT_KEYFRAMABLE, 0);
+		assert_eq!(
+			core.get_input(TEMPERATURE_INPUT).unwrap().default,
+			NodeValue::Float(6500.0)
+		);
+		assert_eq!(
+			core.get_input(TINT_INPUT).unwrap().default,
+			NodeValue::Float(0.0)
+		);
+		assert_eq!(core.effect_input, TEXTURE_INPUT);
+		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
+	}
+
+	#[test]
+	fn gain_matches_documented_blackbody_formula() {
+		let (kelvin, tint): (f64, f64) = (5600.0, 0.25);
+		let t = kelvin / 100.0;
+		let red = 255.0; // t = 56 <= 66
+		let green = 99.4708025861 * t.ln() - 161.1195681661;
+		let blue = 138.5177312231 * (t - 10.0).ln() - 305.0447927307;
+		let tint_gain = (1.0 + tint).clamp(0.0, 2.0);
+		let expected = [red / green, green / green * tint_gain, blue / green];
+		let got = WhiteBalanceNode::gain_for_temperature(kelvin, tint);
+		for (g, e) in got.iter().zip(expected.iter()) {
+			assert!((g - e).abs() < 1e-9, "got {}, expected {}", g, e);
+		}
+	}
+
+	#[test]
+	fn gain_normalizes_green_to_one() {
+		// The green channel gain is always 1.0 at tint 0, so temperature
+		// shifts never change exposure.
+		for kelvin in [1000.0, 1900.0, 5600.0, 6500.0, 10000.0, 40000.0] {
+			let gain = WhiteBalanceNode::gain_for_temperature(kelvin, 0.0);
+			assert_eq!(gain[1], 1.0, "kelvin {}", kelvin);
+		}
+	}
+
+	#[test]
+	fn gain_blue_black_below_1900k() {
+		// t <= 19 => blue channel gain is 0.
+		let gain = WhiteBalanceNode::gain_for_temperature(1000.0, 0.0);
+		assert_eq!(gain[2], 0.0);
+	}
+
+	#[test]
+	fn gain_clamps_kelvin_range() {
+		// Below 1000 and above 40000 Kelvin are clamped.
+		let low = WhiteBalanceNode::gain_for_temperature(500.0, 0.0);
+		let at_min = WhiteBalanceNode::gain_for_temperature(1000.0, 0.0);
+		assert_eq!(low, at_min);
+		let high = WhiteBalanceNode::gain_for_temperature(50000.0, 0.0);
+		let at_max = WhiteBalanceNode::gain_for_temperature(40000.0, 0.0);
+		assert_eq!(high, at_max);
+	}
+
+	#[test]
+	fn gain_tint_scales_green_axis_clamped() {
+		assert_eq!(WhiteBalanceNode::gain_for_temperature(6500.0, 0.0)[1], 1.0);
+		assert_eq!(WhiteBalanceNode::gain_for_temperature(6500.0, 1.0)[1], 2.0);
+		assert_eq!(WhiteBalanceNode::gain_for_temperature(6500.0, -1.0)[1], 0.0);
+		assert_eq!(WhiteBalanceNode::gain_for_temperature(6500.0, 10.0)[1], 2.0);
+		assert_eq!(WhiteBalanceNode::gain_for_temperature(6500.0, -10.0)[1], 0.0);
+	}
+
+	#[test]
+	fn shader_code_returns_whitebalance_frag() {
+		let code = WhiteBalanceNode.shader_code("anything").unwrap();
+		assert!(code.contains("source.rgb * wb_gain_in"));
+	}
+
+	#[test]
+	fn value_no_texture_pushes_nothing() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		assert!(table.is_empty());
+	}
+
+	#[test]
+	fn value_with_texture_pushes_deferred_shader_job() {
+		let (core, behavior) = create();
+		let inputs = crate::value::NodeValueRow::from([(
+			TEXTURE_INPUT.to_string(),
+			NodeValue::Texture(crate::handle::CHandle::null()),
+		)]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "White Balance");
+	}
 }

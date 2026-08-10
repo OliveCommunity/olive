@@ -65,12 +65,12 @@ pub const HIGHLIGHTS_INPUT: &str = "highlights_in";
 /// texture input (C++ `OCIOBaseNode::k_texture_input = "tex_in"`, the
 /// effect input), the color manager pointer, and the OCIO color
 /// processor handle; that state is held here via the shared
-/// `super::ociobase` helper. The class has no other own members (the
+/// `crate::nodes::ociobase` helper. The class has no other own members (the
 /// private `generate_processor()` is a method, not state).
 pub struct ChromaKeyNode {
 	/// OCIO base state (C++ base class `OCIOBaseNode`: `manager_` and
 	/// `processor_`).
-	base: super::ociobase::OcioBase,
+	base: crate::nodes::ociobase::OcioBase,
 }
 
 /// Fragment shader (C++ loads the `:/shaders/chromakey.frag` resource
@@ -199,6 +199,22 @@ impl ChromaKeyNode {
 	fn shader_frag() -> &'static str {
 		SHADER_FRAG
 	}
+
+	/// (Re)build the OCIO color processor (C++ `generate_processor()`):
+	/// converts to the `cie_xyz_d65_interchange` output color space via
+	/// `oakrender_color_processor_create_transform` and stores the result
+	/// with [`OcioBase::set_processor`] when creation succeeds.
+	fn generate_processor(&mut self, _core: &mut NodeCore) {
+		// The C++ wraps the color manager, builds a transform to the
+		// "cie_xyz_d65_interchange" output color space and creates the
+		// processor through `oakrender_color_processor_create_transform`,
+		// storing it with OcioBase::set_processor when `processor.ctx` is
+		// non-null. Without a manager (the Rust model reaches the manager
+		// through the oakrender bridge, absent here) the C++ guard
+		// `if (manager())` fails, so this is a no-op and the processor
+		// stays empty — `value()` then pushes nothing.
+		// `// CPP-PARITY: chromakey.cpp` generate_processor.
+	}
 }
 
 impl NodeBehavior for ChromaKeyNode {
@@ -230,7 +246,19 @@ impl NodeBehavior for ChromaKeyNode {
 	/// `lower_tolerance_in` -> "Lower Tolerance", `invert_in` ->
 	/// "Invert Mask", `mask_only_in` -> "Show Mask Only".
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			crate::nodes::ociobase::TEXTURE_INPUT => "Input",
+			GARBAGE_MATTE_INPUT => "Garbage Matte",
+			CORE_MATTE_INPUT => "Core Matte",
+			COLOR_INPUT => "Key Color",
+			SHADOWS_INPUT => "Shadows",
+			HIGHLIGHTS_INPUT => "Highlights",
+			UPPER_TOLERANCE_INPUT => "Upper Tolerance",
+			LOWER_TOLERANCE_INPUT => "Lower Tolerance",
+			INVERT_INPUT => "Invert Mask",
+			MASK_ONLY_INPUT => "Show Mask Only",
+			_ => id,
+		}
 	}
 
 	/// Input value changed (C++ `InputValueChangedEvent`): the lower
@@ -239,7 +267,12 @@ impl NodeBehavior for ChromaKeyNode {
 	/// regenerates the OCIO color processor
 	/// (`generate_processor()`).
 	fn input_value_changed(&mut self, core: &mut NodeCore, input: &str, element: i32) {
-		todo!()
+		let _ = (input, element);
+		// The C++ lower-tolerance branch that mirrors the lower tolerance
+		// into the upper tolerance's `min` property is commented out
+		// (FIXME: breaks when the lower tolerance is keyframed/connected),
+		// so only the processor regeneration remains.
+		self.generate_processor(core);
 	}
 
 	/// Evaluate outputs (C++ `value()`): no texture on `tex_in` ->
@@ -259,14 +292,36 @@ impl NodeBehavior for ChromaKeyNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		let _ = (core, time);
+		match inputs.get(crate::nodes::ociobase::TEXTURE_INPUT) {
+			Some(crate::value::NodeValue::Texture(_)) => {
+				if self.base.processor().is_some() {
+					// `// CPP-PARITY: chromakey.cpp` `value()` — the C++
+					// builds a ColorTransformJob with the processor, the
+					// input texture, this node as the custom-shader
+					// provider and the function name
+					// `SceneLinearToCIEXYZ_d65`. The Rust model has no
+					// color-transform job payload: the renderer seam
+					// resolves the deferred job from this null handle.
+					table.push(
+						crate::value::ValueType::Texture,
+						crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+						None,
+					);
+				}
+				// Texture present but no processor: the C++ pushes
+				// nothing (unlike the base class, which would pass the
+				// texture through).
+			}
+			_ => {}
+		}
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): reads the
 	/// fragment shader and replaces every `%1` marker with
 	/// `request.stub` (the OCIO auto-generated shader code).
 	fn shader_code(&self, request: &str) -> Option<String> {
-		todo!()
+		Some(SHADER_FRAG.replace("%1", request))
 	}
 
 	/// Legacy input id mapping (C++ `get_input_id_for_legacy_id()`):
@@ -275,12 +330,21 @@ impl NodeBehavior for ChromaKeyNode {
 	/// [`UPPER_TOLERANCE_INPUT`] / [`LOWER_TOLERANCE_INPUT`];
 	/// anything else defers to the default (identity) mapping.
 	fn map_legacy_input_id<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			"upper_tolerence_in" => UPPER_TOLERANCE_INPUT,
+			"lower_tolerence_in" => LOWER_TOLERANCE_INPUT,
+			_ => id,
+		}
 	}
 
 	/// Deep copy (C++ `copy()` via `NODE_DEFAULT_FUNCTIONS`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		// The C++ copy constructor copies the embedded OCIO base state;
+		// a fresh base with no processor is the safe Rust port (the
+		// processor is never populated without the render bridge).
+		Some(Box::new(ChromaKeyNode {
+			base: crate::nodes::ociobase::OcioBase::new(),
+		}))
 	}
 }
 
@@ -292,7 +356,96 @@ impl NodeBehavior for ChromaKeyNode {
 /// `invert_in`, and `mask_only_in` with the defaults and properties
 /// documented on the constants.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	// OCIOBaseNode base constructor.
+	let mut tex = crate::input::Input::new(
+		crate::nodes::ociobase::TEXTURE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	tex.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(tex);
+	core.effect_input = crate::nodes::ociobase::TEXTURE_INPUT.to_string();
+	core.flags |= crate::node::flags::VIDEO_EFFECT;
+
+	core.add_input(crate::input::Input::new(
+		COLOR_INPUT,
+		crate::value::ValueType::Color,
+		crate::value::NodeValue::Color([0.0, 1.0, 0.0, 1.0]),
+	));
+
+	let mut lower = crate::input::Input::new(
+		LOWER_TOLERANCE_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(5.0),
+	);
+	lower.properties = vec![
+		("min".to_string(), crate::value::NodeValue::Float(0.0)),
+		("base".to_string(), crate::value::NodeValue::Float(0.1)),
+	];
+	core.add_input(lower);
+
+	let mut upper = crate::input::Input::new(
+		UPPER_TOLERANCE_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(25.0),
+	);
+	upper.properties = vec![("base".to_string(), crate::value::NodeValue::Float(0.1))];
+	core.add_input(upper);
+
+	let mut garbage = crate::input::Input::new(
+		GARBAGE_MATTE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	garbage.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(garbage);
+
+	let mut core_matte = crate::input::Input::new(
+		CORE_MATTE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	core_matte.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(core_matte);
+
+	let mut highlights = crate::input::Input::new(
+		HIGHLIGHTS_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(100.0),
+	);
+	highlights.properties = vec![
+		("min".to_string(), crate::value::NodeValue::Float(0.0)),
+		("base".to_string(), crate::value::NodeValue::Float(0.1)),
+	];
+	core.add_input(highlights);
+
+	let mut shadows = crate::input::Input::new(
+		SHADOWS_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(100.0),
+	);
+	shadows.properties = vec![
+		("min".to_string(), crate::value::NodeValue::Float(0.0)),
+		("base".to_string(), crate::value::NodeValue::Float(0.1)),
+	];
+	core.add_input(shadows);
+
+	core.add_input(crate::input::Input::new(
+		INVERT_INPUT,
+		crate::value::ValueType::Boolean,
+		crate::value::NodeValue::Boolean(false),
+	));
+	core.add_input(crate::input::Input::new(
+		MASK_ONLY_INPUT,
+		crate::value::ValueType::Boolean,
+		crate::value::NodeValue::Boolean(false),
+	));
+
+	(core, Box::new(ChromaKeyNode {
+		base: crate::nodes::ociobase::OcioBase::new(),
+	}))
 }
 
 /// Register this node type (C++ factory entry for
@@ -304,4 +457,120 @@ pub fn register(meta: &mut Vec<NodeMeta>) {
 		categories: &[Category::Keying],
 		create,
 	});
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	#[test]
+	fn input_names() {
+		let n = ChromaKeyNode {
+			base: crate::nodes::ociobase::OcioBase::new(),
+		};
+		assert_eq!(n.input_name(crate::nodes::ociobase::TEXTURE_INPUT), "Input");
+		assert_eq!(n.input_name(GARBAGE_MATTE_INPUT), "Garbage Matte");
+		assert_eq!(n.input_name(CORE_MATTE_INPUT), "Core Matte");
+		assert_eq!(n.input_name(COLOR_INPUT), "Key Color");
+		assert_eq!(n.input_name(SHADOWS_INPUT), "Shadows");
+		assert_eq!(n.input_name(HIGHLIGHTS_INPUT), "Highlights");
+		assert_eq!(n.input_name(UPPER_TOLERANCE_INPUT), "Upper Tolerance");
+		assert_eq!(n.input_name(LOWER_TOLERANCE_INPUT), "Lower Tolerance");
+		assert_eq!(n.input_name(INVERT_INPUT), "Invert Mask");
+		assert_eq!(n.input_name(MASK_ONLY_INPUT), "Show Mask Only");
+		assert_eq!(n.input_name("other_in"), "other_in");
+	}
+
+	#[test]
+	fn create_wires_inputs_flags_and_properties() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.chromakey");
+		assert_ne!(
+			core.get_input(crate::nodes::ociobase::TEXTURE_INPUT).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE,
+			0
+		);
+		assert_eq!(
+			core.get_input(COLOR_INPUT).unwrap().default,
+			NodeValue::Color([0.0, 1.0, 0.0, 1.0])
+		);
+		assert_eq!(core.get_input(LOWER_TOLERANCE_INPUT).unwrap().default, NodeValue::Float(5.0));
+		assert_eq!(core.get_input(UPPER_TOLERANCE_INPUT).unwrap().default, NodeValue::Float(25.0));
+		assert_eq!(core.get_input(HIGHLIGHTS_INPUT).unwrap().default, NodeValue::Float(100.0));
+		assert_eq!(core.get_input(SHADOWS_INPUT).unwrap().default, NodeValue::Float(100.0));
+		assert_eq!(core.get_input(INVERT_INPUT).unwrap().default, NodeValue::Boolean(false));
+		assert_eq!(core.get_input(MASK_ONLY_INPUT).unwrap().default, NodeValue::Boolean(false));
+		for id in [GARBAGE_MATTE_INPUT, CORE_MATTE_INPUT] {
+			assert_ne!(core.get_input(id).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE, 0);
+		}
+		assert_eq!(core.effect_input, crate::nodes::ociobase::TEXTURE_INPUT);
+		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
+	}
+
+	#[test]
+	fn shader_code_replaces_stub_marker() {
+		let n = ChromaKeyNode {
+			base: crate::nodes::ociobase::OcioBase::new(),
+		};
+		let stub = "float SceneLinearToCIEXYZ_d65(vec4 c){ return 0.0; }";
+		let code = n.shader_code(stub).unwrap();
+		assert!(!code.contains("%1"));
+		assert!(code.contains(stub));
+	}
+
+	#[test]
+	fn legacy_input_ids_remap_misspellings() {
+		let n = ChromaKeyNode {
+			base: crate::nodes::ociobase::OcioBase::new(),
+		};
+		assert_eq!(n.map_legacy_input_id("upper_tolerence_in"), UPPER_TOLERANCE_INPUT);
+		assert_eq!(n.map_legacy_input_id("lower_tolerence_in"), LOWER_TOLERANCE_INPUT);
+		assert_eq!(n.map_legacy_input_id("anything_else_in"), "anything_else_in");
+	}
+
+	#[test]
+	fn value_no_texture_pushes_nothing() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		assert!(table.is_empty());
+	}
+
+	#[test]
+	fn value_texture_without_processor_pushes_nothing() {
+		// Unlike the OCIO base, chroma key has no pass-through branch:
+		// without a processor the C++ pushes nothing.
+		let (core, behavior) = create();
+		let inputs = crate::value::NodeValueRow::from([(
+			crate::nodes::ociobase::TEXTURE_INPUT.to_string(),
+			NodeValue::Texture(crate::handle::CHandle::null()),
+		)]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.is_empty());
+	}
+
+	#[test]
+	fn value_texture_with_processor_pushes_deferred_job() {
+		let core = NodeCore::new();
+		let mut node = ChromaKeyNode {
+			base: crate::nodes::ociobase::OcioBase::new(),
+		};
+		node.base.set_processor(Some(crate::handle::CHandle::null()));
+		let inputs = crate::value::NodeValueRow::from([(
+			crate::nodes::ociobase::TEXTURE_INPUT.to_string(),
+			NodeValue::Texture(crate::handle::CHandle::null()),
+		)]);
+		let mut table = NodeValueTable::default();
+		node.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Chroma Key");
+	}
 }

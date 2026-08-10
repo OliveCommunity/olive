@@ -15,19 +15,47 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //! oaktimeline C ABI imports (sequence markers/work area, edit
-//! commands used by sequence setup).
+//! commands used by sequence setup). dlsym-resolved (see [`super`]).
 
 use crate::handle::CHandle;
 
-extern "C" {
-	/// `oaktimeline_marker_list_create`.
-	pub fn oaktimeline_marker_list_create() -> CHandle;
-	/// `oaktimeline_marker_list_free`.
-	pub fn oaktimeline_marker_list_free(list: *mut CHandle);
-	/// `oaktimeline_workarea_create`.
-	pub fn oaktimeline_workarea_create() -> CHandle;
-	/// `oaktimeline_workarea_free`.
-	pub fn oaktimeline_workarea_free(w: *mut CHandle);
-	/// `oaktimeline_add_track_command`.
-	pub fn oaktimeline_add_track_command(list: CHandle) -> CHandle;
+/// `oaktimeline_marker_list_create`.
+pub fn marker_list_create() -> Option<CHandle> {
+	use crate::bridge::dlsym;
+	type F = unsafe extern "C" fn() -> CHandle;
+	dlsym::call::<F, CHandle>("oaktimeline_marker_list_create", |f| unsafe { f() })
+}
+
+/// `oaktimeline_marker_list_free`.
+pub fn marker_list_free(list: *mut CHandle) {
+	use crate::bridge::dlsym;
+	type F = unsafe extern "C" fn(*mut CHandle);
+	if let Some(f) = dlsym::call::<F, ()>("oaktimeline_marker_list_free", |f| unsafe {
+		f(list)
+	}) {
+		let _ = f;
+	}
+}
+
+/// `oaktimeline_workarea_create`.
+pub fn workarea_create() -> Option<CHandle> {
+	use crate::bridge::dlsym;
+	type F = unsafe extern "C" fn() -> CHandle;
+	dlsym::call::<F, CHandle>("oaktimeline_workarea_create", |f| unsafe { f() })
+}
+
+/// `oaktimeline_workarea_free`.
+pub fn workarea_free(w: *mut CHandle) {
+	use crate::bridge::dlsym;
+	type F = unsafe extern "C" fn(*mut CHandle);
+	if let Some(f) = dlsym::call::<F, ()>("oaktimeline_workarea_free", |f| unsafe { f(w) }) {
+		let _ = f;
+	}
+}
+
+/// `oaktimeline_add_track_command`.
+pub fn add_track_command(list: CHandle) -> Option<CHandle> {
+	use crate::bridge::dlsym;
+	type F = unsafe extern "C" fn(CHandle) -> CHandle;
+	dlsym::call::<F, CHandle>("oaktimeline_add_track_command", |f| unsafe { f(list) })
 }

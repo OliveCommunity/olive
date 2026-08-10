@@ -432,6 +432,17 @@ impl Clip {
         self.media_references.insert("DEFAULT_MEDIA".to_string(), reference);
         self.active_media_reference_key = Some("DEFAULT_MEDIA".to_string());
     }
+
+    /// Whether the clip is enabled (C++ `enabled`; used by the FCPXML
+    /// layer for `asset-clip enabled="0"`).
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    /// Set the enabled flag (C++ `set_enabled`).
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+    }
 }
 
 impl Default for Clip {
@@ -837,6 +848,23 @@ impl Timeline {
     /// The global start time, if set (null on disk when unset).
     pub fn global_start_time(&self) -> Option<RationalTime> {
         self.global_start_time.clone()
+    }
+
+    /// Set the global start time (C++ `set_global_start_time`).
+    pub fn set_global_start_time(&mut self, start: RationalTime) {
+        self.global_start_time = Some(start);
+    }
+
+    /// The timeline metadata map (C++ `metadata`). The FCPXML layer stores
+    /// interchange hints (source version, tcFormat, ...) under the nested
+    /// "fcpxml" key.
+    pub fn metadata(&self) -> &Map {
+        &self.metadata
+    }
+
+    /// Mutable access to the timeline metadata map.
+    pub fn metadata_mut(&mut self) -> &mut Map {
+        &mut self.metadata
     }
 
     /// Serialize to the opentimelineio JSON string format.

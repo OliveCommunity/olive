@@ -29,13 +29,22 @@
 //! tolerates hand-written files, preserving unknown fields verbatim across a
 //! round-trip and defaulting missing fields. See `README.md` for the design
 //! rationale and the parity notes against the C++ implementation.
+//!
+//! The crate also carries an FCPXML (Final Cut Pro X) interchange layer
+//! ([`fcpxml`]) that maps the `.fcpxml` document format onto the same model
+//! types, so import/export can offer `.fcpxml` alongside `.otio` with a
+//! single object graph.
 
 use std::path::Path;
 
 pub mod error;
+pub mod fcpxml;
 pub mod model;
 
 pub use error::{OtioError, Result};
+pub use fcpxml::{
+    FcpxmlError, from_fcpxml_file, from_fcpxml_string, to_fcpxml_file, to_fcpxml_string,
+};
 pub use model::*;
 
 /// Parse an OpenTimelineIO JSON document from a string.

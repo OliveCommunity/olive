@@ -526,6 +526,35 @@ image/ffmpeg-next 全套。
   不释放队列里的借用副本（C++ 原版对两者都调 free，若真实 oakrender 的
   句柄副本不各自计数，则 C++ 路径存在双释放风险，Rust 侧按头文件契约
   规避）；ticket.h 无 poll/try_wait 查询，等待完全走完成回调 + condvar。
+- **oaktask ↔ 真实 oakrender ticket ABI 接线 ✅（2026-08-09）**：
+  oaktask 的 `bridge/render.rs` 保持 link-time `extern "C"`（与
+  `bridge/codec.rs` 同模式）：`cargo test` 由 tests/common/mod.rs 的
+  `#[no_mangle]` stub 满足链接，真实 `liboakrender` 在场时（app 链接模块
+  dylib）解析到真实导出。新增 `--features real-oakrender` +
+  `--test render_real_integration_test`：把 oakrender crate 作为可选 path
+  dep 链接进同一测试二进制（feature 关闭时完全不编译），驱动
+  `RenderTask::render` 走真实 arena 的 CPU 路径（`eval::render_produced_frame`
+  生成 F32 帧、无 GPU），帧按时间戳序交付（64×64、0/1→1/1→2/1），并断言
+  结束后 `oakrender::handle::alive_count()` 回到基线（ticket/帧/取消原子的
+  句柄全部释放）。feature 开启时 tests/common/mod.rs 的 render stub 整段
+  `#[cfg(not(feature = "real-oakrender"))]` 编译掉（与真实导出的
+  `#[no_mangle]` 符号会冲突，故必须带 `--test` 过滤单独构建）。
+  **句柄契约裁定**：真实 oakrender 的句柄副本**不各自计数**——`
+  oakrender_ticket_render_frame` 只 `make_owned` 一份 `TicketBox`（refs=1），
+  回调闭包捕获的副本与 submit 返回值共享同一 RefBox/同一计数，与头文件
+  "回调收到借用副本、提交者持有并释放" 的契约一致；oaktask 渲染循环只释放
+  submit 返回的那一份（且 `wait_idle()` 保证所有回调先触发完再释放，队列
+  里的借用副本从不释放、也从不 deref 到已释放的 box），无双释放/悬垂，
+  **无需修改任务侧**。C++ 原版"两者都 free"的双释放风险随 render 侧
+  Rust 化不复存在。另修复 oakrender ffi.rs 一处潜在竞态：`TicketBox.id`
+  原先在 `submit_video` 之后才写回，快 worker 可能抢先完成 ticket 并回调
+  （回调收到的句柄 id 仍为占位 0，`classify_ticket` 会报 unexpected
+  timestamp）；现改为 `arena.next_id()` 预分配 + `submit_video_with_id`
+  在 post 前盖好 id（ticket.rs 新增 `next_id`/`submit_video_with_id`/
+  `submit_audio_with_id`，`submit_video`/`submit_audio` 签名不变）。
+  另修正 bridge/render.rs 的 `oakrender_color_processor_create` 声明：
+  5 参（旧镜像）→ 3 参 `(src_space, dst_transform, direction)`，与
+  include/render/color.h 及 oakrender 导出一致。
 - **oaktask 导出缺口**：临时文件重命名（失败不留半成品）与
   sidecar 字幕编码器未实现；precache 缺项目深拷贝。
 

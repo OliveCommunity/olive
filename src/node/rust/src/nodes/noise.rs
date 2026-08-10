@@ -119,13 +119,23 @@ impl NodeBehavior for NoiseGeneratorNode {
 	/// Localized input names (C++ `retranslate()`): `base_in` ->
 	/// "Base", `strength_in` -> "Strength", `color_in` -> "Color".
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			BASE_INPUT => "Base",
+			STRENGTH_INPUT => "Strength",
+			COLOR_INPUT => "Color",
+			_ => id,
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): builds a shader job from the
 	/// input row, additionally inserting `time_in` (current time in
 	/// seconds as a float), then pushes a texture job using the base
 	/// texture's params when connected, else the sequence video params.
+	///
+	/// The Rust model has no shader-job payload: the job (including the
+	/// `time_in` value) is deferred to the renderer seam, so a null
+	/// texture handle marks "renderer must produce this texture"
+	/// (`// CPP-PARITY: noise.cpp` value()).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -133,18 +143,25 @@ impl NodeBehavior for NoiseGeneratorNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		// C++ always pushes a job — with a base texture connected it runs
+		// at the base's params, otherwise at the sequence params.
+		let _ = (core, inputs, time);
+		table.push(
+			crate::value::ValueType::Texture,
+			crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+			None,
+		);
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): returns the
 	/// noise fragment shader for any request id.
-	fn shader_code(&self, request: &str) -> Option<String> {
-		todo!()
+	fn shader_code(&self, _request: &str) -> Option<String> {
+		Some(Self::shader_frag().to_string())
 	}
 
 	/// Deep copy (C++ `copy()`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(NoiseGeneratorNode))
 	}
 }
 
@@ -153,7 +170,106 @@ impl NodeBehavior for NoiseGeneratorNode {
 /// properties documented on the constants, sets the video-effect flag
 /// and makes `base_in` the effect input.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	let mut base = crate::input::Input::new(
+		BASE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	base.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(base);
+
+	let mut strength = crate::input::Input::new(
+		STRENGTH_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(0.2),
+	);
+	strength.properties = vec![
+		("view".to_string(), crate::value::NodeValue::Text("percentage".into())),
+		("min".to_string(), crate::value::NodeValue::Float(0.0)),
+	];
+	core.add_input(strength);
+
+	core.add_input(crate::input::Input::new(
+		COLOR_INPUT,
+		crate::value::ValueType::Boolean,
+		crate::value::NodeValue::Boolean(false),
+	));
+
+	core.flags |= crate::node::flags::VIDEO_EFFECT;
+	core.effect_input = BASE_INPUT.to_string();
+
+	(core, Box::new(NoiseGeneratorNode))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::node::NodeBehavior;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	#[test]
+	fn input_names() {
+		let n = NoiseGeneratorNode;
+		assert_eq!(n.input_name(BASE_INPUT), "Base");
+		assert_eq!(n.input_name(STRENGTH_INPUT), "Strength");
+		assert_eq!(n.input_name(COLOR_INPUT), "Color");
+	}
+
+	#[test]
+	fn create_wires_inputs_and_flags() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.noise");
+		assert_eq!(
+			core.get_input(STRENGTH_INPUT).unwrap().default,
+			NodeValue::Float(0.2)
+		);
+		assert_eq!(
+			core.get_input(COLOR_INPUT).unwrap().default,
+			NodeValue::Boolean(false)
+		);
+		assert_eq!(core.effect_input, BASE_INPUT);
+		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
+	}
+
+	#[test]
+	fn value_always_pushes_deferred_job() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
+		assert!(table.get(ValueType::Texture).is_some());
+
+		// With a base texture connected the job is still pushed.
+		let inputs = crate::value::NodeValueRow::from([(
+			BASE_INPUT.to_string(),
+			NodeValue::Texture(crate::handle::CHandle::null()),
+		)]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn shader_code_returns_noise_shader() {
+		let n = NoiseGeneratorNode;
+		let code = n.shader_code("anything").unwrap();
+		assert!(code.contains("uniform float time_in;"));
+		assert!(code.contains("gold_noise"));
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Noise");
+	}
 }
 
 /// Register this node type (C++ factory entry for

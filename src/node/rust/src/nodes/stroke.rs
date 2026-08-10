@@ -162,13 +162,24 @@ impl NodeBehavior for StrokeFilterNode {
 	/// `color_in` -> "Color", `radius_in` -> "Radius", `opacity_in` ->
 	/// "Opacity", `inner_in` -> "Inner".
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			TEXTURE_INPUT => "Input",
+			COLOR_INPUT => "Color",
+			RADIUS_INPUT => "Radius",
+			OPACITY_INPUT => "Opacity",
+			INNER_INPUT => "Inner",
+			_ => id,
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): no texture -> push nothing;
 	/// radius <= 0.0 or opacity <= 0.0 -> pass-through push of the input
 	/// texture; otherwise push a shader job with `resolution_in` set to
 	/// the texture's virtual resolution.
+	///
+	/// The Rust model has no shader-job payload: the job (including the
+	/// `resolution_in` value) is deferred to the renderer seam
+	/// (`// CPP-PARITY: stroke.cpp` value()).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -176,18 +187,40 @@ impl NodeBehavior for StrokeFilterNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		let tex = match inputs.get(TEXTURE_INPUT) {
+			Some(tex @ crate::value::NodeValue::Texture(_)) => tex.clone(),
+			_ => return,
+		};
+
+		let radius = match inputs.get(RADIUS_INPUT) {
+			Some(v) => v.to_double(),
+			None => core.value_at_time(RADIUS_INPUT, -1, time).to_double(),
+		};
+		let opacity = match inputs.get(OPACITY_INPUT) {
+			Some(v) => v.to_double(),
+			None => core.value_at_time(OPACITY_INPUT, -1, time).to_double(),
+		};
+
+		if radius > 0.0 && opacity > 0.0 {
+			table.push(
+				crate::value::ValueType::Texture,
+				crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+				None,
+			);
+		} else {
+			table.push(crate::value::ValueType::Texture, tex, None);
+		}
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): the request id is
 	/// ignored; always returns the stroke fragment shader.
-	fn shader_code(&self, request: &str) -> Option<String> {
-		todo!()
+	fn shader_code(&self, _request: &str) -> Option<String> {
+		Some(Self::shader_frag().to_string())
 	}
 
 	/// Deep copy (C++ `copy()`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(StrokeFilterNode))
 	}
 }
 
@@ -196,7 +229,160 @@ impl NodeBehavior for StrokeFilterNode {
 /// defaults and properties documented on the constants, then sets the
 /// video-effect flag and the effect input.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	let mut tex = crate::input::Input::new(
+		TEXTURE_INPUT,
+		crate::value::ValueType::Texture,
+		crate::value::NodeValue::None,
+	);
+	tex.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(tex);
+
+	let color = crate::input::Input::new(
+		COLOR_INPUT,
+		crate::value::ValueType::Color,
+		crate::value::NodeValue::Color([1.0, 1.0, 1.0, 1.0]),
+	);
+	core.add_input(color);
+
+	let mut radius = crate::input::Input::new(
+		RADIUS_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(10.0),
+	);
+	radius.properties = vec![("min".to_string(), crate::value::NodeValue::Float(0.0))];
+	core.add_input(radius);
+
+	let mut opacity = crate::input::Input::new(
+		OPACITY_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(1.0),
+	);
+	opacity.properties = vec![
+		("view".to_string(), crate::value::NodeValue::Text("percentage".into())),
+		("min".to_string(), crate::value::NodeValue::Float(0.0)),
+		("max".to_string(), crate::value::NodeValue::Float(1.0)),
+	];
+	core.add_input(opacity);
+
+	core.add_input(crate::input::Input::new(
+		INNER_INPUT,
+		crate::value::ValueType::Boolean,
+		crate::value::NodeValue::Boolean(false),
+	));
+
+	core.flags |= crate::node::flags::VIDEO_EFFECT;
+	core.effect_input = TEXTURE_INPUT.to_string();
+
+	(core, Box::new(StrokeFilterNode))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::node::NodeBehavior;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	fn tex() -> NodeValue {
+		NodeValue::Texture(crate::handle::CHandle::null())
+	}
+
+	#[test]
+	fn input_names() {
+		let n = StrokeFilterNode;
+		assert_eq!(n.input_name(TEXTURE_INPUT), "Input");
+		assert_eq!(n.input_name(COLOR_INPUT), "Color");
+		assert_eq!(n.input_name(RADIUS_INPUT), "Radius");
+		assert_eq!(n.input_name(OPACITY_INPUT), "Opacity");
+		assert_eq!(n.input_name(INNER_INPUT), "Inner");
+	}
+
+	#[test]
+	fn create_wires_inputs_and_flags() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.stroke");
+		assert_eq!(
+			core.get_input(COLOR_INPUT).unwrap().default,
+			NodeValue::Color([1.0, 1.0, 1.0, 1.0])
+		);
+		assert_eq!(
+			core.get_input(RADIUS_INPUT).unwrap().default,
+			NodeValue::Float(10.0)
+		);
+		assert_eq!(
+			core.get_input(OPACITY_INPUT).unwrap().default,
+			NodeValue::Float(1.0)
+		);
+		assert_eq!(core.effect_input, TEXTURE_INPUT);
+		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
+	}
+
+	#[test]
+	fn value_no_texture_pushes_nothing() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
+		assert!(table.is_empty());
+	}
+
+	#[test]
+	fn value_zero_radius_passes_texture_through() {
+		let (mut core, behavior) = create();
+		core.set_standard_value(RADIUS_INPUT, -1, NodeValue::Float(0.0));
+		core.set_standard_value(OPACITY_INPUT, -1, NodeValue::Float(1.0));
+		let tex = tex();
+		let inputs = crate::value::NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex.clone())]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert_eq!(table.get(ValueType::Texture), Some(&tex));
+	}
+
+	#[test]
+	fn value_zero_opacity_passes_texture_through() {
+		let (mut core, behavior) = create();
+		core.set_standard_value(RADIUS_INPUT, -1, NodeValue::Float(10.0));
+		core.set_standard_value(OPACITY_INPUT, -1, NodeValue::Float(0.0));
+		let tex = tex();
+		let inputs = crate::value::NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex.clone())]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert_eq!(table.get(ValueType::Texture), Some(&tex));
+	}
+
+	#[test]
+	fn value_positive_radius_and_opacity_pushes_deferred_job() {
+		let (core, behavior) = create();
+		let inputs = crate::value::NodeValueRow::from([
+			(TEXTURE_INPUT.to_string(), tex()),
+			(RADIUS_INPUT.to_string(), NodeValue::Float(5.0)),
+			(OPACITY_INPUT.to_string(), NodeValue::Float(0.5)),
+		]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn shader_code_returns_stroke_shader() {
+		let n = StrokeFilterNode;
+		let code = n.shader_code("anything").unwrap();
+		assert!(code.contains("uniform float radius_in;"));
+		assert!(code.contains("stroke_weight *= opacity_in;"));
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Stroke");
+	}
 }
 
 /// Register this node type (C++ `k_stroke_filter` in

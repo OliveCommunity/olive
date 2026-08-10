@@ -36,3 +36,14 @@ serde_json = { version = "1", features = ["preserve_order"] }
 
 # Shared value types (Rational). Same path dependency the other bindings use.
 oakcore-rs = { path = "../../oakcore-rs" }
+
+# quick-xml: streaming XML codec for the FCPXML interchange layer
+# (src/fcpxml.rs). Same major version the other Rust modules use
+# (src/common/rust/Cargo.toml).
+quick-xml = "0.41.0"
+
+[dev-dependencies]
+
+# oakcore-rs: exact Rational comparisons in the integration tests
+# (tests/fcpxml.rs).
+oakcore-rs = { path = "../../oakcore-rs" }

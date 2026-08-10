@@ -162,7 +162,16 @@ impl NodeBehavior for ColorDifferenceKeyNode {
 	/// "Green"/"Blue"), `shadows_in` -> "Shadows", `highlights_in`
 	/// -> "Highlights", `mask_only_in` -> "Show Mask Only".
 	fn input_name<'a>(&self, id: &'a str) -> &'a str {
-		todo!()
+		match id {
+			TEXTURE_INPUT => "Input",
+			GARBAGE_MATTE_INPUT => "Garbage Matte",
+			CORE_MATTE_INPUT => "Core Matte",
+			COLOR_INPUT => "Key Color",
+			SHADOWS_INPUT => "Shadows",
+			HIGHLIGHTS_INPUT => "Highlights",
+			MASK_ONLY_INPUT => "Show Mask Only",
+			_ => id,
+		}
 	}
 
 	/// Evaluate outputs (C++ `value()`): no texture on `tex_in` ->
@@ -175,18 +184,34 @@ impl NodeBehavior for ColorDifferenceKeyNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		todo!()
+		let _ = (core, time);
+		match inputs.get(TEXTURE_INPUT) {
+			Some(crate::value::NodeValue::Texture(_)) => {}
+			_ => return,
+		}
+
+		// `// CPP-PARITY: colordifferencekey.cpp` `value()` — the C++
+		// builds a ShaderJob over the whole input row and pushes
+		// `tex->to_job(job)`. The Rust model has no shader-job payload:
+		// the renderer seam resolves the deferred job (and the
+		// `garbage_in_enabled`/`core_in_enabled` uniforms derived from
+		// input presence) from this null handle.
+		table.push(
+			crate::value::ValueType::Texture,
+			crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+			None,
+		);
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): returns the
 	/// single fragment shader regardless of the request id.
-	fn shader_code(&self, request: &str) -> Option<String> {
-		todo!()
+	fn shader_code(&self, _request: &str) -> Option<String> {
+		Some(SHADER_FRAG.to_string())
 	}
 
 	/// Deep copy (C++ `copy()` via `NODE_DEFAULT_FUNCTIONS`).
-	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		todo!()
+	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(ColorDifferenceKeyNode))
 	}
 }
 
@@ -196,7 +221,59 @@ impl NodeBehavior for ColorDifferenceKeyNode {
 /// and properties documented on the constants, sets the video-effect
 /// flag, and makes `tex_in` the effect input.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
-	todo!()
+	let mut core = NodeCore::new();
+
+	let mut texture_input = |id: &str| {
+		let mut input = crate::input::Input::new(
+			id,
+			crate::value::ValueType::Texture,
+			crate::value::NodeValue::None,
+		);
+		input.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+		core.add_input(input);
+	};
+	texture_input(TEXTURE_INPUT);
+	texture_input(GARBAGE_MATTE_INPUT);
+	texture_input(CORE_MATTE_INPUT);
+
+	core.add_input(crate::input::Input::new(
+		COLOR_INPUT,
+		crate::value::ValueType::Combo,
+		crate::value::NodeValue::Combo(0),
+	));
+
+	let mut highlights = crate::input::Input::new(
+		HIGHLIGHTS_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(1.0),
+	);
+	highlights.properties = vec![
+		("min".to_string(), crate::value::NodeValue::Float(0.0)),
+		("base".to_string(), crate::value::NodeValue::Float(0.01)),
+	];
+	core.add_input(highlights);
+
+	let mut shadows = crate::input::Input::new(
+		SHADOWS_INPUT,
+		crate::value::ValueType::Float,
+		crate::value::NodeValue::Float(1.0),
+	);
+	shadows.properties = vec![
+		("min".to_string(), crate::value::NodeValue::Float(0.0)),
+		("base".to_string(), crate::value::NodeValue::Float(0.01)),
+	];
+	core.add_input(shadows);
+
+	core.add_input(crate::input::Input::new(
+		MASK_ONLY_INPUT,
+		crate::value::ValueType::Boolean,
+		crate::value::NodeValue::Boolean(false),
+	));
+
+	core.flags |= crate::node::flags::VIDEO_EFFECT;
+	core.effect_input = TEXTURE_INPUT.to_string();
+
+	(core, Box::new(ColorDifferenceKeyNode))
 }
 
 /// Register this node type (C++ factory entry for
@@ -208,4 +285,75 @@ pub fn register(meta: &mut Vec<NodeMeta>) {
 		categories: &[Category::Keying],
 		create,
 	});
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oakcore_rs::Rational;
+
+	#[test]
+	fn input_names() {
+		let n = ColorDifferenceKeyNode;
+		assert_eq!(n.input_name(TEXTURE_INPUT), "Input");
+		assert_eq!(n.input_name(GARBAGE_MATTE_INPUT), "Garbage Matte");
+		assert_eq!(n.input_name(CORE_MATTE_INPUT), "Core Matte");
+		assert_eq!(n.input_name(COLOR_INPUT), "Key Color");
+		assert_eq!(n.input_name(SHADOWS_INPUT), "Shadows");
+		assert_eq!(n.input_name(HIGHLIGHTS_INPUT), "Highlights");
+		assert_eq!(n.input_name(MASK_ONLY_INPUT), "Show Mask Only");
+		assert_eq!(n.input_name("other_in"), "other_in");
+	}
+
+	#[test]
+	fn create_wires_inputs_flags_and_properties() {
+		let (core, behavior) = create();
+		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.colordifferencekey");
+		for id in [TEXTURE_INPUT, GARBAGE_MATTE_INPUT, CORE_MATTE_INPUT] {
+			assert_ne!(core.get_input(id).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE, 0);
+		}
+		assert_eq!(core.get_input(COLOR_INPUT).unwrap().default, NodeValue::Combo(0));
+		assert_eq!(core.get_input(SHADOWS_INPUT).unwrap().default, NodeValue::Float(1.0));
+		assert_eq!(core.get_input(HIGHLIGHTS_INPUT).unwrap().default, NodeValue::Float(1.0));
+		assert_eq!(
+			core.get_input(MASK_ONLY_INPUT).unwrap().default,
+			NodeValue::Boolean(false)
+		);
+		assert_eq!(core.effect_input, TEXTURE_INPUT);
+		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
+	}
+
+	#[test]
+	fn shader_code_returns_colordifferencekey_frag() {
+		let code = ColorDifferenceKeyNode.shader_code("anything").unwrap();
+		assert!(code.contains("mask = (unassoc.g - max(unassoc.r, unassoc.b));"));
+	}
+
+	#[test]
+	fn value_no_texture_pushes_nothing() {
+		let (core, behavior) = create();
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		assert!(table.is_empty());
+	}
+
+	#[test]
+	fn value_with_texture_pushes_deferred_shader_job() {
+		let (core, behavior) = create();
+		let inputs = crate::value::NodeValueRow::from([(
+			TEXTURE_INPUT.to_string(),
+			NodeValue::Texture(crate::handle::CHandle::null()),
+		)]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		assert!(table.get(ValueType::Texture).is_some());
+	}
+
+	#[test]
+	fn duplicate_clones() {
+		let (core, behavior) = create();
+		let dup = behavior.duplicate(&core).unwrap();
+		assert_eq!(dup.name(), "Color Difference Key");
+	}
 }

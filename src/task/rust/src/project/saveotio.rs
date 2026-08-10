@@ -16,11 +16,14 @@
 
 //! `SaveOTIOTask`, mirroring `src/task/src/project/saveotio/saveotio.h`.
 //!
-//! Serializes a borrowed `OakNodeProject` to an OpenTimelineIO file through
-//! the pure-Rust `oakotio` binding (see `README` decision #6): the project's
-//! sequences become `OTIO::Timeline`s (`serialize_timeline` /
-//! `serialize_track` / `serialize_track_list`), exactly like the C++
-//! `serialize_*` helpers. No OTIO type crosses the oaktask C ABI.
+//! Serializes a borrowed `OakNodeProject` to an OpenTimelineIO (`.otio`) or
+//! FCPXML (`.fcpxml`) file through the pure-Rust `oakotio` binding (see
+//! `README` decision #6): the project's sequences become `OTIO::Timeline`s
+//! (`serialize_timeline` / `serialize_track` / `serialize_track_list`),
+//! exactly like the C++ `serialize_*` helpers. The format is dispatched
+//! from the filename extension (see [`crate::project::format`]) at the
+//! final write only — the serialization itself is shared. No OTIO or
+//! FCPXML type crosses the oaktask C ABI.
 //!
 //! CPP-PARITY: src/task/src/project/saveotio/saveotio.cpp
 
@@ -33,6 +36,7 @@ use oakotio::{
 use crate::bridge;
 use crate::error::{Error, Result};
 use crate::handle::CHandle;
+use crate::project::format::InterchangeFormat;
 use crate::project::load::buf_to_string;
 use crate::task::{Task, TaskBehavior};
 
@@ -292,8 +296,22 @@ impl SaveOTIOTask {
 }
 
 impl TaskBehavior for SaveOTIOTask {
-	/// Serialize the project to OTIO via `oakotio` and write the file.
+	/// Serialize the project to OTIO/FCPXML via `oakotio` and write the file.
 	fn run(&mut self, task: &mut Task) -> Result<()> {
+		// Dispatch the interchange format from the filename extension.
+		// Format handling ends at the write below — the serialization
+		// produces `oakotio::Timeline`s and is shared between `.otio` and
+		// `.fcpxml` (C++ parity for the serialize_* helpers).
+		let format = match InterchangeFormat::of(&self.filename) {
+			Ok(f) => f,
+			Err(e) => {
+				if let Error::Failed(msg) = &e {
+					task.set_error(msg);
+				}
+				return Err(e);
+			}
+		};
+
 		// Collect sequences from the root folder (non-recursive, matching
 		// the original list_children_of_type behavior closely enough for
 		// OTIO).
@@ -336,21 +354,35 @@ impl TaskBehavior for SaveOTIOTask {
 			}
 		}
 
-		let result = if serialized.len() == 1 {
-			// Serialize the timeline on its own.
-			serialized[0].to_json_file(&self.filename)
-		} else {
-			// Serialize all into a SerializableCollection.
-			let collection = SerializableCollection::new(
-				"Sequences",
-				serialized.into_iter().map(Serializable::Timeline).collect(),
-			);
-			Serializable::SerializableCollection(collection).to_json_file(&self.filename)
+		// Write the serialized timelines, dispatching on the format: OTIO
+		// JSON writes a `Timeline` root for one sequence or a
+		// `SerializableCollection` for several; FCPXML writes all timelines
+		// into one document (one `<project>` per timeline).
+		let result: std::result::Result<(), String> = match format {
+			InterchangeFormat::OtioJson => {
+				if serialized.len() == 1 {
+					serialized[0].to_json_file(&self.filename).map_err(|e| e.to_string())
+				} else {
+					// Serialize all into a SerializableCollection.
+					let collection = SerializableCollection::new(
+						"Sequences",
+						serialized.into_iter().map(Serializable::Timeline).collect(),
+					);
+					Serializable::SerializableCollection(collection)
+						.to_json_file(&self.filename)
+						.map_err(|e| e.to_string())
+				}
+			}
+			InterchangeFormat::Fcpxml => oakotio::to_fcpxml_file(&serialized, &self.filename).map_err(|e| e.to_string()),
 		};
 
 		result.map_err(|e| {
-			task.set_error(&format!("Failed to save OpenTimelineIO to file \"{}\": {e}", self.filename));
-			Error::Failed("Failed to save OpenTimelineIO".to_string())
+			let (label, what) = match format {
+				InterchangeFormat::OtioJson => ("Failed to save OpenTimelineIO to file", "Failed to save OpenTimelineIO"),
+				InterchangeFormat::Fcpxml => ("Failed to save FCPXML to file", "Failed to save FCPXML"),
+			};
+			task.set_error(&format!("{label} \"{}\": {e}", self.filename));
+			Error::Failed(what.to_string())
 		})
 	}
 }
