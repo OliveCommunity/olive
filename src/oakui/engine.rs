@@ -207,6 +207,30 @@ pub trait AppEngine:
 	/// Applies an effect-stack edit request to the engine's model.
 	fn apply_effect_event(&mut self, event: &EffectStackEvent, cx: &mut Context<Self>);
 
+	/// Updates the timeline clip selection (drives the effect stack's
+	/// target). The app shell forwards `TimelineEvent::SelectionChanged`
+	/// with the view's selection set. Default: no-op (engines without a
+	/// selection-driven stack keep their existing behavior).
+	fn set_selected_clips(&mut self, _clips: Vec<ClipId>, _cx: &mut Context<Self>) {}
+
+	/// The effect types the user can add to the selected clip's chain, as
+	/// (type id, display name) pairs — the facade factory entries flagged
+	/// `video_effect` and not hidden from the create menu. The inspector
+	/// panel lists them in its "add effect" menu. Default: empty.
+	fn addable_effects(&self) -> Vec<(String, String)> {
+		Vec::new()
+	}
+
+	/// Inserts the effect `type_id` at `index` into the selected clip's
+	/// chain (undoable). `index` is an insertion index into
+	/// [`EffectStackDataSource::effects`] (0 = closest to the source);
+	/// the panel passes the position carried by the `AddRequested` event.
+	/// Returns a user-facing error message on failure. Default: unsupported.
+	fn add_effect(&mut self, index: usize, type_id: &str, cx: &mut Context<Self>) -> Result<(), String> {
+		let _ = (index, type_id, cx);
+		Err("add effect not supported".into())
+	}
+
 	/// Applies a node-editor edit request to the engine's model.
 	fn apply_node_graph_event(&mut self, event: &NodeGraphEvent, cx: &mut Context<Self>);
 

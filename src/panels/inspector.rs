@@ -33,6 +33,11 @@ use crate::panels::ids::INSPECTOR;
 pub struct InspectorPanel<E: AppEngine> {
 	stack: Entity<EffectStackView<E>>,
 	engine: Entity<E>,
+	/// An in-flight "add effect" flow: the stack insertion index carried
+	/// by the last [`EffectStackEvent::AddRequested`]. While set (and the
+	/// engine has a stack target), the panel renders a small menu of the
+	/// engine's addable effects instead of forwarding the bare request.
+	pending_add: Option<usize>,
 }
 
 impl<E: AppEngine> InspectorPanel<E> {
@@ -43,20 +48,115 @@ impl<E: AppEngine> InspectorPanel<E> {
 				.params_renderer(|_effect, _window, cx| cx.new(|_cx| ParamPlaceholder).into())
 		});
 		// The "edits are requests" loop: forward each request to the engine,
-		// which applies it to its model and notifies.
+		// which applies it to its model and notifies. `AddRequested` carries
+		// no effect type, so the panel records the insertion index and lets
+		// the user pick one from the small menu below (the actual insert
+		// runs through `AppEngine::add_effect`).
 		cx.subscribe(&stack, |this, _stack, event: &EffectStackEvent, cx| {
+			if let EffectStackEvent::AddRequested { index } = event {
+				this.pending_add = Some(*index);
+			}
 			this.engine
 				.update(cx, |engine, cx| engine.apply_effect_event(event, cx));
 		})
 		.detach();
 
-		Self { stack, engine }
+		Self {
+			stack,
+			engine,
+			pending_add: None,
+		}
+	}
+
+	/// The "add effect" menu: one clickable row per addable effect of the
+	/// engine. Selecting a row inserts that effect at the recorded stack
+	/// index; a dismiss row closes the menu without adding.
+	fn render_add_menu(
+		&mut self,
+		index: usize,
+		colors: &gpui::colors::Colors,
+		cx: &mut Context<Self>,
+	) -> impl IntoElement {
+		let effects = self.engine.read(cx).addable_effects();
+		let mut menu = div()
+			.id("inspector-add-menu")
+			.px_2()
+			.py_1()
+			.border_t_1()
+			.border_color(colors.separator)
+			.flex()
+			.flex_col()
+			.gap_1();
+
+		for (type_id, name) in &effects {
+			let engine = self.engine.clone();
+			let type_id = type_id.clone();
+			let name = name.clone();
+			let index = index;
+			menu = menu.child(
+				div()
+					.id(SharedString::from(format!("add-effect-{type_id}")))
+					.cursor_pointer()
+					.px_2()
+					.py_1()
+					.rounded_sm()
+					.hover(|style| style.bg(colors.selected))
+					.text_color(colors.text)
+					.text_sm()
+					.child(name)
+					.on_click(
+						cx.listener(move |this, _event: &gpui::ClickEvent, _window, cx| {
+							this.pending_add = None;
+							engine.update(cx, |engine, cx| {
+								if let Err(err) = engine.add_effect(index, &type_id, cx) {
+									println!("[inspector] add effect failed: {err}");
+								}
+							});
+							cx.notify();
+						}),
+					),
+			);
+		}
+
+		// A dismiss row, so a cancelled pick does not linger.
+		menu = menu.child(
+			div()
+				.id("add-effect-dismiss")
+				.cursor_pointer()
+				.px_2()
+				.py_1()
+				.rounded_sm()
+				.hover(|style| style.bg(colors.selected))
+				.text_color(colors.disabled)
+				.text_sm()
+				.child("✕")
+				.on_click(
+					cx.listener(move |this, _event: &gpui::ClickEvent, _window, cx| {
+						this.pending_add = None;
+						cx.notify();
+					}),
+				),
+		);
+		menu
 	}
 }
 
 impl<E: AppEngine> Render for InspectorPanel<E> {
-	fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-		div().size_full().child(self.stack.clone())
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let colors = cx.default_colors().clone();
+		let mut root = div().id("inspector-panel").size_full().flex().flex_col();
+		root = root.child(self.stack.clone());
+		// The add-effect menu sits below the stack while an add is
+		// pending. It only makes sense while the engine has a stack
+		// target (a clip that can host effects).
+		if let Some(index) = self.pending_add {
+			if self.engine.read(cx).target_label().is_some() {
+				root = root.child(self.render_add_menu(index, colors.as_ref(), cx));
+			} else {
+				self.pending_add = None;
+			}
+		}
+		root
 	}
 }
 

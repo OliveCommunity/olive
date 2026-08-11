@@ -103,6 +103,7 @@ engine_handle! {
 	OakEngineClip,
 	OakEngineEncodingParams,
 	OakEngineFrame,
+	OakEngineNode,
 	OakEngineProject,
 	OakEngineRenderer,
 	OakEngineSequence,
@@ -479,6 +480,100 @@ unsafe extern "C" {
 	pub fn oakengine_track_height_internal_to_pixels(height: f64) -> c_int;
 	/// `oakengine_track_height_pixels_to_internal`.
 	pub fn oakengine_track_height_pixels_to_internal(pixels: c_int) -> f64;
+
+	// -- oakengine::node (effect chain) --
+	//
+	// The effect-stack surface over a selected clip: convert the clip to its
+	// node view, enumerate its effect chain (index 0 = closest to the
+	// source), and edit the chain (insert / remove / reorder / enable
+	// toggle), each edit packaged as an undoable facade command. Factory
+	// enumeration feeds the "add effect" menu. Node boxes are freed with
+	// `oakengine_node_free`; the clip box returned by
+	// `oakengine_sequence_clip_at` is freed with [`free_box`].
+
+	/// `oakengine_clip_as_node` — the clip's node view (borrowed box;
+	/// freed with `oakengine_node_free`).
+	pub fn oakengine_clip_as_node(self_: *const OakEngineClip) -> *mut OakEngineNode;
+	/// `oakengine_node_effect_count` — the chain length (0 without effects).
+	pub fn oakengine_node_effect_count(self_: *const OakEngineNode) -> c_int;
+	/// `oakengine_node_effect_at` — the `index`-th effect (borrowed box;
+	/// NULL out of range / no chain).
+	pub fn oakengine_node_effect_at(
+		self_: *const OakEngineNode,
+		index: c_int,
+	) -> *mut OakEngineNode;
+	/// `oakengine_node_identity` — the node's stable identity (the stack's
+	/// card id). 0 for NULL/invalid.
+	pub fn oakengine_node_identity(self_: *const OakEngineNode) -> u64;
+	/// `oakengine_node_is_enabled` — 1/0 (the stack's enable switch).
+	pub fn oakengine_node_is_enabled(self_: *const OakEngineNode) -> c_int;
+	/// `oakengine_node_effect_set_enabled` — undoable enable toggle.
+	pub fn oakengine_node_effect_set_enabled(
+		self_: *mut OakEngineNode,
+		enabled: c_int,
+	) -> c_int;
+	/// `oakengine_node_effect_insert` — undoable insert at `index`
+	/// (0 = closest to the source; clamped to the ends).
+	pub fn oakengine_node_effect_insert(
+		self_: *mut OakEngineNode,
+		index: c_int,
+		type_id: *const c_char,
+	) -> c_int;
+	/// `oakengine_node_effect_remove` — undoable removal of `effect` from
+	/// `self_`'s chain (the node is left orphaned in the project graph).
+	pub fn oakengine_node_effect_remove(
+		self_: *mut OakEngineNode,
+		effect: *mut OakEngineNode,
+	) -> c_int;
+	/// `oakengine_node_effect_move` — undoable reorder of `effect` to
+	/// `new_index` (post-removal insertion index, matching the effect
+	/// stack's `ReorderRequested`).
+	pub fn oakengine_node_effect_move(
+		self_: *mut OakEngineNode,
+		effect: *mut OakEngineNode,
+		new_index: c_int,
+	) -> c_int;
+	/// `oakengine_node_get_effect_input` — the id of the input the effect
+	/// chain attaches to (negative error when the node cannot host
+	/// effects; `element` receives -1 for non-array inputs).
+	pub fn oakengine_node_get_effect_input(
+		self_: *const OakEngineNode,
+		input_id: *mut c_char,
+		input_id_size: c_int,
+		element: *mut c_int,
+	) -> c_int;
+	/// `oakengine_node_get_type_id` — the node's factory type id (buf/size).
+	pub fn oakengine_node_get_type_id(
+		self_: *const OakEngineNode,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int;
+	/// `oakengine_node_get_flags` — the node's flags bitmask (0 for
+	/// NULL/invalid).
+	pub fn oakengine_node_get_flags(self_: *const OakEngineNode) -> u64;
+	/// `oakengine_node_free` — free a node box (NULL no-op).
+	pub fn oakengine_node_free(node: *mut OakEngineNode);
+	/// `oakengine_node_factory_id_count` — factory entry count.
+	pub fn oakengine_node_factory_id_count() -> c_int;
+	/// `oakengine_node_factory_id_at` — type id at `index` (buf/size;
+	/// negative error out of range).
+	pub fn oakengine_node_factory_id_at(
+		index: c_int,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int;
+	/// `oakengine_node_factory_name_from_id` — display name (buf/size).
+	pub fn oakengine_node_factory_name_from_id(
+		type_id: *const c_char,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int;
+	/// `oakengine_node_factory_create_from_id` — owned node, not added.
+	pub fn oakengine_node_factory_create_from_id(type_id: *const c_char) -> *mut OakEngineNode;
+	/// `oakengine_node_flag_video_effect`.
+	pub fn oakengine_node_flag_video_effect() -> u64;
+	/// `oakengine_node_flag_dont_show_in_create_menu`.
+	pub fn oakengine_node_flag_dont_show_in_create_menu() -> u64;
 
 	// -- oakengine::render (CPU frame renderer) --
 	//

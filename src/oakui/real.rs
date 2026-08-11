@@ -48,9 +48,12 @@
 //!   facade CPU renderer ([`RealEngine::render_program_frame`]) at a proxy
 //!   resolution; the full-resolution async render worker (the facade's
 //!   worker module) is a separate process surface not bound yet.
-//! * Effect stack, node graph and audio meter feed empty/silent data: the
-//!   facade surfaces for them (effect chains, graph nodes, audio levels)
-//!   are not bound in this increment.
+//! * Effect stack — the selected clip's effect chain is bound: the stack
+//!   reads the chain through the facade (see
+//!   [`EffectStackDataSource`](EffectStackDataSource) for `RealEngine`)
+//!   and edits go through the facade's undoable effect commands. Node
+//!   graph and audio meter still feed empty/silent data (their facade
+//!   surfaces are not bound in this increment).
 //! * `oakengine_sequence_move_clip` is a documented facade stub (module gap),
 //!   so clip moves report the facade error instead of applying.
 //!
@@ -62,14 +65,16 @@
 //! `oakengine_task_cancel` mirrors the C++ capi contract (cancel atom set
 //! from the UI thread while the task runs on its own thread).
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::ffi::{c_char, c_int, c_void, CString};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use gpui::effect_stack::{EffectData, EffectStackDataSource, EffectStackEvent};
+use gpui::effect_stack::{
+	EffectCardKind, EffectData, EffectId, EffectStackDataSource, EffectStackEvent,
+};
 use gpui::node_graph::{
 	EdgeData, EdgeId, NodeData, NodeGraphDataSource, NodeGraphEvent, NodeId, PortData, PortId,
 	PortDataType, PortKind,
@@ -399,6 +404,46 @@ impl ClipData for RealClip {
 	}
 }
 
+/// One card of the real effect stack: the facade chain node's identity,
+/// its factory display name, its enabled flag, and the app-owned
+/// expansion state ([`RealEngine::expanded_effects`]). No source/output
+/// cards: the host clip node is the implicit output, the chain's unlinked
+/// upstream input is the implicit source (the effect stack shows only the
+/// editable middle).
+#[derive(Debug, Clone)]
+struct RealEffect {
+	/// The node's stable identity (also the card's `EffectId`).
+	id: EffectId,
+	/// The factory display name of the node's type.
+	title: SharedString,
+	/// The node's `enabled_in` flag.
+	enabled: bool,
+	/// The app-owned expansion state (not undoable).
+	expanded: bool,
+}
+
+impl EffectData for RealEffect {
+	fn id(&self) -> EffectId {
+		self.id
+	}
+
+	fn kind(&self) -> EffectCardKind {
+		EffectCardKind::Effect
+	}
+
+	fn title(&self) -> SharedString {
+		self.title.clone()
+	}
+
+	fn is_enabled(&self) -> bool {
+		self.enabled
+	}
+
+	fn is_expanded(&self) -> bool {
+		self.expanded
+	}
+}
+
 /// A track on the real timeline (snapshot handed to the timeline widget).
 #[derive(Debug, Clone)]
 pub struct RealTrack {
@@ -587,6 +632,14 @@ pub struct RealEngine {
 	bin_children: Vec<ProjectEntry>,
 	/// The selected material-bin entry (demo state).
 	selected_item: Option<u64>,
+	/// The single selected timeline clip — the effect stack's target
+	/// (`None` for an empty or multi-clip selection, or before any
+	/// selection event).
+	selected_clip: Option<ClipId>,
+	/// Node identities whose effect cards are expanded (view state; kept
+	/// here because `EffectData` is a pure read and expansion is not
+	/// undoable).
+	expanded_effects: BTreeSet<u64>,
 	/// Whether the program monitor is playing (mirrors the clock; kept here
 	/// because the audio-meter data source has no `App` to read the clock).
 	program_playing: bool,
@@ -628,6 +681,8 @@ impl RealEngine {
 			bin_roots: Vec::new(),
 			bin_children: Vec::new(),
 			selected_item: None,
+			selected_clip: None,
+			expanded_effects: BTreeSet::new(),
 			program_playing: false,
 			meter_phase: 0,
 			cpu_frame_cache: Mutex::new(HashMap::new()),
@@ -1016,6 +1071,140 @@ impl RealEngine {
 		None
 	}
 
+	/// The selected clip's facade node view (a boxed node handle the
+	/// caller frees with `oakengine_node_free`), or `None` when no single
+	/// clip is selected or the clip box resolves to no node.
+	fn selected_clip_node(&self) -> Option<*mut OakEngineNode> {
+		let clip_id = self.selected_clip?;
+		let (kind, track_index, clip_index) = self.clip_coords(clip_id)?;
+		let seq = self.seq_ptr()?;
+		let clip = unsafe {
+			oakengine_sequence_clip_at(
+				seq,
+				Self::track_type_of(kind),
+				track_index as c_int,
+				clip_index as c_int,
+			)
+		};
+		if clip.is_null() {
+			return None;
+		}
+		let node = unsafe { oakengine_clip_as_node(clip) };
+		// SAFETY: the clip box is a plain facade box (see `free_box`); the
+		// node box is independent (the facade boxed its own handle copy).
+		unsafe { free_box(clip) };
+		// SAFETY: `node` is a fresh box the caller frees, or NULL.
+		if node.is_null() {
+			None
+		} else {
+			Some(node)
+		}
+	}
+
+	/// Whether `node` can host effects (its effect-input id is non-empty;
+	/// the facade reports `E_NOT_FOUND` for nodes without one).
+	///
+	/// # Safety
+	/// `node` must be a live node box (NULL reports false).
+	unsafe fn node_hosts_effects(node: *mut OakEngineNode) -> bool {
+		let mut buf = [0 as c_char; 64];
+		let mut element: c_int = 0;
+		unsafe {
+			oakengine_node_get_effect_input(node, buf.as_mut_ptr(), buf.len() as c_int, &mut element)
+				>= 0
+		}
+	}
+
+	/// The effect in `host`'s chain whose identity is `identity` (a boxed
+	/// node handle the caller frees), or `None` when not a member.
+	///
+	/// # Safety
+	/// `host` must be a live node box.
+	unsafe fn chain_effect_by_identity(
+		host: *mut OakEngineNode,
+		identity: u64,
+	) -> Option<*mut OakEngineNode> {
+		let count = unsafe { oakengine_node_effect_count(host) };
+		for i in 0..count.max(0) {
+			let effect = unsafe { oakengine_node_effect_at(host, i) };
+			if effect.is_null() {
+				continue;
+			}
+			if unsafe { oakengine_node_identity(effect) } == identity {
+				return Some(effect);
+			}
+			// SAFETY: `effect` is a box from `oakengine_node_effect_at`.
+			unsafe { oakengine_node_free(effect) };
+		}
+		None
+	}
+
+	/// The display label of the selected clip (its timeline snapshot
+	/// label), if any.
+	fn selected_clip_label(&self) -> Option<SharedString> {
+		let clip_id = self.selected_clip?;
+		for track in &self.tracks {
+			if let Some(clip) = track.clips.iter().find(|c| c.id() == clip_id) {
+				return Some(clip.label());
+			}
+		}
+		None
+	}
+
+	/// The card list of the selected clip's effect chain. Each card wraps
+	/// one chain node (index 0 = closest to the source); a clip that
+	/// cannot host effects yields an empty list (its `target_label` is
+	/// `None`, so the stack shows the empty state).
+	fn selected_effect_cards(&self) -> Vec<Arc<dyn EffectData>> {
+		let Some(node) = self.selected_clip_node() else {
+			return Vec::new();
+		};
+		let mut out: Vec<Arc<dyn EffectData>> = Vec::new();
+		// SAFETY: `node` is a live box; freed on every return path.
+		unsafe {
+			if !Self::node_hosts_effects(node) {
+				oakengine_node_free(node);
+				return out;
+			}
+			let count = oakengine_node_effect_count(node);
+			for i in 0..count.max(0) {
+				let effect = oakengine_node_effect_at(node, i);
+				if effect.is_null() {
+					continue;
+				}
+				let identity = oakengine_node_identity(effect);
+				let type_id = read_string(|buf, size| {
+					// SAFETY: `effect` is a live box; buf/size follow the
+					// facade two-stage convention (the enclosing `unsafe`
+					// block covers this closure body).
+					oakengine_node_get_type_id(effect, buf, size)
+				});
+				let title = CString::new(type_id.clone())
+					.ok()
+					.map(|c| {
+						read_string(|buf, size| {
+							// SAFETY: as above; `c` outlives the call.
+							oakengine_node_factory_name_from_id(c.as_ptr(), buf, size)
+						})
+					})
+					.filter(|n| !n.is_empty())
+					.unwrap_or(type_id);
+				let enabled = oakengine_node_is_enabled(effect) != 0;
+				let expanded = self.expanded_effects.contains(&identity);
+				out.push(Arc::new(RealEffect {
+					id: EffectId(identity),
+					title: title.into(),
+					enabled,
+					expanded,
+				}) as Arc<dyn EffectData>);
+				// SAFETY: `effect` is a box from `oakengine_node_effect_at`.
+				oakengine_node_free(effect);
+			}
+			oakengine_node_free(node);
+		}
+		out
+	}
+
 	/// The facade track-type constant for a [`TrackKind`].
 	fn track_type_of(kind: TrackKind) -> c_int {
 		match kind {
@@ -1166,13 +1355,17 @@ impl TimelineDataSource for RealEngine {
 
 impl EffectStackDataSource for RealEngine {
 	fn effects(&self) -> Vec<Arc<dyn EffectData>> {
-		// The effect-chain surface of the facade is not bound in this
-		// increment; the stack shows its empty state.
-		Vec::new()
+		self.selected_effect_cards()
 	}
 
 	fn target_label(&self) -> Option<SharedString> {
-		None
+		let label = self.selected_clip_label()?;
+		let node = self.selected_clip_node()?;
+		// SAFETY: `node` is a live box; freed below. A clip that cannot
+		// host effects keeps the empty state (no label, no cards).
+		let hosts = unsafe { Self::node_hosts_effects(node) };
+		unsafe { oakengine_node_free(node) };
+		hosts.then_some(label)
 	}
 }
 
@@ -1333,10 +1526,148 @@ impl AppEngine for RealEngine {
 		cx.notify();
 	}
 
-	fn apply_effect_event(&mut self, _event: &EffectStackEvent, cx: &mut Context<Self>) {
-		// No effect model in the real engine yet; requests are logged by the
-		// caller.
+	fn set_selected_clips(&mut self, clips: Vec<ClipId>, cx: &mut Context<Self>) {
+		// The effect stack targets exactly one clip: an empty or
+		// multi-clip selection keeps the empty state (see
+		// `EffectStackDataSource::target_label`).
+		self.selected_clip = (clips.len() == 1).then(|| clips[0]);
 		cx.notify();
+	}
+
+	fn addable_effects(&self) -> Vec<(String, String)> {
+		// The factory entries flagged `video_effect` and not hidden from
+		// the create menu (per the facade contract). A scratch node per
+		// entry just to read its flags (freed immediately).
+		let mut out = Vec::new();
+		let count = unsafe { oakengine_node_factory_id_count() };
+		let video_flag = unsafe { oakengine_node_flag_video_effect() };
+		let hidden_flag = unsafe { oakengine_node_flag_dont_show_in_create_menu() };
+		for i in 0..count.max(0) {
+			let type_id =
+				read_string(|buf, size| unsafe { oakengine_node_factory_id_at(i, buf, size) });
+			let Some(c_id) = CString::new(type_id.clone()).ok() else {
+				continue;
+			};
+			let node = unsafe { oakengine_node_factory_create_from_id(c_id.as_ptr()) };
+			if node.is_null() {
+				continue;
+			}
+			let flags = unsafe { oakengine_node_get_flags(node) };
+			// SAFETY: `node` is an owned box from the factory.
+			unsafe { oakengine_node_free(node) };
+			if flags & video_flag != 0 && flags & hidden_flag == 0 {
+				let name = read_string(|buf, size| {
+					// SAFETY: `c_id` outlives the call; buf/size follow the
+					// facade two-stage convention.
+					unsafe { oakengine_node_factory_name_from_id(c_id.as_ptr(), buf, size) }
+				});
+				let name = if name.is_empty() { type_id.clone() } else { name };
+				out.push((type_id, name));
+			}
+		}
+		out
+	}
+
+	fn add_effect(&mut self, index: usize, type_id: &str, cx: &mut Context<Self>) -> Result<(), String> {
+		let Some(host) = self.selected_clip_node() else {
+			return Err("no selected clip".into());
+		};
+		let c_id = CString::new(type_id).map_err(|_| "invalid effect type id".to_string())?;
+		// SAFETY: `host` is a live box; freed below.
+		let rc = unsafe { oakengine_node_effect_insert(host, index as c_int, c_id.as_ptr()) };
+		unsafe { oakengine_node_free(host) };
+		if rc != 0 {
+			return Err(format!("facade error {rc}"));
+		}
+		self.apply_edit(rc, "add effect", cx);
+		Ok(())
+	}
+
+	fn apply_effect_event(&mut self, event: &EffectStackEvent, cx: &mut Context<Self>) {
+		match event {
+			EffectStackEvent::EnableToggled { effect, enabled } => {
+				let Some(host) = self.selected_clip_node() else {
+					cx.notify();
+					return;
+				};
+				// SAFETY: both boxes are live and freed below.
+				let rc = unsafe {
+					let Some(eff) = Self::chain_effect_by_identity(host, effect.0) else {
+						oakengine_node_free(host);
+						cx.notify();
+						return;
+					};
+					let rc = oakengine_node_effect_set_enabled(eff, *enabled as c_int);
+					oakengine_node_free(eff);
+					oakengine_node_free(host);
+					rc
+				};
+				self.apply_edit(rc, "toggle effect", cx);
+			}
+			EffectStackEvent::ExpansionToggled { effect, expanded } => {
+				// View state only (not undoable); kept here so the card
+				// list re-reads it after the notify.
+				if *expanded {
+					self.expanded_effects.insert(effect.0);
+				} else {
+					self.expanded_effects.remove(&effect.0);
+				}
+				cx.notify();
+			}
+			EffectStackEvent::RemoveRequested(id) => {
+				let Some(host) = self.selected_clip_node() else {
+					cx.notify();
+					return;
+				};
+				// SAFETY: both boxes are live and freed below.
+				let rc = unsafe {
+					let Some(eff) = Self::chain_effect_by_identity(host, id.0) else {
+						oakengine_node_free(host);
+						cx.notify();
+						return;
+					};
+					let rc = oakengine_node_effect_remove(host, eff);
+					oakengine_node_free(eff);
+					oakengine_node_free(host);
+					rc
+				};
+				self.apply_edit(rc, "remove effect", cx);
+			}
+			EffectStackEvent::ReorderRequested { effect, new_index } => {
+				let Some(host) = self.selected_clip_node() else {
+					cx.notify();
+					return;
+				};
+				// SAFETY: both boxes are live and freed below.
+				let rc = unsafe {
+					let Some(eff) = Self::chain_effect_by_identity(host, effect.0) else {
+						oakengine_node_free(host);
+						cx.notify();
+						return;
+					};
+					let rc = oakengine_node_effect_move(host, eff, *new_index as c_int);
+					oakengine_node_free(eff);
+					oakengine_node_free(host);
+					rc
+				};
+				self.apply_edit(rc, "reorder effect", cx);
+			}
+			EffectStackEvent::AddRequested { index } => {
+				// The effect choice is a panel-owned menu (see
+				// `InspectorPanel`); the undoable insert runs through
+				// `AppEngine::add_effect` once the user picks a type.
+				// `index` is acknowledged here for parity with the
+				// request semantics (the panel passes it back).
+				let _ = index;
+				cx.notify();
+			}
+			// The app owns the context menu; parameter changes have no
+			// metadata to refresh yet.
+			EffectStackEvent::ContextMenuRequested { .. }
+			| EffectStackEvent::ParameterChanged { .. } => {
+				cx.notify();
+			}
+		}
 	}
 
 	fn apply_node_graph_event(&mut self, event: &NodeGraphEvent, cx: &mut Context<Self>) {

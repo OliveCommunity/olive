@@ -54,6 +54,7 @@ use oakengine::handle::{
 };
 use oakengine::node::*;
 use oakengine::node::value_type as vt;
+use oakengine::timeline::oakengine_clip_as_node;
 use oakengine::undo::oakengine_undo_command_free;
 use oaknode::ffi::dragger::oaknode_dragger_free;
 use oaknode::ffi::factory::oaknode_factory_create_from_id;
@@ -66,6 +67,7 @@ use oaknode::ffi::project::oaknode_project_free;
 /// Facade error codes (src/error.rs).
 const E_INVALID: c_int = -1;
 const E_STATE: c_int = -2;
+const E_FAILED: c_int = -3;
 const E_NOT_FOUND: c_int = -4;
 /// Module error codes (include/node/error.h) — passed through untranslated.
 const NODE_E_INVALID: c_int = -30001;
@@ -81,6 +83,8 @@ const TYPE_TEXT: &std::ffi::CStr = c"org.olivevideoeditor.Olive.textgenerator";
 const TYPE_GROUP: &std::ffi::CStr = c"org.olivevideoeditor.Olive.group";
 const TYPE_MULTICAM: &std::ffi::CStr = c"org.olivevideoeditor.Olive.multicam";
 const TYPE_FOOTAGE: &std::ffi::CStr = c"org.olivevideoeditor.Olive.footage";
+const TYPE_BLUR: &std::ffi::CStr = c"org.olivevideoeditor.Olive.blur";
+const TYPE_OPACITY: &std::ffi::CStr = c"org.olivevideoeditor.Olive.opacity";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -1466,6 +1470,173 @@ fn node_family_legal_paths() {
 		// like the C++ EngineCore shell). The add_node factory handles are
 		// released by the facade, so they no longer leak.
 		assert_eq!(alive(), base + 1, "only the probe project leak remains");
+	});
+}
+
+// ---------------------------------------------------------------------------
+// Effect chain surface (node.h effect-input family)
+// ---------------------------------------------------------------------------
+
+/// Effect chain enumeration and edits over the facade: insert at index,
+/// remove, reorder, enable toggle — each a single undoable row — plus the
+/// NULL and illegal-input matrix of the new exports. The chain semantics
+/// mirror the C++ original (`Node::GetEffectInputID` / `GetConnectedOutput`
+/// walk): effects attach to the host's effect input, ordered closest-to-
+/// source first.
+#[test]
+fn node_effect_chain_edits() {
+	with_owned(|| {
+		common::force_link();
+		let _ = force_oakundo_command_link();
+		let base = alive();
+		let mut buf = [0 as c_char; 512];
+		let mut element: c_int = 0;
+
+		// ---- fixtures: a transform host + a plain value node ---------------
+		let project = oakengine_project_create();
+		assert!(!project.is_null());
+		assert_eq!(unsafe { oakengine_project_new(project) }, 0);
+		let host = unsafe { oakengine_project_add_node(project, TYPE_TRANSFORM.as_ptr()) };
+		assert!(!host.is_null());
+		let value = unsafe { oakengine_project_add_node(project, TYPE_VALUE.as_ptr()) };
+		assert!(!value.is_null());
+
+		// The transform's effect input is "tex_in".
+		let len = unsafe { oakengine_node_get_effect_input(host, buf.as_mut_ptr(), 512, &mut element) };
+		assert_eq!(len, "tex_in".len() as c_int);
+		assert_eq!(unsafe { read_buf(&mut buf) }, "tex_in");
+		assert_eq!(element, -1, "non-array input element");
+		// A node without an effect input cannot host effects.
+		assert_eq!(
+			unsafe { oakengine_node_get_effect_input(value, buf.as_mut_ptr(), 512, &mut element) },
+			E_NOT_FOUND
+		);
+
+		// ---- enumeration on an empty chain ---------------------------------
+		assert_eq!(unsafe { oakengine_node_effect_count(host) }, 0);
+		assert!(unsafe { oakengine_node_effect_at(host, 0) }.is_null());
+
+		// ---- insert three effects: opacity, blur, transform -----------------
+		// Inserting at 0 twice stacks each new effect closest to the source;
+		// inserting at len appends next to the host.
+		assert_eq!(unsafe { oakengine_node_effect_insert(host, 0, TYPE_BLUR.as_ptr()) }, 0);
+		eprintln!("[dbg] count after blur insert: {}", unsafe { oakengine_node_effect_count(host) });
+		assert_eq!(unsafe { oakengine_node_effect_insert(host, 0, TYPE_OPACITY.as_ptr()) }, 0);
+		eprintln!("[dbg] count after opacity insert: {}", unsafe { oakengine_node_effect_count(host) });
+		assert_eq!(unsafe { oakengine_node_effect_insert(host, 2, TYPE_TRANSFORM.as_ptr()) }, 0);
+		eprintln!("[dbg] count after transform insert: {}", unsafe { oakengine_node_effect_count(host) });
+		assert_eq!(unsafe { oakengine_node_effect_count(host) }, 3);
+
+		let eff0 = unsafe { oakengine_node_effect_at(host, 0) };
+		let eff1 = unsafe { oakengine_node_effect_at(host, 1) };
+		let eff2 = unsafe { oakengine_node_effect_at(host, 2) };
+		assert!(!eff0.is_null() && !eff1.is_null() && !eff2.is_null());
+		assert!(unsafe { oakengine_node_effect_at(host, -1) }.is_null());
+		assert!(unsafe { oakengine_node_effect_at(host, 99) }.is_null());
+		// Signal order: opacity (source side) → blur → transform (host side).
+		assert_eq!(unsafe { oakengine_node_get_type_id(eff0, buf.as_mut_ptr(), 512) }, TYPE_OPACITY.to_bytes().len() as c_int);
+		assert_eq!(unsafe { read_buf(&mut buf) }, TYPE_OPACITY.to_str().unwrap());
+		assert_eq!(unsafe { oakengine_node_get_type_id(eff1, buf.as_mut_ptr(), 512) }, TYPE_BLUR.to_bytes().len() as c_int);
+		assert_eq!(unsafe { read_buf(&mut buf) }, TYPE_BLUR.to_str().unwrap());
+		assert_eq!(unsafe { oakengine_node_get_type_id(eff2, buf.as_mut_ptr(), 512) }, TYPE_TRANSFORM.to_bytes().len() as c_int);
+		assert_eq!(unsafe { read_buf(&mut buf) }, TYPE_TRANSFORM.to_str().unwrap());
+
+		// Effect nodes carry the video-effect flag; plain nodes do not.
+		assert_ne!(unsafe { oakengine_node_get_flags(eff0) } & oakengine_node_flag_video_effect(), 0);
+		assert_ne!(unsafe { oakengine_node_get_flags(eff1) } & oakengine_node_flag_video_effect(), 0);
+		assert_eq!(unsafe { oakengine_node_get_flags(value) } & oakengine_node_flag_video_effect(), 0);
+
+		// Stable identities (the stack's card ids) are non-zero.
+		let eff1_identity = unsafe { oakengine_node_identity(eff1) };
+		assert!(eff1_identity > 0);
+
+		// ---- enable toggle --------------------------------------------------
+		assert_eq!(unsafe { oakengine_node_is_enabled(eff1) }, 1);
+		assert_eq!(unsafe { oakengine_node_effect_set_enabled(eff1, 0) }, 0);
+		assert_eq!(unsafe { oakengine_node_is_enabled(eff1) }, 0);
+		assert_eq!(unsafe { oakengine_node_effect_set_enabled(eff1, 1) }, 0);
+		assert_eq!(unsafe { oakengine_node_is_enabled(eff1) }, 1);
+
+		// ---- reorder: move blur (index 1) to the end -----------------------
+		assert_eq!(unsafe { oakengine_node_effect_move(host, eff1, 2) }, 0);
+		assert_eq!(unsafe { oakengine_node_get_type_id(unsafe { oakengine_node_effect_at(host, 0) }, buf.as_mut_ptr(), 512) }, TYPE_OPACITY.to_bytes().len() as c_int);
+		assert_eq!(unsafe { oakengine_node_get_type_id(unsafe { oakengine_node_effect_at(host, 1) }, buf.as_mut_ptr(), 512) }, TYPE_TRANSFORM.to_bytes().len() as c_int);
+		assert_eq!(unsafe { oakengine_node_get_type_id(unsafe { oakengine_node_effect_at(host, 2) }, buf.as_mut_ptr(), 512) }, TYPE_BLUR.to_bytes().len() as c_int);
+
+		// ---- remove transform (now at index 1) ------------------------------
+		let t_at_1 = unsafe { oakengine_node_effect_at(host, 1) };
+		assert!(!t_at_1.is_null());
+		assert_eq!(unsafe { oakengine_node_effect_remove(host, t_at_1) }, 0);
+		assert_eq!(unsafe { oakengine_node_effect_count(host) }, 2);
+		assert_eq!(unsafe { oakengine_node_get_type_id(unsafe { oakengine_node_effect_at(host, 0) }, buf.as_mut_ptr(), 512) }, TYPE_OPACITY.to_bytes().len() as c_int);
+		assert_eq!(unsafe { oakengine_node_get_type_id(unsafe { oakengine_node_effect_at(host, 1) }, buf.as_mut_ptr(), 512) }, TYPE_BLUR.to_bytes().len() as c_int);
+
+		// ---- the edit is one undo row: undo/redo restores the chain --------
+		assert_eq!(unsafe { oakengine_project_undo(project) }, 0);
+		assert_eq!(unsafe { oakengine_node_effect_count(host) }, 3);
+		assert_eq!(unsafe { oakengine_node_get_type_id(unsafe { oakengine_node_effect_at(host, 0) }, buf.as_mut_ptr(), 512) }, TYPE_OPACITY.to_bytes().len() as c_int);
+		assert_eq!(unsafe { oakengine_node_get_type_id(unsafe { oakengine_node_effect_at(host, 1) }, buf.as_mut_ptr(), 512) }, TYPE_TRANSFORM.to_bytes().len() as c_int);
+		assert_eq!(unsafe { oakengine_node_get_type_id(unsafe { oakengine_node_effect_at(host, 2) }, buf.as_mut_ptr(), 512) }, TYPE_BLUR.to_bytes().len() as c_int);
+		assert_eq!(unsafe { oakengine_project_redo(project) }, 0);
+		assert_eq!(unsafe { oakengine_node_effect_count(host) }, 2);
+
+		// ---- out-of-range insert clamps to the host side -------------------
+		assert_eq!(unsafe { oakengine_node_effect_insert(host, 99, TYPE_BLUR.as_ptr()) }, 0);
+		assert_eq!(unsafe { oakengine_node_effect_count(host) }, 3);
+		assert_eq!(unsafe { oakengine_node_get_type_id(unsafe { oakengine_node_effect_at(host, 2) }, buf.as_mut_ptr(), 512) }, TYPE_BLUR.to_bytes().len() as c_int);
+
+		// ---- illegal inputs -------------------------------------------------
+		assert_eq!(unsafe { oakengine_node_effect_insert(std::ptr::null_mut(), 0, TYPE_BLUR.as_ptr()) }, E_INVALID);
+		assert_eq!(unsafe { oakengine_node_effect_insert(host, 0, std::ptr::null()) }, E_INVALID);
+		assert_eq!(unsafe { oakengine_node_effect_insert(host, 0, c"org.oak.no.such.node".as_ptr()) }, E_FAILED, "unknown factory id");
+		assert_eq!(unsafe { oakengine_node_effect_insert(host, 0, TYPE_VALUE.as_ptr()) }, E_INVALID, "a node without an effect input cannot be chained");
+		assert_eq!(unsafe { oakengine_node_effect_insert(value, 0, TYPE_BLUR.as_ptr()) }, E_NOT_FOUND, "a host without an effect input hosts no chain");
+		assert_eq!(unsafe { oakengine_node_effect_remove(std::ptr::null_mut(), eff1) }, E_INVALID);
+		assert_eq!(unsafe { oakengine_node_effect_remove(host, std::ptr::null_mut()) }, E_INVALID);
+		assert_eq!(unsafe { oakengine_node_effect_remove(host, value) }, E_NOT_FOUND, "not a member of the chain");
+		assert_eq!(unsafe { oakengine_node_effect_move(std::ptr::null_mut(), eff1, 0) }, E_INVALID);
+		assert_eq!(unsafe { oakengine_node_effect_move(host, std::ptr::null_mut(), 0) }, E_INVALID);
+		assert_eq!(unsafe { oakengine_node_effect_move(host, value, 0) }, E_NOT_FOUND, "not a member of the chain");
+		assert_eq!(unsafe { oakengine_node_effect_set_enabled(std::ptr::null_mut(), 0) }, E_INVALID);
+		assert_eq!(unsafe { oakengine_node_is_enabled(std::ptr::null_mut()) }, 0);
+		assert_eq!(unsafe { oakengine_node_identity(std::ptr::null_mut()) }, 0);
+		assert_eq!(unsafe { oakengine_node_effect_count(std::ptr::null_mut()) }, 0);
+		assert!(unsafe { oakengine_node_effect_at(std::ptr::null_mut(), 0) }.is_null());
+		assert_eq!(unsafe { oakengine_node_get_effect_input(std::ptr::null_mut(), buf.as_mut_ptr(), 512, &mut element) }, E_INVALID);
+		assert_eq!(unsafe { oakengine_node_get_flags(std::ptr::null_mut()) }, 0);
+
+		// ---- factory id enumeration + clip → node conversion ---------------
+		let factory_count = oakengine_node_factory_id_count();
+		assert!(factory_count > 0);
+		let len = unsafe { oakengine_node_factory_id_at(0, buf.as_mut_ptr(), 512) };
+		assert!(len > 0);
+		let first_id = unsafe { read_buf(&mut buf) };
+		let name_len = unsafe { oakengine_node_factory_name_from_id(first_id.as_ptr() as *const c_char, buf.as_mut_ptr(), 512) };
+		assert!(name_len > 0, "factory name resolves for an enumerated id");
+		assert_eq!(unsafe { oakengine_node_factory_id_at(-1, buf.as_mut_ptr(), 512) }, NODE_E_NOT_FOUND);
+		assert_eq!(unsafe { oakengine_node_factory_id_at(factory_count, buf.as_mut_ptr(), 512) }, NODE_E_NOT_FOUND);
+		// `oakengine_clip_as_node` converts a clip box to its node view (the
+		// engine opaque types share one CHandle layout; a plain node box
+		// exercises the same conversion path).
+		let clip_view = value as *mut oakengine::handle::OakEngineClip;
+		let as_node = unsafe { oakengine_clip_as_node(clip_view) };
+		assert!(!as_node.is_null());
+		assert_eq!(unsafe { oakengine_node_get_type_id(as_node, buf.as_mut_ptr(), 512) }, TYPE_VALUE.to_bytes().len() as c_int);
+		assert!(unsafe { oakengine_clip_as_node(std::ptr::null_mut()) }.is_null());
+
+		// ---- cleanup --------------------------------------------------------
+		unsafe { oakengine_node_free(eff0) };
+		unsafe { oakengine_node_free(eff1) };
+		unsafe { oakengine_node_free(eff2) };
+		unsafe { oakengine_node_free(t_at_1) };
+		unsafe { oakengine_node_free(as_node) };
+		unsafe { oakengine_node_free(host) };
+		unsafe { oakengine_node_free(value) };
+		unsafe { oakengine_project_free(project) };
+		// No probe project is involved in this test (unlike the footage
+		// family above): the effect edits keep every node inside the project
+		// graph, so freeing the project returns the alive counter to base.
+		assert_eq!(alive(), base, "effect-chain edits must not leak boxes");
 	});
 }
 

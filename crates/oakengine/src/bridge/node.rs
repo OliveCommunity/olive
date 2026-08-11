@@ -271,6 +271,18 @@ pub fn oaknode_node_set_enabled_undoable(node: CHandle, enabled: c_int, out_comm
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
+pub fn oaknode_node_get_effect_input(node: CHandle, buf: *mut c_char, buf_size: c_int) -> c_int {
+	unsafe { oaknode::ffi::node::oaknode_node_get_effect_input(node, buf, buf_size) }
+}
+
+/// Direct call into the `oaknode` crate (single-lib unification; the
+/// `#[no_mangle]` export stays for the external C ABI).
+pub fn oaknode_node_get_flags(node: CHandle) -> u64 {
+	unsafe { oaknode::ffi::node::oaknode_node_get_flags(node) }
+}
+
+/// Direct call into the `oaknode` crate (single-lib unification; the
+/// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_node_input_count(node: CHandle, out_count: *mut c_int) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_input_count(node, out_count) }
 }

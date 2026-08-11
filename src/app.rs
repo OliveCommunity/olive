@@ -41,7 +41,7 @@ use std::time::Duration;
 use gpui::dock::{
 	DockArea, DockLayout, DropTarget, DropZone, NodePath, PanelHandle, PanelRegistry,
 };
-use gpui::timeline::{Frame, TimelineEvent, TimelineView};
+use gpui::timeline::{ClipId, Frame, TimelineEvent, TimelineView};
 use gpui::{
 	div, prelude::*, px, size, App, AsyncWindowContext, Bounds, Context, Entity, Render, Window,
 	WindowBounds, WindowOptions,
@@ -397,9 +397,19 @@ impl<E: AppEngine> OakApp<E> {
 		// Every timeline widget request (playhead seek, trim, move, track
 		// height) is applied by the engine through its backend's edit
 		// commands; the playhead is routed to the program monitor.
+		// `SelectionChanged` carries no payload — the selection is read from
+		// the view and forwarded to the engine so the inspector's effect
+		// stack can target the selected clip.
 		cx.subscribe(
 			&timeline,
-			|this, _timeline, event: &TimelineEvent, cx| {
+			|this, timeline, event: &TimelineEvent, cx| {
+				if matches!(event, TimelineEvent::SelectionChanged) {
+					let clips: Vec<ClipId> =
+						timeline.read(cx).selection().iter().copied().collect();
+					this.engine.update(cx, |engine, cx| {
+						engine.set_selected_clips(clips, cx)
+					});
+				}
 				this.engine
 					.update(cx, |engine, cx| engine.apply_timeline_event(event, cx));
 			},

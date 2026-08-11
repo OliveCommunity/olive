@@ -1016,6 +1016,40 @@ pub mod node {
 		})
 	}
 
+	/// `oaknode_node_get_effect_input` (two-stage; `Node::GetEffectInputID()`).
+	///
+	/// The id of the input the effect chain attaches to (empty when the node
+	/// cannot host effects — the C++ contract: "If this is empty, effects
+	/// cannot attach to this node").
+	#[no_mangle]
+	pub unsafe extern "C" fn oaknode_node_get_effect_input(
+		node: CHandle,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int {
+		let n = match unsafe { node_ref(&node) } {
+			Ok(n) => n,
+			Err(_) => return crate::error::OAKNODE_E_INVALID,
+		};
+		let effect_input = with_graph_read(&n.project, |g| {
+			g.get(n.id).map(|e| e.core.effect_input.clone())
+		});
+		match effect_input {
+			Some(id) => copy_string_out(&id, buf, buf_size),
+			None => crate::error::OAKNODE_E_NOT_FOUND,
+		}
+	}
+
+	/// `oaknode_node_get_flags` — the node's flags bitmask (`Node::flags_`).
+	#[no_mangle]
+	pub unsafe extern "C" fn oaknode_node_get_flags(node: CHandle) -> u64 {
+		let n = match unsafe { node_ref(&node) } {
+			Ok(n) => n,
+			Err(_) => return 0,
+		};
+		with_graph_read(&n.project, |g| g.get(n.id).map(|e| e.core.flags)).unwrap_or(0)
+	}
+
 	// ---- Input introspection ------------------------------------------
 
 	/// `oaknode_node_input_count`.

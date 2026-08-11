@@ -1322,6 +1322,23 @@ pub unsafe extern "C" fn oakengine_node_factory_node_at(index: c_int) -> *mut Oa
 	})
 }
 
+/// `oakengine_node_factory_id_at` — type id at `index` (two-stage).
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_node_factory_id_at(
+	index: c_int,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	guard_int(|| unsafe {
+		let rc = n::oaknode_factory_id_at(index, buf, buf_size);
+		if rc < 0 {
+			Err(Error::Module(rc))
+		} else {
+			Ok(string_result(rc))
+		}
+	})
+}
+
 /// `oakengine_node_category_count`.
 #[no_mangle]
 pub unsafe extern "C" fn oakengine_node_category_count(self_: *const OakEngineNode) -> c_int {
@@ -1356,9 +1373,9 @@ pub unsafe extern "C" fn oakengine_node_category_at(
 /// `oakengine_node_get_flags`.
 #[no_mangle]
 pub unsafe extern "C" fn oakengine_node_get_flags(self_: *const OakEngineNode) -> u64 {
-	// Stub: the oaknode module has no per-node flags export. NULL and
-	// empty (null-ctx) handle boxes both report 0 — the `guard_i64`
-	// error sentinel would otherwise surface as u64::MAX to C callers.
+	// NULL and empty (null-ctx) handle boxes both report 0 — the
+	// `guard_i64` error sentinel would otherwise surface as u64::MAX to C
+	// callers.
 	crate::handle::guard_i64(|| unsafe {
 		if self_.is_null() {
 			return Ok(0);
@@ -1366,7 +1383,7 @@ pub unsafe extern "C" fn oakengine_node_get_flags(self_: *const OakEngineNode) -
 		if (*self_).handle.is_null() {
 			return Ok(0);
 		}
-		Ok(0)
+		Ok(n::oaknode_node_get_flags(unbox(self_)?) as i64)
 	}) as u64
 }
 
@@ -3723,10 +3740,63 @@ pub unsafe extern "C" fn oakengine_node_set_context_expanded(
 }
 
 // ---------------------------------------------------------------------------
-// node.h — effect input
+// node.h — effect input / effect chain
 // ---------------------------------------------------------------------------
 
-/// `oakengine_node_get_effect_input`.
+/// Owns a set of borrowed module node handles, releasing each shell on
+/// drop (error paths never leak). Extracted handles are replaced with
+/// NULL (a no-op release).
+struct HandleGuard(Vec<CHandle>);
+
+impl HandleGuard {
+	/// Wrap a handle vector.
+	fn new(v: Vec<CHandle>) -> Self {
+		Self(v)
+	}
+
+	/// The number of held handles.
+	fn len(&self) -> usize {
+		self.0.len()
+	}
+
+	/// A borrowed copy of the `i`-th handle.
+	fn get(&self, i: usize) -> CHandle {
+		self.0[i]
+	}
+
+	/// Take the `i`-th handle out of the guard (the caller owns it now).
+	fn take(&mut self, i: usize) -> CHandle {
+		let h = self.0[i];
+		self.0[i] = CHandle::null();
+		h
+	}
+
+	/// Release ownership of every held handle (into the caller's hands).
+	fn into_inner(mut self) -> Vec<CHandle> {
+		let out = std::mem::take(&mut self.0);
+		std::mem::forget(self);
+		out
+	}
+}
+
+impl Drop for HandleGuard {
+	fn drop(&mut self) {
+		for h in &self.0 {
+			release_handle(*h);
+		}
+	}
+}
+
+/// Release a module handle shell (NULL and empty handles are no-ops).
+fn release_handle(h: CHandle) {
+	if let Some(release) = h.release {
+		unsafe { release(h.ctx) };
+	}
+}
+
+/// `oakengine_node_get_effect_input` — the id of the input the effect
+/// chain attaches to (C++ `Node::GetEffectInputID`). Empty when the node
+/// cannot host effects; the facade reports that as `E_NOT_FOUND`.
 #[no_mangle]
 pub unsafe extern "C" fn oakengine_node_get_effect_input(
 	self_: *const OakEngineNode,
@@ -3734,14 +3804,563 @@ pub unsafe extern "C" fn oakengine_node_get_effect_input(
 	input_id_size: c_int,
 	element: *mut c_int,
 ) -> c_int {
-	// Stub: the oaknode module has no effect-input export.
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Err(Error::Invalid);
 		}
-		let _ = unbox(self_)?;
-		let _ = (input_id, input_id_size, element);
-		Err(Error::NotFound)
+		let h = unbox(self_)?;
+		if !element.is_null() {
+			*element = -1;
+		}
+		let id = effect_input_of(h)?;
+		if id.is_empty() {
+			return Err(Error::NotFound);
+		}
+		Ok(write_string(&id, input_id, input_id_size))
+	})
+}
+
+/// The effect-input id of `node`, or `""` when the node cannot host
+/// effects (C++ `GetEffectInputID`).
+fn effect_input_of(node: CHandle) -> Result<String> {
+	unsafe { module_string(|buf, size| n::oaknode_node_get_effect_input(node, buf, size)) }
+}
+
+/// The node feeding `node`'s input `input_id` (borrowed handle; caller
+/// releases), or `None` when the input is unconnected.
+fn connected_node(node: CHandle, input_id: &str) -> Result<Option<CHandle>> {
+	unsafe {
+		let cid = std::ffi::CString::new(input_id)
+			.map_err(|_| Error::Failed("invalid input id".into()))?;
+		let mut out = CHandle::null();
+		let rc = n::oaknode_node_input_get_connected_node(node, cid.as_ptr(), &mut out);
+		if rc != 0 {
+			// An input that does not exist on the node is a chain-structure
+			// error; an unconnected input returns OK with a NULL handle.
+			return Err(Error::Module(rc));
+		}
+		Ok(if out.is_null() { None } else { Some(out) })
+	}
+}
+
+/// The effect chain of `node`, **closest-to-source first** (signal order:
+/// the first element feeds the media side, the last feeds `node`'s effect
+/// input). Every returned handle is a borrowed shell the caller must
+/// release. The walk follows each node's effect input upstream until an
+/// unconnected input or a node without an effect input; a `seen` guard
+/// protects against malformed cycles.
+fn effect_chain(node: CHandle) -> Result<Vec<CHandle>> {
+	let mut chain: HandleGuard = HandleGuard::new(Vec::new());
+	let mut cur = node;
+	let mut seen: Vec<usize> = Vec::new();
+	loop {
+		let id = unsafe { n::oaknode_node_identity(cur) };
+		if seen.contains(&id) {
+			break;
+		}
+		seen.push(id);
+		let input = effect_input_of(cur)?;
+		if input.is_empty() {
+			break;
+		}
+		let Some(up) = connected_node(cur, &input)? else {
+			break;
+		};
+		chain.0.push(up);
+		cur = up;
+	}
+	// The walk collects host-upstream (last effect first); reverse to get
+	// signal order.
+	chain.0.reverse();
+	Ok(chain.into_inner())
+}
+
+/// `oakengine_node_effect_count` — the length of `self_`'s effect chain
+/// (0 when the node cannot host effects or nothing is attached).
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_node_effect_count(self_: *const OakEngineNode) -> c_int {
+	guard_int(|| unsafe {
+		if self_.is_null() {
+			return Ok(0);
+		}
+		let h = unbox(self_)?;
+		Ok(effect_chain(h)?.len() as c_int)
+	})
+}
+
+/// `oakengine_node_effect_at` — the `index`-th effect of `self_`'s chain
+/// (borrowed handle; index 0 = closest to the source). NULL when out of
+/// range or the node hosts no effects.
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_node_effect_at(
+	self_: *const OakEngineNode,
+	index: c_int,
+) -> *mut OakEngineNode {
+	guard_ptr(|| unsafe {
+		if self_.is_null() || index < 0 {
+			return Ok(std::ptr::null_mut());
+		}
+		let h = unbox(self_)?;
+		let mut chain = HandleGuard::new(effect_chain(h)?);
+		if (index as usize) >= chain.len() {
+			return Ok(std::ptr::null_mut());
+		}
+		Ok(box_handle::<OakEngineNode>(chain.take(index as usize)))
+	})
+}
+
+/// `oakengine_node_is_enabled` — 1/0 (the node's `enabled_in` flag; the
+/// effect stack's enable toggle).
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_node_is_enabled(self_: *const OakEngineNode) -> c_int {
+	guard_int(|| unsafe {
+		if self_.is_null() {
+			return Ok(0);
+		}
+		let mut value: c_int = 0;
+		Error::from_module(n::oaknode_node_is_enabled(unbox(self_)?, &mut value))?;
+		Ok(value)
+	})
+}
+
+/// `oakengine_node_identity` — the node's stable identity (the effect
+/// stack uses it as the card id across frames). 0 for NULL/invalid.
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_node_identity(self_: *const OakEngineNode) -> u64 {
+	crate::handle::guard_i64(|| unsafe {
+		if self_.is_null() {
+			return Ok(0);
+		}
+		let h = unbox(self_)?;
+		Ok(n::oaknode_node_identity(h) as i64)
+	}) as u64
+}
+
+/// `oakengine_node_effect_set_enabled` — undoable enable toggle of an
+/// effect node (the stack's enable switch; `enabled_in` flag).
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_node_effect_set_enabled(
+	self_: *mut OakEngineNode,
+	enabled: c_int,
+) -> c_int {
+	guard(|| unsafe {
+		if self_.is_null() {
+			set_node_error("invalid arguments");
+			return Err(Error::Invalid);
+		}
+		let h = unbox(self_)?;
+		let mut cmd: CHandle = CHandle::null();
+		let rc = n::oaknode_node_set_enabled_undoable(h, enabled, &mut cmd);
+		if rc != 0 {
+			return Err(Error::Module(rc));
+		}
+		push_command(cmd, "Toggle Effect")
+	})
+}
+
+/// `oakengine_node_effect_insert` — undoable insertion of a new effect of
+/// `type_id` at chain position `index` (0 = closest to the source, `len`
+/// = closest to the host; out-of-range indices clamp to the ends). The
+/// node is created from the factory, added to the host's project, and
+/// wired into the chain — one undo row for the whole edit.
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_node_effect_insert(
+	self_: *mut OakEngineNode,
+	index: c_int,
+	type_id: *const c_char,
+) -> c_int {
+	guard(|| unsafe {
+		if self_.is_null() || type_id.is_null() {
+			set_node_error("invalid arguments");
+			return Err(Error::Invalid);
+		}
+		let host = unbox(self_)?;
+		node_effect_insert_impl(host, index, type_id)
+	})
+}
+
+/// The insert implementation (see `oakengine_node_effect_insert`).
+///
+/// # Safety
+/// `host` must be a live module node handle; `type_id` a NUL-terminated
+/// C string.
+unsafe fn node_effect_insert_impl(host: CHandle, index: c_int, type_id: *const c_char) -> Result<()> {
+	unsafe {
+		// The host must be able to host effects.
+		let host_input = effect_input_of(host)?;
+		if host_input.is_empty() {
+			set_node_error("node cannot host effects (no effect input)");
+			return Err(Error::NotFound);
+		}
+		// The new effect node (owned scratch handle; freed below).
+		let mut new_node = n::oaknode_factory_create_from_id(type_id);
+		if new_node.ctx.is_null() {
+			set_node_error(&format!("unknown node type id \"{}\"", read_cstr(type_id)));
+			return Err(Error::Failed("unknown node type".into()));
+		}
+		let new_input = match effect_input_of(new_node) {
+			Ok(id) if !id.is_empty() => id,
+			_ => {
+				// A node without an effect input cannot sit in the chain.
+				set_node_error("node type has no effect input; cannot be chained");
+				n::oaknode_node_free(&mut new_node);
+				return Err(Error::Invalid);
+			}
+		};
+
+		// The chain (closest-to-source first) and the neighbors of the
+		// insertion point.
+		let chain = HandleGuard::new(effect_chain(host)?);
+		let len = chain.len();
+		let pos = (index.max(0) as usize).min(len);
+		let (upstream, downstream) = if pos == 0 {
+			if len == 0 {
+				(None, host)
+			} else {
+				let d = chain.get(0);
+				(connected_node(d, &effect_input_of(d)?)?, d)
+			}
+		} else if pos == len {
+			(Some(chain.get(len - 1)), host)
+		} else {
+			(Some(chain.get(pos - 1)), chain.get(pos))
+		};
+		let downstream_input = effect_input_of(downstream)?;
+		let upstream_input = upstream
+			.map(|u| effect_input_of(u))
+			.transpose()?
+			.unwrap_or_default();
+
+		let project = project_of(host)?;
+		// The identities present before the add; the moved node is the one
+		// whose identity is new afterwards (its id may be reallocated on a
+		// slot collision — see the module's `Graph::add_entry`).
+		let existing: Vec<usize> = (0..n::oaknode_project_node_count(project))
+			.filter_map(|i| {
+				let other = n::oaknode_project_node_at(project, i);
+				if other.is_null() {
+					None
+				} else {
+					let id = n::oaknode_node_identity(other);
+					if id == 0 {
+						None
+					} else {
+						Some(id)
+					}
+				}
+			})
+			.collect();
+
+		// One undo row for the whole edit: open a group, push the add-node
+		// command and the rewiring commands into it, then close it. On any
+		// failure the group is aborted (executed children are undone).
+		let name = std::ffi::CString::new("Add Effect")
+			.map_err(|_| Error::Failed("invalid undo name".into()))?;
+		let begin = crate::undo::oakengine_undo_group_begin(name.as_ptr());
+		if begin != 0 {
+			set_node_error("failed to open an undo group");
+			n::oaknode_node_free(&mut new_node);
+			return Err(Error::Module(begin));
+		}
+		macro_rules! step {
+			($e:expr) => {
+				match $e {
+					Ok(()) => {}
+					Err(e) => {
+						crate::undo::oakengine_undo_group_abort();
+						n::oaknode_node_free(&mut new_node);
+						return Err(e);
+					}
+				}
+			};
+		}
+		// 1. Add the node to the project (the group child executes eagerly).
+		let add_cmd = n::oaknode_command_create_add_node(project, new_node);
+		if add_cmd.ctx.is_null() {
+			set_node_error("add-node command failed");
+			step!(Err(Error::Failed("add-node command failed".into())));
+		}
+		step!(push_command(add_cmd, "Add Effect"));
+		// 2. A fresh project-borrowed view of the moved node (the one whose
+		//    identity was not present before the add).
+		let total = n::oaknode_project_node_count(project);
+		let mut fresh = CHandle::null();
+		for i in 0..total {
+			let other = n::oaknode_project_node_at(project, i);
+			if other.is_null() {
+				continue;
+			}
+			let id = n::oaknode_node_identity(other);
+			if id != 0 && !existing.contains(&id) {
+				fresh = other;
+				break;
+			}
+		}
+		if fresh.ctx.is_null() {
+			set_node_error("could not resolve the added node");
+			step!(Err(Error::Failed("added node resolution failed".into())));
+		}
+		// 3. Unhook the downstream input from its current upstream (when
+		//    there is one).
+		if upstream.is_some() {
+			let mut cmd = CHandle::null();
+			let cid = std::ffi::CString::new(downstream_input.as_str())
+				.map_err(|_| Error::Failed("invalid input id".into()))?;
+			let rc = n::oaknode_node_disconnect_undoable(downstream, cid.as_ptr(), &mut cmd);
+			step!(Error::from_module(rc).and_then(|()| push_command(cmd, "Add Effect")));
+		}
+		// 4. Wire the new effect between upstream and downstream.
+		let dcid = std::ffi::CString::new(downstream_input.as_str())
+			.map_err(|_| Error::Failed("invalid input id".into()))?;
+		let mut cmd = CHandle::null();
+		let rc = n::oaknode_node_connect_undoable(fresh, downstream, dcid.as_ptr(), &mut cmd);
+		step!(Error::from_module(rc).and_then(|()| push_command(cmd, "Add Effect")));
+		if let Some(upstream) = upstream {
+			let ucid = std::ffi::CString::new(upstream_input.as_str())
+				.map_err(|_| Error::Failed("invalid input id".into()))?;
+			let mut cmd = CHandle::null();
+			let rc = n::oaknode_node_connect_undoable(upstream, fresh, ucid.as_ptr(), &mut cmd);
+			step!(Error::from_module(rc).and_then(|()| push_command(cmd, "Add Effect")));
+		}
+		let end = crate::undo::oakengine_undo_group_end();
+		// Cleanup: the factory shell is a stale view (the node now lives in
+		// the project graph); the fresh view is a borrowed shell. The chain
+		// guard releases the rest.
+		n::oaknode_node_free(&mut new_node);
+		release_handle(fresh);
+		if end != 0 {
+			return Err(Error::Module(end));
+		}
+		Ok(())
+	}
+}
+
+/// `oakengine_node_effect_remove` — undoable removal of `effect` (a node
+/// in `self_`'s chain): unhook both edges and bridge the gap, one undo
+/// row. The node itself is left orphaned in the project graph: the module
+/// node-transfer commands are one-way (undo discards the entry), so a
+/// reversible detach does not exist there yet — documented limitation
+/// (a future module command can take the node out of the project while
+/// keeping its entry restorable).
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_node_effect_remove(
+	self_: *mut OakEngineNode,
+	effect: *mut OakEngineNode,
+) -> c_int {
+	guard(|| unsafe {
+		if self_.is_null() || effect.is_null() {
+			set_node_error("invalid arguments");
+			return Err(Error::Invalid);
+		}
+		let host = unbox(self_)?;
+		let eff = unbox(effect)?;
+		let eff_identity = n::oaknode_node_identity(eff);
+
+		let chain = HandleGuard::new(effect_chain(host)?);
+		let len = chain.len();
+		let Some(pos) = chain
+			.0
+			.iter()
+			.position(|c| n::oaknode_node_identity(*c) == eff_identity)
+		else {
+			return Err(Error::NotFound);
+		};
+		let upstream = if pos == 0 {
+			connected_node(chain.get(0), &effect_input_of(chain.get(0))?)?
+		} else {
+			Some(chain.get(pos - 1))
+		};
+		let downstream = if pos + 1 == len { host } else { chain.get(pos + 1) };
+		let downstream_input = effect_input_of(downstream)?;
+
+		// All nodes are already in the project: a plain multi command.
+		let mut children: Vec<CHandle> = Vec::new();
+		// 1. Unhook the effect from its upstream.
+		let eff_input = effect_input_of(eff)?;
+		if upstream.is_some() {
+			let mut cmd = CHandle::null();
+			let cid = std::ffi::CString::new(eff_input.as_str())
+				.map_err(|_| Error::Failed("invalid input id".into()))?;
+			Error::from_module(n::oaknode_node_disconnect_undoable(
+				eff,
+				cid.as_ptr(),
+				&mut cmd,
+			))?;
+			children.push(cmd);
+		}
+		// 2. Unhook the downstream from the effect, then bridge it back to
+		//    the upstream.
+		let mut cmd = CHandle::null();
+		let cid = std::ffi::CString::new(downstream_input.as_str())
+			.map_err(|_| Error::Failed("invalid input id".into()))?;
+		Error::from_module(n::oaknode_node_disconnect_undoable(
+			downstream,
+			cid.as_ptr(),
+			&mut cmd,
+		))?;
+		children.push(cmd);
+		if let Some(upstream) = upstream {
+			let mut cmd = CHandle::null();
+			let cid = std::ffi::CString::new(downstream_input.as_str())
+				.map_err(|_| Error::Failed("invalid input id".into()))?;
+			Error::from_module(n::oaknode_node_connect_undoable(
+				upstream,
+				downstream,
+				cid.as_ptr(),
+				&mut cmd,
+			))?;
+			children.push(cmd);
+		}
+		// The guard releases every command handle on error paths; on success
+		// `push_multi_commands` consumes them all.
+		let children = HandleGuard::new(children);
+		push_multi_commands(&children.into_inner(), std::ptr::null_mut(), "Remove Effect")
+	})
+}
+
+/// `oakengine_node_effect_move` — undoable reorder of `effect` to chain
+/// position `new_index` (an insertion index **after** removal, matching
+/// the effect stack's `ReorderRequested`; `0..=len-1` where `len` is the
+/// post-removal chain length). One undo row.
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_node_effect_move(
+	self_: *mut OakEngineNode,
+	effect: *mut OakEngineNode,
+	new_index: c_int,
+) -> c_int {
+	guard(|| unsafe {
+		if self_.is_null() || effect.is_null() {
+			set_node_error("invalid arguments");
+			return Err(Error::Invalid);
+		}
+		let host = unbox(self_)?;
+		let eff = unbox(effect)?;
+		let eff_identity = n::oaknode_node_identity(eff);
+
+		let chain = HandleGuard::new(effect_chain(host)?);
+		let len = chain.len();
+		let Some(from) = chain
+			.0
+			.iter()
+			.position(|c| n::oaknode_node_identity(*c) == eff_identity)
+		else {
+			return Err(Error::NotFound);
+		};
+		// The post-removal insertion index (0..=len-1; clamp for safety).
+		let to = if new_index < 0 {
+			0
+		} else {
+			(new_index as usize).min(len - 1)
+		};
+
+		// The guard releases every command handle on error paths; on success
+		// `push_multi_commands` consumes them all.
+		let mut children: HandleGuard = HandleGuard::new(Vec::new());
+		// ---- remove the effect from position `from` ---------------------
+		let upstream = if from == 0 {
+			connected_node(chain.get(0), &effect_input_of(chain.get(0))?)?
+		} else {
+			Some(chain.get(from - 1))
+		};
+		let downstream = if from + 1 == len { host } else { chain.get(from + 1) };
+		let downstream_input = effect_input_of(downstream)?;
+		let eff_input = effect_input_of(eff)?;
+		if upstream.is_some() {
+			let mut cmd = CHandle::null();
+			let cid = std::ffi::CString::new(eff_input.as_str())
+				.map_err(|_| Error::Failed("invalid input id".into()))?;
+			Error::from_module(n::oaknode_node_disconnect_undoable(
+				eff,
+				cid.as_ptr(),
+				&mut cmd,
+			))?;
+			children.0.push(cmd);
+		}
+		let mut cmd = CHandle::null();
+		let cid = std::ffi::CString::new(downstream_input.as_str())
+			.map_err(|_| Error::Failed("invalid input id".into()))?;
+		Error::from_module(n::oaknode_node_disconnect_undoable(
+			downstream,
+			cid.as_ptr(),
+			&mut cmd,
+		))?;
+		children.0.push(cmd);
+		if let Some(upstream) = upstream {
+			let mut cmd = CHandle::null();
+			let cid = std::ffi::CString::new(downstream_input.as_str())
+				.map_err(|_| Error::Failed("invalid input id".into()))?;
+			Error::from_module(n::oaknode_node_connect_undoable(
+				upstream,
+				downstream,
+				cid.as_ptr(),
+				&mut cmd,
+			))?;
+			children.0.push(cmd);
+		}
+		// ---- reinsert at position `to` (the post-removal chain) ---------
+		// After removal the chain has `len - 1` effects; position `to`
+		// (0..=len-1) sits between index `to - 1` and `to` of the remaining
+		// list, where index `-1` is the chain source and index `len-1` is
+		// the host.
+		let remaining: Vec<CHandle> = chain
+			.0
+			.iter()
+			.enumerate()
+			.filter(|(i, _)| *i != from)
+			.map(|(_, c)| *c)
+			.collect();
+		let (up2, down2) = if to == 0 {
+			if remaining.is_empty() {
+				(None, host)
+			} else {
+				let d = remaining[0];
+				(connected_node(d, &effect_input_of(d)?)?, d)
+			}
+		} else if to == len - 1 {
+			(Some(remaining[len - 2]), host)
+		} else {
+			(Some(remaining[to - 1]), remaining[to])
+		};
+		let down2_input = effect_input_of(down2)?;
+		let up2_input = up2
+			.map(|u| effect_input_of(u))
+			.transpose()?
+			.unwrap_or_default();
+		if up2.is_some() {
+			let mut cmd = CHandle::null();
+			let cid = std::ffi::CString::new(down2_input.as_str())
+				.map_err(|_| Error::Failed("invalid input id".into()))?;
+			Error::from_module(n::oaknode_node_disconnect_undoable(
+				down2,
+				cid.as_ptr(),
+				&mut cmd,
+			))?;
+			children.0.push(cmd);
+		}
+		let mut cmd = CHandle::null();
+		let cid = std::ffi::CString::new(down2_input.as_str())
+			.map_err(|_| Error::Failed("invalid input id".into()))?;
+		Error::from_module(n::oaknode_node_connect_undoable(
+			eff,
+			down2,
+			cid.as_ptr(),
+			&mut cmd,
+		))?;
+		children.0.push(cmd);
+		if let Some(up2) = up2 {
+			let mut cmd = CHandle::null();
+			let cid = std::ffi::CString::new(up2_input.as_str())
+				.map_err(|_| Error::Failed("invalid input id".into()))?;
+			Error::from_module(n::oaknode_node_connect_undoable(
+				up2,
+				eff,
+				cid.as_ptr(),
+				&mut cmd,
+			))?;
+			children.0.push(cmd);
+		}
+
+		push_multi_commands(&children.into_inner(), std::ptr::null_mut(), "Reorder Effect")
 	})
 }
 

@@ -2041,6 +2041,25 @@ pub unsafe extern "C" fn oakengine_clip_get_sequence(
 	})
 }
 
+/// `oakengine_clip_as_node` — the clip's node view (borrowed; freed with
+/// `oakengine_node_free`). The effect-stack surface (chain enumeration and
+/// edits) is node-based, so the app converts its clip handle before
+/// walking the chain.
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_clip_as_node(self_: *const OakEngineClip) -> *mut OakEngineNode {
+	guard_ptr(|| unsafe {
+		if self_.is_null() {
+			return Ok(std::ptr::null_mut());
+		}
+		let h = unbox(self_)?;
+		let node = n::oaknode_block_as_node(h);
+		if node.is_null() {
+			return Ok(std::ptr::null_mut());
+		}
+		Ok(box_handle::<OakEngineNode>(node))
+	})
+}
+
 /* ---- Editing primitives, round 2: split / ripple delete / trim / move ---- */
 
 /// `oakengine_sequence_split_clip` — split the addressed clip at `time`.
