@@ -62,7 +62,8 @@ use gpui_widgets::project_explorer::{ProjectDataSource, ProjectEntry};
 use gpui_widgets::viewer::PlaybackClock;
 
 use super::engine::{
-	AppEngine, EngineGateway, ExportEvent, ExportSession, Monitor, Project, Sequence, VideoFormat,
+	AppEngine, EngineGateway, ExportEvent, ExportSession, Monitor, Project, ScopeData, Sequence,
+	VideoFormat,
 };
 use super::transport::TransportState;
 
@@ -422,9 +423,10 @@ pub struct MockEngine {
 	/// effect stack) so both views share one selection.
 	node_selection: BTreeSet<NodeId>,
 	/// Cache of the synthetic CPU frames handed to the viewers, keyed by
-	/// monitor. Entries are the playhead frame that produced the image, so a
-	/// paused viewer never regenerates its picture.
-	cpu_frame_cache: Mutex<HashMap<Monitor, (i64, Arc<RenderImage>)>>,
+	/// monitor. Entries are the playhead frame that produced the image plus
+	/// the scope samples analyzed in the same pass, so a paused viewer never
+	/// regenerates its picture (or its scopes).
+	cpu_frame_cache: Mutex<HashMap<Monitor, (i64, Arc<RenderImage>, ScopeData)>>,
 }
 
 impl MockEngine {
@@ -1070,6 +1072,10 @@ impl AppEngine for MockEngine {
 		self.cpu_frame(monitor, cx)
 	}
 
+	fn scope_data(&self, monitor: Monitor, cx: &App) -> ScopeData {
+		self.scope_data(monitor, cx)
+	}
+
 	fn add_track(&mut self, kind: TrackKind, cx: &mut Context<Self>) {
 		self.add_track(kind, cx);
 	}
@@ -1408,14 +1414,30 @@ impl MockEngine {
 	pub fn cpu_frame(&self, monitor: Monitor, cx: &App) -> Arc<RenderImage> {
 		let frame = self.clock_frame(monitor, cx);
 		let mut cache = self.cpu_frame_cache.lock().unwrap();
-		if let Some((cached_frame, image)) = cache.get(&monitor) {
+		if let Some((cached_frame, image, _)) = cache.get(&monitor) {
 			if *cached_frame == frame.0 {
 				return image.clone();
 			}
 		}
-		let image = Arc::new(crate::oakui::frames::synthetic_frame(frame));
-		cache.insert(monitor, (frame.0, image.clone()));
+		let (width, height, samples) = crate::oakui::frames::synthetic_frame_samples(frame);
+		// Analyze the scopes from the same F32 samples the viewer displays.
+		let scope = crate::oakui::scopes::analyze_f32_rgba(width, height, &samples);
+		let image = Arc::new(crate::oakui::frames::f32_rgba_to_bgra_image(width, height, &samples));
+		cache.insert(monitor, (frame.0, image.clone(), scope));
 		image
+	}
+
+	/// The scope samples of `monitor`'s current frame, from the same cache
+	/// [`MockEngine::cpu_frame`] fills (the analysis runs in the frame
+	/// generation pass, so this never re-walks a frame).
+	pub fn scope_data(&self, monitor: Monitor, cx: &App) -> ScopeData {
+		// Ensure the cache holds the current playhead frame.
+		let _ = self.cpu_frame(monitor, cx);
+		let cache = self.cpu_frame_cache.lock().unwrap();
+		cache
+			.get(&monitor)
+			.map(|(_, _, scope)| scope.clone())
+			.unwrap_or_default()
 	}
 }
 

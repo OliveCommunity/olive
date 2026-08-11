@@ -85,9 +85,11 @@ use gpui_widgets::viewer::PlaybackClock;
 
 use super::ffi::*;
 use super::engine::{
-	AppEngine, EngineGateway, ExportEvent, ExportSession, Monitor, Project, Sequence, VideoFormat,
+	AppEngine, EngineGateway, ExportEvent, ExportSession, Monitor, Project, ScopeData, Sequence,
+	VideoFormat,
 };
-use super::frames::{f32_rgba_to_bgra_image, synthetic_frame};
+use super::frames::{f32_rgba_to_bgra_image, synthetic_frame_samples};
+use super::scopes::analyze_f32_rgba;
 use super::transport::TransportState;
 
 /// `oakengine_timeline.h` track-type constants.
@@ -591,12 +593,13 @@ pub struct RealEngine {
 	/// Phase counter driving the (silent) audio levels.
 	meter_phase: u32,
 	/// Cache of the CPU frames handed to the viewers, keyed by monitor.
-	/// Entries are the playhead frame that produced the image, so a paused
-	/// viewer never regenerates its picture. The program monitor's entries
+	/// Entries are the playhead frame that produced the image plus the scope
+	/// samples analyzed in the same pass, so a paused viewer never
+	/// regenerates its picture (or its scopes). The program monitor's entries
 	/// are real rendered frames (see [`RealEngine::render_program_frame`]);
 	/// the source monitor's are the synthetic pattern (the facade renderer
 	/// binds a sequence only — footage-node rendering is a documented gap).
-	cpu_frame_cache: Mutex<HashMap<Monitor, (i64, Arc<RenderImage>)>>,
+	cpu_frame_cache: Mutex<HashMap<Monitor, (i64, Arc<RenderImage>, ScopeData)>>,
 	/// The program monitor's cached renderer, created lazily from the
 	/// current sequence at a proxy resolution. The mutex both provides the
 	/// interior mutability `cpu_frame` (a `&self` read) needs and serializes
@@ -697,11 +700,11 @@ impl RealEngine {
 
 	/// Renders one program-monitor frame through the facade CPU renderer:
 	/// creates the per-sequence renderer lazily (cached in `self.renderer`),
-	/// renders `frame`, and downconverts the F32 RGBA result to BGRA8.
-	/// Returns `None` (the caller falls back to the synthetic pattern) when
-	/// no sequence is open, the render manager is unavailable, or the render
-	/// itself fails.
-	fn render_program_frame(&self, frame: Frame) -> Option<RenderImage> {
+	/// renders `frame`, analyzes the scope samples from the F32 RGBA result,
+	/// and downconverts to BGRA8. Returns `None` (the caller falls back to
+	/// the synthetic pattern) when no sequence is open, the render manager is
+	/// unavailable, or the render itself fails.
+	fn render_program_frame(&self, frame: Frame) -> Option<(RenderImage, ScopeData)> {
 		let seq = self.seq_ptr()?;
 		if !Self::ensure_render_manager() {
 			return None;
@@ -757,7 +760,9 @@ impl RealEngine {
 					);
 				}
 			}
-			image = Some(f32_rgba_to_bgra_image(width as u32, height as u32, &samples));
+			// The scopes read the same F32 samples the viewer displays.
+			let scope = analyze_f32_rgba(width as u32, height as u32, &samples);
+			image = Some((f32_rgba_to_bgra_image(width as u32, height as u32, &samples), scope));
 		}
 		unsafe {
 			oakengine_frame_free(frame_ptr);
@@ -1238,7 +1243,7 @@ impl AppEngine for RealEngine {
 	fn cpu_frame(&self, monitor: Monitor, cx: &App) -> Arc<RenderImage> {
 		let frame = self.clock_frame(monitor, cx);
 		let mut cache = self.cpu_frame_cache.lock().unwrap();
-		if let Some((cached_frame, image)) = cache.get(&monitor) {
+		if let Some((cached_frame, image, _)) = cache.get(&monitor) {
 			if *cached_frame == frame.0 {
 				return image.clone();
 			}
@@ -1249,15 +1254,34 @@ impl AppEngine for RealEngine {
 		// pattern: the facade renderer binds a *sequence* handle only, so
 		// there is currently no surface to render a single footage node for
 		// the material viewer — that is a documented facade gap.
-		let image = match monitor {
-			Monitor::Program => self
-				.render_program_frame(frame)
-				.map(Arc::new)
-				.unwrap_or_else(|| Arc::new(synthetic_frame(frame))),
-			Monitor::Source => Arc::new(synthetic_frame(frame)),
+		let rendered = match monitor {
+			Monitor::Program => self.render_program_frame(frame),
+			Monitor::Source => None,
 		};
-		cache.insert(monitor, (frame.0, image.clone()));
+		let (image, scope) = match rendered {
+			Some((image, scope)) => (Arc::new(image), scope),
+			None => {
+				let (width, height, samples) = synthetic_frame_samples(frame);
+				let scope = analyze_f32_rgba(width, height, &samples);
+				(
+					Arc::new(f32_rgba_to_bgra_image(width, height, &samples)),
+					scope,
+				)
+			}
+		};
+		cache.insert(monitor, (frame.0, image.clone(), scope));
 		image
+	}
+
+	fn scope_data(&self, monitor: Monitor, cx: &App) -> ScopeData {
+		// Ensure the cache holds the current playhead frame (the analysis
+		// runs inside that render pass, so this never re-walks a frame).
+		let _ = self.cpu_frame(monitor, cx);
+		let cache = self.cpu_frame_cache.lock().unwrap();
+		cache
+			.get(&monitor)
+			.map(|(_, _, scope)| scope.clone())
+			.unwrap_or_default()
 	}
 
 	fn add_track(&mut self, kind: TrackKind, cx: &mut Context<Self>) {

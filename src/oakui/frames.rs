@@ -32,17 +32,19 @@ pub(crate) const SYNTH_FRAME_WIDTH: u32 = 384;
 /// Height of the synthetic test frame.
 pub(crate) const SYNTH_FRAME_HEIGHT: u32 = 216;
 
-/// Generates a synthetic test frame: SMPTE-style color bars with a white
-/// sweep whose x position follows `frame`, so transport playback shows up as
-/// motion across the picture.
+/// Generates the F32 RGBA samples of the synthetic test frame: SMPTE-style
+/// color bars with a white sweep whose x position follows `frame`, so
+/// transport playback shows up as motion across the picture.
 ///
-/// Samples are computed as F32 RGBA (mirroring the real engine's pixel
-/// pipeline) and downconverted to BGRA8 for the viewer's CPU-frame path.
-pub(crate) fn synthetic_frame(frame: Frame) -> RenderImage {
+/// The samples mirror the real engine's pixel format; callers downconvert
+/// them to BGRA8 for the viewer's CPU-frame path and analyze the scope
+/// samples from the very same buffer, so the scopes read exactly what the
+/// viewer displays.
+pub(crate) fn synthetic_frame_samples(frame: Frame) -> (u32, u32, Vec<f32>) {
 	let width = SYNTH_FRAME_WIDTH;
 	let height = SYNTH_FRAME_HEIGHT;
 
-	// F32 RGBA samples, then quantized to BGRA8 for the sprite atlas.
+	// F32 RGBA samples; the caller downconverts to BGRA8 for the sprite atlas.
 	let mut samples = vec![0.0f32; (width * height * 4) as usize];
 	// SMPTE bars: 75% white, yellow, cyan, green, magenta, red, blue.
 	let bars: [(f32, f32, f32); 7] = [
@@ -84,7 +86,7 @@ pub(crate) fn synthetic_frame(frame: Frame) -> RenderImage {
 		}
 	}
 
-	f32_rgba_to_bgra_image(width, height, &samples)
+	(width, height, samples)
 }
 
 /// Downconverts an F32 RGBA frame (the engine pipeline's pixel format) to a

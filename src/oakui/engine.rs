@@ -47,6 +47,8 @@ use gpui_widgets::audio_meter::AudioMeterDataSource;
 use gpui_widgets::project_explorer::ProjectDataSource;
 use gpui_widgets::viewer::PlaybackClock;
 
+pub use super::scopes::ScopeData;
+
 /// A monitor the transport can address.
 ///
 /// Oak has two independent transports: the source monitor plays the clip
@@ -180,6 +182,12 @@ pub trait AppEngine:
 	/// The CPU frame the viewers display for `monitor` (cached per playhead
 	/// frame, so a paused viewer never regenerates its picture).
 	fn cpu_frame(&self, monitor: Monitor, cx: &App) -> Arc<RenderImage>;
+
+	/// The scope samples ([`ScopeData`]) of `monitor`'s current CPU frame.
+	/// The analysis runs inside the frame render pass (cached per playhead
+	/// frame alongside the image), so this read is an `Arc` clone and never
+	/// re-walks the frame.
+	fn scope_data(&self, monitor: Monitor, cx: &App) -> ScopeData;
 
 	/// Adds a new empty track of the given kind (undoable where the backend
 	/// supports it).

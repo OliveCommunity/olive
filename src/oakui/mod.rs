@@ -45,11 +45,12 @@ mod host_syms;
 pub mod icons;
 pub mod mock;
 pub mod real;
+pub mod scopes;
 pub mod timecode;
 pub mod transport;
 
 pub use engine::{
-	AppEngine, EngineClock, EngineGateway, ExportEvent, ExportSession, Monitor, Project,
+	AppEngine, EngineClock, EngineGateway, ExportEvent, ExportSession, Monitor, Project, ScopeData,
 	Sequence, VideoFormat,
 };
 pub use mock::{MockClock, MockEngine};

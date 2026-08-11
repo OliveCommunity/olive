@@ -269,6 +269,12 @@ const EN: &[(&str, &str)] = &[
 	// --- viewer header chips ---
 	("viewer.source", "Source Viewer · Source"),
 	("viewer.program", "Program Viewer · Program"),
+	// --- program viewer tabs and scope labels ---
+	("viewer.picture", "Picture"),
+	("viewer.scopes", "Scopes"),
+	("scope.histogram", "Histogram"),
+	("scope.waveform", "Waveform"),
+	("scope.vectorscope", "Vectorscope"),
 	// --- viewer transport tooltips ---
 	("viewer.in_point", "Set In Point"),
 	("viewer.step_back", "Previous Frame"),
@@ -409,6 +415,12 @@ const ZH: &[(&str, &str)] = &[
 	// --- viewer header chips ---
 	("viewer.source", "素材查看器 · 源"),
 	("viewer.program", "序列查看器 · 节目"),
+	// --- program viewer tabs and scope labels ---
+	("viewer.picture", "画面"),
+	("viewer.scopes", "示波器"),
+	("scope.histogram", "直方图"),
+	("scope.waveform", "波形图"),
+	("scope.vectorscope", "矢量示波器"),
 	// --- viewer transport tooltips ---
 	("viewer.in_point", "设置入点"),
 	("viewer.step_back", "上一帧"),
