@@ -2329,7 +2329,7 @@ dependencies = [
  "log",
  "presser",
  "thiserror 1.0.69",
- "windows 0.57.0",
+ "windows 0.58.0",
 ]
 
 [[package]]
@@ -3928,6 +3928,7 @@ dependencies = [
  "oakcodec",
  "oakcommon",
  "oakcore-rs",
+ "oakffmpeg-link",
 ]
 
 [[package]]
@@ -3936,6 +3937,7 @@ version = "0.1.0"
 dependencies = [
  "ffmpeg-next",
  "oakcore-rs",
+ "oakffmpeg-link",
 ]
 
 [[package]]
@@ -3971,6 +3973,10 @@ dependencies = [
  "serde",
  "serde_json",
 ]
+
+[[package]]
+name = "oakffmpeg-link"
+version = "0.1.0"
 
 [[package]]
 name = "oaknode"

@@ -52,3 +52,9 @@ pub mod timecodemetadata;
 
 #[cfg(test)]
 mod realmedia_tests;
+
+// Keep the oakffmpeg-link rlib referenced so its build script's native
+// link flags (the static FFmpeg's transitive dependencies) reach the
+// final link — rustc prunes the flags of an unreferenced rlib.
+#[used]
+static FORCE_FFMPEG_LINK: fn() = oakffmpeg_link::force_link;

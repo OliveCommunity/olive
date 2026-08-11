@@ -2,6 +2,36 @@
 
 This document describes how to build Oak Video Editor from source on Windows, Linux, and macOS.
 
+> **Note (2026):** Oak is now a Rust workspace; `cargo build` at the
+> repository root produces the app, the CLI, the worker and
+> `liboakengine`. The CMake instructions below are kept for historical
+> reference only. Rust dependencies are pulled from crates.io; the only
+> native libraries still needed are FFmpeg (see the next section),
+> OpenColorIO (optional; `ocio-sys` builds a stub without it) and a
+> C/C++ toolchain for the FFI shims.
+>
+> ### FFmpeg for the Rust build
+>
+> `ffmpeg-next` 9.x pairs with FFmpeg 8.x headers, which most distros do
+> not ship yet. Build a project-owned FFmpeg — GPL parts enabled, every
+> free-license external codec library that is installed, per-OS hardware
+> acceleration, static+PIC — with the project scripts:
+>
+> ```sh
+> tooling/install-deps.sh           # Homebrew / MSYS2 UCRT64 / Debian / Fedora / Arch
+> tooling/ffmpeg/build-ffmpeg.sh    # clones release/8.0, installs into .cache/ffmpeg
+> export FFMPEG_DIR="$(pwd)/.cache/ffmpeg"
+> cargo build
+> ```
+>
+> External libraries are probed with `pkg-config` and silently skipped
+> when missing. Unset `FFMPEG_DIR` to fall back to the system
+> `pkg-config` FFmpeg (must be 8.x for ffmpeg-next to compile).
+> ffmpeg-next's `build` cargo feature is deliberately not used: it
+> clones release/<crate-version>, and every such pairing is broken
+> upstream (9.0.0 → FFmpeg 9.0 removed AVCodec fields; 8.1.0 → FFmpeg
+> 8.1 added enum variants; 8.0.0 → FFmpeg 8.0 renamed FF_PROFILE_*).
+
 ## Prerequisites
 
 - CMake 3.20+
