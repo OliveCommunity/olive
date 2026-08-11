@@ -12,3 +12,7 @@ crate-type = ["staticlib", "rlib"]
 oakcore-rs = { path = "../oakcore" }
 oakcommon = { path = "../oakcommon" }
 oakcodec = { path = "../oakcodec" }
+# Real resample/channel-convert/time-stretch filter graph. The C++
+# ffmpeg_bridge library existed only to absorb FFmpeg API churn; the Rust
+# crate calls ffmpeg-next directly (same as oakcodec).
+ffmpeg-next = "9"

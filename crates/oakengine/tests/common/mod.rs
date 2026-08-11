@@ -25,7 +25,7 @@
 //!    would otherwise drop the dev-dependency rlibs from the link and
 //!    leave the imports undefined.
 //!
-//! 2. **Provide the `oakcore_*` symbols** ([`oakcore_stubs`]) that the
+//! 2. **Provide the `oakcore_*` symbols** that the
 //!    oakcodec rlib references: `oakcore_audioparams_*` /
 //!    `oakcore_rational_*` live in the C++ liboakcore (only linked in the
 //!    real build), so cargo tests define minimal in-memory mocks — the
@@ -36,7 +36,7 @@
 #![allow(dead_code, unused_variables)]
 
 use std::collections::HashMap;
-use std::ffi::{c_char, c_int, c_void};
+use std::ffi::{c_int, c_void};
 use std::sync::{Mutex, OnceLock};
 
 /// Force the module crates into the link.
@@ -263,177 +263,4 @@ pub extern "C" fn oakcore_rational_free(rational: *mut c_void) {
 	// SAFETY: produced by `oakcore_audioparams_time_base` as a boxed
 	// `(i32, i32)` pair; we hold the only reference after removal.
 	unsafe { drop(Box::from_raw(rational as *mut (i32, i32))) };
-}
-
-// ---------------------------------------------------------------------------
-// ffmpeg_bridge (`fb_*`) stubs
-//
-// The oakaudio processor family drives the C++ libffmpeg_bridge audio
-// graph (`src/audio/rust/src/bridge/ffmpeg.rs`), which is not linked
-// under `cargo test`. These minimal mocks keep the link green; the
-// processor family's real behavior requires libffmpeg_bridge and its
-// tests are `#[ignore]`d with that reason.
-// ---------------------------------------------------------------------------
-
-/// Opaque audio graph handle.
-#[repr(C)]
-pub struct AudioGraph {
-	_opaque: [u8; 0],
-}
-/// Opaque frame handle.
-#[repr(C)]
-pub struct Frame {
-	_opaque: [u8; 0],
-}
-/// Opaque packet handle.
-#[repr(C)]
-pub struct Packet {
-	_opaque: [u8; 0],
-}
-/// Opaque decoder handle.
-#[repr(C)]
-pub struct Decoder {
-	_opaque: [u8; 0],
-}
-/// Opaque graph config.
-#[repr(C)]
-pub struct AudioGraphConfig {
-	_opaque: [u8; 0],
-}
-/// Opaque stream-info out struct.
-#[repr(C)]
-pub struct FBStreamInfo {
-	_opaque: [u8; 0],
-}
-
-#[no_mangle]
-pub extern "C" fn fb_audio_graph_create(_config: *const AudioGraphConfig) -> *mut AudioGraph {
-	std::ptr::null_mut()
-}
-#[no_mangle]
-pub extern "C" fn fb_audio_graph_free(graph: *mut *mut AudioGraph) {
-	if !graph.is_null() {
-		unsafe { *graph = std::ptr::null_mut() };
-	}
-}
-#[no_mangle]
-pub extern "C" fn fb_audio_graph_push(
-	_graph: *mut AudioGraph,
-	_channel_data: *const *const u8,
-	_nb_samples: c_int,
-) -> c_int {
-	-1
-}
-#[no_mangle]
-pub extern "C" fn fb_audio_graph_pull(_graph: *mut AudioGraph, _out_frame: *mut Frame) -> c_int {
-	0
-}
-#[no_mangle]
-pub extern "C" fn fb_channel_layout_get_channels(_mask: u64) -> c_int {
-	0
-}
-#[no_mangle]
-pub extern "C" fn fb_channel_layout_default(_nb_channels: c_int) -> u64 {
-	0
-}
-#[no_mangle]
-pub extern "C" fn fb_frame_alloc() -> *mut Frame {
-	std::ptr::null_mut()
-}
-#[no_mangle]
-pub extern "C" fn fb_frame_free(frame: *mut *mut Frame) {
-	if !frame.is_null() {
-		unsafe { *frame = std::ptr::null_mut() };
-	}
-}
-#[no_mangle]
-pub extern "C" fn fb_frame_unref(_frame: *mut Frame) {}
-#[no_mangle]
-pub extern "C" fn fb_frame_get_nb_samples(_frame: *const Frame) -> c_int {
-	0
-}
-#[no_mangle]
-pub extern "C" fn fb_frame_set_nb_samples(_frame: *mut Frame, _nb_samples: c_int) {}
-#[no_mangle]
-pub extern "C" fn fb_frame_get_sample_rate(_frame: *const Frame) -> c_int {
-	0
-}
-#[no_mangle]
-pub extern "C" fn fb_frame_get_format(_frame: *const Frame) -> c_int {
-	0
-}
-#[no_mangle]
-pub extern "C" fn fb_frame_get_channel_layout_mask(_frame: *const Frame) -> u64 {
-	0
-}
-#[no_mangle]
-pub extern "C" fn fb_frame_get_data(_frame: *mut Frame, _plane: c_int) -> *mut u8 {
-	std::ptr::null_mut()
-}
-#[no_mangle]
-pub extern "C" fn fb_frame_get_data_const(_frame: *const Frame, _plane: c_int) -> *const u8 {
-	std::ptr::null()
-}
-#[no_mangle]
-pub extern "C" fn fb_frame_get_linesize(_frame: *const Frame, _plane: c_int) -> c_int {
-	0
-}
-#[no_mangle]
-pub extern "C" fn fb_packet_alloc() -> *mut Packet {
-	std::ptr::null_mut()
-}
-#[no_mangle]
-pub extern "C" fn fb_packet_free(packet: *mut *mut Packet) {
-	if !packet.is_null() {
-		unsafe { *packet = std::ptr::null_mut() };
-	}
-}
-#[no_mangle]
-pub extern "C" fn fb_packet_unref(_packet: *mut Packet) {}
-#[no_mangle]
-pub extern "C" fn fb_decoder_create() -> *mut Decoder {
-	std::ptr::null_mut()
-}
-#[no_mangle]
-pub extern "C" fn fb_decoder_free(decoder: *mut *mut Decoder) {
-	if !decoder.is_null() {
-		unsafe { *decoder = std::ptr::null_mut() };
-	}
-}
-#[no_mangle]
-pub extern "C" fn fb_decoder_open(
-	_decoder: *mut Decoder,
-	_filename: *const c_char,
-	_stream_index: c_int,
-) -> c_int {
-	-1
-}
-#[no_mangle]
-pub extern "C" fn fb_decoder_close(_decoder: *mut Decoder) {}
-#[no_mangle]
-pub extern "C" fn fb_decoder_get_frame(
-	_decoder: *mut Decoder,
-	_packet: *mut Packet,
-	_frame: *mut Frame,
-) -> c_int {
-	-1
-}
-#[no_mangle]
-pub extern "C" fn fb_decoder_get_packet(_decoder: *mut Decoder, _packet: *mut Packet) -> c_int {
-	-1
-}
-#[no_mangle]
-pub extern "C" fn fb_decoder_get_stream_info(
-	_decoder: *const Decoder,
-	_out: *mut FBStreamInfo,
-) -> c_int {
-	-1
-}
-#[no_mangle]
-pub extern "C" fn fb_decoder_get_format_start_time(_decoder: *const Decoder) -> i64 {
-	0
-}
-#[no_mangle]
-pub extern "C" fn fb_decoder_get_format_duration(_decoder: *const Decoder) -> i64 {
-	0
 }

@@ -20,7 +20,7 @@
 //! Coverage rules (see the family test charter):
 //!   1. no mocks — every call goes through the real facade into the real
 //!      oaktask/oaknode/oakundo/oakcodec module crates (the only stubs are
-//!      the host-provided `oakcore_*`/`fb_*` symbols in `tests/common`,
+//!      the host-provided `oakcore_*` symbols in `tests/common`,
 //!      the same mechanism the other family tests use);
 //!   2. every one of the 27 `oakengine_task_*` / `oakengine_cli_task_*`
 //!      exports is exercised on a legal path with the result asserted;
@@ -603,9 +603,9 @@ fn import_flow_with_real_file() {
 	let root = unsafe { oakengine_project_root(project) };
 	assert!(!root.is_null());
 
-	// A real file that cannot be decoded in the test environment (the
-	// host-provided `fb_*` symbols are the common stubs; footage probing
-	// never succeeds there, so a run would mark the file invalid).
+	// A real file that cannot be decoded in the test environment (footage
+	// probing of a non-media file never succeeds, so a run would mark the
+	// file invalid).
 	let media = std::env::temp_dir().join("oakengine_it_task_import_batch.tmp");
 	std::fs::write(&media, b"not media").unwrap();
 	let media_c = std::ffi::CString::new(media.to_str().unwrap()).unwrap();

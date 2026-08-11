@@ -15,9 +15,10 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //! AudioProcessor contract tests (processor.rs), through the C ABI. The
-//! test stub filter graph resamples and time-stretches like the real
-//! ffmpeg_bridge graph (linear interpolation), so frame-count contracts
-//! are pinned exactly.
+//! conversion runs a real FFmpeg filter graph (aresample/aformat/atempo),
+//! so resampling and time-stretch have filter latency: the exact frame
+//! counts are drained after `flush`, while identity conversion is an
+//! immediate passthrough.
 
 mod common;
 
@@ -158,9 +159,9 @@ fn open_invalid_params() {
 	unsafe { oakaudio_processor_free(&mut h) };
 }
 
-/// Resampling to half rate halves the frame count (44100 -> 22050, 32 input
-/// frames produce 16 output frames); flush is a no-op on the drained graph
-/// and keeps the processor open.
+/// Resampling to half rate halves the frame count (44100 -> 22050). The
+/// real resampler holds samples back (filter delay), so the frames are
+/// drained after `flush`; flush then keeps the processor open.
 #[test]
 fn resample_and_flush() {
 	let mut h = unsafe { oakaudio_processor_init() };
@@ -169,22 +170,44 @@ fn resample_and_flush() {
 		OAKAUDIO_OK
 	);
 
-	let planes = ramp_planes(32);
+	// 1 second of input keeps the resampler delay well below the signal.
+	let frames = 44100;
+	let planes = ramp_planes(frames);
 	let in_ptrs: Vec<*const f32> = planes.iter().map(|p| p.as_ptr()).collect();
-	let mut out = vec![vec![0f32; 32]; 2];
+	let mut out = vec![vec![0f32; frames]; 2];
 	let mut out_ptrs: Vec<*mut f32> = out.iter_mut().map(|p| p.as_mut_ptr()).collect();
-	let n = unsafe {
-		oakaudio_processor_convert(h, in_ptrs.as_ptr(), 32, out_ptrs.as_ptr(), 32)
-	};
-	assert_eq!(n, 16, "half-rate output must halve the frame count");
 
+	let mut total = unsafe {
+		oakaudio_processor_convert(h, in_ptrs.as_ptr(), frames as i32, out_ptrs.as_ptr(), frames as i32)
+	};
 	assert_eq!(unsafe { oakaudio_processor_flush(h) }, OAKAUDIO_OK);
+	// Drain the resampler delay after end-of-input.
+	while total < frames as i32 {
+		let n = unsafe {
+			oakaudio_processor_convert(
+				h,
+				std::ptr::null(),
+				0,
+				out_ptrs.as_ptr(),
+				frames as i32,
+			)
+		};
+		if n == 0 {
+			break;
+		}
+		total += n;
+	}
+	assert!(
+		(total - 22050).abs() <= 2,
+		"half-rate output must halve the frame count (got {total})"
+	);
 	assert_eq!(unsafe { oakaudio_processor_is_open(h) }, 1);
 	unsafe { oakaudio_processor_free(&mut h) };
 }
 
 /// A tempo factor != 1.0 time-stretches: tempo 2.0 halves the frame count
-/// and the processor stays open.
+/// (drained after `flush`; atempo needs a full analysis window before it
+/// produces output) and the processor stays open.
 #[test]
 fn tempo_stretch() {
 	let mut h = unsafe { oakaudio_processor_init() };
@@ -193,14 +216,36 @@ fn tempo_stretch() {
 		OAKAUDIO_OK
 	);
 
-	let planes = ramp_planes(32);
+	// 1 second of input: many atempo windows (1024 samples at 48 kHz).
+	let frames = 48000;
+	let planes = ramp_planes(frames);
 	let in_ptrs: Vec<*const f32> = planes.iter().map(|p| p.as_ptr()).collect();
-	let mut out = vec![vec![0f32; 32]; 2];
+	let mut out = vec![vec![0f32; frames]; 2];
 	let mut out_ptrs: Vec<*mut f32> = out.iter_mut().map(|p| p.as_mut_ptr()).collect();
-	let n = unsafe {
-		oakaudio_processor_convert(h, in_ptrs.as_ptr(), 32, out_ptrs.as_ptr(), 32)
+
+	let mut total = unsafe {
+		oakaudio_processor_convert(h, in_ptrs.as_ptr(), frames as i32, out_ptrs.as_ptr(), frames as i32)
 	};
-	assert_eq!(n, 16, "tempo 2.0 must halve the frame count");
+	assert_eq!(unsafe { oakaudio_processor_flush(h) }, OAKAUDIO_OK);
+	while total < frames as i32 {
+		let n = unsafe {
+			oakaudio_processor_convert(
+				h,
+				std::ptr::null(),
+				0,
+				out_ptrs.as_ptr(),
+				frames as i32,
+			)
+		};
+		if n == 0 {
+			break;
+		}
+		total += n;
+	}
+	assert!(
+		(total - 24000).abs() <= 2400,
+		"tempo 2.0 must halve the frame count (got {total})"
+	);
 	assert_eq!(unsafe { oakaudio_processor_is_open(h) }, 1);
 	unsafe { oakaudio_processor_close(h) };
 

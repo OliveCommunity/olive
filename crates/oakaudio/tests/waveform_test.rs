@@ -250,11 +250,9 @@ fn sum_and_resum_golden() {
 }
 
 /// extract probes through the oakcodec decoder C ABI; a missing file
-/// returns OAKAUDIO_E_NOT_FOUND. The full decode of a real file goes
-/// through the host ffmpeg_bridge (`fb_*`, a C++ library not linked into
-/// the Rust-only test binary), so the valid-file pixel assertions are
-/// covered by the ffmpeg_bridge/audio integration tests instead; this
-/// test pins the probe error path.
+/// returns OAKAUDIO_E_NOT_FOUND. The valid-file path decodes the fixture
+/// WAV with oakcodec's in-process FFmpeg decoder and reduces it to min/max
+/// points.
 #[test]
 fn extract_file_and_notfound() {
 	let path = std::env::temp_dir().join(format!(
@@ -289,6 +287,40 @@ fn extract_file_and_notfound() {
 		)
 	};
 	assert_eq!(r, -60004);
+
+	// Real decode: 8 frames at 4 samples/point -> 2 points, 2 channels.
+	let c_path = CString::new(path.to_str().unwrap()).unwrap();
+	let mut channel_count = 0i32;
+	let n = unsafe {
+		oakaudio_waveform_extract(
+			c_path.as_ptr(),
+			0,
+			4,
+			std::ptr::null_mut(),
+			0,
+			&mut channel_count,
+		)
+	};
+	assert_eq!(channel_count, 2);
+	assert_eq!(n, 2, "8 frames at 4 samples/point must yield 2 points");
+
+	let mut out = vec![MinMax { min: 0.0, max: 0.0 }; 4];
+	let n = unsafe {
+		oakaudio_waveform_extract(c_path.as_ptr(), 0, 4, out.as_mut_ptr(), 2, &mut channel_count)
+	};
+	assert_eq!(n, 2);
+	// s16 -> f32 is /32768; the ramp is exact in both formats.
+	let eps = 1e-6;
+	// Point 0 covers frames 0..4: left 0..3000, right 0..-3000.
+	assert!((out[0].min - 0.0).abs() < eps);
+	assert!((out[0].max - 3000.0 / 32768.0).abs() < eps);
+	assert!((out[1].min - -3000.0 / 32768.0).abs() < eps);
+	assert!((out[1].max - 0.0).abs() < eps);
+	// Point 1 covers frames 4..8: left 4000..7000, right -4000..-7000.
+	assert!((out[2].min - 4000.0 / 32768.0).abs() < eps);
+	assert!((out[2].max - 7000.0 / 32768.0).abs() < eps);
+	assert!((out[3].min - -7000.0 / 32768.0).abs() < eps);
+	assert!((out[3].max - -4000.0 / 32768.0).abs() < eps);
 
 	std::fs::remove_file(&path).ok();
 }

@@ -21,19 +21,13 @@
 //! summarizes data.
 
 use std::collections::BTreeMap;
-use std::ffi::{c_int, CStr};
+use std::ffi::CStr;
 
-use oakcore_rs::Rational;
+use oakcodec::decoder::{CodecStream, Decoder as _, RetrieveAudioStatus};
+use oakcodec::ffmpeg::FFmpegDecoder;
+use oakcore_rs::{Rational, TimeRange};
 
 use crate::bridge::codec::AudioStreamInfo;
-use crate::bridge::ffmpeg::{
-	fb_audio_graph_create, fb_audio_graph_free, fb_audio_graph_pull,
-	fb_audio_graph_push, fb_decoder_close, fb_decoder_create, fb_decoder_free,
-	fb_decoder_get_frame, fb_decoder_get_stream_info, fb_decoder_open,
-	fb_frame_alloc, fb_frame_free, fb_frame_get_data, fb_frame_get_nb_samples,
-	fb_packet_alloc, fb_packet_free, AudioGraph, AudioGraphConfig, Decoder,
-	Frame, Packet, SampleFormat,
-};
 use crate::error::{Error, Result};
 use crate::handle::{free_handle, make_owned, CHandle};
 
@@ -653,17 +647,15 @@ pub struct ExtractOutcome {
 	pub channels: i32,
 }
 
-/// Append a pulled frame's per-channel planar f32 samples to `pending`.
-fn append_pending(pending: &mut Vec<Vec<f32>>, frame: *mut Frame, channels: i32, nb: i32) {
-	// SAFETY: `frame` is a live graph-output frame (`fltp`), `channels` was
-	// validated against the stream info and `nb` comes from the same frame.
+/// Append one decoded chunk's interleaved f32 samples to the per-channel
+/// `pending` planes.
+fn append_pending(pending: &mut Vec<Vec<f32>>, interleaved: &[f32], channels: i32) {
 	if pending.is_empty() {
 		pending.resize(channels.max(0) as usize, Vec::new());
 	}
-	for ch in 0..channels {
-		let data = unsafe { fb_frame_get_data(frame, ch) } as *const f32;
-		let slice = unsafe { std::slice::from_raw_parts(data, nb as usize) };
-		pending[ch as usize].extend_from_slice(slice);
+	let channels = channels.max(1) as usize;
+	for (i, &v) in interleaved.iter().enumerate() {
+		pending[i % channels].push(v);
 	}
 }
 
@@ -706,9 +698,10 @@ fn emit_points(
 
 /// Decode a whole audio stream to a channel-interleaved min/max summary.
 ///
-/// The stream is probed through the oakcodec decoder C ABI and decoded via
-/// ffmpeg_bridge (`fb_decoder` + `fb_audio_graph`), then reduced to one
-/// point per `samples_per_point` source samples.
+/// The stream is probed through the oakcodec decoder C ABI and decoded with
+/// oakcodec's in-process FFmpeg decoder (interleaved f32 at the native
+/// rate/layout), then reduced to one point per `samples_per_point` source
+/// samples.
 ///
 /// `// CPP-PARITY: src/audio/c_api/waveform.cpp:404`
 /// (`oakaudio_waveform_extract`).
@@ -743,149 +736,70 @@ pub fn extract(filename: &CStr, stream_index: i32, samples_per_point: i32) -> Re
 		)));
 	}
 
-	// Decode the whole stream through ffmpeg_bridge.
-	let decoder = unsafe { fb_decoder_create() };
-	if decoder.is_null() {
-		return Err(Error::NoMem);
-	}
-	// SAFETY: `decoder` is live until `fb_decoder_free` below; every early
-	// return releases it first.
-	let open_r = unsafe { fb_decoder_open(decoder, filename.as_ptr(), info.stream_index) };
-	if open_r < 0 {
-		// SAFETY: `decoder` is a live ffmpeg_bridge decoder.
-		unsafe { fb_decoder_free(&mut (decoder as *mut Decoder)) };
-		return Err(Error::Failed(format!("failed to open decoder: {open_r}")));
+	// Decode the whole stream through oakcodec's FFmpeg decoder
+	// (`retrieve_audio` delivers interleaved f32 at the requested native
+	// rate/layout; the C++ path ran the decode through an identity
+	// fb_audio_graph to obtain planar f32).
+	let decoder = FFmpegDecoder::new();
+	let stream =
+		CodecStream::with_block(filename.to_string_lossy().into_owned(), info.stream_index, None);
+	if let Err(e) = decoder.open(&stream) {
+		return Err(Error::Failed(format!("failed to open decoder: {e:?}")));
 	}
 
-	let mut sinfo = unsafe { std::mem::zeroed::<crate::bridge::ffmpeg::FBStreamInfo>() };
-	if unsafe { fb_decoder_get_stream_info(decoder, &mut sinfo) } < 0 || sinfo.sample_rate <= 0 {
-		// SAFETY: see above.
-		unsafe {
-			fb_decoder_close(decoder);
-			fb_decoder_free(&mut (decoder as *mut Decoder));
-		}
-		return Err(Error::Failed(
-			"failed to query decoder stream info".to_string(),
-		));
+	if info.time_base_num <= 0 || info.time_base_den <= 0 || info.duration_ts <= 0 {
+		let _ = decoder.close();
+		return Err(Error::Failed("invalid audio stream duration".to_string()));
 	}
-
-	let config = AudioGraphConfig {
-		in_sample_rate: sinfo.sample_rate,
-		in_channel_layout_mask: sinfo.channel_layout_mask,
-		in_sample_format: sinfo.sample_format,
-		in_channels: channels,
-		out_sample_rate: sinfo.sample_rate,
-		out_channel_layout_mask: sinfo.channel_layout_mask,
-		out_sample_format: SampleFormat::Fltp as c_int,
-		out_channels: channels,
-		out_is_planar: 1,
-		tempo: 1.0,
+	let duration_sec = info.duration_ts as f64
+		* f64::from(info.time_base_num)
+		/ f64::from(info.time_base_den);
+	let total_frames = (duration_sec * f64::from(info.sample_rate)).round() as i64;
+	let layout_mask = if info.channel_layout != 0 {
+		info.channel_layout
+	} else {
+		ffmpeg_next::ChannelLayout::default(channels).bits()
 	};
-
-	let mut packet = unsafe { fb_packet_alloc() };
-	let mut frame = unsafe { fb_frame_alloc() };
-	let mut converted = unsafe { fb_frame_alloc() };
-	let graph = unsafe { fb_audio_graph_create(&config) };
-	if packet.is_null() || frame.is_null() || converted.is_null() {
-		cleanup_extract(graph, &mut converted, &mut frame, &mut packet, decoder);
-		return Err(Error::NoMem);
-	}
-	if graph.is_null() {
-		cleanup_extract(graph, &mut converted, &mut frame, &mut packet, decoder);
-		return Err(Error::Failed(
-			"failed to create audio filter graph".to_string(),
-		));
-	}
 
 	let mut pending: Vec<Vec<f32>> = Vec::new();
 	let mut points: Vec<SamplePerChannel> = Vec::new();
 
-	// SAFETY: all handles are live; `frame` holds the decoded frame and
-	// `converted` the graph output.
+	/// Frames decoded per `retrieve_audio` call (~0.34 s at 48 kHz).
+	const CHUNK_FRAMES: i64 = 16384;
+
 	let mut result: Result<()> = Ok(());
-	'decode: loop {
-		let r = unsafe { fb_decoder_get_frame(decoder, packet, frame) };
-		if r < 0 {
-			break; // EOF or error: stop decoding (C++ breaks on < 0)
-		}
-
-		// Push the decoded frame (planar pointer array; a packed source is
-		// read from plane 0 by the buffersrc).
-		let nb = unsafe { fb_frame_get_nb_samples(frame) };
-		let mut planes: Vec<*const u8> = Vec::with_capacity(channels as usize);
-		for ch in 0..channels {
-			// SAFETY: `frame` carries at least `channels` planes for the
-			// decoded format (validated stream info).
-			planes.push(unsafe { fb_frame_get_data(frame, ch) });
-		}
-		if unsafe { fb_audio_graph_push(graph, planes.as_ptr(), nb) } < 0 {
-			result = Err(Error::Failed("failed to push decoded frame".to_string()));
-			break 'decode;
-		}
-
-		// Drain the graph: pull converted output until no more is available.
-		loop {
-			let pull = unsafe { fb_audio_graph_pull(graph, converted) };
-			if pull < 0 {
-				result = Err(Error::Failed("failed to pull from graph".to_string()));
-				break 'decode;
+	let mut offset = 0i64;
+	while offset < total_frames {
+		let frames = (total_frames - offset).min(CHUNK_FRAMES);
+		let range = TimeRange::new(
+			Rational::new(offset, i64::from(info.sample_rate)),
+			Rational::new(offset + frames, i64::from(info.sample_rate)),
+		);
+		let mut buf = vec![0f32; frames as usize * channels as usize];
+		match decoder.retrieve_audio(&mut buf, &range, info.sample_rate, layout_mask) {
+			Ok(RetrieveAudioStatus::Success) => {
+				append_pending(&mut pending, &buf, channels);
+				emit_points(&mut pending, channels, samples_per_point, &mut points, false);
 			}
-			if pull == 0 {
+			Ok(status) => {
+				result = Err(Error::Failed(format!("audio retrieve failed: {status:?}")));
 				break;
 			}
-			let nb = unsafe { fb_frame_get_nb_samples(converted) };
-			append_pending(&mut pending, converted, channels, nb);
-			emit_points(&mut pending, channels, samples_per_point, &mut points, false);
+			Err(e) => {
+				result = Err(Error::Failed(format!("audio retrieve failed: {e:?}")));
+				break;
+			}
 		}
+		offset += frames;
 	}
-
-	// Flush the resampler delay (identity in the extract path, so this only
-	// emits the trailing partial window).
 	if result.is_ok() {
-		// SAFETY: `graph` is live; NULL channel data signals EOF.
-		unsafe { fb_audio_graph_push(graph, std::ptr::null(), 0) };
-		loop {
-			let pull = unsafe { fb_audio_graph_pull(graph, converted) };
-			if pull <= 0 {
-				break;
-			}
-			let nb = unsafe { fb_frame_get_nb_samples(converted) };
-			append_pending(&mut pending, converted, channels, nb);
-		}
+		// Emit the trailing partial window.
 		emit_points(&mut pending, channels, samples_per_point, &mut points, true);
 	}
 
-	cleanup_extract(graph, &mut converted, &mut frame, &mut packet, decoder);
+	let _ = decoder.close();
 	result?;
 
 	Ok(ExtractOutcome { points, channels })
 }
 
-/// Free every resource allocated by [`extract`] after the graph/decoder
-/// creation succeeded.
-fn cleanup_extract(
-	graph: *mut AudioGraph,
-	converted: &mut *mut Frame,
-	frame: &mut *mut Frame,
-	packet: &mut *mut Packet,
-	decoder: *mut Decoder,
-) {
-	// SAFETY: the pointers were produced by the corresponding ffmpeg_bridge
-	// allocators and are freed exactly once here.
-	unsafe {
-		if !graph.is_null() {
-			fb_audio_graph_free(&mut (graph as *mut AudioGraph));
-		}
-		if !converted.is_null() {
-			fb_frame_free(converted);
-		}
-		if !frame.is_null() {
-			fb_frame_free(frame);
-		}
-		if !packet.is_null() {
-			fb_packet_free(packet);
-		}
-		fb_decoder_close(decoder);
-		fb_decoder_free(&mut (decoder as *mut Decoder));
-	}
-}

@@ -3924,6 +3924,7 @@ dependencies = [
 name = "oakaudio"
 version = "0.1.0"
 dependencies = [
+ "ffmpeg-next",
  "oakcodec",
  "oakcommon",
  "oakcore-rs",

@@ -29,8 +29,10 @@ libc = "0.2"
 # dlsym(RTLD_DEFAULT) (oaknode, oakplugin, oakrender) now resolve against
 # the sibling modules inside the same dylib; the remaining undefined
 # imports are the C++ host-provided symbols (`oakcore_audioparams_*`,
-# `oakcore_rational_*` from liboakcore, `fb_*` from ffmpeg_bridge), which
-# build.rs leaves as runtime lookups for the host app.
+# `oakcore_rational_*` from liboakcore), which build.rs leaves as runtime
+# lookups for the host app. The audio resample/decode paths call FFmpeg
+# in-process via ffmpeg-next (oakaudio/oakcodec); the C++ ffmpeg_bridge
+# `fb_*` imports are gone.
 #
 # Tests link the same crates; the dev-dependencies below re-declare
 # oakcommon/oakplugin WITH `test-stubs` so their in-crate C ABI mocks
@@ -61,10 +63,9 @@ oaknode = { path = "../oaknode" }
 
 [dev-dependencies]
 # The module crates as plain dependencies (no `test-stubs`): the C ABI
-# mocks the test binaries need (the ffmpeg_bridge `fb_*` replacement and
-# the oakcore_* symbols) are provided by the crate's own test support
-# (tests/common/mod.rs), which is force-linked into every integration
-# test. Keeping the dev-deps feature-free also stops Cargo's workspace
+# mocks the test binaries need (the oakcore_* symbols) are provided by
+# the crate's own test support (tests/common/mod.rs), which is
+# force-linked into every integration test. Keeping the dev-deps feature-free also stops Cargo's workspace
 # feature unification from forcing `test-stubs` onto the oakcommon/oakplugin
 # member builds during `cargo test --workspace` (their own tests then run
 # in the real dlsym mode and stay green).

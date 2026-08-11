@@ -38,16 +38,6 @@
 //! values) must return a clean negative code or a documented no-op —
 //! never crash/abort/panic.
 //!
-//! ## Ignored with reason
-//!
-//! * `processor_full_open_convert_cycle`: opening the conversion graph
-//!   requires the C++ host libffmpeg_bridge (`fb_audio_graph_*`), which
-//!   is not linked under `cargo test` (tests/common/mod.rs provides
-//!   no-op stubs); the module's open then fails cleanly at graph
-//!   creation. The validation and failure paths run for real in the
-//!   non-ignored tests; only the success path of a real graph is
-//!   environment-bound.
-//!
 //! Note: `start_recording` with an input device set drives the REAL
 //! oakcodec FFmpeg encoder (ffmpeg-next), so it writes a real media file
 //! to the system temp dir when the host has the codec; when the host
@@ -87,6 +77,8 @@ use oakengine::handle::{CHandle, OakEngineAudioProcessor};
 const AUDIO_E_INVALID: c_int = -60001;
 /// `OAKAUDIO_E_FAILED`.
 const AUDIO_E_FAILED: c_int = -60003;
+/// `OAKAUDIO_E_STATE`.
+const AUDIO_E_STATE: c_int = -60002;
 
 // ---------------------------------------------------------------------------
 // Serialization + shared fixtures
@@ -1060,22 +1052,25 @@ fn processor_open_validation() {
 		common::oakcore_audioparams_free(from);
 		common::oakcore_audioparams_free(to_packed);
 
-		// Legal arguments reach the module's graph creation, which needs the
-		// host libffmpeg_bridge (not linked under cargo test): the open
-		// reports OAKAUDIO_E_FAILED and the processor stays closed.
+		// Legal arguments reach the module's graph creation, which now runs
+		// a real in-process FFmpeg filter graph (ffmpeg-next): the open
+		// succeeds and the processor reports open; a second open is a state
+		// error and close shuts it down again.
 		let from = audio_params(48000, 3, 4);
 		let to = audio_params(48000, 3, 4);
 		assert_eq!(
 			unsafe { oakengine_audio_processor_open(p, from as *const c_void, to as *const c_void, 1.0) },
-			AUDIO_E_FAILED
+			0
 		);
+		assert_eq!(unsafe { oakengine_audio_processor_is_open(p) }, 1);
+		assert_eq!(
+			unsafe { oakengine_audio_processor_open(p, from as *const c_void, to as *const c_void, 1.0) },
+			AUDIO_E_STATE
+		);
+		assert_eq!(unsafe { oakengine_audio_processor_close(p) }, 0);
 		assert_eq!(unsafe { oakengine_audio_processor_is_open(p) }, 0);
 		common::oakcore_audioparams_free(from);
 		common::oakcore_audioparams_free(to);
-
-		// A failed open left the processor closed: opening again is not
-		// "already open".
-		assert_eq!(unsafe { oakengine_audio_processor_close(p) }, 0);
 
 		unsafe { oakengine_audio_processor_free(p) };
 	});
@@ -1156,13 +1151,12 @@ fn processor_convert_and_output_params_stubs() {
 	});
 }
 
-/// The full open→convert cycle requires the C++ host libffmpeg_bridge
-/// (fb_audio_graph_*) which is not linked under `cargo test` — the module
-/// open then fails at graph creation (OAKAUDIO_E_FAILED, asserted in
-/// [`processor_open_validation`]). This documents the intended success
-/// contract for a host-linked build.
+/// The full open→close cycle runs the module's real in-process FFmpeg
+/// filter graph (ffmpeg-next), so open succeeds under `cargo test`.
+/// `convert` stays the documented facade stub (`OAKENGINE_E_FAILED`; see
+/// [`processor_convert_and_output_params_stubs`]) — the module-level
+/// convert success path is covered by oakaudio's own processor tests.
 #[test]
-#[ignore = "needs the C++ host libffmpeg_bridge (fb_audio_graph_*), not linked under cargo test"]
 fn processor_full_open_convert_cycle() {
 	with_processor(|| {
 		let p = unsafe { oakengine_audio_processor_create() };
@@ -1177,6 +1171,7 @@ fn processor_full_open_convert_cycle() {
 		let mut in_planes: [*mut f32; 2] = [std::ptr::null_mut(); 2];
 		let mut out_data: *const c_void = std::ptr::null();
 		let mut out_size: c_int = 0;
+		// The facade convert is the documented "not backed" stub.
 		assert_eq!(
 			unsafe {
 				oakengine_audio_processor_convert(
@@ -1187,8 +1182,9 @@ fn processor_full_open_convert_cycle() {
 					&mut out_size,
 				)
 			},
-			0
+			OAKENGINE_E_FAILED
 		);
+		assert_eq!(unsafe { oakengine_audio_processor_close(p) }, 0);
 		common::oakcore_audioparams_free(from);
 		common::oakcore_audioparams_free(to);
 		unsafe { oakengine_audio_processor_free(p) };

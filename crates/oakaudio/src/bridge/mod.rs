@@ -19,4 +19,3 @@
 
 pub mod codec;
 pub mod common;
-pub mod ffmpeg;

@@ -19,9 +19,9 @@
 //! Mirrors `src/common/src/ffmpegutils.h` and
 //! `include/common/ffmpegutils.h`. There is no handle to create or free.
 //!
-//! The bridge constants are only reachable through narrow `extern "C"`
-//! blocks into ffmpeg_bridge; native formats are plain ints matching
-//! `olive::core` enum values.
+//! The bridge constants are plain ints copied verbatim from the ffmpeg_bridge
+//! header (kept for C ABI compatibility); native formats are plain ints
+//! matching `olive::core` enum values.
 
 /// RGB channel count (flattened from `VideoParams`).
 pub const RGB_CHANNEL_COUNT: i32 = 3;
@@ -106,52 +106,25 @@ const FB_SAMPLE_FMT_DBLP: i32 = 9;
 const FB_SAMPLE_FMT_S64: i32 = 10;
 const FB_SAMPLE_FMT_S64_P: i32 = 11;
 
-/// Calls the bridge's best-pixel-format search on `list` — picks the entry of
-/// a `FB_PIX_FMT_NONE`-terminated list closest to `pix_fmt`. In test builds
-/// (`cfg(test)` or feature `test-stubs`) the bridge is not linked, so a small
-/// faithful-in-spirit stub is used; the real loss-metric selection lives in
-/// ffmpeg_bridge and is only reachable in the final application build.
-///
-/// # CPP-PARITY
-/// The real `fb_find_best_pix_fmt_of_list` symbol (`ffmpeg_bridge` C ABI)
-/// has the same signature and `NONE`-terminated-list semantics as
-/// `fb_find_best_pix_fmt_of_list` in `ffmpeg_bridge/src/utils.cpp`.
+/// Picks the entry of a `FB_PIX_FMT_NONE`-terminated candidate list closest
+/// to `pix_fmt`: an exact match wins, otherwise the first (most desirable)
+/// candidate — for this module's RGB-only candidate lists that is also what
+/// the bridge's loss-metric selection (`avcodec_find_best_pix_fmt_of_list`
+/// via the former `fb_find_best_pix_fmt_of_list` C ABI import) produces.
+/// The logic now runs in-process; nothing links ffmpeg_bridge anymore.
 fn find_best_pix_fmt_of_list(list: &[i32; 4], pix_fmt: i32) -> i32 {
-	// The bridge library is only linked into the final application, never into
-	// a Rust test binary. Unit tests activate the stub via `cfg(test)`; the
-	// integration tests (tests/ffi_ffmpegutils.rs) opt in with the
-	// `test-stubs` cargo feature.
-	#[cfg(all(not(test), not(feature = "test-stubs")))]
-	extern "C" {
-		fn fb_find_best_pix_fmt_of_list(
-			list: *const std::ffi::c_int,
-			pix_fmt: std::ffi::c_int,
-		) -> std::ffi::c_int;
-	}
-	#[cfg(all(not(test), not(feature = "test-stubs")))]
-	{
-		// SAFETY: `list` is a `FB_PIX_FMT_NONE`-terminated array that outlives
-		// the call; `pix_fmt` is any valid bridge pixel format.
-		unsafe { fb_find_best_pix_fmt_of_list(list.as_ptr(), pix_fmt) }
-	}
-	#[cfg(any(test, feature = "test-stubs"))]
-	{
-		// Stub: exact matches are preferred, otherwise the first (most
-		// desirable) candidate is returned, matching the bridge's behaviour
-		// for an unknown source format. Only used by test builds.
-		for &candidate in list {
-			if candidate == pix_fmt {
-				return candidate;
-			}
-			if candidate == FB_PIX_FMT_NONE {
-				break;
-			}
+	for &candidate in list {
+		if candidate == pix_fmt {
+			return candidate;
 		}
-		if list[0] == FB_PIX_FMT_NONE {
-			FB_PIX_FMT_NONE
-		} else {
-			list[0]
+		if candidate == FB_PIX_FMT_NONE {
+			break;
 		}
+	}
+	if list[0] == FB_PIX_FMT_NONE {
+		FB_PIX_FMT_NONE
+	} else {
+		list[0]
 	}
 }
 
