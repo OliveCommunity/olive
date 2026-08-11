@@ -89,10 +89,8 @@ impl Drop for HandlerGuard {
 /// Mirrors the `with_temp_config` pattern of the domain unit tests.
 fn with_temp_config<T>(f: impl FnOnce(&Path) -> T) -> T {
 	let _guard = lock();
-	let dir = std::env::temp_dir().join(format!(
-		"oakcommon_ffi_config_test_{}",
-		std::process::id()
-	));
+	let dir =
+		std::env::temp_dir().join(format!("oakcommon_ffi_config_test_{}", std::process::id()));
 	let _ = std::fs::create_dir_all(&dir);
 	std::env::set_var("OAK_CONFIG_DIR", &dir);
 	let _cleanup = TempConfigDir(dir.clone());
@@ -113,7 +111,9 @@ unsafe extern "C" fn record_handler(
 	HANDLER_HITS.fetch_add(1, Ordering::SeqCst);
 	HANDLER_USERDATA.store(userdata as usize, Ordering::SeqCst);
 	if !title.is_null() {
-		let s = unsafe { CStr::from_ptr(title) }.to_string_lossy().into_owned();
+		let s = unsafe { CStr::from_ptr(title) }
+			.to_string_lossy()
+			.into_owned();
 		*HANDLER_TITLE.lock().unwrap() = Some(s);
 	}
 }
@@ -140,7 +140,10 @@ fn config_save_load_roundtrip() {
 		let mut buf = [0i8; 32];
 		let n = oakcommon_config_get(null(), key.as_ptr(), buf.as_mut_ptr(), 32);
 		assert_eq!(n, 10); // "persisted" + NUL
-		assert_eq!(unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap(), "persisted");
+		assert_eq!(
+			unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap(),
+			"persisted"
+		);
 	});
 }
 
@@ -258,7 +261,10 @@ fn config_get_exact_fit_buffer() {
 	let mut buf = vec![0i8; required as usize];
 	let n = oakcommon_config_get(null(), key.as_ptr(), buf.as_mut_ptr(), required);
 	assert_eq!(n, required);
-	assert_eq!(unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap(), value);
+	assert_eq!(
+		unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap(),
+		value
+	);
 }
 
 /// A missing key yields `OAKCOMMON_E_NOT_FOUND`.
@@ -311,7 +317,10 @@ fn config_set_get_int_roundtrip() {
 	let mut buf = [0i8; 16];
 	let n = oakcommon_config_get(null(), key.as_ptr(), buf.as_mut_ptr(), 16);
 	assert_eq!(n, 3); // "42" + NUL
-	assert_eq!(unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap(), "42");
+	assert_eq!(
+		unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap(),
+		"42"
+	);
 }
 
 /// INT getter fallback paths: absent key, wrong type, null key.
@@ -350,7 +359,10 @@ fn config_set_get_int64_roundtrip() {
 	assert_eq!(oakcommon_config_get_int64(null(), key.as_ptr(), -1), big);
 
 	let missing = unique_key("int64_missing");
-	assert_eq!(oakcommon_config_get_int64(null(), missing.as_ptr(), -99), -99);
+	assert_eq!(
+		oakcommon_config_get_int64(null(), missing.as_ptr(), -99),
+		-99
+	);
 	assert_eq!(oakcommon_config_get_int64(null(), null(), -99), -99);
 }
 
@@ -368,8 +380,14 @@ fn config_set_get_double_roundtrip() {
 	let missing = unique_key("double_missing");
 	let wrong = unique_key("double_wrongtype");
 	oakcommon_config_set_int(null(), wrong.as_ptr(), 1);
-	assert_eq!(oakcommon_config_get_double(null(), missing.as_ptr(), 2.5), 2.5);
-	assert_eq!(oakcommon_config_get_double(null(), wrong.as_ptr(), 2.5), 2.5);
+	assert_eq!(
+		oakcommon_config_get_double(null(), missing.as_ptr(), 2.5),
+		2.5
+	);
+	assert_eq!(
+		oakcommon_config_get_double(null(), wrong.as_ptr(), 2.5),
+		2.5
+	);
 	assert_eq!(oakcommon_config_get_double(null(), null(), 2.5), 2.5);
 }
 
@@ -387,13 +405,19 @@ fn config_set_get_bool_roundtrip() {
 	let mut buf = [0i8; 8];
 	let n = oakcommon_config_get(null(), key.as_ptr(), buf.as_mut_ptr(), 8);
 	assert_eq!(n, 5); // "true" + NUL
-	assert_eq!(unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap(), "true");
+	assert_eq!(
+		unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap(),
+		"true"
+	);
 
 	oakcommon_config_set_bool(null(), key.as_ptr(), 0);
 	assert_eq!(oakcommon_config_get_bool(null(), key.as_ptr(), -1), 0);
 	let n = oakcommon_config_get(null(), key.as_ptr(), buf.as_mut_ptr(), 8);
 	assert_eq!(n, 6); // "false" + NUL
-	assert_eq!(unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap(), "false");
+	assert_eq!(
+		unsafe { CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap(),
+		"false"
+	);
 }
 
 /// BOOL getter fallback paths: absent key, wrong type, null key.
@@ -429,7 +453,10 @@ fn config_group_prefixes_keys() {
 	let group = cstr("ffi_test_group");
 	oakcommon_config_set_int(group.as_ptr(), key.as_ptr(), 5);
 	assert_eq!(oakcommon_config_get_int(null(), key.as_ptr(), -1), -1);
-	assert_eq!(oakcommon_config_get_int(group.as_ptr(), key.as_ptr(), -1), 5);
+	assert_eq!(
+		oakcommon_config_get_int(group.as_ptr(), key.as_ptr(), -1),
+		5
+	);
 	assert_eq!(oakcommon_config_entry_type(group.as_ptr(), key.as_ptr()), 2);
 }
 
@@ -462,7 +489,10 @@ fn config_entry_type_missing_and_invalid() {
 		oakcommon_config_entry_type(null(), missing.as_ptr()),
 		OAKCOMMON_E_NOT_FOUND
 	);
-	assert_eq!(oakcommon_config_entry_type(null(), null()), OAKCOMMON_E_INVALID);
+	assert_eq!(
+		oakcommon_config_entry_type(null(), null()),
+		OAKCOMMON_E_INVALID
+	);
 	assert_eq!(
 		oakcommon_config_entry_type(null(), cstr("").as_ptr()),
 		OAKCOMMON_E_INVALID

@@ -177,11 +177,7 @@ impl TransformDistortNode {
 		);
 
 		// Apply offset if applicable.
-		adjusted_matrix = super::matrix::matrix_translate(
-			adjusted_matrix,
-			offset.0,
-			offset.1,
-		);
+		adjusted_matrix = super::matrix::matrix_translate(adjusted_matrix, offset.0, offset.1);
 
 		// Adjust by the matrix we generated earlier.
 		adjusted_matrix = super::matrix::matrix_mul(adjusted_matrix, mat);
@@ -345,13 +341,7 @@ impl NodeBehavior for TransformDistortNode {
 
 		// Generate matrix.
 		let generated_matrix = super::matrix::MatrixGenerator::generate_matrix(
-			inputs,
-			core,
-			time,
-			false,
-			false,
-			false,
-			parent,
+			inputs, core, time, false, false, false, parent,
 		);
 		table.push(
 			crate::value::ValueType::Matrix,
@@ -514,11 +504,7 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	// `pos_in`), and the eight scale point gizmos (absolute drag
 	// behavior, bound to `scale_in`) in `k_gizmo_scale_*` order.
 	let rotation_gizmo = Gizmo {
-		position_inputs: vec![(
-			super::matrix::ROTATION_INPUT.to_string(),
-			-1,
-			0,
-		)],
+		position_inputs: vec![(super::matrix::ROTATION_INPUT.to_string(), -1, 0)],
 		drag_point: (0.0, 0.0),
 	};
 	let poly_gizmo = Gizmo {
@@ -640,14 +626,23 @@ mod tests {
 		assert_eq!(n.input_name(TEXTURE_INPUT), "Texture");
 		assert_eq!(n.input_name(INTERPOLATION_INPUT), "Interpolation");
 		// Inherited matrix-generator names.
-		assert_eq!(n.input_name(super::super::matrix::POSITION_INPUT), "Position");
-		assert_eq!(n.input_name(super::super::matrix::ROTATION_INPUT), "Rotation");
+		assert_eq!(
+			n.input_name(super::super::matrix::POSITION_INPUT),
+			"Position"
+		);
+		assert_eq!(
+			n.input_name(super::super::matrix::ROTATION_INPUT),
+			"Rotation"
+		);
 		assert_eq!(n.input_name(super::super::matrix::SCALE_INPUT), "Scale");
 		assert_eq!(
 			n.input_name(super::super::matrix::UNIFORM_SCALE_INPUT),
 			"Uniform Scale"
 		);
-		assert_eq!(n.input_name(super::super::matrix::ANCHOR_INPUT), "Anchor Point");
+		assert_eq!(
+			n.input_name(super::super::matrix::ANCHOR_INPUT),
+			"Anchor Point"
+		);
 	}
 
 	#[test]
@@ -802,7 +797,10 @@ mod tests {
 		);
 		assert!((m[0] - 1.0).abs() < 1e-12);
 		assert!((m[5] - 1.0).abs() < 1e-12);
-		assert!((m[3] - 100.0 * 2.0 / 640.0).abs() < 1e-12, "offset scaled into sequence units");
+		assert!(
+			(m[3] - 100.0 * 2.0 / 640.0).abs() < 1e-12,
+			"offset scaled into sequence units"
+		);
 	}
 
 	#[test]

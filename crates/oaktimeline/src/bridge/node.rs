@@ -92,7 +92,11 @@ pub fn oaknode_block_as_node(block: OakNodeBlock) -> OakNodeNode {
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_block_get_in(block: OakNodeBlock, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub fn oaknode_block_get_in(
+	block: OakNodeBlock,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oaknode_block_get_in(block, numerator, denominator)
@@ -104,7 +108,11 @@ pub fn oaknode_block_get_in(block: OakNodeBlock, numerator: *mut c_int, denomina
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_block_get_out(block: OakNodeBlock, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub fn oaknode_block_get_out(
+	block: OakNodeBlock,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oaknode_block_get_out(block, numerator, denominator)
@@ -116,7 +124,11 @@ pub fn oaknode_block_get_out(block: OakNodeBlock, numerator: *mut c_int, denomin
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_block_get_length(block: OakNodeBlock, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub fn oaknode_block_get_length(
+	block: OakNodeBlock,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oaknode_block_get_length(block, numerator, denominator)
@@ -128,26 +140,58 @@ pub fn oaknode_block_get_length(block: OakNodeBlock, numerator: *mut c_int, deno
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_block_set_length_and_media_out(block: OakNodeBlock, numerator: c_int, denominator: c_int) -> c_int {
+pub fn oaknode_block_set_length_and_media_out(
+	block: OakNodeBlock,
+	numerator: c_int,
+	denominator: c_int,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oaknode_block_set_length_and_media_out(block, numerator, denominator)
 	}
 	#[cfg(not(any(test, feature = "test-stubs")))]
 	{
-		unsafe { oaknode::ffi::block::oaknode_block_set_length_and_media_out(block, numerator, denominator) }
+		unsafe {
+			oaknode::ffi::block::oaknode_block_set_length_and_media_out(
+				block,
+				numerator,
+				denominator,
+			)
+		}
 	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_block_set_length_and_media_in(block: OakNodeBlock, numerator: c_int, denominator: c_int) -> c_int {
+pub fn oaknode_block_set_length_and_media_in(
+	block: OakNodeBlock,
+	numerator: c_int,
+	denominator: c_int,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oaknode_block_set_length_and_media_in(block, numerator, denominator)
 	}
 	#[cfg(not(any(test, feature = "test-stubs")))]
 	{
-		unsafe { oaknode::ffi::block::oaknode_block_set_length_and_media_in(block, numerator, denominator) }
+		unsafe {
+			oaknode::ffi::block::oaknode_block_set_length_and_media_in(
+				block,
+				numerator,
+				denominator,
+			)
+		}
+	}
+}
+
+/// Direct call into the `oaknode` crate (single-lib unification).
+pub fn oaknode_block_set_in(block: OakNodeBlock, numerator: c_int, denominator: c_int) -> c_int {
+	#[cfg(any(test, feature = "test-stubs"))]
+	{
+		super::teststubs::oaknode_block_set_in(block, numerator, denominator)
+	}
+	#[cfg(not(any(test, feature = "test-stubs")))]
+	{
+		unsafe { oaknode::ffi::block::oaknode_block_set_in(block, numerator, denominator) }
 	}
 }
 
@@ -236,7 +280,11 @@ pub fn oaknode_block_unlink(a: OakNodeBlock, b: OakNodeBlock) -> c_int {
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_track_get_length(track: OakNodeTrack, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub fn oaknode_track_get_length(
+	track: OakNodeTrack,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oaknode_track_get_length(track, numerator, denominator)
@@ -272,7 +320,11 @@ pub fn oaknode_track_prepend_block(track: OakNodeTrack, block: OakNodeBlock) -> 
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_track_insert_block_after(track: OakNodeTrack, block: OakNodeBlock, before: OakNodeBlock) -> c_int {
+pub fn oaknode_track_insert_block_after(
+	track: OakNodeTrack,
+	block: OakNodeBlock,
+	before: OakNodeBlock,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oaknode_track_insert_block_after(track, block, before)
@@ -296,7 +348,11 @@ pub fn oaknode_track_ripple_remove_block(track: OakNodeTrack, block: OakNodeBloc
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_track_replace_block(track: OakNodeTrack, old_block: OakNodeBlock, new_block: OakNodeBlock) -> c_int {
+pub fn oaknode_track_replace_block(
+	track: OakNodeTrack,
+	old_block: OakNodeBlock,
+	new_block: OakNodeBlock,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oaknode_track_replace_block(track, old_block, new_block)
@@ -375,7 +431,9 @@ pub fn oaknode_node_get_work_area(node: OakNodeNode, out: *mut crate::handle::CH
 	}
 	#[cfg(not(any(test, feature = "test-stubs")))]
 	{
-		unsafe { oaknode::ffi::node::oaknode_node_get_work_area(node, out as *mut std::ffi::c_void) }
+		unsafe {
+			oaknode::ffi::node::oaknode_node_get_work_area(node, out as *mut std::ffi::c_void)
+		}
 	}
 }
 
@@ -464,7 +522,11 @@ pub fn oaknode_clip_add_cache_passthrough_from(clip: OakNodeBlock, other: OakNod
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_clip_get_media_in(clip: OakNodeBlock, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub fn oaknode_clip_get_media_in(
+	clip: OakNodeBlock,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oaknode_clip_get_media_in(clip, numerator, denominator)
@@ -476,7 +538,11 @@ pub fn oaknode_clip_get_media_in(clip: OakNodeBlock, numerator: *mut c_int, deno
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_clip_set_media_in(clip: OakNodeBlock, numerator: c_int, denominator: c_int) -> c_int {
+pub fn oaknode_clip_set_media_in(
+	clip: OakNodeBlock,
+	numerator: c_int,
+	denominator: c_int,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oaknode_clip_set_media_in(clip, numerator, denominator)
@@ -536,7 +602,11 @@ pub fn oaknode_track_get_block_count(track: OakNodeTrack, count: *mut c_int) -> 
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_track_get_block_at(track: OakNodeTrack, index: c_int, out: *mut OakNodeBlock) -> c_int {
+pub fn oaknode_track_get_block_at(
+	track: OakNodeTrack,
+	index: c_int,
+	out: *mut OakNodeBlock,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oaknode_track_get_block_at(track, index, out)
@@ -548,38 +618,89 @@ pub fn oaknode_track_get_block_at(track: OakNodeTrack, index: c_int, out: *mut O
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_track_get_block_containing_time(track: OakNodeTrack, numerator: c_int, denominator: c_int, out: *mut OakNodeBlock) -> c_int {
+pub fn oaknode_track_get_block_containing_time(
+	track: OakNodeTrack,
+	numerator: c_int,
+	denominator: c_int,
+	out: *mut OakNodeBlock,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
-		super::teststubs::oaknode_track_get_block_containing_time(track, numerator, denominator, out)
+		super::teststubs::oaknode_track_get_block_containing_time(
+			track,
+			numerator,
+			denominator,
+			out,
+		)
 	}
 	#[cfg(not(any(test, feature = "test-stubs")))]
 	{
-		unsafe { oaknode::ffi::track::oaknode_track_get_block_containing_time(track, numerator, denominator, out) }
+		unsafe {
+			oaknode::ffi::track::oaknode_track_get_block_containing_time(
+				track,
+				numerator,
+				denominator,
+				out,
+			)
+		}
 	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_track_get_nearest_block_before_or_at(track: OakNodeTrack, numerator: c_int, denominator: c_int, out: *mut OakNodeBlock) -> c_int {
+pub fn oaknode_track_get_nearest_block_before_or_at(
+	track: OakNodeTrack,
+	numerator: c_int,
+	denominator: c_int,
+	out: *mut OakNodeBlock,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
-		super::teststubs::oaknode_track_get_nearest_block_before_or_at(track, numerator, denominator, out)
+		super::teststubs::oaknode_track_get_nearest_block_before_or_at(
+			track,
+			numerator,
+			denominator,
+			out,
+		)
 	}
 	#[cfg(not(any(test, feature = "test-stubs")))]
 	{
-		unsafe { oaknode::ffi::track::oaknode_track_get_nearest_block_before_or_at(track, numerator, denominator, out) }
+		unsafe {
+			oaknode::ffi::track::oaknode_track_get_nearest_block_before_or_at(
+				track,
+				numerator,
+				denominator,
+				out,
+			)
+		}
 	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_track_get_nearest_block_after_or_at(track: OakNodeTrack, numerator: c_int, denominator: c_int, out: *mut OakNodeBlock) -> c_int {
+pub fn oaknode_track_get_nearest_block_after_or_at(
+	track: OakNodeTrack,
+	numerator: c_int,
+	denominator: c_int,
+	out: *mut OakNodeBlock,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
-		super::teststubs::oaknode_track_get_nearest_block_after_or_at(track, numerator, denominator, out)
+		super::teststubs::oaknode_track_get_nearest_block_after_or_at(
+			track,
+			numerator,
+			denominator,
+			out,
+		)
 	}
 	#[cfg(not(any(test, feature = "test-stubs")))]
 	{
-		unsafe { oaknode::ffi::track::oaknode_track_get_nearest_block_after_or_at(track, numerator, denominator, out) }
+		unsafe {
+			oaknode::ffi::track::oaknode_track_get_nearest_block_after_or_at(
+				track,
+				numerator,
+				denominator,
+				out,
+			)
+		}
 	}
 }
 
@@ -608,7 +729,11 @@ pub fn oaknode_tracklist_get_track_count(list: OakNodeTrackList, count: *mut c_i
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_tracklist_get_track_at(list: OakNodeTrackList, index: c_int, out: *mut OakNodeTrack) -> c_int {
+pub fn oaknode_tracklist_get_track_at(
+	list: OakNodeTrackList,
+	index: c_int,
+	out: *mut OakNodeTrack,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oaknode_tracklist_get_track_at(list, index, out)
@@ -644,7 +769,11 @@ pub fn oaknode_tracklist_array_remove_last(list: OakNodeTrackList) -> c_int {
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_sequence_get_track_list(sequence: OakNodeSequence, kind: c_int, out: *mut OakNodeTrackList) -> c_int {
+pub fn oaknode_sequence_get_track_list(
+	sequence: OakNodeSequence,
+	kind: c_int,
+	out: *mut OakNodeTrackList,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oaknode_sequence_get_track_list(sequence, kind, out)
@@ -668,7 +797,11 @@ pub fn oaknode_sequence_get_all_track_count(sequence: OakNodeSequence, count: *m
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_sequence_get_all_track_at(sequence: OakNodeSequence, index: c_int, out: *mut OakNodeTrack) -> c_int {
+pub fn oaknode_sequence_get_all_track_at(
+	sequence: OakNodeSequence,
+	index: c_int,
+	out: *mut OakNodeTrack,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oaknode_sequence_get_all_track_at(sequence, index, out)
@@ -680,7 +813,11 @@ pub fn oaknode_sequence_get_all_track_at(sequence: OakNodeSequence, index: c_int
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_node_connect(output_node: OakNodeNode, input_node: OakNodeNode, input_id: *const c_char) -> c_int {
+pub fn oaknode_node_connect(
+	output_node: OakNodeNode,
+	input_node: OakNodeNode,
+	input_id: *const c_char,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oaknode_node_connect(output_node, input_node, input_id)
@@ -704,7 +841,10 @@ pub fn oaknode_node_disconnect(input_node: OakNodeNode, input_id: *const c_char)
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_node_copy_in_graph(node: OakNodeNode, out_command: *mut crate::handle::CHandle) -> OakNodeNode {
+pub fn oaknode_node_copy_in_graph(
+	node: OakNodeNode,
+	out_command: *mut crate::handle::CHandle,
+) -> OakNodeNode {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oaknode_node_copy_in_graph(node, out_command)
@@ -714,4 +854,3 @@ pub fn oaknode_node_copy_in_graph(node: OakNodeNode, out_command: *mut crate::ha
 		unsafe { oaknode::ffi::node::oaknode_node_copy_in_graph(node, out_command) }
 	}
 }
-

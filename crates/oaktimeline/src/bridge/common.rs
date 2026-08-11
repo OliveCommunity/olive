@@ -83,7 +83,9 @@ pub fn oakcommon_xml_reader_read_next_start_element(reader: CHandle, found: *mut
 	}
 	#[cfg(not(any(test, feature = "test-stubs")))]
 	{
-		unsafe { oakcommon::ffi::xmlutils::oakcommon_xml_reader_read_next_start_element(reader, found) }
+		unsafe {
+			oakcommon::ffi::xmlutils::oakcommon_xml_reader_read_next_start_element(reader, found)
+		}
 	}
 }
 
@@ -100,14 +102,20 @@ pub fn oakcommon_xml_reader_name(reader: CHandle, name: *mut c_char, buf_size: c
 }
 
 /// Direct call into the `oakcommon` crate (single-lib unification).
-pub fn oakcommon_xml_reader_read_element_text(reader: CHandle, text: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oakcommon_xml_reader_read_element_text(
+	reader: CHandle,
+	text: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oakcommon_xml_reader_read_element_text(reader, text, buf_size)
 	}
 	#[cfg(not(any(test, feature = "test-stubs")))]
 	{
-		unsafe { oakcommon::ffi::xmlutils::oakcommon_xml_reader_read_element_text(reader, text, buf_size) }
+		unsafe {
+			oakcommon::ffi::xmlutils::oakcommon_xml_reader_read_element_text(reader, text, buf_size)
+		}
 	}
 }
 
@@ -124,26 +132,44 @@ pub fn oakcommon_xml_reader_attribute_count(reader: CHandle, count: *mut c_int) 
 }
 
 /// Direct call into the `oakcommon` crate (single-lib unification).
-pub fn oakcommon_xml_reader_attribute_name(reader: CHandle, index: c_int, name: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oakcommon_xml_reader_attribute_name(
+	reader: CHandle,
+	index: c_int,
+	name: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oakcommon_xml_reader_attribute_name(reader, index, name, buf_size)
 	}
 	#[cfg(not(any(test, feature = "test-stubs")))]
 	{
-		unsafe { oakcommon::ffi::xmlutils::oakcommon_xml_reader_attribute_name(reader, index, name, buf_size) }
+		unsafe {
+			oakcommon::ffi::xmlutils::oakcommon_xml_reader_attribute_name(
+				reader, index, name, buf_size,
+			)
+		}
 	}
 }
 
 /// Direct call into the `oakcommon` crate (single-lib unification).
-pub fn oakcommon_xml_reader_attribute_value(reader: CHandle, index: c_int, value: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oakcommon_xml_reader_attribute_value(
+	reader: CHandle,
+	index: c_int,
+	value: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oakcommon_xml_reader_attribute_value(reader, index, value, buf_size)
 	}
 	#[cfg(not(any(test, feature = "test-stubs")))]
 	{
-		unsafe { oakcommon::ffi::xmlutils::oakcommon_xml_reader_attribute_value(reader, index, value, buf_size) }
+		unsafe {
+			oakcommon::ffi::xmlutils::oakcommon_xml_reader_attribute_value(
+				reader, index, value, buf_size,
+			)
+		}
 	}
 }
 
@@ -220,14 +246,20 @@ pub fn oakcommon_xml_writer_write_end_document(writer: CHandle) -> c_int {
 }
 
 /// Direct call into the `oakcommon` crate (single-lib unification).
-pub fn oakcommon_xml_writer_write_attribute(writer: CHandle, key: *const c_char, value: *const c_char) -> c_int {
+pub fn oakcommon_xml_writer_write_attribute(
+	writer: CHandle,
+	key: *const c_char,
+	value: *const c_char,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oakcommon_xml_writer_write_attribute(writer, key, value)
 	}
 	#[cfg(not(any(test, feature = "test-stubs")))]
 	{
-		unsafe { oakcommon::ffi::xmlutils::oakcommon_xml_writer_write_attribute(writer, key, value) }
+		unsafe {
+			oakcommon::ffi::xmlutils::oakcommon_xml_writer_write_attribute(writer, key, value)
+		}
 	}
 }
 
@@ -244,14 +276,20 @@ pub fn oakcommon_xml_writer_write_characters(writer: CHandle, text: *const c_cha
 }
 
 /// Direct call into the `oakcommon` crate (single-lib unification).
-pub fn oakcommon_xml_writer_write_text_element(writer: CHandle, name: *const c_char, text: *const c_char) -> c_int {
+pub fn oakcommon_xml_writer_write_text_element(
+	writer: CHandle,
+	name: *const c_char,
+	text: *const c_char,
+) -> c_int {
 	#[cfg(any(test, feature = "test-stubs"))]
 	{
 		super::teststubs::oakcommon_xml_writer_write_text_element(writer, name, text)
 	}
 	#[cfg(not(any(test, feature = "test-stubs")))]
 	{
-		unsafe { oakcommon::ffi::xmlutils::oakcommon_xml_writer_write_text_element(writer, name, text) }
+		unsafe {
+			oakcommon::ffi::xmlutils::oakcommon_xml_writer_write_text_element(writer, name, text)
+		}
 	}
 }
 
@@ -266,4 +304,3 @@ pub fn oakcommon_config_get_int(group: *const c_char, key: *const c_char, defaul
 		unsafe { oakcommon::ffi::config::oakcommon_config_get_int(group, key, default) }
 	}
 }
-

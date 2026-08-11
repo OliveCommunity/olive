@@ -57,6 +57,14 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]
 
+// Re-export the node crate so integration tests (and embedders) address
+// the SAME compiled instance the facade uses: under `cargo test
+// --workspace`, oaknode is built twice (oaknode's own dev-dependency
+// enables oakcodec/test-stubs), and a test that mixes `oaknode::` direct
+// imports with `oakengine::` re-exports gets two incompatible type
+// instances (E0308 "multiple different versions of crate oaknode").
+pub use oaknode;
+
 pub mod audio;
 pub mod bridge;
 pub mod codec;
@@ -85,8 +93,8 @@ mod test_link {
 	#![allow(dead_code)]
 	fn force_link() -> usize {
 		let fns: [usize; 4] = [
-			oakrender::ffi::renderer::oakrender_display_renderer_create_opengl
-				as *const () as usize,
+			oakrender::ffi::renderer::oakrender_display_renderer_create_opengl as *const ()
+				as usize,
 			oaknode::ffi::project::oaknode_project_init as *const () as usize,
 			oaktimeline::ffi::marker::oaktimeline_marker_list_create as *const () as usize,
 			oaktask::ffi::manager::oaktask_manager_init as *const () as usize,

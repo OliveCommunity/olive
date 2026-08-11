@@ -79,7 +79,8 @@ impl VerticalAlignment {
 
 /// The C++ `k_input_flag_static` mask: not-connectable +
 /// not-keyframable.
-const STATIC_FLAGS: u32 = crate::input::flags::NOT_CONNECTABLE | crate::input::flags::NOT_KEYFRAMABLE;
+const STATIC_FLAGS: u32 =
+	crate::input::flags::NOT_CONNECTABLE | crate::input::flags::NOT_KEYFRAMABLE;
 
 /// Rich text generator v3 (the current "Text" node). Inherits
 /// position/size/color inputs and the polygon gizmo from the shape base
@@ -148,7 +149,10 @@ impl TextGeneratorV3 {
 	/// The current alignment (C++ `get_vertical_alignment()`): the
 	/// `valign_in` standard value as a [`VerticalAlignment`].
 	pub fn vertical_alignment(core: &NodeCore) -> VerticalAlignment {
-		VerticalAlignment::from_int(core.standard_value(VERTICAL_ALIGNMENT_INPUT, -1).to_double() as i32)
+		VerticalAlignment::from_int(
+			core.standard_value(VERTICAL_ALIGNMENT_INPUT, -1)
+				.to_double() as i32,
+		)
 	}
 
 	/// Expand `%N` placeholders with args (C++ `format_string()`):
@@ -282,7 +286,13 @@ impl NodeBehavior for TextGeneratorV3 {
 	/// value when present (a per-element array model is deferred), so
 	/// `%N` expansion is exercised directly via [`Self::format_string`]
 	/// (`// CPP-PARITY: textv3.cpp` `value()`).
-	fn value(&self, core: &NodeCore, inputs: &NodeValueRow, time: Rational, table: &mut NodeValueTable) {
+	fn value(
+		&self,
+		core: &NodeCore,
+		inputs: &NodeValueRow,
+		time: Rational,
+		table: &mut NodeValueTable,
+	) {
 		let text_val = inputs
 			.get(TEXT_INPUT)
 			.cloned()
@@ -313,7 +323,9 @@ impl NodeBehavior for TextGeneratorV3 {
 				crate::handle::CHandle::null(),
 				table,
 			);
-		} else if let Some(base @ NodeValue::Texture(_)) = inputs.get(crate::nodes::generatorwithmerge::BASE_INPUT) {
+		} else if let Some(base @ NodeValue::Texture(_)) =
+			inputs.get(crate::nodes::generatorwithmerge::BASE_INPUT)
+		{
 			table.push(base.value_type(), base.clone(), None);
 		}
 	}
@@ -395,7 +407,10 @@ impl TextGeneratorV3 {
 	/// size X. Font family/size come from the markup; the backend defaults
 	/// are used when absent.
 	pub fn layout_request(row: &NodeValueRow) -> TextLayoutRequest {
-		let size = row.get(crate::nodes::shapenodebase::SIZE_INPUT).map(to_vec2).unwrap_or([0.0, 0.0]);
+		let size = row
+			.get(crate::nodes::shapenodebase::SIZE_INPUT)
+			.map(to_vec2)
+			.unwrap_or([0.0, 0.0]);
 		TextLayoutRequest {
 			text: row.get(TEXT_INPUT).map(to_text).unwrap_or_else(String::new),
 			mode: TextLayoutMode::OliveHtml,
@@ -410,7 +425,12 @@ impl TextGeneratorV3 {
 	/// The C++ base offset (textv3.cpp `generate_frame()`): the shape
 	/// position re-centered into frame space — `pos - size/2 + frame/2`
 	/// (the frame halves are integer division in C++).
-	pub fn base_offset(pos: [f64; 2], size: [f64; 2], frame_width: i32, frame_height: i32) -> (f64, f64) {
+	pub fn base_offset(
+		pos: [f64; 2],
+		size: [f64; 2],
+		frame_width: i32,
+		frame_height: i32,
+	) -> (f64, f64) {
 		(
 			pos[0] - size[0] / 2.0 + (frame_width / 2) as f64,
 			pos[1] - size[1] / 2.0 + (frame_height / 2) as f64,
@@ -421,7 +441,12 @@ impl TextGeneratorV3 {
 	/// offset plus the vertical-alignment delta — top: none; middle:
 	/// `size.y/2 - doc.height/2`; bottom: `size.y - doc.height` (all
 	/// double math, unlike the integer halving in v2).
-	pub fn draw_offset(align: VerticalAlignment, base: (f64, f64), size: [f64; 2], doc_height: f64) -> (f64, f64) {
+	pub fn draw_offset(
+		align: VerticalAlignment,
+		base: (f64, f64),
+		size: [f64; 2],
+		doc_height: f64,
+	) -> (f64, f64) {
 		let (dx, mut dy) = base;
 		match align {
 			VerticalAlignment::Top => {}
@@ -435,7 +460,12 @@ impl TextGeneratorV3 {
 	/// scale, the draw offset, and the clip rect at the base offset
 	/// covering the shape size (set before the vertical-alignment
 	/// translate in the C++).
-	pub fn render_transform(scale: f64, draw: (f64, f64), base: (f64, f64), size: [f64; 2]) -> TextRenderTransform {
+	pub fn render_transform(
+		scale: f64,
+		draw: (f64, f64),
+		base: (f64, f64),
+		size: [f64; 2],
+	) -> TextRenderTransform {
 		TextRenderTransform {
 			scale,
 			draw_offset_x: draw.0,
@@ -511,9 +541,7 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	let mut text = crate::input::Input::new(
 		TEXT_INPUT,
 		crate::value::ValueType::Text,
-		NodeValue::Text(
-			"<p style='font-size: 72pt; color: white;'>Sample Text</p>".to_string(),
-		),
+		NodeValue::Text("<p style='font-size: 72pt; color: white;'>Sample Text</p>".to_string()),
 	);
 	text.properties = vec![("vieweronly".to_string(), NodeValue::Boolean(true))];
 	core.add_input(text);
@@ -550,9 +578,12 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		NodeValue::Vec2([400.0, 300.0]),
 	);
 
-	(core, Box::new(TextGeneratorV3 {
-		dont_emit_valign: false,
-	}))
+	(
+		core,
+		Box::new(TextGeneratorV3 {
+			dont_emit_valign: false,
+		}),
+	)
 }
 
 /// Register this node type (C++ `k_text_generator_v3` in
@@ -575,13 +606,24 @@ mod tests {
 
 	#[test]
 	fn input_names() {
-		let n = TextGeneratorV3 { dont_emit_valign: false };
+		let n = TextGeneratorV3 {
+			dont_emit_valign: false,
+		};
 		assert_eq!(n.input_name(TEXT_INPUT), "Text");
 		assert_eq!(n.input_name(VERTICAL_ALIGNMENT_INPUT), "Vertical Alignment");
 		assert_eq!(n.input_name(ARGS_INPUT), "Arguments");
-		assert_eq!(n.input_name(crate::nodes::generatorwithmerge::BASE_INPUT), "Base");
-		assert_eq!(n.input_name(crate::nodes::shapenodebase::POSITION_INPUT), "Position");
-		assert_eq!(n.input_name(crate::nodes::shapenodebase::SIZE_INPUT), "Size");
+		assert_eq!(
+			n.input_name(crate::nodes::generatorwithmerge::BASE_INPUT),
+			"Base"
+		);
+		assert_eq!(
+			n.input_name(crate::nodes::shapenodebase::POSITION_INPUT),
+			"Position"
+		);
+		assert_eq!(
+			n.input_name(crate::nodes::shapenodebase::SIZE_INPUT),
+			"Size"
+		);
 		// The hidden use_args_in input has no display name override.
 		assert_eq!(n.input_name(USE_ARGS_INPUT), USE_ARGS_INPUT);
 	}
@@ -590,14 +632,16 @@ mod tests {
 	fn create_wires_inherited_and_own_inputs() {
 		let (core, behavior) = create();
 		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.text3");
-		assert_eq!(core.get_input(TEXT_INPUT).unwrap().value_type, ValueType::Text);
-		assert!(
-			core.get_input(TEXT_INPUT)
-				.unwrap()
-				.properties
-				.iter()
-				.any(|(k, v)| k == "vieweronly" && v == &NodeValue::Boolean(true))
+		assert_eq!(
+			core.get_input(TEXT_INPUT).unwrap().value_type,
+			ValueType::Text
 		);
+		assert!(core
+			.get_input(TEXT_INPUT)
+			.unwrap()
+			.properties
+			.iter()
+			.any(|(k, v)| k == "vieweronly" && v == &NodeValue::Boolean(true)));
 		let valign = core.get_input(VERTICAL_ALIGNMENT_INPUT).unwrap();
 		assert_ne!(valign.flags & crate::input::flags::HIDDEN, 0);
 		assert_ne!(valign.flags & crate::input::flags::NOT_CONNECTABLE, 0);
@@ -606,35 +650,62 @@ mod tests {
 		assert_eq!(use_args.default, NodeValue::Boolean(true));
 		let args = core.get_input(ARGS_INPUT).unwrap();
 		assert_ne!(args.flags & crate::input::flags::ARRAY, 0);
-		assert!(args.properties.iter().any(|(k, v)| k == "arraystart" && v == &NodeValue::Int(1)));
+		assert!(args
+			.properties
+			.iter()
+			.any(|(k, v)| k == "arraystart" && v == &NodeValue::Int(1)));
 		// No color input (ShapeNodeBase(false)).
-		assert!(core.get_input(crate::nodes::shapenodebase::COLOR_INPUT).is_none());
+		assert!(core
+			.get_input(crate::nodes::shapenodebase::COLOR_INPUT)
+			.is_none());
 		assert_eq!(
 			core.standard_value(crate::nodes::shapenodebase::SIZE_INPUT, -1),
 			NodeValue::Vec2([400.0, 300.0])
 		);
-		assert_eq!(core.effect_input, crate::nodes::generatorwithmerge::BASE_INPUT);
+		assert_eq!(
+			core.effect_input,
+			crate::nodes::generatorwithmerge::BASE_INPUT
+		);
 		// v3 is shown in the create menu (no DONT_SHOW_IN_CREATE_MENU flag).
 		assert_eq!(core.flags & crate::node::flags::DONT_SHOW_IN_CREATE_MENU, 0);
 	}
 
 	#[test]
 	fn alignment_round_trip() {
-		for v in [VerticalAlignment::Top, VerticalAlignment::Middle, VerticalAlignment::Bottom] {
+		for v in [
+			VerticalAlignment::Top,
+			VerticalAlignment::Middle,
+			VerticalAlignment::Bottom,
+		] {
 			let gizmo = TextGeneratorV3::get_gizmo_alignment_from_ours(v);
 			assert_eq!(TextGeneratorV3::get_our_alignment_from_gizmos(gizmo), v);
 		}
-		assert_eq!(TextGeneratorV3::get_gizmo_alignment_from_ours(VerticalAlignment::Top), 0);
-		assert_eq!(TextGeneratorV3::get_gizmo_alignment_from_ours(VerticalAlignment::Middle), 2);
-		assert_eq!(TextGeneratorV3::get_gizmo_alignment_from_ours(VerticalAlignment::Bottom), 1);
+		assert_eq!(
+			TextGeneratorV3::get_gizmo_alignment_from_ours(VerticalAlignment::Top),
+			0
+		);
+		assert_eq!(
+			TextGeneratorV3::get_gizmo_alignment_from_ours(VerticalAlignment::Middle),
+			2
+		);
+		assert_eq!(
+			TextGeneratorV3::get_gizmo_alignment_from_ours(VerticalAlignment::Bottom),
+			1
+		);
 		// Unknown gizmo values map to Top.
-		assert_eq!(TextGeneratorV3::get_our_alignment_from_gizmos(99), VerticalAlignment::Top);
+		assert_eq!(
+			TextGeneratorV3::get_our_alignment_from_gizmos(99),
+			VerticalAlignment::Top
+		);
 	}
 
 	#[test]
 	fn format_string_expands_args() {
 		let args = vec!["foo".to_string(), "bar".to_string()];
-		assert_eq!(TextGeneratorV3::format_string("hello %1", &args), "hello foo");
+		assert_eq!(
+			TextGeneratorV3::format_string("hello %1", &args),
+			"hello foo"
+		);
 		assert_eq!(TextGeneratorV3::format_string("%2 %1", &args), "bar foo");
 		// Out of range expands to nothing.
 		assert_eq!(TextGeneratorV3::format_string("[%3]", &args), "[]");
@@ -655,7 +726,10 @@ mod tests {
 	#[test]
 	fn format_string_out_of_int_range_fails_to_zero() {
 		let args = vec!["foo".to_string()];
-		assert_eq!(TextGeneratorV3::format_string("%99999999999999999999", &args), "");
+		assert_eq!(
+			TextGeneratorV3::format_string("%99999999999999999999", &args),
+			""
+		);
 		assert_eq!(TextGeneratorV3::format_string("%2147483648", &args), "");
 		assert_eq!(TextGeneratorV3::format_string("%2147483647", &args), "");
 	}
@@ -671,8 +745,14 @@ mod tests {
 	#[test]
 	fn layout_request_uses_olive_html_and_96dpi() {
 		let mut row = NodeValueRow::default();
-		row.insert(TEXT_INPUT.to_string(), NodeValue::Text("<p>Hi</p>".to_string()));
-		row.insert(crate::nodes::shapenodebase::SIZE_INPUT.to_string(), NodeValue::Vec2([400.0, 300.0]));
+		row.insert(
+			TEXT_INPUT.to_string(),
+			NodeValue::Text("<p>Hi</p>".to_string()),
+		);
+		row.insert(
+			crate::nodes::shapenodebase::SIZE_INPUT.to_string(),
+			NodeValue::Vec2([400.0, 300.0]),
+		);
 		let req = TextGeneratorV3::layout_request(&row);
 		assert_eq!(req.text, "<p>Hi</p>");
 		assert_eq!(req.mode, TextLayoutMode::OliveHtml);
@@ -704,7 +784,10 @@ mod tests {
 	fn measure_without_backend_returns_zero_size() {
 		crate::nodes::textbackend::set_text_backends(None, None);
 		let mut row = NodeValueRow::default();
-		row.insert(TEXT_INPUT.to_string(), NodeValue::Text("<p>Hi</p>".to_string()));
+		row.insert(
+			TEXT_INPUT.to_string(),
+			NodeValue::Text("<p>Hi</p>".to_string()),
+		);
 		let (_req, doc) = TextGeneratorV3::measure_and_layout(&row);
 		assert_eq!(doc.width, 0.0);
 		assert_eq!(doc.height, 0.0);
@@ -714,7 +797,10 @@ mod tests {
 	fn value_pushes_job_when_text_nonempty() {
 		let (core, behavior) = create();
 		let mut row = NodeValueRow::default();
-		row.insert(TEXT_INPUT.to_string(), NodeValue::Text("<p>Hi</p>".to_string()));
+		row.insert(
+			TEXT_INPUT.to_string(),
+			NodeValue::Text("<p>Hi</p>".to_string()),
+		);
 		row.insert(USE_ARGS_INPUT.to_string(), NodeValue::Boolean(false));
 		let mut table = NodeValueTable::default();
 		behavior.value(&core, &row, Rational::new(0, 1), &mut table);
@@ -728,7 +814,10 @@ mod tests {
 	fn value_expands_args_from_row() {
 		let (core, behavior) = create();
 		let mut row = NodeValueRow::default();
-		row.insert(TEXT_INPUT.to_string(), NodeValue::Text("Hello %1".to_string()));
+		row.insert(
+			TEXT_INPUT.to_string(),
+			NodeValue::Text("Hello %1".to_string()),
+		);
 		row.insert(USE_ARGS_INPUT.to_string(), NodeValue::Boolean(true));
 		row.insert(ARGS_INPUT.to_string(), NodeValue::Text("World".to_string()));
 		let mut table = NodeValueTable::default();

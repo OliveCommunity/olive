@@ -186,8 +186,11 @@ impl NodeBehavior for MathNode {
 	/// single-string return carries only the fragment shader
 	/// (`// CPP-PARITY: math.cpp` `get_shader_code`).
 	fn shader_code(&self, request: &str) -> Option<String> {
-		let (frag, _vert) =
-			super::mathbase::MathNodeBase::shader_code_internal(request, PARAM_A_INPUT, PARAM_B_INPUT);
+		let (frag, _vert) = super::mathbase::MathNodeBase::shader_code_internal(
+			request,
+			PARAM_A_INPUT,
+			PARAM_B_INPUT,
+		);
 		if frag.is_empty() {
 			None
 		} else {
@@ -216,12 +219,10 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		crate::value::NodeValue::Combo(0),
 	);
 	method.flags |= crate::input::flags::NOT_CONNECTABLE | crate::input::flags::NOT_KEYFRAMABLE;
-	method.properties = vec![
-		(
-			"combobox_strings".to_string(),
-			crate::value::NodeValue::Binary(OPERATION_NAMES.concat().into_bytes()),
-		),
-	];
+	method.properties = vec![(
+		"combobox_strings".to_string(),
+		crate::value::NodeValue::Binary(OPERATION_NAMES.concat().into_bytes()),
+	)];
 	core.add_input(method);
 
 	let mut a = crate::input::Input::new(
@@ -230,11 +231,11 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		crate::value::NodeValue::Float(0.0),
 	);
 	a.properties = vec![
+		("decimalplaces".to_string(), crate::value::NodeValue::Int(8)),
 		(
-			"decimalplaces".to_string(),
-			crate::value::NodeValue::Int(8),
+			"autotrim".to_string(),
+			crate::value::NodeValue::Boolean(true),
 		),
-		("autotrim".to_string(), crate::value::NodeValue::Boolean(true)),
 	];
 	core.add_input(a);
 
@@ -244,11 +245,11 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		crate::value::NodeValue::Float(0.0),
 	);
 	b.properties = vec![
+		("decimalplaces".to_string(), crate::value::NodeValue::Int(8)),
 		(
-			"decimalplaces".to_string(),
-			crate::value::NodeValue::Int(8),
+			"autotrim".to_string(),
+			crate::value::NodeValue::Boolean(true),
 		),
-		("autotrim".to_string(), crate::value::NodeValue::Boolean(true)),
 	];
 	core.add_input(b);
 
@@ -341,7 +342,11 @@ mod tests {
 		core.set_standard_value(METHOD_INPUT, -1, NodeValue::Combo(4));
 		assert_eq!(n.operation(&core), super::super::mathbase::Operation::Power);
 		core.set_standard_value(METHOD_INPUT, -1, NodeValue::Combo(99));
-		assert_eq!(n.operation(&core), super::super::mathbase::Operation::Power, "clamped");
+		assert_eq!(
+			n.operation(&core),
+			super::super::mathbase::Operation::Power,
+			"clamped"
+		);
 	}
 
 	#[test]

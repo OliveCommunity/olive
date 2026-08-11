@@ -75,18 +75,9 @@ impl<E: AppEngine> Render for StatusBar<E> {
 			.bg(colors.container)
 			.text_xs()
 			.child(segment(&colors, crate::i18n::tr("status.ready").into()))
-			.child(segment(
-				&colors,
-				crate::i18n::tr("status.cache").into(),
-			))
-			.child(segment(
-				&colors,
-				crate::i18n::tr("status.proxy").into(),
-			))
-			.child(segment(
-				&colors,
-				crate::i18n::tr("status.autosave").into(),
-			))
+			.child(segment(&colors, crate::i18n::tr("status.cache").into()))
+			.child(segment(&colors, crate::i18n::tr("status.proxy").into()))
+			.child(segment(&colors, crate::i18n::tr("status.autosave").into()))
 			.child(div().flex_1())
 			.child(segment(
 				&colors,
@@ -102,15 +93,10 @@ impl<E: AppEngine> Render for StatusBar<E> {
 				format_resolution(format.width, format.height),
 			))
 			.child(div().px_2().text_color(colors.disabled).child(project))
-			.child(
-				div()
-					.px_2()
-					.text_color(colors.disabled)
-					.child(format!(
-						"{} · {}",
-						crate::i18n::tr("status.backend"),
-						self.engine.read(cx).backend_name(),
-					)),
-			)
+			.child(div().px_2().text_color(colors.disabled).child(format!(
+				"{} · {}",
+				crate::i18n::tr("status.backend"),
+				self.engine.read(cx).backend_name(),
+			)))
 	}
 }

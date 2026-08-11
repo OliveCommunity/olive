@@ -220,7 +220,10 @@ pub extern "C" fn oakcore_rational_free(rational: *mut c_void) {
 	if rational.is_null() {
 		return;
 	}
-	rational_store().lock().unwrap().remove(&(rational as usize));
+	rational_store()
+		.lock()
+		.unwrap()
+		.remove(&(rational as usize));
 	// SAFETY: produced by `oakcore_audioparams_time_base`; we hold the only
 	// reference after removal.
 	unsafe { drop(Box::from_raw(rational as *mut (i32, i32))) };
@@ -231,10 +234,7 @@ pub extern "C" fn oakcore_rational_free(rational: *mut c_void) {
 /// implementation lives in ffmpeg_bridge). Stub: exact matches win,
 /// otherwise the first (most desirable) candidate.
 #[no_mangle]
-pub extern "C" fn fb_find_best_pix_fmt_of_list(
-	list: *const c_int,
-	pix_fmt: c_int,
-) -> c_int {
+pub extern "C" fn fb_find_best_pix_fmt_of_list(list: *const c_int, pix_fmt: c_int) -> c_int {
 	if list.is_null() {
 		return 0;
 	}

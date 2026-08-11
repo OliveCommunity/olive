@@ -153,7 +153,13 @@ impl NodeBehavior for TimeOffsetNode {
 	/// [`Self::input_time_adjustment_with`] (and tested there); until the
 	/// adjustment API gains core access, the identity range is returned
 	/// (`// CPP-PARITY: timeoffsetnode.cpp` `input_time_adjustment`).
-	fn input_time_adjustment(&self, input: &str, element: i32, time: TimeRange, traverse: bool) -> TimeRange {
+	fn input_time_adjustment(
+		&self,
+		input: &str,
+		element: i32,
+		time: TimeRange,
+		traverse: bool,
+	) -> TimeRange {
 		let _ = (input, element, traverse);
 		time
 	}
@@ -167,7 +173,13 @@ impl NodeBehavior for TimeOffsetNode {
 	/// As with the input side, the value read needs the node's data; the
 	/// exact remap is ported in [`Self::output_time_adjustment_with`]
 	/// (`// CPP-PARITY: timeoffsetnode.cpp` `output_time_adjustment`).
-	fn output_time_adjustment(&self, input: &str, element: i32, time: TimeRange, traverse: bool) -> TimeRange {
+	fn output_time_adjustment(
+		&self,
+		input: &str,
+		element: i32,
+		time: TimeRange,
+		traverse: bool,
+	) -> TimeRange {
 		let _ = (input, element, traverse);
 		time
 	}
@@ -175,7 +187,13 @@ impl NodeBehavior for TimeOffsetNode {
 	/// Evaluate outputs (C++ `value()`): pushes the value arriving at
 	/// `input_in` through unchanged (the actual time shift happens via the
 	/// time-adjustment overrides above).
-	fn value(&self, core: &NodeCore, inputs: &NodeValueRow, time: Rational, table: &mut NodeValueTable) {
+	fn value(
+		&self,
+		core: &NodeCore,
+		inputs: &NodeValueRow,
+		time: Rational,
+		table: &mut NodeValueTable,
+	) {
 		let _ = (core, time);
 		// `table->push(value.at(k_input_input))` — the value passes through
 		// unchanged, whatever its type (texture values included).
@@ -208,11 +226,8 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	];
 	core.add_input(time_input);
 
-	let mut input_input = crate::input::Input::new(
-		INPUT_INPUT,
-		crate::value::ValueType::None,
-		NodeValue::None,
-	);
+	let mut input_input =
+		crate::input::Input::new(INPUT_INPUT, crate::value::ValueType::None, NodeValue::None);
 	input_input.flags |= crate::input::flags::NOT_KEYFRAMABLE;
 	core.add_input(input_input);
 
@@ -254,12 +269,14 @@ mod tests {
 		assert_eq!(time_in.value_type, ValueType::Rational);
 		assert_eq!(time_in.default, NodeValue::Rational(Rational::new(0, 1)));
 		assert_ne!(time_in.flags & crate::input::flags::NOT_CONNECTABLE, 0);
-		assert!(time_in.properties.iter().any(|(k, v)| {
-			k == "view" && v == &NodeValue::Text("time".to_string())
-		}));
-		assert!(time_in.properties.iter().any(|(k, v)| {
-			k == "viewlock" && v == &NodeValue::Boolean(true)
-		}));
+		assert!(time_in
+			.properties
+			.iter()
+			.any(|(k, v)| { k == "view" && v == &NodeValue::Text("time".to_string()) }));
+		assert!(time_in
+			.properties
+			.iter()
+			.any(|(k, v)| { k == "viewlock" && v == &NodeValue::Boolean(true) }));
 		let input_in = core.get_input(INPUT_INPUT).unwrap();
 		assert_eq!(input_in.value_type, ValueType::None);
 		assert_ne!(input_in.flags & crate::input::flags::NOT_KEYFRAMABLE, 0);
@@ -320,20 +337,22 @@ mod tests {
 		let (mut core, _) = create();
 		// A non-constant (keyframed) offset: each endpoint is shifted by the
 		// time_in value evaluated at that endpoint.
-		core.keyframe_track_mut(TIME_INPUT, -1).set_key(crate::keyframe::Keyframe {
-			time: Rational::new(0, 1),
-			value: NodeValue::Rational(Rational::new(1, 1)),
-			interpolation: crate::keyframe::Interpolation::Linear,
-			bezier_in: (0.0, 0.0),
-			bezier_out: (0.0, 0.0),
-		});
-		core.keyframe_track_mut(TIME_INPUT, -1).set_key(crate::keyframe::Keyframe {
-			time: Rational::new(20, 1),
-			value: NodeValue::Rational(Rational::new(3, 1)),
-			interpolation: crate::keyframe::Interpolation::Linear,
-			bezier_in: (0.0, 0.0),
-			bezier_out: (0.0, 0.0),
-		});
+		core.keyframe_track_mut(TIME_INPUT, -1)
+			.set_key(crate::keyframe::Keyframe {
+				time: Rational::new(0, 1),
+				value: NodeValue::Rational(Rational::new(1, 1)),
+				interpolation: crate::keyframe::Interpolation::Linear,
+				bezier_in: (0.0, 0.0),
+				bezier_out: (0.0, 0.0),
+			});
+		core.keyframe_track_mut(TIME_INPUT, -1)
+			.set_key(crate::keyframe::Keyframe {
+				time: Rational::new(20, 1),
+				value: NodeValue::Rational(Rational::new(3, 1)),
+				interpolation: crate::keyframe::Interpolation::Linear,
+				bezier_in: (0.0, 0.0),
+				bezier_out: (0.0, 0.0),
+			});
 		let t = TimeRange::new(Rational::new(0, 1), Rational::new(20, 1));
 		let shifted = TimeOffsetNode::input_time_adjustment_with(&core, INPUT_INPUT, -1, t, true);
 		// 0 + offset(0s) = 1; 20 + offset(20s) = 23.
@@ -349,7 +368,8 @@ mod tests {
 		let shifted = TimeOffsetNode::input_time_adjustment_with(&core, INPUT_INPUT, -1, t, true);
 		assert_eq!(shifted.in_(), Rational::new(15, 1));
 		assert_eq!(shifted.out(), Rational::new(25, 1));
-		let unshifted = TimeOffsetNode::output_time_adjustment_with(&core, INPUT_INPUT, -1, shifted, true);
+		let unshifted =
+			TimeOffsetNode::output_time_adjustment_with(&core, INPUT_INPUT, -1, shifted, true);
 		assert_eq!(unshifted, t);
 	}
 
@@ -358,8 +378,14 @@ mod tests {
 		let (mut core, _) = create();
 		core.set_standard_value(TIME_INPUT, -1, NodeValue::Rational(Rational::new(5, 1)));
 		let t = TimeRange::new(Rational::new(10, 1), Rational::new(20, 1));
-		assert_eq!(TimeOffsetNode::input_time_adjustment_with(&core, "other_in", -1, t, true), t);
-		assert_eq!(TimeOffsetNode::output_time_adjustment_with(&core, "other_in", -1, t, true), t);
+		assert_eq!(
+			TimeOffsetNode::input_time_adjustment_with(&core, "other_in", -1, t, true),
+			t
+		);
+		assert_eq!(
+			TimeOffsetNode::output_time_adjustment_with(&core, "other_in", -1, t, true),
+			t
+		);
 	}
 
 	#[test]

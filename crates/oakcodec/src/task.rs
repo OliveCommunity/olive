@@ -98,10 +98,8 @@ pub struct OakCodecTaskRequest {
 /// `oakcodec_task_submit_fn` — the extern-C submit callback typedef; see
 /// `include/codec/task.h`. Returns `OAKCODEC_OK` on accept, else a
 /// negative `OAKCODEC_E_*` code.
-pub type OakCodecTaskSubmitFn = unsafe extern "C" fn(
-	req: *const OakCodecTaskRequest,
-	userdata: *mut std::ffi::c_void,
-) -> i32;
+pub type OakCodecTaskSubmitFn =
+	unsafe extern "C" fn(req: *const OakCodecTaskRequest, userdata: *mut std::ffi::c_void) -> i32;
 
 /// One registered submit callback (extern-C from the host, or a crate
 /// Rust closure). Mirrors the C++ `g_task_cb`/`g_task_cb_userdata` pair.
@@ -175,9 +173,7 @@ pub fn task_submit_is_registered() -> bool {
 ///
 /// Returns `Ok(false)` when no callback is registered (nothing submitted),
 /// `Ok(true)` when accepted, or `Err` when the callback rejected it.
-pub fn submit_task(
-	req: &TaskRequest,
-) -> crate::error::Result<bool> {
+pub fn submit_task(req: &TaskRequest) -> crate::error::Result<bool> {
 	let g = TASK_SUBMIT.lock().unwrap();
 	match &*g {
 		SubmitCb::None => Ok(false),
@@ -203,7 +199,10 @@ pub fn submit_task(
 			if ret == OAKCODEC_OK {
 				Ok(true)
 			} else {
-				Err(Error::Failed(format!("task submit rejected (code {})", ret)))
+				Err(Error::Failed(format!(
+					"task submit rejected (code {})",
+					ret
+				)))
 			}
 		}
 		SubmitCb::Rust { cb, userdata } => {
@@ -301,7 +300,10 @@ mod tests {
 	#[test]
 	fn extern_cb_accept_returns_ok() {
 		let _g = REG_LOCK.lock().unwrap();
-		set_task_submit_cb_extern(Some(crate::conformmanager::test_util::accept_cb), std::ptr::null_mut());
+		set_task_submit_cb_extern(
+			Some(crate::conformmanager::test_util::accept_cb),
+			std::ptr::null_mut(),
+		);
 		let req = TaskRequest {
 			kind: TaskKind::Conform,
 			input_filename: "in.mp4",

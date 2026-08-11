@@ -207,9 +207,9 @@ impl SubtitleParams {
 			match ev.name.as_str() {
 				"streamindex" => {
 					let text = reader.read_element_text();
-					let index: i32 = text.parse().map_err(|_| {
-						Error::Failed("invalid subtitleparams streamindex".into())
-					})?;
+					let index: i32 = text
+						.parse()
+						.map_err(|_| Error::Failed("invalid subtitleparams streamindex".into()))?;
 					self.set_stream_index(index);
 				}
 				"enabled" => {
@@ -534,7 +534,9 @@ fn parse_events(data: &str) -> Result<Vec<XmlEvent>> {
 
 		// b[i] == b'<'
 		if i + 1 >= n {
-			return Err(Error::Failed("unterminated '<' in subtitleparams xml".into()));
+			return Err(Error::Failed(
+				"unterminated '<' in subtitleparams xml".into(),
+			));
 		}
 		match b[i + 1] {
 			b'/' => {
@@ -582,7 +584,9 @@ fn parse_events(data: &str) -> Result<Vec<XmlEvent>> {
 				// <? ... ?> processing instruction (e.g. the XML decl).
 				match data[i + 2..].find("?>") {
 					Some(p) => i = i + 2 + p + 2,
-					None => return Err(Error::Failed("unterminated processing instruction".into())),
+					None => {
+						return Err(Error::Failed("unterminated processing instruction".into()))
+					}
 				}
 			}
 			_ => {
@@ -622,7 +626,9 @@ fn parse_events(data: &str) -> Result<Vec<XmlEvent>> {
 						i += 1;
 					}
 					if aname_start == i {
-						return Err(Error::Failed("malformed attribute in subtitleparams xml".into()));
+						return Err(Error::Failed(
+							"malformed attribute in subtitleparams xml".into(),
+						));
 					}
 					let aname = data[aname_start..i].to_string();
 
@@ -975,7 +981,10 @@ mod tests {
 	fn escape_helpers() {
 		assert_eq!(escape_text("a<b&c>d"), "a&lt;b&amp;c&gt;d");
 		assert_eq!(escape_attribute("a\"b<c>&d"), "a&quot;b&lt;c&gt;&amp;d");
-		assert_eq!(decode_entities("a&lt;b&amp;c&gt;d&quot;e&apos;f"), "a<b&c>d\"e'f");
+		assert_eq!(
+			decode_entities("a&lt;b&amp;c&gt;d&quot;e&apos;f"),
+			"a<b&c>d\"e'f"
+		);
 		assert_eq!(decode_entities("&#65;&#x42;"), "AB");
 		assert_eq!(decode_entities("keep &unknown;"), "keep &unknown;");
 	}
@@ -1026,7 +1035,7 @@ mod tests {
 		sp.load_xml("<subtitleparams><enabled>2</enabled><subtitles/></subtitleparams>")
 			.unwrap();
 		assert!(sp.enabled()); // any nonzero is true (C++ bool conversion)
-		// std::stoi throws on junk -> E_FAILED.
+						 // std::stoi throws on junk -> E_FAILED.
 		assert!(sp
 			.load_xml("<subtitleparams><enabled>abc</enabled><subtitles/></subtitleparams>")
 			.is_err());
@@ -1136,9 +1145,20 @@ mod tests {
 	fn rational_reduce_matches_oakcore() {
 		// Cross-validate the hand-rolled reduction against the canonical
 		// oakcore-rs port of the C++ Rational.
-		for (n, d) in [(2, 4), (0, 5), (5, 0), (-3, -1), (1, -2), (7, 3), (i32::MAX, 1)] {
+		for (n, d) in [
+			(2, 4),
+			(0, 5),
+			(5, 0),
+			(-3, -1),
+			(1, -2),
+			(7, 3),
+			(i32::MAX, 1),
+		] {
 			let r = oakcore_rs::Rational::new(n as i64, d as i64);
-			assert_eq!(rational_reduce(n, d), (r.numerator() as i32, r.denominator() as i32));
+			assert_eq!(
+				rational_reduce(n, d),
+				(r.numerator() as i32, r.denominator() as i32)
+			);
 		}
 		for s in ["1/2", "7", "4/2", "junk", "a/b", "1/2/3", ""] {
 			let r = oakcore_rs::Rational::from_string(s);

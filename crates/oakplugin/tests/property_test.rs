@@ -18,7 +18,6 @@
 //!
 //! 参照：HS: ofxhProperty.cpp。语义要点：多维数组、越界/缺失/
 /// 类型不符的行为、define 替换语义。
-
 mod common;
 
 use std::ffi::{c_void, CString};
@@ -78,11 +77,17 @@ fn set_at_semantics() {
 	assert_eq!(s.dimension("a"), 2);
 
 	// 越界写：维度固定语义（不自动扩容）→ NotFound。
-	assert!(matches!(s.set_at("a", 2, Value::Int(3)), Err(Error::NotFound)));
+	assert!(matches!(
+		s.set_at("a", 2, Value::Int(3)),
+		Err(Error::NotFound)
+	));
 	assert_eq!(s.dimension("a"), 2);
 
 	// 缺失属性：NotFound。
-	assert!(matches!(s.set_at("b", 0, Value::Int(1)), Err(Error::NotFound)));
+	assert!(matches!(
+		s.set_at("b", 0, Value::Int(1)),
+		Err(Error::NotFound)
+	));
 }
 
 /// 四种值类型（Int/Double/String/Pointer）各自的存取 round-trip；
@@ -100,7 +105,10 @@ fn typed_roundtrip() {
 
 	assert!(val_eq(&s.get("ints", 0).unwrap(), &Value::Int(-7)));
 	assert!(val_eq(&s.get("dbls", 0).unwrap(), &Value::Double(1.5)));
-	assert!(val_eq(&s.get("strs", 0).unwrap(), &Value::String(non_ascii)));
+	assert!(val_eq(
+		&s.get("strs", 0).unwrap(),
+		&Value::String(non_ascii)
+	));
 	assert!(val_eq(&s.get("ptrs", 0).unwrap(), &Value::Pointer(raw)));
 
 	// 空串也是合法属性值。

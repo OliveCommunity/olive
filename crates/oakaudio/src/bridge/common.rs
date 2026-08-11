@@ -47,5 +47,7 @@ pub unsafe fn oakcommon_ffmpegutils_get_ffmpeg_sample_format(
 	smp_fmt: c_int,
 	out: *mut c_int,
 ) -> c_int {
-	unsafe { oakcommon::ffi::ffmpegutils::oakcommon_ffmpegutils_get_ffmpeg_sample_format(smp_fmt, out) }
+	unsafe {
+		oakcommon::ffi::ffmpegutils::oakcommon_ffmpegutils_get_ffmpeg_sample_format(smp_fmt, out)
+	}
 }

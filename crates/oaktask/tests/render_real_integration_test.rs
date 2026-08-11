@@ -47,11 +47,11 @@ mod common;
 
 use std::sync::atomic::Ordering;
 
+use oakcore_rs::{Rational, TimeRange};
 use oaktask::error::Result;
 use oaktask::handle::CHandle;
 use oaktask::render::{ForceParams, RenderTask, RenderTaskBehavior};
 use oaktask::task::Task;
-use oakcore_rs::{Rational, TimeRange};
 
 /// Records what the render loop delivers: each frame's timestamp (the
 /// producer stamps `Frame::timestamp` with the ticket time) and size.
@@ -134,7 +134,10 @@ fn render_loop_submits_real_tickets_and_delivers_in_timestamp_order() {
 		let result = rt.render(&mut task, &mut behavior);
 		drop(rt);
 
-		assert!(result.is_ok(), "render through the real arena must succeed: {result:?}");
+		assert!(
+			result.is_ok(),
+			"render through the real arena must succeed: {result:?}"
+		);
 		assert_eq!(
 			behavior.timestamps,
 			vec![

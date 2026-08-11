@@ -156,15 +156,15 @@ impl Traverser {
 			let entry = graph.get(node).ok_or(Error::NotFound)?;
 			// The behavior writes outputs; the default no-op leaves the
 			// table empty (C++ `Node::value` default).
-			entry.behavior.value(&entry.core, &row, request.time, &mut table);
+			entry
+				.behavior
+				.value(&entry.core, &row, request.time, &mut table);
 			hooks.resolve(node, &row, &mut table);
 
 			tables.insert(node, table);
 		}
 
-		Ok(tables
-			.remove(&request.root)
-			.unwrap_or_default())
+		Ok(tables.remove(&request.root).unwrap_or_default())
 	}
 
 	/// Invalidate walk: mark downstream caches dirty after an input

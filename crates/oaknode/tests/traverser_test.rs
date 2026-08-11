@@ -55,9 +55,22 @@ impl NodeBehavior for Inc {
 	fn duplicate(&self, _c: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
 		Some(Box::new(Inc))
 	}
-	fn value(&self, _c: &NodeCore, inputs: &NodeValueRow, _t: Rational, table: &mut NodeValueTable) {
-		let v = inputs.get("val_in").cloned().unwrap_or(NodeValue::Float(0.0));
-		table.push(ValueType::Float, NodeValue::Float(v.to_double() + 1.0), None);
+	fn value(
+		&self,
+		_c: &NodeCore,
+		inputs: &NodeValueRow,
+		_t: Rational,
+		table: &mut NodeValueTable,
+	) {
+		let v = inputs
+			.get("val_in")
+			.cloned()
+			.unwrap_or(NodeValue::Float(0.0));
+		table.push(
+			ValueType::Float,
+			NodeValue::Float(v.to_double() + 1.0),
+			None,
+		);
 	}
 }
 
@@ -84,8 +97,16 @@ impl NodeBehavior for Count {
 
 fn node_with_input(g: &mut Graph, behavior: Box<dyn NodeBehavior>) -> NodeId {
 	let mut core = NodeCore::new();
-	core.add_input(Input::new("val_in", ValueType::Float, NodeValue::Float(0.0)));
-	core.add_input(Input::new("val_in2", ValueType::Float, NodeValue::Float(0.0)));
+	core.add_input(Input::new(
+		"val_in",
+		ValueType::Float,
+		NodeValue::Float(0.0),
+	));
+	core.add_input(Input::new(
+		"val_in2",
+		ValueType::Float,
+		NodeValue::Float(0.0),
+	));
 	g.add_node(core, behavior)
 }
 
@@ -129,9 +150,12 @@ fn diamond_evaluates_shared_node_once() {
 		let mut core = NodeCore::new();
 		core.add_input(Input::new("a", ValueType::Int, NodeValue::Int(0)));
 		core.add_input(Input::new("b", ValueType::Int, NodeValue::Int(0)));
-		g.add_node(core, Box::new(Count(std::sync::Arc::new(
-			std::sync::atomic::AtomicUsize::new(0),
-		))))
+		g.add_node(
+			core,
+			Box::new(Count(std::sync::Arc::new(
+				std::sync::atomic::AtomicUsize::new(0),
+			))),
+		)
 	};
 	g.connect(shared, leaf, "a", -1).unwrap();
 	g.connect(shared, leaf, "b", -1).unwrap();
@@ -198,7 +222,11 @@ fn invalidation_fanout() {
 	g.connect(c, d, "val_in2", -1).unwrap();
 
 	let mut t = Traverser::new();
-	t.invalidate_downstream(&g, a, TimeRange::new(Rational::new(0, 1), Rational::new(1, 1)));
+	t.invalidate_downstream(
+		&g,
+		a,
+		TimeRange::new(Rational::new(0, 1), Rational::new(1, 1)),
+	);
 	let walked = t.last_invalidation();
 	assert_eq!(walked.len(), 4, "a, b, c, d each exactly once");
 	assert!(walked.contains(&a) && walked.contains(&d));

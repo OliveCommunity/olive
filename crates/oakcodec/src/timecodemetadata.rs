@@ -104,8 +104,7 @@ fn timecode_to_time(timecode: &str, timebase: &Rational, drop_frame: bool) -> Op
 		let m = real_fr_ts % frames_per10_minutes;
 
 		if m > drop_frames {
-			frame_count -= drop_frames
-				* ((m - drop_frames) / (llround(fr) * 60 - drop_frames));
+			frame_count -= drop_frames * ((m - drop_frames) / (llround(fr) * 60 - drop_frames));
 		}
 		frame_count -= drop_frames * 9 * d;
 	}

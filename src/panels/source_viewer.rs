@@ -20,8 +20,7 @@
 use gpui::colors::DefaultColors;
 use gpui::dock::{DockPanel, PanelEvent};
 use gpui::{
-	div, prelude::*, AnyElement, App, Context, Entity, EventEmitter, Render, SharedString,
-	Window,
+	div, prelude::*, AnyElement, App, Context, Entity, EventEmitter, Render, SharedString, Window,
 };
 use gpui_widgets::viewer::{ViewerEvent, ViewerWidget};
 
@@ -71,7 +70,10 @@ impl<E: AppEngine> SourceViewerPanel<E> {
 	/// it actually changed (the engine caches one image per playhead frame).
 	fn sync_frame(&mut self, cx: &mut Context<Self>) {
 		let frame = self.engine.read(cx).cpu_frame(Monitor::Source, cx);
-		if self.last_cpu_frame.as_ref().is_none_or(|last| !std::sync::Arc::ptr_eq(last, &frame))
+		if self
+			.last_cpu_frame
+			.as_ref()
+			.is_none_or(|last| !std::sync::Arc::ptr_eq(last, &frame))
 		{
 			self.last_cpu_frame = Some(frame.clone());
 			let frame = frame.clone();

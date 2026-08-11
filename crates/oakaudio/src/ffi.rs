@@ -28,9 +28,7 @@ use oakcore_rs::Rational;
 
 use crate::bridge::codec::EncodingParams;
 use crate::error::{Error, OAKAUDIO_E_INVALID};
-use crate::handle::{
-	guard, guard_handle, guard_int, guard_void, invalid_if, write_error, CHandle,
-};
+use crate::handle::{guard, guard_handle, guard_int, guard_void, invalid_if, write_error, CHandle};
 use crate::params::{AudioParams, SampleFormat};
 use crate::waveform::{AudioVisualWaveform, SamplePerChannel};
 
@@ -92,9 +90,7 @@ unsafe fn planar_views<'a>(
 		if p.is_null() {
 			views.push(&[]);
 		} else {
-			views.push(unsafe {
-				std::slice::from_raw_parts(p, frame_count as usize)
-			});
+			views.push(unsafe { std::slice::from_raw_parts(p, frame_count as usize) });
 		}
 	}
 	views
@@ -211,9 +207,7 @@ pub mod manager {
 
 	/// `oakaudio_manager_clear_buffered_output`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oakaudio_manager_clear_buffered_output(
-		_self: CHandle,
-	) -> c_int {
+	pub unsafe extern "C" fn oakaudio_manager_clear_buffered_output(_self: CHandle) -> c_int {
 		guard(|| crate::manager::clear_buffered_output(&_self))
 	}
 
@@ -225,10 +219,7 @@ pub mod manager {
 
 	/// `oakaudio_manager_seconds`: write elapsed playback seconds into `out`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oakaudio_manager_seconds(
-		_self: CHandle,
-		out: *mut c_double,
-	) -> c_int {
+	pub unsafe extern "C" fn oakaudio_manager_seconds(_self: CHandle, out: *mut c_double) -> c_int {
 		guard(|| {
 			invalid_if(out.is_null())?;
 			let mut seconds = 0.0f64;
@@ -242,17 +233,13 @@ pub mod manager {
 
 	/// `oakaudio_manager_reset_output_clock`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oakaudio_manager_reset_output_clock(
-		_self: CHandle,
-	) -> c_int {
+	pub unsafe extern "C" fn oakaudio_manager_reset_output_clock(_self: CHandle) -> c_int {
 		guard(|| crate::manager::reset_output_clock(&_self))
 	}
 
 	/// `oakaudio_manager_get_output_device`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oakaudio_manager_get_output_device(
-		_self: CHandle,
-	) -> c_int {
+	pub unsafe extern "C" fn oakaudio_manager_get_output_device(_self: CHandle) -> c_int {
 		guard_int(|| crate::manager::get_output_device(&_self))
 	}
 
@@ -267,9 +254,7 @@ pub mod manager {
 
 	/// `oakaudio_manager_get_input_device`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oakaudio_manager_get_input_device(
-		_self: CHandle,
-	) -> c_int {
+	pub unsafe extern "C" fn oakaudio_manager_get_input_device(_self: CHandle) -> c_int {
 		guard_int(|| crate::manager::get_input_device(&_self))
 	}
 
@@ -321,9 +306,7 @@ pub mod manager {
 
 	/// `oakaudio_manager_stop_recording`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oakaudio_manager_stop_recording(
-		_self: CHandle,
-	) -> c_int {
+	pub unsafe extern "C" fn oakaudio_manager_stop_recording(_self: CHandle) -> c_int {
 		guard(|| crate::manager::stop_recording(&_self))
 	}
 
@@ -782,9 +765,7 @@ pub mod waveform {
 
 	/// `oakaudio_waveform_get_channel_count`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oakaudio_waveform_get_channel_count(
-		_self: CHandle,
-	) -> c_int {
+	pub unsafe extern "C" fn oakaudio_waveform_get_channel_count(_self: CHandle) -> c_int {
 		guard_int(|| Ok(crate::waveform::get(&_self)?.channel_count()))
 	}
 
@@ -835,9 +816,7 @@ pub mod waveform {
 		guard(|| {
 			// CPP-PARITY: waveform.cpp:208.
 			let start = rational_from_parts(start_num, start_den)?;
-			invalid_if(
-				planar.is_null() || frame_count <= 0 || sample_rate <= 0,
-			)?;
+			invalid_if(planar.is_null() || frame_count <= 0 || sample_rate <= 0)?;
 			let channels = crate::waveform::get(&_self)?.channel_count();
 			if channels <= 0 {
 				return Err(Error::State);
@@ -849,11 +828,7 @@ pub mod waveform {
 				}
 			}
 			let views = unsafe { planar_views(planar, channels, frame_count) };
-			crate::waveform::get_mut(&_self)?.overwrite_samples(
-				&views,
-				sample_rate,
-				start,
-			);
+			crate::waveform::get_mut(&_self)?.overwrite_samples(&views, sample_rate, start);
 			Ok(())
 		})
 	}
@@ -877,8 +852,7 @@ pub mod waveform {
 			let src_waveform = crate::waveform::get(&src)?;
 			// SAFETY: `self` and `src` are distinct handles (the FFI
 			// contract forbids aliasing them).
-			crate::waveform::get_mut(&_self)?
-				.overwrite_sums(src_waveform, dest, offset, length);
+			crate::waveform::get_mut(&_self)?.overwrite_sums(src_waveform, dest, offset, length);
 			Ok(())
 		})
 	}
@@ -1021,11 +995,8 @@ pub mod waveform {
 					std::slice::from_raw_parts(p, (start_index + length) as usize)
 				});
 			}
-			let sample = AudioVisualWaveform::sum_samples(
-				&views,
-				start_index as usize,
-				length as usize,
-			);
+			let sample =
+				AudioVisualWaveform::sum_samples(&views, start_index as usize, length as usize);
 			// CPP-PARITY: a short summary is an internal failure.
 			if sample.len() < channel_count as usize {
 				return Err(Error::Failed("sum_samples underflow".to_string()));
@@ -1053,12 +1024,7 @@ pub mod waveform {
 	) -> c_int {
 		guard_int(|| {
 			// CPP-PARITY: waveform.cpp:393 — both buffers are required.
-			invalid_if(
-				r#in.is_null()
-					|| out.is_null()
-					|| nb_entries <= 0
-					|| nb_channels <= 0,
-			)?;
+			invalid_if(r#in.is_null() || out.is_null() || nb_entries <= 0 || nb_channels <= 0)?;
 			// SAFETY: `in` holds `nb_entries` entries.
 			let entries = unsafe { std::slice::from_raw_parts(r#in, nb_entries as usize) };
 			let samples: Vec<SamplePerChannel> = entries
@@ -1068,11 +1034,8 @@ pub mod waveform {
 					max: m.max,
 				})
 				.collect();
-			let sample = AudioVisualWaveform::re_sum_samples(
-				&samples,
-				nb_entries as usize,
-				nb_channels,
-			);
+			let sample =
+				AudioVisualWaveform::re_sum_samples(&samples, nb_entries as usize, nb_channels);
 			for (i, spc) in sample.iter().enumerate() {
 				// SAFETY: `out` holds at least `nb_channels` entries.
 				unsafe {
@@ -1111,8 +1074,7 @@ pub mod waveform {
 			)?;
 			// SAFETY: the caller guarantees a NUL-terminated string.
 			let filename = unsafe { CStr::from_ptr(filename) };
-			let outcome =
-				crate::waveform::extract(filename, stream_index, samples_per_point)?;
+			let outcome = crate::waveform::extract(filename, stream_index, samples_per_point)?;
 			let channels = outcome.channels.max(1);
 			let point_count = outcome.points.len() / channels as usize;
 			// CPP-PARITY: the channel count is reported even for a size-only
@@ -1138,7 +1100,6 @@ pub mod waveform {
 			Ok(point_count as i32)
 		})
 	}
-
 }
 
 /// `include/audio/levelmeter.h` exports (complete inventory): stateless

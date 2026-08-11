@@ -67,8 +67,7 @@ pub fn place_by_source_time(
 	let reference_head_source = reference.source_start_time + reference.media_in;
 	let candidate_head_source = candidate.source_start_time + candidate.media_in;
 
-	placement.timeline_in =
-		reference_timeline_in + candidate_head_source - reference_head_source;
+	placement.timeline_in = reference_timeline_in + candidate_head_source - reference_head_source;
 	placement.valid = !placement.timeline_in.is_nan();
 	placement
 }

@@ -152,7 +152,10 @@ mod tests {
 	#[test]
 	fn set_project_rejects_empty_handle() {
 		let mut pc = ProjectCopy::new();
-		assert_eq!(pc.set_project(ProjectHandle::null()).unwrap_err().code(), Error::Invalid.code());
+		assert_eq!(
+			pc.set_project(ProjectHandle::null()).unwrap_err().code(),
+			Error::Invalid.code()
+		);
 	}
 
 	#[test]

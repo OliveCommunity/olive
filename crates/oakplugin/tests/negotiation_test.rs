@@ -54,7 +54,9 @@ fn create_instance() -> CHandle {
 }
 
 /// 句柄 → Instance 引用。
-fn instance_of(h: &CHandle) -> Option<std::sync::Arc<oakplugin::handle::RefBox<oakplugin::instance::Instance>>> {
+fn instance_of(
+	h: &CHandle,
+) -> Option<std::sync::Arc<oakplugin::handle::RefBox<oakplugin::instance::Instance>>> {
 	unsafe { get::<std::sync::Arc<oakplugin::handle::RefBox<oakplugin::instance::Instance>>>(h) }
 		.cloned()
 }
@@ -78,7 +80,12 @@ fn clip_preferences_component_depth_matrix() {
 		assert_eq!(prefs.output_bit_depth, "OfxBitDepthFloat");
 		assert_eq!(prefs.frame_rate, 24.0);
 		// 回灌：clip 实例属性带上了协商结果（clipGetPropertySet 读）。
-		let output = inst.value.clips.iter().find(|c| c.name == "Output").unwrap();
+		let output = inst
+			.value
+			.clips
+			.iter()
+			.find(|c| c.name == "Output")
+			.unwrap();
 		assert_eq!(
 			output
 				.props
@@ -146,7 +153,12 @@ fn regions_of_interest_writeback() {
 			return;
 		}
 		let inst = instance_of(&h).expect("句柄应可解析");
-		let region = oakplugin::instance::OfxRectD { x1: 10.0, y1: 20.0, x2: 100.0, y2: 200.0 };
+		let region = oakplugin::instance::OfxRectD {
+			x1: 10.0,
+			y1: 20.0,
+			x2: 100.0,
+			y2: 200.0,
+		};
 		let rois = inst
 			.value
 			.get_regions_of_interest(
@@ -159,9 +171,18 @@ fn regions_of_interest_writeback() {
 		// RoI 只对输入 clip 有意义：Source 回写 region；Output 是
 		// 宿主预定义的默认（零），渲染驱动只用输入条目。
 		let source = rois
-			.get(inst.value.clips.iter().position(|c| c.name == "Source").unwrap())
+			.get(
+				inst.value
+					.clips
+					.iter()
+					.position(|c| c.name == "Source")
+					.unwrap(),
+			)
 			.unwrap();
-		assert_eq!((source.x1, source.y1, source.x2, source.y2), (10.0, 20.0, 100.0, 200.0));
+		assert_eq!(
+			(source.x1, source.y1, source.x2, source.y2),
+			(10.0, 20.0, 100.0, 200.0)
+		);
 		unsafe { oakplugin_instance_free(&mut h) };
 		unsafe { oakplugin_host_shutdown() };
 	});
@@ -218,7 +239,10 @@ fn sequence_render_brackets() {
 			return;
 		}
 		let inst = instance_of(&h).expect("句柄应可解析");
-		let range = OfxRangeD { min: 10.0, max: 200.0 };
+		let range = OfxRangeD {
+			min: 10.0,
+			max: 200.0,
+		};
 		assert!(inst.value.begin_sequence_render(range).is_ok());
 		assert!(inst.value.end_sequence_render(range).is_ok());
 

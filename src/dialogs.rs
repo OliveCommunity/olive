@@ -24,8 +24,8 @@
 
 use gpui::colors::DefaultColors;
 use gpui::prelude::*;
-use gpui::{App, Context, Entity, Render, SharedString, Window, div};
-use gpui_elements::editable_text::{EditableTextState, StringStorage, text_input};
+use gpui::{div, App, Context, Entity, Render, SharedString, Window};
+use gpui_elements::editable_text::{text_input, EditableTextState, StringStorage};
 use gpui_widgets::combo_box::{ComboBox, ComboBoxEvent, ComboBoxOption};
 
 use crate::i18n;
@@ -77,7 +77,9 @@ impl PreferencesContent {
 			let _ = cx;
 		})
 		.detach();
-		backend.update(cx, |combo, cx| combo.set_selected(Some(backend_selected), cx));
+		backend.update(cx, |combo, cx| {
+			combo.set_selected(Some(backend_selected), cx)
+		});
 
 		let language_options = vec![
 			ComboBoxOption::new(0, "English (en-US)"),
@@ -102,7 +104,9 @@ impl PreferencesContent {
 			let _ = cx;
 		})
 		.detach();
-		language.update(cx, |combo, cx| combo.set_selected(Some(language_selected), cx));
+		language.update(cx, |combo, cx| {
+			combo.set_selected(Some(language_selected), cx)
+		});
 
 		Self {
 			backend,
@@ -201,7 +205,11 @@ impl Render for PathField {
 			.bg(colors.background)
 			.px_2()
 			.py_1()
-			.child(text_input("gpui-widgets-export-path").state(weak).accepts_input(true))
+			.child(
+				text_input("gpui-widgets-export-path")
+					.state(weak)
+					.accepts_input(true),
+			)
 	}
 }
 
@@ -225,9 +233,7 @@ impl ExportDialogContent {
 		let options = formats
 			.iter()
 			.enumerate()
-			.map(|(i, (_, name, ext))| {
-				ComboBoxOption::new(i, format!("{name} (.{ext})"))
-			})
+			.map(|(i, (_, name, ext))| ComboBoxOption::new(i, format!("{name} (.{ext})")))
 			.collect();
 		let format = cx.new(|cx| {
 			ComboBox::new(3, options, window, cx)
@@ -281,7 +287,8 @@ impl ExportDialogContent {
 	/// Pre-fills the output path.
 	pub fn set_path(&mut self, path: impl Into<SharedString>, cx: &mut Context<Self>) {
 		let path = path.into();
-		self.path.update(cx, |content, cx| content.set_path(path, cx));
+		self.path
+			.update(cx, |content, cx| content.set_path(path, cx));
 		cx.notify();
 	}
 }
@@ -299,7 +306,11 @@ impl Render for ExportDialogContent {
 				i18n::tr("export.format").into(),
 				self.format.clone(),
 			))
-			.child(form_row(&colors, i18n::tr("export.path").into(), self.path.clone()))
+			.child(form_row(
+				&colors,
+				i18n::tr("export.path").into(),
+				self.path.clone(),
+			))
 			.child(
 				div()
 					.text_color(colors.disabled)

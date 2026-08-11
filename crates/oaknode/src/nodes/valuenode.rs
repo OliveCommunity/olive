@@ -166,7 +166,10 @@ mod tests {
 	fn create_wires_inputs() {
 		let (core, behavior) = create();
 		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.value");
-		assert_eq!(core.get_input(VALUE_INPUT).unwrap().value_type, ValueType::Float);
+		assert_eq!(
+			core.get_input(VALUE_INPUT).unwrap().value_type,
+			ValueType::Float
+		);
 		assert_eq!(
 			core.get_input(TYPE_INPUT).unwrap().flags & crate::input::flags::NOT_CONNECTABLE,
 			crate::input::flags::NOT_CONNECTABLE
@@ -178,22 +181,33 @@ mod tests {
 		let (mut core, behavior) = create();
 		core.set_standard_value(VALUE_INPUT, -1, NodeValue::Float(3.5));
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
 		assert_eq!(table.get(ValueType::Float), Some(&NodeValue::Float(3.5)));
 	}
 
 	#[test]
 	fn value_pushes_keyframed_value() {
 		let (mut core, behavior) = create();
-		core.keyframe_track_mut(VALUE_INPUT, -1).set_key(crate::keyframe::Keyframe {
-			time: Rational::new(10, 1),
-			value: NodeValue::Float(9.0),
-			interpolation: crate::keyframe::Interpolation::Linear,
-			bezier_in: (0.0, 0.0),
-			bezier_out: (0.0, 0.0),
-		});
+		core.keyframe_track_mut(VALUE_INPUT, -1)
+			.set_key(crate::keyframe::Keyframe {
+				time: Rational::new(10, 1),
+				value: NodeValue::Float(9.0),
+				interpolation: crate::keyframe::Interpolation::Linear,
+				bezier_in: (0.0, 0.0),
+				bezier_out: (0.0, 0.0),
+			});
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(10, 1), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(10, 1),
+			&mut table,
+		);
 		assert_eq!(table.get(ValueType::Float), Some(&NodeValue::Float(9.0)));
 	}
 
@@ -204,12 +218,18 @@ mod tests {
 		// Change type_in to vec2 (index 3) and fire the event.
 		core.set_standard_value(TYPE_INPUT, -1, NodeValue::Combo(3));
 		behavior.input_value_changed(&mut core, TYPE_INPUT, -1);
-		assert_eq!(core.get_input(VALUE_INPUT).unwrap().value_type, ValueType::Vec2);
+		assert_eq!(
+			core.get_input(VALUE_INPUT).unwrap().value_type,
+			ValueType::Vec2
+		);
 
 		// Out-of-range index leaves the type unchanged.
 		core.set_standard_value(TYPE_INPUT, -1, NodeValue::Combo(99));
 		behavior.input_value_changed(&mut core, TYPE_INPUT, -1);
-		assert_eq!(core.get_input(VALUE_INPUT).unwrap().value_type, ValueType::Vec2);
+		assert_eq!(
+			core.get_input(VALUE_INPUT).unwrap().value_type,
+			ValueType::Vec2
+		);
 	}
 
 	#[test]

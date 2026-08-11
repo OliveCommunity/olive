@@ -69,36 +69,36 @@ pub const TYPE_ERROR: &str = "error";
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 #[serde(default)]
 pub struct HandshakeMsg {
-    /// Protocol version.
-    pub protocol_version: i32,
-    /// Worker->main output shared-memory segment key.
-    pub shm_key: String,
-    /// Main->worker input shared-memory segment key (optional).
-    pub input_shm_key: String,
-    /// Number of main->worker input frame slots.
-    pub input_slots: i32,
-    /// Number of worker->main output frame slots.
-    pub output_slots: i32,
-    /// Per-output-slot pixel block size.
-    pub slot_data_bytes: i64,
-    /// Per-input-slot pixel block size.
-    pub input_slot_data_bytes: i64,
+	/// Protocol version.
+	pub protocol_version: i32,
+	/// Worker->main output shared-memory segment key.
+	pub shm_key: String,
+	/// Main->worker input shared-memory segment key (optional).
+	pub input_shm_key: String,
+	/// Number of main->worker input frame slots.
+	pub input_slots: i32,
+	/// Number of worker->main output frame slots.
+	pub output_slots: i32,
+	/// Per-output-slot pixel block size.
+	pub slot_data_bytes: i64,
+	/// Per-input-slot pixel block size.
+	pub input_slot_data_bytes: i64,
 }
 
 impl HandshakeMsg {
-    /// The worker's startup handshake (`worker.cpp startup_handshake()`).
-    pub fn to_json(&self) -> Value {
-        json!({
-            "type": TYPE_HANDSHAKE,
-            "protocol_version": self.protocol_version,
-            "shm_key": self.shm_key,
-            "input_shm_key": self.input_shm_key,
-            "input_slots": self.input_slots,
-            "output_slots": self.output_slots,
-            "slot_data_bytes": self.slot_data_bytes,
-            "input_slot_data_bytes": self.input_slot_data_bytes,
-        })
-    }
+	/// The worker's startup handshake (`worker.cpp startup_handshake()`).
+	pub fn to_json(&self) -> Value {
+		json!({
+			"type": TYPE_HANDSHAKE,
+			"protocol_version": self.protocol_version,
+			"shm_key": self.shm_key,
+			"input_shm_key": self.input_shm_key,
+			"input_slots": self.input_slots,
+			"output_slots": self.output_slots,
+			"slot_data_bytes": self.slot_data_bytes,
+			"input_slot_data_bytes": self.input_slot_data_bytes,
+		})
+	}
 }
 
 /// `render_frame` — request a frame render. Wire names per ipcmessage.cpp:
@@ -106,31 +106,31 @@ impl HandshakeMsg {
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 #[serde(default)]
 pub struct RenderFrameMsg {
-    /// Correlates with the eventual frame_ready.
-    pub ticket: i64,
-    /// Viewer node stable uuid in the loaded graph.
-    pub node: String,
-    pub time_num: i64,
-    pub time_den: i64,
-    /// Forced output size (0 = graph default).
-    pub width: i32,
-    pub height: i32,
-    /// Forced PixelFormat (-1 = default).
-    pub format: i32,
-    /// Channel count (0 = default).
-    pub channels: i32,
-    /// RenderMode.
-    pub mode: i32,
-    /// Optional decoded input slot (-1 = none).
-    pub input_slot: i32,
-    /// Ordered decoded input slots.
-    pub input_slots: Vec<i32>,
-    /// Output color transform present?
-    pub has_color_transform: bool,
-    pub color_is_display: bool,
-    pub color_output: String,
-    pub color_view: String,
-    pub color_look: String,
+	/// Correlates with the eventual frame_ready.
+	pub ticket: i64,
+	/// Viewer node stable uuid in the loaded graph.
+	pub node: String,
+	pub time_num: i64,
+	pub time_den: i64,
+	/// Forced output size (0 = graph default).
+	pub width: i32,
+	pub height: i32,
+	/// Forced PixelFormat (-1 = default).
+	pub format: i32,
+	/// Channel count (0 = default).
+	pub channels: i32,
+	/// RenderMode.
+	pub mode: i32,
+	/// Optional decoded input slot (-1 = none).
+	pub input_slot: i32,
+	/// Ordered decoded input slots.
+	pub input_slots: Vec<i32>,
+	/// Output color transform present?
+	pub has_color_transform: bool,
+	pub color_is_display: bool,
+	pub color_output: String,
+	pub color_view: String,
+	pub color_look: String,
 }
 
 /// `frame_ready` — a rendered frame is published (wire names `ticket`/
@@ -138,120 +138,121 @@ pub struct RenderFrameMsg {
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 #[serde(default)]
 pub struct FrameReadyMsg {
-    pub ticket: i64,
-    /// Index into the worker->main output FrameSlotPool.
-    pub slot: i32,
+	pub ticket: i64,
+	/// Index into the worker->main output FrameSlotPool.
+	pub slot: i32,
 }
 
 /// `cancel` — abandon an in-flight ticket by id.
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 #[serde(default)]
 pub struct CancelMsg {
-    pub ticket: i64,
+	pub ticket: i64,
 }
 
 /// `load_graph` — path to a temporary file holding the serialized graph.
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 #[serde(default)]
 pub struct LoadGraphMsg {
-    pub path: String,
+	pub path: String,
 }
 
 /// Build a worker-side error report, mirroring `error_message()` in
 /// worker.cpp: `{"type":"error","message":...}` plus `"ticket"` when
 /// non-zero.
 pub fn error_message(message: &str, ticket: Option<i64>) -> Value {
-    match ticket.filter(|t| *t != 0) {
-        Some(t) => json!({ "type": TYPE_ERROR, "message": message, "ticket": t }),
-        None => json!({ "type": TYPE_ERROR, "message": message }),
-    }
+	match ticket.filter(|t| *t != 0) {
+		Some(t) => json!({ "type": TYPE_ERROR, "message": message, "ticket": t }),
+		None => json!({ "type": TYPE_ERROR, "message": message }),
+	}
 }
 
 /// Write one NDJSON message line (compact JSON + `\n`), the Rust port of
 /// `ipcmessage.cpp write_message()`.
 pub fn write_message(w: &mut impl Write, msg: &Value) -> io::Result<()> {
-    let line = serde_json::to_string(msg)
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    w.write_all(line.as_bytes())?;
-    w.write_all(b"\n")
+	let line =
+		serde_json::to_string(msg).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+	w.write_all(line.as_bytes())?;
+	w.write_all(b"\n")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn handshake_wire_format_matches_cpp_field_names() {
-        let hs = HandshakeMsg {
-            protocol_version: 1,
-            shm_key: "olive-rw-1234-0-out".into(),
-            input_shm_key: "".into(),
-            input_slots: 0,
-            output_slots: 6,
-            slot_data_bytes: 4096,
-            input_slot_data_bytes: 0,
-        };
-        let value = hs.to_json();
-        // Key order is not part of the contract (JSON objects; the C++
-        // QJsonObject is hash-ordered too), but the names must match the
-        // C++ serializer exactly.
-        assert_eq!(value["type"], "handshake");
-        assert_eq!(value["protocol_version"], 1);
-        assert_eq!(value["shm_key"], "olive-rw-1234-0-out");
-        assert_eq!(value["input_shm_key"], "");
-        assert_eq!(value["input_slots"], 0);
-        assert_eq!(value["output_slots"], 6);
-        assert_eq!(value["slot_data_bytes"], 4096);
-        assert_eq!(value["input_slot_data_bytes"], 0);
-        // And the serialized line must parse back to the same object.
-        let round: serde_json::Value =
-            serde_json::from_str(&serde_json::to_string(&value).unwrap()).unwrap();
-        assert_eq!(round, value);
-    }
+	#[test]
+	fn handshake_wire_format_matches_cpp_field_names() {
+		let hs = HandshakeMsg {
+			protocol_version: 1,
+			shm_key: "olive-rw-1234-0-out".into(),
+			input_shm_key: "".into(),
+			input_slots: 0,
+			output_slots: 6,
+			slot_data_bytes: 4096,
+			input_slot_data_bytes: 0,
+		};
+		let value = hs.to_json();
+		// Key order is not part of the contract (JSON objects; the C++
+		// QJsonObject is hash-ordered too), but the names must match the
+		// C++ serializer exactly.
+		assert_eq!(value["type"], "handshake");
+		assert_eq!(value["protocol_version"], 1);
+		assert_eq!(value["shm_key"], "olive-rw-1234-0-out");
+		assert_eq!(value["input_shm_key"], "");
+		assert_eq!(value["input_slots"], 0);
+		assert_eq!(value["output_slots"], 6);
+		assert_eq!(value["slot_data_bytes"], 4096);
+		assert_eq!(value["input_slot_data_bytes"], 0);
+		// And the serialized line must parse back to the same object.
+		let round: serde_json::Value =
+			serde_json::from_str(&serde_json::to_string(&value).unwrap()).unwrap();
+		assert_eq!(round, value);
+	}
 
-    #[test]
-    fn render_frame_parse_accepts_cpp_field_names() {
-        let json = r#"{"type":"render_frame","ticket":42,"node":"abcd","time_num":1,"time_den":24,"width":1920,"height":1080,"format":-1,"channels":0,"mode":0,"input_slot":-1,"input_slots":[],"has_color_transform":false,"color_output":"","color_view":"","color_look":""}"#;
-        let m: RenderFrameMsg = serde_json::from_str(json).unwrap();
-        assert_eq!(m.ticket, 42);
-        assert_eq!(m.node, "abcd");
-        assert_eq!(m.time_num, 1);
-        assert_eq!(m.time_den, 24);
-        assert_eq!(m.width, 1920);
-        assert_eq!(m.input_slot, -1);
-    }
+	#[test]
+	fn render_frame_parse_accepts_cpp_field_names() {
+		let json = r#"{"type":"render_frame","ticket":42,"node":"abcd","time_num":1,"time_den":24,"width":1920,"height":1080,"format":-1,"channels":0,"mode":0,"input_slot":-1,"input_slots":[],"has_color_transform":false,"color_output":"","color_view":"","color_look":""}"#;
+		let m: RenderFrameMsg = serde_json::from_str(json).unwrap();
+		assert_eq!(m.ticket, 42);
+		assert_eq!(m.node, "abcd");
+		assert_eq!(m.time_num, 1);
+		assert_eq!(m.time_den, 24);
+		assert_eq!(m.width, 1920);
+		assert_eq!(m.input_slot, -1);
+	}
 
-    #[test]
-    fn render_frame_defaults_on_missing_fields() {
-        // The C++ parser defaults missing fields (QJsonValue defaults);
-        // serde(default) mirrors that.
-        let m: RenderFrameMsg = serde_json::from_str(r#"{"type":"render_frame","ticket":7}"#).unwrap();
-        assert_eq!(m.ticket, 7);
-        assert_eq!(m.time_den, 0);
-        assert!(m.node.is_empty());
-        assert!(!m.has_color_transform);
-    }
+	#[test]
+	fn render_frame_defaults_on_missing_fields() {
+		// The C++ parser defaults missing fields (QJsonValue defaults);
+		// serde(default) mirrors that.
+		let m: RenderFrameMsg =
+			serde_json::from_str(r#"{"type":"render_frame","ticket":7}"#).unwrap();
+		assert_eq!(m.ticket, 7);
+		assert_eq!(m.time_den, 0);
+		assert!(m.node.is_empty());
+		assert!(!m.has_color_transform);
+	}
 
-    #[test]
-    fn error_message_carries_ticket_only_when_nonzero() {
-        assert_eq!(
-            error_message("boom", None),
-            json!({ "type": "error", "message": "boom" })
-        );
-        assert_eq!(
-            error_message("boom", Some(0)),
-            json!({ "type": "error", "message": "boom" })
-        );
-        assert_eq!(
-            error_message("boom", Some(9)),
-            json!({ "type": "error", "message": "boom", "ticket": 9 })
-        );
-    }
+	#[test]
+	fn error_message_carries_ticket_only_when_nonzero() {
+		assert_eq!(
+			error_message("boom", None),
+			json!({ "type": "error", "message": "boom" })
+		);
+		assert_eq!(
+			error_message("boom", Some(0)),
+			json!({ "type": "error", "message": "boom" })
+		);
+		assert_eq!(
+			error_message("boom", Some(9)),
+			json!({ "type": "error", "message": "boom", "ticket": 9 })
+		);
+	}
 
-    #[test]
-    fn write_message_emits_one_json_line() {
-        let mut buf = Vec::new();
-        write_message(&mut buf, &json!({ "type": "shutdown" })).unwrap();
-        assert_eq!(String::from_utf8(buf).unwrap(), "{\"type\":\"shutdown\"}\n");
-    }
+	#[test]
+	fn write_message_emits_one_json_line() {
+		let mut buf = Vec::new();
+		write_message(&mut buf, &json!({ "type": "shutdown" })).unwrap();
+		assert_eq!(String::from_utf8(buf).unwrap(), "{\"type\":\"shutdown\"}\n");
+	}
 }

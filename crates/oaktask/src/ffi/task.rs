@@ -178,7 +178,11 @@ pub unsafe extern "C" fn oaktask_task_succeeded(t: CHandle) -> c_int {
 
 /// `oaktask_task_title` (`include/task/task.h`, two-stage string getter).
 #[no_mangle]
-pub unsafe extern "C" fn oaktask_task_title(t: CHandle, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub unsafe extern "C" fn oaktask_task_title(
+	t: CHandle,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	let h = match get_task(&t) {
 		Some(h) => h,
 		None => return OAKTASK_E_INVALID,
@@ -188,7 +192,11 @@ pub unsafe extern "C" fn oaktask_task_title(t: CHandle, buf: *mut c_char, buf_si
 
 /// `oaktask_task_error` (`include/task/task.h`, two-stage string getter).
 #[no_mangle]
-pub unsafe extern "C" fn oaktask_task_error(t: CHandle, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub unsafe extern "C" fn oaktask_task_error(
+	t: CHandle,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	let h = match get_task(&t) {
 		Some(h) => h,
 		None => return OAKTASK_E_INVALID,
@@ -199,7 +207,11 @@ pub unsafe extern "C" fn oaktask_task_error(t: CHandle, buf: *mut c_char, buf_si
 
 /// `oaktask_task_subscribe` (`include/task/task.h`).
 #[no_mangle]
-pub unsafe extern "C" fn oaktask_task_subscribe(t: CHandle, cb: Option<OakTaskEventFn>, userdata: *mut c_void) -> i64 {
+pub unsafe extern "C" fn oaktask_task_subscribe(
+	t: CHandle,
+	cb: Option<OakTaskEventFn>,
+	userdata: *mut c_void,
+) -> i64 {
 	let h = match get_task(&t) {
 		Some(h) => h,
 		None => return OAKTASK_E_INVALID as i64,
@@ -218,9 +230,17 @@ pub unsafe extern "C" fn oaktask_task_subscribe(t: CHandle, cb: Option<OakTaskEv
 		(*h.task).set_subscriber(state.clone());
 		(*h.task).set_event_listener(Box::new(move |ev: TaskEvent| {
 			let (event_id, value) = match ev {
-				TaskEvent::Started => (OAKTASK_EVENT_STARTED, state.start_ms.load(std::sync::atomic::Ordering::SeqCst) as f64),
+				TaskEvent::Started => (
+					OAKTASK_EVENT_STARTED,
+					state.start_ms.load(std::sync::atomic::Ordering::SeqCst) as f64,
+				),
 				TaskEvent::Progress(p) => (OAKTASK_EVENT_PROGRESS, p),
-				TaskEvent::Finished => (OAKTASK_EVENT_FINISHED, state.finished_value.load(std::sync::atomic::Ordering::SeqCst) as f64),
+				TaskEvent::Finished => (
+					OAKTASK_EVENT_FINISHED,
+					state
+						.finished_value
+						.load(std::sync::atomic::Ordering::SeqCst) as f64,
+				),
 			};
 			cb(event_id, value, ud as *mut c_void);
 		}));

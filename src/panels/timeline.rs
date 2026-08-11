@@ -72,7 +72,10 @@ const TOOLS: [(&str, &str); 8] = [
 	("timeline.tool.roll", crate::oakui::icons::ICON_ROLLING),
 	("timeline.tool.zoom", crate::oakui::icons::ICON_ZOOM),
 	("timeline.tool.slide", crate::oakui::icons::ICON_SLIDE),
-	("timeline.tool.track_select", crate::oakui::icons::ICON_TRACK_SELECT),
+	(
+		"timeline.tool.track_select",
+		crate::oakui::icons::ICON_TRACK_SELECT,
+	),
 ];
 
 /// The timeline panel.
@@ -111,8 +114,7 @@ impl<E: AppEngine> TimelinePanel<E> {
 				cx,
 			)
 		});
-		let snap =
-			cx.new(|cx| CheckBox::new(12, CheckState::Checked, window, cx));
+		let snap = cx.new(|cx| CheckBox::new(12, CheckState::Checked, window, cx));
 
 		// Zoom slider → timeline zoom (pixels per frame).
 		cx.subscribe(&zoom, |this, _zoom, event: &SliderEvent, cx| {
@@ -191,38 +193,34 @@ impl<E: AppEngine> Render for TimelinePanel<E> {
 
 		// A tool button: a 16px icon on a 24px hit target with a localized
 		// tooltip; the selected tool is highlighted.
-		let tool_button = |index: usize,
-		                   icon_name: &'static str,
-		                   key: &'static str,
-		                   cx: &mut Context<Self>| {
-			let tool = i18n::tr(key);
-			let selected = self.selected_tool == index;
-			let background = if selected {
-				colors.selected
-			} else {
-				colors.background
-			};
-			let hover_bg = colors.selected;
-			let path = icons::icon_path(icon_name, cx);
-			div()
-				.id(SharedString::from(format!("tool-{index}")))
-				.size(px(24.0))
-				.flex()
-				.items_center()
-				.justify_center()
-				.rounded_sm()
-				.cursor_pointer()
-				.bg(background)
-				.hover(move |style| style.bg(hover_bg))
-				.tooltip(move |window, cx| tooltip_view(tool.into(), window, cx))
-				.on_click(
-					cx.listener(move |this, _event: &ClickEvent, _window, _cx| {
+		let tool_button =
+			|index: usize, icon_name: &'static str, key: &'static str, cx: &mut Context<Self>| {
+				let tool = i18n::tr(key);
+				let selected = self.selected_tool == index;
+				let background = if selected {
+					colors.selected
+				} else {
+					colors.background
+				};
+				let hover_bg = colors.selected;
+				let path = icons::icon_path(icon_name, cx);
+				div()
+					.id(SharedString::from(format!("tool-{index}")))
+					.size(px(24.0))
+					.flex()
+					.items_center()
+					.justify_center()
+					.rounded_sm()
+					.cursor_pointer()
+					.bg(background)
+					.hover(move |style| style.bg(hover_bg))
+					.tooltip(move |window, cx| tooltip_view(tool.into(), window, cx))
+					.on_click(cx.listener(move |this, _event: &ClickEvent, _window, _cx| {
 						println!("[timeline] tool: {tool} (placeholder)");
 						this.selected_tool = index;
-					}),
-				)
-				.child(img(path).size(px(16.0)))
-		};
+					}))
+					.child(img(path).size(px(16.0)))
+			};
 
 		for (index, (tool_key, icon_name)) in TOOLS.iter().enumerate() {
 			toolbar = toolbar.child(tool_button(index, icon_name, tool_key, cx));
@@ -269,9 +267,7 @@ impl<E: AppEngine> Render for TimelinePanel<E> {
 					.tooltip(move |window, cx| {
 						tooltip_view(i18n::tr("timeline.snap").into(), window, cx)
 					})
-					.child(
-						img(icons::icon_path(icons::ICON_SNAP, cx)).size(px(16.0)),
-					),
+					.child(img(icons::icon_path(icons::ICON_SNAP, cx)).size(px(16.0))),
 			)
 			.child(self.snap.clone());
 
@@ -377,7 +373,7 @@ impl<E: AppEngine> DockPanel for TimelinePanel<E> {
 mod tests {
 	use super::*;
 	use crate::oakui::MockEngine;
-	use gpui::{TestAppContext, VisualTestContext, px, size};
+	use gpui::{px, size, TestAppContext, VisualTestContext};
 
 	/// Builds a `TimelinePanel` in a window of the given logical size and
 	/// returns a `VisualTestContext` for bounds assertions.
@@ -385,12 +381,14 @@ mod tests {
 		cx: &mut TestAppContext,
 		width: f32,
 		height: f32,
-	) -> (&'static mut VisualTestContext, Entity<TimelinePanel<MockEngine>>) {
+	) -> (
+		&'static mut VisualTestContext,
+		Entity<TimelinePanel<MockEngine>>,
+	) {
 		cx.update(|cx| cx.init_colors());
 		let window = cx.open_window(size(px(width), px(height)), |window, cx| {
 			let engine = cx.new(|cx| crate::oakui::MockEngine::demo(cx));
-			let timeline =
-				cx.new(|cx| TimelineView::new(engine.clone(), window, cx).zoom(2.0));
+			let timeline = cx.new(|cx| TimelineView::new(engine.clone(), window, cx).zoom(2.0));
 			TimelinePanel::new(engine, timeline, window, cx)
 		});
 		cx.run_until_parked();

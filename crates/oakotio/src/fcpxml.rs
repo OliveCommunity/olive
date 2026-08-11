@@ -135,10 +135,7 @@ pub type Result<T> = std::result::Result<T, FcpxmlError>;
 /// cannot be converted without a rate and are rejected.
 fn parse_time(s: &str) -> Result<Rational> {
 	let s = s.trim();
-	let s = s
-		.strip_suffix('s')
-		.map(str::trim)
-		.unwrap_or(s);
+	let s = s.strip_suffix('s').map(str::trim).unwrap_or(s);
 	if s.ends_with('f') {
 		return Err(FcpxmlError::Malformed(format!(
 			"frame-count time value \"{s}f\" cannot be converted without a rate"
@@ -169,7 +166,9 @@ fn parse_time(s: &str) -> Result<Rational> {
 		}
 		Ok(Rational::from_double(frac))
 	} else {
-		Err(FcpxmlError::Malformed(format!("invalid time value \"{s}\"")))
+		Err(FcpxmlError::Malformed(format!(
+			"invalid time value \"{s}\""
+		)))
 	}
 }
 
@@ -283,8 +282,8 @@ fn node_from_start(e: &BytesStart) -> Result<Node> {
 	let name = String::from_utf8_lossy(e.local_name().as_ref()).into_owned();
 	let mut attrs = Vec::new();
 	for attr in e.attributes() {
-		let attr = attr
-			.map_err(|err| FcpxmlError::Xml(format!("invalid attribute in <{name}>: {err}")))?;
+		let attr =
+			attr.map_err(|err| FcpxmlError::Xml(format!("invalid attribute in <{name}>: {err}")))?;
 		let key = String::from_utf8_lossy(attr.key.as_ref()).into_owned();
 		let value = attr
 			.normalized_value(quick_xml::XmlVersion::Implicit1_0)
@@ -412,12 +411,7 @@ fn parse_format(node: &Node, formats: &mut HashMap<String, FormatInfo>) {
 			return;
 		}
 	};
-	formats.insert(
-		id.to_string(),
-		FormatInfo {
-			frame_duration,
-		},
-	);
+	formats.insert(id.to_string(), FormatInfo { frame_duration });
 }
 
 /// Parse an `<asset>` resource. Unreadable durations fall back to 0s.
@@ -562,9 +556,7 @@ fn parse_block(
 					}
 				},
 				None => {
-					eprintln!(
-						"oakotio fcpxml: <{name}> has no ref; using a MissingReference"
-					);
+					eprintln!("oakotio fcpxml: <{name}> has no ref; using a MissingReference");
 					MediaReference::MissingReference(MissingReference::new())
 				}
 			};
@@ -581,7 +573,10 @@ fn parse_block(
 					Rational::new(0, 1)
 				}
 			};
-			let range = TimeRange::new(time_at_rate(offset, seq_rate), time_at_rate(duration, seq_rate));
+			let range = TimeRange::new(
+				time_at_rate(offset, seq_rate),
+				time_at_rate(duration, seq_rate),
+			);
 			*pos = offset + duration;
 			Ok(Some(Composable::Gap(Gap::new(
 				range,
@@ -617,7 +612,10 @@ fn parse_block(
 			eprintln!(
 				"oakotio fcpxml: <{name}> is not mapped to an OTIO block; importing its timing as a gap"
 			);
-			let range = TimeRange::new(time_at_rate(offset, seq_rate), time_at_rate(duration, seq_rate));
+			let range = TimeRange::new(
+				time_at_rate(offset, seq_rate),
+				time_at_rate(duration, seq_rate),
+			);
 			*pos = offset + duration;
 			Ok(Some(Composable::Gap(Gap::new(range, ""))))
 		}
@@ -651,7 +649,8 @@ fn parse_container(
 			"video" => parse_container("Video", child, seq_rate, formats, assets, tracks)?,
 			"audio" => parse_container("Audio", child, seq_rate, formats, assets, tracks)?,
 			other => {
-				if let Some(block) = parse_block(child, other, seq_rate, formats, assets, &mut pos)? {
+				if let Some(block) = parse_block(child, other, seq_rate, formats, assets, &mut pos)?
+				{
 					track.append_child(block);
 				}
 			}
@@ -677,7 +676,10 @@ fn set_fcpxml_metadata(
 		fcpx.insert("tcFormat".into(), serde_json::Value::String(tc.into()));
 	}
 	if let Some(layout) = sequence.attr("audioLayout") {
-		fcpx.insert("audioLayout".into(), serde_json::Value::String(layout.into()));
+		fcpx.insert(
+			"audioLayout".into(),
+			serde_json::Value::String(layout.into()),
+		);
 	}
 	if let Some(rate) = sequence.attr("audioRate") {
 		fcpx.insert("audioRate".into(), serde_json::Value::String(rate.into()));
@@ -702,9 +704,9 @@ fn parse_sequence(
 	formats: &HashMap<String, FormatInfo>,
 	assets: &HashMap<String, AssetInfo>,
 ) -> Result<Timeline> {
-	let format_id = node
-		.attr("format")
-		.ok_or_else(|| FcpxmlError::Malformed("<sequence> is missing its format reference".into()))?;
+	let format_id = node.attr("format").ok_or_else(|| {
+		FcpxmlError::Malformed("<sequence> is missing its format reference".into())
+	})?;
 	let seq_format = formats.get(format_id).ok_or_else(|| {
 		FcpxmlError::Malformed(format!(
 			"sequence references unknown format resource \"{format_id}\""
@@ -765,9 +767,9 @@ pub fn from_fcpxml_string(text: &str) -> Result<Vec<Timeline>> {
 			root.name
 		)));
 	}
-	let version = root
-		.attr("version")
-		.ok_or_else(|| FcpxmlError::UnsupportedVersion("document has no version attribute".into()))?;
+	let version = root.attr("version").ok_or_else(|| {
+		FcpxmlError::UnsupportedVersion("document has no version attribute".into())
+	})?;
 	check_version(version)?;
 
 	let mut formats = HashMap::new();
@@ -788,12 +790,7 @@ pub fn from_fcpxml_string(text: &str) -> Result<Vec<Timeline>> {
 			for project in event.children.iter().filter(|c| c.name == "project") {
 				for sequence in project.children.iter().filter(|c| c.name == "sequence") {
 					timelines.push(parse_sequence(
-						sequence,
-						event,
-						project,
-						version,
-						&formats,
-						&assets,
+						sequence, event, project, version, &formats, &assets,
 					)?);
 				}
 			}
@@ -920,7 +917,9 @@ impl ResourceSet {
 						range.duration().rate(),
 					)));
 				}
-				if let Some(external) = clip.media_reference().and_then(MediaReference::as_external_reference)
+				if let Some(external) = clip
+					.media_reference()
+					.and_then(MediaReference::as_external_reference)
 				{
 					if let Some(range) = external.available_range() {
 						self.format_id_for(frame_duration_of(Rational::from_double(
@@ -982,9 +981,7 @@ impl ResourceSet {
 /// "...p29_97". The name is informational; importers derive the rate from
 /// `frameDuration`.
 fn format_name(frame_duration: Rational) -> String {
-	let rate = rate_of(frame_duration)
-		.map(Rational::to_f64)
-		.unwrap_or(0.0);
+	let rate = rate_of(frame_duration).map(Rational::to_f64).unwrap_or(0.0);
 	let rate_str = if (rate - rate.round()).abs() < 1e-6 {
 		format!("{}", rate.round() as i64)
 	} else {
@@ -1080,7 +1077,11 @@ fn write_resources(writer: &mut Writer<Vec<u8>>, resources: &ResourceSet) -> Res
 		let mut el = BytesStart::new("format");
 		push_attr(&mut el, "id", &format.id);
 		push_attr(&mut el, "name", &format.name);
-		push_attr(&mut el, "frameDuration", &format_time(format.frame_duration));
+		push_attr(
+			&mut el,
+			"frameDuration",
+			&format_time(format.frame_duration),
+		);
 		push_attr(&mut el, "width", &format.width);
 		push_attr(&mut el, "height", &format.height);
 		write_event(writer, Event::Empty(el))?;
@@ -1308,7 +1309,10 @@ pub fn to_fcpxml_string(timelines: &[Timeline]) -> Result<String> {
 	}
 
 	let mut writer = Writer::new_with_indent(Vec::new(), b' ', 2);
-	write_event(&mut writer, Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))?;
+	write_event(
+		&mut writer,
+		Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)),
+	)?;
 	write_event(&mut writer, Event::DocType(BytesText::new("fcpxml")))?;
 
 	let mut root = BytesStart::new("fcpxml");
@@ -1328,7 +1332,8 @@ pub fn to_fcpxml_string(timelines: &[Timeline]) -> Result<String> {
 	write_event(&mut writer, Event::End(BytesEnd::new("fcpxml")))?;
 
 	let bytes = writer.into_inner();
-	String::from_utf8(bytes).map_err(|e| FcpxmlError::Xml(format!("writer produced non-UTF-8 output: {e}")))
+	String::from_utf8(bytes)
+		.map_err(|e| FcpxmlError::Xml(format!("writer produced non-UTF-8 output: {e}")))
 }
 
 /// Serialize timelines to an FCPXML 1.10 document file.
@@ -1351,7 +1356,10 @@ mod tests {
 		assert_eq!(parse_time("0s").unwrap(), Rational::new(0, 1));
 		assert_eq!(parse_time("48s").unwrap(), Rational::new(48, 1));
 		assert_eq!(parse_time("100/3000s").unwrap(), Rational::new(1, 30));
-		assert_eq!(parse_time("1001/30000s").unwrap(), Rational::new(1001, 30000));
+		assert_eq!(
+			parse_time("1001/30000s").unwrap(),
+			Rational::new(1001, 30000)
+		);
 		assert_eq!(parse_time("1/24").unwrap(), Rational::new(1, 24));
 		assert_eq!(parse_time("0").unwrap(), Rational::new(0, 1));
 		assert_eq!(parse_time("1.5s").unwrap(), Rational::new(3, 2));
@@ -1421,22 +1429,23 @@ mod tests {
 		let mut t = Transition::new("t");
 		t.set_in_offset(RationalTime::new(12.0, 24.0));
 		t.set_out_offset(RationalTime::new(12.0, 24.0));
-		assert_eq!(block_duration(&Composable::Transition(t)), Rational::new(1, 1));
+		assert_eq!(
+			block_duration(&Composable::Transition(t)),
+			Rational::new(1, 1)
+		);
 	}
 
 	#[test]
 	fn error_display_and_source() {
-		assert!(FcpxmlError::Xml("x".into()).to_string().contains("XML error"));
-		assert!(
-			FcpxmlError::Malformed("x".into())
-				.to_string()
-				.contains("document error")
-		);
-		assert!(
-			FcpxmlError::UnsupportedVersion("x".into())
-				.to_string()
-				.contains("version error")
-		);
+		assert!(FcpxmlError::Xml("x".into())
+			.to_string()
+			.contains("XML error"));
+		assert!(FcpxmlError::Malformed("x".into())
+			.to_string()
+			.contains("document error"));
+		assert!(FcpxmlError::UnsupportedVersion("x".into())
+			.to_string()
+			.contains("version error"));
 		let io = FcpxmlError::Io(std::io::Error::new(std::io::ErrorKind::Other, "io"));
 		assert!(io.to_string().contains("file error"));
 		assert!(io.source().is_some());
@@ -1549,7 +1558,9 @@ mod tests {
 		timeline.tracks_mut().append_child(Composable::Track(track));
 		let xml = to_fcpxml_string(&[timeline]).expect("export");
 		assert!(
-			xml.contains("<asset-clip name=\"orphan\" offset=\"0s\" duration=\"1s\" start=\"0s\"/>"),
+			xml.contains(
+				"<asset-clip name=\"orphan\" offset=\"0s\" duration=\"1s\" start=\"0s\"/>"
+			),
 			"{xml}"
 		);
 	}

@@ -251,7 +251,12 @@ pub struct MarkerAddCommand {
 
 impl MarkerAddCommand {
 	/// Construct from range/name/color.
-	pub fn new(marker_list: crate::handle::CHandle, range: TimeRange, name: &str, color: i32) -> Self {
+	pub fn new(
+		marker_list: crate::handle::CHandle,
+		range: TimeRange,
+		name: &str,
+		color: i32,
+	) -> Self {
 		Self {
 			marker_list,
 			range,

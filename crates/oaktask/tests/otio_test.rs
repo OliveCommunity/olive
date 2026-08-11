@@ -30,18 +30,24 @@ use std::ffi::{c_char, c_int, c_void};
 use std::sync::atomic::Ordering;
 
 use oakotio::{
-	Clip, Composable, ExternalReference, Gap, MediaReference, RationalTime, Serializable, SerializableCollection, TimeRange,
-	Timeline, Transition, Track,
+	Clip, Composable, ExternalReference, Gap, MediaReference, RationalTime, Serializable,
+	SerializableCollection, TimeRange, Timeline, Track, Transition,
 };
 
 use common::*;
 use oaktask::ffi::project::{
-	oaktask_create_project_load_otio, oaktask_create_project_save_otio, oaktask_load_otio_set_confirm_cb,
-	oaktask_load_otio_take_project,
+	oaktask_create_project_load_otio, oaktask_create_project_save_otio,
+	oaktask_load_otio_set_confirm_cb, oaktask_load_otio_take_project,
 };
-use oaktask::ffi::task::{oaktask_debug_alive_count, oaktask_task_error, oaktask_task_free, oaktask_task_start_sync};
+use oaktask::ffi::task::{
+	oaktask_debug_alive_count, oaktask_task_error, oaktask_task_free, oaktask_task_start_sync,
+};
 
-unsafe extern "C" fn reject_all(_seq: *const *const c_char, _count: c_int, _ud: *mut c_void) -> c_int {
+unsafe extern "C" fn reject_all(
+	_seq: *const *const c_char,
+	_count: c_int,
+	_ud: *mut c_void,
+) -> c_int {
 	0
 }
 
@@ -68,7 +74,9 @@ fn synthetic_timeline(name: &str, url: &str) -> Timeline {
 		RationalTime::new(576.0, 24.0),
 		RationalTime::new(1152.0, 24.0),
 	));
-	clip.set_media_reference(MediaReference::ExternalReference(ExternalReference::new(url, None)));
+	clip.set_media_reference(MediaReference::ExternalReference(ExternalReference::new(
+		url, None,
+	)));
 	video.append_child(Composable::Clip(clip));
 	video.append_child(Composable::Gap(Gap::new(
 		TimeRange::new(RationalTime::new(0.0, 24.0), RationalTime::new(576.0, 24.0)),
@@ -101,7 +109,10 @@ fn otio_load_builds_project_from_synthetic_document() {
 	let _guard = MANAGER_LOCK.lock().unwrap();
 	reset_stubs();
 
-	let (mut task, path) = load_timeline(&synthetic_timeline("Seq A", "file:///tmp/oak-otio-test.mp4"));
+	let (mut task, path) = load_timeline(&synthetic_timeline(
+		"Seq A",
+		"file:///tmp/oak-otio-test.mp4",
+	));
 	assert!(!task.ctx.is_null());
 	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 1);
 
@@ -116,13 +127,23 @@ fn otio_load_builds_project_from_synthetic_document() {
 	assert_eq!(SET_LENGTH_NUM.load(Ordering::SeqCst), 24);
 	assert_eq!(SET_LENGTH_DEN.load(Ordering::SeqCst), 1);
 	// Video track wiring: transform connected between footage and block.
-	assert!(CONNECT_INPUT_IDS.lock().unwrap().iter().any(|id| id == "tex_in"));
-	assert!(CONNECT_INPUT_IDS.lock().unwrap().iter().any(|id| id == "buffer_in"));
+	assert!(CONNECT_INPUT_IDS
+		.lock()
+		.unwrap()
+		.iter()
+		.any(|id| id == "tex_in"));
+	assert!(CONNECT_INPUT_IDS
+		.lock()
+		.unwrap()
+		.iter()
+		.any(|id| id == "buffer_in"));
 
 	let project = unsafe { oaktask_load_otio_take_project(task) };
 	assert!(!project.ctx.is_null());
 	// Second take is empty (ownership transferred).
-	assert!(unsafe { oaktask_load_otio_take_project(task) }.ctx.is_null());
+	assert!(unsafe { oaktask_load_otio_take_project(task) }
+		.ctx
+		.is_null());
 
 	free(&mut task);
 	let _ = std::fs::remove_file(&path);
@@ -145,14 +166,26 @@ fn otio_load_collection_dedups_footage() {
 		],
 	);
 	let path = std::env::temp_dir().join("oak-otio-collection.otio");
-	Serializable::SerializableCollection(collection).to_json_file(&path).unwrap();
+	Serializable::SerializableCollection(collection)
+		.to_json_file(&path)
+		.unwrap();
 	let path_str = path.to_string_lossy().into_owned();
 
 	let mut task = unsafe { oaktask_create_project_load_otio(common::cstr_of(&path_str)) };
 	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 1);
-	assert_eq!(APPENDED_BLOCKS.load(Ordering::SeqCst), 4, "one clip+gap per timeline");
-	assert_eq!(FOOTAGE_CREATE_COUNT.load(Ordering::SeqCst), 1, "shared URL deduplicated");
-	assert!(!(unsafe { oaktask_load_otio_take_project(task) }).ctx.is_null());
+	assert_eq!(
+		APPENDED_BLOCKS.load(Ordering::SeqCst),
+		4,
+		"one clip+gap per timeline"
+	);
+	assert_eq!(
+		FOOTAGE_CREATE_COUNT.load(Ordering::SeqCst),
+		1,
+		"shared URL deduplicated"
+	);
+	assert!(!(unsafe { oaktask_load_otio_take_project(task) })
+		.ctx
+		.is_null());
 
 	free(&mut task);
 	let _ = std::fs::remove_file(&path);
@@ -168,10 +201,16 @@ fn otio_load_rejected_confirm_cancels_import() {
 
 	unsafe { oaktask_load_otio_set_confirm_cb(Some(reject_all), std::ptr::null_mut()) };
 
-	let (mut task, path) = load_timeline(&synthetic_timeline("Seq A", "file:///tmp/oak-reject.mp4"));
+	let (mut task, path) =
+		load_timeline(&synthetic_timeline("Seq A", "file:///tmp/oak-reject.mp4"));
 	assert!(!task.ctx.is_null());
 	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 1);
-	assert!(unsafe { oaktask_load_otio_take_project(task) }.ctx.is_null(), "rejected import has no project");
+	assert!(
+		unsafe { oaktask_load_otio_take_project(task) }
+			.ctx
+			.is_null(),
+		"rejected import has no project"
+	);
 
 	unsafe { oaktask_load_otio_set_confirm_cb(None, std::ptr::null_mut()) };
 	free(&mut task);
@@ -196,7 +235,11 @@ fn otio_load_confirm_receives_sequence_names() {
 		let seen = &*(userdata as *const std::sync::Mutex<Vec<String>>);
 		for i in 0..count {
 			if !(*seq.add(i as usize)).is_null() {
-				seen.lock().unwrap().push(std::ffi::CStr::from_ptr(*seq.add(i as usize)).to_string_lossy().into_owned());
+				seen.lock().unwrap().push(
+					std::ffi::CStr::from_ptr(*seq.add(i as usize))
+						.to_string_lossy()
+						.into_owned(),
+				);
 			}
 		}
 		1
@@ -208,7 +251,9 @@ fn otio_load_confirm_receives_sequence_names() {
 	let (mut task, path) = load_timeline(&synthetic_timeline("Seq A", "file:///tmp/oak-names.mp4"));
 	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 1);
 	assert_eq!(seen.lock().unwrap().clone(), vec!["Seq A".to_string()]);
-	assert!(!(unsafe { oaktask_load_otio_take_project(task) }).ctx.is_null());
+	assert!(!(unsafe { oaktask_load_otio_take_project(task) })
+		.ctx
+		.is_null());
 
 	unsafe { oaktask_load_otio_set_confirm_cb(None, std::ptr::null_mut()) };
 	free(&mut task);
@@ -231,8 +276,14 @@ fn otio_load_unknown_root_schema_fails() {
 	let needed = unsafe { oaktask_task_error(task, std::ptr::null_mut(), 0) };
 	let mut buf = vec![0i8; needed as usize];
 	unsafe { oaktask_task_error(task, buf.as_mut_ptr(), needed) };
-	assert!(cstr_read(&buf).contains("Unknown OpenTimelineIO root element"), "error was: {}", cstr_read(&buf));
-	assert!(unsafe { oaktask_load_otio_take_project(task) }.ctx.is_null());
+	assert!(
+		cstr_read(&buf).contains("Unknown OpenTimelineIO root element"),
+		"error was: {}",
+		cstr_read(&buf)
+	);
+	assert!(unsafe { oaktask_load_otio_take_project(task) }
+		.ctx
+		.is_null());
 
 	free(&mut task);
 	let _ = std::fs::remove_file(&path);
@@ -254,7 +305,11 @@ fn otio_load_corrupt_json_fails() {
 	let needed = unsafe { oaktask_task_error(task, std::ptr::null_mut(), 0) };
 	let mut buf = vec![0i8; needed as usize];
 	unsafe { oaktask_task_error(task, buf.as_mut_ptr(), needed) };
-	assert!(cstr_read(&buf).contains("Failed to load OpenTimelineIO"), "error was: {}", cstr_read(&buf));
+	assert!(
+		cstr_read(&buf).contains("Failed to load OpenTimelineIO"),
+		"error was: {}",
+		cstr_read(&buf)
+	);
 
 	free(&mut task);
 	let _ = std::fs::remove_file(&path);
@@ -271,8 +326,13 @@ fn otio_load_missing_reference_creates_no_footage() {
 	let mut timeline = Timeline::new("Seq");
 	let mut video = Track::new("Video");
 	let mut clip = Clip::new("Lost Clip");
-	clip.set_source_range(TimeRange::new(RationalTime::new(0.0, 24.0), RationalTime::new(24.0, 24.0)));
-	clip.set_media_reference(MediaReference::MissingReference(oakotio::MissingReference::new()));
+	clip.set_source_range(TimeRange::new(
+		RationalTime::new(0.0, 24.0),
+		RationalTime::new(24.0, 24.0),
+	));
+	clip.set_media_reference(MediaReference::MissingReference(
+		oakotio::MissingReference::new(),
+	));
 	video.append_child(Composable::Clip(clip));
 	timeline.tracks_mut().append_child(Composable::Track(video));
 
@@ -280,7 +340,9 @@ fn otio_load_missing_reference_creates_no_footage() {
 	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 1);
 	assert_eq!(APPENDED_BLOCKS.load(Ordering::SeqCst), 1);
 	assert_eq!(FOOTAGE_CREATE_COUNT.load(Ordering::SeqCst), 0);
-	assert!(!(unsafe { oaktask_load_otio_take_project(task) }).ctx.is_null());
+	assert!(!(unsafe { oaktask_load_otio_take_project(task) })
+		.ctx
+		.is_null());
 
 	free(&mut task);
 	let _ = std::fs::remove_file(&path);
@@ -296,12 +358,16 @@ fn otio_load_unknown_track_kind_skipped() {
 	let mut timeline = Timeline::new("Seq");
 	let mut subtitle = Track::new("Subtitles");
 	subtitle.append_child(Composable::Clip(Clip::new("Sub Clip")));
-	timeline.tracks_mut().append_child(Composable::Track(subtitle));
+	timeline
+		.tracks_mut()
+		.append_child(Composable::Track(subtitle));
 
 	let (mut task, path) = load_timeline(&timeline);
 	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 1);
 	assert_eq!(APPENDED_BLOCKS.load(Ordering::SeqCst), 0);
-	assert!(!(unsafe { oaktask_load_otio_take_project(task) }).ctx.is_null());
+	assert!(!(unsafe { oaktask_load_otio_take_project(task) })
+		.ctx
+		.is_null());
 
 	free(&mut task);
 	let _ = std::fs::remove_file(&path);
@@ -318,14 +384,20 @@ fn otio_load_transition_connects_blocks() {
 	let mut timeline = Timeline::new("Seq");
 	let mut video = Track::new("Video");
 	let mut clip = Clip::new("In");
-	clip.set_source_range(TimeRange::new(RationalTime::new(0.0, 24.0), RationalTime::new(48.0, 24.0)));
+	clip.set_source_range(TimeRange::new(
+		RationalTime::new(0.0, 24.0),
+		RationalTime::new(48.0, 24.0),
+	));
 	video.append_child(Composable::Clip(clip));
 	let mut transition = Transition::new("Cross");
 	transition.set_in_offset(RationalTime::new(12.0, 24.0));
 	transition.set_out_offset(RationalTime::new(12.0, 24.0));
 	video.append_child(Composable::Transition(transition));
 	let mut clip = Clip::new("Out");
-	clip.set_source_range(TimeRange::new(RationalTime::new(48.0, 24.0), RationalTime::new(48.0, 24.0)));
+	clip.set_source_range(TimeRange::new(
+		RationalTime::new(48.0, 24.0),
+		RationalTime::new(48.0, 24.0),
+	));
 	video.append_child(Composable::Clip(clip));
 	timeline.tracks_mut().append_child(Composable::Track(video));
 
@@ -338,8 +410,14 @@ fn otio_load_transition_connects_blocks() {
 	assert_eq!(TRANSITION_OUT_NUM.load(Ordering::SeqCst), 1);
 	assert_eq!(TRANSITION_OUT_DEN.load(Ordering::SeqCst), 2);
 	let connects = CONNECT_INPUT_IDS.lock().unwrap();
-	assert!(connects.iter().any(|id| id == "out_block_in"), "previous clip -> transition: {connects:?}");
-	assert!(connects.iter().any(|id| id == "in_block_in"), "transition -> next clip: {connects:?}");
+	assert!(
+		connects.iter().any(|id| id == "out_block_in"),
+		"previous clip -> transition: {connects:?}"
+	);
+	assert!(
+		connects.iter().any(|id| id == "in_block_in"),
+		"transition -> next clip: {connects:?}"
+	);
 
 	free(&mut task);
 	let _ = std::fs::remove_file(&path);
@@ -377,7 +455,8 @@ fn run_save_and_parse() -> (oaktask::handle::CHandle, std::path::PathBuf, Serial
 	let out_str = out.to_string_lossy().into_owned();
 	let _ = std::fs::remove_file(&out);
 
-	let mut task = unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
+	let mut task =
+		unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
 	let started = unsafe { oaktask_task_start_sync(task) };
 	let text = std::fs::read_to_string(&out).unwrap_or_default();
 	let parsed = oakotio::from_json_string(&text).ok();
@@ -406,20 +485,43 @@ fn otio_save_single_timeline_round_trip() {
 	assert_eq!(tracks.len(), 1);
 	let track = tracks[0].as_track().expect("track");
 	assert_eq!(track.kind(), "Video");
-	assert_eq!(track.children().len(), 1, "no trailing gap: track length 0 < clip duration");
+	assert_eq!(
+		track.children().len(),
+		1,
+		"no trailing gap: track length 0 < clip duration"
+	);
 
 	let clip = track.children()[0].as_clip().expect("clip");
 	assert_eq!(clip.name(), "My Sequence");
 	let range = clip.source_range().expect("clip source_range");
 	// 576/24 = 24s at 25fps -> {600, 25}; 25/1 = 25s at 25fps -> {625, 25}.
-	assert_eq!((range.start_time().value(), range.start_time().rate()), (600.0, 25.0));
-	assert_eq!((range.duration().value(), range.duration().rate()), (625.0, 25.0));
+	assert_eq!(
+		(range.start_time().value(), range.start_time().rate()),
+		(600.0, 25.0)
+	);
+	assert_eq!(
+		(range.duration().value(), range.duration().rate()),
+		(625.0, 25.0)
+	);
 
-	let external = clip.media_reference().expect("media reference").as_external_reference().expect("ExternalReference");
+	let external = clip
+		.media_reference()
+		.expect("media reference")
+		.as_external_reference()
+		.expect("ExternalReference");
 	assert_eq!(external.target_url(), "file:///tmp/video.mp4");
 	let available = external.available_range().expect("available_range");
-	assert_eq!((available.start_time().value(), available.start_time().rate()), (0.0, 25.0));
-	assert_eq!((available.duration().value(), available.duration().rate()), (100.0, 25.0));
+	assert_eq!(
+		(
+			available.start_time().value(),
+			available.start_time().rate()
+		),
+		(0.0, 25.0)
+	);
+	assert_eq!(
+		(available.duration().value(), available.duration().rate()),
+		(100.0, 25.0)
+	);
 
 	let _ = std::fs::remove_file(&out);
 	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
@@ -443,8 +545,16 @@ fn otio_save_pads_shorter_track_with_gap() {
 	assert_eq!(track.children().len(), 2);
 	let gap = track.children()[1].as_gap().expect("trailing gap");
 	let range = gap.source_range().expect("gap source_range");
-	assert_eq!((range.start_time().value(), range.start_time().rate()), (625.0, 25.0), "starts at the track duration");
-	assert_eq!((range.duration().value(), range.duration().rate()), (25.0, 1.0), "leftover seconds at rate 1.0");
+	assert_eq!(
+		(range.start_time().value(), range.start_time().rate()),
+		(625.0, 25.0),
+		"starts at the track duration"
+	);
+	assert_eq!(
+		(range.duration().value(), range.duration().rate()),
+		(25.0, 1.0),
+		"leftover seconds at rate 1.0"
+	);
 
 	let _ = std::fs::remove_file(&out);
 	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
@@ -468,11 +578,24 @@ fn otio_save_audio_track_uses_48k_available_range() {
 	let track = track.as_track().expect("track");
 	assert_eq!(track.kind(), "Audio");
 	let clip = track.children()[0].as_clip().expect("clip");
-	let external = clip.media_reference().expect("media reference").as_external_reference().expect("ExternalReference");
+	let external = clip
+		.media_reference()
+		.expect("media reference")
+		.as_external_reference()
+		.expect("ExternalReference");
 	assert_eq!(external.target_url(), "file:///tmp/audio.wav");
 	let available = external.available_range().expect("available_range");
-	assert_eq!((available.start_time().value(), available.start_time().rate()), (0.0, 48000.0));
-	assert_eq!((available.duration().value(), available.duration().rate()), (0.0, 48000.0));
+	assert_eq!(
+		(
+			available.start_time().value(),
+			available.start_time().rate()
+		),
+		(0.0, 48000.0)
+	);
+	assert_eq!(
+		(available.duration().value(), available.duration().rate()),
+		(0.0, 48000.0)
+	);
 
 	let _ = std::fs::remove_file(&out);
 	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
@@ -492,7 +615,10 @@ fn otio_save_clip_without_media_has_no_reference() {
 	let track = &timeline.tracks().children()[0];
 	let track = track.as_track().expect("track");
 	let clip = track.children()[0].as_clip().expect("clip");
-	assert!(clip.media_reference().is_none(), "no footage -> no media reference");
+	assert!(
+		clip.media_reference().is_none(),
+		"no footage -> no media reference"
+	);
 
 	let _ = std::fs::remove_file(&out);
 	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
@@ -516,8 +642,20 @@ fn otio_save_transition_serializes_offsets() {
 	let track = &timeline.tracks().children()[0];
 	let track = track.as_track().expect("track");
 	let transition = track.children()[0].as_transition().expect("transition");
-	assert_eq!((transition.in_offset().value(), transition.in_offset().rate()), (12.0, 24.0));
-	assert_eq!((transition.out_offset().value(), transition.out_offset().rate()), (12.0, 24.0));
+	assert_eq!(
+		(
+			transition.in_offset().value(),
+			transition.in_offset().rate()
+		),
+		(12.0, 24.0)
+	);
+	assert_eq!(
+		(
+			transition.out_offset().value(),
+			transition.out_offset().rate()
+		),
+		(12.0, 24.0)
+	);
 
 	let _ = std::fs::remove_file(&out);
 	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
@@ -535,7 +673,10 @@ fn otio_save_writes_collection_for_multiple_sequences() {
 
 	let collection = match &parsed {
 		Serializable::SerializableCollection(c) => c,
-		other => panic!("expected SerializableCollection root, got {}", other.schema_name()),
+		other => panic!(
+			"expected SerializableCollection root, got {}",
+			other.schema_name()
+		),
 	};
 	assert_eq!(collection.name(), "Sequences");
 	assert_eq!(collection.children().len(), 2);
@@ -553,12 +694,17 @@ fn otio_save_no_sequences_fails() {
 
 	let out = std::env::temp_dir().join("oak-otio-save-none.otio");
 	let out_str = out.to_string_lossy().into_owned();
-	let mut task = unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
+	let mut task =
+		unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
 	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 0);
 	let needed = unsafe { oaktask_task_error(task, std::ptr::null_mut(), 0) };
 	let mut buf = vec![0i8; needed as usize];
 	unsafe { oaktask_task_error(task, buf.as_mut_ptr(), needed) };
-	assert!(cstr_read(&buf).contains("Project contains no sequences to export."), "error was: {}", cstr_read(&buf));
+	assert!(
+		cstr_read(&buf).contains("Project contains no sequences to export."),
+		"error was: {}",
+		cstr_read(&buf)
+	);
 
 	free(&mut task);
 	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
@@ -575,12 +721,17 @@ fn otio_save_bad_frame_rate_fails() {
 
 	let out = std::env::temp_dir().join("oak-otio-save-badrate.otio");
 	let out_str = out.to_string_lossy().into_owned();
-	let mut task = unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
+	let mut task =
+		unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
 	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 0);
 	let needed = unsafe { oaktask_task_error(task, std::ptr::null_mut(), 0) };
 	let mut buf = vec![0i8; needed as usize];
 	unsafe { oaktask_task_error(task, buf.as_mut_ptr(), needed) };
-	assert!(cstr_read(&buf).contains("Failed to serialize sequence"), "error was: {}", cstr_read(&buf));
+	assert!(
+		cstr_read(&buf).contains("Failed to serialize sequence"),
+		"error was: {}",
+		cstr_read(&buf)
+	);
 
 	free(&mut task);
 	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
@@ -597,12 +748,17 @@ fn otio_save_unknown_track_type_fails() {
 
 	let out = std::env::temp_dir().join("oak-otio-save-badtrack.otio");
 	let out_str = out.to_string_lossy().into_owned();
-	let mut task = unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
+	let mut task =
+		unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
 	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 0);
 	let needed = unsafe { oaktask_task_error(task, std::ptr::null_mut(), 0) };
 	let mut buf = vec![0i8; needed as usize];
 	unsafe { oaktask_task_error(task, buf.as_mut_ptr(), needed) };
-	assert!(cstr_read(&buf).contains("Failed to serialize sequence"), "error was: {}", cstr_read(&buf));
+	assert!(
+		cstr_read(&buf).contains("Failed to serialize sequence"),
+		"error was: {}",
+		cstr_read(&buf)
+	);
 
 	free(&mut task);
 	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
@@ -631,7 +787,10 @@ fn fcpxml_load_builds_project_from_synthetic_document() {
 	let _guard = MANAGER_LOCK.lock().unwrap();
 	reset_stubs();
 
-	let (mut task, path) = load_fcpxml(&synthetic_timeline("Seq A", "file:///tmp/oak-otio-test.mp4"));
+	let (mut task, path) = load_fcpxml(&synthetic_timeline(
+		"Seq A",
+		"file:///tmp/oak-otio-test.mp4",
+	));
 	assert!(!task.ctx.is_null());
 	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 1);
 
@@ -646,13 +805,23 @@ fn fcpxml_load_builds_project_from_synthetic_document() {
 	assert_eq!(SET_LENGTH_NUM.load(Ordering::SeqCst), 24);
 	assert_eq!(SET_LENGTH_DEN.load(Ordering::SeqCst), 1);
 	// Video track wiring: transform connected between footage and block.
-	assert!(CONNECT_INPUT_IDS.lock().unwrap().iter().any(|id| id == "tex_in"));
-	assert!(CONNECT_INPUT_IDS.lock().unwrap().iter().any(|id| id == "buffer_in"));
+	assert!(CONNECT_INPUT_IDS
+		.lock()
+		.unwrap()
+		.iter()
+		.any(|id| id == "tex_in"));
+	assert!(CONNECT_INPUT_IDS
+		.lock()
+		.unwrap()
+		.iter()
+		.any(|id| id == "buffer_in"));
 
 	let project = unsafe { oaktask_load_otio_take_project(task) };
 	assert!(!project.ctx.is_null());
 	// Second take is empty (ownership transferred).
-	assert!(unsafe { oaktask_load_otio_take_project(task) }.ctx.is_null());
+	assert!(unsafe { oaktask_load_otio_take_project(task) }
+		.ctx
+		.is_null());
 
 	free(&mut task);
 	let _ = std::fs::remove_file(&path);
@@ -672,7 +841,8 @@ fn fcpxml_save_round_trips_through_parse() {
 	let out_str = out.to_string_lossy().into_owned();
 	let _ = std::fs::remove_file(&out);
 
-	let mut task = unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
+	let mut task =
+		unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
 	let started = unsafe { oaktask_task_start_sync(task) };
 	let text = std::fs::read_to_string(&out).unwrap_or_default();
 	free(&mut task);
@@ -686,21 +856,44 @@ fn fcpxml_save_round_trips_through_parse() {
 	assert_eq!(tracks.len(), 1);
 	let track = tracks[0].as_track().expect("track");
 	assert_eq!(track.kind(), "Video");
-	assert_eq!(track.children().len(), 1, "no trailing gap: track length 0 < clip duration");
+	assert_eq!(
+		track.children().len(),
+		1,
+		"no trailing gap: track length 0 < clip duration"
+	);
 
 	let clip = track.children()[0].as_clip().expect("clip");
 	assert_eq!(clip.name(), "My Sequence");
 	let range = clip.source_range().expect("clip source_range");
 	// 576/24 = 24s at 25fps -> {600, 25}; 25/1 = 25s at 25fps -> {625, 25}.
-	assert_eq!((range.start_time().value(), range.start_time().rate()), (600.0, 25.0));
-	assert_eq!((range.duration().value(), range.duration().rate()), (625.0, 25.0));
+	assert_eq!(
+		(range.start_time().value(), range.start_time().rate()),
+		(600.0, 25.0)
+	);
+	assert_eq!(
+		(range.duration().value(), range.duration().rate()),
+		(625.0, 25.0)
+	);
 
-	let external = clip.media_reference().expect("media reference").as_external_reference().expect("ExternalReference");
+	let external = clip
+		.media_reference()
+		.expect("media reference")
+		.as_external_reference()
+		.expect("ExternalReference");
 	assert_eq!(external.target_url(), "file:///tmp/video.mp4");
 	let available = external.available_range().expect("available_range");
 	// Asset duration 100/25 = 4s at 25fps -> {0, 25} .. {100, 25}.
-	assert_eq!((available.start_time().value(), available.start_time().rate()), (0.0, 25.0));
-	assert_eq!((available.duration().value(), available.duration().rate()), (100.0, 25.0));
+	assert_eq!(
+		(
+			available.start_time().value(),
+			available.start_time().rate()
+		),
+		(0.0, 25.0)
+	);
+	assert_eq!(
+		(available.duration().value(), available.duration().rate()),
+		(100.0, 25.0)
+	);
 
 	let _ = std::fs::remove_file(&out);
 	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
@@ -719,16 +912,23 @@ fn fcpxml_save_reimports_through_load_task() {
 	let out_str = out.to_string_lossy().into_owned();
 	let _ = std::fs::remove_file(&out);
 
-	let mut save = unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
+	let mut save =
+		unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
 	assert_eq!(unsafe { oaktask_task_start_sync(save) }, 1);
 	free(&mut save);
 
 	reset_stubs();
 	let mut load = unsafe { oaktask_create_project_load_otio(common::cstr_of(&out_str)) };
 	assert_eq!(unsafe { oaktask_task_start_sync(load) }, 1);
-	assert_eq!(APPENDED_BLOCKS.load(Ordering::SeqCst), 1, "one clip re-imported");
+	assert_eq!(
+		APPENDED_BLOCKS.load(Ordering::SeqCst),
+		1,
+		"one clip re-imported"
+	);
 	assert_eq!(FOOTAGE_CREATE_COUNT.load(Ordering::SeqCst), 1);
-	assert!(!(unsafe { oaktask_load_otio_take_project(load) }).ctx.is_null());
+	assert!(!(unsafe { oaktask_load_otio_take_project(load) })
+		.ctx
+		.is_null());
 
 	free(&mut load);
 	let _ = std::fs::remove_file(&out);
@@ -748,7 +948,12 @@ fn otio_load_extension_dispatch_matrix() {
 	let _guard = MANAGER_LOCK.lock().unwrap();
 	reset_stubs();
 
-	for (ext, is_otio) in [(".otio", true), (".OTIO", true), (".fcpxml", false), (".FCPXML", false)] {
+	for (ext, is_otio) in [
+		(".otio", true),
+		(".OTIO", true),
+		(".fcpxml", false),
+		(".FCPXML", false),
+	] {
 		let timeline = synthetic_timeline("Seq A", "file:///tmp/oak-dispatch.mp4");
 		let path = std::env::temp_dir().join(format!("oak-dispatch-{}{ext}", std::process::id()));
 		if is_otio {
@@ -759,9 +964,22 @@ fn otio_load_extension_dispatch_matrix() {
 		let path_str = path.to_string_lossy().into_owned();
 
 		let mut task = unsafe { oaktask_create_project_load_otio(common::cstr_of(&path_str)) };
-		assert_eq!(unsafe { oaktask_task_start_sync(task) }, 1, "extension {ext} should import");
-		assert_eq!(APPENDED_BLOCKS.load(Ordering::SeqCst), 2, "extension {ext}: clip + gap");
-		assert!(!(unsafe { oaktask_load_otio_take_project(task) }).ctx.is_null(), "extension {ext}");
+		assert_eq!(
+			unsafe { oaktask_task_start_sync(task) },
+			1,
+			"extension {ext} should import"
+		);
+		assert_eq!(
+			APPENDED_BLOCKS.load(Ordering::SeqCst),
+			2,
+			"extension {ext}: clip + gap"
+		);
+		assert!(
+			!(unsafe { oaktask_load_otio_take_project(task) })
+				.ctx
+				.is_null(),
+			"extension {ext}"
+		);
 
 		free(&mut task);
 		let _ = std::fs::remove_file(&path);
@@ -776,7 +994,8 @@ fn otio_load_unknown_extension_fails() {
 	let _guard = MANAGER_LOCK.lock().unwrap();
 	reset_stubs();
 
-	let path = std::env::temp_dir().join(format!("oak-otio-unknown-ext-{}.txt", std::process::id()));
+	let path =
+		std::env::temp_dir().join(format!("oak-otio-unknown-ext-{}.txt", std::process::id()));
 	std::fs::write(&path, "whatever").unwrap();
 	let path_str = path.to_string_lossy().into_owned();
 
@@ -785,8 +1004,14 @@ fn otio_load_unknown_extension_fails() {
 	let needed = unsafe { oaktask_task_error(task, std::ptr::null_mut(), 0) };
 	let mut buf = vec![0i8; needed as usize];
 	unsafe { oaktask_task_error(task, buf.as_mut_ptr(), needed) };
-	assert!(cstr_read(&buf).contains("Unknown project file format"), "error was: {}", cstr_read(&buf));
-	assert!(unsafe { oaktask_load_otio_take_project(task) }.ctx.is_null());
+	assert!(
+		cstr_read(&buf).contains("Unknown project file format"),
+		"error was: {}",
+		cstr_read(&buf)
+	);
+	assert!(unsafe { oaktask_load_otio_take_project(task) }
+		.ctx
+		.is_null());
 
 	free(&mut task);
 	let _ = std::fs::remove_file(&path);
@@ -801,14 +1026,20 @@ fn otio_save_unknown_extension_fails() {
 	reset_stubs();
 	configure_one_sequence_save();
 
-	let out = std::env::temp_dir().join(format!("oak-otio-save-unknown-{}.xyz", std::process::id()));
+	let out =
+		std::env::temp_dir().join(format!("oak-otio-save-unknown-{}.xyz", std::process::id()));
 	let out_str = out.to_string_lossy().into_owned();
-	let mut task = unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
+	let mut task =
+		unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
 	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 0);
 	let needed = unsafe { oaktask_task_error(task, std::ptr::null_mut(), 0) };
 	let mut buf = vec![0i8; needed as usize];
 	unsafe { oaktask_task_error(task, buf.as_mut_ptr(), needed) };
-	assert!(cstr_read(&buf).contains("Unknown project file format"), "error was: {}", cstr_read(&buf));
+	assert!(
+		cstr_read(&buf).contains("Unknown project file format"),
+		"error was: {}",
+		cstr_read(&buf)
+	);
 
 	free(&mut task);
 	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
@@ -824,7 +1055,8 @@ fn fcpxml_load_corrupt_xml_fails() {
 	let _guard = MANAGER_LOCK.lock().unwrap();
 	reset_stubs();
 
-	let path = std::env::temp_dir().join(format!("oak-fcpxml-corrupt-{}.fcpxml", std::process::id()));
+	let path =
+		std::env::temp_dir().join(format!("oak-fcpxml-corrupt-{}.fcpxml", std::process::id()));
 	std::fs::write(&path, "<fcpxml version=\"1.10\"><resources>").unwrap();
 	let path_str = path.to_string_lossy().into_owned();
 
@@ -835,7 +1067,9 @@ fn fcpxml_load_corrupt_xml_fails() {
 	unsafe { oaktask_task_error(task, buf.as_mut_ptr(), needed) };
 	let msg = cstr_read(&buf);
 	assert!(msg.contains("Failed to load FCPXML"), "error was: {msg}");
-	assert!(unsafe { oaktask_load_otio_take_project(task) }.ctx.is_null());
+	assert!(unsafe { oaktask_load_otio_take_project(task) }
+		.ctx
+		.is_null());
 
 	free(&mut task);
 	let _ = std::fs::remove_file(&path);
@@ -849,7 +1083,8 @@ fn fcpxml_load_unknown_version_fails() {
 	let _guard = MANAGER_LOCK.lock().unwrap();
 	reset_stubs();
 
-	let path = std::env::temp_dir().join(format!("oak-fcpxml-version-{}.fcpxml", std::process::id()));
+	let path =
+		std::env::temp_dir().join(format!("oak-fcpxml-version-{}.fcpxml", std::process::id()));
 	std::fs::write(
 		&path,
 		"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<!DOCTYPE fcpxml>\n<fcpxml version=\"2.0\"><library/></fcpxml>",
@@ -865,7 +1100,9 @@ fn fcpxml_load_unknown_version_fails() {
 	let msg = cstr_read(&buf);
 	assert!(msg.contains("Failed to load FCPXML"), "error was: {msg}");
 	assert!(msg.contains("version"), "error was: {msg}");
-	assert!(unsafe { oaktask_load_otio_take_project(task) }.ctx.is_null());
+	assert!(unsafe { oaktask_load_otio_take_project(task) }
+		.ctx
+		.is_null());
 
 	free(&mut task);
 	let _ = std::fs::remove_file(&path);

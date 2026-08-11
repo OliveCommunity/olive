@@ -24,19 +24,18 @@
 #[path = "common/mod.rs"]
 mod common;
 
-
 use std::ffi::{c_char, c_int, c_void};
 use std::sync::atomic::{AtomicI32, Ordering};
 
 use oakengine::undo::{
 	oakengine_undo_can_redo, oakengine_undo_can_undo, oakengine_undo_clear,
 	oakengine_undo_command_create, oakengine_undo_command_create_multi,
-	oakengine_undo_command_free, oakengine_undo_command_multi_add_child,
-	oakengine_undo_command_multi_child_count, oakengine_undo_command_redo_now,
-	oakengine_undo_command_undo_now, oakengine_undo_count, oakengine_undo_group_abort,
-	oakengine_undo_group_begin, oakengine_undo_group_end, oakengine_undo_handle,
-	oakengine_undo_index, oakengine_undo_jump, oakengine_undo_push,
-	oakengine_undo_command_is_done, oakengine_undo_command_text,
+	oakengine_undo_command_free, oakengine_undo_command_is_done,
+	oakengine_undo_command_multi_add_child, oakengine_undo_command_multi_child_count,
+	oakengine_undo_command_redo_now, oakengine_undo_command_text, oakengine_undo_command_undo_now,
+	oakengine_undo_count, oakengine_undo_group_abort, oakengine_undo_group_begin,
+	oakengine_undo_group_end, oakengine_undo_handle, oakengine_undo_index, oakengine_undo_jump,
+	oakengine_undo_push,
 };
 
 // ---------------------------------------------------------------------------
@@ -126,11 +125,20 @@ fn multi_command_add_child_count_redo() {
 			std::ptr::null_mut(),
 		)
 	};
-	assert_eq!(unsafe { oakengine_undo_command_multi_add_child(multi, child) }, 0);
-	assert_eq!(unsafe { oakengine_undo_command_multi_child_count(multi) }, 1);
+	assert_eq!(
+		unsafe { oakengine_undo_command_multi_add_child(multi, child) },
+		0
+	);
+	assert_eq!(
+		unsafe { oakengine_undo_command_multi_child_count(multi) },
+		1
+	);
 
 	// Adding a NULL child fails with E_INVALID (-1).
-	assert_eq!(unsafe { oakengine_undo_command_multi_add_child(multi, std::ptr::null_mut()) }, -1);
+	assert_eq!(
+		unsafe { oakengine_undo_command_multi_add_child(multi, std::ptr::null_mut()) },
+		-1
+	);
 
 	unsafe { oakengine_undo_command_free(multi) };
 }
@@ -166,7 +174,10 @@ fn undo_stack_lifecycle() {
 	};
 	STK_REDO_COUNT.store(0, Ordering::SeqCst);
 	STK_UNDO_COUNT.store(0, Ordering::SeqCst);
-	assert_eq!(unsafe { oakengine_undo_push(cmd, c"operation".as_ptr()) }, 0);
+	assert_eq!(
+		unsafe { oakengine_undo_push(cmd, c"operation".as_ptr()) },
+		0
+	);
 	assert_eq!(unsafe { oakengine_undo_count() }, 2);
 	assert_eq!(unsafe { oakengine_undo_index() }, 2);
 	assert_eq!(STK_REDO_COUNT.load(Ordering::SeqCst), 1);
@@ -175,10 +186,18 @@ fn undo_stack_lifecycle() {
 	let mut buf = [0 as c_char; 64];
 	let len = unsafe { oakengine_undo_command_text(1, buf.as_mut_ptr(), 64) };
 	assert!(len > 0);
-	assert_eq!(unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap(), "operation");
+	assert_eq!(
+		unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }
+			.to_str()
+			.unwrap(),
+		"operation"
+	);
 	assert_eq!(unsafe { oakengine_undo_command_is_done(1) }, 1);
 	// Invalid row → module NOT_FOUND (-20004) passes through.
-	assert_eq!(unsafe { oakengine_undo_command_text(99, buf.as_mut_ptr(), 64) }, -20004);
+	assert_eq!(
+		unsafe { oakengine_undo_command_text(99, buf.as_mut_ptr(), 64) },
+		-20004
+	);
 
 	// Undo restores index 1 and flips the done flag.
 	assert_eq!(unsafe { oakengine_undo_jump(1) }, 0);
@@ -193,12 +212,15 @@ fn undo_stack_lifecycle() {
 
 	unsafe { oakengine_undo_clear() };
 
-// --- Undo group: begin → push children → end pushes ONE entry; abort
-// undoes and discards. (continues the same serialized test)
+	// --- Undo group: begin → push children → end pushes ONE entry; abort
+	// undoes and discards. (continues the same serialized test)
 	assert_eq!(unsafe { oakengine_undo_clear() }, 0);
 
 	// Group begin/end with two children → one history row.
-	assert_eq!(unsafe { oakengine_undo_group_begin(c"grouped".as_ptr()) }, 0);
+	assert_eq!(
+		unsafe { oakengine_undo_group_begin(c"grouped".as_ptr()) },
+		0
+	);
 	// A second begin while open fails with E_STATE (-2).
 	assert_eq!(unsafe { oakengine_undo_group_begin(c"again".as_ptr()) }, -2);
 

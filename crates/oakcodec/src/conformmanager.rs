@@ -228,11 +228,8 @@ mod tests {
 	use super::*;
 
 	fn temp_subdir(name: &str) -> String {
-		let dir = std::env::temp_dir().join(format!(
-			"oakcodec_conform_{}_{}",
-			name,
-			std::process::id()
-		));
+		let dir =
+			std::env::temp_dir().join(format!("oakcodec_conform_{}_{}", name, std::process::id()));
 		let _ = std::fs::create_dir_all(&dir);
 		dir.to_string_lossy().into_owned()
 	}

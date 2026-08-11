@@ -177,7 +177,11 @@ mod tests {
 	}
 
 	fn temp_cache(name: &str) -> String {
-		let dir = std::env::temp_dir().join(format!("oakcodec_ffi_conform_{}_{}", name, std::process::id()));
+		let dir = std::env::temp_dir().join(format!(
+			"oakcodec_ffi_conform_{}_{}",
+			name,
+			std::process::id()
+		));
 		let _ = std::fs::create_dir_all(&dir);
 		dir.to_string_lossy().into_owned()
 	}
@@ -185,8 +189,14 @@ mod tests {
 	#[test]
 	fn create_destroy_instance_ok() {
 		let _g = crate::ffi::lock_tests();
-		assert_eq!(unsafe { oakcodec_conform_create_instance() }, crate::error::OAKCODEC_OK);
-		assert_eq!(unsafe { oakcodec_conform_destroy_instance() }, crate::error::OAKCODEC_OK);
+		assert_eq!(
+			unsafe { oakcodec_conform_create_instance() },
+			crate::error::OAKCODEC_OK
+		);
+		assert_eq!(
+			unsafe { oakcodec_conform_destroy_instance() },
+			crate::error::OAKCODEC_OK
+		);
 	}
 
 	#[test]
@@ -196,14 +206,20 @@ mod tests {
 		// No registrar and no files -> UNAVAILABLE.
 		let cache = cstr(&temp_cache("state"));
 		let src = cstr("media.mp4");
-		let rc = unsafe { oakcodec_conform_get_state(cache.as_ptr(), src.as_ptr(), 0, 48000, 0x3, 0, 0) };
+		let rc = unsafe {
+			oakcodec_conform_get_state(cache.as_ptr(), src.as_ptr(), 0, 48000, 0x3, 0, 0)
+		};
 		assert_eq!(rc, OAKCODEC_CONFORM_UNAVAILABLE);
 
 		// Invalid arguments -> E_INVALID.
-		let rc = unsafe { oakcodec_conform_get_state(std::ptr::null(), src.as_ptr(), 0, 48000, 0x3, 0, 0) };
+		let rc = unsafe {
+			oakcodec_conform_get_state(std::ptr::null(), src.as_ptr(), 0, 48000, 0x3, 0, 0)
+		};
 		assert_eq!(rc, OAKCODEC_E_INVALID);
 		let empty = cstr("");
-		let rc = unsafe { oakcodec_conform_get_state(empty.as_ptr(), src.as_ptr(), 0, 48000, 0x3, 0, 0) };
+		let rc = unsafe {
+			oakcodec_conform_get_state(empty.as_ptr(), src.as_ptr(), 0, 48000, 0x3, 0, 0)
+		};
 		assert_eq!(rc, OAKCODEC_E_INVALID);
 
 		// Write the conform files -> EXISTS.
@@ -214,7 +230,9 @@ mod tests {
 				.unwrap();
 			std::fs::write(&f, b"pcm").unwrap();
 		}
-		let rc = unsafe { oakcodec_conform_get_state(cache.as_ptr(), src.as_ptr(), 0, 48000, 0x3, 0, 0) };
+		let rc = unsafe {
+			oakcodec_conform_get_state(cache.as_ptr(), src.as_ptr(), 0, 48000, 0x3, 0, 0)
+		};
 		assert_eq!(rc, OAKCODEC_CONFORM_EXISTS);
 	}
 
@@ -225,26 +243,66 @@ mod tests {
 		let src = cstr("media.mp4");
 
 		// Stereo -> 2 files.
-		let rc = unsafe { oakcodec_conform_filename_count(cache.as_ptr(), src.as_ptr(), 0, 48000, 0x3, 0) };
+		let rc = unsafe {
+			oakcodec_conform_filename_count(cache.as_ptr(), src.as_ptr(), 0, 48000, 0x3, 0)
+		};
 		assert_eq!(rc, 2);
 
 		// Invalid args -> 0 (not an error).
-		let rc = unsafe { oakcodec_conform_filename_count(std::ptr::null(), src.as_ptr(), 0, 48000, 0x3, 0) };
+		let rc = unsafe {
+			oakcodec_conform_filename_count(std::ptr::null(), src.as_ptr(), 0, 48000, 0x3, 0)
+		};
 		assert_eq!(rc, 0);
 
 		// filename_at round-trips the deterministic name.
 		let mut buf = [0i8; 512];
-		let rc = unsafe { oakcodec_conform_filename_at(cache.as_ptr(), src.as_ptr(), 0, 48000, 0x3, 0, 0, buf.as_mut_ptr(), 512) };
+		let rc = unsafe {
+			oakcodec_conform_filename_at(
+				cache.as_ptr(),
+				src.as_ptr(),
+				0,
+				48000,
+				0x3,
+				0,
+				0,
+				buf.as_mut_ptr(),
+				512,
+			)
+		};
 		assert!(rc > 0);
 		let name = crate::ffi::c_str(buf.as_ptr()).unwrap();
 		assert!(name.ends_with(".0.pcm"));
 
 		// Out-of-range index -> E_NOT_FOUND.
-		let rc = unsafe { oakcodec_conform_filename_at(cache.as_ptr(), src.as_ptr(), 0, 48000, 0x3, 0, 5, buf.as_mut_ptr(), 512) };
+		let rc = unsafe {
+			oakcodec_conform_filename_at(
+				cache.as_ptr(),
+				src.as_ptr(),
+				0,
+				48000,
+				0x3,
+				0,
+				5,
+				buf.as_mut_ptr(),
+				512,
+			)
+		};
 		assert_eq!(rc, OAKCODEC_E_NOT_FOUND);
 
 		// Invalid args -> E_INVALID.
-		let rc = unsafe { oakcodec_conform_filename_at(std::ptr::null(), src.as_ptr(), 0, 48000, 0x3, 0, 0, buf.as_mut_ptr(), 512) };
+		let rc = unsafe {
+			oakcodec_conform_filename_at(
+				std::ptr::null(),
+				src.as_ptr(),
+				0,
+				48000,
+				0x3,
+				0,
+				0,
+				buf.as_mut_ptr(),
+				512,
+			)
+		};
 		assert_eq!(rc, OAKCODEC_E_INVALID);
 	}
 }

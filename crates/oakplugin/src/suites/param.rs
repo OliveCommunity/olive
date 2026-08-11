@@ -46,9 +46,15 @@ use crate::suites::tag;
 #[repr(C)]
 pub struct ParameterSuiteV1 {
 	/// paramDefine（describe 期间）：定义参数。
-	pub param_define: unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char, *mut *mut c_void) -> c_int,
+	pub param_define:
+		unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char, *mut *mut c_void) -> c_int,
 	/// paramGetHandle
-	pub param_get_handle: unsafe extern "C" fn(*mut c_void, *const c_char, *mut *mut c_void, *mut *mut c_void) -> c_int,
+	pub param_get_handle: unsafe extern "C" fn(
+		*mut c_void,
+		*const c_char,
+		*mut *mut c_void,
+		*mut *mut c_void,
+	) -> c_int,
 	/// paramSetGetPropertySet
 	pub param_set_get_property_set: unsafe extern "C" fn(*mut c_void, *mut *mut c_void) -> c_int,
 	/// paramGetPropertySet
@@ -70,13 +76,15 @@ pub struct ParameterSuiteV1 {
 	/// paramGetKeyTime
 	pub param_get_key_time: unsafe extern "C" fn(*mut c_void, c_int, *mut c_double) -> c_int,
 	/// paramGetKeyIndex
-	pub param_get_key_index: unsafe extern "C" fn(*mut c_void, c_double, c_int, *mut c_int) -> c_int,
+	pub param_get_key_index:
+		unsafe extern "C" fn(*mut c_void, c_double, c_int, *mut c_int) -> c_int,
 	/// paramDeleteKey
 	pub param_delete_key: unsafe extern "C" fn(*mut c_void, c_double) -> c_int,
 	/// paramDeleteAllKeys
 	pub param_delete_all_keys: unsafe extern "C" fn(*mut c_void) -> c_int,
 	/// paramCopy
-	pub param_copy: unsafe extern "C" fn(*mut c_void, *mut c_void, c_double, c_double, *const c_void) -> c_int,
+	pub param_copy:
+		unsafe extern "C" fn(*mut c_void, *mut c_void, c_double, c_double, *const c_void) -> c_int,
 	/// paramEditBegin / paramEditEnd（编辑事务括号）
 	pub param_edit_begin: unsafe extern "C" fn(*mut c_void) -> c_int,
 	/// paramEditEnd
@@ -106,10 +114,12 @@ fn resolve_param_set(handle: *mut c_void) -> Result<ParamSetRef<'static>, c_int>
 	// 两种对象 props 均在偏移 0（句柄约定）。
 	unsafe {
 		match tag::kind(handle) {
-			tag::DESCRIPTOR => {
-				Ok(ParamSetRef::Descriptor(&mut *(tag::strip(handle) as *mut EffectDescriptor)))
-			}
-			tag::INSTANCE => Ok(ParamSetRef::Instance(&*(tag::strip(handle) as *const Instance))),
+			tag::DESCRIPTOR => Ok(ParamSetRef::Descriptor(
+				&mut *(tag::strip(handle) as *mut EffectDescriptor),
+			)),
+			tag::INSTANCE => Ok(ParamSetRef::Instance(
+				&*(tag::strip(handle) as *const Instance),
+			)),
 			_ => Err(status::ERR_BAD_HANDLE),
 		}
 	}
@@ -123,9 +133,9 @@ fn resolve_param(handle: *mut c_void) -> Result<ParamRef<'static>, c_int> {
 	unsafe {
 		match tag::kind(handle) {
 			tag::PARAM_DEF => Ok(ParamRef::Def(&*(tag::strip(handle) as *const ParamDef))),
-			tag::PARAM_INSTANCE => {
-				Ok(ParamRef::Instance(&*(tag::strip(handle) as *const ParamInstance)))
-			}
+			tag::PARAM_INSTANCE => Ok(ParamRef::Instance(
+				&*(tag::strip(handle) as *const ParamInstance),
+			)),
 			_ => Err(status::ERR_BAD_HANDLE),
 		}
 	}
@@ -143,8 +153,10 @@ unsafe fn c_name<'a>(name: *const c_char) -> Result<&'a str, c_int> {
 
 /// 公共入口模板：panic 兜底。
 fn caught(f: impl FnOnce() -> Result<(), c_int>) -> c_int {
-	std::panic::catch_unwind(std::panic::AssertUnwindSafe(f))
-		.map_or_else(|_| status::FAILED, |r| r.map_or_else(|c| c, |()| status::OK))
+	std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).map_or_else(
+		|_| status::FAILED,
+		|r| r.map_or_else(|c| c, |()| status::OK),
+	)
 }
 
 // ---- 变长参数实现（C shim 转发）----------------------------------------
@@ -486,7 +498,9 @@ unsafe extern "C" fn param_define(
 		// 句柄会指向死内存——Box 负载地址在 Vec 重分配时稳定）。
 		let def = desc.params.last().expect("just pushed");
 		let addr = &def.props as *const _ as usize;
-		unsafe { *property_set = tag::make(addr as *const crate::property::PropertySet, tag::PARAM_DEF) };
+		unsafe {
+			*property_set = tag::make(addr as *const crate::property::PropertySet, tag::PARAM_DEF)
+		};
 		Ok(())
 	})
 }
@@ -513,7 +527,10 @@ unsafe extern "C" fn param_get_handle(
 			ParamSetRef::Instance(i) => {
 				let p = i.params.find(n).ok_or(status::ERR_UNKNOWN)?;
 				let addr = &p.props as *const _ as usize;
-				tag::make(addr as *const crate::property::PropertySet, tag::PARAM_INSTANCE)
+				tag::make(
+					addr as *const crate::property::PropertySet,
+					tag::PARAM_INSTANCE,
+				)
 			}
 		};
 		unsafe { *param = handle };
@@ -568,7 +585,11 @@ unsafe extern "C" fn param_get_num_keys(param: *mut c_void, count: *mut c_int) -
 }
 
 /// paramGetKeyTime：无关键帧 → BadIndex。
-unsafe extern "C" fn param_get_key_time(param: *mut c_void, _index: c_int, _time: *mut c_double) -> c_int {
+unsafe extern "C" fn param_get_key_time(
+	param: *mut c_void,
+	_index: c_int,
+	_time: *mut c_double,
+) -> c_int {
 	caught(|| {
 		let _ = resolve_param(param)?;
 		Err(status::ERR_BAD_INDEX)
@@ -700,7 +721,6 @@ pub fn suite_v1() -> &'static ParameterSuiteV1 {
 	})
 }
 
-
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -716,7 +736,10 @@ mod tests {
 	}
 
 	fn descriptor_handle(d: &EffectDescriptor) -> *mut c_void {
-		tag::make(&d.props as *const crate::property::PropertySet, tag::DESCRIPTOR)
+		tag::make(
+			&d.props as *const crate::property::PropertySet,
+			tag::DESCRIPTOR,
+		)
 	}
 
 	/// 假插件（host::Plugin 的构造只为拿 Arc 喂给 Instance；describe
@@ -743,7 +766,10 @@ mod tests {
 	}
 
 	fn instance_handle(i: &Instance) -> *mut c_void {
-		tag::make(&i.props as *const crate::property::PropertySet, tag::INSTANCE)
+		tag::make(
+			&i.props as *const crate::property::PropertySet,
+			tag::INSTANCE,
+		)
 	}
 
 	/// 用 paramDefine 建一个实例（describe 产物 → createInstance）。
@@ -763,10 +789,13 @@ mod tests {
 				let t = cs(t);
 				let n = cs(n);
 				let mut ph: *mut c_void = std::ptr::null_mut();
-				assert_eq!((s.param_define)(dhandle, t.as_ptr(), n.as_ptr(), &mut ph), 0);
+				assert_eq!(
+					(s.param_define)(dhandle, t.as_ptr(), n.as_ptr(), &mut ph),
+					0
+				);
 			}
 		}
-let params = ParamSetInstance {
+		let params = ParamSetInstance {
 			params: desc
 				.params
 				.iter()
@@ -959,7 +988,10 @@ let params = ParamSetInstance {
 			assert_eq!((s.param_get_num_keys)(opacity, &mut nkeys), 0);
 			assert_eq!(nkeys, 0);
 			let mut kt = 0.0;
-			assert_eq!((s.param_get_key_time)(opacity, 0, &mut kt), status::ERR_BAD_INDEX);
+			assert_eq!(
+				(s.param_get_key_time)(opacity, 0, &mut kt),
+				status::ERR_BAD_INDEX
+			);
 		}
 
 		// derivative/integral → MissingHostFeature。
@@ -977,7 +1009,10 @@ let params = ParamSetInstance {
 			assert_eq!((s.param_edit_end)(opacity), 0);
 			assert_eq!((s.param_delete_key)(opacity, 1.0), 0);
 			assert_eq!((s.param_delete_all_keys)(opacity), 0);
-			assert_eq!((s.param_copy)(opacity, opacity, 1.0, 1.0, std::ptr::null()), 0);
+			assert_eq!(
+				(s.param_copy)(opacity, opacity, 1.0, 1.0, std::ptr::null()),
+				0
+			);
 		}
 	}
 }

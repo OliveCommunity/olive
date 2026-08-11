@@ -177,9 +177,9 @@ impl OcioConfig {
 
 	/// Name of the role at `index` (0-based).
 	pub fn role_name(&self, index: i32) -> Result<String> {
-		self.inner.role_name(index).ok_or_else(|| {
-			Error::new(format!("OcioConfig::role_name: no role at index {index}"))
-		})
+		self.inner
+			.role_name(index)
+			.ok_or_else(|| Error::new(format!("OcioConfig::role_name: no role at index {index}")))
 	}
 
 	/// Names of all roles in config order.
@@ -208,9 +208,9 @@ impl OcioConfig {
 
 	/// The config's default display name.
 	pub fn default_display(&self) -> Result<String> {
-		self.inner.default_display().ok_or_else(|| {
-			Error::new("OcioConfig::default_display: config defines no displays")
-		})
+		self.inner
+			.default_display()
+			.ok_or_else(|| Error::new("OcioConfig::default_display: config defines no displays"))
 	}
 
 	/// The default view for `display`.
@@ -234,9 +234,9 @@ impl OcioConfig {
 	/// Builds a processor applying `src` through the display transform for
 	/// `display`/`view` in the forward direction.
 	pub fn display_processor(&self, src: &str, display: &str, view: &str) -> Result<OcioProcessor> {
-		let processor = self
-			.inner
-			.processor_display(src, display, view, TransformDirection::Forward)?;
+		let processor =
+			self.inner
+				.processor_display(src, display, view, TransformDirection::Forward)?;
 		Ok(OcioProcessor {
 			inner: processor.default_cpu_processor()?,
 		})
@@ -321,7 +321,9 @@ mod tests {
 		let utils = OCIOUtils::new();
 		// Stateless; just confirm construction works and stays usable.
 		assert_eq!(
-			utils.get_ocio_bit_depth_from_pixel_format(PixelFormat::U8).unwrap(),
+			utils
+				.get_ocio_bit_depth_from_pixel_format(PixelFormat::U8)
+				.unwrap(),
 			1
 		);
 	}
@@ -329,18 +331,53 @@ mod tests {
 	#[test]
 	fn ocio_bit_depth_maps_supported_formats() {
 		let utils = OCIOUtils::new();
-		assert_eq!(utils.get_ocio_bit_depth_from_pixel_format(PixelFormat::U8).unwrap(), 1);
-		assert_eq!(utils.get_ocio_bit_depth_from_pixel_format(PixelFormat::U10).unwrap(), 2);
-		assert_eq!(utils.get_ocio_bit_depth_from_pixel_format(PixelFormat::U16).unwrap(), 5);
-		assert_eq!(utils.get_ocio_bit_depth_from_pixel_format(PixelFormat::F16).unwrap(), 7);
-		assert_eq!(utils.get_ocio_bit_depth_from_pixel_format(PixelFormat::F32).unwrap(), 8);
+		assert_eq!(
+			utils
+				.get_ocio_bit_depth_from_pixel_format(PixelFormat::U8)
+				.unwrap(),
+			1
+		);
+		assert_eq!(
+			utils
+				.get_ocio_bit_depth_from_pixel_format(PixelFormat::U10)
+				.unwrap(),
+			2
+		);
+		assert_eq!(
+			utils
+				.get_ocio_bit_depth_from_pixel_format(PixelFormat::U16)
+				.unwrap(),
+			5
+		);
+		assert_eq!(
+			utils
+				.get_ocio_bit_depth_from_pixel_format(PixelFormat::F16)
+				.unwrap(),
+			7
+		);
+		assert_eq!(
+			utils
+				.get_ocio_bit_depth_from_pixel_format(PixelFormat::F32)
+				.unwrap(),
+			8
+		);
 	}
 
 	#[test]
 	fn ocio_bit_depth_maps_invalid_and_count_to_unknown() {
 		let utils = OCIOUtils::new();
-		assert_eq!(utils.get_ocio_bit_depth_from_pixel_format(PixelFormat::Invalid).unwrap(), 0);
-		assert_eq!(utils.get_ocio_bit_depth_from_pixel_format(PixelFormat::Count).unwrap(), 0);
+		assert_eq!(
+			utils
+				.get_ocio_bit_depth_from_pixel_format(PixelFormat::Invalid)
+				.unwrap(),
+			0
+		);
+		assert_eq!(
+			utils
+				.get_ocio_bit_depth_from_pixel_format(PixelFormat::Count)
+				.unwrap(),
+			0
+		);
 	}
 
 	#[test]
@@ -355,7 +392,9 @@ mod tests {
 			config.has_role("default").expect("has_role should work"),
 			"raw config should define the default role"
 		);
-		let canonical = config.canonical_name("default").expect("canonical should work");
+		let canonical = config
+			.canonical_name("default")
+			.expect("canonical should work");
 		assert_eq!(canonical, "raw");
 	}
 }

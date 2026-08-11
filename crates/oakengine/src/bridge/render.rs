@@ -53,7 +53,6 @@ use crate::handle::CHandle;
 /// layout; all handle fields are the shared [`CHandle`]).
 pub type OakVideoTicketParams = oakrender::ffi::OakVideoTicketParams;
 
-
 /// `include/render/renderer.h` — frame video-params POD returned by
 /// `oakrender_codec_frame_get_params`. Single-lib unification: aliases
 /// the oakrender crate's POD.
@@ -116,29 +115,36 @@ pub fn oakrender_set_display_color_processor(p_or_null: CHandle) -> c_int {
 /// Direct call into the `oakrender` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakrender_ticket_render_frame(
-		params: *const OakVideoTicketParams,
-		cb: Option<unsafe extern "C" fn(CHandle, *mut c_void)>,
-		userdata: *mut c_void,
-	) -> CHandle {
+	params: *const OakVideoTicketParams,
+	cb: Option<unsafe extern "C" fn(CHandle, *mut c_void)>,
+	userdata: *mut c_void,
+) -> CHandle {
 	unsafe { oakrender::ffi::ticket::oakrender_ticket_render_frame(params, cb, userdata) }
 }
 
 /// Direct call into the `oakrender` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakrender_ticket_render_audio(
-		output_node: CHandle,
-		in_num: i64,
-		in_den: i64,
-		out_num: i64,
-		out_den: i64,
-		params: *const c_void,
-		mode: c_int,
-		cb: Option<unsafe extern "C" fn(CHandle, *mut c_void)>,
-		userdata: *mut c_void,
-	) -> CHandle {
+	output_node: CHandle,
+	in_num: i64,
+	in_den: i64,
+	out_num: i64,
+	out_den: i64,
+	params: *const c_void,
+	mode: c_int,
+	cb: Option<unsafe extern "C" fn(CHandle, *mut c_void)>,
+	userdata: *mut c_void,
+) -> CHandle {
 	unsafe {
 		oakrender::ffi::ticket::oakrender_ticket_render_audio(
-			output_node, in_num, in_den, out_num, out_den, params as *const CHandle, mode, cb,
+			output_node,
+			in_num,
+			in_den,
+			out_num,
+			out_den,
+			params as *const CHandle,
+			mode,
+			cb,
 			userdata,
 		)
 	}
@@ -237,11 +243,13 @@ pub fn oakrender_codec_frame_get_params(frame: CHandle, out: *mut OakRenderVideo
 /// Direct call into the `oakrender` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakrender_color_processor_create(
-		src_space: *const c_char,
-		dst_transform: *const c_char,
-		direction: c_int,
-	) -> CHandle {
-	unsafe { oakrender::ffi::color::oakrender_color_processor_create(src_space, dst_transform, direction) }
+	src_space: *const c_char,
+	dst_transform: *const c_char,
+	direction: c_int,
+) -> CHandle {
+	unsafe {
+		oakrender::ffi::color::oakrender_color_processor_create(src_space, dst_transform, direction)
+	}
 }
 
 /// Direct call into the `oakrender` crate (single-lib unification; the
@@ -259,28 +267,36 @@ pub fn oakrender_color_processor_is_valid(processor: CHandle) -> c_int {
 /// Direct call into the `oakrender` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakrender_color_processor_create_transform(
-		manager: CHandle,
-		input: *const c_char,
-		dest: CHandle,
-		direction: c_int,
-	) -> CHandle {
-	unsafe { oakrender::ffi::color::oakrender_color_processor_create_transform(manager, input, dest, direction) }
+	manager: CHandle,
+	input: *const c_char,
+	dest: CHandle,
+	direction: c_int,
+) -> CHandle {
+	unsafe {
+		oakrender::ffi::color::oakrender_color_processor_create_transform(
+			manager, input, dest, direction,
+		)
+	}
 }
 
 /// Direct call into the `oakrender` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakrender_color_processor_convert(
-		processor: CHandle,
-		ir: c_double,
-		ig: c_double,
-		ib: c_double,
-		ia: c_double,
-		out_r: *mut c_double,
-		out_g: *mut c_double,
-		out_b: *mut c_double,
-		out_a: *mut c_double,
-	) -> c_int {
-	unsafe { oakrender::ffi::color::oakrender_color_processor_convert(processor, ir, ig, ib, ia, out_r, out_g, out_b, out_a) }
+	processor: CHandle,
+	ir: c_double,
+	ig: c_double,
+	ib: c_double,
+	ia: c_double,
+	out_r: *mut c_double,
+	out_g: *mut c_double,
+	out_b: *mut c_double,
+	out_a: *mut c_double,
+) -> c_int {
+	unsafe {
+		oakrender::ffi::color::oakrender_color_processor_convert(
+			processor, ir, ig, ib, ia, out_r, out_g, out_b, out_a,
+		)
+	}
 }
 
 /// Direct call into the `oakrender` crate (single-lib unification; the
@@ -312,4 +328,3 @@ pub fn oakrender_lut_supported_extensions_count() -> c_int {
 pub fn oakrender_lut_supported_extension_at(i: c_int, buf: *mut c_char, n: c_int) -> c_int {
 	unsafe { oakrender::ffi::color::oakrender_lut_supported_extension_at(i, buf, n) }
 }
-

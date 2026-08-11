@@ -25,7 +25,7 @@ use std::ffi::c_void;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use crate::error::{OAKTIMELINE_E_FAILED, OAKTIMELINE_OK, Result};
+use crate::error::{Result, OAKTIMELINE_E_FAILED, OAKTIMELINE_OK};
 
 /// ABI version stamped into every oaktimeline handle.
 pub const OAKTIMELINE_ABI_VERSION: u32 = 1;

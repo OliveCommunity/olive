@@ -34,11 +34,11 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 
 use common::*;
-use oaktask::error::{Error, OAKTASK_E_CANCELLED, OAKTASK_E_FAILED, Result};
+use oakcore_rs::{Rational, TimeRange};
+use oaktask::error::{Error, Result, OAKTASK_E_CANCELLED, OAKTASK_E_FAILED};
 use oaktask::handle::CHandle;
 use oaktask::render::{ForceParams, RenderTask, RenderTaskBehavior};
 use oaktask::task::{Task, TaskEvent};
-use oakcore_rs::{Rational, TimeRange};
 
 /// Poison-tolerant serialization (the shared stub registry is process-wide).
 fn lock() -> std::sync::MutexGuard<'static, ()> {
@@ -102,7 +102,10 @@ impl RenderTaskBehavior for RecordingBehavior {
 
 /// Drive `render` on a spawned thread. The base task lives inside the
 /// render task; it is moved out first so the test can keep its cancel atom.
-fn run_render(mut rt: RenderTask, behavior: RecordingBehavior) -> std::thread::JoinHandle<(Result<()>, RecordingBehavior)> {
+fn run_render(
+	mut rt: RenderTask,
+	behavior: RecordingBehavior,
+) -> std::thread::JoinHandle<(Result<()>, RecordingBehavior)> {
 	std::thread::spawn(move || {
 		let mut base = std::mem::replace(&mut rt.base, Task::new("", CHandle::null()));
 		let mut behavior = behavior;
@@ -132,10 +135,20 @@ fn render_delivers_frames_in_order_under_scrambled_completion() {
 	assert!(result.is_ok());
 	assert_eq!(
 		behavior.frames,
-		vec![FRAME_CTX_BASE, FRAME_CTX_BASE + 1, FRAME_CTX_BASE + 2, FRAME_CTX_BASE + 3, FRAME_CTX_BASE + 4],
+		vec![
+			FRAME_CTX_BASE,
+			FRAME_CTX_BASE + 1,
+			FRAME_CTX_BASE + 2,
+			FRAME_CTX_BASE + 3,
+			FRAME_CTX_BASE + 4
+		],
 		"frames must be delivered in timestamp order despite scrambled completion"
 	);
-	assert_eq!(stub_completed_count(), 5, "each ticket completes exactly once");
+	assert_eq!(
+		stub_completed_count(),
+		5,
+		"each ticket completes exactly once"
+	);
 }
 
 /// The audio ticket completes last of all; it is still delivered before any
@@ -189,16 +202,26 @@ fn render_cancel_drains_inflight_and_fires_their_completions() {
 	// tickets (real cancellation propagates into in-flight renders), waking
 	// the loop; the loop then sees the cancellation and drains.
 	unsafe {
-		oaktask::bridge::render::oakrender_cancelatom_cancel(
-			atom,
-		);
+		oaktask::bridge::render::oakrender_cancelatom_cancel(atom);
 	}
 
 	let (result, behavior) = handle.join().unwrap();
 	assert_eq!(result.unwrap_err().code(), OAKTASK_E_CANCELLED);
-	assert_eq!(behavior.frames, vec![FRAME_CTX_BASE], "only frame 0 delivered before cancel");
-	assert_eq!(stub_completed_count(), 3, "every submitted ticket's completion fires (incl. on cancel)");
-	assert_eq!(stub_submitted_count(), 3, "no new tickets are dispatched after cancellation");
+	assert_eq!(
+		behavior.frames,
+		vec![FRAME_CTX_BASE],
+		"only frame 0 delivered before cancel"
+	);
+	assert_eq!(
+		stub_completed_count(),
+		3,
+		"every submitted ticket's completion fires (incl. on cancel)"
+	);
+	assert_eq!(
+		stub_submitted_count(),
+		3,
+		"no new tickets are dispatched after cancellation"
+	);
 }
 
 /// Progress events are non-decreasing and end at 1.0 (5 frames, 1s each).
@@ -230,7 +253,10 @@ fn render_progress_is_monotonic_and_reaches_one() {
 		seen.windows(2).all(|w| w[0] <= w[1]),
 		"progress must be non-decreasing, got {seen:?}"
 	);
-	assert!((seen[seen.len() - 1] - 1.0).abs() < 1e-9, "progress reaches 1.0");
+	assert!(
+		(seen[seen.len() - 1] - 1.0).abs() < 1e-9,
+		"progress reaches 1.0"
+	);
 }
 
 /// A hook error mid-stream stops dispatching new tickets; the in-flight
@@ -261,8 +287,16 @@ fn render_error_stops_dispatching_new_tickets() {
 		vec![FRAME_CTX_BASE, FRAME_CTX_BASE + 1],
 		"two frames delivered before the error"
 	);
-	assert_eq!(stub_submitted_count(), 4, "no ticket past the failing frame");
-	assert_eq!(stub_completed_count(), 4, "in-flight tickets are drained, completions fire");
+	assert_eq!(
+		stub_submitted_count(),
+		4,
+		"no ticket past the failing frame"
+	);
+	assert_eq!(
+		stub_completed_count(),
+		4,
+		"in-flight tickets are drained, completions fire"
+	);
 }
 
 /// Default stub mode (completions fire synchronously on submit): the loop

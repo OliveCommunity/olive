@@ -26,10 +26,10 @@
 use std::ptr;
 use std::sync::Mutex;
 
-use ffmpeg_next as ffmpeg;
 use ffmpeg::format::sample::Type as SampleType;
 use ffmpeg::format::Sample;
 use ffmpeg::{ChannelLayout, Error as FfmpegError};
+use ffmpeg_next as ffmpeg;
 
 use crate::error::{Error, Result};
 use crate::handle::{free_handle, make_owned, CHandle};
@@ -220,12 +220,7 @@ pub fn free(self_: *mut CHandle) {
 /// `// CPP-PARITY: src/audio/c_api/processor.cpp:43` (validation order:
 /// empty handle, already-open state, invalid rates/speed, forced output
 /// format) and `src/audio/src/audioprocessor.cpp:82` (graph creation).
-pub fn open(
-	self_: &CHandle,
-	from: AudioParams,
-	to: AudioParams,
-	speed: f64,
-) -> Result<()> {
+pub fn open(self_: &CHandle, from: AudioParams, to: AudioParams, speed: f64) -> Result<()> {
 	let p = get_processor(self_)?;
 	let mut inner = p.inner.lock().unwrap();
 
@@ -292,9 +287,7 @@ pub fn convert(
 	if inner.graph.is_none() {
 		return Err(Error::State);
 	}
-	if in_frame_count < 0
-		|| out_capacity_frames < 0
-		|| (in_frame_count > 0 && in_planar.is_null())
+	if in_frame_count < 0 || out_capacity_frames < 0 || (in_frame_count > 0 && in_planar.is_null())
 	{
 		return Err(Error::Invalid);
 	}
@@ -315,11 +308,7 @@ pub fn convert(
 		let nb = in_frame_count as usize;
 		let in_channels = from.channel_count().max(0) as usize;
 		let layout = channel_layout_from_mask(from.channel_layout);
-		let mut frame = ffmpeg::frame::Audio::new(
-			to_ffmpeg_sample_format(from.format),
-			nb,
-			layout,
-		);
+		let mut frame = ffmpeg::frame::Audio::new(to_ffmpeg_sample_format(from.format), nb, layout);
 		frame.set_rate(from.sample_rate as u32);
 		let planar = from.format.is_planar();
 		// `plane_mut::<T>` requires the exact sample type of the frame
@@ -342,9 +331,7 @@ pub fn convert(
 					// samples.
 					let src = unsafe { *in_planar } as *const $t;
 					let dst = frame.plane_mut::<$t>(0);
-					unsafe {
-						ptr::copy_nonoverlapping(src, dst.as_mut_ptr(), nb * in_channels)
-					};
+					unsafe { ptr::copy_nonoverlapping(src, dst.as_mut_ptr(), nb * in_channels) };
 				}
 			}};
 		}
@@ -403,8 +390,7 @@ pub fn convert(
 
 		let nb = out_frame.samples() as i32;
 		if nb > 0 && total < i64::from(out_capacity_frames) {
-			let to_copy =
-				(i64::from(out_capacity_frames) - total).min(i64::from(nb)) as i32;
+			let to_copy = (i64::from(out_capacity_frames) - total).min(i64::from(nb)) as i32;
 			for ch in 0..channels {
 				// SAFETY: the FFI contract guarantees at least `channels`
 				// entries in `out_planar` (NULL entries are skipped).
@@ -416,11 +402,7 @@ pub fn convert(
 				// `to_copy` float samples.
 				let src = out_frame.plane::<f32>(ch as usize);
 				unsafe {
-					ptr::copy_nonoverlapping(
-						src.as_ptr(),
-						dst,
-						to_copy as usize,
-					);
+					ptr::copy_nonoverlapping(src.as_ptr(), dst, to_copy as usize);
 				}
 			}
 		}

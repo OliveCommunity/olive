@@ -288,7 +288,11 @@ mod tests {
 	fn make_borrowed_owned_does_not_count() {
 		let before = alive_count();
 		let h = make_borrowed_owned(Obj(4));
-		assert_eq!(alive_count(), before, "borrowed-owned boxes are not counted");
+		assert_eq!(
+			alive_count(),
+			before,
+			"borrowed-owned boxes are not counted"
+		);
 		assert!(!h.is_null());
 		unsafe { h.release.unwrap()(h.ctx) };
 		assert_eq!(alive_count(), before);

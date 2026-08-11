@@ -51,12 +51,13 @@
 #[path = "common/mod.rs"]
 mod common;
 
-
 use std::ffi::{c_char, c_int};
 use std::sync::Mutex;
 
 use oakengine::codec::{oakengine_encoding_params_create, oakengine_encoding_params_set_filename};
-use oakengine::handle::{free_box, CHandle, OakEngineNode, OakEngineProject, OakEngineSequence, OakEngineTask};
+use oakengine::handle::{
+	free_box, CHandle, OakEngineNode, OakEngineProject, OakEngineSequence, OakEngineTask,
+};
 use oakengine::node::{
 	oakengine_node_free, oakengine_project_create, oakengine_project_free, oakengine_project_new,
 	oakengine_project_root, oakengine_project_set_filename,
@@ -108,7 +109,9 @@ fn read_buf(buf: &[c_char]) -> String {
 /// A facade task box wrapping an EMPTY module handle (`ctx == NULL`), the
 /// "empty handle" state the C contract documents as invalid input.
 fn empty_task_box() -> *mut OakEngineTask {
-	Box::into_raw(Box::new(OakEngineTask { handle: CHandle::null() }))
+	Box::into_raw(Box::new(OakEngineTask {
+		handle: CHandle::null(),
+	}))
 }
 
 /// Reclaim a facade box that `oakengine_task_free` refused to consume
@@ -136,29 +139,58 @@ fn null_handles_are_rejected() {
 	let mut buf = [0 as c_char; 256];
 
 	// ---- manager family -----------------------------------------------------
-	assert_eq!(unsafe { oakengine_task_manager_add(std::ptr::null_mut()) }, -1);
-	assert_eq!(unsafe { oakengine_task_manager_cancel(std::ptr::null_mut()) }, -1);
+	assert_eq!(
+		unsafe { oakengine_task_manager_add(std::ptr::null_mut()) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_task_manager_cancel(std::ptr::null_mut()) },
+		-1
+	);
 
 	// ---- task accessors -----------------------------------------------------
-	assert_eq!(unsafe { oakengine_task_title(std::ptr::null_mut(), buf.as_mut_ptr(), 256) }, -1);
-	assert_eq!(unsafe { oakengine_task_error(std::ptr::null_mut(), buf.as_mut_ptr(), 256) }, -1);
-	assert_eq!(unsafe { oakengine_task_start_time(std::ptr::null_mut()) }, -1);
-	assert_eq!(unsafe { oakengine_task_is_cancelled(std::ptr::null_mut()) }, -1);
+	assert_eq!(
+		unsafe { oakengine_task_title(std::ptr::null_mut(), buf.as_mut_ptr(), 256) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_task_error(std::ptr::null_mut(), buf.as_mut_ptr(), 256) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_task_start_time(std::ptr::null_mut()) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_task_is_cancelled(std::ptr::null_mut()) },
+		-1
+	);
 	assert_eq!(unsafe { oakengine_task_cancel(std::ptr::null_mut()) }, -1);
-	assert_eq!(unsafe { oakengine_task_start_sync(std::ptr::null_mut()) }, -1);
+	assert_eq!(
+		unsafe { oakengine_task_start_sync(std::ptr::null_mut()) },
+		-1
+	);
 	assert_eq!(unsafe { oakengine_task_free(std::ptr::null_mut()) }, -1);
 
 	// ---- import / save result accessors ------------------------------------
-	assert_eq!(unsafe { oakengine_task_import_file_count(std::ptr::null_mut()) }, -1);
+	assert_eq!(
+		unsafe { oakengine_task_import_file_count(std::ptr::null_mut()) },
+		-1
+	);
 	assert!(unsafe { oakengine_task_import_get_command(std::ptr::null_mut()) }.is_null());
-	assert_eq!(unsafe { oakengine_task_import_footage_count(std::ptr::null_mut()) }, -1);
+	assert_eq!(
+		unsafe { oakengine_task_import_footage_count(std::ptr::null_mut()) },
+		-1
+	);
 	assert!(unsafe { oakengine_task_import_footage_at(std::ptr::null_mut(), 0) }.is_null());
 	assert_eq!(
 		unsafe { oakengine_task_import_invalid_files_count(std::ptr::null_mut()) },
 		-1
 	);
 	assert_eq!(
-		unsafe { oakengine_task_import_invalid_file_at(std::ptr::null_mut(), 0, buf.as_mut_ptr(), 256) },
+		unsafe {
+			oakengine_task_import_invalid_file_at(std::ptr::null_mut(), 0, buf.as_mut_ptr(), 256)
+		},
 		-1
 	);
 	assert!(unsafe { oakengine_task_save_get_project(std::ptr::null_mut()) }.is_null());
@@ -167,15 +199,24 @@ fn null_handles_are_rejected() {
 	assert!(unsafe { oakengine_task_create_project_load(std::ptr::null()) }.is_null());
 	assert!(unsafe { oakengine_task_create_project_load_otio(std::ptr::null()) }.is_null());
 	assert!(unsafe {
-		oakengine_task_create_project_save(std::ptr::null_mut(), 0, std::ptr::null(), std::ptr::null())
+		oakengine_task_create_project_save(
+			std::ptr::null_mut(),
+			0,
+			std::ptr::null(),
+			std::ptr::null(),
+		)
 	}
 	.is_null());
 	assert!(unsafe { oakengine_task_create_project_save_otio(std::ptr::null_mut()) }.is_null());
-	assert!(unsafe { oakengine_task_create_project_import(std::ptr::null_mut(), std::ptr::null(), 0) }
-		.is_null());
+	assert!(unsafe {
+		oakengine_task_create_project_import(std::ptr::null_mut(), std::ptr::null(), 0)
+	}
+	.is_null());
 	assert!(unsafe { oakengine_task_create_proxy(std::ptr::null_mut()) }.is_null());
-	assert!(unsafe { oakengine_task_create_export(std::ptr::null_mut(), std::ptr::null_mut()) }
-		.is_null());
+	assert!(
+		unsafe { oakengine_task_create_export(std::ptr::null_mut(), std::ptr::null_mut()) }
+			.is_null()
+	);
 
 	// ---- CLI dialog (0, not E_INVALID, for NULL) ----------------------------
 	assert_eq!(
@@ -189,8 +230,14 @@ fn null_handles_are_rejected() {
 	// delete-finished export and other tests in this binary add to it), so
 	// only assert that NULL-handle manager operations change nothing.
 	let count = oakengine_task_manager_count();
-	assert_eq!(unsafe { oakengine_task_manager_add(std::ptr::null_mut()) }, -1);
-	assert_eq!(unsafe { oakengine_task_manager_cancel(std::ptr::null_mut()) }, -1);
+	assert_eq!(
+		unsafe { oakengine_task_manager_add(std::ptr::null_mut()) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_task_manager_cancel(std::ptr::null_mut()) },
+		-1
+	);
 	assert_eq!(oakengine_task_manager_count(), count);
 }
 
@@ -206,8 +253,14 @@ fn empty_handles_are_rejected() {
 
 	// ---- task accessors on an empty-handle box ------------------------------
 	let t = empty_task_box();
-	assert_eq!(unsafe { oakengine_task_title(t, buf.as_mut_ptr(), 256) }, -1);
-	assert_eq!(unsafe { oakengine_task_error(t, buf.as_mut_ptr(), 256) }, -1);
+	assert_eq!(
+		unsafe { oakengine_task_title(t, buf.as_mut_ptr(), 256) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_task_error(t, buf.as_mut_ptr(), 256) },
+		-1
+	);
 	assert_eq!(unsafe { oakengine_task_start_time(t) }, -1);
 	assert_eq!(unsafe { oakengine_task_is_cancelled(t) }, -1);
 	assert_eq!(unsafe { oakengine_task_cancel(t) }, -1);
@@ -231,7 +284,9 @@ fn empty_handles_are_rejected() {
 	unsafe { reclaim_empty_task_box(t) };
 
 	// ---- creators with empty project / node / sequence handles --------------
-	let empty_project = Box::into_raw(Box::new(OakEngineProject { handle: CHandle::null() }));
+	let empty_project = Box::into_raw(Box::new(OakEngineProject {
+		handle: CHandle::null(),
+	}));
 	assert!(unsafe {
 		oakengine_task_create_project_save(empty_project, 0, std::ptr::null(), std::ptr::null())
 	}
@@ -239,15 +294,18 @@ fn empty_handles_are_rejected() {
 	assert!(unsafe { oakengine_task_create_project_save_otio(empty_project) }.is_null());
 	unsafe { drop(Box::from_raw(empty_project)) };
 
-	let empty_node = Box::into_raw(Box::new(OakEngineNode { handle: CHandle::null() }));
-	assert!(unsafe {
-		oakengine_task_create_project_import(empty_node, std::ptr::null(), 0)
-	}
-	.is_null());
+	let empty_node = Box::into_raw(Box::new(OakEngineNode {
+		handle: CHandle::null(),
+	}));
+	assert!(
+		unsafe { oakengine_task_create_project_import(empty_node, std::ptr::null(), 0) }.is_null()
+	);
 	assert!(unsafe { oakengine_task_create_proxy(empty_node) }.is_null());
 	unsafe { drop(Box::from_raw(empty_node)) };
 
-	let empty_seq = Box::into_raw(Box::new(OakEngineSequence { handle: CHandle::null() }));
+	let empty_seq = Box::into_raw(Box::new(OakEngineSequence {
+		handle: CHandle::null(),
+	}));
 	let params = oakengine_encoding_params_create();
 	assert!(!params.is_null());
 	// NULL result: the params handle is NOT consumed, so we own it still.
@@ -327,7 +385,8 @@ fn load_otio_task_lifecycle() {
 	let _g = serial();
 	common::force_link();
 
-	let task = unsafe { oakengine_task_create_project_load_otio(c"/no/such/oak/project.otio".as_ptr()) };
+	let task =
+		unsafe { oakengine_task_create_project_load_otio(c"/no/such/oak/project.otio".as_ptr()) };
 	assert!(!task.is_null());
 
 	let mut buf = [0 as c_char; 256];
@@ -342,7 +401,8 @@ fn load_otio_task_lifecycle() {
 	assert!(!read_buf(&mut buf).is_empty());
 
 	// An unknown extension is also a clean failure (format dispatch error).
-	let task2 = unsafe { oakengine_task_create_project_load_otio(c"/no/such/oak/project.xyz".as_ptr()) };
+	let task2 =
+		unsafe { oakengine_task_create_project_load_otio(c"/no/such/oak/project.xyz".as_ptr()) };
 	assert!(!task2.is_null());
 	assert_eq!(unsafe { oakengine_task_start_sync(task2) }, 0);
 
@@ -358,7 +418,8 @@ fn string_getters_buffer_matrix() {
 	let _g = serial();
 	common::force_link();
 
-	let task = unsafe { oakengine_task_create_project_load(c"/no/such/oak/it_task_buf.ove".as_ptr()) };
+	let task =
+		unsafe { oakengine_task_create_project_load(c"/no/such/oak/it_task_buf.ove".as_ptr()) };
 	assert!(!task.is_null());
 
 	// Title length (facade convention: excludes the NUL).
@@ -380,7 +441,10 @@ fn string_getters_buffer_matrix() {
 	// Too-small buffer: length reported, nothing written (module writes only
 	// when the buffer fits the string plus its NUL).
 	let mut small = [0 as c_char; 4];
-	assert_eq!(unsafe { oakengine_task_title(task, small.as_mut_ptr(), 4) }, expected);
+	assert_eq!(
+		unsafe { oakengine_task_title(task, small.as_mut_ptr(), 4) },
+		expected
+	);
 	assert_eq!(small[0], 0);
 
 	// Exact string length but no NUL room: still nothing written.
@@ -397,20 +461,35 @@ fn string_getters_buffer_matrix() {
 		unsafe { oakengine_task_title(task, exact.as_mut_ptr(), expected + 1) },
 		expected
 	);
-	assert_eq!(read_buf(&exact), format!("Loading '/no/such/oak/it_task_buf.ove'"));
+	assert_eq!(
+		read_buf(&exact),
+		format!("Loading '/no/such/oak/it_task_buf.ove'")
+	);
 	assert_eq!(exact[expected_usize], 0);
 
 	// Large buffer: same content.
 	let mut big = [0 as c_char; 512];
-	assert_eq!(unsafe { oakengine_task_title(task, big.as_mut_ptr(), 512) }, expected);
-	assert_eq!(read_buf(&big), format!("Loading '/no/such/oak/it_task_buf.ove'"));
+	assert_eq!(
+		unsafe { oakengine_task_title(task, big.as_mut_ptr(), 512) },
+		expected
+	);
+	assert_eq!(
+		read_buf(&big),
+		format!("Loading '/no/such/oak/it_task_buf.ove'")
+	);
 
 	// A task that never ran reports "Unknown error" (module fallback), the
 	// same two-stage contract.
 	let mut err_buf = [0 as c_char; 64];
-	assert_eq!(unsafe { oakengine_task_error(task, err_buf.as_mut_ptr(), 64) }, 13);
+	assert_eq!(
+		unsafe { oakengine_task_error(task, err_buf.as_mut_ptr(), 64) },
+		13
+	);
 	assert_eq!(read_buf(&err_buf), "Unknown error");
-	assert_eq!(unsafe { oakengine_task_error(task, std::ptr::null_mut(), 0) }, 13);
+	assert_eq!(
+		unsafe { oakengine_task_error(task, std::ptr::null_mut(), 0) },
+		13
+	);
 
 	assert_eq!(unsafe { oakengine_task_free(task) }, 0);
 }
@@ -426,9 +505,18 @@ fn import_save_accessors_on_wrong_family_task() {
 	let task = unsafe { oakengine_task_create_project_load(c"/no/such/oak/project.ove".as_ptr()) };
 	assert!(!task.is_null());
 
-	assert_eq!(unsafe { oakengine_task_import_file_count(task) }, OAKTASK_E_INVALID);
-	assert_eq!(unsafe { oakengine_task_import_footage_count(task) }, OAKTASK_E_INVALID);
-	assert_eq!(unsafe { oakengine_task_import_invalid_files_count(task) }, OAKTASK_E_INVALID);
+	assert_eq!(
+		unsafe { oakengine_task_import_file_count(task) },
+		OAKTASK_E_INVALID
+	);
+	assert_eq!(
+		unsafe { oakengine_task_import_footage_count(task) },
+		OAKTASK_E_INVALID
+	);
+	assert_eq!(
+		unsafe { oakengine_task_import_invalid_files_count(task) },
+		OAKTASK_E_INVALID
+	);
 	assert!(unsafe { oakengine_task_import_get_command(task) }.is_null());
 	assert!(unsafe { oakengine_task_import_footage_at(task, 0) }.is_null());
 	let mut buf = [0 as c_char; 256];
@@ -522,7 +610,12 @@ fn save_task_matrix() {
 	let baseline = alive_count();
 	for compression in [0, 1, 2, -1] {
 		let task = unsafe {
-			oakengine_task_create_project_save(project, compression, save_c.as_ptr(), std::ptr::null())
+			oakengine_task_create_project_save(
+				project,
+				compression,
+				save_c.as_ptr(),
+				std::ptr::null(),
+			)
 		};
 		assert!(!task.is_null(), "save with use_compression={compression}");
 
@@ -534,7 +627,10 @@ fn save_task_matrix() {
 		// Compression is a boolean in the module; every non-zero value is
 		// "compressed", and the run still succeeds.
 		assert_eq!(unsafe { oakengine_task_start_sync(task) }, 1);
-		assert!(save_path.exists(), "compression={compression} must write the file");
+		assert!(
+			save_path.exists(),
+			"compression={compression} must write the file"
+		);
 		assert_ne!(unsafe { oakengine_task_start_time(task) }, 0);
 
 		unsafe { oakengine_task_free(task) };
@@ -557,7 +653,9 @@ fn save_task_matrix() {
 	unsafe { oakengine_task_free(task) };
 
 	// ---- no filename: save with override NULL fails cleanly ------------------
-	let task = unsafe { oakengine_task_create_project_save(project, 0, std::ptr::null(), std::ptr::null()) };
+	let task = unsafe {
+		oakengine_task_create_project_save(project, 0, std::ptr::null(), std::ptr::null())
+	};
 	assert!(!task.is_null());
 	assert_eq!(unsafe { oakengine_task_start_sync(task) }, 0);
 	let mut buf = [0 as c_char; 256];
@@ -569,7 +667,9 @@ fn save_task_matrix() {
 	// ---- save-otio: NULL without a project filename, real task with one ------
 	assert!(unsafe { oakengine_task_create_project_save_otio(project) }.is_null());
 	assert_eq!(
-		unsafe { oakengine_project_set_filename(project, c"/tmp/oakengine_it_task_otio.otio".as_ptr()) },
+		unsafe {
+			oakengine_project_set_filename(project, c"/tmp/oakengine_it_task_otio.otio".as_ptr())
+		},
 		0
 	);
 	let otio_task = unsafe { oakengine_task_create_project_save_otio(project) };
@@ -620,7 +720,10 @@ fn import_flow_with_real_file() {
 	// footage count; documented deviation from the construction-time count).
 	assert_eq!(unsafe { oakengine_task_import_file_count(task) }, 0);
 	assert_eq!(unsafe { oakengine_task_import_footage_count(task) }, 0);
-	assert_eq!(unsafe { oakengine_task_import_invalid_files_count(task) }, 0);
+	assert_eq!(
+		unsafe { oakengine_task_import_invalid_files_count(task) },
+		0
+	);
 
 	let mut buf = [0 as c_char; 256];
 	let len = unsafe { oakengine_task_title(task, buf.as_mut_ptr(), 256) };
@@ -649,13 +752,19 @@ fn import_flow_with_real_file() {
 	assert!(!zero.is_null());
 	assert_eq!(unsafe { oakengine_task_import_file_count(zero) }, 0);
 	assert_eq!(unsafe { oakengine_task_import_footage_count(zero) }, 0);
-	assert_eq!(unsafe { oakengine_task_import_invalid_files_count(zero) }, 0);
+	assert_eq!(
+		unsafe { oakengine_task_import_invalid_files_count(zero) },
+		0
+	);
 
 	// "Nothing to import" still counts as a successful run: the run creates
 	// the (empty) multi undo command and returns OK.
 	assert_eq!(unsafe { oakengine_task_start_sync(zero) }, 1);
 	assert_eq!(unsafe { oakengine_task_import_footage_count(zero) }, 0);
-	assert_eq!(unsafe { oakengine_task_import_invalid_files_count(zero) }, 0);
+	assert_eq!(
+		unsafe { oakengine_task_import_invalid_files_count(zero) },
+		0
+	);
 	let cmd = unsafe { oakengine_task_import_get_command(zero) };
 	assert!(!cmd.is_null());
 	unsafe { oakengine_undo_command_free(cmd) };
@@ -714,7 +823,10 @@ fn import_run_single_file() {
 	assert!(!task.is_null());
 	assert_eq!(unsafe { oakengine_task_start_sync(task) }, 1);
 
-	assert_eq!(unsafe { oakengine_task_import_invalid_files_count(task) }, 1);
+	assert_eq!(
+		unsafe { oakengine_task_import_invalid_files_count(task) },
+		1
+	);
 	assert_eq!(unsafe { oakengine_task_free(task) }, 0);
 
 	unsafe { oakengine_node_free(root) };
@@ -742,12 +854,20 @@ fn export_task_creation() {
 	let params = oakengine_encoding_params_create();
 	assert!(!params.is_null());
 	assert_eq!(
-		unsafe { oakengine_encoding_params_set_filename(params, c"/tmp/oakengine_it_task_export.mov".as_ptr()) },
+		unsafe {
+			oakengine_encoding_params_set_filename(
+				params,
+				c"/tmp/oakengine_it_task_export.mov".as_ptr(),
+			)
+		},
 		0
 	);
 
 	let task = unsafe { oakengine_task_create_export(seq, params) };
-	assert!(!task.is_null(), "export creation must succeed without GPU (creation only)");
+	assert!(
+		!task.is_null(),
+		"export creation must succeed without GPU (creation only)"
+	);
 
 	let mut buf = [0 as c_char; 256];
 	let len = unsafe { oakengine_task_title(task, buf.as_mut_ptr(), 256) };
@@ -759,7 +879,9 @@ fn export_task_creation() {
 	assert!(unsafe { oakengine_task_create_export(std::ptr::null_mut(), params) }.is_null());
 	let params2 = oakengine_encoding_params_create();
 	assert!(unsafe { oakengine_task_create_export(seq, std::ptr::null_mut()) }.is_null());
-	let empty_seq = Box::into_raw(Box::new(OakEngineSequence { handle: CHandle::null() }));
+	let empty_seq = Box::into_raw(Box::new(OakEngineSequence {
+		handle: CHandle::null(),
+	}));
 	assert!(unsafe { oakengine_task_create_export(empty_seq, params2) }.is_null());
 	unsafe { oakengine::codec::oakengine_encoding_params_destroy(params2) };
 	unsafe { drop(Box::from_raw(empty_seq)) };
@@ -789,7 +911,12 @@ fn export_task_run_ignored_environment_gated() {
 
 	let params = oakengine_encoding_params_create();
 	assert_eq!(
-		unsafe { oakengine_encoding_params_set_filename(params, c"/tmp/oakengine_it_task_export_run.mov".as_ptr()) },
+		unsafe {
+			oakengine_encoding_params_set_filename(
+				params,
+				c"/tmp/oakengine_it_task_export_run.mov".as_ptr(),
+			)
+		},
 		0
 	);
 	let task = unsafe { oakengine_task_create_export(seq, params) };
@@ -871,12 +998,21 @@ fn task_manager_lifecycle() {
 	// (the task is already running on the manager).
 	let first2 = oakengine_task_manager_first();
 	assert!(!first2.is_null());
-	assert_eq!(unsafe { oakengine_task_manager_add(first2) }, OAKTASK_E_STATE);
+	assert_eq!(
+		unsafe { oakengine_task_manager_add(first2) },
+		OAKTASK_E_STATE
+	);
 	assert_eq!(unsafe { oakengine_task_free(first2) }, 0);
 
 	// NULL / empty inputs on the manager family.
-	assert_eq!(unsafe { oakengine_task_manager_add(std::ptr::null_mut()) }, -1);
-	assert_eq!(unsafe { oakengine_task_manager_cancel(std::ptr::null_mut()) }, -1);
+	assert_eq!(
+		unsafe { oakengine_task_manager_add(std::ptr::null_mut()) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_task_manager_cancel(std::ptr::null_mut()) },
+		-1
+	);
 	let empty = empty_task_box();
 	assert_eq!(unsafe { oakengine_task_manager_add(empty) }, -1);
 	assert_eq!(unsafe { oakengine_task_manager_cancel(empty) }, -1);

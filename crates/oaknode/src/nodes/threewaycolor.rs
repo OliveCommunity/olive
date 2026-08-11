@@ -228,7 +228,10 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 
 	let amount_props = vec![
 		("min".to_string(), crate::value::NodeValue::Float(0.0)),
-		("view".to_string(), crate::value::NodeValue::Text("percentage".into())),
+		(
+			"view".to_string(),
+			crate::value::NodeValue::Text("percentage".into()),
+		),
 	];
 	let mut shadows_amount = crate::input::Input::new(
 		SHADOWS_AMOUNT_INPUT,
@@ -291,18 +294,35 @@ mod tests {
 	#[test]
 	fn create_wires_inputs_flags_and_properties() {
 		let (core, behavior) = create();
-		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.threewaycolor");
+		assert_eq!(
+			behavior.type_id(),
+			"org.olivevideoeditor.Olive.threewaycolor"
+		);
 		let tex = core.get_input(TEXTURE_INPUT).unwrap();
 		assert_ne!(tex.flags & crate::input::flags::NOT_KEYFRAMABLE, 0);
 		let neutral = NodeValue::Color([0.5, 0.5, 0.5, 1.0]);
-		for id in [SHADOWS_COLOR_INPUT, MIDTONES_COLOR_INPUT, HIGHLIGHTS_COLOR_INPUT] {
+		for id in [
+			SHADOWS_COLOR_INPUT,
+			MIDTONES_COLOR_INPUT,
+			HIGHLIGHTS_COLOR_INPUT,
+		] {
 			assert_eq!(core.get_input(id).unwrap().default, neutral);
 		}
-		for id in [SHADOWS_AMOUNT_INPUT, MIDTONES_AMOUNT_INPUT, HIGHLIGHTS_AMOUNT_INPUT] {
+		for id in [
+			SHADOWS_AMOUNT_INPUT,
+			MIDTONES_AMOUNT_INPUT,
+			HIGHLIGHTS_AMOUNT_INPUT,
+		] {
 			let input = core.get_input(id).unwrap();
 			assert_eq!(input.default, NodeValue::Float(1.0));
-			assert!(input.properties.iter().any(|(k, v)| k == "min" && *v == NodeValue::Float(0.0)));
-			assert!(input.properties.iter().any(|(k, v)| k == "view" && *v == NodeValue::Text("percentage".into())));
+			assert!(input
+				.properties
+				.iter()
+				.any(|(k, v)| k == "min" && *v == NodeValue::Float(0.0)));
+			assert!(input
+				.properties
+				.iter()
+				.any(|(k, v)| k == "view" && *v == NodeValue::Text("percentage".into())));
 		}
 		assert_eq!(core.effect_input, TEXTURE_INPUT);
 		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
@@ -318,7 +338,12 @@ mod tests {
 	fn value_no_texture_pushes_nothing() {
 		let (core, behavior) = create();
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
 		assert!(table.is_empty());
 	}
 

@@ -60,7 +60,11 @@ fn main() {
 	let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
 	let profile_dir = target_dir.join(&profile);
 	let deps_dir = profile_dir.join("deps");
-	let dylib = if os == "macos" { "liboakengine.dylib" } else { "liboakengine.so" };
+	let dylib = if os == "macos" {
+		"liboakengine.dylib"
+	} else {
+		"liboakengine.so"
+	};
 
 	// The un-hashed dependency artifact is the normal case; the
 	// workspace-member copy is the fallback. If only the hashed artifact

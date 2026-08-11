@@ -34,9 +34,7 @@ use std::sync::{Mutex, OnceLock};
 
 use crate::bridge::undo as u;
 use crate::error::{Error, Result};
-use crate::handle::{
-	box_handle, free_box, guard, guard_void, unbox, CHandle, OakEngineClipboard,
-};
+use crate::handle::{box_handle, free_box, guard, guard_void, unbox, CHandle, OakEngineClipboard};
 
 /// The process-wide undo stack handle (oakundo `OakUndoStack`), created
 /// lazily and kept for the process lifetime.
@@ -73,7 +71,10 @@ fn group_lock() -> std::sync::MutexGuard<'static, Option<OpenGroup>> {
 ///
 /// # Safety
 /// `command_box` must be a live box created by a facade command creator.
-pub(crate) unsafe fn push_or_run(command_box: *mut OakEngineClipboard, name: *const c_char) -> Result<()> {
+pub(crate) unsafe fn push_or_run(
+	command_box: *mut OakEngineClipboard,
+	name: *const c_char,
+) -> Result<()> {
 	let cmd = unsafe { unbox(command_box)? };
 	let label = unsafe { crate::handle::read_cstr(name) };
 	let g = group_lock();
@@ -90,7 +91,11 @@ pub(crate) unsafe fn push_or_run(command_box: *mut OakEngineClipboard, name: *co
 		let rc = unsafe { u::oakundo_command_multi_add_child(group.multi, cmd) };
 		drop(g);
 		unsafe { free_box(command_box) };
-		return if rc == 0 { Ok(()) } else { Err(Error::Module(rc)) };
+		return if rc == 0 {
+			Ok(())
+		} else {
+			Err(Error::Module(rc))
+		};
 	}
 	let stack = *global_stack();
 	// The module treats a NULL name like an empty label, but an empty Rust
@@ -269,7 +274,11 @@ pub unsafe extern "C" fn oakengine_undo_command_create(
 ) -> *mut c_void {
 	crate::handle::guard_ptr(|| unsafe {
 		let _ = crate::handle::read_cstr(name);
-		let vtable = crate::bridge::undo::OakUndoCommandVtable { redo, undo, free_fn };
+		let vtable = crate::bridge::undo::OakUndoCommandVtable {
+			redo,
+			undo,
+			free_fn,
+		};
 		let cmd = u::oakundo_command_init(&vtable, userdata);
 		if cmd.is_null() {
 			return Ok(std::ptr::null_mut());
@@ -381,7 +390,11 @@ pub unsafe extern "C" fn oakengine_undo_command_text(
 pub extern "C" fn oakengine_undo_command_is_done(row: i64) -> c_int {
 	crate::handle::guard_int(|| unsafe {
 		let mut value: c_int = 0;
-		Error::from_module(u::oakundo_undostack_command_is_done(*global_stack(), row, &mut value))?;
+		Error::from_module(u::oakundo_undostack_command_is_done(
+			*global_stack(),
+			row,
+			&mut value,
+		))?;
 		Ok(value)
 	})
 }

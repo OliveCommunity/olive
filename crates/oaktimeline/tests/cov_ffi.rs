@@ -27,12 +27,12 @@ use oaktimeline::bridge::common::{
 	oakcommon_xml_writer_write_end_element, oakcommon_xml_writer_write_start_element,
 	oakcommon_xml_writer_write_text_element,
 };
-use oaktimeline::bridge::teststubs::{MockKind, MockNode, MockXmlNode, xml_reader_handle};
+use oaktimeline::bridge::teststubs::{xml_reader_handle, MockKind, MockNode, MockXmlNode};
 use oaktimeline::error::{
 	OAKTIMELINE_E_FAILED, OAKTIMELINE_E_INVALID, OAKTIMELINE_E_NOT_FOUND, OAKTIMELINE_OK,
 };
-use oaktimeline::ffi as ffi;
-use oaktimeline::handle::{CHandle, get, make_owned};
+use oaktimeline::ffi;
+use oaktimeline::handle::{get, make_owned, CHandle};
 
 // ---- marker exports ----------------------------------------------------
 
@@ -40,7 +40,9 @@ use oaktimeline::handle::{CHandle, get, make_owned};
 #[test]
 fn marker_add_null_list() {
 	let name = CString::new("m").unwrap();
-	let r = unsafe { ffi::marker::oaktimeline_marker_add(CHandle::null(), 0, 1, 1, 1, name.as_ptr(), 0) };
+	let r = unsafe {
+		ffi::marker::oaktimeline_marker_add(CHandle::null(), 0, 1, 1, 1, name.as_ptr(), 0)
+	};
 	assert_eq!(r, OAKTIMELINE_E_INVALID);
 }
 
@@ -48,7 +50,8 @@ fn marker_add_null_list() {
 #[test]
 fn marker_add_null_name() {
 	let h = unsafe { ffi::marker::oaktimeline_marker_list_create() };
-	let r = unsafe { ffi::marker::oaktimeline_marker_add(h.clone(), 0, 1, 1, 1, std::ptr::null(), 0) };
+	let r =
+		unsafe { ffi::marker::oaktimeline_marker_add(h.clone(), 0, 1, 1, 1, std::ptr::null(), 0) };
 	assert_eq!(r, OAKTIMELINE_OK);
 	let mut count = 0;
 	unsafe { ffi::marker::oaktimeline_marker_count(h.clone(), &mut count) };
@@ -133,10 +136,10 @@ fn marker_command_factories_valid_list() {
 
 	// In-bounds index: non-null command handles.
 	assert!(!unsafe { ffi::marker::oaktimeline_marker_remove_at_command(h.clone(), 0) }.is_null());
-	assert!(!unsafe {
-		ffi::marker::oaktimeline_marker_set_time_command(h.clone(), 0, 2, 1, 3, 1)
-	}
-	.is_null());
+	assert!(
+		!unsafe { ffi::marker::oaktimeline_marker_set_time_command(h.clone(), 0, 2, 1, 3, 1) }
+			.is_null()
+	);
 
 	// set_props with color only, name only, and both.
 	assert!(!unsafe {
@@ -154,10 +157,10 @@ fn marker_command_factories_valid_list() {
 
 	// Out-of-range index on the one-marker list: E_NOT_FOUND.
 	assert!(unsafe { ffi::marker::oaktimeline_marker_remove_at_command(h.clone(), 7) }.is_null());
-	assert!(unsafe {
-		ffi::marker::oaktimeline_marker_set_time_command(h.clone(), 7, 2, 1, 3, 1)
-	}
-	.is_null());
+	assert!(
+		unsafe { ffi::marker::oaktimeline_marker_set_time_command(h.clone(), 7, 2, 1, 3, 1) }
+			.is_null()
+	);
 	assert!(unsafe {
 		ffi::marker::oaktimeline_marker_set_props_command(h.clone(), 7, 1, std::ptr::null())
 	}
@@ -286,14 +289,29 @@ fn workarea_command_factories() {
 		ffi::workarea::oaktimeline_workarea_set_range_command(w.clone(), 1, 1, 5, 1, 10, 1, 20, 1)
 	}
 	.is_null());
-	assert!(!unsafe { ffi::workarea::oaktimeline_workarea_set_enabled_command(w.clone(), 1) }.is_null());
+	assert!(
+		!unsafe { ffi::workarea::oaktimeline_workarea_set_enabled_command(w.clone(), 1) }.is_null()
+	);
 
 	// Null work area → null command handles.
 	assert!(unsafe {
-		ffi::workarea::oaktimeline_workarea_set_range_command(CHandle::null(), 1, 1, 5, 1, 10, 1, 20, 1)
+		ffi::workarea::oaktimeline_workarea_set_range_command(
+			CHandle::null(),
+			1,
+			1,
+			5,
+			1,
+			10,
+			1,
+			20,
+			1,
+		)
 	}
 	.is_null());
-	assert!(unsafe { ffi::workarea::oaktimeline_workarea_set_enabled_command(CHandle::null(), 1) }.is_null());
+	assert!(
+		unsafe { ffi::workarea::oaktimeline_workarea_set_enabled_command(CHandle::null(), 1) }
+			.is_null()
+	);
 }
 
 /// `oaktimeline_workarea_reset` rejects null out params.
@@ -407,29 +425,65 @@ fn split_preserving_links_command() {
 	let dens = [1i64];
 
 	assert!(!unsafe {
-		ffi::edit::oaktimeline_split_preserving_links_command(blocks.as_ptr(), 1, nums.as_ptr(), dens.as_ptr(), 1)
+		ffi::edit::oaktimeline_split_preserving_links_command(
+			blocks.as_ptr(),
+			1,
+			nums.as_ptr(),
+			dens.as_ptr(),
+			1,
+		)
 	}
 	.is_null());
 
 	// Invalid inputs → null handle.
 	assert!(unsafe {
-		ffi::edit::oaktimeline_split_preserving_links_command(std::ptr::null(), 1, nums.as_ptr(), dens.as_ptr(), 1)
+		ffi::edit::oaktimeline_split_preserving_links_command(
+			std::ptr::null(),
+			1,
+			nums.as_ptr(),
+			dens.as_ptr(),
+			1,
+		)
 	}
 	.is_null());
 	assert!(unsafe {
-		ffi::edit::oaktimeline_split_preserving_links_command(blocks.as_ptr(), 0, nums.as_ptr(), dens.as_ptr(), 1)
+		ffi::edit::oaktimeline_split_preserving_links_command(
+			blocks.as_ptr(),
+			0,
+			nums.as_ptr(),
+			dens.as_ptr(),
+			1,
+		)
 	}
 	.is_null());
 	assert!(unsafe {
-		ffi::edit::oaktimeline_split_preserving_links_command(blocks.as_ptr(), 1, std::ptr::null(), dens.as_ptr(), 1)
+		ffi::edit::oaktimeline_split_preserving_links_command(
+			blocks.as_ptr(),
+			1,
+			std::ptr::null(),
+			dens.as_ptr(),
+			1,
+		)
 	}
 	.is_null());
 	assert!(unsafe {
-		ffi::edit::oaktimeline_split_preserving_links_command(blocks.as_ptr(), 1, nums.as_ptr(), std::ptr::null(), 1)
+		ffi::edit::oaktimeline_split_preserving_links_command(
+			blocks.as_ptr(),
+			1,
+			nums.as_ptr(),
+			std::ptr::null(),
+			1,
+		)
 	}
 	.is_null());
 	assert!(unsafe {
-		ffi::edit::oaktimeline_split_preserving_links_command(blocks.as_ptr(), 1, nums.as_ptr(), dens.as_ptr(), 0)
+		ffi::edit::oaktimeline_split_preserving_links_command(
+			blocks.as_ptr(),
+			1,
+			nums.as_ptr(),
+			dens.as_ptr(),
+			0,
+		)
 	}
 	.is_null());
 }
@@ -516,11 +570,22 @@ fn ripple_area_and_insert_gaps_commands() {
 		..Default::default()
 	});
 
-	assert!(!unsafe { ffi::edit::oaktimeline_ripple_remove_area_command(track.clone(), 0, 1, 5, 1) }.is_null());
-	assert!(unsafe { ffi::edit::oaktimeline_ripple_remove_area_command(CHandle::null(), 0, 1, 5, 1) }.is_null());
+	assert!(!unsafe {
+		ffi::edit::oaktimeline_ripple_remove_area_command(track.clone(), 0, 1, 5, 1)
+	}
+	.is_null());
+	assert!(unsafe {
+		ffi::edit::oaktimeline_ripple_remove_area_command(CHandle::null(), 0, 1, 5, 1)
+	}
+	.is_null());
 
-	assert!(!unsafe { ffi::edit::oaktimeline_insert_gaps_command(list.clone(), 0, 1, 5, 1) }.is_null());
-	assert!(unsafe { ffi::edit::oaktimeline_insert_gaps_command(CHandle::null(), 0, 1, 5, 1) }.is_null());
+	assert!(
+		!unsafe { ffi::edit::oaktimeline_insert_gaps_command(list.clone(), 0, 1, 5, 1) }.is_null()
+	);
+	assert!(
+		unsafe { ffi::edit::oaktimeline_insert_gaps_command(CHandle::null(), 0, 1, 5, 1) }
+			.is_null()
+	);
 }
 
 /// The XML writer externs used by the save paths accumulate into the mock
@@ -538,7 +603,9 @@ fn xml_writer_externs_accumulate() {
 
 	unsafe { oakcommon_xml_writer_write_start_element(w.clone(), start.as_ptr()) };
 	unsafe { oakcommon_xml_writer_write_attribute(w.clone(), key.as_ptr(), val.as_ptr()) };
-	unsafe { oakcommon_xml_writer_write_text_element(w.clone(), text_name.as_ptr(), text_val.as_ptr()) };
+	unsafe {
+		oakcommon_xml_writer_write_text_element(w.clone(), text_name.as_ptr(), text_val.as_ptr())
+	};
 	unsafe { oakcommon_xml_writer_write_end_element(w.clone()) };
 
 	let buf = unsafe { get::<oaktimeline::bridge::teststubs::MockXmlWriter>(&w) }

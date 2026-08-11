@@ -246,7 +246,8 @@ impl NodeCore {
 			self.move_element_value(id, e + 1, e);
 			self.move_element_keyframes(id, e + 1, e);
 		}
-		self.standard_values.remove(&(id.to_string(), (size - 1) as i32));
+		self.standard_values
+			.remove(&(id.to_string(), (size - 1) as i32));
 		self.remove_element_keyframes(id, size - 1);
 		if let Some(input) = self.get_input_mut(id) {
 			input.array_size = input.array_size.saturating_sub(1);
@@ -303,7 +304,8 @@ impl NodeCore {
 		{
 			return &mut self.keyframes[i].2;
 		}
-		self.keyframes.push((id.to_string(), element, KeyframeTrack::default()));
+		self.keyframes
+			.push((id.to_string(), element, KeyframeTrack::default()));
 		let last = self.keyframes.len() - 1;
 		&mut self.keyframes[last].2
 	}
@@ -319,19 +321,20 @@ impl NodeCore {
 	}
 
 	/// Set the standard value of (input, element) (C++ `set_standard_value`).
-	pub fn set_standard_value(
-		&mut self,
-		id: &str,
-		element: i32,
-		value: crate::value::NodeValue,
-	) {
-		self.standard_values.insert((id.to_string(), element), value);
+	pub fn set_standard_value(&mut self, id: &str, element: i32, value: crate::value::NodeValue) {
+		self.standard_values
+			.insert((id.to_string(), element), value);
 	}
 
 	/// Value of `input` at `time`: keyframes when the (input, element)
 	/// track is non-empty, else the standard value (C++
 	/// `get_value_at_time`; `// CPP-PARITY: node.cpp:465`).
-	pub fn value_at_time(&self, id: &str, element: i32, time: oakcore_rs::Rational) -> crate::value::NodeValue {
+	pub fn value_at_time(
+		&self,
+		id: &str,
+		element: i32,
+		time: oakcore_rs::Rational,
+	) -> crate::value::NodeValue {
 		match self.keyframe_track(id, element) {
 			Some(track) if !track.keys().is_empty() => track
 				.value_at(time)
@@ -353,13 +356,22 @@ impl NodeCore {
 	/// `Node::is_input_static`): neither connected nor keyframed.
 	/// `inputs` is the render-time input row — a connected input appears
 	/// in the row under its id.
-	pub fn is_input_static(&self, inputs: &crate::value::NodeValueRow, id: &str, element: i32) -> bool {
+	pub fn is_input_static(
+		&self,
+		inputs: &crate::value::NodeValueRow,
+		id: &str,
+		element: i32,
+	) -> bool {
 		!inputs.contains_key(id) && !self.is_input_keyframing(id, element)
 	}
 
 	/// Set the value hint for (input, element) (C++ `set_value_hint_for_input`).
 	pub fn set_value_hint(&mut self, id: &str, element: i32, hint: ValueHint) {
-		if let Some(slot) = self.hints.iter_mut().find(|((i, e), _)| i == id && *e == element) {
+		if let Some(slot) = self
+			.hints
+			.iter_mut()
+			.find(|((i, e), _)| i == id && *e == element)
+		{
 			slot.1 = hint;
 		} else {
 			self.hints.push(((id.to_string(), element), hint));
@@ -382,9 +394,19 @@ impl NodeCore {
 
 	/// Set this node's position in `context` (C++
 	/// `set_node_position_in_context`). Returns true when newly added.
-	pub fn set_context_position(&mut self, context: NodeId, x: f64, y: f64, expanded: bool) -> bool {
+	pub fn set_context_position(
+		&mut self,
+		context: NodeId,
+		x: f64,
+		y: f64,
+		expanded: bool,
+	) -> bool {
 		let added = !self.context_contains(context);
-		if let Some(slot) = self.context_positions.iter_mut().find(|(c, _, _)| *c == context) {
+		if let Some(slot) = self
+			.context_positions
+			.iter_mut()
+			.find(|(c, _, _)| *c == context)
+		{
 			slot.1 = (x, y);
 			slot.2 = expanded;
 		} else {
@@ -501,7 +523,12 @@ pub trait NodeBehavior: Send {
 
 	/// Render-time connection resolution (C++
 	/// `get_connected_render_output()`; Group overrides).
-	fn connected_render_output(&self, core: &NodeCore, input: &str, element: i32) -> Option<NodeId> {
+	fn connected_render_output(
+		&self,
+		core: &NodeCore,
+		input: &str,
+		element: i32,
+	) -> Option<NodeId> {
 		let _ = (core, input, element);
 		None
 	}
@@ -509,19 +536,37 @@ pub trait NodeBehavior: Send {
 	/// Time adjustment through this node (C++
 	/// `input_time_adjustment()`/`output_time_adjustment()`; clips
 	/// override for speed/reverse).
-	fn input_time_adjustment(&self, input: &str, element: i32, time: TimeRange, traverse: bool) -> TimeRange {
+	fn input_time_adjustment(
+		&self,
+		input: &str,
+		element: i32,
+		time: TimeRange,
+		traverse: bool,
+	) -> TimeRange {
 		let _ = (input, element, traverse);
 		time
 	}
 
 	/// Output-side time adjustment.
-	fn output_time_adjustment(&self, input: &str, element: i32, time: TimeRange, traverse: bool) -> TimeRange {
+	fn output_time_adjustment(
+		&self,
+		input: &str,
+		element: i32,
+		time: TimeRange,
+		traverse: bool,
+	) -> TimeRange {
 		let _ = (input, element, traverse);
 		time
 	}
 
 	/// Evaluate outputs (C++ `value()`).
-	fn value(&self, core: &NodeCore, inputs: &NodeValueRow, time: Rational, table: &mut NodeValueTable) {
+	fn value(
+		&self,
+		core: &NodeCore,
+		inputs: &NodeValueRow,
+		time: Rational,
+		table: &mut NodeValueTable,
+	) {
 		let _ = (core, inputs, time, table);
 	}
 
@@ -538,7 +583,12 @@ pub trait NodeBehavior: Send {
 
 	/// Direct frame generation (C++ `generate_frame()`; CPU-render
 	/// nodes).
-	fn generate_frame(&self, core: &NodeCore, frame: &mut crate::bridge::render::TextureHandle, time: Rational) {
+	fn generate_frame(
+		&self,
+		core: &NodeCore,
+		frame: &mut crate::bridge::render::TextureHandle,
+		time: Rational,
+	) {
 		let _ = (core, frame, time);
 	}
 
@@ -570,7 +620,13 @@ pub trait NodeBehavior: Send {
 	}
 
 	/// Edge disconnected from an input (C++ `InputDisconnectedEvent`).
-	fn input_disconnected(&mut self, core: &mut NodeCore, input: &str, element: i32, source: NodeId) {
+	fn input_disconnected(
+		&mut self,
+		core: &mut NodeCore,
+		input: &str,
+		element: i32,
+		source: NodeId,
+	) {
 		let _ = (core, input, element, source);
 	}
 
@@ -581,7 +637,13 @@ pub trait NodeBehavior: Send {
 	}
 
 	/// Output disconnected (C++ `OutputDisconnectedEvent`).
-	fn output_disconnected(&mut self, core: &mut NodeCore, target: NodeId, input: &str, element: i32) {
+	fn output_disconnected(
+		&mut self,
+		core: &mut NodeCore,
+		target: NodeId,
+		input: &str,
+		element: i32,
+	) {
 		let _ = (core, target, input, element);
 	}
 
@@ -610,7 +672,11 @@ pub trait NodeBehavior: Send {
 	fn duplicate(&self, core: &NodeCore) -> Option<Box<dyn NodeBehavior>>;
 
 	/// Custom load/save (C++ `load_custom()`/`save_custom()`).
-	fn load_custom(&mut self, core: &mut NodeCore, reader: &mut dyn crate::serializer::XmlRead) -> bool {
+	fn load_custom(
+		&mut self,
+		core: &mut NodeCore,
+		reader: &mut dyn crate::serializer::XmlRead,
+	) -> bool {
 		let _ = (core, reader);
 		true
 	}

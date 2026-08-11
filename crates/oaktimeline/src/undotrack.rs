@@ -57,7 +57,11 @@ impl TrackRippleRemoveBlockCommand {
 	/// `undo`: re-insert via `oaknode_track_insert_block_after`.
 	pub fn undo(&mut self) {
 		unsafe {
-			oaknode_track_insert_block_after(self.track.clone(), self.block.clone(), self.before.clone());
+			oaknode_track_insert_block_after(
+				self.track.clone(),
+				self.block.clone(),
+				self.before.clone(),
+			);
 		}
 	}
 
@@ -140,13 +144,21 @@ pub struct TrackInsertBlockAfterCommand {
 impl TrackInsertBlockAfterCommand {
 	/// Construct from track + block + predecessor.
 	pub fn new(track: CHandle, block: CHandle, before: CHandle) -> Self {
-		Self { track, block, before }
+		Self {
+			track,
+			block,
+			before,
+		}
 	}
 
 	/// `redo`: `oaknode_track_insert_block_after`.
 	pub fn redo(&mut self) {
 		unsafe {
-			oaknode_track_insert_block_after(self.track.clone(), self.block.clone(), self.before.clone());
+			oaknode_track_insert_block_after(
+				self.track.clone(),
+				self.block.clone(),
+				self.before.clone(),
+			);
 		}
 	}
 
@@ -189,7 +201,11 @@ pub struct TrackReplaceBlockCommand {
 impl TrackReplaceBlockCommand {
 	/// Construct from track + old + replace.
 	pub fn new(track: CHandle, old: CHandle, replace: CHandle) -> Self {
-		Self { track, old, replace }
+		Self {
+			track,
+			old,
+			replace,
+		}
 	}
 
 	/// `redo`: `oaknode_track_replace_block(track, old, replace)`.

@@ -186,7 +186,10 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		crate::value::NodeValue::Float(0.2),
 	);
 	strength.properties = vec![
-		("view".to_string(), crate::value::NodeValue::Text("percentage".into())),
+		(
+			"view".to_string(),
+			crate::value::NodeValue::Text("percentage".into()),
+		),
 		("min".to_string(), crate::value::NodeValue::Float(0.0)),
 	];
 	core.add_input(strength);

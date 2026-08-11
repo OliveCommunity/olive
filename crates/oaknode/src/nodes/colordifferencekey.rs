@@ -309,13 +309,28 @@ mod tests {
 	#[test]
 	fn create_wires_inputs_flags_and_properties() {
 		let (core, behavior) = create();
-		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.colordifferencekey");
+		assert_eq!(
+			behavior.type_id(),
+			"org.olivevideoeditor.Olive.colordifferencekey"
+		);
 		for id in [TEXTURE_INPUT, GARBAGE_MATTE_INPUT, CORE_MATTE_INPUT] {
-			assert_ne!(core.get_input(id).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE, 0);
+			assert_ne!(
+				core.get_input(id).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE,
+				0
+			);
 		}
-		assert_eq!(core.get_input(COLOR_INPUT).unwrap().default, NodeValue::Combo(0));
-		assert_eq!(core.get_input(SHADOWS_INPUT).unwrap().default, NodeValue::Float(1.0));
-		assert_eq!(core.get_input(HIGHLIGHTS_INPUT).unwrap().default, NodeValue::Float(1.0));
+		assert_eq!(
+			core.get_input(COLOR_INPUT).unwrap().default,
+			NodeValue::Combo(0)
+		);
+		assert_eq!(
+			core.get_input(SHADOWS_INPUT).unwrap().default,
+			NodeValue::Float(1.0)
+		);
+		assert_eq!(
+			core.get_input(HIGHLIGHTS_INPUT).unwrap().default,
+			NodeValue::Float(1.0)
+		);
 		assert_eq!(
 			core.get_input(MASK_ONLY_INPUT).unwrap().default,
 			NodeValue::Boolean(false)
@@ -334,7 +349,12 @@ mod tests {
 	fn value_no_texture_pushes_nothing() {
 		let (core, behavior) = create();
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
 		assert!(table.is_empty());
 	}
 

@@ -136,7 +136,9 @@ pub mod colortransform {
 
 	/// Create a transform targeting an output color space.
 	#[no_mangle]
-	pub extern "C" fn oakcommon_colortransform_init_output(output: *const super::c_char) -> CHandle {
+	pub extern "C" fn oakcommon_colortransform_init_output(
+		output: *const super::c_char,
+	) -> CHandle {
 		if output.is_null() {
 			return CHandle::null();
 		}
@@ -244,7 +246,9 @@ pub mod commandlineparser {
 	use std::ffi::{CStr, CString};
 
 	use super::{copy_setting, cstr, is_valid_string_out, CHandle};
-	use crate::commandlineparser::{CommandLineOption, CommandLineParser, CommandLinePositionalArgument};
+	use crate::commandlineparser::{
+		CommandLineOption, CommandLineParser, CommandLinePositionalArgument,
+	};
 	use crate::error::{Error, OAKCOMMON_E_INVALID, OAKCOMMON_OK};
 	use crate::handle::{get, guard, guard_handle, make_borrowed, make_owned};
 
@@ -289,7 +293,13 @@ pub mod commandlineparser {
 		hidden: i32,
 		out_option: *mut CHandle,
 	) -> i32 {
-		if parser.is_null() || names.is_null() || name_count <= 0 || description.is_null() || arg_placeholder.is_null() || out_option.is_null() {
+		if parser.is_null()
+			|| names.is_null()
+			|| name_count <= 0
+			|| description.is_null()
+			|| arg_placeholder.is_null()
+			|| out_option.is_null()
+		{
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
@@ -300,11 +310,18 @@ pub mod commandlineparser {
 				let s = s.to_str().map_err(|_| Error::Invalid)?;
 				ns.push(CString::new(s).map_err(|_| Error::Invalid)?);
 			}
-			p.add_option(&ns, cstr(description), takes_arg != 0, cstr(arg_placeholder), hidden != 0)?;
+			p.add_option(
+				&ns,
+				cstr(description),
+				takes_arg != 0,
+				cstr(arg_placeholder),
+				hidden != 0,
+			)?;
 			let idx = p.option_count() - 1;
 			let opt = p.option(idx).ok_or(Error::State)?;
 			unsafe {
-				*out_option = make_borrowed(opt as *const CommandLineOption as *mut CommandLineOption);
+				*out_option =
+					make_borrowed(opt as *const CommandLineOption as *mut CommandLineOption);
 			}
 			Ok(())
 		})
@@ -329,8 +346,10 @@ pub mod commandlineparser {
 			let idx = p.positional_count() - 1;
 			let arg = p.positional(idx).ok_or(Error::State)?;
 			unsafe {
-				*out_argument =
-					make_borrowed(arg as *const CommandLinePositionalArgument as *mut CommandLinePositionalArgument);
+				*out_argument = make_borrowed(
+					arg as *const CommandLinePositionalArgument
+						as *mut CommandLinePositionalArgument,
+				);
 			}
 			Ok(())
 		})
@@ -386,7 +405,9 @@ pub mod commandlineparser {
 			Some(o) => o,
 			None => return OAKCOMMON_E_INVALID,
 		};
-		unsafe { *is_set = o.is_set(); }
+		unsafe {
+			*is_set = o.is_set();
+		}
 		OAKCOMMON_OK
 	}
 
@@ -706,7 +727,9 @@ pub mod debug {
 		buf: *mut super::c_char,
 		buf_size: i32,
 	) -> i32 {
-		let name = Level::from_code(level).map(Level::name).unwrap_or("UNKNOWN");
+		let name = Level::from_code(level)
+			.map(Level::name)
+			.unwrap_or("UNKNOWN");
 		copy_string(name, buf, buf_size)
 	}
 
@@ -728,7 +751,9 @@ pub mod debug {
 		if out_level.is_null() {
 			return OAKCOMMON_E_INVALID;
 		}
-		unsafe { *out_level = log_get_level() as i32; }
+		unsafe {
+			*out_level = log_get_level() as i32;
+		}
 		OAKCOMMON_OK
 	}
 }
@@ -751,7 +776,9 @@ pub mod ffmpegutils {
 		if out.is_null() {
 			return OAKCOMMON_E_INVALID;
 		}
-		unsafe { *out = value; }
+		unsafe {
+			*out = value;
+		}
 		OAKCOMMON_OK
 	}
 
@@ -762,7 +789,10 @@ pub mod ffmpegutils {
 		maximum_pix_fmt: i32,
 		out: *mut i32,
 	) -> i32 {
-		fill(crate::ffmpegutils::get_compatible_bridge_pixel_format(pix_fmt, maximum_pix_fmt), out)
+		fill(
+			crate::ffmpegutils::get_compatible_bridge_pixel_format(pix_fmt, maximum_pix_fmt),
+			out,
+		)
 	}
 
 	/// Find the nearest compatible pixel format.
@@ -771,7 +801,10 @@ pub mod ffmpegutils {
 		pix_fmt: i32,
 		out: *mut i32,
 	) -> i32 {
-		fill(crate::ffmpegutils::get_compatible_pixel_format(pix_fmt), out)
+		fill(
+			crate::ffmpegutils::get_compatible_pixel_format(pix_fmt),
+			out,
+		)
 	}
 
 	/// Map a native format + channel count to an FFmpeg pixel format.
@@ -781,7 +814,10 @@ pub mod ffmpegutils {
 		channel_count: i32,
 		out: *mut i32,
 	) -> i32 {
-		fill(crate::ffmpegutils::get_ffmpeg_pixel_format(pix_fmt, channel_count), out)
+		fill(
+			crate::ffmpegutils::get_ffmpeg_pixel_format(pix_fmt, channel_count),
+			out,
+		)
 	}
 
 	/// Map an FFmpeg sample format to a native sample format.
@@ -808,7 +844,10 @@ pub mod ffmpegutils {
 		pix_fmt: i32,
 		out: *mut i32,
 	) -> i32 {
-		fill(crate::ffmpegutils::convert_jpeg_space_to_regular_space(pix_fmt), out)
+		fill(
+			crate::ffmpegutils::convert_jpeg_space_to_regular_space(pix_fmt),
+			out,
+		)
 	}
 }
 
@@ -949,7 +988,9 @@ pub mod filefunctions {
 			Some(f) => f,
 			None => return OAKCOMMON_E_INVALID,
 		};
-		unsafe { *out = ff.can_copy_directory_without_overwriting(cstr(source), cstr(dest)) as i32; }
+		unsafe {
+			*out = ff.can_copy_directory_without_overwriting(cstr(source), cstr(dest)) as i32;
+		}
 		OAKCOMMON_OK
 	}
 
@@ -989,7 +1030,9 @@ pub mod filefunctions {
 			Some(f) => f,
 			None => return OAKCOMMON_E_INVALID,
 		};
-		unsafe { *out = ff.directory_is_valid(cstr(dir), try_to_create_if_not_exists != 0) as i32; }
+		unsafe {
+			*out = ff.directory_is_valid(cstr(dir), try_to_create_if_not_exists != 0) as i32;
+		}
 		OAKCOMMON_OK
 	}
 
@@ -1003,7 +1046,11 @@ pub mod filefunctions {
 		buf: *mut super::c_char,
 		buf_size: i32,
 	) -> i32 {
-		if self_.is_null() || filename.is_null() || extension.is_null() || !is_valid_string_out(buf, buf_size) {
+		if self_.is_null()
+			|| filename.is_null()
+			|| extension.is_null()
+			|| !is_valid_string_out(buf, buf_size)
+		{
 			return OAKCOMMON_E_INVALID;
 		}
 		let ff = match unsafe { get::<FileFunctions>(&self_) } {
@@ -1074,7 +1121,9 @@ pub mod filefunctions {
 			Some(f) => f,
 			None => return OAKCOMMON_E_INVALID,
 		};
-		unsafe { *out = ff.rename_file_allow_overwrite(cstr(from), cstr(to)) as i32; }
+		unsafe {
+			*out = ff.rename_file_allow_overwrite(cstr(from), cstr(to)) as i32;
+		}
 		OAKCOMMON_OK
 	}
 
@@ -1197,7 +1246,9 @@ pub mod current {
 		}
 		guard(|| {
 			let v = Current::instance().get_video_params()?;
-			unsafe { *out = v; }
+			unsafe {
+				*out = v;
+			}
 			Ok(())
 		})
 	}
@@ -1213,7 +1264,9 @@ pub mod current {
 		}
 		guard(|| {
 			let v = Current::instance().get_audio_params()?;
-			unsafe { *out = v; }
+			unsafe {
+				*out = v;
+			}
 			Ok(())
 		})
 	}
@@ -1229,7 +1282,9 @@ pub mod current {
 		}
 		guard(|| {
 			let v = Current::instance().get_plugin_host()?;
-			unsafe { *out = v; }
+			unsafe {
+				*out = v;
+			}
 			Ok(())
 		})
 	}
@@ -1245,21 +1300,22 @@ pub mod current {
 		}
 		guard(|| {
 			let v = Current::instance().get_plugin_cache()?;
-			unsafe { *out = v; }
+			unsafe {
+				*out = v;
+			}
 			Ok(())
 		})
 	}
 
 	/// Whether the session is interactive.
 	#[no_mangle]
-	pub extern "C" fn oakcommon_current_is_interactive(
-		self_: CHandle,
-		out: *mut i32,
-	) -> i32 {
+	pub extern "C" fn oakcommon_current_is_interactive(self_: CHandle, out: *mut i32) -> i32 {
 		if self_.is_null() || out.is_null() {
 			return OAKCOMMON_E_INVALID;
 		}
-		unsafe { *out = Current::instance().is_interactive().unwrap_or(false) as i32; }
+		unsafe {
+			*out = Current::instance().is_interactive().unwrap_or(false) as i32;
+		}
 		OAKCOMMON_OK
 	}
 }
@@ -1279,25 +1335,21 @@ pub mod misc {
 		if out.is_null() {
 			return OAKCOMMON_E_INVALID;
 		}
-		unsafe { *out = value; }
+		unsafe {
+			*out = value;
+		}
 		OAKCOMMON_OK
 	}
 
 	/// Linear amplitude -> decibels.
 	#[no_mangle]
-	pub extern "C" fn oakcommon_decibel_from_linear(
-		linear: f64,
-		out_db: *mut f64,
-	) -> i32 {
+	pub extern "C" fn oakcommon_decibel_from_linear(linear: f64, out_db: *mut f64) -> i32 {
 		f64_out(m::decibel_from_linear(linear).unwrap_or(0.0), out_db)
 	}
 
 	/// Decibels -> linear amplitude.
 	#[no_mangle]
-	pub extern "C" fn oakcommon_decibel_to_linear(
-		db: f64,
-		out_linear: *mut f64,
-	) -> i32 {
+	pub extern "C" fn oakcommon_decibel_to_linear(db: f64, out_linear: *mut f64) -> i32 {
 		f64_out(m::decibel_to_linear(db).unwrap_or(0.0), out_linear)
 	}
 
@@ -1307,16 +1359,19 @@ pub mod misc {
 		logarithmic: f64,
 		out_db: *mut f64,
 	) -> i32 {
-		f64_out(m::decibel_from_logarithmic(logarithmic).unwrap_or(0.0), out_db)
+		f64_out(
+			m::decibel_from_logarithmic(logarithmic).unwrap_or(0.0),
+			out_db,
+		)
 	}
 
 	/// Decibels -> logarithmic slider position.
 	#[no_mangle]
-	pub extern "C" fn oakcommon_decibel_to_logarithmic(
-		db: f64,
-		out_logarithmic: *mut f64,
-	) -> i32 {
-		f64_out(m::decibel_to_logarithmic(db).unwrap_or(0.0), out_logarithmic)
+	pub extern "C" fn oakcommon_decibel_to_logarithmic(db: f64, out_logarithmic: *mut f64) -> i32 {
+		f64_out(
+			m::decibel_to_logarithmic(db).unwrap_or(0.0),
+			out_logarithmic,
+		)
 	}
 
 	/// Linear amplitude -> logarithmic position.
@@ -1325,7 +1380,10 @@ pub mod misc {
 		linear: f64,
 		out_logarithmic: *mut f64,
 	) -> i32 {
-		f64_out(m::decibel_linear_to_logarithmic(linear).unwrap_or(0.0), out_logarithmic)
+		f64_out(
+			m::decibel_linear_to_logarithmic(linear).unwrap_or(0.0),
+			out_logarithmic,
+		)
 	}
 
 	/// Logarithmic position -> linear amplitude.
@@ -1334,7 +1392,10 @@ pub mod misc {
 		logarithmic: f64,
 		out_linear: *mut f64,
 	) -> i32 {
-		f64_out(m::decibel_logarithmic_to_linear(logarithmic).unwrap_or(0.0), out_linear)
+		f64_out(
+			m::decibel_logarithmic_to_linear(logarithmic).unwrap_or(0.0),
+			out_linear,
+		)
 	}
 
 	/// Linearly interpolate between `a` and `b` with `t`.
@@ -1369,7 +1430,9 @@ pub mod misc {
 		if out.is_null() {
 			return OAKCOMMON_E_INVALID;
 		}
-		unsafe { *out = m::power_ceil_to_power_of_2(value).unwrap_or(0); }
+		unsafe {
+			*out = m::power_ceil_to_power_of_2(value).unwrap_or(0);
+		}
 		OAKCOMMON_OK
 	}
 
@@ -1379,7 +1442,9 @@ pub mod misc {
 		if out.is_null() {
 			return OAKCOMMON_E_INVALID;
 		}
-		unsafe { *out = m::power_floor_to_power_of_2(value).unwrap_or(0); }
+		unsafe {
+			*out = m::power_floor_to_power_of_2(value).unwrap_or(0);
+		}
 		OAKCOMMON_OK
 	}
 }
@@ -1450,8 +1515,11 @@ pub mod ocioutils {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
-			let v = OCIOUtils::new().get_ocio_bit_depth_from_pixel_format(PixelFormat::from_code(pixel_format))?;
-			unsafe { *out = v; }
+			let v = OCIOUtils::new()
+				.get_ocio_bit_depth_from_pixel_format(PixelFormat::from_code(pixel_format))?;
+			unsafe {
+				*out = v;
+			}
 			Ok(())
 		})
 	}
@@ -1493,8 +1561,11 @@ pub mod oiioutils {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
-			let v = OIIOUtils::new().get_oiio_base_type_from_format(PixelFormat::from_code(pixel_format))?;
-			unsafe { *out_base_type = v; }
+			let v = OIIOUtils::new()
+				.get_oiio_base_type_from_format(PixelFormat::from_code(pixel_format))?;
+			unsafe {
+				*out_base_type = v;
+			}
 			Ok(())
 		})
 	}
@@ -1514,7 +1585,9 @@ pub mod oiioutils {
 		}
 		guard(|| {
 			let v = OIIOUtils::new().get_format_from_oiio_basetype(base_type)?;
-			unsafe { *out_pixel_format = v.code(); }
+			unsafe {
+				*out_pixel_format = v.code();
+			}
 			Ok(())
 		})
 	}
@@ -1561,7 +1634,9 @@ pub mod qtutils {
 		}
 		guard(|| {
 			let v = qtutils::ptr_to_value(ptr)?;
-			unsafe { *out_value = v; }
+			unsafe {
+				*out_value = v;
+			}
 			Ok(())
 		})
 	}
@@ -1577,7 +1652,9 @@ pub mod qtutils {
 		}
 		guard(|| {
 			let p = qtutils::value_to_ptr(value)?;
-			unsafe { *out_ptr = p; }
+			unsafe {
+				*out_ptr = p;
+			}
 			Ok(())
 		})
 	}
@@ -1593,7 +1670,9 @@ pub mod qtutils {
 		}
 		guard(|| {
 			let secs = qtutils::get_creation_date(cstr(path))?;
-			unsafe { *out_secs = secs; }
+			unsafe {
+				*out_secs = secs;
+			}
 			Ok(())
 		})
 	}
@@ -1634,7 +1713,9 @@ pub mod subtitleparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const SubtitleParams) };
-			unsafe { *index = p.stream_index(); }
+			unsafe {
+				*index = p.stream_index();
+			}
 			Ok(())
 		})
 	}
@@ -1666,17 +1747,16 @@ pub mod subtitleparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const SubtitleParams) };
-			unsafe { *enabled = p.enabled() as i32; }
+			unsafe {
+				*enabled = p.enabled() as i32;
+			}
 			Ok(())
 		})
 	}
 
 	/// Set whether the stream is enabled.
 	#[no_mangle]
-	pub extern "C" fn oakcommon_subtitleparams_set_enabled(
-		params: CHandle,
-		enabled: i32,
-	) -> i32 {
+	pub extern "C" fn oakcommon_subtitleparams_set_enabled(params: CHandle, enabled: i32) -> i32 {
 		if params.is_null() {
 			return OAKCOMMON_E_INVALID;
 		}
@@ -1698,23 +1778,24 @@ pub mod subtitleparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const SubtitleParams) };
-			unsafe { *is_valid = p.is_valid() as i32; }
+			unsafe {
+				*is_valid = p.is_valid() as i32;
+			}
 			Ok(())
 		})
 	}
 
 	/// Number of subtitle entries.
 	#[no_mangle]
-	pub extern "C" fn oakcommon_subtitleparams_count(
-		params: CHandle,
-		count: *mut i32,
-	) -> i32 {
+	pub extern "C" fn oakcommon_subtitleparams_count(params: CHandle, count: *mut i32) -> i32 {
 		if params.is_null() || count.is_null() {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const SubtitleParams) };
-			unsafe { *count = p.count(); }
+			unsafe {
+				*count = p.count();
+			}
 			Ok(())
 		})
 	}
@@ -1781,7 +1862,12 @@ pub mod subtitleparams {
 		out_num: *mut i32,
 		out_den: *mut i32,
 	) -> i32 {
-		if params.is_null() || in_num.is_null() || in_den.is_null() || out_num.is_null() || out_den.is_null() {
+		if params.is_null()
+			|| in_num.is_null()
+			|| in_den.is_null()
+			|| out_num.is_null()
+			|| out_den.is_null()
+		{
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
@@ -1953,16 +2039,15 @@ pub mod videoparams {
 
 	/// Get the width.
 	#[no_mangle]
-	pub extern "C" fn oakcommon_videoparams_get_width(
-		params: CHandle,
-		width: *mut i32,
-	) -> i32 {
+	pub extern "C" fn oakcommon_videoparams_get_width(params: CHandle, width: *mut i32) -> i32 {
 		if params.is_null() || width.is_null() {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *width = p.width(); }
+			unsafe {
+				*width = p.width();
+			}
 			Ok(())
 		})
 	}
@@ -1982,16 +2067,15 @@ pub mod videoparams {
 
 	/// Get the height.
 	#[no_mangle]
-	pub extern "C" fn oakcommon_videoparams_get_height(
-		params: CHandle,
-		height: *mut i32,
-	) -> i32 {
+	pub extern "C" fn oakcommon_videoparams_get_height(params: CHandle, height: *mut i32) -> i32 {
 		if params.is_null() || height.is_null() {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *height = p.height(); }
+			unsafe {
+				*height = p.height();
+			}
 			Ok(())
 		})
 	}
@@ -2011,16 +2095,15 @@ pub mod videoparams {
 
 	/// Get the depth.
 	#[no_mangle]
-	pub extern "C" fn oakcommon_videoparams_get_depth(
-		params: CHandle,
-		depth: *mut i32,
-	) -> i32 {
+	pub extern "C" fn oakcommon_videoparams_get_depth(params: CHandle, depth: *mut i32) -> i32 {
 		if params.is_null() || depth.is_null() {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *depth = p.depth(); }
+			unsafe {
+				*depth = p.depth();
+			}
 			Ok(())
 		})
 	}
@@ -2040,20 +2123,18 @@ pub mod videoparams {
 
 	/// Get whether the frame is 3D.
 	#[no_mangle]
-	pub extern "C" fn oakcommon_videoparams_get_is_3d(
-		params: CHandle,
-		is_3d: *mut i32,
-	) -> i32 {
+	pub extern "C" fn oakcommon_videoparams_get_is_3d(params: CHandle, is_3d: *mut i32) -> i32 {
 		if params.is_null() || is_3d.is_null() {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *is_3d = p.is_3d() as i32; }
+			unsafe {
+				*is_3d = p.is_3d() as i32;
+			}
 			Ok(())
 		})
 	}
-
 
 	/// Get the time base as a rational pair.
 	#[no_mangle]
@@ -2192,16 +2273,15 @@ pub mod videoparams {
 
 	/// Get the pixel format.
 	#[no_mangle]
-	pub extern "C" fn oakcommon_videoparams_get_format(
-		params: CHandle,
-		format: *mut i32,
-	) -> i32 {
+	pub extern "C" fn oakcommon_videoparams_get_format(params: CHandle, format: *mut i32) -> i32 {
 		if params.is_null() || format.is_null() {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *format = p.format().code(); }
+			unsafe {
+				*format = p.format().code();
+			}
 			Ok(())
 		})
 	}
@@ -2230,7 +2310,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *count = p.channel_count(); }
+			unsafe {
+				*count = p.channel_count();
+			}
 			Ok(())
 		})
 	}
@@ -2259,7 +2341,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *interlacing = p.interlacing() as i32; }
+			unsafe {
+				*interlacing = p.interlacing() as i32;
+			}
 			Ok(())
 		})
 	}
@@ -2286,16 +2370,15 @@ pub mod videoparams {
 
 	/// Get the divider.
 	#[no_mangle]
-	pub extern "C" fn oakcommon_videoparams_get_divider(
-		params: CHandle,
-		divider: *mut i32,
-	) -> i32 {
+	pub extern "C" fn oakcommon_videoparams_get_divider(params: CHandle, divider: *mut i32) -> i32 {
 		if params.is_null() || divider.is_null() {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *divider = p.divider(); }
+			unsafe {
+				*divider = p.divider();
+			}
 			Ok(())
 		})
 	}
@@ -2315,16 +2398,15 @@ pub mod videoparams {
 
 	/// Get whether the stream is enabled.
 	#[no_mangle]
-	pub extern "C" fn oakcommon_videoparams_get_enabled(
-		params: CHandle,
-		enabled: *mut i32,
-	) -> i32 {
+	pub extern "C" fn oakcommon_videoparams_get_enabled(params: CHandle, enabled: *mut i32) -> i32 {
 		if params.is_null() || enabled.is_null() {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *enabled = p.enabled() as i32; }
+			unsafe {
+				*enabled = p.enabled() as i32;
+			}
 			Ok(())
 		})
 	}
@@ -2350,7 +2432,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *x = p.x(); }
+			unsafe {
+				*x = p.x();
+			}
 			Ok(())
 		})
 	}
@@ -2376,7 +2460,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *y = p.y(); }
+			unsafe {
+				*y = p.y();
+			}
 			Ok(())
 		})
 	}
@@ -2405,7 +2491,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *index = p.stream_index(); }
+			unsafe {
+				*index = p.stream_index();
+			}
 			Ok(())
 		})
 	}
@@ -2434,7 +2522,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *type_ = p.video_type() as i32; }
+			unsafe {
+				*type_ = p.video_type() as i32;
+			}
 			Ok(())
 		})
 	}
@@ -2467,14 +2557,19 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *start_time = p.start_time(); }
+			unsafe {
+				*start_time = p.start_time();
+			}
 			Ok(())
 		})
 	}
 
 	/// Set the start time.
 	#[no_mangle]
-	pub extern "C" fn oakcommon_videoparams_set_start_time(params: CHandle, start_time: i64) -> i32 {
+	pub extern "C" fn oakcommon_videoparams_set_start_time(
+		params: CHandle,
+		start_time: i64,
+	) -> i32 {
 		if params.is_null() {
 			return OAKCOMMON_E_INVALID;
 		}
@@ -2496,7 +2591,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *duration = p.duration(); }
+			unsafe {
+				*duration = p.duration();
+			}
 			Ok(())
 		})
 	}
@@ -2525,7 +2622,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *premultiplied = p.premultiplied_alpha() as i32; }
+			unsafe {
+				*premultiplied = p.premultiplied_alpha() as i32;
+			}
 			Ok(())
 		})
 	}
@@ -2557,7 +2656,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *color_range = p.color_range() as i32; }
+			unsafe {
+				*color_range = p.color_range() as i32;
+			}
 			Ok(())
 		})
 	}
@@ -2592,7 +2693,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *primaries = p.color_primaries(); }
+			unsafe {
+				*primaries = p.color_primaries();
+			}
 			Ok(())
 		})
 	}
@@ -2624,7 +2727,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *transfer = p.color_transfer(); }
+			unsafe {
+				*transfer = p.color_transfer();
+			}
 			Ok(())
 		})
 	}
@@ -2686,7 +2791,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *width = p.square_pixel_width(); }
+			unsafe {
+				*width = p.square_pixel_width();
+			}
 			Ok(())
 		})
 	}
@@ -2702,7 +2809,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *width = p.effective_width(); }
+			unsafe {
+				*width = p.effective_width();
+			}
 			Ok(())
 		})
 	}
@@ -2718,7 +2827,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *height = p.effective_height(); }
+			unsafe {
+				*height = p.effective_height();
+			}
 			Ok(())
 		})
 	}
@@ -2734,7 +2845,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *depth = p.effective_depth(); }
+			unsafe {
+				*depth = p.effective_depth();
+			}
 			Ok(())
 		})
 	}
@@ -2750,7 +2863,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *is_valid = p.is_valid() as i32; }
+			unsafe {
+				*is_valid = p.is_valid() as i32;
+			}
 			Ok(())
 		})
 	}
@@ -2766,7 +2881,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *bytes = p.bytes_per_channel(); }
+			unsafe {
+				*bytes = p.bytes_per_channel();
+			}
 			Ok(())
 		})
 	}
@@ -2782,7 +2899,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *bytes = p.bytes_per_pixel(); }
+			unsafe {
+				*bytes = p.bytes_per_pixel();
+			}
 			Ok(())
 		})
 	}
@@ -2798,7 +2917,9 @@ pub mod videoparams {
 		}
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
-			unsafe { *size = p.buffer_size(); }
+			unsafe {
+				*size = p.buffer_size();
+			}
 			Ok(())
 		})
 	}
@@ -2819,8 +2940,12 @@ pub mod videoparams {
 			// CPP-PARITY: C++ returns INT64_MIN (AV_NOPTS_VALUE) when no time
 			// base is set; the Rust domain returns None in that case.
 			match p.time_in_timebase_units(time_num, time_den) {
-				Some(ts) => unsafe { *timestamp = ts; },
-				None => unsafe { *timestamp = i64::MIN; },
+				Some(ts) => unsafe {
+					*timestamp = ts;
+				},
+				None => unsafe {
+					*timestamp = i64::MIN;
+				},
 			}
 			Ok(())
 		})
@@ -2839,7 +2964,9 @@ pub mod videoparams {
 		guard(|| {
 			let p = unsafe { &*(params.ctx as *const VideoParams) };
 			let o = unsafe { &*(other.ctx as *const VideoParams) };
-			unsafe { *equal = p.equals(o) as i32; }
+			unsafe {
+				*equal = p.equals(o) as i32;
+			}
 			Ok(())
 		})
 	}
@@ -2901,7 +3028,12 @@ pub mod videoparams {
 		pixel_format: i32,
 		channels: i32,
 	) -> i32 {
-		VideoParams::calculate_buffer_size(width, height, PixelFormat::from_code(pixel_format), channels)
+		VideoParams::calculate_buffer_size(
+			width,
+			height,
+			PixelFormat::from_code(pixel_format),
+			channels,
+		)
 	}
 
 	/// Static: whether the format is float.
@@ -2912,10 +3044,7 @@ pub mod videoparams {
 
 	/// Static: auto divider for the given dimensions.
 	#[no_mangle]
-	pub extern "C" fn oakcommon_videoparams_generate_auto_divider(
-		width: i64,
-		height: i64,
-	) -> i32 {
+	pub extern "C" fn oakcommon_videoparams_generate_auto_divider(width: i64, height: i64) -> i32 {
 		VideoParams::generate_auto_divider(width, height)
 	}
 
@@ -2990,9 +3119,7 @@ pub mod videoparams {
 
 	/// Static: bytes per channel for an OakPixelFormat.
 	#[no_mangle]
-	pub extern "C" fn oakcommon_videoparams_static_get_bytes_per_channel(
-		format: i32,
-	) -> i32 {
+	pub extern "C" fn oakcommon_videoparams_static_get_bytes_per_channel(format: i32) -> i32 {
 		VideoParams::bytes_per_channel_for_format(PixelFormat::from_code(format))
 	}
 
@@ -3069,10 +3196,11 @@ pub mod xmlutils {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
-			let st = unsafe { get_mut::<ReaderState>(&reader) }.expect("reader handle validated non-null");
+			let st = unsafe { get_mut::<ReaderState>(&reader) }
+				.expect("reader handle validated non-null");
 			st.has_cached_text = false;
-			st.reader.read_next_start_element().map(|b| {
-				unsafe { *found = b as i32; }
+			st.reader.read_next_start_element().map(|b| unsafe {
+				*found = b as i32;
 			})
 		})
 	}
@@ -3134,7 +3262,8 @@ pub mod xmlutils {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
-			let st = unsafe { get_mut::<ReaderState>(&reader) }.expect("reader handle validated non-null");
+			let st = unsafe { get_mut::<ReaderState>(&reader) }
+				.expect("reader handle validated non-null");
 			st.has_cached_text = false;
 			st.reader.skip_current_element()
 		})
@@ -3150,9 +3279,10 @@ pub mod xmlutils {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
-			let st = unsafe { get::<ReaderState>(&reader) }.expect("reader handle validated non-null");
-			st.reader.attribute_count().map(|c| {
-				unsafe { *count = c; }
+			let st =
+				unsafe { get::<ReaderState>(&reader) }.expect("reader handle validated non-null");
+			st.reader.attribute_count().map(|c| unsafe {
+				*count = c;
 			})
 		})
 	}
@@ -3201,17 +3331,15 @@ pub mod xmlutils {
 
 	/// Whether the document failed to parse.
 	#[no_mangle]
-	pub extern "C" fn oakcommon_xml_reader_has_error(
-		reader: CHandle,
-		has_error: *mut i32,
-	) -> i32 {
+	pub extern "C" fn oakcommon_xml_reader_has_error(reader: CHandle, has_error: *mut i32) -> i32 {
 		if reader.is_null() || has_error.is_null() {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
-			let st = unsafe { get::<ReaderState>(&reader) }.expect("reader handle validated non-null");
-			st.reader.has_error().map(|b| {
-				unsafe { *has_error = b as i32; }
+			let st =
+				unsafe { get::<ReaderState>(&reader) }.expect("reader handle validated non-null");
+			st.reader.has_error().map(|b| unsafe {
+				*has_error = b as i32;
 			})
 		})
 	}
@@ -3238,7 +3366,8 @@ pub mod xmlutils {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
-			let w = unsafe { get_mut::<XmlWriter>(&writer) }.expect("writer handle validated non-null");
+			let w =
+				unsafe { get_mut::<XmlWriter>(&writer) }.expect("writer handle validated non-null");
 			w.write_start_element(cstr(name))
 		})
 	}
@@ -3254,7 +3383,8 @@ pub mod xmlutils {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
-			let w = unsafe { get_mut::<XmlWriter>(&writer) }.expect("writer handle validated non-null");
+			let w =
+				unsafe { get_mut::<XmlWriter>(&writer) }.expect("writer handle validated non-null");
 			w.write_attribute(cstr(name), cstr(value))
 		})
 	}
@@ -3269,7 +3399,8 @@ pub mod xmlutils {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
-			let w = unsafe { get_mut::<XmlWriter>(&writer) }.expect("writer handle validated non-null");
+			let w =
+				unsafe { get_mut::<XmlWriter>(&writer) }.expect("writer handle validated non-null");
 			w.write_characters(cstr(text))
 		})
 	}
@@ -3285,7 +3416,8 @@ pub mod xmlutils {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
-			let w = unsafe { get_mut::<XmlWriter>(&writer) }.expect("writer handle validated non-null");
+			let w =
+				unsafe { get_mut::<XmlWriter>(&writer) }.expect("writer handle validated non-null");
 			w.write_text_element(cstr(name), cstr(text))
 		})
 	}
@@ -3297,7 +3429,8 @@ pub mod xmlutils {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
-			let w = unsafe { get_mut::<XmlWriter>(&writer) }.expect("writer handle validated non-null");
+			let w =
+				unsafe { get_mut::<XmlWriter>(&writer) }.expect("writer handle validated non-null");
 			w.write_end_element()
 		})
 	}
@@ -3309,7 +3442,8 @@ pub mod xmlutils {
 			return OAKCOMMON_E_INVALID;
 		}
 		guard(|| {
-			let w = unsafe { get_mut::<XmlWriter>(&writer) }.expect("writer handle validated non-null");
+			let w =
+				unsafe { get_mut::<XmlWriter>(&writer) }.expect("writer handle validated non-null");
 			w.write_end_document()
 		})
 	}
@@ -3334,4 +3468,3 @@ pub mod xmlutils {
 		}
 	}
 }
-

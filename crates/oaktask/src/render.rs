@@ -159,7 +159,10 @@ impl RenderTask {
 			export_range: TimeRange::new(Rational::new(0, 1), Rational::new(0, 1)),
 			native_progress_signalling: true,
 			total_frames: 0,
-			max_inflight: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1).max(1),
+			max_inflight: std::thread::available_parallelism()
+				.map(|n| n.get())
+				.unwrap_or(1)
+				.max(1),
 		}
 	}
 
@@ -236,7 +239,9 @@ impl RenderTask {
 			);
 		}
 		if output_node.ctx.is_null() {
-			return Err(Error::Failed("No node connected to the viewer output".to_string()));
+			return Err(Error::Failed(
+				"No node connected to the viewer output".to_string(),
+			));
 		}
 
 		let audio_params_ptr = if self.audio_params.ctx.is_null() {
@@ -282,7 +287,9 @@ impl RenderTask {
 			bridge::node::oaknode_node_free(&mut output_node);
 		}
 		if ticket.ctx.is_null() {
-			return Err(Error::Failed("Failed to start frame render ticket".to_string()));
+			return Err(Error::Failed(
+				"Failed to start frame render ticket".to_string(),
+			));
 		}
 		Ok(ticket)
 	}
@@ -303,7 +310,9 @@ impl RenderTask {
 			);
 		}
 		if output_node.ctx.is_null() {
-			return Err(Error::Failed("No node connected to the viewer samples input".to_string()));
+			return Err(Error::Failed(
+				"No node connected to the viewer samples input".to_string(),
+			));
 		}
 
 		let audio_params_ptr = if self.audio_params.ctx.is_null() {
@@ -328,7 +337,9 @@ impl RenderTask {
 			bridge::node::oaknode_node_free(&mut output_node);
 		}
 		if ticket.ctx.is_null() {
-			return Err(Error::Failed("Failed to start audio render ticket".to_string()));
+			return Err(Error::Failed(
+				"Failed to start audio render ticket".to_string(),
+			));
 		}
 		Ok(ticket)
 	}
@@ -439,7 +450,11 @@ impl RenderTask {
 			t = t + timebase;
 		}
 		self.total_frames = frame_times.len() as i64;
-		let total_length = if frame_times.is_empty() { 1.0 } else { frame_times.len() as f64 };
+		let total_length = if frame_times.is_empty() {
+			1.0
+		} else {
+			frame_times.len() as f64
+		};
 
 		// Delivery order: the audio range first (mirrors the C++ queue
 		// order), then every frame in ascending timestamp order. The reorder
@@ -460,7 +475,10 @@ impl RenderTask {
 		}
 		let mut slot_by_key: HashMap<(i32, i64, i64), usize> = HashMap::with_capacity(slots.len());
 		for (i, slot) in slots.iter().enumerate() {
-			slot_by_key.insert((slot.kind, slot.time.numerator(), slot.time.denominator()), i);
+			slot_by_key.insert(
+				(slot.kind, slot.time.numerator(), slot.time.denominator()),
+				i,
+			);
 		}
 		let total_slots = slots.len();
 
@@ -584,16 +602,25 @@ impl RenderTask {
 
 			// Wait for the next completion (a cancellation or a hook error
 			// aborts the wait; in-flight tickets then finish, waking us).
-			let mut guard = dispatch_ref.finished.lock().unwrap_or_else(|e| e.into_inner());
+			let mut guard = dispatch_ref
+				.finished
+				.lock()
+				.unwrap_or_else(|e| e.into_inner());
 			while guard.is_empty()
 				&& dispatch_ref.running.load(Ordering::SeqCst) > 0
 				&& !task.is_cancelled()
 			{
-				guard = dispatch_ref.cv.wait(guard).unwrap_or_else(|e| e.into_inner());
+				guard = dispatch_ref
+					.cv
+					.wait(guard)
+					.unwrap_or_else(|e| e.into_inner());
 			}
 			drop(guard);
-			if dispatch_ref.finished.lock().unwrap_or_else(|e| e.into_inner()).is_empty()
-				&& dispatch_ref.running.load(Ordering::SeqCst) == 0
+			if dispatch_ref
+				.finished
+				.lock()
+				.unwrap_or_else(|e| e.into_inner())
+				.is_empty() && dispatch_ref.running.load(Ordering::SeqCst) == 0
 			{
 				// Every ticket finished and its queue copy was consumed.
 				break;

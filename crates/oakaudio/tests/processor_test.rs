@@ -67,15 +67,7 @@ fn identity_convert_passthrough() {
 	let mut out = vec![vec![0f32; 32]; 2];
 	let mut out_ptrs: Vec<*mut f32> = out.iter_mut().map(|p| p.as_mut_ptr()).collect();
 
-	let n = unsafe {
-		oakaudio_processor_convert(
-			h,
-			in_ptrs.as_ptr(),
-			32,
-			out_ptrs.as_ptr(),
-			32,
-		)
-	};
+	let n = unsafe { oakaudio_processor_convert(h, in_ptrs.as_ptr(), 32, out_ptrs.as_ptr(), 32) };
 	assert_eq!(n, 32);
 	for ch in 0..2 {
 		for i in 0..32 {
@@ -102,9 +94,7 @@ fn convert_capacity_truncation() {
 	let mut out = vec![vec![9.9f32; 10]; 2];
 	let mut out_ptrs: Vec<*mut f32> = out.iter_mut().map(|p| p.as_mut_ptr()).collect();
 
-	let n = unsafe {
-		oakaudio_processor_convert(h, in_ptrs.as_ptr(), 32, out_ptrs.as_ptr(), 10)
-	};
+	let n = unsafe { oakaudio_processor_convert(h, in_ptrs.as_ptr(), 32, out_ptrs.as_ptr(), 10) };
 	assert_eq!(n, 10);
 	for ch in 0..2 {
 		for i in 0..10 {
@@ -115,9 +105,7 @@ fn convert_capacity_truncation() {
 	// The graph has already drained; nothing further to pull.
 	let mut out2 = vec![vec![0f32; 32]; 2];
 	let mut out2_ptrs: Vec<*mut f32> = out2.iter_mut().map(|p| p.as_mut_ptr()).collect();
-	let n = unsafe {
-		oakaudio_processor_convert(h, in_ptrs.as_ptr(), 0, out2_ptrs.as_ptr(), 32)
-	};
+	let n = unsafe { oakaudio_processor_convert(h, in_ptrs.as_ptr(), 0, out2_ptrs.as_ptr(), 32) };
 	assert_eq!(n, 0);
 
 	unsafe { oakaudio_processor_free(&mut h) };
@@ -142,9 +130,18 @@ fn open_invalid_params() {
 
 	let empty = oakaudio::handle::CHandle::null();
 	assert_eq!(open_identity(empty), OAKAUDIO_E_INVALID);
-	assert_eq!(unsafe { oakaudio_processor_is_open(empty) }, OAKAUDIO_E_INVALID);
-	assert_eq!(unsafe { oakaudio_processor_close(empty) }, OAKAUDIO_E_INVALID);
-	assert_eq!(unsafe { oakaudio_processor_flush(empty) }, OAKAUDIO_E_INVALID);
+	assert_eq!(
+		unsafe { oakaudio_processor_is_open(empty) },
+		OAKAUDIO_E_INVALID
+	);
+	assert_eq!(
+		unsafe { oakaudio_processor_close(empty) },
+		OAKAUDIO_E_INVALID
+	);
+	assert_eq!(
+		unsafe { oakaudio_processor_flush(empty) },
+		OAKAUDIO_E_INVALID
+	);
 	let mut out_ptrs: Vec<*mut f32> = Vec::new();
 	assert_eq!(
 		unsafe { oakaudio_processor_convert(empty, std::ptr::null(), 0, out_ptrs.as_ptr(), 0) },
@@ -178,19 +175,19 @@ fn resample_and_flush() {
 	let mut out_ptrs: Vec<*mut f32> = out.iter_mut().map(|p| p.as_mut_ptr()).collect();
 
 	let mut total = unsafe {
-		oakaudio_processor_convert(h, in_ptrs.as_ptr(), frames as i32, out_ptrs.as_ptr(), frames as i32)
+		oakaudio_processor_convert(
+			h,
+			in_ptrs.as_ptr(),
+			frames as i32,
+			out_ptrs.as_ptr(),
+			frames as i32,
+		)
 	};
 	assert_eq!(unsafe { oakaudio_processor_flush(h) }, OAKAUDIO_OK);
 	// Drain the resampler delay after end-of-input.
 	while total < frames as i32 {
 		let n = unsafe {
-			oakaudio_processor_convert(
-				h,
-				std::ptr::null(),
-				0,
-				out_ptrs.as_ptr(),
-				frames as i32,
-			)
+			oakaudio_processor_convert(h, std::ptr::null(), 0, out_ptrs.as_ptr(), frames as i32)
 		};
 		if n == 0 {
 			break;
@@ -224,18 +221,18 @@ fn tempo_stretch() {
 	let mut out_ptrs: Vec<*mut f32> = out.iter_mut().map(|p| p.as_mut_ptr()).collect();
 
 	let mut total = unsafe {
-		oakaudio_processor_convert(h, in_ptrs.as_ptr(), frames as i32, out_ptrs.as_ptr(), frames as i32)
+		oakaudio_processor_convert(
+			h,
+			in_ptrs.as_ptr(),
+			frames as i32,
+			out_ptrs.as_ptr(),
+			frames as i32,
+		)
 	};
 	assert_eq!(unsafe { oakaudio_processor_flush(h) }, OAKAUDIO_OK);
 	while total < frames as i32 {
 		let n = unsafe {
-			oakaudio_processor_convert(
-				h,
-				std::ptr::null(),
-				0,
-				out_ptrs.as_ptr(),
-				frames as i32,
-			)
+			oakaudio_processor_convert(h, std::ptr::null(), 0, out_ptrs.as_ptr(), frames as i32)
 		};
 		if n == 0 {
 			break;

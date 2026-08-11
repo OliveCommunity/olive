@@ -22,34 +22,43 @@
 use std::process::Command;
 
 fn bin() -> &'static str {
-    env!("CARGO_BIN_EXE_oak-worker")
+	env!("CARGO_BIN_EXE_oak-worker")
 }
 
 #[test]
 fn help_exits_zero() {
-    let out = Command::new(bin()).arg("--help").output().expect("spawn oak-worker");
-    assert_eq!(out.status.code(), Some(0));
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(stdout.contains("oak-worker"));
-    assert!(stdout.contains("--backend"));
+	let out = Command::new(bin())
+		.arg("--help")
+		.output()
+		.expect("spawn oak-worker");
+	assert_eq!(out.status.code(), Some(0));
+	let stdout = String::from_utf8_lossy(&out.stdout);
+	assert!(stdout.contains("oak-worker"));
+	assert!(stdout.contains("--backend"));
 }
 
 #[test]
 fn unknown_flag_is_a_clap_usage_error() {
-    let out = Command::new(bin()).arg("--frobnicate").output().expect("spawn oak-worker");
-    // clap's usage-error exit code.
-    assert_eq!(out.status.code(), Some(2));
+	let out = Command::new(bin())
+		.arg("--frobnicate")
+		.output()
+		.expect("spawn oak-worker");
+	// clap's usage-error exit code.
+	assert_eq!(out.status.code(), Some(2));
 }
 
 #[test]
 fn backend_none_exits_one_like_the_cpp_main() {
-    // Mirrors oakengine_worker_main(): without a renderer the worker cannot
-    // do anything and exits 1.
-    let out = Command::new(bin())
-        .args(["--backend", "none"])
-        .output()
-        .expect("spawn oak-worker");
-    assert_eq!(out.status.code(), Some(1));
-    let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("no renderer initialized"), "stderr: {stderr}");
+	// Mirrors oakengine_worker_main(): without a renderer the worker cannot
+	// do anything and exits 1.
+	let out = Command::new(bin())
+		.args(["--backend", "none"])
+		.output()
+		.expect("spawn oak-worker");
+	assert_eq!(out.status.code(), Some(1));
+	let stderr = String::from_utf8_lossy(&out.stderr);
+	assert!(
+		stderr.contains("no renderer initialized"),
+		"stderr: {stderr}"
+	);
 }

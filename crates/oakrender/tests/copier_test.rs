@@ -90,7 +90,10 @@ fn autocacher_attach_detach() {
 	let (mut c, mut pool) = cacher();
 	c.attach(42).unwrap();
 	assert_eq!(c.copied_project, 42);
-	c.on_cache_request(42, TimeRange::new(Rational::new(0, 1), Rational::new(10, 1)));
+	c.on_cache_request(
+		42,
+		TimeRange::new(Rational::new(0, 1), Rational::new(10, 1)),
+	);
 	assert_eq!(c.live_jobs().len(), 1);
 
 	// Jobs complete or are cancelled on detach; bookkeeping cleared.
@@ -143,7 +146,10 @@ fn change_record_marshalling() {
 		};
 		assert_eq!(record.kind, kind);
 		assert_eq!(record.payload.len(), 48);
-		assert_eq!(std::mem::size_of::<oakrender::bridge::node::ChangeRecord>(), 52);
+		assert_eq!(
+			std::mem::size_of::<oakrender::bridge::node::ChangeRecord>(),
+			52
+		);
 	}
 }
 
@@ -152,7 +158,10 @@ fn change_record_marshalling() {
 fn copier_error_paths() {
 	let mut copier = oakrender::copier::ProjectCopy::new();
 	assert_eq!(
-		copier.set_project(oakrender::handle::CHandle::null()).unwrap_err().code(),
+		copier
+			.set_project(oakrender::handle::CHandle::null())
+			.unwrap_err()
+			.code(),
 		Error::Invalid.code()
 	);
 	// sync before any project → state error.
@@ -160,7 +169,10 @@ fn copier_error_paths() {
 		kind: oakrender::bridge::node::change_kind::NODE_ADD,
 		payload: [0u8; 48],
 	}];
-	assert_eq!(copier.sync(&changes).unwrap_err().code(), Error::State.code());
+	assert_eq!(
+		copier.sync(&changes).unwrap_err().code(),
+		Error::State.code()
+	);
 	// copy_of_node is deferred (node map query pending).
 	assert!(copier.copy_of_node(1).is_none());
 }
@@ -180,7 +192,10 @@ fn ffi_copier_contract() {
 		);
 		// With a fake project handle: deep copy needs the oaknode C ABI.
 		let rc = ffi::copier::oakrender_project_copier_set_project(c, common::fake_handle(1));
-		assert_ne!(rc, OAKRENDER_OK, "without liboaknode the copy cannot be built");
+		assert_ne!(
+			rc, OAKRENDER_OK,
+			"without liboaknode the copy cannot be built"
+		);
 		// get_copy on an empty copier → empty handle.
 		let copy = ffi::copier::oakrender_project_copier_get_copy(c, common::fake_handle(1));
 		assert!(copy.is_null());
@@ -199,10 +214,22 @@ fn lut_library_exports() {
 	use oakrender::ffi;
 	unsafe {
 		assert_eq!(ffi::color::oakrender_lut_supported_extensions_count(), 9);
-		assert_eq!(ffi::color::oakrender_lut_is_supported_extension(c"cube".as_ptr()), 1);
-		assert_eq!(ffi::color::oakrender_lut_is_supported_extension(c".CUBE".as_ptr()), 1);
-		assert_eq!(ffi::color::oakrender_lut_is_supported_extension(c"exr".as_ptr()), 0);
-		assert_eq!(ffi::color::oakrender_lut_is_supported_extension(std::ptr::null()), 0);
+		assert_eq!(
+			ffi::color::oakrender_lut_is_supported_extension(c"cube".as_ptr()),
+			1
+		);
+		assert_eq!(
+			ffi::color::oakrender_lut_is_supported_extension(c".CUBE".as_ptr()),
+			1
+		);
+		assert_eq!(
+			ffi::color::oakrender_lut_is_supported_extension(c"exr".as_ptr()),
+			0
+		);
+		assert_eq!(
+			ffi::color::oakrender_lut_is_supported_extension(std::ptr::null()),
+			0
+		);
 		let mut buf = [0u8; 16];
 		let size = ffi::color::oakrender_lut_supported_extension_at(
 			0,
@@ -225,9 +252,8 @@ fn color_ffi_paths() {
 	unsafe {
 		// No default config yet → get_config is a state error.
 		let _ = ffi::color::oakrender_color_manager_set_up_default_config();
-		let (size, config) = common::read_two_stage(|buf, n| {
-			ffi::color::oakrender_color_manager_get_config(buf, n)
-		});
+		let (size, config) =
+			common::read_two_stage(|buf, n| ffi::color::oakrender_color_manager_get_config(buf, n));
 		if size > 0 {
 			assert!(!config.unwrap().is_empty());
 		}
@@ -241,13 +267,25 @@ fn color_ffi_paths() {
 			let valid = ffi::color::oakrender_color_processor_is_valid(p);
 			let (mut r, mut g, mut b, mut a) = (0.0f64, 0.0f64, 0.0f64, 0.0f64);
 			assert_eq!(
-				ffi::color::oakrender_color_processor_convert(p, 0.18, 0.18, 0.18, 1.0, &mut r, &mut g, &mut b, &mut a),
+				ffi::color::oakrender_color_processor_convert(
+					p, 0.18, 0.18, 0.18, 1.0, &mut r, &mut g, &mut b, &mut a
+				),
 				0
 			);
 			assert!(a == 1.0);
 			// convert with NULL out → invalid.
 			assert_eq!(
-				ffi::color::oakrender_color_processor_convert(p, 0.0, 0.0, 0.0, 0.0, std::ptr::null_mut(), &mut g, &mut b, &mut a),
+				ffi::color::oakrender_color_processor_convert(
+					p,
+					0.0,
+					0.0,
+					0.0,
+					0.0,
+					std::ptr::null_mut(),
+					&mut g,
+					&mut b,
+					&mut a
+				),
 				-70001
 			);
 			assert_eq!(valid, 0, "validity depends on the bundled OCIO config");
@@ -256,7 +294,12 @@ fn color_ffi_paths() {
 		}
 		// display_transform errors.
 		assert_eq!(
-			ffi::color::oakrender_color_manager_display_transform(std::ptr::null(), c"v".as_ptr(), std::ptr::null_mut(), 0),
+			ffi::color::oakrender_color_manager_display_transform(
+				std::ptr::null(),
+				c"v".as_ptr(),
+				std::ptr::null_mut(),
+				0
+			),
 			-70001
 		);
 		let rc = ffi::color::oakrender_color_manager_display_transform(

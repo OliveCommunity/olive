@@ -256,7 +256,11 @@ impl ProxyManager {
 			channel_layout: 0,
 			sample_format: 0,
 			proxy_width: if params.divider <= 1 { params.width } else { 0 },
-			proxy_height: if params.divider <= 1 { params.height } else { 0 },
+			proxy_height: if params.divider <= 1 {
+				params.height
+			} else {
+				0
+			},
 		};
 
 		// Interim simplification: submission is synchronous.
@@ -335,11 +339,7 @@ fn config_get_int(key: &str, default: i32) -> i32 {
 	let ckey = cstring(key);
 	// # Safety: `ckey` is a valid NUL-terminated C string alive for the call.
 	unsafe {
-		crate::bridge::common::oakcommon_config_get_int(
-			std::ptr::null(),
-			ckey.as_ptr(),
-			default,
-		)
+		crate::bridge::common::oakcommon_config_get_int(std::ptr::null(), ckey.as_ptr(), default)
 	}
 }
 
@@ -348,11 +348,7 @@ fn config_get_bool(key: &str, default: i32) -> i32 {
 	let ckey = cstring(key);
 	// # Safety: `ckey` is a valid NUL-terminated C string alive for the call.
 	unsafe {
-		crate::bridge::common::oakcommon_config_get_bool(
-			std::ptr::null(),
-			ckey.as_ptr(),
-			default,
-		)
+		crate::bridge::common::oakcommon_config_get_bool(std::ptr::null(), ckey.as_ptr(), default)
 	}
 }
 
@@ -407,10 +403,7 @@ fn unique_file_identifier(filename: &str) -> String {
 fn application_path() -> String {
 	// # Safety: first call asks only for the required size.
 	let size = unsafe {
-		crate::bridge::common::oakcommon_filefunctions_get_application_path(
-			std::ptr::null_mut(),
-			0,
-		)
+		crate::bridge::common::oakcommon_filefunctions_get_application_path(std::ptr::null_mut(), 0)
 	};
 	if size <= 1 {
 		return String::new();
@@ -457,11 +450,8 @@ mod tests {
 	use super::*;
 
 	fn temp_subdir(name: &str) -> String {
-		let dir = std::env::temp_dir().join(format!(
-			"oakcodec_proxy_{}_{}",
-			name,
-			std::process::id()
-		));
+		let dir =
+			std::env::temp_dir().join(format!("oakcodec_proxy_{}_{}", name, std::process::id()));
 		let _ = std::fs::create_dir_all(&dir);
 		dir.to_string_lossy().into_owned()
 	}
@@ -517,10 +507,7 @@ mod tests {
 		let p = ProxyManager::proxy_params_default();
 
 		let f = ProxyManager::get_proxy_filename(&cache, "media.mp4", 0, &p).unwrap();
-		assert_eq!(
-			f,
-			format!("{}/proxy/{}-0.1280x720.v1.a1.mp4", cache, id)
-		);
+		assert_eq!(f, format!("{}/proxy/{}-0.1280x720.v1.a1.mp4", cache, id));
 
 		// Divider mode tags the divider instead of an absolute size.
 		let mut d = p.clone();
@@ -558,13 +545,22 @@ mod tests {
 
 	#[test]
 	fn proxy_state_to_string_mapping() {
-		assert_eq!(ProxyManager::proxy_state_to_string(ProxyState::Missing), "missing");
+		assert_eq!(
+			ProxyManager::proxy_state_to_string(ProxyState::Missing),
+			"missing"
+		);
 		assert_eq!(
 			ProxyManager::proxy_state_to_string(ProxyState::Generating),
 			"generating"
 		);
-		assert_eq!(ProxyManager::proxy_state_to_string(ProxyState::Ready), "ready");
-		assert_eq!(ProxyManager::proxy_state_to_string(ProxyState::Failed), "failed");
+		assert_eq!(
+			ProxyManager::proxy_state_to_string(ProxyState::Ready),
+			"ready"
+		);
+		assert_eq!(
+			ProxyManager::proxy_state_to_string(ProxyState::Failed),
+			"failed"
+		);
 	}
 
 	#[test]
@@ -581,10 +577,9 @@ mod tests {
 		crate::task::set_task_submit_cb_extern(None, std::ptr::null_mut());
 		let cache = temp_subdir("nostart");
 		let p = ProxyManager::proxy_params_default();
-		let (state, _f) =
-			ProxyManager::instance()
-				.get_or_start(&cache, "media.mp4", 0, &p)
-				.unwrap();
+		let (state, _f) = ProxyManager::instance()
+			.get_or_start(&cache, "media.mp4", 0, &p)
+			.unwrap();
 		assert_eq!(state, ProxyState::Missing);
 	}
 
@@ -595,10 +590,9 @@ mod tests {
 		let f = ProxyManager::get_proxy_filename(&cache, "media.mp4", 0, &p).unwrap();
 		std::fs::create_dir_all(Path::new(&f).parent().unwrap()).unwrap();
 		std::fs::write(&f, b"x").unwrap();
-		let (state, filename) =
-			ProxyManager::instance()
-				.get_or_start(&cache, "media.mp4", 0, &p)
-				.unwrap();
+		let (state, filename) = ProxyManager::instance()
+			.get_or_start(&cache, "media.mp4", 0, &p)
+			.unwrap();
 		assert_eq!(state, ProxyState::Ready);
 		assert_eq!(filename, f);
 	}
@@ -612,10 +606,9 @@ mod tests {
 		);
 		let cache = temp_subdir("start");
 		let p = ProxyManager::proxy_params_default();
-		let (state, _f) =
-			ProxyManager::instance()
-				.get_or_start(&cache, "media.mp4", 0, &p)
-				.unwrap();
+		let (state, _f) = ProxyManager::instance()
+			.get_or_start(&cache, "media.mp4", 0, &p)
+			.unwrap();
 		crate::task::set_task_submit_cb_extern(None, std::ptr::null_mut());
 		assert_eq!(state, ProxyState::Generating);
 	}
@@ -698,6 +691,9 @@ mod tests_extra {
 		// Empty filename -> Missing.
 		assert_eq!(ProxyManager::get_proxy_state(""), ProxyState::Missing);
 		// A path that does not exist -> Missing.
-		assert_eq!(ProxyManager::get_proxy_state("/nope/nope.mp4"), ProxyState::Missing);
+		assert_eq!(
+			ProxyManager::get_proxy_state("/nope/nope.mp4"),
+			ProxyState::Missing
+		);
 	}
 }

@@ -115,9 +115,15 @@ fn proxy_build_arguments_matches_cpp() {
 #[test]
 fn proxy_parse_progress_reports_fraction() {
 	// 5_000_000 us = 5 s of a 10 s source.
-	assert_eq!(ProxyTask::parse_progress("out_time_us=5000000", 10.0), Some(0.5));
+	assert_eq!(
+		ProxyTask::parse_progress("out_time_us=5000000", 10.0),
+		Some(0.5)
+	);
 	// ffmpeg's "ms" key is also microseconds (C++ reads both as us).
-	assert_eq!(ProxyTask::parse_progress("out_time_ms=5000000", 10.0), Some(0.5));
+	assert_eq!(
+		ProxyTask::parse_progress("out_time_ms=5000000", 10.0),
+		Some(0.5)
+	);
 }
 
 /// Given an out-of-range/invalid progress line, parse_progress clamps or
@@ -132,7 +138,10 @@ fn proxy_parse_progress_handles_invalid_lines() {
 	assert_eq!(ProxyTask::parse_progress("out_time_us=5000000", 0.0), None);
 	assert_eq!(ProxyTask::parse_progress("out_time_us=5000000", -1.0), None);
 	// Over-range clamps to 1.0.
-	assert_eq!(ProxyTask::parse_progress("out_time_us=20000000", 10.0), Some(1.0));
+	assert_eq!(
+		ProxyTask::parse_progress("out_time_us=20000000", 10.0),
+		Some(1.0)
+	);
 	// Garbage value -> no progress.
 	assert_eq!(ProxyTask::parse_progress("out_time_us=abc", 10.0), None);
 }

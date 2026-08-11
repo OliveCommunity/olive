@@ -17,9 +17,7 @@
 //! Handle plumbing contract tests (handle.rs).
 
 use oakaudio::error::{OAKAUDIO_E_FAILED, OAKAUDIO_E_INVALID, OAKAUDIO_OK};
-use oakaudio::handle::{
-	alive_count, get, guard, guard_handle, make_borrowed, make_owned, CHandle,
-};
+use oakaudio::handle::{alive_count, get, guard, guard_handle, make_borrowed, make_owned, CHandle};
 
 /// make_owned starts at refcount 1; get returns a typed view; dropping the
 /// handle decrements to 0.
@@ -97,9 +95,15 @@ fn null_and_guard_ok() {
 /// unwinding across the FFI boundary.
 #[test]
 fn guard_error_and_panic() {
-	assert_eq!(guard(|| Err(oakaudio::error::Error::Invalid)), OAKAUDIO_E_INVALID);
+	assert_eq!(
+		guard(|| Err(oakaudio::error::Error::Invalid)),
+		OAKAUDIO_E_INVALID
+	);
 	assert_eq!(guard(|| Err(oakaudio::error::Error::State)), -60002);
-	assert_eq!(guard(|| Err(oakaudio::error::Error::Failed("x".to_string()))), -60003);
+	assert_eq!(
+		guard(|| Err(oakaudio::error::Error::Failed("x".to_string()))),
+		-60003
+	);
 	assert_eq!(guard(|| Err(oakaudio::error::Error::NotFound)), -60004);
 	assert_eq!(guard(|| Err(oakaudio::error::Error::NoMem)), -60005);
 

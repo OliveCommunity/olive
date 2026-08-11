@@ -146,7 +146,9 @@ mod tests {
 
 	#[test]
 	fn ocio_error_converts_to_failed() {
-		let e = Error::from(ocio_rs::OcioError::InvalidInput("bad colorspace".to_string()));
+		let e = Error::from(ocio_rs::OcioError::InvalidInput(
+			"bad colorspace".to_string(),
+		));
 		assert!(matches!(e, Error::Failed(_)));
 		assert_eq!(e.code(), OAKCOMMON_E_FAILED);
 		assert!(format!("{e:?}").contains("bad colorspace"));

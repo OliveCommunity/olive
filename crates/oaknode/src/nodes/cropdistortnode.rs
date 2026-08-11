@@ -305,7 +305,10 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		drag_point: (0.0, 0.0),
 	};
 	let tl = Gizmo {
-		position_inputs: vec![(LEFT_INPUT.to_string(), -1, 0), (TOP_INPUT.to_string(), -1, 0)],
+		position_inputs: vec![
+			(LEFT_INPUT.to_string(), -1, 0),
+			(TOP_INPUT.to_string(), -1, 0),
+		],
 		drag_point: (0.0, 0.0),
 	};
 	let tc = Gizmo {
@@ -313,11 +316,17 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		drag_point: (0.0, 0.0),
 	};
 	let tr = Gizmo {
-		position_inputs: vec![(RIGHT_INPUT.to_string(), -1, 0), (TOP_INPUT.to_string(), -1, 0)],
+		position_inputs: vec![
+			(RIGHT_INPUT.to_string(), -1, 0),
+			(TOP_INPUT.to_string(), -1, 0),
+		],
 		drag_point: (0.0, 0.0),
 	};
 	let bl = Gizmo {
-		position_inputs: vec![(LEFT_INPUT.to_string(), -1, 0), (BOTTOM_INPUT.to_string(), -1, 0)],
+		position_inputs: vec![
+			(LEFT_INPUT.to_string(), -1, 0),
+			(BOTTOM_INPUT.to_string(), -1, 0),
+		],
 		drag_point: (0.0, 0.0),
 	};
 	let bc = Gizmo {
@@ -325,7 +334,10 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		drag_point: (0.0, 0.0),
 	};
 	let br = Gizmo {
-		position_inputs: vec![(RIGHT_INPUT.to_string(), -1, 0), (BOTTOM_INPUT.to_string(), -1, 0)],
+		position_inputs: vec![
+			(RIGHT_INPUT.to_string(), -1, 0),
+			(BOTTOM_INPUT.to_string(), -1, 0),
+		],
 		drag_point: (0.0, 0.0),
 	};
 	let cl = Gizmo {
@@ -374,7 +386,10 @@ fn create_crop_side_input(core: &mut NodeCore, id: &str) {
 	input.properties = vec![
 		("min".to_string(), crate::value::NodeValue::Float(0.0)),
 		("max".to_string(), crate::value::NodeValue::Float(1.0)),
-		("view".to_string(), crate::value::NodeValue::Text("percentage".into())),
+		(
+			"view".to_string(),
+			crate::value::NodeValue::Text("percentage".into()),
+		),
 	];
 	core.add_input(input);
 }

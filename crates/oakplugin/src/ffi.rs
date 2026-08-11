@@ -232,11 +232,7 @@ pub unsafe extern "C" fn oakplugin_host_plugin_label(
 
 /// 消息回调类型（host.h oakplugin_message_fn：
 /// `(type, message, userdata) -> OAKPLUGIN_MESSAGE_ANSWER_NO/YES`）。
-pub type MessageFn = unsafe extern "C" fn(
-	*const c_char,
-	*const c_char,
-	*mut c_void,
-) -> c_int;
+pub type MessageFn = unsafe extern "C" fn(*const c_char, *const c_char, *mut c_void) -> c_int;
 
 /// `oakplugin_host_set_message_handler`：facade 注册消息出口
 /// （message suite 的最终落点）。
@@ -257,7 +253,9 @@ pub(crate) type InstanceRef = std::sync::Arc<crate::handle::RefBox<crate::instan
 
 /// 实例句柄 → 实例的取回。
 fn instance_of(h: &CHandle) -> crate::error::Result<InstanceRef> {
-	unsafe { get::<InstanceRef>(h) }.cloned().ok_or(crate::error::Error::Invalid)
+	unsafe { get::<InstanceRef>(h) }
+		.cloned()
+		.ok_or(crate::error::Error::Invalid)
 }
 
 /// `oakplugin_instance_create`：按插件标识创建实例（计数 1；
@@ -295,10 +293,7 @@ pub unsafe extern "C" fn oakplugin_instance_free(instance: *mut CHandle) {
 /// node_value → ParamValue（按参数类型解释；字符串走专用函数）。
 /// pub(crate)：render 驱动的参数覆盖（apply_param_overrides 移植）
 /// 复用同一转换。
-pub(crate) fn node_value_to_param(
-	v: &OakNodeValue,
-	ofx_type: &str,
-) -> Option<ParamValue> {
+pub(crate) fn node_value_to_param(v: &OakNodeValue, ofx_type: &str) -> Option<ParamValue> {
 	match ofx_type {
 		crate::param::TYPE_DOUBLE => {
 			if v.r#type == node_value_type::FLOAT {
@@ -329,7 +324,11 @@ pub(crate) fn node_value_to_param(
 			}
 		}
 		crate::param::TYPE_INTEGER2D | crate::param::TYPE_INTEGER3D => {
-			let dim = if ofx_type == crate::param::TYPE_INTEGER2D { 2 } else { 3 };
+			let dim = if ofx_type == crate::param::TYPE_INTEGER2D {
+				2
+			} else {
+				3
+			};
 			let a = [v.f[0] as i32, v.f[1] as i32, v.f[2] as i32];
 			Some(ParamValue::Int(a, dim))
 		}
@@ -447,9 +446,13 @@ pub unsafe extern "C" fn oakplugin_instance_set_param(
 			.to_str()
 			.map_err(|_| crate::error::Error::Invalid)?;
 		let v = unsafe { &*value };
-		let p = inst.value.params.find(name).ok_or(crate::error::Error::NotFound)?;
-		let param_value = node_value_to_param(v, &p.def.ofx_type)
-			.ok_or(crate::error::Error::Invalid)?;
+		let p = inst
+			.value
+			.params
+			.find(name)
+			.ok_or(crate::error::Error::NotFound)?;
+		let param_value =
+			node_value_to_param(v, &p.def.ofx_type).ok_or(crate::error::Error::Invalid)?;
 		p.set_ofx(param_value);
 		Ok(())
 	})
@@ -470,7 +473,11 @@ pub unsafe extern "C" fn oakplugin_instance_get_param(
 		let name = unsafe { CStr::from_ptr(param) }
 			.to_str()
 			.map_err(|_| crate::error::Error::Invalid)?;
-		let p = inst.value.params.find(name).ok_or(crate::error::Error::NotFound)?;
+		let p = inst
+			.value
+			.params
+			.find(name)
+			.ok_or(crate::error::Error::NotFound)?;
 		let v = p.get();
 		let node = param_to_node_value(&v).ok_or(crate::error::Error::Invalid)?;
 		unsafe { *out = node };
@@ -494,7 +501,11 @@ pub unsafe extern "C" fn oakplugin_instance_set_param_string(
 			.to_str()
 			.map_err(|_| crate::error::Error::Invalid)?;
 		let v = unsafe { CStr::from_ptr(value) }.to_bytes();
-		let p = inst.value.params.find(name).ok_or(crate::error::Error::NotFound)?;
+		let p = inst
+			.value
+			.params
+			.find(name)
+			.ok_or(crate::error::Error::NotFound)?;
 		match p.def.ofx_type.as_str() {
 			crate::param::TYPE_STRING => {
 				p.set_ofx(ParamValue::String(CString::new(v).unwrap()));
@@ -525,7 +536,11 @@ pub unsafe extern "C" fn oakplugin_instance_get_param_string(
 		let name = unsafe { CStr::from_ptr(param) }
 			.to_str()
 			.map_err(|_| crate::error::Error::Invalid)?;
-		let p = inst.value.params.find(name).ok_or(crate::error::Error::NotFound)?;
+		let p = inst
+			.value
+			.params
+			.find(name)
+			.ok_or(crate::error::Error::NotFound)?;
 		match p.get() {
 			ParamValue::String(s) | ParamValue::StrChoice(s) => {
 				Ok(s.to_string_lossy().into_owned())
@@ -596,11 +611,23 @@ pub unsafe extern "C" fn oakplugin_instance_render(
 		let output = std::sync::Arc::new(crate::image::Image::allocate(
 			crate::image::BitDepth::Float,
 			components,
-			crate::instance::OfxRectD { x1: 0.0, y1: 0.0, x2: w, y2: h },
+			crate::instance::OfxRectD {
+				x1: 0.0,
+				y1: 0.0,
+				x2: w,
+				y2: h,
+			},
 		));
-		let window = crate::instance::OfxRectD { x1: 0.0, y1: 0.0, x2: w, y2: h };
+		let window = crate::instance::OfxRectD {
+			x1: 0.0,
+			y1: 0.0,
+			x2: w,
+			y2: h,
+		};
 		let scale = crate::instance::RenderScale { x: 1.0, y: 1.0 };
-		let render = inst.value.render(time_seconds, scale, window, output.clone());
+		let render = inst
+			.value
+			.render(time_seconds, scale, window, output.clone());
 		// 结果写回输出帧（行跨度感知；M11 §4 修复：phase 1 假设紧凑
 		// 行并泄漏 frame 句柄——统一走驱动装配路径）。
 		let result = match render {
@@ -671,7 +698,10 @@ pub unsafe extern "C" fn oakplugin_instance_render_begin_sequence(
 		if inst.value.cancel.load(std::sync::atomic::Ordering::Relaxed) {
 			return Err(crate::error::Error::Failed("已取消".into()));
 		}
-		let range = crate::instance::OfxRangeD { min: start_time, max: end_time };
+		let range = crate::instance::OfxRangeD {
+			min: start_time,
+			max: end_time,
+		};
 		inst.value.begin_sequence_render(range)
 	})
 }
@@ -687,7 +717,10 @@ pub unsafe extern "C" fn oakplugin_instance_render_end_sequence(
 ) -> c_int {
 	guard(|| {
 		let inst = instance_of(&instance)?;
-		let range = crate::instance::OfxRangeD { min: start_time, max: end_time };
+		let range = crate::instance::OfxRangeD {
+			min: start_time,
+			max: end_time,
+		};
 		inst.value.end_sequence_render(range)
 	})
 }
@@ -779,7 +812,11 @@ pub unsafe extern "C" fn oakplugin_instance_render_job(
 			effect_input_id,
 			inputs: job_inputs,
 			values: job_values,
-			renderer: if renderer.is_null() { None } else { Some(renderer) },
+			renderer: if renderer.is_null() {
+				None
+			} else {
+				Some(renderer)
+			},
 			clear_destination: clear_destination != 0,
 			interactive: interactive != 0,
 		};
@@ -1086,7 +1123,9 @@ pub unsafe extern "C" fn oakplugin_instance_clip_info(
 			None => return crate::error::OAKPLUGIN_E_NOT_FOUND,
 		};
 		unsafe { *optional = prop_int(&clip.props, crate::descriptor::CLIP_OPTIONAL) };
-		string_query(label, label_size, || Ok(prop_str(&clip.props, crate::param::PROP_LABEL)))
+		string_query(label, label_size, || {
+			Ok(prop_str(&clip.props, crate::param::PROP_LABEL))
+		})
 	})
 }
 

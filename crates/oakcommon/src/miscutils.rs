@@ -362,7 +362,13 @@ mod tests {
 		for linear in [0.001, 0.01, 0.1, 0.5, 0.9, 0.99] {
 			let log = decibel_linear_to_logarithmic(linear).unwrap();
 			let back = decibel_logarithmic_to_linear(log).unwrap();
-			assert!((back - linear).abs() < 1e-6, "linear {} -> {} -> {}", linear, log, back);
+			assert!(
+				(back - linear).abs() < 1e-6,
+				"linear {} -> {} -> {}",
+				linear,
+				log,
+				back
+			);
 		}
 		// db <-> logarithmic round trip. Only non-positive db are reversible:
 		// a positive db pushes the logarithmic position past 0.99, which the

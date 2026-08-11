@@ -88,11 +88,7 @@ impl RenderEvalHooks {
 	}
 
 	/// C++ process_video_footage: decode + upload into `destination`.
-	fn process_video_footage(
-		&mut self,
-		destination: &mut Texture,
-		spec: &JobSpec,
-	) -> Result<()> {
+	fn process_video_footage(&mut self, destination: &mut Texture, spec: &JobSpec) -> Result<()> {
 		let JobSpec::Footage { decoder_id } = spec else {
 			return Err(Error::Invalid);
 		};
@@ -122,7 +118,11 @@ impl RenderEvalHooks {
 	}
 
 	/// C++ process_color_transform.
-	fn process_color_transform(&mut self, _destination: &mut Texture, spec: &JobSpec) -> Result<()> {
+	fn process_color_transform(
+		&mut self,
+		_destination: &mut Texture,
+		spec: &JobSpec,
+	) -> Result<()> {
 		let JobSpec::ColorTransform { processor } = spec else {
 			return Err(Error::Invalid);
 		};
@@ -265,19 +265,29 @@ mod tests {
 				}
 			)
 			.is_err());
-		assert!(hooks.process_shader(&mut dest, &JobSpec::Shader {
-			frag: "f".into(),
-			vert: "v".into()
-		}).is_err());
-		assert!(hooks.process_video_cache_job(&JobSpec::Cache { path: "p".into() }).is_err());
+		assert!(hooks
+			.process_shader(
+				&mut dest,
+				&JobSpec::Shader {
+					frag: "f".into(),
+					vert: "v".into()
+				}
+			)
+			.is_err());
+		assert!(hooks
+			.process_video_cache_job(&JobSpec::Cache { path: "p".into() })
+			.is_err());
 		assert!(hooks.process_audio_footage(&JobSpec::Sample).is_err());
-		assert!(hooks.process_plugin_job(Texture::dummy(), &JobSpec::Plugin { instance: 1 }).is_err());
+		assert!(hooks
+			.process_plugin_job(Texture::dummy(), &JobSpec::Plugin { instance: 1 })
+			.is_err());
 		assert!(hooks
 			.process_color_transform(&mut dest, &JobSpec::ColorTransform { processor: 1 })
 			.is_err());
 		// Wrong spec kinds are invalid, not deferred.
 		assert_eq!(
-			hooks.process_shader(&mut dest, &JobSpec::Generate)
+			hooks
+				.process_shader(&mut dest, &JobSpec::Generate)
 				.unwrap_err()
 				.code(),
 			Error::Invalid.code()
@@ -287,11 +297,15 @@ mod tests {
 	#[test]
 	fn generation_fills_cpu_texture() {
 		let mut hooks = RenderEvalHooks::new();
-		let mut tex = Texture::wrap_frame(generate_frame(Rational::new(1, 1), (8, 8), PixelFormat::F32).unwrap());
+		let mut tex = Texture::wrap_frame(
+			generate_frame(Rational::new(1, 1), (8, 8), PixelFormat::F32).unwrap(),
+		);
 		hooks
 			.process_frame_generation(&mut tex, Rational::new(3, 1))
 			.unwrap();
-		let Texture::Cpu(f) = &tex else { unreachable!() };
+		let Texture::Cpu(f) = &tex else {
+			unreachable!()
+		};
 		assert_eq!(f.timestamp, Rational::new(3, 1));
 		assert!(f.data.iter().all(|&b| b == 0));
 		// GPU destination rejected.
@@ -303,7 +317,9 @@ mod tests {
 			format: PixelFormat::F32,
 			ctx: Arc::new(UnusedCtx),
 		};
-		assert!(hooks.process_frame_generation(&mut gpu, Rational::new(1, 1)).is_err());
+		assert!(hooks
+			.process_frame_generation(&mut gpu, Rational::new(1, 1))
+			.is_err());
 	}
 
 	/// Stand-in context for the "GPU destination" test (never used for

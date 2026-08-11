@@ -22,117 +22,112 @@ use crate::rational::{self, Rational};
 /// Half-open time range [in, out) — mirrors `olive::core::TimeRange`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default)]
 pub struct TimeRange {
-    in_: Rational,
-    out: Rational,
+	in_: Rational,
+	out: Rational,
 }
 
 impl TimeRange {
-    /// Construct and normalize (C++ ctor calls `normalize()`: if `out <
-    /// in` the two are swapped). The doc comment on the skeleton claimed
-    /// normalization is not performed; matching C++ takes precedence.
-    pub fn new(in_: Rational, out: Rational) -> TimeRange {
-        let mut r = TimeRange { in_, out };
-        r.normalize();
-        r
-    }
+	/// Construct and normalize (C++ ctor calls `normalize()`: if `out <
+	/// in` the two are swapped). The doc comment on the skeleton claimed
+	/// normalization is not performed; matching C++ takes precedence.
+	pub fn new(in_: Rational, out: Rational) -> TimeRange {
+		let mut r = TimeRange { in_, out };
+		r.normalize();
+		r
+	}
 
-    /// Inclusive start.
-    pub fn in_(&self) -> Rational {
-        self.in_
-    }
+	/// Inclusive start.
+	pub fn in_(&self) -> Rational {
+		self.in_
+	}
 
-    /// Exclusive end.
-    pub fn out(&self) -> Rational {
-        self.out
-    }
+	/// Exclusive end.
+	pub fn out(&self) -> Rational {
+		self.out
+	}
 
-    /// `out - in`. When either endpoint is a `RATIONAL_MIN/MAX`
-    /// sentinel the subtraction propagates NaN, matching C++ which
-    /// stores the same sentinel value for `length_`.
-    pub fn length(&self) -> Rational {
-        self.out - self.in_
-    }
+	/// `out - in`. When either endpoint is a `RATIONAL_MIN/MAX`
+	/// sentinel the subtraction propagates NaN, matching C++ which
+	/// stores the same sentinel value for `length_`.
+	pub fn length(&self) -> Rational {
+		self.out - self.in_
+	}
 
-    /// True when `t` lies in [in, out).
-    pub fn contains(&self, t: Rational) -> bool {
-        t >= self.in_ && t < self.out
-    }
+	/// True when `t` lies in [in, out).
+	pub fn contains(&self, t: Rational) -> bool {
+		t >= self.in_ && t < self.out
+	}
 
-    /// True when `self` contains `compare`, honoring inclusivity of the
-    /// in/out edges (C++ `TimeRange::contains(TimeRange)`).
-    fn contains_range(
-        &self,
-        compare: &TimeRange,
-        in_inclusive: bool,
-        out_inclusive: bool,
-    ) -> bool {
-        let contains_in = if in_inclusive {
-            compare.in_ >= self.in_
-        } else {
-            compare.in_ > self.in_
-        };
-        let contains_out = if out_inclusive {
-            compare.out <= self.out
-        } else {
-            compare.out < self.out
-        };
-        contains_in && contains_out
-    }
+	/// True when `self` contains `compare`, honoring inclusivity of the
+	/// in/out edges (C++ `TimeRange::contains(TimeRange)`).
+	fn contains_range(&self, compare: &TimeRange, in_inclusive: bool, out_inclusive: bool) -> bool {
+		let contains_in = if in_inclusive {
+			compare.in_ >= self.in_
+		} else {
+			compare.in_ > self.in_
+		};
+		let contains_out = if out_inclusive {
+			compare.out <= self.out
+		} else {
+			compare.out < self.out
+		};
+		contains_in && contains_out
+	}
 
-    /// True when `self` and `a` overlap, honoring edge inclusivity
-    /// (C++ `TimeRange::overlaps_with`).
-    fn overlaps_with(&self, a: &TimeRange, in_inclusive: bool, out_inclusive: bool) -> bool {
-        let does_not_overlap_in = if in_inclusive {
-            a.out < self.in_
-        } else {
-            a.out <= self.in_
-        };
-        let does_not_overlap_out = if out_inclusive {
-            a.in_ > self.out
-        } else {
-            a.in_ >= self.out
-        };
-        !does_not_overlap_in && !does_not_overlap_out
-    }
+	/// True when `self` and `a` overlap, honoring edge inclusivity
+	/// (C++ `TimeRange::overlaps_with`).
+	fn overlaps_with(&self, a: &TimeRange, in_inclusive: bool, out_inclusive: bool) -> bool {
+		let does_not_overlap_in = if in_inclusive {
+			a.out < self.in_
+		} else {
+			a.out <= self.in_
+		};
+		let does_not_overlap_out = if out_inclusive {
+			a.in_ > self.out
+		} else {
+			a.in_ >= self.out
+		};
+		!does_not_overlap_in && !does_not_overlap_out
+	}
 
-    /// Intersection; empty when disjoint (C++ `intersected`).
-    ///
-    /// Note: C++ normalizes the result, so disjoint inputs produce a
-    /// swapped (in > out) range rather than an "empty" marker; we match
-    /// that bit-for-bit.
-    pub fn intersected(&self, other: &TimeRange) -> TimeRange {
-        TimeRange::new(
-            std::cmp::max(self.in_, other.in_),
-            std::cmp::min(self.out, other.out),
-        )
-    }
+	/// Intersection; empty when disjoint (C++ `intersected`).
+	///
+	/// Note: C++ normalizes the result, so disjoint inputs produce a
+	/// swapped (in > out) range rather than an "empty" marker; we match
+	/// that bit-for-bit.
+	pub fn intersected(&self, other: &TimeRange) -> TimeRange {
+		TimeRange::new(
+			std::cmp::max(self.in_, other.in_),
+			std::cmp::min(self.out, other.out),
+		)
+	}
 
-    /// Union that also merges touching ranges (C++ `combined`).
-    pub fn combined(&self, other: &TimeRange) -> TimeRange {
-        TimeRange::new(
-            std::cmp::min(self.in_, other.in_),
-            std::cmp::max(self.out, other.out),
-        )
-    }
+	/// Union that also merges touching ranges (C++ `combined`).
+	pub fn combined(&self, other: &TimeRange) -> TimeRange {
+		TimeRange::new(
+			std::cmp::min(self.in_, other.in_),
+			std::cmp::max(self.out, other.out),
+		)
+	}
 
-    /// C++ `set_in` + `normalize`.
-    fn set_in(&mut self, in_: Rational) {
-        self.in_ = in_;
-        self.normalize();
-    }
+	/// C++ `set_in` + `normalize`.
+	fn set_in(&mut self, in_: Rational) {
+		self.in_ = in_;
+		self.normalize();
+	}
 
-    /// C++ `set_out` + `normalize`.
-    fn set_out(&mut self, out: Rational) {
-        self.out = out;
-        self.normalize();
-    }
+	/// C++ `set_out` + `normalize`.
+	fn set_out(&mut self, out: Rational) {
+		self.out = out;
+		self.normalize();
+	}
 
-    /// C++ `normalize`: swap if `out < in`.
-    fn normalize(&mut self) {
-        if self.out < self.in_ {
-            std::mem::swap(&mut self.out, &mut self.in_);
-        }
-    }
+	/// C++ `normalize`: swap if `out < in`.
+	fn normalize(&mut self) {
+		if self.out < self.in_ {
+			std::mem::swap(&mut self.out, &mut self.in_);
+		}
+	}
 }
 
 /// Normalized (sorted, non-overlapping) list of ranges — mirrors
@@ -140,115 +135,115 @@ impl TimeRange {
 /// subtraction semantics.
 #[derive(Clone, Debug, Default)]
 pub struct TimeRangeList {
-    ranges: Vec<TimeRange>,
+	ranges: Vec<TimeRange>,
 }
 
 impl TimeRangeList {
-    /// Empty list.
-    pub fn new() -> Self {
-        TimeRangeList { ranges: Vec::new() }
-    }
+	/// Empty list.
+	pub fn new() -> Self {
+		TimeRangeList { ranges: Vec::new() }
+	}
 
-    /// True when any element fully contains `range` (C++
-    /// `TimeRangeList::contains`, inclusive edges).
-    fn contains_range(&self, range: &TimeRange) -> bool {
-        self.ranges
-            .iter()
-            .any(|r| r.contains_range(range, true, true))
-    }
+	/// True when any element fully contains `range` (C++
+	/// `TimeRangeList::contains`, inclusive edges).
+	fn contains_range(&self, range: &TimeRange) -> bool {
+		self.ranges
+			.iter()
+			.any(|r| r.contains_range(range, true, true))
+	}
 
-    /// Insert a range, merging overlaps and touching neighbors
-    /// (C++ `insert(TimeRange)`).
-    pub fn insert(&mut self, range: TimeRange) {
-        // If the list already fully contains this range, nothing to do.
-        if self.contains_range(&range) {
-            return;
-        }
+	/// Insert a range, merging overlaps and touching neighbors
+	/// (C++ `insert(TimeRange)`).
+	pub fn insert(&mut self, range: TimeRange) {
+		// If the list already fully contains this range, nothing to do.
+		if self.contains_range(&range) {
+			return;
+		}
 
-        let mut range = range;
-        let mut i = 0;
-        while i < self.ranges.len() {
-            let compare = self.ranges[i];
-            if compare.overlaps_with(&range, true, true) {
-                range = compare.combined(&range);
-                self.ranges.remove(i);
-            } else {
-                i += 1;
-            }
-        }
+		let mut range = range;
+		let mut i = 0;
+		while i < self.ranges.len() {
+			let compare = self.ranges[i];
+			if compare.overlaps_with(&range, true, true) {
+				range = compare.combined(&range);
+				self.ranges.remove(i);
+			} else {
+				i += 1;
+			}
+		}
 
-        self.ranges.push(range);
-    }
+		self.ranges.push(range);
+	}
 
-    /// Subtract a range (C++ `remove`, via `util_remove`).
-    pub fn remove(&mut self, range: TimeRange) {
-        let mut additions: Vec<TimeRange> = Vec::new();
+	/// Subtract a range (C++ `remove`, via `util_remove`).
+	pub fn remove(&mut self, range: TimeRange) {
+		let mut additions: Vec<TimeRange> = Vec::new();
 
-        let mut i = 0;
-        while i < self.ranges.len() {
-            let compare = self.ranges[i];
+		let mut i = 0;
+		while i < self.ranges.len() {
+			let compare = self.ranges[i];
 
-            if range.contains_range(&compare, true, true) {
-                // The removal range entirely encompasses this element.
-                self.ranges.remove(i);
-            } else if compare.contains_range(&range, false, false) {
-                // The removal range is strictly inside this element:
-                // split it into two.
-                let mut new_range = compare;
-                new_range.set_in(range.out);
-                let mut trimmed = compare;
-                trimmed.set_out(range.in_);
-                self.ranges[i] = trimmed;
-                additions.push(new_range);
-                break;
-            } else {
-                if compare.in_ < range.in_ && compare.out > range.in_ {
-                    // This element's out overlaps the range's in: trim it.
-                    self.ranges[i].set_out(range.in_);
-                } else if compare.in_ < range.out && compare.out > range.out {
-                    // This element's in overlaps the range's out: trim it.
-                    self.ranges[i].set_in(range.out);
-                }
-                i += 1;
-            }
-        }
+			if range.contains_range(&compare, true, true) {
+				// The removal range entirely encompasses this element.
+				self.ranges.remove(i);
+			} else if compare.contains_range(&range, false, false) {
+				// The removal range is strictly inside this element:
+				// split it into two.
+				let mut new_range = compare;
+				new_range.set_in(range.out);
+				let mut trimmed = compare;
+				trimmed.set_out(range.in_);
+				self.ranges[i] = trimmed;
+				additions.push(new_range);
+				break;
+			} else {
+				if compare.in_ < range.in_ && compare.out > range.in_ {
+					// This element's out overlaps the range's in: trim it.
+					self.ranges[i].set_out(range.in_);
+				} else if compare.in_ < range.out && compare.out > range.out {
+					// This element's in overlaps the range's out: trim it.
+					self.ranges[i].set_in(range.out);
+				}
+				i += 1;
+			}
+		}
 
-        self.ranges.extend(additions);
-    }
+		self.ranges.extend(additions);
+	}
 
-    /// Sorted ranges view.
-    pub fn ranges(&self) -> &[TimeRange] {
-        &self.ranges
-    }
+	/// Sorted ranges view.
+	pub fn ranges(&self) -> &[TimeRange] {
+		&self.ranges
+	}
 
-    /// True when the list has no ranges.
-    pub fn is_empty(&self) -> bool {
-        self.ranges.is_empty()
-    }
+	/// True when the list has no ranges.
+	pub fn is_empty(&self) -> bool {
+		self.ranges.is_empty()
+	}
 
-    /// Total covered duration (sum of each range's length).
-    pub fn total_length(&self) -> Rational {
-        let mut total = Rational::new(0, 1);
-        for r in &self.ranges {
-            total = total + r.length();
-        }
-        total
-    }
+	/// Total covered duration (sum of each range's length).
+	pub fn total_length(&self) -> Rational {
+		let mut total = Rational::new(0, 1);
+		for r in &self.ranges {
+			total = total + r.length();
+		}
+		total
+	}
 
-    /// First time covered by any range (C++ `in()` on the first range);
-    /// null rational when empty.
-    pub fn first(&self) -> Rational {
-        match self.ranges.first() {
-            Some(r) => r.in_(),
-            None => Rational::NULL,
-        }
-    }
+	/// First time covered by any range (C++ `in()` on the first range);
+	/// null rational when empty.
+	pub fn first(&self) -> Rational {
+		match self.ranges.first() {
+			Some(r) => r.in_(),
+			None => Rational::NULL,
+		}
+	}
 
-    /// Frame-accurate iteration helper: snap a time to the containing
-    /// frame grid of `timebase` (C++ TimeRangeListFrameIterator snap,
-    /// `k_floor` rounding).
-    pub fn snap(&self, time: Rational, timebase: Rational) -> Rational {
-        let _ = self; // self carries no state relevant to a single snap
-        rational::snap_time_to_timebase(time, timebase)
-    }
+	/// Frame-accurate iteration helper: snap a time to the containing
+	/// frame grid of `timebase` (C++ TimeRangeListFrameIterator snap,
+	/// `k_floor` rounding).
+	pub fn snap(&self, time: Rational, timebase: Rational) -> Rational {
+		let _ = self; // self carries no state relevant to a single snap
+		rational::snap_time_to_timebase(time, timebase)
+	}
 }

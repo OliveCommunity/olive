@@ -104,12 +104,13 @@ impl CommandLineParser {
 		description: &str,
 		required: bool,
 	) -> Result<()> {
-		self.positionals.push(Box::new(CommandLinePositionalArgument {
-			name: name.to_string(),
-			description: description.to_string(),
-			required,
-			setting: None,
-		}));
+		self.positionals
+			.push(Box::new(CommandLinePositionalArgument {
+				name: name.to_string(),
+				description: description.to_string(),
+				required,
+				setting: None,
+			}));
 		Ok(())
 	}
 
@@ -406,11 +407,14 @@ mod tests {
 		let mut p = CommandLineParser::new();
 		p.add_option(&[cstr("h"), cstr("help")], "show help", false, "", false)
 			.unwrap();
-		p.add_option(&[cstr("o")], "output", true, "FILE", false).unwrap();
+		p.add_option(&[cstr("o")], "output", true, "FILE", false)
+			.unwrap();
 		p.add_option(&[cstr("secret")], "hidden opt", false, "", true)
 			.unwrap();
-		p.add_positional_argument("input", "input file", true).unwrap();
-		p.add_positional_argument("output", "output file", false).unwrap();
+		p.add_positional_argument("input", "input file", true)
+			.unwrap();
+		p.add_positional_argument("output", "output file", false)
+			.unwrap();
 
 		assert_eq!(p.option_count(), 3);
 		assert_eq!(p.positional_count(), 2);
@@ -566,12 +570,20 @@ mod tests {
 	fn print_help_exact() {
 		let mut p = CommandLineParser::new();
 		p.set_app_info("oak", "1.2.3");
-		p.add_option(&[cstr("h"), cstr("help")], "Show this help message.", false, "", false)
-			.unwrap();
+		p.add_option(
+			&[cstr("h"), cstr("help")],
+			"Show this help message.",
+			false,
+			"",
+			false,
+		)
+		.unwrap();
 		p.add_option(&[cstr("o")], "Output file.", true, "FILE", true)
 			.unwrap(); // hidden, omitted
-		p.add_option(&[cstr("t")], "Time.", true, "SEC", false).unwrap();
-		p.add_positional_argument("input", "Input file", true).unwrap();
+		p.add_option(&[cstr("t")], "Time.", true, "SEC", false)
+			.unwrap();
+		p.add_positional_argument("input", "Input file", true)
+			.unwrap();
 
 		let mut buf = Vec::new();
 		p.write_help(&mut buf, "/usr/local/bin/oak").unwrap();
@@ -789,7 +801,8 @@ Usage: oak [options] [input]
 		let mut p = CommandLineParser::new();
 		p.add_option(&[cstr("f")], "", false, "", false).unwrap();
 		p.add_option(&[cstr("o")], "", true, "F", false).unwrap();
-		p.process(&[cstr("p"), cstr("-f"), cstr("-o"), cstr("v")]).unwrap();
+		p.process(&[cstr("p"), cstr("-f"), cstr("-o"), cstr("v")])
+			.unwrap();
 		assert!(p.option(0).unwrap().is_set());
 		assert_eq!(p.option(0).unwrap().get_setting().unwrap(), "");
 		assert!(p.option(1).unwrap().is_set());
@@ -801,7 +814,8 @@ Usage: oak [options] [input]
 	#[test]
 	fn print_help_smoke() {
 		let mut p = CommandLineParser::new();
-		p.add_option(&[cstr("h")], "help", false, "", false).unwrap();
+		p.add_option(&[cstr("h")], "help", false, "", false)
+			.unwrap();
 		p.print_help("oak").unwrap();
 	}
 
@@ -834,14 +848,19 @@ Usage: oak [options] [input]
 		let mut buf = Vec::new();
 		p.write_help(&mut buf, "oak").unwrap();
 		let text = String::from_utf8(buf).unwrap();
-		assert!(text.contains("Usage: oak [options] [in] [out]\n"), "{}", text);
+		assert!(
+			text.contains("Usage: oak [options] [in] [out]\n"),
+			"{}",
+			text
+		);
 	}
 
 	/// Hidden options are omitted from help but still parse.
 	#[test]
 	fn hidden_option_parses_but_hidden_from_help() {
 		let mut p = CommandLineParser::new();
-		p.add_option(&[cstr("secret")], "shh", false, "", true).unwrap();
+		p.add_option(&[cstr("secret")], "shh", false, "", true)
+			.unwrap();
 		let mut buf = Vec::new();
 		p.write_help(&mut buf, "oak").unwrap();
 		let text = String::from_utf8(buf).unwrap();

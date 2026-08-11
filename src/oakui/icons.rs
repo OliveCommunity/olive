@@ -52,82 +52,86 @@ pub const ICON_FF: &str = "ff";
 /// The theme-dependent filesystem path of an icon (`assets/icons/{dark,light}`
 /// under the crate root). Absolute, so it works from any working directory.
 pub fn icon_path(name: &str, cx: &App) -> PathBuf {
-    let theme = gpui_widgets::theme::current_theme(cx);
-    let family = if theme.name == "Olive Dark" { "dark" } else { "light" };
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("assets/icons")
-        .join(family)
-        .join(format!("{name}.png"))
+	let theme = gpui_widgets::theme::current_theme(cx);
+	let family = if theme.name == "Olive Dark" {
+		"dark"
+	} else {
+		"light"
+	};
+	PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+		.join("assets/icons")
+		.join(family)
+		.join(format!("{name}.png"))
 }
 
 /// Registers the app's icon resolver, so widget-crate consumers (the viewer
 /// transport bar) resolve the same theme-aware paths. Call at startup before
 /// any window renders; re-registering after a theme switch is harmless.
 pub fn init(cx: &mut App) {
-    gpui_widgets::icons::set_resolver(
-        std::sync::Arc::new(|name, cx| Some(icon_path(name, cx))),
-        cx,
-    );
+	gpui_widgets::icons::set_resolver(
+		std::sync::Arc::new(|name, cx| Some(icon_path(name, cx))),
+		cx,
+	);
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    /// Every icon name resolves to an existing file for both themes — a
-    /// missing PNG would render as a blank toolbar button.
-    #[test]
-    fn every_icon_file_exists_for_both_themes() {
-        for name in [
-            ICON_ARROW,
-            ICON_RAZOR,
-            ICON_RIPPLE,
-            ICON_SLIP,
-            ICON_ROLLING,
-            ICON_ZOOM,
-            ICON_ZOOM_IN,
-            ICON_ZOOM_OUT,
-            ICON_SLIDE,
-            ICON_TRACK_SELECT,
-            ICON_SNAP,
-            ICON_PLAY,
-            ICON_PAUSE,
-            ICON_PREV,
-            ICON_NEXT,
-            ICON_REW,
-            ICON_FF,
-        ] {
-            for family in ["dark", "light"] {
-                let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                    .join("assets/icons")
-                    .join(family)
-                    .join(format!("{name}.png"));
-                assert!(
-                    path.exists(),
-                    "missing icon asset {path:?} (referenced as {name})"
-                );
-            }
-        }
-    }
+	/// Every icon name resolves to an existing file for both themes — a
+	/// missing PNG would render as a blank toolbar button.
+	#[test]
+	fn every_icon_file_exists_for_both_themes() {
+		for name in [
+			ICON_ARROW,
+			ICON_RAZOR,
+			ICON_RIPPLE,
+			ICON_SLIP,
+			ICON_ROLLING,
+			ICON_ZOOM,
+			ICON_ZOOM_IN,
+			ICON_ZOOM_OUT,
+			ICON_SLIDE,
+			ICON_TRACK_SELECT,
+			ICON_SNAP,
+			ICON_PLAY,
+			ICON_PAUSE,
+			ICON_PREV,
+			ICON_NEXT,
+			ICON_REW,
+			ICON_FF,
+		] {
+			for family in ["dark", "light"] {
+				let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+					.join("assets/icons")
+					.join(family)
+					.join(format!("{name}.png"));
+				assert!(
+					path.exists(),
+					"missing icon asset {path:?} (referenced as {name})"
+				);
+			}
+		}
+	}
 
-    /// The theme-aware path picks the dark family for the default dark theme
-    /// and the light family once a light theme is applied.
-    #[gpui::test]
-    fn icon_path_follows_the_active_theme(cx: &mut gpui::TestAppContext) {
-        cx.update(|app| {
-            gpui_widgets::theme::apply_theme(app, &gpui_widgets::theme::OakTheme::olive_dark());
-            let dark = icon_path(ICON_PLAY, app);
-            assert!(
-                dark.ends_with("dark/play.png"),
-                "dark theme → dark family, got {dark:?}"
-            );
+	/// The theme-aware path picks the dark family for the default dark theme
+	/// and the light family once a light theme is applied.
+	#[gpui::test]
+	fn icon_path_follows_the_active_theme(cx: &mut gpui::TestAppContext) {
+		cx.update(|app| {
+			gpui_widgets::theme::apply_theme(app, &gpui_widgets::theme::OakTheme::olive_dark());
+			let dark = icon_path(ICON_PLAY, app);
+			assert!(
+				dark.ends_with("dark/play.png"),
+				"dark theme → dark family, got {dark:?}"
+			);
 
-            gpui_widgets::theme::apply_theme(app, &gpui_widgets::theme::OakTheme::olive_light());
-            let light = icon_path(ICON_PLAY, app);
-            assert!(
-                light.ends_with("light/play.png"),
-                "light theme → light family, got {light:?}"
-            );
-        });
-    }
+			gpui_widgets::theme::apply_theme(app, &gpui_widgets::theme::OakTheme::olive_light());
+			let light = icon_path(ICON_PLAY, app);
+			assert!(
+				light.ends_with("light/play.png"),
+				"light theme → light family, got {light:?}"
+			);
+		});
+	}
 }

@@ -191,7 +191,11 @@ impl TrackBehavior {
 
 	/// Block strictly containing `time` (in < time < out; C++
 	/// `block_containing_time`).
-	pub fn block_containing_time(&self, time: oakcore_rs::Rational, blocks: &dyn BlockRange) -> Option<NodeId> {
+	pub fn block_containing_time(
+		&self,
+		time: oakcore_rs::Rational,
+		blocks: &dyn BlockRange,
+	) -> Option<NodeId> {
 		self.blocks
 			.iter()
 			.find(|b| blocks.contains_strict(**b, time))
@@ -200,7 +204,11 @@ impl TrackBehavior {
 
 	/// Block visible at `time` (in <= time < out; C++
 	/// `visible_block_at_time`).
-	pub fn visible_block_at_time(&self, time: oakcore_rs::Rational, blocks: &dyn BlockRange) -> Option<NodeId> {
+	pub fn visible_block_at_time(
+		&self,
+		time: oakcore_rs::Rational,
+		blocks: &dyn BlockRange,
+	) -> Option<NodeId> {
 		self.blocks
 			.iter()
 			.find(|b| blocks.contains(**b, time))
@@ -210,10 +218,7 @@ impl TrackBehavior {
 	/// Whether the [in, out) range holds no block or only a gap (C++
 	/// `is_range_free`).
 	pub fn is_range_free(&self, range: oakcore_rs::TimeRange, blocks: &dyn BlockRange) -> bool {
-		!self
-			.blocks
-			.iter()
-			.any(|b| blocks.overlaps(*b, range))
+		!self.blocks.iter().any(|b| blocks.overlaps(*b, range))
 	}
 
 	/// Total length (end of the last block; C++ `Track::get_length`).

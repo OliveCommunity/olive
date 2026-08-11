@@ -139,12 +139,12 @@ pub fn create_from_params(params: &EncodingParams) -> Option<Arc<dyn Encoder>> {
 		}
 	}
 	match encoder_type_from_format(params.format) {
-		Some(EncoderType::FFmpeg) => {
-			Some(Arc::new(crate::ffmpeg::FFmpegEncoder::with_params(params.clone())))
-		}
-		Some(EncoderType::OIIO) => {
-			Some(Arc::new(crate::oiio::OIIOEncoder { params: params.clone() }))
-		}
+		Some(EncoderType::FFmpeg) => Some(Arc::new(crate::ffmpeg::FFmpegEncoder::with_params(
+			params.clone(),
+		))),
+		Some(EncoderType::OIIO) => Some(Arc::new(crate::oiio::OIIOEncoder {
+			params: params.clone(),
+		})),
 		None => None,
 	}
 }
@@ -230,9 +230,7 @@ pub fn filename_remove_digit_placeholder(filename: &str) -> String {
 	while i < bytes.len() {
 		// A separator is consumed only when a placeholder follows it.
 		let ph_start = match bytes[i] {
-			b'-' | b'.' | b' ' | b'_' if placeholder_range(bytes, i + 1).is_some() => {
-				i + 1
-			}
+			b'-' | b'.' | b' ' | b'_' if placeholder_range(bytes, i + 1).is_some() => i + 1,
 			_ => i,
 		};
 		match placeholder_range(bytes, ph_start) {
@@ -289,16 +287,25 @@ mod tests {
 		assert!(!filename_contains_digit_placeholder("out[].png"));
 
 		// digit count: number of '#' in the first placeholder.
-		assert_eq!(image_sequence_placeholder_digit_count("/tmp/out_[#####].png"), 5);
+		assert_eq!(
+			image_sequence_placeholder_digit_count("/tmp/out_[#####].png"),
+			5
+		);
 		assert_eq!(image_sequence_placeholder_digit_count("out[#].png"), 1);
 		assert_eq!(image_sequence_placeholder_digit_count("a[##]b[####]c"), 2);
 		assert_eq!(image_sequence_placeholder_digit_count("/tmp/out.png"), 0);
 
 		// remove: separator char before the placeholder goes with it.
-		assert_eq!(filename_remove_digit_placeholder("/tmp/out_[#####].png"), "/tmp/out.png");
+		assert_eq!(
+			filename_remove_digit_placeholder("/tmp/out_[#####].png"),
+			"/tmp/out.png"
+		);
 		assert_eq!(filename_remove_digit_placeholder("out[###].png"), "out.png");
 		assert_eq!(filename_remove_digit_placeholder("a_[#]b_[###]c"), "abc");
-		assert_eq!(filename_remove_digit_placeholder("/tmp/out.png"), "/tmp/out.png");
+		assert_eq!(
+			filename_remove_digit_placeholder("/tmp/out.png"),
+			"/tmp/out.png"
+		);
 	}
 
 	struct UnimplementedDummy;

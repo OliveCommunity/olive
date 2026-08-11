@@ -45,9 +45,11 @@ pub type OakUndoCommand = CHandle;
 /// Mirror of `OakUndoCommandVtable` (`include/undo/undocommand.h`).
 pub type OakUndoCommandVtable = oakundo::undocommand::OakUndoCommandVtable;
 
-
 /// Direct call into the `oakundo` crate (single-lib unification).
-pub fn oakundo_command_init(vtable: *const OakUndoCommandVtable, userdata: *mut c_void) -> OakUndoCommand {
+pub fn oakundo_command_init(
+	vtable: *const OakUndoCommandVtable,
+	userdata: *mut c_void,
+) -> OakUndoCommand {
 	unsafe { oakundo::ffi::command::oakundo_command_init(vtable, userdata) }
 }
 
@@ -67,7 +69,11 @@ pub fn oakundo_command_multi_child_count(multi: OakUndoCommand, out_count: *mut 
 }
 
 /// Direct call into the `oakundo` crate (single-lib unification).
-pub fn oakundo_command_multi_child(multi: OakUndoCommand, index: c_int, out_child: *mut OakUndoCommand) -> c_int {
+pub fn oakundo_command_multi_child(
+	multi: OakUndoCommand,
+	index: c_int,
+	out_child: *mut OakUndoCommand,
+) -> c_int {
 	unsafe { oakundo::ffi::command::oakundo_command_multi_child(multi, index, out_child) }
 }
 
@@ -85,4 +91,3 @@ pub fn oakundo_command_undo_now(command: OakUndoCommand) -> c_int {
 pub fn oakundo_command_free(command: *mut OakUndoCommand) {
 	unsafe { oakundo::ffi::command::oakundo_command_free(command) }
 }
-

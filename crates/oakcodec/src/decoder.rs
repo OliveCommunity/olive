@@ -254,10 +254,7 @@ pub trait Decoder: Send + Sync {
 	fn stream(&self) -> CodecStream;
 
 	/// Retrieve a video frame into CPU memory.
-	fn retrieve_video_frame(
-		&self,
-		p: &RetrieveVideoParams,
-	) -> crate::error::Result<Arc<Frame>>;
+	fn retrieve_video_frame(&self, p: &RetrieveVideoParams) -> crate::error::Result<Arc<Frame>>;
 
 	/// Retrieve a video frame as a render texture (owned by caller).
 	fn retrieve_video(&self, p: &RetrieveVideoParams) -> crate::error::Result<OakRenderTexture>;
@@ -335,29 +332,31 @@ impl Decoder for UnimplementedDecoder {
 	}
 
 	fn open(&self, _stream: &CodecStream) -> crate::error::Result<()> {
-		Err(crate::error::Error::Failed("decoder not yet implemented".to_string()))
+		Err(crate::error::Error::Failed(
+			"decoder not yet implemented".to_string(),
+		))
 	}
 
 	fn close(&self) -> crate::error::Result<()> {
-		Err(crate::error::Error::Failed("decoder not yet implemented".to_string()))
+		Err(crate::error::Error::Failed(
+			"decoder not yet implemented".to_string(),
+		))
 	}
 
 	fn stream(&self) -> CodecStream {
 		CodecStream::new()
 	}
 
-	fn retrieve_video_frame(
-		&self,
-		_p: &RetrieveVideoParams,
-	) -> crate::error::Result<Arc<Frame>> {
-		Err(crate::error::Error::Failed("decoder not yet implemented".to_string()))
+	fn retrieve_video_frame(&self, _p: &RetrieveVideoParams) -> crate::error::Result<Arc<Frame>> {
+		Err(crate::error::Error::Failed(
+			"decoder not yet implemented".to_string(),
+		))
 	}
 
-	fn retrieve_video(
-		&self,
-		_p: &RetrieveVideoParams,
-	) -> crate::error::Result<OakRenderTexture> {
-		Err(crate::error::Error::Failed("decoder not yet implemented".to_string()))
+	fn retrieve_video(&self, _p: &RetrieveVideoParams) -> crate::error::Result<OakRenderTexture> {
+		Err(crate::error::Error::Failed(
+			"decoder not yet implemented".to_string(),
+		))
 	}
 
 	fn retrieve_audio(
@@ -367,7 +366,9 @@ impl Decoder for UnimplementedDecoder {
 		_sample_rate: i32,
 		_channel_layout: u64,
 	) -> crate::error::Result<RetrieveAudioStatus> {
-		Err(crate::error::Error::Failed("decoder not yet implemented".to_string()))
+		Err(crate::error::Error::Failed(
+			"decoder not yet implemented".to_string(),
+		))
 	}
 
 	fn conform_audio(
@@ -378,7 +379,9 @@ impl Decoder for UnimplementedDecoder {
 		_sample_format: i32,
 		_cancelled: Option<&OakCancelAtom>,
 	) -> crate::error::Result<()> {
-		Err(crate::error::Error::Failed("decoder not yet implemented".to_string()))
+		Err(crate::error::Error::Failed(
+			"decoder not yet implemented".to_string(),
+		))
 	}
 }
 
@@ -480,9 +483,10 @@ pub fn transform_image_sequence_file_name(filename: &str, number: i64) -> String
 	}
 
 	match path.parent() {
-		Some(parent) if !parent.as_os_str().is_empty() => {
-			Path::new(parent).join(&new_filename).to_string_lossy().into_owned()
-		}
+		Some(parent) if !parent.as_os_str().is_empty() => Path::new(parent)
+			.join(&new_filename)
+			.to_string_lossy()
+			.into_owned(),
 		_ => new_filename,
 	}
 }

@@ -83,10 +83,13 @@ pub fn language() -> Language {
 /// Switches the active language live and persists the choice through the
 /// oakengine config C ABI.
 pub fn set_language(language: Language) {
-	CURRENT.store(match language {
-		Language::EnUs => 0,
-		Language::ZhCN => 1,
-	}, Ordering::Relaxed);
+	CURRENT.store(
+		match language {
+			Language::EnUs => 0,
+			Language::ZhCN => 1,
+		},
+		Ordering::Relaxed,
+	);
 	persist_language(language);
 	sync_widgets();
 }
@@ -150,8 +153,7 @@ pub fn sync_widgets() {
 
 /// Looks `key` up in the en-US table.
 fn en(key: &'static str) -> &'static str {
-	EN
-		.iter()
+	EN.iter()
 		.find(|(k, _)| *k == key)
 		.map(|(_, v)| *v)
 		.unwrap_or(key)
@@ -159,10 +161,7 @@ fn en(key: &'static str) -> &'static str {
 
 /// Looks `key` up in the zh-CN table.
 fn zh(key: &'static str) -> Option<&'static str> {
-	ZH
-		.iter()
-		.find(|(k, _)| *k == key)
-		.map(|(_, v)| *v)
+	ZH.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
 }
 
 /// The en-US table. Every key must also exist in [`ZH`]; [`tr`] tolerates
@@ -447,13 +446,19 @@ const ZH: &[(&str, &str)] = &[
 	("preferences.backend.placeholder", "选择一个后端…"),
 	("preferences.language", "语言"),
 	("preferences.language.placeholder", "选择语言…"),
-	("preferences.hint", "渲染后端在下次启动渲染工作进程时生效；语言立即切换。"),
+	(
+		"preferences.hint",
+		"渲染后端在下次启动渲染工作进程时生效；语言立即切换。",
+	),
 	("export.title", "导出序列"),
 	("export.format", "格式"),
 	("export.format.placeholder", "选择格式…"),
 	("export.path", "输出路径"),
 	("export.run", "导出"),
-	("export.hint", "序列通过 oaktask 导出路径导出；进度显示在对话框中。"),
+	(
+		"export.hint",
+		"序列通过 oaktask 导出路径导出；进度显示在对话框中。",
+	),
 	("export.progress.title", "正在导出"),
 	("export.progress.label", "正在渲染帧…"),
 ];
@@ -495,10 +500,7 @@ mod tests {
 				.iter()
 				.find(|(k, _)| *k == *key)
 				.unwrap_or_else(|| panic!("zh-CN table is missing key {key}"));
-			assert!(
-				!zh_value.1.is_empty(),
-				"empty zh-CN value for {key}"
-			);
+			assert!(!zh_value.1.is_empty(), "empty zh-CN value for {key}");
 		}
 	}
 
@@ -561,7 +563,10 @@ mod tests {
 	#[test]
 	fn tr_never_panics_on_missing_key() {
 		let _guard = lang_lock().lock().unwrap();
-		for (language, sample) in [(Language::EnUs, "missing.key"), (Language::ZhCN, "missing.key")] {
+		for (language, sample) in [
+			(Language::EnUs, "missing.key"),
+			(Language::ZhCN, "missing.key"),
+		] {
 			set_language(language);
 			assert_eq!(tr(sample), sample);
 		}

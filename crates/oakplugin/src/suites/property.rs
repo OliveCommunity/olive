@@ -52,27 +52,35 @@ pub struct PropertySuiteV1 {
 	/// propSetInt
 	pub set_int: unsafe extern "C" fn(*mut c_void, *const c_char, c_int, c_int) -> c_int,
 	/// propSetPointerN
-	pub set_pointer_n: unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *const *mut c_void) -> c_int,
+	pub set_pointer_n:
+		unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *const *mut c_void) -> c_int,
 	/// propSetStringN
-	pub set_string_n: unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *const *const c_char) -> c_int,
+	pub set_string_n:
+		unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *const *const c_char) -> c_int,
 	/// propSetDoubleN
-	pub set_double_n: unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *const c_double) -> c_int,
+	pub set_double_n:
+		unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *const c_double) -> c_int,
 	/// propSetIntN
 	pub set_int_n: unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *const c_int) -> c_int,
 	/// propGetPointer
-	pub get_pointer: unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut *mut c_void) -> c_int,
+	pub get_pointer:
+		unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut *mut c_void) -> c_int,
 	/// propGetString
-	pub get_string: unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut *mut c_char) -> c_int,
+	pub get_string:
+		unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut *mut c_char) -> c_int,
 	/// propGetDouble
 	pub get_double: unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut c_double) -> c_int,
 	/// propGetInt
 	pub get_int: unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut c_int) -> c_int,
 	/// propGetPointerN
-	pub get_pointer_n: unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut *mut c_void) -> c_int,
+	pub get_pointer_n:
+		unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut *mut c_void) -> c_int,
 	/// propGetStringN
-	pub get_string_n: unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut *mut c_char) -> c_int,
+	pub get_string_n:
+		unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut *mut c_char) -> c_int,
 	/// propGetDoubleN
-	pub get_double_n: unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut c_double) -> c_int,
+	pub get_double_n:
+		unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut c_double) -> c_int,
 	/// propGetIntN
 	pub get_int_n: unsafe extern "C" fn(*mut c_void, *const c_char, c_int, *mut c_int) -> c_int,
 	/// propReset
@@ -141,8 +149,16 @@ fn idx(index: c_int) -> Result<usize, c_int> {
 
 /// 先类型后索引的取值（HS 顺序：`fetchTypedProperty` 在
 /// `getValueRaw` 之前，ofxhPropertySuite.cpp:787/794/257）。
-fn get_value<'a>(props: &'a [Property], name: &str, index: c_int, kind: Kind) -> Result<&'a Value, c_int> {
-	let p = props.iter().find(|p| p.name == name).ok_or(status::ERR_UNKNOWN)?;
+fn get_value<'a>(
+	props: &'a [Property],
+	name: &str,
+	index: c_int,
+	kind: Kind,
+) -> Result<&'a Value, c_int> {
+	let p = props
+		.iter()
+		.find(|p| p.name == name)
+		.ok_or(status::ERR_UNKNOWN)?;
 	// 首元素代理整条属性的类型（宿主只定义同构数组；HS 是定义期
 	// 固定类型，等价）。
 	let probe = p.values.first().ok_or(status::ERR_UNKNOWN)?;
@@ -157,7 +173,10 @@ fn get_value<'a>(props: &'a [Property], name: &str, index: c_int, kind: Kind) ->
 /// propSet 通用实现：类型不符/未定义 → Unknown；越界 → BadIndex。
 fn set_value(set: &PropertySet, name: &str, index: c_int, value: Value) -> Result<(), c_int> {
 	set.with_locked(|props| {
-		let p = props.iter_mut().find(|p| p.name == name).ok_or(status::ERR_UNKNOWN)?;
+		let p = props
+			.iter_mut()
+			.find(|p| p.name == name)
+			.ok_or(status::ERR_UNKNOWN)?;
 		let probe = p.values.first().ok_or(status::ERR_UNKNOWN)?;
 		if Kind::of(probe) != Kind::of(&value) {
 			return Err(status::ERR_UNKNOWN);
@@ -236,9 +255,17 @@ unsafe extern "C" fn prop_set_int(
 
 /// 从 C 数组读出 `count` 个元素并整体写入；count != 现有维度时
 /// 整体替换（HS `setValueN` 的 resize 语义，ofxhPropertySuite.cpp:299-311）。
-fn set_values(set: &PropertySet, name: &str, count: c_int, values: Vec<Value>) -> Result<(), c_int> {
+fn set_values(
+	set: &PropertySet,
+	name: &str,
+	count: c_int,
+	values: Vec<Value>,
+) -> Result<(), c_int> {
 	set.with_locked(|props| {
-		let p = props.iter_mut().find(|p| p.name == name).ok_or(status::ERR_UNKNOWN)?;
+		let p = props
+			.iter_mut()
+			.find(|p| p.name == name)
+			.ok_or(status::ERR_UNKNOWN)?;
 		// count == 0 时无类型可探（HS 仍会做 fetchTypedProperty）。
 		if let Some(first) = p.values.first() {
 			if let Some(v) = values.first() {
@@ -381,11 +408,9 @@ unsafe extern "C" fn prop_get_pointer(
 /// propGetString：写**内驻** C 串指针（OFX 契约：指向宿主内部存储，
 /// 属性被下次修改前有效；克隆的 CString 指针会悬垂，绝不能给插件）。
 fn get_string(set: &PropertySet, name: &str, index: c_int) -> Result<*mut c_char, c_int> {
-	set.with_locked(|props| {
-		match get_value(props, name, index, Kind::Str)? {
-			Value::String(s) => Ok(s.as_ptr() as *mut c_char),
-			_ => Err(status::FAILED),
-		}
+	set.with_locked(|props| match get_value(props, name, index, Kind::Str)? {
+		Value::String(s) => Ok(s.as_ptr() as *mut c_char),
+		_ => Err(status::FAILED),
 	})
 }
 
@@ -459,9 +484,18 @@ unsafe extern "C" fn prop_get_int(
 
 /// 批量读取：拷贝 min(count, dimension) 个（HS `getValueNRaw`，
 /// ofxhPropertySuite.cpp:271-280，不报错）。
-fn get_n(set: &PropertySet, name: &str, count: c_int, kind: Kind, write: impl Fn(&Value, usize)) -> Result<(), c_int> {
+fn get_n(
+	set: &PropertySet,
+	name: &str,
+	count: c_int,
+	kind: Kind,
+	write: impl Fn(&Value, usize),
+) -> Result<(), c_int> {
 	set.with_locked(|props| {
-		let p = props.iter().find(|p| p.name == name).ok_or(status::ERR_UNKNOWN)?;
+		let p = props
+			.iter()
+			.find(|p| p.name == name)
+			.ok_or(status::ERR_UNKNOWN)?;
 		let probe = p.values.first().ok_or(status::ERR_UNKNOWN)?;
 		if Kind::of(probe) != kind {
 			return Err(status::ERR_UNKNOWN);
@@ -615,5 +649,3 @@ pub fn suite_v1() -> &'static PropertySuiteV1 {
 		get_dimension: prop_get_dimension,
 	})
 }
-
-

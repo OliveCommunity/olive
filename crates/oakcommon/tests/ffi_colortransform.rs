@@ -42,7 +42,7 @@ use std::sync::atomic::Ordering;
 
 use oakcommon::colortransform::ColorTransform;
 use oakcommon::ffi::colortransform::*;
-use oakcommon::handle::{get, RefBox, CHandle, OAKCOMMON_ABI_VERSION};
+use oakcommon::handle::{get, CHandle, RefBox, OAKCOMMON_ABI_VERSION};
 
 /// Convert a string slice to a NUL-terminated C string for FFI inputs.
 fn to_cstring(s: &str) -> CString {
@@ -93,7 +93,11 @@ fn free_ptr(p: *mut CHandle) {
 /// Read the reference count behind an owned handle (test-only peek into
 /// the crate-public `RefBox` layout; the box is guaranteed alive here).
 unsafe fn refs_of(h: &CHandle) -> u32 {
-	unsafe { (*(h.ctx as *const RefBox<ColorTransform>)).refs.load(Ordering::Relaxed) }
+	unsafe {
+		(*(h.ctx as *const RefBox<ColorTransform>))
+			.refs
+			.load(Ordering::Relaxed)
+	}
 }
 
 /// A successful `init_output` yields a stamped, non-null handle whose boxed
@@ -301,19 +305,34 @@ fn getters_two_stage_and_empty_handle() {
 	let mut buf = [0i8; 32];
 	let need = oakcommon_colortransform_get_display(dup(&d), buf.as_mut_ptr(), 32);
 	assert_eq!(need, 3); // "P3" + NUL
-	assert_eq!(unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap(), "P3");
+	assert_eq!(
+		unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }
+			.to_str()
+			.unwrap(),
+		"P3"
+	);
 
 	let need = oakcommon_colortransform_get_view(dup(&d), buf.as_mut_ptr(), 2);
 	assert_eq!(need, 4); // "std" + NUL, too small: nothing written
 
 	let need = oakcommon_colortransform_get_look(dup(&d), buf.as_mut_ptr(), 32);
 	assert_eq!(need, 5);
-	assert_eq!(unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap(), "soft");
+	assert_eq!(
+		unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }
+			.to_str()
+			.unwrap(),
+		"soft"
+	);
 
 	let o = oakcommon_colortransform_init_output(to_cstring("sRGB").as_ptr());
 	let need = oakcommon_colortransform_get_output(o, buf.as_mut_ptr(), 32);
 	assert_eq!(need, 5);
-	assert_eq!(unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap(), "sRGB");
+	assert_eq!(
+		unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }
+			.to_str()
+			.unwrap(),
+		"sRGB"
+	);
 
 	assert_eq!(
 		oakcommon_colortransform_get_display(CHandle::null(), buf.as_mut_ptr(), 32),

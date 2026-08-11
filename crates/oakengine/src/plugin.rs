@@ -35,12 +35,16 @@ pub type ActiveViewerFn =
 	unsafe extern "C" fn(userdata: *mut c_void) -> *mut crate::handle::OakEngineNode;
 
 /// `oakengine_plugin_reporter_create_fn` — creates a UI progress reporter.
-pub type ReporterCreateFn =
-	unsafe extern "C" fn(message: *const c_char, title: *const c_char, userdata: *mut c_void) -> *mut c_void;
+pub type ReporterCreateFn = unsafe extern "C" fn(
+	message: *const c_char,
+	title: *const c_char,
+	userdata: *mut c_void,
+) -> *mut c_void;
 /// `oakengine_plugin_reporter_destroy_fn` — destroys a reporter.
 pub type ReporterDestroyFn = unsafe extern "C" fn(reporter: *mut c_void, userdata: *mut c_void);
 /// `oakengine_plugin_reporter_is_cancelled_fn` — 1 when cancelled.
-pub type ReporterIsCancelledFn = unsafe extern "C" fn(reporter: *mut c_void, userdata: *mut c_void) -> c_int;
+pub type ReporterIsCancelledFn =
+	unsafe extern "C" fn(reporter: *mut c_void, userdata: *mut c_void) -> c_int;
 /// `oakengine_plugin_reporter_set_progress_fn` — progress update.
 pub type ReporterSetProgressFn =
 	unsafe extern "C" fn(reporter: *mut c_void, progress: f64, userdata: *mut c_void);
@@ -92,7 +96,13 @@ pub extern "C" fn oakengine_plugin_set_progress_reporter_factory(
 ) -> c_int {
 	guard(|| {
 		let mut s = state().lock().unwrap_or_else(|e| e.into_inner());
-		s.reporter = Some((create, destroy, is_cancelled, set_progress, userdata as usize));
+		s.reporter = Some((
+			create,
+			destroy,
+			is_cancelled,
+			set_progress,
+			userdata as usize,
+		));
 		Ok(())
 	})
 }

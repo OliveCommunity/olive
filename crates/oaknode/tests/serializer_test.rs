@@ -42,10 +42,10 @@ fn save_matches_cpp_byte_exact() {
 #[cfg(feature = "test-stubs")]
 #[test]
 fn roundtrip_idempotent() {
-	use oaknode::project::Project;
-	use oaknode::node::NodeCore;
-	use oaknode::value::{NodeValue, ValueType};
 	use oaknode::input::Input;
+	use oaknode::node::NodeCore;
+	use oaknode::project::Project;
+	use oaknode::value::{NodeValue, ValueType};
 
 	let project = Project::new();
 	{
@@ -57,11 +57,11 @@ fn roundtrip_idempotent() {
 			.unwrap()
 			.create)();
 		let id = p.graph.add_node(core, behavior);
-		p.graph
-			.get_mut(id)
-			.unwrap()
-			.core
-			.set_standard_value("param_a_in", -1, NodeValue::Float(2.5));
+		p.graph.get_mut(id).unwrap().core.set_standard_value(
+			"param_a_in",
+			-1,
+			NodeValue::Float(2.5),
+		);
 		p.graph
 			.get_mut(id)
 			.unwrap()
@@ -116,7 +116,8 @@ fn roundtrip_idempotent() {
 #[test]
 fn historical_versions_upgrade() {
 	// A current-format document round-trips.
-	let xml = "<project version=\"1\"><uuid>{test}</uuid><nodes></nodes><settings></settings></project>";
+	let xml =
+		"<project version=\"1\"><uuid>{test}</uuid><nodes></nodes><settings></settings></project>";
 	let project = oaknode::serializer::load(xml).unwrap();
 	assert_eq!(project.lock().unwrap().uuid, "{test}");
 

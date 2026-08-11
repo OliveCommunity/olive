@@ -443,9 +443,12 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		crate::value::NodeValue::Boolean(false),
 	));
 
-	(core, Box::new(ChromaKeyNode {
-		base: crate::nodes::ociobase::OcioBase::new(),
-	}))
+	(
+		core,
+		Box::new(ChromaKeyNode {
+			base: crate::nodes::ociobase::OcioBase::new(),
+		}),
+	)
 }
 
 /// Register this node type (C++ factory entry for
@@ -488,21 +491,44 @@ mod tests {
 		let (core, behavior) = create();
 		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.chromakey");
 		assert_ne!(
-			core.get_input(crate::nodes::ociobase::TEXTURE_INPUT).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE,
+			core.get_input(crate::nodes::ociobase::TEXTURE_INPUT)
+				.unwrap()
+				.flags & crate::input::flags::NOT_KEYFRAMABLE,
 			0
 		);
 		assert_eq!(
 			core.get_input(COLOR_INPUT).unwrap().default,
 			NodeValue::Color([0.0, 1.0, 0.0, 1.0])
 		);
-		assert_eq!(core.get_input(LOWER_TOLERANCE_INPUT).unwrap().default, NodeValue::Float(5.0));
-		assert_eq!(core.get_input(UPPER_TOLERANCE_INPUT).unwrap().default, NodeValue::Float(25.0));
-		assert_eq!(core.get_input(HIGHLIGHTS_INPUT).unwrap().default, NodeValue::Float(100.0));
-		assert_eq!(core.get_input(SHADOWS_INPUT).unwrap().default, NodeValue::Float(100.0));
-		assert_eq!(core.get_input(INVERT_INPUT).unwrap().default, NodeValue::Boolean(false));
-		assert_eq!(core.get_input(MASK_ONLY_INPUT).unwrap().default, NodeValue::Boolean(false));
+		assert_eq!(
+			core.get_input(LOWER_TOLERANCE_INPUT).unwrap().default,
+			NodeValue::Float(5.0)
+		);
+		assert_eq!(
+			core.get_input(UPPER_TOLERANCE_INPUT).unwrap().default,
+			NodeValue::Float(25.0)
+		);
+		assert_eq!(
+			core.get_input(HIGHLIGHTS_INPUT).unwrap().default,
+			NodeValue::Float(100.0)
+		);
+		assert_eq!(
+			core.get_input(SHADOWS_INPUT).unwrap().default,
+			NodeValue::Float(100.0)
+		);
+		assert_eq!(
+			core.get_input(INVERT_INPUT).unwrap().default,
+			NodeValue::Boolean(false)
+		);
+		assert_eq!(
+			core.get_input(MASK_ONLY_INPUT).unwrap().default,
+			NodeValue::Boolean(false)
+		);
 		for id in [GARBAGE_MATTE_INPUT, CORE_MATTE_INPUT] {
-			assert_ne!(core.get_input(id).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE, 0);
+			assert_ne!(
+				core.get_input(id).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE,
+				0
+			);
 		}
 		assert_eq!(core.effect_input, crate::nodes::ociobase::TEXTURE_INPUT);
 		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
@@ -524,16 +550,30 @@ mod tests {
 		let n = ChromaKeyNode {
 			base: crate::nodes::ociobase::OcioBase::new(),
 		};
-		assert_eq!(n.map_legacy_input_id("upper_tolerence_in"), UPPER_TOLERANCE_INPUT);
-		assert_eq!(n.map_legacy_input_id("lower_tolerence_in"), LOWER_TOLERANCE_INPUT);
-		assert_eq!(n.map_legacy_input_id("anything_else_in"), "anything_else_in");
+		assert_eq!(
+			n.map_legacy_input_id("upper_tolerence_in"),
+			UPPER_TOLERANCE_INPUT
+		);
+		assert_eq!(
+			n.map_legacy_input_id("lower_tolerence_in"),
+			LOWER_TOLERANCE_INPUT
+		);
+		assert_eq!(
+			n.map_legacy_input_id("anything_else_in"),
+			"anything_else_in"
+		);
 	}
 
 	#[test]
 	fn value_no_texture_pushes_nothing() {
 		let (core, behavior) = create();
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
 		assert!(table.is_empty());
 	}
 
@@ -557,7 +597,8 @@ mod tests {
 		let mut node = ChromaKeyNode {
 			base: crate::nodes::ociobase::OcioBase::new(),
 		};
-		node.base.set_processor(Some(crate::handle::CHandle::null()));
+		node.base
+			.set_processor(Some(crate::handle::CHandle::null()));
 		let inputs = crate::value::NodeValueRow::from([(
 			crate::nodes::ociobase::TEXTURE_INPUT.to_string(),
 			NodeValue::Texture(crate::handle::CHandle::null()),

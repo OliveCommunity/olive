@@ -27,9 +27,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
-use crate::bridge::common::{
-	oakcommon_videoparams_equals, OakVideoParams,
-};
+use crate::bridge::common::{oakcommon_videoparams_equals, OakVideoParams};
 use crate::frame::Frame;
 
 /// `olive::FrameManager`: singleton frame pool with background GC.
@@ -76,10 +74,7 @@ impl FrameManager {
 	pub fn create_frame(&self, params: OakVideoParams) -> Arc<Frame> {
 		let frame = {
 			let mut pool = self.pool.lock().unwrap();
-			match pool
-				.iter()
-				.position(|f| frame_matches(f, &params))
-			{
+			match pool.iter().position(|f| frame_matches(f, &params)) {
 				Some(idx) => pool.swap_remove(idx),
 				None => Frame::with_params(params),
 			}
@@ -147,9 +142,7 @@ fn frame_matches(frame: &Frame, params: &OakVideoParams) -> bool {
 	let Some(frame_params) = frame.params() else {
 		return false;
 	};
-	let eq = unsafe {
-		oakcommon_videoparams_equals(frame_params.clone(), params.clone())
-	};
+	let eq = unsafe { oakcommon_videoparams_equals(frame_params.clone(), params.clone()) };
 	eq != 0
 }
 
@@ -186,9 +179,7 @@ mod tests {
 
 		// A compatible request reuses the pooled buffer rather than
 		// allocating a new one.
-		let f2 = mgr.create_frame(unsafe {
-			oakcommon_videoparams_init_basic(64, 64)
-		});
+		let f2 = mgr.create_frame(unsafe { oakcommon_videoparams_init_basic(64, 64) });
 		assert_eq!(mgr.live_count(), 1);
 		assert_eq!(mgr.peak_count(), 1);
 		Arc::try_unwrap(f2).unwrap();

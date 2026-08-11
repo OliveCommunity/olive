@@ -66,7 +66,9 @@ impl TaskBehavior for ProjectSaveTask {
 
 		if using_filename.is_empty() {
 			task.set_error("Project has no filename to save to.");
-			return Err(Error::Failed("Project has no filename to save to.".to_string()));
+			return Err(Error::Failed(
+				"Project has no filename to save to.".to_string(),
+			));
 		}
 
 		let mut code = OAKNODE_SERIALIZER_RESULT_FILE_ERROR;
@@ -89,7 +91,10 @@ impl TaskBehavior for ProjectSaveTask {
 				task.set_error("Failed to write XML data.");
 			}
 			OAKNODE_SERIALIZER_RESULT_FILE_ERROR => {
-				task.set_error(&format!("Failed to open file for writing: {}", buf_to_string(&details)));
+				task.set_error(&format!(
+					"Failed to open file for writing: {}",
+					buf_to_string(&details)
+				));
 			}
 			OAKNODE_SERIALIZER_RESULT_OVERWRITE_ERROR => {
 				task.set_error(&format!(
@@ -112,7 +117,8 @@ impl TaskBehavior for ProjectSaveTask {
 
 /// Two-stage read of the project's own filename (empty when unset).
 pub(crate) fn project_filename(project: CHandle) -> String {
-	let needed = unsafe { bridge::node::oaknode_project_filename(project, std::ptr::null_mut(), 0) };
+	let needed =
+		unsafe { bridge::node::oaknode_project_filename(project, std::ptr::null_mut(), 0) };
 	if needed <= 0 {
 		return String::new();
 	}

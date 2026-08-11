@@ -68,16 +68,27 @@ pub fn oakcommon_videoparams_init() -> OakVideoParams {
 
 /// Direct call into the `oakcommon` crate (single-lib unification).
 pub fn oakcommon_videoparams_init_basic(
-		width: c_int,
-		height: c_int,
-		pixel_format: c_int,
-		nb_channels: c_int,
-		pixel_aspect_num: c_int,
-		pixel_aspect_den: c_int,
-		interlacing: c_int,
-		divider: c_int,
-	) -> OakVideoParams {
-	unsafe { oakcommon::ffi::videoparams::oakcommon_videoparams_init_basic(width, height, pixel_format, nb_channels, pixel_aspect_num, pixel_aspect_den, interlacing, divider) }
+	width: c_int,
+	height: c_int,
+	pixel_format: c_int,
+	nb_channels: c_int,
+	pixel_aspect_num: c_int,
+	pixel_aspect_den: c_int,
+	interlacing: c_int,
+	divider: c_int,
+) -> OakVideoParams {
+	unsafe {
+		oakcommon::ffi::videoparams::oakcommon_videoparams_init_basic(
+			width,
+			height,
+			pixel_format,
+			nb_channels,
+			pixel_aspect_num,
+			pixel_aspect_den,
+			interlacing,
+			divider,
+		)
+	}
 }
 
 /// Direct call into the `oakcommon` crate (single-lib unification).
@@ -107,38 +118,60 @@ pub fn oakcommon_videoparams_set_format(params: OakVideoParams, format: c_int) -
 
 /// Direct call into the `oakcommon` crate (single-lib unification).
 pub fn oakcommon_videoparams_get_time_base(
-		params: OakVideoParams,
-		numerator: *mut c_int,
-		denominator: *mut c_int,
-	) -> c_int {
-	unsafe { oakcommon::ffi::videoparams::oakcommon_videoparams_get_time_base(params, numerator, denominator) }
+	params: OakVideoParams,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
+	unsafe {
+		oakcommon::ffi::videoparams::oakcommon_videoparams_get_time_base(
+			params,
+			numerator,
+			denominator,
+		)
+	}
 }
 
 /// Direct call into the `oakcommon` crate (single-lib unification).
 pub fn oakcommon_videoparams_set_time_base(
-		params: OakVideoParams,
-		numerator: c_int,
-		denominator: c_int,
-	) -> c_int {
-	unsafe { oakcommon::ffi::videoparams::oakcommon_videoparams_set_time_base(params, numerator, denominator) }
+	params: OakVideoParams,
+	numerator: c_int,
+	denominator: c_int,
+) -> c_int {
+	unsafe {
+		oakcommon::ffi::videoparams::oakcommon_videoparams_set_time_base(
+			params,
+			numerator,
+			denominator,
+		)
+	}
 }
 
 /// Direct call into the `oakcommon` crate (single-lib unification).
 pub fn oakcommon_videoparams_frame_rate_as_time_base(
-		params: OakVideoParams,
-		out_num: *mut c_int,
-		out_den: *mut c_int,
-	) -> c_int {
-	unsafe { oakcommon::ffi::videoparams::oakcommon_videoparams_frame_rate_as_time_base(params, out_num, out_den) }
+	params: OakVideoParams,
+	out_num: *mut c_int,
+	out_den: *mut c_int,
+) -> c_int {
+	unsafe {
+		oakcommon::ffi::videoparams::oakcommon_videoparams_frame_rate_as_time_base(
+			params, out_num, out_den,
+		)
+	}
 }
 
 /// Direct call into the `oakcommon` crate (single-lib unification).
 pub fn oakcommon_videoparams_set_frame_rate(
-		params: OakVideoParams,
-		numerator: c_int,
-		denominator: c_int,
-	) -> c_int {
-	unsafe { oakcommon::ffi::videoparams::oakcommon_videoparams_set_frame_rate(params, numerator, denominator) }
+	params: OakVideoParams,
+	numerator: c_int,
+	denominator: c_int,
+) -> c_int {
+	unsafe {
+		oakcommon::ffi::videoparams::oakcommon_videoparams_set_frame_rate(
+			params,
+			numerator,
+			denominator,
+		)
+	}
 }
 
 /// Direct call into the `oakcommon` crate (single-lib unification).
@@ -168,11 +201,17 @@ pub fn oakcommon_videoparams_get_is_valid(params: OakVideoParams, out_valid: *mu
 
 /// Direct call into the `oakcommon` crate (single-lib unification).
 pub fn oakcommon_videoparams_get_frame_rate(
-		params: OakVideoParams,
-		numerator: *mut c_int,
-		denominator: *mut c_int,
-	) -> c_int {
-	unsafe { oakcommon::ffi::videoparams::oakcommon_videoparams_get_frame_rate(params, numerator, denominator) }
+	params: OakVideoParams,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
+	unsafe {
+		oakcommon::ffi::videoparams::oakcommon_videoparams_get_frame_rate(
+			params,
+			numerator,
+			denominator,
+		)
+	}
 }
 
 /// Direct call into the `oakcommon` crate (single-lib unification).
@@ -182,11 +221,13 @@ pub fn oakcommon_videoparams_get_duration(params: OakVideoParams, duration: *mut
 
 /// Direct call into the `oakcommon` crate (single-lib unification).
 pub fn oakcommon_colortransform_init_display(
-		display: *const c_char,
-		view: *const c_char,
-		look: *const c_char,
-	) -> OakColorTransform {
-	unsafe { oakcommon::ffi::colortransform::oakcommon_colortransform_init_display(display, view, look) }
+	display: *const c_char,
+	view: *const c_char,
+	look: *const c_char,
+) -> OakColorTransform {
+	unsafe {
+		oakcommon::ffi::colortransform::oakcommon_colortransform_init_display(display, view, look)
+	}
 }
 
 /// Direct call into the `oakcommon` crate (single-lib unification).
@@ -201,11 +242,11 @@ pub fn oakcommon_colortransform_free(transform: *mut OakColorTransform) {
 
 /// Direct call into the `oakcommon` crate (single-lib unification).
 pub fn oakcommon_config_get(
-		group: *const c_char,
-		key: *const c_char,
-		buf: *mut c_char,
-		buf_size: c_int,
-	) -> c_int {
+	group: *const c_char,
+	key: *const c_char,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oakcommon::ffi::config::oakcommon_config_get(group, key, buf, buf_size) }
 }
 
@@ -215,7 +256,10 @@ pub fn oakcommon_config_get_int(group: *const c_char, key: *const c_char, defaul
 }
 
 /// Direct call into the `oakcommon` crate (single-lib unification).
-pub fn oakcommon_config_get_bool(group: *const c_char, key: *const c_char, default: c_int) -> c_int {
+pub fn oakcommon_config_get_bool(
+	group: *const c_char,
+	key: *const c_char,
+	default: c_int,
+) -> c_int {
 	unsafe { oakcommon::ffi::config::oakcommon_config_get_bool(group, key, default) }
 }
-

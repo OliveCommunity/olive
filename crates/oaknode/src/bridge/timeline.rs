@@ -30,9 +30,7 @@ pub fn marker_list_create() -> Option<CHandle> {
 pub fn marker_list_free(list: *mut CHandle) {
 	use crate::bridge::dlsym;
 	type F = unsafe extern "C" fn(*mut CHandle);
-	if let Some(f) = dlsym::call::<F, ()>("oaktimeline_marker_list_free", |f| unsafe {
-		f(list)
-	}) {
+	if let Some(f) = dlsym::call::<F, ()>("oaktimeline_marker_list_free", |f| unsafe { f(list) }) {
 		let _ = f;
 	}
 }

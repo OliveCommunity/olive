@@ -92,7 +92,9 @@ fn host_scan_explicit_dir() {
 		let r = unsafe { oakplugin_host_plugin_id_at(0, buf.as_mut_ptr() as *mut c_char, len) };
 		assert_eq!(r, OK);
 		assert_eq!(
-			unsafe { CStr::from_ptr(buf.as_ptr() as *const c_char) }.to_str().unwrap(),
+			unsafe { CStr::from_ptr(buf.as_ptr() as *const c_char) }
+				.to_str()
+				.unwrap(),
 			TEST_PLUGIN_ID
 		);
 
@@ -147,10 +149,14 @@ fn host_plugin_label_paths() {
 		assert!(len > 0);
 		let mut buf = vec![0u8; len as usize];
 		assert_eq!(
-			unsafe { oakplugin_host_plugin_label(id.as_ptr(), buf.as_mut_ptr() as *mut c_char, len) },
+			unsafe {
+				oakplugin_host_plugin_label(id.as_ptr(), buf.as_mut_ptr() as *mut c_char, len)
+			},
 			OK
 		);
-		assert!(!unsafe { CStr::from_ptr(buf.as_ptr() as *const c_char) }.to_bytes().is_empty());
+		assert!(!unsafe { CStr::from_ptr(buf.as_ptr() as *const c_char) }
+			.to_bytes()
+			.is_empty());
 
 		// 未知标识。
 		let nope = cs("org.oak.nope");
@@ -181,8 +187,12 @@ fn host_message_handler_dispatch() {
 		) -> c_int {
 			let v = unsafe { &mut *(userdata as *mut Vec<(String, String)>) };
 			v.push((
-				unsafe { CStr::from_ptr(type_) }.to_string_lossy().into_owned(),
-				unsafe { CStr::from_ptr(message) }.to_string_lossy().into_owned(),
+				unsafe { CStr::from_ptr(type_) }
+					.to_string_lossy()
+					.into_owned(),
+				unsafe { CStr::from_ptr(message) }
+					.to_string_lossy()
+					.into_owned(),
 			));
 			0
 		}

@@ -38,8 +38,8 @@ use oakengine::node::{
 };
 use oakengine::timeline::{
 	oakengine_block_get_range, oakengine_block_get_track, oakengine_block_is_enabled,
-	oakengine_block_is_gap, oakengine_block_link_count, oakengine_block_next,
-	oakengine_block_prev, oakengine_block_set_enabled, oakengine_block_set_length_and_media_out,
+	oakengine_block_is_gap, oakengine_block_link_count, oakengine_block_next, oakengine_block_prev,
+	oakengine_block_set_enabled, oakengine_block_set_length_and_media_out,
 	oakengine_clip_are_linked, oakengine_clip_get_range, oakengine_clip_get_sequence,
 	oakengine_clip_is_enabled, oakengine_clip_toggle_enabled, oakengine_clip_trim,
 	oakengine_marker_commit_time, oakengine_marker_get_color, oakengine_marker_get_name,
@@ -49,20 +49,18 @@ use oakengine::timeline::{
 	oakengine_multicam_switch_source, oakengine_node_is_block, oakengine_node_is_transition,
 	oakengine_sequence_add_default_nodes, oakengine_sequence_add_footage_clip,
 	oakengine_sequence_add_track, oakengine_sequence_clip_at, oakengine_sequence_clip_count,
-	oakengine_sequence_delete_empty_tracks, oakengine_sequence_get_frame_rate,
-	oakengine_sequence_get_length, oakengine_sequence_get_length_rational,
-	oakengine_sequence_get_playhead, oakengine_sequence_get_playhead_seconds,
-	oakengine_sequence_get_audio_params, oakengine_sequence_get_preview_divider,
-	oakengine_sequence_get_video_auto_cache,
-	oakengine_sequence_get_workarea, oakengine_sequence_last_error,
-	oakengine_sequence_marker_add, oakengine_sequence_marker_add_ex, oakengine_sequence_marker_at,
-	oakengine_sequence_marker_count, oakengine_sequence_marker_remove,
-	oakengine_sequence_marker_remove_many, oakengine_sequence_marker_rename,
-	oakengine_sequence_move_clip, oakengine_sequence_name, oakengine_sequence_new,
-	oakengine_sequence_remove_track, oakengine_sequence_ripple_delete_clip,
-	oakengine_sequence_ripple_delete_range,
-	oakengine_sequence_set_audio_params, oakengine_sequence_set_playhead,
-	oakengine_sequence_set_workarea,
+	oakengine_sequence_delete_empty_tracks, oakengine_sequence_get_audio_params,
+	oakengine_sequence_get_frame_rate, oakengine_sequence_get_length,
+	oakengine_sequence_get_length_rational, oakengine_sequence_get_playhead,
+	oakengine_sequence_get_playhead_seconds, oakengine_sequence_get_preview_divider,
+	oakengine_sequence_get_video_auto_cache, oakengine_sequence_get_workarea,
+	oakengine_sequence_last_error, oakengine_sequence_marker_add, oakengine_sequence_marker_add_ex,
+	oakengine_sequence_marker_at, oakengine_sequence_marker_count,
+	oakengine_sequence_marker_remove, oakengine_sequence_marker_remove_many,
+	oakengine_sequence_marker_rename, oakengine_sequence_move_clip, oakengine_sequence_name,
+	oakengine_sequence_new, oakengine_sequence_remove_track, oakengine_sequence_ripple_delete_clip,
+	oakengine_sequence_ripple_delete_range, oakengine_sequence_set_audio_params,
+	oakengine_sequence_set_playhead, oakengine_sequence_set_workarea,
 	oakengine_sequence_split_clip, oakengine_sequence_track_at, oakengine_sequence_track_count,
 	oakengine_sequence_track_list, oakengine_sequence_trim_clips_to,
 	oakengine_sequence_workarea_is_enabled, oakengine_track_block_at, oakengine_track_block_count,
@@ -71,9 +69,10 @@ use oakengine::timeline::{
 	oakengine_track_set_locked, oakengine_track_set_muted, oakengine_track_type,
 	oakengine_track_visible_block_at_time, oakengine_workarea_create, oakengine_workarea_free,
 	oakengine_workarea_get, oakengine_workarea_reset_in_out, oakengine_workarea_set_enabled,
-	oakengine_workarea_set_range, oakengine_workarea_set_range_undoable,
-	oakengine_workarea_set_enabled_undoable,
+	oakengine_workarea_set_enabled_undoable, oakengine_workarea_set_range,
+	oakengine_workarea_set_range_undoable,
 };
+use oakengine::undo::{oakengine_undo_index, oakengine_undo_jump};
 
 /// Read a NUL-terminated facade string into a Rust String.
 unsafe fn read_buf(buf: &mut [c_char]) -> String {
@@ -152,7 +151,10 @@ fn timeline_lifecycle() {
 
 	// Fresh sequence: zero length, default frame rate.
 	let mut seconds = -1.0;
-	assert_eq!(unsafe { oakengine_sequence_get_length(seq, &mut seconds) }, 0);
+	assert_eq!(
+		unsafe { oakengine_sequence_get_length(seq, &mut seconds) },
+		0
+	);
 	assert_eq!(seconds, 0.0);
 	let mut num = -1;
 	let mut den = -1;
@@ -207,12 +209,24 @@ fn timeline_lifecycle() {
 
 	// Track length (empty -> 0) and free-range query.
 	let mut tlen = -1;
-	assert_eq!(unsafe { oakengine_track_get_length(seq, 0, 0, &mut tlen) }, 0);
+	assert_eq!(
+		unsafe { oakengine_track_get_length(seq, 0, 0, &mut tlen) },
+		0
+	);
 	assert_eq!(tlen, 0);
-	assert_eq!(unsafe { oakengine_track_is_range_free(seq, 0, 0, 0, 30) }, 1);
+	assert_eq!(
+		unsafe { oakengine_track_is_range_free(seq, 0, 0, 0, 30) },
+		1
+	);
 	// Bad track index -> E_NOT_FOUND (-4).
-	assert_eq!(unsafe { oakengine_track_get_length(seq, 0, 99, &mut tlen) }, -4);
-	assert_eq!(unsafe { oakengine_track_is_range_free(seq, 0, 99, 0, 30) }, -4);
+	assert_eq!(
+		unsafe { oakengine_track_get_length(seq, 0, 99, &mut tlen) },
+		-4
+	);
+	assert_eq!(
+		unsafe { oakengine_track_is_range_free(seq, 0, 99, 0, 30) },
+		-4
+	);
 
 	// ---- playhead ---------------------------------------------------------
 	assert_eq!(unsafe { oakengine_sequence_set_playhead(seq, 90) }, 0);
@@ -220,20 +234,35 @@ fn timeline_lifecycle() {
 	assert_eq!(unsafe { oakengine_sequence_get_playhead(seq, &mut ph) }, 0);
 	assert_eq!(ph, 90);
 	let mut phs = 0.0;
-	assert_eq!(unsafe { oakengine_sequence_get_playhead_seconds(seq, &mut phs) }, 0);
+	assert_eq!(
+		unsafe { oakengine_sequence_get_playhead_seconds(seq, &mut phs) },
+		0
+	);
 	assert!((phs - 3.0).abs() < 1e-6);
 
 	// ---- audio params (round-trip through oakcore) -------------------------
 	let mut arate: c_int = 0;
 	let mut alayout: u64 = 0;
-	assert_eq!(unsafe { oakengine_sequence_get_audio_params(seq, &mut arate, &mut alayout) }, 0);
+	assert_eq!(
+		unsafe { oakengine_sequence_get_audio_params(seq, &mut arate, &mut alayout) },
+		0
+	);
 	assert!(arate > 0);
-	assert_eq!(unsafe { oakengine_sequence_set_audio_params(seq, 48000, 0x3, 1) }, 0);
-	assert_eq!(unsafe { oakengine_sequence_get_audio_params(seq, &mut arate, &mut alayout) }, 0);
+	assert_eq!(
+		unsafe { oakengine_sequence_set_audio_params(seq, 48000, 0x3, 1) },
+		0
+	);
+	assert_eq!(
+		unsafe { oakengine_sequence_get_audio_params(seq, &mut arate, &mut alayout) },
+		0
+	);
 	assert_eq!(arate, 48000);
 	assert_eq!(alayout, 0x3);
 	// A no-op change (same values) is a success without a new command.
-	assert_eq!(unsafe { oakengine_sequence_set_audio_params(seq, 48000, 0x3, 1) }, 0);
+	assert_eq!(
+		unsafe { oakengine_sequence_set_audio_params(seq, 48000, 0x3, 1) },
+		0
+	);
 	// NULL handle -> E_INVALID.
 	assert_eq!(
 		unsafe { oakengine_sequence_set_audio_params(std::ptr::null_mut(), 48000, 0x3, 1) },
@@ -242,7 +271,10 @@ fn timeline_lifecycle() {
 
 	// ---- markers -----------------------------------------------------------
 	assert_eq!(unsafe { oakengine_sequence_marker_count(seq) }, 0);
-	assert_eq!(unsafe { oakengine_sequence_marker_add(seq, 30, c"One".as_ptr()) }, 0);
+	assert_eq!(
+		unsafe { oakengine_sequence_marker_add(seq, 30, c"One".as_ptr()) },
+		0
+	);
 	assert_eq!(
 		unsafe { oakengine_sequence_marker_add_ex(seq, 60, c"Two".as_ptr(), 2) },
 		0
@@ -253,7 +285,9 @@ fn timeline_lifecycle() {
 	let mut mcolor = -1;
 	let mut mname = [0 as c_char; 64];
 	assert_eq!(
-		unsafe { oakengine_sequence_marker_at(seq, 0, &mut mtime, mname.as_mut_ptr(), 64, &mut mcolor) },
+		unsafe {
+			oakengine_sequence_marker_at(seq, 0, &mut mtime, mname.as_mut_ptr(), 64, &mut mcolor)
+		},
 		0
 	);
 	assert_eq!(mtime, 30);
@@ -261,14 +295,18 @@ fn timeline_lifecycle() {
 	assert_eq!(unsafe { read_buf(&mut mname) }, "One");
 
 	// A duplicate time is rejected with E_STATE.
-	assert_eq!(unsafe { oakengine_sequence_marker_add(seq, 30, c"dup".as_ptr()) }, -2);
+	assert_eq!(
+		unsafe { oakengine_sequence_marker_add(seq, 30, c"dup".as_ptr()) },
+		-2
+	);
 
 	// Rename, then remove many at once.
-	assert_eq!(unsafe { oakengine_sequence_marker_rename(seq, 30, c"Renamed".as_ptr()) }, 0);
 	assert_eq!(
-		unsafe {
-			oakengine_sequence_marker_remove_many(seq, [30i64, 60].as_ptr(), 2)
-		},
+		unsafe { oakengine_sequence_marker_rename(seq, 30, c"Renamed".as_ptr()) },
+		0
+	);
+	assert_eq!(
+		unsafe { oakengine_sequence_marker_remove_many(seq, [30i64, 60].as_ptr(), 2) },
 		2
 	);
 	assert_eq!(unsafe { oakengine_sequence_marker_count(seq) }, 0);
@@ -277,7 +315,10 @@ fn timeline_lifecycle() {
 
 	// ---- workarea ------------------------------------------------------------
 	assert_eq!(unsafe { oakengine_sequence_workarea_is_enabled(seq) }, 0);
-	assert_eq!(unsafe { oakengine_sequence_set_workarea(seq, 1, 0, 300) }, 0);
+	assert_eq!(
+		unsafe { oakengine_sequence_set_workarea(seq, 1, 0, 300) },
+		0
+	);
 	assert_eq!(unsafe { oakengine_sequence_workarea_is_enabled(seq) }, 1);
 	let mut wa_in = -1;
 	let mut wa_out = -1;
@@ -314,7 +355,20 @@ fn timeline_lifecycle() {
 	assert_eq!((wn0, wd0, wn1, wd1, wen), (10, 1, 20, 1, 1));
 	// Undoable variant on the standalone handle (pushed, not added to a parent).
 	assert_eq!(
-		unsafe { oakengine_workarea_set_range_undoable(wa, 30, 1, 40, 1, 10, 1, 20, 1, std::ptr::null_mut()) },
+		unsafe {
+			oakengine_workarea_set_range_undoable(
+				wa,
+				30,
+				1,
+				40,
+				1,
+				10,
+				1,
+				20,
+				1,
+				std::ptr::null_mut(),
+			)
+		},
 		0
 	);
 	assert_eq!(
@@ -333,7 +387,9 @@ fn timeline_lifecycle() {
 	unsafe { oaknode::ffi::block::oaknode_block_set_length_and_media_in(clip.clone(), 1, 1) };
 	unsafe { oaknode::ffi::block::oaknode_clip_set_media_in(clip.clone(), 0, 1) };
 	assert_eq!(
-		unsafe { oaknode::ffi::track::oaknode_track_append_block(track_module.clone(), clip.clone()) },
+		unsafe {
+			oaknode::ffi::track::oaknode_track_append_block(track_module.clone(), clip.clone())
+		},
 		0
 	);
 
@@ -356,7 +412,10 @@ fn timeline_lifecycle() {
 	assert_eq!(unsafe { oakengine_block_is_gap(blk) }, 0);
 	let mut bin = -1;
 	let mut bout = -1;
-	assert_eq!(unsafe { oakengine_block_get_range(blk, &mut bin, &mut bout) }, 0);
+	assert_eq!(
+		unsafe { oakengine_block_get_range(blk, &mut bin, &mut bout) },
+		0
+	);
 	assert_eq!((bin, bout), (0, 30));
 	assert!(!unsafe { oakengine_block_get_track(blk) }.is_null());
 	assert!(unsafe { oakengine_block_next(blk) }.is_null());
@@ -370,19 +429,34 @@ fn timeline_lifecycle() {
 	assert_eq!(unsafe { oakengine_block_is_enabled(blk) }, 1);
 
 	// Block resize (undoable): length 30 -> 40, in stays.
-	assert_eq!(unsafe { oakengine_block_set_length_and_media_out(blk, 40) }, 0);
-	assert_eq!(unsafe { oakengine_block_get_range(blk, &mut bin, &mut bout) }, 0);
+	assert_eq!(
+		unsafe { oakengine_block_set_length_and_media_out(blk, 40) },
+		0
+	);
+	assert_eq!(
+		unsafe { oakengine_block_get_range(blk, &mut bin, &mut bout) },
+		0
+	);
 	assert_eq!((bin, bout), (0, 40));
 
 	// Split at 20 -> two clips (the module's split lists the right half
 	// first: clip0 = [20, 40)).
-	assert_eq!(unsafe { oakengine_sequence_split_clip(seq, 0, 0, 0, 20) }, 0);
+	assert_eq!(
+		unsafe { oakengine_sequence_split_clip(seq, 0, 0, 0, 20) },
+		0
+	);
 	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 0) }, 2);
 	// Split outside the clip -> E_INVALID and a last-error.
-	assert_eq!(unsafe { oakengine_sequence_split_clip(seq, 0, 0, 0, 100) }, -1);
+	assert_eq!(
+		unsafe { oakengine_sequence_split_clip(seq, 0, 0, 0, 100) },
+		-1
+	);
 	let mut err = [0 as c_char; 256];
 	let elen = unsafe { oakengine_sequence_last_error(err.as_mut_ptr(), 256) };
-	assert!(elen > 0, "last_error must be non-empty after a failed split");
+	assert!(
+		elen > 0,
+		"last_error must be non-empty after a failed split"
+	);
 
 	// Trim the first clip [20, 40) to [25, 35).
 	let clip0 = unsafe { oakengine_sequence_clip_at(seq, 0, 0, 0) };
@@ -400,15 +474,55 @@ fn timeline_lifecycle() {
 	// Trim clips to a point on every unlocked track (edge 0 = in).
 	assert!(unsafe { oakengine_sequence_trim_clips_to(seq, 0, 25) } >= 0);
 
-	// Move the clip is a documented stub (the module's gap+place composition
-	// faults) -> E_STATE.
-	assert_eq!(unsafe { oakengine_sequence_move_clip(seq, 0, 0, 0, 50) }, -2);
+	// Move the clip: a time-only move within the addressed track (the capi's
+	// gap+place assembly, one undoable entry). clip0 = [25, 35) -> [50, 60)
+	// (length and media-in kept), fully reversible.
+	let base_move = unsafe { oakengine_undo_index() };
+	assert_eq!(unsafe { oakengine_sequence_move_clip(seq, 0, 0, 0, 50) }, 0);
+	let mut mv_in = -1i64;
+	let mut mv_out = -1i64;
+	let mut mv_mi = -1i64;
+	assert_eq!(
+		unsafe { oakengine_clip_get_range(clip0, &mut mv_in, &mut mv_out, &mut mv_mi) },
+		0
+	);
+	assert_eq!((mv_in, mv_out, mv_mi), (50, 60, 25));
+	assert_eq!(unsafe { oakengine_undo_jump(base_move) }, 0);
+	assert_eq!(
+		unsafe { oakengine_clip_get_range(clip0, &mut mv_in, &mut mv_out, &mut mv_mi) },
+		0
+	);
+	assert_eq!((mv_in, mv_out), (25, 35));
+	assert_eq!(unsafe { oakengine_undo_jump(base_move + 1) }, 0);
+	assert_eq!(
+		unsafe { oakengine_clip_get_range(clip0, &mut mv_in, &mut mv_out, &mut mv_mi) },
+		0
+	);
+	assert_eq!((mv_in, mv_out), (50, 60));
+	// Back to the pre-move state (clip0 = [25, 35)) for the ripple deletes
+	// below.
+	assert_eq!(unsafe { oakengine_undo_jump(base_move) }, 0);
+	// Invalid arguments -> E_INVALID; nonexistent clip -> E_NOT_FOUND.
+	assert_eq!(
+		unsafe { oakengine_sequence_move_clip(seq, 0, 0, 0, -1) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_sequence_move_clip(seq, 0, 9, 0, 50) },
+		-4
+	);
 
 	// Ripple delete the addressed clip.
-	assert_eq!(unsafe { oakengine_sequence_ripple_delete_clip(seq, 0, 0, 0) }, 0);
+	assert_eq!(
+		unsafe { oakengine_sequence_ripple_delete_clip(seq, 0, 0, 0) },
+		0
+	);
 
 	// Ripple delete a range on every track.
-	assert_eq!(unsafe { oakengine_sequence_ripple_delete_range(seq, 0, 10) }, 0);
+	assert_eq!(
+		unsafe { oakengine_sequence_ripple_delete_range(seq, 0, 10) },
+		0
+	);
 
 	// Linked clips: two fresh clips linked then unlinked.
 	let clip_b = unsafe { oaknode::ffi::block::oaknode_block_clip_create() };
@@ -416,13 +530,18 @@ fn timeline_lifecycle() {
 	unsafe { oaknode::ffi::block::oaknode_block_set_length_and_media_in(clip_b.clone(), 1, 3) };
 	unsafe { oaknode::ffi::block::oaknode_clip_set_media_in(clip_b.clone(), 0, 1) };
 	assert_eq!(
-		unsafe { oaknode::ffi::track::oaknode_track_append_block(track_module.clone(), clip_b.clone()) },
+		unsafe {
+			oaknode::ffi::track::oaknode_track_append_block(track_module.clone(), clip_b.clone())
+		},
 		0
 	);
 	let clip_b_engine = unsafe { oakengine_sequence_clip_at(seq, 0, 0, 0) };
 	assert!(!clip_b_engine.is_null());
 	let mut clips = [clip_b_engine, clip_at];
-	assert_eq!(unsafe { oakengine_clip_toggle_enabled(clips.as_mut_ptr(), 2) }, 2);
+	assert_eq!(
+		unsafe { oakengine_clip_toggle_enabled(clips.as_mut_ptr(), 2) },
+		2
+	);
 	assert_eq!(unsafe { oakengine_clip_are_linked(clips[0], clips[1]) }, 0);
 
 	// ---- default nodes + track removal ----------------------------------
@@ -444,7 +563,10 @@ fn timeline_lifecycle() {
 	assert_eq!(audio, 0);
 
 	// Delete empty tracks (the extra video track is empty).
-	assert_eq!(unsafe { oakengine_sequence_delete_empty_tracks(seq, -1) }, 1);
+	assert_eq!(
+		unsafe { oakengine_sequence_delete_empty_tracks(seq, -1) },
+		1
+	);
 
 	// ---- cleanup ----------------------------------------------------------
 	unsafe { oakengine_project_free(project) };
@@ -461,32 +583,87 @@ fn timeline_failure_paths() {
 
 	// NULL sequence.
 	let mut buf = [0 as c_char; 64];
-	assert_eq!(unsafe { oakengine_sequence_name(std::ptr::null(), buf.as_mut_ptr(), 64) }, -1);
-	assert_eq!(unsafe { oakengine_sequence_add_track(std::ptr::null_mut(), 0) }, -1);
-	assert_eq!(unsafe { oakengine_sequence_marker_count(std::ptr::null()) }, 0);
-	assert_eq!(unsafe { oakengine_sequence_marker_add(std::ptr::null_mut(), 0, c"x".as_ptr()) }, -1);
-	assert_eq!(unsafe { oakengine_sequence_workarea_is_enabled(std::ptr::null()) }, 0);
-	assert_eq!(unsafe { oakengine_sequence_get_preview_divider(std::ptr::null()) }, 0);
-	assert_eq!(unsafe { oakengine_sequence_get_video_auto_cache(std::ptr::null()) }, 0);
-	assert_eq!(unsafe { oakengine_sequence_set_playhead(std::ptr::null_mut(), 0) }, -1);
-	assert_eq!(unsafe { oakengine_sequence_set_workarea(std::ptr::null_mut(), 1, 0, 10) }, -1);
+	assert_eq!(
+		unsafe { oakengine_sequence_name(std::ptr::null(), buf.as_mut_ptr(), 64) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_sequence_add_track(std::ptr::null_mut(), 0) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_sequence_marker_count(std::ptr::null()) },
+		0
+	);
+	assert_eq!(
+		unsafe { oakengine_sequence_marker_add(std::ptr::null_mut(), 0, c"x".as_ptr()) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_sequence_workarea_is_enabled(std::ptr::null()) },
+		0
+	);
+	assert_eq!(
+		unsafe { oakengine_sequence_get_preview_divider(std::ptr::null()) },
+		0
+	);
+	assert_eq!(
+		unsafe { oakengine_sequence_get_video_auto_cache(std::ptr::null()) },
+		0
+	);
+	assert_eq!(
+		unsafe { oakengine_sequence_set_playhead(std::ptr::null_mut(), 0) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_sequence_set_workarea(std::ptr::null_mut(), 1, 0, 10) },
+		-1
+	);
 	assert!(unsafe { oakengine_sequence_track_at(std::ptr::null(), 0, 0) }.is_null());
 	assert!(unsafe { oakengine_sequence_track_list(std::ptr::null_mut(), 0) }.is_null());
 	assert!(unsafe { oakengine_sequence_clip_at(std::ptr::null_mut(), 0, 0, 0) }.is_null());
-	assert_eq!(unsafe { oakengine_sequence_clip_count(std::ptr::null_mut(), 0, 0) }, -1);
-	assert_eq!(unsafe { oakengine_sequence_ripple_delete_clip(std::ptr::null_mut(), 0, 0, 0) }, -1);
-	assert_eq!(unsafe { oakengine_sequence_ripple_delete_range(std::ptr::null_mut(), 0, 10) }, -1);
-	assert_eq!(unsafe { oakengine_sequence_remove_track(std::ptr::null_mut(), 0, 0) }, -1);
-	assert_eq!(unsafe { oakengine_sequence_add_default_nodes(std::ptr::null_mut()) }, -1);
+	assert_eq!(
+		unsafe { oakengine_sequence_clip_count(std::ptr::null_mut(), 0, 0) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_sequence_ripple_delete_clip(std::ptr::null_mut(), 0, 0, 0) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_sequence_ripple_delete_range(std::ptr::null_mut(), 0, 10) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_sequence_remove_track(std::ptr::null_mut(), 0, 0) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_sequence_add_default_nodes(std::ptr::null_mut()) },
+		-1
+	);
 
 	// NULL clip / block handles.
 	assert_eq!(
-		unsafe { oakengine_clip_get_range(std::ptr::null(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut()) },
+		unsafe {
+			oakengine_clip_get_range(
+				std::ptr::null(),
+				std::ptr::null_mut(),
+				std::ptr::null_mut(),
+				std::ptr::null_mut(),
+			)
+		},
 		-1
 	);
-	assert_eq!(unsafe { oakengine_clip_trim(std::ptr::null_mut(), 0, 10) }, -1);
+	assert_eq!(
+		unsafe { oakengine_clip_trim(std::ptr::null_mut(), 0, 10) },
+		-1
+	);
 	assert_eq!(unsafe { oakengine_clip_is_enabled(std::ptr::null()) }, 0);
-	assert_eq!(unsafe { oakengine_clip_are_linked(std::ptr::null(), std::ptr::null()) }, 0);
+	assert_eq!(
+		unsafe { oakengine_clip_are_linked(std::ptr::null(), std::ptr::null()) },
+		0
+	);
 	assert!(unsafe { oakengine_clip_get_sequence(std::ptr::null()) }.is_null());
 	assert_eq!(unsafe { oakengine_track_block_count(std::ptr::null()) }, -1);
 	assert!(unsafe { oakengine_track_block_at(std::ptr::null(), 0) }.is_null());
@@ -496,9 +673,15 @@ fn timeline_failure_paths() {
 	assert!(unsafe { oakengine_block_prev(std::ptr::null()) }.is_null());
 	assert_eq!(unsafe { oakengine_block_is_gap(std::ptr::null()) }, 0);
 	assert_eq!(unsafe { oakengine_block_is_enabled(std::ptr::null()) }, 0);
-	assert_eq!(unsafe { oakengine_block_set_enabled(std::ptr::null_mut(), 1) }, -1);
+	assert_eq!(
+		unsafe { oakengine_block_set_enabled(std::ptr::null_mut(), 1) },
+		-1
+	);
 	assert_eq!(unsafe { oakengine_block_link_count(std::ptr::null()) }, 0);
-	assert_eq!(unsafe { oakengine_block_set_length_and_media_out(std::ptr::null_mut(), 10) }, -1);
+	assert_eq!(
+		unsafe { oakengine_block_set_length_and_media_out(std::ptr::null_mut(), 10) },
+		-1
+	);
 	assert_eq!(unsafe { oakengine_track_type(std::ptr::null()) }, -1);
 	assert_eq!(unsafe { oakengine_node_is_block(std::ptr::null()) }, 0);
 	assert_eq!(unsafe { oakengine_node_is_transition(std::ptr::null()) }, 0);
@@ -512,39 +695,108 @@ fn timeline_failure_paths() {
 		-1
 	);
 	assert_eq!(
-		unsafe { oakengine_marker_get_time(std::ptr::null(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut()) },
+		unsafe {
+			oakengine_marker_get_time(
+				std::ptr::null(),
+				std::ptr::null_mut(),
+				std::ptr::null_mut(),
+				std::ptr::null_mut(),
+				std::ptr::null_mut(),
+			)
+		},
 		-1
 	);
-	assert_eq!(unsafe { oakengine_marker_get_name(std::ptr::null(), std::ptr::null_mut(), 0) }, -1);
+	assert_eq!(
+		unsafe { oakengine_marker_get_name(std::ptr::null(), std::ptr::null_mut(), 0) },
+		-1
+	);
 	assert_eq!(unsafe { oakengine_marker_get_color(std::ptr::null()) }, -1);
-	assert_eq!(unsafe { oakengine_marker_has_sibling_at_time(std::ptr::null(), 1, 1) }, 0);
+	assert_eq!(
+		unsafe { oakengine_marker_has_sibling_at_time(std::ptr::null(), 1, 1) },
+		0
+	);
 	assert_eq!(unsafe { oakengine_marker_remove(std::ptr::null_mut()) }, -1);
 	assert!(unsafe { oakengine_marker_set_time_command(std::ptr::null_mut(), 1, 1) }.is_null());
-	assert_eq!(unsafe { oakengine_marker_set_time_live(std::ptr::null_mut(), 0, 1, 0, 1) }, -1);
 	assert_eq!(
-		unsafe { oakengine_marker_commit_time(std::ptr::null_mut(), 0, 1, 0, 1, 1, 1, 1, 1, std::ptr::null_mut()) },
+		unsafe { oakengine_marker_set_time_live(std::ptr::null_mut(), 0, 1, 0, 1) },
+		-1
+	);
+	assert_eq!(
+		unsafe {
+			oakengine_marker_commit_time(
+				std::ptr::null_mut(),
+				0,
+				1,
+				0,
+				1,
+				1,
+				1,
+				1,
+				1,
+				std::ptr::null_mut(),
+			)
+		},
 		-1
 	);
 
 	// Workarea handle NULL paths.
 	assert_eq!(
-		unsafe { oakengine_workarea_get(std::ptr::null(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut()) },
+		unsafe {
+			oakengine_workarea_get(
+				std::ptr::null(),
+				std::ptr::null_mut(),
+				std::ptr::null_mut(),
+				std::ptr::null_mut(),
+				std::ptr::null_mut(),
+				std::ptr::null_mut(),
+			)
+		},
 		-1
 	);
-	assert_eq!(unsafe { oakengine_workarea_set_range(std::ptr::null_mut(), 0, 1, 1, 1) }, -1);
-	assert_eq!(unsafe { oakengine_workarea_set_enabled(std::ptr::null_mut(), 1) }, -1);
 	assert_eq!(
-		unsafe { oakengine_workarea_set_range_undoable(std::ptr::null_mut(), 0, 1, 1, 1, 0, 1, 0, 1, std::ptr::null_mut()) },
+		unsafe { oakengine_workarea_set_range(std::ptr::null_mut(), 0, 1, 1, 1) },
 		-1
 	);
 	assert_eq!(
-		unsafe { oakengine_workarea_set_enabled_undoable(std::ptr::null_mut(), 1, std::ptr::null_mut()) },
+		unsafe { oakengine_workarea_set_enabled(std::ptr::null_mut(), 1) },
+		-1
+	);
+	assert_eq!(
+		unsafe {
+			oakengine_workarea_set_range_undoable(
+				std::ptr::null_mut(),
+				0,
+				1,
+				1,
+				1,
+				0,
+				1,
+				0,
+				1,
+				std::ptr::null_mut(),
+			)
+		},
+		-1
+	);
+	assert_eq!(
+		unsafe {
+			oakengine_workarea_set_enabled_undoable(std::ptr::null_mut(), 1, std::ptr::null_mut())
+		},
 		-1
 	);
 
 	// Multicam NULL path.
 	assert_eq!(
-		unsafe { oakengine_multicam_switch_source(std::ptr::null_mut(), std::ptr::null_mut(), 0, 0, 0.0, std::ptr::null_mut()) },
+		unsafe {
+			oakengine_multicam_switch_source(
+				std::ptr::null_mut(),
+				std::ptr::null_mut(),
+				0,
+				0,
+				0.0,
+				std::ptr::null_mut(),
+			)
+		},
 		-1
 	);
 }
@@ -580,7 +832,10 @@ fn footage_clip_placement() {
 	assert!(clip.is_null());
 	let mut err = [0 as c_char; 256];
 	let elen = unsafe { oakengine_sequence_last_error(err.as_mut_ptr(), 256) };
-	assert!(elen > 0, "last_error must explain the failed footage placement");
+	assert!(
+		elen > 0,
+		"last_error must explain the failed footage placement"
+	);
 
 	unsafe { oakengine_project_free(project) };
 }

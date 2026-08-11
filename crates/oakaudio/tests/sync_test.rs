@@ -46,13 +46,7 @@ fn place_by_source_time_matching() {
 	let (mut num, mut den, mut valid) = (0i64, 0i64, 0i32);
 	let r = unsafe {
 		oakaudio_sync_place_by_source_time(
-			&reference,
-			&candidate,
-			5,
-			1,
-			&mut num,
-			&mut den,
-			&mut valid,
+			&reference, &candidate, 5, 1, &mut num, &mut den, &mut valid,
 		)
 	};
 	assert_eq!(r, 0);
@@ -64,13 +58,7 @@ fn place_by_source_time_matching() {
 	let candidate = clip(0, 0, false);
 	let r = unsafe {
 		oakaudio_sync_place_by_source_time(
-			&reference,
-			&candidate,
-			5,
-			1,
-			&mut num,
-			&mut den,
-			&mut valid,
+			&reference, &candidate, 5, 1, &mut num, &mut den, &mut valid,
 		)
 	};
 	assert_eq!(r, 0);
@@ -88,13 +76,7 @@ fn place_by_source_time_delta() {
 	let (mut num, mut den, mut valid) = (0i64, 0i64, 0i32);
 	let r = unsafe {
 		oakaudio_sync_place_by_source_time(
-			&reference,
-			&candidate,
-			0,
-			1,
-			&mut num,
-			&mut den,
-			&mut valid,
+			&reference, &candidate, 0, 1, &mut num, &mut den, &mut valid,
 		)
 	};
 	assert_eq!(r, 0);
@@ -106,13 +88,7 @@ fn place_by_source_time_delta() {
 	// A zero denominator is rejected up front.
 	let r = unsafe {
 		oakaudio_sync_place_by_source_time(
-			&reference,
-			&candidate,
-			0,
-			0,
-			&mut num,
-			&mut den,
-			&mut valid,
+			&reference, &candidate, 0, 0, &mut num, &mut den, &mut valid,
 		)
 	};
 	assert_eq!(r, OAKAUDIO_E_INVALID);

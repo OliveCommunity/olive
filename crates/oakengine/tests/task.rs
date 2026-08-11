@@ -31,7 +31,6 @@
 #[path = "common/mod.rs"]
 mod common;
 
-
 use std::ffi::{c_char, c_int, c_void};
 
 use oakengine::node::{
@@ -71,23 +70,46 @@ fn task_null_handles_are_rejected() {
 
 	let mut buf = [0 as c_char; 256];
 
-	assert_eq!(unsafe { oakengine_task_title(std::ptr::null_mut(), buf.as_mut_ptr(), 256) }, -1);
-	assert_eq!(unsafe { oakengine_task_error(std::ptr::null_mut(), buf.as_mut_ptr(), 256) }, -1);
-	assert_eq!(unsafe { oakengine_task_start_time(std::ptr::null_mut()) }, -1);
-	assert_eq!(unsafe { oakengine_task_is_cancelled(std::ptr::null_mut()) }, -1);
+	assert_eq!(
+		unsafe { oakengine_task_title(std::ptr::null_mut(), buf.as_mut_ptr(), 256) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_task_error(std::ptr::null_mut(), buf.as_mut_ptr(), 256) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_task_start_time(std::ptr::null_mut()) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_task_is_cancelled(std::ptr::null_mut()) },
+		-1
+	);
 	assert_eq!(unsafe { oakengine_task_cancel(std::ptr::null_mut()) }, -1);
-	assert_eq!(unsafe { oakengine_task_start_sync(std::ptr::null_mut()) }, -1);
+	assert_eq!(
+		unsafe { oakengine_task_start_sync(std::ptr::null_mut()) },
+		-1
+	);
 	assert_eq!(unsafe { oakengine_task_free(std::ptr::null_mut()) }, -1);
 
 	// Import/save result accessors on NULL → E_INVALID / NULL.
-	assert_eq!(unsafe { oakengine_task_import_file_count(std::ptr::null_mut()) }, -1);
-	assert_eq!(unsafe { oakengine_task_import_footage_count(std::ptr::null_mut()) }, -1);
+	assert_eq!(
+		unsafe { oakengine_task_import_file_count(std::ptr::null_mut()) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_task_import_footage_count(std::ptr::null_mut()) },
+		-1
+	);
 	assert_eq!(
 		unsafe { oakengine_task_import_invalid_files_count(std::ptr::null_mut()) },
 		-1
 	);
 	assert_eq!(
-		unsafe { oakengine_task_import_invalid_file_at(std::ptr::null_mut(), 0, buf.as_mut_ptr(), 256) },
+		unsafe {
+			oakengine_task_import_invalid_file_at(std::ptr::null_mut(), 0, buf.as_mut_ptr(), 256)
+		},
 		-1
 	);
 	assert!(unsafe { oakengine_task_import_get_command(std::ptr::null_mut()) }.is_null());
@@ -107,14 +129,21 @@ fn task_null_handles_are_rejected() {
 	}
 	.is_null());
 	assert!(unsafe { oakengine_task_create_project_save_otio(std::ptr::null_mut()) }.is_null());
-	assert!(unsafe { oakengine_task_create_project_import(std::ptr::null_mut(), std::ptr::null(), 0) }
-		.is_null());
+	assert!(unsafe {
+		oakengine_task_create_project_import(std::ptr::null_mut(), std::ptr::null(), 0)
+	}
+	.is_null());
 	assert!(unsafe { oakengine_task_create_proxy(std::ptr::null_mut()) }.is_null());
-	assert!(unsafe { oakengine_task_create_export(std::ptr::null_mut(), std::ptr::null_mut()) }
-		.is_null());
+	assert!(
+		unsafe { oakengine_task_create_export(std::ptr::null_mut(), std::ptr::null_mut()) }
+			.is_null()
+	);
 
 	// The CLI dialog returns 0 (not E_INVALID) for NULL, mirroring the capi.
-	assert_eq!(unsafe { oakengine_cli_task_dialog_run(std::ptr::null_mut(), std::ptr::null_mut()) }, 0);
+	assert_eq!(
+		unsafe { oakengine_cli_task_dialog_run(std::ptr::null_mut(), std::ptr::null_mut()) },
+		0
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -163,7 +192,10 @@ fn cli_dialog_runs_task_sync() {
 
 	let task = unsafe { oakengine_task_create_project_load(c"/no/such/oak/project.ove".as_ptr()) };
 	assert!(!task.is_null());
-	assert_eq!(unsafe { oakengine_cli_task_dialog_run(task, std::ptr::null_mut()) }, 0);
+	assert_eq!(
+		unsafe { oakengine_cli_task_dialog_run(task, std::ptr::null_mut()) },
+		0
+	);
 	assert_eq!(unsafe { oakengine_task_free(task) }, 0);
 }
 
@@ -186,10 +218,8 @@ fn project_task_lifecycle() {
 	assert!(!root.is_null());
 
 	// ---- save task on a real project → sync run writes the file ----------
-	let save_path = std::env::temp_dir().join(format!(
-		"oakengine_task_save_{}.ovexml",
-		std::process::id()
-	));
+	let save_path =
+		std::env::temp_dir().join(format!("oakengine_task_save_{}.ovexml", std::process::id()));
 	let save_c = std::ffi::CString::new(save_path.to_str().unwrap()).unwrap();
 	let save_task = unsafe {
 		oakengine_task_create_project_save(project, 0, save_c.as_ptr(), std::ptr::null())
@@ -207,7 +237,12 @@ fn project_task_lifecycle() {
 
 	// A NULL project yields a NULL save task.
 	assert!(unsafe {
-		oakengine_task_create_project_save(std::ptr::null_mut(), 0, save_c.as_ptr(), std::ptr::null())
+		oakengine_task_create_project_save(
+			std::ptr::null_mut(),
+			0,
+			save_c.as_ptr(),
+			std::ptr::null(),
+		)
 	}
 	.is_null());
 
@@ -217,7 +252,9 @@ fn project_task_lifecycle() {
 	// project's own filename; NULL without one, a real task with one. ------
 	assert!(unsafe { oakengine_task_create_project_save_otio(project) }.is_null());
 	assert_eq!(
-		unsafe { oakengine_project_set_filename(project, c"/tmp/oakengine_task_otio.otio".as_ptr()) },
+		unsafe {
+			oakengine_project_set_filename(project, c"/tmp/oakengine_task_otio.otio".as_ptr())
+		},
 		0
 	);
 	let otio_task = unsafe { oakengine_task_create_project_save_otio(project) };
@@ -225,13 +262,17 @@ fn project_task_lifecycle() {
 	unsafe { oakengine_task_free(otio_task) };
 
 	// ---- import with 0 urls: task created, file count 0 -------------------
-	let import_task = unsafe {
-		oakengine_task_create_project_import(root, std::ptr::null(), 0)
-	};
+	let import_task = unsafe { oakengine_task_create_project_import(root, std::ptr::null(), 0) };
 	assert!(!import_task.is_null());
 	assert_eq!(unsafe { oakengine_task_import_file_count(import_task) }, 0);
-	assert_eq!(unsafe { oakengine_task_import_footage_count(import_task) }, 0);
-	assert_eq!(unsafe { oakengine_task_import_invalid_files_count(import_task) }, 0);
+	assert_eq!(
+		unsafe { oakengine_task_import_footage_count(import_task) },
+		0
+	);
+	assert_eq!(
+		unsafe { oakengine_task_import_invalid_files_count(import_task) },
+		0
+	);
 	// Nothing ran, so no command / footage / invalid entries. An
 	// out-of-range invalid-file index reports the module's
 	// OAKTASK_E_NOT_FOUND (-80004) pass-through.

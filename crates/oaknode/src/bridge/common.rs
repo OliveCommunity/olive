@@ -50,19 +50,28 @@ pub fn xml_reader_next_start_element(reader: CHandle) -> Option<bool> {
 /// `oakcommon_xml_reader_name` (two-stage).
 pub fn xml_reader_name(reader: CHandle) -> Option<String> {
 	two_stage_string("oakcommon_xml_reader_name", |buf, size| unsafe {
-		Some(oakcommon::ffi::xmlutils::oakcommon_xml_reader_name(reader.clone(), buf, size))
-	})
-}
-
-/// `oakcommon_xml_reader_read_element_text` (two-stage).
-pub fn xml_reader_read_element_text(reader: CHandle) -> Option<String> {
-	two_stage_string("oakcommon_xml_reader_read_element_text", |buf, size| unsafe {
-		Some(oakcommon::ffi::xmlutils::oakcommon_xml_reader_read_element_text(
+		Some(oakcommon::ffi::xmlutils::oakcommon_xml_reader_name(
 			reader.clone(),
 			buf,
 			size,
 		))
 	})
+}
+
+/// `oakcommon_xml_reader_read_element_text` (two-stage).
+pub fn xml_reader_read_element_text(reader: CHandle) -> Option<String> {
+	two_stage_string(
+		"oakcommon_xml_reader_read_element_text",
+		|buf, size| unsafe {
+			Some(
+				oakcommon::ffi::xmlutils::oakcommon_xml_reader_read_element_text(
+					reader.clone(),
+					buf,
+					size,
+				),
+			)
+		},
+	)
 }
 
 /// `oakcommon_xml_reader_skip_current_element`.
@@ -80,24 +89,28 @@ pub fn xml_reader_attribute_count(reader: CHandle) -> Option<c_int> {
 /// `oakcommon_xml_reader_attribute_name` (two-stage).
 pub fn xml_reader_attribute_name(reader: CHandle, index: c_int) -> Option<String> {
 	two_stage_string("oakcommon_xml_reader_attribute_name", |buf, size| unsafe {
-		Some(oakcommon::ffi::xmlutils::oakcommon_xml_reader_attribute_name(
-			reader.clone(),
-			index,
-			buf,
-			size,
-		))
+		Some(
+			oakcommon::ffi::xmlutils::oakcommon_xml_reader_attribute_name(
+				reader.clone(),
+				index,
+				buf,
+				size,
+			),
+		)
 	})
 }
 
 /// `oakcommon_xml_reader_attribute_value` (two-stage).
 pub fn xml_reader_attribute_value(reader: CHandle, index: c_int) -> Option<String> {
 	two_stage_string("oakcommon_xml_reader_attribute_value", |buf, size| unsafe {
-		Some(oakcommon::ffi::xmlutils::oakcommon_xml_reader_attribute_value(
-			reader.clone(),
-			index,
-			buf,
-			size,
-		))
+		Some(
+			oakcommon::ffi::xmlutils::oakcommon_xml_reader_attribute_value(
+				reader.clone(),
+				index,
+				buf,
+				size,
+			),
+		)
 	})
 }
 
@@ -133,7 +146,11 @@ pub fn xml_writer_attribute(writer: CHandle, name: &str, value: &str) -> Option<
 	let n = CString::new(name).ok()?;
 	let v = CString::new(value).ok()?;
 	Some(unsafe {
-		oakcommon::ffi::xmlutils::oakcommon_xml_writer_write_attribute(writer, n.as_ptr(), v.as_ptr())
+		oakcommon::ffi::xmlutils::oakcommon_xml_writer_write_attribute(
+			writer,
+			n.as_ptr(),
+			v.as_ptr(),
+		)
 	})
 }
 
@@ -152,7 +169,11 @@ pub fn xml_writer_text_element(writer: CHandle, name: &str, text: &str) -> Optio
 	let n = CString::new(name).ok()?;
 	let t = CString::new(text).ok()?;
 	Some(unsafe {
-		oakcommon::ffi::xmlutils::oakcommon_xml_writer_write_text_element(writer, n.as_ptr(), t.as_ptr())
+		oakcommon::ffi::xmlutils::oakcommon_xml_writer_write_text_element(
+			writer,
+			n.as_ptr(),
+			t.as_ptr(),
+		)
 	})
 }
 
@@ -169,7 +190,11 @@ pub fn xml_writer_end_document(writer: CHandle) -> Option<c_int> {
 /// `oakcommon_xml_writer_output` (two-stage).
 pub fn xml_writer_output(writer: CHandle) -> Option<String> {
 	two_stage_string("oakcommon_xml_writer_output", |buf, size| unsafe {
-		Some(oakcommon::ffi::xmlutils::oakcommon_xml_writer_output(writer.clone(), buf, size))
+		Some(oakcommon::ffi::xmlutils::oakcommon_xml_writer_output(
+			writer.clone(),
+			buf,
+			size,
+		))
 	})
 }
 
@@ -200,7 +225,14 @@ pub fn videoparams_init_basic(
 ) -> Option<CHandle> {
 	Some(unsafe {
 		oakcommon::ffi::videoparams::oakcommon_videoparams_init_basic(
-			width, height, pixel_format, channels, par_num, par_den, interlacing, divider,
+			width,
+			height,
+			pixel_format,
+			channels,
+			par_num,
+			par_den,
+			interlacing,
+			divider,
 		)
 	})
 }
@@ -267,7 +299,11 @@ pub fn videoparams_get_frame_rate(params: CHandle) -> Option<(c_int, c_int)> {
 	let mut n = 0;
 	let mut d = 0;
 	let rc = unsafe {
-		oakcommon::ffi::videoparams::oakcommon_videoparams_get_frame_rate(params.clone(), &mut n, &mut d)
+		oakcommon::ffi::videoparams::oakcommon_videoparams_get_frame_rate(
+			params.clone(),
+			&mut n,
+			&mut d,
+		)
 	};
 	Some(if rc < 0 { (0, 0) } else { (n, d) })
 }
@@ -295,7 +331,9 @@ pub fn colortransform_init_display(display: &str, view: &str, look: &str) -> Opt
 pub fn colortransform_init_output(output: &str) -> Option<CHandle> {
 	use std::ffi::CString;
 	let o = CString::new(output).ok()?;
-	Some(unsafe { oakcommon::ffi::colortransform::oakcommon_colortransform_init_output(o.as_ptr()) })
+	Some(unsafe {
+		oakcommon::ffi::colortransform::oakcommon_colortransform_init_output(o.as_ptr())
+	})
 }
 
 /// `oakcommon_colortransform_free` — releases the handle locally.
@@ -320,50 +358,61 @@ pub fn colortransform_is_display(transform: CHandle) -> Option<bool> {
 /// `oakcommon_colortransform_get_display` (two-stage).
 pub fn colortransform_get_display(transform: CHandle) -> Option<String> {
 	two_stage_string("oakcommon_colortransform_get_display", |buf, size| unsafe {
-		Some(oakcommon::ffi::colortransform::oakcommon_colortransform_get_display(
-			transform.clone(),
-			buf,
-			size,
-		))
+		Some(
+			oakcommon::ffi::colortransform::oakcommon_colortransform_get_display(
+				transform.clone(),
+				buf,
+				size,
+			),
+		)
 	})
 }
 
 /// `oakcommon_colortransform_get_output` (two-stage).
 pub fn colortransform_get_output(transform: CHandle) -> Option<String> {
 	two_stage_string("oakcommon_colortransform_get_output", |buf, size| unsafe {
-		Some(oakcommon::ffi::colortransform::oakcommon_colortransform_get_output(
-			transform.clone(),
-			buf,
-			size,
-		))
+		Some(
+			oakcommon::ffi::colortransform::oakcommon_colortransform_get_output(
+				transform.clone(),
+				buf,
+				size,
+			),
+		)
 	})
 }
 
 /// `oakcommon_colortransform_get_view` (two-stage).
 pub fn colortransform_get_view(transform: CHandle) -> Option<String> {
 	two_stage_string("oakcommon_colortransform_get_view", |buf, size| unsafe {
-		Some(oakcommon::ffi::colortransform::oakcommon_colortransform_get_view(
-			transform.clone(),
-			buf,
-			size,
-		))
+		Some(
+			oakcommon::ffi::colortransform::oakcommon_colortransform_get_view(
+				transform.clone(),
+				buf,
+				size,
+			),
+		)
 	})
 }
 
 /// `oakcommon_colortransform_get_look` (two-stage).
 pub fn colortransform_get_look(transform: CHandle) -> Option<String> {
 	two_stage_string("oakcommon_colortransform_get_look", |buf, size| unsafe {
-		Some(oakcommon::ffi::colortransform::oakcommon_colortransform_get_look(
-			transform.clone(),
-			buf,
-			size,
-		))
+		Some(
+			oakcommon::ffi::colortransform::oakcommon_colortransform_get_look(
+				transform.clone(),
+				buf,
+				size,
+			),
+		)
 	})
 }
 
 /// Shared two-stage string fetch: query the required size, then read
 /// into an owned buffer. `None` when the query returns an error.
-fn two_stage_string<F: Fn(*mut c_char, c_int) -> Option<c_int>>(_sym: &str, call: F) -> Option<String> {
+fn two_stage_string<F: Fn(*mut c_char, c_int) -> Option<c_int>>(
+	_sym: &str,
+	call: F,
+) -> Option<String> {
 	let needed = call(std::ptr::null_mut(), 0)?;
 	if needed <= 0 {
 		return Some(String::new());

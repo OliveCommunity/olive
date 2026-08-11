@@ -23,7 +23,11 @@ use std::ffi::{c_int, c_void};
 #[cfg(not(feature = "test-stubs"))]
 /// `oakcore_audioparams_create` — new owned params (release with
 /// [`audioparams_free`]).
-pub fn audioparams_create(sample_rate: c_int, channel_layout: u64, format: c_int) -> Option<*mut c_void> {
+pub fn audioparams_create(
+	sample_rate: c_int,
+	channel_layout: u64,
+	format: c_int,
+) -> Option<*mut c_void> {
 	use crate::bridge::dlsym;
 	type F = unsafe extern "C" fn(c_int, u64, c_int) -> *mut c_void;
 	dlsym::call::<F, *mut c_void>("oakcore_audioparams_create", |f| unsafe {
@@ -33,7 +37,11 @@ pub fn audioparams_create(sample_rate: c_int, channel_layout: u64, format: c_int
 
 /// Test-stub path.
 #[cfg(feature = "test-stubs")]
-pub fn audioparams_create(sample_rate: c_int, channel_layout: u64, format: c_int) -> Option<*mut c_void> {
+pub fn audioparams_create(
+	sample_rate: c_int,
+	channel_layout: u64,
+	format: c_int,
+) -> Option<*mut c_void> {
 	Some(unsafe { stub::oakcore_audioparams_create(sample_rate, channel_layout, format) })
 }
 
@@ -73,7 +81,9 @@ pub fn audioparams_sample_rate(params: *const c_void) -> Option<c_int> {
 pub fn audioparams_channel_layout(params: *const c_void) -> Option<u64> {
 	use crate::bridge::dlsym;
 	type F = unsafe extern "C" fn(*const c_void) -> u64;
-	dlsym::call::<F, u64>("oakcore_audioparams_channel_layout", |f| unsafe { f(params) })
+	dlsym::call::<F, u64>("oakcore_audioparams_channel_layout", |f| unsafe {
+		f(params)
+	})
 }
 
 /// Test-stub path.

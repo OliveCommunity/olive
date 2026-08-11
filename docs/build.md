@@ -25,8 +25,12 @@ This document describes how to build Oak Video Editor from source on Windows, Li
 > ```
 >
 > External libraries are probed with `pkg-config` and silently skipped
-> when missing. Unset `FFMPEG_DIR` to fall back to the system
-> `pkg-config` FFmpeg (must be 8.x for ffmpeg-next to compile).
+> when missing. `FFMPEG_DIR` is mandatory (the `oakffmpeg-link` build
+> script panics without it): silently binding a system FFmpeg risks
+> stale `.pc` paths after package upgrades. IDEs that cannot inject
+> environment variables into cargo (RustRover) can instead put
+> `FFMPEG_DIR=...` (and `PKG_CONFIG_PATH=...` where needed) into a
+> `.env` file at the workspace root — it is git-ignored.
 > ffmpeg-next's `build` cargo feature is deliberately not used: it
 > clones release/<crate-version>, and every such pairing is broken
 > upstream (9.0.0 → FFmpeg 9.0 removed AVCodec fields; 8.1.0 → FFmpeg

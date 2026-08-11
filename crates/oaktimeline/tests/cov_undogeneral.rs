@@ -28,11 +28,9 @@ use oaktimeline::bridge::node::{
 	oaknode_tracklist_get_type,
 };
 use oaktimeline::bridge::teststubs::{MockKind, MockNode};
-use oaktimeline::handle::{CHandle, get, get_mut, make_owned};
+use oaktimeline::handle::{get, get_mut, make_owned, CHandle};
 use oaktimeline::undocommon::Command;
-use oaktimeline::undogeneral::{
-	TimelineAddDefaultTransitionCommand, TimelineAddTrackCommand,
-};
+use oaktimeline::undogeneral::{TimelineAddDefaultTransitionCommand, TimelineAddTrackCommand};
 
 // ---- helpers -----------------------------------------------------------
 
@@ -72,7 +70,14 @@ fn set_times(h: &CHandle, in_: (i32, i32), out: (i32, i32), len: (i32, i32), mi:
 	b.media_in = mi;
 }
 
-fn prepend(t: &CHandle, b: &CHandle, in_: (i32, i32), out: (i32, i32), len: (i32, i32), mi: (i32, i32)) {
+fn prepend(
+	t: &CHandle,
+	b: &CHandle,
+	in_: (i32, i32),
+	out: (i32, i32),
+	len: (i32, i32),
+	mi: (i32, i32),
+) {
 	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()) };
 	set_times(b, in_, out, len, mi);
 }
@@ -116,10 +121,8 @@ fn default_transition_prepare_neighbours() {
 	prepend(&t, &c1, (0, 1), (10, 1), (10, 1), (0, 1));
 	// Track order: [c1, c2].
 
-	let mut cmd = TimelineAddDefaultTransitionCommand::new(
-		vec![c1.clone(), c2.clone()],
-		Rational::new(1, 1),
-	);
+	let mut cmd =
+		TimelineAddDefaultTransitionCommand::new(vec![c1.clone(), c2.clone()], Rational::new(1, 1));
 	cmd.prepare();
 	cmd.redo();
 	cmd.undo();

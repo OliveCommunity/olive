@@ -378,7 +378,9 @@ fn is_ws(c: char) -> bool {
 /// Convert a quick-xml `QName` (raw bytes) to an owned UTF-8 string. The
 /// input is always valid UTF-8 (the reader was built from a `&str`).
 fn qname_string(q: impl AsRef<[u8]>) -> String {
-	std::str::from_utf8(q.as_ref()).map(str::to_owned).unwrap_or_default()
+	std::str::from_utf8(q.as_ref())
+		.map(str::to_owned)
+		.unwrap_or_default()
 }
 
 /// Append character data, merging consecutive Characters events
@@ -991,7 +993,7 @@ mod tests {
 		assert!(r.read_next_start_element().unwrap()); // a
 		assert!(r.read_next_start_element().unwrap()); // b
 		assert!(r.read_next_start_element().unwrap()); // c
-		// Next is </b>: returns false and stays put.
+												 // Next is </b>: returns false and stays put.
 		assert!(!r.read_next_start_element().unwrap());
 	}
 
@@ -1022,30 +1024,30 @@ mod tests {
 	#[test]
 	fn reader_malformed_matrix() {
 		let cases = [
-			"",                                // no element found
-			"   \n  ",                         // whitespace only: no element
-			"<a>",                             // unclosed root
-			"<a><b></a></b>",                  // mismatched nesting
-			"<a></a></a>",                     // end tag without start
-			"<a></>",                          // empty end tag name
-			"<a>< /a>",                        // '<' not followed by name
-			"<a",                              // unclosed start tag
-			"<a b>",                           // attribute missing '='
-			"<a b=1>",                         // attribute value not quoted
-			"<a b=\"v>",                       // unclosed attribute value
-			"<a></a",                          // unclosed end tag
-			"<a><!-- c</a>",                   // unclosed comment
-			"<a><![CDATA[x</a>",               // unclosed CDATA
-			"<?pi<a></a>",                     // unclosed PI
-			"<a>&undefined;</a>",              // undefined entity
-			"<a>&#xZZ;</a>",                   // bad hex char reference
-			"<a>&#99999999999;</a>",           // out-of-range char reference
-			"<a b=\"&foo;\"/>",                // undefined entity in attribute
-			"<a/>tail",                        // junk after document element
-			"<a/><b/>",                        // second root element
-			"<a a=\"1\" a=\"2\"/>",            // duplicate attribute
-			"<a b=\"<\"/>",                    // '<' in attribute value
-			"<a/ ><b/>",                       // self-close then second root
+			"",                      // no element found
+			"   \n  ",               // whitespace only: no element
+			"<a>",                   // unclosed root
+			"<a><b></a></b>",        // mismatched nesting
+			"<a></a></a>",           // end tag without start
+			"<a></>",                // empty end tag name
+			"<a>< /a>",              // '<' not followed by name
+			"<a",                    // unclosed start tag
+			"<a b>",                 // attribute missing '='
+			"<a b=1>",               // attribute value not quoted
+			"<a b=\"v>",             // unclosed attribute value
+			"<a></a",                // unclosed end tag
+			"<a><!-- c</a>",         // unclosed comment
+			"<a><![CDATA[x</a>",     // unclosed CDATA
+			"<?pi<a></a>",           // unclosed PI
+			"<a>&undefined;</a>",    // undefined entity
+			"<a>&#xZZ;</a>",         // bad hex char reference
+			"<a>&#99999999999;</a>", // out-of-range char reference
+			"<a b=\"&foo;\"/>",      // undefined entity in attribute
+			"<a/>tail",              // junk after document element
+			"<a/><b/>",              // second root element
+			"<a a=\"1\" a=\"2\"/>",  // duplicate attribute
+			"<a b=\"<\"/>",          // '<' in attribute value
+			"<a/ ><b/>",             // self-close then second root
 		];
 		for doc in cases {
 			let r = XmlReader::new(doc).unwrap();
@@ -1071,7 +1073,7 @@ mod tests {
 			"<a>x</a  >",
 			" \n<a> </a>\n ",
 			"<ns:a xmlns:ns=\"urn:x\" ns:b=\"v\"/>", // namespaces not processed
-			"<a>]]</a>",                            // single ']' is fine
+			"<a>]]</a>",                             // single ']' is fine
 		];
 		for doc in cases {
 			let r = XmlReader::new(doc).unwrap();

@@ -58,7 +58,10 @@ unsafe fn cstr_buf_to_string(buf: &[u8]) -> String {
 ///
 /// # Safety
 /// `req` must be a valid `OakCodecTaskRequest` or null.
-unsafe extern "C" fn submit_codec_task(req: *const bridge::codec::OakCodecTaskRequest, _userdata: *mut c_void) -> c_int {
+unsafe extern "C" fn submit_codec_task(
+	req: *const bridge::codec::OakCodecTaskRequest,
+	_userdata: *mut c_void,
+) -> c_int {
 	if req.is_null() {
 		return bridge::codec::OAKCODEC_E_INVALID;
 	}

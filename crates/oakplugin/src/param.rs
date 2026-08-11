@@ -351,7 +351,10 @@ impl ParamDef {
 		props.set_one(PROP_LABEL, Value::String(cs(&uname)));
 		props.set_one(PROP_SHORT_LABEL, Value::String(cs(&uname)));
 		props.set_one(PROP_LONG_LABEL, Value::String(cs(&uname)));
-		props.define(PROP_ICON, vec![Value::String(cs("")), Value::String(cs(""))]);
+		props.define(
+			PROP_ICON,
+			vec![Value::String(cs("")), Value::String(cs(""))],
+		);
 
 		// 值类参数（HS addValueParamProps，ofxhParam.cpp:352-380）。
 		if let Some((kind, dim)) = kind_of_type(ofx_type) {
@@ -360,7 +363,10 @@ impl ParamDef {
 			props.set_one(P_PERSISTANT, Value::Int(1));
 			props.set_one(P_EVALUATE_ON_CHANGE, Value::Int(1));
 			props.set_one(P_CAN_UNDO, Value::Int(1));
-			props.set_one(P_CACHE_INVALIDATION, Value::String(cs(V_INVALIDATE_VALUE_CHANGE)));
+			props.set_one(
+				P_CACHE_INVALIDATION,
+				Value::String(cs(V_INVALIDATE_VALUE_CHANGE)),
+			);
 			// 可动画性（HS ofxhParam.cpp:367-372：custom/string/
 			// boolean/choice 默认不可动画）。
 			let animates = ofx_type != TYPE_CUSTOM
@@ -376,11 +382,15 @@ impl ParamDef {
 				props.define(P_DISPLAY_MAX, numeric_value(ofx_type, kind, dim, true));
 				props.define(P_MIN, numeric_value(ofx_type, kind, dim, false));
 				props.define(P_MAX, numeric_value(ofx_type, kind, dim, true));
-				if matches!(kind, ParamKind::Double | ParamKind::Double2 | ParamKind::Double3) {
+				if matches!(
+					kind,
+					ParamKind::Double | ParamKind::Double2 | ParamKind::Double3
+				) {
 					props.set_one(P_INCREMENT, Value::Double(1.0));
 					props.set_one(P_DIGITS, Value::Int(2));
 				}
-				if ofx_type == TYPE_DOUBLE || ofx_type == TYPE_DOUBLE2D || ofx_type == TYPE_DOUBLE3D {
+				if ofx_type == TYPE_DOUBLE || ofx_type == TYPE_DOUBLE2D || ofx_type == TYPE_DOUBLE3D
+				{
 					props.set_one(P_DOUBLE_TYPE, Value::String(cs(V_DOUBLE_TYPE_PLAIN)));
 					props.set_one(P_DEFAULT_COORD_SYS, Value::String(cs(V_COORD_CANONICAL)));
 					if dim == 1 {
@@ -423,16 +433,16 @@ impl ParamDef {
 		// group/page 除外）。
 		if ofx_type != TYPE_GROUP && ofx_type != TYPE_PAGE {
 			props.set_one(P_INTERACT_V1, Value::Pointer(std::ptr::null_mut()));
-			props.define(P_INTERACT_SIZE, vec![Value::Double(0.0), Value::Double(0.0)]);
+			props.define(
+				P_INTERACT_SIZE,
+				vec![Value::Double(0.0), Value::Double(0.0)],
+			);
 			props.set_one(P_INTERACT_ASPECT, Value::Double(1.0));
 			props.define(
 				P_INTERACT_MIN_SIZE,
 				vec![Value::Double(10.0), Value::Double(10.0)],
 			);
-			props.define(
-				P_INTERACT_PREF_SIZE,
-				vec![Value::Int(10), Value::Int(10)],
-			);
+			props.define(P_INTERACT_PREF_SIZE, vec![Value::Int(10), Value::Int(10)]);
 		}
 
 		Self {
@@ -452,7 +462,11 @@ impl ParamDef {
 /// kOfxParamPropDefault 的属性值（HS ofxhParam.cpp:376-377）。
 fn default_values(kind: ParamKind, dim: usize) -> Vec<Value> {
 	match kind {
-		ParamKind::Int | ParamKind::Int2 | ParamKind::Int3 | ParamKind::Bool | ParamKind::Choice => {
+		ParamKind::Int
+		| ParamKind::Int2
+		| ParamKind::Int3
+		| ParamKind::Bool
+		| ParamKind::Choice => {
 			vec![Value::Int(0); dim.max(1)]
 		}
 		ParamKind::Double
@@ -522,15 +536,22 @@ impl ParamInstance {
 		use crate::bridge::node::node_value_type as T;
 		let v = node_value;
 		let mapped: Option<ParamValue> = match self.def.ofx_type.as_str() {
-			TYPE_DOUBLE => (v.r#type == T::FLOAT).then(|| ParamValue::Double([v.f[0], 0.0, 0.0], 1)),
+			TYPE_DOUBLE => {
+				(v.r#type == T::FLOAT).then(|| ParamValue::Double([v.f[0], 0.0, 0.0], 1))
+			}
 			TYPE_DOUBLE2D => {
 				(v.r#type == T::VEC2).then(|| ParamValue::Double([v.f[0], v.f[1], 0.0], 2))
 			}
-			TYPE_DOUBLE3D => (v.r#type == T::VEC3)
-				.then(|| ParamValue::Double([v.f[0], v.f[1], v.f[2]], 3)),
+			TYPE_DOUBLE3D => {
+				(v.r#type == T::VEC3).then(|| ParamValue::Double([v.f[0], v.f[1], v.f[2]], 3))
+			}
 			TYPE_INTEGER => (v.r#type == T::INT).then(|| ParamValue::Int([v.num as i32, 0, 0], 1)),
 			TYPE_INTEGER2D | TYPE_INTEGER3D => {
-				let dim = if self.def.ofx_type == TYPE_INTEGER2D { 2 } else { 3 };
+				let dim = if self.def.ofx_type == TYPE_INTEGER2D {
+					2
+				} else {
+					3
+				};
 				Some(ParamValue::Int(
 					[v.f[0] as i32, v.f[1] as i32, v.f[2] as i32],
 					dim,
@@ -538,8 +559,9 @@ impl ParamInstance {
 			}
 			TYPE_BOOLEAN => (v.r#type == T::BOOL).then(|| ParamValue::Bool(v.num != 0)),
 			TYPE_CHOICE => (v.r#type == T::COMBO).then(|| ParamValue::Choice(v.num as i32)),
-			TYPE_RGB => (v.r#type == T::COLOR)
-				.then(|| ParamValue::Color([v.f[0], v.f[1], v.f[2], 0.0], 3)),
+			TYPE_RGB => {
+				(v.r#type == T::COLOR).then(|| ParamValue::Color([v.f[0], v.f[1], v.f[2], 0.0], 3))
+			}
 			TYPE_RGBA => (v.r#type == T::COLOR)
 				.then(|| ParamValue::Color([v.f[0], v.f[1], v.f[2], v.f[3]], 4)),
 			_ => None, // 字符串/无值类：POD 无数据，不改值
@@ -618,7 +640,10 @@ pub struct ParamSetInstance {
 impl ParamSetInstance {
 	/// 按名查找。
 	pub fn find(&self, name: &str) -> Option<&ParamInstance> {
-		self.params.iter().find(|p| p.def.name == name).map(|b| b.as_ref())
+		self.params
+			.iter()
+			.find(|p| p.def.name == name)
+			.map(|b| b.as_ref())
 	}
 
 	/// 快照（内省 C ABI 与快照测试用）。
@@ -679,8 +704,7 @@ pub(crate) fn notify_instance_changed(
 	match to_node_value(&value) {
 		Some(nv) => {
 			let mut cmd = undo::CommandHandle::null();
-			let r =
-				unsafe { node::set_input_undoable(node_handle, cname.as_ptr(), &nv, &mut cmd) };
+			let r = unsafe { node::set_input_undoable(node_handle, cname.as_ptr(), &nv, &mut cmd) };
 			if r == 0 && !cmd.is_null() {
 				instance.submit_undo_command(cmd, &label);
 			}
@@ -752,8 +776,14 @@ mod tests {
 		let v = to_node_value(&ParamValue::Int([1, 2, 0], 2)).unwrap();
 		assert_eq!(v, Value::vec(&[1.0, 2.0]));
 		// Bool / Choice。
-		assert_eq!(to_node_value(&ParamValue::Bool(true)).unwrap(), Value::bool_(true));
-		assert_eq!(to_node_value(&ParamValue::Choice(3)).unwrap(), Value::combo(3));
+		assert_eq!(
+			to_node_value(&ParamValue::Bool(true)).unwrap(),
+			Value::bool_(true)
+		);
+		assert_eq!(
+			to_node_value(&ParamValue::Choice(3)).unwrap(),
+			Value::combo(3)
+		);
 		// Color：RGB 补 alpha=1（C++ oracle），RGBA 全透传。
 		let v = to_node_value(&ParamValue::Color([0.1, 0.2, 0.3, 0.0], 3)).unwrap();
 		assert_eq!(v, Value::color(0.1, 0.2, 0.3, 1.0));
@@ -771,18 +801,24 @@ mod tests {
 	/// type_default 的无值类/字节族基线（paramDefine 拒绝前的兜底）。
 	#[test]
 	fn type_default_edge_cases() {
-		assert!(matches!(
-			type_default(TYPE_BYTES),
-			ParamValue::Bytes(_)
-		));
+		assert!(matches!(type_default(TYPE_BYTES), ParamValue::Bytes(_)));
 		assert!(matches!(type_default(TYPE_CUSTOM), ParamValue::Bytes(_)));
-		assert!(matches!(type_default(TYPE_PUSHBUTTON), ParamValue::PushButton));
+		assert!(matches!(
+			type_default(TYPE_PUSHBUTTON),
+			ParamValue::PushButton
+		));
 		assert!(matches!(type_default(TYPE_GROUP), ParamValue::Container));
 		assert!(matches!(type_default(TYPE_PAGE), ParamValue::Container));
 		// 未知类型占位（paramDefine 已拒绝，此处兜底）。
-		assert!(matches!(type_default("OfxParamTypeBogus"), ParamValue::Container));
+		assert!(matches!(
+			type_default("OfxParamTypeBogus"),
+			ParamValue::Container
+		));
 		// 数值族的默认 0。
-		assert!(matches!(type_default(TYPE_INTEGER), ParamValue::Int([0, 0, 0], 1)));
+		assert!(matches!(
+			type_default(TYPE_INTEGER),
+			ParamValue::Int([0, 0, 0], 1)
+		));
 		assert!(matches!(
 			type_default(TYPE_DOUBLE2D),
 			ParamValue::Double([0.0, 0.0, 0.0], 2)

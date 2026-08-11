@@ -37,11 +37,11 @@
 use std::ffi::c_char;
 use std::ffi::CString;
 
-use oaktimeline::bridge::teststubs::{MockKind, MockNode, MockXmlNode, xml_reader_handle};
-use oaktimeline::bridge::{node as onode};
+use oaktimeline::bridge::node as onode;
+use oaktimeline::bridge::teststubs::{xml_reader_handle, MockKind, MockNode, MockXmlNode};
 use oaktimeline::error::{OAKTIMELINE_E_INVALID, OAKTIMELINE_OK};
 use oaktimeline::ffi::{edit, marker, workarea};
-use oaktimeline::handle::{CHandle, make_owned};
+use oaktimeline::handle::{make_owned, CHandle};
 
 // ---- helpers ---------------------------------------------------------
 
@@ -90,9 +90,7 @@ fn mk_sequence() -> CHandle {
 /// Add one marker to `list` (direct, no command) at in=1/1 out=5/1, color 3.
 fn add_single_marker(list: &CHandle) {
 	let name = cstr("m1");
-	let r = unsafe {
-		marker::oaktimeline_marker_add(list.clone(), 1, 1, 5, 1, name.as_ptr(), 3)
-	};
+	let r = unsafe { marker::oaktimeline_marker_add(list.clone(), 1, 1, 5, 1, name.as_ptr(), 3) };
 	assert_eq!(r, OAKTIMELINE_OK);
 }
 
@@ -139,7 +137,8 @@ fn marker_create_add_count_at() {
 #[test]
 fn marker_null_list_errors() {
 	let name = cstr("x");
-	let r = unsafe { marker::oaktimeline_marker_add(CHandle::null(), 1, 1, 5, 1, name.as_ptr(), 0) };
+	let r =
+		unsafe { marker::oaktimeline_marker_add(CHandle::null(), 1, 1, 5, 1, name.as_ptr(), 0) };
 	assert_eq!(r, OAKTIMELINE_E_INVALID);
 
 	let mut count = 0;
@@ -147,7 +146,19 @@ fn marker_null_list_errors() {
 	assert_eq!(r, OAKTIMELINE_E_INVALID);
 
 	let mut out = 0;
-	let r = unsafe { marker::oaktimeline_marker_at(CHandle::null(), 0, &mut out, std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), 0) };
+	let r = unsafe {
+		marker::oaktimeline_marker_at(
+			CHandle::null(),
+			0,
+			&mut out,
+			std::ptr::null_mut(),
+			std::ptr::null_mut(),
+			std::ptr::null_mut(),
+			std::ptr::null_mut(),
+			std::ptr::null_mut(),
+			0,
+		)
+	};
 	assert_eq!(r, OAKTIMELINE_E_INVALID);
 }
 
@@ -185,26 +196,33 @@ fn marker_set_props_command_branches() {
 
 	// Combined color + name -> multi command.
 	let name = cstr("renamed");
-	let h = unsafe { marker::oaktimeline_marker_set_props_command(list.clone(), 0, 7, name.as_ptr()) };
+	let h =
+		unsafe { marker::oaktimeline_marker_set_props_command(list.clone(), 0, 7, name.as_ptr()) };
 	assert!(!h.is_null());
 
 	// Color-only (name == NULL) -> color child; also exercises the
 	// `cstr_to_string(NULL)` empty-string path.
-	let h = unsafe { marker::oaktimeline_marker_set_props_command(list.clone(), 0, 9, std::ptr::null()) };
+	let h = unsafe {
+		marker::oaktimeline_marker_set_props_command(list.clone(), 0, 9, std::ptr::null())
+	};
 	assert!(!h.is_null());
 
 	// Name-only (color < 0) -> name child.
 	let name = cstr("onlyname");
-	let h = unsafe { marker::oaktimeline_marker_set_props_command(list.clone(), 0, -1, name.as_ptr()) };
+	let h =
+		unsafe { marker::oaktimeline_marker_set_props_command(list.clone(), 0, -1, name.as_ptr()) };
 	assert!(!h.is_null());
 
 	// color < 0 AND name == NULL -> Invalid.
-	let h = unsafe { marker::oaktimeline_marker_set_props_command(list.clone(), 0, -1, std::ptr::null()) };
+	let h = unsafe {
+		marker::oaktimeline_marker_set_props_command(list.clone(), 0, -1, std::ptr::null())
+	};
 	assert!(h.is_null());
 
 	// Out-of-range index -> NotFound.
 	let name = cstr("x");
-	let h = unsafe { marker::oaktimeline_marker_set_props_command(list.clone(), 50, 1, name.as_ptr()) };
+	let h =
+		unsafe { marker::oaktimeline_marker_set_props_command(list.clone(), 50, 1, name.as_ptr()) };
 	assert!(h.is_null());
 }
 
@@ -321,12 +339,16 @@ fn workarea_get_null() {
 #[test]
 fn workarea_set_range_command() {
 	// Null work area -> null handle.
-	let h = unsafe { workarea::oaktimeline_workarea_set_range_command(CHandle::null(), 1, 1, 2, 1, 0, 1, 1, 1) };
+	let h = unsafe {
+		workarea::oaktimeline_workarea_set_range_command(CHandle::null(), 1, 1, 2, 1, 0, 1, 1, 1)
+	};
 	assert!(h.is_null());
 
 	// Valid work area -> owning command handle.
 	let w = mk_workarea();
-	let h = unsafe { workarea::oaktimeline_workarea_set_range_command(w.clone(), 1, 1, 2, 1, 0, 1, 1, 1) };
+	let h = unsafe {
+		workarea::oaktimeline_workarea_set_range_command(w.clone(), 1, 1, 2, 1, 0, 1, 1, 1)
+	};
 	assert!(!h.is_null());
 }
 
@@ -345,7 +367,14 @@ fn workarea_set_enabled_command() {
 #[test]
 fn workarea_reset() {
 	// A null out pointer -> Invalid.
-	let r = unsafe { workarea::oaktimeline_workarea_reset(std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut(), std::ptr::null_mut()) };
+	let r = unsafe {
+		workarea::oaktimeline_workarea_reset(
+			std::ptr::null_mut(),
+			std::ptr::null_mut(),
+			std::ptr::null_mut(),
+			std::ptr::null_mut(),
+		)
+	};
 	assert_eq!(r, OAKTIMELINE_E_INVALID);
 
 	// Success: all four out params are filled.
@@ -353,7 +382,9 @@ fn workarea_reset() {
 	let mut in_den = 0;
 	let mut out_num = 0;
 	let mut out_den = 0;
-	let r = unsafe { workarea::oaktimeline_workarea_reset(&mut in_num, &mut in_den, &mut out_num, &mut out_den) };
+	let r = unsafe {
+		workarea::oaktimeline_workarea_reset(&mut in_num, &mut in_den, &mut out_num, &mut out_den)
+	};
 	assert_eq!(r, OAKTIMELINE_OK);
 	// reset sentinel: in = 0/1, out = RATIONAL_MAX (2147483647/1).
 	assert_eq!(in_num, 0);
@@ -418,22 +449,63 @@ fn replace_block_with_gap_command() {
 	assert!(!h.is_null());
 }
 
+/// `oaktimeline_move_block_command` null and valid paths.
+#[test]
+fn move_block_command() {
+	// Null list / block -> null handle.
+	let list = mk_track_list();
+	let b = mk_clip();
+	let h = unsafe { edit::oaktimeline_move_block_command(CHandle::null(), 0, b.clone(), 10, 1) };
+	assert!(h.is_null());
+	let h =
+		unsafe { edit::oaktimeline_move_block_command(list.clone(), 0, CHandle::null(), 10, 1) };
+	assert!(h.is_null());
+
+	// Valid list + block + in point -> owning command handle.
+	let h = unsafe { edit::oaktimeline_move_block_command(list.clone(), 0, b.clone(), 10, 1) };
+	assert!(!h.is_null());
+}
+
 /// `oaktimeline_split_preserving_links_command` null-arg error and success.
 #[test]
 fn split_preserving_links_command() {
 	// Error: null blocks / zero counts.
-	let h = unsafe { edit::oaktimeline_split_preserving_links_command(std::ptr::null(), 1, std::ptr::null(), std::ptr::null(), 1) };
+	let h = unsafe {
+		edit::oaktimeline_split_preserving_links_command(
+			std::ptr::null(),
+			1,
+			std::ptr::null(),
+			std::ptr::null(),
+			1,
+		)
+	};
 	assert!(h.is_null());
 
 	// Error: blocks non-null but count <= 0.
 	let blocks = [mk_clip()];
 	let nums = [10i64];
 	let dens = [1i64];
-	let h = unsafe { edit::oaktimeline_split_preserving_links_command(blocks.as_ptr(), 0, nums.as_ptr(), dens.as_ptr(), 1) };
+	let h = unsafe {
+		edit::oaktimeline_split_preserving_links_command(
+			blocks.as_ptr(),
+			0,
+			nums.as_ptr(),
+			dens.as_ptr(),
+			1,
+		)
+	};
 	assert!(h.is_null());
 
 	// Success.
-	let h = unsafe { edit::oaktimeline_split_preserving_links_command(blocks.as_ptr(), 1, nums.as_ptr(), dens.as_ptr(), 1) };
+	let h = unsafe {
+		edit::oaktimeline_split_preserving_links_command(
+			blocks.as_ptr(),
+			1,
+			nums.as_ptr(),
+			dens.as_ptr(),
+			1,
+		)
+	};
 	assert!(!h.is_null());
 }
 
@@ -449,17 +521,57 @@ fn ripple_delete_gaps_command() {
 	let tracks = [t.clone()];
 
 	// Error: null sequence.
-	let h = unsafe { edit::oaktimeline_ripple_delete_gaps_command(CHandle::null(), in_nums.as_ptr(), in_dens.as_ptr(), out_nums.as_ptr(), out_dens.as_ptr(), tracks.as_ptr(), 1) };
+	let h = unsafe {
+		edit::oaktimeline_ripple_delete_gaps_command(
+			CHandle::null(),
+			in_nums.as_ptr(),
+			in_dens.as_ptr(),
+			out_nums.as_ptr(),
+			out_dens.as_ptr(),
+			tracks.as_ptr(),
+			1,
+		)
+	};
 	assert!(h.is_null());
 
 	// Error: null arrays / range_count <= 0.
-	let h = unsafe { edit::oaktimeline_ripple_delete_gaps_command(seq.clone(), std::ptr::null(), std::ptr::null(), std::ptr::null(), std::ptr::null(), tracks.as_ptr(), 1) };
+	let h = unsafe {
+		edit::oaktimeline_ripple_delete_gaps_command(
+			seq.clone(),
+			std::ptr::null(),
+			std::ptr::null(),
+			std::ptr::null(),
+			std::ptr::null(),
+			tracks.as_ptr(),
+			1,
+		)
+	};
 	assert!(h.is_null());
-	let h = unsafe { edit::oaktimeline_ripple_delete_gaps_command(seq.clone(), in_nums.as_ptr(), in_dens.as_ptr(), out_nums.as_ptr(), out_dens.as_ptr(), tracks.as_ptr(), 0) };
+	let h = unsafe {
+		edit::oaktimeline_ripple_delete_gaps_command(
+			seq.clone(),
+			in_nums.as_ptr(),
+			in_dens.as_ptr(),
+			out_nums.as_ptr(),
+			out_dens.as_ptr(),
+			tracks.as_ptr(),
+			0,
+		)
+	};
 	assert!(h.is_null());
 
 	// Success.
-	let h = unsafe { edit::oaktimeline_ripple_delete_gaps_command(seq.clone(), in_nums.as_ptr(), in_dens.as_ptr(), out_nums.as_ptr(), out_dens.as_ptr(), tracks.as_ptr(), 1) };
+	let h = unsafe {
+		edit::oaktimeline_ripple_delete_gaps_command(
+			seq.clone(),
+			in_nums.as_ptr(),
+			in_dens.as_ptr(),
+			out_nums.as_ptr(),
+			out_dens.as_ptr(),
+			tracks.as_ptr(),
+			1,
+		)
+	};
 	assert!(!h.is_null());
 }
 

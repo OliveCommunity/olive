@@ -31,8 +31,8 @@
 
 use crate::error::{Error, Result};
 use crate::ocioutils::PixelFormat;
-use oakcore_rs::Rational;
 use image::{ExtendedColorType, ImageBuffer, Rgb, Rgba};
+use oakcore_rs::Rational;
 
 /// OIIO base type codes, matching `OIIO::TypeDesc::BASETYPE`.
 ///
@@ -211,8 +211,7 @@ impl F32Image {
 /// are upscaled to float. Only the TIFF format is enabled in this crate's
 /// `image` dependency; other formats fail with an error.
 pub fn read_image_f32(path: &str) -> Result<F32Image> {
-	let img =
-		image::open(path).map_err(|e| Error::new(format!("image::read_image_f32: {e}")))?;
+	let img = image::open(path).map_err(|e| Error::new(format!("image::read_image_f32: {e}")))?;
 	let width = img.width() as i32;
 	let height = img.height() as i32;
 	let channels = img.color().channel_count() as i32;
@@ -274,25 +273,24 @@ pub fn write_image_f32(
 	}
 
 	let (w, h) = (width as u32, height as u32);
-	let result = if channels == 3 {
-		let buf = ImageBuffer::<Rgb<f32>, Vec<f32>>::from_raw(w, h, pixels.to_vec()).ok_or_else(
-			|| {
-				Error::new(format!(
+	let result =
+		if channels == 3 {
+			let buf = ImageBuffer::<Rgb<f32>, Vec<f32>>::from_raw(w, h, pixels.to_vec())
+				.ok_or_else(|| {
+					Error::new(format!(
 					"image::write_image_f32: pixel buffer does not match {width}x{height}x{channels}"
 				))
-			},
-		)?;
-		buf.save_with_format(path, image::ImageFormat::Tiff)
-	} else {
-		let buf = ImageBuffer::<Rgba<f32>, Vec<f32>>::from_raw(w, h, pixels.to_vec()).ok_or_else(
-			|| {
-				Error::new(format!(
+				})?;
+			buf.save_with_format(path, image::ImageFormat::Tiff)
+		} else {
+			let buf = ImageBuffer::<Rgba<f32>, Vec<f32>>::from_raw(w, h, pixels.to_vec())
+				.ok_or_else(|| {
+					Error::new(format!(
 					"image::write_image_f32: pixel buffer does not match {width}x{height}x{channels}"
 				))
-			},
-		)?;
-		buf.save_with_format(path, image::ImageFormat::Tiff)
-	};
+				})?;
+			buf.save_with_format(path, image::ImageFormat::Tiff)
+		};
 	result.map_err(|e| Error::new(format!("image::write_image_f32: {e}")))?;
 	Ok(())
 }
@@ -308,30 +306,80 @@ mod tests {
 	#[test]
 	fn base_type_from_format_mapping() {
 		let u = utils();
-		assert_eq!(u.get_oiio_base_type_from_format(PixelFormat::U8).unwrap(), 2); // UINT8
-		assert_eq!(u.get_oiio_base_type_from_format(PixelFormat::U10).unwrap(), 0); // UNKNOWN
-		assert_eq!(u.get_oiio_base_type_from_format(PixelFormat::U16).unwrap(), 4); // UINT16
-		assert_eq!(u.get_oiio_base_type_from_format(PixelFormat::F16).unwrap(), 10); // HALF
-		assert_eq!(u.get_oiio_base_type_from_format(PixelFormat::F32).unwrap(), 11); // FLOAT
-		// Invalid / count fall through to UNKNOWN.
-		assert_eq!(u.get_oiio_base_type_from_format(PixelFormat::Invalid).unwrap(), 0);
-		assert_eq!(u.get_oiio_base_type_from_format(PixelFormat::Count).unwrap(), 0);
+		assert_eq!(
+			u.get_oiio_base_type_from_format(PixelFormat::U8).unwrap(),
+			2
+		); // UINT8
+		assert_eq!(
+			u.get_oiio_base_type_from_format(PixelFormat::U10).unwrap(),
+			0
+		); // UNKNOWN
+		assert_eq!(
+			u.get_oiio_base_type_from_format(PixelFormat::U16).unwrap(),
+			4
+		); // UINT16
+		assert_eq!(
+			u.get_oiio_base_type_from_format(PixelFormat::F16).unwrap(),
+			10
+		); // HALF
+		assert_eq!(
+			u.get_oiio_base_type_from_format(PixelFormat::F32).unwrap(),
+			11
+		); // FLOAT
+	 // Invalid / count fall through to UNKNOWN.
+		assert_eq!(
+			u.get_oiio_base_type_from_format(PixelFormat::Invalid)
+				.unwrap(),
+			0
+		);
+		assert_eq!(
+			u.get_oiio_base_type_from_format(PixelFormat::Count)
+				.unwrap(),
+			0
+		);
 	}
 
 	#[test]
 	fn format_from_oiio_basetype_mapping() {
 		let u = utils();
 		assert_eq!(u.get_format_from_oiio_basetype(2).unwrap(), PixelFormat::U8);
-		assert_eq!(u.get_format_from_oiio_basetype(4).unwrap(), PixelFormat::U16);
-		assert_eq!(u.get_format_from_oiio_basetype(10).unwrap(), PixelFormat::F16);
-		assert_eq!(u.get_format_from_oiio_basetype(11).unwrap(), PixelFormat::F32);
+		assert_eq!(
+			u.get_format_from_oiio_basetype(4).unwrap(),
+			PixelFormat::U16
+		);
+		assert_eq!(
+			u.get_format_from_oiio_basetype(10).unwrap(),
+			PixelFormat::F16
+		);
+		assert_eq!(
+			u.get_format_from_oiio_basetype(11).unwrap(),
+			PixelFormat::F32
+		);
 		// Unknown / unmappable base types map to Invalid.
-		assert_eq!(u.get_format_from_oiio_basetype(0).unwrap(), PixelFormat::Invalid); // UNKNOWN
-		assert_eq!(u.get_format_from_oiio_basetype(1).unwrap(), PixelFormat::Invalid); // NONE
-		assert_eq!(u.get_format_from_oiio_basetype(3).unwrap(), PixelFormat::Invalid); // INT8
-		assert_eq!(u.get_format_from_oiio_basetype(12).unwrap(), PixelFormat::Invalid); // DOUBLE
-		assert_eq!(u.get_format_from_oiio_basetype(15).unwrap(), PixelFormat::Invalid); // USTRINGHASH
-		assert_eq!(u.get_format_from_oiio_basetype(99).unwrap(), PixelFormat::Invalid);
+		assert_eq!(
+			u.get_format_from_oiio_basetype(0).unwrap(),
+			PixelFormat::Invalid
+		); // UNKNOWN
+		assert_eq!(
+			u.get_format_from_oiio_basetype(1).unwrap(),
+			PixelFormat::Invalid
+		); // NONE
+		assert_eq!(
+			u.get_format_from_oiio_basetype(3).unwrap(),
+			PixelFormat::Invalid
+		); // INT8
+		assert_eq!(
+			u.get_format_from_oiio_basetype(12).unwrap(),
+			PixelFormat::Invalid
+		); // DOUBLE
+		assert_eq!(
+			u.get_format_from_oiio_basetype(15).unwrap(),
+			PixelFormat::Invalid
+		); // USTRINGHASH
+		assert_eq!(
+			u.get_format_from_oiio_basetype(99).unwrap(),
+			PixelFormat::Invalid
+		);
 	}
 
 	#[test]
@@ -393,14 +441,24 @@ mod tests {
 		let u = utils();
 		// The recovered rational should reproduce the input within the
 		// precision of a reduced fraction.
-		for input in [0.5, 1.0, 1.333_333_333_333_333_3, 1.777_777_777_777_777_7, 2.0, 2.35] {
+		for input in [
+			0.5,
+			1.0,
+			1.333_333_333_333_333_3,
+			1.777_777_777_777_777_7,
+			2.0,
+			2.35,
+		] {
 			let (n, d) = u.get_pixel_aspect_ratio(input).unwrap();
 			if d == 0 {
 				continue;
 			}
 			let recovered = n as f64 / d as f64;
 			let err = (recovered - input).abs();
-			assert!(err < 1e-9, "input={input} recovered={recovered} ({n}/{d}) err={err}");
+			assert!(
+				err < 1e-9,
+				"input={input} recovered={recovered} ({n}/{d}) err={err}"
+			);
 		}
 	}
 
@@ -414,9 +472,18 @@ mod tests {
 
 	#[test]
 	fn image_color_type_maps_formats() {
-		assert_eq!(image_color_type_for(PixelFormat::U8), Some(ExtendedColorType::L8));
-		assert_eq!(image_color_type_for(PixelFormat::U16), Some(ExtendedColorType::L16));
-		assert_eq!(image_color_type_for(PixelFormat::F32), Some(ExtendedColorType::Rgb32F));
+		assert_eq!(
+			image_color_type_for(PixelFormat::U8),
+			Some(ExtendedColorType::L8)
+		);
+		assert_eq!(
+			image_color_type_for(PixelFormat::U16),
+			Some(ExtendedColorType::L16)
+		);
+		assert_eq!(
+			image_color_type_for(PixelFormat::F32),
+			Some(ExtendedColorType::Rgb32F)
+		);
 		// No image representation.
 		assert_eq!(image_color_type_for(PixelFormat::U10), None);
 		assert_eq!(image_color_type_for(PixelFormat::F16), None);
@@ -461,10 +528,7 @@ mod tests {
 		let h = 2;
 		let c = 4;
 		let pixels: Vec<f32> = vec![
-			0.0, 0.25, 0.5, 1.0,
-			0.75, 0.5, 0.25, 1.0,
-			1.0, 0.0, 0.5, 0.0,
-			0.125, 0.625, 0.875, 1.0,
+			0.0, 0.25, 0.5, 1.0, 0.75, 0.5, 0.25, 1.0, 1.0, 0.0, 0.5, 0.0, 0.125, 0.625, 0.875, 1.0,
 		];
 
 		let (path, path_str) = temp_tiff_path("roundtrip.tif");

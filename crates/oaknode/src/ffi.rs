@@ -450,7 +450,10 @@ pub mod project {
 
 	/// `oaknode_project_set_modified`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_project_set_modified(project: CHandle, modified: c_int) -> c_int {
+	pub unsafe extern "C" fn oaknode_project_set_modified(
+		project: CHandle,
+		modified: c_int,
+	) -> c_int {
 		guard(|| {
 			let p = unsafe { project_arc(&project)? };
 			let mut guard = lock(&p);
@@ -488,10 +491,7 @@ pub mod project {
 
 	/// `oaknode_project_copy_settings`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_project_copy_settings(
-		dst: CHandle,
-		src: CHandle,
-	) -> c_int {
+	pub unsafe extern "C" fn oaknode_project_copy_settings(dst: CHandle, src: CHandle) -> c_int {
 		guard(|| {
 			let dst = unsafe { project_arc(&dst)? };
 			let src = unsafe { project_arc(&src)? };
@@ -615,10 +615,7 @@ pub mod project {
 					let new_id = *map.get(&src_id).unwrap_or(&src_id);
 					(new_id, true)
 				} else {
-					let taken = src_guard
-						.graph
-						.take_node(src_id)
-						.ok_or(Error::NotFound)?;
+					let taken = src_guard.graph.take_node(src_id).ok_or(Error::NotFound)?;
 					let new_id = dst_guard.graph.add_entry(taken, src_id);
 					(new_id, false)
 				}
@@ -719,7 +716,6 @@ pub mod project {
 	}
 }
 
-
 /// Build an undo command from redo/undo closures (bridge::undo vtable).
 fn undo_command(
 	redo: impl FnMut() + Send + 'static,
@@ -761,7 +757,11 @@ pub mod node {
 
 	/// `oaknode_node_get_id` (two-stage; Node::id()).
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_node_get_id(node: CHandle, buf: *mut c_char, buf_size: c_int) -> c_int {
+	pub unsafe extern "C" fn oaknode_node_get_id(
+		node: CHandle,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int {
 		let n = match unsafe { node_ref(&node) } {
 			Ok(n) => n,
 			Err(_) => return crate::error::OAKNODE_E_INVALID,
@@ -777,7 +777,11 @@ pub mod node {
 
 	/// `oaknode_node_get_name` (two-stage; Node::name()).
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_node_get_name(node: CHandle, buf: *mut c_char, buf_size: c_int) -> c_int {
+	pub unsafe extern "C" fn oaknode_node_get_name(
+		node: CHandle,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int {
 		let n = match unsafe { node_ref(&node) } {
 			Ok(n) => n,
 			Err(_) => return crate::error::OAKNODE_E_INVALID,
@@ -793,14 +797,16 @@ pub mod node {
 
 	/// `oaknode_node_get_label` (two-stage).
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_node_get_label(node: CHandle, buf: *mut c_char, buf_size: c_int) -> c_int {
+	pub unsafe extern "C" fn oaknode_node_get_label(
+		node: CHandle,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int {
 		let n = match unsafe { node_ref(&node) } {
 			Ok(n) => n,
 			Err(_) => return crate::error::OAKNODE_E_INVALID,
 		};
-		let label = with_graph_read(&n.project, |g| {
-			g.get(n.id).map(|e| e.core.label.clone())
-		});
+		let label = with_graph_read(&n.project, |g| g.get(n.id).map(|e| e.core.label.clone()));
 		match label {
 			Some(label) => copy_string_out(&label, buf, buf_size),
 			None => crate::error::OAKNODE_E_NOT_FOUND,
@@ -837,7 +843,11 @@ pub mod node {
 			let id = n.id;
 			let old = {
 				let guard = lock(&project);
-				guard.graph.get(id).map(|e| e.core.label.clone()).ok_or(Error::NotFound)?
+				guard
+					.graph
+					.get(id)
+					.map(|e| e.core.label.clone())
+					.ok_or(Error::NotFound)?
 			};
 			let cmd = undo_command(
 				{
@@ -864,15 +874,16 @@ pub mod node {
 
 	/// `oaknode_node_get_override_color`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_node_get_override_color(node: CHandle, out_value: *mut c_int) -> c_int {
+	pub unsafe extern "C" fn oaknode_node_get_override_color(
+		node: CHandle,
+		out_value: *mut c_int,
+	) -> c_int {
 		guard(|| {
 			if out_value.is_null() {
 				return Err(Error::Invalid);
 			}
 			let n = unsafe { node_ref(&node)? };
-			let v = with_graph_read(&n.project, |g| {
-				g.get(n.id).map(|e| e.core.override_color)
-			});
+			let v = with_graph_read(&n.project, |g| g.get(n.id).map(|e| e.core.override_color));
 			let v = v.ok_or(Error::NotFound)?;
 			unsafe { *out_value = v };
 			Ok(())
@@ -907,7 +918,11 @@ pub mod node {
 			let id = n.id;
 			let old = {
 				let guard = lock(&project);
-				guard.graph.get(id).map(|e| e.core.override_color).ok_or(Error::NotFound)?
+				guard
+					.graph
+					.get(id)
+					.map(|e| e.core.override_color)
+					.ok_or(Error::NotFound)?
 			};
 			let cmd = undo_command(
 				{
@@ -933,7 +948,10 @@ pub mod node {
 
 	/// `oaknode_node_is_enabled`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_node_is_enabled(node: CHandle, out_value: *mut c_int) -> c_int {
+	pub unsafe extern "C" fn oaknode_node_is_enabled(
+		node: CHandle,
+		out_value: *mut c_int,
+	) -> c_int {
 		guard(|| {
 			if out_value.is_null() {
 				return Err(Error::Invalid);
@@ -941,7 +959,9 @@ pub mod node {
 			let n = unsafe { node_ref(&node)? };
 			let enabled = with_graph_read(&n.project, |g| {
 				g.get(n.id).map(|e| {
-					e.core.standard_value(crate::node::ENABLED_INPUT, -1).to_double() != 0.0
+					e.core
+						.standard_value(crate::node::ENABLED_INPUT, -1)
+						.to_double() != 0.0
 				})
 			});
 			let enabled = enabled.ok_or(Error::NotFound)?;
@@ -999,7 +1019,8 @@ pub mod node {
 					move || {
 						let mut guard = lock(&project);
 						if let Some(e) = guard.graph.get_mut(id) {
-							e.core.set_standard_value(crate::node::ENABLED_INPUT, -1, new.clone());
+							e.core
+								.set_standard_value(crate::node::ENABLED_INPUT, -1, new.clone());
 						}
 					}
 				},
@@ -1054,7 +1075,10 @@ pub mod node {
 
 	/// `oaknode_node_input_count`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_node_input_count(node: CHandle, out_count: *mut c_int) -> c_int {
+	pub unsafe extern "C" fn oaknode_node_input_count(
+		node: CHandle,
+		out_count: *mut c_int,
+	) -> c_int {
 		guard(|| {
 			if out_count.is_null() {
 				return Err(Error::Invalid);
@@ -1069,7 +1093,12 @@ pub mod node {
 
 	/// `oaknode_node_input_id` (two-stage).
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_node_input_id(node: CHandle, index: c_int, buf: *mut c_char, buf_size: c_int) -> c_int {
+	pub unsafe extern "C" fn oaknode_node_input_id(
+		node: CHandle,
+		index: c_int,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int {
 		let n = match unsafe { node_ref(&node) } {
 			Ok(n) => n,
 			Err(_) => return crate::error::OAKNODE_E_INVALID,
@@ -1101,8 +1130,7 @@ pub mod node {
 			let n = unsafe { node_ref(&node)? };
 			let input_id = unsafe { cstr(input_id) }.ok_or(Error::Invalid)?;
 			let ty = with_graph_read(&n.project, |g| {
-				g.get(n.id)
-					.and_then(|e| e.core.input_data_type(input_id))
+				g.get(n.id).and_then(|e| e.core.input_data_type(input_id))
 			});
 			let ty = ty.ok_or(Error::NotFound)?;
 			unsafe { *out_type = ty.to_oak() };
@@ -1124,7 +1152,10 @@ pub mod node {
 			let n = unsafe { node_ref(&node)? };
 			let input_id = unsafe { cstr(input_id) }.ok_or(Error::Invalid)?;
 			let connected = with_graph_read(&n.project, |g| {
-				let has = g.get(n.id).map(|e| e.core.has_input(input_id)).unwrap_or(false);
+				let has = g
+					.get(n.id)
+					.map(|e| e.core.has_input(input_id))
+					.unwrap_or(false);
 				has.then(|| g.is_input_connected(n.id, input_id, -1))
 			});
 			match connected {
@@ -1215,7 +1246,10 @@ pub mod node {
 			let n = unsafe { node_ref(&node)? };
 			let input_id = unsafe { cstr(input_id) }.ok_or(Error::Invalid)?;
 			let result = with_graph_read(&n.project, |g| {
-				let has = g.get(n.id).map(|e| e.core.has_input(input_id)).unwrap_or(false);
+				let has = g
+					.get(n.id)
+					.map(|e| e.core.has_input(input_id))
+					.unwrap_or(false);
 				if !has {
 					return None;
 				}
@@ -1277,7 +1311,10 @@ pub mod node {
 			};
 			let mut guard = lock(&n.project);
 			let entry = guard.graph.get_mut(n.id).ok_or(Error::NotFound)?;
-			let declared = entry.core.input_data_type(input_id).ok_or(Error::NotFound)?;
+			let declared = entry
+				.core
+				.input_data_type(input_id)
+				.ok_or(Error::NotFound)?;
 			// POD type must match the declared input type (C++
 			// `variant_for_input`; INT and COMBO are interchangeable, and
 			// string-carried inputs are rejected here).
@@ -1313,7 +1350,10 @@ pub mod node {
 			let v = unsafe { *v };
 			let mut guard = lock(&n.project);
 			let entry = guard.graph.get_mut(n.id).ok_or(Error::NotFound)?;
-			let declared = entry.core.input_data_type(input_id).ok_or(Error::NotFound)?;
+			let declared = entry
+				.core
+				.input_data_type(input_id)
+				.ok_or(Error::NotFound)?;
 			let kind_ok = match declared {
 				ValueType::Int | ValueType::Combo => {
 					v.kind == crate::value::oak::INT || v.kind == crate::value::oak::COMBO
@@ -1388,7 +1428,9 @@ pub mod node {
 			// input (INVALID): re-probe.
 			None => {
 				let has = with_graph_read(&n.project, |g| {
-					g.get(n.id).map(|e| e.core.has_input(input_id)).unwrap_or(false)
+					g.get(n.id)
+						.map(|e| e.core.has_input(input_id))
+						.unwrap_or(false)
 				});
 				if has {
 					crate::error::OAKNODE_E_INVALID
@@ -1412,7 +1454,10 @@ pub mod node {
 			let value = unsafe { cstr(value) }.ok_or(Error::Invalid)?;
 			let mut guard = lock(&n.project);
 			let entry = guard.graph.get_mut(n.id).ok_or(Error::NotFound)?;
-			let declared = entry.core.input_data_type(input_id).ok_or(Error::NotFound)?;
+			let declared = entry
+				.core
+				.input_data_type(input_id)
+				.ok_or(Error::NotFound)?;
 			if !declared.is_string() {
 				return Err(Error::Invalid);
 			}
@@ -1442,7 +1487,10 @@ pub mod node {
 			let value = unsafe { cstr(value) }.ok_or(Error::Invalid)?;
 			let mut guard = lock(&n.project);
 			let entry = guard.graph.get_mut(n.id).ok_or(Error::NotFound)?;
-			let declared = entry.core.input_data_type(input_id).ok_or(Error::NotFound)?;
+			let declared = entry
+				.core
+				.input_data_type(input_id)
+				.ok_or(Error::NotFound)?;
 			if !declared.is_string() {
 				return Err(Error::Invalid);
 			}
@@ -1546,7 +1594,10 @@ pub mod node {
 
 	/// `oaknode_node_disconnect`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_node_disconnect(input_node: CHandle, input_id: *const c_char) -> c_int {
+	pub unsafe extern "C" fn oaknode_node_disconnect(
+		input_node: CHandle,
+		input_id: *const c_char,
+	) -> c_int {
 		guard(|| {
 			let n = unsafe { node_ref(&input_node)? };
 			let input_id = unsafe { cstr(input_id) }.ok_or(Error::Invalid)?;
@@ -1609,7 +1660,10 @@ pub mod node {
 
 	/// `oaknode_node_output_connection_count`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_node_output_connection_count(node: CHandle, out_count: *mut c_int) -> c_int {
+	pub unsafe extern "C" fn oaknode_node_output_connection_count(
+		node: CHandle,
+		out_count: *mut c_int,
+	) -> c_int {
 		guard(|| {
 			if out_count.is_null() {
 				return Err(Error::Invalid);
@@ -1700,7 +1754,11 @@ pub mod node {
 
 	/// `oaknode_node_link`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_node_link(a: CHandle, b: CHandle, out_linked: *mut c_int) -> c_int {
+	pub unsafe extern "C" fn oaknode_node_link(
+		a: CHandle,
+		b: CHandle,
+		out_linked: *mut c_int,
+	) -> c_int {
 		guard(|| {
 			let a = unsafe { node_ref(&a)? };
 			let b = unsafe { node_ref(&b)? };
@@ -1721,7 +1779,11 @@ pub mod node {
 
 	/// `oaknode_node_unlink`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_node_unlink(a: CHandle, b: CHandle, out_unlinked: *mut c_int) -> c_int {
+	pub unsafe extern "C" fn oaknode_node_unlink(
+		a: CHandle,
+		b: CHandle,
+		out_unlinked: *mut c_int,
+	) -> c_int {
 		guard(|| {
 			let a = unsafe { node_ref(&a)? };
 			let b = unsafe { node_ref(&b)? };
@@ -1796,16 +1858,18 @@ pub mod node {
 
 	/// `oaknode_node_are_linked`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_node_are_linked(a: CHandle, b: CHandle, out_value: *mut c_int) -> c_int {
+	pub unsafe extern "C" fn oaknode_node_are_linked(
+		a: CHandle,
+		b: CHandle,
+		out_value: *mut c_int,
+	) -> c_int {
 		guard(|| {
 			if out_value.is_null() {
 				return Err(Error::Invalid);
 			}
 			let a = unsafe { node_ref(&a)? };
 			let b = unsafe { node_ref(&b)? };
-			let linked = with_graph_read(&a.project, |g| {
-				g.are_linked(a.id, b.id)
-			});
+			let linked = with_graph_read(&a.project, |g| g.are_linked(a.id, b.id));
 			unsafe { *out_value = linked as c_int };
 			Ok(())
 		})
@@ -1813,15 +1877,16 @@ pub mod node {
 
 	/// `oaknode_node_link_count`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_node_link_count(node: CHandle, out_count: *mut c_int) -> c_int {
+	pub unsafe extern "C" fn oaknode_node_link_count(
+		node: CHandle,
+		out_count: *mut c_int,
+	) -> c_int {
 		guard(|| {
 			if out_count.is_null() {
 				return Err(Error::Invalid);
 			}
 			let n = unsafe { node_ref(&node)? };
-			let count = with_graph_read(&n.project, |g| {
-				g.get(n.id).map(|e| e.core.links.len())
-			});
+			let count = with_graph_read(&n.project, |g| g.get(n.id).map(|e| e.core.links.len()));
 			let count = count.ok_or(Error::NotFound)?;
 			unsafe { *out_count = count as c_int };
 			Ok(())
@@ -1830,7 +1895,11 @@ pub mod node {
 
 	/// `oaknode_node_link_at` (borrowed handle).
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_node_link_at(node: CHandle, index: c_int, out_node: *mut CHandle) -> c_int {
+	pub unsafe extern "C" fn oaknode_node_link_at(
+		node: CHandle,
+		index: c_int,
+		out_node: *mut CHandle,
+	) -> c_int {
 		guard(|| {
 			if out_node.is_null() {
 				return Err(Error::Invalid);
@@ -1850,7 +1919,10 @@ pub mod node {
 
 	/// `oaknode_node_context_count`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_node_context_count(node: CHandle, out_count: *mut c_int) -> c_int {
+	pub unsafe extern "C" fn oaknode_node_context_count(
+		node: CHandle,
+		out_count: *mut c_int,
+	) -> c_int {
 		guard(|| {
 			if out_count.is_null() {
 				return Err(Error::Invalid);
@@ -1881,8 +1953,12 @@ pub mod node {
 				return Err(Error::NotFound);
 			}
 			let context = with_graph_read(&n.project, |g| {
-				g.get(n.id)
-					.and_then(|e| e.core.context_positions.get(index as usize).map(|(c, _, _)| *c))
+				g.get(n.id).and_then(|e| {
+					e.core
+						.context_positions
+						.get(index as usize)
+						.map(|(c, _, _)| *c)
+				})
 			});
 			let context = context.ok_or(Error::NotFound)?;
 			unsafe { *out_node = make_node_borrowed(n.project.clone(), context) };
@@ -2003,7 +2079,8 @@ pub mod node {
 				move || {
 					let mut guard = lock(&project);
 					if let Some(e) = guard.graph.get_mut(id) {
-						e.core.set_context_position(ctx_id, old.0 .0, old.0 .1, old.1);
+						e.core
+							.set_context_position(ctx_id, old.0 .0, old.0 .1, old.1);
 					}
 				},
 			)?;
@@ -2420,12 +2497,7 @@ pub mod node {
 				return Err(Error::Invalid);
 			}
 			let mut guard = lock(&dst.project);
-			crate::ops::copy_inputs(
-				&mut guard.graph,
-				src.id,
-				dst.id,
-				include_connections != 0,
-			)
+			crate::ops::copy_inputs(&mut guard.graph, src.id, dst.id, include_connections != 0)
 		})
 	}
 
@@ -2512,9 +2584,12 @@ pub mod node {
 			}
 			let n = unsafe { node_ref(&viewer)? };
 			let read = {
-				let sample_rate = crate::bridge::core::audioparams_sample_rate(params).ok_or(Error::Invalid)?;
-				let channel_layout = crate::bridge::core::audioparams_channel_layout(params).ok_or(Error::Invalid)?;
-				let format = crate::bridge::core::audioparams_format(params).ok_or(Error::Invalid)?;
+				let sample_rate =
+					crate::bridge::core::audioparams_sample_rate(params).ok_or(Error::Invalid)?;
+				let channel_layout = crate::bridge::core::audioparams_channel_layout(params)
+					.ok_or(Error::Invalid)?;
+				let format =
+					crate::bridge::core::audioparams_format(params).ok_or(Error::Invalid)?;
 				crate::value::AudioParams {
 					sample_rate,
 					channel_layout,
@@ -3037,7 +3112,10 @@ pub mod keyframe {
 				return Err(Error::Invalid);
 			}
 			let new = Rational::new(time_num, time_den);
-			let old = unsafe { kf_lock(&keyframe) }.ok_or(Error::Invalid)?.data.time;
+			let old = unsafe { kf_lock(&keyframe) }
+				.ok_or(Error::Invalid)?
+				.data
+				.time;
 			let cmd = kf_command(
 				&keyframe,
 				move |k| k.data.time = new,
@@ -3061,8 +3139,9 @@ pub mod keyframe {
 			}
 			let k = unsafe { kf_lock(&keyframe) }.ok_or(Error::Invalid)?;
 			let declared = k.data.value.value_type();
-			let pod = OakNodeValue::from_node_value(declared, &k.data.value)
-				.map_err(|_| Error::Failed("keyframe value has no POD representation".to_string()))?;
+			let pod = OakNodeValue::from_node_value(declared, &k.data.value).map_err(|_| {
+				Error::Failed("keyframe value has no POD representation".to_string())
+			})?;
 			unsafe { *out = pod };
 			Ok(())
 		})
@@ -3156,7 +3235,11 @@ pub mod keyframe {
 				return Err(Error::Invalid);
 			}
 			let s = unsafe { cstr(value) }.ok_or(Error::Invalid)?.to_string();
-			let old = unsafe { kf_lock(&keyframe) }.ok_or(Error::Invalid)?.data.value.clone();
+			let old = unsafe { kf_lock(&keyframe) }
+				.ok_or(Error::Invalid)?
+				.data
+				.value
+				.clone();
 			let cmd = kf_command(
 				&keyframe,
 				move |k| k.data.value = NodeValue::Text(s.clone()),
@@ -3206,7 +3289,10 @@ pub mod keyframe {
 				return Err(Error::Invalid);
 			}
 			let interp = interp_from_c(type_)?;
-			let old = unsafe { kf_lock(&keyframe) }.ok_or(Error::Invalid)?.data.interpolation;
+			let old = unsafe { kf_lock(&keyframe) }
+				.ok_or(Error::Invalid)?
+				.data
+				.interpolation;
 			let cmd = kf_command(
 				&keyframe,
 				move |k| set_type_adjusting(k, interp),
@@ -3417,7 +3503,8 @@ pub mod keyframe {
 			let kf_value = k.data.value.clone();
 			drop(k);
 			let declared = with_graph_read(&target.project, |g| {
-				g.get(target.id).and_then(|e| e.core.input_data_type(&input))
+				g.get(target.id)
+					.and_then(|e| e.core.input_data_type(&input))
 			})
 			.ok_or(Error::NotFound)?;
 			if declared.is_string() {
@@ -3435,9 +3522,8 @@ pub mod keyframe {
 				*slot = kf_value;
 			}
 			let combined = NodeValue::combine_tracks(&tracks, declared);
-			let pod = OakNodeValue::from_node_value(declared, &combined).map_err(|_| {
-				Error::Failed("input type has no POD representation".to_string())
-			})?;
+			let pod = OakNodeValue::from_node_value(declared, &combined)
+				.map_err(|_| Error::Failed("input type has no POD representation".to_string()))?;
 			unsafe { *out = pod };
 			Ok(())
 		})
@@ -3545,7 +3631,12 @@ pub mod dragger {
 	/// The whole value with `track`'s component replaced by `component`
 	/// (C++ `set_split_standard_value_on_track` /
 	/// `get_split_value_at_time_on_track` combine half).
-	fn with_component(declared: ValueType, whole: NodeValue, track: usize, component: &NodeValue) -> NodeValue {
+	fn with_component(
+		declared: ValueType,
+		whole: NodeValue,
+		track: usize,
+		component: &NodeValue,
+	) -> NodeValue {
 		let mut tracks = whole.split_into_tracks(declared);
 		if let Some(slot) = tracks.get_mut(track) {
 			*slot = component.clone();
@@ -3644,7 +3735,9 @@ pub mod dragger {
 			let n = unsafe { node_ref(&node)? };
 			let input = unsafe { cstr(input_id) }.ok_or(Error::Invalid)?.to_string();
 			let has = with_graph_read(&n.project, |g| {
-				g.get(n.id).map(|e| e.core.has_input(&input)).unwrap_or(false)
+				g.get(n.id)
+					.map(|e| e.core.has_input(&input))
+					.unwrap_or(false)
 			});
 			if !has {
 				return Err(Error::Invalid);
@@ -3716,8 +3809,12 @@ pub mod dragger {
 						.map(|t| t.keys().iter().any(|k| k.time == time))
 						.unwrap_or(false);
 					if !has_key {
-						let created =
-							with_component(declared, whole.clone(), track as usize, &start_component);
+						let created = with_component(
+							declared,
+							whole.clone(),
+							track as usize,
+							&start_component,
+						);
 						core.keyframe_track_mut(&input, element).set_key(Keyframe {
 							time,
 							value: created.clone(),
@@ -3829,7 +3926,10 @@ pub mod dragger {
 						.get(node)
 						.and_then(|e| {
 							e.core.keyframe_track(&input, element).and_then(|t| {
-								t.keys().iter().find(|k| k.time == time).map(|k| k.value.clone())
+								t.keys()
+									.iter()
+									.find(|k| k.time == time)
+									.map(|k| k.value.clone())
 							})
 						})
 						.unwrap_or(NodeValue::None)
@@ -4124,9 +4224,9 @@ pub mod multicam {
 			}
 			let n = unsafe { node_ref(&node)? };
 			let source = with_graph_read(&n.project, |g| {
-				g.get(n.id).filter(|e| multicam_of(e)).map(|e| {
-					e.core.standard_value(CURRENT_INPUT, -1).to_double() as c_int
-				})
+				g.get(n.id)
+					.filter(|e| multicam_of(e))
+					.map(|e| e.core.standard_value(CURRENT_INPUT, -1).to_double() as c_int)
 			})
 			.ok_or(Error::Invalid)?;
 			unsafe { *out_source = source };
@@ -4186,7 +4286,11 @@ pub mod factory {
 
 	/// `oaknode_factory_id_at` (two-stage).
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_factory_id_at(index: c_int, buf: *mut c_char, buf_size: c_int) -> c_int {
+	pub unsafe extern "C" fn oaknode_factory_id_at(
+		index: c_int,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int {
 		let entries = crate::factory::Factory::global().entries();
 		if index < 0 || index as usize >= entries.len() {
 			return crate::error::OAKNODE_E_NOT_FOUND;
@@ -4235,7 +4339,10 @@ pub mod factory {
 
 	/// `oaknode_factory_node_at` (borrowed prototype handle).
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_factory_node_at(index: c_int, out_node: *mut CHandle) -> c_int {
+	pub unsafe extern "C" fn oaknode_factory_node_at(
+		index: c_int,
+		out_node: *mut CHandle,
+	) -> c_int {
 		guard(|| {
 			if out_node.is_null() {
 				return Err(Error::Invalid);
@@ -4262,20 +4369,17 @@ pub mod factory {
 
 /// Downcast a graph entry's behavior to [`crate::block::BlockCore`].
 fn block_core<'a>(entry: &'a crate::graph::NodeEntry) -> Option<&'a crate::block::BlockCore> {
-	entry
-		.behavior
-		.as_any()
-		.and_then(|a| {
-			if let Some(b) = a.downcast_ref::<crate::block::ClipBlockBehavior>() {
-				Some(&b.core)
-			} else if let Some(b) = a.downcast_ref::<crate::block::GapBlockBehavior>() {
-				Some(&b.core)
-			} else if let Some(b) = a.downcast_ref::<crate::block::TransitionBlockBehavior>() {
-				Some(&b.core)
-			} else {
-				None
-			}
-		})
+	entry.behavior.as_any().and_then(|a| {
+		if let Some(b) = a.downcast_ref::<crate::block::ClipBlockBehavior>() {
+			Some(&b.core)
+		} else if let Some(b) = a.downcast_ref::<crate::block::GapBlockBehavior>() {
+			Some(&b.core)
+		} else if let Some(b) = a.downcast_ref::<crate::block::TransitionBlockBehavior>() {
+			Some(&b.core)
+		} else {
+			None
+		}
+	})
 }
 
 fn block_core_mut<'a>(
@@ -4572,10 +4676,7 @@ pub mod folder {
 				// Remove from the current folder (if any).
 				{
 					let mut guard = lock(&d.project);
-					let cur = guard
-						.graph
-						.get(c.id)
-						.and_then(|e| e.core.bin_folder);
+					let cur = guard.graph.get(c.id).and_then(|e| e.core.bin_folder);
 					if let Some(cur_f) = cur {
 						if let Some(entry) = guard.graph.get_mut(cur_f) {
 							if let Some(fb) = entry
@@ -4637,7 +4738,10 @@ pub mod folder {
 
 	/// `oaknode_folder_index_of_child`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oaknode_folder_index_of_child(folder: CHandle, child: CHandle) -> c_int {
+	pub unsafe extern "C" fn oaknode_folder_index_of_child(
+		folder: CHandle,
+		child: CHandle,
+	) -> c_int {
 		match (unsafe { node_ref(&folder) }, unsafe { node_ref(&child) }) {
 			(Ok(f), Ok(c)) => {
 				let guard = lock(&f.project);
@@ -5021,7 +5125,10 @@ pub mod group {
 			}
 			let g = unsafe { node_ref(&group)? };
 			let target = with_graph_read(&g.project, |graph| {
-				graph.get(g.id).and_then(group_of).and_then(|gb| gb.output_passthrough())
+				graph
+					.get(g.id)
+					.and_then(group_of)
+					.and_then(|gb| gb.output_passthrough())
 			});
 			match target {
 				Some(id) => unsafe { *out_node = make_node_borrowed(g.project.clone(), id) },
@@ -5214,10 +5321,7 @@ pub mod sequence {
 
 	/// Build the default track-list set for a sequence: one node per
 	/// type, appended to `seq`'s `track_lists`.
-	fn append_default_track_lists(
-		graph: &mut crate::graph::Graph,
-		seq_id: NodeId,
-	) -> Vec<NodeId> {
+	fn append_default_track_lists(graph: &mut crate::graph::Graph, seq_id: NodeId) -> Vec<NodeId> {
 		let mut lists = Vec::new();
 		let mut base = 0i32;
 		for kind in [TrackType::Video, TrackType::Audio, TrackType::Subtitle] {
@@ -5539,7 +5643,10 @@ pub mod sequence {
 						}
 					}
 				}
-				(n.project.clone(), flat.get(index as usize).copied().ok_or(Error::NotFound)?)
+				(
+					n.project.clone(),
+					flat.get(index as usize).copied().ok_or(Error::NotFound)?,
+				)
 			};
 			unsafe { *out = make_node_borrowed(project, track) };
 			Ok(())
@@ -5639,7 +5746,9 @@ pub mod sequence {
 					.and_then(|a| a.downcast_ref::<TrackListBehavior>())
 				{
 					if tl.kind == kind {
-						let len = tl.total_length(&GraphTrackRange { graph: &guard.graph });
+						let len = tl.total_length(&GraphTrackRange {
+							graph: &guard.graph,
+						});
 						if len > longest {
 							longest = len;
 						}
@@ -5764,12 +5873,8 @@ pub mod sequence {
 			}
 			let n = unsafe { node_ref(&sequence)? };
 			let s = seq_of(&n)?;
-			let params = s
-				.video_params
-				.get(index as usize)
-				.ok_or(Error::NotFound)?;
-			let handle = super::videoparams_handle_from(params)
-				.ok_or(Error::NoMem)?;
+			let params = s.video_params.get(index as usize).ok_or(Error::NotFound)?;
+			let handle = super::videoparams_handle_from(params).ok_or(Error::NoMem)?;
 			unsafe { *(out as *mut crate::handle::CHandle) = handle };
 			Ok(())
 		})
@@ -5788,8 +5893,7 @@ pub mod sequence {
 				return Err(Error::Invalid);
 			}
 			let n = unsafe { node_ref(&sequence)? };
-			let read = super::videoparams_from_handle(params)
-				.ok_or(Error::Invalid)?;
+			let read = super::videoparams_from_handle(params).ok_or(Error::Invalid)?;
 			let mut guard = lock(&n.project);
 			let entry = guard.graph.get_mut(n.id).ok_or(Error::NotFound)?;
 			let s = entry
@@ -5820,10 +5924,7 @@ pub mod sequence {
 			}
 			let n = unsafe { node_ref(&sequence)? };
 			let s = seq_of(&n)?;
-			let params = s
-				.audio_params
-				.get(index as usize)
-				.ok_or(Error::NotFound)?;
+			let params = s.audio_params.get(index as usize).ok_or(Error::NotFound)?;
 			let handle = crate::bridge::core::audioparams_create(
 				params.sample_rate,
 				params.channel_layout,
@@ -5853,8 +5954,7 @@ pub mod sequence {
 					.ok_or(Error::Invalid)?,
 				channel_layout: crate::bridge::core::audioparams_channel_layout(params)
 					.ok_or(Error::Invalid)?,
-				format: crate::bridge::core::audioparams_format(params)
-					.ok_or(Error::Invalid)?,
+				format: crate::bridge::core::audioparams_format(params).ok_or(Error::Invalid)?,
 			};
 			let mut guard = lock(&n.project);
 			let entry = guard.graph.get_mut(n.id).ok_or(Error::NotFound)?;
@@ -5940,7 +6040,9 @@ pub mod track {
 		let scratch = Project::new();
 		let id = {
 			let mut guard = lock(&scratch);
-			guard.graph.add_node(NodeCore::new(), Box::new(TrackBehavior::new(kind)))
+			guard
+				.graph
+				.add_node(NodeCore::new(), Box::new(TrackBehavior::new(kind)))
 		};
 		make_node_owned(scratch, id)
 	}
@@ -6205,7 +6307,9 @@ pub mod track {
 					.as_any()
 					.and_then(|a| a.downcast_ref::<TrackBehavior>())
 					.ok_or(Error::State)?;
-				t.length(&GraphBlockRange { graph: &guard.graph })
+				t.length(&GraphBlockRange {
+					graph: &guard.graph,
+				})
 			};
 			unsafe {
 				*numerator = len.numerator() as c_int;
@@ -6294,7 +6398,13 @@ pub mod track {
 					.as_any()
 					.and_then(|a| a.downcast_ref::<TrackBehavior>())
 					.ok_or(Error::State)?;
-				(n.project.clone(), t.blocks.get(index as usize).copied().ok_or(Error::NotFound)?)
+				(
+					n.project.clone(),
+					t.blocks
+						.get(index as usize)
+						.copied()
+						.ok_or(Error::NotFound)?,
+				)
 			};
 			unsafe { *out = make_node_borrowed(project, block) };
 			Ok(())
@@ -6555,7 +6665,12 @@ pub mod track {
 					.as_any()
 					.and_then(|a| a.downcast_ref::<TrackBehavior>())
 					.ok_or(Error::State)?;
-				let found = tb.block_containing_time(time, &GraphBlockRange { graph: &guard.graph });
+				let found = tb.block_containing_time(
+					time,
+					&GraphBlockRange {
+						graph: &guard.graph,
+					},
+				);
 				(t.project.clone(), found)
 			};
 			unsafe {
@@ -6590,7 +6705,12 @@ pub mod track {
 					.as_any()
 					.and_then(|a| a.downcast_ref::<TrackBehavior>())
 					.ok_or(Error::State)?;
-				let found = tb.visible_block_at_time(time, &GraphBlockRange { graph: &guard.graph });
+				let found = tb.visible_block_at_time(
+					time,
+					&GraphBlockRange {
+						graph: &guard.graph,
+					},
+				);
 				(t.project.clone(), found)
 			};
 			unsafe {
@@ -6630,7 +6750,12 @@ pub mod track {
 					.as_any()
 					.and_then(|a| a.downcast_ref::<TrackBehavior>())
 					.ok_or(Error::State)?;
-				tb.is_range_free(range, &GraphBlockRange { graph: &guard.graph })
+				tb.is_range_free(
+					range,
+					&GraphBlockRange {
+						graph: &guard.graph,
+					},
+				)
 			};
 			unsafe { *is_free = free as c_int };
 			Ok(())
@@ -6771,7 +6896,8 @@ pub mod track {
 			Ok(tl) => tl,
 			Err(_) => return crate::error::OAKNODE_E_INVALID,
 		};
-		let input_id = crate::sequence::TRACK_INPUT_FORMAT.replace("%1", &tl.array_base.to_string());
+		let input_id =
+			crate::sequence::TRACK_INPUT_FORMAT.replace("%1", &tl.array_base.to_string());
 		copy_string_out(&input_id, buf, buf_size)
 	}
 
@@ -6781,7 +6907,8 @@ pub mod track {
 		guard(|| {
 			let n = unsafe { node_ref(&list)? };
 			let tl = tracklist_of(&n)?;
-			let input_id = crate::sequence::TRACK_INPUT_FORMAT.replace("%1", &tl.array_base.to_string());
+			let input_id =
+				crate::sequence::TRACK_INPUT_FORMAT.replace("%1", &tl.array_base.to_string());
 			let mut guard = lock(&n.project);
 			let seq = tl.sequence.ok_or(Error::State)?;
 			let size = guard
@@ -6799,7 +6926,8 @@ pub mod track {
 		guard(|| {
 			let n = unsafe { node_ref(&list)? };
 			let tl = tracklist_of(&n)?;
-			let input_id = crate::sequence::TRACK_INPUT_FORMAT.replace("%1", &tl.array_base.to_string());
+			let input_id =
+				crate::sequence::TRACK_INPUT_FORMAT.replace("%1", &tl.array_base.to_string());
 			let mut guard = lock(&n.project);
 			let seq = tl.sequence.ok_or(Error::State)?;
 			let size = guard
@@ -6810,7 +6938,9 @@ pub mod track {
 			if size == 0 {
 				return Ok(());
 			}
-			guard.graph.input_array_remove(seq, &input_id, (size - 1) as i32)
+			guard
+				.graph
+				.input_array_remove(seq, &input_id, (size - 1) as i32)
 		})
 	}
 
@@ -6884,7 +7014,11 @@ pub mod track {
 				return Err(Error::NotFound);
 			}
 			let tl = tracklist_of(&n)?;
-			let track = tl.tracks.get(index as usize).copied().ok_or(Error::NotFound)?;
+			let track = tl
+				.tracks
+				.get(index as usize)
+				.copied()
+				.ok_or(Error::NotFound)?;
 			unsafe { *out = make_node_borrowed(n.project.clone(), track) };
 			Ok(())
 		})
@@ -6910,7 +7044,9 @@ pub mod track {
 					.as_any()
 					.and_then(|a| a.downcast_ref::<TrackListBehavior>())
 					.ok_or(Error::State)?;
-				tl.total_length(&GraphTrackRange { graph: &guard.graph })
+				tl.total_length(&GraphTrackRange {
+					graph: &guard.graph,
+				})
 			};
 			unsafe {
 				*numerator = len.numerator() as c_int;
@@ -6932,7 +7068,8 @@ pub mod track {
 			}
 			let n = unsafe { node_ref(&list)? };
 			let tl = tracklist_of(&n)?;
-			let input_id = crate::sequence::TRACK_INPUT_FORMAT.replace("%1", &tl.array_base.to_string());
+			let input_id =
+				crate::sequence::TRACK_INPUT_FORMAT.replace("%1", &tl.array_base.to_string());
 			let guard = lock(&n.project);
 			let arr = tl
 				.sequence
@@ -7078,18 +7215,12 @@ pub mod track {
 /// nodes carry a block behavior ([`crate::block::BlockCore`]).
 pub mod block {
 	use super::*;
-	use crate::block::{
-		BlockCore, ClipBlockBehavior, GapBlockBehavior, TransitionBlockBehavior,
-	};
+	use crate::block::{BlockCore, ClipBlockBehavior, GapBlockBehavior, TransitionBlockBehavior};
 
 	/// True when the node carries a block behavior.
 	fn is_block(n: &NodeRef) -> bool {
 		let guard = lock(&n.project);
-		guard
-			.graph
-			.get(n.id)
-			.and_then(block_core)
-			.is_some()
+		guard.graph.get(n.id).and_then(block_core).is_some()
 	}
 
 	/// `oaknode_block_clip_create`.
@@ -7219,17 +7350,21 @@ pub mod block {
 					.and_then(block_core)
 					.map(|c| BlockCore::default())
 					.ok_or(Error::State)?;
-				guard.graph.get(n.id).and_then(block_core).map(|c| BlockCore {
-					range: c.range,
-					media_in: c.media_in,
-					speed: c.speed,
-					reversed: c.reversed,
-					links: c.links.clone(),
-					enabled: c.enabled,
-					maintain_audio_pitch: c.maintain_audio_pitch,
-					loop_mode: c.loop_mode,
-					track: c.track,
-				})
+				guard
+					.graph
+					.get(n.id)
+					.and_then(block_core)
+					.map(|c| BlockCore {
+						range: c.range,
+						media_in: c.media_in,
+						speed: c.speed,
+						reversed: c.reversed,
+						links: c.links.clone(),
+						enabled: c.enabled,
+						maintain_audio_pitch: c.maintain_audio_pitch,
+						loop_mode: c.loop_mode,
+						track: c.track,
+					})
 			};
 			let core = core.ok_or(Error::State)?;
 			unsafe {
@@ -7252,7 +7387,10 @@ pub mod block {
 			let mut guard = lock(&n.project);
 			let entry = guard.graph.get_mut(n.id).ok_or(Error::NotFound)?;
 			let core = block_core_mut(entry).ok_or(Error::State)?;
-			core.set_in(oakcore_rs::Rational::new(numerator as i64, denominator as i64));
+			core.set_in(oakcore_rs::Rational::new(
+				numerator as i64,
+				denominator as i64,
+			));
 			Ok(())
 		})
 	}
@@ -7270,7 +7408,11 @@ pub mod block {
 			}
 			let n = unsafe { node_ref(&block)? };
 			let guard = lock(&n.project);
-			let core = guard.graph.get(n.id).and_then(block_core).ok_or(Error::State)?;
+			let core = guard
+				.graph
+				.get(n.id)
+				.and_then(block_core)
+				.ok_or(Error::State)?;
 			unsafe {
 				*numerator = core.out().numerator() as c_int;
 				*denominator = core.out().denominator() as c_int;
@@ -7291,7 +7433,10 @@ pub mod block {
 			let mut guard = lock(&n.project);
 			let entry = guard.graph.get_mut(n.id).ok_or(Error::NotFound)?;
 			let core = block_core_mut(entry).ok_or(Error::State)?;
-			core.set_out(oakcore_rs::Rational::new(numerator as i64, denominator as i64));
+			core.set_out(oakcore_rs::Rational::new(
+				numerator as i64,
+				denominator as i64,
+			));
 			Ok(())
 		})
 	}
@@ -7309,7 +7454,11 @@ pub mod block {
 			}
 			let n = unsafe { node_ref(&block)? };
 			let guard = lock(&n.project);
-			let core = guard.graph.get(n.id).and_then(block_core).ok_or(Error::State)?;
+			let core = guard
+				.graph
+				.get(n.id)
+				.and_then(block_core)
+				.ok_or(Error::State)?;
 			let len = core.length();
 			unsafe {
 				*numerator = len.numerator() as c_int;
@@ -7371,7 +7520,11 @@ pub mod block {
 			}
 			let n = unsafe { node_ref(&block)? };
 			let guard = lock(&n.project);
-			let core = guard.graph.get(n.id).and_then(block_core).ok_or(Error::State)?;
+			let core = guard
+				.graph
+				.get(n.id)
+				.and_then(block_core)
+				.ok_or(Error::State)?;
 			unsafe { *enabled = core.enabled as c_int };
 			Ok(())
 		})
@@ -7403,7 +7556,11 @@ pub mod block {
 			let n = unsafe { node_ref(&block)? };
 			let (project, prev) = {
 				let guard = lock(&n.project);
-				let core = guard.graph.get(n.id).and_then(block_core).ok_or(Error::State)?;
+				let core = guard
+					.graph
+					.get(n.id)
+					.and_then(block_core)
+					.ok_or(Error::State)?;
 				let track = core.track.ok_or(Error::State)?;
 				let tb = guard
 					.graph
@@ -7412,7 +7569,10 @@ pub mod block {
 					.and_then(|a| a.downcast_ref::<crate::track::TrackBehavior>())
 					.ok_or(Error::State)?;
 				let idx = tb.block_index(n.id).ok_or(Error::NotFound)?;
-				(n.project.clone(), idx.checked_sub(1).and_then(|i| tb.block_at(i)))
+				(
+					n.project.clone(),
+					idx.checked_sub(1).and_then(|i| tb.block_at(i)),
+				)
 			};
 			unsafe {
 				*out = match prev {
@@ -7434,7 +7594,11 @@ pub mod block {
 			let n = unsafe { node_ref(&block)? };
 			let (project, next) = {
 				let guard = lock(&n.project);
-				let core = guard.graph.get(n.id).and_then(block_core).ok_or(Error::State)?;
+				let core = guard
+					.graph
+					.get(n.id)
+					.and_then(block_core)
+					.ok_or(Error::State)?;
 				let track = core.track.ok_or(Error::State)?;
 				let tb = guard
 					.graph
@@ -7465,7 +7629,11 @@ pub mod block {
 			let n = unsafe { node_ref(&block)? };
 			let (project, track) = {
 				let guard = lock(&n.project);
-				let core = guard.graph.get(n.id).and_then(block_core).ok_or(Error::State)?;
+				let core = guard
+					.graph
+					.get(n.id)
+					.and_then(block_core)
+					.ok_or(Error::State)?;
 				(n.project.clone(), core.track)
 			};
 			unsafe {
@@ -7929,7 +8097,8 @@ pub mod block {
 				.ok_or(Error::State)?;
 			let center = oakcore_rs::Rational::new(numerator as i64, denominator as i64);
 			let length = t.core.length();
-			let remaining = (length - center * oakcore_rs::Rational::new(2, 1)) / oakcore_rs::Rational::new(2, 1);
+			let remaining = (length - center * oakcore_rs::Rational::new(2, 1))
+				/ oakcore_rs::Rational::new(2, 1);
 			t.in_offset = remaining;
 			t.out_offset = remaining;
 			Ok(())
@@ -7982,12 +8151,15 @@ pub mod block {
 			{
 				return Err(Error::State);
 			}
-			let both = guard
-				.graph
-				.is_input_connected(n.id, crate::block::transition_input::OUT_BLOCK, -1)
-				&& guard
+			let both =
+				guard
 					.graph
-					.is_input_connected(n.id, crate::block::transition_input::IN_BLOCK, -1);
+					.is_input_connected(n.id, crate::block::transition_input::OUT_BLOCK, -1)
+					&& guard.graph.is_input_connected(
+						n.id,
+						crate::block::transition_input::IN_BLOCK,
+						-1,
+					);
 			unsafe { *dual = both as c_int };
 			Ok(())
 		})
@@ -8015,7 +8187,9 @@ pub mod block {
 				return Err(Error::State);
 			}
 			let connected =
-				guard.graph.connected_output(n.id, crate::block::transition_input::OUT_BLOCK, -1);
+				guard
+					.graph
+					.connected_output(n.id, crate::block::transition_input::OUT_BLOCK, -1);
 			unsafe {
 				*out = match connected {
 					Some(b) => make_node_borrowed(n.project.clone(), b),
@@ -8048,7 +8222,9 @@ pub mod block {
 				return Err(Error::State);
 			}
 			let connected =
-				guard.graph.connected_output(n.id, crate::block::transition_input::IN_BLOCK, -1);
+				guard
+					.graph
+					.connected_output(n.id, crate::block::transition_input::IN_BLOCK, -1);
 			unsafe {
 				*out = match connected {
 					Some(b) => make_node_borrowed(n.project.clone(), b),
@@ -8401,7 +8577,13 @@ pub mod footage {
 				.as_any_mut()
 				.and_then(|a| a.downcast_mut::<FootageBehavior>())
 				.ok_or(Error::State)?;
-			f.set_proxy(path, state, video_stream_index, preset_version, enabled != 0);
+			f.set_proxy(
+				path,
+				state,
+				video_stream_index,
+				preset_version,
+				enabled != 0,
+			);
 			Ok(())
 		})
 	}
@@ -8589,7 +8771,7 @@ pub mod colormanager {
 	#[no_mangle]
 	pub unsafe extern "C" fn oaknode_colormanager_initialize(manager: CHandle) -> c_int {
 		guard(|| {
-				let mut guard = manager_guard(&manager)?;
+			let mut guard = manager_guard(&manager)?;
 			guard.initialize()
 		})
 	}
@@ -8635,7 +8817,7 @@ pub mod colormanager {
 		manager: CHandle,
 	) -> c_int {
 		guard(|| {
-				let mut guard = manager_guard(&manager)?;
+			let mut guard = manager_guard(&manager)?;
 			guard.update_config_from_filename()
 		})
 	}
@@ -8660,7 +8842,9 @@ pub mod colormanager {
 		colorspace: *const c_char,
 	) -> c_int {
 		guard(|| {
-			let colorspace = unsafe { cstr(colorspace) }.ok_or(Error::Invalid)?.to_string();
+			let colorspace = unsafe { cstr(colorspace) }
+				.ok_or(Error::Invalid)?
+				.to_string();
 			manager_mut(&manager, |m| m.default_input_space = colorspace)
 		})
 	}
@@ -8763,7 +8947,10 @@ pub mod colormanager {
 			if !m.config_loaded {
 				return String::new();
 			}
-			m.list_displays().get(index as usize).cloned().unwrap_or_default()
+			m.list_displays()
+				.get(index as usize)
+				.cloned()
+				.unwrap_or_default()
 		}) {
 			Ok(s) if s.is_empty() => crate::error::OAKNODE_E_NOT_FOUND,
 			Ok(s) => copy_string_out(&s, buf, buf_size),
@@ -8824,7 +9011,10 @@ pub mod colormanager {
 			if !m.config_loaded {
 				return String::new();
 			}
-			m.list_views("").get(index as usize).cloned().unwrap_or_default()
+			m.list_views("")
+				.get(index as usize)
+				.cloned()
+				.unwrap_or_default()
 		}) {
 			Ok(s) if s.is_empty() => crate::error::OAKNODE_E_NOT_FOUND,
 			Ok(s) => copy_string_out(&s, buf, buf_size),
@@ -8884,7 +9074,10 @@ pub mod colormanager {
 			if !m.config_loaded {
 				return String::new();
 			}
-			m.list_looks().get(index as usize).cloned().unwrap_or_default()
+			m.list_looks()
+				.get(index as usize)
+				.cloned()
+				.unwrap_or_default()
 		}) {
 			Ok(s) if s.is_empty() => crate::error::OAKNODE_E_NOT_FOUND,
 			Ok(s) => copy_string_out(&s, buf, buf_size),
@@ -8923,7 +9116,10 @@ pub mod colormanager {
 			if !m.config_loaded {
 				return String::new();
 			}
-			m.list_colorspaces().get(index as usize).cloned().unwrap_or_default()
+			m.list_colorspaces()
+				.get(index as usize)
+				.cloned()
+				.unwrap_or_default()
 		}) {
 			Ok(s) if s.is_empty() => crate::error::OAKNODE_E_NOT_FOUND,
 			Ok(s) => copy_string_out(&s, buf, buf_size),
@@ -9018,7 +9214,11 @@ pub mod colormanager {
 					guard.default_view.clone()
 				};
 				let looks = guard.list_looks();
-				let look = if looks.contains(&look) { look } else { String::new() };
+				let look = if looks.contains(&look) {
+					look
+				} else {
+					String::new()
+				};
 				crate::bridge::common::colortransform_init_display(&display, &view, &look)
 			} else {
 				let guard = manager_guard(&manager)?;
@@ -9053,9 +9253,7 @@ pub mod colormanager {
 	}
 
 	/// Lock the shared manager box (the handle boxes `Mutex<ColorManager>`).
-	fn manager_guard(
-		manager: &CHandle,
-	) -> Result<std::sync::MutexGuard<'_, ColorManager>> {
+	fn manager_guard(manager: &CHandle) -> Result<std::sync::MutexGuard<'_, ColorManager>> {
 		let m = unsafe { crate::handle::get::<std::sync::Mutex<ColorManager>>(manager) }
 			.ok_or(Error::Invalid)?;
 		Ok(m.lock().unwrap_or_else(|e| e.into_inner()))
@@ -9130,8 +9328,8 @@ pub mod traverser {
 			let table = {
 				// The handle is an opaque engine token; each pass runs
 				// on a fresh engine (the pass is stateless).
-				let _ = unsafe { crate::handle::get::<Traverser>(&traverser) }
-					.ok_or(Error::Invalid)?;
+				let _ =
+					unsafe { crate::handle::get::<Traverser>(&traverser) }.ok_or(Error::Invalid)?;
 				let guard = lock(&n.project);
 				let request = EvalRequest::new(n.id, time);
 				let mut engine = Traverser::new();
@@ -9140,9 +9338,9 @@ pub mod traverser {
 			// Build the database: one row per evaluated input value.
 			let mut rows: Vec<(String, Vec<(crate::value::ValueType, NodeValue)>)> = Vec::new();
 			let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
-			for (from, input_id, _element) in with_graph_read(&n.project, |g| {
-				g.output_connections(n.id)
-			}) {
+			for (from, input_id, _element) in
+				with_graph_read(&n.project, |g| g.output_connections(n.id))
+			{
 				let _ = from;
 				if seen.insert(input_id.clone()) {
 					rows.push((input_id, Vec::new()));
@@ -9191,8 +9389,7 @@ pub mod traverser {
 			if out_count.is_null() {
 				return Err(Error::Invalid);
 			}
-			let d = unsafe { crate::handle::get::<ValueDatabase>(&db) }
-				.ok_or(Error::Invalid)?;
+			let d = unsafe { crate::handle::get::<ValueDatabase>(&db) }.ok_or(Error::Invalid)?;
 			unsafe { *out_count = d.rows.len() as c_int };
 			Ok(())
 		})
@@ -9227,10 +9424,13 @@ pub mod traverser {
 			if out_count.is_null() {
 				return Err(Error::Invalid);
 			}
-			let d = unsafe { crate::handle::get::<ValueDatabase>(&db) }
-				.ok_or(Error::Invalid)?;
+			let d = unsafe { crate::handle::get::<ValueDatabase>(&db) }.ok_or(Error::Invalid)?;
 			let key = unsafe { cstr(key) }.ok_or(Error::Invalid)?;
-			let row = d.rows.iter().find(|(k, _)| k == key).ok_or(Error::NotFound)?;
+			let row = d
+				.rows
+				.iter()
+				.find(|(k, _)| k == key)
+				.ok_or(Error::NotFound)?;
 			unsafe { *out_count = row.1.len() as c_int };
 			Ok(())
 		})
@@ -9248,10 +9448,13 @@ pub mod traverser {
 			if out.is_null() {
 				return Err(Error::Invalid);
 			}
-			let d = unsafe { crate::handle::get::<ValueDatabase>(&db) }
-				.ok_or(Error::Invalid)?;
+			let d = unsafe { crate::handle::get::<ValueDatabase>(&db) }.ok_or(Error::Invalid)?;
 			let key = unsafe { cstr(key) }.ok_or(Error::Invalid)?;
-			let row = d.rows.iter().find(|(k, _)| k == key).ok_or(Error::NotFound)?;
+			let row = d
+				.rows
+				.iter()
+				.find(|(k, _)| k == key)
+				.ok_or(Error::NotFound)?;
 			let (ty, value) = row.1.get(index as usize).ok_or(Error::NotFound)?;
 			let pod = OakNodeValue::from_node_value(*ty, value)?;
 			unsafe { *out = pod };
@@ -9381,8 +9584,7 @@ pub mod serializer {
 			if nodes.is_null() || count < 0 {
 				return Err(Error::Invalid);
 			}
-			let sd = unsafe { crate::handle::get::<SaveData>(&save_data) }
-				.ok_or(Error::Invalid)?;
+			let sd = unsafe { crate::handle::get::<SaveData>(&save_data) }.ok_or(Error::Invalid)?;
 			let mut ids = Vec::new();
 			for i in 0..count as usize {
 				let child = unsafe { (*nodes.add(i)).clone() };
@@ -9632,8 +9834,7 @@ pub mod serializer {
 			if out_output_node.is_null() || out_input_node.is_null() || out_element.is_null() {
 				return Err(Error::Invalid);
 			}
-			let ld = unsafe { crate::handle::get::<LoadData>(&load_data) }
-				.ok_or(Error::Invalid)?;
+			let ld = unsafe { crate::handle::get::<LoadData>(&load_data) }.ok_or(Error::Invalid)?;
 			let (out_id, in_id, input_id, element) =
 				ld.connections.get(index as usize).ok_or(Error::NotFound)?;
 			// Resolve node handles from the load-data's nodes.

@@ -104,10 +104,22 @@ pub fn get_creation_date(path: &str) -> Result<i64> {
 			st_gid: 0,
 			st_rdev: 0,
 			_st_pad: 0,
-			st_atimespec: Timespec { tv_sec: 0, tv_nsec: 0 },
-			st_mtimespec: Timespec { tv_sec: 0, tv_nsec: 0 },
-			st_ctimespec: Timespec { tv_sec: 0, tv_nsec: 0 },
-			st_birthtimespec: Timespec { tv_sec: 0, tv_nsec: 0 },
+			st_atimespec: Timespec {
+				tv_sec: 0,
+				tv_nsec: 0,
+			},
+			st_mtimespec: Timespec {
+				tv_sec: 0,
+				tv_nsec: 0,
+			},
+			st_ctimespec: Timespec {
+				tv_sec: 0,
+				tv_nsec: 0,
+			},
+			st_birthtimespec: Timespec {
+				tv_sec: 0,
+				tv_nsec: 0,
+			},
 			st_size: 0,
 			st_blocks: 0,
 			st_blksize: 0,

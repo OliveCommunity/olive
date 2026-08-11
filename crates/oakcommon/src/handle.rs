@@ -95,7 +95,9 @@ unsafe extern "C" fn refbox_release_owned<T: Send + Sized + 'static>(ctx: *mut s
 /// release thunk (borrowed, produced by [`make_borrowed`]): at zero only
 /// the box allocation is reclaimed; the value inside is forgotten — its
 /// ownership remains with the borrower.
-unsafe extern "C" fn refbox_release_borrowed<T: Send + Sized + 'static>(ctx: *mut std::ffi::c_void) {
+unsafe extern "C" fn refbox_release_borrowed<T: Send + Sized + 'static>(
+	ctx: *mut std::ffi::c_void,
+) {
 	unsafe {
 		let rb = ctx as *mut RefBox<T>;
 		if (*rb).refs.fetch_sub(1, Ordering::AcqRel) == 1 {

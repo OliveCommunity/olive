@@ -209,7 +209,11 @@ impl TaskBehavior for ProxyTask {
 	fn run(&mut self, task: &mut Task) -> Result<()> {
 		let mut ffmpeg_buf = [0i8; 1024];
 		let found = unsafe {
-			bridge::codec::oakcodec_proxy_find_ffmpeg(std::ptr::null(), ffmpeg_buf.as_mut_ptr(), ffmpeg_buf.len() as i32)
+			bridge::codec::oakcodec_proxy_find_ffmpeg(
+				std::ptr::null(),
+				ffmpeg_buf.as_mut_ptr(),
+				ffmpeg_buf.len() as i32,
+			)
 		};
 		if found <= 0 {
 			task.set_error(
@@ -224,7 +228,9 @@ impl TaskBehavior for ProxyTask {
 			if !parent.as_os_str().is_empty() && !parent.exists() {
 				if std::fs::create_dir_all(parent).is_err() {
 					task.set_error("Failed to create proxy output directory");
-					return Err(Error::Failed("Failed to create proxy output directory".to_string()));
+					return Err(Error::Failed(
+						"Failed to create proxy output directory".to_string(),
+					));
 				}
 			}
 		}
@@ -233,13 +239,21 @@ impl TaskBehavior for ProxyTask {
 		let working_filename = format!("{}.working.mp4", self.output_filename);
 		let _ = std::fs::remove_file(&working_filename);
 
-		let args = Self::build_arguments(&self.source_filename, self.stream_index, &self.params, &working_filename);
+		let args = Self::build_arguments(
+			&self.source_filename,
+			self.stream_index,
+			&self.params,
+			&working_filename,
+		);
 
 		// Probe the source duration for progress scaling (0 when unknown).
 		self.duration_seconds = probe_source_duration_seconds(&ffmpeg_path, &self.source_filename);
 
 		let mut command = Command::new(&ffmpeg_path);
-		command.args(&args).stdout(Stdio::piped()).stderr(Stdio::piped());
+		command
+			.args(&args)
+			.stdout(Stdio::piped())
+			.stderr(Stdio::piped());
 		let mut child = match command.spawn() {
 			Ok(child) => child,
 			Err(_) => {
@@ -291,7 +305,9 @@ impl TaskBehavior for ProxyTask {
 
 		if !std::path::Path::new(&working_filename).exists() {
 			task.set_error("ffmpeg finished but proxy file was not created");
-			return Err(Error::Failed("ffmpeg finished but proxy file was not created".to_string()));
+			return Err(Error::Failed(
+				"ffmpeg finished but proxy file was not created".to_string(),
+			));
 		}
 
 		if std::fs::rename(&working_filename, &self.output_filename).is_err() {
@@ -307,7 +323,10 @@ impl TaskBehavior for ProxyTask {
 /// Read a NUL-terminated C char buffer into a String.
 fn buf_to_string(buf: &[i8]) -> String {
 	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-	unsafe { String::from_utf8_lossy(std::slice::from_raw_parts(buf.as_ptr() as *const u8, len)).into_owned() }
+	unsafe {
+		String::from_utf8_lossy(std::slice::from_raw_parts(buf.as_ptr() as *const u8, len))
+			.into_owned()
+	}
 }
 
 /// Probe the source duration via `ffprobe` next to ffmpeg; 0.0 when
@@ -318,7 +337,15 @@ fn probe_source_duration_seconds(ffmpeg_path: &str, source_filename: &str) -> f6
 		return 0.0;
 	}
 	let output = Command::new(&ffprobe)
-		.args(["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", source_filename])
+		.args([
+			"-v",
+			"error",
+			"-show_entries",
+			"format=duration",
+			"-of",
+			"default=noprint_wrappers=1:nokey=1",
+			source_filename,
+		])
 		.output();
 	match output {
 		Ok(out) if out.status.success() => {

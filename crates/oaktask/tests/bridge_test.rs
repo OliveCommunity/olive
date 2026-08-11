@@ -43,7 +43,10 @@ fn handle_layout_matches_c() {
 	assert_eq!(offset_of!(CHandle, ctx), offset_of!(CKernel, ctx));
 	assert_eq!(offset_of!(CHandle, addref), offset_of!(CKernel, addref));
 	assert_eq!(offset_of!(CHandle, release), offset_of!(CKernel, release));
-	assert_eq!(offset_of!(CHandle, abi_version), offset_of!(CKernel, abi_version));
+	assert_eq!(
+		offset_of!(CHandle, abi_version),
+		offset_of!(CKernel, abi_version)
+	);
 }
 
 /// Given the ABI version constant, it is 1 and matches OAKTASK_ABI_VERSION

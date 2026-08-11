@@ -175,10 +175,7 @@ impl OCIOLutNode {
 		{
 			let state = self.state.lock().unwrap();
 			if !state.dirty
-				&& state
-					.last_processor
-					.as_ref()
-					.is_some_and(|p| !p.is_null())
+				&& state.last_processor.as_ref().is_some_and(|p| !p.is_null())
 				&& Self::file_path(core) == state.last_path
 				&& Self::read_direction_input(core) == state.last_direction
 			{
@@ -376,7 +373,10 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 			"placeholder".to_string(),
 			crate::value::NodeValue::Text("Select a LUT file".into()),
 		),
-		("lut_library".to_string(), crate::value::NodeValue::Boolean(true)),
+		(
+			"lut_library".to_string(),
+			crate::value::NodeValue::Boolean(true),
+		),
 	];
 	core.add_input(file);
 
@@ -435,7 +435,9 @@ mod tests {
 		let (core, behavior) = create();
 		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.ociolut");
 		assert_ne!(
-			core.get_input(crate::nodes::ociobase::TEXTURE_INPUT).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE,
+			core.get_input(crate::nodes::ociobase::TEXTURE_INPUT)
+				.unwrap()
+				.flags & crate::input::flags::NOT_KEYFRAMABLE,
 			0
 		);
 		let file = core.get_input(FILE_INPUT).unwrap();
@@ -443,10 +445,8 @@ mod tests {
 		assert_ne!(file.flags & crate::input::flags::NOT_KEYFRAMABLE, 0);
 		assert_ne!(file.flags & crate::input::flags::NOT_CONNECTABLE, 0);
 		// `*.*` filter fallback without the render bridge.
-		assert!(file
-			.properties
-			.iter()
-			.any(|(k, v)| k == "filter" && *v == NodeValue::Text("LUT Files (*.*);;All Files (*)".into())));
+		assert!(file.properties.iter().any(|(k, v)| k == "filter"
+			&& *v == NodeValue::Text("LUT Files (*.*);;All Files (*)".into())));
 		assert!(file
 			.properties
 			.iter()
@@ -625,7 +625,12 @@ mod tests {
 	fn value_no_texture_pushes_nothing() {
 		let (core, behavior) = create();
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
 		assert!(table.is_empty());
 	}
 

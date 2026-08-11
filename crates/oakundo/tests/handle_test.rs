@@ -20,8 +20,8 @@ use std::ffi::c_void;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::sync::Arc;
 
-use oakundo::error::{OAKUNDO_E_FAILED, OAKUNDO_E_INVALID, OAKUNDO_OK, Result};
-use oakundo::handle::{guard, guard_handle, guard_void, make_borrowed, make_owned, get, CHandle};
+use oakundo::error::{Result, OAKUNDO_E_FAILED, OAKUNDO_E_INVALID, OAKUNDO_OK};
+use oakundo::handle::{get, guard, guard_handle, guard_void, make_borrowed, make_owned, CHandle};
 
 /// A value whose `Drop` signals through a shared counter.
 struct DropProbe {
@@ -69,11 +69,19 @@ fn make_owned_counts_and_releases() {
 	let release = h.release.unwrap();
 	unsafe { addref(h.ctx) };
 	unsafe { release(h.ctx) };
-	assert_eq!(counter.load(Ordering::SeqCst), 1, "still alive after one release");
+	assert_eq!(
+		counter.load(Ordering::SeqCst),
+		1,
+		"still alive after one release"
+	);
 
 	// Final release drops the box.
 	unsafe { release(h.ctx) };
-	assert_eq!(counter.load(Ordering::SeqCst), 0, "dropped at refcount zero");
+	assert_eq!(
+		counter.load(Ordering::SeqCst),
+		0,
+		"dropped at refcount zero"
+	);
 }
 
 #[test]

@@ -241,7 +241,11 @@ impl BlockSplitPreservingLinksCommand {
 		if time_index < self.times.len() {
 			for (i, b) in self.blocks.iter().enumerate() {
 				if same_block(b.clone(), original.clone()) {
-					return self.splits.get(time_index).and_then(|row| row.get(i)).cloned();
+					return self
+						.splits
+						.get(time_index)
+						.and_then(|row| row.get(i))
+						.cloned();
 				}
 			}
 		}

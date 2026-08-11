@@ -129,7 +129,10 @@ impl NodeBehavior for MosaicFilterNode {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		if !matches!(inputs.get(TEXTURE_INPUT), Some(crate::value::NodeValue::Texture(_))) {
+		if !matches!(
+			inputs.get(TEXTURE_INPUT),
+			Some(crate::value::NodeValue::Texture(_))
+		) {
 			return;
 		}
 		let _ = (core, time, inputs);
@@ -211,7 +214,10 @@ mod tests {
 	#[test]
 	fn create_wires_inputs_and_flags() {
 		let (core, behavior) = create();
-		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.mosaicfilter");
+		assert_eq!(
+			behavior.type_id(),
+			"org.olivevideoeditor.Olive.mosaicfilter"
+		);
 		assert_eq!(
 			core.get_input(HORIZ_INPUT).unwrap().default,
 			NodeValue::Float(32.0)

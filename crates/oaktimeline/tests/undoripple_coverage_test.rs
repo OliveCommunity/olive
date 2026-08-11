@@ -24,7 +24,7 @@ use oaktimeline::bridge::node::{
 	oaknode_block_clip_create, oaknode_block_gap_create, oaknode_track_prepend_block,
 };
 use oaktimeline::bridge::teststubs::{MockKind, MockNode};
-use oaktimeline::handle::{CHandle, get, get_mut, make_owned};
+use oaktimeline::handle::{get, get_mut, make_owned, CHandle};
 use oaktimeline::undocommon::Command;
 use oaktimeline::undoripple::{
 	TimelineRippleDeleteGapsAtRegionsCommand, TimelineRippleRemoveAreaCommand,
@@ -83,7 +83,9 @@ fn ripple_remove_area_splices_through_block() {
 	let t = make_track();
 	let b = mk_clip();
 	set_times(&b, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 
 	let mut cmd = TrackRippleRemoveAreaCommand::new(
 		t.clone(),
@@ -108,7 +110,9 @@ fn ripple_remove_area_trims_in_of_trailing_block() {
 	let t = make_track();
 	let b = mk_clip();
 	set_times(&b, (2, 1), (10, 1), (8, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 
 	let mut cmd = TrackRippleRemoveAreaCommand::new(
 		t.clone(),
@@ -131,7 +135,9 @@ fn ripple_remove_area_removes_contained_block() {
 	let t = make_track();
 	let b = mk_clip();
 	set_times(&b, (2, 1), (4, 1), (2, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 
 	let mut cmd = TrackRippleRemoveAreaCommand::new(
 		t.clone(),
@@ -152,7 +158,9 @@ fn ripple_remove_area_insertion_index() {
 	let t = make_track();
 	let b = mk_clip();
 	set_times(&b, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 
 	let mut cmd = TrackRippleRemoveAreaCommand::new(
 		t.clone(),
@@ -179,7 +187,9 @@ fn ripple_remove_area_trait_dispatch() {
 	let t = make_track();
 	let b = mk_clip();
 	set_times(&b, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 
 	let mut cmd = TrackRippleRemoveAreaCommand::new(
 		t.clone(),
@@ -203,7 +213,9 @@ fn track_list_ripple_remove_area_prepare_redo_undo() {
 	let t = make_track();
 	let b = mk_clip();
 	set_times(&b, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 	unsafe {
 		get_mut::<MockNode>(&list).unwrap().blocks.push(addr(&t));
 	}
@@ -279,17 +291,16 @@ fn timeline_ripple_remove_area_redo_undo() {
 	let t = make_track();
 	let b = mk_clip();
 	set_times(&b, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 	unsafe {
 		get_mut::<MockNode>(&list).unwrap().blocks.push(addr(&t));
 		get_mut::<MockNode>(&seq).unwrap().blocks.push(addr(&list));
 	}
 
-	let mut cmd = TimelineRippleRemoveAreaCommand::new(
-		seq.clone(),
-		Rational::new(2, 1),
-		Rational::new(5, 1),
-	);
+	let mut cmd =
+		TimelineRippleRemoveAreaCommand::new(seq.clone(), Rational::new(2, 1), Rational::new(5, 1));
 	cmd.redo();
 	assert_eq!(count(&t), 2);
 	cmd.undo();
@@ -303,11 +314,8 @@ fn timeline_ripple_remove_area_trait_dispatch() {
 		kind: MockKind::Sequence,
 		..Default::default()
 	});
-	let mut cmd = TimelineRippleRemoveAreaCommand::new(
-		seq.clone(),
-		Rational::new(0, 1),
-		Rational::new(5, 1),
-	);
+	let mut cmd =
+		TimelineRippleRemoveAreaCommand::new(seq.clone(), Rational::new(0, 1), Rational::new(5, 1));
 	Command::redo(&mut cmd);
 	Command::undo(&mut cmd);
 }
@@ -319,7 +327,9 @@ fn ripple_delete_gaps_at_regions_prepare() {
 	let t = make_track();
 	let g = mk_gap();
 	set_times(&g, (0, 1), (5, 1), (5, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), g.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), g.clone());
+	}
 
 	let regions = vec![(
 		t.clone(),
@@ -340,7 +350,9 @@ fn ripple_delete_gaps_at_regions_trait_dispatch() {
 	let t = make_track();
 	let g = mk_gap();
 	set_times(&g, (0, 1), (5, 1), (5, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), g.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), g.clone());
+	}
 
 	let regions = vec![(
 		t.clone(),

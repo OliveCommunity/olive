@@ -109,8 +109,7 @@ impl PairingCalculator {
 			if likelihood_a[i] == -1 || likelihood_b[i] == -1 {
 				likelihoods[i] = -1;
 			} else {
-				likelihoods[i] =
-					likelihood_a[i] + weight_a + likelihood_b[i] + weight_b;
+				likelihoods[i] = likelihood_a[i] + weight_a + likelihood_b[i] + weight_b;
 			}
 		}
 
@@ -269,8 +268,7 @@ impl MathNodeBase {
 		match op {
 			Operation::Add | Operation::Subtract => number == 0.0,
 			Operation::Multiply | Operation::Divide | Operation::Power => {
-				(number - 1.0f32).abs() * 100000.0f32
-					<= number.abs().min(1.0f32)
+				(number - 1.0f32).abs() * 100000.0f32 <= number.abs().min(1.0f32)
 			}
 		}
 	}
@@ -283,7 +281,11 @@ impl MathNodeBase {
 	/// instead emits a no-op fragment plus a vertex shader that
 	/// multiplies `gl_Position` by the matrix uniform. Returns
 	/// `(frag, vert)`.
-	pub fn shader_code_internal(shader_id: &str, param_a_in: &str, param_b_in: &str) -> (String, String) {
+	pub fn shader_code_internal(
+		shader_id: &str,
+		param_a_in: &str,
+		param_b_in: &str,
+	) -> (String, String) {
 		let parts: Vec<i32> = shader_id
 			.split('.')
 			.map(|p| p.parse().unwrap_or(0))
@@ -496,15 +498,21 @@ impl MathNodeBase {
 
 			Pairing::NumberColor => {
 				let (col, num) = if val_a.value_type() == ValueType::Color {
-					(match val_a {
-						NodeValue::Color(c) => *c,
-						_ => [0.0; 4],
-					}, val_b.to_double())
+					(
+						match val_a {
+							NodeValue::Color(c) => *c,
+							_ => [0.0; 4],
+						},
+						val_b.to_double(),
+					)
 				} else {
-					(match val_b {
-						NodeValue::Color(c) => *c,
-						_ => [0.0; 4],
-					}, val_a.to_double())
+					(
+						match val_b {
+							NodeValue::Color(c) => *c,
+							_ => [0.0; 4],
+						},
+						val_a.to_double(),
+					)
 				};
 				// Only multiply and divide are valid operations.
 				let result = mult_color_number(operation, col, num);
@@ -525,7 +533,10 @@ impl MathNodeBase {
 					format: samples_a.format,
 					channels,
 					sample_count: max_samples,
-					data: vec![0u8; max_samples * channels * samples_a.format.bytes_per_sample().max(1)],
+					data: vec![
+						0u8;
+						max_samples * channels * samples_a.format.bytes_per_sample().max(1)
+					],
 				};
 
 				for c in 0..channels {
@@ -556,7 +567,9 @@ impl MathNodeBase {
 				output.push(ValueType::Samples, NodeValue::Samples(mixed), None);
 			}
 
-			Pairing::TextureColor | Pairing::TextureNumber | Pairing::TextureTexture
+			Pairing::TextureColor
+			| Pairing::TextureNumber
+			| Pairing::TextureTexture
 			| Pairing::TextureMatrix => {
 				let (number_val, texture_val) = if val_a.value_type() == ValueType::Texture {
 					(val_b, val_a)
@@ -592,11 +605,7 @@ impl MathNodeBase {
 
 				if operation_is_noop {
 					// Just push texture as-is.
-					output.push(
-						ValueType::Texture,
-						texture_val.clone(),
-						None,
-					);
+					output.push(ValueType::Texture, texture_val.clone(), None);
 				} else {
 					// Push a texture-typed value representing the deferred
 					// shader job. The C++ pushes `Texture::job(...)`
@@ -687,11 +696,7 @@ impl MathNodeBase {
 		let number_flt = Self::retrieve_number(number_val.unwrap());
 
 		for i in 0..output.channels {
-			let v = perform_all_f32(
-				operation,
-				input.sample_value(i, index) as f32,
-				number_flt,
-			);
+			let v = perform_all_f32(operation, input.sample_value(i, index) as f32, number_flt);
 			output.set_sample_value(i, index, v as f64);
 		}
 	}
@@ -722,7 +727,11 @@ fn perform_all_f32(operation: Operation, a: f32, b: f32) -> f32 {
 
 /// `perform_add_sub_mult_div<Rational, Rational>` — add/sub/mul/div on
 /// rationals; power is unsupported and returns `a` unchanged.
-fn add_sub_mult_div_rational(operation: Operation, a: oakcore_rs::Rational, b: oakcore_rs::Rational) -> oakcore_rs::Rational {
+fn add_sub_mult_div_rational(
+	operation: Operation,
+	a: oakcore_rs::Rational,
+	b: oakcore_rs::Rational,
+) -> oakcore_rs::Rational {
 	match operation {
 		Operation::Add => a + b,
 		Operation::Subtract => a - b,
@@ -746,27 +755,21 @@ fn retrieve_vector(val: &NodeValue) -> [f32; 4] {
 /// C++ `push_vector`: narrow a `[f32; 4]` back into the target vec type.
 fn push_vector(output: &mut NodeValueTable, ty: ValueType, vec: [f32; 4]) {
 	match ty {
-		ValueType::Vec2 => {
-			output.push(
-				ValueType::Vec2,
-				NodeValue::Vec2([vec[0] as f64, vec[1] as f64]),
-				None,
-			)
-		}
-		ValueType::Vec3 => {
-			output.push(
-				ValueType::Vec3,
-				NodeValue::Vec3([vec[0] as f64, vec[1] as f64, vec[2] as f64]),
-				None,
-			)
-		}
-		ValueType::Vec4 => {
-			output.push(
-				ValueType::Vec4,
-				NodeValue::Vec4([vec[0] as f64, vec[1] as f64, vec[2] as f64, vec[3] as f64]),
-				None,
-			)
-		}
+		ValueType::Vec2 => output.push(
+			ValueType::Vec2,
+			NodeValue::Vec2([vec[0] as f64, vec[1] as f64]),
+			None,
+		),
+		ValueType::Vec3 => output.push(
+			ValueType::Vec3,
+			NodeValue::Vec3([vec[0] as f64, vec[1] as f64, vec[2] as f64]),
+			None,
+		),
+		ValueType::Vec4 => output.push(
+			ValueType::Vec4,
+			NodeValue::Vec4([vec[0] as f64, vec[1] as f64, vec[2] as f64, vec[3] as f64]),
+			None,
+		),
 		_ => {}
 	}
 }
@@ -912,9 +915,7 @@ fn is_scalar(val: Option<&NodeValue>) -> bool {
 	match val {
 		None => false,
 		Some(NodeValue::None) => false,
-		Some(v) => v
-			.value_type()
-			.is_numeric(),
+		Some(v) => v.value_type().is_numeric(),
 	}
 }
 
@@ -945,7 +946,10 @@ impl ValueType {
 
 	/// Whether the type is numeric (C++ `NodeValue::type_is_numeric`).
 	pub fn is_numeric(self) -> bool {
-		matches!(self, ValueType::Float | ValueType::Int | ValueType::Rational)
+		matches!(
+			self,
+			ValueType::Float | ValueType::Int | ValueType::Rational
+		)
 	}
 }
 
@@ -967,8 +971,14 @@ mod tests {
 	#[test]
 	fn operation_names() {
 		assert_eq!(MathNodeBase::operation_name(Operation::Add), "Add");
-		assert_eq!(MathNodeBase::operation_name(Operation::Subtract), "Subtract");
-		assert_eq!(MathNodeBase::operation_name(Operation::Multiply), "Multiply");
+		assert_eq!(
+			MathNodeBase::operation_name(Operation::Subtract),
+			"Subtract"
+		);
+		assert_eq!(
+			MathNodeBase::operation_name(Operation::Multiply),
+			"Multiply"
+		);
 		assert_eq!(MathNodeBase::operation_name(Operation::Divide), "Divide");
 		assert_eq!(MathNodeBase::operation_name(Operation::Power), "Power");
 	}
@@ -983,7 +993,10 @@ mod tests {
 		assert!(MathNodeBase::number_is_no_op(Operation::Multiply, 1.0));
 		assert!(MathNodeBase::number_is_no_op(Operation::Divide, 1.0));
 		assert!(MathNodeBase::number_is_no_op(Operation::Power, 1.0));
-		assert!(MathNodeBase::number_is_no_op(Operation::Multiply, 1.0 + 0.0000001));
+		assert!(MathNodeBase::number_is_no_op(
+			Operation::Multiply,
+			1.0 + 0.0000001
+		));
 		assert!(!MathNodeBase::number_is_no_op(Operation::Multiply, 2.0));
 		assert!(!MathNodeBase::number_is_no_op(Operation::Divide, 0.0));
 	}
@@ -1139,7 +1152,10 @@ mod tests {
 			&mut out,
 		);
 		// x' = 10*m[0][0] = 10; y' = 20*m[1][1] = 20.
-		assert_eq!(out.get(ValueType::Vec2), Some(&NodeValue::Vec2([10.0, 20.0])));
+		assert_eq!(
+			out.get(ValueType::Vec2),
+			Some(&NodeValue::Vec2([10.0, 20.0]))
+		);
 	}
 
 	#[test]
@@ -1268,15 +1284,13 @@ mod tests {
 			&NodeValueRow::default(),
 			&mut out,
 		);
-		assert_eq!(
-			out.get(ValueType::Samples),
-			Some(&NodeValue::Samples(buf))
-		);
+		assert_eq!(out.get(ValueType::Samples), Some(&NodeValue::Samples(buf)));
 	}
 
 	#[test]
 	fn shader_code_number_number_add() {
-		let (frag, vert) = MathNodeBase::shader_code_internal("0.0.2.2", "param_a_in", "param_b_in");
+		let (frag, vert) =
+			MathNodeBase::shader_code_internal("0.0.2.2", "param_a_in", "param_b_in");
 		assert!(vert.is_empty());
 		assert!(frag.contains("uniform float param_a_in;"));
 		assert!(frag.contains("uniform float param_b_in;"));
@@ -1369,16 +1383,18 @@ mod tests {
 			&NodeValueRow::default(),
 			&mut out,
 		);
-		assert_eq!(out.get(ValueType::Texture), Some(&tex), "null texture passthrough");
+		assert_eq!(
+			out.get(ValueType::Texture),
+			Some(&tex),
+			"null texture passthrough"
+		);
 	}
 
 	#[test]
 	fn value_texture_number_identity_number_pushes_through() {
 		// Non-null texture handle + identity number: noop -> passthrough.
 		// Use a boxed handle so it is non-null but drops safely.
-		let tex = crate::value::NodeValue::Texture(
-			crate::handle::make_owned::<u8>(7),
-		);
+		let tex = crate::value::NodeValue::Texture(crate::handle::make_owned::<u8>(7));
 		let mut out = NodeValueTable::default();
 		MathNodeBase::value_internal(
 			Operation::Multiply,
@@ -1400,9 +1416,7 @@ mod tests {
 
 	#[test]
 	fn value_texture_number_job_placeholder() {
-		let tex = crate::value::NodeValue::Texture(
-			crate::handle::make_owned::<u8>(7),
-		);
+		let tex = crate::value::NodeValue::Texture(crate::handle::make_owned::<u8>(7));
 		let mut out = NodeValueTable::default();
 		MathNodeBase::value_internal(
 			Operation::Multiply,
@@ -1423,9 +1437,7 @@ mod tests {
 
 	#[test]
 	fn value_texture_matrix_identity_noop() {
-		let tex = crate::value::NodeValue::Texture(
-			crate::handle::make_owned::<u8>(7),
-		);
+		let tex = crate::value::NodeValue::Texture(crate::handle::make_owned::<u8>(7));
 		let mut out = NodeValueTable::default();
 		MathNodeBase::value_internal(
 			Operation::Multiply,
@@ -1448,13 +1460,14 @@ mod tests {
 	fn value_sample_number_dynamic_passes_through() {
 		// A keyframed number operand makes the input non-static.
 		let mut core = NodeCore::new();
-		core.keyframe_track_mut("num_in", -1).set_key(crate::keyframe::Keyframe {
-			time: oakcore_rs::Rational::new(0, 1),
-			value: NodeValue::Float(2.0),
-			interpolation: crate::keyframe::Interpolation::Linear,
-			bezier_in: (0.0, 0.0),
-			bezier_out: (0.0, 0.0),
-		});
+		core.keyframe_track_mut("num_in", -1)
+			.set_key(crate::keyframe::Keyframe {
+				time: oakcore_rs::Rational::new(0, 1),
+				value: NodeValue::Float(2.0),
+				interpolation: crate::keyframe::Interpolation::Linear,
+				bezier_in: (0.0, 0.0),
+				bezier_out: (0.0, 0.0),
+			});
 		let buf = crate::value::SampleBuffer {
 			format: oakcore_rs::SampleFormat::F32Planar,
 			channels: 1,
@@ -1546,10 +1559,30 @@ mod tests {
 	fn value_rational_arithmetic_all_ops() {
 		use oakcore_rs::Rational;
 		for (op, a, b, expect) in [
-			(Operation::Add, Rational::new(1, 2), Rational::new(1, 3), Rational::new(5, 6)),
-			(Operation::Subtract, Rational::new(1, 2), Rational::new(1, 3), Rational::new(1, 6)),
-			(Operation::Multiply, Rational::new(2, 3), Rational::new(3, 4), Rational::new(1, 2)),
-			(Operation::Divide, Rational::new(1, 2), Rational::new(1, 4), Rational::new(2, 1)),
+			(
+				Operation::Add,
+				Rational::new(1, 2),
+				Rational::new(1, 3),
+				Rational::new(5, 6),
+			),
+			(
+				Operation::Subtract,
+				Rational::new(1, 2),
+				Rational::new(1, 3),
+				Rational::new(1, 6),
+			),
+			(
+				Operation::Multiply,
+				Rational::new(2, 3),
+				Rational::new(3, 4),
+				Rational::new(1, 2),
+			),
+			(
+				Operation::Divide,
+				Rational::new(1, 2),
+				Rational::new(1, 4),
+				Rational::new(2, 1),
+			),
 		] {
 			let mut out = NodeValueTable::default();
 			MathNodeBase::value_internal(
@@ -1563,13 +1596,18 @@ mod tests {
 				&NodeValueRow::default(),
 				&mut out,
 			);
-			assert_eq!(out.get(ValueType::Rational), Some(&NodeValue::Rational(expect)));
+			assert_eq!(
+				out.get(ValueType::Rational),
+				Some(&NodeValue::Rational(expect))
+			);
 		}
 	}
 
 	#[test]
 	fn pairing_calculator_sample_and_texture() {
-		let a = table(vec![NodeValue::Samples(crate::value::SampleBuffer::default())]);
+		let a = table(vec![NodeValue::Samples(
+			crate::value::SampleBuffer::default(),
+		)]);
 		let b = table(vec![NodeValue::Float(1.0)]);
 		let p = PairingCalculator::new(&a, &b);
 		assert_eq!(p.most_likely_pairing, Pairing::SampleNumber);
@@ -1640,21 +1678,32 @@ mod tests {
 			&mut output2,
 			0,
 		);
-		assert_eq!(output2.sample_value(0, 0), 6.0, "3 * 2 from the fallback scalar");
+		assert_eq!(
+			output2.sample_value(0, 0),
+			6.0,
+			"3 * 2 from the fallback scalar"
+		);
 	}
 
 	#[test]
 	fn retrieve_number_combo_and_bool() {
 		assert_eq!(MathNodeBase::retrieve_number(&NodeValue::Combo(3)), 3.0);
-		assert_eq!(MathNodeBase::retrieve_number(&NodeValue::Boolean(true)), 1.0);
+		assert_eq!(
+			MathNodeBase::retrieve_number(&NodeValue::Boolean(true)),
+			1.0
+		);
 		assert_eq!(MathNodeBase::retrieve_number(&NodeValue::None), 0.0);
 	}
 
 	#[test]
 	fn is_scalar_checks() {
 		assert!(is_scalar(Some(&NodeValue::Float(1.0))));
-		assert!(is_scalar(Some(&NodeValue::Rational(oakcore_rs::Rational::new(1, 2)))));
-		assert!(!is_scalar(Some(&NodeValue::Samples(crate::value::SampleBuffer::default()))));
+		assert!(is_scalar(Some(&NodeValue::Rational(
+			oakcore_rs::Rational::new(1, 2)
+		))));
+		assert!(!is_scalar(Some(&NodeValue::Samples(
+			crate::value::SampleBuffer::default()
+		))));
 		assert!(!is_scalar(Some(&NodeValue::None)));
 		assert!(!is_scalar(None));
 	}

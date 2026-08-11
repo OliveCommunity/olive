@@ -68,7 +68,10 @@ fn ocio_roles_and_canonical_names() {
 	assert!(!roles.is_empty(), "config should define roles");
 	eprintln!("roles: {:?}", roles);
 
-	assert!(config.has_role("scene_linear").unwrap(), "scene_linear role should exist");
+	assert!(
+		config.has_role("scene_linear").unwrap(),
+		"scene_linear role should exist"
+	);
 	assert!(config.has_role("default").unwrap());
 	assert!(!config.has_role("no_such_role").unwrap());
 
@@ -101,8 +104,16 @@ fn ocio_processor_apply_rgba() {
 	let processor = config.processor("Linear", "sRGB OETF").unwrap();
 	let mut px = [0.18f32, 0.18f32, 0.18f32, 1.0f32];
 	processor.apply_rgba(&mut px).unwrap();
-	assert!(px[0] > 0.18f32, "sRGB OETF should lift 0.18 linear, got {}", px[0]);
-	assert!(px[0] < 1.0f32 + 1e-6, "sRGB OETF output should be <= 1.0, got {}", px[0]);
+	assert!(
+		px[0] > 0.18f32,
+		"sRGB OETF should lift 0.18 linear, got {}",
+		px[0]
+	);
+	assert!(
+		px[0] < 1.0f32 + 1e-6,
+		"sRGB OETF output should be <= 1.0, got {}",
+		px[0]
+	);
 	assert!(px.iter().all(|v| v.is_finite()));
 
 	// Display-referred path: scene_linear -> default sRGB view.
@@ -112,7 +123,11 @@ fn ocio_processor_apply_rgba() {
 	let mut px = [0.18f32, 0.18f32, 0.18f32, 1.0f32];
 	processor.apply_rgba(&mut px).unwrap();
 	assert!(px.iter().all(|v| v.is_finite()));
-	assert!(px[0] > 0.18f32, "display processor should also lift 0.18, got {}", px[0]);
+	assert!(
+		px[0] > 0.18f32,
+		"display processor should also lift 0.18, got {}",
+		px[0]
+	);
 }
 
 #[test]
@@ -128,12 +143,16 @@ fn ocio_error_paths() {
 	let config = OcioConfig::from_file(&path).unwrap();
 
 	// Unknown destination color space.
-	let err = config.processor("Linear", "No Such Color Space").unwrap_err();
+	let err = config
+		.processor("Linear", "No Such Color Space")
+		.unwrap_err();
 	eprintln!("unknown colorspace error: {err:?}");
 	assert!(matches!(err, Error::Failed(_)));
 
 	// Unknown display/view.
-	let err = config.display_processor("Linear", "No Such Display", "No View").unwrap_err();
+	let err = config
+		.display_processor("Linear", "No Such Display", "No View")
+		.unwrap_err();
 	eprintln!("unknown display error: {err:?}");
 	assert!(matches!(err, Error::Failed(_)));
 }
@@ -150,10 +169,7 @@ fn image_f32_round_trip() {
 	let h = 2;
 	let c = 4;
 	let pixels: Vec<f32> = vec![
-		0.0, 0.25, 0.5, 1.0,
-		0.75, 0.5, 0.25, 1.0,
-		1.0, 0.0, 0.5, 0.0,
-		0.125, 0.625, 0.875, 1.0,
+		0.0, 0.25, 0.5, 1.0, 0.75, 0.5, 0.25, 1.0, 1.0, 0.0, 0.5, 0.0, 0.125, 0.625, 0.875, 1.0,
 	];
 
 	write_image_f32(&path_str, w, h, c, &pixels).expect("write should succeed");

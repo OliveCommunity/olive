@@ -35,8 +35,8 @@ use std::sync::{Arc, Mutex};
 
 use oakcore_rs::PixelFormat;
 
-use crate::encodingparams::EncodingParams;
 use crate::encoder::Encoder;
+use crate::encodingparams::EncodingParams;
 use crate::handle::{self, CHandle};
 
 /// `oakcodec_encoding_params` — flattened POD mirror of `include/codec/
@@ -204,7 +204,8 @@ pub unsafe extern "C" fn oakcodec_encoder_set_video_option(
 	value: *const c_char,
 ) -> c_int {
 	handle::guard(|| {
-		let b = super::get_box::<Mutex<EncoderBox>>(&encoder).ok_or(crate::error::Error::Invalid)?;
+		let b =
+			super::get_box::<Mutex<EncoderBox>>(&encoder).ok_or(crate::error::Error::Invalid)?;
 		let key = match crate::ffi::c_str(key) {
 			Some(k) => k,
 			None => return Err(crate::error::Error::Invalid),
@@ -233,7 +234,8 @@ pub unsafe extern "C" fn oakcodec_encoder_set_video_option(
 #[no_mangle]
 pub unsafe extern "C" fn oakcodec_encoder_open(encoder: CHandle) -> c_int {
 	handle::guard(|| {
-		let b = super::get_box::<Mutex<EncoderBox>>(&encoder).ok_or(crate::error::Error::Invalid)?;
+		let b =
+			super::get_box::<Mutex<EncoderBox>>(&encoder).ok_or(crate::error::Error::Invalid)?;
 		let mut b = b.lock().unwrap();
 		if b.open {
 			return Err(crate::error::Error::State);
@@ -242,16 +244,22 @@ pub unsafe extern "C" fn oakcodec_encoder_open(encoder: CHandle) -> c_int {
 			Some(e) => e,
 			None => {
 				b.last_error = "failed to create encoder".to_string();
-				return Err(crate::error::Error::Failed("failed to create encoder".to_string()));
+				return Err(crate::error::Error::Failed(
+					"failed to create encoder".to_string(),
+				));
 			}
 		};
 		if e.configure(&b.params).is_err() {
 			b.last_error = "failed to configure encoder".to_string();
-			return Err(crate::error::Error::Failed("failed to configure encoder".to_string()));
+			return Err(crate::error::Error::Failed(
+				"failed to configure encoder".to_string(),
+			));
 		}
 		if e.open().is_err() {
 			b.last_error = "failed to open stream".to_string();
-			return Err(crate::error::Error::Failed("failed to open stream".to_string()));
+			return Err(crate::error::Error::Failed(
+				"failed to open stream".to_string(),
+			));
 		}
 		b.encoder = Some(e);
 		b.open = true;
@@ -263,7 +271,8 @@ pub unsafe extern "C" fn oakcodec_encoder_open(encoder: CHandle) -> c_int {
 #[no_mangle]
 pub unsafe extern "C" fn oakcodec_encoder_write_video(encoder: CHandle, frame: CHandle) -> c_int {
 	handle::guard(|| {
-		let b = super::get_box::<Mutex<EncoderBox>>(&encoder).ok_or(crate::error::Error::Invalid)?;
+		let b =
+			super::get_box::<Mutex<EncoderBox>>(&encoder).ok_or(crate::error::Error::Invalid)?;
 		let f = super::get_box::<Mutex<crate::frame::Frame>>(&frame)
 			.ok_or(crate::error::Error::Invalid)?;
 		let e = {
@@ -287,7 +296,8 @@ pub unsafe extern "C" fn oakcodec_encoder_write_audio(
 	frame_count: c_int,
 ) -> c_int {
 	handle::guard(|| {
-		let b = super::get_box::<Mutex<EncoderBox>>(&encoder).ok_or(crate::error::Error::Invalid)?;
+		let b =
+			super::get_box::<Mutex<EncoderBox>>(&encoder).ok_or(crate::error::Error::Invalid)?;
 		if (samples.is_null() && frame_count > 0) || frame_count < 0 {
 			return Err(crate::error::Error::Invalid);
 		}
@@ -325,7 +335,8 @@ pub unsafe extern "C" fn oakcodec_encoder_write_subtitle(
 	out_seconds: f64,
 ) -> c_int {
 	handle::guard(|| {
-		let b = super::get_box::<Mutex<EncoderBox>>(&encoder).ok_or(crate::error::Error::Invalid)?;
+		let b =
+			super::get_box::<Mutex<EncoderBox>>(&encoder).ok_or(crate::error::Error::Invalid)?;
 		let text = match crate::ffi::c_str(text) {
 			Some(t) => t,
 			None => return Err(crate::error::Error::Invalid),
@@ -347,7 +358,8 @@ pub unsafe extern "C" fn oakcodec_encoder_write_subtitle(
 #[no_mangle]
 pub unsafe extern "C" fn oakcodec_encoder_flush(encoder: CHandle) -> c_int {
 	handle::guard(|| {
-		let b = super::get_box::<Mutex<EncoderBox>>(&encoder).ok_or(crate::error::Error::Invalid)?;
+		let b =
+			super::get_box::<Mutex<EncoderBox>>(&encoder).ok_or(crate::error::Error::Invalid)?;
 		let mut b = b.lock().unwrap();
 		if !b.open {
 			return Err(crate::error::Error::State);
@@ -454,7 +466,9 @@ mod tests {
 	use crate::bridge::common::oakcommon_videoparams_init_basic;
 	use crate::encoder::set_test_encoders;
 	use crate::error::{OAKCODEC_E_INVALID, OAKCODEC_E_STATE};
-	use crate::ffi::frame::{oakcodec_frame_allocate, oakcodec_frame_free, oakcodec_frame_init_with_params};
+	use crate::ffi::frame::{
+		oakcodec_frame_allocate, oakcodec_frame_free, oakcodec_frame_init_with_params,
+	};
 
 	fn cstr(s: &str) -> std::ffi::CString {
 		std::ffi::CString::new(s).unwrap()
@@ -566,7 +580,10 @@ mod tests {
 		// write_video with a real frame handle.
 		let params = unsafe { oakcommon_videoparams_init_basic(16, 16) };
 		let mut fh = unsafe { oakcodec_frame_init_with_params(params) };
-		assert_eq!(unsafe { oakcodec_frame_allocate(fh) }, crate::error::OAKCODEC_OK);
+		assert_eq!(
+			unsafe { oakcodec_frame_allocate(fh) },
+			crate::error::OAKCODEC_OK
+		);
 		let rc = unsafe { oakcodec_encoder_write_video(h, fh) };
 		assert_eq!(rc, crate::error::OAKCODEC_OK);
 
@@ -648,13 +665,24 @@ mod tests {
 		assert_eq!(rc, crate::error::OAKCODEC_E_FAILED);
 		let mut err = [0i8; 128];
 		unsafe { oakcodec_encoder_last_error(h, err.as_mut_ptr(), 128) };
-		assert_eq!(crate::ffi::c_str(err.as_ptr()).as_deref(), Some("failed to create encoder"));
+		assert_eq!(
+			crate::ffi::c_str(err.as_ptr()).as_deref(),
+			Some("failed to create encoder")
+		);
 
 		// Empty handle -> E_INVALID; last_error empty.
 		let empty = CHandle::null();
 		assert_eq!(unsafe { oakcodec_encoder_open(empty) }, OAKCODEC_E_INVALID);
-		assert_eq!(unsafe { oakcodec_encoder_set_video_option(empty, cstr("crf").as_ptr(), cstr("18").as_ptr()) }, OAKCODEC_E_INVALID);
-		assert_eq!(unsafe { oakcodec_encoder_get_desired_pixel_format(empty) }, OAKCODEC_E_INVALID);
+		assert_eq!(
+			unsafe {
+				oakcodec_encoder_set_video_option(empty, cstr("crf").as_ptr(), cstr("18").as_ptr())
+			},
+			OAKCODEC_E_INVALID
+		);
+		assert_eq!(
+			unsafe { oakcodec_encoder_get_desired_pixel_format(empty) },
+			OAKCODEC_E_INVALID
+		);
 		let rc = unsafe { oakcodec_encoder_last_error(empty, err.as_mut_ptr(), 128) };
 		assert_eq!(rc, 1);
 		assert_eq!(crate::ffi::c_str(err.as_ptr()).as_deref(), Some(""));
@@ -672,7 +700,8 @@ mod tests {
 		assert!(!h.is_null());
 
 		// set_video_option with a NULL key -> E_INVALID.
-		let rc = unsafe { oakcodec_encoder_set_video_option(h, std::ptr::null(), std::ptr::null()) };
+		let rc =
+			unsafe { oakcodec_encoder_set_video_option(h, std::ptr::null(), std::ptr::null()) };
 		assert_eq!(rc, OAKCODEC_E_INVALID);
 
 		// Writes before open -> E_STATE.
@@ -703,7 +732,10 @@ mod tests {
 
 		let p = valid_params();
 		let mut h = unsafe { oakcodec_encoder_init(&p) };
-		assert_eq!(unsafe { oakcodec_encoder_open(h) }, crate::error::OAKCODEC_OK);
+		assert_eq!(
+			unsafe { oakcodec_encoder_open(h) },
+			crate::error::OAKCODEC_OK
+		);
 
 		// NULL samples with a positive frame count -> E_INVALID.
 		let rc = unsafe { oakcodec_encoder_write_audio(h, std::ptr::null(), 8) };
@@ -732,7 +764,10 @@ mod tests {
 		p.audio_sample_format = 10;
 		let mut h = unsafe { oakcodec_encoder_init(&p) };
 		assert!(!h.is_null());
-		assert_eq!(unsafe { oakcodec_encoder_open(h) }, crate::error::OAKCODEC_OK);
+		assert_eq!(
+			unsafe { oakcodec_encoder_open(h) },
+			crate::error::OAKCODEC_OK
+		);
 		let mut samples = [0f32; 8];
 		let rc = unsafe { oakcodec_encoder_write_audio(h, samples.as_ptr(), 4) };
 		assert_eq!(rc, OAKCODEC_E_STATE);
@@ -760,7 +795,8 @@ mod tests {
 
 		// generate_matrix: Stretch (1) is the identity.
 		let mut m = [9.0f64; 16];
-		let rc = unsafe { oakcodec_encoding_generate_matrix(1, 1920, 1080, 1280, 720, m.as_mut_ptr()) };
+		let rc =
+			unsafe { oakcodec_encoding_generate_matrix(1, 1920, 1080, 1280, 720, m.as_mut_ptr()) };
 		assert_eq!(rc, crate::error::OAKCODEC_OK);
 		assert_eq!(m[0], 1.0);
 		assert_eq!(m[5], 1.0);
@@ -769,7 +805,8 @@ mod tests {
 
 		// Fit (0) with a square source into a 2:1 destination scales x.
 		let mut m = [0.0f64; 16];
-		let rc = unsafe { oakcodec_encoding_generate_matrix(0, 1000, 1000, 2000, 1000, m.as_mut_ptr()) };
+		let rc =
+			unsafe { oakcodec_encoding_generate_matrix(0, 1000, 1000, 2000, 1000, m.as_mut_ptr()) };
 		assert_eq!(rc, crate::error::OAKCODEC_OK);
 		assert!((m[0] - 0.5).abs() < 1e-9);
 		assert_eq!(m[5], 1.0);

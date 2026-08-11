@@ -68,10 +68,7 @@ fn setup() -> (Box<Trace>, Vec<Probe>) {
 	let ptr = &*trace as *const Trace;
 	let mut probes = Vec::new();
 	for name in ["a", "b", "c"] {
-		probes.push(Probe {
-			name,
-			trace: ptr,
-		});
+		probes.push(Probe { name, trace: ptr });
 	}
 	(trace, probes)
 }
@@ -104,10 +101,7 @@ fn command_redo_undo_lifecycle() {
 	// redo_and_set_modified / undo_and_set_modified alias the *_now forms.
 	cmd.redo_and_set_modified();
 	cmd.undo_and_set_modified();
-	assert_eq!(
-		events(&trace),
-		vec!["redo:a", "undo:a", "redo:a", "undo:a"]
-	);
+	assert_eq!(events(&trace), vec!["redo:a", "undo:a", "redo:a", "undo:a"]);
 
 	// set_done marks executed without running anything.
 	let mut probe = Probe {
@@ -207,10 +201,7 @@ fn stack_push_undo_redo_branch() {
 
 	// Redo restores.
 	s.redo().unwrap();
-	assert_eq!(
-		events(&trace),
-		vec!["redo:a", "redo:b", "undo:b", "redo:b"]
-	);
+	assert_eq!(events(&trace), vec!["redo:a", "redo:b", "undo:b", "redo:b"]);
 	assert_eq!(s.done_count(), 3);
 
 	// Undo then push drops the redoable tail.
@@ -249,14 +240,7 @@ fn stack_jump_clamps_and_lands() {
 	assert!(s.can_redo());
 	assert_eq!(
 		events(&trace),
-		vec![
-			"redo:a",
-			"redo:b",
-			"redo:c",
-			"undo:c",
-			"undo:b",
-			"undo:a"
-		]
+		vec!["redo:a", "redo:b", "redo:c", "undo:c", "undo:b", "undo:a"]
 	);
 
 	// Jump forward redoes in order.
@@ -264,16 +248,7 @@ fn stack_jump_clamps_and_lands() {
 	assert_eq!(s.done_count(), 3);
 	assert_eq!(
 		events(&trace),
-		vec![
-			"redo:a",
-			"redo:b",
-			"redo:c",
-			"undo:c",
-			"undo:b",
-			"undo:a",
-			"redo:a",
-			"redo:b"
-		]
+		vec!["redo:a", "redo:b", "redo:c", "undo:c", "undo:b", "undo:a", "redo:a", "redo:b"]
 	);
 
 	// Jump beyond the top redoes up to the top (matches the C++ `jump`:

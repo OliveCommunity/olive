@@ -99,7 +99,7 @@ pub fn suite_v1() -> &'static TimeLineSuiteV1 {
 mod tests {
 	use super::*;
 	use crate::instance::{OfxRangeD, RenderScale};
-	use crate::suites::{RenderCtx, set_render_ctx};
+	use crate::suites::{set_render_ctx, RenderCtx};
 
 	#[test]
 	fn queries_forward_to_render_ctx() {
@@ -121,7 +121,10 @@ mod tests {
 		set_render_ctx(Some(RenderCtx {
 			time: 42.5,
 			scale: RenderScale { x: 1.0, y: 1.0 },
-			range: OfxRangeD { min: 10.0, max: 200.0 },
+			range: OfxRangeD {
+				min: 10.0,
+				max: 200.0,
+			},
 		}));
 		unsafe {
 			assert_eq!((s.get_time)(handle, &mut t), status::OK);
@@ -134,8 +137,14 @@ mod tests {
 
 		// 空 handle / 空 out。
 		unsafe {
-			assert_eq!((s.get_time)(std::ptr::null_mut(), &mut t), status::ERR_BAD_HANDLE);
-			assert_eq!((s.get_time)(handle, std::ptr::null_mut()), status::ERR_VALUE);
+			assert_eq!(
+				(s.get_time)(std::ptr::null_mut(), &mut t),
+				status::ERR_BAD_HANDLE
+			);
+			assert_eq!(
+				(s.get_time)(handle, std::ptr::null_mut()),
+				status::ERR_VALUE
+			);
 		}
 	}
 }

@@ -136,7 +136,10 @@ impl NodeBehavior for MergeNode {
 		let blend = inputs.get(BLEND_INPUT);
 
 		match (base, blend) {
-			(Some(b @ crate::value::NodeValue::Texture(_)), Some(bl @ crate::value::NodeValue::Texture(_))) => {
+			(
+				Some(b @ crate::value::NodeValue::Texture(_)),
+				Some(bl @ crate::value::NodeValue::Texture(_)),
+			) => {
 				// Both present: alpha-over shader job. The C++ checks
 				// the blend channel count here (RGBA required for an
 				// alpha to over with) and pushes the blend as-is when it
@@ -229,7 +232,12 @@ mod tests {
 	fn value_neither_pushes_nothing() {
 		let (core, behavior) = create();
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
 		assert!(table.is_empty());
 	}
 

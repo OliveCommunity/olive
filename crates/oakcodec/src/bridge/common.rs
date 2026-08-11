@@ -40,19 +40,15 @@ use crate::handle::CHandle;
 /// `OakVideoParams` — refcounted video-parameter handle.
 pub type OakVideoParams = CHandle;
 
-
 /// `OakAudioParams` — refcounted audio-parameter handle.
 pub type OakAudioParams = CHandle;
-
 
 /// `OakSubtitleParams` — refcounted subtitle-parameter handle.
 pub type OakSubtitleParams = CHandle;
 
-
 /// `OakNodeBlock` — opaque node-block handle (owned elsewhere; codec
 /// only stores and forwards it).
 pub type OakNodeBlock = CHandle;
-
 
 // The handle structs are opaque refcounted handles pointing into a C
 // library; the boxed objects are independently synchronized there, so
@@ -95,23 +91,11 @@ extern "C" {
 	/// `oakcommon_videoparams_equals`.
 	pub fn oakcommon_videoparams_equals(a: OakVideoParams, b: OakVideoParams) -> c_int;
 	/// `oakcommon_videoparams_set_time_base`.
-	pub fn oakcommon_videoparams_set_time_base(
-		params: OakVideoParams,
-		num: i64,
-		den: i64,
-	);
+	pub fn oakcommon_videoparams_set_time_base(params: OakVideoParams, num: i64, den: i64);
 	/// `oakcommon_videoparams_set_frame_rate`.
-	pub fn oakcommon_videoparams_set_frame_rate(
-		params: OakVideoParams,
-		num: i64,
-		den: i64,
-	);
+	pub fn oakcommon_videoparams_set_frame_rate(params: OakVideoParams, num: i64, den: i64);
 	/// `oakcommon_videoparams_set_pixel_aspect_ratio`.
-	pub fn oakcommon_videoparams_set_pixel_aspect_ratio(
-		params: OakVideoParams,
-		num: i64,
-		den: i64,
-	);
+	pub fn oakcommon_videoparams_set_pixel_aspect_ratio(params: OakVideoParams, num: i64, den: i64);
 	/// `oakcommon_videoparams_set_interlacing`.
 	pub fn oakcommon_videoparams_set_interlacing(params: OakVideoParams, interlacing: c_int);
 	/// `oakcommon_videoparams_set_duration`.
@@ -129,7 +113,10 @@ extern "C" {
 	/// `oakcommon_videoparams_set_color_transfer`.
 	pub fn oakcommon_videoparams_set_color_transfer(params: OakVideoParams, transfer: c_int);
 	/// `oakcommon_videoparams_set_premultiplied_alpha`.
-	pub fn oakcommon_videoparams_set_premultiplied_alpha(params: OakVideoParams, premultiplied: c_int);
+	pub fn oakcommon_videoparams_set_premultiplied_alpha(
+		params: OakVideoParams,
+		premultiplied: c_int,
+	);
 	/// `oakcommon_videoparams_set_enabled`.
 	pub fn oakcommon_videoparams_set_enabled(params: OakVideoParams, enabled: c_int);
 	/// `oakcommon_videoparams_static_get_bytes_per_pixel`.
@@ -185,11 +172,7 @@ extern "C" {
 	/// `oakcore_audioparams_set_channel_layout`.
 	pub fn oakcore_audioparams_set_channel_layout(params: *mut OakAudioParams, layout: u64);
 	/// `oakcore_audioparams_set_time_base`.
-	pub fn oakcore_audioparams_set_time_base(
-		params: *mut OakAudioParams,
-		num: c_int,
-		den: c_int,
-	);
+	pub fn oakcore_audioparams_set_time_base(params: *mut OakAudioParams, num: c_int, den: c_int);
 	/// `oakcore_audioparams_set_format`.
 	pub fn oakcore_audioparams_set_format(params: *mut OakAudioParams, format: c_int);
 	/// `oakcore_audioparams_set_stream_index`.
@@ -226,9 +209,17 @@ extern "C" {
 	/// `oakcommon_subtitleparams_add_subtitle`.
 	pub fn oakcommon_subtitleparams_add_subtitle(params: OakSubtitleParams, text: *const c_char);
 	/// `oakcommon_config_get_int`.
-	pub fn oakcommon_config_get_int(group: *const c_char, key: *const c_char, default: c_int) -> c_int;
+	pub fn oakcommon_config_get_int(
+		group: *const c_char,
+		key: *const c_char,
+		default: c_int,
+	) -> c_int;
 	/// `oakcommon_config_get_bool`.
-	pub fn oakcommon_config_get_bool(group: *const c_char, key: *const c_char, default: c_int) -> c_int;
+	pub fn oakcommon_config_get_bool(
+		group: *const c_char,
+		key: *const c_char,
+		default: c_int,
+	) -> c_int;
 	/// `oakcommon_config_get` (two-stage string access).
 	pub fn oakcommon_config_get(
 		group: *const c_char,
@@ -246,10 +237,8 @@ extern "C" {
 	/// `oakcommon_filefunctions_get_unique_file_identifier`.
 	pub fn oakcommon_filefunctions_get_unique_file_identifier(path: *const c_char) -> i64;
 	/// `oakcommon_filefunctions_get_application_path` (two-stage).
-	pub fn oakcommon_filefunctions_get_application_path(
-		buf: *mut c_char,
-		buf_size: c_int,
-	) -> c_int;
+	pub fn oakcommon_filefunctions_get_application_path(buf: *mut c_char, buf_size: c_int)
+		-> c_int;
 	/// `oakcommon_filefunctions_free` (frees an internally cached string).
 	pub fn oakcommon_filefunctions_free(ptr: *mut c_void);
 	/// `oakcommon_colortransform_init_output`.

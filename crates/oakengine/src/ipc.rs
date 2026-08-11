@@ -403,8 +403,7 @@ impl FrameSlotPool {
 		let ring_cap = slot_count + 1;
 		let free_off = align_up(POOL_HEADER_SIZE, K_ALIGN);
 		let ready_off = free_off + align_up(SpscRingBuffer::bytes_needed(ring_cap), K_ALIGN);
-		let meta_off =
-			ready_off + align_up(SpscRingBuffer::bytes_needed(ring_cap), K_ALIGN);
+		let meta_off = ready_off + align_up(SpscRingBuffer::bytes_needed(ring_cap), K_ALIGN);
 		let data_off = meta_off + align_up(FRAME_SLOT_META_SIZE * slot_count as usize, K_ALIGN);
 
 		let pool = unsafe {
@@ -479,8 +478,12 @@ impl FrameSlotPool {
 		FrameSlotPool {
 			base: ptr::null_mut(),
 			header: ptr::null_mut(),
-			free_ring: SpscRingBuffer { base: ptr::null_mut() },
-			ready_ring: SpscRingBuffer { base: ptr::null_mut() },
+			free_ring: SpscRingBuffer {
+				base: ptr::null_mut(),
+			},
+			ready_ring: SpscRingBuffer {
+				base: ptr::null_mut(),
+			},
 			meta: ptr::null_mut(),
 			data: ptr::null_mut(),
 		}
@@ -694,10 +697,7 @@ impl SharedMemoryRegion {
 
 		if mode == ShmMode::Create {
 			if unsafe { libc::ftruncate(fd, size as libc::off_t) } != 0 {
-				self.error = format!(
-					"ftruncate failed: {}",
-					std::io::Error::last_os_error()
-				);
+				self.error = format!("ftruncate failed: {}", std::io::Error::last_os_error());
 				self.close();
 				return false;
 			}
@@ -707,10 +707,7 @@ impl SharedMemoryRegion {
 			// enough up front.
 			let mut st: libc::stat = unsafe { std::mem::zeroed() };
 			if unsafe { libc::fstat(fd, &mut st) } != 0 {
-				self.error = format!(
-					"fstat failed: {}",
-					std::io::Error::last_os_error()
-				);
+				self.error = format!("fstat failed: {}", std::io::Error::last_os_error());
 				self.close();
 				return false;
 			}
@@ -876,9 +873,7 @@ pub unsafe extern "C" fn oakengine_ipc_shm_close(self_: *mut OakSharedMemoryRegi
 
 /// `oakengine_ipc_shm_is_valid` — 1/0.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_ipc_shm_is_valid(
-	self_: *const OakSharedMemoryRegion,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_ipc_shm_is_valid(self_: *const OakSharedMemoryRegion) -> c_int {
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Ok(0);
@@ -889,9 +884,7 @@ pub unsafe extern "C" fn oakengine_ipc_shm_is_valid(
 
 /// `oakengine_ipc_shm_data` — the mapped data pointer (NULL when invalid).
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_ipc_shm_data(
-	self_: *mut OakSharedMemoryRegion,
-) -> *mut c_void {
+pub unsafe extern "C" fn oakengine_ipc_shm_data(self_: *mut OakSharedMemoryRegion) -> *mut c_void {
 	guard_ptr(|| unsafe {
 		if self_.is_null() {
 			return Ok(std::ptr::null_mut());
@@ -903,9 +896,7 @@ pub unsafe extern "C" fn oakengine_ipc_shm_data(
 
 /// `oakengine_ipc_shm_size` — mapping size in bytes.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_ipc_shm_size(
-	self_: *const OakSharedMemoryRegion,
-) -> usize {
+pub unsafe extern "C" fn oakengine_ipc_shm_size(self_: *const OakSharedMemoryRegion) -> usize {
 	if self_.is_null() {
 		return 0;
 	}
@@ -991,9 +982,7 @@ pub unsafe extern "C" fn oakengine_ipc_framepool_create(
 
 /// `oakengine_ipc_framepool_attach` — map an existing pool (peer side).
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_ipc_framepool_attach(
-	mem: *mut c_void,
-) -> *mut OakFrameSlotPool {
+pub unsafe extern "C" fn oakengine_ipc_framepool_attach(mem: *mut c_void) -> *mut OakFrameSlotPool {
 	guard_ptr(|| unsafe {
 		if mem.is_null() {
 			return Ok(std::ptr::null_mut());
@@ -1034,9 +1023,7 @@ pub unsafe extern "C" fn oakengine_ipc_framepool_free(self_: *mut OakFrameSlotPo
 
 /// `oakengine_ipc_framepool_is_valid` — 1/0.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_ipc_framepool_is_valid(
-	self_: *const OakFrameSlotPool,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_ipc_framepool_is_valid(self_: *const OakFrameSlotPool) -> c_int {
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Ok(0);
@@ -1047,9 +1034,7 @@ pub unsafe extern "C" fn oakengine_ipc_framepool_is_valid(
 
 /// `oakengine_ipc_framepool_slot_count`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_ipc_framepool_slot_count(
-	self_: *const OakFrameSlotPool,
-) -> u32 {
+pub unsafe extern "C" fn oakengine_ipc_framepool_slot_count(self_: *const OakFrameSlotPool) -> u32 {
 	if self_.is_null() {
 		return 0;
 	}
@@ -1242,10 +1227,8 @@ mod tests {
 	fn test_key(name: &str) -> String {
 		static COUNTER: AtomicU32 = AtomicU32::new(0);
 		let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-		SharedMemoryRegion::make_key(
-			i64::from(std::process::id()),
-			(n & 0x7FFF) as i32,
-		) + &format!("-{name}")
+		SharedMemoryRegion::make_key(i64::from(std::process::id()), (n & 0x7FFF) as i32)
+			+ &format!("-{name}")
 	}
 
 	/// Create one segment and map it a second time — the in-process
@@ -1664,7 +1647,10 @@ mod tests {
 			.into_owned();
 		assert_eq!(s, "olive-rw-7-2");
 		// NULL/0 buffer only queries the size.
-		assert_eq!(unsafe { oakengine_ipc_shm_make_key(7, 2, std::ptr::null_mut(), 0) }, n);
+		assert_eq!(
+			unsafe { oakengine_ipc_shm_make_key(7, 2, std::ptr::null_mut(), 0) },
+			n
+		);
 	}
 
 	#[test]
@@ -1694,7 +1680,10 @@ mod tests {
 		assert_eq!(unsafe { oakengine_ipc_framepool_is_valid(attached) }, 1);
 
 		let mut slot = 0u32;
-		assert_eq!(unsafe { oakengine_ipc_framepool_acquire(pool, &mut slot) }, 1);
+		assert_eq!(
+			unsafe { oakengine_ipc_framepool_acquire(pool, &mut slot) },
+			1
+		);
 		// SAFETY: acquired slot; slot_bytes writable (count in bytes).
 		unsafe {
 			ptr::write_bytes(
@@ -1709,7 +1698,10 @@ mod tests {
 		assert_eq!(unsafe { oakengine_ipc_framepool_publish(pool, slot) }, 1);
 
 		let mut got = 99u32;
-		assert_eq!(unsafe { oakengine_ipc_framepool_consume(attached, &mut got) }, 1);
+		assert_eq!(
+			unsafe { oakengine_ipc_framepool_consume(attached, &mut got) },
+			1
+		);
 		assert_eq!(got, slot);
 		// SAFETY: consumed slot.
 		let meta = unsafe { &*oakengine_ipc_framepool_meta_const(attached, got) };
@@ -1755,7 +1747,10 @@ mod tests {
 		let region2 = unsafe { oakengine_ipc_shm_create() };
 		let bad = std::ffi::CString::new("olive-rw-no-such-segment-for-test").unwrap();
 		// SAFETY: valid C string + owned handle.
-		assert_eq!(unsafe { oakengine_ipc_shm_open(region2, bad.as_ptr(), size, 1) }, 0);
+		assert_eq!(
+			unsafe { oakengine_ipc_shm_open(region2, bad.as_ptr(), size, 1) },
+			0
+		);
 		let mut eb = [0 as c_char; 256];
 		let n = unsafe { oakengine_ipc_shm_error(region2, eb.as_mut_ptr(), 256) };
 		assert!(n > 0);

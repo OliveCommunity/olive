@@ -42,4 +42,3 @@ use crate::bridge::undo::OakUndoCommand;
 pub fn oaktimeline_add_track_command(list: OakNodeTrackList) -> OakUndoCommand {
 	unsafe { oaktimeline::ffi::edit::oaktimeline_add_track_command(list) }
 }
-

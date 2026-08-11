@@ -26,11 +26,11 @@ use oakcore_rs::{Rational, TimeRange};
 use oaktimeline::bridge::common::{oakcommon_xml_writer_free, oakcommon_xml_writer_init};
 use oaktimeline::bridge::teststubs::{xml_reader_handle, MockXmlNode, MockXmlWriter};
 use oaktimeline::common::EditToInfo;
-use oaktimeline::ffi as ffi;
+use oaktimeline::ffi;
 use oaktimeline::handle::{get, get_mut, make_owned, CHandle};
 use oaktimeline::marker::{
-	MarkerAddCommand, MarkerChangeColorCommand, MarkerChangeNameCommand,
-	MarkerChangeTimeCommand, MarkerRemoveCommand, TimelineMarker, TimelineMarkerList,
+	MarkerAddCommand, MarkerChangeColorCommand, MarkerChangeNameCommand, MarkerChangeTimeCommand,
+	MarkerRemoveCommand, TimelineMarker, TimelineMarkerList,
 };
 use oaktimeline::undocommon::Command;
 
@@ -206,17 +206,23 @@ fn marker_list_closest_to_time() {
 		.is_none());
 	// Exact match at the first marker (early-exit on the next).
 	assert_eq!(
-		list.get_closest_marker_to_time(Rational::new(5, 1)).unwrap().name(),
+		list.get_closest_marker_to_time(Rational::new(5, 1))
+			.unwrap()
+			.name(),
 		"a"
 	);
 	// Query after all markers (negative differences).
 	assert_eq!(
-		list.get_closest_marker_to_time(Rational::new(100, 1)).unwrap().name(),
+		list.get_closest_marker_to_time(Rational::new(100, 1))
+			.unwrap()
+			.name(),
 		"c"
 	);
 	// Query before all markers (positive differences).
 	assert_eq!(
-		list.get_closest_marker_to_time(Rational::new(1, 1)).unwrap().name(),
+		list.get_closest_marker_to_time(Rational::new(1, 1))
+			.unwrap()
+			.name(),
 		"a"
 	);
 }
@@ -232,7 +238,12 @@ fn marker_add_command_undo_before_redo() {
 		0,
 	);
 	cmd.undo();
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().size(), 0);
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.size(),
+		0
+	);
 }
 
 /// `MarkerRemoveCommand` redo is idempotent (a second redo is a no-op).
@@ -250,7 +261,12 @@ fn marker_remove_command_double_redo() {
 	let mut cmd = MarkerRemoveCommand::new(list_h.clone(), 0);
 	cmd.redo();
 	cmd.redo();
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().size(), 0);
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.size(),
+		0
+	);
 }
 
 /// Every marker command dispatches through the `Command` trait, which is
@@ -274,27 +290,75 @@ fn marker_commands_trait_dispatch() {
 		0,
 	);
 	Command::redo(&mut add);
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().size(), 2);
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.size(),
+		2
+	);
 	Command::undo(&mut add);
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().size(), 1);
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.size(),
+		1
+	);
 
 	let mut remove = MarkerRemoveCommand::new(list_h.clone(), 0);
 	Command::redo(&mut remove);
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().size(), 0);
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.size(),
+		0
+	);
 	Command::undo(&mut remove);
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().size(), 1);
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.size(),
+		1
+	);
 
 	let mut color = MarkerChangeColorCommand::new(list_h.clone(), 0, 7);
 	Command::redo(&mut color);
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().at(0).unwrap().color(), 7);
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.at(0)
+			.unwrap()
+			.color(),
+		7
+	);
 	Command::undo(&mut color);
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().at(0).unwrap().color(), 1);
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.at(0)
+			.unwrap()
+			.color(),
+		1
+	);
 
 	let mut name = MarkerChangeNameCommand::new(list_h.clone(), 0, "z");
 	Command::redo(&mut name);
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().at(0).unwrap().name(), "z");
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.at(0)
+			.unwrap()
+			.name(),
+		"z"
+	);
 	Command::undo(&mut name);
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().at(0).unwrap().name(), "m");
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.at(0)
+			.unwrap()
+			.name(),
+		"m"
+	);
 
 	let mut time = MarkerChangeTimeCommand::new(
 		list_h.clone(),
@@ -303,12 +367,22 @@ fn marker_commands_trait_dispatch() {
 	);
 	Command::redo(&mut time);
 	assert_eq!(
-		unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().at(0).unwrap().time().in_(),
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.at(0)
+			.unwrap()
+			.time()
+			.in_(),
 		Rational::new(50, 1)
 	);
 	Command::undo(&mut time);
 	assert_eq!(
-		unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().at(0).unwrap().time().in_(),
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.at(0)
+			.unwrap()
+			.time()
+			.in_(),
 		Rational::new(1, 1)
 	);
 }
@@ -365,10 +439,20 @@ fn marker_add_command_redo_undo() {
 
 	// Redo is idempotent.
 	cmd.redo();
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().size(), 1);
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.size(),
+		1
+	);
 
 	cmd.undo();
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().size(), 0);
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.size(),
+		0
+	);
 }
 
 /// A `MarkerRemoveCommand` redo drops the marker; undo re-inserts it
@@ -387,7 +471,12 @@ fn marker_remove_command_redo_undo() {
 
 	let mut cmd = MarkerRemoveCommand::new(list_h.clone(), 0);
 	cmd.redo();
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().size(), 0);
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.size(),
+		0
+	);
 
 	cmd.undo();
 	let list = unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap();
@@ -411,9 +500,23 @@ fn marker_change_color_command_redo_undo() {
 
 	let mut cmd = MarkerChangeColorCommand::new(list_h.clone(), 0, 9);
 	cmd.redo();
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().at(0).unwrap().color(), 9);
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.at(0)
+			.unwrap()
+			.color(),
+		9
+	);
 	cmd.undo();
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().at(0).unwrap().color(), 1);
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.at(0)
+			.unwrap()
+			.color(),
+		1
+	);
 }
 
 /// `MarkerChangeNameCommand` redo changes the name and undo restores
@@ -432,9 +535,23 @@ fn marker_change_name_command_redo_undo() {
 
 	let mut cmd = MarkerChangeNameCommand::new(list_h.clone(), 0, "renamed");
 	cmd.redo();
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().at(0).unwrap().name(), "renamed");
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.at(0)
+			.unwrap()
+			.name(),
+		"renamed"
+	);
 	cmd.undo();
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().at(0).unwrap().name(), "m");
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.at(0)
+			.unwrap()
+			.name(),
+		"m"
+	);
 }
 
 /// `MarkerChangeTimeCommand` redo moves the marker and undo restores
@@ -454,9 +571,25 @@ fn marker_change_time_command_redo_undo() {
 	let new_t = TimeRange::new(Rational::new(50, 1), Rational::new(51, 1));
 	let mut cmd = MarkerChangeTimeCommand::new(list_h.clone(), 0, new_t);
 	cmd.redo();
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().at(0).unwrap().time().in_(), Rational::new(50, 1));
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.at(0)
+			.unwrap()
+			.time()
+			.in_(),
+		Rational::new(50, 1)
+	);
 	cmd.undo();
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().at(0).unwrap().time().in_(), Rational::new(1, 1));
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.at(0)
+			.unwrap()
+			.time()
+			.in_(),
+		Rational::new(1, 1)
+	);
 }
 
 /// `to_command` boxes a marker command into a CHandle for the undo
@@ -516,7 +649,10 @@ fn marker_list_xml_round_trip() {
 	let mut writer = unsafe { oakcommon_xml_writer_init() };
 	let r = unsafe { ffi::marker::oaktimeline_marker_list_save(list_h.clone(), writer.clone()) };
 	assert_eq!(r, 0);
-	let buf = unsafe { get::<MockXmlWriter>(&writer) }.unwrap().buf.clone();
+	let buf = unsafe { get::<MockXmlWriter>(&writer) }
+		.unwrap()
+		.buf
+		.clone();
 	assert!(buf.contains("<marker"), "buf: {buf}");
 	assert!(buf.contains("name=\"m\""), "buf: {buf}");
 	assert!(buf.contains("in=\"10/1\""), "buf: {buf}");

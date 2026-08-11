@@ -38,7 +38,7 @@ use std::collections::HashMap;
 use std::ffi::{c_char, c_int, c_void};
 
 use crate::bridge::codec as k;
-use crate::bridge::codec::{EncodingParamsPOD, zeroed_encoding_params};
+use crate::bridge::codec::{zeroed_encoding_params, EncodingParamsPOD};
 use crate::common::OakVideoParamsPod;
 use crate::error::{Error, Result};
 use crate::handle::{guard, guard_int, string_result};
@@ -97,7 +97,11 @@ fn field_str(field: &[u8]) -> String {
 /// Write a string into a fixed array field (truncated, NUL-terminated).
 fn write_field(field: &mut [u8], value: &str) {
 	for (i, slot) in field.iter_mut().enumerate() {
-		*slot = if i < value.len() { value.as_bytes()[i] } else { 0 };
+		*slot = if i < value.len() {
+			value.as_bytes()[i]
+		} else {
+			0
+		};
 	}
 }
 
@@ -177,7 +181,10 @@ pub extern "C" fn oakengine_encoding_format_subtitle_codec_count(format: c_int) 
 
 /// `oakengine_encoding_format_subtitle_codec_at`.
 #[no_mangle]
-pub extern "C" fn oakengine_encoding_format_subtitle_codec_at(format: c_int, index: c_int) -> c_int {
+pub extern "C" fn oakengine_encoding_format_subtitle_codec_at(
+	format: c_int,
+	index: c_int,
+) -> c_int {
 	guard_int(|| Ok(unsafe { k::oakcodec_encoding_format_subtitle_codec_at(format, index) }))
 }
 
@@ -237,7 +244,10 @@ pub unsafe extern "C" fn oakengine_encoding_pix_fmt_at(
 
 /// `oakengine_encoding_pix_fmt_index` (0 = preferred when absent).
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_encoding_pix_fmt_index(codec: c_int, pix_fmt: *const c_char) -> c_int {
+pub unsafe extern "C" fn oakengine_encoding_pix_fmt_index(
+	codec: c_int,
+	pix_fmt: *const c_char,
+) -> c_int {
 	guard_int(|| Ok(unsafe { k::oakcodec_encoding_pix_fmt_index(codec, pix_fmt) }))
 }
 
@@ -249,7 +259,11 @@ pub extern "C" fn oakengine_encoding_sample_format_count(format: c_int, codec: c
 
 /// `oakengine_encoding_sample_format_at` (-1 out of range).
 #[no_mangle]
-pub extern "C" fn oakengine_encoding_sample_format_at(format: c_int, codec: c_int, index: c_int) -> c_int {
+pub extern "C" fn oakengine_encoding_sample_format_at(
+	format: c_int,
+	codec: c_int,
+	index: c_int,
+) -> c_int {
 	guard_int(|| Ok(unsafe { k::oakcodec_encoding_sample_format_at(format, codec, index) }))
 }
 
@@ -350,11 +364,14 @@ pub unsafe extern "C" fn oakengine_encoding_params_is_valid(
 ) -> c_int {
 	guard_int(|| unsafe {
 		let p = params_ref(params)?;
-		Ok(if p.pod.video_enabled != 0 || p.pod.audio_enabled != 0 || p.pod.subtitles_enabled != 0 {
-			1
-		} else {
-			0
-		})
+		Ok(
+			if p.pod.video_enabled != 0 || p.pod.audio_enabled != 0 || p.pod.subtitles_enabled != 0
+			{
+				1
+			} else {
+				0
+			},
+		)
 	})
 }
 
@@ -383,7 +400,11 @@ pub unsafe extern "C" fn oakengine_encoding_params_filename(
 ) -> c_int {
 	guard_int(|| unsafe {
 		let p = params_ref(params)?;
-		Ok(crate::handle::write_string(&field_str(&p.pod.filename), buf, buf_size))
+		Ok(crate::handle::write_string(
+			&field_str(&p.pod.filename),
+			buf,
+			buf_size,
+		))
 	})
 }
 
@@ -697,11 +718,31 @@ macro_rules! params_i64_field {
 	};
 }
 
-params_i64_field!(oakengine_encoding_params_set_video_bit_rate, oakengine_encoding_params_video_bit_rate, video_bit_rate);
-params_i64_field!(oakengine_encoding_params_set_video_min_bit_rate, oakengine_encoding_params_video_min_bit_rate, video_min_bit_rate);
-params_i64_field!(oakengine_encoding_params_set_video_max_bit_rate, oakengine_encoding_params_video_max_bit_rate, video_max_bit_rate);
-params_i64_field!(oakengine_encoding_params_set_video_buffer_size, oakengine_encoding_params_video_buffer_size, video_buffer_size);
-params_i64_field!(oakengine_encoding_params_set_audio_bit_rate, oakengine_encoding_params_audio_bit_rate, audio_bit_rate);
+params_i64_field!(
+	oakengine_encoding_params_set_video_bit_rate,
+	oakengine_encoding_params_video_bit_rate,
+	video_bit_rate
+);
+params_i64_field!(
+	oakengine_encoding_params_set_video_min_bit_rate,
+	oakengine_encoding_params_video_min_bit_rate,
+	video_min_bit_rate
+);
+params_i64_field!(
+	oakengine_encoding_params_set_video_max_bit_rate,
+	oakengine_encoding_params_video_max_bit_rate,
+	video_max_bit_rate
+);
+params_i64_field!(
+	oakengine_encoding_params_set_video_buffer_size,
+	oakengine_encoding_params_video_buffer_size,
+	video_buffer_size
+);
+params_i64_field!(
+	oakengine_encoding_params_set_audio_bit_rate,
+	oakengine_encoding_params_audio_bit_rate,
+	audio_bit_rate
+);
 
 /// `oakengine_encoding_params_set_video_threads`.
 #[no_mangle]
@@ -752,7 +793,11 @@ pub unsafe extern "C" fn oakengine_encoding_params_video_pix_fmt(
 ) -> c_int {
 	guard_int(|| unsafe {
 		let p = params_ref(params)?;
-		Ok(crate::handle::write_string(&field_str(&p.pod.video_pix_fmt), buf, buf_size))
+		Ok(crate::handle::write_string(
+			&field_str(&p.pod.video_pix_fmt),
+			buf,
+			buf_size,
+		))
 	})
 }
 
@@ -948,8 +993,10 @@ pub unsafe extern "C" fn oakengine_encoding_params_set_video_option(
 		if key.is_null() || value.is_null() {
 			return Err(Error::Invalid);
 		}
-		p.video_options
-			.insert(crate::handle::read_cstr(key), crate::handle::read_cstr(value));
+		p.video_options.insert(
+			crate::handle::read_cstr(key),
+			crate::handle::read_cstr(value),
+		);
 		Ok(())
 	})
 }
@@ -982,7 +1029,10 @@ pub unsafe extern "C" fn oakengine_encoding_params_video_option(
 /// `oakengine_encoding_preset_path` — **not backed** (no preset API in the
 /// oakcodec crate). Returns OAKENGINE_E_FAILED.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_encoding_preset_path(_buf: *mut c_char, _buf_size: c_int) -> c_int {
+pub unsafe extern "C" fn oakengine_encoding_preset_path(
+	_buf: *mut c_char,
+	_buf_size: c_int,
+) -> c_int {
 	crate::error::OAKENGINE_E_FAILED
 }
 

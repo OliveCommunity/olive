@@ -53,7 +53,13 @@ impl NodeBehavior for TimeInput {
 	/// Evaluate outputs (C++ `value()`): pushes the current global time
 	/// (`globals.time().in().to_double()`, here the `time` argument) as a
 	/// float value, not marked as a texture, with the push tag `"time"`.
-	fn value(&self, core: &NodeCore, inputs: &NodeValueRow, time: Rational, table: &mut NodeValueTable) {
+	fn value(
+		&self,
+		core: &NodeCore,
+		inputs: &NodeValueRow,
+		time: Rational,
+		table: &mut NodeValueTable,
+	) {
 		let _ = (core, inputs);
 		table.push(
 			crate::value::ValueType::Float,
@@ -97,7 +103,12 @@ mod tests {
 	fn value_pushes_current_time_as_float() {
 		let (core, behavior) = create();
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(15, 2), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(15, 2),
+			&mut table,
+		);
 		assert_eq!(table.get(ValueType::Float), Some(&NodeValue::Float(7.5)));
 		// The pushed row carries the "time" tag (C++ push tag).
 		let (_, _, tag) = &table.rows()[0];

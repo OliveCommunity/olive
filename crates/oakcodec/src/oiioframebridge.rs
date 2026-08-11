@@ -205,8 +205,7 @@ pub fn oiio_buffer_to_frame(buffer: &[u8]) -> crate::error::Result<Frame> {
 	if header.linesize_bytes < 0 || header.height < 0 {
 		return Err(crate::error::Error::Invalid);
 	}
-	let expected =
-		(header.linesize_bytes as u64).checked_mul(header.height as u64);
+	let expected = (header.linesize_bytes as u64).checked_mul(header.height as u64);
 	if expected != Some(header.pixel_len) {
 		return Err(crate::error::Error::Invalid);
 	}

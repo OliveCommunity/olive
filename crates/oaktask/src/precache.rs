@@ -62,7 +62,14 @@ impl PreCacheTask {
 		let filename = footage_filename(footage);
 		let title = format!("Pre-caching {filename}:{index}");
 		let base = Task::new(&title, CHandle::null());
-		let render = RenderTask::new(base, video_params, CHandle::null(), sequence, Default::default(), None);
+		let render = RenderTask::new(
+			base,
+			video_params,
+			CHandle::null(),
+			sequence,
+			Default::default(),
+			None,
+		);
 
 		// A scratch project for the render color manager (simplified).
 		let project = unsafe { bridge::node::oaknode_project_init() };
@@ -87,7 +94,11 @@ impl TaskBehavior for PreCacheTask {
 		let mut len_num = 0i64;
 		let mut len_den = 1i64;
 		unsafe {
-			bridge::node::oaknode_footage_get_video_length(self.footage, &mut len_num, &mut len_den);
+			bridge::node::oaknode_footage_get_video_length(
+				self.footage,
+				&mut len_num,
+				&mut len_den,
+			);
 		}
 		let range = TimeRange::new(Rational::new(0, 1), Rational::new(len_num, len_den));
 
@@ -97,13 +108,15 @@ impl TaskBehavior for PreCacheTask {
 			bridge::node::oaknode_node_get_video_frame_cache(self.sequence, &mut cache);
 		}
 
-		self.render.set_render_inputs(color_manager, cache, 0 /* k_online */, false, range);
+		self.render
+			.set_render_inputs(color_manager, cache, 0 /* k_online */, false, range);
 
 		// Drive the render with `self` as the subclass behavior (the C++
 		// virtual dispatch receiver); the render is temporarily moved out to
 		// avoid a self-referential borrow and put back before the handles are
 		// released below.
-		let mut render = std::mem::replace(&mut self.render, crate::render::RenderTask::placeholder());
+		let mut render =
+			std::mem::replace(&mut self.render, crate::render::RenderTask::placeholder());
 		let result = render.render(task, self);
 		self.render = render;
 
@@ -143,7 +156,8 @@ impl RenderTaskBehavior for PreCacheTask {
 
 /// Two-stage read of the footage filename.
 fn footage_filename(footage: CHandle) -> String {
-	let needed = unsafe { bridge::node::oaknode_footage_filename(footage, std::ptr::null_mut(), 0) };
+	let needed =
+		unsafe { bridge::node::oaknode_footage_filename(footage, std::ptr::null_mut(), 0) };
 	if needed <= 0 {
 		return String::new();
 	}
@@ -152,5 +166,8 @@ fn footage_filename(footage: CHandle) -> String {
 		bridge::node::oaknode_footage_filename(footage, buf.as_mut_ptr(), needed);
 	}
 	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-	unsafe { String::from_utf8_lossy(std::slice::from_raw_parts(buf.as_ptr() as *const u8, len)).into_owned() }
+	unsafe {
+		String::from_utf8_lossy(std::slice::from_raw_parts(buf.as_ptr() as *const u8, len))
+			.into_owned()
+	}
 }

@@ -48,7 +48,9 @@ unsafe extern "C" fn owned_addref<T: 'static>(ctx: *mut std::ffi::c_void) {
 	if !ctx.is_null() {
 		// CPP-PARITY: src/task/c_api/taskhandle.h (task_addref)
 		unsafe {
-			(*(ctx as *const RefBox<T>)).refs.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+			(*(ctx as *const RefBox<T>))
+				.refs
+				.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 		}
 	}
 }
@@ -86,7 +88,10 @@ unsafe extern "C" fn borrowed_release<T: 'static>(ctx: *mut std::ffi::c_void) {
 
 /// Owned handle with count 1; empty on allocation failure.
 pub fn make_owned<T: Send + 'static>(value: T) -> CHandle {
-	let b = Box::new(RefBox { refs: AtomicU32::new(1), value });
+	let b = Box::new(RefBox {
+		refs: AtomicU32::new(1),
+		value,
+	});
 	CHandle {
 		ctx: Box::into_raw(b) as *mut std::ffi::c_void,
 		addref: Some(owned_addref::<T>),
@@ -104,7 +109,10 @@ pub unsafe fn make_borrowed<T: Send + 'static>(ptr: *mut T) -> CHandle {
 	if ptr.is_null() {
 		return CHandle::null();
 	}
-	let b = Box::new(RefBox { refs: AtomicU32::new(1), value: ptr });
+	let b = Box::new(RefBox {
+		refs: AtomicU32::new(1),
+		value: ptr,
+	});
 	CHandle {
 		ctx: Box::into_raw(b) as *mut std::ffi::c_void,
 		addref: Some(owned_addref::<*mut T>),

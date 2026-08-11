@@ -382,7 +382,11 @@ impl CornerPinDistortNode {
 	/// origin, so corner 0 (top-left) maps straight, corner 1 (top-right)
 	/// adds `(resolution.x, 0)`, corner 2 (bottom-right) adds the full
 	/// resolution, and corner 3 (bottom-left) adds `(0, resolution.y)`.
-	fn value_to_pixel(value: i32, row: &crate::value::NodeValueRow, resolution: (f64, f64)) -> (f64, f64) {
+	fn value_to_pixel(
+		value: i32,
+		row: &crate::value::NodeValueRow,
+		resolution: (f64, f64),
+	) -> (f64, f64) {
 		let vec_at = |id: &str| match row.get(id) {
 			Some(crate::value::NodeValue::Vec2(v)) => *v,
 			Some(v) => [v.to_double(), 0.0],
@@ -591,26 +595,26 @@ mod tests {
 	fn value_to_pixel_adds_resolution_origins() {
 		let res = (1920.0, 1080.0);
 		let mut row = crate::value::NodeValueRow::new();
-		row.insert(
-			TOP_LEFT_INPUT.to_string(),
-			NodeValue::Vec2([5.0, 6.0]),
+		row.insert(TOP_LEFT_INPUT.to_string(), NodeValue::Vec2([5.0, 6.0]));
+		row.insert(TOP_RIGHT_INPUT.to_string(), NodeValue::Vec2([7.0, 8.0]));
+		row.insert(BOTTOM_RIGHT_INPUT.to_string(), NodeValue::Vec2([9.0, 10.0]));
+		row.insert(BOTTOM_LEFT_INPUT.to_string(), NodeValue::Vec2([11.0, 12.0]));
+		assert_eq!(
+			CornerPinDistortNode::value_to_pixel(0, &row, res),
+			(5.0, 6.0)
 		);
-		row.insert(
-			TOP_RIGHT_INPUT.to_string(),
-			NodeValue::Vec2([7.0, 8.0]),
+		assert_eq!(
+			CornerPinDistortNode::value_to_pixel(1, &row, res),
+			(1927.0, 8.0)
 		);
-		row.insert(
-			BOTTOM_RIGHT_INPUT.to_string(),
-			NodeValue::Vec2([9.0, 10.0]),
+		assert_eq!(
+			CornerPinDistortNode::value_to_pixel(2, &row, res),
+			(1929.0, 1090.0)
 		);
-		row.insert(
-			BOTTOM_LEFT_INPUT.to_string(),
-			NodeValue::Vec2([11.0, 12.0]),
+		assert_eq!(
+			CornerPinDistortNode::value_to_pixel(3, &row, res),
+			(11.0, 1092.0)
 		);
-		assert_eq!(CornerPinDistortNode::value_to_pixel(0, &row, res), (5.0, 6.0));
-		assert_eq!(CornerPinDistortNode::value_to_pixel(1, &row, res), (1927.0, 8.0));
-		assert_eq!(CornerPinDistortNode::value_to_pixel(2, &row, res), (1929.0, 1090.0));
-		assert_eq!(CornerPinDistortNode::value_to_pixel(3, &row, res), (11.0, 1092.0));
 	}
 
 	#[test]

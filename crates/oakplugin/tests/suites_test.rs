@@ -39,8 +39,8 @@ use oakplugin::suites::multithread::suite_v1 as multithread_suite;
 use oakplugin::suites::param::suite_v1 as param_suite;
 use oakplugin::suites::progress::suite_v1 as progress_suite;
 use oakplugin::suites::property::suite_v1 as property_suite;
-use oakplugin::suites::timeline::suite_v1 as timeline_suite;
 use oakplugin::suites::tag;
+use oakplugin::suites::timeline::suite_v1 as timeline_suite;
 
 /// OFX 状态码的本地别名（SDK ofxCore.h）。
 const OK: c_int = 0;
@@ -97,7 +97,10 @@ fn make_instance() -> (std::sync::Arc<Instance>, *mut c_void) {
 			let t = cs(t);
 			let n = cs(n);
 			let mut ph: *mut c_void = std::ptr::null_mut();
-			assert_eq!((s.param_define)(dhandle, t.as_ptr(), n.as_ptr(), &mut ph), OK);
+			assert_eq!(
+				(s.param_define)(dhandle, t.as_ptr(), n.as_ptr(), &mut ph),
+				OK
+			);
 		}
 	}
 	let params = ParamSetInstance {
@@ -115,12 +118,12 @@ fn make_instance() -> (std::sync::Arc<Instance>, *mut c_void) {
 		params,
 		clips: vec![],
 		node_identity: std::sync::atomic::AtomicUsize::new(0),
-			destroyed: std::sync::atomic::AtomicBool::new(false),
-			sequence_range: std::sync::Mutex::new(None),
-			progress_cb: std::sync::Mutex::new(None),
-			cancel: std::sync::atomic::AtomicBool::new(false),
-			edit: std::sync::Mutex::new(oakplugin::instance::EditTransaction::new()),
-			render_lock: std::sync::Mutex::new(()),
+		destroyed: std::sync::atomic::AtomicBool::new(false),
+		sequence_range: std::sync::Mutex::new(None),
+		progress_cb: std::sync::Mutex::new(None),
+		cancel: std::sync::atomic::AtomicBool::new(false),
+		edit: std::sync::Mutex::new(oakplugin::instance::EditTransaction::new()),
+		render_lock: std::sync::Mutex::new(()),
 	});
 	let h = tag::make(&inst.props as *const PropertySet, tag::INSTANCE);
 	(inst, h)
@@ -199,7 +202,10 @@ fn property_suite_roundtrip() {
 
 	// 空 handle → BadHandle。
 	unsafe {
-		assert_eq!((s.get_int)(std::ptr::null_mut(), name.as_ptr(), 0, &mut v), BAD_HANDLE);
+		assert_eq!(
+			(s.get_int)(std::ptr::null_mut(), name.as_ptr(), 0, &mut v),
+			BAD_HANDLE
+		);
 	}
 }
 
@@ -262,7 +268,10 @@ fn image_effect_clip_image_pairing() {
 	let optional_prop = cs("OfxImageClipPropOptional");
 	let label = cs("SourceLabel");
 	unsafe {
-		assert_eq!((ps.set_string)(clip, label_prop.as_ptr(), 0, label.as_ptr()), OK);
+		assert_eq!(
+			(ps.set_string)(clip, label_prop.as_ptr(), 0, label.as_ptr()),
+			OK
+		);
 		assert_eq!((ps.set_int)(clip, optional_prop.as_ptr(), 0, 1), OK);
 	}
 	let mut out: *mut c_char = std::ptr::null_mut();
@@ -294,23 +303,29 @@ fn image_effect_clip_image_pairing() {
 			&clip_desc,
 		))],
 		node_identity: std::sync::atomic::AtomicUsize::new(0),
-			destroyed: std::sync::atomic::AtomicBool::new(false),
-			sequence_range: std::sync::Mutex::new(None),
-			progress_cb: std::sync::Mutex::new(None),
-			cancel: std::sync::atomic::AtomicBool::new(false),
-			edit: std::sync::Mutex::new(oakplugin::instance::EditTransaction::new()),
-			render_lock: std::sync::Mutex::new(()),
+		destroyed: std::sync::atomic::AtomicBool::new(false),
+		sequence_range: std::sync::Mutex::new(None),
+		progress_cb: std::sync::Mutex::new(None),
+		cancel: std::sync::atomic::AtomicBool::new(false),
+		edit: std::sync::Mutex::new(oakplugin::instance::EditTransaction::new()),
+		render_lock: std::sync::Mutex::new(()),
 	});
 	let ih = tag::make(&inst.props as *const PropertySet, tag::INSTANCE);
 	let mut clip_h: *mut c_void = std::ptr::null_mut();
 	unsafe {
-		assert_eq!((s.clip_get_handle)(ih, name.as_ptr(), &mut clip_h, std::ptr::null_mut()), OK);
+		assert_eq!(
+			(s.clip_get_handle)(ih, name.as_ptr(), &mut clip_h, std::ptr::null_mut()),
+			OK
+		);
 	}
 	assert_eq!(tag::kind(clip_h), tag::CLIP);
 	// 未找到 → BadHandle（HS:2067-2070）。
 	let nope = cs("Nope");
 	unsafe {
-		assert_eq!((s.clip_get_handle)(ih, nope.as_ptr(), &mut clip_h, std::ptr::null_mut()), BAD_HANDLE);
+		assert_eq!(
+			(s.clip_get_handle)(ih, nope.as_ptr(), &mut clip_h, std::ptr::null_mut()),
+			BAD_HANDLE
+		);
 	}
 
 	// clipGetImage/clipReleaseImage 配对：依赖 clip fetch_image
@@ -340,7 +355,10 @@ fn param_suite_roundtrip_and_change_action() {
 	let n = cs("opacity");
 	let mut ph: *mut c_void = std::ptr::null_mut();
 	unsafe {
-		assert_eq!((s.param_define)(dhandle, t.as_ptr(), n.as_ptr(), &mut ph), OK);
+		assert_eq!(
+			(s.param_define)(dhandle, t.as_ptr(), n.as_ptr(), &mut ph),
+			OK
+		);
 	}
 	assert_eq!(tag::kind(ph), tag::PARAM_DEF);
 	let mut v = 99.0;
@@ -355,12 +373,18 @@ fn param_suite_roundtrip_and_change_action() {
 	// paramGetHandle 按名取；未找到 → Unknown。
 	let mut ph2: *mut c_void = std::ptr::null_mut();
 	unsafe {
-		assert_eq!((s.param_get_handle)(dhandle, n.as_ptr(), &mut ph2, std::ptr::null_mut()), OK);
+		assert_eq!(
+			(s.param_get_handle)(dhandle, n.as_ptr(), &mut ph2, std::ptr::null_mut()),
+			OK
+		);
 		assert_eq!(ph, ph2);
 	}
 	let nope = cs("nope");
 	unsafe {
-		assert_eq!((s.param_get_handle)(dhandle, nope.as_ptr(), &mut ph2, std::ptr::null_mut()), UNKNOWN);
+		assert_eq!(
+			(s.param_get_handle)(dhandle, nope.as_ptr(), &mut ph2, std::ptr::null_mut()),
+			UNKNOWN
+		);
 	}
 
 	// 实例期 round-trip。
@@ -379,7 +403,10 @@ fn param_suite_roundtrip_and_change_action() {
 			("label", &mut label),
 		] {
 			let n = cs(n);
-			assert_eq!((s.param_get_handle)(ih, n.as_ptr(), out, std::ptr::null_mut()), OK);
+			assert_eq!(
+				(s.param_get_handle)(ih, n.as_ptr(), out, std::ptr::null_mut()),
+				OK
+			);
 			assert_eq!(tag::kind(*out), tag::PARAM_INSTANCE);
 		}
 
@@ -438,7 +465,10 @@ fn param_keyframe_family() {
 	let mut opacity: *mut c_void = std::ptr::null_mut();
 	let name = cs("opacity");
 	unsafe {
-		assert_eq!((s.param_get_handle)(ih, name.as_ptr(), &mut opacity, std::ptr::null_mut()), OK);
+		assert_eq!(
+			(s.param_get_handle)(ih, name.as_ptr(), &mut opacity, std::ptr::null_mut()),
+			OK
+		);
 	}
 
 	let mut nkeys = -1;
@@ -457,7 +487,10 @@ fn param_keyframe_family() {
 		// 删除与拷贝：无关键帧 → no-op OK。
 		assert_eq!((s.param_delete_key)(opacity, 1.0), OK);
 		assert_eq!((s.param_delete_all_keys)(opacity), OK);
-		assert_eq!((s.param_copy)(opacity, opacity, 1.0, 1.0, std::ptr::null()), OK);
+		assert_eq!(
+			(s.param_copy)(opacity, opacity, 1.0, 1.0, std::ptr::null()),
+			OK
+		);
 		// editBegin/End 括号。
 		assert_eq!((s.param_edit_begin)(opacity), OK);
 		assert_eq!((s.param_edit_end)(opacity), OK);
@@ -481,8 +514,12 @@ fn message_suite_v1_v2() {
 	) -> c_int {
 		let v = unsafe { &mut *(userdata as *mut Vec<(String, String)>) };
 		v.push((
-			unsafe { CStr::from_ptr(type_) }.to_string_lossy().into_owned(),
-			unsafe { CStr::from_ptr(message) }.to_string_lossy().into_owned(),
+			unsafe { CStr::from_ptr(type_) }
+				.to_string_lossy()
+				.into_owned(),
+			unsafe { CStr::from_ptr(message) }
+				.to_string_lossy()
+				.into_owned(),
 		));
 		1
 	}
@@ -497,17 +534,37 @@ fn message_suite_v1_v2() {
 	unsafe {
 		// 答复 YES → kOfxStatReplyYes（12）。
 		assert_eq!(
-			(s.message)(std::ptr::null_mut(), t.as_ptr(), id.as_ptr(), fmt.as_ptr(), 42, str_arg.as_ptr(), 1.5f64),
+			(s.message)(
+				std::ptr::null_mut(),
+				t.as_ptr(),
+				id.as_ptr(),
+				fmt.as_ptr(),
+				42,
+				str_arg.as_ptr(),
+				1.5f64
+			),
 			12
 		);
 	}
 	assert_eq!(captured.len(), 1);
 	assert_eq!(captured[0].0, "OfxMessageError");
-	assert!(captured[0].1.starts_with("v=42 s=oak f="), "got {:?}", captured[0].1);
+	assert!(
+		captured[0].1.starts_with("v=42 s=oak f="),
+		"got {:?}",
+		captured[0].1
+	);
 
 	// NULL format → Failed（C++ olivehost.cpp:267）。
 	unsafe {
-		assert_eq!((s.message)(std::ptr::null_mut(), t.as_ptr(), id.as_ptr(), std::ptr::null()), 1);
+		assert_eq!(
+			(s.message)(
+				std::ptr::null_mut(),
+				t.as_ptr(),
+				id.as_ptr(),
+				std::ptr::null()
+			),
+			1
+		);
 	}
 
 	// 注销出口 → headless 默认：普通消息 OK。
@@ -523,7 +580,13 @@ fn message_suite_v1_v2() {
 	let q = cs("OfxMessageQuestion");
 	unsafe {
 		assert_eq!(
-			(s.message)(std::ptr::null_mut(), q.as_ptr(), id.as_ptr(), fmt.as_ptr(), 1),
+			(s.message)(
+				std::ptr::null_mut(),
+				q.as_ptr(),
+				id.as_ptr(),
+				fmt.as_ptr(),
+				1
+			),
 			13
 		);
 	}
@@ -547,7 +610,9 @@ fn progress_suite_forwarding() {
 
 	let s = progress_suite();
 	let mut seen: Vec<f64> = Vec::new();
-	set_current(Some(unsafe { ProgressReporter::new(capture_progress, &mut seen as *mut _ as *mut c_void) }));
+	set_current(Some(unsafe {
+		ProgressReporter::new(capture_progress, &mut seen as *mut _ as *mut c_void)
+	}));
 
 	unsafe {
 		assert_eq!((s.start)(std::ptr::null_mut(), std::ptr::null()), OK);
@@ -558,7 +623,9 @@ fn progress_suite_forwarding() {
 	assert_eq!(seen, vec![0.25, 0.75]);
 
 	// 取消回调：update → REPLY_NO。
-	set_current(Some(unsafe { ProgressReporter::new(cancel_progress, std::ptr::null_mut()) }));
+	set_current(Some(unsafe {
+		ProgressReporter::new(cancel_progress, std::ptr::null_mut())
+	}));
 	unsafe {
 		assert_eq!((s.update)(std::ptr::null_mut(), 0.5), 13);
 	}
@@ -570,7 +637,7 @@ fn progress_suite_forwarding() {
 #[test]
 fn timeline_suite_values() {
 	use oakplugin::instance::{OfxRangeD, RenderScale};
-	use oakplugin::suites::{RenderCtx, set_render_ctx};
+	use oakplugin::suites::{set_render_ctx, RenderCtx};
 
 	let s = timeline_suite();
 	let handle = 0x10usize as *mut c_void;
@@ -590,7 +657,10 @@ fn timeline_suite_values() {
 	set_render_ctx(Some(RenderCtx {
 		time: 42.5,
 		scale: RenderScale { x: 1.0, y: 1.0 },
-		range: OfxRangeD { min: 10.0, max: 200.0 },
+		range: OfxRangeD {
+			min: 10.0,
+			max: 200.0,
+		},
 	}));
 	unsafe {
 		assert_eq!((s.get_time)(handle, &mut t), OK);
@@ -607,7 +677,6 @@ fn timeline_suite_values() {
 /// 语义正确、join 完整。
 #[test]
 fn multithread_suite_spawned_callbacks() {
-
 	let s = multithread_suite();
 	let ps = property_suite();
 
@@ -672,13 +741,24 @@ fn multithread_suite_spawned_callbacks() {
 		let mut v = 0;
 		// 注意 `&*set`（Arc 负载）而非 `&set`（Arc 结构体）。
 		unsafe {
-			assert_eq!((ps.get_int)(&*set as *const _ as *mut c_void, name.as_ptr() as *const c_char, 0, &mut v), OK);
+			assert_eq!(
+				(ps.get_int)(
+					&*set as *const _ as *mut c_void,
+					name.as_ptr() as *const c_char,
+					0,
+					&mut v
+				),
+				OK
+			);
 		}
 		assert_eq!(v, 1000, "线程 {i} 的计数应无丢失");
 	}
 
 	// 0 线程：no-op。
 	unsafe {
-		assert_eq!((s.multi_thread)(counter_worker, 0, std::ptr::null_mut()), OK);
+		assert_eq!(
+			(s.multi_thread)(counter_worker, 0, std::ptr::null_mut()),
+			OK
+		);
 	}
 }

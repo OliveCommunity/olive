@@ -121,7 +121,15 @@ pub unsafe fn oakcodec_decoder_decode_audio(
 ) -> c_int {
 	unsafe {
 		oakcodec::ffi::decoder::oakcodec_decoder_decode_audio(
-			decoder, in_num, in_den, out_num, out_den, sample_rate, channel_layout, buf, buf_frames,
+			decoder,
+			in_num,
+			in_den,
+			out_num,
+			out_den,
+			sample_rate,
+			channel_layout,
+			buf,
+			buf_frames,
 		)
 	}
 }

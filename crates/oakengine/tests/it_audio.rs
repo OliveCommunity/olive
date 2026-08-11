@@ -56,15 +56,14 @@ use oakengine::audio::{
 	oakengine_audio_clear_buffered_output, oakengine_audio_create_instance,
 	oakengine_audio_destroy_instance, oakengine_audio_estimate_envelope_offset,
 	oakengine_audio_estimate_stretch_and_offset, oakengine_audio_get_input_device,
-	oakengine_audio_get_output_device, oakengine_audio_hard_reset,
-	oakengine_audio_manager_handle, oakengine_audio_processor_close,
-	oakengine_audio_processor_convert, oakengine_audio_processor_create,
-	oakengine_audio_processor_free, oakengine_audio_processor_is_open,
-	oakengine_audio_processor_open, oakengine_audio_processor_output_params,
-	oakengine_audio_push_to_output, oakengine_audio_reset_output_clock,
-	oakengine_audio_set_input_device, oakengine_audio_set_output_device,
-	oakengine_audio_set_output_notify_interval, oakengine_audio_start_recording,
-	oakengine_audio_stop_output, oakengine_audio_stop_recording,
+	oakengine_audio_get_output_device, oakengine_audio_hard_reset, oakengine_audio_manager_handle,
+	oakengine_audio_processor_close, oakengine_audio_processor_convert,
+	oakengine_audio_processor_create, oakengine_audio_processor_free,
+	oakengine_audio_processor_is_open, oakengine_audio_processor_open,
+	oakengine_audio_processor_output_params, oakengine_audio_push_to_output,
+	oakengine_audio_reset_output_clock, oakengine_audio_set_input_device,
+	oakengine_audio_set_output_device, oakengine_audio_set_output_notify_interval,
+	oakengine_audio_start_recording, oakengine_audio_stop_output, oakengine_audio_stop_recording,
 	oakengine_audio_sync_place_by_source_time, oakengine_audio_sync_place_by_waveform_offset,
 	OakAudioSyncPlacement, OakAudioSyncSourceClip, OakAudioWaveformOffset,
 	OakAudioWaveformStretchOffset,
@@ -135,13 +134,28 @@ fn manager_device_lifecycle() {
 		assert!(unsafe { oakengine_audio_manager_handle() }.is_null());
 		assert_eq!(unsafe { oakengine_audio_get_output_device() }, -1); // paNoDevice
 		assert_eq!(unsafe { oakengine_audio_get_input_device() }, -1);
-		assert_eq!(unsafe { oakengine_audio_set_output_device(0) }, OAKENGINE_E_FAILED);
-		assert_eq!(unsafe { oakengine_audio_set_input_device(0) }, OAKENGINE_E_FAILED);
+		assert_eq!(
+			unsafe { oakengine_audio_set_output_device(0) },
+			OAKENGINE_E_FAILED
+		);
+		assert_eq!(
+			unsafe { oakengine_audio_set_input_device(0) },
+			OAKENGINE_E_FAILED
+		);
 		assert_eq!(unsafe { oakengine_audio_hard_reset() }, OAKENGINE_E_FAILED);
-		assert_eq!(unsafe { oakengine_audio_clear_buffered_output() }, OAKENGINE_E_FAILED);
+		assert_eq!(
+			unsafe { oakengine_audio_clear_buffered_output() },
+			OAKENGINE_E_FAILED
+		);
 		assert_eq!(unsafe { oakengine_audio_stop_output() }, OAKENGINE_E_FAILED);
-		assert_eq!(unsafe { oakengine_audio_stop_recording() }, OAKENGINE_E_FAILED);
-		assert_eq!(unsafe { oakengine_audio_reset_output_clock() }, OAKENGINE_E_FAILED);
+		assert_eq!(
+			unsafe { oakengine_audio_stop_recording() },
+			OAKENGINE_E_FAILED
+		);
+		assert_eq!(
+			unsafe { oakengine_audio_reset_output_clock() },
+			OAKENGINE_E_FAILED
+		);
 		assert_eq!(
 			unsafe { oakengine_audio_set_output_notify_interval(1024) },
 			OAKENGINE_E_FAILED
@@ -162,7 +176,9 @@ fn manager_device_lifecycle() {
 		// start_recording: NULL params with no instance → the facade's
 		// manager check fires first (-3).
 		assert_eq!(
-			unsafe { oakengine_audio_start_recording(std::ptr::null_mut(), std::ptr::null_mut(), 0) },
+			unsafe {
+				oakengine_audio_start_recording(std::ptr::null_mut(), std::ptr::null_mut(), 0)
+			},
 			OAKENGINE_E_FAILED
 		);
 
@@ -207,7 +223,10 @@ fn manager_device_lifecycle() {
 		assert_eq!(unsafe { oakengine_audio_hard_reset() }, 0);
 		// Notify interval: 0 disables, positive accepted, negative invalid.
 		assert_eq!(unsafe { oakengine_audio_set_output_notify_interval(0) }, 0);
-		assert_eq!(unsafe { oakengine_audio_set_output_notify_interval(1024) }, 0);
+		assert_eq!(
+			unsafe { oakengine_audio_set_output_notify_interval(1024) },
+			0
+		);
 		assert_eq!(
 			unsafe { oakengine_audio_set_output_notify_interval(-1) },
 			AUDIO_E_INVALID
@@ -328,7 +347,11 @@ fn manager_device_lifecycle() {
 			},
 			0
 		);
-		assert_eq!(unsafe { *err.as_ptr() }, 0, "error_buf untouched on success");
+		assert_eq!(
+			unsafe { *err.as_ptr() },
+			0,
+			"error_buf untouched on success"
+		);
 		// A zero-length push is legal (empty queue op).
 		assert_eq!(
 			unsafe {
@@ -357,7 +380,9 @@ fn manager_recording() {
 
 		// NULL params → E_INVALID at the facade.
 		assert_eq!(
-			unsafe { oakengine_audio_start_recording(std::ptr::null_mut(), std::ptr::null_mut(), 0) },
+			unsafe {
+				oakengine_audio_start_recording(std::ptr::null_mut(), std::ptr::null_mut(), 0)
+			},
 			OAKENGINE_E_INVALID
 		);
 
@@ -426,7 +451,9 @@ fn manager_recording() {
 		match rc {
 			0 => assert!(path.exists(), "recording file written"),
 			AUDIO_E_FAILED => {
-				let msg = unsafe { CStr::from_ptr(err.as_ptr()) }.to_str().unwrap_or("");
+				let msg = unsafe { CStr::from_ptr(err.as_ptr()) }
+					.to_str()
+					.unwrap_or("");
 				assert!(!msg.is_empty(), "encoder failure should write a diagnostic");
 			}
 			other => panic!("unexpected recording rc {other}"),
@@ -448,9 +475,7 @@ fn manager_recording() {
 /// `oakcodec_encoding_params` with WAV / pcm_s16le and the requested audio
 /// track.
 fn recording_params(audio_enabled: bool) -> oakcodec::ffi::encoder::oakcodec_encoding_params {
-	let mut p: oakcodec::ffi::encoder::oakcodec_encoding_params = unsafe {
-		std::mem::zeroed()
-	};
+	let mut p: oakcodec::ffi::encoder::oakcodec_encoding_params = unsafe { std::mem::zeroed() };
 	let path = recording_path();
 	let bytes = path.as_os_str().as_encoded_bytes();
 	assert!(bytes.len() < p.filename.len(), "temp path too long");
@@ -705,7 +730,12 @@ fn sync_estimate_stretch_and_offset() {
 		},
 		OAKENGINE_E_INVALID
 	);
-	for (min_rate, max_rate, step) in [(0.0, 1.5, 0.25), (-1.0, 1.5, 0.25), (1.5, 1.0, 0.25), (0.5, 1.5, 0.0)] {
+	for (min_rate, max_rate, step) in [
+		(0.0, 1.5, 0.25),
+		(-1.0, 1.5, 0.25),
+		(1.5, 1.0, 0.25),
+		(0.5, 1.5, 0.0),
+	] {
 		assert_eq!(
 			unsafe {
 				oakengine_audio_estimate_stretch_and_offset(
@@ -761,13 +791,7 @@ fn sync_place_by_source_time() {
 		valid: 0,
 	};
 	let rc = unsafe {
-		oakengine_audio_sync_place_by_source_time(
-			&reference,
-			&candidate,
-			3,
-			1,
-			&mut out,
-		)
+		oakengine_audio_sync_place_by_source_time(&reference, &candidate, 3, 1, &mut out)
 	};
 	assert_eq!(rc, 0);
 	assert_eq!(out.timeline_in_num, -1);
@@ -827,25 +851,13 @@ fn sync_place_by_source_time() {
 	// Illegal arguments: NULL pointers → -1; zero denominators → -60001.
 	assert_eq!(
 		unsafe {
-			oakengine_audio_sync_place_by_source_time(
-				std::ptr::null(),
-				&candidate,
-				3,
-				1,
-				&mut out,
-			)
+			oakengine_audio_sync_place_by_source_time(std::ptr::null(), &candidate, 3, 1, &mut out)
 		},
 		OAKENGINE_E_INVALID
 	);
 	assert_eq!(
 		unsafe {
-			oakengine_audio_sync_place_by_source_time(
-				&reference,
-				std::ptr::null(),
-				3,
-				1,
-				&mut out,
-			)
+			oakengine_audio_sync_place_by_source_time(&reference, std::ptr::null(), 3, 1, &mut out)
 		},
 		OAKENGINE_E_INVALID
 	);
@@ -869,24 +881,13 @@ fn sync_place_by_source_time() {
 		has_source_start_time: 1,
 	};
 	assert_eq!(
-		unsafe {
-			oakengine_audio_sync_place_by_source_time(
-				&reference,
-				&bad_den,
-				3,
-				1,
-				&mut out,
-			)
-		},
+		unsafe { oakengine_audio_sync_place_by_source_time(&reference, &bad_den, 3, 1, &mut out,) },
 		AUDIO_E_INVALID
 	);
 	assert_eq!(
 		unsafe {
 			oakengine_audio_sync_place_by_source_time(
-				&reference,
-				&candidate,
-				3,
-				0, // zero reference timeline denominator
+				&reference, &candidate, 3, 0, // zero reference timeline denominator
 				&mut out,
 			)
 		},
@@ -942,7 +943,9 @@ fn sync_place_by_waveform_offset() {
 	// Illegal: NULL out → -1; zero reference denominator → -60001;
 	// sample_rate <= 0 is documented invalid (rc 0, valid 0).
 	assert_eq!(
-		unsafe { oakengine_audio_sync_place_by_waveform_offset(0, 1, 0, 48000, std::ptr::null_mut()) },
+		unsafe {
+			oakengine_audio_sync_place_by_waveform_offset(0, 1, 0, 48000, std::ptr::null_mut())
+		},
 		OAKENGINE_E_INVALID
 	);
 	assert_eq!(
@@ -1021,7 +1024,9 @@ fn processor_open_validation() {
 		let from0 = audio_params(0, 3, 4);
 		let to0 = audio_params(0, 3, 4);
 		assert_eq!(
-			unsafe { oakengine_audio_processor_open(p, from0 as *const c_void, to0 as *const c_void, 1.0) },
+			unsafe {
+				oakengine_audio_processor_open(p, from0 as *const c_void, to0 as *const c_void, 1.0)
+			},
 			AUDIO_E_INVALID
 		);
 		common::oakcore_audioparams_free(from0);
@@ -1030,11 +1035,15 @@ fn processor_open_validation() {
 		let from = audio_params(48000, 3, 4);
 		let to = audio_params(48000, 3, 4);
 		assert_eq!(
-			unsafe { oakengine_audio_processor_open(p, from as *const c_void, to as *const c_void, 0.0) },
+			unsafe {
+				oakengine_audio_processor_open(p, from as *const c_void, to as *const c_void, 0.0)
+			},
 			AUDIO_E_INVALID
 		);
 		assert_eq!(
-			unsafe { oakengine_audio_processor_open(p, from as *const c_void, to as *const c_void, -1.0) },
+			unsafe {
+				oakengine_audio_processor_open(p, from as *const c_void, to as *const c_void, -1.0)
+			},
 			AUDIO_E_INVALID
 		);
 		common::oakcore_audioparams_free(from);
@@ -1045,7 +1054,12 @@ fn processor_open_validation() {
 		let to_packed = audio_params(48000, 3, 10);
 		assert_eq!(
 			unsafe {
-				oakengine_audio_processor_open(p, from as *const c_void, to_packed as *const c_void, 1.0)
+				oakengine_audio_processor_open(
+					p,
+					from as *const c_void,
+					to_packed as *const c_void,
+					1.0,
+				)
 			},
 			AUDIO_E_INVALID
 		);
@@ -1059,12 +1073,16 @@ fn processor_open_validation() {
 		let from = audio_params(48000, 3, 4);
 		let to = audio_params(48000, 3, 4);
 		assert_eq!(
-			unsafe { oakengine_audio_processor_open(p, from as *const c_void, to as *const c_void, 1.0) },
+			unsafe {
+				oakengine_audio_processor_open(p, from as *const c_void, to as *const c_void, 1.0)
+			},
 			0
 		);
 		assert_eq!(unsafe { oakengine_audio_processor_is_open(p) }, 1);
 		assert_eq!(
-			unsafe { oakengine_audio_processor_open(p, from as *const c_void, to as *const c_void, 1.0) },
+			unsafe {
+				oakengine_audio_processor_open(p, from as *const c_void, to as *const c_void, 1.0)
+			},
 			AUDIO_E_STATE
 		);
 		assert_eq!(unsafe { oakengine_audio_processor_close(p) }, 0);
@@ -1084,14 +1102,28 @@ fn processor_is_open_and_close() {
 		assert!(!p.is_null());
 
 		// NULL handle: is_open → 0, close → 0 (documented no-ops).
-		assert_eq!(unsafe { oakengine_audio_processor_is_open(std::ptr::null_mut()) }, 0);
-		assert_eq!(unsafe { oakengine_audio_processor_close(std::ptr::null_mut()) }, 0);
+		assert_eq!(
+			unsafe { oakengine_audio_processor_is_open(std::ptr::null_mut()) },
+			0
+		);
+		assert_eq!(
+			unsafe { oakengine_audio_processor_close(std::ptr::null_mut()) },
+			0
+		);
 
 		// Empty handle box: -1 (invalid) from both.
-		let mut empty_box = OakEngineAudioProcessor { handle: CHandle::null() };
+		let mut empty_box = OakEngineAudioProcessor {
+			handle: CHandle::null(),
+		};
 		let empty_ptr = &mut empty_box as *mut OakEngineAudioProcessor;
-		assert_eq!(unsafe { oakengine_audio_processor_is_open(empty_ptr) }, OAKENGINE_E_INVALID);
-		assert_eq!(unsafe { oakengine_audio_processor_close(empty_ptr) }, OAKENGINE_E_INVALID);
+		assert_eq!(
+			unsafe { oakengine_audio_processor_is_open(empty_ptr) },
+			OAKENGINE_E_INVALID
+		);
+		assert_eq!(
+			unsafe { oakengine_audio_processor_close(empty_ptr) },
+			OAKENGINE_E_INVALID
+		);
 
 		// Fresh processor: closed. close on a closed processor is a no-op
 		// (0); is_open stays 0.

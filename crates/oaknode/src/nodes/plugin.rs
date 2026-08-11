@@ -139,7 +139,13 @@ impl NodeBehavior for PluginNode {
 	/// The Rust model has no plugin-job payload: the job case pushes a
 	/// null texture handle marking a renderer-deferred plugin job
 	/// (`// CPP-PARITY: plugin.cpp` `value()`).
-	fn value(&self, core: &NodeCore, inputs: &NodeValueRow, time: Rational, table: &mut NodeValueTable) {
+	fn value(
+		&self,
+		core: &NodeCore,
+		inputs: &NodeValueRow,
+		time: Rational,
+		table: &mut NodeValueTable,
+	) {
 		let _ = (core, time);
 
 		// Re-push every non-texture, non-none input value, tagged with
@@ -156,7 +162,11 @@ impl NodeBehavior for PluginNode {
 		let tex = inputs
 			.get(SOURCE_CLIP)
 			.filter(|v| matches!(v, NodeValue::Texture(_)))
-			.or_else(|| inputs.get(TEXTURE_INPUT).filter(|v| matches!(v, NodeValue::Texture(_))))
+			.or_else(|| {
+				inputs
+					.get(TEXTURE_INPUT)
+					.filter(|v| matches!(v, NodeValue::Texture(_)))
+			})
 			.or_else(|| inputs.values().find(|v| matches!(v, NodeValue::Texture(_))));
 
 		if tex.is_some() && !self.instance.is_null() {
@@ -236,7 +246,12 @@ impl NodeBehavior for PluginNode {
 	/// whose pixels cannot be read or written from this crate, so the
 	/// body is a documented no-op (`// CPP-PARITY: plugin.cpp`
 	/// `generate_frame`).
-	fn generate_frame(&self, core: &NodeCore, frame: &mut crate::bridge::render::TextureHandle, time: Rational) {
+	fn generate_frame(
+		&self,
+		core: &NodeCore,
+		frame: &mut crate::bridge::render::TextureHandle,
+		time: Rational,
+	) {
 		let _ = (core, frame, time);
 	}
 
@@ -379,8 +394,12 @@ mod tests {
 			.map(|(_, v, t)| (t.as_deref().unwrap(), v))
 			.collect();
 		assert_eq!(tagged.len(), 2);
-		assert!(tagged.iter().any(|(id, v)| *id == "opacity" && *v == &NodeValue::Float(0.5)));
-		assert!(tagged.iter().any(|(id, v)| *id == "mode" && *v == &NodeValue::Combo(2)));
+		assert!(tagged
+			.iter()
+			.any(|(id, v)| *id == "opacity" && *v == &NodeValue::Float(0.5)));
+		assert!(tagged
+			.iter()
+			.any(|(id, v)| *id == "mode" && *v == &NodeValue::Combo(2)));
 		// No texture pushed (no texture input in the row).
 		assert!(table.get(ValueType::Texture).is_none());
 	}
@@ -390,7 +409,10 @@ mod tests {
 		let n = node();
 		let core = NodeCore::new();
 		let mut row = NodeValueRow::default();
-		row.insert("tex_in".to_string(), NodeValue::Texture(crate::handle::CHandle::null()));
+		row.insert(
+			"tex_in".to_string(),
+			NodeValue::Texture(crate::handle::CHandle::null()),
+		);
 		row.insert("none_in".to_string(), NodeValue::None);
 		let mut table = NodeValueTable::default();
 		n.value(&core, &row, Rational::new(0, 1), &mut table);
@@ -408,8 +430,14 @@ mod tests {
 		let n = node();
 		let core = NodeCore::new();
 		let mut row = NodeValueRow::default();
-		row.insert(SOURCE_CLIP.to_string(), NodeValue::Texture(crate::handle::CHandle::null()));
-		row.insert(TEXTURE_INPUT.to_string(), NodeValue::Texture(crate::handle::CHandle::null()));
+		row.insert(
+			SOURCE_CLIP.to_string(),
+			NodeValue::Texture(crate::handle::CHandle::null()),
+		);
+		row.insert(
+			TEXTURE_INPUT.to_string(),
+			NodeValue::Texture(crate::handle::CHandle::null()),
+		);
 		let mut table = NodeValueTable::default();
 		n.value(&core, &row, Rational::new(0, 1), &mut table);
 		assert!(matches!(
@@ -426,7 +454,10 @@ mod tests {
 		};
 		let core = NodeCore::new();
 		let mut row = NodeValueRow::default();
-		row.insert(TEXTURE_INPUT.to_string(), NodeValue::Texture(crate::handle::CHandle::null()));
+		row.insert(
+			TEXTURE_INPUT.to_string(),
+			NodeValue::Texture(crate::handle::CHandle::null()),
+		);
 		let mut table = NodeValueTable::default();
 		n.value(&core, &row, Rational::new(0, 1), &mut table);
 		assert!(table.is_empty());
@@ -442,17 +473,20 @@ mod tests {
 			sample_count: 3,
 			// Planar layout: channel 0 plane [1, 2, 3], channel 1 plane
 			// [4, 5, 6].
-			data: vec![
-				1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0,
-			]
-			.iter()
-			.flat_map(|f| f.to_le_bytes())
-			.collect(),
+			data: vec![1.0f32, 2.0, 3.0, 4.0, 5.0, 6.0]
+				.iter()
+				.flat_map(|f| f.to_le_bytes())
+				.collect(),
 		};
 		let mut row = NodeValueRow::default();
 		row.insert("samples_in".to_string(), NodeValue::Samples(input));
 		let mut output = crate::value::SampleBuffer::default();
-		n.process_samples(&core, &row, TimeRange::new(Rational::new(0, 1), Rational::new(1, 1)), &mut output);
+		n.process_samples(
+			&core,
+			&row,
+			TimeRange::new(Rational::new(0, 1), Rational::new(1, 1)),
+			&mut output,
+		);
 		assert!(output.is_allocated());
 		assert_eq!(output.channels, 2);
 		assert_eq!(output.sample_count, 3);
@@ -473,9 +507,17 @@ mod tests {
 			format: oakcore_rs::SampleFormat::F32,
 			channels: 1,
 			sample_count: 2,
-			data: vec![1.0f32, 2.0].iter().flat_map(|f| f.to_le_bytes()).collect(),
+			data: vec![1.0f32, 2.0]
+				.iter()
+				.flat_map(|f| f.to_le_bytes())
+				.collect(),
 		};
-		n.process_samples(&core, &NodeValueRow::default(), TimeRange::new(Rational::new(0, 1), Rational::new(1, 1)), &mut output);
+		n.process_samples(
+			&core,
+			&NodeValueRow::default(),
+			TimeRange::new(Rational::new(0, 1), Rational::new(1, 1)),
+			&mut output,
+		);
 		assert_eq!(output.sample_value(0, 0), 0.0);
 		assert_eq!(output.sample_value(0, 1), 0.0);
 	}

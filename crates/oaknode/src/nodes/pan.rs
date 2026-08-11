@@ -139,7 +139,9 @@ impl NodeBehavior for PanNode {
 		};
 		let pan_val = match inputs.get(PANNING_INPUT) {
 			Some(v) => v.to_double(),
-			None => core.value_at_time(PANNING_INPUT, -1, range.in_()).to_double(),
+			None => core
+				.value_at_time(PANNING_INPUT, -1, range.in_())
+				.to_double(),
 		};
 
 		for c in 0..output.channels {
@@ -175,19 +177,12 @@ impl NodeBehavior for PanNode {
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	let mut core = NodeCore::new();
 
-	let mut samples = crate::input::Input::new(
-		SAMPLES_INPUT,
-		ValueType::Samples,
-		NodeValue::None,
-	);
+	let mut samples = crate::input::Input::new(SAMPLES_INPUT, ValueType::Samples, NodeValue::None);
 	samples.flags |= crate::input::flags::NOT_KEYFRAMABLE;
 	core.add_input(samples);
 
-	let mut panning = crate::input::Input::new(
-		PANNING_INPUT,
-		ValueType::Float,
-		NodeValue::Float(0.0),
-	);
+	let mut panning =
+		crate::input::Input::new(PANNING_INPUT, ValueType::Float, NodeValue::Float(0.0));
 	panning.properties = vec![
 		("min".to_string(), NodeValue::Float(-1.0)),
 		("max".to_string(), NodeValue::Float(1.0)),
@@ -233,7 +228,10 @@ mod tests {
 	fn create_wires_inputs_and_flags() {
 		let (core, behavior) = create();
 		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.pan");
-		assert_eq!(core.get_input(PANNING_INPUT).unwrap().default, NodeValue::Float(0.0));
+		assert_eq!(
+			core.get_input(PANNING_INPUT).unwrap().default,
+			NodeValue::Float(0.0)
+		);
 		assert_eq!(core.effect_input, SAMPLES_INPUT);
 		assert_ne!(core.flags & crate::node::flags::AUDIO_EFFECT, 0);
 	}

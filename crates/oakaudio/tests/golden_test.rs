@@ -20,16 +20,14 @@
 mod common;
 
 use common::write_wav_header_only;
-use oakcore_rs::Rational;
+use oakaudio::ffi::waveform::MinMax;
 use oakaudio::ffi::waveform::{
 	oakaudio_waveform_extract, oakaudio_waveform_free, oakaudio_waveform_get_summary,
 	oakaudio_waveform_init, oakaudio_waveform_overwrite_samples,
 	oakaudio_waveform_set_channel_count,
 };
-use oakaudio::ffi::waveform::MinMax;
-use oakaudio::params::{
-	frames_to_rational, rational_to_samples, SampleFormat,
-};
+use oakaudio::params::{frames_to_rational, rational_to_samples, SampleFormat};
+use oakcore_rs::Rational;
 
 /// SampleFormat planar-first ordering matches the authoritative C++ enum:
 /// f32_p == 4 == OAKAUDIO_PROCESSOR_OUTPUT_FORMAT. This guards the
@@ -105,13 +103,20 @@ fn waveform_mipmap_scale_parity() {
 	// window (one 1024-rate mipmap point ~ 46.875 source samples) must
 	// bracket a narrower range than a 1/64 s window (~750 samples).
 	let mut fine = [MinMax { min: 0.0, max: 0.0 }; 2];
-	let fine_points = unsafe {
-		oakaudio_waveform_get_summary(w, 0, 1, 1, 1024, fine.as_mut_ptr(), 2)
-	};
+	let fine_points =
+		unsafe { oakaudio_waveform_get_summary(w, 0, 1, 1, 1024, fine.as_mut_ptr(), 2) };
 	assert_eq!(fine_points, 1);
 	assert_eq!(fine[0].min, 0.0);
-	assert!((fine[0].max - 0.046).abs() < 1e-5, "fine max = {}", fine[0].max);
-	assert!((fine[1].min + 0.046).abs() < 1e-5, "fine min = {}", fine[1].min);
+	assert!(
+		(fine[0].max - 0.046).abs() < 1e-5,
+		"fine max = {}",
+		fine[0].max
+	);
+	assert!(
+		(fine[1].min + 0.046).abs() < 1e-5,
+		"fine min = {}",
+		fine[1].min
+	);
 	assert_eq!(fine[1].max, 0.0);
 
 	let mut coarse = [MinMax { min: 0.0, max: 0.0 }; 2];
@@ -119,8 +124,16 @@ fn waveform_mipmap_scale_parity() {
 		unsafe { oakaudio_waveform_get_summary(w, 0, 1, 1, 64, coarse.as_mut_ptr(), 2) };
 	assert_eq!(coarse_points, 1);
 	assert_eq!(coarse[0].min, 0.0);
-	assert!((coarse[0].max - 0.749).abs() < 1e-5, "coarse max = {}", coarse[0].max);
-	assert!((coarse[1].min + 0.749).abs() < 1e-5, "coarse min = {}", coarse[1].min);
+	assert!(
+		(coarse[0].max - 0.749).abs() < 1e-5,
+		"coarse max = {}",
+		coarse[0].max
+	);
+	assert!(
+		(coarse[1].min + 0.749).abs() < 1e-5,
+		"coarse min = {}",
+		coarse[1].min
+	);
 	assert_eq!(coarse[1].max, 0.0);
 
 	// Coarser windows necessarily cover more source samples.
@@ -154,9 +167,7 @@ fn levelmeter_db_golden() {
 /// confidence through the C ABI.
 #[test]
 fn waveform_sync_offset_golden() {
-	use oakaudio::ffi::sync::{
-		oakaudio_sync_estimate_envelope_offset, OffsetResult,
-	};
+	use oakaudio::ffi::sync::{oakaudio_sync_estimate_envelope_offset, OffsetResult};
 	let reference: Vec<f64> = (0..10).map(|i| i as f64 * 0.1 + 0.1).collect();
 	let mut candidate = vec![0.0f64; 10];
 	candidate[2..].copy_from_slice(&reference[..8]);
@@ -189,10 +200,7 @@ fn waveform_sync_offset_golden() {
 /// overflowing the internal plane array.
 #[test]
 fn extract_channel_cap() {
-	let path = std::env::temp_dir().join(format!(
-		"oakaudio_cap_{}.wav",
-		std::process::id()
-	));
+	let path = std::env::temp_dir().join(format!("oakaudio_cap_{}.wav", std::process::id()));
 	write_wav_header_only(&path, 65, 48000).unwrap();
 
 	let mut out_channels = 0i32;

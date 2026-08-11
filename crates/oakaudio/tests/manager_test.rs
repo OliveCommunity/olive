@@ -24,16 +24,13 @@ use std::ffi::c_char;
 
 use common::MANAGER_LOCK;
 use oakaudio::bridge::codec::EncodingParams;
-use oakaudio::error::{
-	OAKAUDIO_E_FAILED, OAKAUDIO_E_INVALID, OAKAUDIO_OK,
-};
+use oakaudio::error::{OAKAUDIO_E_FAILED, OAKAUDIO_E_INVALID, OAKAUDIO_OK};
 use oakaudio::ffi::manager::{
 	oakaudio_debug_alive_count, oakaudio_manager_clear_buffered_output,
 	oakaudio_manager_create_instance, oakaudio_manager_destroy_instance,
 	oakaudio_manager_find_config_device_by_name_s, oakaudio_manager_find_device_by_name_s,
-	oakaudio_manager_free, oakaudio_manager_get_input_device,
-	oakaudio_manager_get_output_device, oakaudio_manager_hard_reset,
-	oakaudio_manager_instance, oakaudio_manager_push_to_output,
+	oakaudio_manager_free, oakaudio_manager_get_input_device, oakaudio_manager_get_output_device,
+	oakaudio_manager_hard_reset, oakaudio_manager_instance, oakaudio_manager_push_to_output,
 	oakaudio_manager_reset_output_clock, oakaudio_manager_seconds,
 	oakaudio_manager_set_input_device, oakaudio_manager_set_output_device,
 	oakaudio_manager_set_output_notify_interval, oakaudio_manager_start_recording,
@@ -130,13 +127,19 @@ fn push_output_advances_clock() {
 
 	// No stream yet: seconds() reports -1.
 	let mut secs = 0.0f64;
-	assert_eq!(unsafe { oakaudio_manager_seconds(m, &mut secs) }, OAKAUDIO_OK);
+	assert_eq!(
+		unsafe { oakaudio_manager_seconds(m, &mut secs) },
+		OAKAUDIO_OK
+	);
 	assert_eq!(secs, -1.0);
 
 	// Without a device, push fails with a human-readable error. The
 	// singleton state persists across tests, so pin the no-device state
 	// explicitly.
-	assert_eq!(unsafe { oakaudio_manager_set_output_device(m, -1) }, OAKAUDIO_OK);
+	assert_eq!(
+		unsafe { oakaudio_manager_set_output_device(m, -1) },
+		OAKAUDIO_OK
+	);
 	let samples = vec![0u8; 480 * 2 * 4];
 	let mut err = [0 as c_char; 64];
 	let r = unsafe {
@@ -152,10 +155,16 @@ fn push_output_advances_clock() {
 		)
 	};
 	assert_eq!(r, OAKAUDIO_E_FAILED);
-	assert!(err.iter().any(|&b| b != 0), "error_buf must carry a message");
+	assert!(
+		err.iter().any(|&b| b != 0),
+		"error_buf must carry a message"
+	);
 
 	// After selecting a device the push succeeds and the clock starts at 0.
-	assert_eq!(unsafe { oakaudio_manager_set_output_device(m, 0) }, OAKAUDIO_OK);
+	assert_eq!(
+		unsafe { oakaudio_manager_set_output_device(m, 0) },
+		OAKAUDIO_OK
+	);
 	let mut err = [0 as c_char; 64];
 	let r = unsafe {
 		oakaudio_manager_push_to_output(
@@ -185,9 +194,15 @@ fn device_selection_roundtrip() {
 	unsafe { oakaudio_manager_create_instance() };
 	let m = instance();
 
-	assert_eq!(unsafe { oakaudio_manager_set_output_device(m, 42) }, OAKAUDIO_OK);
+	assert_eq!(
+		unsafe { oakaudio_manager_set_output_device(m, 42) },
+		OAKAUDIO_OK
+	);
 	assert_eq!(unsafe { oakaudio_manager_get_output_device(m) }, 42);
-	assert_eq!(unsafe { oakaudio_manager_set_input_device(m, 7) }, OAKAUDIO_OK);
+	assert_eq!(
+		unsafe { oakaudio_manager_set_input_device(m, 7) },
+		OAKAUDIO_OK
+	);
 	assert_eq!(unsafe { oakaudio_manager_get_input_device(m) }, 7);
 
 	assert_eq!(unsafe { oakaudio_manager_hard_reset(m) }, OAKAUDIO_OK);
@@ -219,8 +234,14 @@ fn output_control_flags() {
 		unsafe { oakaudio_manager_set_output_notify_interval(m, -1) },
 		OAKAUDIO_E_INVALID
 	);
-	assert_eq!(unsafe { oakaudio_manager_clear_buffered_output(m) }, OAKAUDIO_OK);
-	assert_eq!(unsafe { oakaudio_manager_reset_output_clock(m) }, OAKAUDIO_OK);
+	assert_eq!(
+		unsafe { oakaudio_manager_clear_buffered_output(m) },
+		OAKAUDIO_OK
+	);
+	assert_eq!(
+		unsafe { oakaudio_manager_reset_output_clock(m) },
+		OAKAUDIO_OK
+	);
 
 	// Push starts the stream, then stop_output halts it (clock -> -1).
 	unsafe { oakaudio_manager_set_output_device(m, 0) };
@@ -228,8 +249,14 @@ fn output_control_flags() {
 	assert_eq!(
 		unsafe {
 			oakaudio_manager_push_to_output(
-				m, 48000, 3, 4, samples.as_ptr() as *const c_char,
-				samples.len() as i64, std::ptr::null_mut(), 0,
+				m,
+				48000,
+				3,
+				4,
+				samples.as_ptr() as *const c_char,
+				samples.len() as i64,
+				std::ptr::null_mut(),
+				0,
 			)
 		},
 		OAKAUDIO_OK
@@ -261,7 +288,8 @@ fn recording_start_stop() {
 	let params = encoding_params();
 	// With a real encoder, the attempt must at least reach the encoder
 	// (a failure must surface a diagnostic in error_buf, not crash).
-	let r = unsafe { oakaudio_manager_start_recording(m, &params, err.as_mut_ptr(), err.len() as i32) };
+	let r =
+		unsafe { oakaudio_manager_start_recording(m, &params, err.as_mut_ptr(), err.len() as i32) };
 	if r != 0 {
 		assert!(
 			err.iter().any(|&b| b != 0),
@@ -276,7 +304,9 @@ fn recording_start_stop() {
 
 	// NULL params is invalid and reports the reason in error_buf.
 	let mut err = [0 as c_char; 64];
-	let r = unsafe { oakaudio_manager_start_recording(m, std::ptr::null(), err.as_mut_ptr(), err.len() as i32) };
+	let r = unsafe {
+		oakaudio_manager_start_recording(m, std::ptr::null(), err.as_mut_ptr(), err.len() as i32)
+	};
 	assert_eq!(r, OAKAUDIO_E_INVALID);
 	assert!(err.iter().any(|&b| b != 0));
 
@@ -309,8 +339,14 @@ fn device_name_lookup() {
 		unsafe { oakaudio_manager_find_device_by_name_s(name.as_ptr(), 1) },
 		-1
 	);
-	assert_eq!(unsafe { oakaudio_manager_find_config_device_by_name_s(1) }, -1);
-	assert_eq!(unsafe { oakaudio_manager_find_config_device_by_name_s(0) }, -1);
+	assert_eq!(
+		unsafe { oakaudio_manager_find_config_device_by_name_s(1) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakaudio_manager_find_config_device_by_name_s(0) },
+		-1
+	);
 
 	// config::output_buffer_size() reads its default (0) from the stub;
 	// device_name degrades to the empty string.

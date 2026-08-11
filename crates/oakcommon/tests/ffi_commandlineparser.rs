@@ -157,7 +157,11 @@ fn parser_free_null_handle_struct_is_noop() {
 #[test]
 fn set_app_info_success() {
 	let mut p = new_parser();
-	let r = oakcommon_commandlineparser_set_app_info(dup(&p), c_str("myapp").as_ptr(), c_str("1.0").as_ptr());
+	let r = oakcommon_commandlineparser_set_app_info(
+		dup(&p),
+		c_str("myapp").as_ptr(),
+		c_str("1.0").as_ptr(),
+	);
 	assert_eq!(r, OAKCOMMON_OK);
 	oakcommon_commandlineparser_free(&mut p);
 }
@@ -220,7 +224,15 @@ fn add_option_empty_parser_is_invalid() {
 	let mut out = CHandle::null();
 	let (_names, ptrs) = c_strings(&["o"]);
 	let r = oakcommon_commandlineparser_add_option(
-		e, ptrs.as_ptr(), 1, c_str("d").as_ptr(), 0, c_str("A").as_ptr(), 0, &mut out);
+		e,
+		ptrs.as_ptr(),
+		1,
+		c_str("d").as_ptr(),
+		0,
+		c_str("A").as_ptr(),
+		0,
+		&mut out,
+	);
 	assert_eq!(r, OAKCOMMON_E_INVALID);
 }
 
@@ -229,7 +241,15 @@ fn add_option_null_names_is_invalid() {
 	let mut p = new_parser();
 	let mut out = CHandle::null();
 	let r = oakcommon_commandlineparser_add_option(
-		dup(&p), null_mut(), 1, c_str("d").as_ptr(), 0, c_str("A").as_ptr(), 0, &mut out);
+		dup(&p),
+		null_mut(),
+		1,
+		c_str("d").as_ptr(),
+		0,
+		c_str("A").as_ptr(),
+		0,
+		&mut out,
+	);
 	assert_eq!(r, OAKCOMMON_E_INVALID);
 	oakcommon_commandlineparser_free(&mut p);
 }
@@ -240,10 +260,26 @@ fn add_option_non_positive_name_count_is_invalid() {
 	let mut out = CHandle::null();
 	let (_names, ptrs) = c_strings(&["o"]);
 	let r0 = oakcommon_commandlineparser_add_option(
-		dup(&p), ptrs.as_ptr(), 0, c_str("d").as_ptr(), 0, c_str("A").as_ptr(), 0, &mut out);
+		dup(&p),
+		ptrs.as_ptr(),
+		0,
+		c_str("d").as_ptr(),
+		0,
+		c_str("A").as_ptr(),
+		0,
+		&mut out,
+	);
 	assert_eq!(r0, OAKCOMMON_E_INVALID);
 	let rn = oakcommon_commandlineparser_add_option(
-		dup(&p), ptrs.as_ptr(), -1, c_str("d").as_ptr(), 0, c_str("A").as_ptr(), 0, &mut out);
+		dup(&p),
+		ptrs.as_ptr(),
+		-1,
+		c_str("d").as_ptr(),
+		0,
+		c_str("A").as_ptr(),
+		0,
+		&mut out,
+	);
 	assert_eq!(rn, OAKCOMMON_E_INVALID);
 	oakcommon_commandlineparser_free(&mut p);
 }
@@ -256,7 +292,15 @@ fn add_option_null_description_is_invalid() {
 	let mut out = CHandle::null();
 	let (_names, ptrs) = c_strings(&["o"]);
 	let r = oakcommon_commandlineparser_add_option(
-		dup(&p), ptrs.as_ptr(), 1, null_mut(), 0, c_str("A").as_ptr(), 0, &mut out);
+		dup(&p),
+		ptrs.as_ptr(),
+		1,
+		null_mut(),
+		0,
+		c_str("A").as_ptr(),
+		0,
+		&mut out,
+	);
 	assert_eq!(r, OAKCOMMON_E_INVALID);
 	oakcommon_commandlineparser_free(&mut p);
 }
@@ -269,7 +313,15 @@ fn add_option_null_arg_placeholder_is_invalid() {
 	let mut out = CHandle::null();
 	let (_names, ptrs) = c_strings(&["o"]);
 	let r = oakcommon_commandlineparser_add_option(
-		dup(&p), ptrs.as_ptr(), 1, c_str("d").as_ptr(), 0, null_mut(), 0, &mut out);
+		dup(&p),
+		ptrs.as_ptr(),
+		1,
+		c_str("d").as_ptr(),
+		0,
+		null_mut(),
+		0,
+		&mut out,
+	);
 	assert_eq!(r, OAKCOMMON_E_INVALID);
 	oakcommon_commandlineparser_free(&mut p);
 }
@@ -281,7 +333,15 @@ fn add_option_null_out_option_is_invalid() {
 	let mut p = new_parser();
 	let (_names, ptrs) = c_strings(&["o"]);
 	let r = oakcommon_commandlineparser_add_option(
-		dup(&p), ptrs.as_ptr(), 1, c_str("d").as_ptr(), 0, c_str("A").as_ptr(), 0, null_mut());
+		dup(&p),
+		ptrs.as_ptr(),
+		1,
+		c_str("d").as_ptr(),
+		0,
+		c_str("A").as_ptr(),
+		0,
+		null_mut(),
+	);
 	assert_eq!(r, OAKCOMMON_E_INVALID);
 	oakcommon_commandlineparser_free(&mut p);
 }
@@ -295,14 +355,30 @@ fn add_option_non_utf8_name_is_invalid() {
 	let bad = CString::new(vec![b'x', 0xFF]).unwrap();
 	let ptrs = [bad.as_ptr()];
 	let r = oakcommon_commandlineparser_add_option(
-		dup(&p), ptrs.as_ptr(), 1, c_str("d").as_ptr(), 0, c_str("A").as_ptr(), 0, &mut out);
+		dup(&p),
+		ptrs.as_ptr(),
+		1,
+		c_str("d").as_ptr(),
+		0,
+		c_str("A").as_ptr(),
+		0,
+		&mut out,
+	);
 	assert_eq!(r, OAKCOMMON_E_INVALID);
 	// The failed registration must not leave a partial option behind: a
 	// subsequent valid registration still works and lands at index 0.
 	let mut out2 = CHandle::null();
 	let (_names, ptrs2) = c_strings(&["ok"]);
 	let r2 = oakcommon_commandlineparser_add_option(
-		dup(&p), ptrs2.as_ptr(), 1, c_str("d").as_ptr(), 0, c_str("A").as_ptr(), 0, &mut out2);
+		dup(&p),
+		ptrs2.as_ptr(),
+		1,
+		c_str("d").as_ptr(),
+		0,
+		c_str("A").as_ptr(),
+		0,
+		&mut out2,
+	);
 	assert_eq!(r2, OAKCOMMON_OK);
 	assert!(!out2.ctx.is_null());
 	oakcommon_commandlineoption_free(&mut out2);
@@ -318,7 +394,12 @@ fn add_positional_argument_success() {
 	let mut p = new_parser();
 	let mut out = CHandle::null();
 	let r = oakcommon_commandlineparser_add_positional_argument(
-		dup(&p), c_str("input").as_ptr(), c_str("Input file").as_ptr(), 1, &mut out);
+		dup(&p),
+		c_str("input").as_ptr(),
+		c_str("Input file").as_ptr(),
+		1,
+		&mut out,
+	);
 	assert_eq!(r, OAKCOMMON_OK);
 	assert!(!out.ctx.is_null());
 	assert!(out.release.is_some());
@@ -331,7 +412,12 @@ fn add_positional_argument_empty_parser_is_invalid() {
 	let e = CHandle::null();
 	let mut out = CHandle::null();
 	let r = oakcommon_commandlineparser_add_positional_argument(
-		e, c_str("in").as_ptr(), c_str("d").as_ptr(), 1, &mut out);
+		e,
+		c_str("in").as_ptr(),
+		c_str("d").as_ptr(),
+		1,
+		&mut out,
+	);
 	assert_eq!(r, OAKCOMMON_E_INVALID);
 }
 
@@ -340,7 +426,12 @@ fn add_positional_argument_null_name_is_invalid() {
 	let mut p = new_parser();
 	let mut out = CHandle::null();
 	let r = oakcommon_commandlineparser_add_positional_argument(
-		dup(&p), null_mut(), c_str("d").as_ptr(), 1, &mut out);
+		dup(&p),
+		null_mut(),
+		c_str("d").as_ptr(),
+		1,
+		&mut out,
+	);
 	assert_eq!(r, OAKCOMMON_E_INVALID);
 	oakcommon_commandlineparser_free(&mut p);
 }
@@ -352,7 +443,12 @@ fn add_positional_argument_null_description_is_invalid() {
 	let mut p = new_parser();
 	let mut out = CHandle::null();
 	let r = oakcommon_commandlineparser_add_positional_argument(
-		dup(&p), c_str("in").as_ptr(), null_mut(), 1, &mut out);
+		dup(&p),
+		c_str("in").as_ptr(),
+		null_mut(),
+		1,
+		&mut out,
+	);
 	assert_eq!(r, OAKCOMMON_E_INVALID);
 	oakcommon_commandlineparser_free(&mut p);
 }
@@ -362,7 +458,12 @@ fn add_positional_argument_null_out_is_invalid() {
 	// CPP-PARITY: C++ allows a NULL out_argument; the Rust export requires it.
 	let mut p = new_parser();
 	let r = oakcommon_commandlineparser_add_positional_argument(
-		dup(&p), c_str("in").as_ptr(), c_str("d").as_ptr(), 1, null_mut());
+		dup(&p),
+		c_str("in").as_ptr(),
+		c_str("d").as_ptr(),
+		1,
+		null_mut(),
+	);
 	assert_eq!(r, OAKCOMMON_E_INVALID);
 	oakcommon_commandlineparser_free(&mut p);
 }
@@ -683,7 +784,10 @@ fn option_handle_does_not_observe_process() {
 	let r = oakcommon_commandlineoption_get_setting(dup(&opt), null_mut(), 0);
 	assert_eq!(r, 1); // empty string
 	let mut is_set = true;
-	assert_eq!(oakcommon_commandlineoption_is_set(dup(&opt), &mut is_set), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_commandlineoption_is_set(dup(&opt), &mut is_set),
+		OAKCOMMON_OK
+	);
 	assert!(!is_set);
 	oakcommon_commandlineoption_free(&mut opt);
 	oakcommon_commandlineparser_free(&mut p);
@@ -716,12 +820,20 @@ fn positional_get_setting_short_buffer_truncates_and_returns_required() {
 		OAKCOMMON_OK
 	);
 	let mut buf = [0xFFu8; 4];
-	let r = oakcommon_commandlinepositionalargument_get_setting(dup(&pos), buf.as_mut_ptr() as *mut c_char, 4);
+	let r = oakcommon_commandlinepositionalargument_get_setting(
+		dup(&pos),
+		buf.as_mut_ptr() as *mut c_char,
+		4,
+	);
 	assert_eq!(r, 7);
 	assert_eq!(&buf[..3], b"abc");
 	assert_eq!(buf[3], 0);
 	let mut tiny = [0xFFu8; 1];
-	let r = oakcommon_commandlinepositionalargument_get_setting(dup(&pos), tiny.as_mut_ptr() as *mut c_char, 1);
+	let r = oakcommon_commandlinepositionalargument_get_setting(
+		dup(&pos),
+		tiny.as_mut_ptr() as *mut c_char,
+		1,
+	);
 	assert_eq!(r, 7);
 	assert_eq!(tiny[0], 0);
 	oakcommon_commandlinepositionalargument_free(&mut pos);
@@ -737,7 +849,11 @@ fn positional_get_setting_exact_fit_writes_full_string() {
 		OAKCOMMON_OK
 	);
 	let mut buf = [0xFFu8; 7];
-	let r = oakcommon_commandlinepositionalargument_get_setting(dup(&pos), buf.as_mut_ptr() as *mut c_char, 7);
+	let r = oakcommon_commandlinepositionalargument_get_setting(
+		dup(&pos),
+		buf.as_mut_ptr() as *mut c_char,
+		7,
+	);
 	assert_eq!(r, 7);
 	assert_eq!(buf[6], 0);
 	let s = unsafe { CStr::from_ptr(buf.as_ptr() as *const c_char) };
@@ -755,7 +871,11 @@ fn positional_get_setting_non_null_buf_size_zero_writes_nothing() {
 		OAKCOMMON_OK
 	);
 	let mut buf = [0xFFu8; 8];
-	let r = oakcommon_commandlinepositionalargument_get_setting(dup(&pos), buf.as_mut_ptr() as *mut c_char, 0);
+	let r = oakcommon_commandlinepositionalargument_get_setting(
+		dup(&pos),
+		buf.as_mut_ptr() as *mut c_char,
+		0,
+	);
 	assert_eq!(r, 7);
 	assert_eq!(buf, [0xFFu8; 8]);
 	oakcommon_commandlinepositionalargument_free(&mut pos);
@@ -767,7 +887,11 @@ fn positional_get_setting_unset_returns_empty_string() {
 	let mut p = new_parser();
 	let mut pos = register_positional(dup(&p), "input");
 	let mut buf = [0xFFu8; 1];
-	let r = oakcommon_commandlinepositionalargument_get_setting(dup(&pos), buf.as_mut_ptr() as *mut c_char, 1);
+	let r = oakcommon_commandlinepositionalargument_get_setting(
+		dup(&pos),
+		buf.as_mut_ptr() as *mut c_char,
+		1,
+	);
 	assert_eq!(r, 1);
 	assert_eq!(buf[0], 0);
 	oakcommon_commandlinepositionalargument_free(&mut pos);
@@ -786,7 +910,11 @@ fn positional_get_setting_negative_buf_size_is_invalid() {
 	let mut p = new_parser();
 	let mut pos = register_positional(dup(&p), "input");
 	let mut buf = [0u8; 4];
-	let r = oakcommon_commandlinepositionalargument_get_setting(dup(&pos), buf.as_mut_ptr() as *mut c_char, -1);
+	let r = oakcommon_commandlinepositionalargument_get_setting(
+		dup(&pos),
+		buf.as_mut_ptr() as *mut c_char,
+		-1,
+	);
 	assert_eq!(r, OAKCOMMON_E_INVALID);
 	let r2 = oakcommon_commandlinepositionalargument_get_setting(dup(&pos), null_mut(), -1);
 	assert_eq!(r2, OAKCOMMON_E_INVALID);
@@ -812,11 +940,16 @@ fn positional_get_setting_null_buf_with_size_is_invalid() {
 fn positional_set_setting_success() {
 	let mut p = new_parser();
 	let mut pos = register_positional(dup(&p), "input");
-	let r = oakcommon_commandlinepositionalargument_set_setting(dup(&pos), c_str("file.mp4").as_ptr());
+	let r =
+		oakcommon_commandlinepositionalargument_set_setting(dup(&pos), c_str("file.mp4").as_ptr());
 	assert_eq!(r, OAKCOMMON_OK);
 	// Round-trip through the two-stage getter.
 	let mut buf = vec![0u8; 9];
-	let r = oakcommon_commandlinepositionalargument_get_setting(dup(&pos), buf.as_mut_ptr() as *mut c_char, 9);
+	let r = oakcommon_commandlinepositionalargument_get_setting(
+		dup(&pos),
+		buf.as_mut_ptr() as *mut c_char,
+		9,
+	);
 	assert_eq!(r, 9);
 	let s = unsafe { CStr::from_ptr(buf.as_ptr() as *const c_char) };
 	assert_eq!(s.to_str().unwrap(), "file.mp4");

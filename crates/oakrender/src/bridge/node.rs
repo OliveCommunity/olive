@@ -80,12 +80,8 @@ pub fn project_sync_copy(
 	copy: ProjectHandle,
 	changes: &[ChangeRecord],
 ) -> Result<()> {
-	type F = unsafe extern "C" fn(
-		ProjectHandle,
-		ProjectHandle,
-		*const ChangeRecord,
-		c_int,
-	) -> c_int;
+	type F =
+		unsafe extern "C" fn(ProjectHandle, ProjectHandle, *const ChangeRecord, c_int) -> c_int;
 	let rc = crate::bridge::dlsym::call::<F, c_int>("oaknode_project_sync_copy", |f| unsafe {
 		f(source, copy, changes.as_ptr(), changes.len() as c_int)
 	})
@@ -105,14 +101,17 @@ pub fn project_sync_copy(
 /// `node` must be a valid handle; `out` a valid pointer.
 pub unsafe fn node_get_video_frame_cache(node: NodeHandle, out: *mut CHandle) -> Result<()> {
 	type F = unsafe extern "C" fn(NodeHandle, *mut CHandle) -> c_int;
-	let rc = crate::bridge::dlsym::call::<F, c_int>("oaknode_node_get_video_frame_cache", |f| unsafe {
-		f(node, out)
-	})
-	.ok_or_else(|| Error::Failed("oaknode_node_get_video_frame_cache missing".into()))?;
+	let rc =
+		crate::bridge::dlsym::call::<F, c_int>("oaknode_node_get_video_frame_cache", |f| unsafe {
+			f(node, out)
+		})
+		.ok_or_else(|| Error::Failed("oaknode_node_get_video_frame_cache missing".into()))?;
 	if rc == 0 {
 		Ok(())
 	} else {
-		Err(Error::Failed(format!("oaknode_node_get_video_frame_cache rc={rc}")))
+		Err(Error::Failed(format!(
+			"oaknode_node_get_video_frame_cache rc={rc}"
+		)))
 	}
 }
 
@@ -158,7 +157,10 @@ mod tests {
 		};
 		assert_eq!(std::mem::size_of::<ChangeRecord>(), 4 + 48);
 		let bytes: [u8; 52] = unsafe { std::mem::transmute(c) };
-		assert_eq!(u32::from_le_bytes(bytes[0..4].try_into().unwrap()), change_kind::VALUE_CHANGE);
+		assert_eq!(
+			u32::from_le_bytes(bytes[0..4].try_into().unwrap()),
+			change_kind::VALUE_CHANGE
+		);
 		assert_eq!(bytes[4], 7);
 	}
 

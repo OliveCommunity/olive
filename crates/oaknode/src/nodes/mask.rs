@@ -407,9 +407,15 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	points.flags |= crate::input::flags::ARRAY;
 	points.array_size = 5;
 	core.add_input(points);
-	for (i, (x, y)) in [(0.0, -135.0), (135.0, -45.0), (90.0, 120.0), (-90.0, 120.0), (-135.0, -45.0)]
-		.iter()
-		.enumerate()
+	for (i, (x, y)) in [
+		(0.0, -135.0),
+		(135.0, -45.0),
+		(90.0, 120.0),
+		(-90.0, 120.0),
+		(-135.0, -45.0),
+	]
+	.iter()
+	.enumerate()
 	{
 		core.set_standard_value(
 			crate::nodes::polygon::POINTS_INPUT,
@@ -441,9 +447,12 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	feather.properties = vec![("min".to_string(), crate::value::NodeValue::Float(0.0))];
 	core.add_input(feather);
 
-	(core, Box::new(MaskDistortNode {
-		polygon: crate::nodes::polygon::PolygonGenerator,
-	}))
+	(
+		core,
+		Box::new(MaskDistortNode {
+			polygon: crate::nodes::polygon::PolygonGenerator,
+		}),
+	)
 }
 
 /// Register this node type (C++ factory entry for
@@ -468,7 +477,10 @@ mod tests {
 		let n = MaskDistortNode {
 			polygon: crate::nodes::polygon::PolygonGenerator,
 		};
-		assert_eq!(n.input_name(crate::nodes::generatorwithmerge::BASE_INPUT), "Texture");
+		assert_eq!(
+			n.input_name(crate::nodes::generatorwithmerge::BASE_INPUT),
+			"Texture"
+		);
 		assert_eq!(n.input_name(INVERT_INPUT), "Invert");
 		assert_eq!(n.input_name(FEATHER_INPUT), "Feather");
 		assert_eq!(n.input_name(crate::nodes::polygon::POINTS_INPUT), "Points");
@@ -482,10 +494,15 @@ mod tests {
 		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.mask");
 		// Inherited base wiring.
 		assert_ne!(
-			core.get_input(crate::nodes::generatorwithmerge::BASE_INPUT).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE,
+			core.get_input(crate::nodes::generatorwithmerge::BASE_INPUT)
+				.unwrap()
+				.flags & crate::input::flags::NOT_KEYFRAMABLE,
 			0
 		);
-		assert_eq!(core.effect_input, crate::nodes::generatorwithmerge::BASE_INPUT);
+		assert_eq!(
+			core.effect_input,
+			crate::nodes::generatorwithmerge::BASE_INPUT
+		);
 		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
 		// The inherited color input is hidden (mask is always white).
 		let color = core.get_input(crate::nodes::polygon::COLOR_INPUT).unwrap();
@@ -504,7 +521,10 @@ mod tests {
 			NodeValue::Vec2([-135.0, -45.0])
 		);
 		// Mask-specific inputs.
-		assert_eq!(core.get_input(INVERT_INPUT).unwrap().default, NodeValue::Boolean(false));
+		assert_eq!(
+			core.get_input(INVERT_INPUT).unwrap().default,
+			NodeValue::Boolean(false)
+		);
 		let feather = core.get_input(FEATHER_INPUT).unwrap();
 		assert_eq!(feather.default, NodeValue::Float(0.0));
 		assert!(feather
@@ -518,7 +538,12 @@ mod tests {
 		let (core, behavior) = create();
 		// No inputs at all: the matte is generated and pushed.
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
 		assert!(table.get(ValueType::Texture).is_some());
 
 		// With a base texture: an "mrg" merge job is pushed instead.

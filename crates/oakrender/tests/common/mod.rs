@@ -76,7 +76,11 @@ impl CacheDirGuard {
 		let _ = std::fs::remove_dir_all(&dir);
 		std::fs::create_dir_all(&dir).unwrap();
 		std::env::set_var("OAK_CONFIG_DIR", &dir);
-		Self { old, dir, _env: env }
+		Self {
+			old,
+			dir,
+			_env: env,
+		}
 	}
 
 	/// The temp directory.
@@ -109,9 +113,6 @@ pub fn read_two_stage(getter: impl Fn(*mut std::ffi::c_char, i32) -> i32) -> (i3
 			return (got, None);
 		}
 		let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-		(
-			got,
-			Some(String::from_utf8_lossy(&buf[..end]).into_owned()),
-		)
+		(got, Some(String::from_utf8_lossy(&buf[..end]).into_owned()))
 	}
 }

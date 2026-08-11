@@ -26,23 +26,32 @@ use std::sync::atomic::Ordering;
 use oaktask::error::{OAKTASK_E_INVALID, OAKTASK_E_NOT_FOUND};
 use oaktask::ffi::manager::{oaktask_manager_init, oaktask_manager_shutdown};
 use oaktask::ffi::project::{
-	oaktask_create_export, oaktask_create_precache, oaktask_create_project_import, oaktask_create_project_load,
-	oaktask_create_project_load_otio, oaktask_create_project_save, oaktask_create_project_save_otio,
-	oaktask_import_footage_at, oaktask_import_footage_count, oaktask_import_invalid_at, oaktask_import_invalid_count,
-	oaktask_import_set_image_sequence_confirm_cb, oaktask_import_take_command, oaktask_load_otio_set_confirm_cb,
-	oaktask_load_otio_take_project, oaktask_load_take_project,
+	oaktask_create_export, oaktask_create_precache, oaktask_create_project_import,
+	oaktask_create_project_load, oaktask_create_project_load_otio, oaktask_create_project_save,
+	oaktask_create_project_save_otio, oaktask_import_footage_at, oaktask_import_footage_count,
+	oaktask_import_invalid_at, oaktask_import_invalid_count,
+	oaktask_import_set_image_sequence_confirm_cb, oaktask_import_take_command,
+	oaktask_load_otio_set_confirm_cb, oaktask_load_otio_take_project, oaktask_load_take_project,
 };
 use oaktask::ffi::task::{
-	oaktask_debug_alive_count, oaktask_task_error, oaktask_task_free, oaktask_task_is_finished, oaktask_task_start_sync,
-	oaktask_task_title,
+	oaktask_debug_alive_count, oaktask_task_error, oaktask_task_free, oaktask_task_is_finished,
+	oaktask_task_start_sync, oaktask_task_title,
 };
 use oaktask::handle::CHandle;
 
-unsafe extern "C" fn accept_all(_seq: *const *const c_char, _count: c_int, _ud: *mut c_void) -> c_int {
+unsafe extern "C" fn accept_all(
+	_seq: *const *const c_char,
+	_count: c_int,
+	_ud: *mut c_void,
+) -> c_int {
 	1
 }
 
-unsafe extern "C" fn reject_all(_seq: *const *const c_char, _count: c_int, _ud: *mut c_void) -> c_int {
+unsafe extern "C" fn reject_all(
+	_seq: *const *const c_char,
+	_count: c_int,
+	_ud: *mut c_void,
+) -> c_int {
 	0
 }
 
@@ -131,7 +140,8 @@ fn project_save_writes_with_and_without_compression() {
 	let _ = std::fs::remove_file(&path);
 
 	// Without compression.
-	let mut task = unsafe { oaktask_create_project_save(fake_handle(), common::cstr_of(&path_str), 0) };
+	let mut task =
+		unsafe { oaktask_create_project_save(fake_handle(), common::cstr_of(&path_str), 0) };
 	assert!(!task.ctx.is_null());
 	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 1);
 	assert!(path.exists(), "saved file was not written");
@@ -139,14 +149,16 @@ fn project_save_writes_with_and_without_compression() {
 
 	// With compression (overwrites).
 	let _ = std::fs::remove_file(&path);
-	let mut task = unsafe { oaktask_create_project_save(fake_handle(), common::cstr_of(&path_str), 1) };
+	let mut task =
+		unsafe { oaktask_create_project_save(fake_handle(), common::cstr_of(&path_str), 1) };
 	assert!(!task.ctx.is_null());
 	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 1);
 	assert!(path.exists());
 	free(&mut task);
 
 	// Null project -> empty handle.
-	let empty = unsafe { oaktask_create_project_save(CHandle::null(), common::cstr_of(&path_str), 0) };
+	let empty =
+		unsafe { oaktask_create_project_save(CHandle::null(), common::cstr_of(&path_str), 0) };
 	assert!(empty.ctx.is_null());
 
 	let _ = std::fs::remove_file(&path);
@@ -164,8 +176,14 @@ fn project_import_records_and_exposes_footage() {
 	let file_str = file.to_string_lossy().into_owned();
 
 	let urls = [common::cstr_of(&file_str)];
-	let mut task =
-		unsafe { oaktask_create_project_import(fake_handle(), fake_handle(), urls.as_ptr(), urls.len() as c_int) };
+	let mut task = unsafe {
+		oaktask_create_project_import(
+			fake_handle(),
+			fake_handle(),
+			urls.as_ptr(),
+			urls.len() as c_int,
+		)
+	};
 	assert!(!task.ctx.is_null());
 
 	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 1);
@@ -186,10 +204,22 @@ fn project_import_records_and_exposes_footage() {
 	// Second take is empty.
 	assert!(unsafe { oaktask_import_take_command(task) }.ctx.is_null());
 
-	assert_eq!(unsafe { oaktask::bridge::undo::oakundo_command_redo_now(command) }, 0);
-	assert_eq!(unsafe { oaktask::bridge::node::oaknode_folder_child_count(fake_handle()) }, 1);
-	assert_eq!(unsafe { oaktask::bridge::undo::oakundo_command_undo_now(command) }, 0);
-	assert_eq!(unsafe { oaktask::bridge::node::oaknode_folder_child_count(fake_handle()) }, 0);
+	assert_eq!(
+		unsafe { oaktask::bridge::undo::oakundo_command_redo_now(command) },
+		0
+	);
+	assert_eq!(
+		unsafe { oaktask::bridge::node::oaknode_folder_child_count(fake_handle()) },
+		1
+	);
+	assert_eq!(
+		unsafe { oaktask::bridge::undo::oakundo_command_undo_now(command) },
+		0
+	);
+	assert_eq!(
+		unsafe { oaktask::bridge::node::oaknode_folder_child_count(fake_handle()) },
+		0
+	);
 
 	unsafe {
 		oaktask::bridge::undo::oakundo_command_free(&mut command);
@@ -210,8 +240,14 @@ fn project_import_reports_invalid_urls() {
 	let bad = "/tmp/oak-invalid-media-12345.mp4";
 	let _ = std::fs::remove_file(bad);
 	let urls = [common::cstr_of(bad)];
-	let mut task =
-		unsafe { oaktask_create_project_import(fake_handle(), fake_handle(), urls.as_ptr(), urls.len() as c_int) };
+	let mut task = unsafe {
+		oaktask_create_project_import(
+			fake_handle(),
+			fake_handle(),
+			urls.as_ptr(),
+			urls.len() as c_int,
+		)
+	};
 	assert!(!task.ctx.is_null());
 	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 1);
 	assert_eq!(unsafe { oaktask_import_invalid_count(task) }, 1);
@@ -232,17 +268,33 @@ fn project_import_reports_invalid_urls() {
 	);
 
 	// Factory failure paths: null folder, null project, negative count.
-	assert!(unsafe { oaktask_create_project_import(CHandle::null(), fake_handle(), std::ptr::null(), 0) }.ctx.is_null());
-	assert!(unsafe { oaktask_create_project_import(fake_handle(), CHandle::null(), std::ptr::null(), 0) }.ctx.is_null());
+	assert!(unsafe {
+		oaktask_create_project_import(CHandle::null(), fake_handle(), std::ptr::null(), 0)
+	}
+	.ctx
+	.is_null());
+	assert!(unsafe {
+		oaktask_create_project_import(fake_handle(), CHandle::null(), std::ptr::null(), 0)
+	}
+	.ctx
+	.is_null());
 	let urls_null = [std::ptr::null()];
-	assert!(
-		unsafe { oaktask_create_project_import(fake_handle(), fake_handle(), urls_null.as_ptr(), 1) }.ctx.is_null()
-	);
+	assert!(unsafe {
+		oaktask_create_project_import(fake_handle(), fake_handle(), urls_null.as_ptr(), 1)
+	}
+	.ctx
+	.is_null());
 
 	// Accessors on a non-import task -> E_INVALID / empty.
-	let mut save_task = unsafe { oaktask_create_project_save(fake_handle(), common::cstr_of("/tmp/x.oakproj"), 0) };
-	assert_eq!(unsafe { oaktask_import_footage_count(save_task) }, OAKTASK_E_INVALID);
-	assert!(unsafe { oaktask_import_take_command(save_task) }.ctx.is_null());
+	let mut save_task =
+		unsafe { oaktask_create_project_save(fake_handle(), common::cstr_of("/tmp/x.oakproj"), 0) };
+	assert_eq!(
+		unsafe { oaktask_import_footage_count(save_task) },
+		OAKTASK_E_INVALID
+	);
+	assert!(unsafe { oaktask_import_take_command(save_task) }
+		.ctx
+		.is_null());
 	free(&mut save_task);
 
 	free(&mut task);
@@ -267,11 +319,19 @@ fn project_import_image_sequence_confirmed() {
 
 	IMAGE_SEQUENCE_DIGIT_COUNT.store(3, Ordering::SeqCst);
 	CONFIG_DEFAULT_SEQ_FRAME_RATE.store(1, Ordering::SeqCst);
-	unsafe { oaktask_import_set_image_sequence_confirm_cb(Some(image_seq_confirm), std::ptr::null_mut()) };
+	unsafe {
+		oaktask_import_set_image_sequence_confirm_cb(Some(image_seq_confirm), std::ptr::null_mut())
+	};
 
 	let urls: Vec<*const c_char> = paths.iter().map(|p| common::cstr_of(p)).collect();
-	let mut task =
-		unsafe { oaktask_create_project_import(fake_handle(), fake_handle(), urls.as_ptr(), urls.len() as c_int) };
+	let mut task = unsafe {
+		oaktask_create_project_import(
+			fake_handle(),
+			fake_handle(),
+			urls.as_ptr(),
+			urls.len() as c_int,
+		)
+	};
 	assert!(!task.ctx.is_null());
 	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 1);
 
@@ -322,7 +382,9 @@ fn otio_load_transfers_project_with_default_confirm() {
 	assert!(!task.ctx.is_null());
 	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 1);
 	assert_eq!(unsafe { oaktask_task_is_finished(task) }, 1);
-	assert!(!(unsafe { oaktask_load_otio_take_project(task) }).ctx.is_null());
+	assert!(!(unsafe { oaktask_load_otio_take_project(task) })
+		.ctx
+		.is_null());
 
 	free(&mut task);
 
@@ -337,8 +399,14 @@ fn otio_load_transfers_project_with_default_confirm() {
 	assert!(needed > 0);
 	let mut buf = vec![0i8; needed as usize];
 	unsafe { oaktask_task_error(task, buf.as_mut_ptr(), needed) };
-	assert!(cstr_read(&buf).contains("Failed to load OpenTimelineIO"), "error was: {}", cstr_read(&buf));
-	assert!(unsafe { oaktask_load_otio_take_project(task) }.ctx.is_null());
+	assert!(
+		cstr_read(&buf).contains("Failed to load OpenTimelineIO"),
+		"error was: {}",
+		cstr_read(&buf)
+	);
+	assert!(unsafe { oaktask_load_otio_take_project(task) }
+		.ctx
+		.is_null());
 
 	// The confirm callback setters are no-ops (null clears).
 	unsafe {
@@ -378,14 +446,23 @@ fn otio_save_writes_file() {
 	let out_str = out.to_string_lossy().into_owned();
 	let _ = std::fs::remove_file(&out);
 
-	let mut task = unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
+	let mut task =
+		unsafe { oaktask_create_project_save_otio(fake_handle(), common::cstr_of(&out_str)) };
 	assert!(!task.ctx.is_null());
 	assert_eq!(unsafe { oaktask_task_start_sync(task) }, 1);
 	assert!(out.exists(), "OTIO file was not written");
 
 	// Failure paths: null project or null filename.
-	assert!(unsafe { oaktask_create_project_save_otio(CHandle::null(), common::cstr_of("/tmp/x.otio")) }.ctx.is_null());
-	assert!(unsafe { oaktask_create_project_save_otio(fake_handle(), std::ptr::null()) }.ctx.is_null());
+	assert!(unsafe {
+		oaktask_create_project_save_otio(CHandle::null(), common::cstr_of("/tmp/x.otio"))
+	}
+	.ctx
+	.is_null());
+	assert!(
+		unsafe { oaktask_create_project_save_otio(fake_handle(), std::ptr::null()) }
+			.ctx
+			.is_null()
+	);
 
 	free(&mut task);
 	let _ = std::fs::remove_file(&out);
@@ -407,8 +484,16 @@ fn precache_runs_and_succeeds() {
 	assert_eq!(unsafe { oaktask_task_is_finished(task) }, 1);
 
 	// Failure path: null footage/sequence.
-	assert!(unsafe { oaktask_create_precache(CHandle::null(), 0, fake_handle()) }.ctx.is_null());
-	assert!(unsafe { oaktask_create_precache(fake_handle(), 0, CHandle::null()) }.ctx.is_null());
+	assert!(
+		unsafe { oaktask_create_precache(CHandle::null(), 0, fake_handle()) }
+			.ctx
+			.is_null()
+	);
+	assert!(
+		unsafe { oaktask_create_precache(fake_handle(), 0, CHandle::null()) }
+			.ctx
+			.is_null()
+	);
 
 	free(&mut task);
 	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);
@@ -463,7 +548,10 @@ fn export_runs_with_stubbed_encoder() {
 		custom_range_out_num: 0,
 		custom_range_out_den: 0,
 	};
-	let filename = std::env::temp_dir().join("oak-export-test.mp4").to_string_lossy().into_owned();
+	let filename = std::env::temp_dir()
+		.join("oak-export-test.mp4")
+		.to_string_lossy()
+		.into_owned();
 	write_cstr(&filename, params.filename.as_mut_ptr(), 1024);
 
 	ENCODER_INIT_NULL.store(0, Ordering::SeqCst);
@@ -492,8 +580,16 @@ fn export_runs_with_stubbed_encoder() {
 	free(&mut task);
 
 	// Failure path: null viewer / null params.
-	assert!(unsafe { oaktask_create_export(CHandle::null(), fake_handle(), &params) }.ctx.is_null());
-	assert!(unsafe { oaktask_create_export(fake_handle(), fake_handle(), std::ptr::null()) }.ctx.is_null());
+	assert!(
+		unsafe { oaktask_create_export(CHandle::null(), fake_handle(), &params) }
+			.ctx
+			.is_null()
+	);
+	assert!(
+		unsafe { oaktask_create_export(fake_handle(), fake_handle(), std::ptr::null()) }
+			.ctx
+			.is_null()
+	);
 
 	reset_stubs();
 	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);

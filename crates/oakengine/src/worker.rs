@@ -188,8 +188,9 @@ impl Renderer {
 				log_error(&format!(
 					"failed to initialize dynamic {backend} backend: {first}; falling back to direct OpenGL renderer"
 				));
-				Self::create_opengl()
-					.map_err(|second| format!("{first}; direct OpenGL fallback also failed: {second}"))
+				Self::create_opengl().map_err(|second| {
+					format!("{first}; direct OpenGL fallback also failed: {second}")
+				})
 			}
 		}
 	}
@@ -219,7 +220,8 @@ impl Renderer {
 		}
 		// SAFETY: `handle` is live and owned by us; NULL gl_context makes
 		// the backend use its default device/context path.
-		let rc = unsafe { render_ffi::oakrender_display_renderer_init(handle, std::ptr::null_mut()) };
+		let rc =
+			unsafe { render_ffi::oakrender_display_renderer_init(handle, std::ptr::null_mut()) };
 		if rc != 0 {
 			// SAFETY: the handle is still owned by us (init failed).
 			unsafe { render_ffi::oakrender_display_renderer_destroy(&mut handle) };
@@ -364,7 +366,10 @@ impl WorkerSession {
 				self.shutdown_requested = true;
 				None
 			}
-			other => Some(error_message(&format!("unknown message type: {other}"), None)),
+			other => Some(error_message(
+				&format!("unknown message type: {other}"),
+				None,
+			)),
 		}
 	}
 
@@ -395,7 +400,8 @@ impl WorkerSession {
 		self.output_pool = None;
 		self.output_region = None;
 
-		let bytes = FrameSlotPool::bytes_needed(hs.output_slots as u32, hs.slot_data_bytes as usize);
+		let bytes =
+			FrameSlotPool::bytes_needed(hs.output_slots as u32, hs.slot_data_bytes as usize);
 		let mut output_region = SharedMemoryRegion::new();
 		if !output_region.open(&hs.shm_key, bytes, ShmMode::Attach) {
 			return Some(error_message(
@@ -422,12 +428,17 @@ impl WorkerSession {
 					None,
 				));
 			}
-			let input_bytes =
-				FrameSlotPool::bytes_needed(hs.input_slots as u32, hs.input_slot_data_bytes as usize);
+			let input_bytes = FrameSlotPool::bytes_needed(
+				hs.input_slots as u32,
+				hs.input_slot_data_bytes as usize,
+			);
 			let mut input_region = SharedMemoryRegion::new();
 			if !input_region.open(&hs.input_shm_key, input_bytes, ShmMode::Attach) {
 				return Some(error_message(
-					&format!("failed to attach input shared memory: {}", input_region.error()),
+					&format!(
+						"failed to attach input shared memory: {}",
+						input_region.error()
+					),
 					None,
 				));
 			}
@@ -509,8 +520,8 @@ impl HandshakeMsg {
 /// Write one NDJSON message line (compact JSON + `\n`), the Rust port of
 /// `ipcmessage.cpp write_message()`.
 fn write_message(w: &mut impl Write, msg: &Value) -> io::Result<()> {
-	let line = serde_json::to_string(msg)
-		.map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+	let line =
+		serde_json::to_string(msg).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 	w.write_all(line.as_bytes())?;
 	w.write_all(b"\n")
 }
@@ -529,8 +540,7 @@ fn parse_backend(argc: c_int, argv: *mut *mut c_char) -> String {
 			let arg = unsafe { crate::handle::read_cstr(args[i]) };
 			if arg == "--backend" && i + 1 < args.len() {
 				// SAFETY: `args[i + 1]` is a valid NUL-terminated C string.
-				backend = unsafe { crate::handle::read_cstr(args[i + 1]) }
-					.to_ascii_lowercase();
+				backend = unsafe { crate::handle::read_cstr(args[i + 1]) }.to_ascii_lowercase();
 				i += 2;
 			} else {
 				i += 1;
@@ -636,8 +646,8 @@ pub unsafe extern "C" fn oakengine_worker_session_create(
 ) -> *mut OakWorkerSession {
 	crate::handle::guard_ptr(|| unsafe {
 		let backend = crate::handle::read_cstr(backend);
-		let session = WorkerSession::create(&backend)
-			.map_err(|e| crate::error::Error::Failed(e))?;
+		let session =
+			WorkerSession::create(&backend).map_err(|e| crate::error::Error::Failed(e))?;
 		Ok(Box::into_raw(Box::new(session)) as *mut OakWorkerSession)
 	})
 }
@@ -696,8 +706,8 @@ pub unsafe extern "C" fn oakengine_worker_session_startup_handshake(
 		}
 		let session = &*(self_ as *const WorkerSession);
 		let json = session.startup_handshake();
-		let line = serde_json::to_string(&json)
-			.map_err(|e| crate::error::Error::Failed(e.to_string()))?;
+		let line =
+			serde_json::to_string(&json).map_err(|e| crate::error::Error::Failed(e.to_string()))?;
 		Ok(crate::handle::write_string(&line, buf, buf_size))
 	})
 }
@@ -723,7 +733,11 @@ pub unsafe extern "C" fn oakengine_worker_session_handle_json(
 			Some(response) => {
 				let json = serde_json::to_string(&response)
 					.map_err(|e| crate::error::Error::Failed(e.to_string()))?;
-				Ok(crate::handle::write_string(&json, response_buf, response_buf_size))
+				Ok(crate::handle::write_string(
+					&json,
+					response_buf,
+					response_buf_size,
+				))
 			}
 			None => Ok(0),
 		}
@@ -748,10 +762,7 @@ pub unsafe extern "C" fn oakengine_worker_session_shutdown_requested(
 /// stdin/stdout NDJSON loop until a shutdown message or EOF. Returns the
 /// process exit code.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_worker_main(
-	argc: c_int,
-	argv: *mut *mut c_char,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_worker_main(argc: c_int, argv: *mut *mut c_char) -> c_int {
 	crate::handle::guard_int(|| {
 		let backend = parse_backend(argc, argv);
 		Ok(worker_main(&backend))
@@ -793,7 +804,8 @@ mod tests {
 			out_region.error()
 		);
 		// SAFETY: live mapping sized by bytes_needed.
-		let _pool = unsafe { FrameSlotPool::create(out_region.data(), slots as u32, slot_bytes as usize) };
+		let _pool =
+			unsafe { FrameSlotPool::create(out_region.data(), slots as u32, slot_bytes as usize) };
 
 		let (in_key, in_bytes, in_region) = if input {
 			let in_key = test_key("in");
@@ -801,7 +813,9 @@ mod tests {
 			let mut in_region = SharedMemoryRegion::new();
 			assert!(in_region.open(&in_key, in_bytes, ShmMode::Create));
 			// SAFETY: live mapping.
-			let _ = unsafe { FrameSlotPool::create(in_region.data(), slots as u32, slot_bytes as usize) };
+			let _ = unsafe {
+				FrameSlotPool::create(in_region.data(), slots as u32, slot_bytes as usize)
+			};
 			(Some(in_key), Some(in_bytes), Some(in_region))
 		} else {
 			(None, None, None)
@@ -834,12 +848,12 @@ mod tests {
 		// Build a tiny fake argv the way the C runtime would: an array of
 		// NUL-terminated strings.
 		let make = |args: &[&str]| -> (Vec<std::ffi::CString>, Vec<*mut c_char>) {
-			let cstrings: Vec<std::ffi::CString> =
-				args.iter().map(|s| std::ffi::CString::new(*s).unwrap()).collect();
-			let mut ptrs: Vec<*mut c_char> = cstrings
+			let cstrings: Vec<std::ffi::CString> = args
 				.iter()
-				.map(|c| c.as_ptr() as *mut c_char)
+				.map(|s| std::ffi::CString::new(*s).unwrap())
 				.collect();
+			let mut ptrs: Vec<*mut c_char> =
+				cstrings.iter().map(|c| c.as_ptr() as *mut c_char).collect();
 			(cstrings, ptrs)
 		};
 		let (_keep, mut argv) = make(&["oak-worker"]);
@@ -852,13 +866,7 @@ mod tests {
 		assert_eq!(parse_backend(3, argv.as_mut_ptr()), "none");
 
 		// Last flag wins (the C++ loop keeps scanning).
-		let (_keep, mut argv) = make(&[
-			"oak-worker",
-			"--backend",
-			"vulkan",
-			"--backend",
-			"opengl",
-		]);
+		let (_keep, mut argv) = make(&["oak-worker", "--backend", "vulkan", "--backend", "opengl"]);
 		assert_eq!(parse_backend(5, argv.as_mut_ptr()), "opengl");
 
 		// A missing value is ignored (the C++ only consumes it when
@@ -999,14 +1007,16 @@ mod tests {
 		let mut s = WorkerSession::create("none").unwrap();
 		// A key that was never created.
 		let resp = s
-			.handle_line(&json!({
-				"type": "handshake",
-				"protocol_version": 1,
-				"shm_key": format!("olive-rw-{}-missing", std::process::id()),
-				"output_slots": 4,
-				"slot_data_bytes": 4096,
-			})
-			.to_string())
+			.handle_line(
+				&json!({
+					"type": "handshake",
+					"protocol_version": 1,
+					"shm_key": format!("olive-rw-{}-missing", std::process::id()),
+					"output_slots": 4,
+					"slot_data_bytes": 4096,
+				})
+				.to_string(),
+			)
 			.unwrap();
 		assert_eq!(resp["type"], "error");
 		assert!(resp["message"]
@@ -1027,14 +1037,16 @@ mod tests {
 		let mut region = SharedMemoryRegion::new();
 		assert!(region.open(&key, bytes, ShmMode::Create));
 		let resp = s
-			.handle_line(&json!({
-				"type": "handshake",
-				"protocol_version": 1,
-				"shm_key": key,
-				"output_slots": 4,
-				"slot_data_bytes": 4096,
-			})
-			.to_string())
+			.handle_line(
+				&json!({
+					"type": "handshake",
+					"protocol_version": 1,
+					"shm_key": key,
+					"output_slots": 4,
+					"slot_data_bytes": 4096,
+				})
+				.to_string(),
+			)
 			.unwrap();
 		assert_eq!(
 			resp["message"],
@@ -1063,12 +1075,17 @@ mod tests {
 		let resp = s
 			.handle_line(&json!({ "type": "load_graph", "path": missing }).to_string())
 			.unwrap();
-		assert_eq!(resp["message"], format!("graph file does not exist: {missing}"));
+		assert_eq!(
+			resp["message"],
+			format!("graph file does not exist: {missing}")
+		);
 
 		let empty = std::env::temp_dir().join("oak_facade_worker_test_empty.ove");
 		std::fs::write(&empty, b"").unwrap();
 		let resp = s
-			.handle_line(&json!({ "type": "load_graph", "path": empty.display().to_string() }).to_string())
+			.handle_line(
+				&json!({ "type": "load_graph", "path": empty.display().to_string() }).to_string(),
+			)
 			.unwrap();
 		assert_eq!(
 			resp["message"],
@@ -1079,7 +1096,9 @@ mod tests {
 		let real = std::env::temp_dir().join("oak_facade_worker_test_graph.ove");
 		std::fs::write(&real, b"<root/>").unwrap();
 		let resp = s
-			.handle_line(&json!({ "type": "load_graph", "path": real.display().to_string() }).to_string())
+			.handle_line(
+				&json!({ "type": "load_graph", "path": real.display().to_string() }).to_string(),
+			)
 			.unwrap();
 		assert!(resp["message"]
 			.as_str()
@@ -1113,9 +1132,12 @@ mod tests {
 		let mut buf = [0 as c_char; 512];
 		let n = unsafe { oakengine_worker_session_startup_handshake(s, buf.as_mut_ptr(), 512) };
 		assert!(n > 0);
-		let hs: Value =
-			serde_json::from_str(unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap())
-				.unwrap();
+		let hs: Value = serde_json::from_str(
+			unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }
+				.to_str()
+				.unwrap(),
+		)
+		.unwrap();
 		assert_eq!(hs["type"], "handshake");
 		assert_eq!(hs["protocol_version"], 1);
 

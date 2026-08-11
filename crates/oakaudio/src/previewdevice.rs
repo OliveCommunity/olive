@@ -92,8 +92,7 @@ impl PreviewAudioDevice {
 
 				inner.bytes_read = new_bytes_read;
 
-				data[..copy_length as usize]
-					.copy_from_slice(&inner.buffer[..copy_length as usize]);
+				data[..copy_length as usize].copy_from_slice(&inner.buffer[..copy_length as usize]);
 				inner.buffer.drain(..copy_length as usize);
 			}
 		}

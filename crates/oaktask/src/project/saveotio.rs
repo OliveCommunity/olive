@@ -29,8 +29,8 @@
 
 use oakcore_rs::Rational;
 use oakotio::{
-	Clip, Composable, ExternalReference, Gap, MediaReference, RationalTime, Serializable, SerializableCollection, TimeRange,
-	Timeline, Track, Transition,
+	Clip, Composable, ExternalReference, Gap, MediaReference, RationalTime, Serializable,
+	SerializableCollection, TimeRange, Timeline, Track, Transition,
 };
 
 use crate::bridge;
@@ -62,14 +62,17 @@ impl SaveOTIOTask {
 	///
 	/// CPP-PARITY: saveotio.cpp (SaveOTIOTask::serialize_timeline)
 	fn serialize_timeline(sequence: CHandle) -> Option<Timeline> {
-		let mut otio_timeline = Timeline::new(node_label_of(unsafe { bridge::node::oaknode_sequence_as_node(sequence) }));
+		let mut otio_timeline = Timeline::new(node_label_of(unsafe {
+			bridge::node::oaknode_sequence_as_node(sequence)
+		}));
 
 		let mut rate = 0.0f64;
 		{
 			let mut num = 0;
 			let mut den = 1;
 			let mut vp = CHandle::null();
-			if unsafe { bridge::node::oaknode_sequence_get_video_params(sequence, 0, &mut vp) } == 0 {
+			if unsafe { bridge::node::oaknode_sequence_get_video_params(sequence, 0, &mut vp) } == 0
+			{
 				unsafe {
 					bridge::common::oakcommon_videoparams_get_frame_rate(vp, &mut num, &mut den);
 				}
@@ -90,8 +93,16 @@ impl SaveOTIOTask {
 		let mut video_list = CHandle::null();
 		let mut audio_list = CHandle::null();
 		unsafe {
-			bridge::node::oaknode_sequence_get_track_list(sequence, bridge::node::OAKNODE_TRACK_TYPE_VIDEO, &mut video_list);
-			bridge::node::oaknode_sequence_get_track_list(sequence, bridge::node::OAKNODE_TRACK_TYPE_AUDIO, &mut audio_list);
+			bridge::node::oaknode_sequence_get_track_list(
+				sequence,
+				bridge::node::OAKNODE_TRACK_TYPE_VIDEO,
+				&mut video_list,
+			);
+			bridge::node::oaknode_sequence_get_track_list(
+				sequence,
+				bridge::node::OAKNODE_TRACK_TYPE_AUDIO,
+				&mut audio_list,
+			);
 		}
 
 		if !Self::serialize_track_list(video_list, &mut otio_timeline, rate)
@@ -107,7 +118,11 @@ impl SaveOTIOTask {
 	/// timeline. Each track is padded to the list's maximum track length.
 	///
 	/// CPP-PARITY: saveotio.cpp (SaveOTIOTask::serialize_track_list)
-	fn serialize_track_list(list: CHandle, otio_timeline: &mut Timeline, sequence_rate: f64) -> bool {
+	fn serialize_track_list(
+		list: CHandle,
+		otio_timeline: &mut Timeline,
+		sequence_rate: f64,
+	) -> bool {
 		if list.ctx.is_null() {
 			return true;
 		}
@@ -141,11 +156,14 @@ impl SaveOTIOTask {
 				continue;
 			}
 
-			let Some(otio_track) = Self::serialize_track(track, sequence_rate, max_track_length) else {
+			let Some(otio_track) = Self::serialize_track(track, sequence_rate, max_track_length)
+			else {
 				return false;
 			};
 
-			otio_timeline.tracks_mut().append_child(Composable::Track(otio_track));
+			otio_timeline
+				.tracks_mut()
+				.append_child(Composable::Track(otio_track));
 		}
 
 		true
@@ -156,7 +174,11 @@ impl SaveOTIOTask {
 	/// track is shorter than `max_track_length`.
 	///
 	/// CPP-PARITY: saveotio.cpp (SaveOTIOTask::serialize_track)
-	fn serialize_track(track: CHandle, sequence_rate: f64, max_track_length: Rational) -> Option<Track> {
+	fn serialize_track(
+		track: CHandle,
+		sequence_rate: f64,
+		max_track_length: Rational,
+	) -> Option<Track> {
 		let mut track_type = bridge::node::OAKNODE_TRACK_TYPE_NONE;
 		unsafe {
 			bridge::node::oaknode_track_get_type(track, &mut track_type);
@@ -193,7 +215,9 @@ impl SaveOTIOTask {
 
 			let otio_block: Option<Composable> = match kind {
 				bridge::node::OAKNODE_BLOCK_CLIP => {
-					let mut otio_clip = Clip::new(node_label_of(unsafe { bridge::node::oaknode_block_as_node(block) }));
+					let mut otio_clip = Clip::new(node_label_of(unsafe {
+						bridge::node::oaknode_block_as_node(block)
+					}));
 
 					otio_clip.set_source_range(TimeRange::new(
 						RationalTime::from_rational(block_in_of(block), sequence_rate),
@@ -202,10 +226,15 @@ impl SaveOTIOTask {
 
 					let mut media = CHandle::null();
 					unsafe {
-						bridge::node::oaknode_node_find_input_footage(bridge::node::oaknode_block_as_node(block), &mut media);
+						bridge::node::oaknode_node_find_input_footage(
+							bridge::node::oaknode_block_as_node(block),
+							&mut media,
+						);
 					}
 					if !media.ctx.is_null() {
-						let available_range = if track_type == bridge::node::OAKNODE_TRACK_TYPE_VIDEO {
+						let available_range = if track_type
+							== bridge::node::OAKNODE_TRACK_TYPE_VIDEO
+						{
 							// OTIO ExternalReference uses the source clips
 							// frame rate (or sample rate) as opposed to the
 							// sequences rate.
@@ -214,16 +243,23 @@ impl SaveOTIOTask {
 							let mut num = 0;
 							let mut den = 1;
 							let mut vp = CHandle::null();
-							if unsafe { bridge::node::oaknode_footage_get_video_params(media, 0, &mut vp) } == 0 {
+							if unsafe {
+								bridge::node::oaknode_footage_get_video_params(media, 0, &mut vp)
+							} == 0
+							{
 								unsafe {
-									bridge::common::oakcommon_videoparams_get_frame_rate(vp, &mut num, &mut den);
+									bridge::common::oakcommon_videoparams_get_frame_rate(
+										vp, &mut num, &mut den,
+									);
 								}
 								if den != 0 {
 									source_frame_rate = num as f64 / den as f64;
 								}
 								let mut dur = 0i64;
 								unsafe {
-									bridge::common::oakcommon_videoparams_get_duration(vp, &mut dur);
+									bridge::common::oakcommon_videoparams_get_duration(
+										vp, &mut dur,
+									);
 								}
 								duration = dur as f64;
 								if !vp.ctx.is_null() {
@@ -237,15 +273,17 @@ impl SaveOTIOTask {
 								RationalTime::new(duration, source_frame_rate),
 							)
 						} else {
-							TimeRange::new(RationalTime::new(0.0, 48000.0), RationalTime::new(0.0, 48000.0))
+							TimeRange::new(
+								RationalTime::new(0.0, 48000.0),
+								RationalTime::new(0.0, 48000.0),
+							)
 						};
 
 						let media_url = footage_filename(media);
 						if !media_url.is_empty() {
-							otio_clip.set_media_reference(MediaReference::ExternalReference(ExternalReference::new(
-								media_url,
-								Some(available_range),
-							)));
+							otio_clip.set_media_reference(MediaReference::ExternalReference(
+								ExternalReference::new(media_url, Some(available_range)),
+							));
 						}
 					}
 
@@ -259,12 +297,20 @@ impl SaveOTIOTask {
 					node_label_of(unsafe { bridge::node::oaknode_block_as_node(block) }),
 				))),
 				bridge::node::OAKNODE_BLOCK_TRANSITION => {
-					let mut otio_transition = Transition::new(node_label_of(unsafe { bridge::node::oaknode_block_as_node(block) }));
+					let mut otio_transition = Transition::new(node_label_of(unsafe {
+						bridge::node::oaknode_block_as_node(block)
+					}));
 
 					let (n, d) = transition_offset_of(block, true);
-					otio_transition.set_in_offset(RationalTime::from_rational(Rational::new(n as i64, d as i64), 24.0));
+					otio_transition.set_in_offset(RationalTime::from_rational(
+						Rational::new(n as i64, d as i64),
+						24.0,
+					));
 					let (n, d) = transition_offset_of(block, false);
-					otio_transition.set_out_offset(RationalTime::from_rational(Rational::new(n as i64, d as i64), 24.0));
+					otio_transition.set_out_offset(RationalTime::from_rational(
+						Rational::new(n as i64, d as i64),
+						24.0,
+					));
 
 					Some(Composable::Transition(otio_transition))
 				}
@@ -287,7 +333,10 @@ impl SaveOTIOTask {
 		if duration_seconds < max_track_length.to_f64() {
 			let time_left = max_track_length.to_f64() - duration_seconds;
 
-			let gap = Gap::new(TimeRange::new(duration, RationalTime::new(time_left, 1.0)), "");
+			let gap = Gap::new(
+				TimeRange::new(duration, RationalTime::new(time_left, 1.0)),
+				"",
+			);
 			otio_track.append_child(Composable::Gap(gap));
 		}
 
@@ -318,7 +367,9 @@ impl TaskBehavior for SaveOTIOTask {
 		let root = unsafe { bridge::node::oaknode_project_root(self.project) };
 		if root.ctx.is_null() {
 			task.set_error("Project contains no sequences to export.");
-			return Err(Error::Failed("Project contains no sequences to export.".to_string()));
+			return Err(Error::Failed(
+				"Project contains no sequences to export.".to_string(),
+			));
 		}
 
 		let mut sequences: Vec<CHandle> = Vec::new();
@@ -337,7 +388,9 @@ impl TaskBehavior for SaveOTIOTask {
 
 		if sequences.is_empty() {
 			task.set_error("Project contains no sequences to export.");
-			return Err(Error::Failed("Project contains no sequences to export.".to_string()));
+			return Err(Error::Failed(
+				"Project contains no sequences to export.".to_string(),
+			));
 		}
 
 		let mut serialized: Vec<Timeline> = Vec::with_capacity(sequences.len());
@@ -361,7 +414,9 @@ impl TaskBehavior for SaveOTIOTask {
 		let result: std::result::Result<(), String> = match format {
 			InterchangeFormat::OtioJson => {
 				if serialized.len() == 1 {
-					serialized[0].to_json_file(&self.filename).map_err(|e| e.to_string())
+					serialized[0]
+						.to_json_file(&self.filename)
+						.map_err(|e| e.to_string())
 				} else {
 					// Serialize all into a SerializableCollection.
 					let collection = SerializableCollection::new(
@@ -373,13 +428,20 @@ impl TaskBehavior for SaveOTIOTask {
 						.map_err(|e| e.to_string())
 				}
 			}
-			InterchangeFormat::Fcpxml => oakotio::to_fcpxml_file(&serialized, &self.filename).map_err(|e| e.to_string()),
+			InterchangeFormat::Fcpxml => {
+				oakotio::to_fcpxml_file(&serialized, &self.filename).map_err(|e| e.to_string())
+			}
 		};
 
 		result.map_err(|e| {
 			let (label, what) = match format {
-				InterchangeFormat::OtioJson => ("Failed to save OpenTimelineIO to file", "Failed to save OpenTimelineIO"),
-				InterchangeFormat::Fcpxml => ("Failed to save FCPXML to file", "Failed to save FCPXML"),
+				InterchangeFormat::OtioJson => (
+					"Failed to save OpenTimelineIO to file",
+					"Failed to save OpenTimelineIO",
+				),
+				InterchangeFormat::Fcpxml => {
+					("Failed to save FCPXML to file", "Failed to save FCPXML")
+				}
 			};
 			task.set_error(&format!("{label} \"{}\": {e}", self.filename));
 			Error::Failed(what.to_string())
@@ -461,7 +523,8 @@ fn transition_offset_of(block: CHandle, in_offset: bool) -> (i32, i32) {
 
 /// Two-stage read of a footage's filename (empty when unset).
 fn footage_filename(footage: CHandle) -> String {
-	let needed = unsafe { bridge::node::oaknode_footage_filename(footage, std::ptr::null_mut(), 0) };
+	let needed =
+		unsafe { bridge::node::oaknode_footage_filename(footage, std::ptr::null_mut(), 0) };
 	if needed <= 0 {
 		return String::new();
 	}
@@ -478,9 +541,16 @@ fn footage_filename(footage: CHandle) -> String {
 fn track_duration(track: &Track) -> RationalTime {
 	let mut acc: Option<RationalTime> = None;
 	for child in track.children() {
-		let duration = match child.as_clip().and_then(|c| c.source_range()).map(|r| r.duration())
-			.or_else(|| child.as_gap().and_then(|g| g.source_range()).map(|r| r.duration()))
-		{
+		let duration = match child
+			.as_clip()
+			.and_then(|c| c.source_range())
+			.map(|r| r.duration())
+			.or_else(|| {
+				child
+					.as_gap()
+					.and_then(|g| g.source_range())
+					.map(|r| r.duration())
+			}) {
 			Some(d) => d,
 			// Transitions occupy no time.
 			None => RationalTime::new(0.0, 1.0),

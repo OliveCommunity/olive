@@ -157,7 +157,8 @@ pub fn render_frame(
 		Some(r) if unsafe { render::renderer_is_open_gl(r) } == 1 => {
 			let plugin_gl = plugin_supports_opengl(inst);
 			let depth_ok =
-				crate::suites::gl_render::pick_gl_pixel_depth(&inst.plugin.descriptor.props).is_some();
+				crate::suites::gl_render::pick_gl_pixel_depth(&inst.plugin.descriptor.props)
+					.is_some();
 			let dst_id = unsafe { render::texture_id(job.dst) };
 			plugin_gl && depth_ok && dst_id != 0
 		}
@@ -225,18 +226,18 @@ pub fn render_frame(
 	// 输入整帧提供，RoI 只作记录）。
 	let rois = inst
 		.get_regions_of_interest(job.time, RenderScale { x: 1.0, y: 1.0 }, region_of_interest)
-		.unwrap_or_else(|_| {
-			inst.clips
-				.iter()
-				.map(|_| region_of_interest)
-				.collect()
-		});
+		.unwrap_or_else(|_| inst.clips.iter().map(|_| region_of_interest).collect());
 
 	// 8. 输出 clip 格式（pluginrenderer.cpp:1686-1697）。
 	output_clip.set_video_params(render::PIXEL_FORMAT_F32, components.channel_count() as i32);
 
 	// 渲染窗口（像素坐标；pluginrenderer.cpp:1699-1704）。
-	let render_window = OfxRectD { x1: 0.0, y1: 0.0, x2: w, y2: h };
+	let render_window = OfxRectD {
+		x1: 0.0,
+		y1: 0.0,
+		x2: w,
+		y2: h,
+	};
 
 	// 9. isIdentity 短路（ofxRendering "Identity Effects"）：插件声明
 	// 本帧等价于某输入 clip → 直接透传该 clip 在透传时间的帧。
@@ -254,15 +255,31 @@ pub fn render_frame(
 		let output = std::sync::Arc::new(Image::allocate(
 			crate::image::BitDepth::Float,
 			components,
-			OfxRectD { x1: 0.0, y1: 0.0, x2: w, y2: h },
+			OfxRectD {
+				x1: 0.0,
+				y1: 0.0,
+				x2: w,
+				y2: h,
+			},
 		));
-		inst.render(job.time, RenderScale { x: 1.0, y: 1.0 }, render_window, output.clone())?;
+		inst.render(
+			job.time,
+			RenderScale { x: 1.0, y: 1.0 },
+			render_window,
+			output.clone(),
+		)?;
 		// 输出装配（pluginrenderer.cpp:1762-1834 的 CPU 路径）。
 		write_output_frame(job.dst, &output)?;
 	} else {
 		// GL 路径：插件直接画进已附着的输出纹理（
 		// pluginrenderer.cpp:1784-1834 的 GL 分支）；无 CPU 回读。
-		inst.render_gl(job.time, RenderScale { x: 1.0, y: 1.0 }, render_window, job.renderer.unwrap(), job.dst)?;
+		inst.render_gl(
+			job.time,
+			RenderScale { x: 1.0, y: 1.0 },
+			render_window,
+			job.renderer.unwrap(),
+			job.dst,
+		)?;
 	}
 
 	unsafe { render::frame_free(&mut (dst_frame)) };
@@ -280,7 +297,9 @@ fn zip_rois(inst: &Instance, rois: &[OfxRectD]) -> Vec<(String, OfxRectD)> {
 }
 
 /// 读目标纹理的帧与参数（F32 校验）。返回 (帧句柄, 参数, 宽, 高)。
-fn read_dst(dst: TextureHandle) -> crate::error::Result<(FrameHandle, render::VideoParams, f64, f64)> {
+fn read_dst(
+	dst: TextureHandle,
+) -> crate::error::Result<(FrameHandle, render::VideoParams, f64, f64)> {
 	use crate::error::Error;
 	let mut frame = FrameHandle::null();
 	if unsafe { render::texture_get_frame(dst, &mut frame) } != 0 || frame.is_null() {
@@ -383,7 +402,9 @@ fn passthrough(
 /// 走专用桥一致）。
 fn apply_param_overrides(inst: &Instance, values: &[(String, crate::ffi::OakNodeValue)]) {
 	for (key, v) in values {
-		let Some(p) = inst.params.find(key) else { continue };
+		let Some(p) = inst.params.find(key) else {
+			continue;
+		};
 		let Some(pv) = crate::ffi::node_value_to_param(v, &p.def.ofx_type) else {
 			continue;
 		};
@@ -422,8 +443,7 @@ pub(crate) fn write_output_frame(dst: TextureHandle, image: &Image) -> crate::er
 	}
 	let row = unsafe { render::frame_linesize_bytes(frame) } as usize;
 	let row = if row > 0 { row } else { tight };
-	let dst_bytes =
-		unsafe { std::slice::from_raw_parts_mut(dst_ptr as *mut u8, row * h) };
+	let dst_bytes = unsafe { std::slice::from_raw_parts_mut(dst_ptr as *mut u8, row * h) };
 	let pixels = image.pixels();
 	for y in 0..h {
 		let d = y * row;

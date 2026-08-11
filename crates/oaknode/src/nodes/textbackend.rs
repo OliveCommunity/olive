@@ -142,10 +142,7 @@ pub type TextRenderBackend =
 /// facade installs a text engine. Setting a hook to `None` uninstalls
 /// it (the C++ global is a plain function pointer, assignable any
 /// number of times; a `Mutex` keeps the tests able to reset it).
-pub fn set_text_backends(
-	measure: Option<TextMeasureBackend>,
-	render: Option<TextRenderBackend>,
-) {
+pub fn set_text_backends(measure: Option<TextMeasureBackend>, render: Option<TextRenderBackend>) {
 	*MEASURE.lock().unwrap() = measure;
 	*RENDER.lock().unwrap() = render;
 }
@@ -198,15 +195,19 @@ mod tests {
 			}
 		}
 		set_text_backends(Some(measure), Some(render));
-		assert_eq!(text_measure_backend().unwrap()(&TextLayoutRequest {
-			text: String::new(),
-			mode: TextLayoutMode::PlainText,
-			font_family: String::new(),
-			font_size_pt: 0.0,
-			dots_per_meter: 0,
-			wrap_width: 0.0,
-			center_horizontally: false,
-		}).width, 12.0);
+		assert_eq!(
+			text_measure_backend().unwrap()(&TextLayoutRequest {
+				text: String::new(),
+				mode: TextLayoutMode::PlainText,
+				font_family: String::new(),
+				font_size_pt: 0.0,
+				dots_per_meter: 0,
+				wrap_width: 0.0,
+				center_horizontally: false,
+			})
+			.width,
+			12.0
+		);
 		assert_eq!(
 			text_measure_backend().unwrap()(&TextLayoutRequest {
 				text: String::new(),

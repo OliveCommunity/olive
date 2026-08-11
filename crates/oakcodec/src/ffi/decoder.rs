@@ -28,9 +28,9 @@
 //! `ProbeBox` / `DecoderBox` split in `c_api/decoder.cpp`: probe exports
 //! read a plain [`ProbeBox`], session exports read a `Mutex<DecoderBox>`.
 
-use std::ffi::{c_char, c_int};
 #[cfg(test)]
 use std::ffi::c_void;
+use std::ffi::{c_char, c_int};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -45,13 +45,13 @@ use crate::bridge::common::{
 	oakcommon_videoparams_get_width, oakcore_audioparams_channel_count,
 	oakcore_audioparams_channel_layout, oakcore_audioparams_duration,
 	oakcore_audioparams_sample_rate, oakcore_audioparams_stream_index,
-	oakcore_audioparams_time_base, oakcore_rational_denominator,
-	oakcore_rational_free, oakcore_rational_numerator, OakAudioParams, OakVideoParams,
+	oakcore_audioparams_time_base, oakcore_rational_denominator, oakcore_rational_free,
+	oakcore_rational_numerator, OakAudioParams, OakVideoParams,
 };
 use crate::bridge::render::{oakrender_cancelatom_heard_cancel, OakCancelAtom};
 use crate::decoder::{
-	CodecStream, Decoder, K_COLOR_RANGE_DEFAULT, OakCodecAudioStreamInfo,
-	OakCodecVideoStreamInfo, RenderMode, RetrieveAudioStatus, RetrieveVideoParams,
+	CodecStream, Decoder, OakCodecAudioStreamInfo, OakCodecVideoStreamInfo, RenderMode,
+	RetrieveAudioStatus, RetrieveVideoParams, K_COLOR_RANGE_DEFAULT,
 };
 use crate::footagedescription::FootageDescription;
 #[cfg(test)]
@@ -230,11 +230,9 @@ pub unsafe extern "C" fn oakcodec_decoder_probe_decoder_name(
 	buf: *mut c_char,
 	buf_size: c_int,
 ) -> c_int {
-	handle::guard_raw(|| {
-		match super::get_box::<ProbeBox>(&probe) {
-			Some(b) => super::string_out(&b.decoder_name, buf, buf_size),
-			None => crate::error::OAKCODEC_E_INVALID,
-		}
+	handle::guard_raw(|| match super::get_box::<ProbeBox>(&probe) {
+		Some(b) => super::string_out(&b.decoder_name, buf, buf_size),
+		None => crate::error::OAKCODEC_E_INVALID,
 	})
 }
 
@@ -340,7 +338,8 @@ pub unsafe extern "C" fn oakcodec_decoder_open(
 	stream_index: c_int,
 ) -> c_int {
 	handle::guard(|| {
-		let b = super::get_box::<Mutex<DecoderBox>>(&decoder).ok_or(crate::error::Error::Invalid)?;
+		let b =
+			super::get_box::<Mutex<DecoderBox>>(&decoder).ok_or(crate::error::Error::Invalid)?;
 		let filename = match crate::ffi::c_str(filename) {
 			Some(f) => f,
 			None => return Err(crate::error::Error::Invalid),
@@ -367,7 +366,9 @@ pub unsafe extern "C" fn oakcodec_decoder_open(
 			Some(x) => x,
 			None => {
 				b.last_error = format!("no decoder recognizes this file: {}", filename);
-				return Err(crate::error::Error::Failed("no decoder recognizes this file".to_string()));
+				return Err(crate::error::Error::Failed(
+					"no decoder recognizes this file".to_string(),
+				));
 			}
 		};
 
@@ -375,14 +376,18 @@ pub unsafe extern "C" fn oakcodec_decoder_open(
 			Some(d) => d,
 			None => {
 				b.last_error = format!("failed to create decoder: {}", decoder_name);
-				return Err(crate::error::Error::Failed("failed to create decoder".to_string()));
+				return Err(crate::error::Error::Failed(
+					"failed to create decoder".to_string(),
+				));
 			}
 		};
 
 		let stream = CodecStream::with_block(filename.clone(), stream_index, None);
 		if decoder.open(&stream).is_err() {
 			b.last_error = "failed to open stream".to_string();
-			return Err(crate::error::Error::Failed("failed to open stream".to_string()));
+			return Err(crate::error::Error::Failed(
+				"failed to open stream".to_string(),
+			));
 		}
 
 		b.last_error.clear();
@@ -398,7 +403,8 @@ pub unsafe extern "C" fn oakcodec_decoder_open(
 #[no_mangle]
 pub unsafe extern "C" fn oakcodec_decoder_close(decoder: CHandle) -> c_int {
 	handle::guard(|| {
-		let b = super::get_box::<Mutex<DecoderBox>>(&decoder).ok_or(crate::error::Error::Invalid)?;
+		let b =
+			super::get_box::<Mutex<DecoderBox>>(&decoder).ok_or(crate::error::Error::Invalid)?;
 		let mut b = b.lock().unwrap();
 		if b.open {
 			if let Some(d) = &b.decoder {
@@ -441,7 +447,8 @@ pub unsafe extern "C" fn oakcodec_decoder_decode_video(
 	denominator: c_int,
 ) -> CHandle {
 	handle::guard_handle(|| {
-		let b = super::get_box::<Mutex<DecoderBox>>(&decoder).ok_or(crate::error::Error::Invalid)?;
+		let b =
+			super::get_box::<Mutex<DecoderBox>>(&decoder).ok_or(crate::error::Error::Invalid)?;
 		let d = {
 			let b = b.lock().unwrap();
 			if !b.open || b.decoder.is_none() {
@@ -498,20 +505,18 @@ pub unsafe extern "C" fn oakcodec_decoder_decode_audio(
 	buf: *mut f32,
 	buf_frames: c_int,
 ) -> c_int {
-	handle::guard_raw(|| {
-		unsafe {
-			decode_audio_inner(
-				decoder,
-				in_num,
-				in_den,
-				out_num,
-				out_den,
-				sample_rate,
-				channel_layout,
-				buf,
-				buf_frames,
-			)
-		}
+	handle::guard_raw(|| unsafe {
+		decode_audio_inner(
+			decoder,
+			in_num,
+			in_den,
+			out_num,
+			out_den,
+			sample_rate,
+			channel_layout,
+			buf,
+			buf_frames,
+		)
 	})
 }
 
@@ -589,18 +594,16 @@ pub unsafe extern "C" fn oakcodec_decoder_conform_audio(
 	sample_format: c_int,
 	cancelled: OakCancelAtom,
 ) -> c_int {
-	handle::guard(|| {
-		unsafe {
-			conform_audio_inner(
-				decoder,
-				output_filenames,
-				filename_count,
-				sample_rate,
-				channel_layout,
-				sample_format,
-				cancelled,
-			)
-		}
+	handle::guard(|| unsafe {
+		conform_audio_inner(
+			decoder,
+			output_filenames,
+			filename_count,
+			sample_rate,
+			channel_layout,
+			sample_format,
+			cancelled,
+		)
 	})
 }
 
@@ -678,9 +681,7 @@ pub unsafe extern "C" fn oakcodec_decoder_get_image_sequence_digit_count(
 
 /// `oakcodec_decoder_get_image_sequence_index`.
 #[no_mangle]
-pub unsafe extern "C" fn oakcodec_decoder_get_image_sequence_index(
-	filename: *const c_char,
-) -> i64 {
+pub unsafe extern "C" fn oakcodec_decoder_get_image_sequence_index(filename: *const c_char) -> i64 {
 	handle::guard_i64(|| match crate::ffi::c_str(filename) {
 		Some(f) => crate::decoder::get_image_sequence_index(&f),
 		None => crate::error::OAKCODEC_E_INVALID as i64,
@@ -729,8 +730,8 @@ mod tests {
 	};
 	use crate::bridge::render::{oakrender_cancelatom_cancel, oakrender_cancelatom_init};
 	use crate::decoder::set_test_decoders;
-	use crate::footagedescription::StreamEntry;
 	use crate::error::{OAKCODEC_E_CANCELLED, OAKCODEC_E_INVALID, OAKCODEC_E_STATE};
+	use crate::footagedescription::StreamEntry;
 
 	/// The crate-wide ffi test lock (`crate::ffi::lock_tests`) serializes
 	/// every test in this module (they share the global probe error, the
@@ -793,9 +794,8 @@ mod tests {
 		) -> Option<FootageDescription> {
 			if filename.ends_with("test_video.mp4") {
 				let mut desc = FootageDescription::new("fake");
-				let vp = unsafe {
-					oakcommon_videoparams_init_with_time_base(1920, 1080, 1001, 30000)
-				};
+				let vp =
+					unsafe { oakcommon_videoparams_init_with_time_base(1920, 1080, 1001, 30000) };
 				unsafe { oakcommon_videoparams_set_stream_index(vp.clone(), 0) };
 				desc.push_stream(StreamEntry::Video(vp));
 				Some(desc)
@@ -900,11 +900,8 @@ mod tests {
 	}
 
 	fn media_file(name: &str) -> String {
-		let dir = std::env::temp_dir().join(format!(
-			"oakcodec_ffi_dec_{}_{}",
-			name,
-			std::process::id()
-		));
+		let dir =
+			std::env::temp_dir().join(format!("oakcodec_ffi_dec_{}_{}", name, std::process::id()));
 		let _ = std::fs::create_dir_all(&dir);
 		let path = dir.join(name);
 		let _ = std::fs::write(&path, b"media");
@@ -930,7 +927,10 @@ mod tests {
 
 		assert_eq!(unsafe { oakcodec_decoder_probe_video_stream_count(h) }, 1);
 		assert_eq!(unsafe { oakcodec_decoder_probe_audio_stream_count(h) }, 0);
-		assert_eq!(unsafe { oakcodec_decoder_probe_subtitle_stream_count(h) }, 0);
+		assert_eq!(
+			unsafe { oakcodec_decoder_probe_subtitle_stream_count(h) },
+			0
+		);
 
 		let mut info: OakCodecVideoStreamInfo = unsafe { std::mem::zeroed() };
 		let rc = unsafe { oakcodec_decoder_probe_get_video_stream(h, 0, &mut info) };
@@ -1001,7 +1001,10 @@ mod tests {
 		assert!(h.is_null());
 		let mut err = [0i8; 256];
 		unsafe { oakcodec_probe_last_error(err.as_mut_ptr(), 256) };
-		assert_eq!(crate::ffi::c_str(err.as_ptr()).as_deref(), Some("no filename given"));
+		assert_eq!(
+			crate::ffi::c_str(err.as_ptr()).as_deref(),
+			Some("no filename given")
+		);
 
 		// Empty filename.
 		let f = cstr("");
@@ -1025,12 +1028,21 @@ mod tests {
 		let mut h = unsafe { oakcodec_decoder_probe(f.as_ptr()) };
 		assert!(h.is_null());
 		unsafe { oakcodec_probe_last_error(err.as_mut_ptr(), 256) };
-		assert!(crate::ffi::c_str(err.as_ptr()).as_deref().unwrap().contains("no decoder recognizes"));
+		assert!(crate::ffi::c_str(err.as_ptr())
+			.as_deref()
+			.unwrap()
+			.contains("no decoder recognizes"));
 
 		// Empty handle on probe exports.
 		let empty = CHandle::null();
-		assert_eq!(unsafe { oakcodec_decoder_probe_decoder_name(empty, err.as_mut_ptr(), 256) }, OAKCODEC_E_INVALID);
-		assert_eq!(unsafe { oakcodec_decoder_probe_video_stream_count(empty) }, 0);
+		assert_eq!(
+			unsafe { oakcodec_decoder_probe_decoder_name(empty, err.as_mut_ptr(), 256) },
+			OAKCODEC_E_INVALID
+		);
+		assert_eq!(
+			unsafe { oakcodec_decoder_probe_video_stream_count(empty) },
+			0
+		);
 		restore();
 	}
 
@@ -1055,8 +1067,14 @@ mod tests {
 
 		let mut frame = unsafe { oakcodec_decoder_decode_video(h, 1, 30) };
 		assert!(!frame.is_null());
-		assert_eq!(unsafe { crate::ffi::frame::oakcodec_frame_width(frame) }, 100);
-		assert_eq!(unsafe { crate::ffi::frame::oakcodec_frame_height(frame) }, 50);
+		assert_eq!(
+			unsafe { crate::ffi::frame::oakcodec_frame_width(frame) },
+			100
+		);
+		assert_eq!(
+			unsafe { crate::ffi::frame::oakcodec_frame_height(frame) },
+			50
+		);
 
 		unsafe { crate::ffi::frame::oakcodec_frame_free(&mut frame) };
 		let rc = unsafe { oakcodec_decoder_close(h) };
@@ -1079,7 +1097,10 @@ mod tests {
 		assert!(frame.is_null());
 		let mut err = [0i8; 128];
 		unsafe { oakcodec_decoder_last_error(h, err.as_mut_ptr(), 128) };
-		assert_eq!(crate::ffi::c_str(err.as_ptr()).as_deref(), Some("failed to decode video frame"));
+		assert_eq!(
+			crate::ffi::c_str(err.as_ptr()).as_deref(),
+			Some("failed to decode video frame")
+		);
 		unsafe { oakcodec_decoder_free(&mut h) };
 		restore();
 	}
@@ -1097,9 +1118,7 @@ mod tests {
 
 		let mut buf = [0f32; 64];
 		let frames = unsafe {
-			oakcodec_decoder_decode_audio(
-				h, 0, 1, 1, 1, 48000, 0x3, buf.as_mut_ptr(), 16,
-			)
+			oakcodec_decoder_decode_audio(h, 0, 1, 1, 1, 48000, 0x3, buf.as_mut_ptr(), 16)
 		};
 		assert_eq!(frames, 16);
 		// Interleaved stereo filled by the fake.
@@ -1107,20 +1126,28 @@ mod tests {
 		assert_eq!(buf[31], 1.0);
 
 		// Invalid args.
-		let rc = unsafe { oakcodec_decoder_decode_audio(h, 0, 1, 1, 1, 48000, 0x3, std::ptr::null_mut(), 16) };
+		let rc = unsafe {
+			oakcodec_decoder_decode_audio(h, 0, 1, 1, 1, 48000, 0x3, std::ptr::null_mut(), 16)
+		};
 		assert_eq!(rc, OAKCODEC_E_INVALID);
-		let rc = unsafe { oakcodec_decoder_decode_audio(h, 0, 1, 1, 1, 48000, 0x3, buf.as_mut_ptr(), -1) };
+		let rc = unsafe {
+			oakcodec_decoder_decode_audio(h, 0, 1, 1, 1, 48000, 0x3, buf.as_mut_ptr(), -1)
+		};
 		assert_eq!(rc, OAKCODEC_E_INVALID);
 
 		// Not open -> E_STATE.
 		let mut h2 = unsafe { oakcodec_decoder_init() };
-		let rc = unsafe { oakcodec_decoder_decode_audio(h2, 0, 1, 1, 1, 48000, 0x3, buf.as_mut_ptr(), 16) };
+		let rc = unsafe {
+			oakcodec_decoder_decode_audio(h2, 0, 1, 1, 1, 48000, 0x3, buf.as_mut_ptr(), 16)
+		};
 		assert_eq!(rc, OAKCODEC_E_STATE);
 		unsafe { oakcodec_decoder_free(&mut h2) };
 
 		// Empty handle -> E_INVALID.
 		let empty = CHandle::null();
-		let rc = unsafe { oakcodec_decoder_decode_audio(empty, 0, 1, 1, 1, 48000, 0x3, buf.as_mut_ptr(), 16) };
+		let rc = unsafe {
+			oakcodec_decoder_decode_audio(empty, 0, 1, 1, 1, 48000, 0x3, buf.as_mut_ptr(), 16)
+		};
 		assert_eq!(rc, OAKCODEC_E_INVALID);
 
 		unsafe { oakcodec_decoder_free(&mut h) };
@@ -1137,11 +1164,16 @@ mod tests {
 		let f = cstr(&v);
 		unsafe { oakcodec_decoder_open(h, f.as_ptr(), 0) };
 		let mut buf = [0f32; 64];
-		let rc = unsafe { oakcodec_decoder_decode_audio(h, 0, 1, 1, 1, 48000, 0x3, buf.as_mut_ptr(), 16) };
+		let rc = unsafe {
+			oakcodec_decoder_decode_audio(h, 0, 1, 1, 1, 48000, 0x3, buf.as_mut_ptr(), 16)
+		};
 		assert_eq!(rc, OAKCODEC_E_STATE);
 		let mut err = [0i8; 256];
 		unsafe { oakcodec_decoder_last_error(h, err.as_mut_ptr(), 256) };
-		assert!(crate::ffi::c_str(err.as_ptr()).as_deref().unwrap().contains("conform"));
+		assert!(crate::ffi::c_str(err.as_ptr())
+			.as_deref()
+			.unwrap()
+			.contains("conform"));
 		unsafe { oakcodec_decoder_free(&mut h) };
 		restore();
 	}
@@ -1192,9 +1224,8 @@ mod tests {
 		// Failure with a cancelled atom -> E_CANCELLED.
 		let atom = unsafe { oakrender_cancelatom_init() };
 		unsafe { oakrender_cancelatom_cancel(atom.clone()) };
-		let rc = unsafe {
-			oakcodec_decoder_conform_audio(h, files.as_ptr(), 2, 48000, 0x3, 10, atom)
-		};
+		let rc =
+			unsafe { oakcodec_decoder_conform_audio(h, files.as_ptr(), 2, 48000, 0x3, 10, atom) };
 		assert_eq!(rc, OAKCODEC_E_CANCELLED);
 
 		unsafe { oakcodec_decoder_free(&mut h) };
@@ -1211,17 +1242,46 @@ mod tests {
 			unsafe { oakcodec_decoder_get_image_sequence_digit_count(f.as_ptr()) },
 			4
 		);
-		assert_eq!(unsafe { oakcodec_decoder_get_image_sequence_index(f.as_ptr()) }, 1);
+		assert_eq!(
+			unsafe { oakcodec_decoder_get_image_sequence_index(f.as_ptr()) },
+			1
+		);
 
 		let mut buf = [0i8; 128];
-		let rc = unsafe { oakcodec_decoder_transform_image_sequence_file_name(f.as_ptr(), 7, buf.as_mut_ptr(), 128) };
+		let rc = unsafe {
+			oakcodec_decoder_transform_image_sequence_file_name(
+				f.as_ptr(),
+				7,
+				buf.as_mut_ptr(),
+				128,
+			)
+		};
 		assert!(rc > 0);
-		assert_eq!(crate::ffi::c_str(buf.as_ptr()).as_deref(), Some("frame_0007.png"));
+		assert_eq!(
+			crate::ffi::c_str(buf.as_ptr()).as_deref(),
+			Some("frame_0007.png")
+		);
 
 		// NULL filename -> E_INVALID.
-		assert_eq!(unsafe { oakcodec_decoder_get_image_sequence_digit_count(std::ptr::null()) }, OAKCODEC_E_INVALID);
-		assert_eq!(unsafe { oakcodec_decoder_get_image_sequence_index(std::ptr::null()) }, OAKCODEC_E_INVALID as i64);
-		assert_eq!(unsafe { oakcodec_decoder_transform_image_sequence_file_name(std::ptr::null(), 1, buf.as_mut_ptr(), 128) }, OAKCODEC_E_INVALID);
+		assert_eq!(
+			unsafe { oakcodec_decoder_get_image_sequence_digit_count(std::ptr::null()) },
+			OAKCODEC_E_INVALID
+		);
+		assert_eq!(
+			unsafe { oakcodec_decoder_get_image_sequence_index(std::ptr::null()) },
+			OAKCODEC_E_INVALID as i64
+		);
+		assert_eq!(
+			unsafe {
+				oakcodec_decoder_transform_image_sequence_file_name(
+					std::ptr::null(),
+					1,
+					buf.as_mut_ptr(),
+					128,
+				)
+			},
+			OAKCODEC_E_INVALID
+		);
 	}
 
 	#[test]
@@ -1247,7 +1307,10 @@ mod tests {
 		assert_eq!(rc, crate::error::OAKCODEC_E_NOT_FOUND);
 		let mut err = [0i8; 256];
 		unsafe { oakcodec_decoder_last_error(h, err.as_mut_ptr(), 256) };
-		assert_eq!(crate::ffi::c_str(err.as_ptr()).as_deref(), Some("file not found: /missing/file.mp4"));
+		assert_eq!(
+			crate::ffi::c_str(err.as_ptr()).as_deref(),
+			Some("file not found: /missing/file.mp4")
+		);
 
 		// Empty handle -> E_INVALID and empty last_error.
 		let empty = CHandle::null();

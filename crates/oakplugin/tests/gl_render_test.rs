@@ -31,7 +31,7 @@ mod common;
 use std::ffi::{c_char, c_void, CString};
 
 use oakplugin::ffi::{
-	oakplugin_host_set_message_handler, oakplugin_host_scan, oakplugin_instance_create,
+	oakplugin_host_scan, oakplugin_host_set_message_handler, oakplugin_instance_create,
 	oakplugin_instance_free, oakplugin_instance_render_begin_sequence,
 	oakplugin_instance_render_end_sequence, oakplugin_instance_render_job,
 };
@@ -76,11 +76,16 @@ fn gl_suite() -> Option<&'static GlRenderSuiteV1> {
 }
 
 /// 构造一个带输入纹理的 Source clip（实例期 clip 句柄）。
-fn source_clip_handle(tex: CHandle) -> (*mut c_void, std::sync::Arc<oakplugin::clip::ClipInstance>) {
+fn source_clip_handle(
+	tex: CHandle,
+) -> (*mut c_void, std::sync::Arc<oakplugin::clip::ClipInstance>) {
 	let desc = oakplugin::descriptor::ClipDescriptor::new("Source");
 	let clip = std::sync::Arc::new(oakplugin::clip::ClipInstance::from_descriptor(&desc));
 	clip.set_input_texture(tex, 0.0);
-	let h = tag::make(&clip.props as *const oakplugin::property::PropertySet, tag::CLIP);
+	let h = tag::make(
+		&clip.props as *const oakplugin::property::PropertySet,
+		tag::CLIP,
+	);
 	(h, clip)
 }
 
@@ -139,49 +144,95 @@ fn clip_load_texture_roundtrip() {
 		let before = stub::gl_texture_ids();
 		let mut tex: *mut c_void = std::ptr::null_mut();
 		unsafe {
-			assert_eq!((suite.clip_load_texture)(clip_h, 0.0, std::ptr::null(), std::ptr::null(), &mut tex), 0);
+			assert_eq!(
+				(suite.clip_load_texture)(
+					clip_h,
+					0.0,
+					std::ptr::null(),
+					std::ptr::null(),
+					&mut tex
+				),
+				0
+			);
 		}
 		assert!(!tex.is_null(), "应返回纹理属性集句柄");
 		let props = unsafe { &*(tag::strip(tex) as *const oakplugin::property::PropertySet) };
 		let idx = tex_int(props, "OfxImageEffectPropOpenGLTextureIndex").expect("texture index");
 		assert!(idx > 0, "新建纹理 id 为正：{idx}");
-		assert_eq!(tex_int(props, "OfxImageEffectPropOpenGLTextureTarget"), Some(0x0DE1), "GL_TEXTURE_2D");
-		assert_eq!(tex_string(props, "OfxImageEffectPropPixelDepth").as_deref(), Some("OfxBitDepthFloat"));
-		assert_eq!(tex_string(props, "OfxImageEffectPropComponents").as_deref(), Some("OfxImageComponentRGBA"));
+		assert_eq!(
+			tex_int(props, "OfxImageEffectPropOpenGLTextureTarget"),
+			Some(0x0DE1),
+			"GL_TEXTURE_2D"
+		);
+		assert_eq!(
+			tex_string(props, "OfxImageEffectPropPixelDepth").as_deref(),
+			Some("OfxBitDepthFloat")
+		);
+		assert_eq!(
+			tex_string(props, "OfxImageEffectPropComponents").as_deref(),
+			Some("OfxImageComponentRGBA")
+		);
 		assert!(props.get("OfxImagePropBounds", 0).is_some(), "Bounds");
 		assert!(props.get("OfxImagePropRowBytes", 0).is_some(), "RowBytes");
-		assert!(props.get("OfxImagePropUniqueIdentifier", 0).is_some(), "UniqueIdentifier");
+		assert!(
+			props.get("OfxImagePropUniqueIdentifier", 0).is_some(),
+			"UniqueIdentifier"
+		);
 		// 注册表新增一个纹理。
 		let after = stub::gl_texture_ids();
 		assert_eq!(after.len(), before.len() + 1, "clipLoadTexture 建新纹理");
 		assert!(after.contains(&idx), "新纹理 id 在注册表");
 
 		// clipFreeTexture：删输入纹理。
-		unsafe { assert_eq!((suite.clip_free_texture)(tex), 0); }
+		unsafe {
+			assert_eq!((suite.clip_free_texture)(tex), 0);
+		}
 		assert!(!stub::gl_texture_ids().contains(&idx), "输入纹理已删除");
 		// 重复释放 → BadHandle。
-		unsafe { assert_eq!((suite.clip_free_texture)(tex), status::ERR_BAD_HANDLE); }
+		unsafe {
+			assert_eq!((suite.clip_free_texture)(tex), status::ERR_BAD_HANDLE);
+		}
 
 		// Output clip：返回附着输出纹理；free 不删纹理（宿主读）。
 		let mut out: *mut c_void = std::ptr::null_mut();
-		let out_clip_instance =
-			oakplugin::clip::ClipInstance::from_descriptor(&oakplugin::descriptor::ClipDescriptor::new("Output"));
+		let out_clip_instance = oakplugin::clip::ClipInstance::from_descriptor(
+			&oakplugin::descriptor::ClipDescriptor::new("Output"),
+		);
 		let out_clip = tag::make(
 			&out_clip_instance.props as *const oakplugin::property::PropertySet,
 			tag::CLIP,
 		);
 		unsafe {
-			assert_eq!((suite.clip_load_texture)(out_clip, 0.0, std::ptr::null(), std::ptr::null(), &mut out), 0);
+			assert_eq!(
+				(suite.clip_load_texture)(
+					out_clip,
+					0.0,
+					std::ptr::null(),
+					std::ptr::null(),
+					&mut out
+				),
+				0
+			);
 		}
 		assert!(!out.is_null());
 		let props = unsafe { &*(tag::strip(out) as *const oakplugin::property::PropertySet) };
 		let dst_id = tex_int(props, "OfxImageEffectPropOpenGLTextureIndex").unwrap();
-		assert!(stub::gl_texture_ids().contains(&dst_id), "输出纹理 id 来自附着目标");
-		unsafe { assert_eq!((suite.clip_free_texture)(out), 0); }
-		assert!(stub::gl_texture_ids().contains(&dst_id), "Output free 不删纹理");
+		assert!(
+			stub::gl_texture_ids().contains(&dst_id),
+			"输出纹理 id 来自附着目标"
+		);
+		unsafe {
+			assert_eq!((suite.clip_free_texture)(out), 0);
+		}
+		assert!(
+			stub::gl_texture_ids().contains(&dst_id),
+			"Output free 不删纹理"
+		);
 
 		// flushResources：无宿主缓存 → ReplyDefault。
-		unsafe { assert_eq!((suite.flush_resources)(), status::REPLY_DEFAULT); }
+		unsafe {
+			assert_eq!((suite.flush_resources)(), status::REPLY_DEFAULT);
+		}
 
 		clear_ctxs();
 	});
@@ -205,31 +256,81 @@ fn clip_load_texture_error_paths() {
 		let (clip_h, _clip) = source_clip_handle(src);
 		let mut tex: *mut c_void = std::ptr::null_mut();
 		unsafe {
-			assert_eq!((suite.clip_load_texture)(clip_h, 0.0, std::ptr::null(), std::ptr::null(), &mut tex), status::ERR_MISSING_HOST_FEATURE);
+			assert_eq!(
+				(suite.clip_load_texture)(
+					clip_h,
+					0.0,
+					std::ptr::null(),
+					std::ptr::null(),
+					&mut tex
+				),
+				status::ERR_MISSING_HOST_FEATURE
+			);
 			// 空 out → BadHandle；空 clip → BadHandle。
-			assert_eq!((suite.clip_load_texture)(clip_h, 0.0, std::ptr::null(), std::ptr::null(), std::ptr::null_mut()), status::ERR_BAD_HANDLE);
-			assert_eq!((suite.clip_load_texture)(std::ptr::null_mut(), 0.0, std::ptr::null(), std::ptr::null(), &mut tex), status::ERR_BAD_HANDLE);
+			assert_eq!(
+				(suite.clip_load_texture)(
+					clip_h,
+					0.0,
+					std::ptr::null(),
+					std::ptr::null(),
+					std::ptr::null_mut()
+				),
+				status::ERR_BAD_HANDLE
+			);
+			assert_eq!(
+				(suite.clip_load_texture)(
+					std::ptr::null_mut(),
+					0.0,
+					std::ptr::null(),
+					std::ptr::null(),
+					&mut tex
+				),
+				status::ERR_BAD_HANDLE
+			);
 			// clipFreeTexture 空句柄 → BadHandle。
-			assert_eq!((suite.clip_free_texture)(std::ptr::null_mut()), status::ERR_BAD_HANDLE);
+			assert_eq!(
+				(suite.clip_free_texture)(std::ptr::null_mut()),
+				status::ERR_BAD_HANDLE
+			);
 		}
 
 		// 有 GL 上下文后：子区域（Phase 2 不支持）→ Failed。
 		inject_gl_ctx(renderer, dst);
-		let region = oakplugin::instance::OfxRectD { x1: 0.0, y1: 0.0, x2: 2.0, y2: 2.0 };
+		let region = oakplugin::instance::OfxRectD {
+			x1: 0.0,
+			y1: 0.0,
+			x2: 2.0,
+			y2: 2.0,
+		};
 		unsafe {
-			assert_eq!((suite.clip_load_texture)(clip_h, 0.0, std::ptr::null(), &region as *const _ as *const c_void, &mut tex), status::FAILED);
+			assert_eq!(
+				(suite.clip_load_texture)(
+					clip_h,
+					0.0,
+					std::ptr::null(),
+					&region as *const _ as *const c_void,
+					&mut tex
+				),
+				status::FAILED
+			);
 		}
 
 		// 请求分量不匹配（RGBA 输入 + GLFormatRGB）→ Failed。
 		let fmt = cs("OfxImageEffectGLFormatRGB");
 		unsafe {
-			assert_eq!((suite.clip_load_texture)(clip_h, 0.0, fmt.as_ptr(), std::ptr::null(), &mut tex), status::FAILED);
+			assert_eq!(
+				(suite.clip_load_texture)(clip_h, 0.0, fmt.as_ptr(), std::ptr::null(), &mut tex),
+				status::FAILED
+			);
 		}
 
 		// 匹配请求（GLFormatRGBA）→ OK。
 		let fmt = cs("OfxImageEffectGLFormatRGBA");
 		unsafe {
-			assert_eq!((suite.clip_load_texture)(clip_h, 0.0, fmt.as_ptr(), std::ptr::null(), &mut tex), 0);
+			assert_eq!(
+				(suite.clip_load_texture)(clip_h, 0.0, fmt.as_ptr(), std::ptr::null(), &mut tex),
+				0
+			);
 			assert_eq!((suite.clip_free_texture)(tex), 0);
 		}
 		clear_ctxs();
@@ -249,7 +350,16 @@ fn gl_path_graceful_without_gpu() {
 		let mut tex: *mut c_void = std::ptr::null_mut();
 		unsafe {
 			// 无 GL 上下文 → MissingHostFeature（规范语义）。
-			assert_eq!((suite.clip_load_texture)(clip_h, 0.0, std::ptr::null(), std::ptr::null(), &mut tex), status::ERR_MISSING_HOST_FEATURE);
+			assert_eq!(
+				(suite.clip_load_texture)(
+					clip_h,
+					0.0,
+					std::ptr::null(),
+					std::ptr::null(),
+					&mut tex
+				),
+				status::ERR_MISSING_HOST_FEATURE
+			);
 			// flushResources → ReplyDefault。
 			assert_eq!((suite.flush_resources)(), status::REPLY_DEFAULT);
 		}
@@ -289,10 +399,7 @@ fn gl_render_path_drives_plugin() {
 				0
 			}
 			unsafe {
-				oakplugin_host_set_message_handler(
-					Some(capture),
-					&*cap as *const _ as *mut c_void,
-				)
+				oakplugin_host_set_message_handler(Some(capture), &*cap as *const _ as *mut c_void)
 			};
 		}
 
@@ -303,7 +410,10 @@ fn gl_render_path_drives_plugin() {
 		let src = stub::make_gl_texture(2, 2, oakplugin::bridge::render::PIXEL_FORMAT_F32);
 
 		// begin → job → end（序列括号）。
-		assert_eq!(unsafe { oakplugin_instance_render_begin_sequence(h, 0.0, 1.0, 0) }, OK);
+		assert_eq!(
+			unsafe { oakplugin_instance_render_begin_sequence(h, 0.0, 1.0, 0) },
+			OK
+		);
 		let r = unsafe {
 			oakplugin_instance_render_job(
 				h,
@@ -321,15 +431,24 @@ fn gl_render_path_drives_plugin() {
 			)
 		};
 		assert_eq!(r, OK, "GL render_job 应成功");
-		assert_eq!(unsafe { oakplugin_instance_render_end_sequence(h, 0.0, 1.0, 0) }, OK);
+		assert_eq!(
+			unsafe { oakplugin_instance_render_end_sequence(h, 0.0, 1.0, 0) },
+			OK
+		);
 
 		// 插件上报：attach/detach 配对、Source 纹理索引、Output 纹理索引。
 		let msgs = captured.lock().unwrap_or_else(|e| e.into_inner()).clone();
 		let joined = msgs.join("|");
 		assert!(joined.contains("gl-attached"), "attach 应调用：{joined}");
 		assert!(joined.contains("gl-detached"), "detach 应调用：{joined}");
-		assert!(joined.contains("gl-source-index="), "Source 纹理索引：{joined}");
-		assert!(joined.contains("gl-output-index="), "Output 纹理索引：{joined}");
+		assert!(
+			joined.contains("gl-source-index="),
+			"Source 纹理索引：{joined}"
+		);
+		assert!(
+			joined.contains("gl-output-index="),
+			"Output 纹理索引：{joined}"
+		);
 
 		unsafe { oakplugin_instance_free(&mut h) };
 		unsafe { oakplugin_host_set_message_handler(None, std::ptr::null_mut()) };

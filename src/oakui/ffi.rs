@@ -222,7 +222,11 @@ unsafe extern "C" {
 	/// `oakengine_encoding_format_count` — number of export formats.
 	pub fn oakengine_encoding_format_count() -> c_int;
 	/// `oakengine_encoding_format_name` (buf/size; -1 invalid).
-	pub fn oakengine_encoding_format_name(format: c_int, buf: *mut c_char, buf_size: c_int) -> c_int;
+	pub fn oakengine_encoding_format_name(
+		format: c_int,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int;
 	/// `oakengine_encoding_format_extension` (buf/size).
 	pub fn oakengine_encoding_format_extension(
 		format: c_int,
@@ -273,7 +277,11 @@ unsafe extern "C" {
 
 	/// `oakengine_config_get_string` — read a config string; a missing key
 	/// reads as an empty string.
-	pub fn oakengine_config_get_string(key: *const c_char, buf: *mut c_char, buf_size: c_int) -> c_int;
+	pub fn oakengine_config_get_string(
+		key: *const c_char,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int;
 	/// `oakengine_config_set_string` — write a string value.
 	pub fn oakengine_config_set_string(key: *const c_char, value: *const c_char) -> c_int;
 
@@ -336,14 +344,21 @@ unsafe extern "C" {
 		index: c_int,
 	) -> *mut OakEngineSequence;
 	/// `oakengine_project_set_filename`.
-	pub fn oakengine_project_set_filename(self_: *mut OakEngineProject, path: *const c_char) -> c_int;
+	pub fn oakengine_project_set_filename(
+		self_: *mut OakEngineProject,
+		path: *const c_char,
+	) -> c_int;
 	/// `oakengine_project_node_count` — parseable content check.
 	pub fn oakengine_project_node_count(self_: *const OakEngineProject) -> c_int;
 
 	// -- oakengine::task --
 
 	/// `oakengine_task_error` (buf/size).
-	pub fn oakengine_task_error(task: *mut OakEngineTask, buf: *mut c_char, buf_size: c_int) -> c_int;
+	pub fn oakengine_task_error(
+		task: *mut OakEngineTask,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int;
 	/// `oakengine_task_cancel` — set the task's cancel atom.
 	pub fn oakengine_task_cancel(task: *mut OakEngineTask) -> c_int;
 	/// `oakengine_task_start_sync` — run the task to completion.
@@ -379,7 +394,10 @@ unsafe extern "C" {
 		buf_size: c_int,
 	) -> c_int;
 	/// `oakengine_sequence_get_length` — length in seconds.
-	pub fn oakengine_sequence_get_length(self_: *const OakEngineSequence, seconds: *mut f64) -> c_int;
+	pub fn oakengine_sequence_get_length(
+		self_: *const OakEngineSequence,
+		seconds: *mut f64,
+	) -> c_int;
 	/// `oakengine_sequence_get_frame_rate` — num/den rational.
 	pub fn oakengine_sequence_get_frame_rate(
 		self_: *const OakEngineSequence,
@@ -434,6 +452,15 @@ unsafe extern "C" {
 		track_index: c_int,
 		clip_index: c_int,
 		time: i64,
+	) -> c_int;
+	/// `oakengine_sequence_move_clip` — move the clip so its in point becomes
+	/// `new_in` on the same track.
+	pub fn oakengine_sequence_move_clip(
+		seq: *mut OakEngineSequence,
+		track_type: c_int,
+		track_index: c_int,
+		clip_index: c_int,
+		new_in: i64,
 	) -> c_int;
 	/// `oakengine_sequence_ripple_delete_clip`.
 	pub fn oakengine_sequence_ripple_delete_clip(
@@ -508,10 +535,7 @@ unsafe extern "C" {
 	/// `oakengine_node_is_enabled` — 1/0 (the stack's enable switch).
 	pub fn oakengine_node_is_enabled(self_: *const OakEngineNode) -> c_int;
 	/// `oakengine_node_effect_set_enabled` — undoable enable toggle.
-	pub fn oakengine_node_effect_set_enabled(
-		self_: *mut OakEngineNode,
-		enabled: c_int,
-	) -> c_int;
+	pub fn oakengine_node_effect_set_enabled(self_: *mut OakEngineNode, enabled: c_int) -> c_int;
 	/// `oakengine_node_effect_insert` — undoable insert at `index`
 	/// (0 = closest to the source; clamped to the ends).
 	pub fn oakengine_node_effect_insert(
@@ -557,11 +581,7 @@ unsafe extern "C" {
 	pub fn oakengine_node_factory_id_count() -> c_int;
 	/// `oakengine_node_factory_id_at` — type id at `index` (buf/size;
 	/// negative error out of range).
-	pub fn oakengine_node_factory_id_at(
-		index: c_int,
-		buf: *mut c_char,
-		buf_size: c_int,
-	) -> c_int;
+	pub fn oakengine_node_factory_id_at(index: c_int, buf: *mut c_char, buf_size: c_int) -> c_int;
 	/// `oakengine_node_factory_name_from_id` — display name (buf/size).
 	pub fn oakengine_node_factory_name_from_id(
 		type_id: *const c_char,

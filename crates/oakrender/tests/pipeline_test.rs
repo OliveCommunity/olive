@@ -34,21 +34,16 @@ use oakrender::texture::{Frame, Texture};
 #[test]
 fn cpu_path_stays_f32_unclamped() {
 	// The ticket producer renders the pipeline frame: F32 RGBA.
-	let frame = oakrender::eval::generate_frame(
-		Rational::new(0, 1),
-		(16, 16),
-		PixelFormat::F32,
-	)
-	.unwrap();
+	let frame =
+		oakrender::eval::generate_frame(Rational::new(0, 1), (16, 16), PixelFormat::F32).unwrap();
 	assert_eq!(frame.format, PixelFormat::F32);
 	assert_eq!(frame.channels, 4);
 
 	// Write out-of-range HDR values and round-trip through a CPU texture.
 	let mut frame = frame;
 	let n = frame.pixel_count();
-	let f32s: &mut [f32] = unsafe {
-		std::slice::from_raw_parts_mut(frame.data.as_mut_ptr() as *mut f32, n * 4)
-	};
+	let f32s: &mut [f32] =
+		unsafe { std::slice::from_raw_parts_mut(frame.data.as_mut_ptr() as *mut f32, n * 4) };
 	f32s[0] = 2.5; // > 1.0 highlight
 	f32s[1] = -0.5; // < 0.0 shadow
 	f32s[2] = 1.0;
@@ -56,9 +51,8 @@ fn cpu_path_stays_f32_unclamped() {
 
 	let tex = Texture::wrap_frame(frame);
 	let back = tex.to_frame().unwrap();
-	let back_f32: &[f32] = unsafe {
-		std::slice::from_raw_parts(back.data.as_ptr() as *const f32, n * 4)
-	};
+	let back_f32: &[f32] =
+		unsafe { std::slice::from_raw_parts(back.data.as_ptr() as *const f32, n * 4) };
 	assert_eq!(back_f32[0], 2.5, "no clamping of HDR values");
 	assert_eq!(back_f32[1], -0.5, "no clamping of sub-black values");
 	assert_eq!(back_f32[2], 1.0);
@@ -89,7 +83,9 @@ fn blit_applies_ocio_in_float() {
 
 	// 18% grey (0.18) scene linear; the transform must change it and keep
 	// alpha untouched (float math end to end).
-	let Texture::Cpu(sf) = &mut src else { unreachable!() };
+	let Texture::Cpu(sf) = &mut src else {
+		unreachable!()
+	};
 	let f32s: &mut [f32] = unsafe {
 		std::slice::from_raw_parts_mut(sf.data.as_mut_ptr() as *mut f32, sf.pixel_count() * 4)
 	};
@@ -103,10 +99,11 @@ fn blit_applies_ocio_in_float() {
 	renderer
 		.blit_color_managed(Some(&src), &mut dst, Some(&processor))
 		.unwrap();
-	let Texture::Cpu(df) = &dst else { unreachable!() };
-	let out: &[f32] = unsafe {
-		std::slice::from_raw_parts(df.data.as_ptr() as *const f32, df.pixel_count() * 4)
+	let Texture::Cpu(df) = &dst else {
+		unreachable!()
 	};
+	let out: &[f32] =
+		unsafe { std::slice::from_raw_parts(df.data.as_ptr() as *const f32, df.pixel_count() * 4) };
 	assert!(
 		(out[0] - 0.18).abs() > 1e-4,
 		"the OCIO transform must actually change the pixel (got {})",
@@ -234,23 +231,41 @@ fn ffi_display_renderer_texture_success_paths() {
 			pod.width = 4;
 			pod.height = 4;
 			pod.format = 4;
-			assert_eq!(ffi::renderer::oakrender_codec_frame_set_video_params(frame, &pod), OAKRENDER_OK);
-			assert_eq!(ffi::renderer::oakrender_codec_frame_allocate(frame), OAKRENDER_OK);
+			assert_eq!(
+				ffi::renderer::oakrender_codec_frame_set_video_params(frame, &pod),
+				OAKRENDER_OK
+			);
+			assert_eq!(
+				ffi::renderer::oakrender_codec_frame_allocate(frame),
+				OAKRENDER_OK
+			);
 			assert_eq!(ffi::renderer::oakrender_codec_frame_is_allocated(frame), 1);
 			assert_eq!(ffi::renderer::oakrender_codec_frame_width(frame), 4);
-			assert_eq!(ffi::renderer::oakrender_codec_frame_linesize_bytes(frame), 4 * 4 * 4);
+			assert_eq!(
+				ffi::renderer::oakrender_codec_frame_linesize_bytes(frame),
+				4 * 4 * 4
+			);
 			assert!(!ffi::renderer::oakrender_codec_frame_data(frame).is_null());
 			// Fill 0.18 grey.
 			let data = ffi::renderer::oakrender_codec_frame_data(frame) as *mut f32;
 			for i in 0..(4 * 4 * 4) {
 				*data.add(i) = 0.18;
 			}
-			assert_eq!(ffi::color::oakrender_color_processor_convert_frame(proc, frame), OAKRENDER_OK);
+			assert_eq!(
+				ffi::color::oakrender_color_processor_convert_frame(proc, frame),
+				OAKRENDER_OK
+			);
 			let first = *data;
-			assert!((first - 0.18).abs() > 1e-4, "convert_frame applied in place");
+			assert!(
+				(first - 0.18).abs() > 1e-4,
+				"convert_frame applied in place"
+			);
 			// Error path: empty processor handle.
 			assert_eq!(
-				ffi::color::oakrender_color_processor_convert_frame(ffi::OakColorProcessor::null(), frame),
+				ffi::color::oakrender_color_processor_convert_frame(
+					ffi::OakColorProcessor::null(),
+					frame
+				),
 				-70001
 			);
 			let mut frame = frame;
@@ -265,7 +280,10 @@ fn ffi_display_renderer_texture_success_paths() {
 		let rc = ffi::renderer::oakrender_display_renderer_init(renderer, std::ptr::null_mut());
 		let is_open_gl = ffi::renderer::oakrender_display_renderer_is_open_gl(renderer);
 		let is_vulkan = ffi::renderer::oakrender_display_renderer_is_vulkan(renderer);
-		assert!(is_open_gl == 1 || rc == -70003, "GL renderer reports GL or init failed headless");
+		assert!(
+			is_open_gl == 1 || rc == -70003,
+			"GL renderer reports GL or init failed headless"
+		);
 		assert_eq!(is_vulkan, 0);
 
 		let mut vp = std::mem::zeroed::<ffi::OakRenderVideoParams>();
@@ -276,9 +294,8 @@ fn ffi_display_renderer_texture_success_paths() {
 		vp.pixel_aspect_den = 1;
 		vp.divider = 1;
 
-		let tex = ffi::renderer::oakrender_display_texture_create(
-			renderer, &vp, std::ptr::null(), 0,
-		);
+		let tex =
+			ffi::renderer::oakrender_display_texture_create(renderer, &vp, std::ptr::null(), 0);
 		assert!(!tex.is_null(), "texture created (GPU or CPU path)");
 		assert_eq!(ffi::renderer::oakrender_display_texture_is_dummy(tex), 0);
 
@@ -292,26 +309,40 @@ fn ffi_display_renderer_texture_success_paths() {
 			px[3] = 255;
 		}
 		assert_eq!(
-			ffi::renderer::oakrender_display_texture_upload(tex, pixels.as_ptr() as *const std::ffi::c_void, linesize),
+			ffi::renderer::oakrender_display_texture_upload(
+				tex,
+				pixels.as_ptr() as *const std::ffi::c_void,
+				linesize
+			),
 			OAKRENDER_OK
 		);
 		let mut back = vec![0u8; linesize as usize * 4];
 		assert_eq!(
-			ffi::renderer::oakrender_display_texture_download(tex, back.as_mut_ptr() as *mut std::ffi::c_void, linesize),
+			ffi::renderer::oakrender_display_texture_download(
+				tex,
+				back.as_mut_ptr() as *mut std::ffi::c_void,
+				linesize
+			),
 			OAKRENDER_OK
 		);
 		assert_eq!(back, pixels, "upload/download round-trip");
 
 		// get_params returns the pod.
 		let mut out = std::mem::zeroed::<ffi::OakRenderVideoParams>();
-		assert_eq!(ffi::renderer::oakrender_display_texture_get_params(tex, &mut out), OAKRENDER_OK);
+		assert_eq!(
+			ffi::renderer::oakrender_display_texture_get_params(tex, &mut out),
+			OAKRENDER_OK
+		);
 		assert_eq!(out.width, 8);
 		assert_eq!(out.height, 4);
 		assert_eq!(out.format, 4);
 
 		// get_frame returns an owned frame handle.
 		let mut frame_h = ffi::OakCodecFrame::null();
-		assert_eq!(ffi::renderer::oakrender_display_texture_get_frame(tex, &mut frame_h), OAKRENDER_OK);
+		assert_eq!(
+			ffi::renderer::oakrender_display_texture_get_frame(tex, &mut frame_h),
+			OAKRENDER_OK
+		);
 		assert!(!frame_h.is_null());
 		assert_eq!(ffi::renderer::oakrender_codec_frame_width(frame_h), 8);
 		let mut frame_h = frame_h;
@@ -362,23 +393,31 @@ fn ffi_blit_color_managed_success() {
 		vp.width = 4;
 		vp.height = 4;
 		vp.format = 4;
-		let src = ffi::renderer::oakrender_display_texture_create(renderer, &vp, std::ptr::null(), 0);
-		let dst = ffi::renderer::oakrender_display_texture_create(renderer, &vp, std::ptr::null(), 0);
+		let src =
+			ffi::renderer::oakrender_display_texture_create(renderer, &vp, std::ptr::null(), 0);
+		let dst =
+			ffi::renderer::oakrender_display_texture_create(renderer, &vp, std::ptr::null(), 0);
 		assert!(!src.is_null() && !dst.is_null());
 
 		// Fill source with 0.18 grey.
 		let linesize: i32 = 4 * 4 * 4;
 		let mut pixels = vec![0u8; linesize as usize * 4];
-		let f32s: &mut [f32] = unsafe {
-			std::slice::from_raw_parts_mut(pixels.as_mut_ptr() as *mut f32, 4 * 4 * 4)
-		};
+		let f32s: &mut [f32] =
+			unsafe { std::slice::from_raw_parts_mut(pixels.as_mut_ptr() as *mut f32, 4 * 4 * 4) };
 		for px in f32s.chunks_exact_mut(4) {
 			px[0] = 0.18;
 			px[1] = 0.18;
 			px[2] = 0.18;
 			px[3] = 1.0;
 		}
-		assert_eq!(ffi::renderer::oakrender_display_texture_upload(src, pixels.as_ptr() as *const std::ffi::c_void, linesize), OAKRENDER_OK);
+		assert_eq!(
+			ffi::renderer::oakrender_display_texture_upload(
+				src,
+				pixels.as_ptr() as *const std::ffi::c_void,
+				linesize
+			),
+			OAKRENDER_OK
+		);
 
 		let job = ffi::OakColorTransformJob {
 			processor: proc.ctx as *const std::ffi::c_void,
@@ -390,15 +429,26 @@ fn ffi_blit_color_managed_success() {
 			crop_matrix: [0.0; 16],
 		};
 		assert_eq!(
-			ffi::renderer::oakrender_display_renderer_blit_color_managed(renderer, &job, dst, std::ptr::null()),
+			ffi::renderer::oakrender_display_renderer_blit_color_managed(
+				renderer,
+				&job,
+				dst,
+				std::ptr::null()
+			),
 			OAKRENDER_OK
 		);
 		// The blit applied the OCIO transform in float.
 		let mut back = vec![0u8; linesize as usize * 4];
-		assert_eq!(ffi::renderer::oakrender_display_texture_download(dst, back.as_mut_ptr() as *mut std::ffi::c_void, linesize), OAKRENDER_OK);
-		let out_f32: &[f32] = unsafe {
-			std::slice::from_raw_parts(back.as_ptr() as *const f32, 4 * 4 * 4)
-		};
+		assert_eq!(
+			ffi::renderer::oakrender_display_texture_download(
+				dst,
+				back.as_mut_ptr() as *mut std::ffi::c_void,
+				linesize
+			),
+			OAKRENDER_OK
+		);
+		let out_f32: &[f32] =
+			unsafe { std::slice::from_raw_parts(back.as_ptr() as *const f32, 4 * 4 * 4) };
 		assert!(
 			(out_f32[0] - 0.18).abs() > 1e-4,
 			"blit applies the color transform (got {})",
@@ -408,7 +458,12 @@ fn ffi_blit_color_managed_success() {
 
 		// Error paths.
 		assert_eq!(
-			ffi::renderer::oakrender_display_renderer_blit_color_managed(renderer, std::ptr::null(), dst, std::ptr::null()),
+			ffi::renderer::oakrender_display_renderer_blit_color_managed(
+				renderer,
+				std::ptr::null(),
+				dst,
+				std::ptr::null()
+			),
 			-70001
 		);
 

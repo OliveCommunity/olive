@@ -23,9 +23,9 @@
 //! pixel-format math lives here.
 
 use crate::bridge::common::{
-	oakcommon_videoparams_free, oakcommon_videoparams_get_format,
-	oakcommon_videoparams_get_height, oakcommon_videoparams_get_is_valid,
-	oakcommon_videoparams_get_width, oakcommon_videoparams_init, OakVideoParams,
+	oakcommon_videoparams_free, oakcommon_videoparams_get_format, oakcommon_videoparams_get_height,
+	oakcommon_videoparams_get_is_valid, oakcommon_videoparams_get_width,
+	oakcommon_videoparams_init, OakVideoParams,
 };
 use oakcore_rs::{PixelFormat, Rational};
 
@@ -166,9 +166,8 @@ impl Frame {
 		self.linesize_bytes = match &self.params {
 			Some(p) => {
 				let w = unsafe { oakcommon_videoparams_get_width(p.clone()) };
-				let fmt = pixel_format_from_i32(unsafe {
-					oakcommon_videoparams_get_format(p.clone())
-				});
+				let fmt =
+					pixel_format_from_i32(unsafe { oakcommon_videoparams_get_format(p.clone()) });
 				Self::generate_linesize_bytes(fmt, w)
 			}
 			None => 0,
@@ -194,9 +193,7 @@ impl Frame {
 
 		let width = unsafe { oakcommon_videoparams_get_width(params.clone()) };
 		let height = unsafe { oakcommon_videoparams_get_height(params.clone()) };
-		let format = pixel_format_from_i32(unsafe {
-			oakcommon_videoparams_get_format(params)
-		});
+		let format = pixel_format_from_i32(unsafe { oakcommon_videoparams_get_format(params) });
 
 		let linesize = Self::generate_linesize_bytes(format, width);
 		let size = (linesize as usize).wrapping_mul(height as usize);
@@ -399,7 +396,10 @@ mod tests {
 	fn linesize_is_32_byte_aligned_for_u8() {
 		// U8 RGBA: 4 bytes/pixel, width rounded up to a 32-byte boundary.
 		assert_eq!(Frame::generate_linesize_bytes(PixelFormat::U8, 9), 4 * 32);
-		assert_eq!(Frame::generate_linesize_bytes(PixelFormat::U8, 100), 4 * 128);
+		assert_eq!(
+			Frame::generate_linesize_bytes(PixelFormat::U8, 100),
+			4 * 128
+		);
 		assert_eq!(Frame::generate_linesize_bytes(PixelFormat::U8, 0), 0);
 	}
 

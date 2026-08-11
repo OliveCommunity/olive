@@ -127,13 +127,15 @@ pub struct Instance {
 /// （RefBox 归零时 Drop 触发——action 通知必须在对象析构前发出。）
 impl Drop for Instance {
 	fn drop(&mut self) {
-		if !self.destroyed.swap(true, std::sync::atomic::Ordering::Relaxed) {
+		if !self
+			.destroyed
+			.swap(true, std::sync::atomic::Ordering::Relaxed)
+		{
 			self.notify_destroy();
 		}
 		crate::suites::param::unregister_params_of(&self.props as *const _ as usize);
-		crate::host::instance_registry().unregister(
-			&self.props as *const crate::property::PropertySet as usize,
-		);
+		crate::host::instance_registry()
+			.unregister(&self.props as *const crate::property::PropertySet as usize);
 	}
 }
 
@@ -176,11 +178,7 @@ impl Instance {
 
 	/// 是否处于编辑事务内（param 桥回写据此决定打包成 multi）。
 	pub fn in_edit(&self) -> bool {
-		self.edit
-			.lock()
-			.unwrap_or_else(|e| e.into_inner())
-			.depth
-			> 0
+		self.edit.lock().unwrap_or_else(|e| e.into_inner()).depth > 0
 	}
 
 	/// 事务感知的 undo 提交（param 桥回写用；对应 C++
@@ -226,12 +224,12 @@ impl Instance {
 	/// 4. 回灌：per-clip 分量/位深/像素比写回 clip 实例属性，
 	///    输出帧率/fielding/premult 记入实例（HS:1721-1740）。
 	pub fn get_clip_preferences(&self) -> crate::error::Result<ClipPreferences> {
-		use crate::property::Value;
 		use crate::host::{
 			ACTION_GET_CLIP_PREFERENCES, CLIP_PREF_COMPONENTS, CLIP_PREF_DEPTH, CLIP_PREF_PAR,
 			PROP_CONTINUOUS_SAMPLES, PROP_FIELD_ORDER, PROP_FRAME_RATE, PROP_FRAME_VARYING,
 			PROP_PREMULT,
 		};
+		use crate::property::Value;
 
 		// 1. clipPrefsStuffs（HS:1697-1706 的默认值）。
 		let out = PropertySet::new();
@@ -243,9 +241,18 @@ impl Instance {
 
 		// 2. per-clip 预置（HS:1717-1727；phase 1 全链路 F32+RGBA）。
 		for clip in &self.clips {
-			out.set_one(&crate::host::clip_pref_prop(CLIP_PREF_COMPONENTS, &clip.name), Value::String(CString::new("OfxImageComponentRGBA").unwrap()));
-			out.set_one(&crate::host::clip_pref_prop(CLIP_PREF_DEPTH, &clip.name), Value::String(CString::new("OfxBitDepthFloat").unwrap()));
-			out.set_one(&crate::host::clip_pref_prop(CLIP_PREF_PAR, &clip.name), Value::Double(1.0));
+			out.set_one(
+				&crate::host::clip_pref_prop(CLIP_PREF_COMPONENTS, &clip.name),
+				Value::String(CString::new("OfxImageComponentRGBA").unwrap()),
+			);
+			out.set_one(
+				&crate::host::clip_pref_prop(CLIP_PREF_DEPTH, &clip.name),
+				Value::String(CString::new("OfxBitDepthFloat").unwrap()),
+			);
+			out.set_one(
+				&crate::host::clip_pref_prop(CLIP_PREF_PAR, &clip.name),
+				Value::Double(1.0),
+			);
 		}
 
 		// 3. action。
@@ -301,10 +308,8 @@ impl Instance {
 				crate::image::K_IMAGE_EFFECT_PROP_PIXEL_DEPTH,
 				Value::String(CString::new(depth.clone()).unwrap()),
 			);
-			clip.props.set_one(
-				"OfxImagePropPixelAspectRatio",
-				Value::Double(par),
-			);
+			clip.props
+				.set_one("OfxImagePropPixelAspectRatio", Value::Double(par));
 			if clip.name == "Output" {
 				output_components = comps;
 				output_bit_depth = depth;
@@ -343,12 +348,15 @@ impl Instance {
 		time: f64,
 		scale: RenderScale,
 	) -> crate::error::Result<OfxRectD> {
-		use crate::property::Value;
 		use crate::host::{ACTION_GET_ROD, PROP_RENDER_SCALE, PROP_ROD, PROP_TIME};
+		use crate::property::Value;
 
 		let in_args = PropertySet::new();
 		in_args.set_one(PROP_TIME, Value::Double(time));
-		in_args.define(PROP_RENDER_SCALE, vec![Value::Double(scale.x), Value::Double(scale.y)]);
+		in_args.define(
+			PROP_RENDER_SCALE,
+			vec![Value::Double(scale.x), Value::Double(scale.y)],
+		);
 		// out args 预定义（HS 行为：宿主先建属性表，插件只管写——
 		// 缺失属性上插件的 propSet 会失败被忽略）。
 		let out = PropertySet::new();
@@ -387,12 +395,15 @@ impl Instance {
 		scale: RenderScale,
 		region: OfxRectD,
 	) -> crate::error::Result<Vec<OfxRectD>> {
-		use crate::property::Value;
 		use crate::host::{ACTION_GET_ROI, PROP_RENDER_SCALE, PROP_ROI, PROP_TIME};
+		use crate::property::Value;
 
 		let in_args = PropertySet::new();
 		in_args.set_one(PROP_TIME, Value::Double(time));
-		in_args.define(PROP_RENDER_SCALE, vec![Value::Double(scale.x), Value::Double(scale.y)]);
+		in_args.define(
+			PROP_RENDER_SCALE,
+			vec![Value::Double(scale.x), Value::Double(scale.y)],
+		);
 		in_args.define(
 			PROP_ROI,
 			vec![
@@ -446,15 +457,18 @@ impl Instance {
 	/// renderWindow + fieldToRender；out args = kOfxImageEffectPropIsIdentity
 	/// （输入 clip 名）+ kOfxPropTime（透传时间，可改）。
 	pub fn is_identity(&self, time: f64) -> crate::error::Result<Option<(f64, String)>> {
-		use crate::property::Value;
 		use crate::host::{
 			ACTION_IS_IDENTITY, PROP_FIELD_TO_RENDER, PROP_IS_IDENTITY, PROP_RENDER_SCALE,
 			PROP_RENDER_WINDOW, PROP_TIME,
 		};
+		use crate::property::Value;
 
 		let in_args = PropertySet::new();
 		in_args.set_one(PROP_TIME, Value::Double(time));
-		in_args.define(PROP_RENDER_SCALE, vec![Value::Double(1.0), Value::Double(1.0)]);
+		in_args.define(
+			PROP_RENDER_SCALE,
+			vec![Value::Double(1.0), Value::Double(1.0)],
+		);
 		in_args.define(
 			PROP_RENDER_WINDOW,
 			vec![
@@ -464,7 +478,10 @@ impl Instance {
 				Value::Double(0.0),
 			],
 		);
-		in_args.set_one(PROP_FIELD_TO_RENDER, Value::String(CString::new("OfxImageFieldBoth").unwrap()));
+		in_args.set_one(
+			PROP_FIELD_TO_RENDER,
+			Value::String(CString::new("OfxImageFieldBoth").unwrap()),
+		);
 		// out args 预定义：IsIdentity（String）+ Time（Double）。
 		let out = PropertySet::new();
 		out.set_one(PROP_IS_IDENTITY, Value::String(CString::new("").unwrap()));
@@ -479,7 +496,9 @@ impl Instance {
 				.call_action(ACTION_IS_IDENTITY, inst_handle, &in_args, &out)
 		};
 		if stat != crate::suites::status::OK && stat != crate::suites::status::REPLY_DEFAULT {
-			return Err(crate::error::Error::Failed(format!("isIdentity 失败：{stat}")));
+			return Err(crate::error::Error::Failed(format!(
+				"isIdentity 失败：{stat}"
+			)));
 		}
 		let identity = out.get(PROP_IS_IDENTITY, 0);
 		match identity {
@@ -500,17 +519,25 @@ impl Instance {
 
 	/// render action 的 in args 组装（CPU/GL 共用；GL 模式加
 	/// kOfxImageEffectPropOpenGLEnabled=1，ofxGPURender.h:117）。
-	fn render_in_args(time: f64, scale: RenderScale, window: OfxRectD, gl_enabled: bool) -> PropertySet {
-		use crate::property::Value;
+	fn render_in_args(
+		time: f64,
+		scale: RenderScale,
+		window: OfxRectD,
+		gl_enabled: bool,
+	) -> PropertySet {
 		use crate::host::{
 			PROP_FIELD_TO_RENDER, PROP_INTERACTIVE_RENDER, PROP_NO_SPATIAL_AWARENESS,
 			PROP_RENDER_QUALITY_DRAFT, PROP_RENDER_SCALE, PROP_RENDER_WINDOW,
 			PROP_SEQUENTIAL_RENDER, PROP_TIME,
 		};
+		use crate::property::Value;
 
 		let in_args = PropertySet::new();
 		in_args.set_one(PROP_TIME, Value::Double(time));
-		in_args.define(PROP_RENDER_SCALE, vec![Value::Double(scale.x), Value::Double(scale.y)]);
+		in_args.define(
+			PROP_RENDER_SCALE,
+			vec![Value::Double(scale.x), Value::Double(scale.y)],
+		);
 		in_args.define(
 			PROP_RENDER_WINDOW,
 			vec![
@@ -520,7 +547,10 @@ impl Instance {
 				Value::Double(window.y2),
 			],
 		);
-		in_args.set_one(PROP_FIELD_TO_RENDER, Value::String(CString::new("OfxImageFieldBoth").unwrap()));
+		in_args.set_one(
+			PROP_FIELD_TO_RENDER,
+			Value::String(CString::new("OfxImageFieldBoth").unwrap()),
+		);
 		in_args.set_one(PROP_SEQUENTIAL_RENDER, Value::Int(0));
 		in_args.set_one(PROP_INTERACTIVE_RENDER, Value::Int(0));
 		in_args.set_one(PROP_RENDER_QUALITY_DRAFT, Value::Int(0));
@@ -561,11 +591,7 @@ impl Instance {
 			.lock()
 			.unwrap_or_else(|e| e.into_inner())
 			.unwrap_or(OfxRangeD { min: 0.0, max: 0.0 });
-		crate::suites::set_render_ctx(Some(crate::suites::RenderCtx {
-			time,
-			scale,
-			range,
-		}));
+		crate::suites::set_render_ctx(Some(crate::suites::RenderCtx { time, scale, range }));
 		crate::suites::set_current_output(Some(output.clone()));
 
 		// 进度报告器（facade 回调 → Progress suite）。
@@ -641,11 +667,7 @@ impl Instance {
 			.lock()
 			.unwrap_or_else(|e| e.into_inner())
 			.unwrap_or(OfxRangeD { min: 0.0, max: 0.0 });
-		crate::suites::set_render_ctx(Some(crate::suites::RenderCtx {
-			time,
-			scale,
-			range,
-		}));
+		crate::suites::set_render_ctx(Some(crate::suites::RenderCtx { time, scale, range }));
 		// GL 纹理位深协商（插件 kOfxOpenGLPropPixelDepth → 管线 F32；
 		// 调用方已按协商门（render 驱动）决定走 GL）。
 		let gl_pixel_depth =
@@ -676,8 +698,12 @@ impl Instance {
 		let empty = PropertySet::new();
 		// attach（失败仍继续——插件可忽略；规范允许 ReplyDefault）。
 		let stat = unsafe {
-			self.plugin
-				.call_action(crate::host::ACTION_GL_CONTEXT_ATTACHED, inst_handle, &empty, &empty)
+			self.plugin.call_action(
+				crate::host::ACTION_GL_CONTEXT_ATTACHED,
+				inst_handle,
+				&empty,
+				&empty,
+			)
 		};
 		if stat != crate::suites::status::OK && stat != crate::suites::status::REPLY_DEFAULT {
 			crate::suites::set_gl_ctx(None);
@@ -696,8 +722,12 @@ impl Instance {
 
 		// detach（必须与 attach 配对；ofxGPURender.h:345-346）。
 		unsafe {
-			self.plugin
-				.call_action(crate::host::ACTION_GL_CONTEXT_DETACHED, inst_handle, &empty, &empty)
+			self.plugin.call_action(
+				crate::host::ACTION_GL_CONTEXT_DETACHED,
+				inst_handle,
+				&empty,
+				&empty,
+			)
 		};
 
 		// 兜底：插件遗漏 clipFreeTexture 的输入纹理在此释放。
@@ -707,7 +737,9 @@ impl Instance {
 		crate::suites::progress::set_current(None);
 
 		if stat != crate::suites::status::OK {
-			return Err(crate::error::Error::Failed(format!("GL render 失败：{stat}")));
+			return Err(crate::error::Error::Failed(format!(
+				"GL render 失败：{stat}"
+			)));
 		}
 		Ok(())
 	}
@@ -722,8 +754,10 @@ impl Instance {
 	/// 调用方（render 驱动）随后把结果写回输出 clip（
 	/// [`Instance::set_output_colourspace`]）。
 	pub fn get_output_colourspace(&self, preferred: &[String]) -> crate::error::Result<String> {
+		use crate::host::{
+			ACTION_GET_OUTPUT_COLOURSPACE, PROP_CLIP_COLOURSPACE, PROP_CLIP_PREFERRED_COLOURSPACES,
+		};
 		use crate::property::Value;
-		use crate::host::{ACTION_GET_OUTPUT_COLOURSPACE, PROP_CLIP_COLOURSPACE, PROP_CLIP_PREFERRED_COLOURSPACES};
 
 		let in_args = PropertySet::new();
 		let values: Vec<Value> = preferred
@@ -732,7 +766,10 @@ impl Instance {
 			.collect();
 		in_args.define(PROP_CLIP_PREFERRED_COLOURSPACES, values);
 		let out = PropertySet::new();
-		out.set_one(PROP_CLIP_COLOURSPACE, Value::String(CString::new("").unwrap()));
+		out.set_one(
+			PROP_CLIP_COLOURSPACE,
+			Value::String(CString::new("").unwrap()),
+		);
 
 		let inst_handle = crate::suites::tag::make(
 			&self.props as *const PropertySet,
@@ -859,13 +896,21 @@ impl Instance {
 	/// 序列 action 的 in args 组装（begin/end 共用；GL 模式加
 	/// OpenGLEnabled=1）。
 	fn sequence_in_args(range: OfxRangeD, gl_enabled: bool) -> PropertySet {
+		use crate::host::{
+			PROP_FRAME_RANGE, PROP_FRAME_STEP, PROP_RENDER_SCALE, PROP_SEQUENTIAL_RENDER,
+		};
 		use crate::property::Value;
-		use crate::host::{PROP_FRAME_RANGE, PROP_FRAME_STEP, PROP_RENDER_SCALE, PROP_SEQUENTIAL_RENDER};
 
 		let in_args = PropertySet::new();
-		in_args.define(PROP_FRAME_RANGE, vec![Value::Double(range.min), Value::Double(range.max)]);
+		in_args.define(
+			PROP_FRAME_RANGE,
+			vec![Value::Double(range.min), Value::Double(range.max)],
+		);
 		in_args.set_one(PROP_FRAME_STEP, Value::Double(1.0));
-		in_args.define(PROP_RENDER_SCALE, vec![Value::Double(1.0), Value::Double(1.0)]);
+		in_args.define(
+			PROP_RENDER_SCALE,
+			vec![Value::Double(1.0), Value::Double(1.0)],
+		);
 		in_args.set_one(PROP_SEQUENTIAL_RENDER, Value::Int(1));
 		if gl_enabled {
 			in_args.set_one(crate::host::PROP_GL_ENABLED, Value::Int(1));

@@ -76,12 +76,18 @@ fn ticket_completion_once_success() {
 	let arena = TicketArena::new(pool.clone(), ok_producer());
 
 	let (tx, rx) = mpsc::channel();
-	let id = arena.submit_video(params(Rational::new(0, 1)), Box::new(move |r| {
-		let _ = tx.send(r.is_ok());
-	}));
+	let id = arena.submit_video(
+		params(Rational::new(0, 1)),
+		Box::new(move |r| {
+			let _ = tx.send(r.is_ok());
+		}),
+	);
 	arena.wait(id).unwrap();
 	assert!(rx.recv_timeout(Duration::from_secs(5)).unwrap());
-	assert!(rx.recv_timeout(Duration::from_millis(50)).is_err(), "exactly once");
+	assert!(
+		rx.recv_timeout(Duration::from_millis(50)).is_err(),
+		"exactly once"
+	);
 
 	let res = arena.result(id).unwrap().unwrap();
 	assert_eq!(res.size(), (8, 4));
@@ -107,15 +113,21 @@ fn ticket_completion_once_on_cancel() {
 	let arena = TicketArena::new(pool.clone(), blocking);
 
 	let (tx, rx) = mpsc::channel();
-	let id = arena.submit_video(params(Rational::new(1, 1)), Box::new(move |r| {
-		let _ = tx.send(r);
-	}));
+	let id = arena.submit_video(
+		params(Rational::new(1, 1)),
+		Box::new(move |r| {
+			let _ = tx.send(r);
+		}),
+	);
 	arena.cancel(id);
 	release.store(true, Ordering::Release);
 	arena.wait(id).unwrap();
 	let res = rx.recv_timeout(Duration::from_secs(5)).unwrap();
 	assert_eq!(res.unwrap_err().code(), Error::State.code());
-	assert!(rx.recv_timeout(Duration::from_millis(50)).is_err(), "exactly once");
+	assert!(
+		rx.recv_timeout(Duration::from_millis(50)).is_err(),
+		"exactly once"
+	);
 	pool.shutdown();
 }
 
@@ -143,9 +155,12 @@ fn shutdown_drains_completions() {
 	let mut ids = Vec::new();
 	for i in 0..8 {
 		let tx = tx.clone();
-		let id = arena.submit_video(params(Rational::new(i, 1)), Box::new(move |r| {
-			let _ = tx.send(r.is_err());
-		}));
+		let id = arena.submit_video(
+			params(Rational::new(i, 1)),
+			Box::new(move |r| {
+				let _ = tx.send(r.is_err());
+			}),
+		);
 		ids.push(id);
 	}
 	drop(tx);
@@ -158,7 +173,10 @@ fn shutdown_drains_completions() {
 		completions.push(err);
 	}
 	assert_eq!(completions.len(), 8, "every ticket completed");
-	assert!(completions.iter().all(|&e| e), "all cancelled with Error::State");
+	assert!(
+		completions.iter().all(|&e| e),
+		"all cancelled with Error::State"
+	);
 	// Everything is finished after shutdown.
 	assert!(ids.iter().all(|id| arena.is_finished(*id)));
 }
@@ -257,7 +275,10 @@ fn snapshot_store_refcount() {
 	store.mark_cached(&p1, true);
 	assert!(store.is_cached(&p1));
 	store.release(&p1);
-	assert!(!std::path::Path::new(&p1).exists(), "unlinked at refcount 0");
+	assert!(
+		!std::path::Path::new(&p1).exists(),
+		"unlinked at refcount 0"
+	);
 	assert_eq!(store.refs(&p1), 0);
 }
 
@@ -269,7 +290,11 @@ fn ffi_ticket_render_frame_roundtrip() {
 	let _g = common::ManagerGuard::init();
 	unsafe {
 		// NULL params → empty handle.
-		let h = ffi::ticket::oakrender_ticket_render_frame(std::ptr::null(), None, std::ptr::null_mut());
+		let h = ffi::ticket::oakrender_ticket_render_frame(
+			std::ptr::null(),
+			None,
+			std::ptr::null_mut(),
+		);
 		assert!(h.is_null());
 		// Empty output node → empty handle.
 		let mut params = std::mem::zeroed::<ffi::OakVideoTicketParams>();
@@ -354,7 +379,10 @@ fn ffi_ticket_render_frame_roundtrip() {
 		assert_eq!(ffi::renderer::oakrender_codec_frame_height(frame), 16);
 		assert_eq!(ffi::renderer::oakrender_codec_frame_is_allocated(frame), 1);
 		let mut pod = std::mem::zeroed::<ffi::OakRenderVideoParams>();
-		assert_eq!(ffi::renderer::oakrender_codec_frame_get_params(frame, &mut pod), 0);
+		assert_eq!(
+			ffi::renderer::oakrender_codec_frame_get_params(frame, &mut pod),
+			0
+		);
 		assert_eq!(pod.format, 4, "F32 pipeline format");
 		let mut frame = frame;
 		ffi::renderer::oakrender_codec_frame_free(&mut frame);
@@ -369,10 +397,22 @@ fn ffi_ticket_render_frame_roundtrip() {
 		assert!(h.is_null());
 
 		// Empty ticket queries → E_INVALID.
-		assert_eq!(ffi::ticket::oakrender_ticket_is_finished(ffi::OakRenderTicket::null()), OAKRENDER_E_INVALID);
-		assert_eq!(ffi::ticket::oakrender_ticket_get_type(ffi::OakRenderTicket::null()), OAKRENDER_E_INVALID);
-		assert_eq!(ffi::ticket::oakrender_ticket_wait(ffi::OakRenderTicket::null()), OAKRENDER_E_INVALID);
-		assert_eq!(ffi::ticket::oakrender_ticket_cancel(ffi::OakRenderTicket::null()), OAKRENDER_E_INVALID);
+		assert_eq!(
+			ffi::ticket::oakrender_ticket_is_finished(ffi::OakRenderTicket::null()),
+			OAKRENDER_E_INVALID
+		);
+		assert_eq!(
+			ffi::ticket::oakrender_ticket_get_type(ffi::OakRenderTicket::null()),
+			OAKRENDER_E_INVALID
+		);
+		assert_eq!(
+			ffi::ticket::oakrender_ticket_wait(ffi::OakRenderTicket::null()),
+			OAKRENDER_E_INVALID
+		);
+		assert_eq!(
+			ffi::ticket::oakrender_ticket_cancel(ffi::OakRenderTicket::null()),
+			OAKRENDER_E_INVALID
+		);
 	}
 }
 
@@ -386,7 +426,10 @@ fn ffi_ticket_render_audio() {
 		// Null output node → empty handle.
 		let h = ffi::ticket::oakrender_ticket_render_audio(
 			ffi::OakNodeNode::null(),
-			0, 1, 10, 1,
+			0,
+			1,
+			10,
+			1,
 			std::ptr::null(),
 			0,
 			None,
@@ -397,7 +440,10 @@ fn ffi_ticket_render_audio() {
 		let audio_params = common::fake_handle(1);
 		let h = ffi::ticket::oakrender_ticket_render_audio(
 			common::fake_handle(9),
-			0, 1, 10, 1,
+			0,
+			1,
+			10,
+			1,
 			&audio_params,
 			0,
 			None,
@@ -406,7 +452,10 @@ fn ffi_ticket_render_audio() {
 		assert!(!h.is_null());
 		assert_eq!(ffi::ticket::oakrender_ticket_get_type(h), 1); // audio
 		let (mut i_n, mut i_d, mut o_n, mut o_d) = (0i64, 0i64, 0i64, 0i64);
-		assert_eq!(ffi::ticket::oakrender_ticket_get_range(h, &mut i_n, &mut i_d, &mut o_n, &mut o_d), OAKRENDER_OK);
+		assert_eq!(
+			ffi::ticket::oakrender_ticket_get_range(h, &mut i_n, &mut i_d, &mut o_n, &mut o_d),
+			OAKRENDER_OK
+		);
 		assert_eq!((i_n, i_d, o_n, o_d), (0, 1, 10, 1));
 		assert_eq!(ffi::ticket::oakrender_ticket_wait(h), OAKRENDER_OK);
 		let mut h = h;

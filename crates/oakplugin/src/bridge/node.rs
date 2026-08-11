@@ -201,13 +201,13 @@ pub(crate) unsafe fn set_input_undoable(
 	#[cfg(not(feature = "test-stubs"))]
 	{
 		unsafe {
-		oaknode::ffi::node::oaknode_node_set_input_undoable(
-			node,
-			input,
-			value as *const oaknode::value::OakNodeValue,
-			out,
-		)
-	}
+			oaknode::ffi::node::oaknode_node_set_input_undoable(
+				node,
+				input,
+				value as *const oaknode::value::OakNodeValue,
+				out,
+			)
+		}
 	}
 }
 
@@ -229,13 +229,8 @@ pub(crate) unsafe fn set_input_string_undoable(
 	#[cfg(not(feature = "test-stubs"))]
 	{
 		unsafe {
-		oaknode::ffi::node::oaknode_node_set_input_string_undoable(
-			node,
-			input,
-			value,
-			out,
-		)
-	}
+			oaknode::ffi::node::oaknode_node_set_input_string_undoable(node, input, value, out)
+		}
 	}
 }
 
@@ -313,22 +308,20 @@ pub mod stub {
 	pub(crate) fn apply(node: usize, input: &str, value: Value, string: Option<String>) {
 		let mut m = lock();
 		if let Some(n) = m.get_mut(&node) {
-			n.insert(
-				input.to_string(),
-				StubInput {
-					value,
-					string,
-				},
-			);
+			n.insert(input.to_string(), StubInput { value, string });
 		}
 	}
 
 	/// 读输入当前值（命令创建时取 prev）。
 	pub(crate) fn current(node: usize, input: &str) -> StubInput {
-		lock().get(&node).and_then(|n| n.get(input)).cloned().unwrap_or(StubInput {
-			value: Value::default(),
-			string: None,
-		})
+		lock()
+			.get(&node)
+			.and_then(|n| n.get(input))
+			.cloned()
+			.unwrap_or(StubInput {
+				value: Value::default(),
+				string: None,
+			})
 	}
 
 	pub(super) unsafe fn node_from_identity_impl(id: usize) -> NodeHandle {
@@ -354,7 +347,10 @@ pub mod stub {
 			return -30001;
 		}
 		let id = node.ctx as usize;
-		let name = unsafe { CStr::from_ptr(input) }.to_str().map_err(|_| ()).unwrap_or_default();
+		let name = unsafe { CStr::from_ptr(input) }
+			.to_str()
+			.map_err(|_| ())
+			.unwrap_or_default();
 		// 输入名必须已存在（node.h: 未知输入 id → OAKNODE_E_NOT_FOUND）。
 		if !lock().get(&id).is_some_and(|n| n.contains_key(name)) {
 			return -30004;
@@ -376,12 +372,17 @@ pub mod stub {
 			return -30001;
 		}
 		let id = node.ctx as usize;
-		let name = unsafe { CStr::from_ptr(input) }.to_str().map_err(|_| ()).unwrap_or_default();
+		let name = unsafe { CStr::from_ptr(input) }
+			.to_str()
+			.map_err(|_| ())
+			.unwrap_or_default();
 		// 输入名必须已存在（node.h: 未知输入 id → OAKNODE_E_NOT_FOUND）。
 		if !lock().get(&id).is_some_and(|n| n.contains_key(name)) {
 			return -30004;
 		}
-		let next = unsafe { CStr::from_ptr(value) }.to_string_lossy().into_owned();
+		let next = unsafe { CStr::from_ptr(value) }
+			.to_string_lossy()
+			.into_owned();
 		let prev = current(id, &name).string.unwrap_or_default();
 		let h = crate::bridge::undo::stub::create_string(
 			id,
@@ -408,7 +409,12 @@ mod tests {
 		unsafe {
 			assert!(node_from_identity(0xDEAD).is_null(), "未登记身份 → 空句柄");
 			assert_eq!(
-				set_input_undoable(NodeHandle::null(), std::ptr::null(), std::ptr::null(), &mut cmd),
+				set_input_undoable(
+					NodeHandle::null(),
+					std::ptr::null(),
+					std::ptr::null(),
+					&mut cmd
+				),
 				-30001
 			);
 			assert_eq!(

@@ -48,13 +48,13 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 
-use ffmpeg_next as ffmpeg;
 use ffmpeg::ffi as sys;
 use ffmpeg::format::sample::Type as SampleType;
 use ffmpeg::format::{Pixel, Sample};
 use ffmpeg::media::Type as MediaType;
 use ffmpeg::software::{resampling, scaling};
 use ffmpeg::{ChannelLayout, Dictionary, Error as FfmpegError, Rational as FfRational};
+use ffmpeg_next as ffmpeg;
 
 use oakcore_rs::{PixelFormat, Rational, SampleFormat, TimeRange};
 
@@ -66,8 +66,8 @@ use crate::bridge::common::{
 	oakcommon_videoparams_set_premultiplied_alpha, oakcommon_videoparams_set_start_time,
 	oakcommon_videoparams_set_stream_index, oakcommon_videoparams_set_time_base,
 	oakcommon_videoparams_set_video_type, oakcommon_videoparams_set_width,
-	oakcore_audioparams_create, oakcore_audioparams_set_duration, oakcore_audioparams_set_stream_index,
-	oakcore_audioparams_set_time_base, OakAudioParams,
+	oakcore_audioparams_create, oakcore_audioparams_set_duration,
+	oakcore_audioparams_set_stream_index, oakcore_audioparams_set_time_base, OakAudioParams,
 };
 use crate::bridge::render::{oakrender_cancelatom_is_cancelled, OakCancelAtom, OakRenderTexture};
 use crate::decoder::{CodecStream, Decoder, RetrieveAudioStatus, RetrieveVideoParams};
@@ -94,9 +94,9 @@ const PIXEL_F32_BYTES: usize = 16;
 /// Lazily initialize the FFmpeg libraries (idempotent, at most once).
 fn ffmpeg_init() -> crate::error::Result<()> {
 	static INIT: OnceLock<Result<(), String>> = OnceLock::new();
-	if let Err(e) = INIT.get_or_init(|| {
-		ffmpeg::init().map_err(|e| format!("ffmpeg initialization failed: {e}"))
-	}) {
+	if let Err(e) = INIT
+		.get_or_init(|| ffmpeg::init().map_err(|e| format!("ffmpeg initialization failed: {e}")))
+	{
 		return Err(crate::error::Error::Failed(e.clone()));
 	}
 	Ok(())
@@ -258,7 +258,11 @@ impl Decoder for FFmpegDecoder {
 		true
 	}
 
-	fn probe(&self, filename: &str, cancelled: Option<&OakCancelAtom>) -> Option<FootageDescription> {
+	fn probe(
+		&self,
+		filename: &str,
+		cancelled: Option<&OakCancelAtom>,
+	) -> Option<FootageDescription> {
 		ffmpeg_init().ok()?;
 		probe_file(filename, cancelled)
 	}
@@ -381,7 +385,13 @@ impl Decoder for FFmpegDecoder {
 		if !matches!(state.inner, DecoderInner::Audio(_)) {
 			return Err(fail("decoder is not open on an audio stream"));
 		}
-		state.conform_audio_to(output_filenames, sample_rate, channel_layout, sample_format, cancelled)
+		state.conform_audio_to(
+			output_filenames,
+			sample_rate,
+			channel_layout,
+			sample_format,
+			cancelled,
+		)
 	}
 
 	fn get_audio_start_offset(&self) -> Rational {
@@ -392,7 +402,8 @@ impl Decoder for FFmpegDecoder {
 		match state.as_ref() {
 			Some(s) if s.format_start_time != AV_NOPTS_VALUE => {
 				let fmt_start = Rational::new(s.format_start_time, FB_TIME_BASE);
-				let str_start = oak_rational(s.stream_time_base).timestamp_to_time(s.stream_start_time);
+				let str_start =
+					oak_rational(s.stream_time_base).timestamp_to_time(s.stream_start_time);
 				fmt_start - str_start
 			}
 			_ => Rational::new(0, 1),
@@ -490,8 +501,8 @@ impl DecoderState {
 		let mut dict = Dictionary::new();
 		dict.set("analyzeduration", "5000000");
 		dict.set("probesize", "20000000");
-		let input = ffmpeg::format::input_with_dictionary(&stream.filename(), dict)
-			.map_err(ffmpeg_err)?;
+		let input =
+			ffmpeg::format::input_with_dictionary(&stream.filename(), dict).map_err(ffmpeg_err)?;
 
 		let stream_index = stream.stream() as usize;
 		let fstream = input
@@ -512,8 +523,7 @@ impl DecoderState {
 			let raw = unsafe { params.as_ptr() };
 			input_sample_format = sample_from_raw(unsafe { (*raw).format });
 			input_sample_rate = unsafe { (*raw).sample_rate }.max(0) as u32;
-			input_channel_layout_mask =
-				unsafe { ChannelLayout::from((*raw).ch_layout) }.bits();
+			input_channel_layout_mask = unsafe { ChannelLayout::from((*raw).ch_layout) }.bits();
 		}
 
 		let mut open_opts = Dictionary::new();
@@ -668,9 +678,8 @@ impl DecoderState {
 			.stream(self.stream_index)
 			.map(|s| s.time_base())
 			.unwrap_or(FfRational(1, 1));
-		let target = unsafe {
-			sys::av_rescale_q(timestamp, self.stream_time_base.into(), stream_tb.into())
-		};
+		let target =
+			unsafe { sys::av_rescale_q(timestamp, self.stream_time_base.into(), stream_tb.into()) };
 		let ret = unsafe {
 			sys::av_seek_frame(
 				self.input.as_mut_ptr(),
@@ -854,21 +863,31 @@ impl DecoderState {
 
 		// swscale cannot reliably output float RGBA on every build; prefer
 		// RGBAF32LE and fall back to RGBA64 (converted to f32 below).
-		let bytes = match get_or_create_scaler(&mut video.scaler, src_format, w, h, Pixel::RGBAF32LE, w, h) {
-			Ok(ctx) => {
-				let mut out = ffmpeg::frame::Video::empty();
-				ctx.run(&f, &mut out).map_err(ffmpeg_err)?;
-				let stride = out.stride(0);
-				convert_rgba_f32_le(&out.data(0), w, h, stride)
-			}
-			Err(_) => {
-				let ctx = get_or_create_scaler(&mut video.scaler, src_format, w, h, Pixel::RGBA64LE, w, h)?;
-				let mut out = ffmpeg::frame::Video::empty();
-				ctx.run(&f, &mut out).map_err(ffmpeg_err)?;
-				let stride = out.stride(0);
-				convert_rgba64_to_f32(&out.data(0), w, h, stride)
-			}
-		};
+		let bytes =
+			match get_or_create_scaler(&mut video.scaler, src_format, w, h, Pixel::RGBAF32LE, w, h)
+			{
+				Ok(ctx) => {
+					let mut out = ffmpeg::frame::Video::empty();
+					ctx.run(&f, &mut out).map_err(ffmpeg_err)?;
+					let stride = out.stride(0);
+					convert_rgba_f32_le(&out.data(0), w, h, stride)
+				}
+				Err(_) => {
+					let ctx = get_or_create_scaler(
+						&mut video.scaler,
+						src_format,
+						w,
+						h,
+						Pixel::RGBA64LE,
+						w,
+						h,
+					)?;
+					let mut out = ffmpeg::frame::Video::empty();
+					ctx.run(&f, &mut out).map_err(ffmpeg_err)?;
+					let stride = out.stride(0);
+					convert_rgba64_to_f32(&out.data(0), w, h, stride)
+				}
+			};
 		Ok((w, h, bytes))
 	}
 
@@ -899,21 +918,17 @@ impl DecoderState {
 		dest.fill(0.0);
 
 		// Seek to just before the range start.
-		let start_ts = oak_rational(self.stream_time_base)
-			.time_to_timestamp(Rational::from_double(start_sec));
+		let start_ts =
+			oak_rational(self.stream_time_base).time_to_timestamp(Rational::from_double(start_sec));
 		self.seek(start_ts)?;
 
 		// Take the cached resampler out (or create one) so the decode loop
 		// below can borrow `self` freely; it is put back before returning.
 		let src_layout = channel_layout_from_mask(self.input_channel_layout_mask);
-		let mut resampler = match self
-			.audio
-			.as_mut()
-			.expect("audio session")
-			.resampler
-			.take()
-		{
-			Some((rate, layout, rs)) if rate == sample_rate as u32 && layout == channel_layout => rs,
+		let mut resampler = match self.audio.as_mut().expect("audio session").resampler.take() {
+			Some((rate, layout, rs)) if rate == sample_rate as u32 && layout == channel_layout => {
+				rs
+			}
 			_ => AudioResampler::get(
 				self.input_sample_format,
 				src_layout,
@@ -939,7 +954,9 @@ impl DecoderState {
 			let chunk_samples = (converted.len() / dst_channels) as i64;
 			let frame_start = match audio.pts() {
 				Some(pts) => {
-					let secs = oak_rational(stream_time_base).timestamp_to_time(pts).to_f64();
+					let secs = oak_rational(stream_time_base)
+						.timestamp_to_time(pts)
+						.to_f64();
 					(secs * sample_rate as f64).round() as i64
 				}
 				None => next_sample.unwrap_or(start_sample),
@@ -965,10 +982,8 @@ impl DecoderState {
 		}
 
 		// Put the resampler back into the cache for the next call.
-		self.audio
-			.as_mut()
-			.expect("audio session")
-			.resampler = Some((sample_rate as u32, channel_layout, resampler));
+		self.audio.as_mut().expect("audio session").resampler =
+			Some((sample_rate as u32, channel_layout, resampler));
 
 		// Flush any samples still buffered in the resampler (rate conversion
 		// tail), appending after the last decoded sample.
@@ -1015,7 +1030,9 @@ impl DecoderState {
 		cancelled: Option<&OakCancelAtom>,
 	) -> crate::error::Result<()> {
 		if self.input_channel_layout_mask == 0 {
-			return Err(fail("could not determine the channel layout of the audio file"));
+			return Err(fail(
+				"could not determine the channel layout of the audio file",
+			));
 		}
 
 		let target_fmt = crate::encodingparams::sample_format_from_i32(sample_format);
@@ -1080,7 +1097,6 @@ impl DecoderState {
 		}
 		Ok(())
 	}
-
 }
 
 impl AudioResampler {
@@ -1109,7 +1125,10 @@ impl AudioResampler {
 
 	/// Convert one input frame, returning one byte buffer per output plane
 	/// (plane 0 for packed destinations).
-	fn convert_to_planes(&mut self, input: &ffmpeg::frame::Audio) -> crate::error::Result<Vec<Vec<u8>>> {
+	fn convert_to_planes(
+		&mut self,
+		input: &ffmpeg::frame::Audio,
+	) -> crate::error::Result<Vec<Vec<u8>>> {
 		let (written, bufs) = self.swr_convert_buffers(input)?;
 		let _ = written;
 		Ok(bufs)
@@ -1117,7 +1136,10 @@ impl AudioResampler {
 
 	/// Convert one input frame into a freshly allocated output frame in the
 	/// destination format, layout and rate.
-	fn convert_to_frame(&mut self, input: &ffmpeg::frame::Audio) -> crate::error::Result<ffmpeg::frame::Audio> {
+	fn convert_to_frame(
+		&mut self,
+		input: &ffmpeg::frame::Audio,
+	) -> crate::error::Result<ffmpeg::frame::Audio> {
 		let (written, bufs) = self.swr_convert_buffers(input)?;
 		let mut out = ffmpeg::frame::Audio::new(self.dst_format, written, self.dst_layout);
 		out.set_rate(self.dst_rate);
@@ -1159,7 +1181,9 @@ impl AudioResampler {
 		if out_samples == 0 {
 			return Ok((0, Vec::new()));
 		}
-		let in_ptrs: Vec<*const u8> = (0..input.planes()).map(|i| input.data(i).as_ptr()).collect();
+		let in_ptrs: Vec<*const u8> = (0..input.planes())
+			.map(|i| input.data(i).as_ptr())
+			.collect();
 		let (bufs, written) = self.swr_convert(out_samples as usize, Some(&in_ptrs), in_samples)?;
 		Ok((written, bufs))
 	}
@@ -1191,7 +1215,8 @@ impl AudioResampler {
 			return Err(ffmpeg_err(FfmpegError::from(written)));
 		}
 		for buf in bufs.iter_mut() {
-			let keep = written as usize * self.dst_format.bytes()
+			let keep = written as usize
+				* self.dst_format.bytes()
 				* if planar { 1 } else { self.dst_channels };
 			buf.truncate(keep);
 		}
@@ -1217,7 +1242,9 @@ fn resample_to_interleaved_f32(
 	let channels = resampler.dst_channels;
 	let mut buf = vec![0f32; out_samples * channels];
 	let out_ptrs = [buf.as_mut_ptr() as *mut u8];
-	let in_ptrs: Vec<*const u8> = (0..input.planes()).map(|i| input.data(i).as_ptr()).collect();
+	let in_ptrs: Vec<*const u8> = (0..input.planes())
+		.map(|i| input.data(i).as_ptr())
+		.collect();
 	let written = unsafe {
 		sys::swr_convert(
 			resampler.ctx.as_mut_ptr(),
@@ -1369,7 +1396,8 @@ fn convert_rgba_f32_le(data: &[u8], w: u32, h: u32, stride: usize) -> Vec<u8> {
 	let mut out = vec![0u8; (w as usize) * (h as usize) * PIXEL_F32_BYTES];
 	for y in 0..h as usize {
 		let row = &data[y * stride..y * stride + (w as usize) * PIXEL_F32_BYTES];
-		let dst = &mut out[y * (w as usize) * PIXEL_F32_BYTES..(y + 1) * (w as usize) * PIXEL_F32_BYTES];
+		let dst =
+			&mut out[y * (w as usize) * PIXEL_F32_BYTES..(y + 1) * (w as usize) * PIXEL_F32_BYTES];
 		dst.copy_from_slice(row);
 		for px in dst.chunks_exact_mut(PIXEL_F32_BYTES) {
 			px[12..16].copy_from_slice(&1.0f32.to_le_bytes());
@@ -1383,8 +1411,12 @@ fn convert_rgba64_to_f32(data: &[u8], w: u32, h: u32, stride: usize) -> Vec<u8> 
 	let mut out = vec![0u8; (w as usize) * (h as usize) * PIXEL_F32_BYTES];
 	for y in 0..h as usize {
 		let row = &data[y * stride..y * stride + (w as usize) * 8];
-		let dst = &mut out[y * (w as usize) * PIXEL_F32_BYTES..(y + 1) * (w as usize) * PIXEL_F32_BYTES];
-		for (px, src_px) in dst.chunks_exact_mut(PIXEL_F32_BYTES).zip(row.chunks_exact(8)) {
+		let dst =
+			&mut out[y * (w as usize) * PIXEL_F32_BYTES..(y + 1) * (w as usize) * PIXEL_F32_BYTES];
+		for (px, src_px) in dst
+			.chunks_exact_mut(PIXEL_F32_BYTES)
+			.zip(row.chunks_exact(8))
+		{
 			for c in 0..3 {
 				let v = u16::from_le_bytes([src_px[c * 2], src_px[c * 2 + 1]]);
 				px[c * 4..c * 4 + 4].copy_from_slice(&(v as f32 / 65535.0).to_le_bytes());
@@ -1463,7 +1495,9 @@ fn probe_file(filename: &str, cancelled: Option<&OakCancelAtom>) -> Option<Foota
 		if cancel_atom_is_cancelled(cancelled) {
 			return None;
 		}
-		let Some(stream) = input.stream(i as usize) else { continue };
+		let Some(stream) = input.stream(i as usize) else {
+			continue;
+		};
 		let params = stream.parameters();
 		let medium = params.medium();
 
@@ -1475,7 +1509,9 @@ fn probe_file(filename: &str, cancelled: Option<&OakCancelAtom>) -> Option<Foota
 				.collect();
 			let raw = unsafe { params.as_ptr() };
 			source_start_time =
-				extract_source_start_time(&stream_meta, stream.time_base(), unsafe { (*raw).sample_rate });
+				extract_source_start_time(&stream_meta, stream.time_base(), unsafe {
+					(*raw).sample_rate
+				});
 		}
 
 		// Only proceed if a decoder exists for this stream
@@ -1500,9 +1536,16 @@ fn probe_file(filename: &str, cancelled: Option<&OakCancelAtom>) -> Option<Foota
 					oakcommon_videoparams_set_video_type(vp.clone(), OAKCOMMON_VIDEO_TYPE_VIDEO);
 					oakcommon_videoparams_set_format(vp.clone(), native as i32);
 					oakcommon_videoparams_set_channel_count(vp.clone(), VIDEO_CHANNELS);
-					oakcommon_videoparams_set_interlacing(vp.clone(), OAKCOMMON_VIDEO_INTERLACE_NONE);
+					oakcommon_videoparams_set_interlacing(
+						vp.clone(),
+						OAKCOMMON_VIDEO_INTERLACE_NONE,
+					);
 					oakcommon_videoparams_set_pixel_aspect_ratio(vp.clone(), 1, 1);
-					oakcommon_videoparams_set_frame_rate(vp.clone(), frame_rate.0 as i64, frame_rate.1 as i64);
+					oakcommon_videoparams_set_frame_rate(
+						vp.clone(),
+						frame_rate.0 as i64,
+						frame_rate.1 as i64,
+					);
 					oakcommon_videoparams_set_start_time(vp.clone(), stream.start_time());
 					oakcommon_videoparams_set_time_base(vp.clone(), tb.0 as i64, tb.1 as i64);
 					oakcommon_videoparams_set_duration(vp.clone(), stream.duration());
@@ -1565,7 +1608,10 @@ fn extract_source_start_time(
 	timebase: FfRational,
 	sample_rate: i32,
 ) -> SourceTime {
-	let mut out = SourceTime { valid: false, time: Rational::new(0, 1) };
+	let mut out = SourceTime {
+		valid: false,
+		time: Rational::new(0, 1),
+	};
 	for (key, value) in metadata {
 		if key == "timecode" {
 			let parsed = crate::timecodemetadata::SourceTime::from_timecode_string(
@@ -1578,10 +1624,8 @@ fn extract_source_start_time(
 				return out;
 			}
 		} else if key == "time_reference" {
-			let parsed = crate::timecodemetadata::SourceTime::from_bwf_time_reference(
-				value,
-				sample_rate,
-			);
+			let parsed =
+				crate::timecodemetadata::SourceTime::from_bwf_time_reference(value, sample_rate);
 			if parsed.valid {
 				out.valid = true;
 				out.time = parsed.time;
@@ -1664,7 +1708,10 @@ impl FFmpegEncoder {
 	/// The effective encoding parameters (configured overrides construction).
 	fn effective_params(&self) -> EncodingParams {
 		let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
-		state.configured.clone().unwrap_or_else(|| self.params.clone())
+		state
+			.configured
+			.clone()
+			.unwrap_or_else(|| self.params.clone())
 	}
 }
 
@@ -1739,7 +1786,9 @@ impl Encoder for FFmpegEncoder {
 		// Subtitle muxing is not exposed by the crate's encoder trait flow
 		// (the C++ writes through the bridge's SRT encoder); report the same
 		// unsupported state the stub did.
-		Err(fail("subtitle encoding is not supported by the ffmpeg encoder"))
+		Err(fail(
+			"subtitle encoding is not supported by the ffmpeg encoder",
+		))
 	}
 
 	fn flush(&self) -> crate::error::Result<()> {
@@ -1798,7 +1847,10 @@ impl EncoderState {
 			let width = params.video_width.max(1) as u32;
 			let height = params.video_height.max(1) as u32;
 			let time_base = FfRational(params.video_time_base_num, params.video_time_base_den);
-			let frame_rate = FfRational(params.video_time_base_den, params.video_time_base_num.max(1));
+			let frame_rate = FfRational(
+				params.video_time_base_den,
+				params.video_time_base_num.max(1),
+			);
 
 			let mut stream = output.add_stream(codec).map_err(ffmpeg_err)?;
 			let stream_index = stream.index();
@@ -1944,7 +1996,10 @@ impl EncoderState {
 		for y in 0..(h as usize) {
 			let row = &data[y * linesize..y * linesize + (w as usize) * PIXEL_F32_BYTES];
 			let dst = &mut rgba[y * (w as usize) * 4..(y + 1) * (w as usize) * 4];
-			for (out_px, in_px) in dst.chunks_exact_mut(4).zip(row.chunks_exact(PIXEL_F32_BYTES)) {
+			for (out_px, in_px) in dst
+				.chunks_exact_mut(4)
+				.zip(row.chunks_exact(PIXEL_F32_BYTES))
+			{
 				for c in 0..4 {
 					let v = f32::from_le_bytes([
 						in_px[c * 4],
@@ -1967,7 +2022,10 @@ impl EncoderState {
 		// `FFmpegEncoder::write_frame` passes the frame time in seconds; the
 		// Rust `Frame` carries the timestamp as a rational.
 		let secs = frame.timestamp().to_f64();
-		let tb = FfRational(params.video_time_base_num.max(1), params.video_time_base_den.max(1));
+		let tb = FfRational(
+			params.video_time_base_num.max(1),
+			params.video_time_base_den.max(1),
+		);
 		let pts = (secs * tb.1 as f64 / tb.0 as f64).round() as i64;
 		scaled.set_pts(Some(pts));
 
@@ -2004,10 +2062,10 @@ impl EncoderState {
 		let pts = output.audio_pts;
 
 		let layout = channel_layout_from_mask(params.audio_channel_layout);
-		let mut input = ffmpeg::frame::Audio::new(Sample::F32(SampleType::Packed), in_frames, layout);
-		let bytes = unsafe {
-			std::slice::from_raw_parts(samples.as_ptr() as *const u8, samples.len() * 4)
-		};
+		let mut input =
+			ffmpeg::frame::Audio::new(Sample::F32(SampleType::Packed), in_frames, layout);
+		let bytes =
+			unsafe { std::slice::from_raw_parts(samples.as_ptr() as *const u8, samples.len() * 4) };
 		input.data_mut(0)[..bytes.len()].copy_from_slice(bytes);
 
 		let mut converted = audio.resampler.convert_to_frame(&input)?;
@@ -2122,20 +2180,20 @@ fn drain_audio_packets(
 /// documented `ExportCodec::Codec` discriminants (see `exportcodec.rs`).
 fn export_codec_to_id(codec: i32) -> Option<ffmpeg::codec::Id> {
 	match codec {
-		0 => Some(ffmpeg::codec::Id::DNXHD),    // DNxHD
-		1 | 2 => Some(ffmpeg::codec::Id::H264), // H264 / H264 RGB
-		3 => Some(ffmpeg::codec::Id::HEVC),     // H265
-		6 => Some(ffmpeg::codec::Id::PRORES),   // ProRes
-		7 => Some(ffmpeg::codec::Id::CFHD),     // CineForm
+		0 => Some(ffmpeg::codec::Id::DNXHD),       // DNxHD
+		1 | 2 => Some(ffmpeg::codec::Id::H264),    // H264 / H264 RGB
+		3 => Some(ffmpeg::codec::Id::HEVC),        // H265
+		6 => Some(ffmpeg::codec::Id::PRORES),      // ProRes
+		7 => Some(ffmpeg::codec::Id::CFHD),        // CineForm
 		10 => Some(ffmpeg::codec::Id::MPEG2VIDEO), // MP2
-		11 => Some(ffmpeg::codec::Id::MP3),     // MP3
-		12 => Some(ffmpeg::codec::Id::AAC),     // AAC
-		13 => Some(ffmpeg::codec::Id::PCM_S16LE), // PCM
-		14 => Some(ffmpeg::codec::Id::OPUS),    // Opus
-		15 => Some(ffmpeg::codec::Id::VORBIS),  // Vorbis
-		16 => Some(ffmpeg::codec::Id::FLAC),    // FLAC
-		17 => Some(ffmpeg::codec::Id::SUBRIP),  // SRT
-		18 => Some(ffmpeg::codec::Id::AV1),     // AV1
+		11 => Some(ffmpeg::codec::Id::MP3),        // MP3
+		12 => Some(ffmpeg::codec::Id::AAC),        // AAC
+		13 => Some(ffmpeg::codec::Id::PCM_S16LE),  // PCM
+		14 => Some(ffmpeg::codec::Id::OPUS),       // Opus
+		15 => Some(ffmpeg::codec::Id::VORBIS),     // Vorbis
+		16 => Some(ffmpeg::codec::Id::FLAC),       // FLAC
+		17 => Some(ffmpeg::codec::Id::SUBRIP),     // SRT
+		18 => Some(ffmpeg::codec::Id::AV1),        // AV1
 		_ => None,
 	}
 }

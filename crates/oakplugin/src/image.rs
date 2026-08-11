@@ -184,10 +184,8 @@ impl Image {
 			K_IMAGE_PROP_DATA,
 			vec![Value::Pointer(img.data.as_mut_ptr() as *mut c_void)],
 		);
-		img.props.define(
-			K_IMAGE_PROP_ROW_BYTES,
-			vec![Value::Int(row_bytes as i32)],
-		);
+		img.props
+			.define(K_IMAGE_PROP_ROW_BYTES, vec![Value::Int(row_bytes as i32)]);
 		let b = |v: f64| Value::Int(v.round() as i32);
 		img.props.define(
 			K_IMAGE_PROP_BOUNDS,

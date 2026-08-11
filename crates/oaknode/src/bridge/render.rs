@@ -47,7 +47,9 @@ pub mod cache_kind {
 pub fn cache_create_for_node(parent: CHandle, kind: i32) -> Option<CHandle> {
 	use crate::bridge::dlsym;
 	type F = unsafe extern "C" fn(CHandle, i32) -> CHandle;
-	dlsym::call::<F, CHandle>("oakrender_cache_create_for_node", |f| unsafe { f(parent, kind) })
+	dlsym::call::<F, CHandle>("oakrender_cache_create_for_node", |f| unsafe {
+		f(parent, kind)
+	})
 }
 
 /// `oakrender_cache_free`.
@@ -131,9 +133,7 @@ pub fn disk_cache_path() -> Option<String> {
 pub fn color_config_create_default() -> Option<Result<(), ()>> {
 	use crate::bridge::dlsym;
 	type F = unsafe extern "C" fn() -> i32;
-	let rc = dlsym::call::<F, i32>("oakrender_color_config_create_default", |f| unsafe {
-		f()
-	})?;
+	let rc = dlsym::call::<F, i32>("oakrender_color_config_create_default", |f| unsafe { f() })?;
 	if rc == 0 {
 		Some(Ok(()))
 	} else {

@@ -55,25 +55,17 @@ use crate::handle::CHandle;
 /// Mirror of `OakCancelAtom` (`include/render/cancelatom.h`).
 pub type OakCancelAtom = oakrender::ffi::OakCancelAtom;
 
-
-
 /// Mirror of `OakRenderTicket` (`include/render/ticket.h`).
 pub type OakRenderTicket = oakrender::ffi::OakRenderTicket;
-
 
 /// Mirror of `OakRenderCache` (`include/render/cache.h`).
 pub type OakRenderCache = oakrender::ffi::OakRenderCache;
 
-
-
 /// Mirror of `OakRenderProjectCopier` (`include/render/copier.h`).
 pub type OakRenderProjectCopier = oakrender::ffi::OakRenderProjectCopier;
 
-
 /// Mirror of `OakColorProcessor` (`include/render/color.h`).
 pub type OakColorProcessor = oakrender::ffi::OakColorProcessor;
-
-
 
 /// Mirror of `oakrender_ticket_finished_fn` (`include/render/ticket.h`).
 ///
@@ -82,11 +74,11 @@ pub type OakColorProcessor = oakrender::ffi::OakColorProcessor;
 /// The ticket is a borrowed copy of the submitter's handle (the submitter
 /// keeps ownership and releases it); cancelled tickets fire with a NULL
 /// result observed through `oakrender_ticket_get_frame`.
-pub type OakRenderTicketFinishedFn = unsafe extern "C" fn(ticket: OakRenderTicket, userdata: *mut c_void);
+pub type OakRenderTicketFinishedFn =
+	unsafe extern "C" fn(ticket: OakRenderTicket, userdata: *mut c_void);
 
 /// Mirror of `oakrender_video_ticket_params` (`include/render/ticket.h`).
 pub type OakRenderVideoTicketParams = oakrender::ffi::OakVideoTicketParams;
-
 
 /// Direct call into the `oakrender` crate (single-lib unification).
 pub fn oakrender_cancelatom_init() -> OakCancelAtom {
@@ -115,26 +107,38 @@ pub fn oakrender_cancelatom_heard_cancel(atom: OakCancelAtom, heard: *mut c_int)
 
 /// Direct call into the `oakrender` crate (single-lib unification).
 pub fn oakrender_ticket_render_frame(
-		params: *const OakRenderVideoTicketParams,
-		cb: Option<OakRenderTicketFinishedFn>,
-		userdata: *mut c_void,
-	) -> OakRenderTicket {
+	params: *const OakRenderVideoTicketParams,
+	cb: Option<OakRenderTicketFinishedFn>,
+	userdata: *mut c_void,
+) -> OakRenderTicket {
 	unsafe { oakrender::ffi::ticket::oakrender_ticket_render_frame(params, cb, userdata) }
 }
 
 /// Direct call into the `oakrender` crate (single-lib unification).
 pub fn oakrender_ticket_render_audio(
-		output_node: OakNodeNode,
-		in_num: i64,
-		in_den: i64,
-		out_num: i64,
-		out_den: i64,
-		params: *const OakAudioParams,
-		mode: c_int,
-		cb: Option<OakRenderTicketFinishedFn>,
-		userdata: *mut c_void,
-	) -> OakRenderTicket {
-	unsafe { oakrender::ffi::ticket::oakrender_ticket_render_audio(output_node, in_num, in_den, out_num, out_den, params, mode, cb, userdata) }
+	output_node: OakNodeNode,
+	in_num: i64,
+	in_den: i64,
+	out_num: i64,
+	out_den: i64,
+	params: *const OakAudioParams,
+	mode: c_int,
+	cb: Option<OakRenderTicketFinishedFn>,
+	userdata: *mut c_void,
+) -> OakRenderTicket {
+	unsafe {
+		oakrender::ffi::ticket::oakrender_ticket_render_audio(
+			output_node,
+			in_num,
+			in_den,
+			out_num,
+			out_den,
+			params,
+			mode,
+			cb,
+			userdata,
+		)
+	}
 }
 
 /// Direct call into the `oakrender` crate (single-lib unification).
@@ -163,23 +167,32 @@ pub fn oakrender_ticket_get_frame(ticket: OakRenderTicket, out: *mut OakFrame) -
 }
 
 /// Direct call into the `oakrender` crate (single-lib unification).
-pub fn oakrender_ticket_get_time(ticket: OakRenderTicket, out_num: *mut i64, out_den: *mut i64) -> c_int {
+pub fn oakrender_ticket_get_time(
+	ticket: OakRenderTicket,
+	out_num: *mut i64,
+	out_den: *mut i64,
+) -> c_int {
 	unsafe { oakrender::ffi::ticket::oakrender_ticket_get_time(ticket, out_num, out_den) }
 }
 
 /// Direct call into the `oakrender` crate (single-lib unification).
 pub fn oakrender_ticket_get_range(
-		ticket: OakRenderTicket,
-		in_num: *mut i64,
-		in_den: *mut i64,
-		out_num: *mut i64,
-		out_den: *mut i64,
-	) -> c_int {
-	unsafe { oakrender::ffi::ticket::oakrender_ticket_get_range(ticket, in_num, in_den, out_num, out_den) }
+	ticket: OakRenderTicket,
+	in_num: *mut i64,
+	in_den: *mut i64,
+	out_num: *mut i64,
+	out_den: *mut i64,
+) -> c_int {
+	unsafe {
+		oakrender::ffi::ticket::oakrender_ticket_get_range(ticket, in_num, in_den, out_num, out_den)
+	}
 }
 
 /// Direct call into the `oakrender` crate (single-lib unification).
-pub fn oakrender_ticket_get_samples(ticket: OakRenderTicket, out: *mut *mut std::ffi::c_void) -> c_int {
+pub fn oakrender_ticket_get_samples(
+	ticket: OakRenderTicket,
+	out: *mut *mut std::ffi::c_void,
+) -> c_int {
 	unsafe { oakrender::ffi::ticket::oakrender_ticket_get_samples(ticket, out) }
 }
 
@@ -200,34 +213,36 @@ pub fn oakrender_project_copier_free(copier: *mut OakRenderProjectCopier) {
 
 /// Direct call into the `oakrender` crate (single-lib unification).
 pub fn oakrender_project_copier_set_project(
-		copier: OakRenderProjectCopier,
-		project: OakNodeProject,
-	) -> c_int {
+	copier: OakRenderProjectCopier,
+	project: OakNodeProject,
+) -> c_int {
 	unsafe { oakrender::ffi::copier::oakrender_project_copier_set_project(copier, project) }
 }
 
 /// Direct call into the `oakrender` crate (single-lib unification).
 pub fn oakrender_project_copier_get_copy(
-		copier: OakRenderProjectCopier,
-		original: OakNodeNode,
-	) -> OakNodeNode {
+	copier: OakRenderProjectCopier,
+	original: OakNodeNode,
+) -> OakNodeNode {
 	unsafe { oakrender::ffi::copier::oakrender_project_copier_get_copy(copier, original) }
 }
 
 /// Direct call into the `oakrender` crate (single-lib unification).
 pub fn oakrender_project_copier_get_copied_project(
-		copier: OakRenderProjectCopier,
-	) -> OakNodeProject {
+	copier: OakRenderProjectCopier,
+) -> OakNodeProject {
 	unsafe { oakrender::ffi::copier::oakrender_project_copier_get_copied_project(copier) }
 }
 
 /// Direct call into the `oakrender` crate (single-lib unification).
 pub fn oakrender_color_processor_create(
-		src_space: *const c_char,
-		dst_transform: *const c_char,
-		direction: c_int,
-	) -> OakColorProcessor {
-	unsafe { oakrender::ffi::color::oakrender_color_processor_create(src_space, dst_transform, direction) }
+	src_space: *const c_char,
+	dst_transform: *const c_char,
+	direction: c_int,
+) -> OakColorProcessor {
+	unsafe {
+		oakrender::ffi::color::oakrender_color_processor_create(src_space, dst_transform, direction)
+	}
 }
 
 /// Direct call into the `oakrender` crate (single-lib unification).
@@ -252,19 +267,22 @@ pub fn oakrender_manager_set_aggressive_gc(enabled: c_int) -> c_int {
 
 /// Direct call into the `oakrender` crate (single-lib unification).
 pub fn oakrender_cache_get_invalidated_ranges(
-		cache: OakRenderCache,
-		in_num: i64,
-		in_den: i64,
-		out_num: i64,
-		out_den: i64,
-		flat: *mut i64,
-		flat_size: c_int,
-	) -> c_int {
-	unsafe { oakrender::ffi::cache::oakrender_cache_get_invalidated_ranges(cache, in_num, in_den, out_num, out_den, flat, flat_size) }
+	cache: OakRenderCache,
+	in_num: i64,
+	in_den: i64,
+	out_num: i64,
+	out_den: i64,
+	flat: *mut i64,
+	flat_size: c_int,
+) -> c_int {
+	unsafe {
+		oakrender::ffi::cache::oakrender_cache_get_invalidated_ranges(
+			cache, in_num, in_den, out_num, out_den, flat, flat_size,
+		)
+	}
 }
 
 /// Direct call into the `oakrender` crate (single-lib unification).
 pub fn oakrender_cache_free(cache: *mut OakRenderCache) {
 	unsafe { oakrender::ffi::cache::oakrender_cache_free(cache) }
 }
-

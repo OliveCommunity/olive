@@ -97,7 +97,9 @@ pub(crate) const PREMULT_NONE: &str = "OfxImagePreMultipliedNone";
 /// - 列表缺失/为空 → Some(Float)（宿主自选，规范默认）；
 /// - 列表含 Float → Some(Float)；
 /// - 列表存在且不含 Float → None（管线约束；GL 模式不可行）。
-pub(crate) fn pick_gl_pixel_depth(plugin_props: &crate::property::PropertySet) -> Option<&'static str> {
+pub(crate) fn pick_gl_pixel_depth(
+	plugin_props: &crate::property::PropertySet,
+) -> Option<&'static str> {
 	use crate::property::Value;
 	let dim = plugin_props.dimension(crate::host::PROP_GL_PIXEL_DEPTH);
 	if dim == 0 {
@@ -172,7 +174,11 @@ static LIVE_TEXTURES: std::sync::LazyLock<
 > = std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// 登记纹理（clipLoadTexture 内部；`props` 装箱后取地址为句柄基址）。
-fn register(props: Box<PropertySet>, texture: crate::bridge::render::TextureHandle, is_output: bool) -> usize {
+fn register(
+	props: Box<PropertySet>,
+	texture: crate::bridge::render::TextureHandle,
+	is_output: bool,
+) -> usize {
 	let addr = &*props as *const PropertySet as usize;
 	LIVE_TEXTURES
 		.lock()
@@ -199,8 +205,10 @@ pub(crate) fn purge_leftovers() {
 
 /// 公共入口模板：panic 兜底。
 fn caught(f: impl FnOnce() -> Result<(), c_int>) -> c_int {
-	catch_unwind(AssertUnwindSafe(f))
-		.map_or_else(|_| status::FAILED, |r| r.map_or_else(|c| c, |()| status::OK))
+	catch_unwind(AssertUnwindSafe(f)).map_or_else(
+		|_| status::FAILED,
+		|r| r.map_or_else(|c| c, |()| status::OK),
+	)
 }
 
 /// clip 句柄解析（实例期）。
@@ -223,10 +231,7 @@ fn cs(s: &str) -> CString {
 /// 把矩形写成 Int×4 属性（Bounds/ROD 用；OFX 图像属性是像素坐标）。
 fn rect_props(props: &PropertySet, name: &str, rect: crate::instance::OfxRectD) {
 	let b = |v: f64| Value::Int(v.round() as i32);
-	props.define(
-		name,
-		vec![b(rect.x1), b(rect.y1), b(rect.x2), b(rect.y2)],
-	);
+	props.define(name, vec![b(rect.x1), b(rect.y1), b(rect.x2), b(rect.y2)]);
 }
 
 /// 从 clip 属性读字符串（缺失返回默认）。
@@ -268,13 +273,21 @@ fn make_texture_props(
 		crate::image::K_IMAGE_EFFECT_PROP_COMPONENTS,
 		Value::String(cs(components.to_ofx())),
 	);
-	props.set_one("OfxImageEffectPropPreMultiplication", Value::String(cs(premult)));
+	props.set_one(
+		"OfxImageEffectPropPreMultiplication",
+		Value::String(cs(premult)),
+	);
 	props.define(
 		crate::host::PROP_RENDER_SCALE,
 		vec![Value::Double(scale.x), Value::Double(scale.y)],
 	);
 	props.set_one("OfxImagePropPixelAspectRatio", Value::Double(par));
-	let bounds = crate::instance::OfxRectD { x1: 0.0, y1: 0.0, x2: width, y2: height };
+	let bounds = crate::instance::OfxRectD {
+		x1: 0.0,
+		y1: 0.0,
+		x2: width,
+		y2: height,
+	};
 	rect_props(&props, crate::image::K_IMAGE_PROP_BOUNDS, bounds);
 	rect_props(&props, crate::image::K_IMAGE_PROP_ROD, bounds);
 	props.set_one(crate::image::K_IMAGE_PROP_ROW_BYTES, Value::Int(row_bytes));

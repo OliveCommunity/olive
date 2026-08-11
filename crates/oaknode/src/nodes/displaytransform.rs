@@ -245,9 +245,12 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		core.add_input(combo);
 	}
 
-	(core, Box::new(DisplayTransformNode {
-		base: OcioBase::new(),
-	}))
+	(
+		core,
+		Box::new(DisplayTransformNode {
+			base: OcioBase::new(),
+		}),
+	)
 }
 
 /// Register this node type (C++ factory entry for
@@ -286,9 +289,14 @@ mod tests {
 	#[test]
 	fn create_wires_inputs_flags_and_properties() {
 		let (core, behavior) = create();
-		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.displaytransform");
+		assert_eq!(
+			behavior.type_id(),
+			"org.olivevideoeditor.Olive.displaytransform"
+		);
 		assert_ne!(
-			core.get_input(crate::nodes::ociobase::TEXTURE_INPUT).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE,
+			core.get_input(crate::nodes::ociobase::TEXTURE_INPUT)
+				.unwrap()
+				.flags & crate::input::flags::NOT_KEYFRAMABLE,
 			0
 		);
 		for id in [DISPLAY_INPUT, VIEW_INPUT, DIRECTION_INPUT] {
@@ -324,7 +332,12 @@ mod tests {
 	fn value_no_texture_pushes_nothing() {
 		let (core, behavior) = create();
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
 		assert!(table.is_empty());
 	}
 

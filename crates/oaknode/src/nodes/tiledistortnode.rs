@@ -296,7 +296,10 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	);
 	scale.properties = vec![
 		("min".to_string(), crate::value::NodeValue::Float(0.0)),
-		("view".to_string(), crate::value::NodeValue::Text("percentage".into())),
+		(
+			"view".to_string(),
+			crate::value::NodeValue::Text("percentage".into()),
+		),
 	];
 	core.add_input(scale);
 

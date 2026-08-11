@@ -292,7 +292,11 @@ mod tests {
 	}
 
 	fn temp_cache(name: &str) -> String {
-		let dir = std::env::temp_dir().join(format!("oakcodec_ffi_proxy_{}_{}", name, std::process::id()));
+		let dir = std::env::temp_dir().join(format!(
+			"oakcodec_ffi_proxy_{}_{}",
+			name,
+			std::process::id()
+		));
 		let _ = std::fs::create_dir_all(&dir);
 		dir.to_string_lossy().into_owned()
 	}
@@ -307,8 +311,14 @@ mod tests {
 	#[test]
 	fn create_destroy_and_params_default() {
 		let _g = crate::ffi::lock_tests();
-		assert_eq!(unsafe { oakcodec_proxy_create_instance() }, crate::error::OAKCODEC_OK);
-		assert_eq!(unsafe { oakcodec_proxy_destroy_instance() }, crate::error::OAKCODEC_OK);
+		assert_eq!(
+			unsafe { oakcodec_proxy_create_instance() },
+			crate::error::OAKCODEC_OK
+		);
+		assert_eq!(
+			unsafe { oakcodec_proxy_destroy_instance() },
+			crate::error::OAKCODEC_OK
+		);
 
 		let p = defaults();
 		assert_eq!(p.width, 1280);
@@ -334,20 +344,38 @@ mod tests {
 
 		// Resolve the proxy filename, then query its state.
 		let mut name = [0i8; 1024];
-		let rc = unsafe { oakcodec_proxy_get_proxy_filename(cache_c.as_ptr(), src.as_ptr(), 0, &p, name.as_mut_ptr(), 1024) };
+		let rc = unsafe {
+			oakcodec_proxy_get_proxy_filename(
+				cache_c.as_ptr(),
+				src.as_ptr(),
+				0,
+				&p,
+				name.as_mut_ptr(),
+				1024,
+			)
+		};
 		assert!(rc > 0);
 		let proxy = crate::ffi::c_str(name.as_ptr()).unwrap();
 		assert!(proxy.contains("1280x720"));
 
 		// Missing by default.
 		let pc = cstr(&proxy);
-		assert_eq!(unsafe { oakcodec_proxy_get_state(pc.as_ptr()) }, OAKCODEC_PROXY_STATE_MISSING);
-		assert_eq!(unsafe { oakcodec_proxy_get_state(std::ptr::null()) }, OAKCODEC_PROXY_STATE_MISSING);
+		assert_eq!(
+			unsafe { oakcodec_proxy_get_state(pc.as_ptr()) },
+			OAKCODEC_PROXY_STATE_MISSING
+		);
+		assert_eq!(
+			unsafe { oakcodec_proxy_get_state(std::ptr::null()) },
+			OAKCODEC_PROXY_STATE_MISSING
+		);
 
 		// Ready once the file exists.
 		std::fs::create_dir_all(std::path::Path::new(&proxy).parent().unwrap()).unwrap();
 		std::fs::write(&proxy, b"x").unwrap();
-		assert_eq!(unsafe { oakcodec_proxy_get_state(pc.as_ptr()) }, OAKCODEC_PROXY_STATE_READY);
+		assert_eq!(
+			unsafe { oakcodec_proxy_get_state(pc.as_ptr()) },
+			OAKCODEC_PROXY_STATE_READY
+		);
 
 		// state_to_string mapping + invalid range.
 		let mut buf = [0i8; 64];
@@ -368,7 +396,8 @@ mod tests {
 
 		// get_proxy_directory.
 		let mut buf = [0i8; 512];
-		let rc = unsafe { oakcodec_proxy_get_proxy_directory(cache_c.as_ptr(), buf.as_mut_ptr(), 512) };
+		let rc =
+			unsafe { oakcodec_proxy_get_proxy_directory(cache_c.as_ptr(), buf.as_mut_ptr(), 512) };
 		assert!(rc > 0);
 		assert_eq!(
 			crate::ffi::c_str(buf.as_ptr()).as_deref(),
@@ -389,29 +418,45 @@ mod tests {
 		let _g = REG_LOCK.lock().unwrap();
 		set_task_submit_cb_extern(None, std::ptr::null_mut());
 		let mut out: oakcodec_proxy_result = unsafe { std::mem::zeroed() };
-		let rc = unsafe { oakcodec_proxy_get_or_start(cache_c.as_ptr(), src.as_ptr(), 0, &p, &mut out) };
+		let rc =
+			unsafe { oakcodec_proxy_get_or_start(cache_c.as_ptr(), src.as_ptr(), 0, &p, &mut out) };
 		assert_eq!(rc, crate::error::OAKCODEC_OK);
 		assert_eq!(out.state, OAKCODEC_PROXY_STATE_MISSING);
 
 		// With a registrar and no files -> Generating.
 		set_task_submit_cb_extern(Some(accept_cb), std::ptr::null_mut());
-		let rc = unsafe { oakcodec_proxy_get_or_start(cache_c.as_ptr(), src.as_ptr(), 0, &p, &mut out) };
+		let rc =
+			unsafe { oakcodec_proxy_get_or_start(cache_c.as_ptr(), src.as_ptr(), 0, &p, &mut out) };
 		assert_eq!(rc, crate::error::OAKCODEC_OK);
 		assert_eq!(out.state, OAKCODEC_PROXY_STATE_GENERATING);
 
 		// Invalid args.
-		let rc = unsafe { oakcodec_proxy_get_or_start(std::ptr::null(), src.as_ptr(), 0, &p, &mut out) };
+		let rc =
+			unsafe { oakcodec_proxy_get_or_start(std::ptr::null(), src.as_ptr(), 0, &p, &mut out) };
 		assert_eq!(rc, OAKCODEC_E_INVALID);
-		let rc = unsafe { oakcodec_proxy_get_or_start(cache_c.as_ptr(), src.as_ptr(), 0, &p, std::ptr::null_mut()) };
+		let rc = unsafe {
+			oakcodec_proxy_get_or_start(cache_c.as_ptr(), src.as_ptr(), 0, &p, std::ptr::null_mut())
+		};
 		assert_eq!(rc, OAKCODEC_E_INVALID);
 
 		// get_proxy_directory / get_proxy_filename / get_working_filename
 		// argument validation.
-		let rc = unsafe { oakcodec_proxy_get_proxy_directory(std::ptr::null(), buf.as_mut_ptr(), 512) };
+		let rc =
+			unsafe { oakcodec_proxy_get_proxy_directory(std::ptr::null(), buf.as_mut_ptr(), 512) };
 		assert_eq!(rc, OAKCODEC_E_INVALID);
-		let rc = unsafe { oakcodec_proxy_get_proxy_filename(std::ptr::null(), src.as_ptr(), 0, &p, buf.as_mut_ptr(), 512) };
+		let rc = unsafe {
+			oakcodec_proxy_get_proxy_filename(
+				std::ptr::null(),
+				src.as_ptr(),
+				0,
+				&p,
+				buf.as_mut_ptr(),
+				512,
+			)
+		};
 		assert_eq!(rc, OAKCODEC_E_INVALID);
-		let rc = unsafe { oakcodec_proxy_get_working_filename(std::ptr::null(), buf.as_mut_ptr(), 512) };
+		let rc =
+			unsafe { oakcodec_proxy_get_working_filename(std::ptr::null(), buf.as_mut_ptr(), 512) };
 		assert_eq!(rc, OAKCODEC_E_INVALID);
 
 		set_task_submit_cb_extern(None, std::ptr::null_mut());

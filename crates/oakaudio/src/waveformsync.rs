@@ -58,7 +58,11 @@ pub fn extract_rms_envelope(planar: &[&[f32]], window_samples: usize) -> Vec<f64
 	let mut envelope = Vec::new();
 
 	let channel_count = planar.len();
-	let sample_count = if channel_count > 0 { planar[0].len() } else { 0 };
+	let sample_count = if channel_count > 0 {
+		planar[0].len()
+	} else {
+		0
+	};
 	if channel_count == 0 || sample_count == 0 || window_samples == 0 {
 		return envelope;
 	}
@@ -169,9 +173,8 @@ pub fn estimate_envelope_offset_valid(
 		return result;
 	}
 
-	let is_valid = |mask: &[bool], size: usize, index: usize| -> bool {
-		mask.len() != size || mask[index]
-	};
+	let is_valid =
+		|mask: &[bool], size: usize, index: usize| -> bool { mask.len() != size || mask[index] };
 
 	let mut best_score = -2.0f64;
 	let mut best_lag = 0i64;

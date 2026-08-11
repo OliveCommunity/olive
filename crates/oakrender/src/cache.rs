@@ -701,17 +701,17 @@ mod tests {
 		let r = TimeRange::new(Rational::new(0, 1), Rational::new(5, 1));
 		c.validate(r);
 		c.invalidate(TimeRange::new(Rational::new(2, 1), Rational::new(2, 1)));
-		assert!(c.has_validated_ranges(), "zero-length invalidate is a no-op");
+		assert!(
+			c.has_validated_ranges(),
+			"zero-length invalidate is a no-op"
+		);
 	}
 
 	#[test]
 	fn invalidated_ranges_clamps_below_zero() {
 		let mut c = tb_cache();
 		c.validate(TimeRange::new(Rational::new(0, 1), Rational::new(5, 1)));
-		let inv = c.invalidated_ranges(TimeRange::new(
-			Rational::new(-5, 1),
-			Rational::new(10, 1),
-		));
+		let inv = c.invalidated_ranges(TimeRange::new(Rational::new(-5, 1), Rational::new(10, 1)));
 		// Only [5,10) remains after the clamp + validation removal.
 		assert_eq!(inv.ranges().len(), 1);
 		assert_eq!(inv.ranges()[0].in_(), Rational::new(5, 1));
@@ -730,10 +730,7 @@ mod tests {
 		assert_eq!(a.passthroughs().len(), 1);
 		assert_eq!(a.passthroughs()[0].1, b.uuid);
 
-		let inv = a.invalidated_ranges(TimeRange::new(
-			Rational::new(0, 1),
-			Rational::new(10, 1),
-		));
+		let inv = a.invalidated_ranges(TimeRange::new(Rational::new(0, 1), Rational::new(10, 1)));
 		assert_eq!(inv.ranges().len(), 1);
 		assert_eq!(inv.ranges()[0].in_(), Rational::new(5, 1));
 
@@ -779,17 +776,15 @@ mod tests {
 		assert_eq!(c.requested_ranges().ranges().len(), 1);
 		c.request(TimeRange::new(Rational::new(3, 1), Rational::new(8, 1)));
 		assert_eq!(c.requested_ranges().ranges().len(), 1, "merges on insert");
-		assert_eq!(
-			c.requested_ranges().ranges()[0].in_(),
-			Rational::new(0, 1)
-		);
+		assert_eq!(c.requested_ranges().ranges()[0].in_(), Rational::new(0, 1));
 		c.clear_request_range(TimeRange::new(Rational::new(2, 1), Rational::new(3, 1)));
 		assert_eq!(c.requested_ranges().ranges().len(), 2, "splits on clear");
 	}
 
 	#[test]
 	fn audio_cache_disk_state_uses_base_format() {
-		let dir = std::env::temp_dir().join(format!("oakrender-audio-test-{}", next_owner_identity()));
+		let dir =
+			std::env::temp_dir().join(format!("oakrender-audio-test-{}", next_owner_identity()));
 		std::fs::create_dir_all(&dir).unwrap();
 		let mut c = PlaybackCache::new(CacheKind::AudioPlayback, 1);
 		c.set_saving_enabled(false);

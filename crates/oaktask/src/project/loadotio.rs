@@ -128,7 +128,10 @@ impl TaskBehavior for LoadOTIOTask {
 				format!("Sequence {unnamed_sequence_count}")
 			};
 			unsafe {
-				bridge::node::oaknode_node_set_label(bridge::node::oaknode_sequence_as_node(sequence), cstr(&label));
+				bridge::node::oaknode_node_set_label(
+					bridge::node::oaknode_sequence_as_node(sequence),
+					cstr(&label),
+				);
 			}
 
 			// Set default params incase they aren't edited.
@@ -189,7 +192,9 @@ impl TaskBehavior for LoadOTIOTask {
 			unsafe {
 				bridge::node::oaknode_project_add_node(project, sequence_node);
 			}
-			let mut add_seq = unsafe { bridge::node::oaknode_command_create_folder_add_child(root_folder, sequence_node) };
+			let mut add_seq = unsafe {
+				bridge::node::oaknode_command_create_folder_add_child(root_folder, sequence_node)
+			};
 			if !add_seq.ctx.is_null() {
 				unsafe {
 					bridge::undo::oakundo_command_redo_now(add_seq);
@@ -239,9 +244,14 @@ impl TaskBehavior for LoadOTIOTask {
 				// Create a new track
 				let mut track_list = CHandle::null();
 				unsafe {
-					bridge::node::oaknode_sequence_get_track_list(*sequence, track_type, &mut track_list);
+					bridge::node::oaknode_sequence_get_track_list(
+						*sequence,
+						track_type,
+						&mut track_list,
+					);
 				}
-				let mut add_track = unsafe { bridge::timeline::oaktimeline_add_track_command(track_list) };
+				let mut add_track =
+					unsafe { bridge::timeline::oaktimeline_add_track_command(track_list) };
 				if !add_track.ctx.is_null() {
 					unsafe {
 						bridge::undo::oakundo_command_redo_now(add_track);
@@ -256,7 +266,11 @@ impl TaskBehavior for LoadOTIOTask {
 				}
 				if count > 0 {
 					unsafe {
-						bridge::node::oaknode_tracklist_get_track_at(track_list, count - 1, &mut track);
+						bridge::node::oaknode_tracklist_get_track_at(
+							track_list,
+							count - 1,
+							&mut track,
+						);
 					}
 				}
 				if track.ctx.is_null() {
@@ -279,7 +293,9 @@ impl TaskBehavior for LoadOTIOTask {
 							// Todo: Look into OTIO supported transitions and add
 							// them to Oak.
 							unsafe {
-								bridge::node::oaknode_block_transition_create(bridge::node::OAKNODE_TRANSITION_CROSS_DISSOLVE)
+								bridge::node::oaknode_block_transition_create(
+									bridge::node::OAKNODE_TRANSITION_CROSS_DISSOLVE,
+								)
 							}
 						}
 						other => {
@@ -394,10 +410,17 @@ impl TaskBehavior for LoadOTIOTask {
 							// Link footage
 							let footage_url = external.target_url().to_string();
 
-							let probed_item = if let Some(existing) = imported_footage.get(&footage_url) {
+							let probed_item = if let Some(existing) =
+								imported_footage.get(&footage_url)
+							{
 								*existing
 							} else {
-								let created = unsafe { bridge::node::oaknode_footage_create(project, cstr(&footage_url)) };
+								let created = unsafe {
+									bridge::node::oaknode_footage_create(
+										project,
+										cstr(&footage_url),
+									)
+								};
 								if !created.ctx.is_null() {
 									imported_footage.insert(footage_url.clone(), created);
 
@@ -422,7 +445,9 @@ impl TaskBehavior for LoadOTIOTask {
 										if !add_footage.ctx.is_null() {
 											unsafe {
 												bridge::undo::oakundo_command_redo_now(add_footage);
-												bridge::undo::oakundo_command_free(&mut add_footage);
+												bridge::undo::oakundo_command_free(
+													&mut add_footage,
+												);
 											}
 										}
 									}
@@ -447,23 +472,36 @@ impl TaskBehavior for LoadOTIOTask {
 
 								if track_type == bridge::node::OAKNODE_TRACK_TYPE_VIDEO {
 									let transform = unsafe {
-										bridge::node::oaknode_factory_create_from_id(cstr(bridge::node::OAKNODE_TYPE_TRANSFORM))
+										bridge::node::oaknode_factory_create_from_id(cstr(
+											bridge::node::OAKNODE_TYPE_TRANSFORM,
+										))
 									};
 									if !transform.ctx.is_null() {
 										unsafe {
-											bridge::node::oaknode_project_add_node(project, transform);
+											bridge::node::oaknode_project_add_node(
+												project, transform,
+											);
 											bridge::node::oaknode_node_connect(
 												bridge::node::oaknode_footage_as_node(probed_item),
 												transform,
 												cstr("tex_in"),
 											);
-											bridge::node::oaknode_node_connect(transform, block_node, cstr("buffer_in"));
-											bridge::node::oaknode_node_set_context_position(block_node, transform, -1.0, 0.0, 0);
+											bridge::node::oaknode_node_connect(
+												transform,
+												block_node,
+												cstr("buffer_in"),
+											);
+											bridge::node::oaknode_node_set_context_position(
+												block_node, transform, -1.0, 0.0, 0,
+											);
 										}
 									}
 								} else {
-									let volume =
-										unsafe { bridge::node::oaknode_factory_create_from_id(cstr(bridge::node::OAKNODE_TYPE_VOLUME)) };
+									let volume = unsafe {
+										bridge::node::oaknode_factory_create_from_id(cstr(
+											bridge::node::OAKNODE_TYPE_VOLUME,
+										))
+									};
 									if !volume.ctx.is_null() {
 										unsafe {
 											bridge::node::oaknode_project_add_node(project, volume);
@@ -472,8 +510,14 @@ impl TaskBehavior for LoadOTIOTask {
 												volume,
 												cstr("samples_in"),
 											);
-											bridge::node::oaknode_node_connect(volume, block_node, cstr("buffer_in"));
-											bridge::node::oaknode_node_set_context_position(block_node, volume, -1.0, 0.0, 0);
+											bridge::node::oaknode_node_connect(
+												volume,
+												block_node,
+												cstr("buffer_in"),
+											);
+											bridge::node::oaknode_node_set_context_position(
+												block_node, volume, -1.0, 0.0, 0,
+											);
 										}
 									}
 								}
@@ -511,7 +555,11 @@ unsafe fn set_own_context_position(node: CHandle) {
 /// Format handling ends here — the caller builds the project from the
 /// returned timelines regardless of the source format (C++ parity), so the
 /// track/clip/footage code never forks.
-fn parse_timelines(task: &mut Task, filename: &str, format: InterchangeFormat) -> Result<Vec<oakotio::Timeline>> {
+fn parse_timelines(
+	task: &mut Task,
+	filename: &str,
+	format: InterchangeFormat,
+) -> Result<Vec<oakotio::Timeline>> {
 	match format {
 		InterchangeFormat::OtioJson => {
 			let root = oakotio::from_json_file(filename).map_err(|e| {
@@ -530,7 +578,9 @@ fn parse_timelines(task: &mut Task, filename: &str, format: InterchangeFormat) -
 				Serializable::Timeline(timeline) => Ok(vec![timeline.clone()]),
 				_ => {
 					task.set_error("Unknown OpenTimelineIO root element");
-					Err(Error::Failed("Unknown OpenTimelineIO root element".to_string()))
+					Err(Error::Failed(
+						"Unknown OpenTimelineIO root element".to_string(),
+					))
 				}
 			}
 		}

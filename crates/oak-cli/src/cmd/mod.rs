@@ -47,25 +47,25 @@ pub const EXIT_USAGE: i32 = 64;
 /// code the C++ binary would exit with when that family's work is
 /// impossible (1 for info/probe, 2 for render/transcode).
 pub fn require_or(
-    cmd: &str,
-    families: &[&DeferredFamily],
-    unavailable_code: i32,
+	cmd: &str,
+	families: &[&DeferredFamily],
+	unavailable_code: i32,
 ) -> Result<(), i32> {
-    match crate::deferred::require(families) {
-        Ok(()) => Ok(()),
-        Err(msg) => {
-            eprintln!("error: {cmd}: {msg}");
-            Err(unavailable_code)
-        }
-    }
+	match crate::deferred::require(families) {
+		Ok(()) => Ok(()),
+		Err(msg) => {
+			eprintln!("error: {cmd}: {msg}");
+			Err(unavailable_code)
+		}
+	}
 }
 
 /// Fallback for the (today unreachable) success arm of `require_or`: the
 /// gate reported the families available, but the call-through port is not
 /// wired yet. Never panics; reports an internal error and returns `code`.
 pub fn port_not_wired(cmd: &str, code: i32) -> i32 {
-    eprintln!(
-        "error: {cmd}: internal error: facade families reported available but no port is wired yet"
-    );
-    code
+	eprintln!(
+		"error: {cmd}: internal error: facade families reported available but no port is wired yet"
+	);
+	code
 }

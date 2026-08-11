@@ -32,7 +32,6 @@
 /// `OAKCODEC_OK` and the `OAKCODEC_E_*` codes are mirrored as
 /// [`crate::error`] constants; `OAKCODEC_ABI_VERSION` lives in
 /// [`crate::handle`].
-
 pub mod conform;
 pub mod decoder;
 pub mod encoder;

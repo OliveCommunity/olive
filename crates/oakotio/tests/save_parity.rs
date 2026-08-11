@@ -20,90 +20,93 @@
 //! the opentimelineio C++ output.
 
 use oakotio::{
-    Clip, Composable, ExternalReference, Gap, MediaReference, RationalTime, TimeRange, Timeline,
-    Track, Transition,
+	Clip, Composable, ExternalReference, Gap, MediaReference, RationalTime, TimeRange, Timeline,
+	Track, Transition,
 };
 
 fn build_golden_timeline() -> Timeline {
-    let mut timeline = Timeline::new("My Sequence");
+	let mut timeline = Timeline::new("My Sequence");
 
-    let mut video = Track::new("Video");
+	let mut video = Track::new("Video");
 
-    let mut clip = Clip::new("My Sequence Clip");
-    clip.set_source_range(TimeRange::new(
-        RationalTime::new(0.0, 24.0),
-        RationalTime::new(1152.0, 24.0),
-    ));
-    clip.set_media_reference(MediaReference::ExternalReference(ExternalReference::new(
-        "file:///tmp/My Sequence.mp4",
-        Some(TimeRange::new(
-            RationalTime::new(0.0, 25.0),
-            RationalTime::new(100.0, 25.0),
-        )),
-    )));
-    video.append_child(Composable::Clip(clip));
+	let mut clip = Clip::new("My Sequence Clip");
+	clip.set_source_range(TimeRange::new(
+		RationalTime::new(0.0, 24.0),
+		RationalTime::new(1152.0, 24.0),
+	));
+	clip.set_media_reference(MediaReference::ExternalReference(ExternalReference::new(
+		"file:///tmp/My Sequence.mp4",
+		Some(TimeRange::new(
+			RationalTime::new(0.0, 25.0),
+			RationalTime::new(100.0, 25.0),
+		)),
+	)));
+	video.append_child(Composable::Clip(clip));
 
-    video.append_child(Composable::Gap(Gap::new(
-        TimeRange::new(RationalTime::new(0.0, 24.0), RationalTime::new(576.0, 24.0)),
-        "My Sequence Gap",
-    )));
+	video.append_child(Composable::Gap(Gap::new(
+		TimeRange::new(RationalTime::new(0.0, 24.0), RationalTime::new(576.0, 24.0)),
+		"My Sequence Gap",
+	)));
 
-    let mut transition = Transition::new("My Sequence Transition");
-    transition.set_in_offset(RationalTime::new(12.0, 24.0));
-    transition.set_out_offset(RationalTime::new(12.0, 24.0));
-    video.append_child(Composable::Transition(transition));
+	let mut transition = Transition::new("My Sequence Transition");
+	transition.set_in_offset(RationalTime::new(12.0, 24.0));
+	transition.set_out_offset(RationalTime::new(12.0, 24.0));
+	video.append_child(Composable::Transition(transition));
 
-    let mut audio = Track::new("Audio");
+	let mut audio = Track::new("Audio");
 
-    let mut audio_clip = Clip::new("My Sequence Audio");
-    audio_clip.set_source_range(TimeRange::new(
-        RationalTime::new(0.0, 24.0),
-        RationalTime::new(1152.0, 24.0),
-    ));
-    audio_clip.set_media_reference(MediaReference::ExternalReference(ExternalReference::new(
-        "file:///tmp/My Sequence.wav",
-        Some(TimeRange::new(
-            RationalTime::new(0.0, 48000.0),
-            RationalTime::new(0.0, 48000.0),
-        )),
-    )));
-    audio.append_child(Composable::Clip(audio_clip));
+	let mut audio_clip = Clip::new("My Sequence Audio");
+	audio_clip.set_source_range(TimeRange::new(
+		RationalTime::new(0.0, 24.0),
+		RationalTime::new(1152.0, 24.0),
+	));
+	audio_clip.set_media_reference(MediaReference::ExternalReference(ExternalReference::new(
+		"file:///tmp/My Sequence.wav",
+		Some(TimeRange::new(
+			RationalTime::new(0.0, 48000.0),
+			RationalTime::new(0.0, 48000.0),
+		)),
+	)));
+	audio.append_child(Composable::Clip(audio_clip));
 
-    audio.append_child(Composable::Gap(Gap::new(
-        TimeRange::new(RationalTime::new(1152.0, 24.0), RationalTime::new(12.0, 1.0)),
-        "",
-    )));
+	audio.append_child(Composable::Gap(Gap::new(
+		TimeRange::new(
+			RationalTime::new(1152.0, 24.0),
+			RationalTime::new(12.0, 1.0),
+		),
+		"",
+	)));
 
-    timeline.tracks_mut().append_child(Composable::Track(video));
-    timeline.tracks_mut().append_child(Composable::Track(audio));
+	timeline.tracks_mut().append_child(Composable::Track(video));
+	timeline.tracks_mut().append_child(Composable::Track(audio));
 
-    timeline
+	timeline
 }
 
 #[test]
 fn saved_timeline_matches_golden_bytes() {
-    let golden = std::fs::read_to_string(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/tests/data/golden_timeline.json"
-    ))
-    .expect("read golden_timeline.json");
+	let golden = std::fs::read_to_string(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/tests/data/golden_timeline.json"
+	))
+	.expect("read golden_timeline.json");
 
-    let built = build_golden_timeline();
-    let out = built.to_json_string().expect("serialize built timeline");
+	let built = build_golden_timeline();
+	let out = built.to_json_string().expect("serialize built timeline");
 
-    assert_eq!(out, golden);
+	assert_eq!(out, golden);
 }
 
 #[test]
 fn saved_timeline_reparses_identically() {
-    // The builder output must also parse back into an equivalent graph.
-    let built = build_golden_timeline();
-    let out = built.to_json_string().unwrap();
-    let reparsed = oakotio::from_json_string(&out).unwrap();
-    assert_eq!(
-        reparsed.as_timeline().unwrap().name(),
-        "My Sequence",
-        "reparsed timeline keeps the name"
-    );
-    assert_eq!(reparsed.as_timeline().unwrap().tracks().children().len(), 2);
+	// The builder output must also parse back into an equivalent graph.
+	let built = build_golden_timeline();
+	let out = built.to_json_string().unwrap();
+	let reparsed = oakotio::from_json_string(&out).unwrap();
+	assert_eq!(
+		reparsed.as_timeline().unwrap().name(),
+		"My Sequence",
+		"reparsed timeline keeps the name"
+	);
+	assert_eq!(reparsed.as_timeline().unwrap().tracks().children().len(), 2);
 }

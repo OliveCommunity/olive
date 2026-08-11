@@ -28,18 +28,14 @@ use crate::handle::CHandle;
 /// `OakRenderTexture` — refcounted GPU texture handle.
 pub type OakRenderTexture = CHandle;
 
-
 /// `OakCancelAtom` — refcounted cancellation atom handle.
 pub type OakCancelAtom = CHandle;
-
 
 /// `OakRenderRenderer` — refcounted display-renderer handle.
 pub type OakRenderRenderer = CHandle;
 
-
 /// `OakCodecFrame` — refcounted CPU-frame handle shared with oakrender.
 pub type OakCodecFrame = CHandle;
-
 
 // Refcounted opaque handles; thread-safe in the C library.
 

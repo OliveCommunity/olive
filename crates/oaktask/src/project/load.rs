@@ -123,7 +123,10 @@ impl TaskBehavior for ProjectLoadBaseTask {
 				task.set_error("Failed to determine project version.");
 			}
 			OAKNODE_SERIALIZER_RESULT_FILE_ERROR => {
-				task.set_error(&format!("Failed to read file \"{}\" for reading.", self.filename));
+				task.set_error(&format!(
+					"Failed to read file \"{}\" for reading.",
+					self.filename
+				));
 			}
 			OAKNODE_SERIALIZER_RESULT_XML_ERROR => {
 				task.set_error(&format!(
@@ -166,5 +169,8 @@ impl TaskBehavior for ProjectLoadTask {
 /// Read a NUL-terminated char buffer into a String (lossy).
 pub(crate) fn buf_to_string(buf: &[i8]) -> String {
 	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-	unsafe { String::from_utf8_lossy(std::slice::from_raw_parts(buf.as_ptr() as *const u8, len)).into_owned() }
+	unsafe {
+		String::from_utf8_lossy(std::slice::from_raw_parts(buf.as_ptr() as *const u8, len))
+			.into_owned()
+	}
 }

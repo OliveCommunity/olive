@@ -152,12 +152,17 @@ mod tests {
 		let s = suite_v1();
 		unsafe {
 			assert_eq!((s.update)(std::ptr::null_mut(), 0.5), status::OK);
-			assert_eq!((s.start)(std::ptr::null_mut(), std::ptr::null()), status::OK);
+			assert_eq!(
+				(s.start)(std::ptr::null_mut(), std::ptr::null()),
+				status::OK
+			);
 			assert_eq!((s.end)(std::ptr::null_mut()), status::OK);
 		}
 
 		// 带取消回调：update → REPLY_NO；is_cancelled 为真。
-		set_current(Some(unsafe { ProgressReporter::new(cancel_cb, std::ptr::null_mut()) }));
+		set_current(Some(unsafe {
+			ProgressReporter::new(cancel_cb, std::ptr::null_mut())
+		}));
 		unsafe {
 			assert_eq!((s.update)(std::ptr::null_mut(), 0.5), status::REPLY_NO);
 		}

@@ -180,12 +180,11 @@ fn project_sync_copy_consistency() {
 	// 1. add a new node c + edge c->b, 2. change a's value.
 	let c = add_test_node(&mut original.graph);
 	original.graph.connect(c, b, "val_in2", -1).unwrap();
-	original
-		.graph
-		.get_mut(a)
-		.unwrap()
-		.core
-		.set_standard_value("val_in", -1, NodeValue::Float(11.0));
+	original.graph.get_mut(a).unwrap().core.set_standard_value(
+		"val_in",
+		-1,
+		NodeValue::Float(11.0),
+	);
 
 	let changes = [
 		ChangeRecord::NodeAdded(c),
@@ -228,20 +227,20 @@ fn project_sync_copy_consistency() {
 	drop(copy_guard);
 	let fresh = original.deep_copy().unwrap();
 	let fresh_guard = fresh.lock().unwrap();
-	assert_eq!(
-		fresh_guard.graph.node_count(),
-		original.graph.node_count()
-	);
+	assert_eq!(fresh_guard.graph.node_count(), original.graph.node_count());
 	assert_eq!(
 		fresh_guard.graph.output_connections_all().len(),
 		original.graph.output_connections_all().len()
 	);
+	assert_eq!(fresh_guard.graph.connected_output(b, "val_in", -1), Some(a));
 	assert_eq!(
-		fresh_guard.graph.connected_output(b, "val_in", -1),
-		Some(a)
-	);
-	assert_eq!(
-		fresh_guard.graph.get(a).unwrap().core.standard_value("val_in", -1).to_double(),
+		fresh_guard
+			.graph
+			.get(a)
+			.unwrap()
+			.core
+			.standard_value("val_in", -1)
+			.to_double(),
 		11.0
 	);
 }
@@ -274,8 +273,8 @@ fn sequence_default_structure() {
 /// stay consistent (C++ Track semantics).
 #[test]
 fn track_block_ordering() {
-	use oaknode::track::{BlockRange, TrackBehavior, TrackType};
 	use oakcore_rs::{Rational, TimeRange};
+	use oaknode::track::{BlockRange, TrackBehavior, TrackType};
 
 	struct Ranges;
 	impl BlockRange for Ranges {
@@ -328,13 +327,13 @@ fn track_block_ordering() {
 /// caches).
 #[test]
 fn clip_cache_passthrough() {
-	use oaknode::ffi::block::oaknode_clip_add_cache_passthrough_from;
+	use oaknode::error::OAKNODE_OK;
 	use oaknode::ffi::block::oaknode_block_clip_create;
 	use oaknode::ffi::block::oaknode_block_free;
-	use oaknode::ffi::project::oaknode_project_init;
+	use oaknode::ffi::block::oaknode_clip_add_cache_passthrough_from;
 	use oaknode::ffi::project::oaknode_project_free;
+	use oaknode::ffi::project::oaknode_project_init;
 	use oaknode::handle::CHandle;
-	use oaknode::error::OAKNODE_OK;
 
 	let mut p = unsafe { oaknode_project_init() };
 	let mut clip = unsafe { oaknode_block_clip_create() };
@@ -356,9 +355,9 @@ fn clip_cache_passthrough() {
 /// gracefully without partial state); proxy fields, counts, duration.
 #[test]
 fn footage_probe() {
+	use oakcore_rs::Rational;
 	use oaknode::footage::{FootageBehavior, StreamInfo};
 	use oaknode::value::VideoParams;
-	use oakcore_rs::Rational;
 
 	let mut f = FootageBehavior::new("/nonexistent/file.mov");
 	assert!(!f.valid);

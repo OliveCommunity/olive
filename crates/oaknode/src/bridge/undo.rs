@@ -202,7 +202,11 @@ pub fn command_free(command: *mut CHandle) {
 }
 
 /// `oakundo_stack_push` (facade-owned stack).
-pub fn stack_push(stack: CHandle, command: CHandle, text: *const std::ffi::c_char) -> Option<c_int> {
+pub fn stack_push(
+	stack: CHandle,
+	command: CHandle,
+	text: *const std::ffi::c_char,
+) -> Option<c_int> {
 	// Direct call into the oakundo crate (single-lib unification).
 	Some(unsafe { oakundo::ffi::undostack::oakundo_undostack_push(stack, command, text) })
 }
@@ -327,7 +331,10 @@ pub(crate) mod stub {
 		let state = unsafe { &mut (*boxed).value };
 		match &mut state.0 {
 			StubCommand::Callback {
-				done, redo, userdata, ..
+				done,
+				redo,
+				userdata,
+				..
 			} => {
 				if !done.swap(true, Ordering::AcqRel) {
 					if let Some(f) = redo {
@@ -357,7 +364,10 @@ pub(crate) mod stub {
 		let state = unsafe { &mut (*boxed).value };
 		match &mut state.0 {
 			StubCommand::Callback {
-				done, undo, userdata, ..
+				done,
+				undo,
+				userdata,
+				..
 			} => {
 				if done.swap(false, Ordering::AcqRel) {
 					if let Some(f) = undo {
@@ -396,4 +406,3 @@ pub(crate) mod stub {
 	struct SendStub(StubCommand);
 	unsafe impl Send for SendStub {}
 }
-

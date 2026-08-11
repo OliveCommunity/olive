@@ -123,7 +123,13 @@ impl NodeBehavior for TimeRemapNode {
 	/// [`Self::input_time_adjustment_with`] (and tested there); until the
 	/// adjustment API gains core access, the identity range is returned
 	/// (`// CPP-PARITY: timeremap.cpp` `input_time_adjustment`).
-	fn input_time_adjustment(&self, input: &str, element: i32, time: TimeRange, traverse: bool) -> TimeRange {
+	fn input_time_adjustment(
+		&self,
+		input: &str,
+		element: i32,
+		time: TimeRange,
+		traverse: bool,
+	) -> TimeRange {
 		let _ = (input, element, traverse);
 		time
 	}
@@ -132,7 +138,13 @@ impl NodeBehavior for TimeRemapNode {
 	/// override has its real inverse implementation commented out (an
 	/// arbitrary remap is not invertible) and unconditionally defers to the
 	/// base-class identity behavior; declared here for parity.
-	fn output_time_adjustment(&self, input: &str, element: i32, time: TimeRange, traverse: bool) -> TimeRange {
+	fn output_time_adjustment(
+		&self,
+		input: &str,
+		element: i32,
+		time: TimeRange,
+		traverse: bool,
+	) -> TimeRange {
 		let _ = (input, element, traverse);
 		time
 	}
@@ -140,7 +152,13 @@ impl NodeBehavior for TimeRemapNode {
 	/// Evaluate outputs (C++ `value()`): pushes the value arriving at
 	/// `input_in` through unchanged (the actual time remap happens via the
 	/// time-adjustment overrides above).
-	fn value(&self, core: &NodeCore, inputs: &NodeValueRow, time: Rational, table: &mut NodeValueTable) {
+	fn value(
+		&self,
+		core: &NodeCore,
+		inputs: &NodeValueRow,
+		time: Rational,
+		table: &mut NodeValueTable,
+	) {
 		let _ = (core, time);
 		// `table->push(value.at(k_input_input))` — the value passes through
 		// unchanged, whatever its type (texture values included).
@@ -173,11 +191,8 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	];
 	core.add_input(time_input);
 
-	let mut input_input = crate::input::Input::new(
-		INPUT_INPUT,
-		crate::value::ValueType::None,
-		NodeValue::None,
-	);
+	let mut input_input =
+		crate::input::Input::new(INPUT_INPUT, crate::value::ValueType::None, NodeValue::None);
 	input_input.flags |= crate::input::flags::NOT_KEYFRAMABLE;
 	core.add_input(input_input);
 
@@ -219,12 +234,14 @@ mod tests {
 		assert_eq!(time_in.value_type, ValueType::Rational);
 		assert_eq!(time_in.default, NodeValue::Rational(Rational::new(0, 1)));
 		assert_ne!(time_in.flags & crate::input::flags::NOT_CONNECTABLE, 0);
-		assert!(time_in.properties.iter().any(|(k, v)| {
-			k == "view" && v == &NodeValue::Text("time".to_string())
-		}));
-		assert!(time_in.properties.iter().any(|(k, v)| {
-			k == "viewlock" && v == &NodeValue::Boolean(true)
-		}));
+		assert!(time_in
+			.properties
+			.iter()
+			.any(|(k, v)| { k == "view" && v == &NodeValue::Text("time".to_string()) }));
+		assert!(time_in
+			.properties
+			.iter()
+			.any(|(k, v)| { k == "viewlock" && v == &NodeValue::Boolean(true) }));
 		let input_in = core.get_input(INPUT_INPUT).unwrap();
 		assert_eq!(input_in.value_type, ValueType::None);
 		assert_ne!(input_in.flags & crate::input::flags::NOT_KEYFRAMABLE, 0);
@@ -234,8 +251,14 @@ mod tests {
 	fn get_remapped_time_uses_standard_value() {
 		let (mut core, _) = create();
 		core.set_standard_value(TIME_INPUT, -1, NodeValue::Rational(Rational::new(5, 1)));
-		assert_eq!(TimeRemapNode::get_remapped_time(&core, Rational::new(0, 1)), Rational::new(5, 1));
-		assert_eq!(TimeRemapNode::get_remapped_time(&core, Rational::new(30, 1)), Rational::new(5, 1));
+		assert_eq!(
+			TimeRemapNode::get_remapped_time(&core, Rational::new(0, 1)),
+			Rational::new(5, 1)
+		);
+		assert_eq!(
+			TimeRemapNode::get_remapped_time(&core, Rational::new(30, 1)),
+			Rational::new(5, 1)
+		);
 	}
 
 	#[test]
@@ -244,24 +267,35 @@ mod tests {
 		// A time-remap curve: at 0s the input shows 10s, at 10s it shows 0s
 		// (reverse). Evaluated exactly at the keyframe times, so no
 		// interpolation is involved.
-		core.keyframe_track_mut(TIME_INPUT, -1).set_key(crate::keyframe::Keyframe {
-			time: Rational::new(0, 1),
-			value: NodeValue::Rational(Rational::new(10, 1)),
-			interpolation: crate::keyframe::Interpolation::Linear,
-			bezier_in: (0.0, 0.0),
-			bezier_out: (0.0, 0.0),
-		});
-		core.keyframe_track_mut(TIME_INPUT, -1).set_key(crate::keyframe::Keyframe {
-			time: Rational::new(10, 1),
-			value: NodeValue::Rational(Rational::new(0, 1)),
-			interpolation: crate::keyframe::Interpolation::Linear,
-			bezier_in: (0.0, 0.0),
-			bezier_out: (0.0, 0.0),
-		});
-		assert_eq!(TimeRemapNode::get_remapped_time(&core, Rational::new(0, 1)), Rational::new(10, 1));
-		assert_eq!(TimeRemapNode::get_remapped_time(&core, Rational::new(10, 1)), Rational::new(0, 1));
+		core.keyframe_track_mut(TIME_INPUT, -1)
+			.set_key(crate::keyframe::Keyframe {
+				time: Rational::new(0, 1),
+				value: NodeValue::Rational(Rational::new(10, 1)),
+				interpolation: crate::keyframe::Interpolation::Linear,
+				bezier_in: (0.0, 0.0),
+				bezier_out: (0.0, 0.0),
+			});
+		core.keyframe_track_mut(TIME_INPUT, -1)
+			.set_key(crate::keyframe::Keyframe {
+				time: Rational::new(10, 1),
+				value: NodeValue::Rational(Rational::new(0, 1)),
+				interpolation: crate::keyframe::Interpolation::Linear,
+				bezier_in: (0.0, 0.0),
+				bezier_out: (0.0, 0.0),
+			});
+		assert_eq!(
+			TimeRemapNode::get_remapped_time(&core, Rational::new(0, 1)),
+			Rational::new(10, 1)
+		);
+		assert_eq!(
+			TimeRemapNode::get_remapped_time(&core, Rational::new(10, 1)),
+			Rational::new(0, 1)
+		);
 		// Mid-way between the keys the curve is linear: 10s -> 5s.
-		assert_eq!(TimeRemapNode::get_remapped_time(&core, Rational::new(5, 1)), Rational::new(5, 1));
+		assert_eq!(
+			TimeRemapNode::get_remapped_time(&core, Rational::new(5, 1)),
+			Rational::new(5, 1)
+		);
 	}
 
 	#[test]
@@ -294,14 +328,8 @@ mod tests {
 	fn output_time_adjustment_is_identity() {
 		let n = TimeRemapNode;
 		let t = TimeRange::new(Rational::new(10, 1), Rational::new(20, 1));
-		assert_eq!(
-			n.output_time_adjustment(INPUT_INPUT, -1, t, true),
-			t
-		);
-		assert_eq!(
-			n.output_time_adjustment("other_in", -1, t, true),
-			t
-		);
+		assert_eq!(n.output_time_adjustment(INPUT_INPUT, -1, t, true), t);
+		assert_eq!(n.output_time_adjustment("other_in", -1, t, true), t);
 	}
 
 	#[test]
@@ -318,7 +346,12 @@ mod tests {
 	fn value_pushes_nothing_when_input_absent() {
 		let (core, behavior) = create();
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
 		assert!(table.is_empty());
 	}
 

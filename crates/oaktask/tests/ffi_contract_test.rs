@@ -27,14 +27,14 @@ use std::sync::atomic::{AtomicI32, Ordering};
 
 use oaktask::error::{OAKTASK_E_INVALID, OAKTASK_E_STATE, OAKTASK_OK};
 use oaktask::ffi::manager::{
-	oaktask_manager_at, oaktask_manager_count, oaktask_manager_delete_finished, oaktask_manager_init,
-	oaktask_manager_shutdown,
+	oaktask_manager_at, oaktask_manager_count, oaktask_manager_delete_finished,
+	oaktask_manager_init, oaktask_manager_shutdown,
 };
 use oaktask::ffi::project::oaktask_create_project_save;
 use oaktask::ffi::task::{
-	oaktask_debug_alive_count, oaktask_task_cancel, oaktask_task_error, oaktask_task_free, oaktask_task_is_finished,
-	oaktask_task_start, oaktask_task_start_sync, oaktask_task_subscribe, oaktask_task_succeeded, oaktask_task_title,
-	oaktask_task_wait,
+	oaktask_debug_alive_count, oaktask_task_cancel, oaktask_task_error, oaktask_task_free,
+	oaktask_task_is_finished, oaktask_task_start, oaktask_task_start_sync, oaktask_task_subscribe,
+	oaktask_task_succeeded, oaktask_task_title, oaktask_task_wait,
 };
 use oaktask::handle::CHandle;
 
@@ -124,8 +124,14 @@ fn two_stage_string_contract() {
 	assert!(err_needed > 0);
 
 	// Error-path: empty handle -> E_INVALID.
-	assert_eq!(unsafe { oaktask_task_title(CHandle::null(), std::ptr::null_mut(), 0) }, OAKTASK_E_INVALID);
-	assert_eq!(unsafe { oaktask_task_error(CHandle::null(), std::ptr::null_mut(), 0) }, OAKTASK_E_INVALID);
+	assert_eq!(
+		unsafe { oaktask_task_title(CHandle::null(), std::ptr::null_mut(), 0) },
+		OAKTASK_E_INVALID
+	);
+	assert_eq!(
+		unsafe { oaktask_task_error(CHandle::null(), std::ptr::null_mut(), 0) },
+		OAKTASK_E_INVALID
+	);
 
 	let mut t = task;
 	free_task(&mut t);
@@ -215,14 +221,20 @@ fn subscribe_records_started_and_finished() {
 	let mut task = unsafe { oaktask_create_project_save(fake_handle(), std::ptr::null(), 0) };
 
 	// Null callback -> E_INVALID.
-	assert_eq!(unsafe { oaktask_task_subscribe(task, None, std::ptr::null_mut()) }, OAKTASK_E_INVALID as i64);
+	assert_eq!(
+		unsafe { oaktask_task_subscribe(task, None, std::ptr::null_mut()) },
+		OAKTASK_E_INVALID as i64
+	);
 	// Empty handle -> E_INVALID.
 	assert_eq!(
 		unsafe { oaktask_task_subscribe(CHandle::null(), Some(recorder), std::ptr::null_mut()) },
 		OAKTASK_E_INVALID as i64
 	);
 
-	assert_eq!(unsafe { oaktask_task_subscribe(task, Some(recorder), std::ptr::null_mut()) }, 0);
+	assert_eq!(
+		unsafe { oaktask_task_subscribe(task, Some(recorder), std::ptr::null_mut()) },
+		0
+	);
 	assert_eq!(unsafe { oaktask_task_start(task) }, OAKTASK_OK);
 	assert_eq!(unsafe { oaktask_task_wait(task) }, OAKTASK_OK);
 
@@ -256,11 +268,26 @@ fn start_sync_failure_paths() {
 	assert!(msg.contains("no filename"), "error was: {msg}");
 
 	// Null handle -> E_INVALID.
-	assert_eq!(unsafe { oaktask_task_start_sync(CHandle::null()) }, OAKTASK_E_INVALID);
-	assert_eq!(unsafe { oaktask_task_cancel(CHandle::null()) }, OAKTASK_E_INVALID);
-	assert_eq!(unsafe { oaktask_task_wait(CHandle::null()) }, OAKTASK_E_INVALID);
-	assert_eq!(unsafe { oaktask_task_is_finished(CHandle::null()) }, OAKTASK_E_INVALID);
-	assert_eq!(unsafe { oaktask_task_succeeded(CHandle::null()) }, OAKTASK_E_INVALID);
+	assert_eq!(
+		unsafe { oaktask_task_start_sync(CHandle::null()) },
+		OAKTASK_E_INVALID
+	);
+	assert_eq!(
+		unsafe { oaktask_task_cancel(CHandle::null()) },
+		OAKTASK_E_INVALID
+	);
+	assert_eq!(
+		unsafe { oaktask_task_wait(CHandle::null()) },
+		OAKTASK_E_INVALID
+	);
+	assert_eq!(
+		unsafe { oaktask_task_is_finished(CHandle::null()) },
+		OAKTASK_E_INVALID
+	);
+	assert_eq!(
+		unsafe { oaktask_task_succeeded(CHandle::null()) },
+		OAKTASK_E_INVALID
+	);
 
 	free_task(&mut task);
 	assert_eq!(unsafe { oaktask_debug_alive_count() }, 0);

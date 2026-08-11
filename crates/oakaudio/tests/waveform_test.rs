@@ -43,7 +43,12 @@ fn fill_ramp(w: oakaudio::handle::CHandle) {
 	);
 }
 
-fn summary(w: oakaudio::handle::CHandle, start: (i64, i64), length: (i64, i64), cap: i32) -> Vec<MinMax> {
+fn summary(
+	w: oakaudio::handle::CHandle,
+	start: (i64, i64),
+	length: (i64, i64),
+	cap: i32,
+) -> Vec<MinMax> {
 	let mut out = vec![MinMax { min: 0.0, max: 0.0 }; cap as usize * 2];
 	let n = unsafe {
 		oakaudio_waveform_get_summary(
@@ -70,7 +75,10 @@ fn overwrite_samples_and_length() {
 	fill_ramp(w);
 
 	let (mut num, mut den) = (0i64, 0i64);
-	assert_eq!(unsafe { oakaudio_waveform_length(w, &mut num, &mut den) }, 0);
+	assert_eq!(
+		unsafe { oakaudio_waveform_length(w, &mut num, &mut den) },
+		0
+	);
 	assert_eq!(num, 1);
 	assert_eq!(den, 1);
 
@@ -95,7 +103,10 @@ fn summary_two_stage_query() {
 	assert_eq!(n, 1);
 
 	// Too-small capacity: same count, buffer untouched.
-	let mut out = [MinMax { min: -1.0, max: -1.0 }; 2];
+	let mut out = [MinMax {
+		min: -1.0,
+		max: -1.0,
+	}; 2];
 	let n = unsafe { oakaudio_waveform_get_summary(w, 0, 1, 1, 1, out.as_mut_ptr(), 0) };
 	assert_eq!(n, 1);
 	assert_eq!(out[0].min, -1.0);
@@ -164,12 +175,20 @@ fn overwrite_silence() {
 	assert_eq!(pair(out[1].min, out[1].max), pair(0.0, 0.0));
 
 	let out = summary(w, (1, 2), (1, 2), 1);
-	assert!(out[0].max > 0.5, "second half must keep ramp data, got {:?}", out[0]);
+	assert!(
+		out[0].max > 0.5,
+		"second half must keep ramp data, got {:?}",
+		out[0]
+	);
 	assert!(out[1].min < -0.5);
 
 	let (mut num, mut den) = (0i64, 0i64);
 	unsafe { oakaudio_waveform_length(w, &mut num, &mut den) };
-	assert_eq!((num, den), (1, 1), "overwrite_silence must not change length");
+	assert_eq!(
+		(num, den),
+		(1, 1),
+		"overwrite_silence must not change length"
+	);
 	unsafe { oakaudio_waveform_free(&mut w) };
 }
 
@@ -217,9 +236,7 @@ fn sum_and_resum_golden() {
 	let ch1 = [4.0f32, -5.0, 6.0];
 	let planes = [ch0.as_ptr(), ch1.as_ptr()];
 	let mut out = [MinMax { min: 0.0, max: 0.0 }; 2];
-	let r = unsafe {
-		oakaudio_waveform_sum_samples_s(planes.as_ptr(), 2, 0, 3, out.as_mut_ptr())
-	};
+	let r = unsafe { oakaudio_waveform_sum_samples_s(planes.as_ptr(), 2, 0, 3, out.as_mut_ptr()) };
 	assert_eq!(r, 0);
 	assert_eq!(pair(out[0].min, out[0].max), pair(-2.0, 3.0));
 	assert_eq!(pair(out[1].min, out[1].max), pair(-5.0, 6.0));
@@ -255,10 +272,7 @@ fn sum_and_resum_golden() {
 /// points.
 #[test]
 fn extract_file_and_notfound() {
-	let path = std::env::temp_dir().join(format!(
-		"oakaudio_extract_{}.wav",
-		std::process::id()
-	));
+	let path = std::env::temp_dir().join(format!("oakaudio_extract_{}.wav", std::process::id()));
 	// 8 frames of stereo ramp, 48000 Hz.
 	let mut samples = Vec::with_capacity(16);
 	for i in 0..8i16 {
@@ -306,7 +320,14 @@ fn extract_file_and_notfound() {
 
 	let mut out = vec![MinMax { min: 0.0, max: 0.0 }; 4];
 	let n = unsafe {
-		oakaudio_waveform_extract(c_path.as_ptr(), 0, 4, out.as_mut_ptr(), 2, &mut channel_count)
+		oakaudio_waveform_extract(
+			c_path.as_ptr(),
+			0,
+			4,
+			out.as_mut_ptr(),
+			2,
+			&mut channel_count,
+		)
 	};
 	assert_eq!(n, 2);
 	// s16 -> f32 is /32768; the ramp is exact in both formats.

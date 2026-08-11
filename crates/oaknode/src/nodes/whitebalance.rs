@@ -227,7 +227,10 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	temperature.properties = vec![
 		("min".to_string(), crate::value::NodeValue::Float(1000.0)),
 		("max".to_string(), crate::value::NodeValue::Float(40000.0)),
-		("view".to_string(), crate::value::NodeValue::Text("normal".into())),
+		(
+			"view".to_string(),
+			crate::value::NodeValue::Text("normal".into()),
+		),
 	];
 	core.add_input(temperature);
 
@@ -278,7 +281,10 @@ mod tests {
 	#[test]
 	fn create_wires_inputs_flags_and_properties() {
 		let (core, behavior) = create();
-		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.whitebalance");
+		assert_eq!(
+			behavior.type_id(),
+			"org.olivevideoeditor.Olive.whitebalance"
+		);
 		let tex = core.get_input(TEXTURE_INPUT).unwrap();
 		assert_ne!(tex.flags & crate::input::flags::NOT_KEYFRAMABLE, 0);
 		assert_eq!(
@@ -342,7 +348,10 @@ mod tests {
 		assert_eq!(WhiteBalanceNode::gain_for_temperature(6500.0, 1.0)[1], 2.0);
 		assert_eq!(WhiteBalanceNode::gain_for_temperature(6500.0, -1.0)[1], 0.0);
 		assert_eq!(WhiteBalanceNode::gain_for_temperature(6500.0, 10.0)[1], 2.0);
-		assert_eq!(WhiteBalanceNode::gain_for_temperature(6500.0, -10.0)[1], 0.0);
+		assert_eq!(
+			WhiteBalanceNode::gain_for_temperature(6500.0, -10.0)[1],
+			0.0
+		);
 	}
 
 	#[test]
@@ -355,7 +364,12 @@ mod tests {
 	fn value_no_texture_pushes_nothing() {
 		let (core, behavior) = create();
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
 		assert!(table.is_empty());
 	}
 

@@ -93,7 +93,9 @@ pub unsafe extern "C" fn oakengine_render_cache_set_display_color_processor(
 
 /// `oakengine_render_cache_set_multicam_node` — NULL clears.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_render_cache_set_multicam_node(node: *mut OakEngineNode) -> c_int {
+pub unsafe extern "C" fn oakengine_render_cache_set_multicam_node(
+	node: *mut OakEngineNode,
+) -> c_int {
 	guard(|| unsafe {
 		let n = if node.is_null() {
 			CHandle::null()
@@ -190,7 +192,8 @@ pub unsafe extern "C" fn oakengine_renderer_create(
 	output_colorspace: *const c_char,
 ) -> *mut OakEngineRenderer {
 	guard_ptr(|| unsafe {
-		if seq.is_null() || width <= 0 || height <= 0 || frame_rate_num <= 0 || frame_rate_den <= 0 {
+		if seq.is_null() || width <= 0 || height <= 0 || frame_rate_num <= 0 || frame_rate_den <= 0
+		{
 			return Ok(std::ptr::null_mut());
 		}
 		// Validate the pixel format against the oakcore enum. The
@@ -482,7 +485,9 @@ pub unsafe extern "C" fn oakengine_audio_sample_rate(_self_: *const OakEngineAud
 
 /// `oakengine_audio_channel_count` — 0.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_audio_channel_count(_self_: *const OakEngineAudioBuffer) -> c_int {
+pub unsafe extern "C" fn oakengine_audio_channel_count(
+	_self_: *const OakEngineAudioBuffer,
+) -> c_int {
 	0
 }
 
@@ -729,7 +734,8 @@ pub unsafe extern "C" fn oakengine_color_manager_compliant_transform(
 
 /// `oakengine_color_config_load_default` — **not backed**. NULL.
 #[no_mangle]
-pub extern "C" fn oakengine_color_config_load_default() -> *mut crate::handle::OakEngineColorConfig {
+pub extern "C" fn oakengine_color_config_load_default() -> *mut crate::handle::OakEngineColorConfig
+{
 	std::ptr::null_mut()
 }
 
@@ -802,13 +808,29 @@ pub unsafe extern "C" fn oakengine_color_processor_create(
 		let empty = crate::common::empty_cstr();
 		let ct = if (*dest).is_display != 0 {
 			crate::bridge::common::oakcommon_colortransform_init_display(
-				if (*dest).output.is_null() { empty } else { (*dest).output },
-				if (*dest).view.is_null() { empty } else { (*dest).view },
-				if (*dest).look.is_null() { empty } else { (*dest).look },
+				if (*dest).output.is_null() {
+					empty
+				} else {
+					(*dest).output
+				},
+				if (*dest).view.is_null() {
+					empty
+				} else {
+					(*dest).view
+				},
+				if (*dest).look.is_null() {
+					empty
+				} else {
+					(*dest).look
+				},
 			)
 		} else {
 			crate::bridge::common::oakcommon_colortransform_init_output(
-				if (*dest).output.is_null() { empty } else { (*dest).output },
+				if (*dest).output.is_null() {
+					empty
+				} else {
+					(*dest).output
+				},
 			)
 		};
 		if ct.is_null() {
@@ -820,12 +842,7 @@ pub unsafe extern "C" fn oakengine_color_processor_create(
 		} else {
 			unbox(mgr.cast::<crate::handle::OakEngineColorManager>())?
 		};
-		let proc = r::oakrender_color_processor_create_transform(
-			mgr_handle,
-			input,
-			ct,
-			direction,
-		);
+		let proc = r::oakrender_color_processor_create_transform(mgr_handle, input, ct, direction);
 		let mut ct_handle = ct;
 		crate::bridge::common::oakcommon_colortransform_free(&mut ct_handle);
 		if proc.is_null() {

@@ -30,21 +30,24 @@
 
 use oakcore_rs::{Rational, TimeRange};
 
-use crate::common::MovementMode;
 use crate::bridge::node::{
 	oaknode_block_gap_create, oaknode_block_get_kind, oaknode_sequence_get_all_track_at,
-	oaknode_sequence_get_all_track_count, oaknode_sequence_get_track_list, oaknode_track_get_locked,
-	oaknode_track_get_nearest_block_after_or_at, oaknode_track_get_nearest_block_before_or_at,
-	oaknode_track_insert_block_after, oaknode_track_prepend_block, oaknode_track_ripple_remove_block,
-	oaknode_tracklist_get_track_at, oaknode_tracklist_get_track_count,
+	oaknode_sequence_get_all_track_count, oaknode_sequence_get_track_list,
+	oaknode_track_get_locked, oaknode_track_get_nearest_block_after_or_at,
+	oaknode_track_get_nearest_block_before_or_at, oaknode_track_insert_block_after,
+	oaknode_track_prepend_block, oaknode_track_ripple_remove_block, oaknode_tracklist_get_track_at,
+	oaknode_tracklist_get_track_count,
 };
 use crate::bridge::undo::{oakundo_command_redo_now, oakundo_command_undo_now};
+use crate::common::MovementMode;
 use crate::handle::CHandle;
-use crate::undocommon::{block_can_be_removed, box_command, create_block_remove_command, free_command_handle, Command};
+use crate::undocommon::{
+	block_can_be_removed, box_command, create_block_remove_command, free_command_handle, Command,
+};
 use crate::util::{
 	block_add_to_graph, block_in, block_length, block_next, block_out, block_previous,
-	block_remove_from_graph, block_set_length_and_media_in, block_set_length_and_media_out, block_track,
-	free_detached_handle, rat_nd,
+	block_remove_from_graph, block_set_length_and_media_in, block_set_length_and_media_out,
+	block_track, free_detached_handle, rat_nd,
 };
 
 use super::undogeneral::BlockResizeCommand;
@@ -338,6 +341,13 @@ impl TrackRippleRemoveAreaCommand {
 				let mut next = block_next(hdup(&fb));
 				while !next.is_null() {
 					let nx = hdup(&next);
+					// The module world allows gaps BETWEEN blocks (their
+					// in/out points are stored, unlike Olive's contiguous
+					// track ordering), so a successor starting at/after the
+					// region does not overlap it and must not be touched.
+					if block_in(hdup(&nx)) >= out {
+						break;
+					}
 					let trimming = block_out(hdup(&nx)) > out;
 
 					if trimming {
@@ -380,19 +390,26 @@ impl TrackRippleRemoveAreaCommand {
 			cmd.prepare();
 			cmd.redo();
 
-			// Trim the in of the split
+			// Trim the in of the split (the module's `BlockSplitCommand`
+			// deviation anchors the halves at the original out / fresh in,
+			// so the in-end trim keeps the split's stored in point).
 			let split = cmd.new_block();
 			if !split.is_null() {
-				let new_len = block_length(split.clone()) - (self.range.out() - block_in(split.clone()));
+				let new_len =
+					block_length(split.clone()) - (self.range.out() - block_in(split.clone()));
 				block_set_length_and_media_in(split, new_len);
 			}
 		} else {
 			if let Some(t) = &self.trim_out_ {
-				block_set_length_and_media_out(hdup(&t.block), t.new_length);
+				// An out-end trim keeps the in point (in-anchored; the
+				// C++ setter name is kept, but the module's in/out are
+				// stored values, see the splice trim above).
+				block_set_length_and_media_in(hdup(&t.block), t.new_length);
 			}
 
 			if let Some(t) = &self.trim_in_ {
-				block_set_length_and_media_in(hdup(&t.block), t.new_length);
+				// An in-end trim keeps the out point (out-anchored).
+				block_set_length_and_media_out(hdup(&t.block), t.new_length);
 			}
 
 			// Perform removals
@@ -400,7 +417,9 @@ impl TrackRippleRemoveAreaCommand {
 				let track = hdup(&self.track);
 				for op in &self.removals_ {
 					// Ripple remove them all first
-					let _ = unsafe { oaknode_track_ripple_remove_block(track.clone(), hdup(&op.block)) };
+					let _ = unsafe {
+						oaknode_track_ripple_remove_block(track.clone(), hdup(&op.block))
+					};
 				}
 
 				// Create undo commands for node removals where possible
@@ -428,11 +447,13 @@ impl TrackRippleRemoveAreaCommand {
 			cmd.undo();
 		} else {
 			if let Some(t) = &self.trim_out_ {
-				block_set_length_and_media_out(hdup(&t.block), t.old_length);
+				// In-anchored, matching the redo (see above).
+				block_set_length_and_media_in(hdup(&t.block), t.old_length);
 			}
 
 			if let Some(t) = &self.trim_in_ {
-				block_set_length_and_media_in(hdup(&t.block), t.old_length);
+				// Out-anchored, matching the redo (see above).
+				block_set_length_and_media_out(hdup(&t.block), t.old_length);
 			}
 
 			// Un-remove any blocks
@@ -444,7 +465,11 @@ impl TrackRippleRemoveAreaCommand {
 			let track = hdup(&self.track);
 			for op in &self.removals_ {
 				let _ = unsafe {
-					oaknode_track_insert_block_after(track.clone(), hdup(&op.block), hdup(&op.before))
+					oaknode_track_insert_block_after(
+						track.clone(),
+						hdup(&op.block),
+						hdup(&op.before),
+					)
 				};
 			}
 		}
@@ -587,8 +612,7 @@ impl TimelineRippleRemoveAreaCommand {
 		let mut commands_ = Vec::new();
 		for list in sequence_track_lists(hdup(&timeline)) {
 			if !list.is_null() {
-				commands_
-					.push(TrackListRippleRemoveAreaCommand::new(hdup(&list), in_, out));
+				commands_.push(TrackListRippleRemoveAreaCommand::new(hdup(&list), in_, out));
 			}
 		}
 
@@ -633,258 +657,268 @@ impl Command for TimelineRippleRemoveAreaCommand {
 /// `TrackListRippleToolCommand::RippleInfo` — which block to ripple and
 /// whether a trailing gap should be appended (timelineundoripple.h).
 pub struct RippleInfo {
-  /// Block to ripple.
-  block: CHandle,
-  /// Whether to append a gap after the ripple.
-  append_gap: bool,
+	/// Block to ripple.
+	block: CHandle,
+	/// Whether to append a gap after the ripple.
+	append_gap: bool,
 }
 
 /// `TrackListRippleToolCommand` — ripple-tool edit: shift blocks on the listed
 /// tracks by `ripple_movement` (timelineundoripple.h).
 pub struct TrackListRippleToolCommand {
-  /// Track list.
-  track_list: CHandle,
-  /// Per-track ripple info, ordered by track handle (TrackHandleLess parity).
-  info: Vec<(CHandle, RippleInfo)>,
-  /// Signed ripple movement.
-  ripple_movement: Rational,
-  /// Movement mode.
-  movement_mode: MovementMode,
-  /// Per-track working data persisting across redo/undo (`working_data_`).
-  working_data_: Vec<(CHandle, WorkingData)>,
+	/// Track list.
+	track_list: CHandle,
+	/// Per-track ripple info, ordered by track handle (TrackHandleLess parity).
+	info: Vec<(CHandle, RippleInfo)>,
+	/// Signed ripple movement.
+	ripple_movement: Rational,
+	/// Movement mode.
+	movement_mode: MovementMode,
+	/// Per-track working data persisting across redo/undo (`working_data_`).
+	working_data_: Vec<(CHandle, WorkingData)>,
 }
 
 impl TrackListRippleToolCommand {
-  /// Construct from track list + per-track info + movement + mode.
-  pub fn new(
-    track_list: CHandle,
-    info: Vec<(CHandle, RippleInfo)>,
-    ripple_movement: Rational,
-    movement_mode: MovementMode,
-  ) -> Self {
-    Self {
-      track_list,
-      info,
-      ripple_movement,
-      movement_mode,
-      working_data_: Vec::new(),
-    }
-  }
+	/// Construct from track list + per-track info + movement + mode.
+	pub fn new(
+		track_list: CHandle,
+		info: Vec<(CHandle, RippleInfo)>,
+		ripple_movement: Rational,
+		movement_mode: MovementMode,
+	) -> Self {
+		Self {
+			track_list,
+			info,
+			ripple_movement,
+			movement_mode,
+			working_data_: Vec::new(),
+		}
+	}
 
-  /// `redo`: ripple forward.
-  pub fn redo(&mut self) {
-    self.ripple(true);
-  }
+	/// `redo`: ripple forward.
+	pub fn redo(&mut self) {
+		self.ripple(true);
+	}
 
-  /// `undo`: ripple backward.
-  pub fn undo(&mut self) {
-    self.ripple(false);
-  }
+	/// `undo`: ripple backward.
+	pub fn undo(&mut self) {
+		self.ripple(false);
+	}
 
-  /// Apply the movement in the given direction (`TrackListRippleToolCommand::ripple`,
-  /// timelineundoripple.cpp:292).
-  fn ripple(&mut self, redo: bool) {
-    if self.info.is_empty() {
-      return;
-    }
+	/// Apply the movement in the given direction (`TrackListRippleToolCommand::ripple`,
+	/// timelineundoripple.cpp:292).
+	fn ripple(&mut self, redo: bool) {
+		if self.info.is_empty() {
+			return;
+		}
 
-    // C++ accumulates `pre_latest_out`/`post_latest_out` (per block) into
-    // `pre_latest_out`/`post_latest_out` for cache invalidation, but never
-    // reads them afterwards; they are omitted here as dead code.
+		// C++ accumulates `pre_latest_out`/`post_latest_out` (per block) into
+		// `pre_latest_out`/`post_latest_out` for cache invalidation, but never
+		// reads them afterwards; they are omitted here as dead code.
 
-    for (track, info) in &self.info {
-      let track_copy = hdup(track);
-      let b = hdup(&info.block);
+		for (track, info) in &self.info {
+			let track_copy = hdup(track);
+			let b = hdup(&info.block);
 
-      // Generate block length
-      let mut operation_movement = self.ripple_movement;
+			// Generate block length
+			let mut operation_movement = self.ripple_movement;
 
-      if self.movement_mode == MovementMode::TrimIn {
-        operation_movement = rat_neg(operation_movement);
-      }
+			if self.movement_mode == MovementMode::TrimIn {
+				operation_movement = rat_neg(operation_movement);
+			}
 
-      if !redo {
-        operation_movement = rat_neg(operation_movement);
-      }
+			if !redo {
+				operation_movement = rat_neg(operation_movement);
+			}
 
-      let mut new_block_length = Rational::NULL;
-      if !b.is_null() {
-        new_block_length = block_length(hdup(&b)) + operation_movement;
-      }
+			let mut new_block_length = Rational::NULL;
+			if !b.is_null() {
+				new_block_length = block_length(hdup(&b)) + operation_movement;
+			}
 
-      // Fetch or default-construct this track's working data (C++ map
-      // `working_data_[track]`, persisted across redo/undo).
-      let wd_index = match self
-        .working_data_
-        .iter()
-        .position(|(t, _)| t.ctx == track_copy.ctx)
-      {
-        Some(i) => i,
-        None => {
-          self.working_data_.push((hdup(&track_copy), WorkingData::default()));
-          self.working_data_.len() - 1
-        }
-      };
-      let wd = &mut self.working_data_[wd_index].1;
+			// Fetch or default-construct this track's working data (C++ map
+			// `working_data_[track]`, persisted across redo/undo).
+			let wd_index = match self
+				.working_data_
+				.iter()
+				.position(|(t, _)| t.ctx == track_copy.ctx)
+			{
+				Some(i) => i,
+				None => {
+					self.working_data_
+						.push((hdup(&track_copy), WorkingData::default()));
+					self.working_data_.len() - 1
+				}
+			};
+			let wd = &mut self.working_data_[wd_index].1;
 
-      if info.append_gap {
-        // Rather than rippling the referenced block, we'll insert a gap and
-        // ripple with that
-        let mut gap = hdup(&wd.created_gap);
+			if info.append_gap {
+				// Rather than rippling the referenced block, we'll insert a gap and
+				// ripple with that
+				let mut gap = hdup(&wd.created_gap);
 
-        if redo {
-          if gap.is_null() {
-            // SAFETY: `oaknode_block_gap_create` returns a fresh owned handle.
-            gap = unsafe { oaknode_block_gap_create() };
-            block_set_length_and_media_out(
-              hdup(&gap),
-              if self.ripple_movement < Rational::new(0, 1) {
-                rat_neg(self.ripple_movement)
-              } else {
-                self.ripple_movement
-              },
-            );
-            wd.created_gap = hdup(&gap);
-            wd.created_gap_orphaned = true;
-          }
+				if redo {
+					if gap.is_null() {
+						// SAFETY: `oaknode_block_gap_create` returns a fresh owned handle.
+						gap = unsafe { oaknode_block_gap_create() };
+						block_set_length_and_media_out(
+							hdup(&gap),
+							if self.ripple_movement < Rational::new(0, 1) {
+								rat_neg(self.ripple_movement)
+							} else {
+								self.ripple_movement
+							},
+						);
+						wd.created_gap = hdup(&gap);
+						wd.created_gap_orphaned = true;
+					}
 
-          block_add_to_graph(hdup(&gap), hdup(&track_copy));
+					block_add_to_graph(hdup(&gap), hdup(&track_copy));
 
-          // C++ `oaknode_track_insert_block_before(track, gap, b)`; the bridge
-          // has no such entry point, so insert after `b`'s predecessor instead
-          // (prepend when `b` is the first block).
-          let before = block_previous(hdup(&b));
-          if before.is_null() {
-            // SAFETY: valid handles.
-            let _ = unsafe { oaknode_track_prepend_block(hdup(&track_copy), hdup(&gap)) };
-          } else {
-            // SAFETY: valid handles.
-            let _ = unsafe { oaknode_track_insert_block_after(hdup(&track_copy), hdup(&gap), before) };
-          }
-          wd.created_gap_orphaned = false;
+					// C++ `oaknode_track_insert_block_before(track, gap, b)`; the bridge
+					// has no such entry point, so insert after `b`'s predecessor instead
+					// (prepend when `b` is the first block).
+					let before = block_previous(hdup(&b));
+					if before.is_null() {
+						// SAFETY: valid handles.
+						let _ =
+							unsafe { oaknode_track_prepend_block(hdup(&track_copy), hdup(&gap)) };
+					} else {
+						// SAFETY: valid handles.
+						let _ = unsafe {
+							oaknode_track_insert_block_after(hdup(&track_copy), hdup(&gap), before)
+						};
+					}
+					wd.created_gap_orphaned = false;
 
-          // As an insertion, the earliest change is at the gap's in point
-          wd.earliest_point_of_change = block_in(hdup(&gap));
-        } else {
-          // SAFETY: valid handles.
-          let _ = unsafe { oaknode_track_ripple_remove_block(hdup(&track_copy), hdup(&gap)) };
-          block_remove_from_graph(hdup(&gap), hdup(&track_copy));
-          wd.created_gap_orphaned = true;
-        }
-      } else if (redo && new_block_length.is_null())
-        || (!redo && block_track(hdup(&b)).is_null())
-      {
-        // The ripple is the length of this block. We assume that for this to
-        // happen, it must have been a gap that we will now remove.
-        if redo {
-          // The earliest point changes will happen is at the start of this block
-          wd.earliest_point_of_change = block_in(hdup(&b));
+					// As an insertion, the earliest change is at the gap's in point
+					wd.earliest_point_of_change = block_in(hdup(&gap));
+				} else {
+					// SAFETY: valid handles.
+					let _ =
+						unsafe { oaknode_track_ripple_remove_block(hdup(&track_copy), hdup(&gap)) };
+					block_remove_from_graph(hdup(&gap), hdup(&track_copy));
+					wd.created_gap_orphaned = true;
+				}
+			} else if (redo && new_block_length.is_null())
+				|| (!redo && block_track(hdup(&b)).is_null())
+			{
+				// The ripple is the length of this block. We assume that for this to
+				// happen, it must have been a gap that we will now remove.
+				if redo {
+					// The earliest point changes will happen is at the start of this block
+					wd.earliest_point_of_change = block_in(hdup(&b));
 
-          // Remove gap from track and from graph
-          wd.removed_gap = hdup(&b);
-          wd.removed_gap_after = block_previous(hdup(&b));
-          // SAFETY: valid handles.
-          let _ = unsafe { oaknode_track_ripple_remove_block(hdup(&track_copy), hdup(&b)) };
-          block_remove_from_graph(hdup(&b), hdup(&track_copy));
-          wd.removed_gap_orphaned = true;
-        } else {
-          // Restore gap to graph and track
-          block_add_to_graph(hdup(&b), hdup(&track_copy));
-          // SAFETY: valid handles; `removed_gap_after` may be empty when the
-          // gap was first on the track, which the ABI tolerates like C++.
-          let _ = unsafe {
-            oaknode_track_insert_block_after(hdup(&track_copy), hdup(&b), hdup(&wd.removed_gap_after))
-          };
-          wd.removed_gap_orphaned = false;
+					// Remove gap from track and from graph
+					wd.removed_gap = hdup(&b);
+					wd.removed_gap_after = block_previous(hdup(&b));
+					// SAFETY: valid handles.
+					let _ =
+						unsafe { oaknode_track_ripple_remove_block(hdup(&track_copy), hdup(&b)) };
+					block_remove_from_graph(hdup(&b), hdup(&track_copy));
+					wd.removed_gap_orphaned = true;
+				} else {
+					// Restore gap to graph and track
+					block_add_to_graph(hdup(&b), hdup(&track_copy));
+					// SAFETY: valid handles; `removed_gap_after` may be empty when the
+					// gap was first on the track, which the ABI tolerates like C++.
+					let _ = unsafe {
+						oaknode_track_insert_block_after(
+							hdup(&track_copy),
+							hdup(&b),
+							hdup(&wd.removed_gap_after),
+						)
+					};
+					wd.removed_gap_orphaned = false;
 
-          // The earliest point changes will happen is at the start of this block
-          wd.earliest_point_of_change = block_in(hdup(&b));
-        }
-      } else {
-        // Store old length
-        wd.old_length = block_length(hdup(&b));
+					// The earliest point changes will happen is at the start of this block
+					wd.earliest_point_of_change = block_in(hdup(&b));
+				}
+			} else {
+				// Store old length
+				wd.old_length = block_length(hdup(&b));
 
-        if self.movement_mode == MovementMode::TrimIn {
-          // The earliest point changes will occur is in point of this block
-          wd.earliest_point_of_change = block_in(hdup(&b));
+				if self.movement_mode == MovementMode::TrimIn {
+					// The earliest point changes will occur is in point of this block
+					wd.earliest_point_of_change = block_in(hdup(&b));
 
-          // Update length
-          block_set_length_and_media_in(hdup(&b), new_block_length);
-        } else {
-          // The earliest point changes will occur is the out point if trimming
-          // out or the in point if trimming in
-          wd.earliest_point_of_change = block_out(hdup(&b));
+					// Update length
+					block_set_length_and_media_in(hdup(&b), new_block_length);
+				} else {
+					// The earliest point changes will occur is the out point if trimming
+					// out or the in point if trimming in
+					wd.earliest_point_of_change = block_out(hdup(&b));
 
-          // Update length
-          block_set_length_and_media_out(hdup(&b), new_block_length);
-        }
-      }
-    }
-  }
+					// Update length
+					block_set_length_and_media_out(hdup(&b), new_block_length);
+				}
+			}
+		}
+	}
 
-  /// Wrap as an oakundo vtable command handle.
-  pub fn to_command(self) -> CHandle {
-    box_command(self)
-  }
+	/// Wrap as an oakundo vtable command handle.
+	pub fn to_command(self) -> CHandle {
+		box_command(self)
+	}
 }
 
 impl Command for TrackListRippleToolCommand {
-  fn redo(&mut self) {
-    self.redo()
-  }
+	fn redo(&mut self) {
+		self.redo()
+	}
 
-  fn undo(&mut self) {
-    self.undo()
-  }
+	fn undo(&mut self) {
+		self.undo()
+	}
 }
 
 impl Drop for TrackListRippleToolCommand {
-  fn drop(&mut self) {
-    // C++ dtor: free any gaps still detached from the graph
-    // (timelineundoripple.cpp:278).
-    for (_, wd) in &mut self.working_data_ {
-      if wd.created_gap_orphaned {
-        free_detached_handle(&mut wd.created_gap);
-      }
-      if wd.removed_gap_orphaned {
-        free_detached_handle(&mut wd.removed_gap);
-      }
-    }
-  }
+	fn drop(&mut self) {
+		// C++ dtor: free any gaps still detached from the graph
+		// (timelineundoripple.cpp:278).
+		for (_, wd) in &mut self.working_data_ {
+			if wd.created_gap_orphaned {
+				free_detached_handle(&mut wd.created_gap);
+			}
+			if wd.removed_gap_orphaned {
+				free_detached_handle(&mut wd.removed_gap);
+			}
+		}
+	}
 }
 
 /// `TrackListRippleToolCommand::WorkingData` — per-track state computed during
 /// a ripple edit (timelineundoripple.h).
 pub struct WorkingData {
-  /// Gap created by the ripple.
-  created_gap: CHandle,
-  /// Whether `created_gap` is detached from the graph (owned by this command).
-  created_gap_orphaned: bool,
-  /// Gap removed by the ripple.
-  removed_gap: CHandle,
-  /// Whether `removed_gap` is detached from the graph (owned by this command).
-  removed_gap_orphaned: bool,
-  /// Block that follows the removed gap.
-  removed_gap_after: CHandle,
-  /// Track length before the edit.
-  old_length: Rational,
-  /// Earliest point affected on the track.
-  earliest_point_of_change: Rational,
+	/// Gap created by the ripple.
+	created_gap: CHandle,
+	/// Whether `created_gap` is detached from the graph (owned by this command).
+	created_gap_orphaned: bool,
+	/// Gap removed by the ripple.
+	removed_gap: CHandle,
+	/// Whether `removed_gap` is detached from the graph (owned by this command).
+	removed_gap_orphaned: bool,
+	/// Block that follows the removed gap.
+	removed_gap_after: CHandle,
+	/// Track length before the edit.
+	old_length: Rational,
+	/// Earliest point affected on the track.
+	earliest_point_of_change: Rational,
 }
 
 impl Default for WorkingData {
-  /// C++ default ctor: null block handles, false flags, NULL rationals.
-  fn default() -> Self {
-    Self {
-      created_gap: CHandle::null(),
-      created_gap_orphaned: false,
-      removed_gap: CHandle::null(),
-      removed_gap_orphaned: false,
-      removed_gap_after: CHandle::null(),
-      old_length: Rational::NULL,
-      earliest_point_of_change: Rational::NULL,
-    }
-  }
+	/// C++ default ctor: null block handles, false flags, NULL rationals.
+	fn default() -> Self {
+		Self {
+			created_gap: CHandle::null(),
+			created_gap_orphaned: false,
+			removed_gap: CHandle::null(),
+			removed_gap_orphaned: false,
+			removed_gap_after: CHandle::null(),
+			old_length: Rational::NULL,
+			earliest_point_of_change: Rational::NULL,
+		}
+	}
 }
 
 /// `TimelineRippleDeleteGapsAtRegionsCommand` — delete gaps located at the
@@ -1066,12 +1100,10 @@ impl TimelineRippleDeleteGapsAtRegionsCommand {
 						.unwrap_or(Rational::NULL);
 
 					if g_len == ripple_length {
-						self.commands_
-							.push(TrackRippleRemoveBlockCommand::new(
-								block_track(hdup(&g)),
-								hdup(&g),
-							)
-							.to_command());
+						self.commands_.push(
+							TrackRippleRemoveBlockCommand::new(block_track(hdup(&g)), hdup(&g))
+								.to_command(),
+						);
 					} else {
 						let mut new_len = g_len;
 						for (b, l) in gap_lengths.iter_mut() {

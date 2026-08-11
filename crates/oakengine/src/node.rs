@@ -24,8 +24,8 @@ use crate::bridge::node as n;
 use crate::common::OakVideoParamsPod;
 use crate::error::{Error, Result};
 use crate::handle::{
-	box_handle, free_box, guard, guard_int, guard_ptr, guard_void, read_cstr, string_result,
-	unbox, write_string, CHandle, OakEngineClipboard, OakEngineFootage, OakEngineFrameCache,
+	box_handle, free_box, guard, guard_int, guard_ptr, guard_void, read_cstr, string_result, unbox,
+	write_string, CHandle, OakEngineClipboard, OakEngineFootage, OakEngineFrameCache,
 	OakEngineKeyframe, OakEngineNode, OakEngineNodeDragger, OakEngineProject, OakEngineSequence,
 	OakEngineThumbnailCache, OakEngineWaveformCache,
 };
@@ -302,7 +302,8 @@ fn time_base_for(node: CHandle) -> (i64, i64) {
 			if rc == 0 && !params.is_null() {
 				let mut num: c_int = 0;
 				let mut den: c_int = 0;
-				let fr = unsafe { c::oakcommon_videoparams_get_frame_rate(params, &mut num, &mut den) };
+				let fr =
+					unsafe { c::oakcommon_videoparams_get_frame_rate(params, &mut num, &mut den) };
 				let mut h = params;
 				unsafe { c::oakcommon_videoparams_free(&mut h) };
 				if fr == 0 && num > 0 && den > 0 {
@@ -354,8 +355,8 @@ fn command_box(cmd: CHandle) -> Result<*mut OakEngineClipboard> {
 unsafe fn push_command(cmd: CHandle, name: &str) -> Result<()> {
 	unsafe {
 		let boxed = command_box(cmd)?;
-		let name_c = std::ffi::CString::new(name)
-			.map_err(|_| Error::Failed("invalid undo name".into()))?;
+		let name_c =
+			std::ffi::CString::new(name).map_err(|_| Error::Failed("invalid undo name".into()))?;
 		push_or_run(boxed, name_c.as_ptr())
 	}
 }
@@ -574,7 +575,10 @@ pub unsafe extern "C" fn oakengine_project_set_modified(
 ) -> c_int {
 	guard(|| unsafe {
 		let h = project_handle(self_)?;
-		Error::from_module(n::oaknode_project_set_modified(h, if modified != 0 { 1 } else { 0 }))
+		Error::from_module(n::oaknode_project_set_modified(
+			h,
+			if modified != 0 { 1 } else { 0 },
+		))
 	})
 }
 
@@ -616,9 +620,7 @@ pub unsafe extern "C" fn oakengine_project_filename(
 
 /// `oakengine_project_footage_count`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_project_footage_count(
-	self_: *const OakEngineProject,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_project_footage_count(self_: *const OakEngineProject) -> c_int {
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Ok(0);
@@ -666,8 +668,7 @@ pub unsafe extern "C" fn oakengine_project_footage_is_online(
 		if footage.is_null() {
 			return Err(Error::NotFound);
 		}
-		let filename =
-			module_string(|buf, size| n::oaknode_footage_filename(footage, buf, size))?;
+		let filename = module_string(|buf, size| n::oaknode_footage_filename(footage, buf, size))?;
 		let path = std::path::Path::new(&filename);
 		if path.exists() {
 			return Ok(1);
@@ -739,9 +740,7 @@ pub unsafe extern "C" fn oakengine_project_redo(self_: *mut OakEngineProject) ->
 
 /// `oakengine_project_sequence_count`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_project_sequence_count(
-	self_: *const OakEngineProject,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_project_sequence_count(self_: *const OakEngineProject) -> c_int {
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Ok(0);
@@ -792,7 +791,8 @@ pub unsafe extern "C" fn oakengine_folder_create(
 		} else {
 			read_cstr(name)
 		};
-		let label_c = std::ffi::CString::new(label.as_str()).map_err(|_| Error::Failed("invalid name".into()))?;
+		let label_c = std::ffi::CString::new(label.as_str())
+			.map_err(|_| Error::Failed("invalid name".into()))?;
 		// The module's folder_create already registers the node in the
 		// project's graph, so only the FolderAddChild command is needed
 		// (the C++ additionally pushes a NodeAddCommand; that surface does
@@ -850,9 +850,7 @@ pub unsafe extern "C" fn oakengine_folder_index_of_child(
 
 /// `oakengine_folder_item_child_count`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_folder_item_child_count(
-	folder: *const OakEngineNode,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_folder_item_child_count(folder: *const OakEngineNode) -> c_int {
 	guard_int(|| unsafe {
 		if folder.is_null() {
 			return Ok(0);
@@ -916,9 +914,8 @@ pub unsafe extern "C" fn oakengine_folder_add_child(
 		// another folder is rejected with the module STATE error.
 		let parent = n::oaknode_folder_parent_of(c);
 		if !parent.ctx.is_null() {
-			let already_here =
-				n::oaknode_node_identity(parent) != 0
-					&& n::oaknode_node_identity(parent) == n::oaknode_node_identity(f);
+			let already_here = n::oaknode_node_identity(parent) != 0
+				&& n::oaknode_node_identity(parent) == n::oaknode_node_identity(f);
 			// The borrowed parent handle's shell is released here.
 			if let Some(release) = parent.release {
 				unsafe { release(parent.ctx) };
@@ -964,7 +961,8 @@ pub unsafe extern "C" fn oakengine_folder_move_child(
 ) -> c_int {
 	guard(|| unsafe {
 		let mut nodes = [node];
-		let rc = oakengine_folder_move_children(nodes.as_mut_ptr(), 1, new_folder, std::ptr::null());
+		let rc =
+			oakengine_folder_move_children(nodes.as_mut_ptr(), 1, new_folder, std::ptr::null());
 		Error::from_module(rc)
 	})
 }
@@ -1222,9 +1220,7 @@ pub extern "C" fn oakengine_node_last_error(buf: *mut c_char, buf_size: c_int) -
 
 /// `oakengine_project_node_count` — number of nodes in the graph.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_project_node_count(
-	self_: *const OakEngineProject,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_project_node_count(self_: *const OakEngineProject) -> c_int {
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Ok(0);
@@ -1276,10 +1272,7 @@ pub unsafe extern "C" fn oakengine_node_factory_create_from_id(
 		}
 		let node = n::oaknode_factory_create_from_id(type_id);
 		if node.ctx.is_null() {
-			set_node_error(&format!(
-				"unknown node type id \"{}\"",
-				read_cstr(type_id)
-			));
+			set_node_error(&format!("unknown node type id \"{}\"", read_cstr(type_id)));
 			return Ok(std::ptr::null_mut());
 		}
 		Ok(box_handle::<OakEngineNode>(node))
@@ -1740,15 +1733,16 @@ pub unsafe extern "C" fn oakengine_node_set_color_label_command(
 
 /// `oakengine_node_get_color_label`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_node_get_color_label(
-	self_: *const OakEngineNode,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_node_get_color_label(self_: *const OakEngineNode) -> c_int {
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Ok(-1);
 		}
 		let mut value: c_int = -1;
-		Error::from_module(n::oaknode_node_get_override_color(unbox(self_)?, &mut value))?;
+		Error::from_module(n::oaknode_node_get_override_color(
+			unbox(self_)?,
+			&mut value,
+		))?;
 		Ok(value)
 	})
 }
@@ -1766,7 +1760,10 @@ pub unsafe extern "C" fn oakengine_node_get_effective_color_label(
 			return Ok(-1);
 		}
 		let mut value: c_int = -1;
-		Error::from_module(n::oaknode_node_get_override_color(unbox(self_)?, &mut value))?;
+		Error::from_module(n::oaknode_node_get_override_color(
+			unbox(self_)?,
+			&mut value,
+		))?;
 		Ok(value)
 	})
 }
@@ -1838,7 +1835,11 @@ pub unsafe extern "C" fn oakengine_node_input_get_type(
 			return Ok(0);
 		}
 		let mut ty: c_int = 0;
-		Error::from_module(n::oaknode_node_input_get_type(unbox(self_)?, input_id, &mut ty))?;
+		Error::from_module(n::oaknode_node_input_get_type(
+			unbox(self_)?,
+			input_id,
+			&mut ty,
+		))?;
 		Ok(ty)
 	})
 }
@@ -2014,13 +2015,7 @@ pub unsafe extern "C" fn oakengine_node_set_value_at_time_command(
 		let h = unbox(node.cast::<OakEngineNode>())?;
 		let mut cmd: CHandle = CHandle::null();
 		let rc = n::oaknode_node_set_input_at_time_undoable(
-			h,
-			input,
-			time_num,
-			time_den,
-			value,
-			track,
-			&mut cmd,
+			h, input, time_num, time_den, value, track, &mut cmd,
 		);
 		if rc != 0 {
 			return Ok(std::ptr::null_mut());
@@ -2603,13 +2598,7 @@ pub unsafe extern "C" fn oakengine_node_keyframe_add(
 		// keyframing enablement of the capi are not reachable).
 		let mut cmd: CHandle = CHandle::null();
 		let rc = n::oaknode_node_set_input_at_time_undoable(
-			h,
-			input_id,
-			t_num,
-			t_den,
-			value,
-			0,
-			&mut cmd,
+			h, input_id, t_num, t_den, value, 0, &mut cmd,
 		);
 		if rc != 0 {
 			return Err(Error::Module(rc));
@@ -2661,13 +2650,7 @@ pub unsafe extern "C" fn oakengine_node_insert_keyframe_command(
 		let (t_num, t_den) = ts_to_time(time_ts, tb);
 		let mut cmd: CHandle = CHandle::null();
 		let rc = n::oaknode_node_set_input_at_time_undoable(
-			h,
-			input_id,
-			t_num,
-			t_den,
-			value,
-			track,
-			&mut cmd,
+			h, input_id, t_num, t_den, value, track, &mut cmd,
 		);
 		if rc != 0 {
 			return Ok(std::ptr::null_mut());
@@ -2994,7 +2977,11 @@ pub unsafe extern "C" fn oakengine_node_input_is_keyframable(
 			return Ok(0);
 		}
 		let mut ty: c_int = 0;
-		Error::from_module(n::oaknode_node_input_get_type(unbox(self_)?, input_id, &mut ty))?;
+		Error::from_module(n::oaknode_node_input_get_type(
+			unbox(self_)?,
+			input_id,
+			&mut ty,
+		))?;
 		let keyframable = matches!(
 			ty,
 			value_type::INT
@@ -3054,10 +3041,8 @@ pub unsafe extern "C" fn oakengine_node_get_label_and_name(
 ) -> c_int {
 	guard_int(|| unsafe {
 		let h = unbox(self_)?;
-		let label =
-			module_string(|b, s| n::oaknode_node_get_label(h, b, s))?;
-		let name =
-			module_string(|b, s| n::oaknode_node_get_name(h, b, s))?;
+		let label = module_string(|b, s| n::oaknode_node_get_label(h, b, s))?;
+		let name = module_string(|b, s| n::oaknode_node_get_name(h, b, s))?;
 		// The engine's default `get_label_and_name()`: label when set,
 		// otherwise the name.
 		Ok(write_string(
@@ -3155,23 +3140,23 @@ pub unsafe extern "C" fn oakengine_node_is_item(self_: *const OakEngineNode) -> 
 			return Ok(0);
 		}
 		let h = unbox(self_)?;
-		Ok(if is_node_type(h, TYPE_ID_FOLDER)
-			|| is_node_type(h, TYPE_ID_FOOTAGE)
-			|| is_node_type(h, TYPE_ID_SEQUENCE)
-			|| is_node_type(h, TYPE_ID_GROUP)
-		{
-			1
-		} else {
-			0
-		})
+		Ok(
+			if is_node_type(h, TYPE_ID_FOLDER)
+				|| is_node_type(h, TYPE_ID_FOOTAGE)
+				|| is_node_type(h, TYPE_ID_SEQUENCE)
+				|| is_node_type(h, TYPE_ID_GROUP)
+			{
+				1
+			} else {
+				0
+			},
+		)
 	})
 }
 
 /// `oakengine_node_folder` — the folder owning this item node.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_node_folder(
-	self_: *const OakEngineNode,
-) -> *mut OakEngineNode {
+pub unsafe extern "C" fn oakengine_node_folder(self_: *const OakEngineNode) -> *mut OakEngineNode {
 	guard_ptr(|| unsafe {
 		if self_.is_null() {
 			return Ok(std::ptr::null_mut());
@@ -3574,9 +3559,7 @@ pub unsafe extern "C" fn oakengine_node_is_multicam(self_: *const OakEngineNode)
 
 /// `oakengine_node_context_node_count`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_node_context_node_count(
-	context: *const OakEngineNode,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_node_context_node_count(context: *const OakEngineNode) -> c_int {
 	guard_int(|| unsafe {
 		if context.is_null() {
 			return Err(Error::Invalid);
@@ -3688,13 +3671,8 @@ pub unsafe extern "C" fn oakengine_node_get_context_position(
 			set_node_error("invalid arguments");
 			return Err(Error::Invalid);
 		}
-		let rc = n::oaknode_node_get_context_position(
-			unbox(node)?,
-			unbox(context)?,
-			x,
-			y,
-			expanded,
-		);
+		let rc =
+			n::oaknode_node_get_context_position(unbox(node)?, unbox(context)?, x, y, expanded);
 		Error::from_module(rc)
 	})
 }
@@ -3984,7 +3962,11 @@ pub unsafe extern "C" fn oakengine_node_effect_insert(
 /// # Safety
 /// `host` must be a live module node handle; `type_id` a NUL-terminated
 /// C string.
-unsafe fn node_effect_insert_impl(host: CHandle, index: c_int, type_id: *const c_char) -> Result<()> {
+unsafe fn node_effect_insert_impl(
+	host: CHandle,
+	index: c_int,
+	type_id: *const c_char,
+) -> Result<()> {
 	unsafe {
 		// The host must be able to host effects.
 		let host_input = effect_input_of(host)?;
@@ -4170,7 +4152,11 @@ pub unsafe extern "C" fn oakengine_node_effect_remove(
 		} else {
 			Some(chain.get(pos - 1))
 		};
-		let downstream = if pos + 1 == len { host } else { chain.get(pos + 1) };
+		let downstream = if pos + 1 == len {
+			host
+		} else {
+			chain.get(pos + 1)
+		};
 		let downstream_input = effect_input_of(downstream)?;
 
 		// All nodes are already in the project: a plain multi command.
@@ -4214,7 +4200,11 @@ pub unsafe extern "C" fn oakengine_node_effect_remove(
 		// The guard releases every command handle on error paths; on success
 		// `push_multi_commands` consumes them all.
 		let children = HandleGuard::new(children);
-		push_multi_commands(&children.into_inner(), std::ptr::null_mut(), "Remove Effect")
+		push_multi_commands(
+			&children.into_inner(),
+			std::ptr::null_mut(),
+			"Remove Effect",
+		)
 	})
 }
 
@@ -4262,7 +4252,11 @@ pub unsafe extern "C" fn oakengine_node_effect_move(
 		} else {
 			Some(chain.get(from - 1))
 		};
-		let downstream = if from + 1 == len { host } else { chain.get(from + 1) };
+		let downstream = if from + 1 == len {
+			host
+		} else {
+			chain.get(from + 1)
+		};
 		let downstream_input = effect_input_of(downstream)?;
 		let eff_input = effect_input_of(eff)?;
 		if upstream.is_some() {
@@ -4360,7 +4354,11 @@ pub unsafe extern "C" fn oakengine_node_effect_move(
 			children.0.push(cmd);
 		}
 
-		push_multi_commands(&children.into_inner(), std::ptr::null_mut(), "Reorder Effect")
+		push_multi_commands(
+			&children.into_inner(),
+			std::ptr::null_mut(),
+			"Reorder Effect",
+		)
 	})
 }
 
@@ -4389,8 +4387,11 @@ pub unsafe extern "C" fn oakengine_node_group_get_inner(
 	inout_element: *mut c_int,
 ) -> c_int {
 	guard_int(|| unsafe {
-		if inout_node.is_null() || (*inout_node).is_null() || inout_input.is_null()
-			|| inout_input_size <= 0 || inout_element.is_null()
+		if inout_node.is_null()
+			|| (*inout_node).is_null()
+			|| inout_input.is_null()
+			|| inout_input_size <= 0
+			|| inout_element.is_null()
 		{
 			return Ok(0);
 		}
@@ -4417,8 +4418,7 @@ pub unsafe extern "C" fn oakengine_node_group_get_inner(
 			return Ok(0);
 		}
 		// One level only: if the resolved node is the same, nothing moved.
-		if n::oaknode_node_identity(out_node) == n::oaknode_node_identity(node)
-		{
+		if n::oaknode_node_identity(out_node) == n::oaknode_node_identity(node) {
 			return Ok(0);
 		}
 		*inout_node = box_handle::<OakEngineNode>(out_node);
@@ -4882,9 +4882,7 @@ pub extern "C" fn oakengine_multicam_input_sequence_type() -> *const c_char {
 
 /// `oakengine_multicam_get_source_count`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_multicam_get_source_count(
-	self_: *const OakEngineNode,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_multicam_get_source_count(self_: *const OakEngineNode) -> c_int {
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Err(Error::Invalid);
@@ -4910,7 +4908,11 @@ pub unsafe extern "C" fn oakengine_multicam_get_rows_and_columns(
 		if source_count < 0 || rows.is_null() || cols.is_null() {
 			return Err(Error::Invalid);
 		}
-		Error::from_module(n::oaknode_multicam_get_rows_and_columns(source_count, rows, cols))
+		Error::from_module(n::oaknode_multicam_get_rows_and_columns(
+			source_count,
+			rows,
+			cols,
+		))
 	})
 }
 
@@ -4928,11 +4930,7 @@ pub unsafe extern "C" fn oakengine_multicam_index_to_row_cols(
 			return Err(Error::Invalid);
 		}
 		Error::from_module(n::oaknode_multicam_index_to_row_cols(
-			index,
-			rows,
-			cols,
-			out_row,
-			out_col,
+			index, rows, cols, out_row, out_col,
 		))
 	})
 }
@@ -5143,7 +5141,11 @@ pub unsafe extern "C" fn oakengine_nodes_delete_many_ex(
 				return Err(Error::Invalid);
 			}
 			let _ = *edge_outputs.add(i);
-			let _ = if edge_input_elements.is_null() { -1 } else { *edge_input_elements.add(i) };
+			let _ = if edge_input_elements.is_null() {
+				-1
+			} else {
+				*edge_input_elements.add(i)
+			};
 			let mut cmd: CHandle = CHandle::null();
 			let rc = n::oaknode_node_disconnect_undoable(unbox(input)?, input_id, &mut cmd);
 			if rc != 0 {
@@ -5153,7 +5155,8 @@ pub unsafe extern "C" fn oakengine_nodes_delete_many_ex(
 		}
 		// Reconnect edges run AFTER the deletion inside the same command.
 		for i in 0..reconnect_count as usize {
-			if reconnect_outputs.is_null() || reconnect_input_nodes.is_null()
+			if reconnect_outputs.is_null()
+				|| reconnect_input_nodes.is_null()
 				|| reconnect_input_ids.is_null()
 			{
 				set_node_error(&format!("invalid reconnect edge at index {}", i));
@@ -5172,7 +5175,8 @@ pub unsafe extern "C" fn oakengine_nodes_delete_many_ex(
 				*reconnect_input_elements.add(i)
 			};
 			let mut cmd: CHandle = CHandle::null();
-			let rc = n::oaknode_node_connect_undoable(unbox(out)?, unbox(input)?, input_id, &mut cmd);
+			let rc =
+				n::oaknode_node_connect_undoable(unbox(out)?, unbox(input)?, input_id, &mut cmd);
 			if rc != 0 {
 				return Err(Error::Module(rc));
 			}
@@ -5459,7 +5463,15 @@ pub unsafe extern "C" fn oakengine_node_keyframes_at_time(
 ) -> c_int {
 	// Stub: see `oakengine_node_keyframe_count`.
 	guard_int(|| {
-		let _ = (self_, input_id, element, time_num, time_den, out_handles, max_handles);
+		let _ = (
+			self_,
+			input_id,
+			element,
+			time_num,
+			time_den,
+			out_handles,
+			max_handles,
+		);
 		Ok(0)
 	})
 }
@@ -5558,9 +5570,7 @@ pub unsafe extern "C" fn oakengine_keyframe_get_input_id(
 
 /// `oakengine_keyframe_get_track`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_keyframe_get_track(
-	self_: *const OakEngineKeyframe,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_keyframe_get_track(self_: *const OakEngineKeyframe) -> c_int {
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Ok(-1);
@@ -5573,9 +5583,7 @@ pub unsafe extern "C" fn oakengine_keyframe_get_track(
 
 /// `oakengine_keyframe_get_element`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_keyframe_get_element(
-	self_: *const OakEngineKeyframe,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_keyframe_get_element(self_: *const OakEngineKeyframe) -> c_int {
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Ok(-1);
@@ -5606,9 +5614,7 @@ pub unsafe extern "C" fn oakengine_keyframe_get_node(
 
 /// `oakengine_keyframe_get_type` — facade easing type.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_keyframe_get_type(
-	self_: *const OakEngineKeyframe,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_keyframe_get_type(self_: *const OakEngineKeyframe) -> c_int {
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Ok(-1);
@@ -5680,12 +5686,7 @@ pub unsafe extern "C" fn oakengine_keyframe_has_sibling_at_time(
 		}
 		let mut value: c_int = 0;
 		// The capi passes the timestamp as seconds with denominator 1.
-		let rc = n::oaknode_keyframe_has_sibling_at_time(
-			unbox(self_)?,
-			time_ts,
-			1,
-			&mut value,
-		);
+		let rc = n::oaknode_keyframe_has_sibling_at_time(unbox(self_)?, time_ts, 1, &mut value);
 		if rc != 0 {
 			return Err(Error::Module(rc));
 		}
@@ -5826,16 +5827,8 @@ pub unsafe extern "C" fn oakengine_keyframe_create(
 		let h = unbox(node)?;
 		let tb = time_base_for(h);
 		let (t_num, t_den) = ts_to_time(time_ts, tb);
-		let kf = n::oaknode_keyframe_create(
-			t_num,
-			t_den,
-			value,
-			type_,
-			track,
-			element,
-			input_id,
-			h,
-		);
+		let kf =
+			n::oaknode_keyframe_create(t_num, t_den, value, type_, track, element, input_id, h);
 		if kf.ctx.is_null() {
 			return Ok(std::ptr::null_mut());
 		}
@@ -5944,7 +5937,11 @@ pub unsafe extern "C" fn oakengine_dragger_end(
 			"Drag Input".to_string()
 		} else {
 			let s = read_cstr(undo_name);
-			if s.is_empty() { "Drag Input".to_string() } else { s }
+			if s.is_empty() {
+				"Drag Input".to_string()
+			} else {
+				s
+			}
 		};
 		let name_c = std::ffi::CString::new(name.as_str())
 			.map_err(|_| Error::Failed("invalid undo name".into()))?;
@@ -5954,9 +5951,7 @@ pub unsafe extern "C" fn oakengine_dragger_end(
 
 /// `oakengine_dragger_is_started`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_dragger_is_started(
-	self_: *const OakEngineNodeDragger,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_dragger_is_started(self_: *const OakEngineNodeDragger) -> c_int {
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Ok(0);
@@ -6075,7 +6070,12 @@ pub unsafe extern "C" fn oakengine_node_link_command(
 			return Ok(std::ptr::null_mut());
 		}
 		let mut cmd: CHandle = CHandle::null();
-		let rc = n::oaknode_node_link_undoable(unbox(a)?, unbox(b)?, if link != 0 { 1 } else { 0 }, &mut cmd);
+		let rc = n::oaknode_node_link_undoable(
+			unbox(a)?,
+			unbox(b)?,
+			if link != 0 { 1 } else { 0 },
+			&mut cmd,
+		);
 		if rc != 0 {
 			return Ok(std::ptr::null_mut());
 		}
@@ -6379,19 +6379,19 @@ pub unsafe extern "C" fn oakengine_node_is_track(self_: *const OakEngineNode) ->
 
 /// `oakengine_node_is_viewer_output` — Sequence or Footage.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_node_is_viewer_output(
-	self_: *const OakEngineNode,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_node_is_viewer_output(self_: *const OakEngineNode) -> c_int {
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Ok(0);
 		}
 		let h = unbox(self_)?;
-		Ok(if is_node_type(h, TYPE_ID_SEQUENCE) || is_node_type(h, TYPE_ID_FOOTAGE) {
-			1
-		} else {
-			0
-		})
+		Ok(
+			if is_node_type(h, TYPE_ID_SEQUENCE) || is_node_type(h, TYPE_ID_FOOTAGE) {
+				1
+			} else {
+				0
+			},
+		)
 	})
 }
 
@@ -6533,9 +6533,7 @@ pub unsafe extern "C" fn oakengine_block_get_length_rational(
 	num: *mut c_int,
 	den: *mut c_int,
 ) -> c_int {
-	guard(|| unsafe {
-		block_rational(block, "length", num, den)
-	})
+	guard(|| unsafe { block_rational(block, "length", num, den) })
 }
 
 /// `oakengine_block_get_in_rational`.
@@ -6545,9 +6543,7 @@ pub unsafe extern "C" fn oakengine_block_get_in_rational(
 	num: *mut c_int,
 	den: *mut c_int,
 ) -> c_int {
-	guard(|| unsafe {
-		block_rational(block, "in", num, den)
-	})
+	guard(|| unsafe { block_rational(block, "in", num, den) })
 }
 
 /// `oakengine_block_get_out_rational`.
@@ -6557,13 +6553,16 @@ pub unsafe extern "C" fn oakengine_block_get_out_rational(
 	num: *mut c_int,
 	den: *mut c_int,
 ) -> c_int {
-	guard(|| unsafe {
-		block_rational(block, "out", num, den)
-	})
+	guard(|| unsafe { block_rational(block, "out", num, den) })
 }
 
 /// Shared body of the block rational getters.
-unsafe fn block_rational(block: *const OakEngineNode, which: &str, num: *mut c_int, den: *mut c_int) -> Result<()> {
+unsafe fn block_rational(
+	block: *const OakEngineNode,
+	which: &str,
+	num: *mut c_int,
+	den: *mut c_int,
+) -> Result<()> {
 	unsafe {
 		if block.is_null() {
 			return Err(Error::Invalid);
@@ -6762,7 +6761,10 @@ pub unsafe extern "C" fn oakengine_node_output_connection_count(
 			return Ok(0);
 		}
 		let mut count: c_int = 0;
-		Error::from_module(n::oaknode_node_output_connection_count(unbox(self_)?, &mut count))?;
+		Error::from_module(n::oaknode_node_output_connection_count(
+			unbox(self_)?,
+			&mut count,
+		))?;
 		Ok(count)
 	})
 }
@@ -6797,12 +6799,8 @@ pub unsafe extern "C" fn oakengine_node_output_connection_at(
 				*input_node = box_handle::<OakEngineNode>(out);
 			}
 		}
-		let rc = n::oaknode_node_output_connection_input_id_at(
-			h,
-			index,
-			input_id_buf,
-			input_id_size,
-		);
+		let rc =
+			n::oaknode_node_output_connection_input_id_at(h, index, input_id_buf, input_id_size);
 		if rc < 0 {
 			return Err(Error::Module(rc));
 		}
@@ -6880,7 +6878,15 @@ pub unsafe extern "C" fn oakengine_node_input_connection_at_all(
 			return Err(Error::Invalid);
 		}
 		let _ = unbox(self_)?;
-		let _ = (index, input_node, input_id_buf, input_id_size, element, source_node, hidden);
+		let _ = (
+			index,
+			input_node,
+			input_id_buf,
+			input_id_size,
+			element,
+			source_node,
+			hidden,
+		);
 		Err(Error::NotFound)
 	})
 }
@@ -7002,9 +7008,7 @@ pub unsafe extern "C" fn oakengine_node_has_plugin(self_: *const OakEngineNode) 
 
 /// `oakengine_node_plugin_message_count`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_node_plugin_message_count(
-	self_: *const OakEngineNode,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_node_plugin_message_count(self_: *const OakEngineNode) -> c_int {
 	// Stub: see `oakengine_node_has_plugin`.
 	guard_int(|| unsafe {
 		if self_.is_null() {
@@ -7037,9 +7041,7 @@ pub unsafe extern "C" fn oakengine_node_plugin_message_at(
 
 /// `oakengine_node_plugin_clear_messages`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_node_plugin_clear_messages(
-	self_: *mut OakEngineNode,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_node_plugin_clear_messages(self_: *mut OakEngineNode) -> c_int {
 	// Stub: see `oakengine_node_has_plugin`.
 	guard(|| unsafe {
 		if self_.is_null() {
@@ -7124,9 +7126,7 @@ fn probe_project() -> CHandle {
 
 /// `oakengine_footage_probe` — probe a media file without a project.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_footage_probe(
-	path: *const c_char,
-) -> *mut OakEngineFootage {
+pub unsafe extern "C" fn oakengine_footage_probe(path: *const c_char) -> *mut OakEngineFootage {
 	guard_ptr(|| unsafe {
 		set_footage_error("");
 		if path.is_null() {
@@ -7139,7 +7139,10 @@ pub unsafe extern "C" fn oakengine_footage_probe(
 			return Ok(std::ptr::null_mut());
 		}
 		let filename = path_str;
-		let footage = n::oaknode_footage_create(probe_project(), std::ffi::CString::new(filename.as_str()).unwrap().as_ptr());
+		let footage = n::oaknode_footage_create(
+			probe_project(),
+			std::ffi::CString::new(filename.as_str()).unwrap().as_ptr(),
+		);
 		if footage.ctx.is_null() {
 			set_footage_error(&format!("failed to probe \"{}\"", filename));
 			return Ok(std::ptr::null_mut());
@@ -7323,23 +7326,24 @@ pub unsafe extern "C" fn oakengine_footage_get_duration(
 		if rc != 0 {
 			return Err(Error::Module(rc));
 		}
-		*seconds = if den != 0 { num as f64 / den as f64 } else { 0.0 };
+		*seconds = if den != 0 {
+			num as f64 / den as f64
+		} else {
+			0.0
+		};
 		Ok(())
 	})
 }
 
 /// `oakengine_footage_is_online` — 1 when the media file exists.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_footage_is_online(
-	self_: *mut OakEngineFootage,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_footage_is_online(self_: *mut OakEngineFootage) -> c_int {
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Err(Error::Invalid);
 		}
 		let h = unbox(self_)?;
-		let filename =
-			module_string(|buf, size| n::oaknode_footage_filename(h, buf, size))?;
+		let filename = module_string(|buf, size| n::oaknode_footage_filename(h, buf, size))?;
 		Ok(if std::path::Path::new(&filename).exists() {
 			1
 		} else {
@@ -7515,8 +7519,7 @@ pub unsafe extern "C" fn oakengine_project_find_offline_footage(
 			if node.is_null() || !is_node_type(node, TYPE_ID_FOOTAGE) {
 				continue;
 			}
-			let filename =
-				module_string(|buf, size| n::oaknode_footage_filename(node, buf, size))?;
+			let filename = module_string(|buf, size| n::oaknode_footage_filename(node, buf, size))?;
 			if filename.is_empty() || std::path::Path::new(&filename).exists() {
 				continue;
 			}
@@ -7540,9 +7543,7 @@ pub unsafe extern "C" fn oakengine_project_find_offline_footage(
 
 /// `oakengine_footage_proxy_get_state`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_footage_proxy_get_state(
-	self_: *mut OakEngineFootage,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_footage_proxy_get_state(self_: *mut OakEngineFootage) -> c_int {
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Err(Error::Invalid);
@@ -7553,9 +7554,7 @@ pub unsafe extern "C" fn oakengine_footage_proxy_get_state(
 
 /// `oakengine_footage_proxy_generate`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_footage_proxy_generate(
-	self_: *mut OakEngineFootage,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_footage_proxy_generate(self_: *mut OakEngineFootage) -> c_int {
 	// Stub: the oaknode module has no ProxyManager / proxy task surface.
 	guard(|| unsafe {
 		set_footage_error("");
@@ -7570,9 +7569,7 @@ pub unsafe extern "C" fn oakengine_footage_proxy_generate(
 
 /// `oakengine_footage_proxy_delete`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_footage_proxy_delete(
-	self_: *mut OakEngineFootage,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_footage_proxy_delete(self_: *mut OakEngineFootage) -> c_int {
 	guard(|| unsafe {
 		set_footage_error("");
 		let h = unbox(self_)?;
@@ -7584,9 +7581,7 @@ pub unsafe extern "C" fn oakengine_footage_proxy_delete(
 
 /// `oakengine_footage_proxy_is_enabled`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_footage_proxy_is_enabled(
-	self_: *mut OakEngineFootage,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_footage_proxy_is_enabled(self_: *mut OakEngineFootage) -> c_int {
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Err(Error::Invalid);
@@ -7604,7 +7599,10 @@ pub unsafe extern "C" fn oakengine_footage_proxy_set_enabled(
 	guard(|| unsafe {
 		set_footage_error("");
 		let h = unbox(self_)?;
-		Error::from_module(n::oaknode_footage_set_proxy_enabled(h, if enabled != 0 { 1 } else { 0 }))
+		Error::from_module(n::oaknode_footage_set_proxy_enabled(
+			h,
+			if enabled != 0 { 1 } else { 0 },
+		))
 	})
 }
 
@@ -7697,7 +7695,10 @@ pub unsafe extern "C" fn oakengine_footage_set_video_stream_overrides(
 			c::oakcommon_videoparams_set_interlacing(params, interlacing);
 		}
 		if premultiplied >= 0 {
-			c::oakcommon_videoparams_set_premultiplied_alpha(params, if premultiplied != 0 { 1 } else { 0 });
+			c::oakcommon_videoparams_set_premultiplied_alpha(
+				params,
+				if premultiplied != 0 { 1 } else { 0 },
+			);
 		}
 		let rc = n::oaknode_footage_set_video_params(h, stream_index, &params);
 		let mut h2 = params;
@@ -7930,9 +7931,7 @@ pub unsafe extern "C" fn oakengine_footage_get_source_start_time_source(
 
 /// `oakengine_footage_colorspace_count`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_footage_colorspace_count(
-	self_: *mut OakEngineFootage,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_footage_colorspace_count(self_: *mut OakEngineFootage) -> c_int {
 	// Stub: the module has no color-config surface.
 	guard_int(|| unsafe {
 		if self_.is_null() {
@@ -8058,7 +8057,12 @@ pub unsafe extern "C" fn oakengine_footage_describe_video_stream(
 		c::oakcommon_videoparams_get_height(params, &mut height);
 		c::oakcommon_videoparams_get_frame_rate(params, &mut fr_num, &mut fr_den);
 		let desc = if fr_den != 0 {
-			format!("{}x{}, {:.3} fps", width, height, fr_num as f64 / fr_den as f64)
+			format!(
+				"{}x{}, {:.3} fps",
+				width,
+				height,
+				fr_num as f64 / fr_den as f64
+			)
 		} else {
 			format!("{}x{}", width, height)
 		};
@@ -8215,9 +8219,7 @@ pub unsafe extern "C" fn oakengine_footage_set_proxy(
 
 /// `oakengine_footage_clear_proxy`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_footage_clear_proxy(
-	self_: *mut OakEngineFootage,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_footage_clear_proxy(self_: *mut OakEngineFootage) -> c_int {
 	guard(|| unsafe {
 		if self_.is_null() {
 			return Err(Error::Invalid);
@@ -8228,9 +8230,7 @@ pub unsafe extern "C" fn oakengine_footage_clear_proxy(
 
 /// `oakengine_footage_invalidate` — force a re-probe on next use.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_footage_invalidate(
-	self_: *mut OakEngineFootage,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_footage_invalidate(self_: *mut OakEngineFootage) -> c_int {
 	// Stub: the module's footage has no clear/reprobe cascade; accepted
 	// as a no-op.
 	guard(|| unsafe {

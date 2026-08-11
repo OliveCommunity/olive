@@ -153,7 +153,11 @@ pub fn copy_string(value: &str, buf: *mut std::ffi::c_char, buf_size: i32) -> i3
 	let needed = value.len() as i32 + 1;
 	if !buf.is_null() && buf_size >= needed {
 		unsafe {
-			std::ptr::copy_nonoverlapping(value.as_ptr() as *const std::ffi::c_char, buf, value.len());
+			std::ptr::copy_nonoverlapping(
+				value.as_ptr() as *const std::ffi::c_char,
+				buf,
+				value.len(),
+			);
 			*buf.add(value.len()) = 0;
 		}
 	}
@@ -169,7 +173,9 @@ pub unsafe fn cstr_to_string(ptr: *const std::ffi::c_char) -> String {
 	if ptr.is_null() {
 		return String::new();
 	}
-	unsafe { std::ffi::CStr::from_ptr(ptr) }.to_string_lossy().into_owned()
+	unsafe { std::ffi::CStr::from_ptr(ptr) }
+		.to_string_lossy()
+		.into_owned()
 }
 
 /// Build a NUL-terminated C string for the duration of the call (leaked).

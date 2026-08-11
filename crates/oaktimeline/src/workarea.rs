@@ -165,7 +165,11 @@ impl WorkareaSetRangeCommand {
 	/// Construct from work area + new range + explicitly supplied old
 	/// range (used by the FFI layer, which may have a previously captured
 	/// range; `new` delegates here with the current range).
-	pub fn new_with_old(workarea: crate::handle::CHandle, range: TimeRange, old_range: TimeRange) -> Self {
+	pub fn new_with_old(
+		workarea: crate::handle::CHandle,
+		range: TimeRange,
+		old_range: TimeRange,
+	) -> Self {
 		Self {
 			workarea,
 			new_range: range,

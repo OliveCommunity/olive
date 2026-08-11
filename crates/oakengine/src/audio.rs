@@ -81,7 +81,9 @@ pub extern "C" fn oakengine_audio_get_output_device() -> i64 {
 		if m.is_null() {
 			return Ok(PA_NO_DEVICE);
 		}
-		Ok(i64::from(unsafe { a::oakaudio_manager_get_output_device(m) }))
+		Ok(i64::from(unsafe {
+			a::oakaudio_manager_get_output_device(m)
+		}))
 	})
 }
 
@@ -105,7 +107,9 @@ pub extern "C" fn oakengine_audio_get_input_device() -> i64 {
 		if m.is_null() {
 			return Ok(PA_NO_DEVICE);
 		}
-		Ok(i64::from(unsafe { a::oakaudio_manager_get_input_device(m) }))
+		Ok(i64::from(unsafe {
+			a::oakaudio_manager_get_input_device(m)
+		}))
 	})
 }
 
@@ -460,14 +464,7 @@ pub unsafe extern "C" fn oakengine_audio_processor_open(
 		let out_layout = a::oakcore_audioparams_channel_layout(to);
 		let out_format = a::oakcore_audioparams_format(to);
 		Error::from_module(a::oakaudio_processor_open(
-			handle,
-			in_rate,
-			in_layout,
-			in_format,
-			out_rate,
-			out_layout,
-			out_format,
-			tempo,
+			handle, in_rate, in_layout, in_format, out_rate, out_layout, out_format, tempo,
 		))
 	})
 }
@@ -486,7 +483,9 @@ pub unsafe extern "C" fn oakengine_audio_processor_close(p: *mut OakEngineAudioP
 
 /// `oakengine_audio_processor_is_open` — 1 when open, 0 when NULL.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_audio_processor_is_open(p: *mut OakEngineAudioProcessor) -> c_int {
+pub unsafe extern "C" fn oakengine_audio_processor_is_open(
+	p: *mut OakEngineAudioProcessor,
+) -> c_int {
 	crate::handle::guard_int(|| unsafe {
 		if p.is_null() {
 			return Ok(0);

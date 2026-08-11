@@ -22,18 +22,18 @@ use crate::cmd::{port_not_wired, require_or, EXIT_ERROR};
 
 /// Run `probe`. `mediafile` is the media path from the command line.
 pub fn run(mediafile: String) -> i32 {
-    if let Err(code) = require_or(
-        "probe",
-        &[&crate::deferred::INIT, &crate::deferred::NODE],
-        EXIT_ERROR,
-    ) {
-        return code;
-    }
-    // Facade port (unreachable while the families above are deferred):
-    //   oakengine_init(OAKENGINE_INIT_HEADLESS)
-    //   footage_probe(mediafile) -> decoder_name/duration/stream infos,
-    //     formatted with the fmt::* lines (golden-tested)
-    //   footage_free + oakengine_shutdown()
-    let _ = &mediafile;
-    port_not_wired("probe", EXIT_ERROR)
+	if let Err(code) = require_or(
+		"probe",
+		&[&crate::deferred::INIT, &crate::deferred::NODE],
+		EXIT_ERROR,
+	) {
+		return code;
+	}
+	// Facade port (unreachable while the families above are deferred):
+	//   oakengine_init(OAKENGINE_INIT_HEADLESS)
+	//   footage_probe(mediafile) -> decoder_name/duration/stream infos,
+	//     formatted with the fmt::* lines (golden-tested)
+	//   footage_free + oakengine_shutdown()
+	let _ = &mediafile;
+	port_not_wired("probe", EXIT_ERROR)
 }

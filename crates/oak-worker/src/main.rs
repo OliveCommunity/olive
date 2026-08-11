@@ -53,51 +53,53 @@ pub const PROTOCOL_VERSION: i32 = 1;
 /// that single option).
 #[derive(Parser, Debug)]
 #[command(
-    name = "oak-worker",
-    about = "Oak render worker: headless render process for the editor's worker pool",
-    disable_version_flag = true
+	name = "oak-worker",
+	about = "Oak render worker: headless render process for the editor's worker pool",
+	disable_version_flag = true
 )]
 struct Args {
-    /// Render backend to initialize: "opengl", "vulkan", "metal", "auto",
-    /// or "none" (no renderer; the process exits 1 like the C++ worker).
-    #[arg(long, default_value = "opengl")]
-    backend: String,
+	/// Render backend to initialize: "opengl", "vulkan", "metal", "auto",
+	/// or "none" (no renderer; the process exits 1 like the C++ worker).
+	#[arg(long, default_value = "opengl")]
+	backend: String,
 }
 
 fn main() {
-    let args = Args::parse();
-    // The facade's worker_main is the C++ oakengine_worker_main() — the
-    // whole worker flow. Like workermain.cpp, this main only forwards.
-    exit(oakengine::worker::worker_main(&args.backend.to_ascii_lowercase()));
+	let args = Args::parse();
+	// The facade's worker_main is the C++ oakengine_worker_main() — the
+	// whole worker flow. Like workermain.cpp, this main only forwards.
+	exit(oakengine::worker::worker_main(
+		&args.backend.to_ascii_lowercase(),
+	));
 }
 
 /// Log a worker-side message to stderr, mirroring worker.cpp `log_error()`
 /// (the `worker: ` prefix).
 pub fn log_error(message: &str) {
-    eprintln!("worker: {message}");
+	eprintln!("worker: {message}");
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn clap_parses_backend_default() {
-        use clap::Parser;
-        let args = Args::try_parse_from(["oak-worker"]).unwrap();
-        assert_eq!(args.backend, "opengl");
-    }
+	#[test]
+	fn clap_parses_backend_default() {
+		use clap::Parser;
+		let args = Args::try_parse_from(["oak-worker"]).unwrap();
+		assert_eq!(args.backend, "opengl");
+	}
 
-    #[test]
-    fn clap_parses_backend_flag() {
-        use clap::Parser;
-        let args = Args::try_parse_from(["oak-worker", "--backend", "none"]).unwrap();
-        assert_eq!(args.backend, "none");
-    }
+	#[test]
+	fn clap_parses_backend_flag() {
+		use clap::Parser;
+		let args = Args::try_parse_from(["oak-worker", "--backend", "none"]).unwrap();
+		assert_eq!(args.backend, "none");
+	}
 
-    #[test]
-    fn clap_rejects_unknown_flags() {
-        use clap::Parser;
-        assert!(Args::try_parse_from(["oak-worker", "--frobnicate"]).is_err());
-    }
+	#[test]
+	fn clap_rejects_unknown_flags() {
+		use clap::Parser;
+		assert!(Args::try_parse_from(["oak-worker", "--frobnicate"]).is_err());
+	}
 }

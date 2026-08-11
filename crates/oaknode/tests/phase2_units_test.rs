@@ -89,7 +89,10 @@ fn block_behaviors_and_inputs() {
 	let (core, behavior) = oaknode::block::transition_create();
 	assert!(core.has_input("out_block_in"));
 	assert!(core.has_input("in_block_in"));
-	assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.transitionblock");
+	assert_eq!(
+		behavior.type_id(),
+		"org.olivevideoeditor.Olive.transitionblock"
+	);
 	let t = TransitionBlockBehavior::new();
 	assert_eq!(t.in_offset, Rational::new(0, 1));
 	assert_eq!(t.out_offset, Rational::new(0, 1));
@@ -132,12 +135,21 @@ fn track_behavior_ops() {
 	assert!(track.insert_block_after(b2, b0));
 	assert_eq!(track.blocks, vec![b0, b2, b1]);
 	let missing = NodeId::from_identity(99).unwrap();
-	assert!(!track.insert_block_after(b2, missing), "missing ref rejected");
-	assert!(!track.insert_block_before(b1, missing), "missing ref rejected");
+	assert!(
+		!track.insert_block_after(b2, missing),
+		"missing ref rejected"
+	);
+	assert!(
+		!track.insert_block_before(b1, missing),
+		"missing ref rejected"
+	);
 	let mut track = TrackBehavior::new(TrackType::Audio);
 	track.append_block(b0);
 	track.append_block(b1);
-	assert!(track.insert_block_after(b2, b0), "insert after a present ref");
+	assert!(
+		track.insert_block_after(b2, b0),
+		"insert after a present ref"
+	);
 	assert_eq!(track.blocks, vec![b0, b2, b1]);
 	track.insert_block_at_index(NodeId::from_identity(7).unwrap(), 99); // clamped
 
@@ -185,7 +197,11 @@ fn tracklist_and_height() {
 	list.tracks.push(NodeId::from_identity(5).unwrap());
 	assert_eq!(list.track_at(0), Some(NodeId::from_identity(2).unwrap()));
 	assert_eq!(list.track_index(NodeId::from_identity(5).unwrap()), Some(1));
-	assert_eq!(list.total_length(&Ranges), Rational::new(6, 1), "longest track");
+	assert_eq!(
+		list.total_length(&Ranges),
+		Rational::new(6, 1),
+		"longest track"
+	);
 
 	// Height conversions (C++ Track::internal_height_to_pixel_height).
 	assert_eq!(
@@ -232,7 +248,11 @@ fn footage_queries() {
 	assert_eq!(f.audio_stream_count(), 1);
 	assert_eq!(f.subtitle_stream_count(), 0);
 	assert_eq!(f.duration(), Rational::new(30, 1));
-	assert_eq!(f.video_length(), Rational::new(20, 1), "longest video stream");
+	assert_eq!(
+		f.video_length(),
+		Rational::new(20, 1),
+		"longest video stream"
+	);
 	assert!(f.video_params(1).is_some());
 	assert!(f.video_params(5).is_none());
 	assert!(f.audio_params(0).is_some());
@@ -279,9 +299,15 @@ fn serializer_value_codecs() {
 		(ValueType::Int, NodeValue::Int(7)),
 		(ValueType::Combo, NodeValue::Combo(2)),
 		(ValueType::Boolean, NodeValue::Boolean(true)),
-		(ValueType::Rational, NodeValue::Rational(Rational::new(3, 4))),
+		(
+			ValueType::Rational,
+			NodeValue::Rational(Rational::new(3, 4)),
+		),
 		(ValueType::Text, NodeValue::Text("hello".to_string())),
-		(ValueType::StrCombo, NodeValue::StrCombo("choice".to_string())),
+		(
+			ValueType::StrCombo,
+			NodeValue::StrCombo("choice".to_string()),
+		),
 	];
 	for (declared, value) in cases {
 		let text = value_to_string(declared, &value, true);
@@ -357,14 +383,34 @@ fn undo_command_roundtrip() {
 	.expect("undo stub available");
 
 	// redo applies, undo reverts; redo_now is idempotent.
-	assert_eq!(oaknode::bridge::undo::command_redo_now(cmd.clone()).unwrap(), 0);
+	assert_eq!(
+		oaknode::bridge::undo::command_redo_now(cmd.clone()).unwrap(),
+		0
+	);
 	assert_eq!(value_check.load(Ordering::SeqCst), 1);
-	assert_eq!(oaknode::bridge::undo::command_redo_now(cmd.clone()).unwrap(), 0);
-	assert_eq!(value_check.load(Ordering::SeqCst), 1, "redo no-ops when done");
-	assert_eq!(oaknode::bridge::undo::command_undo_now(cmd.clone()).unwrap(), 0);
+	assert_eq!(
+		oaknode::bridge::undo::command_redo_now(cmd.clone()).unwrap(),
+		0
+	);
+	assert_eq!(
+		value_check.load(Ordering::SeqCst),
+		1,
+		"redo no-ops when done"
+	);
+	assert_eq!(
+		oaknode::bridge::undo::command_undo_now(cmd.clone()).unwrap(),
+		0
+	);
 	assert_eq!(value_check.load(Ordering::SeqCst), 0);
-	assert_eq!(oaknode::bridge::undo::command_undo_now(cmd.clone()).unwrap(), 0);
-	assert_eq!(value_check.load(Ordering::SeqCst), 0, "undo no-ops when not done");
+	assert_eq!(
+		oaknode::bridge::undo::command_undo_now(cmd.clone()).unwrap(),
+		0
+	);
+	assert_eq!(
+		value_check.load(Ordering::SeqCst),
+		0,
+		"undo no-ops when not done"
+	);
 
 	// Multi command batches children.
 	let mut multi = oaknode::bridge::undo::command_init_multi().unwrap();
@@ -387,9 +433,15 @@ fn undo_command_roundtrip() {
 		oaknode::bridge::undo::command_multi_add_child(multi.clone(), child.clone()).unwrap(),
 		0
 	);
-	assert_eq!(oaknode::bridge::undo::command_redo_now(multi.clone()).unwrap(), 0);
+	assert_eq!(
+		oaknode::bridge::undo::command_redo_now(multi.clone()).unwrap(),
+		0
+	);
 	assert_eq!(value_check.load(Ordering::SeqCst), 1);
-	assert_eq!(oaknode::bridge::undo::command_undo_now(multi.clone()).unwrap(), 0);
+	assert_eq!(
+		oaknode::bridge::undo::command_undo_now(multi.clone()).unwrap(),
+		0
+	);
 	assert_eq!(value_check.load(Ordering::SeqCst), 0);
 
 	oaknode::bridge::undo::command_free(&mut cmd);
@@ -434,7 +486,10 @@ fn track_edge_cases() {
 
 	let mut track = TrackBehavior::new(TrackType::Subtitle);
 	assert_eq!(track.name(), "Subtitle Track");
-	assert!(!track.insert_block_before(b1, b9), "absent reference rejected");
+	assert!(
+		!track.insert_block_before(b1, b9),
+		"absent reference rejected"
+	);
 	track.append_block(b0);
 	assert!(track.insert_block_before(b1, b0));
 	assert_eq!(track.blocks, vec![b1, b0]);
@@ -444,8 +499,14 @@ fn track_edge_cases() {
 	// Empty-track range queries.
 	let empty = TrackBehavior::new(TrackType::Video);
 	assert_eq!(empty.length(&Ranges), Rational::new(0, 1));
-	assert_eq!(empty.block_containing_time(Rational::new(1, 1), &Ranges), None);
-	assert_eq!(empty.visible_block_at_time(Rational::new(1, 1), &Ranges), None);
+	assert_eq!(
+		empty.block_containing_time(Rational::new(1, 1), &Ranges),
+		None
+	);
+	assert_eq!(
+		empty.visible_block_at_time(Rational::new(1, 1), &Ranges),
+		None
+	);
 	assert!(empty.is_range_free(
 		TimeRange::new(Rational::new(0, 1), Rational::new(1, 1)),
 		&Ranges
@@ -454,7 +515,11 @@ fn track_edge_cases() {
 
 	// duplicate preserves the block list and kind.
 	let dup = track.duplicate(&oaknode::node::NodeCore::new()).unwrap();
-	let d = dup.as_any().unwrap().downcast_ref::<TrackBehavior>().unwrap();
+	let d = dup
+		.as_any()
+		.unwrap()
+		.downcast_ref::<TrackBehavior>()
+		.unwrap();
 	assert_eq!(d.blocks, vec![b1, b0]);
 	assert_eq!(d.kind, TrackType::Subtitle);
 	assert_eq!(dup.type_id(), "org.olivevideoeditor.Olive.track");
@@ -467,7 +532,11 @@ fn track_edge_cases() {
 	assert_eq!(list.total_length(&Tr), Rational::new(0, 1));
 	list.tracks.push(b0);
 	let dup = list.duplicate(&oaknode::node::NodeCore::new()).unwrap();
-	let d = dup.as_any().unwrap().downcast_ref::<TrackListBehavior>().unwrap();
+	let d = dup
+		.as_any()
+		.unwrap()
+		.downcast_ref::<TrackListBehavior>()
+		.unwrap();
 	assert_eq!(d.tracks, vec![b0]);
 	assert_eq!(d.kind, TrackType::Video);
 	assert_eq!(dup.type_id(), "org.olivevideoeditor.Olive.tracklist");
@@ -501,7 +570,11 @@ fn footage_edge_cases() {
 	// duplicate preserves the fields.
 	f.set_proxy("/p2.mov", 1, 0, 0, true);
 	let dup = f.duplicate(&oaknode::node::NodeCore::new()).unwrap();
-	let d = dup.as_any().unwrap().downcast_ref::<FootageBehavior>().unwrap();
+	let d = dup
+		.as_any()
+		.unwrap()
+		.downcast_ref::<FootageBehavior>()
+		.unwrap();
 	assert_eq!(d.filename, "nonexistent.mov");
 	assert_eq!(d.proxy, "/p2.mov");
 	assert_eq!(d.proxy_state, 1);
@@ -531,7 +604,11 @@ fn sequence_edge_cases() {
 	assert_eq!(seq.audio_stream_count(), 1, "default audio params");
 
 	let dup = seq.duplicate(&oaknode::node::NodeCore::new()).unwrap();
-	let d = dup.as_any().unwrap().downcast_ref::<SequenceBehavior>().unwrap();
+	let d = dup
+		.as_any()
+		.unwrap()
+		.downcast_ref::<SequenceBehavior>()
+		.unwrap();
 	// C++ `copy()` clones without values/params; the duplicate is empty.
 	assert_eq!(d.video_stream_count(), 0);
 	let def = SequenceBehavior::default();
@@ -564,10 +641,18 @@ fn group_behavior_edges() {
 	{
 		let p = project.lock().unwrap();
 		let entry = p.graph.get(group_id).unwrap();
-		let gb = entry.behavior.as_any().unwrap().downcast_ref::<NodeGroup>().unwrap();
+		let gb = entry
+			.behavior
+			.as_any()
+			.unwrap()
+			.downcast_ref::<NodeGroup>()
+			.unwrap();
 		assert_eq!(gb.name(), "Group");
 		assert_eq!(gb.type_id(), "org.olivevideoeditor.Olive.group");
-		assert_eq!(gb.description(), "A group of nodes that is represented as a single node.");
+		assert_eq!(
+			gb.description(),
+			"A group of nodes that is represented as a single node."
+		);
 		assert!(gb.categories().is_empty());
 		assert_eq!(gb.output_passthrough(), None);
 		assert!(gb.passthroughs().is_empty());
@@ -576,11 +661,14 @@ fn group_behavior_edges() {
 			input: "param_a_in".to_string(),
 			element: -1,
 		}));
-		assert_eq!(gb.id_of_passthrough(&InnerInput {
-			node: inner_id,
-			input: "param_a_in".to_string(),
-			element: -1,
-		}), "");
+		assert_eq!(
+			gb.id_of_passthrough(&InnerInput {
+				node: inner_id,
+				input: "param_a_in".to_string(),
+				element: -1,
+			}),
+			""
+		);
 		assert_eq!(gb.input_name("param_a_in"), "param_a_in");
 		assert_eq!(gb.input_from_id("param_a_in"), None);
 	}
@@ -611,22 +699,39 @@ fn group_behavior_edges() {
 			.unwrap()
 			.clone();
 		let entry = p.graph.get_mut(group_id).unwrap();
-		let gb = entry.behavior.as_any_mut().unwrap().downcast_mut::<NodeGroup>().unwrap();
+		let gb = entry
+			.behavior
+			.as_any_mut()
+			.unwrap()
+			.downcast_mut::<NodeGroup>()
+			.unwrap();
 		let id1 = gb.add_input_passthrough(
 			&mut entry.core,
-			InnerInput { node: inner_id, input: "param_a_in".to_string(), element: -1 },
+			InnerInput {
+				node: inner_id,
+				input: "param_a_in".to_string(),
+				element: -1,
+			},
 			"",
 			&descriptor,
 		);
 		let id2 = gb.add_input_passthrough(
 			&mut entry.core,
-			InnerInput { node: inner2, input: "param_a_in".to_string(), element: -1 },
+			InnerInput {
+				node: inner2,
+				input: "param_a_in".to_string(),
+				element: -1,
+			},
 			"",
 			&descriptor2,
 		);
 		let id3 = gb.add_input_passthrough(
 			&mut entry.core,
-			InnerInput { node: inner2, input: "param_b_in".to_string(), element: -1 },
+			InnerInput {
+				node: inner2,
+				input: "param_b_in".to_string(),
+				element: -1,
+			},
 			"forced",
 			&descriptor2,
 		);
@@ -640,8 +745,17 @@ fn group_behavior_edges() {
 	{
 		let p = project.lock().unwrap();
 		let entry = p.graph.get(group_id).unwrap();
-		let gb = entry.behavior.as_any().unwrap().downcast_ref::<NodeGroup>().unwrap();
-		let target = InnerInput { node: inner_id, input: "param_a_in".to_string(), element: -1 };
+		let gb = entry
+			.behavior
+			.as_any()
+			.unwrap()
+			.downcast_ref::<NodeGroup>()
+			.unwrap();
+		let target = InnerInput {
+			node: inner_id,
+			input: "param_a_in".to_string(),
+			element: -1,
+		};
 		assert!(gb.contains_input_passthrough(&target));
 		assert_eq!(gb.id_of_passthrough(&target), "param_a_in");
 		assert!(gb.input_from_id("param_a_in").is_some());
@@ -652,28 +766,51 @@ fn group_behavior_edges() {
 	// resolve_input follows it to the end.
 	{
 		let p = project.lock().unwrap();
-		let mut input = InnerInput { node: group_id, input: "param_a_in".to_string(), element: -1 };
+		let mut input = InnerInput {
+			node: group_id,
+			input: "param_a_in".to_string(),
+			element: -1,
+		};
 		assert!(NodeGroup::get_inner(&p.graph, &mut input));
 		assert_eq!(input.node, inner_id);
 		assert_eq!(input.input, "param_a_in");
 		let resolved = NodeGroup::resolve_input(
 			&p.graph,
-			InnerInput { node: group_id, input: "param_a_in".to_string(), element: -1 },
+			InnerInput {
+				node: group_id,
+				input: "param_a_in".to_string(),
+				element: -1,
+			},
 		);
 		assert_eq!(resolved.node, inner_id);
 		// A non-group node does not resolve through.
-		let mut noop = InnerInput { node: inner_id, input: "param_a_in".to_string(), element: -1 };
+		let mut noop = InnerInput {
+			node: inner_id,
+			input: "param_a_in".to_string(),
+			element: -1,
+		};
 		assert!(!NodeGroup::get_inner(&p.graph, &mut noop));
 	}
 
 	// duplicate clones the passthrough table and output reference.
 	{
 		let mut p = project.lock().unwrap();
-		p.graph.get_mut(group_id).unwrap().behavior.as_any_mut().unwrap()
-			.downcast_mut::<NodeGroup>().unwrap()
+		p.graph
+			.get_mut(group_id)
+			.unwrap()
+			.behavior
+			.as_any_mut()
+			.unwrap()
+			.downcast_mut::<NodeGroup>()
+			.unwrap()
 			.set_output_passthrough(Some(inner_id));
 		let entry = p.graph.get(group_id).unwrap();
-		let gb = entry.behavior.as_any().unwrap().downcast_ref::<NodeGroup>().unwrap();
+		let gb = entry
+			.behavior
+			.as_any()
+			.unwrap()
+			.downcast_ref::<NodeGroup>()
+			.unwrap();
 		assert_eq!(gb.output_passthrough(), Some(inner_id));
 		let dup = gb.duplicate(&entry.core).unwrap();
 		let d = dup.as_any().unwrap().downcast_ref::<NodeGroup>().unwrap();
@@ -685,10 +822,19 @@ fn group_behavior_edges() {
 	{
 		let mut p = project.lock().unwrap();
 		let entry = p.graph.get_mut(group_id).unwrap();
-		let gb = entry.behavior.as_any_mut().unwrap().downcast_mut::<NodeGroup>().unwrap();
+		let gb = entry
+			.behavior
+			.as_any_mut()
+			.unwrap()
+			.downcast_mut::<NodeGroup>()
+			.unwrap();
 		gb.remove_input_passthrough(
 			&mut entry.core,
-			&InnerInput { node: inner_id, input: "param_a_in".to_string(), element: -1 },
+			&InnerInput {
+				node: inner_id,
+				input: "param_a_in".to_string(),
+				element: -1,
+			},
 		);
 		assert_eq!(gb.passthroughs().len(), 2);
 	}
@@ -703,7 +849,11 @@ fn group_serialization() {
 	use oaknode::nodes::group::NodeGroup;
 
 	let mut gb = oaknode::nodes::group::create().1;
-	let gb = gb.as_any_mut().unwrap().downcast_mut::<NodeGroup>().unwrap();
+	let gb = gb
+		.as_any_mut()
+		.unwrap()
+		.downcast_mut::<NodeGroup>()
+		.unwrap();
 
 	// save_custom writes the passthrough elements.
 	let mut writer = oaknode::serializer::XmlWriterBridge::new().unwrap();
@@ -717,7 +867,11 @@ fn group_serialization() {
 
 	// load_custom parses them back (node references deferred).
 	let mut gb = oaknode::nodes::group::create().1;
-	let gb = gb.as_any_mut().unwrap().downcast_mut::<NodeGroup>().unwrap();
+	let gb = gb
+		.as_any_mut()
+		.unwrap()
+		.downcast_mut::<NodeGroup>()
+		.unwrap();
 	let mut reader = oaknode::serializer::XmlReaderBridge::new(&xml).unwrap();
 	{
 		use oaknode::node::NodeBehavior;

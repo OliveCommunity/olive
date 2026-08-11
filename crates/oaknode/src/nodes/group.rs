@@ -117,7 +117,11 @@ impl NodeGroup {
 	/// Remove the passthrough (and the group input) for an inner
 	/// input (C++ `remove_input_passthrough()`); no-op if absent.
 	pub fn remove_input_passthrough(&mut self, core: &mut NodeCore, input: &InnerInput) {
-		if let Some(i) = self.input_passthroughs.iter().position(|(_, inner)| inner == input) {
+		if let Some(i) = self
+			.input_passthroughs
+			.iter()
+			.position(|(_, inner)| inner == input)
+		{
 			let id = self.input_passthroughs.remove(i).0;
 			core.remove_input(&id);
 		}
@@ -138,7 +142,9 @@ impl NodeGroup {
 	/// Whether an inner input is already passed through (C++
 	/// `contains_input_passthrough()`).
 	pub fn contains_input_passthrough(&self, input: &InnerInput) -> bool {
-		self.input_passthroughs.iter().any(|(_, inner)| inner == input)
+		self.input_passthroughs
+			.iter()
+			.any(|(_, inner)| inner == input)
 	}
 
 	/// Group input id for an inner input, or empty (C++
@@ -251,7 +257,11 @@ impl NodeBehavior for NodeGroup {
 	/// the C++ defers the node references into `SerializedData` and
 	/// resolves them in `PostLoadEvent`, a channel this crate's
 	/// serializer does not drive — `post_load` is therefore a no-op.
-	fn load_custom(&mut self, _core: &mut NodeCore, reader: &mut dyn crate::serializer::XmlRead) -> bool {
+	fn load_custom(
+		&mut self,
+		_core: &mut NodeCore,
+		reader: &mut dyn crate::serializer::XmlRead,
+	) -> bool {
 		while reader.next_start_element() {
 			match reader.name() {
 				"inputpassthroughs" => {

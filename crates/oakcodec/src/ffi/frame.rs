@@ -54,9 +54,7 @@ pub unsafe extern "C" fn oakcodec_frame_init() -> CHandle {
 /// (the handle is addref'd internally); buffer unallocated.
 #[no_mangle]
 pub unsafe extern "C" fn oakcodec_frame_init_with_params(params: OakVideoParams) -> CHandle {
-	handle::guard_handle(|| {
-		Ok(handle::make_owned(Mutex::new(Frame::with_params(params))))
-	})
+	handle::guard_handle(|| Ok(handle::make_owned(Mutex::new(Frame::with_params(params)))))
 }
 
 /// `oakcodec_frame_free`: NULL/empty no-op; nulls `ctx` afterwards.
@@ -144,7 +142,9 @@ pub unsafe extern "C" fn oakcodec_frame_data(frame: CHandle) -> *mut c_void {
 /// `oakcodec_frame_const_data`: const variant of `oakcodec_frame_data`.
 #[no_mangle]
 pub unsafe extern "C" fn oakcodec_frame_const_data(frame: CHandle) -> *const c_void {
-	match catch_unwind(AssertUnwindSafe(|| unsafe { frame_const_data_inner(&frame) })) {
+	match catch_unwind(AssertUnwindSafe(|| unsafe {
+		frame_const_data_inner(&frame)
+	})) {
 		Ok(p) => p,
 		Err(_) => std::ptr::null_mut(),
 	}
@@ -350,9 +350,15 @@ mod tests {
 		assert_eq!(unsafe { oakcodec_frame_allocated_size(h) }, (4 * 128) * 50);
 
 		// set_timestamp round-trip.
-		assert_eq!(unsafe { oakcodec_frame_set_timestamp(h, 1, 30) }, crate::error::OAKCODEC_OK);
+		assert_eq!(
+			unsafe { oakcodec_frame_set_timestamp(h, 1, 30) },
+			crate::error::OAKCODEC_OK
+		);
 		let (mut num, mut den) = (0, 0);
-		assert_eq!(unsafe { oakcodec_frame_get_timestamp(h, &mut num, &mut den) }, crate::error::OAKCODEC_OK);
+		assert_eq!(
+			unsafe { oakcodec_frame_get_timestamp(h, &mut num, &mut den) },
+			crate::error::OAKCODEC_OK
+		);
 		assert_eq!((num, den), (1, 30));
 
 		unsafe { oakcodec_frame_free(&mut h) };
@@ -365,15 +371,27 @@ mod tests {
 		let _g = crate::ffi::lock_tests();
 		let empty = CHandle::null();
 		assert_eq!(unsafe { oakcodec_frame_width(empty) }, 0);
-		assert_eq!(unsafe { oakcodec_frame_format(empty) }, OAKCOMMON_PIXEL_FORMAT_INVALID);
-		assert_eq!(unsafe { oakcodec_frame_allocate(empty) }, OAKCODEC_E_INVALID);
-		assert_eq!(unsafe { oakcodec_frame_get_params(empty, std::ptr::null_mut()) }, OAKCODEC_E_INVALID);
+		assert_eq!(
+			unsafe { oakcodec_frame_format(empty) },
+			OAKCOMMON_PIXEL_FORMAT_INVALID
+		);
+		assert_eq!(
+			unsafe { oakcodec_frame_allocate(empty) },
+			OAKCODEC_E_INVALID
+		);
+		assert_eq!(
+			unsafe { oakcodec_frame_get_params(empty, std::ptr::null_mut()) },
+			OAKCODEC_E_INVALID
+		);
 
 		// init_basic(0, 0) is not valid -> allocate rejects with E_STATE.
 		let params = unsafe { oakcommon_videoparams_init_basic(0, 0) };
 		let mut h = unsafe { oakcodec_frame_init_with_params(params) };
 		assert!(!h.is_null());
-		assert_eq!(unsafe { oakcodec_frame_allocate(h) }, crate::error::OAKCODEC_E_STATE);
+		assert_eq!(
+			unsafe { oakcodec_frame_allocate(h) },
+			crate::error::OAKCODEC_E_STATE
+		);
 		assert_eq!(unsafe { oakcodec_frame_is_allocated(h) }, 0);
 		unsafe { oakcodec_frame_free(&mut h) };
 	}
@@ -409,7 +427,10 @@ mod tests {
 		assert_eq!(unsafe { oakcodec_frame_linesize_pixels(h) }, 0);
 		assert_eq!(unsafe { oakcodec_frame_data(h) }, std::ptr::null_mut());
 		assert_eq!(unsafe { oakcodec_frame_const_data(h) }, std::ptr::null());
-		assert_eq!(unsafe { oakcodec_frame_allocate(h) }, crate::error::OAKCODEC_E_STATE);
+		assert_eq!(
+			unsafe { oakcodec_frame_allocate(h) },
+			crate::error::OAKCODEC_E_STATE
+		);
 
 		// set_params replaces the parameter set and recomputes line sizes.
 		let params = unsafe { oakcommon_videoparams_init_basic(100, 50) };
@@ -423,7 +444,10 @@ mod tests {
 		assert_eq!(unsafe { oakcodec_frame_linesize_pixels(h) }, 128);
 
 		// allocate -> data and const_data point at the buffer.
-		assert_eq!(unsafe { oakcodec_frame_allocate(h) }, crate::error::OAKCODEC_OK);
+		assert_eq!(
+			unsafe { oakcodec_frame_allocate(h) },
+			crate::error::OAKCODEC_OK
+		);
 		assert!(!unsafe { oakcodec_frame_data(h) }.is_null());
 		assert!(!unsafe { oakcodec_frame_const_data(h) }.is_null());
 		assert_eq!(unsafe { oakcodec_frame_allocated_size(h) }, (4 * 128) * 50);

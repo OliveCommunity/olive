@@ -102,7 +102,10 @@ impl CustomCacheTask {
 	/// Create a cache-fill task with the given sequence name. The cancel
 	/// hook that wakes the parked thread is installed on the base task.
 	pub fn new(sequence_name: &str) -> CustomCacheTask {
-		let base = Task::new(&format!("Caching custom range for \"{sequence_name}\""), CHandle::null());
+		let base = Task::new(
+			&format!("Caching custom range for \"{sequence_name}\""),
+			CHandle::null(),
+		);
 		let state = Arc::new(CustomCacheState {
 			cancelled_through_finish: Mutex::new(false),
 			wait: Condvar::new(),
@@ -115,7 +118,8 @@ impl CustomCacheTask {
 			state,
 		};
 		let hook_state = task.state.clone();
-		task.base.set_cancel_event(Box::new(move || hook_state.cancel_event()));
+		task.base
+			.set_cancel_event(Box::new(move || hook_state.cancel_event()));
 		task
 	}
 

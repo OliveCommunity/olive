@@ -21,14 +21,14 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]
 
+pub mod cancelatom;
 pub mod colortransform;
 pub mod commandlineparser;
-pub mod cancelatom;
 pub mod configstore;
 pub mod debug;
 pub mod error;
-pub mod ffmpegutils;
 pub mod ffi;
+pub mod ffmpegutils;
 pub mod filefunctions;
 pub mod handle;
 pub mod miscutils;

@@ -75,7 +75,9 @@ impl ColorProcessor {
 	pub fn create(src_space: &str, dst_transform: &str, dir: Direction) -> Option<Self> {
 		let config = default_config()?;
 		let src = if config.has_role(src_space) {
-			config.canonical_name(src_space).unwrap_or_else(|| src_space.to_string())
+			config
+				.canonical_name(src_space)
+				.unwrap_or_else(|| src_space.to_string())
 		} else {
 			src_space.to_string()
 		};
@@ -85,9 +87,14 @@ impl ColorProcessor {
 			Direction::Inverse => config.processor(dst_transform, &src),
 		}
 		.ok();
-		let cpu = processor.as_ref().and_then(|p| p.default_cpu_processor().ok());
+		let cpu = processor
+			.as_ref()
+			.and_then(|p| p.default_cpu_processor().ok());
 
-		Some(Self { inner: processor, cpu })
+		Some(Self {
+			inner: processor,
+			cpu,
+		})
 	}
 
 	/// Create from a LUT file (C++ `create_lut` semantics): an OCIO
@@ -101,8 +108,13 @@ impl ColorProcessor {
 		let processor = config
 			.processor_from_transform(&transform, dir.to_ocio())
 			.ok();
-		let cpu = processor.as_ref().and_then(|p| p.default_cpu_processor().ok());
-		Some(Self { inner: processor, cpu })
+		let cpu = processor
+			.as_ref()
+			.and_then(|p| p.default_cpu_processor().ok());
+		Some(Self {
+			inner: processor,
+			cpu,
+		})
 	}
 
 	/// Create from a LUT file on a specific config (C++
@@ -115,22 +127,33 @@ impl ColorProcessor {
 		let processor = config
 			.processor_from_transform(&transform, dir.to_ocio())
 			.ok();
-		let cpu = processor.as_ref().and_then(|p| p.default_cpu_processor().ok());
-		Some(Self { inner: processor, cpu })
+		let cpu = processor
+			.as_ref()
+			.and_then(|p| p.default_cpu_processor().ok());
+		Some(Self {
+			inner: processor,
+			cpu,
+		})
 	}
 
 	/// Create a dynamic grading-primary processor on the default config
 	/// (C++ `ColorProcessor` grading-primary family).
 	pub fn create_grading_primary(style: GradingStyle) -> Option<Self> {
 		let config = default_config()?;
-		let transform = ocio_rs::transform::GradingPrimaryTransform::create(style.to_ocio()).ok()?;
+		let transform =
+			ocio_rs::transform::GradingPrimaryTransform::create(style.to_ocio()).ok()?;
 		transform.make_dynamic();
 		transform.set_direction(ocio_rs::TransformDirection::Forward);
 		let processor = config
 			.processor_from_transform(&transform, ocio_rs::TransformDirection::Forward)
 			.ok();
-		let cpu = processor.as_ref().and_then(|p| p.default_cpu_processor().ok());
-		Some(Self { inner: processor, cpu })
+		let cpu = processor
+			.as_ref()
+			.and_then(|p| p.default_cpu_processor().ok());
+		Some(Self {
+			inner: processor,
+			cpu,
+		})
 	}
 
 	/// Create from an explicit OCIO processor (C++
@@ -234,9 +257,7 @@ fn bytemuck_f32_slice(data: &mut [u8]) -> Option<&mut [f32]> {
 	// SAFETY: length is a multiple of 4 and `data` is byte-aligned; the
 	// cast is valid for any alignment (f32 has no stricter requirement
 	// than u8 for mutable slice casts at this length).
-	Some(unsafe {
-		std::slice::from_raw_parts_mut(data.as_mut_ptr() as *mut f32, data.len() / 4)
-	})
+	Some(unsafe { std::slice::from_raw_parts_mut(data.as_mut_ptr() as *mut f32, data.len() / 4) })
 }
 
 // ---- process-wide default config (C++ ColorManager statics) ----------------
@@ -271,17 +292,14 @@ pub fn default_config() -> Option<std::sync::Arc<SafeConfig>> {
 /// (C++ `ColorManager::SetUpDefaultConfig`).
 pub fn set_up_default_config() -> Result<()> {
 	let config = match std::env::var("OCIO") {
-		Ok(path) if !path.is_empty() => {
-			ocio_rs::Config::from_file(&path)
-				.map_err(|e| Error::Failed(format!("load $OCIO config: {e}")))?
-		}
+		Ok(path) if !path.is_empty() => ocio_rs::Config::from_file(&path)
+			.map_err(|e| Error::Failed(format!("load $OCIO config: {e}")))?,
 		_ => ocio_rs::Config::create_from_builtin_config("default")
 			.or_else(|_| ocio_rs::Config::create_from_builtin_config("ocio-2.2-default"))
 			.map_err(|e| Error::Failed(format!("load bundled config: {e}")))?,
 	};
-	*DEFAULT_CONFIG
-		.lock()
-		.unwrap_or_else(|e| e.into_inner()) = Some(std::sync::Arc::new(SafeConfig(config)));
+	*DEFAULT_CONFIG.lock().unwrap_or_else(|e| e.into_inner()) =
+		Some(std::sync::Arc::new(SafeConfig(config)));
 	Ok(())
 }
 
@@ -309,7 +327,8 @@ pub fn display_transform_result(
 	}
 
 	let mut view_found = false;
-	let views = config.num_views_by_reference_space(ocio_rs::SearchReferenceSpaceType::Scene, display);
+	let views =
+		config.num_views_by_reference_space(ocio_rs::SearchReferenceSpaceType::Scene, display);
 	for i in 0..views {
 		if config
 			.view_by_reference_space(ocio_rs::SearchReferenceSpaceType::Scene, display, i)
@@ -331,9 +350,21 @@ pub fn display_transform_result(
 		.get_color_space("reference")
 		.and_then(|cs| cs.name())
 		.filter(|s| !s.is_empty())
-		.or_else(|| config.role_color_space("reference").filter(|s| !s.is_empty()))
-		.or_else(|| config.role_color_space("aces_interchange").filter(|s| !s.is_empty()))
-		.or_else(|| config.role_color_space("scene_linear").filter(|s| !s.is_empty()))
+		.or_else(|| {
+			config
+				.role_color_space("reference")
+				.filter(|s| !s.is_empty())
+		})
+		.or_else(|| {
+			config
+				.role_color_space("aces_interchange")
+				.filter(|s| !s.is_empty())
+		})
+		.or_else(|| {
+			config
+				.role_color_space("scene_linear")
+				.filter(|s| !s.is_empty())
+		})
 		.ok_or(Error::State)?;
 	let processor = config
 		.processor_display(src, display, view, ocio_rs::TransformDirection::Forward)
@@ -406,7 +437,10 @@ mod tests {
 	fn pass_through_processor_identity() {
 		let p = ColorProcessor::pass_through();
 		assert!(!p.is_valid());
-		assert_eq!(p.convert_color([0.25, 0.5, 0.75, 1.0]), [0.25, 0.5, 0.75, 1.0]);
+		assert_eq!(
+			p.convert_color([0.25, 0.5, 0.75, 1.0]),
+			[0.25, 0.5, 0.75, 1.0]
+		);
 		let mut f = Frame::dummy();
 		assert!(p.convert_frame(&mut f).is_ok());
 	}
@@ -417,7 +451,10 @@ mod tests {
 		let p = ColorProcessor::pass_through();
 		let mut f = Frame::new();
 		f.format = PixelFormat::U8;
-		assert!(p.convert_frame(&mut f).is_ok(), "pass-through converts nothing");
+		assert!(
+			p.convert_frame(&mut f).is_ok(),
+			"pass-through converts nothing"
+		);
 		// A *valid* processor requires the F32 pipeline format.
 		if set_up_default_config().is_err() {
 			return;
@@ -466,11 +503,17 @@ mod tests {
 		// the ACES scene→display-encoded pairing and must preserve alpha.
 		let p = ColorProcessor::create("ACEScg", "sRGB Encoded Rec.709 (sRGB)", Direction::Normal);
 		let p = p.expect("processor handle always returned");
-		assert!(p.is_valid(), "ACEScg→sRGB Encoded must be a valid processor");
+		assert!(
+			p.is_valid(),
+			"ACEScg→sRGB Encoded must be a valid processor"
+		);
 		let out = p.convert_color([0.18, 0.18, 0.18, 1.0]);
 		assert!((out[3] - 1.0).abs() < 1e-6, "alpha passes through");
 		assert!(out[0].is_finite() && out[1].is_finite() && out[2].is_finite());
-		assert!((out[0] - 0.18).abs() > 1e-3, "the transform must change the value");
+		assert!(
+			(out[0] - 0.18).abs() > 1e-3,
+			"the transform must change the value"
+		);
 	}
 
 	#[test]
@@ -479,12 +522,8 @@ mod tests {
 		if set_up_default_config().is_err() {
 			return;
 		}
-		let p = ColorProcessor::create(
-			"not_a_real_colorspace",
-			"also_not_real",
-			Direction::Normal,
-		)
-		.unwrap();
+		let p = ColorProcessor::create("not_a_real_colorspace", "also_not_real", Direction::Normal)
+			.unwrap();
 		assert!(!p.is_valid(), "lookup failure is non-fatal (pass-through)");
 		assert_eq!(
 			p.convert_color([1.0, 0.5, 0.25, 0.0]),
@@ -561,10 +600,12 @@ mod tests {
 		if set_up_default_config().is_err() {
 			return;
 		}
-		let fwd = ColorProcessor::create("ACEScg", "sRGB Encoded Rec.709 (sRGB)", Direction::Normal)
-			.expect("handle");
-		let inv = ColorProcessor::create("ACEScg", "sRGB Encoded Rec.709 (sRGB)", Direction::Inverse)
-			.expect("handle");
+		let fwd =
+			ColorProcessor::create("ACEScg", "sRGB Encoded Rec.709 (sRGB)", Direction::Normal)
+				.expect("handle");
+		let inv =
+			ColorProcessor::create("ACEScg", "sRGB Encoded Rec.709 (sRGB)", Direction::Inverse)
+				.expect("handle");
 		if !fwd.is_valid() || !inv.is_valid() {
 			return;
 		}
@@ -590,7 +631,10 @@ mod tests {
 		std::fs::write(&path, lut).unwrap();
 		let p = ColorProcessor::create_lut(path.to_string_lossy().as_ref(), Direction::Normal)
 			.expect("processor handle always returned");
-		assert!(p.is_valid(), "a readable .cube must produce a valid processor");
+		assert!(
+			p.is_valid(),
+			"a readable .cube must produce a valid processor"
+		);
 		let _ = std::fs::remove_file(&path);
 	}
 
@@ -625,5 +669,4 @@ mod tests {
 		let p = ColorProcessor::create_lut("/nonexistent/never.cube", Direction::Normal).unwrap();
 		assert!(!p.is_valid(), "unreadable LUT → pass-through processor");
 	}
-
 }

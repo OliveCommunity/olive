@@ -23,12 +23,12 @@ use oakcore_rs::{Rational, TimeRange};
 
 use oaktimeline::bridge::node::{oaknode_block_clip_create, oaknode_block_gap_create};
 use oaktimeline::bridge::teststubs::MockNode;
-use oaktimeline::handle::{CHandle, get, make_owned};
+use oaktimeline::handle::{get, make_owned, CHandle};
 use oaktimeline::marker::{MarkerAddCommand, TimelineMarkerList};
 use oaktimeline::undocommon::{
-	CHandleCommandWrapper, Command, MultiUndoCommand, block_can_be_removed,
-	create_and_run_block_remove_command, create_and_run_remove_command,
+	block_can_be_removed, create_and_run_block_remove_command, create_and_run_remove_command,
 	create_block_remove_command, create_remove_command, free_command_handle, node_can_be_removed,
+	CHandleCommandWrapper, Command, MultiUndoCommand,
 };
 use oaktimeline::workarea::{TimelineWorkArea, WorkareaSetEnabledCommand};
 
@@ -141,7 +141,12 @@ fn multi_undo_command_runs_children() {
 	assert_eq!(l.size(), 2);
 
 	multi.undo();
-	assert_eq!(unsafe { get::<TimelineMarkerList>(&list_h) }.unwrap().size(), 0);
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.size(),
+		0
+	);
 }
 
 /// `MultiUndoCommand::to_command` boxes the group into a command handle.

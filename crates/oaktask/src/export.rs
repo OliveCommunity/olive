@@ -106,7 +106,14 @@ impl ExportTask {
 		let label = node_label(viewer);
 		let title = format!("Exporting \"{label}\"");
 		let base = Task::new(&title, CHandle::null());
-		let render = RenderTask::new(base, CHandle::null(), CHandle::null(), viewer, ForceParams::default(), None);
+		let render = RenderTask::new(
+			base,
+			CHandle::null(),
+			CHandle::null(),
+			viewer,
+			ForceParams::default(),
+			None,
+		);
 		ExportTask {
 			render,
 			viewer_node: viewer,
@@ -190,7 +197,10 @@ impl ExportTask {
 		unsafe {
 			bridge::node::oaknode_sequence_get_length(self.viewer_node, &mut len_num, &mut len_den);
 		}
-		TimeRange::new(Rational::new(0, 1), Rational::new(len_num as i64, len_den as i64))
+		TimeRange::new(
+			Rational::new(0, 1),
+			Rational::new(len_num as i64, len_den as i64),
+		)
 	}
 }
 
@@ -222,7 +232,8 @@ impl TaskBehavior for ExportTask {
 		if self.encoding_params.video_enabled {
 			force.force_width = self.encoding_params.video_width;
 			force.force_height = self.encoding_params.video_height;
-			force.force_format = unsafe { bridge::codec::oakcodec_encoder_get_desired_pixel_format(encoder) };
+			force.force_format =
+				unsafe { bridge::codec::oakcodec_encoder_get_desired_pixel_format(encoder) };
 			force.force_channel_count = 4; // RGBA
 		}
 		self.render.force_params = force;
@@ -238,7 +249,8 @@ impl TaskBehavior for ExportTask {
 		// virtual dispatch receiver). The render is temporarily moved out of
 		// `self` to avoid a self-referential borrow; it is put back right
 		// after, before the encoder flush below.
-		let mut render = std::mem::replace(&mut self.render, crate::render::RenderTask::placeholder());
+		let mut render =
+			std::mem::replace(&mut self.render, crate::render::RenderTask::placeholder());
 		let result = render.render(task, self);
 		self.render = render;
 		result?;
@@ -299,7 +311,15 @@ impl RenderTaskBehavior for ExportTask {
 		}
 		// The simplified path does not carry the subtitle block's in/out
 		// times; write with 0.0/0.0 (the encoder default interval).
-		if unsafe { bridge::codec::oakcodec_encoder_write_subtitle(self.subtitle_encoder, cstr(text), 0.0, 0.0) } != 0 {
+		if unsafe {
+			bridge::codec::oakcodec_encoder_write_subtitle(
+				self.subtitle_encoder,
+				cstr(text),
+				0.0,
+				0.0,
+			)
+		} != 0
+		{
 			let err = encoder_error(self.subtitle_encoder);
 			task.set_error(&err);
 			return Err(Error::Failed("Failed to write subtitle".to_string()));
@@ -324,13 +344,18 @@ fn node_label(node: CHandle) -> String {
 /// Read a NUL-terminated char buffer into a String (lossy).
 fn buf_to_string(buf: &[i8]) -> String {
 	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-	unsafe { String::from_utf8_lossy(std::slice::from_raw_parts(buf.as_ptr() as *const u8, len)).into_owned() }
+	unsafe {
+		String::from_utf8_lossy(std::slice::from_raw_parts(buf.as_ptr() as *const u8, len))
+			.into_owned()
+	}
 }
 
 /// Two-stage read of the encoder's last error string.
 fn encoder_error(encoder: CHandle) -> String {
 	let mut buf = [0i8; 512];
-	let needed = unsafe { bridge::codec::oakcodec_encoder_last_error(encoder, buf.as_mut_ptr(), buf.len() as i32) };
+	let needed = unsafe {
+		bridge::codec::oakcodec_encoder_last_error(encoder, buf.as_mut_ptr(), buf.len() as i32)
+	};
 	if needed <= 0 {
 		return String::new();
 	}

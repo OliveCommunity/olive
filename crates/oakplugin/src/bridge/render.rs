@@ -39,7 +39,6 @@ use std::ffi::c_void;
 /// oakrender crate's struct (identical layout; include/render/renderer.h:78).
 pub type VideoParams = oakrender::ffi::OakRenderVideoParams;
 
-
 /// olive::PixelFormat::Format 的 f32 值。
 pub const PIXEL_FORMAT_F32: i32 = 4;
 /// olive::PixelFormat::Format 的 u8 值。
@@ -293,7 +292,9 @@ pub(crate) unsafe fn texture_download(
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		unsafe { oakrender::ffi::renderer::oakrender_display_texture_download(texture, pixels, linesize) }
+		unsafe {
+			oakrender::ffi::renderer::oakrender_display_texture_download(texture, pixels, linesize)
+		}
 	}
 }
 
@@ -337,7 +338,9 @@ pub(crate) unsafe fn texture_upload(
 	}
 	#[cfg(not(feature = "test-stubs"))]
 	{
-		unsafe { oakrender::ffi::renderer::oakrender_display_texture_upload(texture, pixels, linesize) }
+		unsafe {
+			oakrender::ffi::renderer::oakrender_display_texture_upload(texture, pixels, linesize)
+		}
 	}
 }
 
@@ -605,7 +608,8 @@ pub mod stub {
 			if row_bytes == src_linesize && src_linesize == dst_linesize {
 				dst[d..d + row_bytes].copy_from_slice(&src[s..s + row_bytes]);
 			} else {
-				dst[d..d + row_bytes].copy_from_slice(&src[s..s + row_bytes.min(src.len().saturating_sub(s))]);
+				dst[d..d + row_bytes]
+					.copy_from_slice(&src[s..s + row_bytes.min(src.len().saturating_sub(s))]);
 			}
 		}
 	}
@@ -660,8 +664,7 @@ pub mod stub {
 		let f = frame_of(&mut s, frame.ctx as usize);
 		let len = f.params.width as usize
 			* f.params.height as usize
-			* 4
-			* bytes_per_pixel(f.params.format);
+			* 4 * bytes_per_pixel(f.params.format);
 		f.data.resize(len, 0);
 		0
 	}
@@ -680,11 +683,15 @@ pub mod stub {
 
 	// ---- 渲染器族桩 ---------------------------------------------------------
 
-	pub(super) unsafe fn renderer_create_dynamic(backend: *const std::ffi::c_char) -> RendererHandle {
+	pub(super) unsafe fn renderer_create_dynamic(
+		backend: *const std::ffi::c_char,
+	) -> RendererHandle {
 		if backend.is_null() {
 			return RendererHandle::null();
 		}
-		let id = unsafe { std::ffi::CStr::from_ptr(backend) }.to_str().unwrap_or("");
+		let id = unsafe { std::ffi::CStr::from_ptr(backend) }
+			.to_str()
+			.unwrap_or("");
 		if id != "opengl" {
 			return RendererHandle::null();
 		}
@@ -734,16 +741,29 @@ pub mod stub {
 			// linesize 字节/行（renderer.h 的 bytes 契约；0 → 紧凑行）。
 			let bpp = bytes_per_pixel(params.format);
 			let row_bytes = (params.width as usize) * 4 * bpp;
-			let src_linesize = if linesize > 0 { linesize as usize } else { row_bytes };
-			let src = unsafe { std::slice::from_raw_parts(pixels as *const u8, src_linesize * params.height as usize) };
-			copy_rows(src, src_linesize, &mut data, row_bytes, row_bytes.min(src_linesize), params.height as usize);
+			let src_linesize = if linesize > 0 {
+				linesize as usize
+			} else {
+				row_bytes
+			};
+			let src = unsafe {
+				std::slice::from_raw_parts(
+					pixels as *const u8,
+					src_linesize * params.height as usize,
+				)
+			};
+			copy_rows(
+				src,
+				src_linesize,
+				&mut data,
+				row_bytes,
+				row_bytes.min(src_linesize),
+				params.height as usize,
+			);
 		}
 		s.gl_textures.push(StubGlTexture {
 			id,
-			frame: StubFrame {
-				params,
-				data,
-			},
+			frame: StubFrame { params, data },
 		});
 		magic_handle(GL_TEX_BASE + id as usize)
 	}
@@ -784,10 +804,26 @@ pub mod stub {
 		}
 		let bpp = bytes_per_pixel(t.frame.params.format);
 		let row_bytes = (t.frame.params.width as usize) * 4 * bpp;
-		let dst_linesize = if linesize > 0 { linesize as usize } else { row_bytes };
-		let dst = unsafe { std::slice::from_raw_parts_mut(pixels as *mut u8, dst_linesize * t.frame.params.height as usize) };
+		let dst_linesize = if linesize > 0 {
+			linesize as usize
+		} else {
+			row_bytes
+		};
+		let dst = unsafe {
+			std::slice::from_raw_parts_mut(
+				pixels as *mut u8,
+				dst_linesize * t.frame.params.height as usize,
+			)
+		};
 		let src = t.frame.data.clone();
-		copy_rows(&src, row_bytes, dst, dst_linesize, row_bytes, t.frame.params.height as usize);
+		copy_rows(
+			&src,
+			row_bytes,
+			dst,
+			dst_linesize,
+			row_bytes,
+			t.frame.params.height as usize,
+		);
 		0
 	}
 
@@ -808,10 +844,26 @@ pub mod stub {
 		}
 		let bpp = bytes_per_pixel(t.frame.params.format);
 		let row_bytes = (t.frame.params.width as usize) * 4 * bpp;
-		let src_linesize = if linesize > 0 { linesize as usize } else { row_bytes };
-		let src = unsafe { std::slice::from_raw_parts(pixels as *const u8, src_linesize * t.frame.params.height as usize) };
+		let src_linesize = if linesize > 0 {
+			linesize as usize
+		} else {
+			row_bytes
+		};
+		let src = unsafe {
+			std::slice::from_raw_parts(
+				pixels as *const u8,
+				src_linesize * t.frame.params.height as usize,
+			)
+		};
 		let mut data = vec![0u8; tight_len(&t.frame.params)];
-		copy_rows(src, src_linesize, &mut data, row_bytes, row_bytes.min(src_linesize), t.frame.params.height as usize);
+		copy_rows(
+			src,
+			src_linesize,
+			&mut data,
+			row_bytes,
+			row_bytes.min(src_linesize),
+			t.frame.params.height as usize,
+		);
 		t.frame.data = data;
 		0
 	}
@@ -849,10 +901,23 @@ pub mod stub {
 		};
 		let bpp = bytes_per_pixel(req.format);
 		let row_bytes = (req.width as usize) * 4 * bpp;
-		let dst_linesize = if linesize > 0 { linesize as usize } else { row_bytes };
-		let out = unsafe { std::slice::from_raw_parts_mut(dst as *mut u8, dst_linesize * req.height as usize) };
+		let dst_linesize = if linesize > 0 {
+			linesize as usize
+		} else {
+			row_bytes
+		};
+		let out = unsafe {
+			std::slice::from_raw_parts_mut(dst as *mut u8, dst_linesize * req.height as usize)
+		};
 		let src = t.frame.data.clone();
-		copy_rows(&src, row_bytes, out, dst_linesize, row_bytes, req.height as usize);
+		copy_rows(
+			&src,
+			row_bytes,
+			out,
+			dst_linesize,
+			row_bytes,
+			req.height as usize,
+		);
 		0
 	}
 }

@@ -30,7 +30,7 @@ use oaktimeline::error::{
 	OAKTIMELINE_E_FAILED, OAKTIMELINE_E_INVALID, OAKTIMELINE_E_NOMEM, OAKTIMELINE_E_NOT_FOUND,
 	OAKTIMELINE_E_STATE, OAKTIMELINE_OK,
 };
-use oaktimeline::ffi as ffi;
+use oaktimeline::ffi;
 use oaktimeline::handle::{make_owned, CHandle};
 
 /// `oaktimeline_marker_list_create` returns a valid refcounted handle
@@ -86,9 +86,8 @@ fn marker_add_count_at() {
 	assert!(!h.is_null());
 
 	let name = CString::new("mark").unwrap();
-	let r = unsafe {
-		ffi::marker::oaktimeline_marker_add(h.clone(), 10, 1, 20, 1, name.as_ptr(), 3)
-	};
+	let r =
+		unsafe { ffi::marker::oaktimeline_marker_add(h.clone(), 10, 1, 20, 1, name.as_ptr(), 3) };
 	assert_eq!(r, OAKTIMELINE_OK);
 
 	let mut count = 0;
@@ -171,7 +170,13 @@ fn marker_commands_validate_list() {
 	// Null list → null command handle (E_INVALID).
 	let add = unsafe {
 		ffi::marker::oaktimeline_marker_add_command(
-			null_list.clone(), 0, 1, 0, 1, std::ptr::null(), 0,
+			null_list.clone(),
+			0,
+			1,
+			0,
+			1,
+			std::ptr::null(),
+			0,
 		)
 	};
 	assert!(add.is_null());
@@ -201,7 +206,8 @@ fn marker_commands_validate_list() {
 	assert!(!add_ok.is_null());
 
 	// Empty list: any index is out of range → null handle.
-	let remove_empty = unsafe { ffi::marker::oaktimeline_marker_remove_at_command(list.clone(), 0) };
+	let remove_empty =
+		unsafe { ffi::marker::oaktimeline_marker_remove_at_command(list.clone(), 0) };
 	assert!(remove_empty.is_null());
 }
 
@@ -277,7 +283,14 @@ fn workarea_reset_clears_range() {
 	let mut in_den = 0;
 	let mut out_num = 0;
 	let mut out_den = 0;
-	let r = unsafe { ffi::workarea::oaktimeline_workarea_reset(&mut in_num, &mut in_den, &mut out_num, &mut out_den) };
+	let r = unsafe {
+		ffi::workarea::oaktimeline_workarea_reset(
+			&mut in_num,
+			&mut in_den,
+			&mut out_num,
+			&mut out_den,
+		)
+	};
 	assert_eq!(r, OAKTIMELINE_OK);
 	assert_eq!(in_num, 0);
 	assert_eq!(in_den, 1);
@@ -299,10 +312,10 @@ fn edit_exports_return_handles() {
 		ffi::edit::oaktimeline_place_block_command(null.clone(), 0, null.clone(), 0, 1)
 	}
 	.is_null());
-	assert!(unsafe {
-		ffi::edit::oaktimeline_trim_command(null.clone(), null.clone(), 0, 1, 2)
-	}
-	.is_null());
+	assert!(
+		unsafe { ffi::edit::oaktimeline_trim_command(null.clone(), null.clone(), 0, 1, 2) }
+			.is_null()
+	);
 
 	// Valid handles produce non-null command handles. The mock nodes let
 	// the command constructors box without dereferencing graph state.
@@ -327,9 +340,8 @@ fn edit_exports_return_handles() {
 		ffi::edit::oaktimeline_place_block_command(tracklist.clone(), 0, block.clone(), 0, 1)
 	};
 	assert!(!place.is_null());
-	let trim = unsafe {
-		ffi::edit::oaktimeline_trim_command(track.clone(), block.clone(), 10, 1, 2)
-	};
+	let trim =
+		unsafe { ffi::edit::oaktimeline_trim_command(track.clone(), block.clone(), 10, 1, 2) };
 	assert!(!trim.is_null());
 
 	// split_command boxes into a multi command (mock returns a handle).
@@ -353,16 +365,18 @@ fn edit_exports_return_handles() {
 	assert!(!slide.is_null());
 
 	// Invalid block arrays yield null handles.
+	assert!(unsafe { ffi::edit::oaktimeline_split_command(std::ptr::null(), 1, 0, 1) }.is_null());
+	assert!(unsafe { ffi::edit::oaktimeline_split_command(blocks.as_ptr(), 0, 0, 1) }.is_null());
 	assert!(unsafe {
-		ffi::edit::oaktimeline_split_command(std::ptr::null(), 1, 0, 1)
-	}
-	.is_null());
-	assert!(unsafe {
-		ffi::edit::oaktimeline_split_command(blocks.as_ptr(), 0, 0, 1)
-	}
-	.is_null());
-	assert!(unsafe {
-		ffi::edit::oaktimeline_slide_command(track.clone(), std::ptr::null(), 1, null.clone(), null.clone(), 0, 1)
+		ffi::edit::oaktimeline_slide_command(
+			track.clone(),
+			std::ptr::null(),
+			1,
+			null.clone(),
+			null.clone(),
+			0,
+			1,
+		)
 	}
 	.is_null());
 }
@@ -387,32 +401,30 @@ fn edit_exports_validate_rationals() {
 	});
 
 	// Rational pairs are accepted (num/den split), returning a handle.
-	let trim = unsafe {
-		ffi::edit::oaktimeline_trim_command(track.clone(), block.clone(), 10, 2, 2)
-	};
+	let trim =
+		unsafe { ffi::edit::oaktimeline_trim_command(track.clone(), block.clone(), 10, 2, 2) };
 	assert!(!trim.is_null());
 
-	let place = unsafe {
-		ffi::edit::oaktimeline_place_block_command(list.clone(), 0, block.clone(), 5, 1)
-	};
+	let place =
+		unsafe { ffi::edit::oaktimeline_place_block_command(list.clone(), 0, block.clone(), 5, 1) };
 	assert!(!place.is_null());
 
 	// A null track / null block is rejected with a null handle.
 	let null = CHandle::null();
-	assert!(unsafe {
-		ffi::edit::oaktimeline_trim_command(null.clone(), block.clone(), 10, 1, 2)
-	}
-	.is_null());
-	assert!(unsafe {
-		ffi::edit::oaktimeline_trim_command(track.clone(), null.clone(), 10, 1, 2)
-	}
-	.is_null());
+	assert!(
+		unsafe { ffi::edit::oaktimeline_trim_command(null.clone(), block.clone(), 10, 1, 2) }
+			.is_null()
+	);
+	assert!(
+		unsafe { ffi::edit::oaktimeline_trim_command(track.clone(), null.clone(), 10, 1, 2) }
+			.is_null()
+	);
 
 	// A non-trim movement mode (Move = 1) is rejected → null handle.
-	assert!(unsafe {
-		ffi::edit::oaktimeline_trim_command(track.clone(), block.clone(), 10, 1, 1)
-	}
-	.is_null());
+	assert!(
+		unsafe { ffi::edit::oaktimeline_trim_command(track.clone(), block.clone(), 10, 1, 1) }
+			.is_null()
+	);
 }
 
 /// The exported `OAKTIMELINE_*` error constants match the -MMCCCC

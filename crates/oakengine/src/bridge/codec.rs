@@ -59,14 +59,12 @@ use crate::handle::CHandle;
 /// `encoder_init`/recording can consume the pointer directly).
 pub type EncodingParamsPOD = oakcodec::ffi::encoder::oakcodec_encoding_params;
 
-
 /// Zeroed encoding-params POD (all fields 0 / NUL). The codec crate's
 /// struct has no zeroed constructor; this facade helper provides it.
 pub fn zeroed_encoding_params() -> EncodingParamsPOD {
 	// All-C fields: all-zero is a valid value.
 	unsafe { std::mem::zeroed() }
 }
-
 
 /// Direct call into the `oakcodec` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
@@ -83,10 +81,10 @@ pub fn oakcodec_encoding_format_name(format: c_int, buf: *mut c_char, buf_size: 
 /// Direct call into the `oakcodec` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakcodec_encoding_format_extension(
-		format: c_int,
-		buf: *mut c_char,
-		buf_size: c_int,
-	) -> c_int {
+	format: c_int,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oakcodec::ffi::format::oakcodec_encoding_format_extension(format, buf, buf_size) }
 }
 
@@ -153,13 +151,15 @@ pub fn oakcodec_encoding_pix_fmt_count(format: c_int, codec: c_int) -> c_int {
 /// Direct call into the `oakcodec` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakcodec_encoding_pix_fmt_at(
-		format: c_int,
-		codec: c_int,
-		index: c_int,
-		buf: *mut c_char,
-		buf_size: c_int,
-	) -> c_int {
-	unsafe { oakcodec::ffi::format::oakcodec_encoding_pix_fmt_at(format, codec, index, buf, buf_size) }
+	format: c_int,
+	codec: c_int,
+	index: c_int,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oakcodec::ffi::format::oakcodec_encoding_pix_fmt_at(format, codec, index, buf, buf_size)
+	}
 }
 
 /// Direct call into the `oakcodec` crate (single-lib unification; the
@@ -183,7 +183,9 @@ pub fn oakcodec_encoding_sample_format_at(format: c_int, codec: c_int, index: c_
 /// Direct call into the `oakcodec` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakcodec_encoding_filename_contains_digit_placeholder(filename: *const c_char) -> c_int {
-	unsafe { oakcodec::ffi::format::oakcodec_encoding_filename_contains_digit_placeholder(filename) }
+	unsafe {
+		oakcodec::ffi::format::oakcodec_encoding_filename_contains_digit_placeholder(filename)
+	}
 }
 
 /// Direct call into the `oakcodec` crate (single-lib unification; the
@@ -195,24 +197,32 @@ pub fn oakcodec_encoding_image_sequence_digit_count(filename: *const c_char) -> 
 /// Direct call into the `oakcodec` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakcodec_encoding_filename_remove_digit_placeholder(
-		filename: *const c_char,
-		buf: *mut c_char,
-		buf_size: c_int,
-	) -> c_int {
-	unsafe { oakcodec::ffi::format::oakcodec_encoding_filename_remove_digit_placeholder(filename, buf, buf_size) }
+	filename: *const c_char,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oakcodec::ffi::format::oakcodec_encoding_filename_remove_digit_placeholder(
+			filename, buf, buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oakcodec` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakcodec_encoding_generate_matrix(
-		method: c_int,
-		src_width: c_int,
-		src_height: c_int,
-		dst_width: c_int,
-		dst_height: c_int,
-		out_matrix: *mut f64,
-	) -> c_int {
-	unsafe { oakcodec::ffi::encoder::oakcodec_encoding_generate_matrix(method, src_width, src_height, dst_width, dst_height, out_matrix) }
+	method: c_int,
+	src_width: c_int,
+	src_height: c_int,
+	dst_width: c_int,
+	dst_height: c_int,
+	out_matrix: *mut f64,
+) -> c_int {
+	unsafe {
+		oakcodec::ffi::encoder::oakcodec_encoding_generate_matrix(
+			method, src_width, src_height, dst_width, dst_height, out_matrix,
+		)
+	}
 }
 
 /// Direct call into the `oakcodec` crate (single-lib unification; the
@@ -230,4 +240,3 @@ pub fn oakcodec_encoder_init(params: *const EncodingParamsPOD) -> CHandle {
 pub fn oakcodec_encoder_free(encoder: *mut CHandle) {
 	unsafe { oakcodec::ffi::encoder::oakcodec_encoder_free(encoder) }
 }
-

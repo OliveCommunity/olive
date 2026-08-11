@@ -121,7 +121,11 @@ fn format_date_time(tm: &Tm, ms: i32, format: &str) -> String {
 			}
 			'M' => {
 				let mon = tm.tm_mon + 1;
-				let s = if run >= 2 { format!("{:02}", mon) } else { format!("{}", mon) };
+				let s = if run >= 2 {
+					format!("{:02}", mon)
+				} else {
+					format!("{}", mon)
+				};
 				out.push_str(&s);
 			}
 			'y' => {
@@ -148,7 +152,11 @@ fn format_date_time(tm: &Tm, ms: i32, format: &str) -> String {
 						hour = 12;
 					}
 				}
-				let s = if run >= 2 { format!("{:02}", hour) } else { format!("{}", hour) };
+				let s = if run >= 2 {
+					format!("{:02}", hour)
+				} else {
+					format!("{}", hour)
+				};
 				out.push_str(&s);
 			}
 			'm' => {
@@ -168,7 +176,11 @@ fn format_date_time(tm: &Tm, ms: i32, format: &str) -> String {
 				out.push_str(&s);
 			}
 			'z' => {
-				let s = if run >= 3 { format!("{:03}", ms) } else { format!("{}", ms) };
+				let s = if run >= 3 {
+					format!("{:03}", ms)
+				} else {
+					format!("{}", ms)
+				};
 				out.push_str(&s);
 			}
 			'A' | 'a' => {
@@ -250,7 +262,13 @@ impl NodeBehavior for TimeFormatNode {
 	/// anonymous-namespace `format_date_time()`: h/hh is 12-hour only when
 	/// an AM/PM token is present; A/AP/ap/a emit the full AM/PM string),
 	/// and pushes the result as a text value.
-	fn value(&self, core: &NodeCore, inputs: &NodeValueRow, time: Rational, table: &mut NodeValueTable) {
+	fn value(
+		&self,
+		core: &NodeCore,
+		inputs: &NodeValueRow,
+		time: Rational,
+		table: &mut NodeValueTable,
+	) {
 		let time_val = inputs
 			.get(TIME_INPUT)
 			.cloned()
@@ -299,7 +317,10 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	);
 	time.properties = vec![
 		("min".to_string(), crate::value::NodeValue::Float(0.0)),
-		("max".to_string(), crate::value::NodeValue::Float(2147483647.0)),
+		(
+			"max".to_string(),
+			crate::value::NodeValue::Float(2147483647.0),
+		),
 	];
 	core.add_input(time);
 	core.add_input(crate::input::Input::new(
@@ -351,7 +372,10 @@ mod tests {
 		let n = TimeFormatNode;
 		assert_eq!(n.input_name(TIME_INPUT), "Time");
 		assert_eq!(n.input_name(FORMAT_INPUT), "Format");
-		assert_eq!(n.input_name(LOCAL_TIME_INPUT), "Interpret time as local time");
+		assert_eq!(
+			n.input_name(LOCAL_TIME_INPUT),
+			"Interpret time as local time"
+		);
 		assert_eq!(n.input_name("other_in"), "other_in");
 	}
 
@@ -359,13 +383,22 @@ mod tests {
 	fn create_wires_inputs() {
 		let (core, behavior) = create();
 		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.timeformat");
-		assert_eq!(core.get_input(TIME_INPUT).unwrap().value_type, ValueType::Float);
-		assert_eq!(core.get_input(FORMAT_INPUT).unwrap().value_type, ValueType::Text);
+		assert_eq!(
+			core.get_input(TIME_INPUT).unwrap().value_type,
+			ValueType::Float
+		);
+		assert_eq!(
+			core.get_input(FORMAT_INPUT).unwrap().value_type,
+			ValueType::Text
+		);
 		assert_eq!(
 			core.get_input(FORMAT_INPUT).unwrap().default,
 			NodeValue::Text("hh:mm:ss".to_string())
 		);
-		assert_eq!(core.get_input(LOCAL_TIME_INPUT).unwrap().value_type, ValueType::Boolean);
+		assert_eq!(
+			core.get_input(LOCAL_TIME_INPUT).unwrap().value_type,
+			ValueType::Boolean
+		);
 	}
 
 	#[test]
@@ -410,7 +443,10 @@ mod tests {
 		let t = tm(0, 0, 13, 9, 7, 124);
 		assert_eq!(format_date_time(&t, 0, "'Literal text'"), "Literal text");
 		assert_eq!(format_date_time(&t, 0, "'It''s' HH"), "Its 13");
-		assert_eq!(format_date_time(&t, 0, "yyyy'unterminated"), "2024unterminated");
+		assert_eq!(
+			format_date_time(&t, 0, "yyyy'unterminated"),
+			"2024unterminated"
+		);
 	}
 
 	#[test]
@@ -424,9 +460,18 @@ mod tests {
 		let (mut core, behavior) = create();
 		// 12:34:56 on 1970-01-01 UTC = 45296 seconds.
 		core.set_standard_value(TIME_INPUT, -1, NodeValue::Float(45296.0));
-		core.set_standard_value(FORMAT_INPUT, -1, NodeValue::Text("yyyy-MM-dd HH:mm:ss".to_string()));
+		core.set_standard_value(
+			FORMAT_INPUT,
+			-1,
+			NodeValue::Text("yyyy-MM-dd HH:mm:ss".to_string()),
+		);
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
 		assert_eq!(
 			table.get(ValueType::Text),
 			Some(&NodeValue::Text("1970-01-01 12:34:56".to_string()))
@@ -438,9 +483,18 @@ mod tests {
 		let (mut core, behavior) = create();
 		// Same instant plus 789 ms.
 		core.set_standard_value(TIME_INPUT, -1, NodeValue::Float(45296.789));
-		core.set_standard_value(FORMAT_INPUT, -1, NodeValue::Text("HH:mm:ss.zzz".to_string()));
+		core.set_standard_value(
+			FORMAT_INPUT,
+			-1,
+			NodeValue::Text("HH:mm:ss.zzz".to_string()),
+		);
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
 		assert_eq!(
 			table.get(ValueType::Text),
 			Some(&NodeValue::Text("12:34:56.789".to_string()))
@@ -452,7 +506,10 @@ mod tests {
 		let (core, behavior) = create();
 		let mut row = crate::value::NodeValueRow::default();
 		row.insert(TIME_INPUT.to_string(), NodeValue::Float(45296.0));
-		row.insert(FORMAT_INPUT.to_string(), NodeValue::Text("yyyy".to_string()));
+		row.insert(
+			FORMAT_INPUT.to_string(),
+			NodeValue::Text("yyyy".to_string()),
+		);
 		row.insert(LOCAL_TIME_INPUT.to_string(), NodeValue::Boolean(false));
 		let mut table = NodeValueTable::default();
 		behavior.value(&core, &row, Rational::new(0, 1), &mut table);
@@ -473,22 +530,42 @@ mod tests {
 		// each flag value), not the C library itself.
 		let mut secs: c_long = 45296;
 		let mut local: Tm = unsafe { std::mem::zeroed() };
-		unsafe { localtime_r(&secs, &mut local); }
+		unsafe {
+			localtime_r(&secs, &mut local);
+		}
 		let mut utc: Tm = unsafe { std::mem::zeroed() };
-		unsafe { gmtime_r(&secs, &mut utc); }
+		unsafe {
+			gmtime_r(&secs, &mut utc);
+		}
 		let local_expected = format!("{:04}", local.tm_year + 1900);
 		let utc_expected = format!("{:04}", utc.tm_year + 1900);
 		assert_eq!(utc_expected, "1970");
 
 		core.set_standard_value(LOCAL_TIME_INPUT, -1, NodeValue::Boolean(true));
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
-		assert_eq!(table.get(ValueType::Text), Some(&NodeValue::Text(local_expected)));
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
+		assert_eq!(
+			table.get(ValueType::Text),
+			Some(&NodeValue::Text(local_expected))
+		);
 
 		core.set_standard_value(LOCAL_TIME_INPUT, -1, NodeValue::Boolean(false));
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
-		assert_eq!(table.get(ValueType::Text), Some(&NodeValue::Text(utc_expected)));
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
+		assert_eq!(
+			table.get(ValueType::Text),
+			Some(&NodeValue::Text(utc_expected))
+		);
 	}
 
 	#[test]

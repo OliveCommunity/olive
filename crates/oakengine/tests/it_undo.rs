@@ -41,7 +41,6 @@
 #[path = "common/mod.rs"]
 mod common;
 
-
 use std::ffi::{c_char, c_void};
 use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
 use std::sync::Mutex;
@@ -52,11 +51,11 @@ use oakengine::undo::{
 	oakengine_undo_command_create, oakengine_undo_command_create_multi,
 	oakengine_undo_command_free, oakengine_undo_command_is_done,
 	oakengine_undo_command_multi_add_child, oakengine_undo_command_multi_child_count,
-	oakengine_undo_command_redo_now, oakengine_undo_command_text,
-	oakengine_undo_command_undo_now, oakengine_undo_count, oakengine_undo_group_abort,
-	oakengine_undo_group_begin, oakengine_undo_group_end, oakengine_undo_handle,
-	oakengine_undo_index, oakengine_undo_jump, oakengine_undo_push, oakengine_undo_redo_action,
-	oakengine_undo_undo_action, oakengine_undo_update_actions,
+	oakengine_undo_command_redo_now, oakengine_undo_command_text, oakengine_undo_command_undo_now,
+	oakengine_undo_count, oakengine_undo_group_abort, oakengine_undo_group_begin,
+	oakengine_undo_group_end, oakengine_undo_handle, oakengine_undo_index, oakengine_undo_jump,
+	oakengine_undo_push, oakengine_undo_redo_action, oakengine_undo_undo_action,
+	oakengine_undo_update_actions,
 };
 
 // ---------------------------------------------------------------------------
@@ -244,13 +243,7 @@ fn command_create_variants() {
 
 	// All-None callbacks: a no-op command, still usable.
 	let c2 = unsafe {
-		oakengine_undo_command_create(
-			c"noop".as_ptr(),
-			None,
-			None,
-			None,
-			std::ptr::null_mut(),
-		)
+		oakengine_undo_command_create(c"noop".as_ptr(), None, None, None, std::ptr::null_mut())
 	};
 	assert!(!c2.is_null());
 	assert_eq!(unsafe { oakengine_undo_command_redo_now(c2) }, 0);
@@ -316,51 +309,45 @@ fn command_illegal_handle_inputs() {
 	// consuming the child, so the child box must be freed by us).
 	let eb = empty_engine_ptr();
 	let child = unsafe {
-		oakengine_undo_command_create(
-			c"child".as_ptr(),
-			None,
-			None,
-			None,
-			std::ptr::null_mut(),
-		)
+		oakengine_undo_command_create(c"child".as_ptr(), None, None, None, std::ptr::null_mut())
 	};
-	assert_eq!(unsafe { oakengine_undo_command_multi_add_child(eb, child) }, -1);
+	assert_eq!(
+		unsafe { oakengine_undo_command_multi_add_child(eb, child) },
+		-1
+	);
 	unsafe { oakengine_undo_command_free(eb) };
 	unsafe { oakengine_undo_command_free(child) };
 
 	// multi_add_child with an empty child (parent untouched).
 	let multi = unsafe { oakengine_undo_command_create_multi() };
 	let eb = empty_engine_ptr();
-	assert_eq!(unsafe { oakengine_undo_command_multi_add_child(multi, eb) }, -1);
+	assert_eq!(
+		unsafe { oakengine_undo_command_multi_add_child(multi, eb) },
+		-1
+	);
 	unsafe { oakengine_undo_command_free(eb) };
-	assert_eq!(unsafe { oakengine_undo_command_multi_child_count(multi) }, 0);
+	assert_eq!(
+		unsafe { oakengine_undo_command_multi_child_count(multi) },
+		0
+	);
 	unsafe { oakengine_undo_command_free(multi) };
 
 	// A plain (non-multi) command as the "multi" parent: the module rejects
 	// with -20001 and the facade still consumes the child's box.
 	let parent = unsafe {
-		oakengine_undo_command_create(
-			c"parent".as_ptr(),
-			None,
-			None,
-			None,
-			std::ptr::null_mut(),
-		)
+		oakengine_undo_command_create(c"parent".as_ptr(), None, None, None, std::ptr::null_mut())
 	};
 	let child = unsafe {
-		oakengine_undo_command_create(
-			c"child".as_ptr(),
-			None,
-			None,
-			None,
-			std::ptr::null_mut(),
-		)
+		oakengine_undo_command_create(c"child".as_ptr(), None, None, None, std::ptr::null_mut())
 	};
 	assert_eq!(
 		unsafe { oakengine_undo_command_multi_add_child(parent, child) },
 		-20001
 	);
-	assert_eq!(unsafe { oakengine_undo_command_multi_child_count(parent) }, -20001);
+	assert_eq!(
+		unsafe { oakengine_undo_command_multi_child_count(parent) },
+		-20001
+	);
 	unsafe { oakengine_undo_command_free(parent) };
 }
 
@@ -372,7 +359,10 @@ fn multi_command_lifecycle() {
 	common::force_link();
 	let multi = unsafe { oakengine_undo_command_create_multi() };
 	assert!(!multi.is_null());
-	assert_eq!(unsafe { oakengine_undo_command_multi_child_count(multi) }, 0);
+	assert_eq!(
+		unsafe { oakengine_undo_command_multi_child_count(multi) },
+		0
+	);
 
 	for id in [1, 2, 3] {
 		let child = unsafe {
@@ -384,9 +374,15 @@ fn multi_command_lifecycle() {
 				id as *mut c_void,
 			)
 		};
-		assert_eq!(unsafe { oakengine_undo_command_multi_add_child(multi, child) }, 0);
+		assert_eq!(
+			unsafe { oakengine_undo_command_multi_add_child(multi, child) },
+			0
+		);
 	}
-	assert_eq!(unsafe { oakengine_undo_command_multi_child_count(multi) }, 3);
+	assert_eq!(
+		unsafe { oakengine_undo_command_multi_child_count(multi) },
+		3
+	);
 
 	*MULTI_LOG.lock().unwrap() = Vec::new();
 	assert_eq!(unsafe { oakengine_undo_command_redo_now(multi) }, 0);
@@ -421,11 +417,26 @@ fn multi_command_lifecycle() {
 			21 as *mut c_void,
 		)
 	};
-	assert_eq!(unsafe { oakengine_undo_command_multi_add_child(inner, c21) }, 0);
-	assert_eq!(unsafe { oakengine_undo_command_multi_child_count(inner) }, 1);
-	assert_eq!(unsafe { oakengine_undo_command_multi_add_child(outer, c10) }, 0);
-	assert_eq!(unsafe { oakengine_undo_command_multi_add_child(outer, inner) }, 0);
-	assert_eq!(unsafe { oakengine_undo_command_multi_child_count(outer) }, 2);
+	assert_eq!(
+		unsafe { oakengine_undo_command_multi_add_child(inner, c21) },
+		0
+	);
+	assert_eq!(
+		unsafe { oakengine_undo_command_multi_child_count(inner) },
+		1
+	);
+	assert_eq!(
+		unsafe { oakengine_undo_command_multi_add_child(outer, c10) },
+		0
+	);
+	assert_eq!(
+		unsafe { oakengine_undo_command_multi_add_child(outer, inner) },
+		0
+	);
+	assert_eq!(
+		unsafe { oakengine_undo_command_multi_child_count(outer) },
+		2
+	);
 
 	*MULTI_LOG.lock().unwrap() = Vec::new();
 	assert_eq!(unsafe { oakengine_undo_command_redo_now(outer) }, 0);
@@ -475,10 +486,22 @@ fn multi_command_free_frees_children() {
 			std::ptr::null_mut(),
 		)
 	};
-	assert_eq!(unsafe { oakengine_undo_command_multi_add_child(inner, c) }, 0);
-	assert_eq!(unsafe { oakengine_undo_command_multi_add_child(multi, a) }, 0);
-	assert_eq!(unsafe { oakengine_undo_command_multi_add_child(multi, b) }, 0);
-	assert_eq!(unsafe { oakengine_undo_command_multi_add_child(multi, inner) }, 0);
+	assert_eq!(
+		unsafe { oakengine_undo_command_multi_add_child(inner, c) },
+		0
+	);
+	assert_eq!(
+		unsafe { oakengine_undo_command_multi_add_child(multi, a) },
+		0
+	);
+	assert_eq!(
+		unsafe { oakengine_undo_command_multi_add_child(multi, b) },
+		0
+	);
+	assert_eq!(
+		unsafe { oakengine_undo_command_multi_add_child(multi, inner) },
+		0
+	);
 	assert_eq!(MULTI_FREE.load(Ordering::SeqCst), 0);
 
 	unsafe { oakengine_undo_command_free(multi) };
@@ -570,17 +593,41 @@ fn undo_stack_integration() {
 	// --- command_text / command_is_done on the base row. The two-stage
 	// getter reports the length WITHOUT the trailing NUL.
 	let mut buf = [0 as c_char; 64];
-	assert_eq!(unsafe { oakengine_undo_command_text(0, buf.as_mut_ptr(), 64) }, 16);
+	assert_eq!(
+		unsafe { oakengine_undo_command_text(0, buf.as_mut_ptr(), 64) },
+		16
+	);
 	assert_eq!(unsafe { read_str(buf.as_ptr()) }, "New/Open Project");
 	// NULL buf / zero / negative sizes only report the length.
-	assert_eq!(unsafe { oakengine_undo_command_text(0, std::ptr::null_mut(), 64) }, 16);
-	assert_eq!(unsafe { oakengine_undo_command_text(0, buf.as_mut_ptr(), 0) }, 16);
-	assert_eq!(unsafe { oakengine_undo_command_text(0, buf.as_mut_ptr(), -1) }, 16);
+	assert_eq!(
+		unsafe { oakengine_undo_command_text(0, std::ptr::null_mut(), 64) },
+		16
+	);
+	assert_eq!(
+		unsafe { oakengine_undo_command_text(0, buf.as_mut_ptr(), 0) },
+		16
+	);
+	assert_eq!(
+		unsafe { oakengine_undo_command_text(0, buf.as_mut_ptr(), -1) },
+		16
+	);
 	// Out-of-range rows → oakundo NOT_FOUND (-20004) passes through.
-	assert_eq!(unsafe { oakengine_undo_command_text(-1, buf.as_mut_ptr(), 64) }, -20004);
-	assert_eq!(unsafe { oakengine_undo_command_text(1, buf.as_mut_ptr(), 64) }, -20004);
-	assert_eq!(unsafe { oakengine_undo_command_text(i64::MAX, buf.as_mut_ptr(), 64) }, -20004);
-	assert_eq!(unsafe { oakengine_undo_command_text(i64::MIN, buf.as_mut_ptr(), 64) }, -20004);
+	assert_eq!(
+		unsafe { oakengine_undo_command_text(-1, buf.as_mut_ptr(), 64) },
+		-20004
+	);
+	assert_eq!(
+		unsafe { oakengine_undo_command_text(1, buf.as_mut_ptr(), 64) },
+		-20004
+	);
+	assert_eq!(
+		unsafe { oakengine_undo_command_text(i64::MAX, buf.as_mut_ptr(), 64) },
+		-20004
+	);
+	assert_eq!(
+		unsafe { oakengine_undo_command_text(i64::MIN, buf.as_mut_ptr(), 64) },
+		-20004
+	);
 	assert_eq!(unsafe { oakengine_undo_command_is_done(0) }, 1);
 	assert_eq!(unsafe { oakengine_undo_command_is_done(-1) }, -20004);
 	assert_eq!(unsafe { oakengine_undo_command_is_done(1) }, -20004);
@@ -603,7 +650,10 @@ fn undo_stack_integration() {
 	assert_eq!(unsafe { oakengine_undo_index() }, 2);
 	assert_eq!(STK_REDO.load(Ordering::SeqCst), 1);
 	assert_eq!(unsafe { oakengine_undo_can_undo() }, 1);
-	assert_eq!(unsafe { oakengine_undo_command_text(1, buf.as_mut_ptr(), 64) }, 5);
+	assert_eq!(
+		unsafe { oakengine_undo_command_text(1, buf.as_mut_ptr(), 64) },
+		5
+	);
 	assert_eq!(unsafe { read_str(buf.as_ptr()) }, "alpha");
 	assert_eq!(unsafe { oakengine_undo_command_is_done(1) }, 1);
 
@@ -621,11 +671,17 @@ fn undo_stack_integration() {
 	assert_eq!(unsafe { oakengine_undo_count() }, 3);
 	assert_eq!(unsafe { oakengine_undo_index() }, 3);
 	assert_eq!(STK_REDO.load(Ordering::SeqCst), 2);
-	assert_eq!(unsafe { oakengine_undo_command_text(2, buf.as_mut_ptr(), 64) }, 4);
+	assert_eq!(
+		unsafe { oakengine_undo_command_text(2, buf.as_mut_ptr(), 64) },
+		4
+	);
 	assert_eq!(unsafe { read_str(buf.as_ptr()) }, "beta");
 	// Tiny buffer: truncated copy, full length still reported.
 	let mut small = [0 as c_char; 2];
-	assert_eq!(unsafe { oakengine_undo_command_text(1, small.as_mut_ptr(), 2) }, 5);
+	assert_eq!(
+		unsafe { oakengine_undo_command_text(1, small.as_mut_ptr(), 2) },
+		5
+	);
 	assert_eq!(unsafe { read_str(small.as_ptr()) }, "a");
 
 	// --- jump() legal matrix. jump(1) from index 3 undoes BOTH beta and
@@ -666,7 +722,10 @@ fn undo_stack_integration() {
 	assert_eq!(unsafe { oakengine_undo_index() }, 3);
 
 	// begin → push children → end pushes ONE grouped row.
-	assert_eq!(unsafe { oakengine_undo_group_begin(c"grouped".as_ptr()) }, 0);
+	assert_eq!(
+		unsafe { oakengine_undo_group_begin(c"grouped".as_ptr()) },
+		0
+	);
 	let c1 = unsafe {
 		oakengine_undo_command_create(
 			c"c1".as_ptr(),
@@ -693,7 +752,10 @@ fn undo_stack_integration() {
 	assert_eq!(unsafe { oakengine_undo_group_end() }, 0);
 	assert_eq!(unsafe { oakengine_undo_count() }, 4);
 	assert_eq!(unsafe { oakengine_undo_index() }, 4);
-	assert_eq!(unsafe { oakengine_undo_command_text(3, buf.as_mut_ptr(), 64) }, 7);
+	assert_eq!(
+		unsafe { oakengine_undo_command_text(3, buf.as_mut_ptr(), 64) },
+		7
+	);
 	assert_eq!(unsafe { read_str(buf.as_ptr()) }, "grouped");
 	assert_eq!(unsafe { oakengine_undo_command_is_done(3) }, 1);
 
@@ -778,26 +840,14 @@ fn null_name_push_repro() {
 	assert_eq!(unsafe { oakengine_undo_clear() }, 0);
 
 	let cmd = unsafe {
-		oakengine_undo_command_create(
-			c"x".as_ptr(),
-			None,
-			None,
-			None,
-			std::ptr::null_mut(),
-		)
+		oakengine_undo_command_create(c"x".as_ptr(), None, None, None, std::ptr::null_mut())
 	};
 	// NULL name is a documented-legal label; this must not crash.
 	assert_eq!(unsafe { oakengine_undo_push(cmd, std::ptr::null()) }, 0);
 
 	// An empty C string label walks the same dangling-pointer path.
 	let cmd = unsafe {
-		oakengine_undo_command_create(
-			c"x".as_ptr(),
-			None,
-			None,
-			None,
-			std::ptr::null_mut(),
-		)
+		oakengine_undo_command_create(c"x".as_ptr(), None, None, None, std::ptr::null_mut())
 	};
 	assert_eq!(unsafe { oakengine_undo_push(cmd, c"".as_ptr()) }, 0);
 

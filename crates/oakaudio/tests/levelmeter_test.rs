@@ -19,9 +19,7 @@
 mod common;
 
 use oakaudio::error::{OAKAUDIO_E_INVALID, OAKAUDIO_OK};
-use oakaudio::ffi::levelmeter::{
-	oakaudio_levelmeter_analyze, ChannelStats, MeterStats,
-};
+use oakaudio::ffi::levelmeter::{oakaudio_levelmeter_analyze, ChannelStats, MeterStats};
 
 fn analyze(planes: &[Vec<f32>]) -> (Vec<ChannelStats>, MeterStats) {
 	let ptrs: Vec<*const f32> = planes.iter().map(|p| p.as_ptr()).collect();
@@ -89,8 +87,12 @@ fn constant_tone_stats() {
 /// near 0 dB; per-channel channels array is filled for each channel.
 #[test]
 fn full_scale_peak() {
-	let ch0: Vec<f32> = (0..64).map(|i| if i % 2 == 0 { 1.0 } else { -1.0 }).collect();
-	let ch1: Vec<f32> = (0..64).map(|i| if i % 2 == 0 { -1.0 } else { 1.0 }).collect();
+	let ch0: Vec<f32> = (0..64)
+		.map(|i| if i % 2 == 0 { 1.0 } else { -1.0 })
+		.collect();
+	let ch1: Vec<f32> = (0..64)
+		.map(|i| if i % 2 == 0 { -1.0 } else { 1.0 })
+		.collect();
 	let (channels, summary) = analyze(&[ch0, ch1]);
 	assert_eq!(summary.max_peak_linear, 1.0);
 	assert_eq!(summary.silence, 0);
@@ -129,15 +131,20 @@ fn invalid_input() {
 
 	// channel_count 0.
 	assert_eq!(
-		unsafe {
-			oakaudio_levelmeter_analyze(&ptr, 0, 8, std::ptr::null_mut(), 0, &mut summary)
-		},
+		unsafe { oakaudio_levelmeter_analyze(&ptr, 0, 8, std::ptr::null_mut(), 0, &mut summary) },
 		OAKAUDIO_E_INVALID
 	);
 	// NULL planar.
 	assert_eq!(
 		unsafe {
-			oakaudio_levelmeter_analyze(std::ptr::null(), 1, 8, std::ptr::null_mut(), 0, &mut summary)
+			oakaudio_levelmeter_analyze(
+				std::ptr::null(),
+				1,
+				8,
+				std::ptr::null_mut(),
+				0,
+				&mut summary,
+			)
 		},
 		OAKAUDIO_E_INVALID
 	);
@@ -150,9 +157,7 @@ fn invalid_input() {
 	);
 	// Negative frame count.
 	assert_eq!(
-		unsafe {
-			oakaudio_levelmeter_analyze(&ptr, 1, -1, std::ptr::null_mut(), 0, &mut summary)
-		},
+		unsafe { oakaudio_levelmeter_analyze(&ptr, 1, -1, std::ptr::null_mut(), 0, &mut summary) },
 		OAKAUDIO_E_INVALID
 	);
 }

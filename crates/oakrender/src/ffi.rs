@@ -284,7 +284,15 @@ pub mod manager {
 
 	/// In-flight frame requests: request id → (arena, ticket id).
 	static REQUESTS: std::sync::LazyLock<
-		Mutex<std::collections::HashMap<i64, (std::sync::Arc<crate::ticket::TicketArena>, crate::ticket::TicketId)>>,
+		Mutex<
+			std::collections::HashMap<
+				i64,
+				(
+					std::sync::Arc<crate::ticket::TicketArena>,
+					crate::ticket::TicketId,
+				),
+			>,
+		>,
 	> = std::sync::LazyLock::new(|| Mutex::new(std::collections::HashMap::new()));
 	static NEXT_REQUEST_ID: AtomicI64 = AtomicI64::new(1);
 
@@ -445,9 +453,16 @@ pub mod manager {
 		crate::handle::guard(|| crate::manager::disk_cache_clear())
 	}
 
-	fn lock(
-	) -> std::sync::MutexGuard<'static, std::collections::HashMap<i64, (std::sync::Arc<crate::ticket::TicketArena>, crate::ticket::TicketId)>>
-	{
+	fn lock() -> std::sync::MutexGuard<
+		'static,
+		std::collections::HashMap<
+			i64,
+			(
+				std::sync::Arc<crate::ticket::TicketArena>,
+				crate::ticket::TicketId,
+			),
+		>,
+	> {
 		REQUESTS.lock().unwrap_or_else(|e| e.into_inner())
 	}
 }
@@ -471,10 +486,12 @@ pub mod cache {
 	#[no_mangle]
 	pub unsafe extern "C" fn oakrender_cache_create() -> OakRenderCache {
 		crate::handle::guard_handle(|| {
-			Ok(crate::handle::make_owned(Some(crate::cache::PlaybackCache::new(
-				crate::cache::CacheKind::VideoFrame,
-				crate::cache::next_owner_identity(),
-			))))
+			Ok(crate::handle::make_owned(Some(
+				crate::cache::PlaybackCache::new(
+					crate::cache::CacheKind::VideoFrame,
+					crate::cache::next_owner_identity(),
+				),
+			)))
 		})
 	}
 
@@ -489,7 +506,9 @@ pub mod cache {
 	/// borrowed caches return `OAKRENDER_E_INVALID` until the C++ interop
 	/// layer lands).
 	#[no_mangle]
-	pub unsafe extern "C" fn oakrender_cache_wrap_borrowed(native_cache: *mut c_void) -> OakRenderCache {
+	pub unsafe extern "C" fn oakrender_cache_wrap_borrowed(
+		native_cache: *mut c_void,
+	) -> OakRenderCache {
 		if native_cache.is_null() {
 			return CHandle::null();
 		}
@@ -550,9 +569,10 @@ pub mod cache {
 			if context.is_null() {
 				return Err(crate::error::Error::Invalid);
 			}
-			let c = unsafe { crate::handle::get_mut::<Option<crate::cache::PlaybackCache>>(&cache) }
-				.and_then(|o| o.as_mut())
-				.ok_or(crate::error::Error::Invalid)?;
+			let c =
+				unsafe { crate::handle::get_mut::<Option<crate::cache::PlaybackCache>>(&cache) }
+					.and_then(|o| o.as_mut())
+					.ok_or(crate::error::Error::Invalid)?;
 			let range = oakcore_rs::TimeRange::new(
 				oakcore_rs::Rational::new(in_num, in_den),
 				oakcore_rs::Rational::new(out_num, out_den),
@@ -574,9 +594,10 @@ pub mod cache {
 	#[no_mangle]
 	pub unsafe extern "C" fn oakrender_cache_load_state(cache: OakRenderCache) -> c_int {
 		crate::handle::guard(|| {
-			let c = unsafe { crate::handle::get_mut::<Option<crate::cache::PlaybackCache>>(&cache) }
-				.and_then(|o| o.as_mut())
-				.ok_or(crate::error::Error::Invalid)?;
+			let c =
+				unsafe { crate::handle::get_mut::<Option<crate::cache::PlaybackCache>>(&cache) }
+					.and_then(|o| o.as_mut())
+					.ok_or(crate::error::Error::Invalid)?;
 			let dir = c.disk_dir().to_string();
 			c.load_state(std::path::Path::new(&dir))
 		})
@@ -600,9 +621,10 @@ pub mod cache {
 		enabled: c_int,
 	) -> c_int {
 		crate::handle::guard(|| {
-			let c = unsafe { crate::handle::get_mut::<Option<crate::cache::PlaybackCache>>(&cache) }
-				.and_then(|o| o.as_mut())
-				.ok_or(crate::error::Error::Invalid)?;
+			let c =
+				unsafe { crate::handle::get_mut::<Option<crate::cache::PlaybackCache>>(&cache) }
+					.and_then(|o| o.as_mut())
+					.ok_or(crate::error::Error::Invalid)?;
 			c.set_saving_enabled(enabled != 0);
 			Ok(())
 		})
@@ -618,9 +640,10 @@ pub mod cache {
 			// Snapshot the source's data first: `cache == other` (or any
 			// aliasing) must not create overlapping borrows.
 			let snapshot = {
-				let o = unsafe { crate::handle::get::<Option<crate::cache::PlaybackCache>>(&other) }
-					.and_then(|o| o.as_ref())
-					.ok_or(crate::error::Error::Invalid)?;
+				let o =
+					unsafe { crate::handle::get::<Option<crate::cache::PlaybackCache>>(&other) }
+						.and_then(|o| o.as_ref())
+						.ok_or(crate::error::Error::Invalid)?;
 				crate::cache::PassthroughSnapshot {
 					validated: o.validated_ranges().clone(),
 					passthroughs: o.passthroughs().to_vec(),
@@ -628,9 +651,10 @@ pub mod cache {
 					uuid: o.uuid.clone(),
 				}
 			};
-			let c = unsafe { crate::handle::get_mut::<Option<crate::cache::PlaybackCache>>(&cache) }
-				.and_then(|o| o.as_mut())
-				.ok_or(crate::error::Error::Invalid)?;
+			let c =
+				unsafe { crate::handle::get_mut::<Option<crate::cache::PlaybackCache>>(&cache) }
+					.and_then(|o| o.as_mut())
+					.ok_or(crate::error::Error::Invalid)?;
 			c.set_passthrough_snapshot(snapshot);
 			Ok(())
 		})
@@ -667,8 +691,9 @@ pub mod cache {
 		ranges: *mut i64,
 		max_ranges: c_int,
 	) -> c_int {
-		let Some(c) = (unsafe { crate::handle::get::<Option<crate::cache::PlaybackCache>>(&cache) })
-			.and_then(|o| o.as_ref())
+		let Some(c) =
+			(unsafe { crate::handle::get::<Option<crate::cache::PlaybackCache>>(&cache) })
+				.and_then(|o| o.as_ref())
 		else {
 			return crate::error::OAKRENDER_E_INVALID;
 		};
@@ -720,8 +745,9 @@ pub mod cache {
 	/// while locked — is a documented leak, mirroring a C++ deadlock).
 	#[no_mangle]
 	pub unsafe extern "C" fn oakrender_cache_lock(cache: OakRenderCache) {
-		if let Some(c) = unsafe { crate::handle::get::<Option<crate::cache::PlaybackCache>>(&cache) }
-			.and_then(|o| o.as_ref())
+		if let Some(c) =
+			unsafe { crate::handle::get::<Option<crate::cache::PlaybackCache>>(&cache) }
+				.and_then(|o| o.as_ref())
 		{
 			// The boxed cache lives for 'static; re-derive a 'static
 			// reference from the box pointer to build a 'static guard.
@@ -741,7 +767,9 @@ pub mod cache {
 	/// [`oakrender_cache_lock`].
 	#[no_mangle]
 	pub unsafe extern "C" fn oakrender_cache_unlock(cache: OakRenderCache) {
-		if let Some(c) = unsafe { crate::handle::get::<Option<crate::cache::PlaybackCache>>(&cache) } {
+		if let Some(c) =
+			unsafe { crate::handle::get::<Option<crate::cache::PlaybackCache>>(&cache) }
+		{
 			let key = c as *const _ as usize;
 			if let Some(raw) = HELD_LOCKS
 				.lock()
@@ -750,7 +778,11 @@ pub mod cache {
 			{
 				// SAFETY: the raw address came from Box::into_raw of a
 				// MutexGuard in oakrender_cache_lock.
-				unsafe { drop(Box::from_raw(raw as *mut std::sync::MutexGuard<'static, ()>)) };
+				unsafe {
+					drop(Box::from_raw(
+						raw as *mut std::sync::MutexGuard<'static, ()>,
+					))
+				};
 			}
 		}
 	}
@@ -766,9 +798,10 @@ pub mod cache {
 			if num <= 0 || den <= 0 {
 				return Err(crate::error::Error::Invalid);
 			}
-			let c = unsafe { crate::handle::get_mut::<Option<crate::cache::PlaybackCache>>(&cache) }
-				.and_then(|o| o.as_mut())
-				.ok_or(crate::error::Error::Invalid)?;
+			let c =
+				unsafe { crate::handle::get_mut::<Option<crate::cache::PlaybackCache>>(&cache) }
+					.and_then(|o| o.as_mut())
+					.ok_or(crate::error::Error::Invalid)?;
 			c.set_timebase(oakcore_rs::Rational::new(num as i64, den as i64));
 			Ok(())
 		})
@@ -782,9 +815,10 @@ pub mod cache {
 	) -> c_int {
 		crate::handle::guard(|| {
 			let uuid = unsafe { cstr(uuid) }.ok_or(crate::error::Error::Invalid)?;
-			let c = unsafe { crate::handle::get_mut::<Option<crate::cache::PlaybackCache>>(&cache) }
-				.and_then(|o| o.as_mut())
-				.ok_or(crate::error::Error::Invalid)?;
+			let c =
+				unsafe { crate::handle::get_mut::<Option<crate::cache::PlaybackCache>>(&cache) }
+					.and_then(|o| o.as_mut())
+					.ok_or(crate::error::Error::Invalid)?;
 			c.set_uuid(&uuid);
 			Ok(())
 		})
@@ -798,8 +832,9 @@ pub mod cache {
 		out_ts: i64,
 	) {
 		crate::handle::guard_void(|| {
-			if let Some(c) = unsafe { crate::handle::get_mut::<Option<crate::cache::PlaybackCache>>(&cache) }
-				.and_then(|o| o.as_mut())
+			if let Some(c) =
+				unsafe { crate::handle::get_mut::<Option<crate::cache::PlaybackCache>>(&cache) }
+					.and_then(|o| o.as_mut())
 			{
 				let range = ts_range(c, in_ts, out_ts);
 				c.invalidate(range);
@@ -817,8 +852,9 @@ pub mod cache {
 		out_den: i64,
 	) {
 		crate::handle::guard_void(|| {
-			if let Some(c) = unsafe { crate::handle::get_mut::<Option<crate::cache::PlaybackCache>>(&cache) }
-				.and_then(|o| o.as_mut())
+			if let Some(c) =
+				unsafe { crate::handle::get_mut::<Option<crate::cache::PlaybackCache>>(&cache) }
+					.and_then(|o| o.as_mut())
 			{
 				c.invalidate(oakcore_rs::TimeRange::new(
 					oakcore_rs::Rational::new(in_num, in_den),
@@ -836,8 +872,9 @@ pub mod cache {
 		out_ts: i64,
 	) {
 		crate::handle::guard_void(|| {
-			if let Some(c) = unsafe { crate::handle::get_mut::<Option<crate::cache::PlaybackCache>>(&cache) }
-				.and_then(|o| o.as_mut())
+			if let Some(c) =
+				unsafe { crate::handle::get_mut::<Option<crate::cache::PlaybackCache>>(&cache) }
+					.and_then(|o| o.as_mut())
 			{
 				let range = ts_range(c, in_ts, out_ts);
 				c.validate(range);
@@ -847,9 +884,7 @@ pub mod cache {
 
 	/// `oakrender_cache_has_validated_ranges`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oakrender_cache_has_validated_ranges(
-		cache: OakRenderCache,
-	) -> c_int {
+	pub unsafe extern "C" fn oakrender_cache_has_validated_ranges(cache: OakRenderCache) -> c_int {
 		match unsafe { crate::handle::get::<Option<crate::cache::PlaybackCache>>(&cache) }
 			.and_then(|o| o.as_ref())
 		{
@@ -955,12 +990,8 @@ pub mod cache {
 				return;
 			};
 			let tb = c.timebase.unwrap_or(oakcore_rs::Rational::new(1, 1));
-			let filename = crate::cache::PlaybackCache::frame_cache_path(
-				&path,
-				&uuid,
-				f.timestamp,
-				tb,
-			);
+			let filename =
+				crate::cache::PlaybackCache::frame_cache_path(&path, &uuid, f.timestamp, tb);
 			eprintln!(
 				"oakrender: frame_cache_save to {filename} deferred (oakcodec write bridge pending)"
 			);
@@ -1048,20 +1079,21 @@ pub mod ticket {
 			} else {
 				None
 			};
-			let (cache_dir, cache_id, cache_timebase) =
-				if !params.cache.is_null() {
-					if let Some(c) = unsafe { crate::handle::get::<crate::cache::PlaybackCache>(&params.cache) } {
-						(
-							Some(c.disk_dir().to_string()),
-							Some(c.uuid.clone()),
-							c.timebase,
-						)
-					} else {
-						(None, None, None)
-					}
+			let (cache_dir, cache_id, cache_timebase) = if !params.cache.is_null() {
+				if let Some(c) =
+					unsafe { crate::handle::get::<crate::cache::PlaybackCache>(&params.cache) }
+				{
+					(
+						Some(c.disk_dir().to_string()),
+						Some(c.uuid.clone()),
+						c.timebase,
+					)
 				} else {
 					(None, None, None)
-				};
+				}
+			} else {
+				(None, None, None)
+			};
 
 			let arena = manager.tickets.clone();
 			// Reserve the id up front so the handle is fully stamped before
@@ -1185,7 +1217,10 @@ pub mod ticket {
 	#[no_mangle]
 	pub unsafe extern "C" fn oakrender_ticket_get_type(ticket: OakRenderTicket) -> c_int {
 		match unsafe { crate::handle::get::<TicketBox>(&ticket) } {
-			Some(b) => b.arena.kind(b.id).unwrap_or(crate::error::OAKRENDER_E_INVALID),
+			Some(b) => b
+				.arena
+				.kind(b.id)
+				.unwrap_or(crate::error::OAKRENDER_E_INVALID),
 			None => crate::error::OAKRENDER_E_INVALID,
 		}
 	}
@@ -1227,13 +1262,10 @@ pub mod ticket {
 			}
 			let b = unsafe { crate::handle::get::<TicketBox>(&ticket) }
 				.ok_or(crate::error::Error::Invalid)?;
-			let range = b
-				.arena
-				.range(b.id)
-				.unwrap_or(oakcore_rs::TimeRange::new(
-					oakcore_rs::Rational::NULL,
-					oakcore_rs::Rational::NULL,
-				));
+			let range = b.arena.range(b.id).unwrap_or(oakcore_rs::TimeRange::new(
+				oakcore_rs::Rational::NULL,
+				oakcore_rs::Rational::NULL,
+			));
 			unsafe {
 				*in_num = range.in_().numerator();
 				*in_den = range.in_().denominator();
@@ -1360,9 +1392,9 @@ pub mod renderer {
 				"cpu" | "dummy" | "multiprocess" => crate::backend::BackendKind::Cpu,
 				_ => return Err(crate::error::Error::Invalid),
 			};
-			Ok(crate::handle::make_owned(crate::backend::DisplayRenderer::new(
-				kind,
-			)))
+			Ok(crate::handle::make_owned(
+				crate::backend::DisplayRenderer::new(kind),
+			))
 		})
 	}
 
@@ -1663,7 +1695,9 @@ pub mod renderer {
 			if f.allocate() {
 				Ok(())
 			} else {
-				Err(crate::error::Error::Failed("frame allocation failed".into()))
+				Err(crate::error::Error::Failed(
+					"frame allocation failed".into(),
+				))
 			}
 		})
 	}
@@ -1679,7 +1713,9 @@ pub mod renderer {
 
 	/// `oakrender_codec_frame_const_data`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oakrender_codec_frame_const_data(frame: OakCodecFrame) -> *const c_void {
+	pub unsafe extern "C" fn oakrender_codec_frame_const_data(
+		frame: OakCodecFrame,
+	) -> *const c_void {
 		match unsafe { crate::handle::get::<crate::texture::Frame>(&frame) } {
 			Some(f) if f.is_allocated() => f.data.as_ptr() as *const c_void,
 			_ => std::ptr::null(),
@@ -1800,7 +1836,11 @@ pub mod renderer {
 
 	/// `oakrender_backend_id_at` (two-stage).
 	#[no_mangle]
-	pub unsafe extern "C" fn oakrender_backend_id_at(i: c_int, buf: *mut c_char, n: c_int) -> c_int {
+	pub unsafe extern "C" fn oakrender_backend_id_at(
+		i: c_int,
+		buf: *mut c_char,
+		n: c_int,
+	) -> c_int {
 		const IDS: [&str; 4] = ["opengl", "vulkan", "multiprocess", "dummy"];
 		if i < 0 || i >= IDS.len() as c_int {
 			return crate::error::OAKRENDER_E_NOT_FOUND;
@@ -1851,7 +1891,6 @@ pub mod renderer {
 			(*h).release = None;
 		}
 	}
-
 }
 
 // ============================================================================
@@ -1877,8 +1916,8 @@ pub mod color {
 				return Err(crate::error::Error::Invalid);
 			}
 			let dir = direction_kind(direction)?;
-			let processor =
-				crate::color::ColorProcessor::create(&src, &dst, dir).ok_or(crate::error::Error::Invalid)?;
+			let processor = crate::color::ColorProcessor::create(&src, &dst, dir)
+				.ok_or(crate::error::Error::Invalid)?;
 			Ok(crate::handle::make_owned(processor))
 		})
 	}
@@ -1920,12 +1959,8 @@ pub mod color {
 			// Destination transform decode is a node/common bridge feature;
 			// until it lands the output transform defaults to the config's
 			// reference role (documented deviation).
-			let processor = crate::color::ColorProcessor::create(
-				&input,
-				"reference",
-				dir,
-			)
-			.ok_or(crate::error::Error::Invalid)?;
+			let processor = crate::color::ColorProcessor::create(&input, "reference", dir)
+				.ok_or(crate::error::Error::Invalid)?;
 			Ok(crate::handle::make_owned(processor))
 		})
 	}
@@ -1943,8 +1978,8 @@ pub mod color {
 				return Err(crate::error::Error::Invalid);
 			}
 			let dir = direction_kind(direction)?;
-			let processor =
-				crate::color::ColorProcessor::create_lut(&path, dir).ok_or(crate::error::Error::Invalid)?;
+			let processor = crate::color::ColorProcessor::create_lut(&path, dir)
+				.ok_or(crate::error::Error::Invalid)?;
 			Ok(crate::handle::make_owned(processor))
 		})
 	}
@@ -1969,7 +2004,9 @@ pub mod color {
 
 	/// `oakrender_lut_is_supported_extension`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oakrender_lut_is_supported_extension(extension: *const c_char) -> c_int {
+	pub unsafe extern "C" fn oakrender_lut_is_supported_extension(
+		extension: *const c_char,
+	) -> c_int {
 		match unsafe { cstr(extension) } {
 			Some(ext) if crate::color::is_supported_lut_extension(&ext) => 1,
 			_ => 0,
@@ -2057,7 +2094,10 @@ pub mod color {
 
 	/// `oakrender_color_manager_get_config` (two-stage).
 	#[no_mangle]
-	pub unsafe extern "C" fn oakrender_color_manager_get_config(buf: *mut c_char, n: c_int) -> c_int {
+	pub unsafe extern "C" fn oakrender_color_manager_get_config(
+		buf: *mut c_char,
+		n: c_int,
+	) -> c_int {
 		match crate::color::config_path() {
 			Some(path) => guard_string(|| Ok(write_string(&path, buf, n))),
 			None => crate::error::OAKRENDER_E_STATE,
@@ -2167,11 +2207,9 @@ pub mod copier {
 	) -> OakNodeProject {
 		match unsafe { crate::handle::get::<crate::copier::ProjectCopy>(&copier) } {
 			Some(c) => match c.copied_project() {
-				Some(h) if !h.is_null() => {
-					crate::handle::make_borrowed_owned(BorrowedOpaque {
-						identity: h.ctx as u64,
-					})
-				}
+				Some(h) if !h.is_null() => crate::handle::make_borrowed_owned(BorrowedOpaque {
+					identity: h.ctx as u64,
+				}),
 				_ => CHandle::null(),
 			},
 			None => CHandle::null(),

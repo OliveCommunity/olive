@@ -28,7 +28,7 @@ use oaktimeline::bridge::node::{
 };
 use oaktimeline::bridge::teststubs::{MockKind, MockNode};
 use oaktimeline::common::MovementMode;
-use oaktimeline::handle::{CHandle, get, get_mut, make_owned};
+use oaktimeline::handle::{get, get_mut, make_owned, CHandle};
 use oaktimeline::undocommon::Command;
 use oaktimeline::undoripple::{
 	RippleInfo, TimelineRippleDeleteGapsAtRegionsCommand, TimelineRippleRemoveAreaCommand,
@@ -73,7 +73,14 @@ fn set_times(h: &CHandle, in_: (i32, i32), out: (i32, i32), len: (i32, i32), mi:
 	b.media_in = mi;
 }
 
-fn prepend(t: &CHandle, b: &CHandle, in_: (i32, i32), out: (i32, i32), len: (i32, i32), mi: (i32, i32)) {
+fn prepend(
+	t: &CHandle,
+	b: &CHandle,
+	in_: (i32, i32),
+	out: (i32, i32),
+	len: (i32, i32),
+	mi: (i32, i32),
+) {
 	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()) };
 	set_times(b, in_, out, len, mi);
 }
@@ -364,11 +371,8 @@ fn timeline_ripple_remove_area() {
 	let b1 = mk_clip();
 	prepend(&t, &b1, (0, 1), (10, 1), (10, 1), (0, 1));
 
-	let mut cmd = TimelineRippleRemoveAreaCommand::new(
-		seq.clone(),
-		Rational::new(2, 1),
-		Rational::new(8, 1),
-	);
+	let mut cmd =
+		TimelineRippleRemoveAreaCommand::new(seq.clone(), Rational::new(2, 1), Rational::new(8, 1));
 	cmd.redo();
 	assert_eq!(count(&t), 2);
 	cmd.undo();
@@ -422,7 +426,10 @@ fn ripple_delete_gaps_resizes_single_gap() {
 
 	let mut cmd = TimelineRippleDeleteGapsAtRegionsCommand::new(
 		seq.clone(),
-		vec![(t.clone(), TimeRange::new(Rational::new(0, 1), Rational::new(5, 1)))],
+		vec![(
+			t.clone(),
+			TimeRange::new(Rational::new(0, 1), Rational::new(5, 1)),
+		)],
 	);
 	cmd.prepare();
 	assert!(cmd.has_commands());
@@ -456,8 +463,14 @@ fn ripple_delete_gaps_empty_track_region_skipped() {
 	let mut cmd = TimelineRippleDeleteGapsAtRegionsCommand::new(
 		seq.clone(),
 		vec![
-			(t_empty.clone(), TimeRange::new(Rational::new(0, 1), Rational::new(5, 1))),
-			(t1.clone(), TimeRange::new(Rational::new(0, 1), Rational::new(5, 1))),
+			(
+				t_empty.clone(),
+				TimeRange::new(Rational::new(0, 1), Rational::new(5, 1)),
+			),
+			(
+				t1.clone(),
+				TimeRange::new(Rational::new(0, 1), Rational::new(5, 1)),
+			),
 		],
 	);
 	cmd.prepare();
@@ -490,7 +503,10 @@ fn ripple_delete_gaps_finds_next_gap_on_other_track() {
 
 	let mut cmd = TimelineRippleDeleteGapsAtRegionsCommand::new(
 		seq.clone(),
-		vec![(t1.clone(), TimeRange::new(Rational::new(0, 1), Rational::new(5, 1)))],
+		vec![(
+			t1.clone(),
+			TimeRange::new(Rational::new(0, 1), Rational::new(5, 1)),
+		)],
 	);
 	cmd.prepare();
 	assert!(cmd.has_commands());
@@ -525,7 +541,10 @@ fn ripple_delete_gaps_clip_no_gap_breaks() {
 
 	let mut cmd = TimelineRippleDeleteGapsAtRegionsCommand::new(
 		seq.clone(),
-		vec![(t1.clone(), TimeRange::new(Rational::new(0, 1), Rational::new(5, 1)))],
+		vec![(
+			t1.clone(),
+			TimeRange::new(Rational::new(0, 1), Rational::new(5, 1)),
+		)],
 	);
 	cmd.prepare();
 	assert!(!cmd.has_commands());
@@ -559,7 +578,10 @@ fn ripple_delete_gaps_finds_previous_gap_and_removes() {
 
 	let mut cmd = TimelineRippleDeleteGapsAtRegionsCommand::new(
 		seq.clone(),
-		vec![(t1.clone(), TimeRange::new(Rational::new(0, 1), Rational::new(5, 1)))],
+		vec![(
+			t1.clone(),
+			TimeRange::new(Rational::new(0, 1), Rational::new(5, 1)),
+		)],
 	);
 	cmd.prepare();
 	assert!(cmd.has_commands());
@@ -594,7 +616,10 @@ fn ripple_delete_gaps_prev_not_gap_breaks() {
 
 	let mut cmd = TimelineRippleDeleteGapsAtRegionsCommand::new(
 		seq.clone(),
-		vec![(t1.clone(), TimeRange::new(Rational::new(0, 1), Rational::new(5, 1)))],
+		vec![(
+			t1.clone(),
+			TimeRange::new(Rational::new(0, 1), Rational::new(5, 1)),
+		)],
 	);
 	cmd.prepare();
 	assert!(!cmd.has_commands());
@@ -620,7 +645,10 @@ fn ripple_delete_gaps_skips_locked_tracks() {
 
 	let mut cmd = TimelineRippleDeleteGapsAtRegionsCommand::new(
 		seq.clone(),
-		vec![(t1.clone(), TimeRange::new(Rational::new(0, 1), Rational::new(5, 1)))],
+		vec![(
+			t1.clone(),
+			TimeRange::new(Rational::new(0, 1), Rational::new(5, 1)),
+		)],
 	);
 	cmd.prepare();
 	assert!(cmd.has_commands());
@@ -653,8 +681,14 @@ fn ripple_delete_gaps_sorts_regions_on_track() {
 	let mut cmd = TimelineRippleDeleteGapsAtRegionsCommand::new(
 		seq.clone(),
 		vec![
-			(t.clone(), TimeRange::new(Rational::new(0, 1), Rational::new(3, 1))),
-			(t.clone(), TimeRange::new(Rational::new(5, 1), Rational::new(8, 1))),
+			(
+				t.clone(),
+				TimeRange::new(Rational::new(0, 1), Rational::new(3, 1)),
+			),
+			(
+				t.clone(),
+				TimeRange::new(Rational::new(5, 1), Rational::new(8, 1)),
+			),
 		],
 	);
 	cmd.prepare();

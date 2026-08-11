@@ -30,7 +30,7 @@ use oaktimeline::bridge::node::{
 };
 use oaktimeline::bridge::teststubs::{MockKind, MockNode};
 use oaktimeline::common::MovementMode;
-use oaktimeline::handle::{CHandle, get, get_mut, make_owned};
+use oaktimeline::handle::{get, get_mut, make_owned, CHandle};
 use oaktimeline::undocommon::Command;
 use oaktimeline::undopointer::{BlockTrimCommand, TrackPlaceBlockCommand, TrackSlideCommand};
 
@@ -87,7 +87,14 @@ fn media_out(h: &CHandle) -> (i32, i32) {
 }
 
 /// Attach `b` to the front of `t`, then set its geometry.
-fn prepend(t: &CHandle, b: &CHandle, in_: (i32, i32), out: (i32, i32), len: (i32, i32), mi: (i32, i32)) {
+fn prepend(
+	t: &CHandle,
+	b: &CHandle,
+	in_: (i32, i32),
+	out: (i32, i32),
+	len: (i32, i32),
+	mi: (i32, i32),
+) {
 	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()) };
 	set_times(b, in_, out, len, mi);
 }
@@ -123,7 +130,12 @@ fn trim_same_length_is_noop() {
 	let b = mk_clip();
 	prepend(&t, &b, (0, 1), (10, 1), (10, 1), (0, 1));
 
-	let mut cmd = BlockTrimCommand::new(t.clone(), b.clone(), Rational::new(10, 1), MovementMode::TrimOut);
+	let mut cmd = BlockTrimCommand::new(
+		t.clone(),
+		b.clone(),
+		Rational::new(10, 1),
+		MovementMode::TrimOut,
+	);
 	cmd.prepare();
 	assert_eq!(blen(&b), (10, 1));
 	cmd.redo();
@@ -140,7 +152,12 @@ fn trim_out_last_block_no_adjacent() {
 	let b = mk_clip();
 	prepend(&t, &b, (0, 1), (10, 1), (10, 1), (0, 1));
 
-	let mut cmd = BlockTrimCommand::new(t.clone(), b.clone(), Rational::new(7, 1), MovementMode::TrimOut);
+	let mut cmd = BlockTrimCommand::new(
+		t.clone(),
+		b.clone(),
+		Rational::new(7, 1),
+		MovementMode::TrimOut,
+	);
 	cmd.prepare();
 	cmd.redo();
 	assert_eq!(blen(&b), (7, 1));
@@ -162,7 +179,12 @@ fn trim_in_creates_adjacent_gap() {
 	assert_eq!(count(&t), 2);
 	assert_eq!(at(&t, 0).ctx as usize, addr(&a) as usize);
 
-	let mut cmd = BlockTrimCommand::new(t.clone(), b.clone(), Rational::new(7, 1), MovementMode::TrimIn);
+	let mut cmd = BlockTrimCommand::new(
+		t.clone(),
+		b.clone(),
+		Rational::new(7, 1),
+		MovementMode::TrimIn,
+	);
 	cmd.prepare();
 	assert_eq!(count(&t), 2);
 
@@ -186,7 +208,12 @@ fn trim_in_first_block_creates_gap_prepend() {
 	let b = mk_clip();
 	prepend(&t, &b, (0, 1), (10, 1), (10, 1), (0, 1));
 
-	let mut cmd = BlockTrimCommand::new(t.clone(), b.clone(), Rational::new(7, 1), MovementMode::TrimIn);
+	let mut cmd = BlockTrimCommand::new(
+		t.clone(),
+		b.clone(),
+		Rational::new(7, 1),
+		MovementMode::TrimIn,
+	);
 	cmd.prepare();
 	cmd.redo();
 	assert_eq!(count(&t), 2);
@@ -211,7 +238,12 @@ fn trim_out_into_existing_gap_resizes() {
 	// Track order: [b, g].
 	assert_eq!(count(&t), 2);
 
-	let mut cmd = BlockTrimCommand::new(t.clone(), b.clone(), Rational::new(7, 1), MovementMode::TrimOut);
+	let mut cmd = BlockTrimCommand::new(
+		t.clone(),
+		b.clone(),
+		Rational::new(7, 1),
+		MovementMode::TrimOut,
+	);
 	cmd.prepare();
 	cmd.redo();
 	// Gap was extended to 3 + 3 = 6; no new block created.
@@ -237,7 +269,12 @@ fn trim_grows_and_removes_adjacent() {
 	assert_eq!(count(&t), 2);
 
 	// Grow from 10 to 13: trim_diff = -3, adjacent gap length 3 is consumed.
-	let mut cmd = BlockTrimCommand::new(t.clone(), b.clone(), Rational::new(13, 1), MovementMode::TrimOut);
+	let mut cmd = BlockTrimCommand::new(
+		t.clone(),
+		b.clone(),
+		Rational::new(13, 1),
+		MovementMode::TrimOut,
+	);
 	cmd.prepare();
 	assert_eq!(count(&t), 2);
 
@@ -262,7 +299,12 @@ fn trim_roll_edit_resizes_clip_adjacent() {
 	prepend(&t, &a, (0, 1), (10, 1), (10, 1), (0, 1));
 	// Track order: [a, b].
 
-	let mut cmd = BlockTrimCommand::new(t.clone(), b.clone(), Rational::new(7, 1), MovementMode::TrimIn);
+	let mut cmd = BlockTrimCommand::new(
+		t.clone(),
+		b.clone(),
+		Rational::new(7, 1),
+		MovementMode::TrimIn,
+	);
 	cmd.set_trim_is_a_roll_edit(true);
 	cmd.prepare();
 
@@ -286,7 +328,12 @@ fn trim_remove_zero_length_from_graph_toggle() {
 	let b = mk_clip();
 	prepend(&t, &b, (0, 1), (10, 1), (10, 1), (0, 1));
 
-	let mut cmd = BlockTrimCommand::new(t.clone(), b.clone(), Rational::new(13, 1), MovementMode::TrimOut);
+	let mut cmd = BlockTrimCommand::new(
+		t.clone(),
+		b.clone(),
+		Rational::new(13, 1),
+		MovementMode::TrimOut,
+	);
 	cmd.set_remove_zero_length_from_graph(false);
 	cmd.prepare();
 	cmd.redo();
@@ -308,7 +355,12 @@ fn trim_in_grows_and_removes_adjacent() {
 	assert_eq!(count(&t), 2);
 
 	// Grow from 10 to 13: the 3-length gap before b is consumed.
-	let mut cmd = BlockTrimCommand::new(t.clone(), b.clone(), Rational::new(13, 1), MovementMode::TrimIn);
+	let mut cmd = BlockTrimCommand::new(
+		t.clone(),
+		b.clone(),
+		Rational::new(13, 1),
+		MovementMode::TrimIn,
+	);
 	cmd.prepare();
 	cmd.redo();
 	assert_eq!(count(&t), 1);
@@ -327,7 +379,12 @@ fn trim_command_trait_dispatch() {
 	let b = mk_clip();
 	prepend(&t, &b, (0, 1), (10, 1), (10, 1), (0, 1));
 
-	let mut cmd = BlockTrimCommand::new(t.clone(), b.clone(), Rational::new(7, 1), MovementMode::TrimOut);
+	let mut cmd = BlockTrimCommand::new(
+		t.clone(),
+		b.clone(),
+		Rational::new(7, 1),
+		MovementMode::TrimOut,
+	);
 	cmd.prepare();
 	Command::redo(&mut cmd);
 	assert_eq!(blen(&b), (7, 1));

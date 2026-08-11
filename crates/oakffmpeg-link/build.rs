@@ -26,23 +26,40 @@
 //! list in `Libs.private`, so this script asks pkg-config for the static
 //! link line and forwards it to cargo.
 //!
-//! No-op when `FFMPEG_DIR` is unset (shared system FFmpeg carries its
-//! own transitive dependencies).
+//! The project FFmpeg (built by tooling/ffmpeg/build-ffmpeg.sh, pointed
+//! at via `FFMPEG_DIR`) is MANDATORY: failing loudly beats silently
+//! binding a system pkg-config FFmpeg whose .pc may reference stale
+//! paths (observed: a Homebrew upgrade of dav1d left ffmpeg's own .pc
+//! pointing at a deleted Cellar dir, breaking the link).
 
 use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
-	let Ok(dir) = std::env::var("FFMPEG_DIR") else {
-		return;
+	let dir = match env_or_dotenv("FFMPEG_DIR") {
+		Some(dir) => dir,
+		None => panic!(
+			"FFMPEG_DIR is not set. Oak links FFmpeg statically; build the project FFmpeg \
+			 first:\n  tooling/install-deps.sh\n  tooling/ffmpeg/build-ffmpeg.sh\n  export \
+			 FFMPEG_DIR=$(pwd)/.cache/ffmpeg\n(see docs/build.md). IDEs that cannot inject \
+			 environment variables into cargo (e.g. RustRover) can use a .env file at the \
+			 workspace root with FFMPEG_DIR=<absolute path>."
+		),
 	};
 	let pc_dir = PathBuf::from(&dir).join("lib").join("pkgconfig");
-	if !pc_dir.exists() {
-		return;
-	}
+	assert!(
+		pc_dir.exists(),
+		"FFMPEG_DIR={dir} has no lib/pkgconfig — point it at a full install prefix \
+		 (the output of tooling/ffmpeg/build-ffmpeg.sh)"
+	);
 	println!("cargo:rerun-if-env-changed=FFMPEG_DIR");
+	let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+	println!(
+		"cargo:rerun-if-changed={}",
+		manifest.join("../..").join(".env").display()
+	);
 
-	let pkg_path = std::env::var("PKG_CONFIG_PATH").unwrap_or_default();
+	let pkg_path = env_or_dotenv("PKG_CONFIG_PATH").unwrap_or_default();
 	let output = Command::new("pkg-config")
 		.arg("--static")
 		.arg("--libs")
@@ -57,7 +74,12 @@ fn main() {
 		])
 		.env(
 			"PKG_CONFIG_PATH",
-			format!("{}{}{}", pc_dir.display(), if pkg_path.is_empty() { "" } else { ":" }, pkg_path),
+			format!(
+				"{}{}{}",
+				pc_dir.display(),
+				if pkg_path.is_empty() { "" } else { ":" },
+				pkg_path
+			),
 		)
 		.output()
 		.expect("pkg-config is required when FFMPEG_DIR is set");
@@ -92,6 +114,15 @@ fn main() {
 		}
 	}
 
+	// Some codec libraries are C++ (svt-av1's JsonHelper, ...); their
+	// archives reference the C++ standard library, which pkg-config's
+	// Libs.private does not list. Link it explicitly.
+	if cfg!(target_os = "macos") {
+		println!("cargo:rustc-link-lib=c++");
+	} else if cfg!(all(target_os = "linux", target_env = "gnu")) {
+		println!("cargo:rustc-link-lib=stdc++");
+	}
+
 	// Some externals (Homebrew lame, snappy) reach the FFmpeg archives via
 	// the configure-time --extra-ldflags instead of Requires.private, so
 	// their -L never shows up above; add the Homebrew lib dir as a
@@ -102,4 +133,40 @@ fn main() {
 			println!("cargo:rustc-link-search=native={prefix}");
 		}
 	}
+}
+
+/// Reads `key` from the process environment, falling back to the `.env`
+/// file at the workspace root (this crate lives in crates/oakffmpeg-link,
+/// so the root is two levels up). The .env syntax is the common one:
+/// `KEY=value` lines, optional `export ` prefix, `#` comments, optional
+/// matching single/double quotes around the value.
+///
+/// IDEs that cannot inject environment variables into the cargo
+/// invocation (RustRover) use the .env fallback for `FFMPEG_DIR`.
+fn env_or_dotenv(key: &str) -> Option<String> {
+	if let Ok(v) = std::env::var(key) {
+		return Some(v);
+	}
+	let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+	let content = std::fs::read_to_string(root.join(".env")).ok()?;
+	for line in content.lines() {
+		let line = line.trim();
+		if line.is_empty() || line.starts_with('#') {
+			continue;
+		}
+		let line = line.strip_prefix("export ").unwrap_or(line);
+		let Some((k, v)) = line.split_once('=') else {
+			continue;
+		};
+		if k.trim() == key {
+			let v = v.trim();
+			let v = v
+				.strip_prefix('"')
+				.and_then(|s| s.strip_suffix('"'))
+				.or_else(|| v.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')))
+				.unwrap_or(v);
+			return Some(v.to_string());
+		}
+	}
+	None
 }

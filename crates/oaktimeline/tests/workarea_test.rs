@@ -24,7 +24,7 @@
 use oakcore_rs::{Rational, TimeRange};
 use oaktimeline::bridge::common::{oakcommon_xml_writer_free, oakcommon_xml_writer_init};
 use oaktimeline::bridge::teststubs::{xml_reader_handle, MockXmlNode, MockXmlWriter};
-use oaktimeline::ffi as ffi;
+use oaktimeline::ffi;
 use oaktimeline::handle::{get, get_mut, make_owned};
 use oaktimeline::undocommon::Command;
 use oaktimeline::workarea::{
@@ -114,11 +114,20 @@ fn workarea_set_range_command_redo_undo() {
 	let new_range = TimeRange::new(Rational::new(10, 1), Rational::new(20, 1));
 	let mut cmd = WorkareaSetRangeCommand::new(wa_h.clone(), new_range);
 	cmd.redo();
-	assert_eq!(*unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().range(), new_range);
+	assert_eq!(
+		*unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().range(),
+		new_range
+	);
 	cmd.undo();
 	// Undo restores the range captured at construction (the reset range).
-	assert_eq!(unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().in_(), reset_in());
-	assert_eq!(unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().out(), reset_out());
+	assert_eq!(
+		unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().in_(),
+		reset_in()
+	);
+	assert_eq!(
+		unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().out(),
+		reset_out()
+	);
 }
 
 /// `to_command` boxes a work area command into a CHandle for the undo
@@ -156,9 +165,15 @@ fn workarea_commands_trait_dispatch() {
 		TimeRange::new(Rational::new(3, 1), Rational::new(4, 1)),
 	);
 	Command::redo(&mut r);
-	assert_eq!(unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().in_(), Rational::new(3, 1));
+	assert_eq!(
+		unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().in_(),
+		Rational::new(3, 1)
+	);
 	Command::undo(&mut r);
-	assert_eq!(unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().in_(), reset_in());
+	assert_eq!(
+		unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().in_(),
+		reset_in()
+	);
 }
 
 /// Save writes `<version=1>` plus `enabled`/`in`/`out` text elements;
@@ -177,7 +192,10 @@ fn workarea_xml_round_trip() {
 	let mut writer = unsafe { oakcommon_xml_writer_init() };
 	let r = unsafe { ffi::workarea::oaktimeline_workarea_save(wa_h.clone(), writer.clone()) };
 	assert_eq!(r, 0);
-	let buf = unsafe { get::<MockXmlWriter>(&writer) }.unwrap().buf.clone();
+	let buf = unsafe { get::<MockXmlWriter>(&writer) }
+		.unwrap()
+		.buf
+		.clone();
 	assert!(buf.contains("version=\"1\""), "buf: {buf}");
 	assert!(buf.contains("<enabled>1</enabled>"), "buf: {buf}");
 	assert!(buf.contains("<in>10/1</in>"), "buf: {buf}");
@@ -220,7 +238,10 @@ fn workarea_unset_round_trips_disabled() {
 	let mut writer = unsafe { oakcommon_xml_writer_init() };
 	let r = unsafe { ffi::workarea::oaktimeline_workarea_save(wa_h.clone(), writer.clone()) };
 	assert_eq!(r, 0);
-	let buf = unsafe { get::<MockXmlWriter>(&writer) }.unwrap().buf.clone();
+	let buf = unsafe { get::<MockXmlWriter>(&writer) }
+		.unwrap()
+		.buf
+		.clone();
 	assert!(buf.contains("<enabled>0</enabled>"), "buf: {buf}");
 	unsafe { oakcommon_xml_writer_free(&mut writer) };
 

@@ -75,7 +75,11 @@ fn instance_create_destroy_pairing() {
 		}
 		assert_eq!(unsafe { oakplugin_debug_alive_count() }, base + 1);
 		unsafe { oakplugin_instance_free(&mut h) };
-		assert_eq!(unsafe { oakplugin_debug_alive_count() }, base, "destroy 后 alive 必须回基线");
+		assert_eq!(
+			unsafe { oakplugin_debug_alive_count() },
+			base,
+			"destroy 后 alive 必须回基线"
+		);
 		unsafe { oakplugin_host_shutdown() };
 	});
 }
@@ -99,7 +103,11 @@ fn rescan_is_idempotent() {
 		// 再扫两次：数量不变。
 		assert_eq!(unsafe { oakplugin_host_scan(dirs.as_ptr(), 1) }, OK);
 		assert_eq!(unsafe { oakplugin_host_scan(dirs.as_ptr(), 1) }, OK);
-		assert_eq!(unsafe { oakplugin_host_plugin_count() }, first, "重复扫描不得重复加载");
+		assert_eq!(
+			unsafe { oakplugin_host_plugin_count() },
+			first,
+			"重复扫描不得重复加载"
+		);
 		unsafe { oakplugin_host_shutdown() };
 	});
 }
@@ -186,9 +194,16 @@ fn shutdown_with_live_instances() {
 		unsafe { oakplugin_host_shutdown() };
 		// C 侧句柄仍持 Arc：实例内存存活，但 render 必须失败。
 		let dst = fake_texture(0xA1);
-		assert_eq!(unsafe { oakplugin_instance_render(h, dst, CHandle::null(), 0.0) }, E_FAILED);
+		assert_eq!(
+			unsafe { oakplugin_instance_render(h, dst, CHandle::null(), 0.0) },
+			E_FAILED
+		);
 		unsafe { oakplugin_instance_free(&mut h) };
-		assert_eq!(unsafe { oakplugin_debug_alive_count() }, 0, "句柄释放后归零");
+		assert_eq!(
+			unsafe { oakplugin_debug_alive_count() },
+			0,
+			"句柄释放后归零"
+		);
 		// 之后再 create：插件已卸载 → 空句柄。
 		let id = cs(TEST_PLUGIN_ID);
 		let h2 = unsafe { oakplugin_instance_create(id.as_ptr()) };
@@ -210,9 +225,7 @@ fn concurrent_instances_render() {
 			return;
 		}
 		// 16 个实例（句柄数组；经线程并发 render）。
-		let mut handles: Vec<CHandle> = (0..16)
-			.map(|_| create_instance())
-			.collect();
+		let mut handles: Vec<CHandle> = (0..16).map(|_| create_instance()).collect();
 		assert!(handles.iter().all(|h| !h.is_null()));
 		stub::setup_dst(32, 32, oakplugin::bridge::render::PIXEL_FORMAT_F32);
 		let dst = fake_texture(0xA1);

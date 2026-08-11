@@ -260,7 +260,10 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		crate::value::NodeValue::Float(1.0),
 	);
 	opacity.properties = vec![
-		("view".to_string(), crate::value::NodeValue::Text("percentage".into())),
+		(
+			"view".to_string(),
+			crate::value::NodeValue::Text("percentage".into()),
+		),
 		("min".to_string(), crate::value::NodeValue::Float(0.0)),
 		("max".to_string(), crate::value::NodeValue::Float(1.0)),
 	];

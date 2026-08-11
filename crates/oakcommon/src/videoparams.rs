@@ -263,7 +263,6 @@ impl VideoParams {
 		self.depth > 1
 	}
 
-
 	/// The time base as a numerator/denominator pair.
 	pub fn time_base(&self) -> (i32, i32) {
 		self.time_base
@@ -573,7 +572,9 @@ impl VideoParams {
 					self.set_pixel_aspect_ratio(n, d);
 				}
 				"interlacing" => {
-					self.set_interlacing(interlacing_from_i32(stoi_field(&cur.read_element_text())?));
+					self.set_interlacing(interlacing_from_i32(stoi_field(
+						&cur.read_element_text(),
+					)?));
 				}
 				"divider" => self.set_divider(stoi_field(&cur.read_element_text())?),
 				"enabled" => self.set_enabled(stoi_field(&cur.read_element_text())? != 0),
@@ -594,7 +595,9 @@ impl VideoParams {
 				}
 				"colorspace" => self.set_colorspace(&cur.read_element_text()),
 				"colorrange" => {
-					self.set_color_range(color_range_from_i32(stoi_field(&cur.read_element_text())?));
+					self.set_color_range(color_range_from_i32(stoi_field(
+						&cur.read_element_text(),
+					)?));
 				}
 				"colorprimaries" => {
 					self.set_color_primaries(stoi_field(&cur.read_element_text())?);
@@ -636,7 +639,11 @@ impl VideoParams {
 		push_text_element(&mut out, "framerate", &rational_to_string(self.frame_rate));
 		push_text_element(&mut out, "starttime", &self.start_time.to_string());
 		push_text_element(&mut out, "duration", &self.duration.to_string());
-		push_text_element(&mut out, "premultipliedalpha", &bool_str(self.premultiplied_alpha));
+		push_text_element(
+			&mut out,
+			"premultipliedalpha",
+			&bool_str(self.premultiplied_alpha),
+		);
 		push_text_element(&mut out, "colorspace", &self.colorspace);
 		push_text_element(&mut out, "colorrange", &int_str(self.color_range as i32));
 		push_text_element(&mut out, "colorprimaries", &int_str(self.color_primaries));
@@ -667,7 +674,12 @@ impl VideoParams {
 	}
 
 	/// Total buffer size for a frame.
-	pub fn calculate_buffer_size(width: i32, height: i32, pixel_format: PixelFormat, channels: i32) -> i32 {
+	pub fn calculate_buffer_size(
+		width: i32,
+		height: i32,
+		pixel_format: PixelFormat,
+		channels: i32,
+	) -> i32 {
 		// CPP-PARITY: C++ uses int `width * height * bpp` (wraps on
 		// overflow); use wrapping arithmetic so debug builds don't panic.
 		let bpp = Self::bytes_per_pixel_for_format(pixel_format, channels);
@@ -822,7 +834,11 @@ fn int_str(v: i32) -> String {
 }
 
 fn bool_str(b: bool) -> String {
-	if b { "1".to_string() } else { "0".to_string() }
+	if b {
+		"1".to_string()
+	} else {
+		"0".to_string()
+	}
 }
 
 /// `std::to_string(float)` — fixed notation with 6 decimal places.
@@ -1236,7 +1252,10 @@ fn resolve_entity(data: &str, start: usize, semi: usize) -> Option<String> {
 		"quot" => Some("\"".to_string()),
 		"apos" => Some("'".to_string()),
 		_ => {
-			if let Some(hex) = ent.strip_prefix('#').and_then(|h| h.strip_prefix(['x', 'X'])) {
+			if let Some(hex) = ent
+				.strip_prefix('#')
+				.and_then(|h| h.strip_prefix(['x', 'X']))
+			{
 				let code = u32::from_str_radix(hex, 16).ok()?;
 				char::from_u32(code).map(|c| c.to_string())
 			} else if let Some(dec) = ent.strip_prefix('#') {
@@ -1275,7 +1294,9 @@ fn parse_start_tag(data: &str, start: usize) -> Option<(String, usize, bool)> {
 	let (name, mut i) = parse_name(data, start)?;
 	let mut self_closing = false;
 	loop {
-		while i < bytes.len() && (bytes[i] == b' ' || bytes[i] == b'\t' || bytes[i] == b'\r' || bytes[i] == b'\n') {
+		while i < bytes.len()
+			&& (bytes[i] == b' ' || bytes[i] == b'\t' || bytes[i] == b'\r' || bytes[i] == b'\n')
+		{
 			i += 1;
 		}
 		if i >= bytes.len() {
@@ -1298,14 +1319,24 @@ fn parse_start_tag(data: &str, start: usize) -> Option<(String, usize, bool)> {
 			_ => {
 				// attribute name="value"
 				let (_, mut j) = parse_name(data, i)?;
-				while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t' || bytes[j] == b'\r' || bytes[j] == b'\n') {
+				while j < bytes.len()
+					&& (bytes[j] == b' '
+						|| bytes[j] == b'\t'
+						|| bytes[j] == b'\r'
+						|| bytes[j] == b'\n')
+				{
 					j += 1;
 				}
 				if j >= bytes.len() || bytes[j] != b'=' {
 					return None;
 				}
 				j += 1;
-				while j < bytes.len() && (bytes[j] == b' ' || bytes[j] == b'\t' || bytes[j] == b'\r' || bytes[j] == b'\n') {
+				while j < bytes.len()
+					&& (bytes[j] == b' '
+						|| bytes[j] == b'\t'
+						|| bytes[j] == b'\r'
+						|| bytes[j] == b'\n')
+				{
 					j += 1;
 				}
 				if j >= bytes.len() || (bytes[j] != b'"' && bytes[j] != b'\'') {
@@ -1391,7 +1422,12 @@ fn parse_xml(data: &str) -> Option<Vec<XmlEvent>> {
 				// End element
 				let (name, ni) = parse_name(data, i + 2)?;
 				let mut j = ni;
-				while j < n && (bytes[j] == b' ' || bytes[j] == b'\t' || bytes[j] == b'\r' || bytes[j] == b'\n') {
+				while j < n
+					&& (bytes[j] == b' '
+						|| bytes[j] == b'\t'
+						|| bytes[j] == b'\r'
+						|| bytes[j] == b'\n')
+				{
 					j += 1;
 				}
 				if j >= n || bytes[j] != b'>' {
@@ -1495,7 +1531,18 @@ mod tests {
 
 	#[test]
 	fn new_with_time_base() {
-		let vp = VideoParams::new_with_time_base(1920, 1080, 1001, 30000, PixelFormat::U8, 4, 1, 1, 0, 1);
+		let vp = VideoParams::new_with_time_base(
+			1920,
+			1080,
+			1001,
+			30000,
+			PixelFormat::U8,
+			4,
+			1,
+			1,
+			0,
+			1,
+		);
 		assert_eq!(vp.time_base(), (1001, 30000));
 		// frame rate is the flipped time base.
 		assert_eq!(vp.frame_rate(), (30000, 1001));
@@ -1589,26 +1636,62 @@ mod tests {
 
 	#[test]
 	fn bytes_per_channel_for_format() {
-		assert_eq!(VideoParams::bytes_per_channel_for_format(PixelFormat::U8), 1);
-		assert_eq!(VideoParams::bytes_per_channel_for_format(PixelFormat::U10), 0);
-		assert_eq!(VideoParams::bytes_per_channel_for_format(PixelFormat::U16), 2);
-		assert_eq!(VideoParams::bytes_per_channel_for_format(PixelFormat::F16), 2);
-		assert_eq!(VideoParams::bytes_per_channel_for_format(PixelFormat::F32), 4);
-		assert_eq!(VideoParams::bytes_per_channel_for_format(PixelFormat::Invalid), 0);
-		assert_eq!(VideoParams::bytes_per_channel_for_format(PixelFormat::Count), 0);
+		assert_eq!(
+			VideoParams::bytes_per_channel_for_format(PixelFormat::U8),
+			1
+		);
+		assert_eq!(
+			VideoParams::bytes_per_channel_for_format(PixelFormat::U10),
+			0
+		);
+		assert_eq!(
+			VideoParams::bytes_per_channel_for_format(PixelFormat::U16),
+			2
+		);
+		assert_eq!(
+			VideoParams::bytes_per_channel_for_format(PixelFormat::F16),
+			2
+		);
+		assert_eq!(
+			VideoParams::bytes_per_channel_for_format(PixelFormat::F32),
+			4
+		);
+		assert_eq!(
+			VideoParams::bytes_per_channel_for_format(PixelFormat::Invalid),
+			0
+		);
+		assert_eq!(
+			VideoParams::bytes_per_channel_for_format(PixelFormat::Count),
+			0
+		);
 	}
 
 	#[test]
 	fn bytes_per_pixel_for_format() {
-		assert_eq!(VideoParams::bytes_per_pixel_for_format(PixelFormat::U8, 4), 4);
-		assert_eq!(VideoParams::bytes_per_pixel_for_format(PixelFormat::U10, 4), 4);
-		assert_eq!(VideoParams::bytes_per_pixel_for_format(PixelFormat::U10, 3), 0);
-		assert_eq!(VideoParams::bytes_per_pixel_for_format(PixelFormat::F32, 4), 16);
+		assert_eq!(
+			VideoParams::bytes_per_pixel_for_format(PixelFormat::U8, 4),
+			4
+		);
+		assert_eq!(
+			VideoParams::bytes_per_pixel_for_format(PixelFormat::U10, 4),
+			4
+		);
+		assert_eq!(
+			VideoParams::bytes_per_pixel_for_format(PixelFormat::U10, 3),
+			0
+		);
+		assert_eq!(
+			VideoParams::bytes_per_pixel_for_format(PixelFormat::F32, 4),
+			16
+		);
 	}
 
 	#[test]
 	fn buffer_size() {
-		assert_eq!(VideoParams::calculate_buffer_size(1920, 1080, PixelFormat::U8, 4), 8294400);
+		assert_eq!(
+			VideoParams::calculate_buffer_size(1920, 1080, PixelFormat::U8, 4),
+			8294400
+		);
 		let vp = default_vp();
 		assert_eq!(vp.buffer_size(), 8294400);
 		assert_eq!(vp.bytes_per_channel(), 1);
@@ -1636,8 +1719,14 @@ mod tests {
 	#[test]
 	fn scaled_dimension_and_target() {
 		assert_eq!(VideoParams::get_scaled_dimension(1920, 2), 960);
-		assert_eq!(VideoParams::get_divider_for_target_resolution(3840, 2160, 1920, 1080), 2);
-		assert_eq!(VideoParams::get_divider_for_target_resolution(1920, 1080, 1920, 1080), 1);
+		assert_eq!(
+			VideoParams::get_divider_for_target_resolution(3840, 2160, 1920, 1080),
+			2
+		);
+		assert_eq!(
+			VideoParams::get_divider_for_target_resolution(1920, 1080, 1920, 1080),
+			1
+		);
 	}
 
 	#[test]
@@ -1650,22 +1739,52 @@ mod tests {
 	#[test]
 	fn format_name() {
 		assert_eq!(VideoParams::format_name(PixelFormat::U8).unwrap(), "8-bit");
-		assert_eq!(VideoParams::format_name(PixelFormat::U10).unwrap(), "10-bit Packed");
-		assert_eq!(VideoParams::format_name(PixelFormat::U16).unwrap(), "16-bit Integer");
-		assert_eq!(VideoParams::format_name(PixelFormat::F16).unwrap(), "Half-Float (16-bit)");
-		assert_eq!(VideoParams::format_name(PixelFormat::F32).unwrap(), "Full-Float (32-bit)");
-		assert_eq!(VideoParams::format_name(PixelFormat::Invalid).unwrap(), "Unknown (0xFFFFFFFF)");
-		assert_eq!(VideoParams::format_name(PixelFormat::Count).unwrap(), "Unknown (0x5)");
+		assert_eq!(
+			VideoParams::format_name(PixelFormat::U10).unwrap(),
+			"10-bit Packed"
+		);
+		assert_eq!(
+			VideoParams::format_name(PixelFormat::U16).unwrap(),
+			"16-bit Integer"
+		);
+		assert_eq!(
+			VideoParams::format_name(PixelFormat::F16).unwrap(),
+			"Half-Float (16-bit)"
+		);
+		assert_eq!(
+			VideoParams::format_name(PixelFormat::F32).unwrap(),
+			"Full-Float (32-bit)"
+		);
+		assert_eq!(
+			VideoParams::format_name(PixelFormat::Invalid).unwrap(),
+			"Unknown (0xFFFFFFFF)"
+		);
+		assert_eq!(
+			VideoParams::format_name(PixelFormat::Count).unwrap(),
+			"Unknown (0x5)"
+		);
 	}
 
 	#[test]
 	fn frame_rate_to_string_values() {
-		assert_eq!(VideoParams::frame_rate_to_string(24000, 1001).unwrap(), "23.976 FPS");
+		assert_eq!(
+			VideoParams::frame_rate_to_string(24000, 1001).unwrap(),
+			"23.976 FPS"
+		);
 		assert_eq!(VideoParams::frame_rate_to_string(24, 1).unwrap(), "24 FPS");
 		assert_eq!(VideoParams::frame_rate_to_string(25, 1).unwrap(), "25 FPS");
-		assert_eq!(VideoParams::frame_rate_to_string(30000, 1001).unwrap(), "29.97 FPS");
-		assert_eq!(VideoParams::frame_rate_to_string(60000, 1001).unwrap(), "59.9401 FPS");
-		assert_eq!(VideoParams::frame_rate_to_string(48000, 1001).unwrap(), "47.952 FPS");
+		assert_eq!(
+			VideoParams::frame_rate_to_string(30000, 1001).unwrap(),
+			"29.97 FPS"
+		);
+		assert_eq!(
+			VideoParams::frame_rate_to_string(60000, 1001).unwrap(),
+			"59.9401 FPS"
+		);
+		assert_eq!(
+			VideoParams::frame_rate_to_string(48000, 1001).unwrap(),
+			"47.952 FPS"
+		);
 		assert_eq!(VideoParams::frame_rate_to_string(1, 1).unwrap(), "1 FPS");
 		assert_eq!(VideoParams::frame_rate_to_string(0, 1).unwrap(), "0 FPS");
 	}
@@ -1700,7 +1819,18 @@ mod tests {
 
 	#[test]
 	fn xml_round_trip() {
-		let mut vp = VideoParams::new_with_time_base(1920, 1080, 1001, 30000, PixelFormat::U8, 4, 16, 15, 1, 2);
+		let mut vp = VideoParams::new_with_time_base(
+			1920,
+			1080,
+			1001,
+			30000,
+			PixelFormat::U8,
+			4,
+			16,
+			15,
+			1,
+			2,
+		);
 		vp.set_enabled(true);
 		vp.set_x(1.5);
 		vp.set_y(-2.5);
@@ -1764,14 +1894,20 @@ mod tests {
 		assert!(vp.load_xml("<width>").is_err());
 		assert!(vp.load_xml("<width>5</height>").is_err());
 		// A non-numeric value inside a properly-rooted doc must error (stoi).
-		assert!(vp.load_xml("<videoparams><width>notanumber</width></videoparams>").is_err());
+		assert!(vp
+			.load_xml("<videoparams><width>notanumber</width></videoparams>")
+			.is_err());
 		// Self-closing element is not malformed; the empty value is accepted
 		// for a text field (colorspace) but rejected for an integer field.
-		assert!(vp.load_xml("<videoparams><width>640</width><colorspace/><depth>2</depth></videoparams>").is_ok());
+		assert!(vp
+			.load_xml("<videoparams><width>640</width><colorspace/><depth>2</depth></videoparams>")
+			.is_ok());
 		assert_eq!(vp.width(), 640);
 		assert_eq!(vp.depth(), 2);
 		assert_eq!(vp.colorspace(), "");
-		assert!(vp.load_xml("<videoparams><width/><colorspace>a</colorspace></videoparams>").is_err());
+		assert!(vp
+			.load_xml("<videoparams><width/><colorspace>a</colorspace></videoparams>")
+			.is_err());
 	}
 
 	// ---- Extended coverage --------------------------------------------------
@@ -1781,12 +1917,30 @@ mod tests {
 		// Full format × channel matrix, mirroring get_bytes_per_pixel():
 		// packed u10 only supports RGBA (4); everything else is bpc*channels.
 		for ch in [0, 1, 3, 4] {
-			assert_eq!(VideoParams::bytes_per_pixel_for_format(PixelFormat::U8, ch), ch);
-			assert_eq!(VideoParams::bytes_per_pixel_for_format(PixelFormat::U16, ch), 2 * ch);
-			assert_eq!(VideoParams::bytes_per_pixel_for_format(PixelFormat::F16, ch), 2 * ch);
-			assert_eq!(VideoParams::bytes_per_pixel_for_format(PixelFormat::F32, ch), 4 * ch);
-			assert_eq!(VideoParams::bytes_per_pixel_for_format(PixelFormat::Invalid, ch), 0);
-			assert_eq!(VideoParams::bytes_per_pixel_for_format(PixelFormat::Count, ch), 0);
+			assert_eq!(
+				VideoParams::bytes_per_pixel_for_format(PixelFormat::U8, ch),
+				ch
+			);
+			assert_eq!(
+				VideoParams::bytes_per_pixel_for_format(PixelFormat::U16, ch),
+				2 * ch
+			);
+			assert_eq!(
+				VideoParams::bytes_per_pixel_for_format(PixelFormat::F16, ch),
+				2 * ch
+			);
+			assert_eq!(
+				VideoParams::bytes_per_pixel_for_format(PixelFormat::F32, ch),
+				4 * ch
+			);
+			assert_eq!(
+				VideoParams::bytes_per_pixel_for_format(PixelFormat::Invalid, ch),
+				0
+			);
+			assert_eq!(
+				VideoParams::bytes_per_pixel_for_format(PixelFormat::Count, ch),
+				0
+			);
 			assert_eq!(
 				VideoParams::bytes_per_pixel_for_format(PixelFormat::U10, ch),
 				if ch == 4 { 4 } else { 0 }
@@ -1867,10 +2021,19 @@ mod tests {
 	#[test]
 	fn divider_for_target_resolution_edges() {
 		// Source already fits -> 1.
-		assert_eq!(VideoParams::get_divider_for_target_resolution(100, 100, 1920, 1080), 1);
+		assert_eq!(
+			VideoParams::get_divider_for_target_resolution(100, 100, 1920, 1080),
+			1
+		);
 		// 1921/2 = 960 fits 960, 1081/2 = 540 fits 540 -> 2.
-		assert_eq!(VideoParams::get_divider_for_target_resolution(1921, 1081, 960, 540), 2);
-		assert_eq!(VideoParams::get_divider_for_target_resolution(1921, 1081, 959, 540), 3);
+		assert_eq!(
+			VideoParams::get_divider_for_target_resolution(1921, 1081, 960, 540),
+			2
+		);
+		assert_eq!(
+			VideoParams::get_divider_for_target_resolution(1921, 1081, 959, 540),
+			3
+		);
 	}
 
 	#[test]
@@ -1882,9 +2045,18 @@ mod tests {
 
 	#[test]
 	fn frame_rate_to_string_edge_values() {
-		assert_eq!(VideoParams::frame_rate_to_string(-24, 1).unwrap(), "-24 FPS");
-		assert_eq!(VideoParams::frame_rate_to_string(1, 1000000).unwrap(), "1e-06 FPS");
-		assert_eq!(VideoParams::frame_rate_to_string(1000000, 1).unwrap(), "1e+06 FPS");
+		assert_eq!(
+			VideoParams::frame_rate_to_string(-24, 1).unwrap(),
+			"-24 FPS"
+		);
+		assert_eq!(
+			VideoParams::frame_rate_to_string(1, 1000000).unwrap(),
+			"1e-06 FPS"
+		);
+		assert_eq!(
+			VideoParams::frame_rate_to_string(1000000, 1).unwrap(),
+			"1e+06 FPS"
+		);
 		assert_eq!(VideoParams::frame_rate_to_string(0, 0).unwrap(), "nan FPS");
 	}
 
@@ -2036,7 +2208,8 @@ mod tests {
 	fn load_xml_partial_update_keeps_existing() {
 		// C++ load() only assigns fields present in the document.
 		let mut vp = default_vp();
-		vp.load_xml("<videoparams><width>320</width></videoparams>").unwrap();
+		vp.load_xml("<videoparams><width>320</width></videoparams>")
+			.unwrap();
 		assert_eq!(vp.width(), 320);
 		assert_eq!(vp.height(), 1080); // untouched
 		assert_eq!(vp.format(), PixelFormat::U8);
@@ -2061,8 +2234,10 @@ mod tests {
 	fn load_xml_numeric_prefix_parsing() {
 		let mut vp = VideoParams::new();
 		// std::stoi/std::stof consume the longest valid prefix, ignore junk.
-		vp.load_xml("<videoparams><width>640abc</width><x>1.5garbage</x><y> -2.5 </y></videoparams>")
-			.unwrap();
+		vp.load_xml(
+			"<videoparams><width>640abc</width><x>1.5garbage</x><y> -2.5 </y></videoparams>",
+		)
+		.unwrap();
 		assert_eq!(vp.width(), 640);
 		assert_eq!(vp.x(), 1.5);
 		assert_eq!(vp.y(), -2.5);
@@ -2090,20 +2265,35 @@ mod tests {
 		let mut vp = VideoParams::new();
 		// Unknown entity in character data is a parse error in this reader
 		// (stricter than the subtitle reader, which preserves it verbatim).
-		assert!(vp.load_xml("<videoparams><colorspace>a &bogus; b</colorspace></videoparams>").is_err());
+		assert!(vp
+			.load_xml("<videoparams><colorspace>a &bogus; b</colorspace></videoparams>")
+			.is_err());
 		// Unterminated comment.
 		assert!(vp.load_xml("<videoparams><!-- never ends").is_err());
 		// Mismatched nesting.
-		assert!(vp.load_xml("<videoparams><width>1</videoparams></width>").is_err());
+		assert!(vp
+			.load_xml("<videoparams><width>1</videoparams></width>")
+			.is_err());
 	}
 
 	#[test]
 	fn rational_helpers_match_oakcore() {
 		// The hand-rolled tuple rationals must agree with oakcore_rs::Rational,
 		// the canonical port of the C++ Rational.
-		for (n, d) in [(2i32, 4i32), (0, 5), (5, 0), (-3, -1), (1, -2), (7, 3), (100, 10)] {
+		for (n, d) in [
+			(2i32, 4i32),
+			(0, 5),
+			(5, 0),
+			(-3, -1),
+			(1, -2),
+			(7, 3),
+			(100, 10),
+		] {
 			let r = oakcore_rs::Rational::new(n as i64, d as i64);
-			assert_eq!(make_rational(n, d), (r.numerator() as i32, r.denominator() as i32));
+			assert_eq!(
+				make_rational(n, d),
+				(r.numerator() as i32, r.denominator() as i32)
+			);
 		}
 		for s in ["1/2", "7", "4/2", "junk", "a/b", "1/2/3", "-6/3"] {
 			let r = oakcore_rs::Rational::from_string(s);
@@ -2117,8 +2307,18 @@ mod tests {
 
 	#[test]
 	fn time_conversion_matches_oakcore() {
-		let mut vp =
-			VideoParams::new_with_time_base(1920, 1080, 1001, 30000, PixelFormat::U8, 4, 1, 1, 0, 1);
+		let mut vp = VideoParams::new_with_time_base(
+			1920,
+			1080,
+			1001,
+			30000,
+			PixelFormat::U8,
+			4,
+			1,
+			1,
+			0,
+			1,
+		);
 		vp.set_start_time(11);
 		let tb = oakcore_rs::Rational::new(1001, 30000);
 		for (n, d) in [(1i32, 1i32), (1, 2), (24000, 1001), (-3, 1), (0, 1)] {

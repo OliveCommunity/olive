@@ -54,7 +54,6 @@ pub const OAKCODEC_E_FAILED: c_int = -50003;
 /// Mirror of `OakCodecTaskRequest` (`include/codec/task.h`).
 pub type OakCodecTaskRequest = oakcodec::task::OakCodecTaskRequest;
 
-
 /// `oakcodec_task_submit_fn` callback typedef.
 pub type OakCodecTaskSubmitFn =
 	unsafe extern "C" fn(req: *const OakCodecTaskRequest, userdata: *mut c_void) -> c_int;
@@ -71,18 +70,13 @@ pub type OakDecoder = CHandle;
 /// Mirror of `OakCodecProxyParams` (`include/codec/proxy.h`).
 pub type OakCodecProxyParams = oakcodec::ffi::proxy::oakcodec_proxy_params;
 
-
 /// Mirror of `oakcodec_encoding_params` (`include/codec/encoder.h`) — the
 /// export task fills this to open the encoder. Layout mirrors the header
 /// verbatim (a zeroed struct = all tracks disabled).
 pub type OakCodecEncodingParams = oakcodec::ffi::encoder::oakcodec_encoding_params;
 
-
 /// Direct call into the `oakcodec` crate (single-lib unification).
-pub fn oakcodec_set_task_submit_cb(
-		cb: Option<OakCodecTaskSubmitFn>,
-		userdata: *mut c_void,
-	) {
+pub fn oakcodec_set_task_submit_cb(cb: Option<OakCodecTaskSubmitFn>, userdata: *mut c_void) {
 	unsafe { oakcodec::ffi::task::oakcodec_set_task_submit_cb(cb, userdata) }
 }
 
@@ -103,10 +97,10 @@ pub fn oakcodec_decoder_free(decoder: *mut OakDecoder) {
 
 /// Direct call into the `oakcodec` crate (single-lib unification).
 pub fn oakcodec_decoder_open(
-		decoder: OakDecoder,
-		filename: *const c_char,
-		stream_index: c_int,
-	) -> c_int {
+	decoder: OakDecoder,
+	filename: *const c_char,
+	stream_index: c_int,
+) -> c_int {
 	unsafe { oakcodec::ffi::decoder::oakcodec_decoder_open(decoder, filename, stream_index) }
 }
 
@@ -122,34 +116,60 @@ pub fn oakcodec_decoder_is_open(decoder: OakDecoder) -> c_int {
 
 /// Direct call into the `oakcodec` crate (single-lib unification).
 pub fn oakcodec_decoder_decode_audio(
-		decoder: OakDecoder,
-		in_num: c_int,
-		in_den: c_int,
-		out_num: c_int,
-		out_den: c_int,
-		sample_rate: c_int,
-		channel_layout: u64,
-		buf: *mut f32,
-		buf_frames: c_int,
-	) -> c_int {
-	unsafe { oakcodec::ffi::decoder::oakcodec_decoder_decode_audio(decoder, in_num, in_den, out_num, out_den, sample_rate, channel_layout, buf, buf_frames) }
+	decoder: OakDecoder,
+	in_num: c_int,
+	in_den: c_int,
+	out_num: c_int,
+	out_den: c_int,
+	sample_rate: c_int,
+	channel_layout: u64,
+	buf: *mut f32,
+	buf_frames: c_int,
+) -> c_int {
+	unsafe {
+		oakcodec::ffi::decoder::oakcodec_decoder_decode_audio(
+			decoder,
+			in_num,
+			in_den,
+			out_num,
+			out_den,
+			sample_rate,
+			channel_layout,
+			buf,
+			buf_frames,
+		)
+	}
 }
 
 /// Direct call into the `oakcodec` crate (single-lib unification).
 pub fn oakcodec_decoder_conform_audio(
-		decoder: OakDecoder,
-		output_filenames: *const *const c_char,
-		filename_count: c_int,
-		sample_rate: c_int,
-		channel_layout: u64,
-		sample_format: c_int,
-		cancelled: OakCancelAtom,
-	) -> c_int {
-	unsafe { oakcodec::ffi::decoder::oakcodec_decoder_conform_audio(decoder, output_filenames, filename_count, sample_rate, channel_layout, sample_format, cancelled) }
+	decoder: OakDecoder,
+	output_filenames: *const *const c_char,
+	filename_count: c_int,
+	sample_rate: c_int,
+	channel_layout: u64,
+	sample_format: c_int,
+	cancelled: OakCancelAtom,
+) -> c_int {
+	unsafe {
+		oakcodec::ffi::decoder::oakcodec_decoder_conform_audio(
+			decoder,
+			output_filenames,
+			filename_count,
+			sample_rate,
+			channel_layout,
+			sample_format,
+			cancelled,
+		)
+	}
 }
 
 /// Direct call into the `oakcodec` crate (single-lib unification).
-pub fn oakcodec_decoder_last_error(decoder: OakDecoder, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oakcodec_decoder_last_error(
+	decoder: OakDecoder,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oakcodec::ffi::decoder::oakcodec_decoder_last_error(decoder, buf, buf_size) }
 }
 
@@ -165,12 +185,16 @@ pub fn oakcodec_decoder_get_image_sequence_index(filename: *const c_char) -> i64
 
 /// Direct call into the `oakcodec` crate (single-lib unification).
 pub fn oakcodec_decoder_transform_image_sequence_file_name(
-		filename: *const c_char,
-		number: i64,
-		buf: *mut c_char,
-		buf_size: c_int,
-	) -> c_int {
-	unsafe { oakcodec::ffi::decoder::oakcodec_decoder_transform_image_sequence_file_name(filename, number, buf, buf_size) }
+	filename: *const c_char,
+	number: i64,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oakcodec::ffi::decoder::oakcodec_decoder_transform_image_sequence_file_name(
+			filename, number, buf, buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oakcodec` crate (single-lib unification).
@@ -180,18 +204,26 @@ pub fn oakcodec_encoder_get_desired_pixel_format(encoder: OakEncoder) -> c_int {
 
 /// Direct call into the `oakcodec` crate (single-lib unification).
 pub fn oakcodec_encoding_generate_matrix(
-		method: c_int,
-		src_width: c_int,
-		src_height: c_int,
-		dst_width: c_int,
-		dst_height: c_int,
-		out_matrix: *mut f64,
-	) -> c_int {
-	unsafe { oakcodec::ffi::encoder::oakcodec_encoding_generate_matrix(method, src_width, src_height, dst_width, dst_height, out_matrix) }
+	method: c_int,
+	src_width: c_int,
+	src_height: c_int,
+	dst_width: c_int,
+	dst_height: c_int,
+	out_matrix: *mut f64,
+) -> c_int {
+	unsafe {
+		oakcodec::ffi::encoder::oakcodec_encoding_generate_matrix(
+			method, src_width, src_height, dst_width, dst_height, out_matrix,
+		)
+	}
 }
 
 /// Direct call into the `oakcodec` crate (single-lib unification).
-pub fn oakcodec_proxy_find_ffmpeg(configured_path: *const c_char, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oakcodec_proxy_find_ffmpeg(
+	configured_path: *const c_char,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oakcodec::ffi::proxy::oakcodec_proxy_find_ffmpeg(configured_path, buf, buf_size) }
 }
 
@@ -222,21 +254,28 @@ pub fn oakcodec_encoder_write_video(encoder: OakEncoder, frame: OakFrame) -> c_i
 
 /// Direct call into the `oakcodec` crate (single-lib unification).
 pub fn oakcodec_encoder_write_audio(
-		encoder: OakEncoder,
-		samples: *const f32,
-		frame_count: c_int,
-	) -> c_int {
+	encoder: OakEncoder,
+	samples: *const f32,
+	frame_count: c_int,
+) -> c_int {
 	unsafe { oakcodec::ffi::encoder::oakcodec_encoder_write_audio(encoder, samples, frame_count) }
 }
 
 /// Direct call into the `oakcodec` crate (single-lib unification).
 pub fn oakcodec_encoder_write_subtitle(
-		encoder: OakEncoder,
-		text: *const c_char,
-		in_seconds: f64,
-		out_seconds: f64,
-	) -> c_int {
-	unsafe { oakcodec::ffi::encoder::oakcodec_encoder_write_subtitle(encoder, text, in_seconds, out_seconds) }
+	encoder: OakEncoder,
+	text: *const c_char,
+	in_seconds: f64,
+	out_seconds: f64,
+) -> c_int {
+	unsafe {
+		oakcodec::ffi::encoder::oakcodec_encoder_write_subtitle(
+			encoder,
+			text,
+			in_seconds,
+			out_seconds,
+		)
+	}
 }
 
 /// Direct call into the `oakcodec` crate (single-lib unification).
@@ -245,7 +284,10 @@ pub fn oakcodec_encoder_flush(encoder: OakEncoder) -> c_int {
 }
 
 /// Direct call into the `oakcodec` crate (single-lib unification).
-pub fn oakcodec_encoder_last_error(encoder: OakEncoder, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oakcodec_encoder_last_error(
+	encoder: OakEncoder,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oakcodec::ffi::encoder::oakcodec_encoder_last_error(encoder, buf, buf_size) }
 }
-

@@ -23,10 +23,10 @@ mod common;
 use std::ffi::{c_char, c_int, c_void, CString};
 
 use oakplugin::ffi::{
-	oakplugin_host_scan, oakplugin_instance_create, oakplugin_instance_free,
+	node_value_type, oakplugin_host_scan, oakplugin_instance_create, oakplugin_instance_free,
 	oakplugin_instance_get_param, oakplugin_instance_render_begin_sequence,
-	oakplugin_instance_render_end_sequence, oakplugin_instance_render_job,
-	OakPluginJobTexture, OakPluginJobValue, OakNodeValue, node_value_type,
+	oakplugin_instance_render_end_sequence, oakplugin_instance_render_job, OakNodeValue,
+	OakPluginJobTexture, OakPluginJobValue,
 };
 use oakplugin::handle::CHandle;
 
@@ -76,19 +76,46 @@ fn render_job_cpu_path_and_sequence_brackets() {
 
 		// 未 begin 序列直接 job 也可用（单帧；序列括号是优化语义）。
 		assert_eq!(
-			unsafe { oakplugin_instance_render_job(h, dst, 0.0, 0, 0, std::ptr::null(), CHandle::null(), std::ptr::null(), 0, std::ptr::null(), 0, CHandle::null()) },
+			unsafe {
+				oakplugin_instance_render_job(
+					h,
+					dst,
+					0.0,
+					0,
+					0,
+					std::ptr::null(),
+					CHandle::null(),
+					std::ptr::null(),
+					0,
+					std::ptr::null(),
+					0,
+					CHandle::null(),
+				)
+			},
 			OK
 		);
 		// begin/end 括号配对。
-		assert_eq!(unsafe { oakplugin_instance_render_begin_sequence(h, 0.0, 10.0, 0) }, OK);
-		assert_eq!(unsafe { oakplugin_instance_render_end_sequence(h, 0.0, 10.0, 0) }, OK);
+		assert_eq!(
+			unsafe { oakplugin_instance_render_begin_sequence(h, 0.0, 10.0, 0) },
+			OK
+		);
+		assert_eq!(
+			unsafe { oakplugin_instance_render_end_sequence(h, 0.0, 10.0, 0) },
+			OK
+		);
 
 		// 像素断言：8×4 常量 0.5 / alpha 1。
 		let pixels = stub::dst_pixels();
 		let n = pixels.len() / 16;
 		assert_eq!(n, 32);
 		for i in 0..n {
-			let f = |o: usize| f32::from_le_bytes(pixels[i * 16 + o * 4..i * 16 + o * 4 + 4].try_into().unwrap());
+			let f = |o: usize| {
+				f32::from_le_bytes(
+					pixels[i * 16 + o * 4..i * 16 + o * 4 + 4]
+						.try_into()
+						.unwrap(),
+				)
+			};
 			assert_eq!(f(0), 0.5, "pixel {i} r");
 			assert_eq!(f(3), 1.0, "pixel {i} a");
 		}
@@ -110,7 +137,12 @@ fn render_job_multi_input_and_param_overrides() {
 			return;
 		}
 		stub::setup_dst(4, 4, oakplugin::bridge::render::PIXEL_FORMAT_F32);
-		stub::setup_src(4, 4, oakplugin::bridge::render::PIXEL_FORMAT_F32, vec![0u8; 4 * 4 * 16]);
+		stub::setup_src(
+			4,
+			4,
+			oakplugin::bridge::render::PIXEL_FORMAT_F32,
+			vec![0u8; 4 * 4 * 16],
+		);
 		let dst = fake_texture(0xA1);
 		let src = fake_texture(0xA2);
 
@@ -154,7 +186,10 @@ fn render_job_multi_input_and_param_overrides() {
 		// 覆盖已生效：经 C ABI 读回 gain。
 		let mut out = OakNodeValue::default();
 		let g = cs("gain");
-		assert_eq!(unsafe { oakplugin_instance_get_param(h, g.as_ptr(), &mut out) }, OK);
+		assert_eq!(
+			unsafe { oakplugin_instance_get_param(h, g.as_ptr(), &mut out) },
+			OK
+		);
 		assert_eq!(out.f[0], 1.5, "gain 覆盖应已注入实例参数");
 
 		unsafe { oakplugin_instance_free(&mut h) };
@@ -181,12 +216,32 @@ fn render_job_is_identity_shortcircuit() {
 			}
 		}
 		stub::setup_dst(4, 4, oakplugin::bridge::render::PIXEL_FORMAT_F32);
-		stub::setup_src(4, 4, oakplugin::bridge::render::PIXEL_FORMAT_F32, pixels.clone());
+		stub::setup_src(
+			4,
+			4,
+			oakplugin::bridge::render::PIXEL_FORMAT_F32,
+			pixels.clone(),
+		);
 		let dst = fake_texture(0xA1);
 		let src = fake_texture(0xA2);
 
 		assert_eq!(
-			unsafe { oakplugin_instance_render_job(h, dst, 0.0, 0, 0, cs("Source").as_ptr(), src, std::ptr::null(), 0, std::ptr::null(), 0, CHandle::null()) },
+			unsafe {
+				oakplugin_instance_render_job(
+					h,
+					dst,
+					0.0,
+					0,
+					0,
+					cs("Source").as_ptr(),
+					src,
+					std::ptr::null(),
+					0,
+					std::ptr::null(),
+					0,
+					CHandle::null(),
+				)
+			},
 			OK
 		);
 
@@ -210,7 +265,20 @@ fn render_job_graceful_without_bridge() {
 		// NULL 输出纹理在触达 oakrender 前被插件层校验拒绝（E_INVALID）。
 		let dst = CHandle::null();
 		let r = unsafe {
-			oakplugin_instance_render_job(h, dst, 0.0, 0, 0, std::ptr::null(), CHandle::null(), std::ptr::null(), 0, std::ptr::null(), 0, CHandle::null())
+			oakplugin_instance_render_job(
+				h,
+				dst,
+				0.0,
+				0,
+				0,
+				std::ptr::null(),
+				CHandle::null(),
+				std::ptr::null(),
+				0,
+				std::ptr::null(),
+				0,
+				CHandle::null(),
+			)
 		};
 		assert_eq!(r, -90001, "NULL 输出纹理 → E_INVALID（不崩溃）");
 		unsafe { oakplugin_instance_free(&mut h) };
@@ -233,7 +301,20 @@ fn render_job_error_paths() {
 		stub::setup_dst(4, 4, oakplugin::bridge::render::PIXEL_FORMAT_U8);
 		let dst = fake_texture(0xA1);
 		let r = unsafe {
-			oakplugin_instance_render_job(h, dst, 0.0, 0, 0, std::ptr::null(), CHandle::null(), std::ptr::null(), 0, std::ptr::null(), 0, CHandle::null())
+			oakplugin_instance_render_job(
+				h,
+				dst,
+				0.0,
+				0,
+				0,
+				std::ptr::null(),
+				CHandle::null(),
+				std::ptr::null(),
+				0,
+				std::ptr::null(),
+				0,
+				CHandle::null(),
+			)
 		};
 		assert_eq!(r, -90003, "非 F32 输出 → E_FAILED");
 
@@ -241,7 +322,20 @@ fn render_job_error_paths() {
 		stub::setup_dst(4, 4, oakplugin::bridge::render::PIXEL_FORMAT_F32);
 		assert_eq!(unsafe { oakplugin_instance_cancel(h) }, OK);
 		let r = unsafe {
-			oakplugin_instance_render_job(h, dst, 0.0, 0, 0, std::ptr::null(), CHandle::null(), std::ptr::null(), 0, std::ptr::null(), 0, CHandle::null())
+			oakplugin_instance_render_job(
+				h,
+				dst,
+				0.0,
+				0,
+				0,
+				std::ptr::null(),
+				CHandle::null(),
+				std::ptr::null(),
+				0,
+				std::ptr::null(),
+				0,
+				CHandle::null(),
+			)
 		};
 		assert_eq!(r, -90003, "已取消 → E_FAILED");
 		unsafe { oakplugin_instance_free(&mut h) };

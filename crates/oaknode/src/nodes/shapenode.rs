@@ -319,10 +319,22 @@ mod tests {
 		let n = ShapeNode;
 		assert_eq!(n.input_name(TYPE_INPUT), "Type");
 		assert_eq!(n.input_name(RADIUS_INPUT), "Radius");
-		assert_eq!(n.input_name(super::super::generatorwithmerge::BASE_INPUT), "Base");
-		assert_eq!(n.input_name(super::super::shapenodebase::POSITION_INPUT), "Position");
-		assert_eq!(n.input_name(super::super::shapenodebase::SIZE_INPUT), "Size");
-		assert_eq!(n.input_name(super::super::shapenodebase::COLOR_INPUT), "Color");
+		assert_eq!(
+			n.input_name(super::super::generatorwithmerge::BASE_INPUT),
+			"Base"
+		);
+		assert_eq!(
+			n.input_name(super::super::shapenodebase::POSITION_INPUT),
+			"Position"
+		);
+		assert_eq!(
+			n.input_name(super::super::shapenodebase::SIZE_INPUT),
+			"Size"
+		);
+		assert_eq!(
+			n.input_name(super::super::shapenodebase::COLOR_INPUT),
+			"Color"
+		);
 	}
 
 	#[test]
@@ -337,14 +349,21 @@ mod tests {
 			NodeValue::Float(20.0)
 		);
 		assert_eq!(
-			core.get_input(super::super::shapenodebase::SIZE_INPUT).unwrap().default,
+			core.get_input(super::super::shapenodebase::SIZE_INPUT)
+				.unwrap()
+				.default,
 			NodeValue::Vec2([100.0, 100.0])
 		);
 		assert_eq!(
-			core.get_input(super::super::shapenodebase::COLOR_INPUT).unwrap().default,
+			core.get_input(super::super::shapenodebase::COLOR_INPUT)
+				.unwrap()
+				.default,
 			NodeValue::Color([1.0, 0.0, 0.0, 1.0])
 		);
-		assert_eq!(core.effect_input, super::super::generatorwithmerge::BASE_INPUT);
+		assert_eq!(
+			core.effect_input,
+			super::super::generatorwithmerge::BASE_INPUT
+		);
 		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
 	}
 

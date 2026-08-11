@@ -103,7 +103,10 @@ pub unsafe extern "C" fn oak_ofx_message_impl(
 			};
 		}
 		// Headless 默认：stderr（C++ fprintf 的 Rust 等价物）。
-		eprintln!("OFX message: {}", unsafe { CStr::from_ptr(message) }.to_string_lossy());
+		eprintln!(
+			"OFX message: {}",
+			unsafe { CStr::from_ptr(message) }.to_string_lossy()
+		);
 		if is_question(type_) {
 			status::REPLY_NO
 		} else {
@@ -194,8 +197,12 @@ mod tests {
 	) -> c_int {
 		let v = unsafe { &mut *(userdata as *mut Vec<(String, String)>) };
 		v.push((
-			unsafe { CStr::from_ptr(type_) }.to_string_lossy().into_owned(),
-			unsafe { CStr::from_ptr(message) }.to_string_lossy().into_owned(),
+			unsafe { CStr::from_ptr(type_) }
+				.to_string_lossy()
+				.into_owned(),
+			unsafe { CStr::from_ptr(message) }
+				.to_string_lossy()
+				.into_owned(),
 		));
 		1
 	}
@@ -256,7 +263,10 @@ mod tests {
 	fn shim_v2_table_entry_resolves() {
 		let _g = TEST_LOCK.lock().unwrap();
 		let s = suite_v2();
-		assert!(!std::ptr::eq(s.message as *const (), ofx_message_shim_v1 as *const ()));
+		assert!(!std::ptr::eq(
+			s.message as *const (),
+			ofx_message_shim_v1 as *const ()
+		));
 	}
 
 	/// 无出口（headless 默认）：非 question → OK；question → REPLY_NO。

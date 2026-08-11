@@ -230,7 +230,10 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		crate::value::NodeValue::Float(1.0),
 	);
 	opacity.properties = vec![
-		("view".to_string(), crate::value::NodeValue::Text("percentage".into())),
+		(
+			"view".to_string(),
+			crate::value::NodeValue::Text("percentage".into()),
+		),
 		("min".to_string(), crate::value::NodeValue::Float(0.0)),
 		("max".to_string(), crate::value::NodeValue::Float(1.0)),
 	];
@@ -239,9 +242,12 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	core.flags |= crate::node::flags::VIDEO_EFFECT;
 	core.effect_input = TEXTURE_INPUT.to_string();
 
-	(core, Box::new(OpacityEffect {
-		math: super::math::MathNode::new(),
-	}))
+	(
+		core,
+		Box::new(OpacityEffect {
+			math: super::math::MathNode::new(),
+		}),
+	)
 }
 
 #[cfg(test)]
@@ -264,7 +270,10 @@ mod tests {
 	fn create_wires_inputs_and_flags() {
 		let (core, behavior) = create();
 		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.opacity");
-		assert_eq!(core.get_input(VALUE_INPUT).unwrap().default, NodeValue::Float(1.0));
+		assert_eq!(
+			core.get_input(VALUE_INPUT).unwrap().default,
+			NodeValue::Float(1.0)
+		);
 		assert_eq!(core.effect_input, TEXTURE_INPUT);
 		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
 	}
@@ -273,7 +282,12 @@ mod tests {
 	fn value_no_texture_pushes_nothing() {
 		let (core, behavior) = create();
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
 		assert!(table.is_empty());
 	}
 

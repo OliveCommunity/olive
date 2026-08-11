@@ -90,10 +90,8 @@ pub fn attach_pools(hs: &HandshakeMsg) -> Result<AttachedPools, String> {
 	let mut input_region = None;
 	let mut input_pool = None;
 	if hs.input_slots > 0 {
-		let input_bytes = FrameSlotPool::bytes_needed(
-			hs.input_slots as u32,
-			hs.input_slot_data_bytes as usize,
-		);
+		let input_bytes =
+			FrameSlotPool::bytes_needed(hs.input_slots as u32, hs.input_slot_data_bytes as usize);
 		let mut region = SharedMemoryRegion::new();
 		if !region.open(&hs.input_shm_key, input_bytes, ShmMode::Attach) {
 			return Err(format!(

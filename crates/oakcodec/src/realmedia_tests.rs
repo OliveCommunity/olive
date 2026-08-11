@@ -32,8 +32,8 @@ use crate::bridge::common::{
 	oakcommon_videoparams_init_basic, oakcommon_videoparams_set_format,
 };
 use crate::decoder::{
-	CodecStream, Decoder, K_COLOR_RANGE_DEFAULT, RenderMode, RetrieveAudioStatus,
-	RetrieveVideoParams,
+	CodecStream, Decoder, RenderMode, RetrieveAudioStatus, RetrieveVideoParams,
+	K_COLOR_RANGE_DEFAULT,
 };
 use crate::encoder::create_from_params;
 use crate::ffmpeg::FFmpegDecoder;
@@ -118,8 +118,14 @@ fn probe_reports_streams_and_duration() {
 	// Video stream: 1920x1080, 25fps, 17s at 1/12800 time base.
 	let vp = desc.get_video_stream(0).expect("video stream");
 	assert_eq!(unsafe { oakcommon_videoparams_get_width(vp.clone()) }, 1920);
-	assert_eq!(unsafe { oakcommon_videoparams_get_height(vp.clone()) }, 1080);
-	assert_eq!(unsafe { oakcommon_videoparams_get_duration(vp.clone()) }, 17 * 12800);
+	assert_eq!(
+		unsafe { oakcommon_videoparams_get_height(vp.clone()) },
+		1080
+	);
+	assert_eq!(
+		unsafe { oakcommon_videoparams_get_duration(vp.clone()) },
+		17 * 12800
+	);
 
 	let mut num: i32 = 0;
 	let mut den: i32 = 0;
@@ -204,7 +210,10 @@ fn encode_h264_roundtrip_to_tmp() {
 
 	// The output exists and has a plausible size.
 	assert!(out.exists(), "round-trip file was not created");
-	assert!(out.metadata().unwrap().len() > 1000, "round-trip file is empty");
+	assert!(
+		out.metadata().unwrap().len() > 1000,
+		"round-trip file is empty"
+	);
 
 	// Probe the result: one 64x64 video stream.
 	let d = FFmpegDecoder::new();
@@ -246,7 +255,11 @@ fn audio_conform_writes_planar_pcm() {
 		let meta = std::fs::metadata(path).expect("conform output exists");
 		assert!(meta.len() > 0, "conform file is empty");
 		// 1 second at 48kHz * 4 bytes = 192 KB minimum.
-		assert!(meta.len() >= 192_000, "conform file too short: {}", meta.len());
+		assert!(
+			meta.len() >= 192_000,
+			"conform file too short: {}",
+			meta.len()
+		);
 	}
 
 	let _ = std::fs::remove_dir_all(&dir);

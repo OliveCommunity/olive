@@ -47,13 +47,22 @@ mod ffi_ffmpegutils_tests {
 			oakcommon_ffmpegutils_get_compatible_bridge_pixel_format(26, -1, null_mut()),
 			OAKCOMMON_E_INVALID
 		);
-		assert_eq!(oakcommon_ffmpegutils_get_compatible_pixel_format(0, null_mut()), OAKCOMMON_E_INVALID);
+		assert_eq!(
+			oakcommon_ffmpegutils_get_compatible_pixel_format(0, null_mut()),
+			OAKCOMMON_E_INVALID
+		);
 		assert_eq!(
 			oakcommon_ffmpegutils_get_ffmpeg_pixel_format(0, 4, null_mut()),
 			OAKCOMMON_E_INVALID
 		);
-		assert_eq!(oakcommon_ffmpegutils_get_native_sample_format(0, null_mut()), OAKCOMMON_E_INVALID);
-		assert_eq!(oakcommon_ffmpegutils_get_ffmpeg_sample_format(6, null_mut()), OAKCOMMON_E_INVALID);
+		assert_eq!(
+			oakcommon_ffmpegutils_get_native_sample_format(0, null_mut()),
+			OAKCOMMON_E_INVALID
+		);
+		assert_eq!(
+			oakcommon_ffmpegutils_get_ffmpeg_sample_format(6, null_mut()),
+			OAKCOMMON_E_INVALID
+		);
 		assert_eq!(
 			oakcommon_ffmpegutils_convert_jpeg_space_to_regular_space(12, null_mut()),
 			OAKCOMMON_E_INVALID
@@ -102,11 +111,20 @@ mod ffi_ffmpegutils_tests {
 	#[test]
 	fn compatible_pixel_format_maps_native() {
 		let mut out: i32 = -999;
-		assert_eq!(oakcommon_ffmpegutils_get_compatible_pixel_format(0, &mut out), OAKCOMMON_OK); // U8
+		assert_eq!(
+			oakcommon_ffmpegutils_get_compatible_pixel_format(0, &mut out),
+			OAKCOMMON_OK
+		); // U8
 		assert_eq!(out, 0);
-		assert_eq!(oakcommon_ffmpegutils_get_compatible_pixel_format(3, &mut out), OAKCOMMON_OK); // F16
+		assert_eq!(
+			oakcommon_ffmpegutils_get_compatible_pixel_format(3, &mut out),
+			OAKCOMMON_OK
+		); // F16
 		assert_eq!(out, 2); // -> U16
-		assert_eq!(oakcommon_ffmpegutils_get_compatible_pixel_format(-1, &mut out), OAKCOMMON_OK); // invalid
+		assert_eq!(
+			oakcommon_ffmpegutils_get_compatible_pixel_format(-1, &mut out),
+			OAKCOMMON_OK
+		); // invalid
 		assert_eq!(out, -1);
 	}
 
@@ -115,13 +133,25 @@ mod ffi_ffmpegutils_tests {
 	#[test]
 	fn ffmpeg_pixel_format_maps_native_to_bridge() {
 		let mut out: i32 = -999;
-		assert_eq!(oakcommon_ffmpegutils_get_ffmpeg_pixel_format(0, 3, &mut out), OAKCOMMON_OK); // U8 RGB
+		assert_eq!(
+			oakcommon_ffmpegutils_get_ffmpeg_pixel_format(0, 3, &mut out),
+			OAKCOMMON_OK
+		); // U8 RGB
 		assert_eq!(out, 2); // RGB24
-		assert_eq!(oakcommon_ffmpegutils_get_ffmpeg_pixel_format(0, 4, &mut out), OAKCOMMON_OK); // U8 RGBA
+		assert_eq!(
+			oakcommon_ffmpegutils_get_ffmpeg_pixel_format(0, 4, &mut out),
+			OAKCOMMON_OK
+		); // U8 RGBA
 		assert_eq!(out, 26); // RGBA
-		assert_eq!(oakcommon_ffmpegutils_get_ffmpeg_pixel_format(2, 4, &mut out), OAKCOMMON_OK); // U16 RGBA
+		assert_eq!(
+			oakcommon_ffmpegutils_get_ffmpeg_pixel_format(2, 4, &mut out),
+			OAKCOMMON_OK
+		); // U16 RGBA
 		assert_eq!(out, 105); // RGBA64LE
-		assert_eq!(oakcommon_ffmpegutils_get_ffmpeg_pixel_format(1, 3, &mut out), OAKCOMMON_OK); // U10 RGB
+		assert_eq!(
+			oakcommon_ffmpegutils_get_ffmpeg_pixel_format(1, 3, &mut out),
+			OAKCOMMON_OK
+		); // U10 RGB
 		assert_eq!(out, -1); // no bridge format
 	}
 
@@ -129,13 +159,25 @@ mod ffi_ffmpegutils_tests {
 	#[test]
 	fn native_sample_format_maps_bridge_to_native() {
 		let mut out: i32 = -999;
-		assert_eq!(oakcommon_ffmpegutils_get_native_sample_format(0, &mut out), OAKCOMMON_OK); // U8
+		assert_eq!(
+			oakcommon_ffmpegutils_get_native_sample_format(0, &mut out),
+			OAKCOMMON_OK
+		); // U8
 		assert_eq!(out, 6); // SMP_FMT_U8
-		assert_eq!(oakcommon_ffmpegutils_get_native_sample_format(1, &mut out), OAKCOMMON_OK); // S16
+		assert_eq!(
+			oakcommon_ffmpegutils_get_native_sample_format(1, &mut out),
+			OAKCOMMON_OK
+		); // S16
 		assert_eq!(out, 7);
-		assert_eq!(oakcommon_ffmpegutils_get_native_sample_format(8, &mut out), OAKCOMMON_OK); // FLTP
+		assert_eq!(
+			oakcommon_ffmpegutils_get_native_sample_format(8, &mut out),
+			OAKCOMMON_OK
+		); // FLTP
 		assert_eq!(out, 4); // SMP_FMT_F32_P
-		assert_eq!(oakcommon_ffmpegutils_get_native_sample_format(999, &mut out), OAKCOMMON_OK);
+		assert_eq!(
+			oakcommon_ffmpegutils_get_native_sample_format(999, &mut out),
+			OAKCOMMON_OK
+		);
 		assert_eq!(out, -1); // unknown -> invalid
 	}
 
@@ -143,11 +185,20 @@ mod ffi_ffmpegutils_tests {
 	#[test]
 	fn ffmpeg_sample_format_maps_native_to_bridge() {
 		let mut out: i32 = -999;
-		assert_eq!(oakcommon_ffmpegutils_get_ffmpeg_sample_format(6, &mut out), OAKCOMMON_OK); // SMP_FMT_U8
+		assert_eq!(
+			oakcommon_ffmpegutils_get_ffmpeg_sample_format(6, &mut out),
+			OAKCOMMON_OK
+		); // SMP_FMT_U8
 		assert_eq!(out, 0); // U8
-		assert_eq!(oakcommon_ffmpegutils_get_ffmpeg_sample_format(10, &mut out), OAKCOMMON_OK); // SMP_FMT_F32
+		assert_eq!(
+			oakcommon_ffmpegutils_get_ffmpeg_sample_format(10, &mut out),
+			OAKCOMMON_OK
+		); // SMP_FMT_F32
 		assert_eq!(out, 3); // FLT
-		assert_eq!(oakcommon_ffmpegutils_get_ffmpeg_sample_format(-1, &mut out), OAKCOMMON_OK); // invalid
+		assert_eq!(
+			oakcommon_ffmpegutils_get_ffmpeg_sample_format(-1, &mut out),
+			OAKCOMMON_OK
+		); // invalid
 		assert_eq!(out, -1);
 	}
 
@@ -156,20 +207,41 @@ mod ffi_ffmpegutils_tests {
 	#[test]
 	fn jpeg_space_converts_to_regular_space() {
 		let mut out: i32 = -999;
-		assert_eq!(oakcommon_ffmpegutils_convert_jpeg_space_to_regular_space(12, &mut out), OAKCOMMON_OK); // YUVJ420P
+		assert_eq!(
+			oakcommon_ffmpegutils_convert_jpeg_space_to_regular_space(12, &mut out),
+			OAKCOMMON_OK
+		); // YUVJ420P
 		assert_eq!(out, 0); // YUV420P
-		assert_eq!(oakcommon_ffmpegutils_convert_jpeg_space_to_regular_space(13, &mut out), OAKCOMMON_OK); // YUVJ422P
+		assert_eq!(
+			oakcommon_ffmpegutils_convert_jpeg_space_to_regular_space(13, &mut out),
+			OAKCOMMON_OK
+		); // YUVJ422P
 		assert_eq!(out, 4); // YUV422P
-		assert_eq!(oakcommon_ffmpegutils_convert_jpeg_space_to_regular_space(14, &mut out), OAKCOMMON_OK); // YUVJ444P
+		assert_eq!(
+			oakcommon_ffmpegutils_convert_jpeg_space_to_regular_space(14, &mut out),
+			OAKCOMMON_OK
+		); // YUVJ444P
 		assert_eq!(out, 5); // YUV444P
-		assert_eq!(oakcommon_ffmpegutils_convert_jpeg_space_to_regular_space(32, &mut out), OAKCOMMON_OK); // YUVJ440P
+		assert_eq!(
+			oakcommon_ffmpegutils_convert_jpeg_space_to_regular_space(32, &mut out),
+			OAKCOMMON_OK
+		); // YUVJ440P
 		assert_eq!(out, 31); // YUV440P
-		assert_eq!(oakcommon_ffmpegutils_convert_jpeg_space_to_regular_space(138, &mut out), OAKCOMMON_OK); // YUVJ411P
+		assert_eq!(
+			oakcommon_ffmpegutils_convert_jpeg_space_to_regular_space(138, &mut out),
+			OAKCOMMON_OK
+		); // YUVJ411P
 		assert_eq!(out, 7); // YUV411P
-		// Non-JPEG formats pass through unchanged.
-		assert_eq!(oakcommon_ffmpegutils_convert_jpeg_space_to_regular_space(26, &mut out), OAKCOMMON_OK); // RGBA
+					  // Non-JPEG formats pass through unchanged.
+		assert_eq!(
+			oakcommon_ffmpegutils_convert_jpeg_space_to_regular_space(26, &mut out),
+			OAKCOMMON_OK
+		); // RGBA
 		assert_eq!(out, 26);
-		assert_eq!(oakcommon_ffmpegutils_convert_jpeg_space_to_regular_space(-1, &mut out), OAKCOMMON_OK); // none
+		assert_eq!(
+			oakcommon_ffmpegutils_convert_jpeg_space_to_regular_space(-1, &mut out),
+			OAKCOMMON_OK
+		); // none
 		assert_eq!(out, -1);
 	}
 }

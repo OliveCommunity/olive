@@ -45,7 +45,9 @@ use crate::ffi::taskhandle::{
 };
 use crate::handle::CHandle;
 use crate::precache::PreCacheTask;
-use crate::project::import::{import_file_count, import_title, ImageSequenceConfirmFn, ProjectImportTask};
+use crate::project::import::{
+	import_file_count, import_title, ImageSequenceConfirmFn, ProjectImportTask,
+};
 use crate::project::load::{ProjectLoadBaseTask, ProjectLoadTask};
 use crate::project::loadotio::{set_import_confirm_callback, LoadOTIOTask};
 use crate::project::save::{project_filename, ProjectSaveTask};
@@ -53,8 +55,11 @@ use crate::project::saveotio::SaveOTIOTask;
 use crate::task::Task;
 
 /// `oaktask_otio_import_confirm_fn` (`include/task/project.h`).
-pub type OakTaskOtioImportConfirmFn =
-	unsafe extern "C" fn(sequence_names: *const *const c_char, count: c_int, userdata: *mut c_void) -> c_int;
+pub type OakTaskOtioImportConfirmFn = unsafe extern "C" fn(
+	sequence_names: *const *const c_char,
+	count: c_int,
+	userdata: *mut c_void,
+) -> c_int;
 
 /// `oaktask_image_sequence_confirm_fn` (`include/task/project.h`).
 pub type OakTaskImageSequenceConfirmFn =
@@ -280,7 +285,10 @@ pub unsafe extern "C" fn oaktask_load_otio_take_project(t: CHandle) -> CHandle {
 /// `.fcpxml`, case-insensitive; see `crate::project::format`), so the C
 /// ABI needs no format parameter.
 #[no_mangle]
-pub unsafe extern "C" fn oaktask_create_project_save_otio(project: CHandle, filename: *const c_char) -> CHandle {
+pub unsafe extern "C" fn oaktask_create_project_save_otio(
+	project: CHandle,
+	filename: *const c_char,
+) -> CHandle {
 	if project.ctx.is_null() || filename.is_null() {
 		return CHandle::null();
 	}
@@ -300,7 +308,10 @@ pub unsafe extern "C" fn oaktask_create_project_save_otio(project: CHandle, file
 
 /// `oaktask_load_otio_set_confirm_cb` (`include/task/project.h`).
 #[no_mangle]
-pub unsafe extern "C" fn oaktask_load_otio_set_confirm_cb(cb: Option<OakTaskOtioImportConfirmFn>, userdata: *mut c_void) {
+pub unsafe extern "C" fn oaktask_load_otio_set_confirm_cb(
+	cb: Option<OakTaskOtioImportConfirmFn>,
+	userdata: *mut c_void,
+) {
 	let Some(cb) = cb else {
 		set_import_confirm_callback(None);
 		return;
@@ -314,7 +325,11 @@ pub unsafe extern "C" fn oaktask_load_otio_set_confirm_cb(cb: Option<OakTaskOtio
 
 /// `oaktask_create_precache` (`include/task/project.h`).
 #[no_mangle]
-pub unsafe extern "C" fn oaktask_create_precache(footage: CHandle, index: c_int, sequence: CHandle) -> CHandle {
+pub unsafe extern "C" fn oaktask_create_precache(
+	footage: CHandle,
+	index: c_int,
+	sequence: CHandle,
+) -> CHandle {
 	if footage.ctx.is_null() || sequence.ctx.is_null() {
 		return CHandle::null();
 	}

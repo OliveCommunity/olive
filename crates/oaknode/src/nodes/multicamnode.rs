@@ -58,7 +58,8 @@ pub struct MultiCamNode {
 
 /// The C++ `k_input_flag_static` mask: not-connectable +
 /// not-keyframable.
-const STATIC_FLAGS: u32 = crate::input::flags::NOT_CONNECTABLE | crate::input::flags::NOT_KEYFRAMABLE;
+const STATIC_FLAGS: u32 =
+	crate::input::flags::NOT_CONNECTABLE | crate::input::flags::NOT_KEYFRAMABLE;
 
 impl MultiCamNode {
 	/// Index of the currently selected source (C++
@@ -208,7 +209,12 @@ impl NodeBehavior for MultiCamNode {
 	/// `is_input_connected_for_render()` (reports `sources_in` elements
 	/// as connected whenever a sequence is set); the trait has no such
 	/// method, so that behavior folds into this one.
-	fn connected_render_output(&self, core: &NodeCore, input: &str, element: i32) -> Option<NodeId> {
+	fn connected_render_output(
+		&self,
+		core: &NodeCore,
+		input: &str,
+		element: i32,
+	) -> Option<NodeId> {
 		if self.sequence.is_some() && input == SOURCES_INPUT && element >= 0 {
 			let _ = (core, element);
 			None
@@ -225,7 +231,13 @@ impl NodeBehavior for MultiCamNode {
 	/// The Rust row carries no array payload (the `sources_in` value is
 	/// the single active element), so the connected value is pushed
 	/// through as-is; when the input is absent nothing is pushed.
-	fn value(&self, core: &NodeCore, inputs: &NodeValueRow, time: Rational, table: &mut NodeValueTable) {
+	fn value(
+		&self,
+		core: &NodeCore,
+		inputs: &NodeValueRow,
+		time: Rational,
+		table: &mut NodeValueTable,
+	) {
 		let _ = (core, time);
 		if let Some(v) = inputs.get(SOURCES_INPUT) {
 			table.push(v.value_type(), v.clone(), None);
@@ -251,7 +263,13 @@ impl NodeBehavior for MultiCamNode {
 	/// Edge disconnected (C++ `InputDisconnectedEvent()`): on
 	/// `sequence_in` disconnect, clears the stored sequence and re-hides
 	/// `sequence_type_in`.
-	fn input_disconnected(&mut self, core: &mut NodeCore, input: &str, element: i32, source: NodeId) {
+	fn input_disconnected(
+		&mut self,
+		core: &mut NodeCore,
+		input: &str,
+		element: i32,
+		source: NodeId,
+	) {
 		let _ = (element, source);
 		if input == SEQUENCE_INPUT {
 			if let Some(slot) = core.get_input_mut(SEQUENCE_TYPE_INPUT) {
@@ -360,8 +378,14 @@ mod tests {
 	fn create_wires_inputs() {
 		let (core, behavior) = create();
 		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.multicam");
-		assert_eq!(core.get_input(CURRENT_INPUT).unwrap().value_type, ValueType::Combo);
-		assert_eq!(core.get_input(CURRENT_INPUT).unwrap().default, NodeValue::Combo(0));
+		assert_eq!(
+			core.get_input(CURRENT_INPUT).unwrap().value_type,
+			ValueType::Combo
+		);
+		assert_eq!(
+			core.get_input(CURRENT_INPUT).unwrap().default,
+			NodeValue::Combo(0)
+		);
 		let sources = core.get_input(SOURCES_INPUT).unwrap();
 		assert_ne!(sources.flags & crate::input::flags::ARRAY, 0);
 		assert_ne!(sources.flags & crate::input::flags::NOT_KEYFRAMABLE, 0);
@@ -414,7 +438,14 @@ mod tests {
 
 	#[test]
 	fn index_row_cols_round_trip() {
-		for (i, rows, cols) in [(0, 3, 3), (1, 3, 3), (2, 3, 3), (3, 3, 3), (8, 3, 3), (5, 2, 3)] {
+		for (i, rows, cols) in [
+			(0, 3, 3),
+			(1, 3, 3),
+			(2, 3, 3),
+			(3, 3, 3),
+			(8, 3, 3),
+			(5, 2, 3),
+		] {
 			let (r, c) = MultiCamNode::index_to_row_cols(i, rows, cols);
 			assert_eq!(r, i / cols);
 			assert_eq!(c, i % cols);
@@ -439,7 +470,10 @@ mod tests {
 	#[test]
 	fn ignore_inputs_always_sequence() {
 		let node = MultiCamNode { sequence: None };
-		assert_eq!(node.ignore_inputs_for_rendering(), &[SEQUENCE_INPUT.to_string()]);
+		assert_eq!(
+			node.ignore_inputs_for_rendering(),
+			&[SEQUENCE_INPUT.to_string()]
+		);
 	}
 
 	#[test]
@@ -456,7 +490,12 @@ mod tests {
 	fn value_pushes_nothing_when_sources_empty() {
 		let (core, behavior) = create();
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		behavior.value(
+			&core,
+			&NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
 		assert!(table.is_empty());
 	}
 
@@ -483,10 +522,16 @@ mod tests {
 	#[test]
 	fn duplicate_copies_sequence() {
 		let seq = fake_id(7);
-		let node = MultiCamNode { sequence: Some(seq) };
+		let node = MultiCamNode {
+			sequence: Some(seq),
+		};
 		let copy = node.duplicate(&NodeCore::new()).unwrap();
 		assert_eq!(copy.type_id(), "org.olivevideoeditor.Olive.multicam");
-		let down = copy.as_any().unwrap().downcast_ref::<MultiCamNode>().unwrap();
+		let down = copy
+			.as_any()
+			.unwrap()
+			.downcast_ref::<MultiCamNode>()
+			.unwrap();
 		assert_eq!(down.sequence, Some(seq));
 	}
 }

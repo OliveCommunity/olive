@@ -122,9 +122,7 @@ impl FileFunctions {
 		// `~/.config`. The empty-root fallback is the temp directory.
 		#[cfg(target_os = "macos")]
 		let config_root = match std::env::var("HOME") {
-			Ok(h) if !h.is_empty() => {
-				PathBuf::from(h).join("Library").join("Application Support")
-			}
+			Ok(h) if !h.is_empty() => PathBuf::from(h).join("Library").join("Application Support"),
 			_ => PathBuf::new(),
 		};
 		#[cfg(not(target_os = "macos"))]
@@ -368,10 +366,7 @@ impl FileFunctions {
 
 		let mut temp_abs_path;
 		loop {
-			temp_abs_path = dir.join(format!(
-				"{}.tmp{}{}",
-				basename, counter, complete_suffix
-			));
+			temp_abs_path = dir.join(format!("{}.tmp{}{}", basename, counter, complete_suffix));
 			counter += 1;
 			if !temp_abs_path.exists() {
 				break;
@@ -463,12 +458,24 @@ mod tests {
 	#[test]
 	fn ensure_extension_appends_and_is_case_insensitive() {
 		let f = FileFunctions::new();
-		assert_eq!(f.ensure_filename_extension("foo", "ove").unwrap(), "foo.ove");
+		assert_eq!(
+			f.ensure_filename_extension("foo", "ove").unwrap(),
+			"foo.ove"
+		);
 		// Already present (case-insensitive): untouched.
-		assert_eq!(f.ensure_filename_extension("foo.OVE", "ove").unwrap(), "foo.OVE");
-		assert_eq!(f.ensure_filename_extension("foo.ove", "Ove").unwrap(), "foo.ove");
+		assert_eq!(
+			f.ensure_filename_extension("foo.OVE", "ove").unwrap(),
+			"foo.OVE"
+		);
+		assert_eq!(
+			f.ensure_filename_extension("foo.ove", "Ove").unwrap(),
+			"foo.ove"
+		);
 		// The "." in the suffix must actually be present.
-		assert_eq!(f.ensure_filename_extension("fooove", "ove").unwrap(), "fooove.ove");
+		assert_eq!(
+			f.ensure_filename_extension("fooove", "ove").unwrap(),
+			"fooove.ove"
+		);
 		// Empty inputs are no-ops.
 		assert_eq!(f.ensure_filename_extension("", "ove").unwrap(), "");
 		assert_eq!(f.ensure_filename_extension("foo", "").unwrap(), "foo");
@@ -572,10 +579,7 @@ mod tests {
 		std::fs::write(&from, b"new").unwrap();
 		std::fs::write(&to, b"old").unwrap();
 
-		assert!(f.rename_file_allow_overwrite(
-			&from.to_string_lossy(),
-			&to.to_string_lossy()
-		));
+		assert!(f.rename_file_allow_overwrite(&from.to_string_lossy(), &to.to_string_lossy()));
 		assert!(!from.exists());
 		assert_eq!(std::fs::read(&to).unwrap(), b"new");
 
@@ -693,7 +697,10 @@ mod tests {
 	fn ensure_extension_dotfile_multi_ext_and_unicode() {
 		let f = FileFunctions::new();
 		// Dotfiles and multi-extension names just get the suffix appended.
-		assert_eq!(f.ensure_filename_extension(".hidden", "txt").unwrap(), ".hidden.txt");
+		assert_eq!(
+			f.ensure_filename_extension(".hidden", "txt").unwrap(),
+			".hidden.txt"
+		);
 		assert_eq!(
 			f.ensure_filename_extension("archive.tar", "gz").unwrap(),
 			"archive.tar.gz"
@@ -764,12 +771,16 @@ mod tests {
 		assert_ne!(ida, idb);
 
 		// A directory also gets an identifier (C++ only checks exists()).
-		let idd = f.get_unique_file_identifier(&dir.to_string_lossy()).unwrap();
+		let idd = f
+			.get_unique_file_identifier(&dir.to_string_lossy())
+			.unwrap();
 		assert_eq!(idd.len(), 16);
 
 		// Empty filename -> absolute() of "" is the CWD which exists; but a
 		// definitely-bogus relative name yields "".
-		let bogus = f.get_unique_file_identifier("definitely-not-here.xyz").unwrap();
+		let bogus = f
+			.get_unique_file_identifier("definitely-not-here.xyz")
+			.unwrap();
 		assert_eq!(bogus, "");
 
 		let _ = std::fs::remove_dir_all(&dir);
@@ -878,10 +889,7 @@ mod tests {
 		let from = dir.join("only.txt");
 		let to = dir.join("fresh.txt");
 		std::fs::write(&from, b"data").unwrap();
-		assert!(f.rename_file_allow_overwrite(
-			&from.to_string_lossy(),
-			&to.to_string_lossy()
-		));
+		assert!(f.rename_file_allow_overwrite(&from.to_string_lossy(), &to.to_string_lossy()));
 		assert_eq!(std::fs::read(&to).unwrap(), b"data");
 
 		// Destination existing as a DIRECTORY cannot be removed by
@@ -891,10 +899,7 @@ mod tests {
 		std::fs::write(&from2, b"z").unwrap();
 		let todir = dir.join("destdir");
 		std::fs::create_dir(&todir).unwrap();
-		assert!(!f.rename_file_allow_overwrite(
-			&from2.to_string_lossy(),
-			&todir.to_string_lossy()
-		));
+		assert!(!f.rename_file_allow_overwrite(&from2.to_string_lossy(), &todir.to_string_lossy()));
 
 		let _ = std::fs::remove_dir_all(&dir);
 	}
@@ -904,10 +909,7 @@ mod tests {
 		let f = FileFunctions::new();
 		let temp = f.get_temp_file_path().unwrap();
 		// `<temp>/oak`, created on demand (`filefunctions.cpp:184-196`).
-		assert_eq!(
-			PathBuf::from(&temp),
-			std::env::temp_dir().join("oak")
-		);
+		assert_eq!(PathBuf::from(&temp), std::env::temp_dir().join("oak"));
 		assert!(Path::new(&temp).is_dir());
 	}
 
@@ -928,8 +930,12 @@ mod tests {
 /// `bridge::common` fallback (see `docs/zh/plans/riir/single-lib.md`);
 /// oaknode and oakrender both call it directly now.
 pub fn default_disk_cache_path() -> String {
-	Path::new(&FileFunctions::new().get_configuration_location().unwrap_or_default())
-		.join("mediacache")
-		.to_string_lossy()
-		.into_owned()
+	Path::new(
+		&FileFunctions::new()
+			.get_configuration_location()
+			.unwrap_or_default(),
+	)
+	.join("mediacache")
+	.to_string_lossy()
+	.into_owned()
 }

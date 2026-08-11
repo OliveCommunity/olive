@@ -103,7 +103,11 @@ pub fn oaknode_project_filename(project: CHandle, buf: *mut c_char, buf_size: c_
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_project_pretty_filename(project: CHandle, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_project_pretty_filename(
+	project: CHandle,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::project::oaknode_project_pretty_filename(project, buf, buf_size) }
 }
 
@@ -157,7 +161,11 @@ pub fn oaknode_project_set_cache_location_setting(project: CHandle, setting: c_i
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_project_get_custom_cache_path(project: CHandle, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_project_get_custom_cache_path(
+	project: CHandle,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::project::oaknode_project_get_custom_cache_path(project, buf, buf_size) }
 }
 
@@ -229,7 +237,11 @@ pub fn oaknode_node_set_label(node: CHandle, label: *const c_char) -> c_int {
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_set_label_undoable(node: CHandle, label: *const c_char, out_command: *mut CHandle) -> c_int {
+pub fn oaknode_node_set_label_undoable(
+	node: CHandle,
+	label: *const c_char,
+	out_command: *mut CHandle,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_set_label_undoable(node, label, out_command) }
 }
 
@@ -247,8 +259,14 @@ pub fn oaknode_node_set_override_color(node: CHandle, index: c_int) -> c_int {
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_set_override_color_undoable(node: CHandle, index: c_int, out_command: *mut CHandle) -> c_int {
-	unsafe { oaknode::ffi::node::oaknode_node_set_override_color_undoable(node, index, out_command) }
+pub fn oaknode_node_set_override_color_undoable(
+	node: CHandle,
+	index: c_int,
+	out_command: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::node::oaknode_node_set_override_color_undoable(node, index, out_command)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -265,7 +283,11 @@ pub fn oaknode_node_set_enabled(node: CHandle, enabled: c_int) -> c_int {
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_set_enabled_undoable(node: CHandle, enabled: c_int, out_command: *mut CHandle) -> c_int {
+pub fn oaknode_node_set_enabled_undoable(
+	node: CHandle,
+	enabled: c_int,
+	out_command: *mut CHandle,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_set_enabled_undoable(node, enabled, out_command) }
 }
 
@@ -289,105 +311,162 @@ pub fn oaknode_node_input_count(node: CHandle, out_count: *mut c_int) -> c_int {
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_input_id(node: CHandle, index: c_int, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_node_input_id(
+	node: CHandle,
+	index: c_int,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_input_id(node, index, buf, buf_size) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_input_get_type(node: CHandle, input_id: *const c_char, out_type: *mut c_int) -> c_int {
+pub fn oaknode_node_input_get_type(
+	node: CHandle,
+	input_id: *const c_char,
+	out_type: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_input_get_type(node, input_id, out_type) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_input_is_connected(node: CHandle, input_id: *const c_char, out_value: *mut c_int) -> c_int {
+pub fn oaknode_node_input_is_connected(
+	node: CHandle,
+	input_id: *const c_char,
+	out_value: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_input_is_connected(node, input_id, out_value) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_input_is_connectable(node: CHandle, input_id: *const c_char, out_value: *mut c_int) -> c_int {
+pub fn oaknode_node_input_is_connectable(
+	node: CHandle,
+	input_id: *const c_char,
+	out_value: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_input_is_connectable(node, input_id, out_value) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_get_input_name(node: CHandle, input_id: *const c_char, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_node_get_input_name(
+	node: CHandle,
+	input_id: *const c_char,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_get_input_name(node, input_id, buf, buf_size) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_input_get_connected_node(node: CHandle, input_id: *const c_char, out_node: *mut CHandle) -> c_int {
+pub fn oaknode_node_input_get_connected_node(
+	node: CHandle,
+	input_id: *const c_char,
+	out_node: *mut CHandle,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_input_get_connected_node(node, input_id, out_node) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_node_get_input(
-		node: CHandle,
-		input_id: *const c_char,
-		out: *mut crate::node::OakNodeValue,
-	) -> c_int {
+	node: CHandle,
+	input_id: *const c_char,
+	out: *mut crate::node::OakNodeValue,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_get_input(node, input_id, out) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_set_input(node: CHandle, input_id: *const c_char, v: *const crate::node::OakNodeValue) -> c_int {
+pub fn oaknode_node_set_input(
+	node: CHandle,
+	input_id: *const c_char,
+	v: *const crate::node::OakNodeValue,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_set_input(node, input_id, v) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_node_set_input_undoable(
-		node: CHandle,
-		input_id: *const c_char,
-		v: *const crate::node::OakNodeValue,
-		out_command: *mut CHandle,
-	) -> c_int {
+	node: CHandle,
+	input_id: *const c_char,
+	v: *const crate::node::OakNodeValue,
+	out_command: *mut CHandle,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_set_input_undoable(node, input_id, v, out_command) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_get_input_string(node: CHandle, input_id: *const c_char, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_node_get_input_string(
+	node: CHandle,
+	input_id: *const c_char,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_get_input_string(node, input_id, buf, buf_size) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_set_input_string(node: CHandle, input_id: *const c_char, value: *const c_char) -> c_int {
+pub fn oaknode_node_set_input_string(
+	node: CHandle,
+	input_id: *const c_char,
+	value: *const c_char,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_set_input_string(node, input_id, value) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_node_set_input_string_undoable(
-		node: CHandle,
-		input_id: *const c_char,
-		value: *const c_char,
-		out_command: *mut CHandle,
-	) -> c_int {
-	unsafe { oaknode::ffi::node::oaknode_node_set_input_string_undoable(node, input_id, value, out_command) }
+	node: CHandle,
+	input_id: *const c_char,
+	value: *const c_char,
+	out_command: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::node::oaknode_node_set_input_string_undoable(
+			node,
+			input_id,
+			value,
+			out_command,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_connect(output_node: CHandle, input_node: CHandle, input_id: *const c_char) -> c_int {
+pub fn oaknode_node_connect(
+	output_node: CHandle,
+	input_node: CHandle,
+	input_id: *const c_char,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_connect(output_node, input_node, input_id) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_node_connect_undoable(
-		output_node: CHandle,
-		input_node: CHandle,
-		input_id: *const c_char,
-		out_command: *mut CHandle,
-	) -> c_int {
-	unsafe { oaknode::ffi::node::oaknode_node_connect_undoable(output_node, input_node, input_id, out_command) }
+	output_node: CHandle,
+	input_node: CHandle,
+	input_id: *const c_char,
+	out_command: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::node::oaknode_node_connect_undoable(
+			output_node,
+			input_node,
+			input_id,
+			out_command,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -398,8 +477,14 @@ pub fn oaknode_node_disconnect(input_node: CHandle, input_id: *const c_char) -> 
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_disconnect_undoable(input_node: CHandle, input_id: *const c_char, out_command: *mut CHandle) -> c_int {
-	unsafe { oaknode::ffi::node::oaknode_node_disconnect_undoable(input_node, input_id, out_command) }
+pub fn oaknode_node_disconnect_undoable(
+	input_node: CHandle,
+	input_id: *const c_char,
+	out_command: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::node::oaknode_node_disconnect_undoable(input_node, input_id, out_command)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -410,25 +495,37 @@ pub fn oaknode_node_output_connection_count(node: CHandle, out_count: *mut c_int
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_output_connection_node_at(node: CHandle, index: c_int, out_node: *mut CHandle) -> c_int {
+pub fn oaknode_node_output_connection_node_at(
+	node: CHandle,
+	index: c_int,
+	out_node: *mut CHandle,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_output_connection_node_at(node, index, out_node) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_node_output_connection_input_id_at(
-		node: CHandle,
-		index: c_int,
-		buf: *mut c_char,
-		buf_size: c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::node::oaknode_node_output_connection_input_id_at(node, index, buf, buf_size) }
+	node: CHandle,
+	index: c_int,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::node::oaknode_node_output_connection_input_id_at(node, index, buf, buf_size)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_output_connection_element_at(node: CHandle, index: c_int, out_element: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::node::oaknode_node_output_connection_element_at(node, index, out_element) }
+pub fn oaknode_node_output_connection_element_at(
+	node: CHandle,
+	index: c_int,
+	out_element: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::node::oaknode_node_output_connection_element_at(node, index, out_element)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -445,7 +542,12 @@ pub fn oaknode_node_unlink(a: CHandle, b: CHandle, out_unlinked: *mut c_int) -> 
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_link_undoable(a: CHandle, b: CHandle, link: c_int, out_command: *mut CHandle) -> c_int {
+pub fn oaknode_node_link_undoable(
+	a: CHandle,
+	b: CHandle,
+	link: c_int,
+	out_command: *mut CHandle,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_link_undoable(a, b, link, out_command) }
 }
 
@@ -482,32 +584,55 @@ pub fn oaknode_node_context_node_at(node: CHandle, index: c_int, out_node: *mut 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_node_get_context_position(
-		node: CHandle,
-		context: CHandle,
-		out_x: *mut f64,
-		out_y: *mut f64,
-		out_expanded: *mut c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::node::oaknode_node_get_context_position(node, context, out_x, out_y, out_expanded) }
+	node: CHandle,
+	context: CHandle,
+	out_x: *mut f64,
+	out_y: *mut f64,
+	out_expanded: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::node::oaknode_node_get_context_position(
+			node,
+			context,
+			out_x,
+			out_y,
+			out_expanded,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_set_context_position(node: CHandle, context: CHandle, x: f64, y: f64, expanded: c_int) -> c_int {
+pub fn oaknode_node_set_context_position(
+	node: CHandle,
+	context: CHandle,
+	x: f64,
+	y: f64,
+	expanded: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_set_context_position(node, context, x, y, expanded) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_node_set_context_position_undoable(
-		node: CHandle,
-		context: CHandle,
-		x: f64,
-		y: f64,
-		expanded: c_int,
-		out_command: *mut CHandle,
-	) -> c_int {
-	unsafe { oaknode::ffi::node::oaknode_node_set_context_position_undoable(node, context, x, y, expanded, out_command) }
+	node: CHandle,
+	context: CHandle,
+	x: f64,
+	y: f64,
+	expanded: c_int,
+	out_command: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::node::oaknode_node_set_context_position_undoable(
+			node,
+			context,
+			x,
+			y,
+			expanded,
+			out_command,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -536,25 +661,44 @@ pub fn oaknode_node_get_project(node: CHandle, out: *mut CHandle) -> c_int {
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_input_array_insert(node: CHandle, input_id: *const c_char, index: c_int) -> c_int {
+pub fn oaknode_node_input_array_insert(
+	node: CHandle,
+	input_id: *const c_char,
+	index: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_input_array_insert(node, input_id, index) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_input_array_remove(node: CHandle, input_id: *const c_char, index: c_int) -> c_int {
+pub fn oaknode_node_input_array_remove(
+	node: CHandle,
+	input_id: *const c_char,
+	index: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_input_array_remove(node, input_id, index) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_connect_element(output_node: CHandle, input_node: CHandle, input_id: *const c_char, element: c_int) -> c_int {
-	unsafe { oaknode::ffi::node::oaknode_node_connect_element(output_node, input_node, input_id, element) }
+pub fn oaknode_node_connect_element(
+	output_node: CHandle,
+	input_node: CHandle,
+	input_id: *const c_char,
+	element: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::node::oaknode_node_connect_element(output_node, input_node, input_id, element)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_disconnect_element(input_node: CHandle, input_id: *const c_char, element: c_int) -> c_int {
+pub fn oaknode_node_disconnect_element(
+	input_node: CHandle,
+	input_id: *const c_char,
+	element: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_disconnect_element(input_node, input_id, element) }
 }
 
@@ -566,8 +710,15 @@ pub fn oaknode_command_create_add_node(graph: CHandle, node: CHandle) -> CHandle
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_command_create_set_position_recursive(node: CHandle, context: CHandle, x: f64, y: f64) -> CHandle {
-	unsafe { oaknode::ffi::node::oaknode_command_create_set_position_recursive(node, context, x, y) }
+pub fn oaknode_command_create_set_position_recursive(
+	node: CHandle,
+	context: CHandle,
+	x: f64,
+	y: f64,
+) -> CHandle {
+	unsafe {
+		oaknode::ffi::node::oaknode_command_create_set_position_recursive(node, context, x, y)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -585,7 +736,9 @@ pub fn oaknode_node_get_work_area(node: CHandle, out: *mut CHandle) -> c_int {
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_node_get_video_frame_cache(node: CHandle, out: *mut CHandle) -> c_int {
-	unsafe { oaknode::ffi::node::oaknode_node_get_video_frame_cache(node, out as *mut std::ffi::c_void) }
+	unsafe {
+		oaknode::ffi::node::oaknode_node_get_video_frame_cache(node, out as *mut std::ffi::c_void)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -596,14 +749,31 @@ pub fn oaknode_node_copy_inputs(dst: CHandle, src: CHandle, include_connections:
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_node_set_value_hint_track(node: CHandle, input_id: *const c_char, track_type: c_int, track_index: c_int) -> c_int {
-	unsafe { oaknode::ffi::node::oaknode_node_set_value_hint_track(node, input_id, track_type, track_index) }
+pub fn oaknode_node_set_value_hint_track(
+	node: CHandle,
+	input_id: *const c_char,
+	track_type: c_int,
+	track_index: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::node::oaknode_node_set_value_hint_track(
+			node,
+			input_id,
+			track_type,
+			track_index,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_viewer_set_video_params(viewer: CHandle, params: *const CHandle) -> c_int {
-	unsafe { oaknode::ffi::node::oaknode_viewer_set_video_params(viewer, params as *const std::ffi::c_void) }
+	unsafe {
+		oaknode::ffi::node::oaknode_viewer_set_video_params(
+			viewer,
+			params as *const std::ffi::c_void,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -621,27 +791,39 @@ pub fn oaknode_node_find_input_footage(node: CHandle, out: *mut CHandle) -> c_in
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_node_get_input_at_time(
-		node: CHandle,
-		input_id: *const c_char,
-		time_num: i64,
-		time_den: i64,
-		out: *mut crate::node::OakNodeValue,
-	) -> c_int {
-	unsafe { oaknode::ffi::node::oaknode_node_get_input_at_time(node, input_id, time_num, time_den, out) }
+	node: CHandle,
+	input_id: *const c_char,
+	time_num: i64,
+	time_den: i64,
+	out: *mut crate::node::OakNodeValue,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::node::oaknode_node_get_input_at_time(node, input_id, time_num, time_den, out)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_node_set_input_at_time_undoable(
-		node: CHandle,
-		input_id: *const c_char,
-		time_num: i64,
-		time_den: i64,
-		v: *const crate::node::OakNodeValue,
-		track: c_int,
-		out_command: *mut CHandle,
-	) -> c_int {
-	unsafe { oaknode::ffi::node::oaknode_node_set_input_at_time_undoable(node, input_id, time_num, time_den, v, track, out_command) }
+	node: CHandle,
+	input_id: *const c_char,
+	time_num: i64,
+	time_den: i64,
+	v: *const crate::node::OakNodeValue,
+	track: c_int,
+	out_command: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::node::oaknode_node_set_input_at_time_undoable(
+			node,
+			input_id,
+			time_num,
+			time_den,
+			v,
+			track,
+			out_command,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -653,15 +835,25 @@ pub fn oaknode_node_identity(node: CHandle) -> usize {
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_node_set_input_at_time_into(
-		node: CHandle,
-		input_id: *const c_char,
-		time_num: i64,
-		time_den: i64,
-		v: *const crate::node::OakNodeValue,
-		track: c_int,
-		multi_command: CHandle,
-	) -> c_int {
-	unsafe { oaknode::ffi::node::oaknode_node_set_input_at_time_into(node, input_id, time_num, time_den, v, track, multi_command) }
+	node: CHandle,
+	input_id: *const c_char,
+	time_num: i64,
+	time_den: i64,
+	v: *const crate::node::OakNodeValue,
+	track: c_int,
+	multi_command: CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::node::oaknode_node_set_input_at_time_into(
+			node,
+			input_id,
+			time_num,
+			time_den,
+			v,
+			track,
+			multi_command,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -702,7 +894,11 @@ pub fn oaknode_factory_id_at(index: c_int, buf: *mut c_char, buf_size: c_int) ->
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_factory_name_from_id(type_id: *const c_char, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_factory_name_from_id(
+	type_id: *const c_char,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::factory::oaknode_factory_name_from_id(type_id, buf, buf_size) }
 }
 
@@ -762,7 +958,11 @@ pub fn oaknode_folder_remove_child(folder: CHandle, child: CHandle) -> c_int {
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_folder_move_children(nodes: *const CHandle, count: c_int, dest_folder: CHandle) -> c_int {
+pub fn oaknode_folder_move_children(
+	nodes: *const CHandle,
+	count: c_int,
+	dest_folder: CHandle,
+) -> c_int {
 	unsafe { oaknode::ffi::folder::oaknode_folder_move_children(nodes, count, dest_folder) }
 }
 
@@ -858,8 +1058,14 @@ pub fn oaknode_footage_subtitle_stream_count(footage: CHandle) -> c_int {
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_footage_duration(footage: CHandle, out_numerator: *mut c_int, out_denominator: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::footage::oaknode_footage_duration(footage, out_numerator, out_denominator) }
+pub fn oaknode_footage_duration(
+	footage: CHandle,
+	out_numerator: *mut c_int,
+	out_denominator: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::footage::oaknode_footage_duration(footage, out_numerator, out_denominator)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -889,14 +1095,23 @@ pub fn oaknode_footage_proxy_state(footage: CHandle) -> c_int {
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_footage_set_proxy(
-		footage: CHandle,
-		path: *const c_char,
-		state: c_int,
-		video_stream_index: c_int,
-		preset_version: c_int,
-		enabled: c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::footage::oaknode_footage_set_proxy(footage, path, state, video_stream_index, preset_version, enabled) }
+	footage: CHandle,
+	path: *const c_char,
+	state: c_int,
+	video_stream_index: c_int,
+	preset_version: c_int,
+	enabled: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::footage::oaknode_footage_set_proxy(
+			footage,
+			path,
+			state,
+			video_stream_index,
+			preset_version,
+			enabled,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -907,19 +1122,43 @@ pub fn oaknode_footage_clear_proxy(footage: CHandle) -> c_int {
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_footage_get_video_params(footage: CHandle, index: c_int, out: *mut CHandle) -> c_int {
-	unsafe { oaknode::ffi::footage::oaknode_footage_get_video_params(footage, index, out as *mut std::ffi::c_void) }
+pub fn oaknode_footage_get_video_params(
+	footage: CHandle,
+	index: c_int,
+	out: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::footage::oaknode_footage_get_video_params(
+			footage,
+			index,
+			out as *mut std::ffi::c_void,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_footage_set_video_params(footage: CHandle, index: c_int, params: *const CHandle) -> c_int {
-	unsafe { oaknode::ffi::footage::oaknode_footage_set_video_params(footage, index, params as *const std::ffi::c_void) }
+pub fn oaknode_footage_set_video_params(
+	footage: CHandle,
+	index: c_int,
+	params: *const CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::footage::oaknode_footage_set_video_params(
+			footage,
+			index,
+			params as *const std::ffi::c_void,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_footage_get_video_length(footage: CHandle, out_num: *mut i64, out_den: *mut i64) -> c_int {
+pub fn oaknode_footage_get_video_length(
+	footage: CHandle,
+	out_num: *mut i64,
+	out_den: *mut i64,
+) -> c_int {
 	unsafe { oaknode::ffi::footage::oaknode_footage_get_video_length(footage, out_num, out_den) }
 }
 
@@ -950,32 +1189,51 @@ pub fn oaknode_group_free(group: *mut CHandle) {
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_group_add_input_passthrough(
-		group: CHandle,
-		node: CHandle,
-		input_id: *const c_char,
-		element: c_int,
-		buf: *mut c_char,
-		buf_size: c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::group::oaknode_group_add_input_passthrough(group, node, input_id, element, buf, buf_size) }
+	group: CHandle,
+	node: CHandle,
+	input_id: *const c_char,
+	element: c_int,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::group::oaknode_group_add_input_passthrough(
+			group, node, input_id, element, buf, buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_group_add_input_passthrough_undoable(
-		group: CHandle,
-		node: CHandle,
-		input_id: *const c_char,
-		element: c_int,
-		out_command: *mut CHandle,
-	) -> c_int {
-	unsafe { oaknode::ffi::group::oaknode_group_add_input_passthrough_undoable(group, node, input_id, element, out_command) }
+	group: CHandle,
+	node: CHandle,
+	input_id: *const c_char,
+	element: c_int,
+	out_command: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::group::oaknode_group_add_input_passthrough_undoable(
+			group,
+			node,
+			input_id,
+			element,
+			out_command,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_group_remove_input_passthrough(group: CHandle, node: CHandle, input_id: *const c_char, element: c_int) -> c_int {
-	unsafe { oaknode::ffi::group::oaknode_group_remove_input_passthrough(group, node, input_id, element) }
+pub fn oaknode_group_remove_input_passthrough(
+	group: CHandle,
+	node: CHandle,
+	input_id: *const c_char,
+	element: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::group::oaknode_group_remove_input_passthrough(group, node, input_id, element)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -986,21 +1244,35 @@ pub fn oaknode_group_passthrough_count(group: CHandle, out_count: *mut c_int) ->
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_group_passthrough_id_at(group: CHandle, index: c_int, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_group_passthrough_id_at(
+	group: CHandle,
+	index: c_int,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::group::oaknode_group_passthrough_id_at(group, index, buf, buf_size) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_group_passthrough_input_at(
-		group: CHandle,
-		index: c_int,
-		out_node: *mut CHandle,
-		buf: *mut c_char,
-		buf_size: c_int,
-		out_element: *mut c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::group::oaknode_group_passthrough_input_at(group, index, out_node, buf, buf_size, out_element) }
+	group: CHandle,
+	index: c_int,
+	out_node: *mut CHandle,
+	buf: *mut c_char,
+	buf_size: c_int,
+	out_element: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::group::oaknode_group_passthrough_input_at(
+			group,
+			index,
+			out_node,
+			buf,
+			buf_size,
+			out_element,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -1017,37 +1289,64 @@ pub fn oaknode_group_set_output_passthrough(group: CHandle, node: CHandle) -> c_
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_group_set_output_passthrough_undoable(group: CHandle, node: CHandle, out_command: *mut CHandle) -> c_int {
-	unsafe { oaknode::ffi::group::oaknode_group_set_output_passthrough_undoable(group, node, out_command) }
+pub fn oaknode_group_set_output_passthrough_undoable(
+	group: CHandle,
+	node: CHandle,
+	out_command: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::group::oaknode_group_set_output_passthrough_undoable(group, node, out_command)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_group_resolve_input(
-		node: CHandle,
-		input_id: *const c_char,
-		element: c_int,
-		out_node: *mut CHandle,
-		buf: *mut c_char,
-		buf_size: c_int,
-		out_element: *mut c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::group::oaknode_group_resolve_input(node, input_id, element, out_node, buf, buf_size, out_element) }
+	node: CHandle,
+	input_id: *const c_char,
+	element: c_int,
+	out_node: *mut CHandle,
+	buf: *mut c_char,
+	buf_size: c_int,
+	out_element: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::group::oaknode_group_resolve_input(
+			node,
+			input_id,
+			element,
+			out_node,
+			buf,
+			buf_size,
+			out_element,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_keyframe_create(
-		time_num: i64,
-		time_den: i64,
-		value: *const crate::node::OakNodeValue,
-		type_: c_int,
-		track: c_int,
-		element: c_int,
-		input_id: *const c_char,
-		parent_or_null: CHandle,
-	) -> CHandle {
-	unsafe { oaknode::ffi::keyframe::oaknode_keyframe_create(time_num, time_den, value, type_, track, element, input_id, parent_or_null) }
+	time_num: i64,
+	time_den: i64,
+	value: *const crate::node::OakNodeValue,
+	type_: c_int,
+	track: c_int,
+	element: c_int,
+	input_id: *const c_char,
+	parent_or_null: CHandle,
+) -> CHandle {
+	unsafe {
+		oaknode::ffi::keyframe::oaknode_keyframe_create(
+			time_num,
+			time_den,
+			value,
+			type_,
+			track,
+			element,
+			input_id,
+			parent_or_null,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -1071,12 +1370,19 @@ pub fn oaknode_keyframe_set_time(keyframe: CHandle, time_num: i64, time_den: i64
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_keyframe_set_time_undoable(
-		keyframe: CHandle,
-		time_num: i64,
-		time_den: i64,
-		out_command: *mut CHandle,
-	) -> c_int {
-	unsafe { oaknode::ffi::keyframe::oaknode_keyframe_set_time_undoable(keyframe, time_num, time_den, out_command) }
+	keyframe: CHandle,
+	time_num: i64,
+	time_den: i64,
+	out_command: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::keyframe::oaknode_keyframe_set_time_undoable(
+			keyframe,
+			time_num,
+			time_den,
+			out_command,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -1094,16 +1400,20 @@ pub fn oaknode_keyframe_set_value(keyframe: CHandle, v: *const crate::node::OakN
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_keyframe_set_value_undoable(
-		keyframe: CHandle,
-		v: *const crate::node::OakNodeValue,
-		out_command: *mut CHandle,
-	) -> c_int {
+	keyframe: CHandle,
+	v: *const crate::node::OakNodeValue,
+	out_command: *mut CHandle,
+) -> c_int {
 	unsafe { oaknode::ffi::keyframe::oaknode_keyframe_set_value_undoable(keyframe, v, out_command) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_keyframe_get_value_string(keyframe: CHandle, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_keyframe_get_value_string(
+	keyframe: CHandle,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::keyframe::oaknode_keyframe_get_value_string(keyframe, buf, buf_size) }
 }
 
@@ -1116,11 +1426,17 @@ pub fn oaknode_keyframe_set_value_string(keyframe: CHandle, value: *const c_char
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_keyframe_set_value_string_undoable(
-		keyframe: CHandle,
-		value: *const c_char,
-		out_command: *mut CHandle,
-	) -> c_int {
-	unsafe { oaknode::ffi::keyframe::oaknode_keyframe_set_value_string_undoable(keyframe, value, out_command) }
+	keyframe: CHandle,
+	value: *const c_char,
+	out_command: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::keyframe::oaknode_keyframe_set_value_string_undoable(
+			keyframe,
+			value,
+			out_command,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -1137,32 +1453,58 @@ pub fn oaknode_keyframe_set_type(keyframe: CHandle, type_: c_int) -> c_int {
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_keyframe_set_type_undoable(keyframe: CHandle, type_: c_int, out_command: *mut CHandle) -> c_int {
-	unsafe { oaknode::ffi::keyframe::oaknode_keyframe_set_type_undoable(keyframe, type_, out_command) }
+pub fn oaknode_keyframe_set_type_undoable(
+	keyframe: CHandle,
+	type_: c_int,
+	out_command: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::keyframe::oaknode_keyframe_set_type_undoable(keyframe, type_, out_command)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_keyframe_get_bezier_control(keyframe: CHandle, handle: c_int, out_x: *mut f64, out_y: *mut f64) -> c_int {
-	unsafe { oaknode::ffi::keyframe::oaknode_keyframe_get_bezier_control(keyframe, handle, out_x, out_y) }
+pub fn oaknode_keyframe_get_bezier_control(
+	keyframe: CHandle,
+	handle: c_int,
+	out_x: *mut f64,
+	out_y: *mut f64,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::keyframe::oaknode_keyframe_get_bezier_control(keyframe, handle, out_x, out_y)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_keyframe_set_bezier_control(keyframe: CHandle, handle: c_int, x: f64, y: f64) -> c_int {
+pub fn oaknode_keyframe_set_bezier_control(
+	keyframe: CHandle,
+	handle: c_int,
+	x: f64,
+	y: f64,
+) -> c_int {
 	unsafe { oaknode::ffi::keyframe::oaknode_keyframe_set_bezier_control(keyframe, handle, x, y) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_keyframe_set_bezier_control_undoable(
-		keyframe: CHandle,
-		handle: c_int,
-		x: f64,
-		y: f64,
-		out_command: *mut CHandle,
-	) -> c_int {
-	unsafe { oaknode::ffi::keyframe::oaknode_keyframe_set_bezier_control_undoable(keyframe, handle, x, y, out_command) }
+	keyframe: CHandle,
+	handle: c_int,
+	x: f64,
+	y: f64,
+	out_command: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::keyframe::oaknode_keyframe_set_bezier_control_undoable(
+			keyframe,
+			handle,
+			x,
+			y,
+			out_command,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -1191,8 +1533,17 @@ pub fn oaknode_keyframe_get_parent(keyframe: CHandle, out_node: *mut CHandle) ->
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_keyframe_get_valid_bezier_control(keyframe: CHandle, handle: c_int, out_x: *mut f64, out_y: *mut f64) -> c_int {
-	unsafe { oaknode::ffi::keyframe::oaknode_keyframe_get_valid_bezier_control(keyframe, handle, out_x, out_y) }
+pub fn oaknode_keyframe_get_valid_bezier_control(
+	keyframe: CHandle,
+	handle: c_int,
+	out_x: *mut f64,
+	out_y: *mut f64,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::keyframe::oaknode_keyframe_get_valid_bezier_control(
+			keyframe, handle, out_x, out_y,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -1204,35 +1555,59 @@ pub fn oaknode_keyframe_opposing_bezier_type(type_: c_int) -> c_int {
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_keyframe_compute_paste_value(
-		target_node: CHandle,
-		keyframe: CHandle,
-		out: *mut crate::node::OakNodeValue,
-	) -> c_int {
-	unsafe { oaknode::ffi::keyframe::oaknode_keyframe_compute_paste_value(target_node, keyframe, out) }
+	target_node: CHandle,
+	keyframe: CHandle,
+	out: *mut crate::node::OakNodeValue,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::keyframe::oaknode_keyframe_compute_paste_value(target_node, keyframe, out)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_keyframe_has_sibling_at_time(keyframe: CHandle, time_num: i64, time_den: i64, out_value: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::keyframe::oaknode_keyframe_has_sibling_at_time(keyframe, time_num, time_den, out_value) }
+pub fn oaknode_keyframe_has_sibling_at_time(
+	keyframe: CHandle,
+	time_num: i64,
+	time_den: i64,
+	out_value: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::keyframe::oaknode_keyframe_has_sibling_at_time(
+			keyframe, time_num, time_den, out_value,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_dragger_create(node: CHandle, input_id: *const c_char, element: c_int, track: c_int) -> CHandle {
+pub fn oaknode_dragger_create(
+	node: CHandle,
+	input_id: *const c_char,
+	element: c_int,
+	track: c_int,
+) -> CHandle {
 	unsafe { oaknode::ffi::dragger::oaknode_dragger_create(node, input_id, element, track) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_dragger_start(
-		dragger: CHandle,
-		time_num: i64,
-		time_den: i64,
-		track: c_int,
-		insert_on_all_tracks: c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::dragger::oaknode_dragger_start(dragger, time_num, time_den, track, insert_on_all_tracks) }
+	dragger: CHandle,
+	time_num: i64,
+	time_den: i64,
+	track: c_int,
+	insert_on_all_tracks: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::dragger::oaknode_dragger_start(
+			dragger,
+			time_num,
+			time_den,
+			track,
+			insert_on_all_tracks,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -1291,19 +1666,40 @@ pub fn oaknode_multicam_get_source_count(node: CHandle, out_count: *mut c_int) -
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_multicam_get_rows_and_columns(source_count: c_int, rows: *mut c_int, cols: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::multicam::oaknode_multicam_get_rows_and_columns(source_count, rows, cols) }
+pub fn oaknode_multicam_get_rows_and_columns(
+	source_count: c_int,
+	rows: *mut c_int,
+	cols: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::multicam::oaknode_multicam_get_rows_and_columns(source_count, rows, cols)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_multicam_index_to_row_cols(index: c_int, rows: c_int, cols: c_int, out_row: *mut c_int, out_col: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::multicam::oaknode_multicam_index_to_row_cols(index, rows, cols, out_row, out_col) }
+pub fn oaknode_multicam_index_to_row_cols(
+	index: c_int,
+	rows: c_int,
+	cols: c_int,
+	out_row: *mut c_int,
+	out_col: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::multicam::oaknode_multicam_index_to_row_cols(
+			index, rows, cols, out_row, out_col,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_multicam_rows_cols_to_index(row: c_int, col: c_int, rows: c_int, cols: c_int) -> c_int {
+pub fn oaknode_multicam_rows_cols_to_index(
+	row: c_int,
+	col: c_int,
+	rows: c_int,
+	cols: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::multicam::oaknode_multicam_rows_cols_to_index(row, col, rows, cols) }
 }
 
@@ -1345,19 +1741,32 @@ pub fn oaknode_sequence_from_node(node: CHandle) -> CHandle {
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_sequence_get_track_list(sequence: CHandle, type_: c_int, out: *mut CHandle) -> c_int {
+pub fn oaknode_sequence_get_track_list(
+	sequence: CHandle,
+	type_: c_int,
+	out: *mut CHandle,
+) -> c_int {
 	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_track_list(sequence, type_, out) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_sequence_get_track_count(sequence: CHandle, type_: c_int, count: *mut c_int) -> c_int {
+pub fn oaknode_sequence_get_track_count(
+	sequence: CHandle,
+	type_: c_int,
+	count: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_track_count(sequence, type_, count) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_sequence_get_track_at(sequence: CHandle, type_: c_int, index: c_int, out: *mut CHandle) -> c_int {
+pub fn oaknode_sequence_get_track_at(
+	sequence: CHandle,
+	type_: c_int,
+	index: c_int,
+	out: *mut CHandle,
+) -> c_int {
 	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_track_at(sequence, type_, index, out) }
 }
 
@@ -1369,38 +1778,70 @@ pub fn oaknode_sequence_get_all_track_count(sequence: CHandle, count: *mut c_int
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_sequence_get_all_track_at(sequence: CHandle, index: c_int, out: *mut CHandle) -> c_int {
+pub fn oaknode_sequence_get_all_track_at(
+	sequence: CHandle,
+	index: c_int,
+	out: *mut CHandle,
+) -> c_int {
 	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_all_track_at(sequence, index, out) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_sequence_get_playhead(sequence: CHandle, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_playhead(sequence, numerator, denominator) }
+pub fn oaknode_sequence_get_playhead(
+	sequence: CHandle,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::sequence::oaknode_sequence_get_playhead(sequence, numerator, denominator)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_sequence_set_playhead(sequence: CHandle, numerator: c_int, denominator: c_int) -> c_int {
-	unsafe { oaknode::ffi::sequence::oaknode_sequence_set_playhead(sequence, numerator, denominator) }
+pub fn oaknode_sequence_set_playhead(
+	sequence: CHandle,
+	numerator: c_int,
+	denominator: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::sequence::oaknode_sequence_set_playhead(sequence, numerator, denominator)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_sequence_get_length(sequence: CHandle, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub fn oaknode_sequence_get_length(
+	sequence: CHandle,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_length(sequence, numerator, denominator) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_sequence_get_video_length(sequence: CHandle, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_video_length(sequence, numerator, denominator) }
+pub fn oaknode_sequence_get_video_length(
+	sequence: CHandle,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::sequence::oaknode_sequence_get_video_length(sequence, numerator, denominator)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_sequence_get_audio_length(sequence: CHandle, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_audio_length(sequence, numerator, denominator) }
+pub fn oaknode_sequence_get_audio_length(
+	sequence: CHandle,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::sequence::oaknode_sequence_get_audio_length(sequence, numerator, denominator)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -1423,25 +1864,47 @@ pub fn oaknode_sequence_get_audio_stream_count(sequence: CHandle, count: *mut c_
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_sequence_get_video_params(sequence: CHandle, index: c_int, out: *mut CHandle) -> c_int {
-	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_video_params(sequence, index, out as *mut std::ffi::c_void) }
+pub fn oaknode_sequence_get_video_params(
+	sequence: CHandle,
+	index: c_int,
+	out: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::sequence::oaknode_sequence_get_video_params(
+			sequence,
+			index,
+			out as *mut std::ffi::c_void,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_sequence_set_video_params(sequence: CHandle, index: c_int, params: CHandle) -> c_int {
+pub fn oaknode_sequence_set_video_params(
+	sequence: CHandle,
+	index: c_int,
+	params: CHandle,
+) -> c_int {
 	unsafe { oaknode::ffi::sequence::oaknode_sequence_set_video_params(sequence, index, params) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_sequence_get_audio_params(sequence: CHandle, index: c_int, out: *mut *mut c_void) -> c_int {
+pub fn oaknode_sequence_get_audio_params(
+	sequence: CHandle,
+	index: c_int,
+	out: *mut *mut c_void,
+) -> c_int {
 	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_audio_params(sequence, index, out) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_sequence_set_audio_params(sequence: CHandle, index: c_int, params: *const c_void) -> c_int {
+pub fn oaknode_sequence_set_audio_params(
+	sequence: CHandle,
+	index: c_int,
+	params: *const c_void,
+) -> c_int {
 	unsafe { oaknode::ffi::sequence::oaknode_sequence_set_audio_params(sequence, index, params) }
 }
 
@@ -1555,7 +2018,11 @@ pub fn oaknode_track_get_reference(track: CHandle, type_: *mut c_int, index: *mu
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_track_get_length(track: CHandle, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub fn oaknode_track_get_length(
+	track: CHandle,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::track::oaknode_track_get_length(track, numerator, denominator) }
 }
 
@@ -1615,7 +2082,11 @@ pub fn oaknode_track_ripple_remove_block(track: CHandle, block: CHandle) -> c_in
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_track_replace_block(track: CHandle, old_block: CHandle, new_block: CHandle) -> c_int {
+pub fn oaknode_track_replace_block(
+	track: CHandle,
+	old_block: CHandle,
+	new_block: CHandle,
+) -> c_int {
 	unsafe { oaknode::ffi::track::oaknode_track_replace_block(track, old_block, new_block) }
 }
 
@@ -1627,39 +2098,91 @@ pub fn oaknode_track_get_block_index(track: CHandle, block: CHandle, index: *mut
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_track_get_block_containing_time(track: CHandle, numerator: c_int, denominator: c_int, out: *mut CHandle) -> c_int {
-	unsafe { oaknode::ffi::track::oaknode_track_get_block_containing_time(track, numerator, denominator, out) }
+pub fn oaknode_track_get_block_containing_time(
+	track: CHandle,
+	numerator: c_int,
+	denominator: c_int,
+	out: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::track::oaknode_track_get_block_containing_time(
+			track,
+			numerator,
+			denominator,
+			out,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_track_get_visible_block_at_time(track: CHandle, numerator: c_int, denominator: c_int, out: *mut CHandle) -> c_int {
-	unsafe { oaknode::ffi::track::oaknode_track_get_visible_block_at_time(track, numerator, denominator, out) }
+pub fn oaknode_track_get_visible_block_at_time(
+	track: CHandle,
+	numerator: c_int,
+	denominator: c_int,
+	out: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::track::oaknode_track_get_visible_block_at_time(
+			track,
+			numerator,
+			denominator,
+			out,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_track_is_range_free(
-		track: CHandle,
-		in_num: c_int,
-		in_den: c_int,
-		out_num: c_int,
-		out_den: c_int,
-		is_free: *mut c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::track::oaknode_track_is_range_free(track, in_num, in_den, out_num, out_den, is_free) }
+	track: CHandle,
+	in_num: c_int,
+	in_den: c_int,
+	out_num: c_int,
+	out_den: c_int,
+	is_free: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::track::oaknode_track_is_range_free(
+			track, in_num, in_den, out_num, out_den, is_free,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_track_get_nearest_block_before_or_at(track: CHandle, numerator: c_int, denominator: c_int, out: *mut CHandle) -> c_int {
-	unsafe { oaknode::ffi::track::oaknode_track_get_nearest_block_before_or_at(track, numerator, denominator, out) }
+pub fn oaknode_track_get_nearest_block_before_or_at(
+	track: CHandle,
+	numerator: c_int,
+	denominator: c_int,
+	out: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::track::oaknode_track_get_nearest_block_before_or_at(
+			track,
+			numerator,
+			denominator,
+			out,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_track_get_nearest_block_after_or_at(track: CHandle, numerator: c_int, denominator: c_int, out: *mut CHandle) -> c_int {
-	unsafe { oaknode::ffi::track::oaknode_track_get_nearest_block_after_or_at(track, numerator, denominator, out) }
+pub fn oaknode_track_get_nearest_block_after_or_at(
+	track: CHandle,
+	numerator: c_int,
+	denominator: c_int,
+	out: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::track::oaknode_track_get_nearest_block_after_or_at(
+			track,
+			numerator,
+			denominator,
+			out,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -1670,7 +2193,11 @@ pub fn oaknode_tracklist_get_sequence(list: CHandle, out: *mut CHandle) -> c_int
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_tracklist_get_track_input_id(list: CHandle, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_tracklist_get_track_input_id(
+	list: CHandle,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::track::oaknode_tracklist_get_track_input_id(list, buf, buf_size) }
 }
 
@@ -1688,8 +2215,18 @@ pub fn oaknode_tracklist_array_remove_last(list: CHandle) -> c_int {
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_tracklist_get_array_index_from_cache_index(list: CHandle, cache_index: c_int, out_index: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::track::oaknode_tracklist_get_array_index_from_cache_index(list, cache_index, out_index) }
+pub fn oaknode_tracklist_get_array_index_from_cache_index(
+	list: CHandle,
+	cache_index: c_int,
+	out_index: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::track::oaknode_tracklist_get_array_index_from_cache_index(
+			list,
+			cache_index,
+			out_index,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -1712,7 +2249,11 @@ pub fn oaknode_tracklist_get_track_at(list: CHandle, index: c_int, out: *mut CHa
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_tracklist_get_total_length(list: CHandle, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub fn oaknode_tracklist_get_total_length(
+	list: CHandle,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::track::oaknode_tracklist_get_total_length(list, numerator, denominator) }
 }
 
@@ -1778,7 +2319,11 @@ pub fn oaknode_block_from_node(node: CHandle) -> CHandle {
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_block_get_in(block: CHandle, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub fn oaknode_block_get_in(
+	block: CHandle,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::block::oaknode_block_get_in(block, numerator, denominator) }
 }
 
@@ -1790,7 +2335,11 @@ pub fn oaknode_block_set_in(block: CHandle, numerator: c_int, denominator: c_int
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_block_get_out(block: CHandle, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub fn oaknode_block_get_out(
+	block: CHandle,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::block::oaknode_block_get_out(block, numerator, denominator) }
 }
 
@@ -1802,20 +2351,36 @@ pub fn oaknode_block_set_out(block: CHandle, numerator: c_int, denominator: c_in
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_block_get_length(block: CHandle, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub fn oaknode_block_get_length(
+	block: CHandle,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::block::oaknode_block_get_length(block, numerator, denominator) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_block_set_length_and_media_out(block: CHandle, numerator: c_int, denominator: c_int) -> c_int {
-	unsafe { oaknode::ffi::block::oaknode_block_set_length_and_media_out(block, numerator, denominator) }
+pub fn oaknode_block_set_length_and_media_out(
+	block: CHandle,
+	numerator: c_int,
+	denominator: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::block::oaknode_block_set_length_and_media_out(block, numerator, denominator)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_block_set_length_and_media_in(block: CHandle, numerator: c_int, denominator: c_int) -> c_int {
-	unsafe { oaknode::ffi::block::oaknode_block_set_length_and_media_in(block, numerator, denominator) }
+pub fn oaknode_block_set_length_and_media_in(
+	block: CHandle,
+	numerator: c_int,
+	denominator: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::block::oaknode_block_set_length_and_media_in(block, numerator, denominator)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -1880,7 +2445,11 @@ pub fn oaknode_block_get_link_at(block: CHandle, index: c_int, out: *mut CHandle
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_clip_get_media_in(clip: CHandle, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub fn oaknode_clip_get_media_in(
+	clip: CHandle,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::block::oaknode_clip_get_media_in(clip, numerator, denominator) }
 }
 
@@ -1946,38 +2515,74 @@ pub fn oaknode_clip_get_track_type(clip: CHandle, type_: *mut c_int) -> c_int {
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_transition_get_in_offset(transition: CHandle, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::block::oaknode_transition_get_in_offset(transition, numerator, denominator) }
+pub fn oaknode_transition_get_in_offset(
+	transition: CHandle,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::block::oaknode_transition_get_in_offset(transition, numerator, denominator)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_transition_get_out_offset(transition: CHandle, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::block::oaknode_transition_get_out_offset(transition, numerator, denominator) }
+pub fn oaknode_transition_get_out_offset(
+	transition: CHandle,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::block::oaknode_transition_get_out_offset(transition, numerator, denominator)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_transition_get_offset_center(transition: CHandle, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::block::oaknode_transition_get_offset_center(transition, numerator, denominator) }
+pub fn oaknode_transition_get_offset_center(
+	transition: CHandle,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::block::oaknode_transition_get_offset_center(
+			transition,
+			numerator,
+			denominator,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_transition_set_offset_center(transition: CHandle, numerator: c_int, denominator: c_int) -> c_int {
-	unsafe { oaknode::ffi::block::oaknode_transition_set_offset_center(transition, numerator, denominator) }
+pub fn oaknode_transition_set_offset_center(
+	transition: CHandle,
+	numerator: c_int,
+	denominator: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::block::oaknode_transition_set_offset_center(
+			transition,
+			numerator,
+			denominator,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_transition_set_offsets_and_length(
-		transition: CHandle,
-		in_num: c_int,
-		in_den: c_int,
-		out_num: c_int,
-		out_den: c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::block::oaknode_transition_set_offsets_and_length(transition, in_num, in_den, out_num, out_den) }
+	transition: CHandle,
+	in_num: c_int,
+	in_den: c_int,
+	out_num: c_int,
+	out_den: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::block::oaknode_transition_set_offsets_and_length(
+			transition, in_num, in_den, out_num, out_den,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -2036,14 +2641,25 @@ pub fn oaknode_colormanager_set_up_default_config() -> c_int {
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_colormanager_get_config_filename(manager: CHandle, buf: *mut c_char, buf_size: c_int) -> c_int {
-	unsafe { oaknode::ffi::colormanager::oaknode_colormanager_get_config_filename(manager, buf, buf_size) }
+pub fn oaknode_colormanager_get_config_filename(
+	manager: CHandle,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::colormanager::oaknode_colormanager_get_config_filename(manager, buf, buf_size)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_colormanager_set_config_filename(manager: CHandle, filename: *const c_char) -> c_int {
-	unsafe { oaknode::ffi::colormanager::oaknode_colormanager_set_config_filename(manager, filename) }
+pub fn oaknode_colormanager_set_config_filename(
+	manager: CHandle,
+	filename: *const c_char,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::colormanager::oaknode_colormanager_set_config_filename(manager, filename)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -2054,43 +2670,74 @@ pub fn oaknode_colormanager_update_config_from_filename(manager: CHandle) -> c_i
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_colormanager_get_default_input_color_space(manager: CHandle, buf: *mut c_char, buf_size: c_int) -> c_int {
-	unsafe { oaknode::ffi::colormanager::oaknode_colormanager_get_default_input_color_space(manager, buf, buf_size) }
+pub fn oaknode_colormanager_get_default_input_color_space(
+	manager: CHandle,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::colormanager::oaknode_colormanager_get_default_input_color_space(
+			manager, buf, buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_colormanager_set_default_input_color_space(manager: CHandle, colorspace: *const c_char) -> c_int {
-	unsafe { oaknode::ffi::colormanager::oaknode_colormanager_set_default_input_color_space(manager, colorspace) }
+pub fn oaknode_colormanager_set_default_input_color_space(
+	manager: CHandle,
+	colorspace: *const c_char,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::colormanager::oaknode_colormanager_set_default_input_color_space(
+			manager, colorspace,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_colormanager_get_reference_color_space(manager: CHandle, buf: *mut c_char, buf_size: c_int) -> c_int {
-	unsafe { oaknode::ffi::colormanager::oaknode_colormanager_get_reference_color_space(manager, buf, buf_size) }
+pub fn oaknode_colormanager_get_reference_color_space(
+	manager: CHandle,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::colormanager::oaknode_colormanager_get_reference_color_space(
+			manager, buf, buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_colormanager_get_compliant_color_space(
-		manager: CHandle,
-		colorspace: *const c_char,
-		buf: *mut c_char,
-		buf_size: c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::colormanager::oaknode_colormanager_get_compliant_color_space(manager, colorspace, buf, buf_size) }
+	manager: CHandle,
+	colorspace: *const c_char,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::colormanager::oaknode_colormanager_get_compliant_color_space(
+			manager, colorspace, buf, buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_colormanager_get_colorspace_for_ffmpeg_tags(
-		manager: CHandle,
-		primaries: c_int,
-		trc: c_int,
-		buf: *mut c_char,
-		buf_size: c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::colormanager::oaknode_colormanager_get_colorspace_for_ffmpeg_tags(manager, primaries, trc, buf, buf_size) }
+	manager: CHandle,
+	primaries: c_int,
+	trc: c_int,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::colormanager::oaknode_colormanager_get_colorspace_for_ffmpeg_tags(
+			manager, primaries, trc, buf, buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -2101,38 +2748,72 @@ pub fn oaknode_colormanager_get_display_count(manager: CHandle, count: *mut c_in
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_colormanager_get_display_at(manager: CHandle, index: c_int, buf: *mut c_char, buf_size: c_int) -> c_int {
-	unsafe { oaknode::ffi::colormanager::oaknode_colormanager_get_display_at(manager, index, buf, buf_size) }
+pub fn oaknode_colormanager_get_display_at(
+	manager: CHandle,
+	index: c_int,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::colormanager::oaknode_colormanager_get_display_at(
+			manager, index, buf, buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_colormanager_get_default_display(manager: CHandle, buf: *mut c_char, buf_size: c_int) -> c_int {
-	unsafe { oaknode::ffi::colormanager::oaknode_colormanager_get_default_display(manager, buf, buf_size) }
+pub fn oaknode_colormanager_get_default_display(
+	manager: CHandle,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::colormanager::oaknode_colormanager_get_default_display(manager, buf, buf_size)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_colormanager_get_view_count(manager: CHandle, display: *const c_char, count: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::colormanager::oaknode_colormanager_get_view_count(manager, display, count) }
+pub fn oaknode_colormanager_get_view_count(
+	manager: CHandle,
+	display: *const c_char,
+	count: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::colormanager::oaknode_colormanager_get_view_count(manager, display, count)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_colormanager_get_view_at(
-		manager: CHandle,
-		display: *const c_char,
-		index: c_int,
-		buf: *mut c_char,
-		buf_size: c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::colormanager::oaknode_colormanager_get_view_at(manager, display, index, buf, buf_size) }
+	manager: CHandle,
+	display: *const c_char,
+	index: c_int,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::colormanager::oaknode_colormanager_get_view_at(
+			manager, display, index, buf, buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_colormanager_get_default_view(manager: CHandle, display: *const c_char, buf: *mut c_char, buf_size: c_int) -> c_int {
-	unsafe { oaknode::ffi::colormanager::oaknode_colormanager_get_default_view(manager, display, buf, buf_size) }
+pub fn oaknode_colormanager_get_default_view(
+	manager: CHandle,
+	display: *const c_char,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::colormanager::oaknode_colormanager_get_default_view(
+			manager, display, buf, buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -2143,8 +2824,15 @@ pub fn oaknode_colormanager_get_look_count(manager: CHandle, count: *mut c_int) 
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_colormanager_get_look_at(manager: CHandle, index: c_int, buf: *mut c_char, buf_size: c_int) -> c_int {
-	unsafe { oaknode::ffi::colormanager::oaknode_colormanager_get_look_at(manager, index, buf, buf_size) }
+pub fn oaknode_colormanager_get_look_at(
+	manager: CHandle,
+	index: c_int,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::colormanager::oaknode_colormanager_get_look_at(manager, index, buf, buf_size)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -2155,8 +2843,17 @@ pub fn oaknode_colormanager_get_colorspace_count(manager: CHandle, count: *mut c
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_colormanager_get_colorspace_at(manager: CHandle, index: c_int, buf: *mut c_char, buf_size: c_int) -> c_int {
-	unsafe { oaknode::ffi::colormanager::oaknode_colormanager_get_colorspace_at(manager, index, buf, buf_size) }
+pub fn oaknode_colormanager_get_colorspace_at(
+	manager: CHandle,
+	index: c_int,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::colormanager::oaknode_colormanager_get_colorspace_at(
+			manager, index, buf, buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -2168,12 +2865,19 @@ pub fn oaknode_colormanager_get_default_luma_coefs(manager: CHandle, rgb: *mut f
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_colormanager_get_compliant_color_transform(
-		manager: CHandle,
-		transform: CHandle,
-		force_display: c_int,
-		out: *mut CHandle,
-	) -> c_int {
-	unsafe { oaknode::ffi::colormanager::oaknode_colormanager_get_compliant_color_transform(manager, transform, force_display, out) }
+	manager: CHandle,
+	transform: CHandle,
+	force_display: c_int,
+	out: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::colormanager::oaknode_colormanager_get_compliant_color_transform(
+			manager,
+			transform,
+			force_display,
+			out,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -2191,15 +2895,19 @@ pub fn oaknode_traverser_free(traverser: *mut CHandle) {
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_traverser_generate_database(
-		traverser: CHandle,
-		node: CHandle,
-		in_num: i64,
-		in_den: i64,
-		out_num: i64,
-		out_den: i64,
-		out_db: *mut CHandle,
-	) -> c_int {
-	unsafe { oaknode::ffi::traverser::oaknode_traverser_generate_database(traverser, node, in_num, in_den, out_num, out_den, out_db) }
+	traverser: CHandle,
+	node: CHandle,
+	in_num: i64,
+	in_den: i64,
+	out_num: i64,
+	out_den: i64,
+	out_db: *mut CHandle,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::traverser::oaknode_traverser_generate_database(
+			traverser, node, in_num, in_den, out_num, out_den, out_db,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -2216,37 +2924,54 @@ pub fn oaknode_traverser_database_row_count(db: CHandle, out_count: *mut c_int) 
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_traverser_database_row_key_at(db: CHandle, index: c_int, buf: *mut c_char, buf_size: c_int) -> c_int {
-	unsafe { oaknode::ffi::traverser::oaknode_traverser_database_row_key_at(db, index, buf, buf_size) }
+pub fn oaknode_traverser_database_row_key_at(
+	db: CHandle,
+	index: c_int,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::traverser::oaknode_traverser_database_row_key_at(db, index, buf, buf_size)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_traverser_database_row_value_count(db: CHandle, key: *const c_char, out_count: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::traverser::oaknode_traverser_database_row_value_count(db, key, out_count) }
+pub fn oaknode_traverser_database_row_value_count(
+	db: CHandle,
+	key: *const c_char,
+	out_count: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::traverser::oaknode_traverser_database_row_value_count(db, key, out_count)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_traverser_database_value_at(
-		db: CHandle,
-		key: *const c_char,
-		index: c_int,
-		out: *mut crate::node::OakNodeValue,
-	) -> c_int {
+	db: CHandle,
+	key: *const c_char,
+	index: c_int,
+	out: *mut crate::node::OakNodeValue,
+) -> c_int {
 	unsafe { oaknode::ffi::traverser::oaknode_traverser_database_value_at(db, key, index, out) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_traverser_database_value_string_at(
-		db: CHandle,
-		key: *const c_char,
-		index: c_int,
-		buf: *mut c_char,
-		buf_size: c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::traverser::oaknode_traverser_database_value_string_at(db, key, index, buf, buf_size) }
+	db: CHandle,
+	key: *const c_char,
+	index: c_int,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::traverser::oaknode_traverser_database_value_string_at(
+			db, key, index, buf, buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -2275,39 +3000,63 @@ pub fn oaknode_serializer_savedata_free(save_data: *mut CHandle) {
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_serializer_savedata_set_nodes(save_data: CHandle, nodes: *const CHandle, count: c_int) -> c_int {
-	unsafe { oaknode::ffi::serializer::oaknode_serializer_savedata_set_nodes(save_data, nodes, count) }
+pub fn oaknode_serializer_savedata_set_nodes(
+	save_data: CHandle,
+	nodes: *const CHandle,
+	count: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::serializer::oaknode_serializer_savedata_set_nodes(save_data, nodes, count)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_serializer_savedata_set_property(
-		save_data: CHandle,
-		node: CHandle,
-		key: *const c_char,
-		value: *const c_char,
-	) -> c_int {
-	unsafe { oaknode::ffi::serializer::oaknode_serializer_savedata_set_property(save_data, node, key, value) }
+	save_data: CHandle,
+	node: CHandle,
+	key: *const c_char,
+	value: *const c_char,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::serializer::oaknode_serializer_savedata_set_property(
+			save_data, node, key, value,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaknode_serializer_save_to_xml(save_data: CHandle, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_serializer_save_to_xml(
+	save_data: CHandle,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::serializer::oaknode_serializer_save_to_xml(save_data, buf, buf_size) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_serializer_load_from_xml(
-		project: CHandle,
-		xml: *const c_char,
-		load_type: c_int,
-		out_result: *mut c_int,
-		out_load_data: *mut CHandle,
-		details_buf: *mut c_char,
-		details_buf_size: c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::serializer::oaknode_serializer_load_from_xml(project, xml, load_type, out_result, out_load_data, details_buf, details_buf_size) }
+	project: CHandle,
+	xml: *const c_char,
+	load_type: c_int,
+	out_result: *mut c_int,
+	out_load_data: *mut CHandle,
+	details_buf: *mut c_char,
+	details_buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::serializer::oaknode_serializer_load_from_xml(
+			project,
+			xml,
+			load_type,
+			out_result,
+			out_load_data,
+			details_buf,
+			details_buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -2331,13 +3080,17 @@ pub fn oaknode_serializer_loaddata_node_at(load_data: CHandle, index: c_int) -> 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_serializer_loaddata_get_property(
-		load_data: CHandle,
-		node: CHandle,
-		key: *const c_char,
-		buf: *mut c_char,
-		buf_size: c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::serializer::oaknode_serializer_loaddata_get_property(load_data, node, key, buf, buf_size) }
+	load_data: CHandle,
+	node: CHandle,
+	key: *const c_char,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::serializer::oaknode_serializer_loaddata_get_property(
+			load_data, node, key, buf, buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
@@ -2349,39 +3102,65 @@ pub fn oaknode_serializer_loaddata_connection_count(load_data: CHandle) -> c_int
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_serializer_loaddata_connection_at(
-		load_data: CHandle,
-		index: c_int,
-		out_output_node: *mut CHandle,
-		out_input_node: *mut CHandle,
-		input_id_buf: *mut c_char,
-		input_id_buf_size: c_int,
-		out_element: *mut c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::serializer::oaknode_serializer_loaddata_connection_at(load_data, index, out_output_node, out_input_node, input_id_buf, input_id_buf_size, out_element) }
+	load_data: CHandle,
+	index: c_int,
+	out_output_node: *mut CHandle,
+	out_input_node: *mut CHandle,
+	input_id_buf: *mut c_char,
+	input_id_buf_size: c_int,
+	out_element: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::serializer::oaknode_serializer_loaddata_connection_at(
+			load_data,
+			index,
+			out_output_node,
+			out_input_node,
+			input_id_buf,
+			input_id_buf_size,
+			out_element,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_serializer_save_to_file(
-		project: CHandle,
-		filename: *const c_char,
-		use_compression: c_int,
-		out_code: *mut c_int,
-		details: *mut c_char,
-		details_size: c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::serializer::oaknode_serializer_save_to_file(project, filename, use_compression, out_code, details, details_size) }
+	project: CHandle,
+	filename: *const c_char,
+	use_compression: c_int,
+	out_code: *mut c_int,
+	details: *mut c_char,
+	details_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::serializer::oaknode_serializer_save_to_file(
+			project,
+			filename,
+			use_compression,
+			out_code,
+			details,
+			details_size,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaknode_serializer_load_from_file(
-		project: CHandle,
-		filename: *const c_char,
-		out_code: *mut c_int,
-		details: *mut c_char,
-		details_size: c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::serializer::oaknode_serializer_load_from_file(project, filename, out_code, details, details_size) }
+	project: CHandle,
+	filename: *const c_char,
+	out_code: *mut c_int,
+	details: *mut c_char,
+	details_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::serializer::oaknode_serializer_load_from_file(
+			project,
+			filename,
+			out_code,
+			details,
+			details_size,
+		)
+	}
 }
-

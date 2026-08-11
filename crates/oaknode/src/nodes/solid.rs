@@ -120,7 +120,10 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		crate::value::ValueType::Color,
 		crate::value::NodeValue::Color([1.0, 0.0, 0.0, 1.0]),
 	);
-	color.properties = vec![("view".to_string(), crate::value::NodeValue::Text("color".into()))];
+	color.properties = vec![(
+		"view".to_string(),
+		crate::value::NodeValue::Text("color".into()),
+	)];
 	core.add_input(color);
 	(core, Box::new(SolidGenerator))
 }
@@ -142,7 +145,10 @@ mod tests {
 	#[test]
 	fn create_wires_inputs() {
 		let (core, behavior) = create();
-		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.solidgenerator");
+		assert_eq!(
+			behavior.type_id(),
+			"org.olivevideoeditor.Olive.solidgenerator"
+		);
 		assert_eq!(
 			core.get_input(COLOR_INPUT).unwrap().default,
 			NodeValue::Color([1.0, 0.0, 0.0, 1.0])

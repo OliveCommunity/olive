@@ -84,7 +84,10 @@ fn renderer_lifecycle() {
 		unsafe { oakengine_renderer_last_error(std::ptr::null(), buf.as_mut_ptr(), 64) },
 		-1
 	);
-	assert_eq!(unsafe { oakengine_renderer_set_mode(std::ptr::null_mut(), 0) }, -1);
+	assert_eq!(
+		unsafe { oakengine_renderer_set_mode(std::ptr::null_mut(), 0) },
+		-1
+	);
 }
 
 /// Frame accessors on NULL / empty handles report zero/NULL safely.
@@ -92,7 +95,10 @@ fn renderer_lifecycle() {
 fn frame_accessors_null_safe() {
 	assert_eq!(unsafe { oakengine_frame_width(std::ptr::null()) }, 0);
 	assert_eq!(unsafe { oakengine_frame_height(std::ptr::null()) }, 0);
-	assert_eq!(unsafe { oakengine_frame_channel_count(std::ptr::null()) }, 0);
+	assert_eq!(
+		unsafe { oakengine_frame_channel_count(std::ptr::null()) },
+		0
+	);
 	assert!(unsafe { oakengine_frame_data(std::ptr::null()) }.is_null());
 	unsafe { oakengine_frame_free(std::ptr::null_mut()) };
 }
@@ -104,12 +110,7 @@ fn frame_accessors_null_safe() {
 fn color_processor_lifecycle() {
 	// NULL input → NULL.
 	let p = unsafe {
-		oakengine_color_processor_create(
-			std::ptr::null(),
-			std::ptr::null(),
-			std::ptr::null(),
-			0,
-		)
+		oakengine_color_processor_create(std::ptr::null(), std::ptr::null(), std::ptr::null(), 0)
 	};
 	assert!(p.is_null());
 
@@ -158,7 +159,9 @@ fn color_processor_lifecycle() {
 #[test]
 fn color_manager_and_error() {
 	let mut buf = [0 as c_char; 64];
-	let rc = unsafe { oakengine_color_manager_get_config_filename(std::ptr::null(), buf.as_mut_ptr(), 64) };
+	let rc = unsafe {
+		oakengine_color_manager_get_config_filename(std::ptr::null(), buf.as_mut_ptr(), 64)
+	};
 	assert_eq!(rc, -70002);
 
 	let len = unsafe { oakengine_color_last_error(buf.as_mut_ptr(), 64) };

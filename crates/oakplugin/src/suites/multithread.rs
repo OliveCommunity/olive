@@ -132,8 +132,8 @@ pub fn suite_v1() -> &'static MultiThreadSuiteV1 {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use std::sync::Mutex;
 	use std::sync::atomic::{AtomicUsize, Ordering};
+	use std::sync::Mutex;
 
 	/// 每个插件线程把 (index, count) 累计进 userdata。
 	unsafe extern "C" fn worker(index: c_uint, count: c_uint, arg: *mut c_void) {

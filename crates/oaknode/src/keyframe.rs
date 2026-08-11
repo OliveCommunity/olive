@@ -179,10 +179,10 @@ fn interpolate(before: &Keyframe, after: &Keyframe, time: Rational) -> NodeValue
 	let before_val = before.value.to_double();
 	let after_val = after.value.to_double();
 
-	let both_bezier =
-		before.interpolation == Interpolation::Bezier && after.interpolation == Interpolation::Bezier;
-	let one_bezier =
-		before.interpolation == Interpolation::Bezier || after.interpolation == Interpolation::Bezier;
+	let both_bezier = before.interpolation == Interpolation::Bezier
+		&& after.interpolation == Interpolation::Bezier;
+	let one_bezier = before.interpolation == Interpolation::Bezier
+		|| after.interpolation == Interpolation::Bezier;
 
 	if !both_bezier && !one_bezier {
 		// Both linear.

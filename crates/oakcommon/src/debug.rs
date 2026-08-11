@@ -262,9 +262,13 @@ mod tests {
 
 	#[test]
 	fn set_get_level_round_trip() {
-		for level in
-			[Level::Debug, Level::Info, Level::Warning, Level::Error, Level::Fatal]
-		{
+		for level in [
+			Level::Debug,
+			Level::Info,
+			Level::Warning,
+			Level::Error,
+			Level::Fatal,
+		] {
 			log_set_level(level);
 			assert_eq!(log_get_level(), level);
 		}
@@ -289,9 +293,13 @@ mod tests {
 
 	#[test]
 	fn filtering_drops_below_threshold() {
-		for threshold in
-			[Level::Debug, Level::Info, Level::Warning, Level::Error, Level::Fatal]
-		{
+		for threshold in [
+			Level::Debug,
+			Level::Info,
+			Level::Warning,
+			Level::Error,
+			Level::Fatal,
+		] {
 			log_set_level(threshold);
 			assert!(log(Level::Debug, "x").is_ok());
 			assert!(log(Level::Fatal, "y").is_ok());

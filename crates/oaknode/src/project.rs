@@ -44,11 +44,7 @@ pub struct NodeRef {
 impl NodeRef {
 	/// New reference. `owned` selects whether releasing the last handle
 	/// reference accounts the node in [`crate::ffi::debug_alive_count`].
-	pub fn new(
-		project: Arc<Mutex<Project>>,
-		id: NodeId,
-		owned: bool,
-	) -> NodeRef {
+	pub fn new(project: Arc<Mutex<Project>>, id: NodeId, owned: bool) -> NodeRef {
 		NodeRef {
 			project,
 			id,
@@ -112,10 +108,8 @@ impl Project {
 		let (core, behavior) = crate::folder::create("Root");
 		let id = self.graph.add_node(core, behavior);
 		self.root = id;
-		self.settings.insert(
-			SETTING_ROOT.to_string(),
-			id.identity().to_string(),
-		);
+		self.settings
+			.insert(SETTING_ROOT.to_string(), id.identity().to_string());
 		Ok(())
 	}
 
@@ -147,7 +141,8 @@ impl Project {
 		// Map original id -> copied id, preserving identities where the
 		// copy's arena slots are free (the copy starts empty, so every
 		// node keeps its identity).
-		let mut id_map: std::collections::HashMap<NodeId, NodeId> = std::collections::HashMap::new();
+		let mut id_map: std::collections::HashMap<NodeId, NodeId> =
+			std::collections::HashMap::new();
 		for id in self.graph.node_ids() {
 			let entry = self.graph.get(id).ok_or(Error::NotFound)?;
 			let (core, behavior) = clone_entry(entry);
@@ -188,7 +183,11 @@ impl Project {
 	/// Incremental sync of a deep copy after edits (C++
 	/// ProjectCopier::queue_update semantics): applies the recorded
 	/// change set to `copy`.
-	pub fn sync_copy(&self, copy: &mut Project, changes: &[ChangeRecord]) -> crate::error::Result<()> {
+	pub fn sync_copy(
+		&self,
+		copy: &mut Project,
+		changes: &[ChangeRecord],
+	) -> crate::error::Result<()> {
 		use crate::error::Error;
 		// Rebuild the id mapping from the copy (identities are stable
 		// across the deep-copy, so original id -> copy id is identity).
@@ -226,8 +225,14 @@ impl Project {
 						copy.graph.disconnect(*from, *to, input, *element);
 					}
 				}
-				ChangeRecord::ValueChanged { node, input, element } => {
-					if let (Some(src), Some(dst)) = (self.graph.get(*node), copy.graph.get_mut(*node)) {
+				ChangeRecord::ValueChanged {
+					node,
+					input,
+					element,
+				} => {
+					if let (Some(src), Some(dst)) =
+						(self.graph.get(*node), copy.graph.get_mut(*node))
+					{
 						let v = src.core.standard_value(input, *element);
 						dst.core.set_standard_value(input, *element, v);
 					}
@@ -327,7 +332,9 @@ impl Project {
 
 /// Clone a node entry into independently-owned parts (deep copy of the
 /// core data; the behavior is re-created via [`NodeBehavior::duplicate`]).
-fn clone_entry(entry: &crate::graph::NodeEntry) -> (crate::node::NodeCore, Box<dyn crate::node::NodeBehavior>) {
+fn clone_entry(
+	entry: &crate::graph::NodeEntry,
+) -> (crate::node::NodeCore, Box<dyn crate::node::NodeBehavior>) {
 	let core = entry.core.clone();
 	let behavior = entry
 		.behavior

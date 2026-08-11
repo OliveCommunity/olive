@@ -90,9 +90,15 @@ fn registered_entries_match_cpp_order() {
 #[test]
 fn first_and_last_entries() {
 	let entries = Factory::global().entries();
-	assert_eq!(entries.first().unwrap().type_id, "org.olivevideoeditor.Olive.polygon");
+	assert_eq!(
+		entries.first().unwrap().type_id,
+		"org.olivevideoeditor.Olive.polygon"
+	);
 	assert_eq!(entries.first().unwrap().name, "Polygon");
-	assert_eq!(entries.last().unwrap().type_id, "org.olivevideoeditor.Olive.multicam");
+	assert_eq!(
+		entries.last().unwrap().type_id,
+		"org.olivevideoeditor.Olive.multicam"
+	);
 	assert_eq!(entries.last().unwrap().name, "Multi-Cam");
 }
 

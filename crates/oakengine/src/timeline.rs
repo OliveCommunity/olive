@@ -30,15 +30,15 @@ use std::ffi::{c_char, c_int, c_void};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 
+use crate::bridge::undo::OakUndoCommandVtable;
 use crate::bridge::{audio as a, common as c, node as n, timeline as tl, undo as u};
 use crate::error::{Error, Result};
 use crate::handle::{
-	box_handle, free_box, guard, guard_int, guard_ptr, guard_void, read_cstr, string_result,
-	unbox, write_string, CHandle, OakEngineBlock, OakEngineClip, OakEngineClipboard,
-	OakEngineFootage, OakEngineMarker, OakEngineMarkerList, OakEngineNode, OakEngineProject,
-	OakEngineSequence, OakEngineTrack, OakEngineTrackList, OakEngineWorkarea,
+	box_handle, free_box, guard, guard_int, guard_ptr, guard_void, read_cstr, string_result, unbox,
+	write_string, CHandle, OakEngineBlock, OakEngineClip, OakEngineClipboard, OakEngineFootage,
+	OakEngineMarker, OakEngineMarkerList, OakEngineNode, OakEngineProject, OakEngineSequence,
+	OakEngineTrack, OakEngineTrackList, OakEngineWorkarea,
 };
-use crate::bridge::undo::OakUndoCommandVtable;
 use crate::undo::push_or_run;
 
 /// `engine/include/oakengine/timeline.h` — POD mirror of
@@ -198,8 +198,8 @@ fn command_box(cmd: CHandle) -> Result<*mut OakEngineClipboard> {
 unsafe fn push_command(cmd: CHandle, name: &str) -> Result<()> {
 	unsafe {
 		let boxed = command_box(cmd)?;
-		let name_c = std::ffi::CString::new(name)
-			.map_err(|_| Error::Failed("invalid undo name".into()))?;
+		let name_c =
+			std::ffi::CString::new(name).map_err(|_| Error::Failed("invalid undo name".into()))?;
 		push_or_run(boxed, name_c.as_ptr())
 	}
 }
@@ -227,8 +227,8 @@ unsafe fn push_multi_commands(children: &[CHandle], name: &str) -> Result<()> {
 				return Err(Error::Module(rc));
 			}
 		}
-		let name_c = std::ffi::CString::new(name)
-			.map_err(|_| Error::Failed("invalid undo name".into()))?;
+		let name_c =
+			std::ffi::CString::new(name).map_err(|_| Error::Failed("invalid undo name".into()))?;
 		push_or_run(multi_box, name_c.as_ptr())
 	}
 }
@@ -681,8 +681,7 @@ unsafe fn clip_at_index(list: CHandle, track_index: c_int, clip_index: c_int) ->
 			return CHandle::null();
 		}
 		let mut track = CHandle::null();
-		if n::oaknode_tracklist_get_track_at(list, track_index, &mut track) != 0
-			|| track.is_null()
+		if n::oaknode_tracklist_get_track_at(list, track_index, &mut track) != 0 || track.is_null()
 		{
 			return CHandle::null();
 		}
@@ -777,8 +776,7 @@ unsafe fn nearest_block_before(track: CHandle, num: i64, den: i64) -> CHandle {
 			let mut out_num: c_int = 0;
 			let mut out_den: c_int = 0;
 			if n::oaknode_block_get_out(b, &mut out_num, &mut out_den) == 0
-				&& rat_cmp(out_num as i64, out_den as i64, num, den)
-					== std::cmp::Ordering::Less
+				&& rat_cmp(out_num as i64, out_den as i64, num, den) == std::cmp::Ordering::Less
 			{
 				if !best.is_null() {
 					release_handle(best);
@@ -838,8 +836,8 @@ pub unsafe extern "C" fn oakengine_sequence_new(
 			return Err(Error::Module(rc));
 		}
 		let label = read_cstr(name);
-		let label_c = std::ffi::CString::new(label)
-			.map_err(|_| Error::Failed("invalid name".into()))?;
+		let label_c =
+			std::ffi::CString::new(label).map_err(|_| Error::Failed("invalid name".into()))?;
 		let seq_node = n::oaknode_sequence_as_node(seq);
 		let rc = n::oaknode_node_set_label(seq_node, label_c.as_ptr());
 		release_handle(seq_node);
@@ -1053,7 +1051,8 @@ pub unsafe extern "C" fn oakengine_sequence_get_video_params_ex(
 		}
 		if !interlacing.is_null() {
 			Error::from_module(c::oakcommon_videoparams_get_interlacing(
-				params, interlacing,
+				params,
+				interlacing,
 			))?;
 		}
 		if !format.is_null() {
@@ -1093,13 +1092,19 @@ pub unsafe extern "C" fn oakengine_sequence_set_video_params(
 			set_seq_error(&format!("invalid video size {}x{}", width, height));
 			return Err(Error::Invalid);
 		}
-		if (fps_num == -1) != (fps_den == -1) || fps_num < -1 || fps_num == 0 || fps_den < -1
+		if (fps_num == -1) != (fps_den == -1)
+			|| fps_num < -1
+			|| fps_num == 0
+			|| fps_den < -1
 			|| fps_den == 0
 		{
 			set_seq_error(&format!("invalid frame rate {}/{}", fps_num, fps_den));
 			return Err(Error::Invalid);
 		}
-		if (par_num == -1) != (par_den == -1) || par_num < -1 || par_num == 0 || par_den < -1
+		if (par_num == -1) != (par_den == -1)
+			|| par_num < -1
+			|| par_num == 0
+			|| par_den < -1
 			|| par_den == 0
 		{
 			set_seq_error(&format!("invalid pixel aspect {}/{}", par_num, par_den));
@@ -1140,10 +1145,7 @@ pub unsafe extern "C" fn oakengine_sequence_set_video_params(
 		}
 		c::oakcommon_videoparams_set_width(new, if width >= 0 { width } else { cur_w });
 		c::oakcommon_videoparams_set_height(new, if height >= 0 { height } else { cur_h });
-		c::oakcommon_videoparams_set_format(
-			new,
-			if format >= 0 { format } else { cur_fmt },
-		);
+		c::oakcommon_videoparams_set_format(new, if format >= 0 { format } else { cur_fmt });
 		c::oakcommon_videoparams_set_frame_rate(
 			new,
 			if fps_num >= 0 { fps_num } else { cur_fn },
@@ -1164,7 +1166,12 @@ pub unsafe extern "C" fn oakengine_sequence_set_video_params(
 				old_params: current,
 				new_params: new,
 			}));
-			let cmd = vtable_command(video_params_redo, video_params_undo, video_params_free, data as *mut c_void)?;
+			let cmd = vtable_command(
+				video_params_redo,
+				video_params_undo,
+				video_params_free,
+				data as *mut c_void,
+			)?;
 			push_command(cmd, "Set Sequence Video Parameters")
 		} else {
 			let rc = n::oaknode_sequence_set_video_params(seq, 0, new);
@@ -1232,8 +1239,16 @@ pub unsafe extern "C" fn oakengine_sequence_set_audio_params(
 		let cur_format = a::oakcore_audioparams_format(current);
 		a::oakcore_audioparams_free(current);
 
-		let new_rate = if sample_rate <= 0 { cur_rate } else { sample_rate };
-		let new_layout = if channel_layout == 0 { cur_layout } else { channel_layout };
+		let new_rate = if sample_rate <= 0 {
+			cur_rate
+		} else {
+			sample_rate
+		};
+		let new_layout = if channel_layout == 0 {
+			cur_layout
+		} else {
+			channel_layout
+		};
 		if new_rate == cur_rate && new_layout == cur_layout {
 			return Ok(());
 		}
@@ -1252,8 +1267,12 @@ pub unsafe extern "C" fn oakengine_sequence_set_audio_params(
 				old_params: old,
 				new_params: new,
 			}));
-			let cmd =
-				vtable_command(audio_params_redo, audio_params_undo, audio_params_free, data as *mut c_void)?;
+			let cmd = vtable_command(
+				audio_params_redo,
+				audio_params_undo,
+				audio_params_free,
+				data as *mut c_void,
+			)?;
 			push_command(cmd, "Set Sequence Audio Parameters")
 		} else {
 			let r = n::oaknode_sequence_set_audio_params(seq, 0, new);
@@ -1378,10 +1397,18 @@ pub unsafe extern "C" fn oakengine_sequence_track_count(
 	guard(|| unsafe {
 		let h = unbox(self_)?;
 		if !video.is_null() {
-			Error::from_module(n::oaknode_sequence_get_track_count(h, TRACK_TYPE_VIDEO, video))?;
+			Error::from_module(n::oaknode_sequence_get_track_count(
+				h,
+				TRACK_TYPE_VIDEO,
+				video,
+			))?;
 		}
 		if !audio.is_null() {
-			Error::from_module(n::oaknode_sequence_get_track_count(h, TRACK_TYPE_AUDIO, audio))?;
+			Error::from_module(n::oaknode_sequence_get_track_count(
+				h,
+				TRACK_TYPE_AUDIO,
+				audio,
+			))?;
 		}
 		if !subtitle.is_null() {
 			Error::from_module(n::oaknode_sequence_get_track_count(
@@ -1548,9 +1575,7 @@ pub unsafe extern "C" fn oakengine_sequence_set_workarea(
 
 /// `oakengine_sequence_marker_count` — number of timeline markers.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_sequence_marker_count(
-	self_: *const OakEngineSequence,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_sequence_marker_count(self_: *const OakEngineSequence) -> c_int {
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Ok(0);
@@ -1617,10 +1642,7 @@ pub unsafe extern "C" fn oakengine_sequence_marker_at(
 
 /// `oakengine_sequence_last_error` — last editing error for this thread.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_sequence_last_error(
-	buf: *mut c_char,
-	buf_size: c_int,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_sequence_last_error(buf: *mut c_char, buf_size: c_int) -> c_int {
 	SEQ_LAST_ERROR.with(|e| unsafe { write_string(&e.borrow(), buf, buf_size) })
 }
 
@@ -1638,7 +1660,9 @@ pub unsafe extern "C" fn oakengine_sequence_add_track(
 		}
 		let seq = unbox(self_)?;
 		let mut list = CHandle::null();
-		Error::from_module(n::oaknode_sequence_get_track_list(seq, track_type, &mut list))?;
+		Error::from_module(n::oaknode_sequence_get_track_list(
+			seq, track_type, &mut list,
+		))?;
 		// The module's TimelineAddTrackCommand redo only appends the
 		// sequence's track array element; it never registers the created
 		// track node in the list's `tracks`, so the count/at queries would
@@ -1657,7 +1681,9 @@ pub unsafe extern "C" fn oakengine_sequence_add_track(
 		}
 		Error::from_module(n::oaknode_tracklist_add_track(list, track))?;
 		let mut count: c_int = 0;
-		Error::from_module(n::oaknode_sequence_get_track_count(seq, track_type, &mut count))?;
+		Error::from_module(n::oaknode_sequence_get_track_count(
+			seq, track_type, &mut count,
+		))?;
 		release_handle(list);
 		Ok(count - 1)
 	})
@@ -1678,7 +1704,9 @@ pub unsafe extern "C" fn oakengine_sequence_add_track_command(
 		}
 		let seq = unbox(self_)?;
 		let mut list = CHandle::null();
-		Error::from_module(n::oaknode_sequence_get_track_list(seq, track_type, &mut list))?;
+		Error::from_module(n::oaknode_sequence_get_track_list(
+			seq, track_type, &mut list,
+		))?;
 		let cmd = tl::oaktimeline_add_track_command(list);
 		if cmd.is_null() {
 			release_handle(list);
@@ -1717,7 +1745,10 @@ pub unsafe extern "C" fn oakengine_sequence_ripple_tracks_command(
 	movement_mode: c_int,
 ) -> *mut c_void {
 	guard_ptr(|| {
-		if self_.is_null() || infos.is_null() || info_count <= 0 || movement_den == 0
+		if self_.is_null()
+			|| infos.is_null()
+			|| info_count <= 0
+			|| movement_den == 0
 			|| track_type < TRACK_TYPE_VIDEO
 			|| track_type > TRACK_TYPE_SUBTITLE
 			|| movement_mode < 0
@@ -1728,7 +1759,15 @@ pub unsafe extern "C" fn oakengine_sequence_ripple_tracks_command(
 		// Stub: the oaktimeline module implements TrackListRippleToolCommand
 		// internally (undoripple.rs) but exposes no C creator for it; the
 		// facade bridge accordingly has no `oaktimeline_ripple_tracks_command`.
-		let _ = (self_, track_type, infos, info_count, movement_num, movement_den, movement_mode);
+		let _ = (
+			self_,
+			track_type,
+			infos,
+			info_count,
+			movement_num,
+			movement_den,
+			movement_mode,
+		);
 		Ok(std::ptr::null_mut())
 	})
 }
@@ -1772,7 +1811,10 @@ pub unsafe extern "C" fn oakengine_sequence_add_footage_clip(
 		let mut foot_project = CHandle::null();
 		let rc2 = n::oaknode_node_get_project(footage_h, &mut foot_project);
 		release_handle(seq_node);
-		if rc != 0 || rc2 != 0 || seq_project.is_null() || foot_project.is_null()
+		if rc != 0
+			|| rc2 != 0
+			|| seq_project.is_null()
+			|| foot_project.is_null()
 			|| seq_project.ctx != foot_project.ctx
 		{
 			release_handle(seq_project);
@@ -1806,7 +1848,10 @@ pub unsafe extern "C" fn oakengine_sequence_add_footage_clip(
 			|| track_index >= track_count
 		{
 			release_handle(list);
-			set_seq_error(&format!("track index {} out of range ({} tracks)", track_index, track_count));
+			set_seq_error(&format!(
+				"track index {} out of range ({} tracks)",
+				track_index, track_count
+			));
 			return Ok(std::ptr::null_mut());
 		}
 
@@ -1846,7 +1891,12 @@ pub unsafe extern "C" fn oakengine_sequence_add_footage_clip(
 		// whole add fails like the C++ would on a bad edge.
 		let clip_node = n::oaknode_block_as_node(clip);
 		let mut edge = CHandle::null();
-		let rc = n::oaknode_node_connect_undoable(footage_h, clip_node, c"buffer_in".as_ptr(), &mut edge);
+		let rc = n::oaknode_node_connect_undoable(
+			footage_h,
+			clip_node,
+			c"buffer_in".as_ptr(),
+			&mut edge,
+		);
 		release_handle(clip_node);
 		if rc != 0 {
 			for child in &children {
@@ -1857,13 +1907,8 @@ pub unsafe extern "C" fn oakengine_sequence_add_footage_clip(
 			return Ok(std::ptr::null_mut());
 		}
 		children.push(edge);
-		let place_cmd = tl::oaktimeline_place_block_command(
-			list,
-			track_index,
-			clip,
-			in_num,
-			in_den,
-		);
+		let place_cmd =
+			tl::oaktimeline_place_block_command(list, track_index, clip, in_num, in_den);
 		if place_cmd.is_null() {
 			for child in &children {
 				release_handle(*child);
@@ -1920,7 +1965,11 @@ pub unsafe extern "C" fn oakengine_sequence_clip_count(
 			return Err(Error::NotFound);
 		}
 		let mut track = CHandle::null();
-		Error::from_module(n::oaknode_tracklist_get_track_at(list, track_index, &mut track))?;
+		Error::from_module(n::oaknode_tracklist_get_track_at(
+			list,
+			track_index,
+			&mut track,
+		))?;
 		let mut block_count: c_int = 0;
 		Error::from_module(n::oaknode_track_get_block_count(track, &mut block_count))?;
 		let mut count: c_int = 0;
@@ -1951,7 +2000,9 @@ pub unsafe extern "C" fn oakengine_sequence_clip_at(
 	clip_index: c_int,
 ) -> *mut OakEngineClip {
 	guard_ptr(|| unsafe {
-		if self_.is_null() || track_type < TRACK_TYPE_VIDEO || track_type > TRACK_TYPE_SUBTITLE
+		if self_.is_null()
+			|| track_type < TRACK_TYPE_VIDEO
+			|| track_type > TRACK_TYPE_SUBTITLE
 			|| clip_index < 0
 		{
 			return Ok(std::ptr::null_mut());
@@ -2085,11 +2136,16 @@ pub unsafe extern "C" fn oakengine_sequence_split_clip(
 			return Err(Error::Invalid);
 		}
 		let mut list = CHandle::null();
-		Error::from_module(n::oaknode_sequence_get_track_list(sequence, track_type, &mut list))?;
+		Error::from_module(n::oaknode_sequence_get_track_list(
+			sequence, track_type, &mut list,
+		))?;
 		let clip = clip_at_index(list, track_index, clip_index);
 		release_handle(list);
 		if clip.is_null() {
-			set_seq_error(&format!("no clip at track {} index {}", track_index, clip_index));
+			set_seq_error(&format!(
+				"no clip at track {} index {}",
+				track_index, clip_index
+			));
 			return Err(Error::NotFound);
 		}
 		let tb = match seq_time_base(sequence) {
@@ -2109,7 +2165,10 @@ pub unsafe extern "C" fn oakengine_sequence_split_clip(
 		let cmp_in = rat_cmp(point_num, point_den, in_num as i64, in_den as i64);
 		let cmp_out = rat_cmp(point_num, point_den, out_num as i64, out_den as i64);
 		if cmp_in != std::cmp::Ordering::Greater || cmp_out != std::cmp::Ordering::Less {
-			set_seq_error(&format!("split time {} is not strictly inside the clip", time));
+			set_seq_error(&format!(
+				"split time {} is not strictly inside the clip",
+				time
+			));
 			return Err(Error::Invalid);
 		}
 		let cmd = tl::oaktimeline_split_command(&clip, 1, point_num, point_den);
@@ -2151,17 +2210,25 @@ pub unsafe extern "C" fn oakengine_sequence_ripple_delete_clip(
 			return Err(Error::Invalid);
 		}
 		let mut list = CHandle::null();
-		Error::from_module(n::oaknode_sequence_get_track_list(sequence, track_type, &mut list))?;
+		Error::from_module(n::oaknode_sequence_get_track_list(
+			sequence, track_type, &mut list,
+		))?;
 		let clip = clip_at_index(list, track_index, clip_index);
 		release_handle(list);
 		if clip.is_null() {
-			set_seq_error(&format!("no clip at track {} index {}", track_index, clip_index));
+			set_seq_error(&format!(
+				"no clip at track {} index {}",
+				track_index, clip_index
+			));
 			return Err(Error::NotFound);
 		}
 		let mut track = CHandle::null();
 		let rc = n::oaknode_block_get_track(clip, &mut track);
 		if rc != 0 || track.is_null() {
-			set_seq_error(&format!("no clip at track {} index {}", track_index, clip_index));
+			set_seq_error(&format!(
+				"no clip at track {} index {}",
+				track_index, clip_index
+			));
 			return Err(Error::NotFound);
 		}
 		let mut in_num: c_int = 0;
@@ -2262,7 +2329,8 @@ pub unsafe extern "C" fn oakengine_clip_trim(
 		if new_in != old_in {
 			// in-trim: length = block out - new in (out anchored).
 			let (new_in_num, new_in_den) = ts_to_rational(new_in, tb);
-			let (new_num, new_den) = rat_sub(out_num as i64, out_den as i64, new_in_num, new_in_den);
+			let (new_num, new_den) =
+				rat_sub(out_num as i64, out_den as i64, new_in_num, new_in_den);
 			let cmd = trim_cmd(
 				h,
 				MOVEMENT_MODE_TRIM_IN,
@@ -2297,7 +2365,15 @@ pub unsafe extern "C" fn oakengine_clip_trim(
 	})
 }
 
-/// `oakengine_sequence_move_clip` — move the addressed clip to `new_in`.
+/// `oakengine_sequence_move_clip` — move the addressed clip so its in
+/// point becomes `new_in` (frame units in the sequence's timebase).
+///
+/// Mirrors the capi: the clip's old spot is replaced with a gap and the
+/// clip is placed at the destination, both as ONE undoable entry ("Move
+/// Clip"). The destination track is the addressed track itself (the
+/// capi passes `track_index` straight through to the place command), so
+/// this is a time-only move within the same track; length and media-in
+/// point are preserved.
 #[no_mangle]
 pub unsafe extern "C" fn oakengine_sequence_move_clip(
 	seq: *mut OakEngineSequence,
@@ -2320,28 +2396,36 @@ pub unsafe extern "C" fn oakengine_sequence_move_clip(
 			return Err(Error::Invalid);
 		}
 		let mut list = CHandle::null();
-		Error::from_module(n::oaknode_sequence_get_track_list(sequence, track_type, &mut list))?;
+		Error::from_module(n::oaknode_sequence_get_track_list(
+			sequence, track_type, &mut list,
+		))?;
 		let clip = clip_at_index(list, track_index, clip_index);
-		release_handle(list);
 		if clip.is_null() {
-			set_seq_error(&format!("no clip at track {} index {}", track_index, clip_index));
+			set_seq_error(&format!(
+				"no clip at track {} index {}",
+				track_index, clip_index
+			));
 			return Err(Error::NotFound);
 		}
 		let mut track = CHandle::null();
 		let rc = n::oaknode_block_get_track(clip, &mut track);
 		if rc != 0 || track.is_null() {
-			set_seq_error(&format!("no clip at track {} index {}", track_index, clip_index));
+			set_seq_error(&format!(
+				"no clip at track {} index {}",
+				track_index, clip_index
+			));
 			return Err(Error::NotFound);
 		}
-		release_handle(track);
-		// Stub: the module's gap+place composition
-		// (`TrackReplaceBlockWithGapCommand` then `TrackPlaceBlockCommand`)
-		// faults with a memory error in the module world after accumulated
-		// timeline edits (and the two commands pushed as ONE undoable entry,
-		// as the capi does, faults even on a fresh clip), so the move cannot
-		// be performed safely.
-		set_seq_error("clip moves are not supported by the module");
-		Err(Error::State)
+		let tb = seq_time_base(sequence)?;
+		let (new_in_num, new_in_den) = ts_to_rational(new_in, tb);
+		// NOTE: `list`/`clip`/`track` are borrowed module handles; the
+		// move command keeps copies of `list` and `clip` for the whole undo
+		// entry, so their shells must not be released here (the same
+		// convention as the other command-creating family functions). The
+		// destination is the addressed track itself.
+		let cmd =
+			tl::oaktimeline_move_block_command(list, track_index, clip, new_in_num, new_in_den);
+		push_command(cmd, "Move Clip")
 	})
 }
 
@@ -2452,7 +2536,9 @@ pub unsafe extern "C" fn oakengine_sequence_delete_clips(
 				return Err(Error::Invalid);
 			}
 		};
-		if clip_count < 0 || (clip_count > 0 && clips.is_null()) || ripple_range_count < 0
+		if clip_count < 0
+			|| (clip_count > 0 && clips.is_null())
+			|| ripple_range_count < 0
 			|| (ripple_range_count > 0 && ripple_ranges_ts.is_null())
 		{
 			set_seq_error("invalid arguments");
@@ -2539,7 +2625,10 @@ pub unsafe extern "C" fn oakengine_sequence_delete_clips(
 					let rc = n::oaknode_tracklist_get_track_at(list, rindex as c_int, &mut track);
 					release_handle(list);
 					if rc != 0 || track.is_null() {
-						set_seq_error(&format!("no track at index {} in ripple range {}", rindex, i));
+						set_seq_error(&format!(
+							"no track at index {} in ripple range {}",
+							rindex, i
+						));
 						return Err(Error::NotFound);
 					}
 					let (in_num, in_den) = ts_to_rational(*range.add(2), tb);
@@ -2621,25 +2710,21 @@ pub unsafe extern "C" fn oakengine_sequence_ripple_delete_range(
 		let (in_num, in_den) = ts_to_rational(in_ts, tb);
 		let (out_num, out_den) = ts_to_rational(out_ts, tb);
 		let mut all_count: c_int = 0;
-		Error::from_module(n::oaknode_sequence_get_all_track_count(sequence, &mut all_count))?;
+		Error::from_module(n::oaknode_sequence_get_all_track_count(
+			sequence,
+			&mut all_count,
+		))?;
 		let mut children: Vec<CHandle> = Vec::new();
 		for i in 0..all_count {
 			let mut track = CHandle::null();
 			Error::from_module(n::oaknode_sequence_get_all_track_at(
-				sequence,
-				i,
-				&mut track,
+				sequence, i, &mut track,
 			))?;
 			if track.is_null() {
 				continue;
 			}
-			let cmd = tl::oaktimeline_ripple_remove_area_command(
-				track,
-				in_num,
-				in_den,
-				out_num,
-				out_den,
-			);
+			let cmd =
+				tl::oaktimeline_ripple_remove_area_command(track, in_num, in_den, out_num, out_den);
 			// NOTE: `track` is intentionally NOT released — the module
 			// command stores the borrowed handle for its whole lifetime (see
 			// `oakengine_sequence_ripple_delete_clip`).
@@ -2689,7 +2774,12 @@ pub unsafe extern "C" fn oakengine_clip_toggle_enabled(
 				old_enabled: enabled,
 				new_enabled: if enabled != 0 { 0 } else { 1 },
 			}));
-			let cmd = vtable_command(block_enabled_redo, block_enabled_undo, block_enabled_free, data as *mut c_void)?;
+			let cmd = vtable_command(
+				block_enabled_redo,
+				block_enabled_undo,
+				block_enabled_free,
+				data as *mut c_void,
+			)?;
 			children.push(cmd);
 		}
 		push_multi_commands(&children, "Toggle Clips Enabled")?;
@@ -2733,12 +2823,7 @@ pub unsafe extern "C" fn oakengine_clip_set_linked(
 		for i in 0..handles.len() {
 			for j in (i + 1)..handles.len() {
 				let mut cmd = CHandle::null();
-				let rc = n::oaknode_node_link_undoable(
-					handles[i],
-					handles[j],
-					linked,
-					&mut cmd,
-				);
+				let rc = n::oaknode_node_link_undoable(handles[i], handles[j], linked, &mut cmd);
 				if rc == 0 && !cmd.is_null() {
 					children.push(cmd);
 				} else if rc != 0 {
@@ -2868,19 +2953,13 @@ pub unsafe extern "C" fn oakengine_sequence_ripple_delete_in_to_out(
 			for i in 0..all_count {
 				let mut track = CHandle::null();
 				Error::from_module(n::oaknode_sequence_get_all_track_at(
-					sequence,
-					i,
-					&mut track,
+					sequence, i, &mut track,
 				))?;
 				if track.is_null() {
 					continue;
 				}
 				let cmd = tl::oaktimeline_ripple_remove_area_command(
-					track,
-					in_num,
-					in_den,
-					out_num,
-					out_den,
+					track, in_num, in_den, out_num, out_den,
 				);
 				// NOTE: `track` is intentionally NOT released — the module
 				// command stores the borrowed handle for its whole lifetime
@@ -2902,9 +2981,7 @@ pub unsafe extern "C" fn oakengine_sequence_ripple_delete_in_to_out(
 			for i in 0..all_count {
 				let mut track = CHandle::null();
 				Error::from_module(n::oaknode_sequence_get_all_track_at(
-					sequence,
-					i,
-					&mut track,
+					sequence, i, &mut track,
 				))?;
 				if track.is_null() {
 					continue;
@@ -2940,13 +3017,8 @@ pub unsafe extern "C" fn oakengine_sequence_ripple_delete_in_to_out(
 					len_den as c_int,
 				);
 				let add_cmd = n::oaknode_command_create_add_node(project, gap);
-				let place_cmd = tl::oaktimeline_place_block_command(
-					list,
-					tindex,
-					gap,
-					in_num,
-					in_den,
-				);
+				let place_cmd =
+					tl::oaktimeline_place_block_command(list, tindex, gap, in_num, in_den);
 				release_handle(project);
 				release_handle(list);
 				release_handle(track);
@@ -3006,10 +3078,15 @@ pub unsafe extern "C" fn oakengine_sequence_trim_clips_to(
 		let mut children: Vec<CHandle> = Vec::new();
 		let mut trimmed: c_int = 0;
 		let mut all_count: c_int = 0;
-		Error::from_module(n::oaknode_sequence_get_all_track_count(sequence, &mut all_count))?;
+		Error::from_module(n::oaknode_sequence_get_all_track_count(
+			sequence,
+			&mut all_count,
+		))?;
 		for i in 0..all_count {
 			let mut track = CHandle::null();
-			Error::from_module(n::oaknode_sequence_get_all_track_at(sequence, i, &mut track))?;
+			Error::from_module(n::oaknode_sequence_get_all_track_at(
+				sequence, i, &mut track,
+			))?;
 			if track.is_null() {
 				continue;
 			}
@@ -3057,7 +3134,11 @@ pub unsafe extern "C" fn oakengine_sequence_trim_clips_to(
 			};
 			let mut old_len_num: c_int = 0;
 			let mut old_len_den: c_int = 0;
-			Error::from_module(n::oaknode_block_get_length(block, &mut old_len_num, &mut old_len_den))?;
+			Error::from_module(n::oaknode_block_get_length(
+				block,
+				&mut old_len_num,
+				&mut old_len_den,
+			))?;
 			// Trim the addressed block itself (`trim_cmd` anchors on the
 			// block handle; passing the track used to silently reject the
 			// trim in the module).
@@ -3108,10 +3189,15 @@ pub unsafe extern "C" fn oakengine_sequence_delete_empty_tracks(
 		let mut to_remove: Vec<(CHandle, CHandle)> = Vec::new();
 		let mut removed: c_int = 0;
 		let mut all_count: c_int = 0;
-		Error::from_module(n::oaknode_sequence_get_all_track_count(sequence, &mut all_count))?;
+		Error::from_module(n::oaknode_sequence_get_all_track_count(
+			sequence,
+			&mut all_count,
+		))?;
 		for i in 0..all_count {
 			let mut track = CHandle::null();
-			Error::from_module(n::oaknode_sequence_get_all_track_at(sequence, i, &mut track))?;
+			Error::from_module(n::oaknode_sequence_get_all_track_at(
+				sequence, i, &mut track,
+			))?;
 			if track.is_null() {
 				continue;
 			}
@@ -3123,9 +3209,7 @@ pub unsafe extern "C" fn oakengine_sequence_delete_empty_tracks(
 				}
 			}
 			let mut block_count: c_int = 0;
-			if n::oaknode_track_get_block_count(track, &mut block_count) != 0
-				|| block_count != 0
-			{
+			if n::oaknode_track_get_block_count(track, &mut block_count) != 0 || block_count != 0 {
 				release_handle(track);
 				continue;
 			}
@@ -3252,7 +3336,9 @@ pub unsafe extern "C" fn oakengine_sequence_remove_track(
 			return Err(Error::Invalid);
 		}
 		let mut list = CHandle::null();
-		Error::from_module(n::oaknode_sequence_get_track_list(sequence, track_type, &mut list))?;
+		Error::from_module(n::oaknode_sequence_get_track_list(
+			sequence, track_type, &mut list,
+		))?;
 		let mut track = CHandle::null();
 		let rc = n::oaknode_tracklist_get_track_at(list, track_index, &mut track);
 		release_handle(list);
@@ -3302,7 +3388,9 @@ pub unsafe extern "C" fn oakengine_sequence_move_track(
 			return Err(Error::Invalid);
 		}
 		let mut list = CHandle::null();
-		Error::from_module(n::oaknode_sequence_get_track_list(sequence, track_type, &mut list))?;
+		Error::from_module(n::oaknode_sequence_get_track_list(
+			sequence, track_type, &mut list,
+		))?;
 		let mut count: c_int = 0;
 		Error::from_module(n::oaknode_tracklist_get_track_count(list, &mut count))?;
 		release_handle(list);
@@ -3348,7 +3436,9 @@ pub unsafe extern "C" fn oakengine_track_get_height(
 			return Err(Error::Invalid);
 		}
 		let mut list = CHandle::null();
-		Error::from_module(n::oaknode_sequence_get_track_list(sequence, track_type, &mut list))?;
+		Error::from_module(n::oaknode_sequence_get_track_list(
+			sequence, track_type, &mut list,
+		))?;
 		let mut track = CHandle::null();
 		let rc = n::oaknode_tracklist_get_track_at(list, track_index, &mut track);
 		release_handle(list);
@@ -3384,7 +3474,9 @@ pub unsafe extern "C" fn oakengine_track_set_height(
 			return Err(Error::Invalid);
 		}
 		let mut list = CHandle::null();
-		Error::from_module(n::oaknode_sequence_get_track_list(sequence, track_type, &mut list))?;
+		Error::from_module(n::oaknode_sequence_get_track_list(
+			sequence, track_type, &mut list,
+		))?;
 		let mut track = CHandle::null();
 		let rc = n::oaknode_tracklist_get_track_at(list, track_index, &mut track);
 		release_handle(list);
@@ -3452,7 +3544,9 @@ pub unsafe extern "C" fn oakengine_track_set_muted(
 			return Err(Error::Invalid);
 		}
 		let mut list = CHandle::null();
-		Error::from_module(n::oaknode_sequence_get_track_list(sequence, track_type, &mut list))?;
+		Error::from_module(n::oaknode_sequence_get_track_list(
+			sequence, track_type, &mut list,
+		))?;
 		let mut track = CHandle::null();
 		let rc = n::oaknode_tracklist_get_track_at(list, track_index, &mut track);
 		release_handle(list);
@@ -3520,7 +3614,9 @@ pub unsafe extern "C" fn oakengine_track_set_locked(
 			return Err(Error::Invalid);
 		}
 		let mut list = CHandle::null();
-		Error::from_module(n::oaknode_sequence_get_track_list(sequence, track_type, &mut list))?;
+		Error::from_module(n::oaknode_sequence_get_track_list(
+			sequence, track_type, &mut list,
+		))?;
 		let mut track = CHandle::null();
 		let rc = n::oaknode_tracklist_get_track_at(list, track_index, &mut track);
 		release_handle(list);
@@ -3683,9 +3779,7 @@ pub unsafe extern "C" fn oakengine_sequence_marker_rename(
 
 /// `oakengine_marker_list_count` — number of markers in the list.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_marker_list_count(
-	list: *const OakEngineMarkerList,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_marker_list_count(list: *const OakEngineMarkerList) -> c_int {
 	guard_int(|| unsafe {
 		if list.is_null() {
 			return Ok(0);
@@ -3813,8 +3907,8 @@ pub unsafe extern "C" fn oakengine_marker_list_add_existing(
 			return Err(Error::Module(rc));
 		}
 		let name = read_cstr(name_buf.as_ptr());
-		let name_c = std::ffi::CString::new(name)
-			.map_err(|_| Error::Failed("invalid name".into()))?;
+		let name_c =
+			std::ffi::CString::new(name).map_err(|_| Error::Failed("invalid name".into()))?;
 		let cmd = tl::oaktimeline_marker_add_command(
 			lh,
 			in_num,
@@ -3942,15 +4036,7 @@ pub unsafe extern "C" fn oakengine_marker_get_name(
 		let mut d1: c_int = 0;
 		let mut color: c_int = 0;
 		let rc = tl::oaktimeline_marker_at(
-			list,
-			index,
-			&mut n0,
-			&mut d0,
-			&mut n1,
-			&mut d1,
-			&mut color,
-			buf,
-			buf_size,
+			list, index, &mut n0, &mut d0, &mut n1, &mut d1, &mut color, buf, buf_size,
 		);
 		if rc < 0 {
 			Err(Error::Module(rc))
@@ -3962,9 +4048,7 @@ pub unsafe extern "C" fn oakengine_marker_get_name(
 
 /// `oakengine_marker_get_color` — the marker's color index (-1 on NULL).
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_marker_get_color(
-	self_: *const OakEngineMarker,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_marker_get_color(self_: *const OakEngineMarker) -> c_int {
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Ok(-1);
@@ -4317,14 +4401,7 @@ pub unsafe extern "C" fn oakengine_workarea_get(
 		let mut n1: c_int = 0;
 		let mut d1: c_int = 0;
 		let mut en: c_int = 0;
-		let rc = tl::oaktimeline_workarea_get(
-			h,
-			&mut n0,
-			&mut d0,
-			&mut n1,
-			&mut d1,
-			&mut en,
-		);
+		let rc = tl::oaktimeline_workarea_get(h, &mut n0, &mut d0, &mut n1, &mut d1, &mut en);
 		Error::from_module(rc)?;
 		if !in_num.is_null() {
 			*in_num = n0 as i64;
@@ -4497,7 +4574,8 @@ pub unsafe extern "C" fn oakengine_clip_get_media_range_rational(
 		Error::from_module(n::oaknode_block_get_length(h, &mut len_num, &mut len_den))?;
 		// media_out = media_in + length (speed/reverse ignored, like the
 		// capi).
-		let (mo_num, mo_den) = rat_add(mi_num as i64, mi_den as i64, len_num as i64, len_den as i64);
+		let (mo_num, mo_den) =
+			rat_add(mi_num as i64, mi_den as i64, len_num as i64, len_den as i64);
 		if !in_num.is_null() {
 			*in_num = mi_num as i64;
 		}
@@ -4587,12 +4665,21 @@ pub unsafe extern "C" fn oakengine_clip_set_media_in(
 ///
 /// # Safety
 /// `clip` must be a live module clip handle.
-unsafe fn apply_clip_media_in(clip: CHandle, num: c_int, den: c_int, undoable: c_int) -> Result<()> {
+unsafe fn apply_clip_media_in(
+	clip: CHandle,
+	num: c_int,
+	den: c_int,
+	undoable: c_int,
+) -> Result<()> {
 	unsafe {
 		if undoable != 0 {
 			let mut old_num: c_int = 0;
 			let mut old_den: c_int = 0;
-			Error::from_module(n::oaknode_clip_get_media_in(clip, &mut old_num, &mut old_den))?;
+			Error::from_module(n::oaknode_clip_get_media_in(
+				clip,
+				&mut old_num,
+				&mut old_den,
+			))?;
 			let data = Box::into_raw(Box::new(ClipMediaInCmdData {
 				clip: clip.addref(),
 				old_num,
@@ -4600,7 +4687,12 @@ unsafe fn apply_clip_media_in(clip: CHandle, num: c_int, den: c_int, undoable: c
 				new_num: num,
 				new_den: den,
 			}));
-			let cmd = vtable_command(clip_media_in_redo, clip_media_in_undo, clip_media_in_free, data as *mut c_void)?;
+			let cmd = vtable_command(
+				clip_media_in_redo,
+				clip_media_in_undo,
+				clip_media_in_free,
+				data as *mut c_void,
+			)?;
 			push_command(cmd, "Set Media In")
 		} else {
 			Error::from_module(n::oaknode_clip_set_media_in(clip, num, den))
@@ -4731,9 +4823,7 @@ pub unsafe extern "C" fn oakengine_clip_request_invalidate_connected(
 
 /// `oakengine_block_is_enabled` — 1 if the block is enabled.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_block_is_enabled(
-	self_: *const OakEngineBlock,
-) -> c_int {
+pub unsafe extern "C" fn oakengine_block_is_enabled(self_: *const OakEngineBlock) -> c_int {
 	guard_int(|| unsafe {
 		if self_.is_null() {
 			return Ok(0);
@@ -4763,7 +4853,12 @@ pub unsafe extern "C" fn oakengine_block_set_enabled(
 			old_enabled,
 			new_enabled: enabled,
 		}));
-		let cmd = vtable_command(block_enabled_redo, block_enabled_undo, block_enabled_free, data as *mut c_void)?;
+		let cmd = vtable_command(
+			block_enabled_redo,
+			block_enabled_undo,
+			block_enabled_free,
+			data as *mut c_void,
+		)?;
 		push_command(cmd, "Set Block Enabled")
 	})
 }
@@ -4828,12 +4923,8 @@ pub unsafe extern "C" fn oakengine_track_block_at_time(
 		release_handle(sequence);
 		let (num, den) = ts_to_rational(timestamp, tb);
 		let mut block = CHandle::null();
-		let rc = n::oaknode_track_get_block_containing_time(
-			h,
-			num as c_int,
-			den as c_int,
-			&mut block,
-		);
+		let rc =
+			n::oaknode_track_get_block_containing_time(h, num as c_int, den as c_int, &mut block);
 		if rc != 0 || block.is_null() {
 			return Ok(std::ptr::null_mut());
 		}
@@ -4954,8 +5045,7 @@ pub unsafe extern "C" fn oakengine_track_nearest_block_after(
 			let mut in_num: c_int = 0;
 			let mut in_den: c_int = 0;
 			let after = n::oaknode_block_get_in(b, &mut in_num, &mut in_den) == 0
-				&& rat_cmp(in_num as i64, in_den as i64, num, den)
-					== std::cmp::Ordering::Greater;
+				&& rat_cmp(in_num as i64, in_den as i64, num, den) == std::cmp::Ordering::Greater;
 			if after {
 				best = b;
 				break;
@@ -4976,7 +5066,13 @@ pub unsafe extern "C" fn oakengine_track_nearest_block_before_or_at(
 	track: *const OakEngineTrack,
 	timestamp: i64,
 ) -> *mut OakEngineBlock {
-	unsafe { track_nearest_boxed(track, timestamp, n::oaknode_track_get_nearest_block_before_or_at) }
+	unsafe {
+		track_nearest_boxed(
+			track,
+			timestamp,
+			n::oaknode_track_get_nearest_block_before_or_at,
+		)
+	}
 }
 
 /// `oakengine_track_nearest_block_after_or_at` — nearest block whose
@@ -4986,7 +5082,13 @@ pub unsafe extern "C" fn oakengine_track_nearest_block_after_or_at(
 	track: *const OakEngineTrack,
 	timestamp: i64,
 ) -> *mut OakEngineBlock {
-	unsafe { track_nearest_boxed(track, timestamp, n::oaknode_track_get_nearest_block_after_or_at) }
+	unsafe {
+		track_nearest_boxed(
+			track,
+			timestamp,
+			n::oaknode_track_get_nearest_block_after_or_at,
+		)
+	}
 }
 
 /// `oakengine_block_is_gap` — 1 if the block is a GapBlock.
@@ -5040,9 +5142,7 @@ pub unsafe extern "C" fn oakengine_block_get_track(
 
 /// `oakengine_block_next` — next block in the track's linked list.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_block_next(
-	block: *const OakEngineBlock,
-) -> *mut OakEngineBlock {
+pub unsafe extern "C" fn oakengine_block_next(block: *const OakEngineBlock) -> *mut OakEngineBlock {
 	guard_ptr(|| unsafe {
 		if block.is_null() {
 			return Ok(std::ptr::null_mut());
@@ -5059,9 +5159,7 @@ pub unsafe extern "C" fn oakengine_block_next(
 
 /// `oakengine_block_prev` — previous block in the track's linked list.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_block_prev(
-	block: *const OakEngineBlock,
-) -> *mut OakEngineBlock {
+pub unsafe extern "C" fn oakengine_block_prev(block: *const OakEngineBlock) -> *mut OakEngineBlock {
 	guard_ptr(|| unsafe {
 		if block.is_null() {
 			return Ok(std::ptr::null_mut());
@@ -5321,7 +5419,8 @@ pub unsafe extern "C" fn oakengine_sequence_add_sequence_clip(
 		// the nested-sequence connection cannot be built.
 		let clip_node = n::oaknode_block_as_node(clip);
 		let mut edge = CHandle::null();
-		let rc = n::oaknode_node_connect_undoable(nested_h, clip_node, c"buffer_in".as_ptr(), &mut edge);
+		let rc =
+			n::oaknode_node_connect_undoable(nested_h, clip_node, c"buffer_in".as_ptr(), &mut edge);
 		release_handle(clip_node);
 		if rc != 0 {
 			release_handle(add_cmd);
@@ -5330,7 +5429,8 @@ pub unsafe extern "C" fn oakengine_sequence_add_sequence_clip(
 			return Ok(std::ptr::null_mut());
 		}
 		let (in_num, in_den) = ts_to_rational(in_, tb);
-		let place_cmd = tl::oaktimeline_place_block_command(list, track_index, clip, in_num, in_den);
+		let place_cmd =
+			tl::oaktimeline_place_block_command(list, track_index, clip, in_num, in_den);
 		release_handle(list);
 		if place_cmd.is_null() {
 			release_handle(add_cmd);
@@ -5340,7 +5440,10 @@ pub unsafe extern "C" fn oakengine_sequence_add_sequence_clip(
 		}
 		let children = [add_cmd, edge, place_cmd];
 		if let Err(e) = push_multi_commands(&children, "Add Sequence Clip") {
-			set_seq_error(&format!("failed to push add-sequence-clip command: {:?}", e));
+			set_seq_error(&format!(
+				"failed to push add-sequence-clip command: {:?}",
+				e
+			));
 			return Err(e);
 		}
 		Ok(box_handle::<OakEngineClip>(clip))
@@ -5406,7 +5509,9 @@ pub unsafe extern "C" fn oakengine_track_get_length(
 			}
 		};
 		let mut list = CHandle::null();
-		Error::from_module(n::oaknode_sequence_get_track_list(sequence, track_type, &mut list))?;
+		Error::from_module(n::oaknode_sequence_get_track_list(
+			sequence, track_type, &mut list,
+		))?;
 		let mut track = CHandle::null();
 		let rc = n::oaknode_tracklist_get_track_at(list, track_index, &mut track);
 		release_handle(list);
@@ -5455,7 +5560,9 @@ pub unsafe extern "C" fn oakengine_track_is_range_free(
 			}
 		};
 		let mut list = CHandle::null();
-		Error::from_module(n::oaknode_sequence_get_track_list(sequence, track_type, &mut list))?;
+		Error::from_module(n::oaknode_sequence_get_track_list(
+			sequence, track_type, &mut list,
+		))?;
 		let mut track = CHandle::null();
 		let rc = n::oaknode_tracklist_get_track_at(list, track_index, &mut track);
 		release_handle(list);
@@ -5533,7 +5640,9 @@ pub extern "C" fn oakengine_track_height_minimum() -> f64 {
 /// `oakengine_clip_find_multicam` — find the MultiCamNode ancestor of a
 /// node.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_clip_find_multicam(node: *mut OakEngineNode) -> *mut OakEngineNode {
+pub unsafe extern "C" fn oakengine_clip_find_multicam(
+	node: *mut OakEngineNode,
+) -> *mut OakEngineNode {
 	guard_ptr(|| {
 		// Stub: the C++ walks the clip's buffer-input chain looking for a
 		// MultiCamNode; module clips have no buffer input, so no ancestor can
@@ -5614,7 +5723,8 @@ pub unsafe extern "C" fn oakengine_track_visible_block_at_time(
 		release_handle(sequence);
 		let (num, den) = ts_to_rational(time_ts, tb);
 		let mut block = CHandle::null();
-		let rc = n::oaknode_track_get_visible_block_at_time(h, num as c_int, den as c_int, &mut block);
+		let rc =
+			n::oaknode_track_get_visible_block_at_time(h, num as c_int, den as c_int, &mut block);
 		if rc != 0 || block.is_null() {
 			return Ok(std::ptr::null_mut());
 		}
@@ -5698,7 +5808,12 @@ pub unsafe extern "C" fn oakengine_block_set_length_and_media_out(
 			new_num: num as c_int,
 			new_den: den as c_int,
 		}));
-		let cmd = vtable_command(block_resize_redo, block_resize_undo, block_resize_free, data as *mut c_void)?;
+		let cmd = vtable_command(
+			block_resize_redo,
+			block_resize_undo,
+			block_resize_free,
+			data as *mut c_void,
+		)?;
 		push_command(cmd, "Set Block Length")
 	})
 }

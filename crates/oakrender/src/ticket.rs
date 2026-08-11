@@ -340,10 +340,7 @@ impl TicketArena {
 
 	/// Blocking wait for completion (C++ wait_for_finished).
 	pub fn wait(&self, id: TicketId) -> Result<()> {
-		let slot = lock(&self.slots)
-			.get(&id)
-			.cloned()
-			.ok_or(Error::NotFound)?;
+		let slot = lock(&self.slots).get(&id).cloned().ok_or(Error::NotFound)?;
 		let mut state = lock(&slot.state);
 		while !matches!(*state, SlotState::Finished) {
 			state = slot.cv.wait(state).unwrap_or_else(|e| e.into_inner());
@@ -359,9 +356,7 @@ impl TicketArena {
 
 	/// Ticket metadata query (C++ property()).
 	pub fn meta(&self, id: TicketId) -> Option<TicketMeta> {
-		lock(&self.slots)
-			.get(&id)
-			.map(|s| lock(&s.meta).clone())
+		lock(&self.slots).get(&id).map(|s| lock(&s.meta).clone())
 	}
 
 	/// The ticket's kind.
@@ -454,7 +449,10 @@ mod tests {
 		arena.wait(id).unwrap();
 		let ok = rx.recv_timeout(Duration::from_secs(5)).unwrap();
 		assert!(ok, "completion fired with success");
-		assert!(rx.recv_timeout(Duration::from_millis(50)).is_err(), "exactly once");
+		assert!(
+			rx.recv_timeout(Duration::from_millis(50)).is_err(),
+			"exactly once"
+		);
 
 		let res = arena.result(id).unwrap().unwrap();
 		assert_eq!(res.size(), (4, 4));
@@ -502,7 +500,10 @@ mod tests {
 
 		let res = rx.recv_timeout(Duration::from_secs(5)).unwrap();
 		assert_eq!(res.unwrap_err().code(), Error::State.code());
-		assert!(rx.recv_timeout(Duration::from_millis(50)).is_err(), "exactly once");
+		assert!(
+			rx.recv_timeout(Duration::from_millis(50)).is_err(),
+			"exactly once"
+		);
 		pool.shutdown();
 	}
 
@@ -523,7 +524,10 @@ mod tests {
 		let mut pool = pool;
 		pool.start();
 		let arena = TicketArena::new(pool.clone(), ok_producer());
-		assert_eq!(arena.wait(TicketId(999)).unwrap_err().code(), Error::NotFound.code());
+		assert_eq!(
+			arena.wait(TicketId(999)).unwrap_err().code(),
+			Error::NotFound.code()
+		);
 		pool.shutdown();
 	}
 

@@ -84,7 +84,7 @@ pub unsafe fn get<T: 'static>(h: &CHandle) -> Option<&T> {
 		if h.ctx.is_null() {
 			None
 		} else {
-			Some(&(*((h.ctx as *mut RefBox<T>))).value)
+			Some(&(*(h.ctx as *mut RefBox<T>)).value)
 		}
 	}
 }

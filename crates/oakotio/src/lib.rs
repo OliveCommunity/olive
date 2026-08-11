@@ -43,7 +43,7 @@ pub mod model;
 
 pub use error::{OtioError, Result};
 pub use fcpxml::{
-    FcpxmlError, from_fcpxml_file, from_fcpxml_string, to_fcpxml_file, to_fcpxml_string,
+	from_fcpxml_file, from_fcpxml_string, to_fcpxml_file, to_fcpxml_string, FcpxmlError,
 };
 pub use model::*;
 
@@ -53,10 +53,10 @@ pub use model::*;
 /// schema; unrecognized roots are kept whole as `model::Serializable::Raw`
 /// so they round-trip untouched.
 pub fn from_json_string(text: &str) -> Result<Serializable> {
-    Ok(serde_json::from_str(text)?)
+	Ok(serde_json::from_str(text)?)
 }
 
 /// Read and parse an OpenTimelineIO JSON document from a file.
 pub fn from_json_file(path: impl AsRef<Path>) -> Result<Serializable> {
-    from_json_string(&std::fs::read_to_string(path)?)
+	from_json_string(&std::fs::read_to_string(path)?)
 }

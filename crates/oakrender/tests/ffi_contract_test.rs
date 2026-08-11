@@ -22,9 +22,11 @@ use std::ffi::c_char;
 use std::sync::mpsc;
 use std::time::Duration;
 
+use oakrender::error::{
+	OAKRENDER_E_INVALID, OAKRENDER_E_NOT_FOUND, OAKRENDER_E_STATE, OAKRENDER_OK,
+};
 use oakrender::ffi;
 use oakrender::handle::{alive_count, CHandle};
-use oakrender::error::{OAKRENDER_E_INVALID, OAKRENDER_E_NOT_FOUND, OAKRENDER_E_STATE, OAKRENDER_OK};
 use std::sync::Mutex;
 
 /// Serializes the alive-count accounting test against handle creation in
@@ -153,9 +155,8 @@ fn two_stage_string_contract() {
 	let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
 	unsafe {
 		// disk_cache_path: size query then exact copy.
-		let (size, value) = common::read_two_stage(|buf, n| {
-			ffi::manager::oakrender_disk_cache_path(buf, n)
-		});
+		let (size, value) =
+			common::read_two_stage(|buf, n| ffi::manager::oakrender_disk_cache_path(buf, n));
 		assert!(size > 0, "required size including NUL");
 		let path = value.expect("buffer copy");
 		assert_eq!(path.len() + 1, size as usize);
@@ -166,9 +167,8 @@ fn two_stage_string_contract() {
 
 		// cache uuid getter.
 		let cache = ffi::cache::oakrender_cache_create();
-		let (usize, uvalue) = common::read_two_stage(|buf, n| {
-			ffi::cache::oakrender_cache_get_uuid(cache, buf, n)
-		});
+		let (usize, uvalue) =
+			common::read_two_stage(|buf, n| ffi::cache::oakrender_cache_get_uuid(cache, buf, n));
 		assert!(usize > 0);
 		let uuid = uvalue.unwrap();
 		assert_eq!(uuid.len() + 1, usize as usize);
@@ -182,9 +182,8 @@ fn two_stage_string_contract() {
 		ffi::cache::oakrender_cache_free(&mut c);
 
 		// backend id getters.
-		let (bsize, bvalue) = common::read_two_stage(|buf, n| {
-			ffi::renderer::oakrender_backend_id_at(0, buf, n)
-		});
+		let (bsize, bvalue) =
+			common::read_two_stage(|buf, n| ffi::renderer::oakrender_backend_id_at(0, buf, n));
 		assert_eq!(bvalue.as_deref(), Some("opengl"));
 		assert_eq!(bsize, 7); // "opengl" + NUL
 		assert_eq!(
@@ -196,13 +195,20 @@ fn two_stage_string_contract() {
 		// current_backend is the manager's backend when one is up (parallel
 		// tests may have initialized it) or the recorded default otherwise;
 		// either way it is a known id string.
-		let (_, current) = common::read_two_stage(|buf, n| {
-			ffi::renderer::oakrender_current_backend(buf, n)
-		});
+		let (_, current) =
+			common::read_two_stage(|buf, n| ffi::renderer::oakrender_current_backend(buf, n));
 		let current = current.expect("current backend string");
 		assert!(
-			["opengl", "vulkan", "multiprocess", "dummy", "auto", "metal", "cpu"]
-				.contains(&current.as_str()),
+			[
+				"opengl",
+				"vulkan",
+				"multiprocess",
+				"dummy",
+				"auto",
+				"metal",
+				"cpu"
+			]
+			.contains(&current.as_str()),
 			"unexpected current backend {current}"
 		);
 	}
@@ -274,7 +280,10 @@ fn request_frame_and_cancel() {
 		std::thread::sleep(Duration::from_millis(200));
 
 		// Unknown id → NOT_FOUND.
-		assert_eq!(ffi::manager::oakrender_cancel_request(id + 12345), OAKRENDER_E_NOT_FOUND);
+		assert_eq!(
+			ffi::manager::oakrender_cancel_request(id + 12345),
+			OAKRENDER_E_NOT_FOUND
+		);
 		// Cancelling a finished request is OK (removes from the map).
 		let rc = ffi::manager::oakrender_cancel_request(id);
 		assert!(rc == OAKRENDER_OK || rc == OAKRENDER_E_NOT_FOUND);
@@ -308,9 +317,18 @@ fn manager_settings() {
 	let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
 	let _g = common::ManagerGuard::init();
 	unsafe {
-		assert_eq!(ffi::ticket::oakrender_manager_set_aggressive_gc(1), OAKRENDER_OK);
-		assert_eq!(ffi::manager::oakrender_set_cacher_multicam(common::fake_handle(3)), OAKRENDER_OK);
-		assert_eq!(ffi::manager::oakrender_set_cacher_multicam(CHandle::null()), OAKRENDER_OK);
+		assert_eq!(
+			ffi::ticket::oakrender_manager_set_aggressive_gc(1),
+			OAKRENDER_OK
+		);
+		assert_eq!(
+			ffi::manager::oakrender_set_cacher_multicam(common::fake_handle(3)),
+			OAKRENDER_OK
+		);
+		assert_eq!(
+			ffi::manager::oakrender_set_cacher_multicam(CHandle::null()),
+			OAKRENDER_OK
+		);
 		assert_eq!(
 			ffi::manager::oakrender_set_display_color_processor(CHandle::null()),
 			OAKRENDER_OK
@@ -329,6 +347,9 @@ fn manager_settings() {
 			ffi::manager::oakrender_set_display_color_processor(CHandle::null()),
 			OAKRENDER_E_STATE
 		);
-		assert_eq!(ffi::ticket::oakrender_manager_set_aggressive_gc(0), OAKRENDER_E_STATE);
+		assert_eq!(
+			ffi::ticket::oakrender_manager_set_aggressive_gc(0),
+			OAKRENDER_E_STATE
+		);
 	}
 }

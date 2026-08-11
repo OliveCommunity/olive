@@ -19,10 +19,8 @@
 //! frame accuracy, error paths (corrupt XML, missing resources, unknown
 //! version) and lenient handling of unknown elements.
 
-use oakotio::{
-	Clip, Composable, ExternalReference, MediaReference, RationalTime, Timeline, Track,
-};
 use oakcore_rs::Rational;
+use oakotio::{Clip, Composable, ExternalReference, MediaReference, RationalTime, Timeline, Track};
 
 /// The NTSC video rate 30000/1001 (~29.97 fps) as an exact rational.
 const NTSC_RATE: f64 = 30000.0 / 1001.0;
@@ -66,7 +64,8 @@ fn synthetic_fcpxml() -> String {
 
 /// Parse the synthetic document and return its single timeline.
 fn parse_synthetic() -> Timeline {
-	let timelines = oakotio::from_fcpxml_string(&synthetic_fcpxml()).expect("parse synthetic fcpxml");
+	let timelines =
+		oakotio::from_fcpxml_string(&synthetic_fcpxml()).expect("parse synthetic fcpxml");
 	assert_eq!(timelines.len(), 1);
 	timelines.into_iter().next().unwrap()
 }
@@ -90,7 +89,9 @@ fn parse_synthetic_document() {
 	let timeline = parse_synthetic();
 
 	assert_eq!(timeline.name(), "My Project");
-	let gst = timeline.global_start_time().expect("tcStart maps to global start");
+	let gst = timeline
+		.global_start_time()
+		.expect("tcStart maps to global start");
 	assert_time(gst, 36.0, 30.0);
 
 	// Interchange hints survive in the timeline metadata.
@@ -200,7 +201,10 @@ fn exported_document_structure() {
 	let xml = oakotio::to_fcpxml_string(&[timeline]).expect("export fcpxml");
 
 	// Document scaffolding.
-	assert!(xml.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"), "{xml}");
+	assert!(
+		xml.starts_with("<?xml version=\"1.0\" encoding=\"UTF-8\"?>"),
+		"{xml}"
+	);
 	assert!(xml.contains("<!DOCTYPE fcpxml>"), "{xml}");
 	assert!(xml.contains("<fcpxml version=\"1.10\">"), "{xml}");
 	assert!(xml.contains("</library>"), "{xml}");
@@ -218,10 +222,19 @@ fn exported_document_structure() {
 	// Spine blocks with exact reduced-rational time values.
 	assert!(xml.contains("<spine>"), "{xml}");
 	assert!(xml.contains("<asset-clip name=\"Clip A\" ref=\"r3\" offset=\"0s\" duration=\"2/5s\" start=\"4/5s\"/>"), "{xml}");
-	assert!(xml.contains("<transition name=\"Cross Dissolve\" offset=\"19/50s\" duration=\"1/25s\"/>"), "{xml}");
+	assert!(
+		xml.contains("<transition name=\"Cross Dissolve\" offset=\"19/50s\" duration=\"1/25s\"/>"),
+		"{xml}"
+	);
 	assert!(xml.contains("<asset-clip name=\"Clip B\" ref=\"r3\" offset=\"21/50s\" duration=\"1/5s\" start=\"0s\" enabled=\"0\"/>"), "{xml}");
-	assert!(xml.contains("<gap name=\"Tail\" offset=\"31/50s\" duration=\"1/50s\"/>"), "{xml}");
-	assert!(xml.contains("<gap name=\"\" offset=\"16/25s\" duration=\"1/10s\"/>"), "{xml}");
+	assert!(
+		xml.contains("<gap name=\"Tail\" offset=\"31/50s\" duration=\"1/50s\"/>"),
+		"{xml}"
+	);
+	assert!(
+		xml.contains("<gap name=\"\" offset=\"16/25s\" duration=\"1/10s\"/>"),
+		"{xml}"
+	);
 	assert!(xml.contains("</spine>"), "{xml}");
 
 	// Secondary audio track with an NTSC clip.
@@ -263,7 +276,13 @@ fn ntsc_frame_accuracy() {
 	assert_time(range.duration(), 3.0, NTSC_RATE);
 	// to_rational is the exact seconds value (3 frames = 1001/10000 s).
 	assert_eq!(range.duration().to_rational(), Rational::new(1001, 10000));
-	let available = clip.media_reference().unwrap().as_external_reference().unwrap().available_range().unwrap();
+	let available = clip
+		.media_reference()
+		.unwrap()
+		.as_external_reference()
+		.unwrap()
+		.available_range()
+		.unwrap();
 	assert_time(available.duration(), 1000.0, NTSC_RATE);
 }
 
@@ -389,7 +408,10 @@ fn lenient_unknown_elements() {
 	assert_eq!(track.children().len(), 5);
 
 	let mc = track.children()[0].as_gap().expect("sync-clip -> gap");
-	assert_eq!(mc.source_range().unwrap().duration().to_rational(), Rational::new(1, 10));
+	assert_eq!(
+		mc.source_range().unwrap().duration().to_rational(),
+		Rational::new(1, 10)
+	);
 
 	let x = track.children()[1].as_clip().expect("asset-clip");
 	assert_eq!(x.name(), "X");
@@ -402,7 +424,10 @@ fn lenient_unknown_elements() {
 	assert_eq!(gap.name(), "G");
 
 	let title = track.children()[3].as_gap().expect("title -> gap");
-	assert_eq!(title.source_range().unwrap().duration().to_rational(), Rational::new(1, 10));
+	assert_eq!(
+		title.source_range().unwrap().duration().to_rational(),
+		Rational::new(1, 10)
+	);
 
 	let no_media = track.children()[4].as_clip().expect("clip without ref");
 	assert!(matches!(

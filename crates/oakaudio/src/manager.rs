@@ -91,8 +91,7 @@ fn with_instance(h: &CHandle) -> Result<MutexGuard<'static, ManagerInner>> {
 	}
 	// SAFETY: `instance()` only creates borrowed handles whose ctx points at
 	// the MANAGER Mutex, which lives in a static for the whole process.
-	let m: &'static Mutex<ManagerInner> =
-		unsafe { &*(h.ctx as *const Mutex<ManagerInner>) };
+	let m: &'static Mutex<ManagerInner> = unsafe { &*(h.ctx as *const Mutex<ManagerInner>) };
 	Ok(m.lock().unwrap_or_else(|p| p.into_inner()))
 }
 
@@ -290,12 +289,24 @@ pub fn start_recording(
 	if m.input_device == PA_NO_DEVICE {
 		return Err(Error::Failed("no input device".to_string()));
 	}
-	eprintln!("MANAGER before encoder_init: audio_enabled={} codec={}", params.audio_enabled, params.audio_codec);
+	eprintln!(
+		"MANAGER before encoder_init: audio_enabled={} codec={}",
+		params.audio_enabled, params.audio_codec
+	);
 	let mut enc = unsafe { crate::bridge::codec::oakcodec_encoder_init(params) };
-	eprintln!("MANAGER encoder_init null? {} ptr={:p} size={}", enc.is_null(), params as *const EncodingParams, std::mem::size_of::<EncodingParams>());
-	let direct = unsafe { oakcodec::ffi::encoder::oakcodec_encoder_init(params as *const EncodingParams) };
+	eprintln!(
+		"MANAGER encoder_init null? {} ptr={:p} size={}",
+		enc.is_null(),
+		params as *const EncodingParams,
+		std::mem::size_of::<EncodingParams>()
+	);
+	let direct =
+		unsafe { oakcodec::ffi::encoder::oakcodec_encoder_init(params as *const EncodingParams) };
 	eprintln!("MANAGER direct init null? {}", direct.is_null());
-	if !direct.is_null() { let mut d = direct; unsafe { oakcodec::ffi::encoder::oakcodec_encoder_free(&mut d) }; }
+	if !direct.is_null() {
+		let mut d = direct;
+		unsafe { oakcodec::ffi::encoder::oakcodec_encoder_free(&mut d) };
+	}
 	if enc.is_null() {
 		return Err(Error::Failed(
 			"failed to open encoder for recording".to_string(),
@@ -365,4 +376,3 @@ pub fn find_device_by_name_s(name: &std::ffi::CStr, _is_output_device: bool) -> 
 pub fn debug_alive_count() -> i32 {
 	crate::handle::alive_count()
 }
-

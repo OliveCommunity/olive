@@ -23,51 +23,51 @@ use std::fs;
 use std::path::PathBuf;
 
 fn read_golden(name: &str) -> String {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/data")
-        .join(name);
-    fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path:?}: {e}"))
+	let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+		.join("tests/data")
+		.join(name);
+	fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {path:?}: {e}"))
 }
 
 fn assert_round_trip(name: &str) {
-    let text = read_golden(name);
-    let doc = oakotio::from_json_string(&text).unwrap_or_else(|e| panic!("parse {name}: {e}"));
-    let out = doc
-        .to_json_string()
-        .unwrap_or_else(|e| panic!("serialize {name}: {e}"));
-    assert_eq!(out, text, "round-trip mismatch for {name}");
+	let text = read_golden(name);
+	let doc = oakotio::from_json_string(&text).unwrap_or_else(|e| panic!("parse {name}: {e}"));
+	let out = doc
+		.to_json_string()
+		.unwrap_or_else(|e| panic!("serialize {name}: {e}"));
+	assert_eq!(out, text, "round-trip mismatch for {name}");
 }
 
 #[test]
 fn golden_timeline_round_trips() {
-    assert_round_trip("golden_timeline.json");
+	assert_round_trip("golden_timeline.json");
 }
 
 #[test]
 fn golden_collection_round_trips() {
-    assert_round_trip("golden_collection.json");
+	assert_round_trip("golden_collection.json");
 }
 
 #[test]
 fn golden_typed_transition_round_trips() {
-    assert_round_trip("golden_typed_transition.json");
+	assert_round_trip("golden_typed_transition.json");
 }
 
 #[test]
 fn floatfmt_round_trips() {
-    assert_round_trip("floatfmt.json");
+	assert_round_trip("floatfmt.json");
 }
 
 #[test]
 fn golden_timeline_parses_as_timeline_root() {
-    let doc = oakotio::from_json_string(&read_golden("golden_timeline.json")).unwrap();
-    assert_eq!(doc.schema_name(), "Timeline");
-    assert!(doc.as_timeline().is_some());
+	let doc = oakotio::from_json_string(&read_golden("golden_timeline.json")).unwrap();
+	assert_eq!(doc.schema_name(), "Timeline");
+	assert!(doc.as_timeline().is_some());
 }
 
 #[test]
 fn golden_collection_parses_as_collection_root() {
-    let doc = oakotio::from_json_string(&read_golden("golden_collection.json")).unwrap();
-    assert_eq!(doc.schema_name(), "SerializableCollection");
-    assert!(doc.as_collection().is_some());
+	let doc = oakotio::from_json_string(&read_golden("golden_collection.json")).unwrap();
+	assert_eq!(doc.schema_name(), "SerializableCollection");
+	assert!(doc.as_collection().is_some());
 }

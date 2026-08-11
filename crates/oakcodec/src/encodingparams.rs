@@ -210,9 +210,7 @@ impl EncodingParams {
 		let source_ar = src_width as f64 / src_height as f64;
 
 		// qFuzzyCompare(export_ar, source_ar): within one part in 100000.
-		if (export_ar - source_ar).abs() * 100000.0
-			<= export_ar.abs().min(source_ar.abs())
-		{
+		if (export_ar - source_ar).abs() * 100000.0 <= export_ar.abs().min(source_ar.abs()) {
 			return;
 		}
 
@@ -233,16 +231,16 @@ impl EncodingParams {
 	/// return the empty string, matching the C++ default case.
 	pub fn extension(&self) -> &str {
 		match self.format {
-			0 => "mxf",  // DNxHD
-			1 => "mkv",  // Matroska
-			2 => "mp4",  // MPEG-4 video
-			3 => "exr",  // OpenEXR
-			4 => "mov",  // QuickTime
-			5 => "png",  // PNG
-			6 => "tiff", // TIFF
-			7 => "wav",  // WAV
-			8 => "aiff", // AIFF
-			9 => "mp3",  // MP3
+			0 => "mxf",   // DNxHD
+			1 => "mkv",   // Matroska
+			2 => "mp4",   // MPEG-4 video
+			3 => "exr",   // OpenEXR
+			4 => "mov",   // QuickTime
+			5 => "png",   // PNG
+			6 => "tiff",  // TIFF
+			7 => "wav",   // WAV
+			8 => "aiff",  // AIFF
+			9 => "mp3",   // MP3
 			10 => "flac", // FLAC
 			11 => "ogg",  // Ogg
 			12 => "webm", // WebM
@@ -404,7 +402,10 @@ impl EncodingParams {
 	pub fn save_to_string(&self) -> String {
 		let mut s = String::new();
 		s.push_str("<export version=\"1\">");
-		s.push_str(&format!("<filename>{}</filename>", escape_xml(cstr(&self.filename))));
+		s.push_str(&format!(
+			"<filename>{}</filename>",
+			escape_xml(cstr(&self.filename))
+		));
 		s.push_str(&format!("<format>{}</format>", self.format));
 		s.push_str(&format!("<range>{}</range>", self.has_custom_range));
 		s.push_str(&format!(
@@ -416,10 +417,7 @@ impl EncodingParams {
 			self.custom_range_out_num, self.custom_range_out_den
 		));
 
-		s.push_str(&format!(
-			"<video enabled=\"{}\">",
-			self.video_enabled
-		));
+		s.push_str(&format!("<video enabled=\"{}\">", self.video_enabled));
 		if self.video_enabled != 0 {
 			s.push_str(&format!("<codec>{}</codec>", self.video_codec));
 			s.push_str(&format!("<width>{}</width>", self.video_width));
@@ -432,10 +430,7 @@ impl EncodingParams {
 				"<timebase>{}/{}</timebase>",
 				self.video_time_base_num, self.video_time_base_den
 			));
-			s.push_str(&format!(
-				"<divider>{}</divider>",
-				self.video_interlacing
-			));
+			s.push_str(&format!("<divider>{}</divider>", self.video_interlacing));
 			s.push_str(&format!(
 				"<pixelaspect>{}/{}</pixelaspect>",
 				self.video_pixel_aspect_num, self.video_pixel_aspect_den
@@ -449,12 +444,12 @@ impl EncodingParams {
 				"<maxbitrate>{}</maxbitrate>",
 				self.video_max_bit_rate
 			));
-			s.push_str(&format!(
-				"<bufsize>{}</bufsize>",
-				self.video_buffer_size
-			));
+			s.push_str(&format!("<bufsize>{}</bufsize>", self.video_buffer_size));
 			s.push_str(&format!("<threads>{}</threads>", self.video_threads));
-			s.push_str(&format!("<pixfmt>{}</pixfmt>", escape_xml(cstr(&self.video_pix_fmt))));
+			s.push_str(&format!(
+				"<pixfmt>{}</pixfmt>",
+				escape_xml(cstr(&self.video_pix_fmt))
+			));
 			s.push_str(&format!(
 				"<imgseq>{}</imgseq>",
 				self.video_is_image_sequence
@@ -466,10 +461,7 @@ impl EncodingParams {
 		}
 		s.push_str("</video>");
 
-		s.push_str(&format!(
-			"<audio enabled=\"{}\">",
-			self.audio_enabled
-		));
+		s.push_str(&format!("<audio enabled=\"{}\">", self.audio_enabled));
 		if self.audio_enabled != 0 {
 			s.push_str(&format!("<codec>{}</codec>", self.audio_codec));
 			s.push_str(&format!(
@@ -501,10 +493,7 @@ impl EncodingParams {
 				"<sidecarformat>{}</sidecarformat>",
 				self.subtitles_sidecar_format
 			));
-			s.push_str(&format!(
-				"<codec>{}</codec>",
-				self.subtitles_codec
-			));
+			s.push_str(&format!("<codec>{}</codec>", self.subtitles_codec));
 		}
 		s.push_str("</subtitles>");
 
@@ -623,7 +612,12 @@ impl<'a> Cursor<'a> {
 			self.skip_ws();
 			if self.starts_with("/>") {
 				self.i += 2;
-				return Ok(El { name, attrs, text: None, children: Vec::new() });
+				return Ok(El {
+					name,
+					attrs,
+					text: None,
+					children: Vec::new(),
+				});
 			}
 			if self.starts_with(">") {
 				self.i += 1;
@@ -656,7 +650,12 @@ impl<'a> Cursor<'a> {
 				}
 			}
 			self.expect_end(&name)?;
-			Ok(El { name, attrs, text: None, children })
+			Ok(El {
+				name,
+				attrs,
+				text: None,
+				children,
+			})
 		} else {
 			let start = self.i;
 			while self.i < self.s.len() && !self.starts_with("<") {
@@ -664,7 +663,12 @@ impl<'a> Cursor<'a> {
 			}
 			let text = self.s[start..self.i].to_string();
 			self.expect_end(&name)?;
-			Ok(El { name, attrs, text: Some(text), children: Vec::new() })
+			Ok(El {
+				name,
+				attrs,
+				text: Some(text),
+				children: Vec::new(),
+			})
 		}
 	}
 }
@@ -684,7 +688,10 @@ fn text(el: &El) -> String {
 }
 
 fn attr<'a>(el: &'a El, name: &str) -> Option<&'a str> {
-	el.attrs.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str())
+	el.attrs
+		.iter()
+		.find(|(k, _)| k == name)
+		.map(|(_, v)| v.as_str())
 }
 
 fn parse_i32(s: &str) -> i32 {
@@ -767,10 +774,7 @@ mod tests {
 	const EPS: f64 = 1e-9;
 
 	fn assert_close(a: f64, b: f64) {
-		assert!(
-			(a - b).abs() < EPS,
-			"expected {a} close to {b} (eps {EPS})"
-		);
+		assert!((a - b).abs() < EPS, "expected {a} close to {b} (eps {EPS})");
 	}
 
 	#[test]
@@ -865,14 +869,7 @@ mod tests {
 	fn generate_matrix_equal_aspect_is_identity() {
 		// Same 16:9 aspect: export_ar == source_ar -> fuzzy-equal -> identity.
 		let mut out = [0.0; 16];
-		EncodingParams::generate_matrix(
-			VideoScalingMethod::Fit,
-			1920,
-			1080,
-			1280,
-			720,
-			&mut out,
-		);
+		EncodingParams::generate_matrix(VideoScalingMethod::Fit, 1920, 1080, 1280, 720, &mut out);
 		assert_eq!(out, identity());
 	}
 
@@ -881,14 +878,7 @@ mod tests {
 		// src square (ar 1.0) -> dst 2:1 (ar 2.0). Fit: source wider/narrower
 		// relative to export -> the x axis is squeezed to source_ar/export_ar.
 		let mut out = [0.0; 16];
-		EncodingParams::generate_matrix(
-			VideoScalingMethod::Fit,
-			1000,
-			1000,
-			2000,
-			1000,
-			&mut out,
-		);
+		EncodingParams::generate_matrix(VideoScalingMethod::Fit, 1000, 1000, 2000, 1000, &mut out);
 		// export_ar(2.0) > source_ar(1.0); Fit => scale(source_ar/export_ar, 1).
 		assert_close(out[0], 0.5);
 		assert_close(out[5], 1.0);
@@ -899,14 +889,7 @@ mod tests {
 		// src square -> dst 2:1. Crop: fit inside, so we zoom the y axis by
 		// export_ar/source_ar and keep x unscaled.
 		let mut out = [0.0; 16];
-		EncodingParams::generate_matrix(
-			VideoScalingMethod::Crop,
-			1000,
-			1000,
-			2000,
-			1000,
-			&mut out,
-		);
+		EncodingParams::generate_matrix(VideoScalingMethod::Crop, 1000, 1000, 2000, 1000, &mut out);
 		// export_ar(2.0) > source_ar(1.0); not Fit => scale(1, export_ar/source_ar).
 		assert_close(out[0], 1.0);
 		assert_close(out[5], 2.0);
@@ -917,14 +900,7 @@ mod tests {
 		// src square -> dst 0.5:1 (ar 0.5). Crop: export narrower than source,
 		// zoom the x axis by source_ar/export_ar.
 		let mut out = [0.0; 16];
-		EncodingParams::generate_matrix(
-			VideoScalingMethod::Crop,
-			1000,
-			1000,
-			500,
-			1000,
-			&mut out,
-		);
+		EncodingParams::generate_matrix(VideoScalingMethod::Crop, 1000, 1000, 500, 1000, &mut out);
 		// export_ar(0.5) < source_ar(1.0); (ar>source) == false, (method==Fit)
 		// false => false == false true => scale(source_ar/export_ar, 1) = 2.0.
 		assert_close(out[0], 2.0);
@@ -935,25 +911,11 @@ mod tests {
 	fn generate_matrix_degenerate_is_identity() {
 		// Zero / negative source sizes must not produce inf/NaN.
 		let mut out = [9.0; 16];
-		EncodingParams::generate_matrix(
-			VideoScalingMethod::Fit,
-			0,
-			1080,
-			1280,
-			720,
-			&mut out,
-		);
+		EncodingParams::generate_matrix(VideoScalingMethod::Fit, 0, 1080, 1280, 720, &mut out);
 		assert_eq!(out, identity());
 
 		let mut out = [9.0; 16];
-		EncodingParams::generate_matrix(
-			VideoScalingMethod::Crop,
-			-1,
-			1080,
-			1280,
-			720,
-			&mut out,
-		);
+		EncodingParams::generate_matrix(VideoScalingMethod::Crop, -1, 1080, 1280, 720, &mut out);
 		assert_eq!(out, identity());
 	}
 

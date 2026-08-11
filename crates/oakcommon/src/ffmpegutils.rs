@@ -157,7 +157,10 @@ fn compatible_bridge_pixel_format_list(maximum_pix_fmt: i32) -> [i32; 4] {
 /// clamped to a maximum native precision (`maximum_pix_fmt == -1` for no
 /// limit).
 pub fn get_compatible_bridge_pixel_format(pix_fmt: i32, maximum_pix_fmt: i32) -> i32 {
-	find_best_pix_fmt_of_list(&compatible_bridge_pixel_format_list(maximum_pix_fmt), pix_fmt)
+	find_best_pix_fmt_of_list(
+		&compatible_bridge_pixel_format_list(maximum_pix_fmt),
+		pix_fmt,
+	)
 }
 
 /// Native pixel format usable to convert from a native frame to a bridge
@@ -327,23 +330,47 @@ mod tests {
 
 	#[test]
 	fn compatible_pixel_format_invalid_and_count_map_to_invalid() {
-		assert_eq!(get_compatible_pixel_format(PIX_FMT_INVALID), PIX_FMT_INVALID);
+		assert_eq!(
+			get_compatible_pixel_format(PIX_FMT_INVALID),
+			PIX_FMT_INVALID
+		);
 		assert_eq!(get_compatible_pixel_format(PIX_FMT_COUNT), PIX_FMT_INVALID);
 	}
 
 	#[test]
 	fn ffmpeg_pixel_format_rgb_channel_layout() {
-		assert_eq!(get_ffmpeg_pixel_format(PIX_FMT_U8, RGB_CHANNEL_COUNT), FB_PIX_FMT_RG_B24);
-		assert_eq!(get_ffmpeg_pixel_format(PIX_FMT_U10, RGB_CHANNEL_COUNT), FB_PIX_FMT_NONE);
-		assert_eq!(get_ffmpeg_pixel_format(PIX_FMT_U16, RGB_CHANNEL_COUNT), FB_PIX_FMT_RG_B48_LE);
-		assert_eq!(get_ffmpeg_pixel_format(PIX_FMT_F16, RGB_CHANNEL_COUNT), FB_PIX_FMT_RGB_F16_LE);
-		assert_eq!(get_ffmpeg_pixel_format(PIX_FMT_F32, RGB_CHANNEL_COUNT), FB_PIX_FMT_RGB_F32_LE);
+		assert_eq!(
+			get_ffmpeg_pixel_format(PIX_FMT_U8, RGB_CHANNEL_COUNT),
+			FB_PIX_FMT_RG_B24
+		);
+		assert_eq!(
+			get_ffmpeg_pixel_format(PIX_FMT_U10, RGB_CHANNEL_COUNT),
+			FB_PIX_FMT_NONE
+		);
+		assert_eq!(
+			get_ffmpeg_pixel_format(PIX_FMT_U16, RGB_CHANNEL_COUNT),
+			FB_PIX_FMT_RG_B48_LE
+		);
+		assert_eq!(
+			get_ffmpeg_pixel_format(PIX_FMT_F16, RGB_CHANNEL_COUNT),
+			FB_PIX_FMT_RGB_F16_LE
+		);
+		assert_eq!(
+			get_ffmpeg_pixel_format(PIX_FMT_F32, RGB_CHANNEL_COUNT),
+			FB_PIX_FMT_RGB_F32_LE
+		);
 	}
 
 	#[test]
 	fn ffmpeg_pixel_format_rgba_channel_layout() {
-		assert_eq!(get_ffmpeg_pixel_format(PIX_FMT_U8, RGBA_CHANNEL_COUNT), FB_PIX_FMT_RGBA);
-		assert_eq!(get_ffmpeg_pixel_format(PIX_FMT_U10, RGBA_CHANNEL_COUNT), FB_PIX_FMT_NONE);
+		assert_eq!(
+			get_ffmpeg_pixel_format(PIX_FMT_U8, RGBA_CHANNEL_COUNT),
+			FB_PIX_FMT_RGBA
+		);
+		assert_eq!(
+			get_ffmpeg_pixel_format(PIX_FMT_U10, RGBA_CHANNEL_COUNT),
+			FB_PIX_FMT_NONE
+		);
 		assert_eq!(
 			get_ffmpeg_pixel_format(PIX_FMT_U16, RGBA_CHANNEL_COUNT),
 			FB_PIX_FMT_RGB_A64_LE
@@ -367,9 +394,18 @@ mod tests {
 
 	#[test]
 	fn ffmpeg_pixel_format_invalid_and_count_return_none() {
-		assert_eq!(get_ffmpeg_pixel_format(PIX_FMT_INVALID, RGB_CHANNEL_COUNT), FB_PIX_FMT_NONE);
-		assert_eq!(get_ffmpeg_pixel_format(PIX_FMT_COUNT, RGB_CHANNEL_COUNT), FB_PIX_FMT_NONE);
-		assert_eq!(get_ffmpeg_pixel_format(PIX_FMT_INVALID, RGBA_CHANNEL_COUNT), FB_PIX_FMT_NONE);
+		assert_eq!(
+			get_ffmpeg_pixel_format(PIX_FMT_INVALID, RGB_CHANNEL_COUNT),
+			FB_PIX_FMT_NONE
+		);
+		assert_eq!(
+			get_ffmpeg_pixel_format(PIX_FMT_COUNT, RGB_CHANNEL_COUNT),
+			FB_PIX_FMT_NONE
+		);
+		assert_eq!(
+			get_ffmpeg_pixel_format(PIX_FMT_INVALID, RGBA_CHANNEL_COUNT),
+			FB_PIX_FMT_NONE
+		);
 	}
 
 	#[test]
@@ -390,7 +426,10 @@ mod tests {
 
 	#[test]
 	fn native_sample_format_unknown_maps_to_invalid() {
-		assert_eq!(get_native_sample_format(FB_SAMPLE_FMT_NONE), SMP_FMT_INVALID);
+		assert_eq!(
+			get_native_sample_format(FB_SAMPLE_FMT_NONE),
+			SMP_FMT_INVALID
+		);
 		// A bogus code that does not match any bridge sample format.
 		assert_eq!(get_native_sample_format(12345), SMP_FMT_INVALID);
 	}
@@ -413,16 +452,29 @@ mod tests {
 
 	#[test]
 	fn ffmpeg_sample_format_invalid_and_count_return_none() {
-		assert_eq!(get_ffmpeg_sample_format(SMP_FMT_INVALID), FB_SAMPLE_FMT_NONE);
+		assert_eq!(
+			get_ffmpeg_sample_format(SMP_FMT_INVALID),
+			FB_SAMPLE_FMT_NONE
+		);
 		assert_eq!(get_ffmpeg_sample_format(SMP_FMT_COUNT), FB_SAMPLE_FMT_NONE);
 	}
 
 	#[test]
 	fn sample_format_mappings_are_inverse() {
-		for native in [SMP_FMT_U8, SMP_FMT_S16, SMP_FMT_S32, SMP_FMT_S64, SMP_FMT_F32, SMP_FMT_F64,
-		               SMP_FMT_U8_P, SMP_FMT_S16_P, SMP_FMT_S32_P, SMP_FMT_S64_P, SMP_FMT_F32_P,
-		               SMP_FMT_F64_P]
-		{
+		for native in [
+			SMP_FMT_U8,
+			SMP_FMT_S16,
+			SMP_FMT_S32,
+			SMP_FMT_S64,
+			SMP_FMT_F32,
+			SMP_FMT_F64,
+			SMP_FMT_U8_P,
+			SMP_FMT_S16_P,
+			SMP_FMT_S32_P,
+			SMP_FMT_S64_P,
+			SMP_FMT_F32_P,
+			SMP_FMT_F64_P,
+		] {
 			let bridge = get_ffmpeg_sample_format(native);
 			assert_eq!(get_native_sample_format(bridge), native);
 		}
@@ -430,17 +482,41 @@ mod tests {
 
 	#[test]
 	fn jpeg_space_converts_to_regular_space() {
-		assert_eq!(convert_jpeg_space_to_regular_space(FB_PIX_FMT_YUV_J420_P), FB_PIX_FMT_YU_V420_P);
-		assert_eq!(convert_jpeg_space_to_regular_space(FB_PIX_FMT_YUV_J422_P), FB_PIX_FMT_YU_V422_P);
-		assert_eq!(convert_jpeg_space_to_regular_space(FB_PIX_FMT_YUV_J444_P), FB_PIX_FMT_YU_V444_P);
-		assert_eq!(convert_jpeg_space_to_regular_space(FB_PIX_FMT_YUV_J440_P), FB_PIX_FMT_YU_V440_P);
-		assert_eq!(convert_jpeg_space_to_regular_space(FB_PIX_FMT_YUV_J411_P), FB_PIX_FMT_YU_V411_P);
+		assert_eq!(
+			convert_jpeg_space_to_regular_space(FB_PIX_FMT_YUV_J420_P),
+			FB_PIX_FMT_YU_V420_P
+		);
+		assert_eq!(
+			convert_jpeg_space_to_regular_space(FB_PIX_FMT_YUV_J422_P),
+			FB_PIX_FMT_YU_V422_P
+		);
+		assert_eq!(
+			convert_jpeg_space_to_regular_space(FB_PIX_FMT_YUV_J444_P),
+			FB_PIX_FMT_YU_V444_P
+		);
+		assert_eq!(
+			convert_jpeg_space_to_regular_space(FB_PIX_FMT_YUV_J440_P),
+			FB_PIX_FMT_YU_V440_P
+		);
+		assert_eq!(
+			convert_jpeg_space_to_regular_space(FB_PIX_FMT_YUV_J411_P),
+			FB_PIX_FMT_YU_V411_P
+		);
 	}
 
 	#[test]
 	fn jpeg_space_leaves_non_jpeg_formats_unchanged() {
-		assert_eq!(convert_jpeg_space_to_regular_space(FB_PIX_FMT_RGBA), FB_PIX_FMT_RGBA);
-		assert_eq!(convert_jpeg_space_to_regular_space(FB_PIX_FMT_NONE), FB_PIX_FMT_NONE);
-		assert_eq!(convert_jpeg_space_to_regular_space(FB_PIX_FMT_YU_V420_P), FB_PIX_FMT_YU_V420_P);
+		assert_eq!(
+			convert_jpeg_space_to_regular_space(FB_PIX_FMT_RGBA),
+			FB_PIX_FMT_RGBA
+		);
+		assert_eq!(
+			convert_jpeg_space_to_regular_space(FB_PIX_FMT_NONE),
+			FB_PIX_FMT_NONE
+		);
+		assert_eq!(
+			convert_jpeg_space_to_regular_space(FB_PIX_FMT_YU_V420_P),
+			FB_PIX_FMT_YU_V420_P
+		);
 	}
 }

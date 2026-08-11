@@ -196,7 +196,8 @@ impl Task {
 			self.done.1.notify_all();
 		}
 		if let Some(s) = &self.subscriber {
-			s.finished_value.store(if succeeded { 1 } else { 0 }, Ordering::SeqCst);
+			s.finished_value
+				.store(if succeeded { 1 } else { 0 }, Ordering::SeqCst);
 		}
 		self.emit_event(TaskEvent::Finished);
 

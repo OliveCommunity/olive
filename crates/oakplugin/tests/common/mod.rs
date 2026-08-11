@@ -51,7 +51,11 @@ pub fn test_plugin_dir() -> Option<PathBuf> {
 			let bundle = std::env::temp_dir()
 				.join(format!("oak-test-plugin-{}", std::process::id()))
 				.join("oak-test-plugin.ofx.bundle");
-			let platform = if cfg!(target_os = "macos") { "MacOS" } else { "Linux-x86-64" };
+			let platform = if cfg!(target_os = "macos") {
+				"MacOS"
+			} else {
+				"Linux-x86-64"
+			};
 			let bin_dir = bundle.join("Contents").join(platform);
 			std::fs::create_dir_all(&bin_dir).ok()?;
 			let target = bin_dir.join("plugin");

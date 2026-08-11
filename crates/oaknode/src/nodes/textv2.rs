@@ -32,9 +32,7 @@ use crate::node::{Category, NodeBehavior, NodeCore};
 use crate::value::{NodeValue, NodeValueRow, NodeValueTable};
 use oakcore_rs::Rational;
 
-use super::textbackend::{
-	TextLayoutMode, TextLayoutRequest, TextLayoutSize, TextRenderTransform,
-};
+use super::textbackend::{TextLayoutMode, TextLayoutRequest, TextLayoutSize, TextRenderTransform};
 
 /// Text input id (C++ `k_text_input`). Type: text; default
 /// `"Sample Text"`.
@@ -103,13 +101,19 @@ impl TextGeneratorV2 {
 		} else {
 			text
 		};
-		let size = row.get(crate::nodes::shapenodebase::SIZE_INPUT).map(to_vec2).unwrap_or([0.0, 0.0]);
+		let size = row
+			.get(crate::nodes::shapenodebase::SIZE_INPUT)
+			.map(to_vec2)
+			.unwrap_or([0.0, 0.0]);
 
 		TextLayoutRequest {
 			text,
 			mode,
 			font_family: row.get(FONT_INPUT).map(to_text).unwrap_or_else(String::new),
-			font_size_pt: row.get(FONT_SIZE_INPUT).map(NodeValue::to_double).unwrap_or(0.0),
+			font_size_pt: row
+				.get(FONT_SIZE_INPUT)
+				.map(NodeValue::to_double)
+				.unwrap_or(0.0),
 			dots_per_meter: 2835,
 			wrap_width: size[0],
 			center_horizontally: false,
@@ -120,7 +124,12 @@ impl TextGeneratorV2 {
 	/// position re-centered into frame space —
 	/// `pos - size/2 + frame/2` (the frame halves are integer division in
 	/// C++).
-	pub fn base_offset(pos: [f64; 2], size: [f64; 2], frame_width: i32, frame_height: i32) -> (f64, f64) {
+	pub fn base_offset(
+		pos: [f64; 2],
+		size: [f64; 2],
+		frame_width: i32,
+		frame_height: i32,
+	) -> (f64, f64) {
 		(
 			pos[0] - size[0] / 2.0 + (frame_width / 2) as f64,
 			pos[1] - size[1] / 2.0 + (frame_height / 2) as f64,
@@ -131,7 +140,12 @@ impl TextGeneratorV2 {
 	/// offset plus the vertical alignment delta — top: none; center:
 	/// `size.y/2 - doc_height/2` (the halving is integer on the
 	/// `int(doc.height)`); bottom: `size.y - doc_height`.
-	pub fn draw_offset(valign: i32, base: (f64, f64), size: [f64; 2], doc_height: i32) -> (f64, f64) {
+	pub fn draw_offset(
+		valign: i32,
+		base: (f64, f64),
+		size: [f64; 2],
+		doc_height: i32,
+	) -> (f64, f64) {
 		let (dx, mut dy) = base;
 		match valign {
 			// k_vertical_align_top: do nothing.
@@ -149,7 +163,12 @@ impl TextGeneratorV2 {
 	/// scale, the draw offset, and the clip rect at the base offset
 	/// covering the shape size (set before the vertical-alignment
 	/// translate in the C++).
-	pub fn render_transform(scale: f64, draw: (f64, f64), base: (f64, f64), size: [f64; 2]) -> TextRenderTransform {
+	pub fn render_transform(
+		scale: f64,
+		draw: (f64, f64),
+		base: (f64, f64),
+		size: [f64; 2],
+	) -> TextRenderTransform {
 		TextRenderTransform {
 			scale,
 			draw_offset_x: draw.0,
@@ -181,10 +200,19 @@ impl TextGeneratorV2 {
 			Some(measure) => measure(&req),
 			None => TextLayoutSize::default(),
 		};
-		let size = row.get(crate::nodes::shapenodebase::SIZE_INPUT).map(to_vec2).unwrap_or([0.0, 0.0]);
-		let pos = row.get(crate::nodes::shapenodebase::POSITION_INPUT).map(to_vec2).unwrap_or([0.0, 0.0]);
+		let size = row
+			.get(crate::nodes::shapenodebase::SIZE_INPUT)
+			.map(to_vec2)
+			.unwrap_or([0.0, 0.0]);
+		let pos = row
+			.get(crate::nodes::shapenodebase::POSITION_INPUT)
+			.map(to_vec2)
+			.unwrap_or([0.0, 0.0]);
 		let base = Self::base_offset(pos, size, frame_width, frame_height);
-		let valign = row.get(V_ALIGN_INPUT).map(NodeValue::to_double).unwrap_or(0.0) as i32;
+		let valign = row
+			.get(V_ALIGN_INPUT)
+			.map(NodeValue::to_double)
+			.unwrap_or(0.0) as i32;
 		let draw = Self::draw_offset(valign, base, size, doc.height as i32);
 		(req, doc, base, draw)
 	}
@@ -239,11 +267,18 @@ impl NodeBehavior for TextGeneratorV2 {
 	/// resolved via [`NodeBehavior::generate_frame`]; the f32 forcing is
 	/// renderer-side and has no representation here
 	/// (`// CPP-PARITY: textv2.cpp` `value()`).
-	fn value(&self, core: &NodeCore, inputs: &NodeValueRow, time: Rational, table: &mut NodeValueTable) {
-		let text = inputs
-			.get(TEXT_INPUT)
-			.map(to_text)
-			.unwrap_or_else(|| core.value_at_time(TEXT_INPUT, -1, time).to_double().to_string());
+	fn value(
+		&self,
+		core: &NodeCore,
+		inputs: &NodeValueRow,
+		time: Rational,
+		table: &mut NodeValueTable,
+	) {
+		let text = inputs.get(TEXT_INPUT).map(to_text).unwrap_or_else(|| {
+			core.value_at_time(TEXT_INPUT, -1, time)
+				.to_double()
+				.to_string()
+		});
 		if !text.is_empty() {
 			table.push(
 				crate::value::ValueType::Texture,
@@ -322,10 +357,7 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		crate::value::ValueType::Vec2,
 		NodeValue::Vec2([100.0, 100.0]),
 	);
-	size.properties = vec![(
-		"min".to_string(),
-		NodeValue::Vec2([0.0, 0.0]),
-	)];
+	size.properties = vec![("min".to_string(), NodeValue::Vec2([0.0, 0.0]))];
 	core.add_input(size);
 	core.add_input(crate::input::Input::new(
 		crate::nodes::shapenodebase::COLOR_INPUT,
@@ -403,10 +435,22 @@ mod tests {
 		assert_eq!(n.input_name(V_ALIGN_INPUT), "Vertical Align");
 		assert_eq!(n.input_name(FONT_INPUT), "Font");
 		assert_eq!(n.input_name(FONT_SIZE_INPUT), "Font Size");
-		assert_eq!(n.input_name(crate::nodes::generatorwithmerge::BASE_INPUT), "Base");
-		assert_eq!(n.input_name(crate::nodes::shapenodebase::POSITION_INPUT), "Position");
-		assert_eq!(n.input_name(crate::nodes::shapenodebase::SIZE_INPUT), "Size");
-		assert_eq!(n.input_name(crate::nodes::shapenodebase::COLOR_INPUT), "Color");
+		assert_eq!(
+			n.input_name(crate::nodes::generatorwithmerge::BASE_INPUT),
+			"Base"
+		);
+		assert_eq!(
+			n.input_name(crate::nodes::shapenodebase::POSITION_INPUT),
+			"Position"
+		);
+		assert_eq!(
+			n.input_name(crate::nodes::shapenodebase::SIZE_INPUT),
+			"Size"
+		);
+		assert_eq!(
+			n.input_name(crate::nodes::shapenodebase::COLOR_INPUT),
+			"Color"
+		);
 		assert_eq!(n.input_name("other_in"), "other_in");
 	}
 
@@ -414,9 +458,18 @@ mod tests {
 	fn create_wires_inherited_and_own_inputs() {
 		let (core, behavior) = create();
 		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.text2");
-		assert_eq!(core.get_input(TEXT_INPUT).unwrap().value_type, ValueType::Text);
-		assert_eq!(core.get_input(V_ALIGN_INPUT).unwrap().default, NodeValue::Combo(0));
-		assert_eq!(core.effect_input, crate::nodes::generatorwithmerge::BASE_INPUT);
+		assert_eq!(
+			core.get_input(TEXT_INPUT).unwrap().value_type,
+			ValueType::Text
+		);
+		assert_eq!(
+			core.get_input(V_ALIGN_INPUT).unwrap().default,
+			NodeValue::Combo(0)
+		);
+		assert_eq!(
+			core.effect_input,
+			crate::nodes::generatorwithmerge::BASE_INPUT
+		);
 		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
 		assert_ne!(core.flags & crate::node::flags::DONT_SHOW_IN_CREATE_MENU, 0);
 		// Inherited standard-value overrides.
@@ -436,7 +489,10 @@ mod tests {
 		row.insert(TEXT_INPUT.to_string(), NodeValue::Text("Hi".to_string()));
 		row.insert(FONT_SIZE_INPUT.to_string(), NodeValue::Float(36.0));
 		row.insert(HTML_INPUT.to_string(), NodeValue::Boolean(false));
-		row.insert(crate::nodes::shapenodebase::SIZE_INPUT.to_string(), NodeValue::Vec2([400.0, 300.0]));
+		row.insert(
+			crate::nodes::shapenodebase::SIZE_INPUT.to_string(),
+			NodeValue::Vec2([400.0, 300.0]),
+		);
 		let req = TextGeneratorV2::layout_request(&row);
 		assert_eq!(req.text, "Hi");
 		assert_eq!(req.font_size_pt, 36.0);
@@ -450,7 +506,10 @@ mod tests {
 		let mut row = NodeValueRow::default();
 		row.insert(TEXT_INPUT.to_string(), NodeValue::Text("a\nb".to_string()));
 		row.insert(HTML_INPUT.to_string(), NodeValue::Boolean(true));
-		row.insert(crate::nodes::shapenodebase::SIZE_INPUT.to_string(), NodeValue::Vec2([100.0, 100.0]));
+		row.insert(
+			crate::nodes::shapenodebase::SIZE_INPUT.to_string(),
+			NodeValue::Vec2([100.0, 100.0]),
+		);
 		let req = TextGeneratorV2::layout_request(&row);
 		assert_eq!(req.text, "a<br>b");
 		assert_eq!(req.mode, TextLayoutMode::Html);
@@ -496,8 +555,14 @@ mod tests {
 		crate::nodes::textbackend::set_text_backends(None, None);
 		let mut row = NodeValueRow::default();
 		row.insert(TEXT_INPUT.to_string(), NodeValue::Text("Hi".to_string()));
-		row.insert(crate::nodes::shapenodebase::POSITION_INPUT.to_string(), NodeValue::Vec2([0.0, 0.0]));
-		row.insert(crate::nodes::shapenodebase::SIZE_INPUT.to_string(), NodeValue::Vec2([400.0, 300.0]));
+		row.insert(
+			crate::nodes::shapenodebase::POSITION_INPUT.to_string(),
+			NodeValue::Vec2([0.0, 0.0]),
+		);
+		row.insert(
+			crate::nodes::shapenodebase::SIZE_INPUT.to_string(),
+			NodeValue::Vec2([400.0, 300.0]),
+		);
 		row.insert(V_ALIGN_INPUT.to_string(), NodeValue::Combo(1));
 		let (_req, doc, base, draw) = TextGeneratorV2::measure_and_layout(&row, 1920, 1080);
 		assert_eq!(doc.width, 0.0);

@@ -465,10 +465,7 @@ impl MockEngine {
 		// Port ids are globally unique.
 		let video_type = PortDataType::new("video", hsla(0.55, 0.75, 0.6, 1.0));
 		let audio_type = PortDataType::new("audio", hsla(0.1, 0.7, 0.55, 1.0));
-		let port = |id: u64,
-		            kind: PortKind,
-		            label: &str,
-		            data_type: &PortDataType| MockPort {
+		let port = |id: u64, kind: PortKind, label: &str, data_type: &PortDataType| MockPort {
 			id: PortId(id),
 			kind,
 			label: label.into(),
@@ -549,11 +546,7 @@ impl MockEngine {
 				vec![],
 			),
 		];
-		let edge = |id: u64,
-		            from_node: u64,
-		            from_port: u64,
-		            to_node: u64,
-		            to_port: u64| MockEdge {
+		let edge = |id: u64, from_node: u64, from_port: u64, to_node: u64, to_port: u64| MockEdge {
 			id: EdgeId(id),
 			from_node: NodeId(from_node),
 			from_port: PortId(from_port),
@@ -824,8 +817,7 @@ impl MockEngine {
 	/// Returns the node that owns `port`.
 	fn node_with_port(&self, port: PortId) -> Option<&MockNode> {
 		self.nodes.iter().find(|n| {
-			n.inputs.iter().any(|p| p.id() == port)
-				|| n.outputs.iter().any(|p| p.id() == port)
+			n.inputs.iter().any(|p| p.id() == port) || n.outputs.iter().any(|p| p.id() == port)
 		})
 	}
 
@@ -1111,7 +1103,11 @@ impl AppEngine for MockEngine {
 					self.request_frame(Monitor::Program, *frame, cx);
 				}
 			}
-			TimelineEvent::ClipTrimRequested { clip, edge, new_frame } => {
+			TimelineEvent::ClipTrimRequested {
+				clip,
+				edge,
+				new_frame,
+			} => {
 				if let Some((track, index)) = self.mock_clip_position(*clip) {
 					let clip = &mut self.tracks[track].clips[index];
 					match edge {
@@ -1127,7 +1123,11 @@ impl AppEngine for MockEngine {
 				}
 				cx.notify();
 			}
-			TimelineEvent::ClipMoveRequested { clip, new_track, new_start } => {
+			TimelineEvent::ClipMoveRequested {
+				clip,
+				new_track,
+				new_start,
+			} => {
 				let Some((track, index)) = self.mock_clip_position(*clip) else {
 					return;
 				};
@@ -1171,9 +1171,7 @@ impl AppEngine for MockEngine {
 					.clips
 					.iter()
 					.enumerate()
-					.filter(|(_, clip)| {
-						clip.range.start.0 < frame.0 && frame.0 < clip.range.end.0
-					})
+					.filter(|(_, clip)| clip.range.start.0 < frame.0 && frame.0 < clip.range.end.0)
 					.map(|(clip_index, _)| (track_index, clip_index))
 					.collect::<Vec<_>>()
 			})
@@ -1238,7 +1236,11 @@ impl AppEngine for MockEngine {
 		Ok(())
 	}
 
-	fn save_project(&mut self, _path: Option<PathBuf>, cx: &mut Context<Self>) -> Result<(), String> {
+	fn save_project(
+		&mut self,
+		_path: Option<PathBuf>,
+		cx: &mut Context<Self>,
+	) -> Result<(), String> {
 		println!("[mock engine] save: no persistence in mock mode");
 		cx.notify();
 		Ok(())
@@ -1422,7 +1424,9 @@ impl MockEngine {
 		let (width, height, samples) = crate::oakui::frames::synthetic_frame_samples(frame);
 		// Analyze the scopes from the same F32 samples the viewer displays.
 		let scope = crate::oakui::scopes::analyze_f32_rgba(width, height, &samples);
-		let image = Arc::new(crate::oakui::frames::f32_rgba_to_bgra_image(width, height, &samples));
+		let image = Arc::new(crate::oakui::frames::f32_rgba_to_bgra_image(
+			width, height, &samples,
+		));
 		cache.insert(monitor, (frame.0, image.clone(), scope));
 		image
 	}
@@ -1565,11 +1569,19 @@ mod tests {
 			});
 			let v2 = engine.read(app).track(0).expect("V2");
 			assert!(
-				v2.clips().iter().any(|c| c.id() == ClipId(11) && c.range().start == Frame(300)),
+				v2.clips()
+					.iter()
+					.any(|c| c.id() == ClipId(11) && c.range().start == Frame(300)),
 				"开场 moved to V2 at frame 300"
 			);
 			assert!(
-				!engine.read(app).track(1).expect("V1").clips().iter().any(|c| c.id() == ClipId(11)),
+				!engine
+					.read(app)
+					.track(1)
+					.expect("V1")
+					.clips()
+					.iter()
+					.any(|c| c.id() == ClipId(11)),
 				"开场 left V1"
 			);
 		});
@@ -1613,7 +1625,11 @@ mod tests {
 				.iter()
 				.find(|c| c.id() == ClipId(12))
 				.expect("B-roll clip");
-			assert_eq!(b_roll.range().start, Frame(120), "ripple shifted B-roll left");
+			assert_eq!(
+				b_roll.range().start,
+				Frame(120),
+				"ripple shifted B-roll left"
+			);
 		});
 	}
 
@@ -1663,9 +1679,7 @@ mod tests {
 	}
 
 	#[gpui::test]
-	async fn can_connect_enforces_direction_type_duplicates_and_cycles(
-		cx: &mut TestAppContext,
-	) {
+	async fn can_connect_enforces_direction_type_duplicates_and_cycles(cx: &mut TestAppContext) {
 		cx.update(|app| {
 			let engine = demo_engine(app);
 			let engine = engine.read(app);
@@ -1675,11 +1689,20 @@ mod tests {
 			// second input).
 			assert!(engine.can_connect(PortId(3), PortId(20)));
 			// The existing connection is not offered again.
-			assert!(!engine.can_connect(PortId(21), PortId(40)), "duplicate edge");
+			assert!(
+				!engine.can_connect(PortId(21), PortId(40)),
+				"duplicate edge"
+			);
 			// Input → output is rejected (wrong direction).
-			assert!(!engine.can_connect(PortId(20), PortId(1)), "wrong direction");
+			assert!(
+				!engine.can_connect(PortId(20), PortId(1)),
+				"wrong direction"
+			);
 			// A port cannot connect to itself.
-			assert!(!engine.can_connect(PortId(42), PortId(40)), "self connection");
+			assert!(
+				!engine.can_connect(PortId(42), PortId(40)),
+				"self connection"
+			);
 			// Type mismatch: the clip's audio output is not a video signal.
 			assert!(
 				!engine.can_connect(PortId(4), PortId(20)),
@@ -1728,7 +1751,9 @@ mod tests {
 			});
 			let engine_read = engine.read(app);
 			assert_eq!(engine_read.edges().len(), 6);
-			assert!(engine_read.port(PortId(22)).is_some_and(|p| p.is_connected()));
+			assert!(engine_read
+				.port(PortId(22))
+				.is_some_and(|p| p.is_connected()));
 			let edges = engine_read.edges();
 			let extra = edges
 				.iter()
@@ -1743,7 +1768,10 @@ mod tests {
 			});
 			assert_eq!(engine.read(app).edges().len(), 5);
 			assert!(
-				!engine.read(app).port(PortId(22)).is_some_and(|p| p.is_connected()),
+				!engine
+					.read(app)
+					.port(PortId(22))
+					.is_some_and(|p| p.is_connected()),
 				"mask input freed again"
 			);
 
@@ -1760,8 +1788,10 @@ mod tests {
 			let engine_read = engine.read(app);
 			assert_eq!(engine_read.nodes().len(), 5);
 			assert!(
-				!engine_read.edges().iter().any(|e| e.to_node() == NodeId(3)
-					|| e.from_node() == NodeId(3)),
+				!engine_read
+					.edges()
+					.iter()
+					.any(|e| e.to_node() == NodeId(3) || e.from_node() == NodeId(3)),
 				"edges incident to the deleted node are removed"
 			);
 		});
@@ -1793,7 +1823,9 @@ mod tests {
 			let bytes = c.as_bytes(0).expect("single frame");
 			assert_eq!(
 				bytes.len(),
-				(crate::oakui::frames::SYNTH_FRAME_WIDTH * crate::oakui::frames::SYNTH_FRAME_HEIGHT * 4) as usize
+				(crate::oakui::frames::SYNTH_FRAME_WIDTH
+					* crate::oakui::frames::SYNTH_FRAME_HEIGHT
+					* 4) as usize
 			);
 			assert!(bytes.chunks_exact(4).all(|px| px[3] == 255), "opaque alpha");
 		});

@@ -61,8 +61,11 @@ use crate::handle::CHandle;
 pub type OakTaskEventFn = unsafe extern "C" fn(event_id: c_int, value: f64, userdata: *mut c_void);
 
 /// `oaktask_otio_import_confirm_fn` (`include/task/project.h`).
-pub type OakTaskOtioImportConfirmFn =
-	unsafe extern "C" fn(sequence_names: *const *const c_char, count: c_int, userdata: *mut c_void) -> c_int;
+pub type OakTaskOtioImportConfirmFn = unsafe extern "C" fn(
+	sequence_names: *const *const c_char,
+	count: c_int,
+	userdata: *mut c_void,
+) -> c_int;
 
 /// `oaktask_image_sequence_confirm_fn` (`include/task/project.h`).
 pub type OakTaskImageSequenceConfirmFn =
@@ -160,7 +163,11 @@ pub fn oaktask_task_error(t: CHandle, buf: *mut c_char, buf_size: c_int) -> c_in
 
 /// Direct call into the `oaktask` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaktask_task_subscribe(t: CHandle, cb: Option<OakTaskEventFn>, userdata: *mut c_void) -> i64 {
+pub fn oaktask_task_subscribe(
+	t: CHandle,
+	cb: Option<OakTaskEventFn>,
+	userdata: *mut c_void,
+) -> i64 {
 	unsafe { oaktask::ffi::task::oaktask_task_subscribe(t, cb, userdata) }
 }
 
@@ -184,14 +191,31 @@ pub fn oaktask_load_take_project(t: CHandle) -> CHandle {
 
 /// Direct call into the `oaktask` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaktask_create_project_save(project: CHandle, filename_or_null: *const c_char, use_compression: c_int) -> CHandle {
-	unsafe { oaktask::ffi::project::oaktask_create_project_save(project, filename_or_null, use_compression) }
+pub fn oaktask_create_project_save(
+	project: CHandle,
+	filename_or_null: *const c_char,
+	use_compression: c_int,
+) -> CHandle {
+	unsafe {
+		oaktask::ffi::project::oaktask_create_project_save(
+			project,
+			filename_or_null,
+			use_compression,
+		)
+	}
 }
 
 /// Direct call into the `oaktask` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaktask_create_project_import(folder: CHandle, project: CHandle, urls: *const *const c_char, url_count: c_int) -> CHandle {
-	unsafe { oaktask::ffi::project::oaktask_create_project_import(folder, project, urls, url_count) }
+pub fn oaktask_create_project_import(
+	folder: CHandle,
+	project: CHandle,
+	urls: *const *const c_char,
+	url_count: c_int,
+) -> CHandle {
+	unsafe {
+		oaktask::ffi::project::oaktask_create_project_import(folder, project, urls, url_count)
+	}
 }
 
 /// Direct call into the `oaktask` crate (single-lib unification; the
@@ -220,7 +244,12 @@ pub fn oaktask_import_invalid_count(t: CHandle) -> c_int {
 
 /// Direct call into the `oaktask` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaktask_import_invalid_at(t: CHandle, index: c_int, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaktask_import_invalid_at(
+	t: CHandle,
+	index: c_int,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaktask::ffi::project::oaktask_import_invalid_at(t, index, buf, buf_size) }
 }
 
@@ -244,7 +273,10 @@ pub fn oaktask_create_project_save_otio(project: CHandle, filename: *const c_cha
 
 /// Direct call into the `oaktask` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaktask_load_otio_set_confirm_cb(cb: Option<OakTaskOtioImportConfirmFn>, userdata: *mut c_void) {
+pub fn oaktask_load_otio_set_confirm_cb(
+	cb: Option<OakTaskOtioImportConfirmFn>,
+	userdata: *mut c_void,
+) {
 	unsafe { oaktask::ffi::project::oaktask_load_otio_set_confirm_cb(cb, userdata) }
 }
 
@@ -260,16 +292,18 @@ pub fn oaktask_create_precache(footage: CHandle, index: c_int, sequence: CHandle
 /// (single-lib unification; the encoding-params POD is the shared
 /// oakcodec type).
 pub fn oaktask_create_export(
-		viewer: CHandle,
-		color_manager: CHandle,
-		params: *const crate::bridge::codec::EncodingParamsPOD,
-	) -> CHandle {
+	viewer: CHandle,
+	color_manager: CHandle,
+	params: *const crate::bridge::codec::EncodingParamsPOD,
+) -> CHandle {
 	unsafe { oaktask::ffi::project::oaktask_create_export(viewer, color_manager, params) }
 }
 
 /// Direct call into the `oaktask` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaktask_import_set_image_sequence_confirm_cb(cb: Option<OakTaskImageSequenceConfirmFn>, userdata: *mut c_void) {
+pub fn oaktask_import_set_image_sequence_confirm_cb(
+	cb: Option<OakTaskImageSequenceConfirmFn>,
+	userdata: *mut c_void,
+) {
 	unsafe { oaktask::ffi::project::oaktask_import_set_image_sequence_confirm_cb(cb, userdata) }
 }
-

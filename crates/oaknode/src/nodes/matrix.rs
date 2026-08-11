@@ -127,9 +127,10 @@ impl NodeBehavior for MatrixGenerator {
 			let uniform = core.standard_value(UNIFORM_SCALE_INPUT, -1).to_double() != 0.0;
 			if let Some(scale) = core.get_input_mut(SCALE_INPUT) {
 				scale.properties.retain(|(k, _)| k != "disable1");
-				scale
-					.properties
-					.push(("disable1".to_string(), crate::value::NodeValue::Boolean(uniform)));
+				scale.properties.push((
+					"disable1".to_string(),
+					crate::value::NodeValue::Boolean(uniform),
+				));
 			}
 		}
 	}
@@ -315,7 +316,10 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		crate::value::ValueType::Vec2,
 		crate::value::NodeValue::Vec2([0.0, 0.0]),
 	);
-	pos.properties = vec![("view".to_string(), crate::value::NodeValue::Text("percentage".into()))];
+	pos.properties = vec![(
+		"view".to_string(),
+		crate::value::NodeValue::Text("percentage".into()),
+	)];
 	core.add_input(pos);
 
 	let mut rot = crate::input::Input::new(
@@ -324,7 +328,10 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		crate::value::NodeValue::Float(0.0),
 	);
 	rot.properties = vec![
-		("view".to_string(), crate::value::NodeValue::Text("percentage".into())),
+		(
+			"view".to_string(),
+			crate::value::NodeValue::Text("percentage".into()),
+		),
 		("min".to_string(), crate::value::NodeValue::Float(-360.0)),
 		("max".to_string(), crate::value::NodeValue::Float(360.0)),
 	];
@@ -337,8 +344,14 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	);
 	scale.properties = vec![
 		("min".to_string(), crate::value::NodeValue::Vec2([0.0, 0.0])),
-		("view".to_string(), crate::value::NodeValue::Text("percentage".into())),
-		("disable1".to_string(), crate::value::NodeValue::Boolean(true)),
+		(
+			"view".to_string(),
+			crate::value::NodeValue::Text("percentage".into()),
+		),
+		(
+			"disable1".to_string(),
+			crate::value::NodeValue::Boolean(true),
+		),
 	];
 	core.add_input(scale);
 
@@ -355,7 +368,10 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		crate::value::ValueType::Vec2,
 		crate::value::NodeValue::Vec2([0.0, 0.0]),
 	);
-	anchor.properties = vec![("view".to_string(), crate::value::NodeValue::Text("percentage".into()))];
+	anchor.properties = vec![(
+		"view".to_string(),
+		crate::value::NodeValue::Text("percentage".into()),
+	)];
 	core.add_input(anchor);
 
 	(core, Box::new(MatrixGenerator))
@@ -521,16 +537,18 @@ mod tests {
 		let mut b = behavior;
 		b.input_value_changed(&mut core, UNIFORM_SCALE_INPUT, -1);
 		let scale = core.get_input(SCALE_INPUT).unwrap();
-		assert!(scale.properties.iter().any(|(k, v)| {
-			k == "disable1" && *v == NodeValue::Boolean(true)
-		}));
+		assert!(scale
+			.properties
+			.iter()
+			.any(|(k, v)| { k == "disable1" && *v == NodeValue::Boolean(true) }));
 
 		core.set_standard_value(UNIFORM_SCALE_INPUT, -1, NodeValue::Boolean(false));
 		b.input_value_changed(&mut core, UNIFORM_SCALE_INPUT, -1);
 		let scale = core.get_input(SCALE_INPUT).unwrap();
-		assert!(scale.properties.iter().any(|(k, v)| {
-			k == "disable1" && *v == NodeValue::Boolean(false)
-		}));
+		assert!(scale
+			.properties
+			.iter()
+			.any(|(k, v)| { k == "disable1" && *v == NodeValue::Boolean(false) }));
 	}
 
 	#[test]

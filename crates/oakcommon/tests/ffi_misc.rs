@@ -99,18 +99,30 @@ fn assert_two_stage_getter(getter: impl Fn(*mut c_char, i32) -> i32, expected: &
 	// Short buffer: too small, so nothing is written to it.
 	let short_size = (required - 1).max(0);
 	let mut short = vec![0xABu8; short_size as usize];
-	assert_eq!(getter(short.as_mut_ptr() as *mut c_char, short_size), required);
-	assert!(short.iter().all(|&b| b == 0xAB), "short buffer must stay untouched");
+	assert_eq!(
+		getter(short.as_mut_ptr() as *mut c_char, short_size),
+		required
+	);
+	assert!(
+		short.iter().all(|&b| b == 0xAB),
+		"short buffer must stay untouched"
+	);
 
 	// Exact fit: payload followed by a NUL.
 	let mut exact = vec![0xCDu8; required as usize];
-	assert_eq!(getter(exact.as_mut_ptr() as *mut c_char, required), required);
+	assert_eq!(
+		getter(exact.as_mut_ptr() as *mut c_char, required),
+		required
+	);
 	assert_eq!(&exact[..expected.len()], expected.as_bytes());
 	assert_eq!(exact[expected.len()], 0);
 
 	// Oversized: payload and NUL written, tail left as initialized.
 	let mut big = vec![0u8; (required + 8) as usize];
-	assert_eq!(getter(big.as_mut_ptr() as *mut c_char, required + 8), required);
+	assert_eq!(
+		getter(big.as_mut_ptr() as *mut c_char, required + 8),
+		required
+	);
 	assert_eq!(&big[..expected.len()], expected.as_bytes());
 	assert_eq!(big[expected.len()], 0);
 	assert!(big[(required + 1) as usize..].iter().all(|&b| b == 0));
@@ -121,7 +133,10 @@ fn assert_two_stage_getter(getter: impl Fn(*mut c_char, i32) -> i32, expected: &
 /// A null message is `E_INVALID`.
 #[test]
 fn debug_log_null_msg_is_invalid() {
-	assert_eq!(oakcommon_debug_log(0, std::ptr::null()), OAKCOMMON_E_INVALID);
+	assert_eq!(
+		oakcommon_debug_log(0, std::ptr::null()),
+		OAKCOMMON_E_INVALID
+	);
 }
 
 /// Any non-null message returns `OK`, including out-of-range level codes
@@ -139,11 +154,26 @@ fn debug_log_returns_ok_for_any_level() {
 /// codes yield "UNKNOWN".
 #[test]
 fn debug_level_name_two_stage() {
-	assert_two_stage_getter(|buf, size| oakcommon_debug_level_name(0, buf, size), "DEBUG");
-	assert_two_stage_getter(|buf, size| oakcommon_debug_level_name(2, buf, size), "WARNING");
-	assert_two_stage_getter(|buf, size| oakcommon_debug_level_name(4, buf, size), "FATAL");
-	assert_two_stage_getter(|buf, size| oakcommon_debug_level_name(5, buf, size), "UNKNOWN");
-	assert_two_stage_getter(|buf, size| oakcommon_debug_level_name(-1, buf, size), "UNKNOWN");
+	assert_two_stage_getter(
+		|buf, size| oakcommon_debug_level_name(0, buf, size),
+		"DEBUG",
+	);
+	assert_two_stage_getter(
+		|buf, size| oakcommon_debug_level_name(2, buf, size),
+		"WARNING",
+	);
+	assert_two_stage_getter(
+		|buf, size| oakcommon_debug_level_name(4, buf, size),
+		"FATAL",
+	);
+	assert_two_stage_getter(
+		|buf, size| oakcommon_debug_level_name(5, buf, size),
+		"UNKNOWN",
+	);
+	assert_two_stage_getter(
+		|buf, size| oakcommon_debug_level_name(-1, buf, size),
+		"UNKNOWN",
+	);
 }
 
 /// `log_set_level` accepts 0..=4, rejects everything else with `E_INVALID`
@@ -176,7 +206,10 @@ fn log_set_get_level_roundtrip_and_invalid() {
 /// The get-level export rejects a null out-param.
 #[test]
 fn log_get_level_null_out_is_invalid() {
-	assert_eq!(oakcommon_log_get_level(std::ptr::null_mut()), OAKCOMMON_E_INVALID);
+	assert_eq!(
+		oakcommon_log_get_level(std::ptr::null_mut()),
+		OAKCOMMON_E_INVALID
+	);
 }
 
 // ---- misc: decibel / lerp ----
@@ -196,7 +229,10 @@ fn decibel_from_linear_known_values() {
 	assert_eq!(oakcommon_decibel_from_linear(0.0, &mut out), OAKCOMMON_OK);
 	assert_eq!(out, -200.0);
 	assert_eq!(oakcommon_decibel_from_linear(-1.0, &mut out), OAKCOMMON_OK);
-	assert!(out.is_nan(), "negative linear input must produce NaN, got {out}");
+	assert!(
+		out.is_nan(),
+		"negative linear input must produce NaN, got {out}"
+	);
 }
 
 /// Decibels -> linear for exact inputs; results below 1e-6 clamp to 0.0.
@@ -220,13 +256,25 @@ fn decibel_to_linear_known_values() {
 fn decibel_from_logarithmic_known_values() {
 	let mut out = -1.0;
 
-	assert_eq!(oakcommon_decibel_from_logarithmic(0.0, &mut out), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_decibel_from_logarithmic(0.0, &mut out),
+		OAKCOMMON_OK
+	);
 	assert_eq!(out, -200.0);
-	assert_eq!(oakcommon_decibel_from_logarithmic(1.0, &mut out), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_decibel_from_logarithmic(1.0, &mut out),
+		OAKCOMMON_OK
+	);
 	assert_eq!(out, 0.0);
-	assert_eq!(oakcommon_decibel_from_logarithmic(0.99, &mut out), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_decibel_from_logarithmic(0.99, &mut out),
+		OAKCOMMON_OK
+	);
 	assert_close(out, 0.0, 1e-6);
-	assert_eq!(oakcommon_decibel_from_logarithmic(0.5, &mut out), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_decibel_from_logarithmic(0.5, &mut out),
+		OAKCOMMON_OK
+	);
 	assert_close(out, -16.45, 0.05);
 }
 
@@ -235,11 +283,20 @@ fn decibel_from_logarithmic_known_values() {
 fn decibel_to_logarithmic_known_values() {
 	let mut out = -1.0;
 
-	assert_eq!(oakcommon_decibel_to_logarithmic(0.0, &mut out), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_decibel_to_logarithmic(0.0, &mut out),
+		OAKCOMMON_OK
+	);
 	assert_eq!(out, 1.0);
-	assert_eq!(oakcommon_decibel_to_logarithmic(20.0, &mut out), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_decibel_to_logarithmic(20.0, &mut out),
+		OAKCOMMON_OK
+	);
 	assert_close(out, 1.0, 1e-9);
-	assert_eq!(oakcommon_decibel_to_logarithmic(-120.0, &mut out), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_decibel_to_logarithmic(-120.0, &mut out),
+		OAKCOMMON_OK
+	);
 	assert_close(out, 4.605e-6, 1e-9);
 }
 
@@ -248,9 +305,15 @@ fn decibel_to_logarithmic_known_values() {
 fn decibel_linear_to_logarithmic_known_values() {
 	let mut out = -1.0;
 
-	assert_eq!(oakcommon_decibel_linear_to_logarithmic(0.0, &mut out), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_decibel_linear_to_logarithmic(0.0, &mut out),
+		OAKCOMMON_OK
+	);
 	assert_eq!(out, 0.0);
-	assert_eq!(oakcommon_decibel_linear_to_logarithmic(1.0, &mut out), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_decibel_linear_to_logarithmic(1.0, &mut out),
+		OAKCOMMON_OK
+	);
 	assert_close(out, 0.99, 1e-9);
 }
 
@@ -259,11 +322,20 @@ fn decibel_linear_to_logarithmic_known_values() {
 fn decibel_logarithmic_to_linear_known_values() {
 	let mut out = -1.0;
 
-	assert_eq!(oakcommon_decibel_logarithmic_to_linear(0.0, &mut out), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_decibel_logarithmic_to_linear(0.0, &mut out),
+		OAKCOMMON_OK
+	);
 	assert_eq!(out, 0.0);
-	assert_eq!(oakcommon_decibel_logarithmic_to_linear(1.0, &mut out), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_decibel_logarithmic_to_linear(1.0, &mut out),
+		OAKCOMMON_OK
+	);
 	assert_eq!(out, 1.0);
-	assert_eq!(oakcommon_decibel_logarithmic_to_linear(0.99, &mut out), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_decibel_logarithmic_to_linear(0.99, &mut out),
+		OAKCOMMON_OK
+	);
 	assert_close(out, 1.0, 1e-6);
 }
 
@@ -285,13 +357,34 @@ fn lerp_known_values() {
 /// Every decibel/lerp export rejects a null out-param with `E_INVALID`.
 #[test]
 fn decibel_lerp_reject_null_out() {
-	assert_eq!(oakcommon_decibel_from_linear(1.0, std::ptr::null_mut()), OAKCOMMON_E_INVALID);
-	assert_eq!(oakcommon_decibel_to_linear(0.0, std::ptr::null_mut()), OAKCOMMON_E_INVALID);
-	assert_eq!(oakcommon_decibel_from_logarithmic(0.5, std::ptr::null_mut()), OAKCOMMON_E_INVALID);
-	assert_eq!(oakcommon_decibel_to_logarithmic(0.0, std::ptr::null_mut()), OAKCOMMON_E_INVALID);
-	assert_eq!(oakcommon_decibel_linear_to_logarithmic(0.5, std::ptr::null_mut()), OAKCOMMON_E_INVALID);
-	assert_eq!(oakcommon_decibel_logarithmic_to_linear(0.5, std::ptr::null_mut()), OAKCOMMON_E_INVALID);
-	assert_eq!(oakcommon_lerp(0.0, 1.0, 0.5, std::ptr::null_mut()), OAKCOMMON_E_INVALID);
+	assert_eq!(
+		oakcommon_decibel_from_linear(1.0, std::ptr::null_mut()),
+		OAKCOMMON_E_INVALID
+	);
+	assert_eq!(
+		oakcommon_decibel_to_linear(0.0, std::ptr::null_mut()),
+		OAKCOMMON_E_INVALID
+	);
+	assert_eq!(
+		oakcommon_decibel_from_logarithmic(0.5, std::ptr::null_mut()),
+		OAKCOMMON_E_INVALID
+	);
+	assert_eq!(
+		oakcommon_decibel_to_logarithmic(0.0, std::ptr::null_mut()),
+		OAKCOMMON_E_INVALID
+	);
+	assert_eq!(
+		oakcommon_decibel_linear_to_logarithmic(0.5, std::ptr::null_mut()),
+		OAKCOMMON_E_INVALID
+	);
+	assert_eq!(
+		oakcommon_decibel_logarithmic_to_linear(0.5, std::ptr::null_mut()),
+		OAKCOMMON_E_INVALID
+	);
+	assert_eq!(
+		oakcommon_lerp(0.0, 1.0, 0.5, std::ptr::null_mut()),
+		OAKCOMMON_E_INVALID
+	);
 }
 
 // ---- misc: drop-workflow behavior / power ----
@@ -311,12 +404,30 @@ fn drop_workflow_behavior_is_valid() {
 /// codes yield "UNKNOWN".
 #[test]
 fn drop_workflow_behavior_name_two_stage() {
-	assert_two_stage_getter(|buf, size| oakcommon_drop_workflow_behavior_name(0, buf, size), "ASK");
-	assert_two_stage_getter(|buf, size| oakcommon_drop_workflow_behavior_name(1, buf, size), "AUTO");
-	assert_two_stage_getter(|buf, size| oakcommon_drop_workflow_behavior_name(2, buf, size), "MANUAL");
-	assert_two_stage_getter(|buf, size| oakcommon_drop_workflow_behavior_name(3, buf, size), "DISABLE");
-	assert_two_stage_getter(|buf, size| oakcommon_drop_workflow_behavior_name(4, buf, size), "UNKNOWN");
-	assert_two_stage_getter(|buf, size| oakcommon_drop_workflow_behavior_name(-1, buf, size), "UNKNOWN");
+	assert_two_stage_getter(
+		|buf, size| oakcommon_drop_workflow_behavior_name(0, buf, size),
+		"ASK",
+	);
+	assert_two_stage_getter(
+		|buf, size| oakcommon_drop_workflow_behavior_name(1, buf, size),
+		"AUTO",
+	);
+	assert_two_stage_getter(
+		|buf, size| oakcommon_drop_workflow_behavior_name(2, buf, size),
+		"MANUAL",
+	);
+	assert_two_stage_getter(
+		|buf, size| oakcommon_drop_workflow_behavior_name(3, buf, size),
+		"DISABLE",
+	);
+	assert_two_stage_getter(
+		|buf, size| oakcommon_drop_workflow_behavior_name(4, buf, size),
+		"UNKNOWN",
+	);
+	assert_two_stage_getter(
+		|buf, size| oakcommon_drop_workflow_behavior_name(-1, buf, size),
+		"UNKNOWN",
+	);
 }
 
 /// Round `value` up to a power of two (wrapping overflow -> 0); a null
@@ -333,7 +444,10 @@ fn power_ceil_to_power_of_2() {
 		(9, 16),
 		(0x8000_0001, 0),
 	] {
-		assert_eq!(oakcommon_power_ceil_to_power_of_2(input, &mut out), OAKCOMMON_OK);
+		assert_eq!(
+			oakcommon_power_ceil_to_power_of_2(input, &mut out),
+			OAKCOMMON_OK
+		);
 		assert_eq!(out, expected, "ceil({input})");
 	}
 	assert_eq!(
@@ -354,7 +468,10 @@ fn power_floor_to_power_of_2() {
 		(9, 8),
 		(0x8000_0000, 0x8000_0000),
 	] {
-		assert_eq!(oakcommon_power_floor_to_power_of_2(input, &mut out), OAKCOMMON_OK);
+		assert_eq!(
+			oakcommon_power_floor_to_power_of_2(input, &mut out),
+			OAKCOMMON_OK
+		);
 		assert_eq!(out, expected, "floor({input})");
 	}
 	assert_eq!(
@@ -402,21 +519,48 @@ fn current_set_get_all_slots_roundtrip() {
 
 	// Empty slots read back as null before anything is stored.
 	let mut got: *mut c_void = std::ptr::null_mut();
-	assert_eq!(oakcommon_current_get_video_params(dup(&h), &mut got), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_current_get_video_params(dup(&h), &mut got),
+		OAKCOMMON_OK
+	);
 	assert!(got.is_null());
 
-	assert_eq!(oakcommon_current_set_video_params(dup(&h), video, None), OAKCOMMON_OK);
-	assert_eq!(oakcommon_current_set_audio_params(dup(&h), audio, None), OAKCOMMON_OK);
-	assert_eq!(oakcommon_current_set_plugin_host(dup(&h), host, None), OAKCOMMON_OK);
-	assert_eq!(oakcommon_current_set_plugin_cache(dup(&h), cache, None), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_current_set_video_params(dup(&h), video, None),
+		OAKCOMMON_OK
+	);
+	assert_eq!(
+		oakcommon_current_set_audio_params(dup(&h), audio, None),
+		OAKCOMMON_OK
+	);
+	assert_eq!(
+		oakcommon_current_set_plugin_host(dup(&h), host, None),
+		OAKCOMMON_OK
+	);
+	assert_eq!(
+		oakcommon_current_set_plugin_cache(dup(&h), cache, None),
+		OAKCOMMON_OK
+	);
 
-	assert_eq!(oakcommon_current_get_video_params(dup(&h), &mut got), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_current_get_video_params(dup(&h), &mut got),
+		OAKCOMMON_OK
+	);
 	assert_eq!(got, video);
-	assert_eq!(oakcommon_current_get_audio_params(dup(&h), &mut got), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_current_get_audio_params(dup(&h), &mut got),
+		OAKCOMMON_OK
+	);
 	assert_eq!(got, audio);
-	assert_eq!(oakcommon_current_get_plugin_host(dup(&h), &mut got), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_current_get_plugin_host(dup(&h), &mut got),
+		OAKCOMMON_OK
+	);
 	assert_eq!(got, host);
-	assert_eq!(oakcommon_current_get_plugin_cache(dup(&h), &mut got), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_current_get_plugin_cache(dup(&h), &mut got),
+		OAKCOMMON_OK
+	);
 	assert_eq!(got, cache);
 
 	// Getters reject a null out-param and a null handle.
@@ -435,11 +579,26 @@ fn current_set_get_all_slots_roundtrip() {
 	);
 
 	// Clear every slot so other tests see a clean singleton.
-	assert_eq!(oakcommon_current_set_video_params(dup(&h), std::ptr::null_mut(), None), OAKCOMMON_OK);
-	assert_eq!(oakcommon_current_set_audio_params(dup(&h), std::ptr::null_mut(), None), OAKCOMMON_OK);
-	assert_eq!(oakcommon_current_set_plugin_host(dup(&h), std::ptr::null_mut(), None), OAKCOMMON_OK);
-	assert_eq!(oakcommon_current_set_plugin_cache(dup(&h), std::ptr::null_mut(), None), OAKCOMMON_OK);
-	assert_eq!(oakcommon_current_get_video_params(dup(&h), &mut got), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_current_set_video_params(dup(&h), std::ptr::null_mut(), None),
+		OAKCOMMON_OK
+	);
+	assert_eq!(
+		oakcommon_current_set_audio_params(dup(&h), std::ptr::null_mut(), None),
+		OAKCOMMON_OK
+	);
+	assert_eq!(
+		oakcommon_current_set_plugin_host(dup(&h), std::ptr::null_mut(), None),
+		OAKCOMMON_OK
+	);
+	assert_eq!(
+		oakcommon_current_set_plugin_cache(dup(&h), std::ptr::null_mut(), None),
+		OAKCOMMON_OK
+	);
+	assert_eq!(
+		oakcommon_current_get_video_params(dup(&h), &mut got),
+		OAKCOMMON_OK
+	);
 	assert!(got.is_null());
 }
 
@@ -452,7 +611,11 @@ fn current_set_destroys_replaced_pointer() {
 	let base = DESTROY_COUNT.load(Ordering::SeqCst);
 
 	assert_eq!(
-		oakcommon_current_set_video_params(dup(&h), 0xAAAAusize as *mut c_void, Some(count_destroy)),
+		oakcommon_current_set_video_params(
+			dup(&h),
+			0xAAAAusize as *mut c_void,
+			Some(count_destroy)
+		),
 		OAKCOMMON_OK
 	);
 	assert_eq!(DESTROY_COUNT.load(Ordering::SeqCst), base);
@@ -465,7 +628,10 @@ fn current_set_destroys_replaced_pointer() {
 	assert_eq!(DESTROY_COUNT.load(Ordering::SeqCst), base + 1);
 
 	let mut got: *mut c_void = std::ptr::null_mut();
-	assert_eq!(oakcommon_current_get_video_params(dup(&h), &mut got), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_current_get_video_params(dup(&h), &mut got),
+		OAKCOMMON_OK
+	);
 	assert_eq!(got, 0xBBBBusize as *mut c_void);
 
 	// Clearing a slot with no destructor invokes nothing.
@@ -474,7 +640,10 @@ fn current_set_destroys_replaced_pointer() {
 		OAKCOMMON_OK
 	);
 	assert_eq!(DESTROY_COUNT.load(Ordering::SeqCst), base + 1);
-	assert_eq!(oakcommon_current_get_video_params(dup(&h), &mut got), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_current_get_video_params(dup(&h), &mut got),
+		OAKCOMMON_OK
+	);
 	assert!(got.is_null());
 }
 
@@ -485,7 +654,10 @@ fn current_is_interactive_writes_one() {
 	let h = oakcommon_current_instance();
 
 	let mut out = 0i32;
-	assert_eq!(oakcommon_current_is_interactive(dup(&h), &mut out), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_current_is_interactive(dup(&h), &mut out),
+		OAKCOMMON_OK
+	);
 	assert_eq!(out, 1);
 	assert_eq!(
 		oakcommon_current_is_interactive(dup(&h), std::ptr::null_mut()),

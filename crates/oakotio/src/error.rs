@@ -21,41 +21,41 @@ use std::fmt;
 /// Errors produced by loading or saving OpenTimelineIO JSON.
 #[derive(Debug)]
 pub enum OtioError {
-    /// The document could not be parsed (or a value could not be
-    /// serialized) as JSON.
-    Json(serde_json::Error),
-    /// The underlying file could not be read or written.
-    Io(std::io::Error),
+	/// The document could not be parsed (or a value could not be
+	/// serialized) as JSON.
+	Json(serde_json::Error),
+	/// The underlying file could not be read or written.
+	Io(std::io::Error),
 }
 
 impl fmt::Display for OtioError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            OtioError::Json(e) => write!(f, "OpenTimelineIO JSON error: {e}"),
-            OtioError::Io(e) => write!(f, "OpenTimelineIO file error: {e}"),
-        }
-    }
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			OtioError::Json(e) => write!(f, "OpenTimelineIO JSON error: {e}"),
+			OtioError::Io(e) => write!(f, "OpenTimelineIO file error: {e}"),
+		}
+	}
 }
 
 impl std::error::Error for OtioError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            OtioError::Json(e) => Some(e),
-            OtioError::Io(e) => Some(e),
-        }
-    }
+	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+		match self {
+			OtioError::Json(e) => Some(e),
+			OtioError::Io(e) => Some(e),
+		}
+	}
 }
 
 impl From<serde_json::Error> for OtioError {
-    fn from(e: serde_json::Error) -> OtioError {
-        OtioError::Json(e)
-    }
+	fn from(e: serde_json::Error) -> OtioError {
+		OtioError::Json(e)
+	}
 }
 
 impl From<std::io::Error> for OtioError {
-    fn from(e: std::io::Error) -> OtioError {
-        OtioError::Io(e)
-    }
+	fn from(e: std::io::Error) -> OtioError {
+		OtioError::Io(e)
+	}
 }
 
 /// Convenience alias used by the binding API.

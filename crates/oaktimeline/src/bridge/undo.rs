@@ -131,4 +131,3 @@ pub fn oakundo_stack_push(stack: CHandle, command: CHandle, text: *const c_char)
 		unsafe { oakundo::ffi::undostack::oakundo_undostack_push(stack, command, text) }
 	}
 }
-

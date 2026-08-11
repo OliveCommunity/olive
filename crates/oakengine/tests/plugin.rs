@@ -27,15 +27,19 @@ use oakengine::plugin::{
 /// Callback registration round-trips (NULL clears).
 #[test]
 fn provider_registration() {
-	unsafe extern "C" fn viewer(_userdata: *mut std::ffi::c_void) -> *mut oakengine::handle::OakEngineNode {
+	unsafe extern "C" fn viewer(
+		_userdata: *mut std::ffi::c_void,
+	) -> *mut oakengine::handle::OakEngineNode {
 		std::ptr::null_mut()
 	}
-	assert_eq!(unsafe {
-		oakengine_plugin_set_active_viewer_provider(Some(viewer), std::ptr::null_mut())
-	}, 0);
-	assert_eq!(unsafe {
-		oakengine_plugin_set_active_viewer_provider(None, std::ptr::null_mut())
-	}, 0);
+	assert_eq!(
+		unsafe { oakengine_plugin_set_active_viewer_provider(Some(viewer), std::ptr::null_mut()) },
+		0
+	);
+	assert_eq!(
+		unsafe { oakengine_plugin_set_active_viewer_provider(None, std::ptr::null_mut()) },
+		0
+	);
 
 	unsafe extern "C" fn create(
 		_message: *const std::ffi::c_char,
@@ -44,20 +48,39 @@ fn provider_registration() {
 	) -> *mut std::ffi::c_void {
 		std::ptr::null_mut()
 	}
-	assert_eq!(unsafe {
-		oakengine_plugin_set_progress_reporter_factory(
-			Some(create), None, None, None, std::ptr::null_mut(),
-		)
-	}, 0);
-	assert_eq!(unsafe {
-		oakengine_plugin_set_progress_reporter_factory(None, None, None, None, std::ptr::null_mut())
-	}, 0);
+	assert_eq!(
+		unsafe {
+			oakengine_plugin_set_progress_reporter_factory(
+				Some(create),
+				None,
+				None,
+				None,
+				std::ptr::null_mut(),
+			)
+		},
+		0
+	);
+	assert_eq!(
+		unsafe {
+			oakengine_plugin_set_progress_reporter_factory(
+				None,
+				None,
+				None,
+				None,
+				std::ptr::null_mut(),
+			)
+		},
+		0
+	);
 }
 
 /// NULL path fails with E_INVALID.
 #[test]
 fn load_plugins_null_path() {
-	assert_eq!(unsafe { oakengine_plugin_load_plugins(std::ptr::null()) }, -1);
+	assert_eq!(
+		unsafe { oakengine_plugin_load_plugins(std::ptr::null()) },
+		-1
+	);
 }
 
 /// Push-button click is a documented stub (oakplugin has no button API).

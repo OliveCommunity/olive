@@ -89,12 +89,7 @@ impl PlanarFileDevice {
 	/// Read `bytes_per_channel` bytes from each channel (at the current file
 	/// position) into `data[i][offset..]`. Returns bytes read per channel, or
 	/// -1 if closed or a buffer is too small.
-	pub fn read(
-		&mut self,
-		data: &mut [&mut [u8]],
-		bytes_per_channel: i64,
-		offset: i64,
-	) -> i64 {
+	pub fn read(&mut self, data: &mut [&mut [u8]], bytes_per_channel: i64, offset: i64) -> i64 {
 		if !self.is_open() {
 			return -1;
 		}
@@ -113,12 +108,7 @@ impl PlanarFileDevice {
 
 	/// Write `bytes_per_channel` bytes to each channel from `data[i][offset..]`.
 	/// Returns bytes written per channel, or -1.
-	pub fn write(
-		&mut self,
-		data: &[&[u8]],
-		bytes_per_channel: i64,
-		offset: i64,
-	) -> i64 {
+	pub fn write(&mut self, data: &[&[u8]], bytes_per_channel: i64, offset: i64) -> i64 {
 		if !self.is_open() {
 			return -1;
 		}
@@ -171,11 +161,8 @@ mod tests {
 	use super::*;
 
 	fn temp_dir(name: &str) -> PathBuf {
-		let dir = std::env::temp_dir().join(format!(
-			"oakcodec_planar_{}_{}",
-			name,
-			std::process::id()
-		));
+		let dir =
+			std::env::temp_dir().join(format!("oakcodec_planar_{}_{}", name, std::process::id()));
 		let _ = std::fs::create_dir_all(&dir);
 		dir
 	}

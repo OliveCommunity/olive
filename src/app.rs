@@ -47,12 +47,12 @@ use gpui::{
 	WindowBounds, WindowOptions,
 };
 use gpui_widgets::audio_meter::AudioLevelMeter;
-use gpui_widgets::viewer::PlaybackClock;
 use gpui_widgets::dialog::file_dialog::FileDialogContent;
-use gpui_widgets::dialog::progress::{ProgressContent, progress_dialog};
+use gpui_widgets::dialog::progress::{progress_dialog, ProgressContent};
 use gpui_widgets::dialog::{DialogButton, Modal, ModalEvent, ModalOptions};
 use gpui_widgets::menu::{Menu, MenuBar, MenuBarEntry, MenuBarEvent, MenuItem};
 use gpui_widgets::theme::{apply_theme, OakTheme};
+use gpui_widgets::viewer::PlaybackClock;
 
 use crate::dialogs::{ExportDialogContent, PreferencesContent};
 use crate::oakui::{AppEngine, ExportSession, MockEngine, Monitor, RealEngine};
@@ -268,11 +268,7 @@ pub struct OakApp<E: AppEngine> {
 impl<E: AppEngine> OakApp<E> {
 	/// Builds the whole shell. `initial_path` (a CLI argument) is opened
 	/// after the layout is up.
-	pub fn new(
-		window: &mut Window,
-		initial_path: Option<PathBuf>,
-		cx: &mut Context<Self>,
-	) -> Self {
+	pub fn new(window: &mut Window, initial_path: Option<PathBuf>, cx: &mut Context<Self>) -> Self {
 		apply_theme(cx, &OakTheme::olive_dark());
 		crate::oakui::icons::init(cx);
 
@@ -400,20 +396,15 @@ impl<E: AppEngine> OakApp<E> {
 		// `SelectionChanged` carries no payload — the selection is read from
 		// the view and forwarded to the engine so the inspector's effect
 		// stack can target the selected clip.
-		cx.subscribe(
-			&timeline,
-			|this, timeline, event: &TimelineEvent, cx| {
-				if matches!(event, TimelineEvent::SelectionChanged) {
-					let clips: Vec<ClipId> =
-						timeline.read(cx).selection().iter().copied().collect();
-					this.engine.update(cx, |engine, cx| {
-						engine.set_selected_clips(clips, cx)
-					});
-				}
+		cx.subscribe(&timeline, |this, timeline, event: &TimelineEvent, cx| {
+			if matches!(event, TimelineEvent::SelectionChanged) {
+				let clips: Vec<ClipId> = timeline.read(cx).selection().iter().copied().collect();
 				this.engine
-					.update(cx, |engine, cx| engine.apply_timeline_event(event, cx));
-			},
-		)
+					.update(cx, |engine, cx| engine.set_selected_clips(clips, cx));
+			}
+			this.engine
+				.update(cx, |engine, cx| engine.apply_timeline_event(event, cx));
+		})
 		.detach();
 
 		// --- tick loop -----------------------------------------------------
@@ -480,7 +471,9 @@ impl<E: AppEngine> OakApp<E> {
 			OPEN_PROJECT => self.open_file_dialog(FileAction::Open, cx),
 			SAVE => self.save_project(None, cx),
 			SAVE_AS => self.open_file_dialog(FileAction::SaveAs, cx),
-			CLOSE => self.engine.update(cx, |engine, cx| engine.close_project(cx)),
+			CLOSE => self
+				.engine
+				.update(cx, |engine, cx| engine.close_project(cx)),
 			EXPORT => self.open_export_dialog(cx),
 			QUIT => cx.quit(),
 			// --- Edit ------------------------------------------------------
@@ -547,9 +540,9 @@ impl<E: AppEngine> OakApp<E> {
 					.update(cx, |engine, cx| engine.add_track(kind, cx));
 			}
 			REMOVE_TRACK => self.remove_selected_track(cx),
-			SPLIT_AT_PLAYHEAD => {
-				self.engine.update(cx, |engine, cx| engine.split_at_playhead(cx))
-			}
+			SPLIT_AT_PLAYHEAD => self
+				.engine
+				.update(cx, |engine, cx| engine.split_at_playhead(cx)),
 			// --- Window ----------------------------------------------------
 			FOCUS_PROJECT => self.focus_panel(PROJECT, cx),
 			FOCUS_SOURCE_VIEWER => self.focus_panel(SOURCE_VIEWER, cx),
@@ -575,13 +568,8 @@ impl<E: AppEngine> OakApp<E> {
 	/// Deletes the timeline's selected clips (ripple or gap) through the
 	/// engine's edit commands.
 	fn delete_timeline_selection(&mut self, ripple: bool, cx: &mut Context<Self>) {
-		let ids: Vec<gpui::timeline::ClipId> = self
-			.timeline
-			.read(cx)
-			.selection()
-			.iter()
-			.copied()
-			.collect();
+		let ids: Vec<gpui::timeline::ClipId> =
+			self.timeline.read(cx).selection().iter().copied().collect();
 		if ids.is_empty() {
 			println!("[timeline] delete: nothing selected");
 			return;
@@ -692,10 +680,7 @@ impl<E: AppEngine> OakApp<E> {
 	/// Opens the file open / save-as dialog.
 	fn open_file_dialog(&mut self, action: FileAction, cx: &mut Context<Self>) {
 		let (title, control) = match action {
-			FileAction::Open => (
-				crate::i18n::tr("file.open.title"),
-				modal_ids::FILE_OPEN,
-			),
+			FileAction::Open => (crate::i18n::tr("file.open.title"), modal_ids::FILE_OPEN),
 			FileAction::SaveAs => (
 				crate::i18n::tr("file.save_as.title"),
 				modal_ids::FILE_SAVE_AS,
@@ -712,7 +697,9 @@ impl<E: AppEngine> OakApp<E> {
 				gpui_widgets::dialog::file_dialog::file_dialog(control, title, window, app);
 			if action == FileAction::SaveAs {
 				if let Some(path) = &current_path {
-					content.update(app, |content, cx| content.set_path(path.to_string_lossy().into_owned(), cx));
+					content.update(app, |content, cx| {
+						content.set_path(path.to_string_lossy().into_owned(), cx)
+					});
 				}
 			}
 			ModalState::FileDialog {
@@ -983,21 +970,31 @@ fn make_menus(dark: bool) -> Vec<MenuBarEntry> {
 				MenuItem::new(NEW_PROJECT, tr("menu.file.new_project")).with_shortcut("⌘N"),
 				MenuItem::new(OPEN_PROJECT, tr("menu.file.open_project")).with_shortcut("⌘O"),
 				MenuItem::new(SAVE, tr("menu.file.save")).with_shortcut("⌘S"),
-				MenuItem::new(SAVE_AS, tr("menu.file.save_as")).with_shortcut("⇧⌘S").separated(),
+				MenuItem::new(SAVE_AS, tr("menu.file.save_as"))
+					.with_shortcut("⇧⌘S")
+					.separated(),
 				MenuItem::new(CLOSE, tr("menu.file.close")),
-				MenuItem::new(EXPORT, tr("menu.file.export")).with_shortcut("⌘E").separated(),
-				MenuItem::new(QUIT, tr("menu.file.quit")).with_shortcut("⌘Q").separated(),
+				MenuItem::new(EXPORT, tr("menu.file.export"))
+					.with_shortcut("⌘E")
+					.separated(),
+				MenuItem::new(QUIT, tr("menu.file.quit"))
+					.with_shortcut("⌘Q")
+					.separated(),
 			]),
 		),
 		MenuBarEntry::new(
 			tr("menu.edit"),
 			Menu::new(vec![
 				MenuItem::new(UNDO, tr("menu.edit.undo")).with_shortcut("⌘Z"),
-				MenuItem::new(REDO, tr("menu.edit.redo")).with_shortcut("⇧⌘Z").separated(),
+				MenuItem::new(REDO, tr("menu.edit.redo"))
+					.with_shortcut("⇧⌘Z")
+					.separated(),
 				MenuItem::new(CUT, tr("menu.edit.cut")).with_shortcut("⌘X"),
 				MenuItem::new(COPY, tr("menu.edit.copy")).with_shortcut("⌘C"),
 				MenuItem::new(PASTE, tr("menu.edit.paste")).with_shortcut("⌘V"),
-				MenuItem::new(DELETE, tr("menu.edit.delete")).with_shortcut("⌫").separated(),
+				MenuItem::new(DELETE, tr("menu.edit.delete"))
+					.with_shortcut("⌫")
+					.separated(),
 				MenuItem::new(RIPPLE_DELETE, tr("menu.edit.ripple_delete")),
 			]),
 		),
@@ -1149,7 +1146,7 @@ fn run_with<E: AppEngine>(args: AppArgs) {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use gpui::{TestAppContext, px, size};
+	use gpui::{px, size, TestAppContext};
 
 	/// The 视图/View menu carries a 语言/Language submenu whose items are
 	/// labeled in their own language and whose checkmark follows the active
@@ -1288,7 +1285,11 @@ mod tests {
 		// The same ids exist in the zh-CN menu bar.
 		crate::i18n::set_language(crate::i18n::Language::ZhCN);
 		let file = entry("文件(F)");
-		assert!(file.menu.items.iter().any(|item| item.id == menu_ids::SAVE_AS));
+		assert!(file
+			.menu
+			.items
+			.iter()
+			.any(|item| item.id == menu_ids::SAVE_AS));
 	}
 
 	/// Opening 视图 → Preferences… must not crash: the dialog content and the
@@ -1306,9 +1307,7 @@ mod tests {
 		cx.run_until_parked();
 		let root = window.root(cx).expect("app root");
 
-		cx.update(|app| {
-			root.update(app, |app, cx| app.on_menu(menu_ids::PREFERENCES, cx))
-		});
+		cx.update(|app| root.update(app, |app, cx| app.on_menu(menu_ids::PREFERENCES, cx)));
 		cx.run_until_parked();
 		// Force a draw so render-time panics in the dialog content surface.
 		cx.update_window(window.into(), |_root, window, cx| {
@@ -1316,9 +1315,8 @@ mod tests {
 		})
 		.expect("window is still open");
 
-		let has_modal = cx.read(|app| {
-			matches!(root.read(app).modal, ModalState::Preferences { .. })
-		});
+		let has_modal =
+			cx.read(|app| matches!(root.read(app).modal, ModalState::Preferences { .. }));
 		assert!(
 			has_modal,
 			"preferences modal should be shown after the menu action"

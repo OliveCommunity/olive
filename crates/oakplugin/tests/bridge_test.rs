@@ -82,7 +82,12 @@ fn make_clip(name: &str) -> ClipInstance {
 
 /// 扫描测试插件并创建实例，绑定 `identity`（0 = 不绑定），返回
 /// （实例, gain 参数句柄）。插件不可用时 skip 并返回 None。
-fn bound_inst(identity: usize) -> Option<(std::sync::Arc<oakplugin::handle::RefBox<Instance>>, *mut c_void)> {
+fn bound_inst(
+	identity: usize,
+) -> Option<(
+	std::sync::Arc<oakplugin::handle::RefBox<Instance>>,
+	*mut c_void,
+)> {
 	if common::test_plugin_scan_dir().is_none() {
 		common::skip("最小测试插件未构建");
 		return None;
@@ -120,7 +125,10 @@ fn node_to_param_type_mapping() {
 	// Double ← FLOAT（f[0] 载荷）。
 	let p = make_param(oakplugin::param::TYPE_DOUBLE);
 	p.set_from_node(&Value::float(1.5));
-	assert_eq!(p.get(), oakplugin::param::ParamValue::Double([1.5, 0.0, 0.0], 1));
+	assert_eq!(
+		p.get(),
+		oakplugin::param::ParamValue::Double([1.5, 0.0, 0.0], 1)
+	);
 
 	// Boolean ← BOOL（num 0/1）。
 	let p = make_param(oakplugin::param::TYPE_BOOLEAN);
@@ -143,15 +151,24 @@ fn node_to_param_type_mapping() {
 	// RGB ← COLOR（alpha 忽略，恒 0 占位）。
 	let p = make_param(oakplugin::param::TYPE_RGB);
 	p.set_from_node(&Value::color(0.1, 0.2, 0.3, 0.5));
-	assert_eq!(p.get(), oakplugin::param::ParamValue::Color([0.1, 0.2, 0.3, 0.0], 3));
+	assert_eq!(
+		p.get(),
+		oakplugin::param::ParamValue::Color([0.1, 0.2, 0.3, 0.0], 3)
+	);
 
 	// Double2D ← VEC2；Double3D ← VEC3。
 	let p = make_param(oakplugin::param::TYPE_DOUBLE2D);
 	p.set_from_node(&Value::vec(&[1.0, 2.0]));
-	assert_eq!(p.get(), oakplugin::param::ParamValue::Double([1.0, 2.0, 0.0], 2));
+	assert_eq!(
+		p.get(),
+		oakplugin::param::ParamValue::Double([1.0, 2.0, 0.0], 2)
+	);
 	let p = make_param(oakplugin::param::TYPE_DOUBLE3D);
 	p.set_from_node(&Value::vec(&[1.0, 2.0, 3.0]));
-	assert_eq!(p.get(), oakplugin::param::ParamValue::Double([1.0, 2.0, 3.0], 3));
+	assert_eq!(
+		p.get(),
+		oakplugin::param::ParamValue::Double([1.0, 2.0, 3.0], 3)
+	);
 
 	// Integer2D ← VEC2 / Integer3D ← VEC3（浮点截断为 int）。
 	let p = make_param(oakplugin::param::TYPE_INTEGER2D);
@@ -165,15 +182,16 @@ fn node_to_param_type_mapping() {
 	// （保持默认空串；字符串值走 facade 的字符串 API）。
 	let p = make_param(oakplugin::param::TYPE_STRING);
 	p.set_from_node(&Value::string());
-	assert!(
-		matches!(p.get(), oakplugin::param::ParamValue::String(s) if s.to_bytes().is_empty())
-	);
+	assert!(matches!(p.get(), oakplugin::param::ParamValue::String(s) if s.to_bytes().is_empty()));
 
 	// 类型不匹配 → 忽略（保持现值）。
 	let p = make_param(oakplugin::param::TYPE_DOUBLE);
 	p.set_ofx(oakplugin::param::ParamValue::Double([5.0, 0.0, 0.0], 1));
 	p.set_from_node(&Value::int(9)); // INT 不是 FLOAT
-	assert_eq!(p.get(), oakplugin::param::ParamValue::Double([5.0, 0.0, 0.0], 1));
+	assert_eq!(
+		p.get(),
+		oakplugin::param::ParamValue::Double([5.0, 0.0, 0.0], 1)
+	);
 }
 
 /// 插件→节点：paramSetValue（插件自改）经 instanceChanged 桥回写
@@ -181,7 +199,9 @@ fn node_to_param_type_mapping() {
 #[test]
 fn param_to_node_undoable_writeback() {
 	common::with_host(|| {
-		let Some((inst, gain_h)) = bound_inst(42) else { return };
+		let Some((inst, gain_h)) = bound_inst(42) else {
+			return;
+		};
 		let s = param_suite();
 
 		#[cfg(feature = "test-stubs")]
@@ -246,7 +266,9 @@ fn param_to_node_undoable_writeback() {
 #[test]
 fn writeback_without_bound_node_is_noop() {
 	common::with_host(|| {
-		let Some((inst, gain_h)) = bound_inst(0) else { return };
+		let Some((inst, gain_h)) = bound_inst(0) else {
+			return;
+		};
 		let s = param_suite();
 
 		// identity 0（未绑定）：回写直接短路，值只写本地参数。
@@ -301,7 +323,12 @@ fn clip_texture_roundtrip_f32() {
 		clip.fetch_image(
 			0.0,
 			scale,
-			Some(OfxRectD { x1: 0.0, y1: 0.0, x2: 2.0, y2: 2.0 })
+			Some(OfxRectD {
+				x1: 0.0,
+				y1: 0.0,
+				x2: 2.0,
+				y2: 2.0
+			})
 		),
 		Err(oakplugin::error::Error::Failed(_))
 	));
@@ -324,7 +351,9 @@ fn clip_texture_roundtrip_f32() {
 		render::stub::setup_src(w as i32, h as i32, PIXEL_FORMAT_F32, pixels.clone());
 		let tex = fake_texture(0xA2);
 		clip.set_input_texture(tex, 0.0);
-		let img = clip.fetch_image(0.0, scale, None).expect("fetch_image 成功");
+		let img = clip
+			.fetch_image(0.0, scale, None)
+			.expect("fetch_image 成功");
 		assert_eq!(img.pixels(), &pixels, "F32 像素 round-trip 不丢精度");
 		assert_eq!(img.components(), Components::Rgba);
 		assert_eq!(img.depth(), BitDepth::Float);
@@ -354,7 +383,12 @@ fn output_image_to_texture() {
 	let img = Image::allocate(
 		BitDepth::Float,
 		Components::Rgba,
-		OfxRectD { x1: 0.0, y1: 0.0, x2: 8.0, y2: 4.0 },
+		OfxRectD {
+			x1: 0.0,
+			y1: 0.0,
+			x2: 8.0,
+			y2: 4.0,
+		},
 	);
 
 	// 未挂输出纹理 → NotFound（两模式一致）。
@@ -376,7 +410,9 @@ fn output_image_to_texture() {
 		for (i, b) in img.pixels_mut().iter_mut().enumerate() {
 			*b = (i % 256) as u8;
 		}
-		let tex2 = clip.store_output_image(&img).expect("store_output_image 成功");
+		let tex2 = clip
+			.store_output_image(&img)
+			.expect("store_output_image 成功");
 		assert_eq!(tex2.ctx, tex.ctx, "返回挂入的纹理句柄");
 		assert_eq!(render::stub::dst_pixels(), img.pixels(), "输出像素一致");
 
@@ -409,7 +445,9 @@ fn output_image_to_texture() {
 #[test]
 fn edit_transaction_coalescing() {
 	common::with_host(|| {
-		let Some((_inst, gain_h)) = bound_inst(42) else { return };
+		let Some((_inst, gain_h)) = bound_inst(42) else {
+			return;
+		};
 		let s = param_suite();
 
 		#[cfg(feature = "test-stubs")]
@@ -530,6 +568,9 @@ fn system_misc_ofx_bundle_smoke() {
 		// 协商冒烟（输出 clip 的分量/位深/帧率应返回）。
 		let inst = inst.unwrap();
 		let prefs = inst.value.get_clip_preferences();
-		assert!(prefs.is_ok(), "getClipPreferences({first}) 应成功: {prefs:?}");
+		assert!(
+			prefs.is_ok(),
+			"getClipPreferences({first}) 应成功: {prefs:?}"
+		);
 	});
 }

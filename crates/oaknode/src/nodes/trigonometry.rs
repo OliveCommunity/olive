@@ -120,7 +120,11 @@ impl NodeBehavior for TrigonometryNode {
 			Operation::HyperbolicTangent => x = x.tanh(),
 		}
 
-		table.push(crate::value::ValueType::Float, crate::value::NodeValue::Float(x), None);
+		table.push(
+			crate::value::ValueType::Float,
+			crate::value::NodeValue::Float(x),
+			None,
+		);
 	}
 
 	/// Deep copy (C++ `copy()`).
@@ -161,11 +165,7 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	method.flags |= crate::input::flags::NOT_CONNECTABLE | crate::input::flags::NOT_KEYFRAMABLE;
 	method.properties = vec![(
 		"combobox_strings".to_string(),
-		crate::value::NodeValue::Binary(
-			OPERATION_NAMES
-				.concat()
-				.into_bytes(),
-		),
+		crate::value::NodeValue::Binary(OPERATION_NAMES.concat().into_bytes()),
 	)];
 	core.add_input(method);
 
@@ -209,8 +209,14 @@ mod tests {
 	#[test]
 	fn create_wires_inputs() {
 		let (core, behavior) = create();
-		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.trigonometry");
-		assert_eq!(core.get_input(X_INPUT).unwrap().default, NodeValue::Float(0.0));
+		assert_eq!(
+			behavior.type_id(),
+			"org.olivevideoeditor.Olive.trigonometry"
+		);
+		assert_eq!(
+			core.get_input(X_INPUT).unwrap().default,
+			NodeValue::Float(0.0)
+		);
 		let method = core.get_input(METHOD_INPUT).unwrap();
 		assert_ne!(method.flags & crate::input::flags::NOT_CONNECTABLE, 0);
 	}
@@ -231,10 +237,8 @@ mod tests {
 	fn value_cosine_and_tangent() {
 		let (mut core, behavior) = create();
 		core.set_standard_value(METHOD_INPUT, -1, NodeValue::Combo(1));
-		let inputs = crate::value::NodeValueRow::from([(
-			X_INPUT.to_string(),
-			NodeValue::Float(0.0),
-		)]);
+		let inputs =
+			crate::value::NodeValueRow::from([(X_INPUT.to_string(), NodeValue::Float(0.0))]);
 		let mut table = NodeValueTable::default();
 		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
 		assert_eq!(table.get(ValueType::Float), Some(&NodeValue::Float(1.0)));
@@ -255,7 +259,12 @@ mod tests {
 		let (mut core, behavior) = create();
 		core.set_standard_value(X_INPUT, -1, NodeValue::Float(0.0));
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
 		assert_eq!(table.get(ValueType::Float), Some(&NodeValue::Float(0.0)));
 	}
 
@@ -289,29 +298,39 @@ mod tests {
 		];
 		for (op, x, f) in cases {
 			core.set_standard_value(METHOD_INPUT, -1, NodeValue::Combo(op));
-			let inputs = crate::value::NodeValueRow::from([(
-				X_INPUT.to_string(),
-				NodeValue::Float(x),
-			)]);
+			let inputs =
+				crate::value::NodeValueRow::from([(X_INPUT.to_string(), NodeValue::Float(x))]);
 			let mut table = NodeValueTable::default();
 			behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
 			let got = table.get(ValueType::Float).unwrap().to_double();
-			assert!((got - f(x)).abs() < 1e-12, "op {}: got {}, want {}", op, got, f(x));
+			assert!(
+				(got - f(x)).abs() < 1e-12,
+				"op {}: got {}, want {}",
+				op,
+				got,
+				f(x)
+			);
 		}
 	}
 
 	#[test]
 	fn value_keyframed_operand() {
 		let (mut core, behavior) = create();
-		core.keyframe_track_mut(X_INPUT, -1).set_key(crate::keyframe::Keyframe {
-			time: Rational::new(0, 1),
-			value: NodeValue::Float(1.0),
-			interpolation: crate::keyframe::Interpolation::Linear,
-			bezier_in: (0.0, 0.0),
-			bezier_out: (0.0, 0.0),
-		});
+		core.keyframe_track_mut(X_INPUT, -1)
+			.set_key(crate::keyframe::Keyframe {
+				time: Rational::new(0, 1),
+				value: NodeValue::Float(1.0),
+				interpolation: crate::keyframe::Interpolation::Linear,
+				bezier_in: (0.0, 0.0),
+				bezier_out: (0.0, 0.0),
+			});
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
 		let v = table.get(ValueType::Float).unwrap().to_double();
 		assert!((v - 1.0_f64.sin()).abs() < 1e-12);
 	}

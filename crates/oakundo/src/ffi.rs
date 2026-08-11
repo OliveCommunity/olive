@@ -37,7 +37,7 @@ use crate::error::{Error, Result};
 use crate::handle::{guard, guard_handle, guard_void, make_owned, CHandle};
 use crate::undocommand::{
 	command_from_borrowed, command_from_owned, command_take, command_to_mut, command_to_ref,
-	UndoCommand, OakUndoCommandVtable,
+	OakUndoCommandVtable, UndoCommand,
 };
 use crate::undostack::UndoStack;
 
@@ -99,16 +99,16 @@ pub mod command {
 				return Ok(CHandle::null());
 			}
 			let table = *vtable;
-			Ok(command_from_owned(UndoCommand::from_vtable(table, userdata)))
+			Ok(command_from_owned(UndoCommand::from_vtable(
+				table, userdata,
+			)))
 		})
 	}
 
 	/// `oakundo_command_init_multi`: empty multi command, refcount 1.
 	#[no_mangle]
 	pub unsafe extern "C" fn oakundo_command_init_multi() -> OakUndoCommand {
-		guard_handle(|| unsafe {
-			Ok(command_from_owned(UndoCommand::multi()))
-		})
+		guard_handle(|| unsafe { Ok(command_from_owned(UndoCommand::multi())) })
 	}
 
 	/// `oakundo_command_multi_add_child` (stack takes one child ref).
@@ -174,9 +174,7 @@ pub mod command {
 
 	/// `oakundo_command_redo_now`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oakundo_command_redo_now(
-		command: OakUndoCommand,
-	) -> c_int {
+	pub unsafe extern "C" fn oakundo_command_redo_now(command: OakUndoCommand) -> c_int {
 		guard(|| unsafe {
 			let c = command_to_mut(command.ctx).ok_or(Error::Invalid)?;
 			c.redo_now();
@@ -186,9 +184,7 @@ pub mod command {
 
 	/// `oakundo_command_undo_now`.
 	#[no_mangle]
-	pub unsafe extern "C" fn oakundo_command_undo_now(
-		command: OakUndoCommand,
-	) -> c_int {
+	pub unsafe extern "C" fn oakundo_command_undo_now(command: OakUndoCommand) -> c_int {
 		guard(|| unsafe {
 			let c = command_to_mut(command.ctx).ok_or(Error::Invalid)?;
 			c.undo_now();
@@ -223,9 +219,7 @@ pub mod undostack {
 	/// `oakundo_undostack_init`: fresh stack, refcount 1.
 	#[no_mangle]
 	pub unsafe extern "C" fn oakundo_undostack_init() -> OakUndoStack {
-		guard_handle(|| {
-			Ok(make_owned(Mutex::new(UndoStack::new())))
-		})
+		guard_handle(|| Ok(make_owned(Mutex::new(UndoStack::new()))))
 	}
 
 	/// `oakundo_undostack_free`: NULL/empty no-op; clears `stack->ctx`.
@@ -290,23 +284,24 @@ pub mod undostack {
 
 	/// `oakundo_undostack_jump` (clamped to 0; `index` is i64).
 	#[no_mangle]
-	pub unsafe extern "C" fn oakundo_undostack_jump(
-		stack: OakUndoStack,
-		index: i64,
-	) -> c_int {
-		guard(|| with_stack(stack, |s| {
-			s.jump(index);
-			Ok(())
-		}))
+	pub unsafe extern "C" fn oakundo_undostack_jump(stack: OakUndoStack, index: i64) -> c_int {
+		guard(|| {
+			with_stack(stack, |s| {
+				s.jump(index);
+				Ok(())
+			})
+		})
 	}
 
 	/// `oakundo_undostack_clear`.
 	#[no_mangle]
 	pub unsafe extern "C" fn oakundo_undostack_clear(stack: OakUndoStack) -> c_int {
-		guard(|| with_stack(stack, |s| {
-			s.clear();
-			Ok(())
-		}))
+		guard(|| {
+			with_stack(stack, |s| {
+				s.clear();
+				Ok(())
+			})
+		})
 	}
 
 	/// `oakundo_undostack_can_undo`.

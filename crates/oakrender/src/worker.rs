@@ -241,10 +241,7 @@ struct SnapshotEntry {
 impl GraphSnapshotStore {
 	/// Empty store rooted in the process temp directory.
 	pub fn new() -> Self {
-		let dir = std::env::temp_dir().join(format!(
-			"oakrender-snapshots-{}",
-			std::process::id()
-		));
+		let dir = std::env::temp_dir().join(format!("oakrender-snapshots-{}", std::process::id()));
 		let _ = std::fs::create_dir_all(&dir);
 		Self {
 			entries: Mutex::new(HashMap::new()),
@@ -315,10 +312,7 @@ impl GraphSnapshotStore {
 
 	/// Current reference count for a path (tests).
 	pub fn refs(&self, path: &str) -> u64 {
-		lock(&self.entries)
-			.get(path)
-			.map(|e| e.refs)
-			.unwrap_or(0)
+		lock(&self.entries).get(path).map(|e| e.refs).unwrap_or(0)
 	}
 }
 
@@ -339,8 +333,8 @@ pub enum WorkerBackend {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use std::sync::mpsc;
 	use std::sync::atomic::AtomicUsize;
+	use std::sync::mpsc;
 	use std::time::Duration;
 
 	use crate::texture::Texture;
@@ -531,7 +525,10 @@ mod tests {
 		assert_eq!(store.refs(&p1), 2);
 
 		store.release(&p1);
-		assert!(std::path::Path::new(&p1).exists(), "refcount 1: still alive");
+		assert!(
+			std::path::Path::new(&p1).exists(),
+			"refcount 1: still alive"
+		);
 		store.release(&p1);
 		assert!(!std::path::Path::new(&p1).exists(), "refcount 0: unlinked");
 		assert_eq!(store.refs(&p1), 0);

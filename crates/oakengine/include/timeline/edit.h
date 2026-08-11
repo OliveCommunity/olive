@@ -62,6 +62,18 @@ OakUndoCommand oaktimeline_replace_block_with_gap_command(
 	OakNodeTrack track, OakNodeBlock block);
 
 /**
+ * @brief The capi's move-clip assembly: gap the block's old spot and place
+ * it at `in` on `track_index` of `list` as ONE undoable entry
+ * (olive::TrackReplaceBlockWithGapCommand + olive::TrackPlaceBlockCommand
+ * inside a MultiUndoCommand).
+ */
+OakUndoCommand oaktimeline_move_block_command(OakNodeTrackList list,
+												int track_index,
+												OakNodeBlock block,
+												int64_t in_num,
+												int64_t in_den);
+
+/**
  * @brief olive::BlockTrimCommand. `mode` is an OakTimelineMovementMode
  * value (k_trim_in / k_trim_out).
  */

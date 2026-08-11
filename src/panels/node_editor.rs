@@ -27,11 +27,11 @@
 use gpui::colors::DefaultColors;
 use gpui::dock::{DockPanel, PanelEvent};
 use gpui::node_graph::{
-	MAX_ZOOM, MIN_ZOOM, NodeData, NodeElement, NodeGraphEvent, NodeGraphView, NodeVisualState,
+	NodeData, NodeElement, NodeGraphEvent, NodeGraphView, NodeVisualState, MAX_ZOOM, MIN_ZOOM,
 };
 use gpui::{
-	div, point, prelude::*, px, AnyElement, App, Bounds, ClickEvent, Context, Entity,
-	EventEmitter, Pixels, Render, SharedString, Window,
+	div, point, prelude::*, px, AnyElement, App, Bounds, ClickEvent, Context, Entity, EventEmitter,
+	Pixels, Render, SharedString, Window,
 };
 
 use crate::oakui::AppEngine;
@@ -50,11 +50,7 @@ pub struct NodeEditorPanel<E: AppEngine> {
 impl<E: AppEngine> NodeEditorPanel<E> {
 	/// Builds the graph canvas over `engine` and routes its edit requests back
 	/// to the engine.
-	pub fn new(
-		engine: Entity<E>,
-		window: &mut Window,
-		cx: &mut Context<Self>,
-	) -> Self {
+	pub fn new(engine: Entity<E>, window: &mut Window, cx: &mut Context<Self>) -> Self {
 		let graph = cx.new(|cx| NodeGraphView::new(engine.clone(), window, cx));
 		// The "edits are requests" loop: every graph gesture goes to the
 		// engine, which applies it to its model and notifies.
@@ -189,16 +185,12 @@ impl<E: AppEngine> Render for NodeEditorPanel<E> {
 						|this, window, cx| this.fit_graph(window, cx),
 					))
 					.child(div().flex_1())
-					.child(
-						div()
-							.text_color(colors.disabled)
-							.child(format!(
-								"{}% · {}–{}",
-								(self.graph.read(cx).state().zoom() * 100.0).round(),
-								MIN_ZOOM,
-								MAX_ZOOM,
-							)),
-					),
+					.child(div().text_color(colors.disabled).child(format!(
+						"{}% · {}–{}",
+						(self.graph.read(cx).state().zoom() * 100.0).round(),
+						MIN_ZOOM,
+						MAX_ZOOM,
+					))),
 			)
 			.child(
 				div()
@@ -243,15 +235,12 @@ fn zoom_button<E: AppEngine>(
 			action(this, window, cx);
 		}));
 	if let Some(name) = icon_name {
-		el = el.child(
-			gpui::img(crate::oakui::icons::icon_path(name, cx)).size(px(16.0)),
-		);
+		el = el.child(gpui::img(crate::oakui::icons::icon_path(name, cx)).size(px(16.0)));
 	} else {
 		el = el.child(label);
 	}
 	el
 }
-
 
 impl<E: AppEngine> EventEmitter<PanelEvent> for NodeEditorPanel<E> {}
 
@@ -275,13 +264,16 @@ impl<E: AppEngine> DockPanel for NodeEditorPanel<E> {
 mod tests {
 	use super::*;
 	use crate::oakui::MockEngine;
-	use gpui::{TestAppContext, VisualTestContext, size};
+	use gpui::{size, TestAppContext, VisualTestContext};
 
 	/// Builds the panel in a window and returns a `VisualTestContext` for
 	/// bounds assertions.
 	fn panel_window(
 		cx: &mut TestAppContext,
-	) -> (&'static mut VisualTestContext, Entity<NodeEditorPanel<MockEngine>>) {
+	) -> (
+		&'static mut VisualTestContext,
+		Entity<NodeEditorPanel<MockEngine>>,
+	) {
 		cx.update(|cx| cx.init_colors());
 		let window = cx.open_window(size(px(640.0), px(480.0)), |window, cx| {
 			let engine = cx.new(|cx| crate::oakui::MockEngine::demo(cx));
@@ -316,10 +308,11 @@ mod tests {
 
 		// The initial fit moved the viewport off the default origin, so the
 		// graph is framed rather than clipped at the corner.
-		let state = cx.read(|app| {
-			panel.read(app).graph.read(app).state().clone()
-		});
-		assert_ne!(state.offset(), gpui::node_graph::GraphViewState::new().offset());
+		let state = cx.read(|app| panel.read(app).graph.read(app).state().clone());
+		assert_ne!(
+			state.offset(),
+			gpui::node_graph::GraphViewState::new().offset()
+		);
 		assert!(state.zoom() > 0.0);
 	}
 }

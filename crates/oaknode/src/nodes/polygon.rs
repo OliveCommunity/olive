@@ -272,7 +272,10 @@ mod tests {
 	#[test]
 	fn input_names() {
 		let n = PolygonGenerator;
-		assert_eq!(n.input_name(super::super::generatorwithmerge::BASE_INPUT), "Base");
+		assert_eq!(
+			n.input_name(super::super::generatorwithmerge::BASE_INPUT),
+			"Base"
+		);
 		assert_eq!(n.input_name(POINTS_INPUT), "Points");
 		assert_eq!(n.input_name(COLOR_INPUT), "Color");
 	}
@@ -297,7 +300,10 @@ mod tests {
 			core.get_input(COLOR_INPUT).unwrap().default,
 			NodeValue::Color([1.0, 1.0, 1.0, 1.0])
 		);
-		assert_eq!(core.effect_input, super::super::generatorwithmerge::BASE_INPUT);
+		assert_eq!(
+			core.effect_input,
+			super::super::generatorwithmerge::BASE_INPUT
+		);
 		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
 	}
 

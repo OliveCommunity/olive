@@ -176,16 +176,14 @@ impl AudioVisualWaveform {
 
 		let mut i = 0usize;
 		while i < samples_length {
-			let src_start =
-				((i as f64 * chunk_size).round() as usize) / channels as usize;
+			let src_start = ((i as f64 * chunk_size).round() as usize) / channels as usize;
 			let src_end = (((i + channels as usize) as f64 * chunk_size).round() as usize
 				/ channels as usize)
 				.min(sample_count);
 
 			let summary = Self::sum_samples(planar, src_start, src_end - src_start);
 
-			data[i + start_index..i + start_index + summary.len()]
-				.copy_from_slice(&summary);
+			data[i + start_index..i + start_index + summary.len()].copy_from_slice(&summary);
 
 			i += channels as usize;
 		}
@@ -229,8 +227,7 @@ impl AudioVisualWaveform {
 				channels,
 			);
 
-			output_data[i + start_index..i + start_index + summary.len()]
-				.copy_from_slice(&summary);
+			output_data[i + start_index..i + start_index + summary.len()].copy_from_slice(&summary);
 
 			i += channels as usize;
 		}
@@ -276,8 +273,14 @@ impl AudioVisualWaveform {
 				Some((input, input_rate, input_start, input_length)) => {
 					let data = self.mipmapped_data.get_mut(rate).unwrap();
 					let (s, l) = Self::overwrite_samples_from_mipmap(
-						&input, input_rate, rel_start, out_rate, channels, data,
-						input_start, input_length,
+						&input,
+						input_rate,
+						rel_start,
+						out_rate,
+						channels,
+						data,
+						input_start,
+						input_length,
 					);
 					iter_input = Some((data.clone(), out_rate, s, l));
 				}
@@ -314,8 +317,11 @@ impl AudioVisualWaveform {
 			};
 
 			// Get our destination sample
-			let our_start_index =
-				time_to_samples((dest - self.virtual_start).to_f64(), rate_dbl, self.channels);
+			let our_start_index = time_to_samples(
+				(dest - self.virtual_start).to_f64(),
+				rate_dbl,
+				self.channels,
+			);
 
 			// Get our source sample, indexing with the SOURCE's channel count
 			let their_start_index = (offset.to_f64() * rate_dbl).floor() as usize
@@ -397,7 +403,11 @@ impl AudioVisualWaveform {
 		self.virtual_start = self.virtual_start + length;
 
 		let negative = length < Rational::NULL || length.to_f64() < 0.0;
-		let abs_length = if negative { Rational::NULL - length } else { length };
+		let abs_length = if negative {
+			Rational::NULL - length
+		} else {
+			length
+		};
 
 		for (rate, data) in self.mipmapped_data.iter_mut() {
 			let rate_dbl = rate.to_f64();
@@ -487,8 +497,11 @@ impl AudioVisualWaveform {
 
 		let rate_dbl = rate.to_f64();
 
-		let start_sample =
-			time_to_samples((start - self.virtual_start).to_f64(), rate_dbl, self.channels);
+		let start_sample = time_to_samples(
+			(start - self.virtual_start).to_f64(),
+			rate_dbl,
+			self.channels,
+		);
 		let mut sample_length = time_to_samples(length.to_f64(), rate_dbl, self.channels);
 
 		// Determine if the array actually has this sample. Compare in signed
@@ -507,10 +520,7 @@ impl AudioVisualWaveform {
 		}
 
 		// Return null samples
-		vec![
-			SamplePerChannel::default();
-			self.channel_count().max(0) as usize
-		]
+		vec![SamplePerChannel::default(); self.channel_count().max(0) as usize]
 	}
 
 	/// Reduce planar samples into min/max pairs.
@@ -554,7 +564,11 @@ impl AudioVisualWaveform {
 	/// point rather than {0,0} — the engine version clamped all-positive
 	/// (resp. all-negative) ranges to zero; fixed in oakaudio (see the
 	/// comment in the C++ source).
-	pub fn re_sum_samples(samples: &[SamplePerChannel], nb_samples: usize, nb_channels: i32) -> Sample {
+	pub fn re_sum_samples(
+		samples: &[SamplePerChannel],
+		nb_samples: usize,
+		nb_channels: i32,
+	) -> Sample {
 		let channel_count = nb_channels.max(0) as usize;
 		let mut summed = vec![SamplePerChannel::default(); channel_count];
 
@@ -681,7 +695,10 @@ fn emit_points(
 		let n = available.min(samples_per_point as usize);
 
 		let point = points.len() / channels as usize;
-		points.resize(points.len() + channels as usize, SamplePerChannel::default());
+		points.resize(
+			points.len() + channels as usize,
+			SamplePerChannel::default(),
+		);
 		for ch in 0..channels {
 			let plane = &mut pending[ch as usize];
 			let mut mn = plane[0];
@@ -705,7 +722,11 @@ fn emit_points(
 ///
 /// `// CPP-PARITY: src/audio/c_api/waveform.cpp:404`
 /// (`oakaudio_waveform_extract`).
-pub fn extract(filename: &CStr, stream_index: i32, samples_per_point: i32) -> Result<ExtractOutcome> {
+pub fn extract(
+	filename: &CStr,
+	stream_index: i32,
+	samples_per_point: i32,
+) -> Result<ExtractOutcome> {
 	// Probe for the stream's native rate/layout (stateless).
 	// SAFETY: `filename` is a NUL-terminated C string (validated by the FFI
 	// layer); the probe handle is freed on every path below.
@@ -741,8 +762,11 @@ pub fn extract(filename: &CStr, stream_index: i32, samples_per_point: i32) -> Re
 	// rate/layout; the C++ path ran the decode through an identity
 	// fb_audio_graph to obtain planar f32).
 	let decoder = FFmpegDecoder::new();
-	let stream =
-		CodecStream::with_block(filename.to_string_lossy().into_owned(), info.stream_index, None);
+	let stream = CodecStream::with_block(
+		filename.to_string_lossy().into_owned(),
+		info.stream_index,
+		None,
+	);
 	if let Err(e) = decoder.open(&stream) {
 		return Err(Error::Failed(format!("failed to open decoder: {e:?}")));
 	}
@@ -751,9 +775,8 @@ pub fn extract(filename: &CStr, stream_index: i32, samples_per_point: i32) -> Re
 		let _ = decoder.close();
 		return Err(Error::Failed("invalid audio stream duration".to_string()));
 	}
-	let duration_sec = info.duration_ts as f64
-		* f64::from(info.time_base_num)
-		/ f64::from(info.time_base_den);
+	let duration_sec =
+		info.duration_ts as f64 * f64::from(info.time_base_num) / f64::from(info.time_base_den);
 	let total_frames = (duration_sec * f64::from(info.sample_rate)).round() as i64;
 	let layout_mask = if info.channel_layout != 0 {
 		info.channel_layout
@@ -779,7 +802,13 @@ pub fn extract(filename: &CStr, stream_index: i32, samples_per_point: i32) -> Re
 		match decoder.retrieve_audio(&mut buf, &range, info.sample_rate, layout_mask) {
 			Ok(RetrieveAudioStatus::Success) => {
 				append_pending(&mut pending, &buf, channels);
-				emit_points(&mut pending, channels, samples_per_point, &mut points, false);
+				emit_points(
+					&mut pending,
+					channels,
+					samples_per_point,
+					&mut points,
+					false,
+				);
 			}
 			Ok(status) => {
 				result = Err(Error::Failed(format!("audio retrieve failed: {status:?}")));
@@ -802,4 +831,3 @@ pub fn extract(filename: &CStr, stream_index: i32, samples_per_point: i32) -> Re
 
 	Ok(ExtractOutcome { points, channels })
 }
-

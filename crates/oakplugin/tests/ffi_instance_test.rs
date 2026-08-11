@@ -66,7 +66,11 @@ fn create_instance() -> CHandle {
 use oakplugin::ffi::oakplugin_host_scan as oakplugin_host_scan_import;
 
 /// 两段式读字符串。
-fn two_stage(get: unsafe extern "C" fn(CHandle, c_int, *mut c_char, c_int) -> c_int, h: CHandle, index: c_int) -> Option<String> {
+fn two_stage(
+	get: unsafe extern "C" fn(CHandle, c_int, *mut c_char, c_int) -> c_int,
+	h: CHandle,
+	index: c_int,
+) -> Option<String> {
 	let len = unsafe { get(h, index, std::ptr::null_mut(), 0) };
 	if len <= 0 {
 		return None;
@@ -76,7 +80,11 @@ fn two_stage(get: unsafe extern "C" fn(CHandle, c_int, *mut c_char, c_int) -> c_
 	if r != OK {
 		return None;
 	}
-	Some(unsafe { CStr::from_ptr(buf.as_ptr() as *const c_char) }.to_string_lossy().into_owned())
+	Some(
+		unsafe { CStr::from_ptr(buf.as_ptr() as *const c_char) }
+			.to_string_lossy()
+			.into_owned(),
+	)
 }
 
 /// 简易实例句柄（测试桩纹理用）。
@@ -130,19 +138,34 @@ fn instance_param_double_roundtrip() {
 		let mut v = OakNodeValue::default();
 		v.r#type = node_value_type::FLOAT;
 		v.f = [1.25, 0.0, 0.0, 0.0];
-		assert_eq!(unsafe { oakplugin_instance_set_param(h, name.as_ptr(), &v) }, OK);
+		assert_eq!(
+			unsafe { oakplugin_instance_set_param(h, name.as_ptr(), &v) },
+			OK
+		);
 		let mut out = OakNodeValue::default();
-		assert_eq!(unsafe { oakplugin_instance_get_param(h, name.as_ptr(), &mut out) }, OK);
+		assert_eq!(
+			unsafe { oakplugin_instance_get_param(h, name.as_ptr(), &mut out) },
+			OK
+		);
 		assert_eq!(out.r#type, node_value_type::FLOAT);
 		assert_eq!(out.f[0], 1.25);
 
 		// 未知参数名 → E_NOT_FOUND。
 		let nope = cs("nope");
-		assert_eq!(unsafe { oakplugin_instance_set_param(h, nope.as_ptr(), &v) }, E_NOT_FOUND);
+		assert_eq!(
+			unsafe { oakplugin_instance_set_param(h, nope.as_ptr(), &v) },
+			E_NOT_FOUND
+		);
 		// 空句柄 → E_INVALID。
-		assert_eq!(unsafe { oakplugin_instance_set_param(CHandle::null(), name.as_ptr(), &v) }, E_INVALID);
+		assert_eq!(
+			unsafe { oakplugin_instance_set_param(CHandle::null(), name.as_ptr(), &v) },
+			E_INVALID
+		);
 		// out NULL → E_INVALID。
-		assert_eq!(unsafe { oakplugin_instance_get_param(h, name.as_ptr(), std::ptr::null_mut()) }, E_INVALID);
+		assert_eq!(
+			unsafe { oakplugin_instance_get_param(h, name.as_ptr(), std::ptr::null_mut()) },
+			E_INVALID
+		);
 		unsafe { oakplugin_instance_free(&mut h) };
 	});
 }
@@ -157,20 +180,43 @@ fn instance_param_string_roundtrip() {
 		}
 		let name = cs("label");
 		let value = cs("hello 你好");
-		assert_eq!(unsafe { oakplugin_instance_set_param_string(h, name.as_ptr(), value.as_ptr()) }, OK);
+		assert_eq!(
+			unsafe { oakplugin_instance_set_param_string(h, name.as_ptr(), value.as_ptr()) },
+			OK
+		);
 		// 两段式。
-		let len = unsafe { oakplugin_instance_get_param_string(h, name.as_ptr(), std::ptr::null_mut(), 0) };
+		let len = unsafe {
+			oakplugin_instance_get_param_string(h, name.as_ptr(), std::ptr::null_mut(), 0)
+		};
 		assert!(len > 0);
 		let mut buf = vec![0u8; len as usize];
-		assert_eq!(unsafe { oakplugin_instance_get_param_string(h, name.as_ptr(), buf.as_mut_ptr() as *mut c_char, len) }, OK);
+		assert_eq!(
+			unsafe {
+				oakplugin_instance_get_param_string(
+					h,
+					name.as_ptr(),
+					buf.as_mut_ptr() as *mut c_char,
+					len,
+				)
+			},
+			OK
+		);
 		assert_eq!(
 			unsafe { CStr::from_ptr(buf.as_ptr() as *const c_char) }.to_string_lossy(),
 			"hello 你好"
 		);
 		// 空串。
 		let empty = cs("");
-		assert_eq!(unsafe { oakplugin_instance_set_param_string(h, name.as_ptr(), empty.as_ptr()) }, OK);
-		assert_eq!(unsafe { oakplugin_instance_get_param_string(h, name.as_ptr(), std::ptr::null_mut(), 0) }, 1);
+		assert_eq!(
+			unsafe { oakplugin_instance_set_param_string(h, name.as_ptr(), empty.as_ptr()) },
+			OK
+		);
+		assert_eq!(
+			unsafe {
+				oakplugin_instance_get_param_string(h, name.as_ptr(), std::ptr::null_mut(), 0)
+			},
+			1
+		);
 		unsafe { oakplugin_instance_free(&mut h) };
 	});
 }
@@ -198,7 +244,13 @@ fn instance_render_one_frame() {
 		assert_eq!(n, 320 * 240, "像素数 = len/16 = {n}");
 		for i in 0..n {
 			// 像素基址 = i * 16（4 通道 × 4 字节）。
-			let f = |o: usize| f32::from_le_bytes(pixels[i * 16 + o * 4..i * 16 + o * 4 + 4].try_into().unwrap());
+			let f = |o: usize| {
+				f32::from_le_bytes(
+					pixels[i * 16 + o * 4..i * 16 + o * 4 + 4]
+						.try_into()
+						.unwrap(),
+				)
+			};
 			assert_eq!(f(0), 0.5, "pixel {i} r");
 			assert_eq!(f(1), 0.5, "pixel {i} g");
 			assert_eq!(f(2), 0.5, "pixel {i} b");
@@ -220,7 +272,10 @@ fn instance_render_one_frame() {
 			return;
 		}
 		let dst = CHandle::null();
-		assert_eq!(unsafe { oakplugin_instance_render(h, dst, CHandle::null(), 0.0) }, -90001);
+		assert_eq!(
+			unsafe { oakplugin_instance_render(h, dst, CHandle::null(), 0.0) },
+			-90001
+		);
 		unsafe { oakplugin_instance_free(&mut h) };
 	});
 }
@@ -243,15 +298,14 @@ fn instance_progress_callback() {
 			0
 		}
 		unsafe {
-			oakplugin_instance_set_progress_cb(
-				h,
-				Some(capture),
-				&mut seen as *mut _ as *mut c_void,
-			)
+			oakplugin_instance_set_progress_cb(h, Some(capture), &mut seen as *mut _ as *mut c_void)
 		};
 		stub::setup_dst(64, 64, oakplugin::bridge::render::PIXEL_FORMAT_F32);
 		let dst = fake_texture(0xA1);
-		assert_eq!(unsafe { oakplugin_instance_render(h, dst, CHandle::null(), 0.0) }, OK);
+		assert_eq!(
+			unsafe { oakplugin_instance_render(h, dst, CHandle::null(), 0.0) },
+			OK
+		);
 		assert_eq!(seen, vec![0.5], "插件在 render 内报一次 0.5");
 
 		// 取消回调（非 0 = 中止）。
@@ -280,9 +334,16 @@ fn instance_cancel_semantics() {
 		// render 的取消检查而不是帧校验）。
 		assert_eq!(unsafe { oakplugin_instance_cancel(h) }, OK);
 		#[cfg(feature = "test-stubs")]
-		oakplugin::bridge::render::stub::setup_dst(64, 64, oakplugin::bridge::render::PIXEL_FORMAT_F32);
+		oakplugin::bridge::render::stub::setup_dst(
+			64,
+			64,
+			oakplugin::bridge::render::PIXEL_FORMAT_F32,
+		);
 		let dst = fake_texture(0xA1);
-		assert_eq!(unsafe { oakplugin_instance_render(h, dst, CHandle::null(), 0.0) }, -90003);
+		assert_eq!(
+			unsafe { oakplugin_instance_render(h, dst, CHandle::null(), 0.0) },
+			-90003
+		);
 		unsafe { oakplugin_instance_free(&mut h) };
 	});
 }
@@ -300,14 +361,32 @@ fn introspection_param_fields() {
 		assert!(count >= 4, "gain/mode/debug/label，count={count}");
 
 		// gain 的字段。
-		assert_eq!(two_stage(oakplugin_instance_param_name, h, 0), Some("gain".into()));
-		assert_eq!(two_stage(oakplugin_instance_param_type, h, 0), Some("OfxParamTypeDouble".into()));
-		assert_eq!(two_stage(oakplugin_instance_param_label, h, 0), Some("Gain".into()));
-		assert_eq!(two_stage(oakplugin_instance_param_hint, h, 0), Some(String::new()));
-		assert_eq!(two_stage(oakplugin_instance_param_parent, h, 0), Some(String::new()));
+		assert_eq!(
+			two_stage(oakplugin_instance_param_name, h, 0),
+			Some("gain".into())
+		);
+		assert_eq!(
+			two_stage(oakplugin_instance_param_type, h, 0),
+			Some("OfxParamTypeDouble".into())
+		);
+		assert_eq!(
+			two_stage(oakplugin_instance_param_label, h, 0),
+			Some("Gain".into())
+		);
+		assert_eq!(
+			two_stage(oakplugin_instance_param_hint, h, 0),
+			Some(String::new())
+		);
+		assert_eq!(
+			two_stage(oakplugin_instance_param_parent, h, 0),
+			Some(String::new())
+		);
 
 		// 越界 → E_NOT_FOUND。
-		assert_eq!(unsafe { oakplugin_instance_param_name(h, count, std::ptr::null_mut(), 0) }, E_NOT_FOUND);
+		assert_eq!(
+			unsafe { oakplugin_instance_param_name(h, count, std::ptr::null_mut(), 0) },
+			E_NOT_FOUND
+		);
 		unsafe { oakplugin_instance_free(&mut h) };
 	});
 }
@@ -338,14 +417,23 @@ fn introspection_secret_range_choice() {
 
 		// display range（gain：-2..2）。
 		let (mut min, mut max) = (0.0, 0.0);
-		assert_eq!(unsafe { oakplugin_instance_param_display_range(h, gain, &mut min, &mut max) }, OK);
+		assert_eq!(
+			unsafe { oakplugin_instance_param_display_range(h, gain, &mut min, &mut max) },
+			OK
+		);
 		assert_eq!((min, max), (-2.0, 2.0));
 
 		// secret（debug = 1；gain = 0）。
 		let mut s = 0;
-		assert_eq!(unsafe { oakplugin_instance_param_secret(h, debug, &mut s) }, OK);
+		assert_eq!(
+			unsafe { oakplugin_instance_param_secret(h, debug, &mut s) },
+			OK
+		);
 		assert_eq!(s, 1);
-		assert_eq!(unsafe { oakplugin_instance_param_secret(h, gain, &mut s) }, OK);
+		assert_eq!(
+			unsafe { oakplugin_instance_param_secret(h, gain, &mut s) },
+			OK
+		);
 		assert_eq!(s, 0);
 
 		// choice（mode：2 个选项；选项内容见 introspection_choice_labels）。
@@ -372,11 +460,26 @@ fn introspection_choice_labels() {
 		assert!(mode >= 0);
 		assert_eq!(unsafe { oakplugin_instance_param_choice_count(h, mode) }, 2);
 		for c in 0..2 {
-			let len = unsafe { oakplugin_instance_param_choice_label(h, mode, c, std::ptr::null_mut(), 0) };
+			let len = unsafe {
+				oakplugin_instance_param_choice_label(h, mode, c, std::ptr::null_mut(), 0)
+			};
 			assert!(len > 0);
 			let mut buf = vec![0u8; len as usize];
-			assert_eq!(unsafe { oakplugin_instance_param_choice_label(h, mode, c, buf.as_mut_ptr() as *mut c_char, len) }, OK);
-			let s = unsafe { CStr::from_ptr(buf.as_ptr() as *const c_char) }.to_string_lossy().into_owned();
+			assert_eq!(
+				unsafe {
+					oakplugin_instance_param_choice_label(
+						h,
+						mode,
+						c,
+						buf.as_mut_ptr() as *mut c_char,
+						len,
+					)
+				},
+				OK
+			);
+			let s = unsafe { CStr::from_ptr(buf.as_ptr() as *const c_char) }
+				.to_string_lossy()
+				.into_owned();
 			assert!(s == "Fast" || s == "High", "选项 {c} = {s}");
 		}
 		unsafe { oakplugin_instance_free(&mut h) };
@@ -402,7 +505,10 @@ fn introspection_defaults() {
 			}
 		}
 		let mut d = 99.0;
-		assert_eq!(unsafe { oakplugin_instance_param_default_double(h, gain, 0, &mut d) }, OK);
+		assert_eq!(
+			unsafe { oakplugin_instance_param_default_double(h, gain, 0, &mut d) },
+			OK
+		);
 		assert_eq!(d, 0.0);
 		let s = two_stage(oakplugin_instance_param_default_string, h, label);
 		assert_eq!(s, Some(String::new()));
@@ -427,10 +533,23 @@ fn introspection_clips() {
 
 		for i in 0..2 {
 			let mut optional = -1;
-			let len = unsafe { oakplugin_instance_clip_info(h, i, &mut optional, std::ptr::null_mut(), 0) };
+			let len = unsafe {
+				oakplugin_instance_clip_info(h, i, &mut optional, std::ptr::null_mut(), 0)
+			};
 			assert!(len > 0);
 			let mut buf = vec![0u8; len as usize];
-			assert_eq!(unsafe { oakplugin_instance_clip_info(h, i, &mut optional, buf.as_mut_ptr() as *mut c_char, len) }, OK);
+			assert_eq!(
+				unsafe {
+					oakplugin_instance_clip_info(
+						h,
+						i,
+						&mut optional,
+						buf.as_mut_ptr() as *mut c_char,
+						len,
+					)
+				},
+				OK
+			);
 			assert!(optional == 0, "测试插件 clip 非 optional");
 		}
 		unsafe { oakplugin_instance_free(&mut h) };

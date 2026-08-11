@@ -25,9 +25,11 @@
 
 use std::ffi::c_void;
 
-use crate::bridge::undo::{oakundo_command_free, oakundo_command_init, oakundo_command_redo_now, oakundo_command_undo_now};
 use crate::bridge::node::{
 	oaknode_block_as_node, oaknode_command_create_remove_node, oaknode_node_output_connection_count,
+};
+use crate::bridge::undo::{
+	oakundo_command_free, oakundo_command_init, oakundo_command_redo_now, oakundo_command_undo_now,
 };
 use crate::handle::CHandle;
 
@@ -187,48 +189,46 @@ impl Drop for CHandleCommandWrapper {
 /// `MultiUndoCommand`). Children are boxed `Command`s; the whole group wraps
 /// into a single oakundo vtable handle via [`box_command`].
 pub struct MultiUndoCommand {
-  /// Child commands, run in order on `redo`.
-  commands: Vec<Box<dyn Command>>,
+	/// Child commands, run in order on `redo`.
+	commands: Vec<Box<dyn Command>>,
 }
 
 impl MultiUndoCommand {
-  /// A new, empty multi command.
-  pub fn new() -> Self {
-    Self {
-      commands: Vec::new(),
-    }
-  }
+	/// A new, empty multi command.
+	pub fn new() -> Self {
+		Self {
+			commands: Vec::new(),
+		}
+	}
 
-  /// Append a child command; ownership transfers to the group.
-  pub fn add_child(&mut self, command: Box<dyn Command>) {
-    self.commands.push(command);
-  }
+	/// Append a child command; ownership transfers to the group.
+	pub fn add_child(&mut self, command: Box<dyn Command>) {
+		self.commands.push(command);
+	}
 
-  /// Whether the group has any children yet.
-  pub fn empty(&self) -> bool {
-    self.commands.is_empty()
-  }
+	/// Whether the group has any children yet.
+	pub fn empty(&self) -> bool {
+		self.commands.is_empty()
+	}
 
-  /// Wrap as an oakundo vtable command handle.
-  pub fn to_command(self) -> CHandle {
-    box_command(self)
-  }
+	/// Wrap as an oakundo vtable command handle.
+	pub fn to_command(self) -> CHandle {
+		box_command(self)
+	}
 }
 
 impl Command for MultiUndoCommand {
-  /// `redo`: run children in order.
-  fn redo(&mut self) {
-    for c in self.commands.iter_mut() {
-      c.redo();
-    }
-  }
+	/// `redo`: run children in order.
+	fn redo(&mut self) {
+		for c in self.commands.iter_mut() {
+			c.redo();
+		}
+	}
 
-  /// `undo`: run children in reverse.
-  fn undo(&mut self) {
-    for c in self.commands.iter_mut().rev() {
-      c.undo();
-    }
-  }
+	/// `undo`: run children in reverse.
+	fn undo(&mut self) {
+		for c in self.commands.iter_mut().rev() {
+			c.undo();
+		}
+	}
 }
-
-

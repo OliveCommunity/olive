@@ -18,10 +18,10 @@
 
 use std::sync::atomic::Ordering;
 
+use oakcore_rs::Rational;
 use oaknode::handle::{self, CHandle, RefBox};
 use oaknode::keyframe::{Interpolation, Keyframe, KeyframeTrack};
 use oaknode::value::{NodeValue, NodeValueTable, ValueType};
-use oakcore_rs::Rational;
 
 /// NodeValueTable: last-push-wins per type, tag preserved, `get` of an
 /// absent type returns None (C++ NodeValueTable semantics).
@@ -61,7 +61,11 @@ fn texture_value_drop_releases() {
 	// bitwise; addref is the caller's contract).
 	unsafe { (h.addref.unwrap())(h.ctx) };
 	let refs = |h: &CHandle| -> u32 {
-		unsafe { (*(h.ctx as *const RefBox<u32>)).refs.load(Ordering::Relaxed) }
+		unsafe {
+			(*(h.ctx as *const RefBox<u32>))
+				.refs
+				.load(Ordering::Relaxed)
+		}
 	};
 	assert_eq!(refs(&h), 2);
 
@@ -84,7 +88,11 @@ fn texture_value_drop_releases() {
 fn texture_value_clone_addrefs() {
 	let h = handle::make_owned(7u32);
 	let refs = |h: &CHandle| -> u32 {
-		unsafe { (*(h.ctx as *const RefBox<u32>)).refs.load(Ordering::Relaxed) }
+		unsafe {
+			(*(h.ctx as *const RefBox<u32>))
+				.refs
+				.load(Ordering::Relaxed)
+		}
 	};
 	assert_eq!(refs(&h), 1);
 
@@ -114,7 +122,14 @@ fn keyframe_track_ordering() {
 	track.set_key(key(10, 1.0));
 	track.set_key(key(0, 0.0));
 	track.set_key(key(5, 0.5));
-	assert_eq!(times(&track), vec![Rational::new(0, 1), Rational::new(5, 1), Rational::new(10, 1)]);
+	assert_eq!(
+		times(&track),
+		vec![
+			Rational::new(0, 1),
+			Rational::new(5, 1),
+			Rational::new(10, 1)
+		]
+	);
 
 	// Replace at an existing time overwrites in place (still sorted).
 	track.set_key(key(5, 9.0));
@@ -201,7 +216,11 @@ fn interpolation_matches_cpp() {
 	});
 	quad.set_key(key(4, 4.0));
 	let v = quad.value_at(Rational::new(2, 1)).unwrap();
-	assert!((v.to_double() - 2.0).abs() < eps, "quadratic midpoint: {}", v.to_double());
+	assert!(
+		(v.to_double() - 2.0).abs() < eps,
+		"quadratic midpoint: {}",
+		v.to_double()
+	);
 
 	// Rational type re-quantizes through Rational::from_double.
 	let mut rt = KeyframeTrack::default();
@@ -258,16 +277,31 @@ fn keyframe_edge_cases() {
 
 	let mut one = KeyframeTrack::default();
 	one.set_key(key(5, 3.0));
-	assert_eq!(one.value_at(Rational::new(0, 1)), Some(NodeValue::Float(3.0)));
-	assert_eq!(one.value_at(Rational::new(5, 1)), Some(NodeValue::Float(3.0)));
-	assert_eq!(one.value_at(Rational::new(99, 1)), Some(NodeValue::Float(3.0)));
+	assert_eq!(
+		one.value_at(Rational::new(0, 1)),
+		Some(NodeValue::Float(3.0))
+	);
+	assert_eq!(
+		one.value_at(Rational::new(5, 1)),
+		Some(NodeValue::Float(3.0))
+	);
+	assert_eq!(
+		one.value_at(Rational::new(99, 1)),
+		Some(NodeValue::Float(3.0))
+	);
 
 	// Exact key time returns the exact key value (before-holds branch).
 	let mut two = KeyframeTrack::default();
 	two.set_key(key(0, 1.0));
 	two.set_key(key(10, 2.0));
-	assert_eq!(two.value_at(Rational::new(0, 1)), Some(NodeValue::Float(1.0)));
-	assert_eq!(two.value_at(Rational::new(10, 1)), Some(NodeValue::Float(2.0)));
+	assert_eq!(
+		two.value_at(Rational::new(0, 1)),
+		Some(NodeValue::Float(1.0))
+	);
+	assert_eq!(
+		two.value_at(Rational::new(10, 1)),
+		Some(NodeValue::Float(2.0))
+	);
 }
 
 fn key(time: i64, value: f64) -> Keyframe {

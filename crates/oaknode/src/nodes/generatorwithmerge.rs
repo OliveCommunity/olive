@@ -109,7 +109,11 @@ impl GeneratorWithMerge {
 				);
 			}
 			_ => {
-				table.push(crate::value::ValueType::Texture, NodeValue::Texture(job), None);
+				table.push(
+					crate::value::ValueType::Texture,
+					NodeValue::Texture(job),
+					None,
+				);
 			}
 		}
 	}

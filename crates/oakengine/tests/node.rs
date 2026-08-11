@@ -35,14 +35,13 @@ use oakengine::node::{
 	oakengine_node_factory_node_at, oakengine_node_get_input, oakengine_node_get_input_at_time,
 	oakengine_node_get_label, oakengine_node_get_name, oakengine_node_get_type_id,
 	oakengine_node_input_get_type, oakengine_node_input_id, oakengine_node_input_is_connected,
-	oakengine_project_set_filename,
 	oakengine_node_is_clip, oakengine_node_is_folder, oakengine_node_is_track,
 	oakengine_node_is_viewer_output, oakengine_node_keyframe_count, oakengine_node_set_input,
-	oakengine_node_set_input_at_time, oakengine_node_set_label,
-	oakengine_project_add_node, oakengine_project_create, oakengine_project_filename,
-	oakengine_project_free, oakengine_project_import_footage, oakengine_project_load,
-	oakengine_project_name, oakengine_project_new, oakengine_project_node_at,
-	oakengine_project_node_count, oakengine_project_save, OakNodeValue,
+	oakengine_node_set_input_at_time, oakengine_node_set_label, oakengine_project_add_node,
+	oakengine_project_create, oakengine_project_filename, oakengine_project_free,
+	oakengine_project_import_footage, oakengine_project_load, oakengine_project_name,
+	oakengine_project_new, oakengine_project_node_at, oakengine_project_node_count,
+	oakengine_project_save, oakengine_project_set_filename, OakNodeValue,
 };
 
 /// Registered generator node ids used by the tests.
@@ -131,13 +130,13 @@ fn project_node_keyframe_lifecycle() {
 	// The name is derived from the filename base (untitled → "(untitled)"
 	// until a filename is set).
 	assert_eq!(
-		unsafe {
-			oakengine_project_filename(project, buf.as_mut_ptr(), 256)
-		},
+		unsafe { oakengine_project_filename(project, buf.as_mut_ptr(), 256) },
 		0
 	);
 	assert_eq!(
-		unsafe { oakengine_project_set_filename(project, c"/tmp/oakengine_node_test.ovexml".as_ptr()) },
+		unsafe {
+			oakengine_project_set_filename(project, c"/tmp/oakengine_node_test.ovexml".as_ptr())
+		},
 		0
 	);
 	let len = unsafe { oakengine_project_filename(project, buf.as_mut_ptr(), 256) };
@@ -159,23 +158,38 @@ fn project_node_keyframe_lifecycle() {
 	let type_id = unsafe { read_buf(&mut buf) };
 
 	// Factory name lookup round-trip.
-	let name_len =
-		unsafe { oakengine_node_factory_name_from_id(type_id.as_ptr() as *const c_char, buf.as_mut_ptr(), 256) };
+	let name_len = unsafe {
+		oakengine_node_factory_name_from_id(
+			type_id.as_ptr() as *const c_char,
+			buf.as_mut_ptr(),
+			256,
+		)
+	};
 	assert!(name_len > 0);
 
 	// Creating from the discovered id yields a node with a matching type.
-	let orphan = unsafe { oakengine_node_factory_create_from_id(type_id.as_ptr() as *const c_char) };
+	let orphan =
+		unsafe { oakengine_node_factory_create_from_id(type_id.as_ptr() as *const c_char) };
 	assert!(!orphan.is_null());
 	unsafe { oakengine_node_get_type_id(orphan, buf.as_mut_ptr(), 256) };
 	assert_eq!(unsafe { read_buf(&mut buf) }, type_id);
 
 	// ---- add nodes to the project ---------------------------------------
 	// Root folder occupies slot 0; added nodes follow.
-	let solid = unsafe { oakengine_project_add_node(project, c"org.olivevideoeditor.Olive.solidgenerator".as_ptr()) };
+	let solid = unsafe {
+		oakengine_project_add_node(
+			project,
+			c"org.olivevideoeditor.Olive.solidgenerator".as_ptr(),
+		)
+	};
 	assert!(!solid.is_null());
-	let transform = unsafe { oakengine_project_add_node(project, c"org.olivevideoeditor.Olive.transform".as_ptr()) };
+	let transform = unsafe {
+		oakengine_project_add_node(project, c"org.olivevideoeditor.Olive.transform".as_ptr())
+	};
 	assert!(!transform.is_null());
-	let value = unsafe { oakengine_project_add_node(project, c"org.olivevideoeditor.Olive.value".as_ptr()) };
+	let value = unsafe {
+		oakengine_project_add_node(project, c"org.olivevideoeditor.Olive.value".as_ptr())
+	};
 	assert!(!value.is_null());
 
 	// 3 added nodes + the root folder.
@@ -198,7 +212,10 @@ fn project_node_keyframe_lifecycle() {
 	assert_eq!(unsafe { oakengine_node_is_viewer_output(solid) }, 0);
 
 	// ---- undoable label + readback --------------------------------------
-	assert_eq!(unsafe { oakengine_node_set_label(solid, c"My Solid".as_ptr()) }, 0);
+	assert_eq!(
+		unsafe { oakengine_node_set_label(solid, c"My Solid".as_ptr()) },
+		0
+	);
 	let len = unsafe { oakengine_node_get_label(solid, buf.as_mut_ptr(), 256) };
 	assert_eq!(len, 8);
 	assert_eq!(unsafe { read_buf(&mut buf) }, "My Solid");
@@ -254,7 +271,10 @@ fn project_node_keyframe_lifecycle() {
 	// The module's at-time setter is the value-at-time path (keyframing
 	// is not reachable through the module C ABI, so the input is not
 	// "keyframed"; see the facade notes).
-	assert_eq!(unsafe { oakengine_node_keyframe_count(value, c"value_in".as_ptr()) }, 0);
+	assert_eq!(
+		unsafe { oakengine_node_keyframe_count(value, c"value_in".as_ptr()) },
+		0
+	);
 	let kf = float_value(0.5);
 	assert_eq!(
 		unsafe { oakengine_node_set_input_at_time(value, c"value_in".as_ptr(), -1, 0, -1, &kf, 0) },
@@ -262,7 +282,9 @@ fn project_node_keyframe_lifecycle() {
 	);
 	let mut at: OakNodeValue = unsafe { std::mem::zeroed() };
 	assert_eq!(
-		unsafe { oakengine_node_get_input_at_time(value, c"value_in".as_ptr(), -1, -1, 0, 0, &mut at) },
+		unsafe {
+			oakengine_node_get_input_at_time(value, c"value_in".as_ptr(), -1, -1, 0, 0, &mut at)
+		},
 		0
 	);
 	assert_eq!(at.kind, 2);
@@ -303,16 +325,17 @@ fn project_node_keyframe_lifecycle() {
 		)
 	};
 	assert!(rc < 0);
-	let err_len = unsafe { std::ffi::CStr::from_ptr(err.as_ptr()) }.to_bytes().len();
+	let err_len = unsafe { std::ffi::CStr::from_ptr(err.as_ptr()) }
+		.to_bytes()
+		.len();
 	assert!(err_len > 0, "load error buffer must be non-empty");
 	unsafe { oakengine_project_free(project3) };
 
 	// Import failure on a valid project: nonexistent path → NULL.
 	let project4 = oakengine_project_create();
 	assert_eq!(unsafe { oakengine_project_new(project4) }, 0);
-	let imported = unsafe {
-		oakengine_project_import_footage(project4, c"/no/such/media.mp4".as_ptr())
-	};
+	let imported =
+		unsafe { oakengine_project_import_footage(project4, c"/no/such/media.mp4".as_ptr()) };
 	assert!(imported.is_null());
 	unsafe { oakengine_project_free(project4) };
 }
@@ -338,14 +361,25 @@ fn node_failure_paths() {
 	);
 
 	// Out-of-range input index → OAKENGINE_E_NOT_FOUND (-4).
-	let orphan = unsafe { oakengine_node_factory_create_from_id(c"org.olivevideoeditor.Olive.value".as_ptr()) };
+	let orphan = unsafe {
+		oakengine_node_factory_create_from_id(c"org.olivevideoeditor.Olive.value".as_ptr())
+	};
 	assert!(!orphan.is_null());
 	let mut buf = [0 as c_char; 64];
-	assert_eq!(unsafe { oakengine_node_input_id(orphan, 999, buf.as_mut_ptr(), 64) }, -4);
-	assert_eq!(unsafe { oakengine_node_input_id(orphan, -1, buf.as_mut_ptr(), 64) }, -4);
+	assert_eq!(
+		unsafe { oakengine_node_input_id(orphan, 999, buf.as_mut_ptr(), 64) },
+		-4
+	);
+	assert_eq!(
+		unsafe { oakengine_node_input_id(orphan, -1, buf.as_mut_ptr(), 64) },
+		-4
+	);
 
 	// NULL handle for a count query is a 0-result, not an error.
-	assert_eq!(unsafe { oakengine_node_keyframe_count(std::ptr::null(), c"value_in".as_ptr()) }, 0);
+	assert_eq!(
+		unsafe { oakengine_node_keyframe_count(std::ptr::null(), c"value_in".as_ptr()) },
+		0
+	);
 }
 
 /// Footage probe/import/borrow failure paths (no media required).
@@ -358,20 +392,25 @@ fn footage_failure_paths() {
 	assert!(probe.is_null());
 	let mut err = [0 as c_char; 512];
 	let len = oakengine_footage_last_error(err.as_mut_ptr(), 512);
-	assert!(len > 0, "footage_last_error must be non-empty after a failed probe");
+	assert!(
+		len > 0,
+		"footage_last_error must be non-empty after a failed probe"
+	);
 
 	// NULL path → NULL.
 	let probe2 = unsafe { oakengine_footage_probe(std::ptr::null()) };
 	assert!(probe2.is_null());
 
 	// Borrowing a non-footage node → NULL.
-	let orphan =
-		unsafe { oakengine_node_factory_create_from_id(c"org.olivevideoeditor.Olive.value".as_ptr()) };
+	let orphan = unsafe {
+		oakengine_node_factory_create_from_id(c"org.olivevideoeditor.Olive.value".as_ptr())
+	};
 	assert!(!orphan.is_null());
 	let borrowed = unsafe { oakengine_footage_borrow(orphan) };
 	assert!(borrowed.is_null());
 
 	// Import into a NULL project → NULL.
-	let imported = unsafe { oakengine_project_import_footage(std::ptr::null_mut(), c"/x.mp4".as_ptr()) };
+	let imported =
+		unsafe { oakengine_project_import_footage(std::ptr::null_mut(), c"/x.mp4".as_ptr()) };
 	assert!(imported.is_null());
 }

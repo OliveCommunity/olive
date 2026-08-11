@@ -30,7 +30,12 @@ pub fn config_get_string(group: Option<&str>, key: &str) -> Option<String> {
 	let key_c = std::ffi::CString::new(key).ok()?;
 	let group_ptr = || group_c.as_ref().map_or(std::ptr::null(), |c| c.as_ptr());
 	let size = unsafe {
-		oakcommon::ffi::config::oakcommon_config_get(group_ptr(), key_c.as_ptr(), std::ptr::null_mut(), 0)
+		oakcommon::ffi::config::oakcommon_config_get(
+			group_ptr(),
+			key_c.as_ptr(),
+			std::ptr::null_mut(),
+			0,
+		)
 	};
 	if size <= 1 {
 		return None; // missing or empty
@@ -94,7 +99,9 @@ mod tests {
 
 	#[test]
 	fn configuration_location_uses_env_override() {
-		let _guard = crate::bridge::common::ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::bridge::common::ENV_TEST_LOCK
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let dir = std::env::temp_dir().join("oakrender-config-test");
 		std::env::set_var("OAK_CONFIG_DIR", &dir);
 		let loc = configuration_location();
@@ -104,7 +111,9 @@ mod tests {
 
 	#[test]
 	fn default_disk_cache_path_is_under_config() {
-		let _guard = crate::bridge::common::ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::bridge::common::ENV_TEST_LOCK
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let dir = std::env::temp_dir().join("oakrender-cache-test");
 		std::env::set_var("OAK_CONFIG_DIR", &dir);
 		let p = default_disk_cache_path();

@@ -47,7 +47,8 @@ use crate::handle::{
 static ERROR_FN: OnceLock<Mutex<Option<(Option<ConfigErrorFn>, usize)>>> = OnceLock::new();
 
 /// `engine/include/oakengine/config.h` error callback.
-pub type ConfigErrorFn = unsafe extern "C" fn(title: *const c_char, message: *const c_char, userdata: *mut c_void);
+pub type ConfigErrorFn =
+	unsafe extern "C" fn(title: *const c_char, message: *const c_char, userdata: *mut c_void);
 
 fn error_fn_slot() -> &'static Mutex<Option<(Option<ConfigErrorFn>, usize)>> {
 	ERROR_FN.get_or_init(|| Mutex::new(None))
@@ -113,7 +114,11 @@ pub extern "C" fn oakengine_config_get_int(key: *const c_char, default_value: i6
 		if key.is_null() {
 			return Ok(default_value);
 		}
-		Ok(c::oakcommon_config_get_int64(std::ptr::null(), key, default_value))
+		Ok(c::oakcommon_config_get_int64(
+			std::ptr::null(),
+			key,
+			default_value,
+		))
 	})
 }
 
@@ -151,12 +156,19 @@ pub extern "C" fn oakengine_config_set_error_handler(
 /// `oakengine_config_report_error` — report an error through the
 /// registered handler (logged and discarded when none is set).
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_config_report_error(title: *const c_char, message: *const c_char) -> c_int {
+pub unsafe extern "C" fn oakengine_config_report_error(
+	title: *const c_char,
+	message: *const c_char,
+) -> c_int {
 	guard(|| unsafe {
 		let slot = error_fn_slot().lock().unwrap_or_else(|e| e.into_inner());
 		if let Some((Some(fn_), userdata)) = *slot {
 			let title = if title.is_null() { empty_cstr() } else { title };
-			let message = if message.is_null() { empty_cstr() } else { message };
+			let message = if message.is_null() {
+				empty_cstr()
+			} else {
+				message
+			};
 			fn_(title, message, userdata as *mut c_void);
 		}
 		Ok(())
@@ -194,14 +206,8 @@ const SUPPORTED_FRAME_RATES: &[(c_int, c_int)] = &[
 
 /// Standard pixel aspect ratios as num/den
 /// (`VideoParams::k_standard_pixel_aspects`).
-const STANDARD_PIXEL_ASPECTS: &[(c_int, c_int)] = &[
-	(1, 1),
-	(8, 9),
-	(32, 27),
-	(16, 15),
-	(64, 45),
-	(4, 3),
-];
+const STANDARD_PIXEL_ASPECTS: &[(c_int, c_int)] =
+	&[(1, 1), (8, 9), (32, 27), (16, 15), (64, 45), (4, 3)];
 
 /// Supported preview dividers (`VideoParams::k_supported_dividers`).
 const SUPPORTED_DIVIDERS: &[c_int] = &[1, 2, 3, 4, 6, 8, 12, 16];
@@ -455,7 +461,9 @@ pub unsafe extern "C" fn oakengine_video_params_make(
 /// from a POD (returns an opaque engine pointer; free with
 /// `oakengine_video_params_free`).
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_video_params_create(pod: *const OakVideoParamsPod) -> *mut c_void {
+pub unsafe extern "C" fn oakengine_video_params_create(
+	pod: *const OakVideoParamsPod,
+) -> *mut c_void {
 	crate::handle::guard_ptr(|| unsafe {
 		if pod.is_null() {
 			return Ok(std::ptr::null_mut());
@@ -469,7 +477,11 @@ pub unsafe extern "C" fn oakengine_video_params_create(pod: *const OakVideoParam
 			rc = c::oakcommon_videoparams_set_height(params, (*pod).height);
 		}
 		if rc == 0 {
-			rc = c::oakcommon_videoparams_set_time_base(params, (*pod).time_base_num, (*pod).time_base_den);
+			rc = c::oakcommon_videoparams_set_time_base(
+				params,
+				(*pod).time_base_num,
+				(*pod).time_base_den,
+			);
 		}
 		if rc == 0 {
 			rc = c::oakcommon_videoparams_set_format(params, (*pod).format);
@@ -494,7 +506,10 @@ pub unsafe extern "C" fn oakengine_video_params_create(pod: *const OakVideoParam
 			rc = c::oakcommon_videoparams_set_video_type(params, (*pod).video_type);
 		}
 		if rc == 0 {
-			rc = c::oakcommon_videoparams_set_premultiplied_alpha(params, (*pod).premultiplied_alpha);
+			rc = c::oakcommon_videoparams_set_premultiplied_alpha(
+				params,
+				(*pod).premultiplied_alpha,
+			);
 		}
 		if rc != 0 {
 			let mut p = params;
@@ -570,7 +585,9 @@ pub unsafe extern "C" fn oakengine_video_params_is_valid(p: *const OakVideoParam
 /// `format` with `channels` channels.
 #[no_mangle]
 pub extern "C" fn oakengine_video_params_bytes_per_pixel(format: c_int, channels: c_int) -> c_int {
-	guard_int(|| Ok(unsafe { c::oakcommon_videoparams_static_get_bytes_per_pixel(format, channels) }))
+	guard_int(|| {
+		Ok(unsafe { c::oakcommon_videoparams_static_get_bytes_per_pixel(format, channels) })
+	})
 }
 
 /// `oakengine_video_params_internal_channel_count` — RGBA.

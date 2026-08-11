@@ -83,101 +83,101 @@ Exit codes:\n\
 /// is reproduced exactly; clap still enforces the argument shapes.
 #[derive(Parser, Debug)]
 #[command(
-    name = "oak-cli",
-    disable_help_flag = true,
-    disable_version_flag = true,
-    subcommand_required = true
+	name = "oak-cli",
+	disable_help_flag = true,
+	disable_version_flag = true,
+	subcommand_required = true
 )]
 struct Cli {
-    #[command(subcommand)]
-    command: Command,
+	#[command(subcommand)]
+	command: Command,
 }
 
 #[derive(Subcommand, Debug)]
 enum Command {
-    /// Print project name, sequences and footage.
-    Info {
-        /// Path to the project file (.ove).
-        project: String,
-    },
-    /// Render the first sequence to PPM frames (P6, 8-bit RGB) and the
-    /// audio range to a PCM s16 WAV file in <out_dir>.
-    Render {
-        /// Path to the project file (.ove).
-        project: String,
-        /// Start of the rendered range, in seconds.
-        start_seconds: String,
-        /// End of the rendered range, in seconds (must be > start).
-        end_seconds: String,
-        /// Directory the PPM frames and audio.wav are written into.
-        out_dir: String,
-    },
-    /// Probe a media file: decoder, duration, video and audio streams.
-    Probe {
-        /// Media file to probe.
-        mediafile: String,
-    },
-    /// Transcode a media file end to end.
-    Transcode {
-        /// Source media file.
-        input_media: String,
-        /// Output MP4 path, or the output directory with --format ppm.
-        out: String,
-        /// Output width (defaults to the source width).
-        width: Option<String>,
-        /// Output format: "mp4" (default) or "ppm".
-        #[arg(long = "format")]
-        format: Option<String>,
-    },
+	/// Print project name, sequences and footage.
+	Info {
+		/// Path to the project file (.ove).
+		project: String,
+	},
+	/// Render the first sequence to PPM frames (P6, 8-bit RGB) and the
+	/// audio range to a PCM s16 WAV file in <out_dir>.
+	Render {
+		/// Path to the project file (.ove).
+		project: String,
+		/// Start of the rendered range, in seconds.
+		start_seconds: String,
+		/// End of the rendered range, in seconds (must be > start).
+		end_seconds: String,
+		/// Directory the PPM frames and audio.wav are written into.
+		out_dir: String,
+	},
+	/// Probe a media file: decoder, duration, video and audio streams.
+	Probe {
+		/// Media file to probe.
+		mediafile: String,
+	},
+	/// Transcode a media file end to end.
+	Transcode {
+		/// Source media file.
+		input_media: String,
+		/// Output MP4 path, or the output directory with --format ppm.
+		out: String,
+		/// Output width (defaults to the source width).
+		width: Option<String>,
+		/// Output format: "mp4" (default) or "ppm".
+		#[arg(long = "format")]
+		format: Option<String>,
+	},
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+	let args: Vec<String> = std::env::args().skip(1).collect();
 
-    // argv[1] handling that mirrors the C++ main() exactly.
-    if let Some(first) = args.first() {
-        if first == "--help" || first == "-h" {
-            print!("{USAGE}");
-            exit(cmd::EXIT_OK);
-        }
-    }
-    if let Some(first) = args.first() {
-        if !matches!(first.as_str(), "info" | "render" | "probe" | "transcode") {
-            eprintln!("error: unknown command \"{first}\"");
-            eprint_usage();
-            exit(cmd::EXIT_USAGE);
-        }
-    }
+	// argv[1] handling that mirrors the C++ main() exactly.
+	if let Some(first) = args.first() {
+		if first == "--help" || first == "-h" {
+			print!("{USAGE}");
+			exit(cmd::EXIT_OK);
+		}
+	}
+	if let Some(first) = args.first() {
+		if !matches!(first.as_str(), "info" | "render" | "probe" | "transcode") {
+			eprintln!("error: unknown command \"{first}\"");
+			eprint_usage();
+			exit(cmd::EXIT_USAGE);
+		}
+	}
 
-    let cli = match Cli::try_parse() {
-        Ok(cli) => cli,
-        Err(e) => {
-            // clap's own arity/format message, then the C++ usage text.
-            let _ = e.print();
-            eprint_usage();
-            exit(cmd::EXIT_USAGE);
-        }
-    };
+	let cli = match Cli::try_parse() {
+		Ok(cli) => cli,
+		Err(e) => {
+			// clap's own arity/format message, then the C++ usage text.
+			let _ = e.print();
+			eprint_usage();
+			exit(cmd::EXIT_USAGE);
+		}
+	};
 
-    let code = match cli.command {
-        Command::Info { project } => cmd::info::run(project),
-        Command::Render {
-            project,
-            start_seconds,
-            end_seconds,
-            out_dir,
-        } => cmd::render::run(project, &start_seconds, &end_seconds, &out_dir),
-        Command::Probe { mediafile } => cmd::probe::run(mediafile),
-        Command::Transcode {
-            input_media,
-            out,
-            width,
-            format,
-        } => cmd::transcode::run(input_media, out, width, format),
-    };
-    exit(code);
+	let code = match cli.command {
+		Command::Info { project } => cmd::info::run(project),
+		Command::Render {
+			project,
+			start_seconds,
+			end_seconds,
+			out_dir,
+		} => cmd::render::run(project, &start_seconds, &end_seconds, &out_dir),
+		Command::Probe { mediafile } => cmd::probe::run(mediafile),
+		Command::Transcode {
+			input_media,
+			out,
+			width,
+			format,
+		} => cmd::transcode::run(input_media, out, width, format),
+	};
+	exit(code);
 }
 
 fn eprint_usage() {
-    eprint!("{USAGE}");
+	eprint!("{USAGE}");
 }

@@ -104,8 +104,14 @@ fn node_bridge_exposes_block_geometry() {
 	let t = unsafe { oaknode_track_create(0) };
 	assert!(!t.is_null());
 	let b2 = unsafe { oaknode_block_clip_create() };
-	assert_eq!(unsafe { oaknode_track_prepend_block(t.clone(), b.clone()) }, 0);
-	assert_eq!(unsafe { oaknode_track_prepend_block(t.clone(), b2.clone()) }, 0);
+	assert_eq!(
+		unsafe { oaknode_track_prepend_block(t.clone(), b.clone()) },
+		0
+	);
+	assert_eq!(
+		unsafe { oaknode_track_prepend_block(t.clone(), b2.clone()) },
+		0
+	);
 
 	// b2 is now the front block: it owns the track, has no previous, and b1
 	// follows it.
@@ -219,14 +225,18 @@ fn xml_bridge_validate_handles() {
 
 	// `init` over a document yields an empty reader in the mock; with no
 	// elements it reports end-of-stream for every accessor.
-	let mut reader = unsafe { oakcommon_xml_reader_init(b"<project/>\0".as_ptr() as *const std::ffi::c_char) };
+	let mut reader =
+		unsafe { oakcommon_xml_reader_init(b"<project/>\0".as_ptr() as *const std::ffi::c_char) };
 	assert!(!reader.is_null());
 	let mut found = 0;
 	assert_eq!(
 		unsafe { oakcommon_xml_reader_read_next_start_element(reader.clone(), &mut found) },
 		0
 	);
-	assert_eq!(unsafe { oakcommon_xml_reader_name(reader.clone(), buf.as_mut_ptr(), 64) }, 0);
+	assert_eq!(
+		unsafe { oakcommon_xml_reader_name(reader.clone(), buf.as_mut_ptr(), 64) },
+		0
+	);
 	assert_eq!(
 		unsafe { oakcommon_xml_reader_read_element_text(reader.clone(), buf.as_mut_ptr(), 64) },
 		0
@@ -258,7 +268,9 @@ fn xml_bridge_validate_handles() {
 			1
 		);
 		assert_eq!(
-			unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap(),
+			unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }
+				.to_str()
+				.unwrap(),
 			"marker"
 		);
 		assert_eq!(
@@ -266,7 +278,9 @@ fn xml_bridge_validate_handles() {
 			1
 		);
 		assert_eq!(
-			unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }.to_str().unwrap(),
+			unsafe { std::ffi::CStr::from_ptr(buf.as_ptr()) }
+				.to_str()
+				.unwrap(),
 			"hello"
 		);
 		unsafe { oakcommon_xml_reader_free(&mut r) };

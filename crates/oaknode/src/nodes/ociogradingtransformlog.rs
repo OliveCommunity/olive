@@ -94,12 +94,7 @@ pub struct OCIOGradingTransformLogNode {
 }
 
 /// Set or replace an input property (C++ `set_input_property`).
-fn set_input_property(
-	core: &mut NodeCore,
-	input: &str,
-	key: &str,
-	value: crate::value::NodeValue,
-) {
+fn set_input_property(core: &mut NodeCore, input: &str, key: &str, value: crate::value::NodeValue) {
 	if let Some(input) = core.get_input_mut(input) {
 		if let Some(slot) = input.properties.iter_mut().find(|(k, _)| k == key) {
 			slot.1 = value;
@@ -114,10 +109,30 @@ impl OCIOGradingTransformLogNode {
 	/// `set_vec4_input_colors()`): master `#c0c0c0`, R `#ff0000`, G
 	/// `#00ff00`, B `#0000ff`.
 	fn set_vec4_input_colors(core: &mut NodeCore, input: &str) {
-		set_input_property(core, input, "color0", crate::value::NodeValue::Text("#c0c0c0".into()));
-		set_input_property(core, input, "color1", crate::value::NodeValue::Text("#ff0000".into()));
-		set_input_property(core, input, "color2", crate::value::NodeValue::Text("#00ff00".into()));
-		set_input_property(core, input, "color3", crate::value::NodeValue::Text("#0000ff".into()));
+		set_input_property(
+			core,
+			input,
+			"color0",
+			crate::value::NodeValue::Text("#c0c0c0".into()),
+		);
+		set_input_property(
+			core,
+			input,
+			"color1",
+			crate::value::NodeValue::Text("#ff0000".into()),
+		);
+		set_input_property(
+			core,
+			input,
+			"color2",
+			crate::value::NodeValue::Text("#00ff00".into()),
+		);
+		set_input_property(
+			core,
+			input,
+			"color3",
+			crate::value::NodeValue::Text("#0000ff".into()),
+		);
 	}
 
 	/// Constrain the white clamp UI minimum to just above the black
@@ -140,7 +155,12 @@ impl OCIOGradingTransformLogNode {
 			return;
 		}
 		let min = core.standard_value(CLAMP_BLACK_INPUT, -1).to_double() + 0.000001;
-		set_input_property(core, CLAMP_WHITE_INPUT, "min", crate::value::NodeValue::Float(min));
+		set_input_property(
+			core,
+			CLAMP_WHITE_INPUT,
+			"min",
+			crate::value::NodeValue::Float(min),
+		);
 	}
 
 	/// (Re)build the color processor (C++ `generate_processor()`):
@@ -223,7 +243,8 @@ impl NodeBehavior for OCIOGradingTransformLogNode {
 				CLAMP_WHITE_INPUT,
 				"enabled",
 				crate::value::NodeValue::Boolean(
-					core.standard_value(CLAMP_WHITE_ENABLE_INPUT, -1).to_double() != 0.0,
+					core.standard_value(CLAMP_WHITE_ENABLE_INPUT, -1)
+						.to_double() != 0.0,
 				),
 			);
 		} else if input == CLAMP_BLACK_ENABLE_INPUT {
@@ -232,7 +253,8 @@ impl NodeBehavior for OCIOGradingTransformLogNode {
 				CLAMP_BLACK_INPUT,
 				"enabled",
 				crate::value::NodeValue::Boolean(
-					core.standard_value(CLAMP_BLACK_ENABLE_INPUT, -1).to_double() != 0.0,
+					core.standard_value(CLAMP_BLACK_ENABLE_INPUT, -1)
+						.to_double() != 0.0,
 				),
 			);
 		} else if input == CLAMP_BLACK_INPUT {
@@ -247,7 +269,13 @@ impl NodeBehavior for OCIOGradingTransformLogNode {
 	/// Edge connected (C++ `InputConnectedEvent`): forwards to the base
 	/// class and, for the black clamp input, re-constrains the white
 	/// clamp minimum.
-	fn input_connected(&mut self, core: &mut NodeCore, input: &str, element: i32, source: crate::id::NodeId) {
+	fn input_connected(
+		&mut self,
+		core: &mut NodeCore,
+		input: &str,
+		element: i32,
+		source: crate::id::NodeId,
+	) {
 		let _ = (element, source);
 		// C++ forwards to the base class first; OCIOBaseNode does not
 		// override the event, so that half is a no-op here.
@@ -259,7 +287,13 @@ impl NodeBehavior for OCIOGradingTransformLogNode {
 	/// Edge disconnected (C++ `InputDisconnectedEvent`): forwards to the
 	/// base class and, for the black clamp input, re-constrains the
 	/// white clamp minimum.
-	fn input_disconnected(&mut self, core: &mut NodeCore, input: &str, element: i32, source: crate::id::NodeId) {
+	fn input_disconnected(
+		&mut self,
+		core: &mut NodeCore,
+		input: &str,
+		element: i32,
+		source: crate::id::NodeId,
+	) {
 		let _ = (element, source);
 		// See [`NodeBehavior::input_connected`].
 		if input == CLAMP_BLACK_INPUT {
@@ -360,10 +394,22 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	core.flags |= crate::node::flags::VIDEO_EFFECT;
 
 	let component_colors = vec![
-		("color0".to_string(), crate::value::NodeValue::Text("#c0c0c0".into())),
-		("color1".to_string(), crate::value::NodeValue::Text("#ff0000".into())),
-		("color2".to_string(), crate::value::NodeValue::Text("#00ff00".into())),
-		("color3".to_string(), crate::value::NodeValue::Text("#0000ff".into())),
+		(
+			"color0".to_string(),
+			crate::value::NodeValue::Text("#c0c0c0".into()),
+		),
+		(
+			"color1".to_string(),
+			crate::value::NodeValue::Text("#ff0000".into()),
+		),
+		(
+			"color2".to_string(),
+			crate::value::NodeValue::Text("#00ff00".into()),
+		),
+		(
+			"color3".to_string(),
+			crate::value::NodeValue::Text("#0000ff".into()),
+		),
 	];
 
 	let mut lift = crate::input::Input::new(
@@ -399,7 +445,10 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		crate::value::NodeValue::Float(1.0),
 	);
 	saturation.properties = vec![
-		("view".to_string(), crate::value::NodeValue::Text("percentage".into())),
+		(
+			"view".to_string(),
+			crate::value::NodeValue::Text("percentage".into()),
+		),
 		("min".to_string(), crate::value::NodeValue::Float(0.0)),
 	];
 	core.add_input(saturation);
@@ -426,7 +475,8 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		(
 			"enabled".to_string(),
 			crate::value::NodeValue::Boolean(
-				core.standard_value(CLAMP_BLACK_ENABLE_INPUT, -1).to_double() != 0.0,
+				core.standard_value(CLAMP_BLACK_ENABLE_INPUT, -1)
+					.to_double() != 0.0,
 			),
 		),
 		("base".to_string(), crate::value::NodeValue::Float(0.01)),
@@ -447,7 +497,8 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		(
 			"enabled".to_string(),
 			crate::value::NodeValue::Boolean(
-				core.standard_value(CLAMP_WHITE_ENABLE_INPUT, -1).to_double() != 0.0,
+				core.standard_value(CLAMP_WHITE_ENABLE_INPUT, -1)
+					.to_double() != 0.0,
 			),
 		),
 		("base".to_string(), crate::value::NodeValue::Float(0.01)),
@@ -492,8 +543,12 @@ mod tests {
 
 	/// Property value lookup helper for tests.
 	fn property(core: &NodeCore, input: &str, key: &str) -> Option<NodeValue> {
-		core.get_input(input)
-			.and_then(|i| i.properties.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone()))
+		core.get_input(input).and_then(|i| {
+			i.properties
+				.iter()
+				.find(|(k, _)| k == key)
+				.map(|(_, v)| v.clone())
+		})
 	}
 
 	#[test]
@@ -515,26 +570,61 @@ mod tests {
 	#[test]
 	fn create_wires_inputs_flags_and_properties() {
 		let (core, behavior) = create();
-		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.OCIO_NAMESPACEgradingtransformlog");
+		assert_eq!(
+			behavior.type_id(),
+			"org.olivevideoeditor.Olive.OCIO_NAMESPACEgradingtransformlog"
+		);
 		assert_ne!(
-			core.get_input(crate::nodes::ociobase::TEXTURE_INPUT).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE,
+			core.get_input(crate::nodes::ociobase::TEXTURE_INPUT)
+				.unwrap()
+				.flags & crate::input::flags::NOT_KEYFRAMABLE,
 			0
 		);
-		assert_eq!(core.get_input(LIFT_INPUT).unwrap().default, NodeValue::Vec4([0.0; 4]));
-		assert_eq!(core.get_input(GAIN_INPUT).unwrap().default, NodeValue::Vec4([1.0; 4]));
-		assert_eq!(core.get_input(GAMMA_INPUT).unwrap().default, NodeValue::Vec4([1.0; 4]));
-		assert_eq!(core.get_input(SATURATION_INPUT).unwrap().default, NodeValue::Float(1.0));
-		assert_eq!(core.get_input(PIVOT_INPUT).unwrap().default, NodeValue::Float(-0.2));
-		assert_eq!(core.get_input(CLAMP_BLACK_INPUT).unwrap().default, NodeValue::Float(0.0));
-		assert_eq!(core.get_input(CLAMP_WHITE_INPUT).unwrap().default, NodeValue::Float(1.0));
+		assert_eq!(
+			core.get_input(LIFT_INPUT).unwrap().default,
+			NodeValue::Vec4([0.0; 4])
+		);
+		assert_eq!(
+			core.get_input(GAIN_INPUT).unwrap().default,
+			NodeValue::Vec4([1.0; 4])
+		);
+		assert_eq!(
+			core.get_input(GAMMA_INPUT).unwrap().default,
+			NodeValue::Vec4([1.0; 4])
+		);
+		assert_eq!(
+			core.get_input(SATURATION_INPUT).unwrap().default,
+			NodeValue::Float(1.0)
+		);
+		assert_eq!(
+			core.get_input(PIVOT_INPUT).unwrap().default,
+			NodeValue::Float(-0.2)
+		);
+		assert_eq!(
+			core.get_input(CLAMP_BLACK_INPUT).unwrap().default,
+			NodeValue::Float(0.0)
+		);
+		assert_eq!(
+			core.get_input(CLAMP_WHITE_INPUT).unwrap().default,
+			NodeValue::Float(1.0)
+		);
 		// Component colors on every vec4 grading input.
 		for id in [LIFT_INPUT, GAIN_INPUT, GAMMA_INPUT] {
 			let input = core.get_input(id).unwrap();
-			assert!(input.properties.iter().any(|(k, v)| k == "color0" && *v == NodeValue::Text("#c0c0c0".into())));
-			assert!(input.properties.iter().any(|(k, v)| k == "color3" && *v == NodeValue::Text("#0000ff".into())));
+			assert!(input
+				.properties
+				.iter()
+				.any(|(k, v)| k == "color0" && *v == NodeValue::Text("#c0c0c0".into())));
+			assert!(input
+				.properties
+				.iter()
+				.any(|(k, v)| k == "color3" && *v == NodeValue::Text("#0000ff".into())));
 		}
 		// Initial white-clamp minimum constraint: black (0.0) + 0.000001.
-		assert_eq!(property(&core, CLAMP_WHITE_INPUT, "min"), Some(NodeValue::Float(0.000001)));
+		assert_eq!(
+			property(&core, CLAMP_WHITE_INPUT, "min"),
+			Some(NodeValue::Float(0.000001))
+		);
 		assert_eq!(core.effect_input, crate::nodes::ociobase::TEXTURE_INPUT);
 		assert_ne!(core.flags & crate::node::flags::VIDEO_EFFECT, 0);
 	}
@@ -555,7 +645,10 @@ mod tests {
 		core.set_standard_value(CLAMP_BLACK_INPUT, -1, NodeValue::Float(0.25));
 		let mut n = node();
 		n.update_clamp_white_minimum(&mut core);
-		assert_eq!(property(&core, CLAMP_WHITE_INPUT, "min"), Some(NodeValue::Float(0.250001)));
+		assert_eq!(
+			property(&core, CLAMP_WHITE_INPUT, "min"),
+			Some(NodeValue::Float(0.250001))
+		);
 	}
 
 	#[test]
@@ -571,13 +664,14 @@ mod tests {
 			crate::value::ValueType::Float,
 			crate::value::NodeValue::Float(0.0),
 		));
-		core.keyframe_track_mut(CLAMP_BLACK_INPUT, -1).set_key(Keyframe {
-			time: Rational::new(0, 1),
-			value: NodeValue::Float(0.5),
-			interpolation: Interpolation::Hold,
-			bezier_in: (0.0, 0.0),
-			bezier_out: (0.0, 0.0),
-		});
+		core.keyframe_track_mut(CLAMP_BLACK_INPUT, -1)
+			.set_key(Keyframe {
+				time: Rational::new(0, 1),
+				value: NodeValue::Float(0.5),
+				interpolation: Interpolation::Hold,
+				bezier_in: (0.0, 0.0),
+				bezier_out: (0.0, 0.0),
+			});
 		let mut n = node();
 		n.update_clamp_white_minimum(&mut core);
 		assert_eq!(property(&core, CLAMP_WHITE_INPUT, "min"), None);
@@ -599,7 +693,10 @@ mod tests {
 		core.set_standard_value(CLAMP_BLACK_ENABLE_INPUT, -1, NodeValue::Boolean(true));
 		let mut n = node();
 		n.input_value_changed(&mut core, CLAMP_BLACK_ENABLE_INPUT, 0);
-		assert_eq!(property(&core, CLAMP_BLACK_INPUT, "enabled"), Some(NodeValue::Boolean(true)));
+		assert_eq!(
+			property(&core, CLAMP_BLACK_INPUT, "enabled"),
+			Some(NodeValue::Boolean(true))
+		);
 	}
 
 	#[test]
@@ -618,14 +715,22 @@ mod tests {
 		core.set_standard_value(CLAMP_BLACK_INPUT, -1, NodeValue::Float(0.1));
 		let mut n = node();
 		n.input_value_changed(&mut core, CLAMP_BLACK_INPUT, 0);
-		assert_eq!(property(&core, CLAMP_WHITE_INPUT, "min"), Some(NodeValue::Float(0.100001)));
+		assert_eq!(
+			property(&core, CLAMP_WHITE_INPUT, "min"),
+			Some(NodeValue::Float(0.100001))
+		);
 	}
 
 	#[test]
 	fn value_no_texture_pushes_nothing() {
 		let (core, behavior) = create();
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
 		assert!(table.is_empty());
 	}
 

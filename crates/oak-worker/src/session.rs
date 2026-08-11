@@ -210,7 +210,11 @@ mod tests {
 	/// The "parent" side of a handshake: create an output segment holding a
 	/// pool, optionally an input segment, and return the handshake message
 	/// plus the owner regions (kept alive by the caller).
-	fn parent_side(slots: i32, slot_bytes: i64, input: bool) -> (Value, SharedMemoryRegion, Option<SharedMemoryRegion>) {
+	fn parent_side(
+		slots: i32,
+		slot_bytes: i64,
+		input: bool,
+	) -> (Value, SharedMemoryRegion, Option<SharedMemoryRegion>) {
 		let out_key = test_key("out");
 		let out_bytes = FrameSlotPool::bytes_needed(slots as u32, slot_bytes as usize);
 		let mut out_region = SharedMemoryRegion::new();
@@ -220,7 +224,8 @@ mod tests {
 			out_region.error()
 		);
 		// SAFETY: live mapping sized by bytes_needed.
-		let _ = unsafe { FrameSlotPool::create(out_region.data(), slots as u32, slot_bytes as usize) };
+		let _ =
+			unsafe { FrameSlotPool::create(out_region.data(), slots as u32, slot_bytes as usize) };
 
 		let (in_key, in_bytes, in_region) = if input {
 			let in_key = test_key("in");
@@ -228,7 +233,9 @@ mod tests {
 			let mut in_region = SharedMemoryRegion::new();
 			assert!(in_region.open(&in_key, in_bytes, ShmMode::Create));
 			// SAFETY: live mapping.
-			let _ = unsafe { FrameSlotPool::create(in_region.data(), slots as u32, slot_bytes as usize) };
+			let _ = unsafe {
+				FrameSlotPool::create(in_region.data(), slots as u32, slot_bytes as usize)
+			};
 			(Some(in_key), Some(in_bytes), Some(in_region))
 		} else {
 			(None, None, None)
@@ -332,7 +339,10 @@ mod tests {
 		let resp = s
 			.handle_line(r#"{"type":"handshake","protocol_version":1}"#)
 			.unwrap();
-		assert_eq!(resp["message"], "handshake missing output shared-memory geometry");
+		assert_eq!(
+			resp["message"],
+			"handshake missing output shared-memory geometry"
+		);
 	}
 
 	#[test]
@@ -342,7 +352,10 @@ mod tests {
 		// Ask for input slots without announcing their geometry.
 		hs["input_slots"] = json!(2);
 		let resp = s.handle_line(&hs.to_string()).unwrap();
-		assert_eq!(resp["message"], "handshake missing input shared-memory geometry");
+		assert_eq!(
+			resp["message"],
+			"handshake missing input shared-memory geometry"
+		);
 	}
 
 	#[test]
@@ -394,14 +407,16 @@ mod tests {
 		let mut s = WorkerSession::new();
 		// A key that was never created.
 		let resp = s
-			.handle_line(&json!({
-				"type": "handshake",
-				"protocol_version": 1,
-				"shm_key": format!("olive-rw-{}-missing", std::process::id()),
-				"output_slots": 4,
-				"slot_data_bytes": 4096,
-			})
-			.to_string())
+			.handle_line(
+				&json!({
+					"type": "handshake",
+					"protocol_version": 1,
+					"shm_key": format!("olive-rw-{}-missing", std::process::id()),
+					"output_slots": 4,
+					"slot_data_bytes": 4096,
+				})
+				.to_string(),
+			)
 			.unwrap();
 		assert_eq!(resp["type"], "error");
 		assert!(resp["message"]
@@ -421,23 +436,30 @@ mod tests {
 		let mut region = SharedMemoryRegion::new();
 		assert!(region.open(&key, bytes, ShmMode::Create));
 		let resp = s
-			.handle_line(&json!({
-				"type": "handshake",
-				"protocol_version": 1,
-				"shm_key": key,
-				"output_slots": 4,
-				"slot_data_bytes": 4096,
-			})
-			.to_string())
+			.handle_line(
+				&json!({
+					"type": "handshake",
+					"protocol_version": 1,
+					"shm_key": key,
+					"output_slots": 4,
+					"slot_data_bytes": 4096,
+				})
+				.to_string(),
+			)
 			.unwrap();
-		assert_eq!(resp["message"], "shared memory does not contain a frame slot pool");
+		assert_eq!(
+			resp["message"],
+			"shared memory does not contain a frame slot pool"
+		);
 		assert!(!s.has_pools());
 	}
 
 	#[test]
 	fn handshake_bad_json_shape_is_invalid_handshake() {
 		let mut s = WorkerSession::new();
-		let resp = s.handle_line(r#"{"type":"handshake","protocol_version":"x"}"#).unwrap();
+		let resp = s
+			.handle_line(r#"{"type":"handshake","protocol_version":"x"}"#)
+			.unwrap();
 		assert_eq!(resp["message"], "invalid handshake message");
 	}
 
@@ -449,20 +471,30 @@ mod tests {
 		let resp = s
 			.handle_line(&json!({ "type": "load_graph", "path": missing }).to_string())
 			.unwrap();
-		assert_eq!(resp["message"], format!("graph file does not exist: {missing}"));
+		assert_eq!(
+			resp["message"],
+			format!("graph file does not exist: {missing}")
+		);
 
 		let empty = std::env::temp_dir().join("oak_worker_test_empty_graph.ove");
 		std::fs::write(&empty, b"").unwrap();
 		let resp = s
-			.handle_line(&json!({ "type": "load_graph", "path": empty.display().to_string() }).to_string())
+			.handle_line(
+				&json!({ "type": "load_graph", "path": empty.display().to_string() }).to_string(),
+			)
 			.unwrap();
-		assert_eq!(resp["message"], format!("graph file is empty: {}", empty.display()));
+		assert_eq!(
+			resp["message"],
+			format!("graph file is empty: {}", empty.display())
+		);
 		let _ = std::fs::remove_file(&empty);
 
 		let real = std::env::temp_dir().join("oak_worker_test_graph.ove");
 		std::fs::write(&real, b"<root/>").unwrap();
 		let resp = s
-			.handle_line(&json!({ "type": "load_graph", "path": real.display().to_string() }).to_string())
+			.handle_line(
+				&json!({ "type": "load_graph", "path": real.display().to_string() }).to_string(),
+			)
 			.unwrap();
 		assert!(resp["message"]
 			.as_str()

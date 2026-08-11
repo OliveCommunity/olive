@@ -28,8 +28,7 @@ use oaknode::input::{flags, Input, ValueHint};
 use oaknode::keyframe::{Interpolation, Keyframe};
 use oaknode::node::{Category, NodeBehavior, NodeCore};
 use oaknode::value::{
-	oak, AudioParams, NodeValue, NodeValueTable, OakNodeValue, SampleBuffer, ValueType,
-	VideoParams,
+	oak, AudioParams, NodeValue, NodeValueTable, OakNodeValue, SampleBuffer, ValueType, VideoParams,
 };
 
 fn float(v: f64) -> NodeValue {
@@ -47,13 +46,22 @@ fn value_type_and_conversions() {
 	assert_eq!(NodeValue::Color([0.0; 4]).value_type(), ValueType::Color);
 	assert_eq!(NodeValue::Text("x".into()).value_type(), ValueType::Text);
 	assert_eq!(NodeValue::Boolean(true).value_type(), ValueType::Boolean);
-	assert_eq!(NodeValue::Samples(SampleBuffer::default()).value_type(), ValueType::Samples);
-	assert_eq!(NodeValue::Rational(Rational::new(1, 2)).value_type(), ValueType::Rational);
+	assert_eq!(
+		NodeValue::Samples(SampleBuffer::default()).value_type(),
+		ValueType::Samples
+	);
+	assert_eq!(
+		NodeValue::Rational(Rational::new(1, 2)).value_type(),
+		ValueType::Rational
+	);
 	assert_eq!(NodeValue::Vec2([0.0; 2]).value_type(), ValueType::Vec2);
 	assert_eq!(NodeValue::Vec3([0.0; 3]).value_type(), ValueType::Vec3);
 	assert_eq!(NodeValue::Vec4([0.0; 4]).value_type(), ValueType::Vec4);
 	assert_eq!(NodeValue::Combo(0).value_type(), ValueType::Combo);
-	assert_eq!(NodeValue::StrCombo("s".into()).value_type(), ValueType::StrCombo);
+	assert_eq!(
+		NodeValue::StrCombo("s".into()).value_type(),
+		ValueType::StrCombo
+	);
 	assert_eq!(
 		NodeValue::VideoParams(VideoParams::default()).value_type(),
 		ValueType::VideoParams
@@ -76,15 +84,16 @@ fn value_type_and_conversions() {
 	assert_eq!(NodeValue::Color([7.0, 0.0, 0.0, 0.0]).to_double(), 7.0);
 	assert_eq!(NodeValue::Boolean(true).to_double(), 1.0);
 	assert_eq!(NodeValue::Boolean(false).to_double(), 0.0);
-	assert_eq!(
-		NodeValue::Rational(Rational::new(1, 4)).to_double(),
-		0.25
-	);
+	assert_eq!(NodeValue::Rational(Rational::new(1, 4)).to_double(), 0.25);
 	assert_eq!(NodeValue::Vec2([9.0, 0.0]).to_double(), 9.0);
 	assert_eq!(NodeValue::Vec3([8.0, 0.0, 0.0]).to_double(), 8.0);
 	assert_eq!(NodeValue::Vec4([6.0, 0.0, 0.0, 0.0]).to_double(), 6.0);
 	assert_eq!(NodeValue::Combo(5).to_double(), 5.0);
-	assert_eq!(NodeValue::Text("x".into()).to_double(), 0.0, "non-numeric -> 0");
+	assert_eq!(
+		NodeValue::Text("x".into()).to_double(),
+		0.0,
+		"non-numeric -> 0"
+	);
 	assert_eq!(NodeValue::None.to_double(), 0.0);
 
 	// can_interpolate.
@@ -137,7 +146,10 @@ fn value_split_combine_lerp() {
 		vec![float(1.0), float(2.0), float(3.0), float(4.0)]
 	);
 	// Scalar types hold the whole value in track 0.
-	assert_eq!(float(9.0).split_into_tracks(ValueType::Float), vec![float(9.0)]);
+	assert_eq!(
+		float(9.0).split_into_tracks(ValueType::Float),
+		vec![float(9.0)]
+	);
 	assert_eq!(
 		NodeValue::Int(7).split_into_tracks(ValueType::Int),
 		vec![NodeValue::Int(7)]
@@ -168,14 +180,20 @@ fn value_split_combine_lerp() {
 		NodeValue::combine_tracks(&[float(1.0)], ValueType::Vec2),
 		NodeValue::Vec2([1.0, 0.0])
 	);
-	assert_eq!(NodeValue::combine_tracks(&[], ValueType::Float), NodeValue::None);
+	assert_eq!(
+		NodeValue::combine_tracks(&[], ValueType::Float),
+		NodeValue::None
+	);
 	assert_eq!(
 		NodeValue::combine_tracks(&[float(3.0)], ValueType::Float),
 		float(3.0)
 	);
 
 	// with_scalar for every declared type.
-	assert_eq!(float(0.0).with_scalar(ValueType::Int, 4.0), NodeValue::Int(4));
+	assert_eq!(
+		float(0.0).with_scalar(ValueType::Int, 4.0),
+		NodeValue::Int(4)
+	);
 	assert_eq!(float(0.0).with_scalar(ValueType::Float, 4.0), float(4.0));
 	assert_eq!(
 		float(0.0).with_scalar(ValueType::Boolean, 1.0),
@@ -185,7 +203,10 @@ fn value_split_combine_lerp() {
 		float(0.0).with_scalar(ValueType::Boolean, 0.0),
 		NodeValue::Boolean(false)
 	);
-	assert_eq!(float(0.0).with_scalar(ValueType::Combo, 2.0), NodeValue::Combo(2));
+	assert_eq!(
+		float(0.0).with_scalar(ValueType::Combo, 2.0),
+		NodeValue::Combo(2)
+	);
 	assert_eq!(
 		float(0.0).with_scalar(ValueType::Color, 0.5),
 		NodeValue::Color([0.5, 0.0, 0.0, 0.0])
@@ -230,13 +251,21 @@ fn value_split_combine_lerp() {
 		NodeValue::Color([0.0; 4]).lerp(&NodeValue::Color([2.0; 4]), 0.5),
 		NodeValue::Color([1.0; 4])
 	);
-	match NodeValue::Rational(Rational::new(0, 1)).lerp(&NodeValue::Rational(Rational::new(1, 1)), 0.5) {
+	match NodeValue::Rational(Rational::new(0, 1))
+		.lerp(&NodeValue::Rational(Rational::new(1, 1)), 0.5)
+	{
 		NodeValue::Rational(r) => assert!((r.to_f64() - 0.5).abs() < eps),
 		_ => unreachable!(),
 	}
 	// Non-interpolable types snap to self.
-	assert_eq!(NodeValue::Int(3).lerp(&NodeValue::Int(9), 0.5), NodeValue::Int(3));
-	assert_eq!(NodeValue::Text("a".into()).lerp(&NodeValue::Text("b".into()), 0.5), NodeValue::Text("a".into()));
+	assert_eq!(
+		NodeValue::Int(3).lerp(&NodeValue::Int(9), 0.5),
+		NodeValue::Int(3)
+	);
+	assert_eq!(
+		NodeValue::Text("a".into()).lerp(&NodeValue::Text("b".into()), 0.5),
+		NodeValue::Text("a".into())
+	);
 }
 
 /// value.rs: NodeValue equality + SampleBuffer default + Drop on
@@ -259,7 +288,10 @@ fn value_equality_and_buffer() {
 	assert_eq!(NodeValue::Vec3([0.0; 3]), NodeValue::Vec3([0.0; 3]));
 	assert_eq!(NodeValue::Vec4([0.0; 4]), NodeValue::Vec4([0.0; 4]));
 	assert_eq!(NodeValue::Combo(1), NodeValue::Combo(1));
-	assert_eq!(NodeValue::StrCombo("s".into()), NodeValue::StrCombo("s".into()));
+	assert_eq!(
+		NodeValue::StrCombo("s".into()),
+		NodeValue::StrCombo("s".into())
+	);
 	assert_eq!(
 		NodeValue::VideoParams(VideoParams::default()),
 		NodeValue::VideoParams(VideoParams::default())
@@ -305,66 +337,116 @@ fn value_equality_and_buffer() {
 fn oaknode_value_pod_roundtrip() {
 	// to_node_value for every POD kind.
 	assert_eq!(
-		OakNodeValue { kind: oak::INT, num: 42, den: 0, f: [0.0; 4] }
-			.to_node_value(ValueType::Int)
-			.unwrap(),
+		OakNodeValue {
+			kind: oak::INT,
+			num: 42,
+			den: 0,
+			f: [0.0; 4]
+		}
+		.to_node_value(ValueType::Int)
+		.unwrap(),
 		NodeValue::Int(42)
 	);
 	assert_eq!(
-		OakNodeValue { kind: oak::COMBO, num: 1, den: 0, f: [0.0; 4] }
-			.to_node_value(ValueType::Combo)
-			.unwrap(),
+		OakNodeValue {
+			kind: oak::COMBO,
+			num: 1,
+			den: 0,
+			f: [0.0; 4]
+		}
+		.to_node_value(ValueType::Combo)
+		.unwrap(),
 		NodeValue::Int(1)
 	);
 	assert_eq!(
-		OakNodeValue { kind: oak::FLOAT, num: 0, den: 0, f: [2.5, 0.0, 0.0, 0.0] }
-			.to_node_value(ValueType::Float)
-			.unwrap(),
+		OakNodeValue {
+			kind: oak::FLOAT,
+			num: 0,
+			den: 0,
+			f: [2.5, 0.0, 0.0, 0.0]
+		}
+		.to_node_value(ValueType::Float)
+		.unwrap(),
 		float(2.5)
 	);
 	assert_eq!(
-		OakNodeValue { kind: oak::BOOL, num: 1, den: 0, f: [0.0; 4] }
-			.to_node_value(ValueType::Boolean)
-			.unwrap(),
+		OakNodeValue {
+			kind: oak::BOOL,
+			num: 1,
+			den: 0,
+			f: [0.0; 4]
+		}
+		.to_node_value(ValueType::Boolean)
+		.unwrap(),
 		NodeValue::Boolean(true)
 	);
 	assert_eq!(
-		OakNodeValue { kind: oak::RATIONAL, num: 1, den: 2, f: [0.0; 4] }
-			.to_node_value(ValueType::Rational)
-			.unwrap(),
+		OakNodeValue {
+			kind: oak::RATIONAL,
+			num: 1,
+			den: 2,
+			f: [0.0; 4]
+		}
+		.to_node_value(ValueType::Rational)
+		.unwrap(),
 		NodeValue::Rational(Rational::new(1, 2))
 	);
 	assert_eq!(
-		OakNodeValue { kind: oak::COLOR, num: 0, den: 0, f: [1.0, 2.0, 3.0, 4.0] }
-			.to_node_value(ValueType::Color)
-			.unwrap(),
+		OakNodeValue {
+			kind: oak::COLOR,
+			num: 0,
+			den: 0,
+			f: [1.0, 2.0, 3.0, 4.0]
+		}
+		.to_node_value(ValueType::Color)
+		.unwrap(),
 		NodeValue::Color([1.0, 2.0, 3.0, 4.0])
 	);
 	assert_eq!(
-		OakNodeValue { kind: oak::VEC2, num: 0, den: 0, f: [1.0, 2.0, 0.0, 0.0] }
-			.to_node_value(ValueType::Vec2)
-			.unwrap(),
+		OakNodeValue {
+			kind: oak::VEC2,
+			num: 0,
+			den: 0,
+			f: [1.0, 2.0, 0.0, 0.0]
+		}
+		.to_node_value(ValueType::Vec2)
+		.unwrap(),
 		NodeValue::Vec2([1.0, 2.0])
 	);
 	assert_eq!(
-		OakNodeValue { kind: oak::VEC3, num: 0, den: 0, f: [1.0, 2.0, 3.0, 0.0] }
-			.to_node_value(ValueType::Vec3)
-			.unwrap(),
+		OakNodeValue {
+			kind: oak::VEC3,
+			num: 0,
+			den: 0,
+			f: [1.0, 2.0, 3.0, 0.0]
+		}
+		.to_node_value(ValueType::Vec3)
+		.unwrap(),
 		NodeValue::Vec3([1.0, 2.0, 3.0])
 	);
 	assert_eq!(
-		OakNodeValue { kind: oak::VEC4, num: 0, den: 0, f: [1.0, 2.0, 3.0, 4.0] }
-			.to_node_value(ValueType::Vec4)
-			.unwrap(),
+		OakNodeValue {
+			kind: oak::VEC4,
+			num: 0,
+			den: 0,
+			f: [1.0, 2.0, 3.0, 4.0]
+		}
+		.to_node_value(ValueType::Vec4)
+		.unwrap(),
 		NodeValue::Vec4([1.0, 2.0, 3.0, 4.0])
 	);
 	// Invalid kinds are rejected.
-	assert!(OakNodeValue::none().to_node_value(ValueType::Float).is_err());
-	assert!(
-		OakNodeValue { kind: oak::STRING, num: 0, den: 0, f: [0.0; 4] }
-			.to_node_value(ValueType::Text)
-			.is_err()
-	);
+	assert!(OakNodeValue::none()
+		.to_node_value(ValueType::Float)
+		.is_err());
+	assert!(OakNodeValue {
+		kind: oak::STRING,
+		num: 0,
+		den: 0,
+		f: [0.0; 4]
+	}
+	.to_node_value(ValueType::Text)
+	.is_err());
 
 	// from_node_value: round-trips and error arms.
 	let pod = OakNodeValue::from_node_value(ValueType::Float, &float(3.0)).unwrap();
@@ -389,25 +471,18 @@ fn oaknode_value_pod_roundtrip() {
 	assert_eq!((pod.num, pod.den), (1, 1));
 	let pod = OakNodeValue::from_node_value(ValueType::None, &NodeValue::None).unwrap();
 	assert_eq!(pod.kind, oak::NONE);
-	let pod = OakNodeValue::from_node_value(
-		ValueType::Color,
-		&NodeValue::Color([1.0, 2.0, 3.0, 4.0]),
-	)
-	.unwrap();
+	let pod =
+		OakNodeValue::from_node_value(ValueType::Color, &NodeValue::Color([1.0, 2.0, 3.0, 4.0]))
+			.unwrap();
 	assert_eq!(pod.f, [1.0, 2.0, 3.0, 4.0]);
 	let pod = OakNodeValue::from_node_value(ValueType::Vec2, &NodeValue::Vec2([1.0, 2.0])).unwrap();
 	assert_eq!((pod.f[0], pod.f[1]), (1.0, 2.0));
-	let pod = OakNodeValue::from_node_value(
-		ValueType::Vec3,
-		&NodeValue::Vec3([1.0, 2.0, 3.0]),
-	)
-	.unwrap();
+	let pod =
+		OakNodeValue::from_node_value(ValueType::Vec3, &NodeValue::Vec3([1.0, 2.0, 3.0])).unwrap();
 	assert_eq!(pod.f[2], 3.0);
-	let pod = OakNodeValue::from_node_value(
-		ValueType::Vec4,
-		&NodeValue::Vec4([1.0, 2.0, 3.0, 4.0]),
-	)
-	.unwrap();
+	let pod =
+		OakNodeValue::from_node_value(ValueType::Vec4, &NodeValue::Vec4([1.0, 2.0, 3.0, 4.0]))
+			.unwrap();
 	assert_eq!(pod.f[3], 4.0);
 	// Error arms: string declared -> Invalid; wrong payload -> Failed;
 	// non-POD declared -> Failed.
@@ -451,7 +526,11 @@ fn node_core_helpers() {
 	assert_eq!(core.standard_value("val_in", -1), float(5.0));
 	core.set_standard_value("val_in", 2, float(9.0));
 	assert_eq!(core.standard_value("val_in", 2), float(9.0));
-	assert_eq!(core.standard_value("val_in", 3), float(0.0), "unset element -> default");
+	assert_eq!(
+		core.standard_value("val_in", 3),
+		float(0.0),
+		"unset element -> default"
+	);
 
 	// Array size / insert / remove.
 	assert_eq!(core.input_array_size("val_in"), 0);
@@ -460,18 +539,36 @@ fn node_core_helpers() {
 	assert_eq!(core.input_array_size("val_in"), 2);
 	core.set_standard_value("val_in", 1, float(7.0));
 	core.input_array_insert("val_in", 0); // shifts element 1 -> 2
-	assert_eq!(core.standard_value("val_in", 2), float(7.0), "values shift on insert");
-	assert_eq!(core.standard_value("val_in", 1), float(0.0), "inserted slot cleared");
+	assert_eq!(
+		core.standard_value("val_in", 2),
+		float(7.0),
+		"values shift on insert"
+	);
+	assert_eq!(
+		core.standard_value("val_in", 1),
+		float(0.0),
+		"inserted slot cleared"
+	);
 	core.input_array_remove("val_in", 0);
-	assert_eq!(core.standard_value("val_in", 1), float(7.0), "values shift on remove");
+	assert_eq!(
+		core.standard_value("val_in", 1),
+		float(7.0),
+		"values shift on remove"
+	);
 	assert_eq!(core.input_array_size("val_in"), 2);
 	core.input_array_remove("val_in", 99); // out of range: no-op
 	assert_eq!(core.input_array_size("val_in"), 2);
 
 	// value_at_time uses the standard value when the track is empty
 	// (element 1 holds 7.0 after the shifts above).
-	assert_eq!(core.value_at_time("val_in", 1, Rational::new(0, 1)), float(7.0));
-	assert_eq!(core.value_at_time("val_in", 9, Rational::new(0, 1)), float(0.0));
+	assert_eq!(
+		core.value_at_time("val_in", 1, Rational::new(0, 1)),
+		float(7.0)
+	);
+	assert_eq!(
+		core.value_at_time("val_in", 9, Rational::new(0, 1)),
+		float(0.0)
+	);
 
 	// Keyframe tracks.
 	{
@@ -502,11 +599,17 @@ fn node_core_helpers() {
 	assert!(core.keyframe_track("val_in", 0).is_some());
 	assert!(core.keyframe_track("val_in", 1).is_none());
 	core.input_array_remove("val_in", 0);
-	assert!(core.keyframe_track("val_in", 0).is_none(), "removed element drops its track");
+	assert!(
+		core.keyframe_track("val_in", 0).is_none(),
+		"removed element drops its track"
+	);
 	assert!(core.keyframe_track("val_in", -1).is_some());
 	assert!(core.keyframe_track("missing", -1).is_none());
 	// value_at_time uses keyframes when the track is non-empty.
-	assert_eq!(core.value_at_time("val_in", -1, Rational::new(0, 1)), float(1.0));
+	assert_eq!(
+		core.value_at_time("val_in", -1, Rational::new(0, 1)),
+		float(1.0)
+	);
 
 	// Value hints.
 	assert!(core.value_hint("val_in", -1).is_none());
@@ -532,7 +635,10 @@ fn node_core_helpers() {
 	assert!(!core.context_contains(ctx));
 	assert!(core.set_context_position(ctx, 1.0, 2.0, true));
 	assert!(core.context_contains(ctx));
-	assert!(!core.set_context_position(ctx, 3.0, 4.0, false), "replace returns false");
+	assert!(
+		!core.set_context_position(ctx, 3.0, 4.0, false),
+		"replace returns false"
+	);
 	assert_eq!(core.context_positions.len(), 1);
 	assert_eq!(core.context_positions[0].1, (3.0, 4.0));
 	assert!(core.remove_from_context(ctx));
@@ -574,7 +680,9 @@ fn node_behavior_defaults() {
 	assert_eq!(b.input_name("x"), "x");
 	assert_eq!(b.input_name("enabled_in"), "Enabled");
 	assert_eq!(b.ignore_inputs_for_rendering(), &[] as &[String]);
-	assert!(b.active_elements_at_time("in", Rational::new(0, 1)).is_empty());
+	assert!(b
+		.active_elements_at_time("in", Rational::new(0, 1))
+		.is_empty());
 	assert_eq!(b.video_cache_range(&core), TimeRange::default());
 	assert_eq!(b.audio_cache_range(&core), TimeRange::default());
 	assert!(b.value_hint_for_input("in").is_none());
@@ -720,9 +828,15 @@ fn ops_category_and_copy_inputs() {
 	g.connect(src, other, "other_in", -1).unwrap();
 
 	// Without connections: values copy, edges do not.
-	g.get_mut(src).unwrap().core.set_standard_value("val_in", -1, float(42.0));
+	g.get_mut(src)
+		.unwrap()
+		.core
+		.set_standard_value("val_in", -1, float(42.0));
 	ops::copy_inputs(&mut g, src, dst, false).unwrap();
-	assert_eq!(g.get(dst).unwrap().core.standard_value("val_in", -1), float(42.0));
+	assert_eq!(
+		g.get(dst).unwrap().core.standard_value("val_in", -1),
+		float(42.0)
+	);
 	assert!(!g.is_input_connected(dst, "val_in", -1));
 
 	// With connections: dst's matching input reconnects to src's sources.
@@ -747,14 +861,8 @@ fn handle_helpers_and_guards() {
 	assert!(unsafe { handle::get::<u32>(&null) }.is_none());
 
 	// guard: Ok -> OK; Err -> mapped code; panic -> E_FAILED.
-	assert_eq!(
-		handle::guard(|| Ok(())),
-		OAKNODE_OK
-	);
-	assert_eq!(
-		handle::guard(|| Err(Error::Invalid)),
-		OAKNODE_E_INVALID
-	);
+	assert_eq!(handle::guard(|| Ok(())), OAKNODE_OK);
+	assert_eq!(handle::guard(|| Err(Error::Invalid)), OAKNODE_E_INVALID);
 	assert_eq!(
 		handle::guard(|| -> Result<(), Error> { panic!("boom") }),
 		OAKNODE_E_FAILED
@@ -763,8 +871,16 @@ fn handle_helpers_and_guards() {
 	// guard_handle: Ok -> handle; Err/panic -> empty.
 	let h = handle::guard_handle(|| Ok(handle::make_owned(5u32)));
 	assert!(!h.ctx.is_null());
-	assert!(handle::guard_handle(|| -> Result<CHandle, Error> { Err(Error::NotFound) }).ctx.is_null());
-	assert!(handle::guard_handle(|| -> Result<CHandle, Error> { panic!("x") }).ctx.is_null());
+	assert!(
+		handle::guard_handle(|| -> Result<CHandle, Error> { Err(Error::NotFound) })
+			.ctx
+			.is_null()
+	);
+	assert!(
+		handle::guard_handle(|| -> Result<CHandle, Error> { panic!("x") })
+			.ctx
+			.is_null()
+	);
 
 	// guard_void swallows panics.
 	handle::guard_void(|| panic!("swallowed"));
@@ -791,7 +907,10 @@ fn handle_helpers_and_guards() {
 		}
 	}
 	let custom = handle::make_owned_with("hello".to_string(), custom_release);
-	assert_eq!(unsafe { handle::get::<String>(&custom) }, Some(&"hello".to_string()));
+	assert_eq!(
+		unsafe { handle::get::<String>(&custom) },
+		Some(&"hello".to_string())
+	);
 
 	// Release everything (single release each).
 	for h in [owned, borrowed, custom] {
@@ -804,7 +923,10 @@ fn handle_helpers_and_guards() {
 fn error_codes_map() {
 	assert_eq!(Error::Invalid.code(), OAKNODE_E_INVALID);
 	assert_eq!(Error::State.code(), oaknode::error::OAKNODE_E_STATE);
-	assert_eq!(Error::Failed("x".to_string()).code(), oaknode::error::OAKNODE_E_FAILED);
+	assert_eq!(
+		Error::Failed("x".to_string()).code(),
+		oaknode::error::OAKNODE_E_FAILED
+	);
 	assert_eq!(Error::NotFound.code(), oaknode::error::OAKNODE_E_NOT_FOUND);
 	assert_eq!(Error::NoMem.code(), oaknode::error::OAKNODE_E_NOMEM);
 	assert_eq!(oaknode::error::OAKNODE_OK, 0);
@@ -823,7 +945,10 @@ fn node_id_identity_packing() {
 	assert_eq!(gen.index(), 5);
 	assert_eq!(NodeId::from_identity(gen.identity()), Some(gen));
 	assert!(NodeId::from_identity(0xdead).is_some());
-	assert!(NodeId::from_identity(u32::MAX as u64).is_none(), "invalid index rejected");
+	assert!(
+		NodeId::from_identity(u32::MAX as u64).is_none(),
+		"invalid index rejected"
+	);
 	assert!(!NodeId::INVALID.valid());
 	assert!(id.valid());
 }

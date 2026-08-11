@@ -48,7 +48,6 @@ use std::ffi::{c_char, c_int};
 
 use crate::handle::CHandle;
 
-
 /// `include/undo/undocommand.h` — callback table backing a
 /// caller-defined undo command. Single-lib unification: aliases the
 /// oakundo crate's vtable POD.
@@ -57,9 +56,9 @@ pub type OakUndoCommandVtable = oakundo::undocommand::OakUndoCommandVtable;
 /// Direct call into the `oakundo` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakundo_command_init(
-		vtable: *const OakUndoCommandVtable,
-		userdata: *mut std::ffi::c_void,
-	) -> CHandle {
+	vtable: *const OakUndoCommandVtable,
+	userdata: *mut std::ffi::c_void,
+) -> CHandle {
 	unsafe { oakundo::ffi::command::oakundo_command_init(vtable, userdata) }
 }
 
@@ -83,11 +82,7 @@ pub fn oakundo_command_multi_child_count(multi: CHandle, out_count: *mut c_int) 
 
 /// Direct call into the `oakundo` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oakundo_command_multi_child(
-		multi: CHandle,
-		index: c_int,
-		out_child: *mut CHandle,
-	) -> c_int {
+pub fn oakundo_command_multi_child(multi: CHandle, index: c_int, out_child: *mut CHandle) -> c_int {
 	unsafe { oakundo::ffi::command::oakundo_command_multi_child(multi, index, out_child) }
 }
 
@@ -130,10 +125,10 @@ pub fn oakundo_undostack_push(stack: CHandle, command: CHandle, name: *const c_c
 /// Direct call into the `oakundo` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakundo_undostack_push_pre_executed(
-		stack: CHandle,
-		command: CHandle,
-		name: *const c_char,
-	) -> c_int {
+	stack: CHandle,
+	command: CHandle,
+	name: *const c_char,
+) -> c_int {
 	unsafe { oakundo::ffi::undostack::oakundo_undostack_push_pre_executed(stack, command, name) }
 }
 
@@ -188,21 +183,16 @@ pub fn oakundo_undostack_index(stack: CHandle, out_index: *mut i64) -> c_int {
 /// Direct call into the `oakundo` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakundo_undostack_command_text(
-		stack: CHandle,
-		row: i64,
-		buf: *mut c_char,
-		buf_size: c_int,
-	) -> c_int {
+	stack: CHandle,
+	row: i64,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oakundo::ffi::undostack::oakundo_undostack_command_text(stack, row, buf, buf_size) }
 }
 
 /// Direct call into the `oakundo` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oakundo_undostack_command_is_done(
-		stack: CHandle,
-		row: i64,
-		out_value: *mut c_int,
-	) -> c_int {
+pub fn oakundo_undostack_command_is_done(stack: CHandle, row: i64, out_value: *mut c_int) -> c_int {
 	unsafe { oakundo::ffi::undostack::oakundo_undostack_command_is_done(stack, row, out_value) }
 }
-

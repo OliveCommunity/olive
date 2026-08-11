@@ -82,10 +82,7 @@ impl ClipDescriptor {
 		// ofxColour（M11 §4）：clip 色彩空间属性族。Colourspace 由宿主
 		// 在实例化时写入（输入 clip = 工作空间 ACEScg）；Preferred 由
 		// 插件在 GetClipPreferences 写（宿主侧预置空数组）。
-		props.set_one(
-			crate::host::PROP_CLIP_COLOURSPACE,
-			Value::String(cs("")),
-		);
+		props.set_one(crate::host::PROP_CLIP_COLOURSPACE, Value::String(cs("")));
 		props.define(crate::host::PROP_CLIP_PREFERRED_COLOURSPACES, vec![]);
 		Self {
 			props,
@@ -120,11 +117,17 @@ impl EffectDescriptor {
 
 	/// 按名找 clip。
 	pub fn clip(&self, name: &str) -> Option<&ClipDescriptor> {
-		self.clips.iter().find(|c| c.name == name).map(|b| b.as_ref())
+		self.clips
+			.iter()
+			.find(|c| c.name == name)
+			.map(|b| b.as_ref())
 	}
 
 	/// 按名找参数定义。
 	pub fn param(&self, name: &str) -> Option<&ParamDef> {
-		self.params.iter().find(|p| p.name == name).map(|b| b.as_ref())
+		self.params
+			.iter()
+			.find(|p| p.name == name)
+			.map(|b| b.as_ref())
 	}
 }

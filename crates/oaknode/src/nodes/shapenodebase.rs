@@ -73,7 +73,10 @@ impl ShapeNodeBase {
 	/// signature. The property write and the gizmo point placements are
 	/// therefore not representable here (`// CPP-PARITY:
 	/// shapenodebase.cpp` `update_gizmo_positions`).
-	pub fn update_gizmo_positions(core: &mut crate::node::NodeCore, row: &crate::value::NodeValueRow) {
+	pub fn update_gizmo_positions(
+		core: &mut crate::node::NodeCore,
+		row: &crate::value::NodeValueRow,
+	) {
 		let _ = (core, row);
 	}
 
@@ -130,6 +133,9 @@ mod tests {
 		ShapeNodeBase::update_gizmo_positions(&mut core, &row);
 		ShapeNodeBase::set_rect(&mut core, (0.0, 0.0, 100.0, 100.0));
 		ShapeNodeBase::gizmo_drag_move(&mut core, 10.0, 20.0, 0);
-		assert!(core.get_input(POSITION_INPUT).is_none(), "no inputs are added");
+		assert!(
+			core.get_input(POSITION_INPUT).is_none(),
+			"no inputs are added"
+		);
 	}
 }

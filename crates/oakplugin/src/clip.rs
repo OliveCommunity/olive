@@ -137,11 +137,7 @@ impl ClipInstance {
 
 	/// 挂接输入纹理（oaknode 侧 clip 输入值变化时由 param/render 桥
 	/// 调用）。`time` 用于多帧纹理选择。空句柄断开。
-	pub fn set_input_texture(
-		&self,
-		texture: crate::bridge::render::TextureHandle,
-		_time: f64,
-	) {
+	pub fn set_input_texture(&self, texture: crate::bridge::render::TextureHandle, _time: f64) {
 		let mut slot = self.input_texture.lock().unwrap_or_else(|e| e.into_inner());
 		if texture.is_null() {
 			*slot = None;
@@ -153,11 +149,7 @@ impl ClipInstance {
 	/// 挂接输出纹理（render 驱动创建并经句柄传入；C++
 	/// `setOutputTexture` 的 phase 1 单槽版）。`time` 用于多帧纹理
 	/// 选择（`// [P2]`）。空句柄断开。
-	pub fn set_output_texture(
-		&self,
-		texture: crate::bridge::render::TextureHandle,
-		_time: f64,
-	) {
+	pub fn set_output_texture(&self, texture: crate::bridge::render::TextureHandle, _time: f64) {
 		let mut slot = self
 			.output_texture
 			.lock()
@@ -215,12 +207,18 @@ impl ClipInstance {
 		}
 		let (w, h) = (params.width as f64, params.height as f64);
 		// 分量按协商结果（getClipPreferences 已写入 clip.props）。
-		let components = components_from_props(&self.props).unwrap_or(crate::image::Components::Rgba);
+		let components =
+			components_from_props(&self.props).unwrap_or(crate::image::Components::Rgba);
 
 		let mut image = crate::image::Image::allocate(
 			crate::image::BitDepth::Float,
 			components,
-			OfxRectD { x1: 0.0, y1: 0.0, x2: w, y2: h },
+			OfxRectD {
+				x1: 0.0,
+				y1: 0.0,
+				x2: w,
+				y2: h,
+			},
 		);
 		let src = unsafe { crate::bridge::render::frame_data(frame) };
 		if src.is_null() {
@@ -318,6 +316,8 @@ impl ClipInstance {
 	/// （time_base）——随 renderer 桥落地。
 	pub fn frame_range(&self) -> crate::error::Result<OfxRangeD> {
 		let _ = OfxRangeD::default();
-		Err(crate::error::Error::Failed("frame_range 待 renderer 桥".into()))
+		Err(crate::error::Error::Failed(
+			"frame_range 待 renderer 桥".into(),
+		))
 	}
 }

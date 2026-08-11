@@ -56,8 +56,14 @@ fn make_populated() -> CHandle {
 		oakcommon_subtitleparams_add_subtitle(dup(&h), 25, 1, 50, 1, to_cstring("world").as_ptr()),
 		OAKCOMMON_OK
 	);
-	assert_eq!(oakcommon_subtitleparams_set_stream_index(dup(&h), 2), OAKCOMMON_OK);
-	assert_eq!(oakcommon_subtitleparams_set_enabled(dup(&h), 0), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_set_stream_index(dup(&h), 2),
+		OAKCOMMON_OK
+	);
+	assert_eq!(
+		oakcommon_subtitleparams_set_enabled(dup(&h), 0),
+		OAKCOMMON_OK
+	);
 	h
 }
 
@@ -92,18 +98,30 @@ fn assert_two_stage_getter(getter: impl Fn(*mut c_char, i32) -> i32, expected: &
 	// Short buffer: too small, so nothing is written to it.
 	let short_size = (required - 1).max(0);
 	let mut short = vec![0xABu8; short_size as usize];
-	assert_eq!(getter(short.as_mut_ptr() as *mut c_char, short_size), required);
-	assert!(short.iter().all(|&b| b == 0xAB), "short buffer must stay untouched");
+	assert_eq!(
+		getter(short.as_mut_ptr() as *mut c_char, short_size),
+		required
+	);
+	assert!(
+		short.iter().all(|&b| b == 0xAB),
+		"short buffer must stay untouched"
+	);
 
 	// Exact fit: payload followed by a NUL.
 	let mut exact = vec![0xCDu8; required as usize];
-	assert_eq!(getter(exact.as_mut_ptr() as *mut c_char, required), required);
+	assert_eq!(
+		getter(exact.as_mut_ptr() as *mut c_char, required),
+		required
+	);
 	assert_eq!(&exact[..expected.len()], expected.as_bytes());
 	assert_eq!(exact[expected.len()], 0);
 
 	// Oversized: payload and NUL written, tail left as initialized.
 	let mut big = vec![0u8; (required + 8) as usize];
-	assert_eq!(getter(big.as_mut_ptr() as *mut c_char, required + 8), required);
+	assert_eq!(
+		getter(big.as_mut_ptr() as *mut c_char, required + 8),
+		required
+	);
 	assert_eq!(&big[..expected.len()], expected.as_bytes());
 	assert_eq!(big[expected.len()], 0);
 	assert!(big[(required + 1) as usize..].iter().all(|&b| b == 0));
@@ -145,14 +163,26 @@ fn stream_index_roundtrip() {
 	let h = make();
 	let mut si = -1i32;
 
-	assert_eq!(oakcommon_subtitleparams_get_stream_index(dup(&h), &mut si), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_get_stream_index(dup(&h), &mut si),
+		OAKCOMMON_OK
+	);
 	assert_eq!(si, 0);
 
-	assert_eq!(oakcommon_subtitleparams_set_stream_index(dup(&h), 3), OAKCOMMON_OK);
-	assert_eq!(oakcommon_subtitleparams_get_stream_index(dup(&h), &mut si), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_set_stream_index(dup(&h), 3),
+		OAKCOMMON_OK
+	);
+	assert_eq!(
+		oakcommon_subtitleparams_get_stream_index(dup(&h), &mut si),
+		OAKCOMMON_OK
+	);
 	assert_eq!(si, 3);
 
-	assert_eq!(oakcommon_subtitleparams_set_stream_index(CHandle::null(), 1), OAKCOMMON_E_INVALID);
+	assert_eq!(
+		oakcommon_subtitleparams_set_stream_index(CHandle::null(), 1),
+		OAKCOMMON_E_INVALID
+	);
 	assert_eq!(
 		oakcommon_subtitleparams_get_stream_index(CHandle::null(), &mut si),
 		OAKCOMMON_E_INVALID
@@ -170,19 +200,37 @@ fn enabled_roundtrip() {
 	let h = make();
 	let mut en = -1i32;
 
-	assert_eq!(oakcommon_subtitleparams_get_enabled(dup(&h), &mut en), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_get_enabled(dup(&h), &mut en),
+		OAKCOMMON_OK
+	);
 	assert_eq!(en, 1);
 
-	assert_eq!(oakcommon_subtitleparams_set_enabled(dup(&h), 0), OAKCOMMON_OK);
-	assert_eq!(oakcommon_subtitleparams_get_enabled(dup(&h), &mut en), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_set_enabled(dup(&h), 0),
+		OAKCOMMON_OK
+	);
+	assert_eq!(
+		oakcommon_subtitleparams_get_enabled(dup(&h), &mut en),
+		OAKCOMMON_OK
+	);
 	assert_eq!(en, 0);
 
 	// A non-zero code (even 5) enables the stream.
-	assert_eq!(oakcommon_subtitleparams_set_enabled(dup(&h), 5), OAKCOMMON_OK);
-	assert_eq!(oakcommon_subtitleparams_get_enabled(dup(&h), &mut en), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_set_enabled(dup(&h), 5),
+		OAKCOMMON_OK
+	);
+	assert_eq!(
+		oakcommon_subtitleparams_get_enabled(dup(&h), &mut en),
+		OAKCOMMON_OK
+	);
 	assert_eq!(en, 1);
 
-	assert_eq!(oakcommon_subtitleparams_set_enabled(CHandle::null(), 1), OAKCOMMON_E_INVALID);
+	assert_eq!(
+		oakcommon_subtitleparams_set_enabled(CHandle::null(), 1),
+		OAKCOMMON_E_INVALID
+	);
 	assert_eq!(
 		oakcommon_subtitleparams_get_enabled(CHandle::null(), &mut en),
 		OAKCOMMON_E_INVALID
@@ -205,21 +253,42 @@ fn empty_set_defaults() {
 	let mut n = -1i32;
 	let mut d = -1i32;
 
-	assert_eq!(oakcommon_subtitleparams_is_valid(dup(&h), &mut v), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_is_valid(dup(&h), &mut v),
+		OAKCOMMON_OK
+	);
 	assert_eq!(v, 0);
-	assert_eq!(oakcommon_subtitleparams_count(dup(&h), &mut c), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_count(dup(&h), &mut c),
+		OAKCOMMON_OK
+	);
 	assert_eq!(c, 0);
-	assert_eq!(oakcommon_subtitleparams_duration(dup(&h), &mut n, &mut d), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_duration(dup(&h), &mut n, &mut d),
+		OAKCOMMON_OK
+	);
 	assert_eq!((n, d), (0, 1));
 
-	assert_eq!(oakcommon_subtitleparams_is_valid(CHandle::null(), &mut v), OAKCOMMON_E_INVALID);
-	assert_eq!(oakcommon_subtitleparams_count(CHandle::null(), &mut c), OAKCOMMON_E_INVALID);
+	assert_eq!(
+		oakcommon_subtitleparams_is_valid(CHandle::null(), &mut v),
+		OAKCOMMON_E_INVALID
+	);
+	assert_eq!(
+		oakcommon_subtitleparams_count(CHandle::null(), &mut c),
+		OAKCOMMON_E_INVALID
+	);
 	assert_eq!(
 		oakcommon_subtitleparams_duration(CHandle::null(), &mut n, &mut d),
 		OAKCOMMON_E_INVALID
 	);
-	assert_eq!(oakcommon_subtitleparams_is_valid(dup(&h), std::ptr::null_mut()), OAKCOMMON_E_INVALID);
-	assert_eq!(oakcommon_subtitleparams_count(dup(&h), std::ptr::null_mut()), OAKCOMMON_E_INVALID);
+	assert_eq!(
+		oakcommon_subtitleparams_is_valid(dup(&h), std::ptr::null_mut()),
+		OAKCOMMON_E_INVALID
+	);
+	assert_eq!(
+		oakcommon_subtitleparams_count(dup(&h), std::ptr::null_mut()),
+		OAKCOMMON_E_INVALID
+	);
 	assert_eq!(
 		oakcommon_subtitleparams_duration(dup(&h), std::ptr::null_mut(), &mut d),
 		OAKCOMMON_E_INVALID
@@ -243,17 +312,32 @@ fn add_subtitle_and_query() {
 	let mut n = -1i32;
 	let mut d = -1i32;
 
-	assert_eq!(oakcommon_subtitleparams_is_valid(dup(&h), &mut v), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_is_valid(dup(&h), &mut v),
+		OAKCOMMON_OK
+	);
 	assert_eq!(v, 1);
-	assert_eq!(oakcommon_subtitleparams_count(dup(&h), &mut c), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_count(dup(&h), &mut c),
+		OAKCOMMON_OK
+	);
 	assert_eq!(c, 2);
-	assert_eq!(oakcommon_subtitleparams_duration(dup(&h), &mut n, &mut d), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_duration(dup(&h), &mut n, &mut d),
+		OAKCOMMON_OK
+	);
 	assert_eq!((n, d), (50, 1));
 
-	assert_eq!(oakcommon_subtitleparams_get_subtitle(dup(&h), 0, &mut n, &mut d, &mut v, &mut c), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_get_subtitle(dup(&h), 0, &mut n, &mut d, &mut v, &mut c),
+		OAKCOMMON_OK
+	);
 	assert_eq!((n, d), (0, 1));
 	assert_eq!((v, c), (25, 1));
-	assert_eq!(oakcommon_subtitleparams_get_subtitle(dup(&h), 1, &mut n, &mut d, &mut v, &mut c), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_get_subtitle(dup(&h), 1, &mut n, &mut d, &mut v, &mut c),
+		OAKCOMMON_OK
+	);
 	assert_eq!((n, d), (25, 1));
 	assert_eq!((v, c), (50, 1));
 
@@ -262,7 +346,10 @@ fn add_subtitle_and_query() {
 		oakcommon_subtitleparams_add_subtitle(dup(&h), 2, 4, 9, 3, to_cstring("t").as_ptr()),
 		OAKCOMMON_OK
 	);
-	assert_eq!(oakcommon_subtitleparams_get_subtitle(dup(&h), 2, &mut n, &mut d, &mut v, &mut c), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_get_subtitle(dup(&h), 2, &mut n, &mut d, &mut v, &mut c),
+		OAKCOMMON_OK
+	);
 	assert_eq!((n, d), (1, 2));
 	assert_eq!((v, c), (3, 1));
 }
@@ -273,7 +360,14 @@ fn add_subtitle_and_query() {
 fn add_subtitle_failures() {
 	let h = make();
 	assert_eq!(
-		oakcommon_subtitleparams_add_subtitle(CHandle::null(), 0, 1, 1, 1, to_cstring("x").as_ptr()),
+		oakcommon_subtitleparams_add_subtitle(
+			CHandle::null(),
+			0,
+			1,
+			1,
+			1,
+			to_cstring("x").as_ptr()
+		),
 		OAKCOMMON_E_INVALID
 	);
 	assert_eq!(
@@ -287,7 +381,10 @@ fn add_subtitle_failures() {
 		OAKCOMMON_OK
 	);
 	let mut c = -1i32;
-	assert_eq!(oakcommon_subtitleparams_count(dup(&h), &mut c), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_count(dup(&h), &mut c),
+		OAKCOMMON_OK
+	);
 	assert_eq!(c, 1);
 }
 
@@ -301,31 +398,68 @@ fn get_subtitle_out_of_range() {
 	let mut v = -1i32;
 	let mut c = -1i32;
 
-	assert_eq!(oakcommon_subtitleparams_get_subtitle(dup(&h), 2, &mut n, &mut d, &mut v, &mut c), OAKCOMMON_E_NOT_FOUND);
-	assert_eq!(oakcommon_subtitleparams_get_subtitle(dup(&h), -1, &mut n, &mut d, &mut v, &mut c), OAKCOMMON_E_NOT_FOUND);
+	assert_eq!(
+		oakcommon_subtitleparams_get_subtitle(dup(&h), 2, &mut n, &mut d, &mut v, &mut c),
+		OAKCOMMON_E_NOT_FOUND
+	);
+	assert_eq!(
+		oakcommon_subtitleparams_get_subtitle(dup(&h), -1, &mut n, &mut d, &mut v, &mut c),
+		OAKCOMMON_E_NOT_FOUND
+	);
 
 	// On an empty set even index 0 is out of range.
 	let e = make();
-	assert_eq!(oakcommon_subtitleparams_get_subtitle(dup(&e), 0, &mut n, &mut d, &mut v, &mut c), OAKCOMMON_E_NOT_FOUND);
+	assert_eq!(
+		oakcommon_subtitleparams_get_subtitle(dup(&e), 0, &mut n, &mut d, &mut v, &mut c),
+		OAKCOMMON_E_NOT_FOUND
+	);
 
 	assert_eq!(
 		oakcommon_subtitleparams_get_subtitle(CHandle::null(), 0, &mut n, &mut d, &mut v, &mut c),
 		OAKCOMMON_E_INVALID
 	);
 	assert_eq!(
-		oakcommon_subtitleparams_get_subtitle(dup(&h), 0, std::ptr::null_mut(), &mut d, &mut v, &mut c),
+		oakcommon_subtitleparams_get_subtitle(
+			dup(&h),
+			0,
+			std::ptr::null_mut(),
+			&mut d,
+			&mut v,
+			&mut c
+		),
 		OAKCOMMON_E_INVALID
 	);
 	assert_eq!(
-		oakcommon_subtitleparams_get_subtitle(dup(&h), 0, &mut n, std::ptr::null_mut(), &mut v, &mut c),
+		oakcommon_subtitleparams_get_subtitle(
+			dup(&h),
+			0,
+			&mut n,
+			std::ptr::null_mut(),
+			&mut v,
+			&mut c
+		),
 		OAKCOMMON_E_INVALID
 	);
 	assert_eq!(
-		oakcommon_subtitleparams_get_subtitle(dup(&h), 0, &mut n, &mut d, std::ptr::null_mut(), &mut c),
+		oakcommon_subtitleparams_get_subtitle(
+			dup(&h),
+			0,
+			&mut n,
+			&mut d,
+			std::ptr::null_mut(),
+			&mut c
+		),
 		OAKCOMMON_E_INVALID
 	);
 	assert_eq!(
-		oakcommon_subtitleparams_get_subtitle(dup(&h), 0, &mut n, &mut d, &mut v, std::ptr::null_mut()),
+		oakcommon_subtitleparams_get_subtitle(
+			dup(&h),
+			0,
+			&mut n,
+			&mut d,
+			&mut v,
+			std::ptr::null_mut()
+		),
 		OAKCOMMON_E_INVALID
 	);
 }
@@ -341,17 +475,29 @@ fn clear() {
 	let mut c = -1i32;
 	let mut n = -1i32;
 	let mut d = -1i32;
-	assert_eq!(oakcommon_subtitleparams_count(dup(&h), &mut c), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_count(dup(&h), &mut c),
+		OAKCOMMON_OK
+	);
 	assert_eq!(c, 0);
-	assert_eq!(oakcommon_subtitleparams_is_valid(dup(&h), &mut v), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_is_valid(dup(&h), &mut v),
+		OAKCOMMON_OK
+	);
 	assert_eq!(v, 0);
-	assert_eq!(oakcommon_subtitleparams_duration(dup(&h), &mut n, &mut d), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_duration(dup(&h), &mut n, &mut d),
+		OAKCOMMON_OK
+	);
 	assert_eq!((n, d), (0, 1));
 
 	// Clearing again is a no-op success.
 	assert_eq!(oakcommon_subtitleparams_clear(dup(&h)), OAKCOMMON_OK);
 
-	assert_eq!(oakcommon_subtitleparams_clear(CHandle::null()), OAKCOMMON_E_INVALID);
+	assert_eq!(
+		oakcommon_subtitleparams_clear(CHandle::null()),
+		OAKCOMMON_E_INVALID
+	);
 }
 
 // ---- String getters ----
@@ -444,18 +590,33 @@ fn load_xml() {
 	let xml = "<subtitleparams><streamindex>7</streamindex><enabled>0</enabled>\
 		<subtitles><subtitle in=\"0/1\" out=\"25/1\">hello</subtitle>\
 		<subtitle in=\"25/1\" out=\"50/1\">world</subtitle></subtitles></subtitleparams>";
-	assert_eq!(oakcommon_subtitleparams_load_xml(dup(&h), to_cstring(xml).as_ptr()), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_load_xml(dup(&h), to_cstring(xml).as_ptr()),
+		OAKCOMMON_OK
+	);
 
 	let mut si = -1i32;
 	let mut en = -1i32;
 	let mut c = -1i32;
-	assert_eq!(oakcommon_subtitleparams_get_stream_index(dup(&h), &mut si), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_get_stream_index(dup(&h), &mut si),
+		OAKCOMMON_OK
+	);
 	assert_eq!(si, 7);
-	assert_eq!(oakcommon_subtitleparams_get_enabled(dup(&h), &mut en), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_get_enabled(dup(&h), &mut en),
+		OAKCOMMON_OK
+	);
 	assert_eq!(en, 0);
-	assert_eq!(oakcommon_subtitleparams_count(dup(&h), &mut c), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_count(dup(&h), &mut c),
+		OAKCOMMON_OK
+	);
 	assert_eq!(c, 2);
-	assert_eq!(oakcommon_subtitleparams_get_subtitle_text(dup(&h), 0, std::ptr::null_mut(), 0), 6);
+	assert_eq!(
+		oakcommon_subtitleparams_get_subtitle_text(dup(&h), 0, std::ptr::null_mut(), 0),
+		6
+	);
 	assert_two_stage_getter(
 		|buf, size| oakcommon_subtitleparams_get_subtitle_text(dup(&h), 1, buf, size),
 		"world",
@@ -463,7 +624,10 @@ fn load_xml() {
 
 	// Malformed / missing-root fragments fail with E_FAILED.
 	assert_eq!(
-		oakcommon_subtitleparams_load_xml(dup(&h), to_cstring("<subtitleparams><streamindex>").as_ptr()),
+		oakcommon_subtitleparams_load_xml(
+			dup(&h),
+			to_cstring("<subtitleparams><streamindex>").as_ptr()
+		),
 		OAKCOMMON_E_FAILED
 	);
 	assert_eq!(
@@ -479,7 +643,10 @@ fn load_xml() {
 		oakcommon_subtitleparams_load_xml(CHandle::null(), to_cstring(xml).as_ptr()),
 		OAKCOMMON_E_INVALID
 	);
-	assert_eq!(oakcommon_subtitleparams_load_xml(dup(&h), std::ptr::null()), OAKCOMMON_E_INVALID);
+	assert_eq!(
+		oakcommon_subtitleparams_load_xml(dup(&h), std::ptr::null()),
+		OAKCOMMON_E_INVALID
+	);
 }
 
 /// `save_xml` is a two-stage string getter; the output matches the C++
@@ -506,7 +673,10 @@ fn save_xml_two_stage() {
 	// A loaded fragment round-trips byte-for-byte.
 	let xml = "<subtitleparams><streamindex>9</streamindex><enabled>1</enabled>\
 		<subtitles><subtitle in=\"3/2\" out=\"5/1\">hi</subtitle></subtitles></subtitleparams>";
-	assert_eq!(oakcommon_subtitleparams_load_xml(dup(&h), to_cstring(xml).as_ptr()), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_load_xml(dup(&h), to_cstring(xml).as_ptr()),
+		OAKCOMMON_OK
+	);
 	assert_two_stage_getter(
 		|buf, size| oakcommon_subtitleparams_save_xml(dup(&h), buf, size),
 		xml,
@@ -527,13 +697,25 @@ fn save_xml_two_stage() {
 	let mut c = -1i32;
 	let mut n = -1i32;
 	let mut d = -1i32;
-	assert_eq!(oakcommon_subtitleparams_get_stream_index(dup(&h), &mut si), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_get_stream_index(dup(&h), &mut si),
+		OAKCOMMON_OK
+	);
 	assert_eq!(si, 9);
-	assert_eq!(oakcommon_subtitleparams_get_enabled(dup(&h), &mut en), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_get_enabled(dup(&h), &mut en),
+		OAKCOMMON_OK
+	);
 	assert_eq!(en, 1);
-	assert_eq!(oakcommon_subtitleparams_count(dup(&h), &mut c), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_count(dup(&h), &mut c),
+		OAKCOMMON_OK
+	);
 	assert_eq!(c, 1);
-	assert_eq!(oakcommon_subtitleparams_get_subtitle(dup(&h), 0, &mut n, &mut d, &mut si, &mut en), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_subtitleparams_get_subtitle(dup(&h), 0, &mut n, &mut d, &mut si, &mut en),
+		OAKCOMMON_OK
+	);
 	assert_eq!((n, d), (3, 2));
 	assert_eq!((si, en), (5, 1));
 }

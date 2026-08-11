@@ -84,10 +84,7 @@ impl TextGeneratorV1 {
 			.get(TEXT_INPUT)
 			.map(to_text)
 			.unwrap_or_else(|| String::new());
-		let html = matches!(
-			row.get(HTML_INPUT),
-			Some(NodeValue::Boolean(true))
-		);
+		let html = matches!(row.get(HTML_INPUT), Some(NodeValue::Boolean(true)));
 		let mut mode = TextLayoutMode::PlainText;
 		let text = if html {
 			// QTextDocument::setHtml() doesn't translate newlines, so they
@@ -103,7 +100,10 @@ impl TextGeneratorV1 {
 			text,
 			mode,
 			font_family: row.get(FONT_INPUT).map(to_text).unwrap_or_else(String::new),
-			font_size_pt: row.get(FONT_SIZE_INPUT).map(NodeValue::to_double).unwrap_or(0.0),
+			font_size_pt: row
+				.get(FONT_SIZE_INPUT)
+				.map(NodeValue::to_double)
+				.unwrap_or(0.0),
 			dots_per_meter: 0,
 			wrap_width: (tenth_of_width * 8) as f64,
 			center_horizontally: true,
@@ -115,7 +115,12 @@ impl TextGeneratorV1 {
 	/// valign combo (top: 10% top margin; center: frame center; bottom:
 	/// 10% bottom margin). The C++ math is integer (`width()/10`,
 	/// `height()/2 - doc_height/2`, ...), mirrored here.
-	pub fn draw_offsets(valign: i32, frame_width: i32, frame_height: i32, doc_height: i32) -> (f64, f64) {
+	pub fn draw_offsets(
+		valign: i32,
+		frame_width: i32,
+		frame_height: i32,
+		doc_height: i32,
+	) -> (f64, f64) {
 		let tenth_of_width = frame_width / 10;
 		let offset_x = tenth_of_width as f64;
 		let offset_y = match valign {
@@ -205,11 +210,18 @@ impl NodeBehavior for TextGeneratorV1 {
 	/// null texture handle marking a renderer-deferred generate job
 	/// resolved via [`NodeBehavior::generate_frame`]
 	/// (`// CPP-PARITY: textv1.cpp` `value()`).
-	fn value(&self, core: &NodeCore, inputs: &NodeValueRow, time: Rational, table: &mut NodeValueTable) {
-		let text = inputs
-			.get(TEXT_INPUT)
-			.map(to_text)
-			.unwrap_or_else(|| core.value_at_time(TEXT_INPUT, -1, time).to_double().to_string());
+	fn value(
+		&self,
+		core: &NodeCore,
+		inputs: &NodeValueRow,
+		time: Rational,
+		table: &mut NodeValueTable,
+	) {
+		let text = inputs.get(TEXT_INPUT).map(to_text).unwrap_or_else(|| {
+			core.value_at_time(TEXT_INPUT, -1, time)
+				.to_double()
+				.to_string()
+		});
 		if !text.is_empty() {
 			table.push(
 				crate::value::ValueType::Texture,
@@ -325,19 +337,34 @@ mod tests {
 	#[test]
 	fn create_wires_inputs() {
 		let (core, behavior) = create();
-		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.textgenerator");
-		assert_eq!(core.get_input(TEXT_INPUT).unwrap().value_type, ValueType::Text);
+		assert_eq!(
+			behavior.type_id(),
+			"org.olivevideoeditor.Olive.textgenerator"
+		);
+		assert_eq!(
+			core.get_input(TEXT_INPUT).unwrap().value_type,
+			ValueType::Text
+		);
 		assert_eq!(
 			core.get_input(TEXT_INPUT).unwrap().default,
 			NodeValue::Text("Sample Text".to_string())
 		);
-		assert_eq!(core.get_input(HTML_INPUT).unwrap().value_type, ValueType::Boolean);
+		assert_eq!(
+			core.get_input(HTML_INPUT).unwrap().value_type,
+			ValueType::Boolean
+		);
 		assert_eq!(
 			core.get_input(COLOR_INPUT).unwrap().default,
 			NodeValue::Color([1.0, 1.0, 1.0, 1.0])
 		);
-		assert_eq!(core.get_input(V_ALIGN_INPUT).unwrap().default, NodeValue::Combo(1));
-		assert_eq!(core.get_input(FONT_SIZE_INPUT).unwrap().default, NodeValue::Float(72.0));
+		assert_eq!(
+			core.get_input(V_ALIGN_INPUT).unwrap().default,
+			NodeValue::Combo(1)
+		);
+		assert_eq!(
+			core.get_input(FONT_SIZE_INPUT).unwrap().default,
+			NodeValue::Float(72.0)
+		);
 		assert_ne!(core.flags & crate::node::flags::DONT_SHOW_IN_CREATE_MENU, 0);
 	}
 
@@ -361,7 +388,10 @@ mod tests {
 	#[test]
 	fn layout_request_html_translates_newlines() {
 		let mut row = NodeValueRow::default();
-		row.insert(TEXT_INPUT.to_string(), NodeValue::Text("line1\nline2".to_string()));
+		row.insert(
+			TEXT_INPUT.to_string(),
+			NodeValue::Text("line1\nline2".to_string()),
+		);
 		row.insert(HTML_INPUT.to_string(), NodeValue::Boolean(true));
 		let req = TextGeneratorV1::layout_request(&row, 1280);
 		assert_eq!(req.text, "line1<br>line2");

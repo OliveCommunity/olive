@@ -243,7 +243,10 @@ mod tests {
 	#[test]
 	fn guard_maps_results_and_panics() {
 		assert_eq!(guard(|| Ok(())), crate::error::OAKCODEC_OK);
-		assert_eq!(guard(|| Err(crate::error::Error::Invalid)), OAKCODEC_E_INVALID);
+		assert_eq!(
+			guard(|| Err(crate::error::Error::Invalid)),
+			OAKCODEC_E_INVALID
+		);
 		assert_eq!(guard(|| panic!("boom")), crate::error::OAKCODEC_E_FAILED);
 
 		let ok = guard_handle(|| Ok(make_owned(1u32)));
@@ -252,10 +255,16 @@ mod tests {
 		assert!(guard_handle(|| panic!("boom")).is_null());
 
 		assert_eq!(guard_raw(|| 5), 5);
-		assert_eq!(guard_raw(|| panic!("boom")), crate::error::OAKCODEC_E_FAILED);
+		assert_eq!(
+			guard_raw(|| panic!("boom")),
+			crate::error::OAKCODEC_E_FAILED
+		);
 
 		assert_eq!(guard_i64(|| 5), 5);
-		assert_eq!(guard_i64(|| panic!("boom")), crate::error::OAKCODEC_E_FAILED as i64);
+		assert_eq!(
+			guard_i64(|| panic!("boom")),
+			crate::error::OAKCODEC_E_FAILED as i64
+		);
 
 		let mut called = false;
 		guard_void(|| called = true);

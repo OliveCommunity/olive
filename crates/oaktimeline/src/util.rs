@@ -27,11 +27,13 @@ use std::cmp::Ordering;
 use oakcore_rs::Rational;
 
 use crate::bridge::node::{
-	oaknode_block_as_node, oaknode_block_get_in, oaknode_block_get_length, oaknode_block_get_next,
-	oaknode_block_get_out, oaknode_block_get_previous, oaknode_block_get_track,
+	oaknode_block_get_in, oaknode_block_get_length, oaknode_block_get_next, oaknode_block_get_out,
+	oaknode_block_get_previous, oaknode_block_get_track, oaknode_block_set_in,
 	oaknode_block_set_length_and_media_in, oaknode_block_set_length_and_media_out,
 	oaknode_node_get_project, oaknode_project_add_node, oaknode_project_remove_node,
-	oaknode_sequence_as_node, oaknode_track_get_length, oaknode_track_get_sequence,
+	oaknode_sequence_as_node, oaknode_track_get_block_at, oaknode_track_get_block_count,
+	oaknode_track_get_length, oaknode_track_get_sequence, oaknode_track_insert_block_after,
+	oaknode_track_prepend_block,
 };
 use crate::handle::CHandle;
 
@@ -144,6 +146,14 @@ pub fn block_set_length_and_media_in(b: CHandle, len: Rational) {
 	let _ = unsafe { oaknode_block_set_length_and_media_in(b, n, d) };
 }
 
+/// `block_set_in`: set the in point, keeping the length (the out follows).
+pub fn block_set_in(b: CHandle, in_: Rational) {
+	let (mut n, mut d) = (0, 0);
+	rat_nd(in_, &mut n, &mut d);
+	// SAFETY: `n`/`d` are valid ints.
+	let _ = unsafe { oaknode_block_set_in(b, n, d) };
+}
+
 /// `track_length`: track length as a `Rational`.
 pub fn track_length(t: CHandle) -> Rational {
 	let mut n = 0;
@@ -191,21 +201,63 @@ pub fn track_project(track: CHandle) -> CHandle {
 	project
 }
 
+/// C++ `oaknode_track_append_block` — not exposed by the bridge, so append is
+/// synthesized as insert-after the last block (prepend on an empty track).
+pub fn track_append_block(track: CHandle, block: CHandle) {
+	let mut count = 0;
+	// SAFETY: `count` is a valid out pointer.
+	let _ = unsafe { oaknode_track_get_block_count(track.clone(), &mut count) };
+	if count > 0 {
+		let mut last = CHandle::null();
+		// SAFETY: `last` is a valid out pointer.
+		let _ = unsafe { oaknode_track_get_block_at(track.clone(), count - 1, &mut last) };
+		// SAFETY: `track`/`last` are valid handles.
+		let _ = unsafe { oaknode_track_insert_block_after(track, block, last) };
+	} else {
+		// SAFETY: valid handles.
+		let _ = unsafe { oaknode_track_prepend_block(track, block) };
+	}
+}
+
+/// C++ `oaknode_track_insert_block_before` — not exposed by the bridge, so
+/// insert-before is synthesized as insert-after `next`'s predecessor (prepend
+/// when `next` is the first block on the track).
+pub fn track_insert_block_before(track: CHandle, block: CHandle, next: CHandle) {
+	let prev = block_previous(next.clone());
+	if prev.is_null() {
+		// SAFETY: valid handles.
+		let _ = unsafe { oaknode_track_prepend_block(track, block) };
+	} else {
+		// SAFETY: valid handles.
+		let _ = unsafe { oaknode_track_insert_block_after(track, block, prev) };
+	}
+}
+
 /// `block_add_to_graph`: attach `b` to the project graph owning `track`.
+///
+/// The block handle is passed through directly (not `oaknode_block_as_node`):
+/// `oaknode_project_add_node` rewrites the shared node box it receives
+/// (`write_node_ref`) to the new project, so later track operations on `b`
+/// (which adopt blocks by comparing the handle's project) see the up-to-date
+/// ownership instead of faulting with `E_NOT_FOUND` on a stale scratch id.
 pub fn block_add_to_graph(b: CHandle, track: CHandle) {
 	let project = track_project(track);
 	if !project.is_null() {
-		// SAFETY: `project` is a valid handle.
-		let _ = unsafe { oaknode_project_add_node(project, oaknode_block_as_node(b)) };
+		// SAFETY: `project` is a valid handle; `b` is a node/block handle.
+		let _ = unsafe { oaknode_project_add_node(project, b) };
 	}
 }
 
 /// `block_remove_from_graph`: detach `b` from the project graph owning
 /// `track`.
+///
+/// Like [`block_add_to_graph`], `b` is passed through so `write_node_ref`
+/// re-homes the shared handle into the scratch project (the caller's handle
+/// becomes the owner again, matching the C++ `setParent(&memory_manager_)`).
 pub fn block_remove_from_graph(b: CHandle, track: CHandle) {
 	let project = track_project(track);
 	if !project.is_null() {
-		// SAFETY: `project` is a valid handle.
-		let _ = unsafe { oaknode_project_remove_node(project, oaknode_block_as_node(b)) };
+		// SAFETY: `project` is a valid handle; `b` is a node/block handle.
+		let _ = unsafe { oaknode_project_remove_node(project, b) };
 	}
 }

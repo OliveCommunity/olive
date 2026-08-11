@@ -49,7 +49,8 @@ use oakengine::common::{
 	oakengine_config_set_int, oakengine_config_set_string, oakengine_video_params_bytes_per_pixel,
 	oakengine_video_params_create, oakengine_video_params_divider_name,
 	oakengine_video_params_effective_size, oakengine_video_params_equal,
-	oakengine_video_params_format_is_float, oakengine_video_params_format_pixel_aspect_ratio_string,
+	oakengine_video_params_format_is_float,
+	oakengine_video_params_format_pixel_aspect_ratio_string,
 	oakengine_video_params_frame_rate_to_string, oakengine_video_params_free,
 	oakengine_video_params_internal_channel_count, oakengine_video_params_is_valid,
 	oakengine_video_params_make, oakengine_video_params_pixel_format_name,
@@ -73,7 +74,8 @@ unsafe fn read_buf(buf: &mut [c_char]) -> String {
 /// readers of `OAK_CONFIG_DIR` in this binary are these serialized tests.
 fn with_temp_config_dir<T>(f: impl FnOnce(&Path) -> T) -> T {
 	let _guard = CONFIG_LOCK.lock().unwrap();
-	let dir = std::env::temp_dir().join(format!("oakengine_it_common_config_{}", std::process::id()));
+	let dir =
+		std::env::temp_dir().join(format!("oakengine_it_common_config_{}", std::process::id()));
 	let _ = std::fs::create_dir_all(&dir);
 	std::env::set_var("OAK_CONFIG_DIR", &dir);
 	let result = f(&dir);
@@ -105,7 +107,10 @@ fn config_roundtrip_persistence() {
 			0
 		);
 		assert_eq!(unsafe { read_buf(&mut buf) }, "");
-		assert_eq!(unsafe { oakengine_config_get_int(c"no/such/key".as_ptr(), 7) }, 7);
+		assert_eq!(
+			unsafe { oakengine_config_get_int(c"no/such/key".as_ptr(), 7) },
+			7
+		);
 
 		// Compiled-in defaults are readable through the engine getters.
 		let len = unsafe {
@@ -113,7 +118,10 @@ fn config_roundtrip_persistence() {
 		};
 		assert_eq!(len, 10);
 		assert_eq!(unsafe { read_buf(&mut buf) }, "1001/30000");
-		assert_eq!(unsafe { oakengine_config_get_int(c"DefaultSequenceWidth".as_ptr(), 0) }, 1920);
+		assert_eq!(
+			unsafe { oakengine_config_get_int(c"DefaultSequenceWidth".as_ptr(), 0) },
+			1920
+		);
 
 		// String round-trip.
 		assert_eq!(
@@ -132,7 +140,10 @@ fn config_roundtrip_persistence() {
 		assert_eq!(unsafe { read_buf(&mut small) }, "");
 
 		// A NULL value stores an empty string (engine treats NULL as "").
-		assert_eq!(unsafe { oakengine_config_set_string(c"it/key".as_ptr(), std::ptr::null()) }, 0);
+		assert_eq!(
+			unsafe { oakengine_config_set_string(c"it/key".as_ptr(), std::ptr::null()) },
+			0
+		);
 		let len = unsafe { oakengine_config_get_string(c"it/key".as_ptr(), buf.as_mut_ptr(), 64) };
 		assert_eq!(len, 0);
 		assert_eq!(unsafe { read_buf(&mut buf) }, "");
@@ -142,16 +153,28 @@ fn config_roundtrip_persistence() {
 		);
 
 		// A string entry read through the int getter falls back.
-		assert_eq!(unsafe { oakengine_config_get_int(c"it/key".as_ptr(), 9) }, 9);
+		assert_eq!(
+			unsafe { oakengine_config_get_int(c"it/key".as_ptr(), 9) },
+			9
+		);
 
 		// Int round-trip; a known typed key keeps its type across reload.
-		assert_eq!(unsafe { oakengine_config_set_int(c"it/num".as_ptr(), 1234) }, 0);
-		assert_eq!(unsafe { oakengine_config_get_int(c"it/num".as_ptr(), 0) }, 1234);
+		assert_eq!(
+			unsafe { oakengine_config_set_int(c"it/num".as_ptr(), 1234) },
+			0
+		);
+		assert_eq!(
+			unsafe { oakengine_config_get_int(c"it/num".as_ptr(), 0) },
+			1234
+		);
 		assert_eq!(
 			unsafe { oakengine_config_set_int(c"DefaultSequenceWidth".as_ptr(), 640) },
 			0
 		);
-		assert_eq!(unsafe { oakengine_config_get_int(c"DefaultSequenceWidth".as_ptr(), 0) }, 640);
+		assert_eq!(
+			unsafe { oakengine_config_get_int(c"DefaultSequenceWidth".as_ptr(), 0) },
+			640
+		);
 
 		// Persist, then reload from the file.
 		assert_eq!(unsafe { oakengine_config_save() }, 0);
@@ -161,13 +184,19 @@ fn config_roundtrip_persistence() {
 		let len = unsafe { oakengine_config_get_string(c"it/key".as_ptr(), buf.as_mut_ptr(), 64) };
 		assert_eq!(len, 5);
 		assert_eq!(unsafe { read_buf(&mut buf) }, "hello");
-		assert_eq!(unsafe { oakengine_config_get_int(c"DefaultSequenceWidth".as_ptr(), 0) }, 640);
+		assert_eq!(
+			unsafe { oakengine_config_get_int(c"DefaultSequenceWidth".as_ptr(), 0) },
+			640
+		);
 		// A custom typed key loses its type on reload and reads as a string
 		// (module C++ parity: only known keys keep their declared type).
 		let len = unsafe { oakengine_config_get_string(c"it/num".as_ptr(), buf.as_mut_ptr(), 64) };
 		assert_eq!(len, 4);
 		assert_eq!(unsafe { read_buf(&mut buf) }, "1234");
-		assert_eq!(unsafe { oakengine_config_get_int(c"it/num".as_ptr(), 9) }, 9);
+		assert_eq!(
+			unsafe { oakengine_config_get_int(c"it/num".as_ptr(), 9) },
+			9
+		);
 	});
 }
 
@@ -196,7 +225,10 @@ fn config_illegal_inputs() {
 		);
 		assert_eq!(unsafe { oakengine_config_set_int(std::ptr::null(), 5) }, -1);
 		// NULL key on the int getter returns the fallback (engine contract).
-		assert_eq!(unsafe { oakengine_config_get_int(std::ptr::null(), 42) }, 42);
+		assert_eq!(
+			unsafe { oakengine_config_get_int(std::ptr::null(), 42) },
+			42
+		);
 
 		// Empty key → the module's INVALID, passed through untranslated.
 		assert_eq!(
@@ -295,7 +327,10 @@ fn videoparams_static_tables_full() {
 	common::force_link();
 
 	// ---- frame rates ------------------------------------------------------
-	assert_eq!(unsafe { oakengine_video_params_supported_frame_rate_count() }, 12);
+	assert_eq!(
+		unsafe { oakengine_video_params_supported_frame_rate_count() },
+		12
+	);
 	let mut num: c_int = 0;
 	let mut den: c_int = 0;
 	for i in 0..12 {
@@ -303,7 +338,10 @@ fn videoparams_static_tables_full() {
 			unsafe { oakengine_video_params_supported_frame_rate_at(i, &mut num, &mut den) },
 			0
 		);
-		assert!(num > 0 && den > 0, "frame rate {i} must be a positive rational");
+		assert!(
+			num > 0 && den > 0,
+			"frame rate {i} must be a positive rational"
+		);
 	}
 	assert_eq!(
 		unsafe { oakengine_video_params_supported_frame_rate_at(0, &mut num, &mut den) },
@@ -350,22 +388,32 @@ fn videoparams_static_tables_full() {
 	);
 	// NULL outputs → E_INVALID.
 	assert_eq!(
-		unsafe { oakengine_video_params_supported_frame_rate_at(0, std::ptr::null_mut(), &mut den) },
+		unsafe {
+			oakengine_video_params_supported_frame_rate_at(0, std::ptr::null_mut(), &mut den)
+		},
 		-1
 	);
 	assert_eq!(
-		unsafe { oakengine_video_params_supported_frame_rate_at(0, &mut num, std::ptr::null_mut()) },
+		unsafe {
+			oakengine_video_params_supported_frame_rate_at(0, &mut num, std::ptr::null_mut())
+		},
 		-1
 	);
 
 	// ---- pixel aspects ----------------------------------------------------
-	assert_eq!(unsafe { oakengine_video_params_standard_pixel_aspect_count() }, 6);
+	assert_eq!(
+		unsafe { oakengine_video_params_standard_pixel_aspect_count() },
+		6
+	);
 	for i in 0..6 {
 		assert_eq!(
 			unsafe { oakengine_video_params_standard_pixel_aspect_at(i, &mut num, &mut den) },
 			0
 		);
-		assert!(num > 0 && den > 0, "pixel aspect {i} must be a positive rational");
+		assert!(
+			num > 0 && den > 0,
+			"pixel aspect {i} must be a positive rational"
+		);
 	}
 	assert_eq!(
 		unsafe { oakengine_video_params_standard_pixel_aspect_at(0, &mut num, &mut den) },
@@ -391,19 +439,36 @@ fn videoparams_static_tables_full() {
 		-1
 	);
 	assert_eq!(
-		unsafe { oakengine_video_params_standard_pixel_aspect_at(0, std::ptr::null_mut(), &mut den) },
+		unsafe {
+			oakengine_video_params_standard_pixel_aspect_at(0, std::ptr::null_mut(), &mut den)
+		},
 		-1
 	);
 
 	// ---- dividers ---------------------------------------------------------
-	assert_eq!(unsafe { oakengine_video_params_supported_divider_count() }, 8);
+	assert_eq!(
+		unsafe { oakengine_video_params_supported_divider_count() },
+		8
+	);
 	let expected: [c_int; 8] = [1, 2, 3, 4, 6, 8, 12, 16];
 	for (i, want) in expected.iter().enumerate() {
-		assert_eq!(unsafe { oakengine_video_params_supported_divider_at(i as c_int) }, *want);
+		assert_eq!(
+			unsafe { oakengine_video_params_supported_divider_at(i as c_int) },
+			*want
+		);
 	}
-	assert_eq!(unsafe { oakengine_video_params_supported_divider_at(8) }, -1);
-	assert_eq!(unsafe { oakengine_video_params_supported_divider_at(-1) }, -1);
-	assert_eq!(unsafe { oakengine_video_params_supported_divider_at(c_int::MAX) }, -1);
+	assert_eq!(
+		unsafe { oakengine_video_params_supported_divider_at(8) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_video_params_supported_divider_at(-1) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_video_params_supported_divider_at(c_int::MAX) },
+		-1
+	);
 }
 
 /// Display names and string formatters (pixel aspect names, divider names,
@@ -457,8 +522,14 @@ fn videoparams_names_and_formatters() {
 	assert_eq!(len, 3);
 	assert_eq!(unsafe { read_buf(&mut buf) }, "1/8");
 	// Zero / negative divider → E_INVALID (facade rejects before the module).
-	assert_eq!(unsafe { oakengine_video_params_divider_name(0, buf.as_mut_ptr(), 64) }, -1);
-	assert_eq!(unsafe { oakengine_video_params_divider_name(-3, buf.as_mut_ptr(), 64) }, -1);
+	assert_eq!(
+		unsafe { oakengine_video_params_divider_name(0, buf.as_mut_ptr(), 64) },
+		-1
+	);
+	assert_eq!(
+		unsafe { oakengine_video_params_divider_name(-3, buf.as_mut_ptr(), 64) },
+		-1
+	);
 	// NULL buffer with a positive size → module INVALID, passed through.
 	assert_eq!(
 		unsafe { oakengine_video_params_divider_name(2, std::ptr::null_mut(), 64) },
@@ -469,9 +540,8 @@ fn videoparams_names_and_formatters() {
 	let len = unsafe { oakengine_video_params_frame_rate_to_string(25, 1, buf.as_mut_ptr(), 64) };
 	assert_eq!(len, 6);
 	assert_eq!(unsafe { read_buf(&mut buf) }, "25 FPS");
-	let len = unsafe {
-		oakengine_video_params_frame_rate_to_string(24000, 1001, buf.as_mut_ptr(), 64)
-	};
+	let len =
+		unsafe { oakengine_video_params_frame_rate_to_string(24000, 1001, buf.as_mut_ptr(), 64) };
 	assert_eq!(len, 10);
 	assert_eq!(unsafe { read_buf(&mut buf) }, "23.976 FPS");
 	let len = unsafe { oakengine_video_params_frame_rate_to_string(10, 1, buf.as_mut_ptr(), 64) };
@@ -501,14 +571,22 @@ fn videoparams_names_and_formatters() {
 	// ---- PAR template formatting (facade-local) -----------------------------
 	let len = unsafe {
 		oakengine_video_params_format_pixel_aspect_ratio_string(
-			c"%1".as_ptr(), 16, 15, buf.as_mut_ptr(), 64,
+			c"%1".as_ptr(),
+			16,
+			15,
+			buf.as_mut_ptr(),
+			64,
 		)
 	};
 	assert_eq!(len, 5);
 	assert_eq!(unsafe { read_buf(&mut buf) }, "16:15");
 	let len = unsafe {
 		oakengine_video_params_format_pixel_aspect_ratio_string(
-			c"par=%1".as_ptr(), 4, 3, buf.as_mut_ptr(), 64,
+			c"par=%1".as_ptr(),
+			4,
+			3,
+			buf.as_mut_ptr(),
+			64,
 		)
 	};
 	assert_eq!(len, 7);
@@ -516,7 +594,11 @@ fn videoparams_names_and_formatters() {
 	// No placeholder: the template passes through unchanged.
 	let len = unsafe {
 		oakengine_video_params_format_pixel_aspect_ratio_string(
-			c"raw".as_ptr(), 16, 15, buf.as_mut_ptr(), 64,
+			c"raw".as_ptr(),
+			16,
+			15,
+			buf.as_mut_ptr(),
+			64,
 		)
 	};
 	assert_eq!(len, 3);
@@ -525,7 +607,11 @@ fn videoparams_names_and_formatters() {
 	assert_eq!(
 		unsafe {
 			oakengine_video_params_format_pixel_aspect_ratio_string(
-				std::ptr::null(), 16, 15, buf.as_mut_ptr(), 64,
+				std::ptr::null(),
+				16,
+				15,
+				buf.as_mut_ptr(),
+				64,
 			)
 		},
 		-1
@@ -533,7 +619,11 @@ fn videoparams_names_and_formatters() {
 	assert_eq!(
 		unsafe {
 			oakengine_video_params_format_pixel_aspect_ratio_string(
-				c"%1".as_ptr(), 16, 15, std::ptr::null_mut(), 64,
+				c"%1".as_ptr(),
+				16,
+				15,
+				std::ptr::null_mut(),
+				64,
 			)
 		},
 		5
@@ -556,7 +646,10 @@ fn videoparams_format_helpers() {
 	assert_eq!(unsafe { oakengine_video_params_format_is_float(5) }, 0); // Count
 	assert_eq!(unsafe { oakengine_video_params_format_is_float(99) }, 0);
 	assert_eq!(unsafe { oakengine_video_params_format_is_float(-1) }, 0);
-	assert_eq!(unsafe { oakengine_video_params_format_is_float(c_int::MIN) }, 0);
+	assert_eq!(
+		unsafe { oakengine_video_params_format_is_float(c_int::MIN) },
+		0
+	);
 
 	// pixel_format_name for every real format.
 	let mut buf = [0 as c_char; 64];
@@ -593,7 +686,7 @@ fn videoparams_format_helpers() {
 	assert_eq!(unsafe { oakengine_video_params_bytes_per_pixel(2, 4) }, 8); // U16
 	assert_eq!(unsafe { oakengine_video_params_bytes_per_pixel(3, 4) }, 8); // F16
 	assert_eq!(unsafe { oakengine_video_params_bytes_per_pixel(4, 4) }, 16); // F32
-	// Garbage formats have no channels-per-format entry → 0 bytes.
+																		  // Garbage formats have no channels-per-format entry → 0 bytes.
 	assert_eq!(unsafe { oakengine_video_params_bytes_per_pixel(99, 4) }, 0);
 	assert_eq!(unsafe { oakengine_video_params_bytes_per_pixel(-1, 4) }, 0);
 	// Zero channels → 0 bytes.
@@ -603,7 +696,10 @@ fn videoparams_format_helpers() {
 	// result is the plain signed product — a value, not a crash.
 	assert_eq!(unsafe { oakengine_video_params_bytes_per_pixel(4, -1) }, -4);
 
-	assert_eq!(unsafe { oakengine_video_params_internal_channel_count() }, 4);
+	assert_eq!(
+		unsafe { oakengine_video_params_internal_channel_count() },
+		4
+	);
 }
 
 /// Effective size: divider scaling on the legal matrix plus zero/negative
@@ -614,21 +710,44 @@ fn videoparams_effective_size_matrix() {
 
 	let mut w: c_int = 0;
 	let mut h: c_int = 0;
-	assert_eq!(unsafe { oakengine_video_params_effective_size(1920, 1080, 1, &mut w, &mut h) }, 0);
+	assert_eq!(
+		unsafe { oakengine_video_params_effective_size(1920, 1080, 1, &mut w, &mut h) },
+		0
+	);
 	assert_eq!((w, h), (1920, 1080));
-	assert_eq!(unsafe { oakengine_video_params_effective_size(1920, 1080, 2, &mut w, &mut h) }, 0);
+	assert_eq!(
+		unsafe { oakengine_video_params_effective_size(1920, 1080, 2, &mut w, &mut h) },
+		0
+	);
 	assert_eq!((w, h), (960, 540));
-	assert_eq!(unsafe { oakengine_video_params_effective_size(1920, 1080, 4, &mut w, &mut h) }, 0);
+	assert_eq!(
+		unsafe { oakengine_video_params_effective_size(1920, 1080, 4, &mut w, &mut h) },
+		0
+	);
 	assert_eq!((w, h), (480, 270));
-	assert_eq!(unsafe { oakengine_video_params_effective_size(100, 50, 3, &mut w, &mut h) }, 0);
+	assert_eq!(
+		unsafe { oakengine_video_params_effective_size(100, 50, 3, &mut w, &mut h) },
+		0
+	);
 	assert_eq!((w, h), (33, 16));
 	// Divider 16 truncates the odd dimension (integer division).
-	assert_eq!(unsafe { oakengine_video_params_effective_size(1920, 1080, 16, &mut w, &mut h) }, 0);
+	assert_eq!(
+		unsafe { oakengine_video_params_effective_size(1920, 1080, 16, &mut w, &mut h) },
+		0
+	);
 	assert_eq!((w, h), (120, 67));
 
 	// Both output pointers may be NULL (size computed, nothing written).
 	assert_eq!(
-		unsafe { oakengine_video_params_effective_size(1920, 1080, 2, std::ptr::null_mut(), std::ptr::null_mut()) },
+		unsafe {
+			oakengine_video_params_effective_size(
+				1920,
+				1080,
+				2,
+				std::ptr::null_mut(),
+				std::ptr::null_mut(),
+			)
+		},
 		0
 	);
 
@@ -663,11 +782,7 @@ fn videoparams_effective_size_matrix() {
 fn valid_pod() -> OakVideoParamsPod {
 	let mut p: OakVideoParamsPod = unsafe { std::mem::zeroed() };
 	assert_eq!(
-		unsafe {
-			oakengine_video_params_make(
-				&mut p, 1920, 1080, 1001, 30000, 4, 1, 1, 0, 1, 2,
-			)
-		},
+		unsafe { oakengine_video_params_make(&mut p, 1920, 1080, 1001, 30000, 4, 1, 1, 0, 1, 2,) },
 		0
 	);
 	p
@@ -700,7 +815,19 @@ fn videoparams_pod_make_equal_valid() {
 	// NULL POD → E_INVALID.
 	assert_eq!(
 		unsafe {
-			oakengine_video_params_make(std::ptr::null_mut(), 1920, 1080, 1001, 30000, 4, 1, 1, 0, 1, 2)
+			oakengine_video_params_make(
+				std::ptr::null_mut(),
+				1920,
+				1080,
+				1001,
+				30000,
+				4,
+				1,
+				1,
+				0,
+				1,
+				2,
+			)
 		},
 		-1
 	);
@@ -745,13 +872,22 @@ fn videoparams_pod_make_equal_valid() {
 			"equal must be 0 when {field} differs"
 		);
 	}
-	assert_eq!(unsafe { oakengine_video_params_equal(std::ptr::null(), &a) }, 0);
-	assert_eq!(unsafe { oakengine_video_params_equal(&a, std::ptr::null()) }, 0);
+	assert_eq!(
+		unsafe { oakengine_video_params_equal(std::ptr::null(), &a) },
+		0
+	);
+	assert_eq!(
+		unsafe { oakengine_video_params_equal(&a, std::ptr::null()) },
+		0
+	);
 
 	// is_valid: the valid POD → 1.
 	assert_eq!(unsafe { oakengine_video_params_is_valid(&a) }, 1);
 	// NULL → 0.
-	assert_eq!(unsafe { oakengine_video_params_is_valid(std::ptr::null()) }, 0);
+	assert_eq!(
+		unsafe { oakengine_video_params_is_valid(std::ptr::null()) },
+		0
+	);
 	// Each invalidating field → 0.
 	let cases: [(&str, fn(&mut OakVideoParamsPod)); 6] = [
 		("width", |p| p.width = 0),

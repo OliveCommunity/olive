@@ -45,7 +45,9 @@ fn scan_and_create(id: &str) -> CHandle {
 	unsafe { oakplugin_instance_create(id.as_ptr()) }
 }
 
-fn instance_of(h: &CHandle) -> Option<std::sync::Arc<oakplugin::handle::RefBox<oakplugin::instance::Instance>>> {
+fn instance_of(
+	h: &CHandle,
+) -> Option<std::sync::Arc<oakplugin::handle::RefBox<oakplugin::instance::Instance>>> {
 	unsafe { get::<std::sync::Arc<oakplugin::handle::RefBox<oakplugin::instance::Instance>>>(h) }
 		.cloned()
 }
@@ -66,7 +68,8 @@ fn host_declares_ocio_capability() {
 		Some("OfxImageEffectColourManagementOCIO")
 	);
 	assert_eq!(
-		host.props.dimension("OfxImageEffectPropColourManagementAvailableConfigs"),
+		host.props
+			.dimension("OfxImageEffectPropColourManagementAvailableConfigs"),
 		1,
 		"可用配置至少含 ofx-native-v1.5_aces-v1.3_ocio-v2.3"
 	);
@@ -91,20 +94,34 @@ fn instance_and_clip_colourspace_props() {
 			Some("OfxImageEffectColourManagementOCIO")
 		);
 		assert_eq!(
-			prop_str(&inst.value.props, "OfxImageEffectPropColourManagementConfig").as_deref(),
+			prop_str(
+				&inst.value.props,
+				"OfxImageEffectPropColourManagementConfig"
+			)
+			.as_deref(),
 			Some("ofx-native-v1.5_aces-v1.3_ocio-v2.3")
 		);
 		assert_eq!(
 			prop_str(&inst.value.props, "OfxImageEffectPropOCIOConfig").as_deref(),
 			Some("ocio://default")
 		);
-		let source = inst.value.clips.iter().find(|c| c.name == "Source").unwrap();
+		let source = inst
+			.value
+			.clips
+			.iter()
+			.find(|c| c.name == "Source")
+			.unwrap();
 		assert_eq!(
 			prop_str(&source.props, "OfxImageClipPropColourspace").as_deref(),
 			Some("ACEScg"),
 			"输入 clip 色彩空间 = 工作空间"
 		);
-		let output = inst.value.clips.iter().find(|c| c.name == "Output").unwrap();
+		let output = inst
+			.value
+			.clips
+			.iter()
+			.find(|c| c.name == "Output")
+			.unwrap();
 		assert!(
 			prop_str(&output.props, "OfxImageClipPropColourspace")
 				.map(|s| s.is_empty())
@@ -131,7 +148,12 @@ fn get_output_colourspace_cross_reference() {
 			.expect("GetOutputColourspace 应成功");
 		assert_eq!(cs, "ACEScg", "交叉引用 OfxColourspace_Source → ACEScg");
 		inst.value.set_output_colourspace(&cs);
-		let output = inst.value.clips.iter().find(|c| c.name == "Output").unwrap();
+		let output = inst
+			.value
+			.clips
+			.iter()
+			.find(|c| c.name == "Output")
+			.unwrap();
 		assert_eq!(
 			prop_str(&output.props, "OfxImageClipPropColourspace").as_deref(),
 			Some("ACEScg"),
@@ -170,7 +192,8 @@ fn resolve_colourspace_edge_cases() {
 		}
 		let inst = instance_of(&h).expect("句柄应可解析");
 		assert_eq!(
-			inst.value.resolve_colourspace("OfxColourspace_NoSuchClip".to_string()),
+			inst.value
+				.resolve_colourspace("OfxColourspace_NoSuchClip".to_string()),
 			"OfxColourspace_NoSuchClip",
 			"未知 clip 引用保持原样"
 		);

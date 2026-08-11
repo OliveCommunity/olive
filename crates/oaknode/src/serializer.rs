@@ -236,7 +236,9 @@ pub fn string_to_value(declared: ValueType, text: &str) -> NodeValue {
 		ValueType::Vec2 | ValueType::Vec3 | ValueType::Vec4 | ValueType::Color => {
 			let parts: Vec<f64> = text.split(':').map(|p| p.parse().unwrap_or(0.0)).collect();
 			match declared {
-				ValueType::Vec2 => NodeValue::Vec2([parts[0], parts.get(1).copied().unwrap_or(0.0)]),
+				ValueType::Vec2 => {
+					NodeValue::Vec2([parts[0], parts.get(1).copied().unwrap_or(0.0)])
+				}
 				ValueType::Vec3 => NodeValue::Vec3([
 					parts[0],
 					parts.get(1).copied().unwrap_or(0.0),
@@ -406,9 +408,7 @@ fn save_immediate(writer: &mut dyn XmlWrite, core: &NodeCore, id: &str, element:
 		.keyframe_track(id, element)
 		.map(|t| !t.keys().is_empty())
 		.unwrap_or(false);
-	let declared = core
-		.input_data_type(id)
-		.unwrap_or(ValueType::None);
+	let declared = core.input_data_type(id).unwrap_or(ValueType::None);
 
 	if keyframable {
 		writer.text_element("keyframing", if keyframing { "1" } else { "0" });
@@ -442,10 +442,7 @@ fn save_immediate(writer: &mut dyn XmlWrite, core: &NodeCore, id: &str, element:
 				writer.attribute("inhandley", &format!("{}", key.bezier_in.1));
 				writer.attribute("outhandlex", &format!("{}", key.bezier_out.0));
 				writer.attribute("outhandley", &format!("{}", key.bezier_out.1));
-				writer_text_chars(
-					writer,
-					&value_to_string(declared, &key.value, true),
-				);
+				writer_text_chars(writer, &value_to_string(declared, &key.value, true));
 				writer.end_element(); // key
 			}
 			writer.end_element(); // track
@@ -528,7 +525,13 @@ fn load_project_body(reader: &mut dyn XmlRead, project: &mut Project) -> crate::
 			"nodes" => {
 				while reader.next_start_element() {
 					if reader.name() == "node" {
-						let id = load_node(reader, &mut project.graph, &mut id_map, &mut connections, &mut links)?;
+						let id = load_node(
+							reader,
+							&mut project.graph,
+							&mut id_map,
+							&mut connections,
+							&mut links,
+						)?;
 						if project.root == NodeId::INVALID {
 							// The first node is the root folder when the
 							// project has no explicit root setting.
@@ -553,7 +556,10 @@ fn load_project_body(reader: &mut dyn XmlRead, project: &mut Project) -> crate::
 	// Resolve connections.
 	for (out_identity, in_id, input_id, element) in connections {
 		if let Some(out_id) = id_map.get(&out_identity) {
-			project.graph.connect(*out_id, in_id, &input_id, element).ok();
+			project
+				.graph
+				.connect(*out_id, in_id, &input_id, element)
+				.ok();
 		}
 	}
 	// Resolve links (the writer emits one entry per direction; linking
@@ -594,20 +600,19 @@ fn load_node(
 
 	// Instantiate the node type; folders and unknown types fall back to
 	// an empty folder-ish core.
-	let (mut core, behavior): (NodeCore, Box<dyn crate::node::NodeBehavior>) = if type_id
-		== "org.olivevideoeditor.Olive.folder"
-	{
-		crate::folder::create("Folder")
-	} else {
-		match crate::factory::Factory::global().find(&type_id) {
-			Some(meta) => (meta.create)(),
-			None => {
-				// Unknown type: skip the element body.
-				reader.skip_current_element();
-				return Err(Error::Failed(format!("unknown node type '{}'", type_id)));
+	let (mut core, behavior): (NodeCore, Box<dyn crate::node::NodeBehavior>) =
+		if type_id == "org.olivevideoeditor.Olive.folder" {
+			crate::folder::create("Folder")
+		} else {
+			match crate::factory::Factory::global().find(&type_id) {
+				Some(meta) => (meta.create)(),
+				None => {
+					// Unknown type: skip the element body.
+					reader.skip_current_element();
+					return Err(Error::Failed(format!("unknown node type '{}'", type_id)));
+				}
 			}
-		}
-	};
+		};
 
 	// The node enters the graph before its body is parsed so deferred
 	// connections/links can reference it by id.
@@ -713,7 +718,13 @@ fn load_input_element(reader: &mut dyn XmlRead, core: &mut NodeCore, input_id: &
 }
 
 /// Parse one immediate (standard values + keyframes).
-fn load_immediate(reader: &mut dyn XmlRead, core: &mut NodeCore, input_id: &str, element: i32, declared: ValueType) {
+fn load_immediate(
+	reader: &mut dyn XmlRead,
+	core: &mut NodeCore,
+	input_id: &str,
+	element: i32,
+	declared: ValueType,
+) {
 	let mut keyframing = false;
 	let mut standard_tracks: Vec<NodeValue> = Vec::new();
 	let mut keyframe_tracks: Vec<Vec<Keyframe>> = Vec::new();
@@ -798,7 +809,8 @@ fn load_immediate(reader: &mut dyn XmlRead, core: &mut NodeCore, input_id: &str,
 		}
 	} else {
 		// No keyframes: drop any pre-existing track.
-		core.keyframes.retain(|(i, e, _)| !(i == input_id && *e == element));
+		core.keyframes
+			.retain(|(i, e, _)| !(i == input_id && *e == element));
 	}
 }
 

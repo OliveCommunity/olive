@@ -156,7 +156,14 @@ impl ProjectImportTask {
 		&self.invalid_files[index]
 	}
 
-	fn import(&mut self, task: &mut Task, folder: CHandle, entries: &mut Vec<String>, counter: &mut usize, parent_command: CHandle) {
+	fn import(
+		&mut self,
+		task: &mut Task,
+		folder: CHandle,
+		entries: &mut Vec<String>,
+		counter: &mut usize,
+		parent_command: CHandle,
+	) {
 		let mut i = 0;
 		while i < entries.len() {
 			if task.is_cancelled() {
@@ -176,7 +183,8 @@ impl ProjectImportTask {
 				};
 
 				if !entry_list.is_empty() {
-					let folder_handle = unsafe { bridge::node::oaknode_folder_create(self.project) };
+					let folder_handle =
+						unsafe { bridge::node::oaknode_folder_create(self.project) };
 					if !folder_handle.ctx.is_null() {
 						unsafe {
 							bridge::node::oaknode_node_set_label(
@@ -184,13 +192,24 @@ impl ProjectImportTask {
 								cstr(&basename_of(file_path)),
 							);
 						}
-						self.add_item_to_folder(folder, unsafe { bridge::node::oaknode_folder_as_node(folder_handle) }, parent_command);
+						self.add_item_to_folder(
+							folder,
+							unsafe { bridge::node::oaknode_folder_as_node(folder_handle) },
+							parent_command,
+						);
 						let mut sub_entries = entry_list;
-						self.import(task, folder_handle, &mut sub_entries, counter, parent_command);
+						self.import(
+							task,
+							folder_handle,
+							&mut sub_entries,
+							counter,
+							parent_command,
+						);
 					}
 				}
 			} else {
-				let footage = unsafe { bridge::node::oaknode_footage_create(self.project, std::ptr::null()) };
+				let footage =
+					unsafe { bridge::node::oaknode_footage_create(self.project, std::ptr::null()) };
 				if footage.ctx.is_null() {
 					i += 1;
 					continue;
@@ -199,21 +218,33 @@ impl ProjectImportTask {
 				unsafe {
 					bridge::node::oaknode_footage_set_cancel_atom(footage, task.get_cancel_atom());
 				}
-				let ok = unsafe { bridge::node::oaknode_footage_set_filename(footage, cstr(file_path)) } == 0;
+				let ok =
+					unsafe { bridge::node::oaknode_footage_set_filename(footage, cstr(file_path)) }
+						== 0;
 				unsafe {
-					bridge::node::oaknode_footage_set_cancel_atom(footage, bridge::render::OakCancelAtom::null());
+					bridge::node::oaknode_footage_set_cancel_atom(
+						footage,
+						bridge::render::OakCancelAtom::null(),
+					);
 				}
 
 				if ok && unsafe { bridge::node::oaknode_footage_is_valid(footage) } != 0 {
 					unsafe {
-						bridge::node::oaknode_node_set_label(bridge::node::oaknode_footage_as_node(footage), cstr(&basename_of(file_path)));
+						bridge::node::oaknode_node_set_label(
+							bridge::node::oaknode_footage_as_node(footage),
+							cstr(&basename_of(file_path)),
+						);
 					}
 
 					// See if this footage is an image sequence.
 					self.validate_image_sequence(task, footage, entries, i);
 
 					// Create the undoable command that adds the item.
-					self.add_item_to_folder(folder, unsafe { bridge::node::oaknode_footage_as_node(footage) }, parent_command);
+					self.add_item_to_folder(
+						folder,
+						unsafe { bridge::node::oaknode_footage_as_node(footage) },
+						parent_command,
+					);
 
 					self.imported_footage.push(footage);
 				} else {
@@ -222,7 +253,11 @@ impl ProjectImportTask {
 					// Remove the invalid footage from the graph; the remove
 					// command takes ownership on redo and deletes the node
 					// when the command is destroyed.
-					let mut remove = unsafe { bridge::node::oaknode_command_create_remove_node(bridge::node::oaknode_footage_as_node(footage)) };
+					let mut remove = unsafe {
+						bridge::node::oaknode_command_create_remove_node(
+							bridge::node::oaknode_footage_as_node(footage),
+						)
+					};
 					if !remove.ctx.is_null() {
 						unsafe {
 							bridge::undo::oakundo_command_redo_now(remove);
@@ -247,18 +282,30 @@ impl ProjectImportTask {
 		}
 	}
 
-	fn validate_image_sequence(&mut self, task: &mut Task, footage: CHandle, info_list: &mut Vec<String>, index: usize) {
+	fn validate_image_sequence(
+		&mut self,
+		task: &mut Task,
+		footage: CHandle,
+		info_list: &mut Vec<String>,
+		index: usize,
+	) {
 		let filename = footage_filename(footage);
 		if filename.is_empty() {
 			return;
 		}
 
-		let digit_count = unsafe { bridge::codec::oakcodec_decoder_get_image_sequence_digit_count(cstr(&filename)) };
+		let digit_count = unsafe {
+			bridge::codec::oakcodec_decoder_get_image_sequence_digit_count(cstr(&filename))
+		};
 		if digit_count <= 0 {
 			return;
 		}
 
-		if self.image_sequence_ignore_files.iter().any(|f| f == &filename) {
+		if self
+			.image_sequence_ignore_files
+			.iter()
+			.any(|f| f == &filename)
+		{
 			return;
 		}
 
@@ -267,7 +314,9 @@ impl ProjectImportTask {
 		}
 
 		let mut video_stream = CHandle::null();
-		if unsafe { bridge::node::oaknode_footage_get_video_params(footage, 0, &mut video_stream) } != 0 {
+		if unsafe { bridge::node::oaknode_footage_get_video_params(footage, 0, &mut video_stream) }
+			!= 0
+		{
 			return;
 		}
 
@@ -278,13 +327,16 @@ impl ProjectImportTask {
 			bridge::common::oakcommon_videoparams_get_height(video_stream, &mut height);
 		}
 
-		let seq_index = unsafe { bridge::codec::oakcodec_decoder_get_image_sequence_index(cstr(&filename)) };
+		let seq_index =
+			unsafe { bridge::codec::oakcodec_decoder_get_image_sequence_index(cstr(&filename)) };
 
 		let prev_fn = transform_sequence_filename(&filename, seq_index - 1, digit_count);
 		let next_fn = transform_sequence_filename(&filename, seq_index + 1, digit_count);
 
-		let previous_file = unsafe { bridge::node::oaknode_footage_create(self.project, cstr(&prev_fn)) };
-		let next_file = unsafe { bridge::node::oaknode_footage_create(self.project, cstr(&next_fn)) };
+		let previous_file =
+			unsafe { bridge::node::oaknode_footage_create(self.project, cstr(&prev_fn)) };
+		let next_file =
+			unsafe { bridge::node::oaknode_footage_create(self.project, cstr(&next_fn)) };
 
 		let prev_matches = !previous_file.ctx.is_null()
 			&& unsafe { bridge::node::oaknode_footage_is_valid(previous_file) } != 0
@@ -325,22 +377,41 @@ impl ProjectImportTask {
 
 			if is_sequence {
 				unsafe {
-					bridge::common::oakcommon_videoparams_set_video_type(video_stream, bridge::common::OAKCOMMON_VIDEO_TYPE_IMAGE_SEQUENCE);
+					bridge::common::oakcommon_videoparams_set_video_type(
+						video_stream,
+						bridge::common::OAKCOMMON_VIDEO_TYPE_IMAGE_SEQUENCE,
+					);
 
 					let mut rate_buf = [0i8; 64];
-					let needed = bridge::common::oakcommon_config_get(std::ptr::null(), cstr("DefaultSequenceFrameRate"), rate_buf.as_mut_ptr(), rate_buf.len() as i32);
+					let needed = bridge::common::oakcommon_config_get(
+						std::ptr::null(),
+						cstr("DefaultSequenceFrameRate"),
+						rate_buf.as_mut_ptr(),
+						rate_buf.len() as i32,
+					);
 					if needed > 0 {
 						let rate = crate::project::load::buf_to_string(&rate_buf);
 						if let Some((num, den)) = parse_rational(&rate) {
 							if den != 0 {
-								bridge::common::oakcommon_videoparams_set_time_base(video_stream, num, den);
-								bridge::common::oakcommon_videoparams_set_frame_rate(video_stream, den, num);
+								bridge::common::oakcommon_videoparams_set_time_base(
+									video_stream,
+									num,
+									den,
+								);
+								bridge::common::oakcommon_videoparams_set_frame_rate(
+									video_stream,
+									den,
+									num,
+								);
 							}
 						}
 					}
 
 					bridge::common::oakcommon_videoparams_set_start_time(video_stream, start_index);
-					bridge::common::oakcommon_videoparams_set_duration(video_stream, end_index - start_index + 1);
+					bridge::common::oakcommon_videoparams_set_duration(
+						video_stream,
+						end_index - start_index + 1,
+					);
 					bridge::node::oaknode_footage_set_video_params(footage, 0, &video_stream);
 				}
 			}
@@ -355,7 +426,11 @@ impl ProjectImportTask {
 		// The probe footage was only created for comparison; remove it.
 		for probe in [previous_file, next_file] {
 			if !probe.ctx.is_null() {
-				let mut remove = unsafe { bridge::node::oaknode_command_create_remove_node(bridge::node::oaknode_footage_as_node(probe)) };
+				let mut remove = unsafe {
+					bridge::node::oaknode_command_create_remove_node(
+						bridge::node::oaknode_footage_as_node(probe),
+					)
+				};
 				if !remove.ctx.is_null() {
 					unsafe {
 						bridge::undo::oakundo_command_redo_now(remove);
@@ -483,7 +558,8 @@ fn basename_of(path: &str) -> String {
 
 /// Two-stage read of the footage filename.
 fn footage_filename(footage: CHandle) -> String {
-	let needed = unsafe { bridge::node::oaknode_footage_filename(footage, std::ptr::null_mut(), 0) };
+	let needed =
+		unsafe { bridge::node::oaknode_footage_filename(footage, std::ptr::null_mut(), 0) };
 	if needed <= 0 {
 		return String::new();
 	}
@@ -504,7 +580,12 @@ fn transform_sequence_filename(filename: &str, number: i64, digit_count: i32) ->
 			// extension; they are replaced by `number`.
 			let digits_start = dot.saturating_sub(width);
 			let prefix = &filename[..digits_start];
-			format!("{prefix}{:0width$}{}", number, &filename[dot..], width = width)
+			format!(
+				"{prefix}{:0width$}{}",
+				number,
+				&filename[dot..],
+				width = width
+			)
 		}
 		None => format!("{filename}{:0width$}", number, width = width),
 	}

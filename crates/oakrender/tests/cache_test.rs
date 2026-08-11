@@ -43,12 +43,21 @@ fn invalidate_validate_state_machine() {
 	unsafe {
 		// Fresh cache: nothing validated.
 		assert_eq!(ffi::cache::oakrender_cache_has_validated_ranges(c), 0);
-		assert_eq!(ffi::cache::oakrender_cache_set_timebase(c, 1, 25), OAKRENDER_OK);
+		assert_eq!(
+			ffi::cache::oakrender_cache_set_timebase(c, 1, 25),
+			OAKRENDER_OK
+		);
 
 		// Whole query range invalidated on a fresh cache (1 second).
 		let mut ranges = [0i64; 16];
 		let count = ffi::cache::oakrender_cache_get_invalidated_ranges(
-			c, 0, 1, 1, 1, ranges.as_mut_ptr(), 4,
+			c,
+			0,
+			1,
+			1,
+			1,
+			ranges.as_mut_ptr(),
+			4,
 		);
 		assert_eq!(count, 1);
 		assert_eq!(ranges[0], 0);
@@ -60,7 +69,13 @@ fn invalidate_validate_state_machine() {
 		ffi::cache::oakrender_cache_validate(c, 0, 25);
 		assert_eq!(ffi::cache::oakrender_cache_has_validated_ranges(c), 1);
 		let count = ffi::cache::oakrender_cache_get_invalidated_ranges(
-			c, 0, 1, 1, 1, ranges.as_mut_ptr(), 4,
+			c,
+			0,
+			1,
+			1,
+			1,
+			ranges.as_mut_ptr(),
+			4,
 		);
 		assert_eq!(count, 0);
 
@@ -68,7 +83,13 @@ fn invalidate_validate_state_machine() {
 		ffi::cache::oakrender_cache_invalidate(c, 10, 20);
 		assert_eq!(ffi::cache::oakrender_cache_has_validated_ranges(c), 1);
 		let count = ffi::cache::oakrender_cache_get_invalidated_ranges(
-			c, 0, 1, 1, 1, ranges.as_mut_ptr(), 4,
+			c,
+			0,
+			1,
+			1,
+			1,
+			ranges.as_mut_ptr(),
+			4,
 		);
 		assert_eq!(count, 1);
 		assert_eq!(ranges[0], 2);
@@ -83,11 +104,20 @@ fn invalidate_validate_state_machine() {
 		// Empty cache: no-op + zero results.
 		ffi::cache::oakrender_cache_invalidate(CHandle::null(), 0, 10);
 		ffi::cache::oakrender_cache_validate(CHandle::null(), 0, 10);
-		assert_eq!(ffi::cache::oakrender_cache_has_validated_ranges(CHandle::null()), 0);
+		assert_eq!(
+			ffi::cache::oakrender_cache_has_validated_ranges(CHandle::null()),
+			0
+		);
 		// Negative max_ranges rejected.
 		assert_eq!(
 			ffi::cache::oakrender_cache_get_invalidated_ranges(
-				c, 0, 1, 1, 1, std::ptr::null_mut(), -1
+				c,
+				0,
+				1,
+				1,
+				1,
+				std::ptr::null_mut(),
+				-1
 			),
 			OAKRENDER_E_INVALID
 		);
@@ -100,19 +130,31 @@ fn invalidate_validate_state_machine() {
 fn timebase_and_timestamp_semantics() {
 	let c = cache();
 	unsafe {
-		assert_eq!(ffi::cache::oakrender_cache_set_timebase(c, 1, 25), OAKRENDER_OK);
+		assert_eq!(
+			ffi::cache::oakrender_cache_set_timebase(c, 1, 25),
+			OAKRENDER_OK
+		);
 		assert_eq!(
 			ffi::cache::oakrender_cache_set_timebase(CHandle::null(), 1, 25),
 			OAKRENDER_E_INVALID
 		);
-		assert_eq!(ffi::cache::oakrender_cache_set_timebase(c, 0, 25), OAKRENDER_E_INVALID);
-		assert_eq!(ffi::cache::oakrender_cache_set_timebase(c, 1, 0), OAKRENDER_E_INVALID);
+		assert_eq!(
+			ffi::cache::oakrender_cache_set_timebase(c, 0, 25),
+			OAKRENDER_E_INVALID
+		);
+		assert_eq!(
+			ffi::cache::oakrender_cache_set_timebase(c, 1, 0),
+			OAKRENDER_E_INVALID
+		);
 
 		// Validate [0,25) timestamps at 25fps → 1 second.
 		ffi::cache::oakrender_cache_validate(c, 0, 25);
 		let mut num = 0;
 		let mut den = 0;
-		assert_eq!(ffi::cache::oakrender_cache_get_timebase(c, &mut num, &mut den), OAKRENDER_OK);
+		assert_eq!(
+			ffi::cache::oakrender_cache_get_timebase(c, &mut num, &mut den),
+			OAKRENDER_OK
+		);
 		assert_eq!(num, 1);
 		assert_eq!(den, 25);
 
@@ -124,9 +166,16 @@ fn timebase_and_timestamp_semantics() {
 			),
 			OAKRENDER_OK
 		);
-		let (_, uuid) = common::read_two_stage(|buf, n| ffi::cache::oakrender_cache_get_uuid(c, buf, n));
-		assert_eq!(uuid.as_deref(), Some("{01234567-89ab-cdef-0123-456789abcdef}"));
-		assert_eq!(ffi::cache::oakrender_cache_set_uuid(c, std::ptr::null()), OAKRENDER_E_INVALID);
+		let (_, uuid) =
+			common::read_two_stage(|buf, n| ffi::cache::oakrender_cache_get_uuid(c, buf, n));
+		assert_eq!(
+			uuid.as_deref(),
+			Some("{01234567-89ab-cdef-0123-456789abcdef}")
+		);
+		assert_eq!(
+			ffi::cache::oakrender_cache_set_uuid(c, std::ptr::null()),
+			OAKRENDER_E_INVALID
+		);
 	}
 	free(c);
 }
@@ -144,7 +193,10 @@ fn passthrough_excludes_ranges() {
 			ffi::cache::oakrender_cache_set_passthrough(a, CHandle::null()),
 			OAKRENDER_E_INVALID
 		);
-		assert_eq!(ffi::cache::oakrender_cache_set_passthrough(a, b), OAKRENDER_OK);
+		assert_eq!(
+			ffi::cache::oakrender_cache_set_passthrough(a, b),
+			OAKRENDER_OK
+		);
 
 		// Passthrough ranges report count; the range excluded from invalidated.
 		let mut passthroughs = [0i64; 16];
@@ -155,7 +207,13 @@ fn passthrough_excludes_ranges() {
 
 		let mut ranges = [0i64; 16];
 		let count = ffi::cache::oakrender_cache_get_invalidated_ranges(
-			a, 0, 1, 20, 1, ranges.as_mut_ptr(), 4,
+			a,
+			0,
+			1,
+			20,
+			1,
+			ranges.as_mut_ptr(),
+			4,
 		);
 		assert_eq!(count, 1, "only [10,20) remains invalidated");
 		assert_eq!(ranges[0], 10);
@@ -174,10 +232,7 @@ fn passthrough_excludes_ranges() {
 #[test]
 fn disk_state_roundtrip() {
 	let _dir = common::CacheDirGuard::new();
-	let dir = std::env::temp_dir().join(format!(
-		"oakrender-ffi-cache-{}",
-		std::process::id()
-	));
+	let dir = std::env::temp_dir().join(format!("oakrender-ffi-cache-{}", std::process::id()));
 
 	let c = cache();
 	unsafe {
@@ -188,20 +243,33 @@ fn disk_state_roundtrip() {
 
 		// Load into a fresh cache: the saved uuid + state come back.
 		let c2 = cache();
-		let (_, uuid) = common::read_two_stage(|buf, n| ffi::cache::oakrender_cache_get_uuid(c, buf, n));
+		let (_, uuid) =
+			common::read_two_stage(|buf, n| ffi::cache::oakrender_cache_get_uuid(c, buf, n));
 		ffi::cache::oakrender_cache_set_uuid(c2, uuid.unwrap().as_ptr() as *const c_char);
 		ffi::cache::oakrender_cache_set_timebase(c2, 1001, 30000);
 		assert_eq!(ffi::cache::oakrender_cache_load_state(c2), OAKRENDER_OK);
 		assert_eq!(ffi::cache::oakrender_cache_has_validated_ranges(c2), 1);
 		let mut ranges = [0i64; 16];
 		let count = ffi::cache::oakrender_cache_get_invalidated_ranges(
-			c2, 0, 1, 300, 1, ranges.as_mut_ptr(), 8,
+			c2,
+			0,
+			1,
+			300,
+			1,
+			ranges.as_mut_ptr(),
+			8,
 		);
 		// validated [0,30) + [60,90) at 30000/1001 fps → two gaps:
 		// [1001/1000, 1001/500) and [3003/1000, 300).
 		assert_eq!(count, 2);
-		assert_eq!((ranges[0], ranges[1], ranges[2], ranges[3]), (1001, 1000, 1001, 500));
-		assert_eq!((ranges[4], ranges[5], ranges[6], ranges[7]), (3003, 1000, 300, 1));
+		assert_eq!(
+			(ranges[0], ranges[1], ranges[2], ranges[3]),
+			(1001, 1000, 1001, 500)
+		);
+		assert_eq!(
+			(ranges[4], ranges[5], ranges[6], ranges[7]),
+			(3003, 1000, 300, 1)
+		);
 		// Empty cache load → invalid.
 		assert_eq!(
 			ffi::cache::oakrender_cache_load_state(CHandle::null()),
@@ -237,10 +305,7 @@ fn frame_filename_parity() {
 		});
 		assert!(size > 0);
 		let name = name.unwrap();
-		let suffix = format!(
-			"{}/15",
-			"{01234567-89ab-cdef-0123-456789abcdef}"
-		);
+		let suffix = format!("{}/15", "{01234567-89ab-cdef-0123-456789abcdef}");
 		assert!(
 			name.ends_with(&suffix),
 			"filename scheme `<dir>/<uuid>/<timestamp>`; got {name}"
@@ -249,7 +314,13 @@ fn frame_filename_parity() {
 		// Non-frame-hash caches reject the query (audio kind).
 		let audio = ffi::cache::oakrender_cache_create_for_node(common::fake_handle(1), 2);
 		assert_eq!(
-			ffi::cache::oakrender_cache_get_valid_cache_filename(audio, 1, 2, std::ptr::null_mut(), 0),
+			ffi::cache::oakrender_cache_get_valid_cache_filename(
+				audio,
+				1,
+				2,
+				std::ptr::null_mut(),
+				0
+			),
 			OAKRENDER_E_INVALID
 		);
 		let mut audio = audio;
@@ -306,7 +377,8 @@ fn frame_cache_load_errors() {
 		let dir2 = std::env::temp_dir().join("oakrender-existing-cache");
 		std::fs::create_dir_all(dir2.join("{00000000-0000-0000-0000-000000000000}")).unwrap();
 		std::fs::write(
-			dir2.join("{00000000-0000-0000-0000-000000000000}").join("5"),
+			dir2.join("{00000000-0000-0000-0000-000000000000}")
+				.join("5"),
 			b"not-an-exr",
 		)
 		.unwrap();
@@ -323,7 +395,12 @@ fn frame_cache_load_errors() {
 			"decode is codec-dependent; without oakcodec it must fail explainably"
 		);
 		// save with empty args: no-op.
-		ffi::cache::oakrender_frame_cache_save(CHandle::null(), std::ptr::null(), std::ptr::null(), CHandle::null());
+		ffi::cache::oakrender_frame_cache_save(
+			CHandle::null(),
+			std::ptr::null(),
+			std::ptr::null(),
+			CHandle::null(),
+		);
 	}
 	free(c);
 }
@@ -333,7 +410,10 @@ fn frame_cache_load_errors() {
 fn borrowed_cache_is_opaque() {
 	unsafe {
 		let borrowed = ffi::cache::oakrender_cache_wrap_borrowed(0x1234 as *mut std::ffi::c_void);
-		assert!(!borrowed.is_null(), "non-null native pointer → non-empty handle");
+		assert!(
+			!borrowed.is_null(),
+			"non-null native pointer → non-empty handle"
+		);
 		// Queries on a borrowed box are invalid (cannot dereference the
 		// C++ object through the Rust ABI).
 		assert_eq!(
@@ -359,7 +439,10 @@ fn frame_cache_save_load_roundtrip() {
 		pod.width = 8;
 		pod.height = 8;
 		pod.format = 4; // F32
-		assert_eq!(ffi::renderer::oakrender_codec_frame_set_video_params(frame, &pod), 0);
+		assert_eq!(
+			ffi::renderer::oakrender_codec_frame_set_video_params(frame, &pod),
+			0
+		);
 		assert_eq!(ffi::renderer::oakrender_codec_frame_allocate(frame), 0);
 		let dir = _dir.dir();
 		let dir_c = std::ffi::CString::new(dir.to_string_lossy().as_bytes()).unwrap();
@@ -386,7 +469,10 @@ fn frame_cache_save_load_roundtrip() {
 fn saving_enabled_toggle() {
 	let c = cache();
 	unsafe {
-		assert_eq!(ffi::cache::oakrender_cache_set_saving_enabled(c, 0), OAKRENDER_OK);
+		assert_eq!(
+			ffi::cache::oakrender_cache_set_saving_enabled(c, 0),
+			OAKRENDER_OK
+		);
 		assert_eq!(
 			ffi::cache::oakrender_cache_set_saving_enabled(CHandle::null(), 1),
 			OAKRENDER_E_INVALID

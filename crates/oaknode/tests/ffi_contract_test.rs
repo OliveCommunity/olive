@@ -41,16 +41,15 @@ use oaknode::ffi::node::{
 	oaknode_node_get_input, oaknode_node_get_input_at_time, oaknode_node_get_input_name,
 	oaknode_node_get_input_string, oaknode_node_get_label, oaknode_node_get_name,
 	oaknode_node_get_override_color, oaknode_node_get_project, oaknode_node_identity,
-	oaknode_node_input_array_insert, oaknode_node_input_array_remove,
-	oaknode_node_input_count, oaknode_node_input_get_connected_node,
-	oaknode_node_input_get_type, oaknode_node_input_id, oaknode_node_input_is_connectable,
-	oaknode_node_input_is_connected, oaknode_node_is_enabled, oaknode_node_link,
-	oaknode_node_link_at, oaknode_node_link_count, oaknode_node_output_connection_count,
-	oaknode_node_output_connection_element_at, oaknode_node_output_connection_input_id_at,
-	oaknode_node_output_connection_node_at, oaknode_node_remove_from_context,
-	oaknode_node_set_context_position, oaknode_node_set_enabled, oaknode_node_set_input,
-	oaknode_node_set_input_string, oaknode_node_set_label, oaknode_node_set_override_color,
-	oaknode_node_set_value_hint_track, oaknode_node_unlink,
+	oaknode_node_input_array_insert, oaknode_node_input_array_remove, oaknode_node_input_count,
+	oaknode_node_input_get_connected_node, oaknode_node_input_get_type, oaknode_node_input_id,
+	oaknode_node_input_is_connectable, oaknode_node_input_is_connected, oaknode_node_is_enabled,
+	oaknode_node_link, oaknode_node_link_at, oaknode_node_link_count,
+	oaknode_node_output_connection_count, oaknode_node_output_connection_element_at,
+	oaknode_node_output_connection_input_id_at, oaknode_node_output_connection_node_at,
+	oaknode_node_remove_from_context, oaknode_node_set_context_position, oaknode_node_set_enabled,
+	oaknode_node_set_input, oaknode_node_set_input_string, oaknode_node_set_label,
+	oaknode_node_set_override_color, oaknode_node_set_value_hint_track, oaknode_node_unlink,
 };
 use oaknode::ffi::project::{
 	oaknode_project_add_node, oaknode_project_cache_path, oaknode_project_clear,
@@ -127,11 +126,16 @@ fn handle_contract_all_exports() {
 	let mut n0 = unsafe { oaknode_project_node_at(dup(&p), 0) };
 	assert!(!n0.ctx.is_null());
 	assert!(unsafe { oaknode_project_node_at(dup(&p), 1) }.ctx.is_null());
-	assert!(unsafe { oaknode_project_node_at(dup(&p), -1) }.ctx.is_null());
-	assert!(unsafe { oaknode_project_node_at(CHandle::null(), 0) }.ctx.is_null());
+	assert!(unsafe { oaknode_project_node_at(dup(&p), -1) }
+		.ctx
+		.is_null());
+	assert!(unsafe { oaknode_project_node_at(CHandle::null(), 0) }
+		.ctx
+		.is_null());
 
 	// Factory node handle: owned, valid.
-	let mut math = unsafe { oaknode_factory_create_from_id(cs("org.olivevideoeditor.Olive.math").as_ptr()) };
+	let mut math =
+		unsafe { oaknode_factory_create_from_id(cs("org.olivevideoeditor.Olive.math").as_ptr()) };
 	assert!(!math.ctx.is_null());
 	assert_eq!(math.abi_version, 1);
 
@@ -188,8 +192,13 @@ fn two_stage_string_contract() {
 
 	// Short buffer truncates and NUL-terminates.
 	let mut buf = [0u8; 4];
-	let rc = unsafe { oaknode_project_name(dup(&p), buf.as_mut_ptr() as *mut c_char, buf.len() as i32) };
-	assert_eq!(rc, "(untitled)".len() as i32 + 1, "required size regardless of buffer");
+	let rc =
+		unsafe { oaknode_project_name(dup(&p), buf.as_mut_ptr() as *mut c_char, buf.len() as i32) };
+	assert_eq!(
+		rc,
+		"(untitled)".len() as i32 + 1,
+		"required size regardless of buffer"
+	);
 	assert_eq!(&buf[..3], b"(un");
 	assert_eq!(buf[3], 0);
 
@@ -205,33 +214,41 @@ fn two_stage_string_contract() {
 	assert_eq!(String::from_utf8(buf).unwrap(), "(untitled)");
 
 	// filename: "" initially (size 1); after set_filename -> full path.
-	let filename = two_stage(|buf, size| unsafe { oaknode_project_filename(dup(&p), buf, size) }).unwrap();
+	let filename =
+		two_stage(|buf, size| unsafe { oaknode_project_filename(dup(&p), buf, size) }).unwrap();
 	assert_eq!(filename, "");
 	unsafe { oaknode_project_set_filename(dup(&p), cs("/tmp/demo.ove").as_ptr()) };
-	let filename = two_stage(|buf, size| unsafe { oaknode_project_filename(dup(&p), buf, size) }).unwrap();
+	let filename =
+		two_stage(|buf, size| unsafe { oaknode_project_filename(dup(&p), buf, size) }).unwrap();
 	assert_eq!(filename, "/tmp/demo.ove");
 	let pretty =
-		two_stage(|buf, size| unsafe { oaknode_project_pretty_filename(dup(&p), buf, size) }).unwrap();
+		two_stage(|buf, size| unsafe { oaknode_project_pretty_filename(dup(&p), buf, size) })
+			.unwrap();
 	assert_eq!(pretty, "/tmp/demo.ove");
 
 	// uuid is the 36-char braced format.
-	let uuid = two_stage(|buf, size| unsafe { oaknode_project_get_uuid(dup(&p), buf, size) }).unwrap();
+	let uuid =
+		two_stage(|buf, size| unsafe { oaknode_project_get_uuid(dup(&p), buf, size) }).unwrap();
 	assert_eq!(uuid.len(), 38);
 	assert!(uuid.starts_with('{') && uuid.ends_with('}'));
 
 	// cache_path is a two-stage getter too.
-	let _ = two_stage(|buf, size| unsafe { oaknode_project_cache_path(dup(&p), buf, size) }).unwrap();
+	let _ =
+		two_stage(|buf, size| unsafe { oaknode_project_cache_path(dup(&p), buf, size) }).unwrap();
 
 	// Node string getters.
-	let mut math = unsafe { oaknode_factory_create_from_id(cs("org.olivevideoeditor.Olive.math").as_ptr()) };
+	let mut math =
+		unsafe { oaknode_factory_create_from_id(cs("org.olivevideoeditor.Olive.math").as_ptr()) };
 	let id = two_stage(|buf, size| unsafe { oaknode_node_get_id(dup(&math), buf, size) }).unwrap();
 	assert_eq!(id, "org.olivevideoeditor.Olive.math");
-	let name = two_stage(|buf, size| unsafe { oaknode_node_get_name(dup(&math), buf, size) }).unwrap();
+	let name =
+		two_stage(|buf, size| unsafe { oaknode_node_get_name(dup(&math), buf, size) }).unwrap();
 	assert_eq!(name, "Math");
-	let label = two_stage(|buf, size| unsafe { oaknode_node_get_label(dup(&math), buf, size) }).unwrap();
+	let label =
+		two_stage(|buf, size| unsafe { oaknode_node_get_label(dup(&math), buf, size) }).unwrap();
 	assert_eq!(label, "");
-	let iname = two_stage(|buf, size| {
-		unsafe { oaknode_node_get_input_name(dup(&math), cs("enabled_in").as_ptr(), buf, size) }
+	let iname = two_stage(|buf, size| unsafe {
+		oaknode_node_get_input_name(dup(&math), cs("enabled_in").as_ptr(), buf, size)
 	})
 	.unwrap();
 	assert_eq!(iname, "Enabled");
@@ -245,7 +262,8 @@ fn two_stage_string_contract() {
 #[test]
 fn identity_registry_roundtrip() {
 	let _g = ffi_lock();
-	let mut math = unsafe { oaknode_factory_create_from_id(cs("org.olivevideoeditor.Olive.math").as_ptr()) };
+	let mut math =
+		unsafe { oaknode_factory_create_from_id(cs("org.olivevideoeditor.Olive.math").as_ptr()) };
 	let id = unsafe { oaknode_node_identity(dup(&math)) };
 
 	// Round-trip: the looked-up node has the same type id.
@@ -258,7 +276,10 @@ fn identity_registry_roundtrip() {
 	// Move the node into a project: its identity is re-registered and
 	// still resolvable while the project lives.
 	let mut p = unsafe { oaknode_project_init() };
-	assert_eq!(unsafe { oaknode_project_add_node(dup(&p), dup(&math)) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_project_add_node(dup(&p), dup(&math)) },
+		OAKNODE_OK
+	);
 	let id2 = unsafe { oaknode_node_identity(dup(&math)) };
 	let mut back2 = unsafe { oaknode_node_from_identity(id2) };
 	assert!(!back2.ctx.is_null());
@@ -269,7 +290,10 @@ fn identity_registry_roundtrip() {
 	unsafe { oaknode_node_free(&mut math) };
 	unsafe { oaknode_project_free(&mut p) };
 	let ghost = unsafe { oaknode_node_from_identity(id) };
-	assert!(ghost.ctx.is_null(), "freed node must be rejected by from_identity");
+	assert!(
+		ghost.ctx.is_null(),
+		"freed node must be rejected by from_identity"
+	);
 	let ghost2 = unsafe { oaknode_node_from_identity(id2) };
 	assert!(ghost2.ctx.is_null());
 }
@@ -326,13 +350,21 @@ fn project_family_contract() {
 	let mut p = init_project();
 
 	// initialize: E_STATE on second call; E_INVALID on empty handle.
-	assert_eq!(unsafe { oaknode_project_initialize(dup(&p)) }, oaknode::error::OAKNODE_E_STATE);
-	assert_eq!(unsafe { oaknode_project_initialize(CHandle::null()) }, OAKNODE_E_INVALID);
+	assert_eq!(
+		unsafe { oaknode_project_initialize(dup(&p)) },
+		oaknode::error::OAKNODE_E_STATE
+	);
+	assert_eq!(
+		unsafe { oaknode_project_initialize(CHandle::null()) },
+		OAKNODE_E_INVALID
+	);
 
 	// root: valid after initialize.
 	let mut root = unsafe { oaknode_project_root(dup(&p)) };
 	assert!(!root.ctx.is_null());
-	assert!(unsafe { oaknode_project_root(CHandle::null()) }.ctx.is_null());
+	assert!(unsafe { oaknode_project_root(CHandle::null()) }
+		.ctx
+		.is_null());
 	unsafe { oaknode_node_free(&mut root) };
 
 	// name/filename/pretty/is_modified/is_new + empty-handle failures.
@@ -344,28 +376,50 @@ fn project_family_contract() {
 		unsafe { oaknode_project_filename(CHandle::null(), std::ptr::null_mut(), 0) },
 		OAKNODE_E_INVALID
 	);
-	assert_eq!(unsafe { oaknode_project_is_modified(CHandle::null()) }, OAKNODE_E_INVALID);
-	assert_eq!(unsafe { oaknode_project_is_new(CHandle::null()) }, OAKNODE_E_INVALID);
+	assert_eq!(
+		unsafe { oaknode_project_is_modified(CHandle::null()) },
+		OAKNODE_E_INVALID
+	);
+	assert_eq!(
+		unsafe { oaknode_project_is_new(CHandle::null()) },
+		OAKNODE_E_INVALID
+	);
 
 	// set_filename: success; NULL failure.
 	assert_eq!(
 		unsafe { oaknode_project_set_filename(dup(&p), cs("/tmp/x.ove").as_ptr()) },
 		OAKNODE_OK
 	);
-	assert_eq!(unsafe { oaknode_project_set_filename(dup(&p), std::ptr::null()) }, OAKNODE_E_INVALID);
+	assert_eq!(
+		unsafe { oaknode_project_set_filename(dup(&p), std::ptr::null()) },
+		OAKNODE_E_INVALID
+	);
 	assert_eq!(
 		unsafe { oaknode_project_set_filename(CHandle::null(), cs("x").as_ptr()) },
 		OAKNODE_E_INVALID
 	);
-	assert_eq!(unsafe { oaknode_project_is_new(dup(&p)) }, 0, "has a filename now");
+	assert_eq!(
+		unsafe { oaknode_project_is_new(dup(&p)) },
+		0,
+		"has a filename now"
+	);
 
 	// modified flag.
-	assert_eq!(unsafe { oaknode_project_set_modified(dup(&p), 1) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_project_set_modified(dup(&p), 1) },
+		OAKNODE_OK
+	);
 	assert_eq!(unsafe { oaknode_project_is_modified(dup(&p)) }, 1);
-	assert_eq!(unsafe { oaknode_project_set_modified(CHandle::null(), 0) }, OAKNODE_E_INVALID);
+	assert_eq!(
+		unsafe { oaknode_project_set_modified(CHandle::null(), 0) },
+		OAKNODE_E_INVALID
+	);
 
 	// cache settings.
-	assert_eq!(unsafe { oaknode_project_get_cache_location_setting(dup(&p)) }, 0);
+	assert_eq!(
+		unsafe { oaknode_project_get_cache_location_setting(dup(&p)) },
+		0
+	);
 	assert_eq!(
 		unsafe { oaknode_project_set_cache_location_setting(dup(&p), 2) },
 		OAKNODE_OK
@@ -382,19 +436,27 @@ fn project_family_contract() {
 		unsafe { oaknode_project_set_custom_cache_path(dup(&p), cs("/tmp/cache").as_ptr()) },
 		OAKNODE_OK
 	);
-	let custom = two_stage(|buf, size| unsafe { oaknode_project_get_custom_cache_path(dup(&p), buf, size) })
-		.unwrap();
+	let custom =
+		two_stage(|buf, size| unsafe { oaknode_project_get_custom_cache_path(dup(&p), buf, size) })
+			.unwrap();
 	assert_eq!(custom, "/tmp/cache");
 	unsafe { oaknode_project_set_custom_cache_path(dup(&p), std::ptr::null()) }; // NULL clears
-	let custom = two_stage(|buf, size| unsafe { oaknode_project_get_custom_cache_path(dup(&p), buf, size) })
-		.unwrap();
+	let custom =
+		two_stage(|buf, size| unsafe { oaknode_project_get_custom_cache_path(dup(&p), buf, size) })
+			.unwrap();
 	assert_eq!(custom, "");
 
 	// copy_settings: dst inherits src settings; empty handle fails.
 	let mut p2 = unsafe { oaknode_project_init() };
 	unsafe { oaknode_project_set_cache_location_setting(dup(&p2), 1) };
-	assert_eq!(unsafe { oaknode_project_copy_settings(dup(&p), dup(&p2)) }, OAKNODE_OK);
-	assert_eq!(unsafe { oaknode_project_get_cache_location_setting(dup(&p)) }, 1);
+	assert_eq!(
+		unsafe { oaknode_project_copy_settings(dup(&p), dup(&p2)) },
+		OAKNODE_OK
+	);
+	assert_eq!(
+		unsafe { oaknode_project_get_cache_location_setting(dup(&p)) },
+		1
+	);
 	assert_eq!(
 		unsafe { oaknode_project_copy_settings(CHandle::null(), dup(&p2)) },
 		OAKNODE_E_INVALID
@@ -406,28 +468,60 @@ fn project_family_contract() {
 
 	// node add/remove/count/at.
 	let base_count = unsafe { oaknode_project_node_count(dup(&p)) };
-	let mut node =
-		unsafe { oaknode_factory_create_from_id(cs("org.olivevideoeditor.Olive.solidgenerator").as_ptr()) };
-	assert_eq!(unsafe { oaknode_project_add_node(dup(&p), dup(&node)) }, OAKNODE_OK);
-	assert_eq!(unsafe { oaknode_project_node_count(dup(&p)) }, base_count + 1);
-	assert_eq!(unsafe { oaknode_project_add_node(CHandle::null(), dup(&node)) }, OAKNODE_E_INVALID);
-	assert_eq!(unsafe { oaknode_project_add_node(dup(&p), CHandle::null()) }, OAKNODE_E_INVALID);
-	assert_eq!(unsafe { oaknode_project_remove_node(dup(&p), dup(&node)) }, OAKNODE_OK);
+	let mut node = unsafe {
+		oaknode_factory_create_from_id(cs("org.olivevideoeditor.Olive.solidgenerator").as_ptr())
+	};
+	assert_eq!(
+		unsafe { oaknode_project_add_node(dup(&p), dup(&node)) },
+		OAKNODE_OK
+	);
+	assert_eq!(
+		unsafe { oaknode_project_node_count(dup(&p)) },
+		base_count + 1
+	);
+	assert_eq!(
+		unsafe { oaknode_project_add_node(CHandle::null(), dup(&node)) },
+		OAKNODE_E_INVALID
+	);
+	assert_eq!(
+		unsafe { oaknode_project_add_node(dup(&p), CHandle::null()) },
+		OAKNODE_E_INVALID
+	);
+	assert_eq!(
+		unsafe { oaknode_project_remove_node(dup(&p), dup(&node)) },
+		OAKNODE_OK
+	);
 	assert_eq!(unsafe { oaknode_project_node_count(dup(&p)) }, base_count);
 	assert_eq!(
 		unsafe { oaknode_project_remove_node(dup(&p), dup(&node)) },
 		OAKNODE_E_NOT_FOUND,
 		"double remove fails"
 	);
-	assert_eq!(unsafe { oaknode_project_remove_node(CHandle::null(), dup(&node)) }, OAKNODE_E_INVALID);
-	assert_eq!(unsafe { oaknode_project_node_count(CHandle::null()) }, OAKNODE_E_INVALID);
+	assert_eq!(
+		unsafe { oaknode_project_remove_node(CHandle::null(), dup(&node)) },
+		OAKNODE_E_INVALID
+	);
+	assert_eq!(
+		unsafe { oaknode_project_node_count(CHandle::null()) },
+		OAKNODE_E_INVALID
+	);
 	unsafe { oaknode_node_free(&mut node) };
 
 	// clear: resets; empty handle fails.
-	assert_eq!(unsafe { oaknode_project_clear(CHandle::null()) }, OAKNODE_E_INVALID);
+	assert_eq!(
+		unsafe { oaknode_project_clear(CHandle::null()) },
+		OAKNODE_E_INVALID
+	);
 	assert_eq!(unsafe { oaknode_project_clear(dup(&p)) }, OAKNODE_OK);
-	assert!(unsafe { oaknode_project_root(dup(&p)) }.ctx.is_null(), "root gone after clear");
-	assert_eq!(unsafe { oaknode_project_initialize(dup(&p)) }, OAKNODE_OK, "re-initializable");
+	assert!(
+		unsafe { oaknode_project_root(dup(&p)) }.ctx.is_null(),
+		"root gone after clear"
+	);
+	assert_eq!(
+		unsafe { oaknode_project_initialize(dup(&p)) },
+		OAKNODE_OK,
+		"re-initializable"
+	);
 
 	unsafe { oaknode_project_free(&mut p) };
 	unsafe { oaknode_project_free(&mut p2) };
@@ -449,26 +543,54 @@ fn node_family_contract() {
 	unsafe { oaknode_project_add_node(dup(&p), dup(&b)) };
 
 	// Metadata.
-	assert_eq!(unsafe { oaknode_node_get_id(CHandle::null(), std::ptr::null_mut(), 0) }, OAKNODE_E_INVALID);
-	assert_eq!(unsafe { oaknode_node_get_name(CHandle::null(), std::ptr::null_mut(), 0) }, OAKNODE_E_INVALID);
+	assert_eq!(
+		unsafe { oaknode_node_get_id(CHandle::null(), std::ptr::null_mut(), 0) },
+		OAKNODE_E_INVALID
+	);
+	assert_eq!(
+		unsafe { oaknode_node_get_name(CHandle::null(), std::ptr::null_mut(), 0) },
+		OAKNODE_E_INVALID
+	);
 	let id = two_stage(|buf, size| unsafe { oaknode_node_get_id(dup(&a), buf, size) }).unwrap();
 	assert_eq!(id, "org.olivevideoeditor.Olive.math");
 
 	// Label.
-	assert_eq!(unsafe { oaknode_node_set_label(dup(&a), cs("my node").as_ptr()) }, OAKNODE_OK);
-	let label = two_stage(|buf, size| unsafe { oaknode_node_get_label(dup(&a), buf, size) }).unwrap();
+	assert_eq!(
+		unsafe { oaknode_node_set_label(dup(&a), cs("my node").as_ptr()) },
+		OAKNODE_OK
+	);
+	let label =
+		two_stage(|buf, size| unsafe { oaknode_node_get_label(dup(&a), buf, size) }).unwrap();
 	assert_eq!(label, "my node");
-	assert_eq!(unsafe { oaknode_node_set_label(CHandle::null(), cs("x").as_ptr()) }, OAKNODE_E_INVALID);
-	assert_eq!(unsafe { oaknode_node_set_label(dup(&a), std::ptr::null()) }, OAKNODE_E_INVALID);
+	assert_eq!(
+		unsafe { oaknode_node_set_label(CHandle::null(), cs("x").as_ptr()) },
+		OAKNODE_E_INVALID
+	);
+	assert_eq!(
+		unsafe { oaknode_node_set_label(dup(&a), std::ptr::null()) },
+		OAKNODE_E_INVALID
+	);
 
 	// Override color.
 	let mut oc = 0;
-	assert_eq!(unsafe { oaknode_node_get_override_color(dup(&a), &mut oc) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_node_get_override_color(dup(&a), &mut oc) },
+		OAKNODE_OK
+	);
 	assert_eq!(oc, -1);
-	assert_eq!(unsafe { oaknode_node_set_override_color(dup(&a), 3) }, OAKNODE_OK);
-	assert_eq!(unsafe { oaknode_node_get_override_color(dup(&a), &mut oc) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_node_set_override_color(dup(&a), 3) },
+		OAKNODE_OK
+	);
+	assert_eq!(
+		unsafe { oaknode_node_get_override_color(dup(&a), &mut oc) },
+		OAKNODE_OK
+	);
 	assert_eq!(oc, 3);
-	assert_eq!(unsafe { oaknode_node_get_override_color(CHandle::null(), &mut oc) }, OAKNODE_E_INVALID);
+	assert_eq!(
+		unsafe { oaknode_node_get_override_color(CHandle::null(), &mut oc) },
+		OAKNODE_E_INVALID
+	);
 	assert_eq!(
 		unsafe { oaknode_node_get_override_color(dup(&a), std::ptr::null_mut()) },
 		OAKNODE_E_INVALID
@@ -476,18 +598,31 @@ fn node_family_contract() {
 
 	// Enabled.
 	let mut en = 0;
-	assert_eq!(unsafe { oaknode_node_is_enabled(dup(&a), &mut en) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_node_is_enabled(dup(&a), &mut en) },
+		OAKNODE_OK
+	);
 	assert_eq!(en, 1);
 	assert_eq!(unsafe { oaknode_node_set_enabled(dup(&a), 0) }, OAKNODE_OK);
-	assert_eq!(unsafe { oaknode_node_is_enabled(dup(&a), &mut en) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_node_is_enabled(dup(&a), &mut en) },
+		OAKNODE_OK
+	);
 	assert_eq!(en, 0);
-	assert_eq!(unsafe { oaknode_node_is_enabled(CHandle::null(), &mut en) }, OAKNODE_E_INVALID);
+	assert_eq!(
+		unsafe { oaknode_node_is_enabled(CHandle::null(), &mut en) },
+		OAKNODE_E_INVALID
+	);
 
 	// Input introspection.
 	let mut count = 0;
-	assert_eq!(unsafe { oaknode_node_input_count(dup(&a), &mut count) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_node_input_count(dup(&a), &mut count) },
+		OAKNODE_OK
+	);
 	assert_eq!(count, 4, "enabled_in + method_in + param_a_in + param_b_in");
-	let first = two_stage(|buf, size| unsafe { oaknode_node_input_id(dup(&a), 0, buf, size) }).unwrap();
+	let first =
+		two_stage(|buf, size| unsafe { oaknode_node_input_id(dup(&a), 0, buf, size) }).unwrap();
 	assert_eq!(first, "enabled_in");
 	assert_eq!(
 		unsafe { oaknode_node_input_id(dup(&a), 99, std::ptr::null_mut(), 0) },
@@ -509,7 +644,9 @@ fn node_family_contract() {
 		OAKNODE_E_NOT_FOUND
 	);
 	assert_eq!(
-		unsafe { oaknode_node_input_get_type(dup(&a), cs("enabled_in").as_ptr(), std::ptr::null_mut()) },
+		unsafe {
+			oaknode_node_input_get_type(dup(&a), cs("enabled_in").as_ptr(), std::ptr::null_mut())
+		},
 		OAKNODE_E_INVALID
 	);
 
@@ -526,27 +663,35 @@ fn node_family_contract() {
 
 	let mut connectable = 0;
 	assert_eq!(
-		unsafe { oaknode_node_input_is_connectable(dup(&a), cs("param_a_in").as_ptr(), &mut connectable) },
+		unsafe {
+			oaknode_node_input_is_connectable(dup(&a), cs("param_a_in").as_ptr(), &mut connectable)
+		},
 		OAKNODE_OK
 	);
 	assert_eq!(connectable, 1);
 	assert_eq!(
-		unsafe { oaknode_node_input_is_connectable(dup(&a), cs("method_in").as_ptr(), &mut connectable) },
+		unsafe {
+			oaknode_node_input_is_connectable(dup(&a), cs("method_in").as_ptr(), &mut connectable)
+		},
 		OAKNODE_OK
 	);
 	assert_eq!(connectable, 0, "method_in is not connectable");
 	assert_eq!(
-		unsafe { oaknode_node_input_is_connectable(dup(&a), cs("nope").as_ptr(), &mut connectable) },
+		unsafe {
+			oaknode_node_input_is_connectable(dup(&a), cs("nope").as_ptr(), &mut connectable)
+		},
 		OAKNODE_E_NOT_FOUND
 	);
 
-	let iname = two_stage(|buf, size| {
-		unsafe { oaknode_node_get_input_name(dup(&a), cs("enabled_in").as_ptr(), buf, size) }
+	let iname = two_stage(|buf, size| unsafe {
+		oaknode_node_get_input_name(dup(&a), cs("enabled_in").as_ptr(), buf, size)
 	})
 	.unwrap();
 	assert_eq!(iname, "Enabled");
 	assert_eq!(
-		unsafe { oaknode_node_get_input_name(dup(&a), cs("nope").as_ptr(), std::ptr::null_mut(), 0) },
+		unsafe {
+			oaknode_node_get_input_name(dup(&a), cs("nope").as_ptr(), std::ptr::null_mut(), 0)
+		},
 		OAKNODE_E_NOT_FOUND
 	);
 
@@ -594,7 +739,9 @@ fn node_family_contract() {
 	);
 
 	// String input: the timeformat node's format_in.
-	let mut tf = unsafe { oaknode_factory_create_from_id(cs("org.olivevideoeditor.Olive.timeformat").as_ptr()) };
+	let mut tf = unsafe {
+		oaknode_factory_create_from_id(cs("org.olivevideoeditor.Olive.timeformat").as_ptr())
+	};
 	unsafe { oaknode_project_add_node(dup(&p), dup(&tf)) };
 	let s = two_stage(|buf, size| unsafe {
 		oaknode_node_get_input_string(dup(&tf), cs("format_in").as_ptr(), buf, size)
@@ -602,7 +749,9 @@ fn node_family_contract() {
 	.unwrap();
 	assert_eq!(s, "hh:mm:ss");
 	assert_eq!(
-		unsafe { oaknode_node_set_input_string(dup(&tf), cs("format_in").as_ptr(), cs("yyyy").as_ptr()) },
+		unsafe {
+			oaknode_node_set_input_string(dup(&tf), cs("format_in").as_ptr(), cs("yyyy").as_ptr())
+		},
 		OAKNODE_OK
 	);
 	let s = two_stage(|buf, size| unsafe {
@@ -612,15 +761,21 @@ fn node_family_contract() {
 	assert_eq!(s, "yyyy");
 	// Non-string input -> E_INVALID; unknown -> E_NOT_FOUND.
 	assert_eq!(
-		unsafe { oaknode_node_get_input_string(dup(&tf), cs("time_in").as_ptr(), std::ptr::null_mut(), 0) },
+		unsafe {
+			oaknode_node_get_input_string(dup(&tf), cs("time_in").as_ptr(), std::ptr::null_mut(), 0)
+		},
 		OAKNODE_E_INVALID
 	);
 	assert_eq!(
-		unsafe { oaknode_node_set_input_string(dup(&tf), cs("time_in").as_ptr(), cs("x").as_ptr()) },
+		unsafe {
+			oaknode_node_set_input_string(dup(&tf), cs("time_in").as_ptr(), cs("x").as_ptr())
+		},
 		OAKNODE_E_INVALID
 	);
 	assert_eq!(
-		unsafe { oaknode_node_get_input_string(dup(&tf), cs("nope").as_ptr(), std::ptr::null_mut(), 0) },
+		unsafe {
+			oaknode_node_get_input_string(dup(&tf), cs("nope").as_ptr(), std::ptr::null_mut(), 0)
+		},
 		OAKNODE_E_NOT_FOUND
 	);
 
@@ -663,7 +818,8 @@ fn node_family_contract() {
 		OAKNODE_OK
 	);
 	assert!(!src.ctx.is_null());
-	let src_id = two_stage(|buf, size| unsafe { oaknode_node_get_id(dup(&src), buf, size) }).unwrap();
+	let src_id =
+		two_stage(|buf, size| unsafe { oaknode_node_get_id(dup(&src), buf, size) }).unwrap();
 	assert_eq!(src_id, "org.olivevideoeditor.Olive.math");
 	assert_eq!(
 		unsafe { oaknode_node_input_get_connected_node(dup(&b), cs("nope").as_ptr(), &mut src) },
@@ -672,7 +828,10 @@ fn node_family_contract() {
 
 	// Output connections.
 	let mut count = 0;
-	assert_eq!(unsafe { oaknode_node_output_connection_count(dup(&a), &mut count) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_node_output_connection_count(dup(&a), &mut count) },
+		OAKNODE_OK
+	);
 	assert_eq!(count, 1);
 	let mut node_out = CHandle::null();
 	assert_eq!(
@@ -684,9 +843,10 @@ fn node_family_contract() {
 		unsafe { oaknode_node_output_connection_node_at(dup(&a), 1, &mut node_out) },
 		OAKNODE_E_NOT_FOUND
 	);
-	let input_id =
-		two_stage(|buf, size| unsafe { oaknode_node_output_connection_input_id_at(dup(&a), 0, buf, size) })
-			.unwrap();
+	let input_id = two_stage(|buf, size| unsafe {
+		oaknode_node_output_connection_input_id_at(dup(&a), 0, buf, size)
+	})
+	.unwrap();
 	assert_eq!(input_id, "rot_in");
 	let mut element = 0;
 	assert_eq!(
@@ -712,22 +872,46 @@ fn node_family_contract() {
 
 	// Links.
 	let mut linked = 0;
-	assert_eq!(unsafe { oaknode_node_link(dup(&a), dup(&b), &mut linked) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_node_link(dup(&a), dup(&b), &mut linked) },
+		OAKNODE_OK
+	);
 	assert_eq!(linked, 1);
-	assert_eq!(unsafe { oaknode_node_link(dup(&a), dup(&b), &mut linked) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_node_link(dup(&a), dup(&b), &mut linked) },
+		OAKNODE_OK
+	);
 	assert_eq!(linked, 0, "already linked");
 	let mut linked_ok = 0;
-	assert_eq!(unsafe { oaknode_node_are_linked(dup(&a), dup(&b), &mut linked_ok) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_node_are_linked(dup(&a), dup(&b), &mut linked_ok) },
+		OAKNODE_OK
+	);
 	assert_eq!(linked_ok, 1);
-	assert_eq!(unsafe { oaknode_node_link_count(dup(&a), &mut count) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_node_link_count(dup(&a), &mut count) },
+		OAKNODE_OK
+	);
 	assert_eq!(count, 1);
 	let mut link_node = CHandle::null();
-	assert_eq!(unsafe { oaknode_node_link_at(dup(&a), 0, &mut link_node) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_node_link_at(dup(&a), 0, &mut link_node) },
+		OAKNODE_OK
+	);
 	assert!(!link_node.ctx.is_null());
-	assert_eq!(unsafe { oaknode_node_link_at(dup(&a), 1, &mut link_node) }, OAKNODE_E_NOT_FOUND);
-	assert_eq!(unsafe { oaknode_node_unlink(dup(&a), dup(&b), &mut linked) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_node_link_at(dup(&a), 1, &mut link_node) },
+		OAKNODE_E_NOT_FOUND
+	);
+	assert_eq!(
+		unsafe { oaknode_node_unlink(dup(&a), dup(&b), &mut linked) },
+		OAKNODE_OK
+	);
 	assert_eq!(linked, 1);
-	assert_eq!(unsafe { oaknode_node_unlink(dup(&a), dup(&b), &mut linked) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_node_unlink(dup(&a), dup(&b), &mut linked) },
+		OAKNODE_OK
+	);
 	assert_eq!(linked, 0, "already unlinked");
 
 	// Context positions.
@@ -735,24 +919,37 @@ fn node_family_contract() {
 		unsafe { oaknode_node_set_context_position(dup(&a), dup(&b), 10.0, 20.0, 1) },
 		OAKNODE_OK
 	);
-	assert_eq!(unsafe { oaknode_node_context_count(dup(&a), &mut count) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_node_context_count(dup(&a), &mut count) },
+		OAKNODE_OK
+	);
 	assert_eq!(count, 1);
 	let mut x = 0.0;
 	let mut y = 0.0;
 	let mut expanded = 0;
 	assert_eq!(
-		unsafe { oaknode_node_get_context_position(dup(&a), dup(&b), &mut x, &mut y, &mut expanded) },
+		unsafe {
+			oaknode_node_get_context_position(dup(&a), dup(&b), &mut x, &mut y, &mut expanded)
+		},
 		OAKNODE_OK
 	);
 	assert_eq!((x, y, expanded), (10.0, 20.0, 1));
 	assert_eq!(
-		unsafe { oaknode_node_get_context_position(dup(&a), dup(&a), &mut x, &mut y, &mut expanded) },
+		unsafe {
+			oaknode_node_get_context_position(dup(&a), dup(&a), &mut x, &mut y, &mut expanded)
+		},
 		OAKNODE_E_NOT_FOUND
 	);
 	let mut ctx_node = CHandle::null();
-	assert_eq!(unsafe { oaknode_node_context_node_at(dup(&a), 0, &mut ctx_node) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_node_context_node_at(dup(&a), 0, &mut ctx_node) },
+		OAKNODE_OK
+	);
 	assert!(!ctx_node.ctx.is_null());
-	assert_eq!(unsafe { oaknode_node_remove_from_context(dup(&a), dup(&b)) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_node_remove_from_context(dup(&a), dup(&b)) },
+		OAKNODE_OK
+	);
 	assert_eq!(
 		unsafe { oaknode_node_remove_from_context(dup(&a), dup(&b)) },
 		OAKNODE_E_NOT_FOUND
@@ -760,9 +957,15 @@ fn node_family_contract() {
 
 	// get_project.
 	let mut proj = CHandle::null();
-	assert_eq!(unsafe { oaknode_node_get_project(dup(&a), &mut proj) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_node_get_project(dup(&a), &mut proj) },
+		OAKNODE_OK
+	);
 	assert!(!proj.ctx.is_null());
-	assert_eq!(unsafe { oaknode_node_get_project(CHandle::null(), &mut proj) }, OAKNODE_E_INVALID);
+	assert_eq!(
+		unsafe { oaknode_node_get_project(CHandle::null(), &mut proj) },
+		OAKNODE_E_INVALID
+	);
 
 	// Array input insert/remove on a non-array input fails E_INVALID;
 	// on an unknown input E_NOT_FOUND.
@@ -777,8 +980,14 @@ fn node_family_contract() {
 
 	// copy_inputs: dst (matrix) takes src (math)'s values where the ids
 	// match (enabled_in only) and preserves its own otherwise.
-	assert_eq!(unsafe { oaknode_node_copy_inputs(dup(&b), dup(&a), 0) }, OAKNODE_OK);
-	assert_eq!(unsafe { oaknode_node_copy_inputs(CHandle::null(), dup(&a), 0) }, OAKNODE_E_INVALID);
+	assert_eq!(
+		unsafe { oaknode_node_copy_inputs(dup(&b), dup(&a), 0) },
+		OAKNODE_OK
+	);
+	assert_eq!(
+		unsafe { oaknode_node_copy_inputs(CHandle::null(), dup(&a), 0) },
+		OAKNODE_E_INVALID
+	);
 
 	// set_value_hint_track.
 	assert_eq!(
@@ -793,7 +1002,9 @@ fn node_family_contract() {
 	// get_input_at_time: no keyframes -> standard value.
 	let mut at = OakNodeValue::none();
 	assert_eq!(
-		unsafe { oaknode_node_get_input_at_time(dup(&a), cs("param_a_in").as_ptr(), 5, 1, &mut at) },
+		unsafe {
+			oaknode_node_get_input_at_time(dup(&a), cs("param_a_in").as_ptr(), 5, 1, &mut at)
+		},
 		OAKNODE_OK
 	);
 	assert_eq!(at.kind, oak::FLOAT);
@@ -804,7 +1015,13 @@ fn node_family_contract() {
 	);
 	assert_eq!(
 		unsafe {
-			oaknode_node_get_input_at_time(dup(&a), cs("param_a_in").as_ptr(), 5, 1, std::ptr::null_mut())
+			oaknode_node_get_input_at_time(
+				dup(&a),
+				cs("param_a_in").as_ptr(),
+				5,
+				1,
+				std::ptr::null_mut(),
+			)
 		},
 		OAKNODE_E_INVALID
 	);
@@ -812,7 +1029,8 @@ fn node_family_contract() {
 	// create_copy of a graph-owned node.
 	let mut copy = unsafe { oaknode_node_create_copy(dup(&a)) };
 	assert!(!copy.ctx.is_null());
-	let copy_id = two_stage(|buf, size| unsafe { oaknode_node_get_id(dup(&copy), buf, size) }).unwrap();
+	let copy_id =
+		two_stage(|buf, size| unsafe { oaknode_node_get_id(dup(&copy), buf, size) }).unwrap();
 	assert_eq!(copy_id, "org.olivevideoeditor.Olive.math");
 
 	// Cleanup (free every borrowed view and the owned nodes).
@@ -833,7 +1051,11 @@ fn node_family_contract() {
 fn factory_and_keyframe_helpers() {
 	let _g = ffi_lock();
 	assert_eq!(unsafe { oaknode_factory_initialize() }, OAKNODE_OK);
-	assert_eq!(unsafe { oaknode_factory_initialize() }, OAKNODE_OK, "idempotent");
+	assert_eq!(
+		unsafe { oaknode_factory_initialize() },
+		OAKNODE_OK,
+		"idempotent"
+	);
 
 	let mut count = 0;
 	assert_eq!(unsafe { oaknode_factory_id_count(&mut count) }, OAKNODE_OK);
@@ -850,35 +1072,44 @@ fn factory_and_keyframe_helpers() {
 		OAKNODE_E_NOT_FOUND
 	);
 
-	let name = two_stage(|buf, size| {
-		unsafe { oaknode_factory_name_from_id(cs("org.olivevideoeditor.Olive.pan").as_ptr(), buf, size) }
+	let name = two_stage(|buf, size| unsafe {
+		oaknode_factory_name_from_id(cs("org.olivevideoeditor.Olive.pan").as_ptr(), buf, size)
 	})
 	.unwrap();
 	assert_eq!(name, "Pan");
-	let missing = two_stage(|buf, size| {
-		unsafe { oaknode_factory_name_from_id(cs("org.example.missing").as_ptr(), buf, size) }
+	let missing = two_stage(|buf, size| unsafe {
+		oaknode_factory_name_from_id(cs("org.example.missing").as_ptr(), buf, size)
 	})
 	.unwrap();
 	assert_eq!(missing, "", "unknown id -> empty string");
 
 	// create_from_id: known -> valid, unknown -> empty.
-	let mut node =
-		unsafe { oaknode_factory_create_from_id(cs("org.olivevideoeditor.Olive.solidgenerator").as_ptr()) };
+	let mut node = unsafe {
+		oaknode_factory_create_from_id(cs("org.olivevideoeditor.Olive.solidgenerator").as_ptr())
+	};
 	assert!(!node.ctx.is_null());
 	assert!(
 		unsafe { oaknode_factory_create_from_id(cs("org.example.missing").as_ptr()) }
 			.ctx
 			.is_null()
 	);
-	assert!(unsafe { oaknode_factory_create_from_id(std::ptr::null()) }.ctx.is_null());
+	assert!(unsafe { oaknode_factory_create_from_id(std::ptr::null()) }
+		.ctx
+		.is_null());
 
 	// node_at: borrowed prototype (index 5 = math, whose constructor is
 	// implemented; prototypes at todo!()-constructor indices are only
 	// reachable once Phase 3 lands); out-of-range -> E_NOT_FOUND.
 	let mut proto = CHandle::null();
-	assert_eq!(unsafe { oaknode_factory_node_at(5, &mut proto) }, OAKNODE_OK);
+	assert_eq!(
+		unsafe { oaknode_factory_node_at(5, &mut proto) },
+		OAKNODE_OK
+	);
 	assert!(!proto.ctx.is_null());
-	assert_eq!(unsafe { oaknode_factory_node_at(count, &mut proto) }, OAKNODE_E_NOT_FOUND);
+	assert_eq!(
+		unsafe { oaknode_factory_node_at(count, &mut proto) },
+		OAKNODE_E_NOT_FOUND
+	);
 
 	// Pure keyframe helper: IN(0) <-> OUT(1), invalid -> E_INVALID.
 	assert_eq!(unsafe { oaknode_keyframe_opposing_bezier_type(0) }, 1);

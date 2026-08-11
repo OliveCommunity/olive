@@ -134,7 +134,9 @@ impl NodeBehavior for VolumeNode {
 		};
 		let volume = match inputs.get(VOLUME_INPUT) {
 			Some(v) => v.to_double(),
-			None => core.value_at_time(VOLUME_INPUT, -1, range.in_()).to_double(),
+			None => core
+				.value_at_time(VOLUME_INPUT, -1, range.in_())
+				.to_double(),
 		};
 		for c in 0..output.channels {
 			for i in 0..output.sample_count {
@@ -157,19 +159,12 @@ impl NodeBehavior for VolumeNode {
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	let mut core = NodeCore::new();
 
-	let mut samples = crate::input::Input::new(
-		SAMPLES_INPUT,
-		ValueType::Samples,
-		NodeValue::None,
-	);
+	let mut samples = crate::input::Input::new(SAMPLES_INPUT, ValueType::Samples, NodeValue::None);
 	samples.flags |= crate::input::flags::NOT_KEYFRAMABLE;
 	core.add_input(samples);
 
-	let mut volume = crate::input::Input::new(
-		VOLUME_INPUT,
-		ValueType::Float,
-		NodeValue::Float(1.0),
-	);
+	let mut volume =
+		crate::input::Input::new(VOLUME_INPUT, ValueType::Float, NodeValue::Float(1.0));
 	volume.properties = vec![
 		("min".to_string(), NodeValue::Float(0.0)),
 		("view".to_string(), NodeValue::Text("decibel".into())),
@@ -221,7 +216,10 @@ mod tests {
 			core.get_input(SAMPLES_INPUT).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE,
 			crate::input::flags::NOT_KEYFRAMABLE
 		);
-		assert_eq!(core.get_input(VOLUME_INPUT).unwrap().default, NodeValue::Float(1.0));
+		assert_eq!(
+			core.get_input(VOLUME_INPUT).unwrap().default,
+			NodeValue::Float(1.0)
+		);
 		assert_eq!(core.effect_input, SAMPLES_INPUT);
 		assert_ne!(core.flags & crate::node::flags::AUDIO_EFFECT, 0);
 	}
@@ -279,13 +277,14 @@ mod tests {
 	fn value_dynamic_volume_pushes_through() {
 		let (mut core, behavior) = create();
 		// Keyframing the volume input makes it non-static.
-		core.keyframe_track_mut(VOLUME_INPUT, -1).set_key(crate::keyframe::Keyframe {
-			time: Rational::new(0, 1),
-			value: NodeValue::Float(0.5),
-			interpolation: crate::keyframe::Interpolation::Linear,
-			bezier_in: (0.0, 0.0),
-			bezier_out: (0.0, 0.0),
-		});
+		core.keyframe_track_mut(VOLUME_INPUT, -1)
+			.set_key(crate::keyframe::Keyframe {
+				time: Rational::new(0, 1),
+				value: NodeValue::Float(0.5),
+				interpolation: crate::keyframe::Interpolation::Linear,
+				bezier_in: (0.0, 0.0),
+				bezier_out: (0.0, 0.0),
+			});
 		let buf = planar(1, 2, &[1.0, 2.0]);
 		let inputs = std::collections::BTreeMap::from([(
 			SAMPLES_INPUT.to_string(),

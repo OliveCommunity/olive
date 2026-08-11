@@ -54,8 +54,9 @@
 //!   and edits go through the facade's undoable effect commands. Node
 //!   graph and audio meter still feed empty/silent data (their facade
 //!   surfaces are not bound in this increment).
-//! * `oakengine_sequence_move_clip` is a documented facade stub (module gap),
-//!   so clip moves report the facade error instead of applying.
+//! * Clip moves go through `oakengine_sequence_move_clip` (same-track only;
+//!   the facade's capi signature has no target-track parameter, so a
+//!   cross-track drag reports "not supported" instead of applying).
 //!
 //! # Threading note
 //!
@@ -76,23 +77,25 @@ use gpui::effect_stack::{
 	EffectCardKind, EffectData, EffectId, EffectStackDataSource, EffectStackEvent,
 };
 use gpui::node_graph::{
-	EdgeData, EdgeId, NodeData, NodeGraphDataSource, NodeGraphEvent, NodeId, PortData, PortId,
-	PortDataType, PortKind,
+	EdgeData, EdgeId, NodeData, NodeGraphDataSource, NodeGraphEvent, NodeId, PortData,
+	PortDataType, PortId, PortKind,
 };
 use gpui::timeline::{
 	ClipData, ClipId, Frame, FrameRange, FrameRate, TimelineDataSource, TimelineEvent, TrackData,
 	TrackKind, TrimEdge,
 };
-use gpui::{hsla, point, prelude::*, px, App, Context, Entity, Hsla, Pixels, RenderImage, SharedString};
+use gpui::{
+	hsla, point, prelude::*, px, App, Context, Entity, Hsla, Pixels, RenderImage, SharedString,
+};
 use gpui_widgets::audio_meter::AudioMeterDataSource;
 use gpui_widgets::project_explorer::{ProjectDataSource, ProjectEntry};
 use gpui_widgets::viewer::PlaybackClock;
 
-use super::ffi::*;
 use super::engine::{
 	AppEngine, EngineGateway, ExportEvent, ExportSession, Monitor, Project, ScopeData, Sequence,
 	VideoFormat,
 };
+use super::ffi::*;
 use super::frames::{f32_rgba_to_bgra_image, synthetic_frame_samples};
 use super::scopes::analyze_f32_rgba;
 use super::transport::TransportState;
@@ -283,9 +286,10 @@ fn read_string(f: impl Fn(*mut c_char, c_int) -> c_int) -> String {
 /// Reads the error buffer the OVE load/save serializer fills.
 fn load_error(err: &mut [c_char]) -> String {
 	let len = err.iter().position(|&c| c == 0).unwrap_or(err.len());
-	let text =
-		String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(err.as_ptr() as *const u8, len) })
-			.into_owned();
+	let text = String::from_utf8_lossy(unsafe {
+		std::slice::from_raw_parts(err.as_ptr() as *const u8, len)
+	})
+	.into_owned();
 	if text.is_empty() {
 		"the operation failed".to_string()
 	} else {
@@ -340,7 +344,8 @@ impl RealClock {
 		let elapsed = started.elapsed();
 		let mut frame = anchored
 			+ Frame(
-				(elapsed.as_secs_f64() * self.rate.num as f64 / self.rate.den as f64).round() as i64,
+				(elapsed.as_secs_f64() * self.rate.num as f64 / self.rate.den as f64).round()
+					as i64,
 			);
 		if length.0 > 0 && frame.0 >= length.0 {
 			frame = Frame(frame.0 % length.0);
@@ -711,7 +716,10 @@ impl RealEngine {
 
 	/// Current sequence length (0 without a sequence).
 	fn sequence_length(&self) -> Frame {
-		self.sequence_info.as_ref().map(|s| s.length).unwrap_or(Frame(0))
+		self.sequence_info
+			.as_ref()
+			.map(|s| s.length)
+			.unwrap_or(Frame(0))
 	}
 
 	/// Mirrors the program playhead into the facade sequence (best effort).
@@ -817,7 +825,10 @@ impl RealEngine {
 			}
 			// The scopes read the same F32 samples the viewer displays.
 			let scope = analyze_f32_rgba(width as u32, height as u32, &samples);
-			image = Some((f32_rgba_to_bgra_image(width as u32, height as u32, &samples), scope));
+			image = Some((
+				f32_rgba_to_bgra_image(width as u32, height as u32, &samples),
+				scope,
+			));
 		}
 		unsafe {
 			oakengine_frame_free(frame_ptr);
@@ -860,9 +871,15 @@ impl RealEngine {
 
 		// Cached display info.
 		let name = read_string(|buf, size| unsafe { oakengine_project_name(project, buf, size) });
-		let path = PathBuf::from(read_string(|buf, size| unsafe { oakengine_project_filename(project, buf, size) }));
+		let path = PathBuf::from(read_string(|buf, size| unsafe {
+			oakengine_project_filename(project, buf, size)
+		}));
 		self.project_info = Project {
-			name: if name.is_empty() { UNTITLED.into() } else { name },
+			name: if name.is_empty() {
+				UNTITLED.into()
+			} else {
+				name
+			},
 			path,
 		};
 		self.modified = unsafe { oakengine_project_is_modified(project) != 0 };
@@ -919,7 +936,13 @@ impl RealEngine {
 		let mut seconds: f64 = 0.0;
 		unsafe {
 			oakengine_sequence_get_frame_rate(seq, &mut num, &mut den);
-			oakengine_sequence_get_video_params(seq, &mut width, &mut height, std::ptr::null_mut(), std::ptr::null_mut());
+			oakengine_sequence_get_video_params(
+				seq,
+				&mut width,
+				&mut height,
+				std::ptr::null_mut(),
+				std::ptr::null_mut(),
+			);
 			oakengine_sequence_get_length(seq, &mut seconds);
 		}
 		let rate = if num > 0 && den > 0 {
@@ -929,7 +952,11 @@ impl RealEngine {
 		};
 		let length = Frame((seconds * rate.num as f64 / rate.den as f64).round() as i64);
 		self.sequence_info = Some(Sequence {
-			name: if name.is_empty() { "Sequence 1".into() } else { name },
+			name: if name.is_empty() {
+				"Sequence 1".into()
+			} else {
+				name
+			},
 			format: VideoFormat {
 				width: width.max(1) as u32,
 				height: height.max(1) as u32,
@@ -989,17 +1016,21 @@ impl RealEngine {
 		// Height in internal units → pixels.
 		let mut internal: f64 = 0.0;
 		let height = unsafe {
-			if oakengine_track_get_height(seq, track_type, track_index as c_int, &mut internal) == 0 {
+			if oakengine_track_get_height(seq, track_type, track_index as c_int, &mut internal) == 0
+			{
 				px(oakengine_track_height_internal_to_pixels(internal).max(24) as f32)
 			} else {
 				px(64.0)
 			}
 		};
 
-		let clip_count = unsafe { oakengine_sequence_clip_count(seq, track_type, track_index as c_int) };
+		let clip_count =
+			unsafe { oakengine_sequence_clip_count(seq, track_type, track_index as c_int) };
 		let mut clips = Vec::with_capacity(clip_count.max(0) as usize);
 		for clip_index in 0..clip_count.max(0) {
-			let clip = unsafe { oakengine_sequence_clip_at(seq, track_type, track_index as c_int, clip_index) };
+			let clip = unsafe {
+				oakengine_sequence_clip_at(seq, track_type, track_index as c_int, clip_index)
+			};
 			if clip.is_null() {
 				continue;
 			}
@@ -1011,7 +1042,11 @@ impl RealEngine {
 				free_box(clip);
 			}
 			clips.push(RealClip {
-				id: ClipId((track_type as u64) * 1_000_000 + (track_index as u64 + 1) * 1000 + clip_index as u64),
+				id: ClipId(
+					(track_type as u64) * 1_000_000
+						+ (track_index as u64 + 1) * 1000
+						+ clip_index as u64,
+				),
 				range: FrameRange::new(Frame(in_ts), Frame(out_ts)),
 				media_in: Frame(media_in),
 				label: format!("Clip {}", clip_index + 1).into(),
@@ -1050,8 +1085,9 @@ impl RealEngine {
 		let count = unsafe { oakengine_project_footage_count(project) };
 		let mut children = Vec::new();
 		for i in 0..count.max(0) {
-			let filename =
-				read_string(|buf, size| unsafe { oakengine_project_footage_filename(project, i, buf, size) });
+			let filename = read_string(|buf, size| unsafe {
+				oakengine_project_footage_filename(project, i, buf, size)
+			});
 			let label = Path::new(&filename)
 				.file_name()
 				.map(|f| f.to_string_lossy().into_owned())
@@ -1110,8 +1146,12 @@ impl RealEngine {
 		let mut buf = [0 as c_char; 64];
 		let mut element: c_int = 0;
 		unsafe {
-			oakengine_node_get_effect_input(node, buf.as_mut_ptr(), buf.len() as c_int, &mut element)
-				>= 0
+			oakengine_node_get_effect_input(
+				node,
+				buf.as_mut_ptr(),
+				buf.len() as c_int,
+				&mut element,
+			) >= 0
 		}
 	}
 
@@ -1236,7 +1276,6 @@ impl RealEngine {
 			text
 		}
 	}
-
 }
 
 // ---------------------------------------------------------------------------
@@ -1501,7 +1540,8 @@ impl AppEngine for RealEngine {
 		let Some(seq) = self.seq_ptr() else {
 			return;
 		};
-		let internal = unsafe { oakengine_track_height_pixels_to_internal(f32::from(height) as c_int) };
+		let internal =
+			unsafe { oakengine_track_height_pixels_to_internal(f32::from(height) as c_int) };
 		let mut video: c_int = 0;
 		let mut audio: c_int = 0;
 		let mut subtitle: c_int = 0;
@@ -1561,14 +1601,23 @@ impl AppEngine for RealEngine {
 					// facade two-stage convention.
 					unsafe { oakengine_node_factory_name_from_id(c_id.as_ptr(), buf, size) }
 				});
-				let name = if name.is_empty() { type_id.clone() } else { name };
+				let name = if name.is_empty() {
+					type_id.clone()
+				} else {
+					name
+				};
 				out.push((type_id, name));
 			}
 		}
 		out
 	}
 
-	fn add_effect(&mut self, index: usize, type_id: &str, cx: &mut Context<Self>) -> Result<(), String> {
+	fn add_effect(
+		&mut self,
+		index: usize,
+		type_id: &str,
+		cx: &mut Context<Self>,
+	) -> Result<(), String> {
 		let Some(host) = self.selected_clip_node() else {
 			return Err("no selected clip".into());
 		};
@@ -1688,7 +1737,11 @@ impl AppEngine for RealEngine {
 					self.request_frame(Monitor::Program, *frame, cx);
 				}
 			}
-			TimelineEvent::ClipTrimRequested { clip, edge, new_frame } => {
+			TimelineEvent::ClipTrimRequested {
+				clip,
+				edge,
+				new_frame,
+			} => {
 				let Some((track_type, track_index, clip_index)) = self.clip_coords(*clip) else {
 					return;
 				};
@@ -1722,13 +1775,39 @@ impl AppEngine for RealEngine {
 				unsafe { free_box(clip_ptr) };
 				self.apply_edit(rc, "trim clip", cx);
 			}
-			TimelineEvent::ClipMoveRequested { clip, .. } => {
-				// `oakengine_sequence_move_clip` is a documented facade stub
-				// (module gap); report the facade error.
-				let coords = self.clip_coords(*clip);
-				let what = format!("move clip ({coords:?})");
-				println!("[real engine] {what}: not supported by the facade (stub)");
-				cx.notify();
+			TimelineEvent::ClipMoveRequested {
+				clip,
+				new_track,
+				new_start,
+			} => {
+				// `oakengine_sequence_move_clip` moves the clip on its own
+				// track (the capi passes the source track straight through to
+				// the place command); a cross-track drag is not expressible
+				// through that signature.
+				let Some((track_type, track_index, clip_index)) = self.clip_coords(*clip) else {
+					return;
+				};
+				let Some(seq) = self.seq_ptr() else {
+					return;
+				};
+				if *new_track as c_int != track_index as c_int {
+					println!(
+						"[real engine] move clip ({track_type:?},{track_index},{clip_index}): \
+						 cross-track moves are not supported by the facade"
+					);
+					cx.notify();
+					return;
+				}
+				let rc = unsafe {
+					oakengine_sequence_move_clip(
+						seq,
+						Self::track_type_of(track_type),
+						track_index as c_int,
+						clip_index as c_int,
+						new_start.0,
+					)
+				};
+				self.apply_edit(rc, "move clip", cx);
 			}
 			TimelineEvent::TrackHeightChanged { track, height } => {
 				if let Some(t) = self.tracks.get(*track) {
@@ -1853,7 +1932,15 @@ impl AppEngine for RealEngine {
 			unsafe { free_box(clip_ptr) };
 			rc
 		};
-		self.apply_edit(rc, if ripple { "ripple delete clip" } else { "delete clip" }, cx);
+		self.apply_edit(
+			rc,
+			if ripple {
+				"ripple delete clip"
+			} else {
+				"delete clip"
+			},
+			cx,
+		);
 	}
 
 	fn can_undo(&self) -> bool {
@@ -1923,7 +2010,11 @@ impl AppEngine for RealEngine {
 		}
 	}
 
-	fn save_project(&mut self, path: Option<PathBuf>, cx: &mut Context<Self>) -> Result<(), String> {
+	fn save_project(
+		&mut self,
+		path: Option<PathBuf>,
+		cx: &mut Context<Self>,
+	) -> Result<(), String> {
 		if self.project_ptr().is_none() {
 			return Err("no project open".into());
 		}
@@ -1977,7 +2068,13 @@ impl AppEngine for RealEngine {
 		let mut rate_num: c_int = 25;
 		let mut rate_den: c_int = 1;
 		unsafe {
-			oakengine_sequence_get_video_params(seq, &mut width, &mut height, &mut par_num, &mut par_den);
+			oakengine_sequence_get_video_params(
+				seq,
+				&mut width,
+				&mut height,
+				&mut par_num,
+				&mut par_den,
+			);
 			oakengine_sequence_get_frame_rate(seq, &mut rate_num, &mut rate_den);
 		}
 		let video_codec = unsafe { oakengine_encoding_format_video_codec_at(format, 0) };
@@ -2037,7 +2134,8 @@ impl AppEngine for RealEngine {
 		}
 
 		// Progress events through the module task callback.
-		let module_handle = unsafe { unbox(task) }.ok_or_else(|| "invalid export task handle".to_string())?;
+		let module_handle =
+			unsafe { unbox(task) }.ok_or_else(|| "invalid export task handle".to_string())?;
 		let (tx, rx) = mpsc::channel::<ExportEvent>();
 		let cb_userdata = SendPtr(Box::into_raw(Box::new(tx.clone())));
 		unsafe {
@@ -2131,7 +2229,14 @@ impl RealEngine {
 			return Err("invalid project path".into());
 		};
 		let mut err = [0 as c_char; 4096];
-		let rc = unsafe { oakengine_project_load(project, cpath.as_ptr(), err.as_mut_ptr(), err.len() as c_int) };
+		let rc = unsafe {
+			oakengine_project_load(
+				project,
+				cpath.as_ptr(),
+				err.as_mut_ptr(),
+				err.len() as c_int,
+			)
+		};
 		if rc != 0 {
 			let message = load_error(&mut err);
 			unsafe { oakengine_project_free(project) };
@@ -2184,7 +2289,10 @@ impl RealEngine {
 				self.adopt_project(project, cx);
 				Ok(())
 			}
-			None => Err(format!("loaded \"{}\" but the loader returned no project", path.display())),
+			None => Err(format!(
+				"loaded \"{}\" but the loader returned no project",
+				path.display()
+			)),
 		}
 	}
 
@@ -2195,7 +2303,10 @@ impl RealEngine {
 			return Err("no project open".into());
 		};
 		let cpath = path.and_then(cstr_path);
-		let ptr = cpath.as_ref().map(|c| c.as_ptr()).unwrap_or(std::ptr::null());
+		let ptr = cpath
+			.as_ref()
+			.map(|c| c.as_ptr())
+			.unwrap_or(std::ptr::null());
 		let rc = unsafe { oakengine_project_save(project, ptr) };
 		if rc != 0 {
 			return Err(format!("failed to save the project (error {rc})"));
@@ -2205,7 +2316,8 @@ impl RealEngine {
 		if !name.is_empty() {
 			self.project_info.name = name;
 		}
-		let filename = read_string(|buf, size| unsafe { oakengine_project_filename(project, buf, size) }) ;
+		let filename =
+			read_string(|buf, size| unsafe { oakengine_project_filename(project, buf, size) });
 		if !filename.is_empty() {
 			self.project_info.path = PathBuf::from(filename);
 		}
@@ -2250,7 +2362,8 @@ pub fn encoding_formats() -> Vec<(c_int, String, String)> {
 	let mut out = Vec::new();
 	for i in 0..count.max(0) {
 		let name = read_string(|buf, size| unsafe { oakengine_encoding_format_name(i, buf, size) });
-		let ext = read_string(|buf, size| unsafe { oakengine_encoding_format_extension(i, buf, size) });
+		let ext =
+			read_string(|buf, size| unsafe { oakengine_encoding_format_extension(i, buf, size) });
 		out.push((i, name, ext));
 	}
 	out
@@ -2298,20 +2411,41 @@ mod tests {
 
 	#[test]
 	fn project_format_dispatches_by_extension() {
-		assert_eq!(ProjectFormat::of(&PathBuf::from("/tmp/x.ove")), ProjectFormat::Ove);
-		assert_eq!(ProjectFormat::of(&PathBuf::from("/tmp/x.ovexml")), ProjectFormat::Ove);
-		assert_eq!(ProjectFormat::of(&PathBuf::from("/tmp/x.OTIO")), ProjectFormat::Otio);
-		assert_eq!(ProjectFormat::of(&PathBuf::from("/tmp/x.fcpxml")), ProjectFormat::Fcpxml);
+		assert_eq!(
+			ProjectFormat::of(&PathBuf::from("/tmp/x.ove")),
+			ProjectFormat::Ove
+		);
+		assert_eq!(
+			ProjectFormat::of(&PathBuf::from("/tmp/x.ovexml")),
+			ProjectFormat::Ove
+		);
+		assert_eq!(
+			ProjectFormat::of(&PathBuf::from("/tmp/x.OTIO")),
+			ProjectFormat::Otio
+		);
+		assert_eq!(
+			ProjectFormat::of(&PathBuf::from("/tmp/x.fcpxml")),
+			ProjectFormat::Fcpxml
+		);
 		// Unknown extensions fall back to the OVE serializer.
-		assert_eq!(ProjectFormat::of(&PathBuf::from("/tmp/x.xml")), ProjectFormat::Ove);
-		assert_eq!(ProjectFormat::of(&PathBuf::from("/tmp/x")), ProjectFormat::Ove);
+		assert_eq!(
+			ProjectFormat::of(&PathBuf::from("/tmp/x.xml")),
+			ProjectFormat::Ove
+		);
+		assert_eq!(
+			ProjectFormat::of(&PathBuf::from("/tmp/x")),
+			ProjectFormat::Ove
+		);
 	}
 
 	#[test]
 	fn renderer_backends_list_is_stable() {
 		let backends = renderer_backends();
 		assert!(backends.len() >= 2);
-		assert!(backends.contains(&"opengl"), "the default backend is offered");
+		assert!(
+			backends.contains(&"opengl"),
+			"the default backend is offered"
+		);
 	}
 
 	/// End-to-end through the facade: a project the engine itself writes
@@ -2336,8 +2470,14 @@ mod tests {
 		let name = CString::new("Round Trip").unwrap();
 		let sequence = unsafe { oakengine_sequence_new(project, name.as_ptr()) };
 		assert!(!sequence.is_null());
-		assert_eq!(unsafe { oakengine_sequence_add_track(sequence, TRACK_TYPE_VIDEO) }, 0);
-		assert_eq!(unsafe { oakengine_sequence_add_track(sequence, TRACK_TYPE_AUDIO) }, 0);
+		assert_eq!(
+			unsafe { oakengine_sequence_add_track(sequence, TRACK_TYPE_VIDEO) },
+			0
+		);
+		assert_eq!(
+			unsafe { oakengine_sequence_add_track(sequence, TRACK_TYPE_AUDIO) },
+			0
+		);
 		let mut video: c_int = -1;
 		let mut audio: c_int = -1;
 		let mut subtitle: c_int = -1;
@@ -2351,8 +2491,14 @@ mod tests {
 		let save_path =
 			std::env::temp_dir().join(format!("oakapp_roundtrip_{}.ovexml", std::process::id()));
 		let cpath = CString::new(save_path.to_string_lossy().into_owned()).unwrap();
-		assert_eq!(unsafe { oakengine_project_set_filename(project, cpath.as_ptr()) }, 0);
-		assert_eq!(unsafe { oakengine_project_save(project, cpath.as_ptr()) }, 0);
+		assert_eq!(
+			unsafe { oakengine_project_set_filename(project, cpath.as_ptr()) },
+			0
+		);
+		assert_eq!(
+			unsafe { oakengine_project_save(project, cpath.as_ptr()) },
+			0
+		);
 		assert!(save_path.exists());
 		unsafe { free_box(sequence) };
 		unsafe { oakengine_project_free(project) };
@@ -2363,12 +2509,16 @@ mod tests {
 		assert!(!project2.is_null());
 		let mut err = [0 as c_char; 4096];
 		let rc = unsafe {
-			oakengine_project_load(project2, cpath.as_ptr(), err.as_mut_ptr(), err.len() as c_int)
+			oakengine_project_load(
+				project2,
+				cpath.as_ptr(),
+				err.as_mut_ptr(),
+				err.len() as c_int,
+			)
 		};
 		assert_eq!(rc, 0, "project loads: {}", load_error(&mut err));
-		let loaded_name = read_string(|buf, size| unsafe {
-			oakengine_project_name(project2, buf, size)
-		});
+		let loaded_name =
+			read_string(|buf, size| unsafe { oakengine_project_name(project2, buf, size) });
 		assert!(!loaded_name.is_empty(), "the loaded project has a name");
 
 		unsafe { oakengine_project_free(project2) };
@@ -2400,7 +2550,15 @@ mod tests {
 		// The app's proxy size: sequence aspect (default 1920x1080) scaled
 		// to a 480px long edge, F32 at 25 fps.
 		let renderer = unsafe {
-			oakengine_renderer_create(sequence, 480, 270, PIXEL_FORMAT_F32, 25, 1, std::ptr::null())
+			oakengine_renderer_create(
+				sequence,
+				480,
+				270,
+				PIXEL_FORMAT_F32,
+				25,
+				1,
+				std::ptr::null(),
+			)
 		};
 		assert!(!renderer.is_null(), "renderer_create must succeed");
 
@@ -2421,7 +2579,10 @@ mod tests {
 		for &(x, y) in &[(0usize, 0usize), (240, 135), (479, 269)] {
 			let base = y * stride + x * 4;
 			let px = unsafe { std::slice::from_raw_parts(data.add(base), 4) };
-			assert!(px.iter().all(|v| v.is_finite() && (0.0..=1.0).contains(v)), "samples in range: {px:?}");
+			assert!(
+				px.iter().all(|v| v.is_finite() && (0.0..=1.0).contains(v)),
+				"samples in range: {px:?}"
+			);
 			nonzero += px.iter().filter(|&&v| v != 0.0).count();
 		}
 		// Document the current empty-sequence behavior: a transparent-black

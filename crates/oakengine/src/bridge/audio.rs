@@ -54,24 +54,24 @@ use crate::handle::CHandle;
 /// the oakaudio crate's struct (identical layout).
 pub type OffsetResult = oakaudio::ffi::sync::OffsetResult;
 
-
 /// `oakaudio_stretchoffsetresult` C ABI POD. Single-lib unification: aliases
 /// the oakaudio crate's struct (identical layout).
 pub type StretchOffsetResult = oakaudio::ffi::sync::StretchOffsetResult;
 
-
 /// `oakaudio_sourceclip` C ABI POD. Single-lib unification: aliases
 /// the oakaudio crate's struct (identical layout).
 pub type SourceClip = oakaudio::ffi::sync::SourceClip;
-
-
 
 /// `oakaudio` recording-params POD — single-lib unification: aliases the
 /// oakaudio crate's type (itself the oakcodec `oakcodec_encoding_params`).
 pub type EncodingParams = oakaudio::bridge::codec::EncodingParams;
 
 extern "C" {
-	pub fn oakcore_audioparams_create(sample_rate: c_int, channel_layout: u64, format: c_int) -> *mut c_void;
+	pub fn oakcore_audioparams_create(
+		sample_rate: c_int,
+		channel_layout: u64,
+		format: c_int,
+	) -> *mut c_void;
 	pub fn oakcore_audioparams_free(params: *mut c_void);
 	pub fn oakcore_audioparams_sample_rate(params: *const c_void) -> c_int;
 	pub fn oakcore_audioparams_channel_layout(params: *const c_void) -> u64;
@@ -111,16 +111,27 @@ pub fn oakaudio_manager_set_output_notify_interval(_self: CHandle, bytes: i64) -
 /// Direct call into the `oakaudio` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakaudio_manager_push_to_output(
-		_self: CHandle,
-		rate: c_int,
-		layout: u64,
-		format: c_int,
-		samples: *const c_char,
-		samples_size: i64,
-		error_buf: *mut c_char,
-		error_buf_size: c_int,
-	) -> c_int {
-	unsafe { oakaudio::ffi::manager::oakaudio_manager_push_to_output(_self, rate, layout, format, samples, samples_size, error_buf, error_buf_size) }
+	_self: CHandle,
+	rate: c_int,
+	layout: u64,
+	format: c_int,
+	samples: *const c_char,
+	samples_size: i64,
+	error_buf: *mut c_char,
+	error_buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oakaudio::ffi::manager::oakaudio_manager_push_to_output(
+			_self,
+			rate,
+			layout,
+			format,
+			samples,
+			samples_size,
+			error_buf,
+			error_buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oakaudio` crate (single-lib unification; the
@@ -183,7 +194,14 @@ pub fn oakaudio_manager_start_recording(
 	error_buf: *mut c_char,
 	error_buf_size: c_int,
 ) -> c_int {
-	unsafe { oakaudio::ffi::manager::oakaudio_manager_start_recording(_self, params, error_buf, error_buf_size) }
+	unsafe {
+		oakaudio::ffi::manager::oakaudio_manager_start_recording(
+			_self,
+			params,
+			error_buf,
+			error_buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oakaudio` crate (single-lib unification; the
@@ -213,16 +231,20 @@ pub fn oakaudio_processor_free(_self: *mut CHandle) {
 /// Direct call into the `oakaudio` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakaudio_processor_open(
-		_self: CHandle,
-		in_rate: c_int,
-		in_layout: u64,
-		in_format: c_int,
-		out_rate: c_int,
-		out_layout: u64,
-		out_format: c_int,
-		speed: c_double,
-	) -> c_int {
-	unsafe { oakaudio::ffi::processor::oakaudio_processor_open(_self, in_rate, in_layout, in_format, out_rate, out_layout, out_format, speed) }
+	_self: CHandle,
+	in_rate: c_int,
+	in_layout: u64,
+	in_format: c_int,
+	out_rate: c_int,
+	out_layout: u64,
+	out_format: c_int,
+	speed: c_double,
+) -> c_int {
+	unsafe {
+		oakaudio::ffi::processor::oakaudio_processor_open(
+			_self, in_rate, in_layout, in_format, out_rate, out_layout, out_format, speed,
+		)
+	}
 }
 
 /// Direct call into the `oakaudio` crate (single-lib unification; the
@@ -240,63 +262,109 @@ pub fn oakaudio_processor_is_open(_self: CHandle) -> c_int {
 /// Direct call into the `oakaudio` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakaudio_sync_estimate_envelope_offset(
-		reference: *const c_double,
-		reference_len: c_int,
-		candidate: *const c_double,
-		candidate_len: c_int,
-		reference_valid: *const u8,
-		candidate_valid: *const u8,
-		window_samples: u64,
-		max_offset_windows: i64,
-		out: *mut OffsetResult,
-	) -> c_int {
-	unsafe { oakaudio::ffi::sync::oakaudio_sync_estimate_envelope_offset(reference, reference_len, candidate, candidate_len, reference_valid, candidate_valid, window_samples, max_offset_windows, out) }
+	reference: *const c_double,
+	reference_len: c_int,
+	candidate: *const c_double,
+	candidate_len: c_int,
+	reference_valid: *const u8,
+	candidate_valid: *const u8,
+	window_samples: u64,
+	max_offset_windows: i64,
+	out: *mut OffsetResult,
+) -> c_int {
+	unsafe {
+		oakaudio::ffi::sync::oakaudio_sync_estimate_envelope_offset(
+			reference,
+			reference_len,
+			candidate,
+			candidate_len,
+			reference_valid,
+			candidate_valid,
+			window_samples,
+			max_offset_windows,
+			out,
+		)
+	}
 }
 
 /// Direct call into the `oakaudio` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakaudio_sync_estimate_stretch_and_offset(
-		reference: *const c_double,
-		reference_len: c_int,
-		candidate: *const c_double,
-		candidate_len: c_int,
-		reference_valid: *const u8,
-		candidate_valid: *const u8,
-		window_samples: u64,
-		max_offset_windows: i64,
-		min_rate: c_double,
-		max_rate: c_double,
-		rate_step: c_double,
-		out: *mut StretchOffsetResult,
-	) -> c_int {
-	unsafe { oakaudio::ffi::sync::oakaudio_sync_estimate_stretch_and_offset(reference, reference_len, candidate, candidate_len, reference_valid, candidate_valid, window_samples, max_offset_windows, min_rate, max_rate, rate_step, out) }
+	reference: *const c_double,
+	reference_len: c_int,
+	candidate: *const c_double,
+	candidate_len: c_int,
+	reference_valid: *const u8,
+	candidate_valid: *const u8,
+	window_samples: u64,
+	max_offset_windows: i64,
+	min_rate: c_double,
+	max_rate: c_double,
+	rate_step: c_double,
+	out: *mut StretchOffsetResult,
+) -> c_int {
+	unsafe {
+		oakaudio::ffi::sync::oakaudio_sync_estimate_stretch_and_offset(
+			reference,
+			reference_len,
+			candidate,
+			candidate_len,
+			reference_valid,
+			candidate_valid,
+			window_samples,
+			max_offset_windows,
+			min_rate,
+			max_rate,
+			rate_step,
+			out,
+		)
+	}
 }
 
 /// Direct call into the `oakaudio` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakaudio_sync_place_by_source_time(
-		reference: *const SourceClip,
-		candidate: *const SourceClip,
-		reference_timeline_in_num: i64,
-		reference_timeline_in_den: i64,
-		out_num: *mut i64,
-		out_den: *mut i64,
-		out_valid: *mut c_int,
-	) -> c_int {
-	unsafe { oakaudio::ffi::sync::oakaudio_sync_place_by_source_time(reference, candidate, reference_timeline_in_num, reference_timeline_in_den, out_num, out_den, out_valid) }
+	reference: *const SourceClip,
+	candidate: *const SourceClip,
+	reference_timeline_in_num: i64,
+	reference_timeline_in_den: i64,
+	out_num: *mut i64,
+	out_den: *mut i64,
+	out_valid: *mut c_int,
+) -> c_int {
+	unsafe {
+		oakaudio::ffi::sync::oakaudio_sync_place_by_source_time(
+			reference,
+			candidate,
+			reference_timeline_in_num,
+			reference_timeline_in_den,
+			out_num,
+			out_den,
+			out_valid,
+		)
+	}
 }
 
 /// Direct call into the `oakaudio` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakaudio_sync_place_by_waveform_offset(
-		reference_timeline_in_num: i64,
-		reference_timeline_in_den: i64,
-		candidate_offset_samples: i64,
-		sample_rate: c_int,
-		out_num: *mut i64,
-		out_den: *mut i64,
-		out_valid: *mut c_int,
-	) -> c_int {
-	unsafe { oakaudio::ffi::sync::oakaudio_sync_place_by_waveform_offset(reference_timeline_in_num, reference_timeline_in_den, candidate_offset_samples, sample_rate, out_num, out_den, out_valid) }
+	reference_timeline_in_num: i64,
+	reference_timeline_in_den: i64,
+	candidate_offset_samples: i64,
+	sample_rate: c_int,
+	out_num: *mut i64,
+	out_den: *mut i64,
+	out_valid: *mut c_int,
+) -> c_int {
+	unsafe {
+		oakaudio::ffi::sync::oakaudio_sync_place_by_waveform_offset(
+			reference_timeline_in_num,
+			reference_timeline_in_den,
+			candidate_offset_samples,
+			sample_rate,
+			out_num,
+			out_den,
+			out_valid,
+		)
+	}
 }
-

@@ -54,16 +54,23 @@ pub struct ImageEffectSuiteV1 {
 	/// clipDefine（describe 期间）：定义 clip。
 	pub clip_define: unsafe extern "C" fn(*mut c_void, *const c_char, *mut *mut c_void) -> c_int,
 	/// clipGetHandle：按名取 clip。
-	pub clip_get_handle: unsafe extern "C" fn(*mut c_void, *const c_char, *mut *mut c_void, *mut *mut c_void) -> c_int,
+	pub clip_get_handle: unsafe extern "C" fn(
+		*mut c_void,
+		*const c_char,
+		*mut *mut c_void,
+		*mut *mut c_void,
+	) -> c_int,
 	/// clipGetPropertySet
 	pub clip_get_property_set: unsafe extern "C" fn(*mut c_void, *mut *mut c_void) -> c_int,
 	/// clipGetImage：取图像（host 侧增加引用，必须与
 	/// clipReleaseImage 配对）。
-	pub clip_get_image: unsafe extern "C" fn(*mut c_void, c_double, *const c_void, *mut *mut c_void) -> c_int,
+	pub clip_get_image:
+		unsafe extern "C" fn(*mut c_void, c_double, *const c_void, *mut *mut c_void) -> c_int,
 	/// clipReleaseImage
 	pub clip_release_image: unsafe extern "C" fn(*mut c_void) -> c_int,
 	/// clipGetRegionOfDefinition
-	pub clip_get_region_of_definition: unsafe extern "C" fn(*mut c_void, c_double, *mut c_void) -> c_int,
+	pub clip_get_region_of_definition:
+		unsafe extern "C" fn(*mut c_void, c_double, *mut c_void) -> c_int,
 	/// abort：查询是否应中止（进度取消透传）。
 	pub abort: unsafe extern "C" fn(*mut c_void) -> c_int,
 	/// imageMemoryAlloc / imageMemoryFree / imageMemoryLock /
@@ -84,8 +91,10 @@ static LIVE_IMAGES: std::sync::LazyLock<Mutex<HashMap<usize, std::sync::Arc<Imag
 
 /// 公共入口模板：panic 兜底。
 fn caught(f: impl FnOnce() -> Result<(), c_int>) -> c_int {
-	catch_unwind(AssertUnwindSafe(f))
-		.map_or_else(|_| status::FAILED, |r| r.map_or_else(|c| c, |()| status::OK))
+	catch_unwind(AssertUnwindSafe(f)).map_or_else(
+		|_| status::FAILED,
+		|r| r.map_or_else(|c| c, |()| status::OK),
+	)
 }
 
 /// 属性名（空指针/非 UTF-8 → ErrValue）。
@@ -111,8 +120,12 @@ fn resolve_effect(handle: *mut c_void) -> Result<EffectRef<'static>, c_int> {
 	// 两者 props 均在偏移 0（句柄约定）。
 	unsafe {
 		match tag::kind(handle) {
-			tag::DESCRIPTOR => Ok(EffectRef::Descriptor(&mut *(tag::strip(handle) as *mut EffectDescriptor))),
-			tag::INSTANCE => Ok(EffectRef::Instance(&*(tag::strip(handle) as *const Instance))),
+			tag::DESCRIPTOR => Ok(EffectRef::Descriptor(
+				&mut *(tag::strip(handle) as *mut EffectDescriptor),
+			)),
+			tag::INSTANCE => Ok(EffectRef::Instance(
+				&*(tag::strip(handle) as *const Instance),
+			)),
 			_ => Err(status::ERR_BAD_HANDLE),
 		}
 	}
@@ -161,7 +174,11 @@ unsafe extern "C" fn get_param_set(effect: *mut c_void, out: *mut *mut c_void) -
 /// clipDefine（describe 期）：定义 clip 并返回其属性集 handle。
 /// 重复名 → 整体替换（HS: `defineClip` 的 map 覆盖语义，
 /// ofxhImageEffect.cpp:265-271；旧句柄随之失效，与 HS 一致）。
-unsafe extern "C" fn clip_define(effect: *mut c_void, name: *const c_char, out: *mut *mut c_void) -> c_int {
+unsafe extern "C" fn clip_define(
+	effect: *mut c_void,
+	name: *const c_char,
+	out: *mut *mut c_void,
+) -> c_int {
 	caught(|| {
 		if out.is_null() {
 			return Err(status::ERR_BAD_HANDLE);
@@ -180,7 +197,11 @@ unsafe extern "C" fn clip_define(effect: *mut c_void, name: *const c_char, out: 
 			desc.clips.push(Box::new(clip));
 		}
 		// 地址取自已入盒的对象（栈上临时变量在移动后失效）。
-		let clip = desc.clips.iter().find(|c| c.name == n).expect("just stored");
+		let clip = desc
+			.clips
+			.iter()
+			.find(|c| c.name == n)
+			.expect("just stored");
 		let addr = &clip.props as *const _ as usize;
 		unsafe { *out = tag::make(addr as *const PropertySet, tag::CLIP) };
 		Ok(())
@@ -203,7 +224,11 @@ unsafe extern "C" fn clip_get_handle(
 		let n = unsafe { c_name(name)? };
 		let handle = match resolve_effect(effect)? {
 			EffectRef::Instance(i) => {
-				let c = i.clips.iter().find(|c| c.name == n).ok_or(status::ERR_BAD_HANDLE)?;
+				let c = i
+					.clips
+					.iter()
+					.find(|c| c.name == n)
+					.ok_or(status::ERR_BAD_HANDLE)?;
 				let addr = &c.props as *const _ as usize;
 				tag::make(addr as *const PropertySet, tag::CLIP)
 			}
@@ -271,7 +296,9 @@ unsafe extern "C" fn clip_get_image(
 		let scale = crate::suites::render_ctx()
 			.map(|ctx| ctx.scale)
 			.unwrap_or(RenderScale { x: 1.0, y: 1.0 });
-		let image = c.fetch_image(time, scale, region).map_err(|_| status::FAILED)?;
+		let image = c
+			.fetch_image(time, scale, region)
+			.map_err(|_| status::FAILED)?;
 		let image = std::sync::Arc::new(image);
 		let addr = &image.props as *const _ as usize;
 		LIVE_IMAGES
@@ -438,7 +465,6 @@ pub fn suite_v1() -> &'static ImageEffectSuiteV1 {
 	})
 }
 
-
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -476,7 +502,10 @@ mod tests {
 		let optional_prop = cs(crate::descriptor::CLIP_OPTIONAL);
 		let label = cs("SourceLabel");
 		unsafe {
-			assert_eq!((ps.set_string)(clip, label_prop.as_ptr(), 0, label.as_ptr()), 0);
+			assert_eq!(
+				(ps.set_string)(clip, label_prop.as_ptr(), 0, label.as_ptr()),
+				0
+			);
 		}
 		let mut out: *mut c_char = std::ptr::null_mut();
 		unsafe {
@@ -505,8 +534,14 @@ mod tests {
 
 		// 空 out / 空 handle → BadHandle。
 		unsafe {
-			assert_eq!((s.clip_define)(h, name.as_ptr(), std::ptr::null_mut()), status::ERR_BAD_HANDLE);
-			assert_eq!((s.clip_define)(std::ptr::null_mut(), name.as_ptr(), &mut clip2), status::ERR_BAD_HANDLE);
+			assert_eq!(
+				(s.clip_define)(h, name.as_ptr(), std::ptr::null_mut()),
+				status::ERR_BAD_HANDLE
+			);
+			assert_eq!(
+				(s.clip_define)(std::ptr::null_mut(), name.as_ptr(), &mut clip2),
+				status::ERR_BAD_HANDLE
+			);
 		}
 	}
 
@@ -565,7 +600,10 @@ mod tests {
 		let s = suite_v1();
 		let mut mem: *mut c_void = std::ptr::null_mut();
 		unsafe {
-			assert_eq!((s.image_memory_alloc)(std::ptr::null_mut(), 1024, &mut mem), 0);
+			assert_eq!(
+				(s.image_memory_alloc)(std::ptr::null_mut(), 1024, &mut mem),
+				0
+			);
 			assert!(!mem.is_null());
 			// lock 返回数据指针（第 1 期 = 句柄本身）。
 			let mut ptr: *mut c_void = std::ptr::null_mut();
@@ -573,7 +611,10 @@ mod tests {
 			assert_eq!(ptr, mem);
 			assert_eq!((s.image_memory_unlock)(mem), 0);
 			// 未知指针 free → BadHandle。
-			assert_eq!((s.image_memory_free)(0xdeadbeef as *mut c_void), status::ERR_BAD_HANDLE);
+			assert_eq!(
+				(s.image_memory_free)(0xdeadbeef as *mut c_void),
+				status::ERR_BAD_HANDLE
+			);
 			assert_eq!((s.image_memory_free)(mem), 0);
 		}
 	}

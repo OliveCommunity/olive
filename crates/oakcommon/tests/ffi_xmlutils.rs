@@ -74,18 +74,30 @@ fn assert_two_stage_getter(getter: impl Fn(*mut c_char, i32) -> i32, expected: &
 	// Short buffer: too small, so nothing is written to it.
 	let short_size = (required - 1).max(0);
 	let mut short = vec![0xABu8; short_size as usize];
-	assert_eq!(getter(short.as_mut_ptr() as *mut c_char, short_size), required);
-	assert!(short.iter().all(|&b| b == 0xAB), "short buffer must stay untouched");
+	assert_eq!(
+		getter(short.as_mut_ptr() as *mut c_char, short_size),
+		required
+	);
+	assert!(
+		short.iter().all(|&b| b == 0xAB),
+		"short buffer must stay untouched"
+	);
 
 	// Exact fit: payload followed by a NUL.
 	let mut exact = vec![0xCDu8; required as usize];
-	assert_eq!(getter(exact.as_mut_ptr() as *mut c_char, required), required);
+	assert_eq!(
+		getter(exact.as_mut_ptr() as *mut c_char, required),
+		required
+	);
 	assert_eq!(&exact[..expected.len()], expected.as_bytes());
 	assert_eq!(exact[expected.len()], 0);
 
 	// Oversized: payload and NUL written, tail left as initialized.
 	let mut big = vec![0u8; (required + 8) as usize];
-	assert_eq!(getter(big.as_mut_ptr() as *mut c_char, required + 8), required);
+	assert_eq!(
+		getter(big.as_mut_ptr() as *mut c_char, required + 8),
+		required
+	);
 	assert_eq!(&big[..expected.len()], expected.as_bytes());
 	assert_eq!(big[expected.len()], 0);
 	assert!(big[(required + 1) as usize..].iter().all(|&b| b == 0));
@@ -187,7 +199,10 @@ fn name_two_stage_getter() {
 		OAKCOMMON_OK
 	);
 	assert_eq!(found, 1);
-	assert_two_stage_getter(|buf, size| oakcommon_xml_reader_name(dup(&r), buf, size), "root");
+	assert_two_stage_getter(
+		|buf, size| oakcommon_xml_reader_name(dup(&r), buf, size),
+		"root",
+	);
 	assert_eq!(
 		oakcommon_xml_reader_name(CHandle::null(), std::ptr::null_mut(), 0),
 		OAKCOMMON_E_INVALID
@@ -198,7 +213,10 @@ fn name_two_stage_getter() {
 #[test]
 fn name_is_empty_before_any_read() {
 	let r = oakcommon_xml_reader_init(to_cstring(DOC).as_ptr());
-	assert_eq!(oakcommon_xml_reader_name(dup(&r), std::ptr::null_mut(), 0), 1);
+	assert_eq!(
+		oakcommon_xml_reader_name(dup(&r), std::ptr::null_mut(), 0),
+		1
+	);
 }
 
 /// `read_element_text` is a two-stage getter and caches its result, so a
@@ -267,7 +285,10 @@ fn skip_current_element_skips_subtree() {
 		OAKCOMMON_OK
 	);
 	assert_eq!(found, 1);
-	assert_eq!(oakcommon_xml_reader_skip_current_element(dup(&r)), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_xml_reader_skip_current_element(dup(&r)),
+		OAKCOMMON_OK
+	);
 	assert_eq!(
 		oakcommon_xml_reader_read_next_start_element(dup(&r), &mut found),
 		OAKCOMMON_OK
@@ -382,12 +403,18 @@ fn has_error_flags_malformed_documents() {
 	let mut err = -1i32;
 
 	let r = oakcommon_xml_reader_init(to_cstring(DOC).as_ptr());
-	assert_eq!(oakcommon_xml_reader_has_error(dup(&r), &mut err), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_xml_reader_has_error(dup(&r), &mut err),
+		OAKCOMMON_OK
+	);
 	assert_eq!(err, 0);
 
 	let bad = oakcommon_xml_reader_init(to_cstring("<a></b>").as_ptr());
 	assert!(!bad.is_null());
-	assert_eq!(oakcommon_xml_reader_has_error(dup(&bad), &mut err), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_xml_reader_has_error(dup(&bad), &mut err),
+		OAKCOMMON_OK
+	);
 	assert_eq!(err, 1);
 	let mut found = -1i32;
 	assert_eq!(
@@ -398,7 +425,10 @@ fn has_error_flags_malformed_documents() {
 
 	let empty = oakcommon_xml_reader_init(to_cstring("").as_ptr());
 	assert!(!empty.is_null());
-	assert_eq!(oakcommon_xml_reader_has_error(dup(&empty), &mut err), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_xml_reader_has_error(dup(&empty), &mut err),
+		OAKCOMMON_OK
+	);
 	assert_eq!(err, 1);
 
 	assert_eq!(
@@ -490,11 +520,19 @@ fn writer_rejects_null_arguments() {
 		OAKCOMMON_E_INVALID
 	);
 	assert_eq!(
-		oakcommon_xml_writer_write_text_element(dup(&w), std::ptr::null(), to_cstring("b").as_ptr()),
+		oakcommon_xml_writer_write_text_element(
+			dup(&w),
+			std::ptr::null(),
+			to_cstring("b").as_ptr()
+		),
 		OAKCOMMON_E_INVALID
 	);
 	assert_eq!(
-		oakcommon_xml_writer_write_text_element(dup(&w), to_cstring("a").as_ptr(), std::ptr::null()),
+		oakcommon_xml_writer_write_text_element(
+			dup(&w),
+			to_cstring("a").as_ptr(),
+			std::ptr::null()
+		),
 		OAKCOMMON_E_INVALID
 	);
 }
@@ -509,11 +547,19 @@ fn writer_builds_document_and_output_two_stage() {
 		OAKCOMMON_OK
 	);
 	assert_eq!(
-		oakcommon_xml_writer_write_attribute(dup(&w), to_cstring("a").as_ptr(), to_cstring("1").as_ptr()),
+		oakcommon_xml_writer_write_attribute(
+			dup(&w),
+			to_cstring("a").as_ptr(),
+			to_cstring("1").as_ptr()
+		),
 		OAKCOMMON_OK
 	);
 	assert_eq!(
-		oakcommon_xml_writer_write_attribute(dup(&w), to_cstring("b").as_ptr(), to_cstring("two").as_ptr()),
+		oakcommon_xml_writer_write_attribute(
+			dup(&w),
+			to_cstring("b").as_ptr(),
+			to_cstring("two").as_ptr()
+		),
 		OAKCOMMON_OK
 	);
 	assert_eq!(
@@ -524,9 +570,18 @@ fn writer_builds_document_and_output_two_stage() {
 		),
 		OAKCOMMON_OK
 	);
-	assert_eq!(oakcommon_xml_writer_write_end_element(dup(&w)), OAKCOMMON_OK);
-	assert_eq!(oakcommon_xml_writer_write_end_document(dup(&w)), OAKCOMMON_OK);
-	assert_two_stage_getter(|buf, size| oakcommon_xml_writer_output(dup(&w), buf, size), DOC);
+	assert_eq!(
+		oakcommon_xml_writer_write_end_element(dup(&w)),
+		OAKCOMMON_OK
+	);
+	assert_eq!(
+		oakcommon_xml_writer_write_end_document(dup(&w)),
+		OAKCOMMON_OK
+	);
+	assert_two_stage_getter(
+		|buf, size| oakcommon_xml_writer_output(dup(&w), buf, size),
+		DOC,
+	);
 }
 
 /// The writer's output round-trips through the reader.
@@ -538,11 +593,19 @@ fn writer_output_round_trips_through_reader() {
 		OAKCOMMON_OK
 	);
 	assert_eq!(
-		oakcommon_xml_writer_write_attribute(dup(&w), to_cstring("a").as_ptr(), to_cstring("1").as_ptr()),
+		oakcommon_xml_writer_write_attribute(
+			dup(&w),
+			to_cstring("a").as_ptr(),
+			to_cstring("1").as_ptr()
+		),
 		OAKCOMMON_OK
 	);
 	assert_eq!(
-		oakcommon_xml_writer_write_attribute(dup(&w), to_cstring("b").as_ptr(), to_cstring("two").as_ptr()),
+		oakcommon_xml_writer_write_attribute(
+			dup(&w),
+			to_cstring("b").as_ptr(),
+			to_cstring("two").as_ptr()
+		),
 		OAKCOMMON_OK
 	);
 	assert_eq!(
@@ -553,7 +616,10 @@ fn writer_output_round_trips_through_reader() {
 		),
 		OAKCOMMON_OK
 	);
-	assert_eq!(oakcommon_xml_writer_write_end_element(dup(&w)), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_xml_writer_write_end_element(dup(&w)),
+		OAKCOMMON_OK
+	);
 
 	let mut out = vec![0u8; 64];
 	let needed = oakcommon_xml_writer_output(dup(&w), out.as_mut_ptr() as *mut c_char, 64);
@@ -569,7 +635,10 @@ fn writer_output_round_trips_through_reader() {
 		OAKCOMMON_OK
 	);
 	assert_eq!(found, 1);
-	assert_two_stage_getter(|buf, size| oakcommon_xml_reader_name(dup(&r), buf, size), "root");
+	assert_two_stage_getter(
+		|buf, size| oakcommon_xml_reader_name(dup(&r), buf, size),
+		"root",
+	);
 	assert_eq!(
 		oakcommon_xml_reader_read_next_start_element(dup(&r), &mut found),
 		OAKCOMMON_OK
@@ -593,16 +662,29 @@ fn writer_output_round_trips_through_reader() {
 fn writer_noop_operations_return_ok() {
 	let w = oakcommon_xml_writer_init();
 	assert_eq!(
-		oakcommon_xml_writer_write_attribute(dup(&w), to_cstring("a").as_ptr(), to_cstring("b").as_ptr()),
+		oakcommon_xml_writer_write_attribute(
+			dup(&w),
+			to_cstring("a").as_ptr(),
+			to_cstring("b").as_ptr()
+		),
 		OAKCOMMON_OK
 	);
-	assert_eq!(oakcommon_xml_writer_write_end_element(dup(&w)), OAKCOMMON_OK);
-	assert_eq!(oakcommon_xml_writer_write_end_document(dup(&w)), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_xml_writer_write_end_element(dup(&w)),
+		OAKCOMMON_OK
+	);
+	assert_eq!(
+		oakcommon_xml_writer_write_end_document(dup(&w)),
+		OAKCOMMON_OK
+	);
 	assert_eq!(
 		oakcommon_xml_writer_write_characters(dup(&w), to_cstring("x").as_ptr()),
 		OAKCOMMON_OK
 	);
-	assert_two_stage_getter(|buf, size| oakcommon_xml_writer_output(dup(&w), buf, size), "x");
+	assert_two_stage_getter(
+		|buf, size| oakcommon_xml_writer_output(dup(&w), buf, size),
+		"x",
+	);
 }
 
 /// An empty element with attributes serializes as `<a k="v"/>`.
@@ -614,11 +696,21 @@ fn writer_self_closing_empty_element() {
 		OAKCOMMON_OK
 	);
 	assert_eq!(
-		oakcommon_xml_writer_write_attribute(dup(&w), to_cstring("k").as_ptr(), to_cstring("v").as_ptr()),
+		oakcommon_xml_writer_write_attribute(
+			dup(&w),
+			to_cstring("k").as_ptr(),
+			to_cstring("v").as_ptr()
+		),
 		OAKCOMMON_OK
 	);
-	assert_eq!(oakcommon_xml_writer_write_end_element(dup(&w)), OAKCOMMON_OK);
-	assert_two_stage_getter(|buf, size| oakcommon_xml_writer_output(dup(&w), buf, size), r#"<a k="v"/>"#);
+	assert_eq!(
+		oakcommon_xml_writer_write_end_element(dup(&w)),
+		OAKCOMMON_OK
+	);
+	assert_two_stage_getter(
+		|buf, size| oakcommon_xml_writer_output(dup(&w), buf, size),
+		r#"<a k="v"/>"#,
+	);
 }
 
 /// Text and attribute values are escaped for the five predefined XML
@@ -646,7 +738,10 @@ fn writer_escapes_text_and_attributes() {
 		),
 		OAKCOMMON_OK
 	);
-	assert_eq!(oakcommon_xml_writer_write_end_element(dup(&w)), OAKCOMMON_OK);
+	assert_eq!(
+		oakcommon_xml_writer_write_end_element(dup(&w)),
+		OAKCOMMON_OK
+	);
 	assert_two_stage_getter(
 		|buf, size| oakcommon_xml_writer_output(dup(&w), buf, size),
 		r#"<e>hi &amp; bye &lt;there&gt;</e><a q="x&quot;y&amp;z"/>"#,

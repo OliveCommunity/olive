@@ -224,10 +224,10 @@ impl SampleBuffer {
 			SampleFormat::S16Planar | SampleFormat::S16 => {
 				i16::from_le_bytes([raw[0], raw[1]]) as f64
 			}
-			SampleFormat::S32Planar | SampleFormat::S32 | SampleFormat::F32Planar
-			| SampleFormat::F32 => {
-				f32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]) as f64
-			}
+			SampleFormat::S32Planar
+			| SampleFormat::S32
+			| SampleFormat::F32Planar
+			| SampleFormat::F32 => f32::from_le_bytes([raw[0], raw[1], raw[2], raw[3]]) as f64,
 			SampleFormat::S64Planar | SampleFormat::S64 => {
 				i64::from_le_bytes(raw.try_into().unwrap_or([0; 8])) as f64
 			}
@@ -496,9 +496,7 @@ impl NodeValue {
 	pub fn lerp(&self, other: &NodeValue, t: f64) -> NodeValue {
 		match (self, other) {
 			(NodeValue::Float(a), NodeValue::Float(b)) => NodeValue::Float(lerp_f(a, b, t)),
-			(NodeValue::Color(a), NodeValue::Color(b)) => {
-				NodeValue::Color(lerp_arr4(a, b, t))
-			}
+			(NodeValue::Color(a), NodeValue::Color(b)) => NodeValue::Color(lerp_arr4(a, b, t)),
 			(NodeValue::Vec2(a), NodeValue::Vec2(b)) => NodeValue::Vec2(lerp_arr2(a, b, t)),
 			(NodeValue::Vec3(a), NodeValue::Vec3(b)) => NodeValue::Vec3(lerp_arr3(a, b, t)),
 			(NodeValue::Vec4(a), NodeValue::Vec4(b)) => NodeValue::Vec4(lerp_arr4(a, b, t)),
@@ -536,10 +534,7 @@ fn lerp_f(a: &f64, b: &f64, t: f64) -> f64 {
 }
 
 fn lerp_arr2(a: &[f64; 2], b: &[f64; 2], t: f64) -> [f64; 2] {
-	[
-		lerp_f(&a[0], &b[0], t),
-		lerp_f(&a[1], &b[1], t),
-	]
+	[lerp_f(&a[0], &b[0], t), lerp_f(&a[1], &b[1], t)]
 }
 
 fn lerp_arr3(a: &[f64; 3], b: &[f64; 3], t: f64) -> [f64; 3] {
@@ -770,7 +765,10 @@ impl OakNodeValue {
 	/// (C++ `value_from_variant`). String-carried declared types fail with
 	/// [`Error::Invalid`]; types without a POD representation fail with
 	/// [`Error::Failed`].
-	pub fn from_node_value(declared: ValueType, v: &NodeValue) -> crate::error::Result<OakNodeValue> {
+	pub fn from_node_value(
+		declared: ValueType,
+		v: &NodeValue,
+	) -> crate::error::Result<OakNodeValue> {
 		use crate::error::Error;
 		if declared.is_string() {
 			return Err(Error::Invalid);

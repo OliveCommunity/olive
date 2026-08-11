@@ -27,7 +27,12 @@ use std::sync::Arc;
 use oaktask::customcache::CustomCacheTask;
 use oaktask::task::Task;
 
-fn spawn_parked(cc: CustomCacheTask) -> (std::thread::JoinHandle<oaktask::error::Result<()>>, Arc<oaktask::customcache::CustomCacheState>) {
+fn spawn_parked(
+	cc: CustomCacheTask,
+) -> (
+	std::thread::JoinHandle<oaktask::error::Result<()>>,
+	Arc<oaktask::customcache::CustomCacheState>,
+) {
 	let state = cc.state();
 	let atom = cc.base.get_cancel_atom();
 	let title = cc.base.title().to_string();
@@ -52,7 +57,10 @@ fn finish_completes_parked_task() {
 
 	state.finish();
 	let result = handle.join().expect("worker panicked");
-	assert!(result.is_ok(), "finish should complete the task successfully");
+	assert!(
+		result.is_ok(),
+		"finish should complete the task successfully"
+	);
 
 	// Re-run: a real cancel (no finish) reports Err(Cancelled).
 	let cc = CustomCacheTask::new("cancel-seq");
@@ -79,7 +87,10 @@ fn cancelled_callback_fires_only_on_real_cancel() {
 	let (handle, state) = spawn_parked(cc);
 	state.finish();
 	assert!(handle.join().expect("worker panicked").is_ok());
-	assert!(!fired_on_finish.load(Ordering::SeqCst), "finish must not fire the cancelled callback");
+	assert!(
+		!fired_on_finish.load(Ordering::SeqCst),
+		"finish must not fire the cancelled callback"
+	);
 
 	// real cancel: the callback fires.
 	let fired_on_cancel = Arc::new(AtomicBool::new(false));
@@ -91,7 +102,10 @@ fn cancelled_callback_fires_only_on_real_cancel() {
 	let (handle, state) = spawn_parked(cc);
 	state.cancel();
 	assert!(handle.join().expect("worker panicked").is_err());
-	assert!(fired_on_cancel.load(Ordering::SeqCst), "real cancel must fire the cancelled callback");
+	assert!(
+		fired_on_cancel.load(Ordering::SeqCst),
+		"real cancel must fire the cancelled callback"
+	);
 }
 
 /// The cancel hook wakes the parked task even without finish().

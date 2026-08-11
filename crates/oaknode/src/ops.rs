@@ -63,7 +63,11 @@ pub fn copy_inputs(
 	// C++ copies per-element too — array elements are covered when the
 	// array family lands).
 	for id in &src_inputs {
-		if !graph.get(dst).map(|e| e.core.has_input(id)).unwrap_or(false) {
+		if !graph
+			.get(dst)
+			.map(|e| e.core.has_input(id))
+			.unwrap_or(false)
+		{
 			continue;
 		}
 		let value = {
@@ -72,16 +76,16 @@ pub fn copy_inputs(
 		};
 		let declared = {
 			let entry = graph.get(src).ok_or(Error::NotFound)?;
-			entry.core.input_data_type(id).unwrap_or(crate::value::ValueType::None)
+			entry
+				.core
+				.input_data_type(id)
+				.unwrap_or(crate::value::ValueType::None)
 		};
 		let value = {
 			// Re-quantize to the destination's declared type so the copy
 			// never stores a mismatched payload.
 			let entry = graph.get(dst).ok_or(Error::NotFound)?;
-			let dst_declared = entry
-				.core
-				.input_data_type(id)
-				.ok_or(Error::NotFound)?;
+			let dst_declared = entry.core.input_data_type(id).ok_or(Error::NotFound)?;
 			if dst_declared == declared {
 				value
 			} else {
@@ -294,8 +298,7 @@ pub fn set_value_at_time_command(
 			move || {
 				let mut g = lock_any(&project_undo);
 				if let Some(e) = g.graph.get_mut(node) {
-					e.core
-						.set_standard_value(&input_undo, element, old.clone());
+					e.core.set_standard_value(&input_undo, element, old.clone());
 				}
 			},
 		)

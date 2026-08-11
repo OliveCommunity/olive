@@ -320,7 +320,10 @@ mod tests {
 		assert!(c.attach(0).is_err(), "zero identity rejected");
 		c.attach(42).unwrap();
 		assert_eq!(c.copied_project, 42);
-		c.on_cache_request(42, TimeRange::new(Rational::new(0, 1), Rational::new(10, 1)));
+		c.on_cache_request(
+			42,
+			TimeRange::new(Rational::new(0, 1), Rational::new(10, 1)),
+		);
 		assert_eq!(c.live_jobs().len(), 1);
 		c.detach();
 		assert_eq!(c.copied_project, 0);

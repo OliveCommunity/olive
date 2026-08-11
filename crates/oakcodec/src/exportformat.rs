@@ -310,14 +310,26 @@ mod tests {
 			Format::get_video_codecs(Format::MPEG4Video),
 			vec![Codec::H264, Codec::H264RGB, Codec::H265]
 		);
-		assert_eq!(Format::get_video_codecs(Format::OpenEXR), vec![Codec::OpenEXR]);
+		assert_eq!(
+			Format::get_video_codecs(Format::OpenEXR),
+			vec![Codec::OpenEXR]
+		);
 		assert_eq!(Format::get_video_codecs(Format::PNG), vec![Codec::PNG]);
 		assert_eq!(Format::get_video_codecs(Format::TIFF), vec![Codec::TIFF]);
 		assert_eq!(
 			Format::get_video_codecs(Format::QuickTime),
-			vec![Codec::H264, Codec::H264RGB, Codec::H265, Codec::ProRes, Codec::CineForm]
+			vec![
+				Codec::H264,
+				Codec::H264RGB,
+				Codec::H265,
+				Codec::ProRes,
+				Codec::CineForm
+			]
 		);
-		assert_eq!(Format::get_video_codecs(Format::WebM), vec![Codec::AV1, Codec::VP9]);
+		assert_eq!(
+			Format::get_video_codecs(Format::WebM),
+			vec![Codec::AV1, Codec::VP9]
+		);
 		// Formats without video codecs.
 		assert!(Format::get_video_codecs(Format::WAV).is_empty());
 		assert!(Format::get_video_codecs(Format::MP3).is_empty());
@@ -341,7 +353,10 @@ mod tests {
 
 	#[test]
 	fn subtitle_and_codec_capability_tables() {
-		assert_eq!(Format::get_subtitle_codecs(Format::Matroska), vec![Codec::SRT]);
+		assert_eq!(
+			Format::get_subtitle_codecs(Format::Matroska),
+			vec![Codec::SRT]
+		);
 		assert_eq!(Format::get_subtitle_codecs(Format::SRT), vec![Codec::SRT]);
 		assert!(Format::get_subtitle_codecs(Format::MPEG4Video).is_empty());
 

@@ -226,7 +226,12 @@ pub trait AppEngine:
 	/// [`EffectStackDataSource::effects`] (0 = closest to the source);
 	/// the panel passes the position carried by the `AddRequested` event.
 	/// Returns a user-facing error message on failure. Default: unsupported.
-	fn add_effect(&mut self, index: usize, type_id: &str, cx: &mut Context<Self>) -> Result<(), String> {
+	fn add_effect(
+		&mut self,
+		index: usize,
+		type_id: &str,
+		cx: &mut Context<Self>,
+	) -> Result<(), String> {
 		let _ = (index, type_id, cx);
 		Err("add effect not supported".into())
 	}
@@ -276,7 +281,8 @@ pub trait AppEngine:
 	/// Saves the project to `path` (or its own filename when `None`). The
 	/// format is dispatched by extension like [`open_project_path`]
 	/// (AppEngine::open_project_path).
-	fn save_project(&mut self, path: Option<PathBuf>, cx: &mut Context<Self>) -> Result<(), String>;
+	fn save_project(&mut self, path: Option<PathBuf>, cx: &mut Context<Self>)
+		-> Result<(), String>;
 
 	/// Closes the current project, leaving the app with no sequence.
 	fn close_project(&mut self, cx: &mut Context<Self>);

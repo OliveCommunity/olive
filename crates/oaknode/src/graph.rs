@@ -219,7 +219,13 @@ impl Graph {
 	/// input is already connected, `from == to`, or the edge would create
 	/// a cycle (the Rust design rejects cycles at connect time so the
 	/// arena never contains them — `// CPP-PARITY: node.cpp:210`).
-	pub fn connect(&mut self, from: NodeId, to: NodeId, input: &str, element: i32) -> crate::error::Result<()> {
+	pub fn connect(
+		&mut self,
+		from: NodeId,
+		to: NodeId,
+		input: &str,
+		element: i32,
+	) -> crate::error::Result<()> {
 		use crate::error::Error;
 		if !self.is_valid(from) || !self.is_valid(to) {
 			return Err(Error::NotFound);
@@ -230,10 +236,7 @@ impl Graph {
 		// NOT_FOUND > INVALID(not connectable) > STATE).
 		let input_flags = {
 			let entry = self.get(to).expect("validated above");
-			let input = entry
-				.core
-				.get_input(input)
-				.ok_or(Error::NotFound)?;
+			let input = entry.core.get_input(input).ok_or(Error::NotFound)?;
 			input.flags
 		};
 		if input_flags & crate::input::flags::NOT_CONNECTABLE != 0 {
@@ -399,12 +402,7 @@ impl Graph {
 			if !seen.insert(n) {
 				continue;
 			}
-			stack.extend(
-				self.edges
-					.iter()
-					.filter(|e| e.from == n)
-					.map(|e| e.to),
-			);
+			stack.extend(self.edges.iter().filter(|e| e.from == n).map(|e| e.to));
 		}
 		false
 	}
@@ -430,7 +428,9 @@ impl Graph {
 			ready.remove(&n);
 			order.push(n);
 			for e in self.edges.iter().filter(|e| e.from == n) {
-				let d = indegree.get_mut(&e.to).expect("every edge endpoint is counted");
+				let d = indegree
+					.get_mut(&e.to)
+					.expect("every edge endpoint is counted");
 				*d -= 1;
 				if *d == 0 {
 					ready.insert(e.to);
@@ -451,7 +451,9 @@ impl Graph {
 	/// Intern an input id string, returning its stable key.
 	fn intern_input(&mut self, input: &str) -> u64 {
 		let key = hash_str(input);
-		self.input_names.entry(key).or_insert_with(|| input.to_string());
+		self.input_names
+			.entry(key)
+			.or_insert_with(|| input.to_string());
 		key
 	}
 
@@ -511,7 +513,12 @@ impl Graph {
 
 	/// Insert an element into an array input, shifting per-element values,
 	/// keyframes and edges (C++ `Node::input_array_insert`).
-	pub fn input_array_insert(&mut self, id: NodeId, input: &str, index: i32) -> crate::error::Result<()> {
+	pub fn input_array_insert(
+		&mut self,
+		id: NodeId,
+		input: &str,
+		index: i32,
+	) -> crate::error::Result<()> {
 		use crate::error::Error;
 		let entry = self.get_mut(id).ok_or(Error::NotFound)?;
 		let input_ = entry.core.get_input(input).ok_or(Error::NotFound)?;
@@ -545,7 +552,12 @@ impl Graph {
 
 	/// Remove an array element, shifting per-element values, keyframes
 	/// and edges up (C++ `Node::input_array_remove`).
-	pub fn input_array_remove(&mut self, id: NodeId, input: &str, index: i32) -> crate::error::Result<()> {
+	pub fn input_array_remove(
+		&mut self,
+		id: NodeId,
+		input: &str,
+		index: i32,
+	) -> crate::error::Result<()> {
 		use crate::error::Error;
 		let entry = self.get_mut(id).ok_or(Error::NotFound)?;
 		let input_ = entry.core.get_input(input).ok_or(Error::NotFound)?;

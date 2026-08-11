@@ -28,7 +28,6 @@
 #[path = "common/mod.rs"]
 mod common;
 
-
 #[test]
 fn all_module_crates_link() {
 	// oakundo: fresh stack, refcount 1.

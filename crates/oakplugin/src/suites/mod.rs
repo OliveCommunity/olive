@@ -105,10 +105,7 @@ pub mod tag {
 	pub const IMAGE: usize = 6;
 
 	/// 打标签（宿主创建对象句柄用；公开供宿主/测试构造句柄）。
-	pub fn make(
-		props: *const crate::property::PropertySet,
-		t: usize,
-	) -> *mut std::ffi::c_void {
+	pub fn make(props: *const crate::property::PropertySet, t: usize) -> *mut std::ffi::c_void {
 		(props as usize | t) as *mut std::ffi::c_void
 	}
 
@@ -238,7 +235,6 @@ fn ptr<T>(p: &'static T) -> *const std::ffi::c_void {
 	p as *const T as *const std::ffi::c_void
 }
 
-
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -293,7 +289,10 @@ mod tests {
 		let ctx = RenderCtx {
 			time: 1.5,
 			scale: crate::instance::RenderScale { x: 2.0, y: 2.0 },
-			range: crate::instance::OfxRangeD { min: 0.0, max: 100.0 },
+			range: crate::instance::OfxRangeD {
+				min: 0.0,
+				max: 100.0,
+			},
 		};
 		set_render_ctx(Some(ctx));
 		let got = render_ctx().unwrap();

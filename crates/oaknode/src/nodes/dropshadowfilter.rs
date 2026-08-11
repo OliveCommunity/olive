@@ -233,7 +233,10 @@ impl NodeBehavior for DropShadowFilter {
 		time: oakcore_rs::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		if !matches!(inputs.get(TEXTURE_INPUT), Some(crate::value::NodeValue::Texture(_))) {
+		if !matches!(
+			inputs.get(TEXTURE_INPUT),
+			Some(crate::value::NodeValue::Texture(_))
+		) {
 			return;
 		}
 		let _ = (core, time, inputs);
@@ -305,7 +308,10 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	);
 	opacity.properties = vec![
 		("min".to_string(), crate::value::NodeValue::Float(0.0)),
-		("view".to_string(), crate::value::NodeValue::Text("percentage".into())),
+		(
+			"view".to_string(),
+			crate::value::NodeValue::Text("percentage".into()),
+		),
 	];
 	core.add_input(opacity);
 

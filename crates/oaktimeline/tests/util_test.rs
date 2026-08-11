@@ -23,8 +23,11 @@
 use std::cmp::Ordering;
 
 use oaktimeline::bridge::teststubs::{MockKind, MockNode};
-use oaktimeline::error::{Error, OAKTIMELINE_E_FAILED, OAKTIMELINE_E_INVALID, OAKTIMELINE_E_NOMEM, OAKTIMELINE_E_NOT_FOUND, OAKTIMELINE_E_STATE};
-use oaktimeline::handle::{CHandle, get, get_mut, make_owned};
+use oaktimeline::error::{
+	Error, OAKTIMELINE_E_FAILED, OAKTIMELINE_E_INVALID, OAKTIMELINE_E_NOMEM,
+	OAKTIMELINE_E_NOT_FOUND, OAKTIMELINE_E_STATE,
+};
+use oaktimeline::handle::{get, get_mut, make_owned, CHandle};
 use oaktimeline::util::{
 	block_add_to_graph, block_handle_less, block_remove_from_graph, free_detached_handle,
 	same_block, same_node, same_track, track_handle_less, track_project,

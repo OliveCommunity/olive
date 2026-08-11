@@ -74,9 +74,7 @@ pub unsafe extern "C" fn oakcodec_encoding_format_extension(
 
 /// `oakcodec_encoding_format_video_codec_count`.
 #[no_mangle]
-pub unsafe extern "C" fn oakcodec_encoding_format_video_codec_count(
-	format: c_int,
-) -> c_int {
+pub unsafe extern "C" fn oakcodec_encoding_format_video_codec_count(format: c_int) -> c_int {
 	handle::guard_raw(|| match Format::from_i32(format) {
 		Some(f) => Format::get_video_codecs(f).len() as c_int,
 		None => OAKCODEC_E_INVALID,
@@ -104,9 +102,7 @@ pub unsafe extern "C" fn oakcodec_encoding_format_video_codec_at(
 
 /// `oakcodec_encoding_format_audio_codec_count`.
 #[no_mangle]
-pub unsafe extern "C" fn oakcodec_encoding_format_audio_codec_count(
-	format: c_int,
-) -> c_int {
+pub unsafe extern "C" fn oakcodec_encoding_format_audio_codec_count(format: c_int) -> c_int {
 	handle::guard_raw(|| match Format::from_i32(format) {
 		Some(f) => Format::get_audio_codecs(f).len() as c_int,
 		None => OAKCODEC_E_INVALID,
@@ -134,9 +130,7 @@ pub unsafe extern "C" fn oakcodec_encoding_format_audio_codec_at(
 
 /// `oakcodec_encoding_format_subtitle_codec_count`.
 #[no_mangle]
-pub unsafe extern "C" fn oakcodec_encoding_format_subtitle_codec_count(
-	format: c_int,
-) -> c_int {
+pub unsafe extern "C" fn oakcodec_encoding_format_subtitle_codec_count(format: c_int) -> c_int {
 	handle::guard_raw(|| match Format::from_i32(format) {
 		Some(f) => Format::get_subtitle_codecs(f).len() as c_int,
 		None => OAKCODEC_E_INVALID,
@@ -201,10 +195,7 @@ pub unsafe extern "C" fn oakcodec_encoding_codec_is_lossless(codec: c_int) -> c_
 /// so the count is 0 — the same as the C++ base `Encoder` default and the
 /// C++ result for encoder-less codecs.
 #[no_mangle]
-pub unsafe extern "C" fn oakcodec_encoding_pix_fmt_count(
-	format: c_int,
-	codec: c_int,
-) -> c_int {
+pub unsafe extern "C" fn oakcodec_encoding_pix_fmt_count(format: c_int, codec: c_int) -> c_int {
 	handle::guard_raw(|| {
 		let (f, c) = match (Format::from_i32(format), Codec::from_i32(codec)) {
 			(Some(f), Some(c)) => (f, c),
@@ -359,7 +350,10 @@ mod tests {
 		// Matroska (1): "Matroska Video" / "mkv".
 		let rc = unsafe { oakcodec_encoding_format_name(1, buf.as_mut_ptr(), 64) };
 		assert_eq!(rc, 15); // "Matroska Video" (14) + NUL
-		assert_eq!(crate::ffi::c_str(buf.as_ptr()).as_deref(), Some("Matroska Video"));
+		assert_eq!(
+			crate::ffi::c_str(buf.as_ptr()).as_deref(),
+			Some("Matroska Video")
+		);
 		let rc = unsafe { oakcodec_encoding_format_extension(1, buf.as_mut_ptr(), 64) };
 		assert_eq!(rc, 4); // "mkv" + NUL
 		assert_eq!(crate::ffi::c_str(buf.as_ptr()).as_deref(), Some("mkv"));
@@ -402,7 +396,10 @@ mod tests {
 		);
 		// SRT (13): subtitle-only, with the SRT (17) codec.
 		assert_eq!(unsafe { oakcodec_encoding_format_audio_codec_count(13) }, 0);
-		assert_eq!(unsafe { oakcodec_encoding_format_subtitle_codec_count(13) }, 1);
+		assert_eq!(
+			unsafe { oakcodec_encoding_format_subtitle_codec_count(13) },
+			1
+		);
 		assert_eq!(
 			unsafe { oakcodec_encoding_format_subtitle_codec_at(13, 0) },
 			17 // SRT
@@ -439,7 +436,10 @@ mod tests {
 		let rc = unsafe { oakcodec_encoding_codec_name(1, buf.as_mut_ptr(), 64) };
 		assert_eq!(rc, 6); // "H.264" (5) + NUL
 		assert_eq!(crate::ffi::c_str(buf.as_ptr()).as_deref(), Some("H.264"));
-		assert_eq!(unsafe { oakcodec_encoding_codec_name(-1, buf.as_mut_ptr(), 64) }, OAKCODEC_E_INVALID);
+		assert_eq!(
+			unsafe { oakcodec_encoding_codec_name(-1, buf.as_mut_ptr(), 64) },
+			OAKCODEC_E_INVALID
+		);
 
 		// Still images: PNG (5) yes, H.264 (1) no.
 		assert_eq!(unsafe { oakcodec_encoding_codec_is_still_image(5) }, 1);
@@ -478,9 +478,18 @@ mod tests {
 			OAKCODEC_E_NOT_FOUND
 		);
 		// pix_fmt_index: absent/empty/NULL/invalid codec all yield 0.
-		assert_eq!(unsafe { oakcodec_encoding_pix_fmt_index(1, cstr("yuv420p").as_ptr()) }, 0);
-		assert_eq!(unsafe { oakcodec_encoding_pix_fmt_index(1, std::ptr::null()) }, 0);
-		assert_eq!(unsafe { oakcodec_encoding_pix_fmt_index(99, cstr("yuv420p").as_ptr()) }, 0);
+		assert_eq!(
+			unsafe { oakcodec_encoding_pix_fmt_index(1, cstr("yuv420p").as_ptr()) },
+			0
+		);
+		assert_eq!(
+			unsafe { oakcodec_encoding_pix_fmt_index(1, std::ptr::null()) },
+			0
+		);
+		assert_eq!(
+			unsafe { oakcodec_encoding_pix_fmt_index(99, cstr("yuv420p").as_ptr()) },
+			0
+		);
 
 		// PCM (13) in WAV (7) exposes its native sample formats.
 		assert_eq!(unsafe { oakcodec_encoding_sample_format_count(7, 13) }, 6);
@@ -505,24 +514,38 @@ mod tests {
 		let mut buf = [0i8; 128];
 
 		assert_eq!(
-			unsafe { oakcodec_encoding_filename_contains_digit_placeholder(cstr("/tmp/out_[#####].png").as_ptr()) },
+			unsafe {
+				oakcodec_encoding_filename_contains_digit_placeholder(
+					cstr("/tmp/out_[#####].png").as_ptr(),
+				)
+			},
 			1
 		);
 		assert_eq!(
-			unsafe { oakcodec_encoding_filename_contains_digit_placeholder(cstr("/tmp/out.png").as_ptr()) },
+			unsafe {
+				oakcodec_encoding_filename_contains_digit_placeholder(cstr("/tmp/out.png").as_ptr())
+			},
 			0
 		);
-		assert_eq!(unsafe { oakcodec_encoding_filename_contains_digit_placeholder(std::ptr::null()) }, 0);
+		assert_eq!(
+			unsafe { oakcodec_encoding_filename_contains_digit_placeholder(std::ptr::null()) },
+			0
+		);
 
 		assert_eq!(
-			unsafe { oakcodec_encoding_image_sequence_digit_count(cstr("/tmp/out_[#####].png").as_ptr()) },
+			unsafe {
+				oakcodec_encoding_image_sequence_digit_count(cstr("/tmp/out_[#####].png").as_ptr())
+			},
 			5
 		);
 		assert_eq!(
 			unsafe { oakcodec_encoding_image_sequence_digit_count(cstr("/tmp/out.png").as_ptr()) },
 			0
 		);
-		assert_eq!(unsafe { oakcodec_encoding_image_sequence_digit_count(std::ptr::null()) }, 0);
+		assert_eq!(
+			unsafe { oakcodec_encoding_image_sequence_digit_count(std::ptr::null()) },
+			0
+		);
 
 		let rc = unsafe {
 			oakcodec_encoding_filename_remove_digit_placeholder(
@@ -532,7 +555,10 @@ mod tests {
 			)
 		};
 		assert_eq!(rc, 13); // "/tmp/out.png" (12) + NUL
-		assert_eq!(crate::ffi::c_str(buf.as_ptr()).as_deref(), Some("/tmp/out.png"));
+		assert_eq!(
+			crate::ffi::c_str(buf.as_ptr()).as_deref(),
+			Some("/tmp/out.png")
+		);
 		assert_eq!(
 			unsafe {
 				oakcodec_encoding_filename_remove_digit_placeholder(

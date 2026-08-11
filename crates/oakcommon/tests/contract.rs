@@ -26,11 +26,9 @@ use oakcommon::error::{
 	OAKCOMMON_E_FAILED, OAKCOMMON_E_INVALID, OAKCOMMON_E_NOMEM, OAKCOMMON_E_NOT_FOUND,
 	OAKCOMMON_E_STATE, OAKCOMMON_OK,
 };
-use oakcommon::ffmpegutils::{RGB_CHANNEL_COUNT, RGBA_CHANNEL_COUNT};
+use oakcommon::ffmpegutils::{RGBA_CHANNEL_COUNT, RGB_CHANNEL_COUNT};
 use oakcommon::handle::{CHandle, OAKCOMMON_ABI_VERSION};
-use oakcommon::miscutils::{
-	DECIBEL_MINIMUM, DropWorkflowBehavior, LoopMode,
-};
+use oakcommon::miscutils::{DropWorkflowBehavior, LoopMode, DECIBEL_MINIMUM};
 use oakcommon::ocioutils::PixelFormat;
 use oakcommon::videoparams::{ColorRange, Interlacing, VideoType};
 

@@ -131,21 +131,21 @@ pub fn oaknode_node_get_project(node: OakNodeNode, out: *mut OakNodeProject) -> 
 
 /// Direct call into the `oaknode` crate (single-lib unification).
 pub fn oaknode_node_input_get_connected_node(
-		node: OakNodeNode,
-		input_id: *const c_char,
-		out_node: *mut OakNodeNode,
-	) -> c_int {
+	node: OakNodeNode,
+	input_id: *const c_char,
+	out_node: *mut OakNodeNode,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_input_get_connected_node(node, input_id, out_node) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
 pub fn oaknode_node_set_context_position(
-		node: OakNodeNode,
-		context: OakNodeNode,
-		x: f64,
-		y: f64,
-		expanded: c_int,
-	) -> c_int {
+	node: OakNodeNode,
+	context: OakNodeNode,
+	x: f64,
+	y: f64,
+	expanded: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_set_context_position(node, context, x, y, expanded) }
 }
 
@@ -156,11 +156,11 @@ pub fn oaknode_node_find_input_footage(node: OakNodeNode, out: *mut OakNodeFoota
 
 /// Direct call into the `oaknode` crate (single-lib unification).
 pub fn oaknode_node_get_input_string(
-		node: OakNodeNode,
-		input_id: *const c_char,
-		buf: *mut c_char,
-		buf_size: c_int,
-	) -> c_int {
+	node: OakNodeNode,
+	input_id: *const c_char,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_get_input_string(node, input_id, buf, buf_size) }
 }
 
@@ -170,31 +170,48 @@ pub fn oaknode_node_create_copy(node: OakNodeNode) -> OakNodeNode {
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_node_copy_inputs(dst: OakNodeNode, src: OakNodeNode, include_connections: c_int) -> c_int {
+pub fn oaknode_node_copy_inputs(
+	dst: OakNodeNode,
+	src: OakNodeNode,
+	include_connections: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_copy_inputs(dst, src, include_connections) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_node_connect(output_node: OakNodeNode, input_node: OakNodeNode, input_id: *const c_char) -> c_int {
+pub fn oaknode_node_connect(
+	output_node: OakNodeNode,
+	input_node: OakNodeNode,
+	input_id: *const c_char,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_node_connect(output_node, input_node, input_id) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
 pub fn oaknode_node_set_value_hint_track(
-		node: OakNodeNode,
-		input_id: *const c_char,
-		track_type: c_int,
-		track_index: c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::node::oaknode_node_set_value_hint_track(node, input_id, track_type, track_index) }
+	node: OakNodeNode,
+	input_id: *const c_char,
+	track_type: c_int,
+	track_index: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::node::oaknode_node_set_value_hint_track(
+			node,
+			input_id,
+			track_type,
+			track_index,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
 pub fn oaknode_node_get_video_frame_cache(
-		node: OakNodeNode,
-		out: *mut crate::bridge::render::OakRenderCache,
-	) -> c_int {
-	unsafe { oaknode::ffi::node::oaknode_node_get_video_frame_cache(node, out as *mut std::ffi::c_void) }
+	node: OakNodeNode,
+	out: *mut crate::bridge::render::OakRenderCache,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::node::oaknode_node_get_video_frame_cache(node, out as *mut std::ffi::c_void)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
@@ -203,7 +220,9 @@ pub fn oaknode_node_free(node: *mut OakNodeNode) {
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_command_create_remove_node(node: OakNodeNode) -> crate::bridge::undo::OakUndoCommand {
+pub fn oaknode_command_create_remove_node(
+	node: OakNodeNode,
+) -> crate::bridge::undo::OakUndoCommand {
 	unsafe { oaknode::ffi::node::oaknode_command_create_remove_node(node) }
 }
 
@@ -213,12 +232,23 @@ pub fn oaknode_factory_create_from_id(type_id: *const c_char) -> OakNodeNode {
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_viewer_set_video_params(viewer: OakNodeNode, params: *const OakVideoParams) -> c_int {
-	unsafe { oaknode::ffi::node::oaknode_viewer_set_video_params(viewer, params as *const std::ffi::c_void) }
+pub fn oaknode_viewer_set_video_params(
+	viewer: OakNodeNode,
+	params: *const OakVideoParams,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::node::oaknode_viewer_set_video_params(
+			viewer,
+			params as *const std::ffi::c_void,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_viewer_set_audio_params(viewer: OakNodeNode, params: *const std::ffi::c_void) -> c_int {
+pub fn oaknode_viewer_set_audio_params(
+	viewer: OakNodeNode,
+	params: *const std::ffi::c_void,
+) -> c_int {
 	unsafe { oaknode::ffi::node::oaknode_viewer_set_audio_params(viewer, params) }
 }
 
@@ -248,44 +278,78 @@ pub fn oaknode_block_get_kind(block: OakNodeBlock, out_kind: *mut c_int) -> c_in
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_block_get_in(block: OakNodeBlock, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub fn oaknode_block_get_in(
+	block: OakNodeBlock,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::block::oaknode_block_get_in(block, numerator, denominator) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_block_get_length(block: OakNodeBlock, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub fn oaknode_block_get_length(
+	block: OakNodeBlock,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::block::oaknode_block_get_length(block, numerator, denominator) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_block_set_length_and_media_out(block: OakNodeBlock, numerator: c_int, denominator: c_int) -> c_int {
-	unsafe { oaknode::ffi::block::oaknode_block_set_length_and_media_out(block, numerator, denominator) }
+pub fn oaknode_block_set_length_and_media_out(
+	block: OakNodeBlock,
+	numerator: c_int,
+	denominator: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::block::oaknode_block_set_length_and_media_out(block, numerator, denominator)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_clip_set_media_in(clip: OakNodeBlock, numerator: c_int, denominator: c_int) -> c_int {
+pub fn oaknode_clip_set_media_in(
+	clip: OakNodeBlock,
+	numerator: c_int,
+	denominator: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::block::oaknode_clip_set_media_in(clip, numerator, denominator) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_transition_get_in_offset(transition: OakNodeBlock, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::block::oaknode_transition_get_in_offset(transition, numerator, denominator) }
+pub fn oaknode_transition_get_in_offset(
+	transition: OakNodeBlock,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::block::oaknode_transition_get_in_offset(transition, numerator, denominator)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_transition_get_out_offset(transition: OakNodeBlock, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::block::oaknode_transition_get_out_offset(transition, numerator, denominator) }
+pub fn oaknode_transition_get_out_offset(
+	transition: OakNodeBlock,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::block::oaknode_transition_get_out_offset(transition, numerator, denominator)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
 pub fn oaknode_transition_set_offsets_and_length(
-		transition: OakNodeBlock,
-		in_num: c_int,
-		in_den: c_int,
-		out_num: c_int,
-		out_den: c_int,
-	) -> c_int {
-	unsafe { oaknode::ffi::block::oaknode_transition_set_offsets_and_length(transition, in_num, in_den, out_num, out_den) }
+	transition: OakNodeBlock,
+	in_num: c_int,
+	in_den: c_int,
+	out_num: c_int,
+	out_den: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::block::oaknode_transition_set_offsets_and_length(
+			transition, in_num, in_den, out_num, out_den,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
@@ -319,12 +383,20 @@ pub fn oaknode_project_name(project: OakNodeProject, buf: *mut c_char, buf_size:
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_project_filename(project: OakNodeProject, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_project_filename(
+	project: OakNodeProject,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::project::oaknode_project_filename(project, buf, buf_size) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_project_pretty_filename(project: OakNodeProject, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_project_pretty_filename(
+	project: OakNodeProject,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::project::oaknode_project_pretty_filename(project, buf, buf_size) }
 }
 
@@ -349,7 +421,11 @@ pub fn oaknode_project_is_new(project: OakNodeProject) -> c_int {
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_project_cache_path(project: OakNodeProject, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_project_cache_path(
+	project: OakNodeProject,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::project::oaknode_project_cache_path(project, buf, buf_size) }
 }
 
@@ -364,22 +440,36 @@ pub fn oaknode_project_get_cache_location_setting(project: OakNodeProject) -> c_
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_project_set_cache_location_setting(project: OakNodeProject, setting: c_int) -> c_int {
+pub fn oaknode_project_set_cache_location_setting(
+	project: OakNodeProject,
+	setting: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::project::oaknode_project_set_cache_location_setting(project, setting) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_project_get_custom_cache_path(project: OakNodeProject, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_project_get_custom_cache_path(
+	project: OakNodeProject,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::project::oaknode_project_get_custom_cache_path(project, buf, buf_size) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_project_set_custom_cache_path(project: OakNodeProject, path: *const c_char) -> c_int {
+pub fn oaknode_project_set_custom_cache_path(
+	project: OakNodeProject,
+	path: *const c_char,
+) -> c_int {
 	unsafe { oaknode::ffi::project::oaknode_project_set_custom_cache_path(project, path) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_project_get_uuid(project: OakNodeProject, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_project_get_uuid(
+	project: OakNodeProject,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::project::oaknode_project_get_uuid(project, buf, buf_size) }
 }
 
@@ -429,7 +519,10 @@ pub fn oaknode_folder_as_node(folder: OakNodeFolder) -> OakNodeNode {
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_command_create_folder_add_child(folder: OakNodeFolder, child: OakNodeNode) -> crate::bridge::undo::OakUndoCommand {
+pub fn oaknode_command_create_folder_add_child(
+	folder: OakNodeFolder,
+	child: OakNodeNode,
+) -> crate::bridge::undo::OakUndoCommand {
 	unsafe { oaknode::ffi::folder::oaknode_command_create_folder_add_child(folder, child) }
 }
 
@@ -439,7 +532,11 @@ pub fn oaknode_folder_remove_child(folder: OakNodeFolder, child: OakNodeNode) ->
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_folder_move_children(nodes: *const OakNodeNode, count: c_int, dest_folder: OakNodeFolder) -> c_int {
+pub fn oaknode_folder_move_children(
+	nodes: *const OakNodeNode,
+	count: c_int,
+	dest_folder: OakNodeFolder,
+) -> c_int {
 	unsafe { oaknode::ffi::folder::oaknode_folder_move_children(nodes, count, dest_folder) }
 }
 
@@ -469,7 +566,11 @@ pub fn oaknode_footage_as_node(footage: OakNodeFootage) -> OakNodeNode {
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_footage_filename(footage: OakNodeFootage, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_footage_filename(
+	footage: OakNodeFootage,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::footage::oaknode_footage_filename(footage, buf, buf_size) }
 }
 
@@ -494,7 +595,11 @@ pub fn oaknode_footage_set_timestamp(footage: OakNodeFootage, timestamp: i64) ->
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_footage_decoder(footage: OakNodeFootage, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_footage_decoder(
+	footage: OakNodeFootage,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::footage::oaknode_footage_decoder(footage, buf, buf_size) }
 }
 
@@ -519,8 +624,14 @@ pub fn oaknode_footage_subtitle_stream_count(footage: OakNodeFootage) -> c_int {
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_footage_duration(footage: OakNodeFootage, out_numerator: *mut c_int, out_denominator: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::footage::oaknode_footage_duration(footage, out_numerator, out_denominator) }
+pub fn oaknode_footage_duration(
+	footage: OakNodeFootage,
+	out_numerator: *mut c_int,
+	out_denominator: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::footage::oaknode_footage_duration(footage, out_numerator, out_denominator)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
@@ -534,7 +645,11 @@ pub fn oaknode_footage_set_proxy_enabled(footage: OakNodeFootage, enabled: c_int
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_footage_proxy_path(footage: OakNodeFootage, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_footage_proxy_path(
+	footage: OakNodeFootage,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::footage::oaknode_footage_proxy_path(footage, buf, buf_size) }
 }
 
@@ -544,8 +659,24 @@ pub fn oaknode_footage_proxy_state(footage: OakNodeFootage) -> c_int {
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_footage_set_proxy(footage: OakNodeFootage, path: *const c_char, state: c_int, video_stream_index: c_int, preset_version: c_int, enabled: c_int) -> c_int {
-	unsafe { oaknode::ffi::footage::oaknode_footage_set_proxy(footage, path, state, video_stream_index, preset_version, enabled) }
+pub fn oaknode_footage_set_proxy(
+	footage: OakNodeFootage,
+	path: *const c_char,
+	state: c_int,
+	video_stream_index: c_int,
+	preset_version: c_int,
+	enabled: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::footage::oaknode_footage_set_proxy(
+			footage,
+			path,
+			state,
+			video_stream_index,
+			preset_version,
+			enabled,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
@@ -554,17 +685,41 @@ pub fn oaknode_footage_clear_proxy(footage: OakNodeFootage) -> c_int {
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_footage_get_video_params(footage: OakNodeFootage, index: c_int, out: *mut OakVideoParams) -> c_int {
-	unsafe { oaknode::ffi::footage::oaknode_footage_get_video_params(footage, index, out as *mut std::ffi::c_void) }
+pub fn oaknode_footage_get_video_params(
+	footage: OakNodeFootage,
+	index: c_int,
+	out: *mut OakVideoParams,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::footage::oaknode_footage_get_video_params(
+			footage,
+			index,
+			out as *mut std::ffi::c_void,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_footage_set_video_params(footage: OakNodeFootage, index: c_int, params: *const OakVideoParams) -> c_int {
-	unsafe { oaknode::ffi::footage::oaknode_footage_set_video_params(footage, index, params as *const std::ffi::c_void) }
+pub fn oaknode_footage_set_video_params(
+	footage: OakNodeFootage,
+	index: c_int,
+	params: *const OakVideoParams,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::footage::oaknode_footage_set_video_params(
+			footage,
+			index,
+			params as *const std::ffi::c_void,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_footage_get_video_length(footage: OakNodeFootage, out_num: *mut i64, out_den: *mut i64) -> c_int {
+pub fn oaknode_footage_get_video_length(
+	footage: OakNodeFootage,
+	out_num: *mut i64,
+	out_den: *mut i64,
+) -> c_int {
 	unsafe { oaknode::ffi::footage::oaknode_footage_get_video_length(footage, out_num, out_den) }
 }
 
@@ -599,17 +754,30 @@ pub fn oaknode_sequence_from_node(node: OakNodeNode) -> OakNodeSequence {
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_sequence_get_track_list(sequence: OakNodeSequence, r#type: c_int, out: *mut OakNodeTrackList) -> c_int {
+pub fn oaknode_sequence_get_track_list(
+	sequence: OakNodeSequence,
+	r#type: c_int,
+	out: *mut OakNodeTrackList,
+) -> c_int {
 	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_track_list(sequence, r#type, out) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_sequence_get_track_count(sequence: OakNodeSequence, r#type: c_int, count: *mut c_int) -> c_int {
+pub fn oaknode_sequence_get_track_count(
+	sequence: OakNodeSequence,
+	r#type: c_int,
+	count: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_track_count(sequence, r#type, count) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_sequence_get_track_at(sequence: OakNodeSequence, r#type: c_int, index: c_int, out: *mut OakNodeTrack) -> c_int {
+pub fn oaknode_sequence_get_track_at(
+	sequence: OakNodeSequence,
+	r#type: c_int,
+	index: c_int,
+	out: *mut OakNodeTrack,
+) -> c_int {
 	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_track_at(sequence, r#type, index, out) }
 }
 
@@ -619,33 +787,65 @@ pub fn oaknode_sequence_get_all_track_count(sequence: OakNodeSequence, count: *m
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_sequence_get_all_track_at(sequence: OakNodeSequence, index: c_int, out: *mut OakNodeTrack) -> c_int {
+pub fn oaknode_sequence_get_all_track_at(
+	sequence: OakNodeSequence,
+	index: c_int,
+	out: *mut OakNodeTrack,
+) -> c_int {
 	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_all_track_at(sequence, index, out) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_sequence_get_playhead(sequence: OakNodeSequence, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_playhead(sequence, numerator, denominator) }
+pub fn oaknode_sequence_get_playhead(
+	sequence: OakNodeSequence,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::sequence::oaknode_sequence_get_playhead(sequence, numerator, denominator)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_sequence_set_playhead(sequence: OakNodeSequence, numerator: c_int, denominator: c_int) -> c_int {
-	unsafe { oaknode::ffi::sequence::oaknode_sequence_set_playhead(sequence, numerator, denominator) }
+pub fn oaknode_sequence_set_playhead(
+	sequence: OakNodeSequence,
+	numerator: c_int,
+	denominator: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::sequence::oaknode_sequence_set_playhead(sequence, numerator, denominator)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_sequence_get_length(sequence: OakNodeSequence, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub fn oaknode_sequence_get_length(
+	sequence: OakNodeSequence,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_length(sequence, numerator, denominator) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_sequence_get_video_length(sequence: OakNodeSequence, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_video_length(sequence, numerator, denominator) }
+pub fn oaknode_sequence_get_video_length(
+	sequence: OakNodeSequence,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::sequence::oaknode_sequence_get_video_length(sequence, numerator, denominator)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_sequence_get_audio_length(sequence: OakNodeSequence, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_audio_length(sequence, numerator, denominator) }
+pub fn oaknode_sequence_get_audio_length(
+	sequence: OakNodeSequence,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::sequence::oaknode_sequence_get_audio_length(sequence, numerator, denominator)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
@@ -654,32 +854,60 @@ pub fn oaknode_sequence_verify_length(sequence: OakNodeSequence) -> c_int {
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_sequence_get_video_stream_count(sequence: OakNodeSequence, count: *mut c_int) -> c_int {
+pub fn oaknode_sequence_get_video_stream_count(
+	sequence: OakNodeSequence,
+	count: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_video_stream_count(sequence, count) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_sequence_get_audio_stream_count(sequence: OakNodeSequence, count: *mut c_int) -> c_int {
+pub fn oaknode_sequence_get_audio_stream_count(
+	sequence: OakNodeSequence,
+	count: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_audio_stream_count(sequence, count) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_sequence_get_video_params(sequence: OakNodeSequence, index: c_int, out: *mut OakVideoParams) -> c_int {
-	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_video_params(sequence, index, out as *mut std::ffi::c_void) }
+pub fn oaknode_sequence_get_video_params(
+	sequence: OakNodeSequence,
+	index: c_int,
+	out: *mut OakVideoParams,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::sequence::oaknode_sequence_get_video_params(
+			sequence,
+			index,
+			out as *mut std::ffi::c_void,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_sequence_set_video_params(sequence: OakNodeSequence, index: c_int, params: OakVideoParams) -> c_int {
+pub fn oaknode_sequence_set_video_params(
+	sequence: OakNodeSequence,
+	index: c_int,
+	params: OakVideoParams,
+) -> c_int {
 	unsafe { oaknode::ffi::sequence::oaknode_sequence_set_video_params(sequence, index, params) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_sequence_get_audio_params(sequence: OakNodeSequence, index: c_int, out: *mut *mut std::ffi::c_void) -> c_int {
+pub fn oaknode_sequence_get_audio_params(
+	sequence: OakNodeSequence,
+	index: c_int,
+	out: *mut *mut std::ffi::c_void,
+) -> c_int {
 	unsafe { oaknode::ffi::sequence::oaknode_sequence_get_audio_params(sequence, index, out) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_sequence_set_audio_params(sequence: OakNodeSequence, index: c_int, params: *const c_void) -> c_int {
+pub fn oaknode_sequence_set_audio_params(
+	sequence: OakNodeSequence,
+	index: c_int,
+	params: *const c_void,
+) -> c_int {
 	unsafe { oaknode::ffi::sequence::oaknode_sequence_set_audio_params(sequence, index, params) }
 }
 
@@ -704,7 +932,11 @@ pub fn oaknode_track_get_type(track: OakNodeTrack, r#type: *mut c_int) -> c_int 
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_track_get_length(track: OakNodeTrack, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub fn oaknode_track_get_length(
+	track: OakNodeTrack,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::track::oaknode_track_get_length(track, numerator, denominator) }
 }
 
@@ -714,7 +946,11 @@ pub fn oaknode_track_get_block_count(track: OakNodeTrack, count: *mut c_int) -> 
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_track_get_block_at(track: OakNodeTrack, index: c_int, out: *mut OakNodeBlock) -> c_int {
+pub fn oaknode_track_get_block_at(
+	track: OakNodeTrack,
+	index: c_int,
+	out: *mut OakNodeBlock,
+) -> c_int {
 	unsafe { oaknode::ffi::track::oaknode_track_get_block_at(track, index, out) }
 }
 
@@ -749,7 +985,11 @@ pub fn oaknode_tracklist_get_sequence(list: OakNodeTrackList, out: *mut OakNodeS
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_tracklist_get_track_input_id(list: OakNodeTrackList, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_tracklist_get_track_input_id(
+	list: OakNodeTrackList,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::track::oaknode_tracklist_get_track_input_id(list, buf, buf_size) }
 }
 
@@ -764,8 +1004,18 @@ pub fn oaknode_tracklist_array_remove_last(list: OakNodeTrackList) -> c_int {
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_tracklist_get_array_index_from_cache_index(list: OakNodeTrackList, cache_index: c_int, out_index: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::track::oaknode_tracklist_get_array_index_from_cache_index(list, cache_index, out_index) }
+pub fn oaknode_tracklist_get_array_index_from_cache_index(
+	list: OakNodeTrackList,
+	cache_index: c_int,
+	out_index: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::track::oaknode_tracklist_get_array_index_from_cache_index(
+			list,
+			cache_index,
+			out_index,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
@@ -779,12 +1029,20 @@ pub fn oaknode_tracklist_get_track_count(list: OakNodeTrackList, count: *mut c_i
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_tracklist_get_track_at(list: OakNodeTrackList, index: c_int, out: *mut OakNodeTrack) -> c_int {
+pub fn oaknode_tracklist_get_track_at(
+	list: OakNodeTrackList,
+	index: c_int,
+	out: *mut OakNodeTrack,
+) -> c_int {
 	unsafe { oaknode::ffi::track::oaknode_tracklist_get_track_at(list, index, out) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_tracklist_get_total_length(list: OakNodeTrackList, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub fn oaknode_tracklist_get_total_length(
+	list: OakNodeTrackList,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::track::oaknode_tracklist_get_total_length(list, numerator, denominator) }
 }
 
@@ -839,7 +1097,10 @@ pub fn oaknode_serializer_shutdown() {
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_serializer_savedata_create(load_type: c_int, project: OakNodeProject) -> OakNodeSerializerSaveData {
+pub fn oaknode_serializer_savedata_create(
+	load_type: c_int,
+	project: OakNodeProject,
+) -> OakNodeSerializerSaveData {
 	unsafe { oaknode::ffi::serializer::oaknode_serializer_savedata_create(load_type, project) }
 }
 
@@ -849,23 +1110,60 @@ pub fn oaknode_serializer_savedata_free(save_data: *mut OakNodeSerializerSaveDat
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_serializer_savedata_set_nodes(save_data: OakNodeSerializerSaveData, nodes: *const OakNodeNode, count: c_int) -> c_int {
-	unsafe { oaknode::ffi::serializer::oaknode_serializer_savedata_set_nodes(save_data, nodes, count) }
+pub fn oaknode_serializer_savedata_set_nodes(
+	save_data: OakNodeSerializerSaveData,
+	nodes: *const OakNodeNode,
+	count: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::serializer::oaknode_serializer_savedata_set_nodes(save_data, nodes, count)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_serializer_savedata_set_property(save_data: OakNodeSerializerSaveData, node: OakNodeNode, key: *const c_char, value: *const c_char) -> c_int {
-	unsafe { oaknode::ffi::serializer::oaknode_serializer_savedata_set_property(save_data, node, key, value) }
+pub fn oaknode_serializer_savedata_set_property(
+	save_data: OakNodeSerializerSaveData,
+	node: OakNodeNode,
+	key: *const c_char,
+	value: *const c_char,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::serializer::oaknode_serializer_savedata_set_property(
+			save_data, node, key, value,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_serializer_save_to_xml(save_data: OakNodeSerializerSaveData, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oaknode_serializer_save_to_xml(
+	save_data: OakNodeSerializerSaveData,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oaknode::ffi::serializer::oaknode_serializer_save_to_xml(save_data, buf, buf_size) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_serializer_load_from_xml(project: OakNodeProject, xml: *const c_char, load_type: c_int, out_result: *mut c_int, out_load_data: *mut OakNodeSerializerLoadData, details_buf: *mut c_char, details_buf_size: c_int) -> c_int {
-	unsafe { oaknode::ffi::serializer::oaknode_serializer_load_from_xml(project, xml, load_type, out_result, out_load_data, details_buf, details_buf_size) }
+pub fn oaknode_serializer_load_from_xml(
+	project: OakNodeProject,
+	xml: *const c_char,
+	load_type: c_int,
+	out_result: *mut c_int,
+	out_load_data: *mut OakNodeSerializerLoadData,
+	details_buf: *mut c_char,
+	details_buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::serializer::oaknode_serializer_load_from_xml(
+			project,
+			xml,
+			load_type,
+			out_result,
+			out_load_data,
+			details_buf,
+			details_buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
@@ -879,13 +1177,26 @@ pub fn oaknode_serializer_loaddata_node_count(load_data: OakNodeSerializerLoadDa
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_serializer_loaddata_node_at(load_data: OakNodeSerializerLoadData, index: c_int) -> OakNodeNode {
+pub fn oaknode_serializer_loaddata_node_at(
+	load_data: OakNodeSerializerLoadData,
+	index: c_int,
+) -> OakNodeNode {
 	unsafe { oaknode::ffi::serializer::oaknode_serializer_loaddata_node_at(load_data, index) }
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_serializer_loaddata_get_property(load_data: OakNodeSerializerLoadData, node: OakNodeNode, key: *const c_char, buf: *mut c_char, buf_size: c_int) -> c_int {
-	unsafe { oaknode::ffi::serializer::oaknode_serializer_loaddata_get_property(load_data, node, key, buf, buf_size) }
+pub fn oaknode_serializer_loaddata_get_property(
+	load_data: OakNodeSerializerLoadData,
+	node: OakNodeNode,
+	key: *const c_char,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::serializer::oaknode_serializer_loaddata_get_property(
+			load_data, node, key, buf, buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
@@ -894,17 +1205,64 @@ pub fn oaknode_serializer_loaddata_connection_count(load_data: OakNodeSerializer
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_serializer_loaddata_connection_at(load_data: OakNodeSerializerLoadData, index: c_int, out_output_node: *mut OakNodeNode, out_input_node: *mut OakNodeNode, input_id_buf: *mut c_char, input_id_buf_size: c_int, out_element: *mut c_int) -> c_int {
-	unsafe { oaknode::ffi::serializer::oaknode_serializer_loaddata_connection_at(load_data, index, out_output_node, out_input_node, input_id_buf, input_id_buf_size, out_element) }
+pub fn oaknode_serializer_loaddata_connection_at(
+	load_data: OakNodeSerializerLoadData,
+	index: c_int,
+	out_output_node: *mut OakNodeNode,
+	out_input_node: *mut OakNodeNode,
+	input_id_buf: *mut c_char,
+	input_id_buf_size: c_int,
+	out_element: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::serializer::oaknode_serializer_loaddata_connection_at(
+			load_data,
+			index,
+			out_output_node,
+			out_input_node,
+			input_id_buf,
+			input_id_buf_size,
+			out_element,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_serializer_save_to_file(project: OakNodeProject, filename: *const c_char, use_compression: c_int, out_code: *mut c_int, details: *mut c_char, details_size: c_int) -> c_int {
-	unsafe { oaknode::ffi::serializer::oaknode_serializer_save_to_file(project, filename, use_compression, out_code, details, details_size) }
+pub fn oaknode_serializer_save_to_file(
+	project: OakNodeProject,
+	filename: *const c_char,
+	use_compression: c_int,
+	out_code: *mut c_int,
+	details: *mut c_char,
+	details_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::serializer::oaknode_serializer_save_to_file(
+			project,
+			filename,
+			use_compression,
+			out_code,
+			details,
+			details_size,
+		)
+	}
 }
 
 /// Direct call into the `oaknode` crate (single-lib unification).
-pub fn oaknode_serializer_load_from_file(project: OakNodeProject, filename: *const c_char, out_code: *mut c_int, details: *mut c_char, details_size: c_int) -> c_int {
-	unsafe { oaknode::ffi::serializer::oaknode_serializer_load_from_file(project, filename, out_code, details, details_size) }
+pub fn oaknode_serializer_load_from_file(
+	project: OakNodeProject,
+	filename: *const c_char,
+	out_code: *mut c_int,
+	details: *mut c_char,
+	details_size: c_int,
+) -> c_int {
+	unsafe {
+		oaknode::ffi::serializer::oaknode_serializer_load_from_file(
+			project,
+			filename,
+			out_code,
+			details,
+			details_size,
+		)
+	}
 }
-

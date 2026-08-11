@@ -25,14 +25,13 @@ mod common;
 use oakengine::audio::{
 	oakengine_audio_clear_buffered_output, oakengine_audio_create_instance,
 	oakengine_audio_destroy_instance, oakengine_audio_estimate_envelope_offset,
-	oakengine_audio_get_output_device, oakengine_audio_hard_reset,
-	oakengine_audio_processor_close, oakengine_audio_processor_create,
-	oakengine_audio_processor_free, oakengine_audio_processor_is_open,
-	oakengine_audio_processor_open, oakengine_audio_push_to_output,
-	oakengine_audio_reset_output_clock, oakengine_audio_set_output_device,
-	oakengine_audio_set_output_notify_interval, oakengine_audio_stop_output,
-	oakengine_audio_sync_place_by_waveform_offset, OakAudioSyncPlacement,
-	OakAudioWaveformOffset,
+	oakengine_audio_get_output_device, oakengine_audio_hard_reset, oakengine_audio_processor_close,
+	oakengine_audio_processor_create, oakengine_audio_processor_free,
+	oakengine_audio_processor_is_open, oakengine_audio_processor_open,
+	oakengine_audio_push_to_output, oakengine_audio_reset_output_clock,
+	oakengine_audio_set_output_device, oakengine_audio_set_output_notify_interval,
+	oakengine_audio_stop_output, oakengine_audio_sync_place_by_waveform_offset,
+	OakAudioSyncPlacement, OakAudioWaveformOffset,
 };
 
 /// Manager lifecycle: create/destroy round-trip and device accessors
@@ -62,12 +61,23 @@ fn manager_lifecycle() {
 	assert_eq!(unsafe { oakengine_audio_reset_output_clock() }, 0);
 	assert_eq!(unsafe { oakengine_audio_stop_output() }, 0);
 	assert_eq!(unsafe { oakengine_audio_clear_buffered_output() }, 0);
-	assert_eq!(unsafe { oakengine_audio_set_output_notify_interval(1024) }, 0);
+	assert_eq!(
+		unsafe { oakengine_audio_set_output_notify_interval(1024) },
+		0
+	);
 	assert_eq!(unsafe { oakengine_audio_hard_reset() }, 0);
 
 	// push with a NULL params handle fails cleanly.
 	assert_eq!(
-		unsafe { oakengine_audio_push_to_output(std::ptr::null(), c"data".as_ptr(), 4, std::ptr::null_mut(), 0) },
+		unsafe {
+			oakengine_audio_push_to_output(
+				std::ptr::null(),
+				c"data".as_ptr(),
+				4,
+				std::ptr::null_mut(),
+				0,
+			)
+		},
 		-3 // OAKENGINE_E_FAILED
 	);
 
@@ -113,9 +123,7 @@ fn sync_place_by_waveform_offset() {
 		timeline_in_den: 1,
 		valid: 0,
 	};
-	let rc = unsafe {
-		oakengine_audio_sync_place_by_waveform_offset(0, 1, 48000, 48000, &mut out)
-	};
+	let rc = unsafe { oakengine_audio_sync_place_by_waveform_offset(0, 1, 48000, 48000, &mut out) };
 	assert_eq!(rc, 0);
 	// 48000 samples at 48 kHz = 1 second.
 	assert_eq!(out.timeline_in_num, 1);
@@ -124,7 +132,9 @@ fn sync_place_by_waveform_offset() {
 
 	// NULL out → E_INVALID.
 	assert_eq!(
-		unsafe { oakengine_audio_sync_place_by_waveform_offset(0, 1, 0, 48000, std::ptr::null_mut()) },
+		unsafe {
+			oakengine_audio_sync_place_by_waveform_offset(0, 1, 0, 48000, std::ptr::null_mut())
+		},
 		-1
 	);
 }

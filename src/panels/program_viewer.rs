@@ -138,7 +138,10 @@ impl<E: AppEngine> ProgramViewerPanel<E> {
 	/// playhead frame, with the scope samples analyzed in the same pass).
 	fn sync_frame(&mut self, cx: &mut Context<Self>) {
 		let frame = self.engine.read(cx).cpu_frame(Monitor::Program, cx);
-		if self.last_cpu_frame.as_ref().is_none_or(|last| !std::sync::Arc::ptr_eq(last, &frame))
+		if self
+			.last_cpu_frame
+			.as_ref()
+			.is_none_or(|last| !std::sync::Arc::ptr_eq(last, &frame))
 		{
 			self.last_cpu_frame = Some(frame.clone());
 			let scope = self.engine.read(cx).scope_data(Monitor::Program, cx);
@@ -170,7 +173,11 @@ impl<E: AppEngine> ProgramViewerPanel<E> {
 			.rounded_sm()
 			.border_1()
 			.border_color(colors.border)
-			.bg(if active { colors.selected } else { colors.container })
+			.bg(if active {
+				colors.selected
+			} else {
+				colors.container
+			})
 			.text_color(colors.text)
 			.cursor_pointer()
 			.child(label)

@@ -423,9 +423,21 @@ impl BlurFilterNode {
 	/// box/gaussian, `directional_degrees_in` only for directional, and
 	/// `radial_center_in` only for radial.
 	fn update_inputs(core: &mut NodeCore, method: i64) {
-		set_hidden(core, HORIZ_INPUT, !(method == Method::Box as i64 || method == Method::Gaussian as i64));
-		set_hidden(core, VERT_INPUT, !(method == Method::Box as i64 || method == Method::Gaussian as i64));
-		set_hidden(core, DIRECTIONAL_DEGREES_INPUT, method != Method::Directional as i64);
+		set_hidden(
+			core,
+			HORIZ_INPUT,
+			!(method == Method::Box as i64 || method == Method::Gaussian as i64),
+		);
+		set_hidden(
+			core,
+			VERT_INPUT,
+			!(method == Method::Box as i64 || method == Method::Gaussian as i64),
+		);
+		set_hidden(
+			core,
+			DIRECTIONAL_DEGREES_INPUT,
+			method != Method::Directional as i64,
+		);
 		set_hidden(core, RADIAL_CENTER_INPUT, method != Method::Radial as i64);
 	}
 }

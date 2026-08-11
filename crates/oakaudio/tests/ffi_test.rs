@@ -25,15 +25,15 @@ use std::mem::{align_of, size_of};
 use std::sync::Mutex;
 
 use oakaudio::error::{OAKAUDIO_E_INVALID, OAKAUDIO_OK};
-use oakaudio::ffi::levelmeter::{ChannelStats, MeterStats};
 use oakaudio::ffi::levelmeter::oakaudio_levelmeter_analyze;
-use oakaudio::ffi::processor::{oakaudio_processor_free, oakaudio_processor_init};
-use oakaudio::ffi::sync::{OffsetResult, SourceClip};
-use oakaudio::ffi::waveform::{oakaudio_waveform_free, oakaudio_waveform_init};
+use oakaudio::ffi::levelmeter::{ChannelStats, MeterStats};
 use oakaudio::ffi::manager::{
 	oakaudio_debug_alive_count, oakaudio_manager_create_instance,
 	oakaudio_manager_destroy_instance, oakaudio_manager_free, oakaudio_manager_instance,
 };
+use oakaudio::ffi::processor::{oakaudio_processor_free, oakaudio_processor_init};
+use oakaudio::ffi::sync::{OffsetResult, SourceClip};
+use oakaudio::ffi::waveform::{oakaudio_waveform_free, oakaudio_waveform_init};
 
 /// Serializes tests that touch the process-wide singleton and the alive
 /// ledger.
@@ -100,7 +100,10 @@ fn manager_singleton_and_alive_count() {
 	let m1 = unsafe { oakaudio_manager_instance() };
 	let m2 = unsafe { oakaudio_manager_instance() };
 	assert!(!m1.ctx.is_null());
-	assert_eq!(m1.ctx, m2.ctx, "instance() must be the same borrowed handle");
+	assert_eq!(
+		m1.ctx, m2.ctx,
+		"instance() must be the same borrowed handle"
+	);
 
 	// A processor bumps the ledger; freeing it returns to baseline.
 	assert_eq!(unsafe { oakaudio_debug_alive_count() }, before);

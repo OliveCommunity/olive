@@ -272,9 +272,18 @@ mod tests {
 	fn create_wires_inputs_flags_and_defaults() {
 		let (core, behavior) = create();
 		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.despill");
-		assert_ne!(core.get_input(TEXTURE_INPUT).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE, 0);
-		assert_eq!(core.get_input(COLOR_INPUT).unwrap().default, NodeValue::Combo(0));
-		assert_eq!(core.get_input(METHOD_INPUT).unwrap().default, NodeValue::Combo(0));
+		assert_ne!(
+			core.get_input(TEXTURE_INPUT).unwrap().flags & crate::input::flags::NOT_KEYFRAMABLE,
+			0
+		);
+		assert_eq!(
+			core.get_input(COLOR_INPUT).unwrap().default,
+			NodeValue::Combo(0)
+		);
+		assert_eq!(
+			core.get_input(METHOD_INPUT).unwrap().default,
+			NodeValue::Combo(0)
+		);
 		assert_eq!(
 			core.get_input(PRESERVE_LUMINANCE_INPUT).unwrap().default,
 			NodeValue::Boolean(false)
@@ -293,7 +302,12 @@ mod tests {
 	fn value_no_texture_pushes_nothing() {
 		let (core, behavior) = create();
 		let mut table = NodeValueTable::default();
-		behavior.value(&core, &crate::value::NodeValueRow::default(), Rational::new(0, 1), &mut table);
+		behavior.value(
+			&core,
+			&crate::value::NodeValueRow::default(),
+			Rational::new(0, 1),
+			&mut table,
+		);
 		assert!(table.is_empty());
 	}
 

@@ -138,6 +138,10 @@ pub struct TransitionBlockBehavior {
 
 /// ClipBlock input ids (C++ `clip.cpp`).
 pub mod clip_input {
+	/// `tex_in` (texture, static) — the clip's effect input (C++
+	/// `set_effect_input`; the Rust clip keeps the `tex_in` naming used by
+	/// every effect node while C++ master names the buffer `buffer_in`).
+	pub const TEXTURE_INPUT: &str = "tex_in";
 	/// `media_in_in` (rational, static).
 	pub const MEDIA_IN: &str = "media_in_in";
 	/// `speed_in` (float, static).
@@ -288,9 +292,27 @@ impl NodeBehavior for TransitionBlockBehavior {
 
 /// Constructor for a clip block (C++ `ClipBlock::ClipBlock()`): adds the
 /// static clip inputs (`media_in_in`, `speed_in`, `reverse_in`,
-/// `maintain_audio_pitch_in`, `autocache_in`, `loop_in`).
+/// `maintain_audio_pitch_in`, `autocache_in`, `loop_in`) and the texture
+/// input (`tex_in`, prepended ahead of the static ones), which doubles as
+/// the clip's effect input.
 pub fn clip_create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	let mut core = NodeCore::new();
+
+	// The texture input (C++ `ClipBlock` prepends it ahead of the static
+	// inputs): this is where the effect chain attaches, so it sits right
+	// after the inherited `enabled_in` and stays connectable. An unconnected
+	// `tex_in` is inert — the traverser only feeds rows from actual edges
+	// and `ClipBlockBehavior` never reads inputs, so a bare clip (no
+	// effects) evaluates exactly as before.
+	let mut tex = Input::new(
+		clip_input::TEXTURE_INPUT,
+		ValueType::Texture,
+		NodeValue::None,
+	);
+	tex.flags |= crate::input::flags::NOT_KEYFRAMABLE;
+	core.inputs.insert(1, tex);
+	core.effect_input = clip_input::TEXTURE_INPUT.to_string();
+
 	let mut media_in = Input::new(
 		clip_input::MEDIA_IN,
 		ValueType::Rational,
@@ -299,11 +321,7 @@ pub fn clip_create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	media_in.flags |= crate::input::flags::NOT_CONNECTABLE | crate::input::flags::NOT_KEYFRAMABLE;
 	core.add_input(media_in);
 
-	let mut speed = Input::new(
-		clip_input::SPEED,
-		ValueType::Float,
-		NodeValue::Float(1.0),
-	);
+	let mut speed = Input::new(clip_input::SPEED, ValueType::Float, NodeValue::Float(1.0));
 	speed.flags |= crate::input::flags::NOT_CONNECTABLE | crate::input::flags::NOT_KEYFRAMABLE;
 	speed.properties = vec![
 		("min".to_string(), NodeValue::Float(0.0)),
@@ -327,11 +345,7 @@ pub fn clip_create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	pitch.flags |= crate::input::flags::NOT_CONNECTABLE | crate::input::flags::NOT_KEYFRAMABLE;
 	core.add_input(pitch);
 
-	let mut loop_mode = Input::new(
-		clip_input::LOOP_MODE,
-		ValueType::Combo,
-		NodeValue::Combo(0),
-	);
+	let mut loop_mode = Input::new(clip_input::LOOP_MODE, ValueType::Combo, NodeValue::Combo(0));
 	loop_mode.flags |= crate::input::flags::NOT_CONNECTABLE | crate::input::flags::NOT_KEYFRAMABLE;
 	loop_mode.properties = vec![(
 		"combobox_strings".to_string(),
@@ -371,4 +385,73 @@ pub fn transition_create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	core.add_input(inn);
 
 	(core, Box::new(TransitionBlockBehavior::new()))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::project::Project;
+
+	/// The clip's `tex_in` is declared as a connectable, non-keyframable
+	/// texture input and is the node's effect input (C++ ClipBlock
+	/// prepends the texture input and sets it as the effect input).
+	#[test]
+	fn clip_effect_input_and_texture_input() {
+		let (core, _) = clip_create();
+		assert_eq!(core.effect_input, clip_input::TEXTURE_INPUT);
+
+		let tex = core
+			.get_input(clip_input::TEXTURE_INPUT)
+			.expect("clip declares a texture input");
+		assert_eq!(tex.value_type, ValueType::Texture);
+		assert_eq!(tex.default, NodeValue::None);
+		assert_ne!(tex.flags & crate::input::flags::NOT_KEYFRAMABLE, 0);
+		assert!(
+			tex.is_connectable(),
+			"effects attach through the texture input"
+		);
+
+		// The texture input sits right after the inherited `enabled_in`,
+		// ahead of the static clip inputs (C++ prepend convention).
+		let ids: Vec<&str> = core.inputs.iter().map(|i| i.id.as_str()).collect();
+		assert_eq!(
+			ids,
+			vec![
+				crate::node::ENABLED_INPUT,
+				clip_input::TEXTURE_INPUT,
+				clip_input::MEDIA_IN,
+				clip_input::SPEED,
+				clip_input::REVERSE,
+				clip_input::MAINTAIN_AUDIO_PITCH,
+				clip_input::LOOP_MODE,
+			]
+		);
+	}
+
+	/// An effect node can be chained onto the clip through `tex_in`: the
+	/// connection succeeds and resolves back to the effect.
+	#[test]
+	fn clip_texture_input_accepts_effects() {
+		let project = Project::new();
+		let (clip_id, effect_id) = {
+			let mut p = project.lock().unwrap();
+			let (ccore, cbehavior) = clip_create();
+			let clip = p.graph.add_node(ccore, cbehavior);
+			let (ecore, ebehavior) = (crate::factory::Factory::global()
+				.find("org.olivevideoeditor.Olive.opacity")
+				.unwrap()
+				.create)();
+			let effect = p.graph.add_node(ecore, ebehavior);
+			p.graph
+				.connect(effect, clip, clip_input::TEXTURE_INPUT, -1)
+				.unwrap();
+			(clip, effect)
+		};
+		let p = project.lock().unwrap();
+		assert_eq!(
+			p.graph
+				.connected_output(clip_id, clip_input::TEXTURE_INPUT, -1),
+			Some(effect_id)
+		);
+	}
 }

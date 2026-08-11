@@ -80,10 +80,14 @@ impl ConformTask {
 	/// tests/parity_test.rs).
 	///
 	/// CPP-PARITY: src/task/src/conform/conform.cpp (derive_filenames)
-	pub fn derive_filenames(first_channel_final: &str, channel_count: usize) -> Result<(Vec<String>, Vec<String>)> {
+	pub fn derive_filenames(
+		first_channel_final: &str,
+		channel_count: usize,
+	) -> Result<(Vec<String>, Vec<String>)> {
 		const SUFFIX: &str = ".0.pcm";
 
-		if channel_count < 1 || first_channel_final.len() <= SUFFIX.len()
+		if channel_count < 1
+			|| first_channel_final.len() <= SUFFIX.len()
 			|| !first_channel_final.ends_with(SUFFIX)
 		{
 			return Err(Error::Failed("Invalid conform output filename".to_string()));
@@ -124,7 +128,11 @@ impl TaskBehavior for ConformTask {
 
 		let result = (|| {
 			let open_result = unsafe {
-				bridge::codec::oakcodec_decoder_open(decoder, cstr(&self.input_filename), self.stream_index)
+				bridge::codec::oakcodec_decoder_open(
+					decoder,
+					cstr(&self.input_filename),
+					self.stream_index,
+				)
 			};
 			if open_result != 0 {
 				let err = decoder_error(decoder);
@@ -188,10 +196,15 @@ impl TaskBehavior for ConformTask {
 /// Two-stage read of the decoder's last error string.
 fn decoder_error(decoder: CHandle) -> String {
 	let mut buf = [0i8; 256];
-	let needed = unsafe { bridge::codec::oakcodec_decoder_last_error(decoder, buf.as_mut_ptr(), buf.len() as i32) };
+	let needed = unsafe {
+		bridge::codec::oakcodec_decoder_last_error(decoder, buf.as_mut_ptr(), buf.len() as i32)
+	};
 	if needed <= 0 {
 		return String::new();
 	}
 	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-	unsafe { String::from_utf8_lossy(std::slice::from_raw_parts(buf.as_ptr() as *const u8, len)).into_owned() }
+	unsafe {
+		String::from_utf8_lossy(std::slice::from_raw_parts(buf.as_ptr() as *const u8, len))
+			.into_owned()
+	}
 }

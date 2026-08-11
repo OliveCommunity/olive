@@ -32,12 +32,12 @@
 /// One deferred facade family: what it covers, which engine headers define
 /// it, and why the facade does not wrap it yet.
 pub struct DeferredFamily {
-    /// Short family name, as used in messages.
-    pub name: &'static str,
-    /// Engine headers involved.
-    pub headers: &'static str,
-    /// Why the family is not wrapped yet (from the facade's deferred.rs).
-    pub reason: &'static str,
+	/// Short family name, as used in messages.
+	pub name: &'static str,
+	/// Engine headers involved.
+	pub headers: &'static str,
+	/// Why the family is not wrapped yet (from the facade's deferred.rs).
+	pub reason: &'static str,
 }
 
 /// `init.h` — engine process initialization/shutdown.
@@ -99,50 +99,45 @@ pub const EXPORT: DeferredFamily = DeferredFamily {
 /// carries the composed "not yet available" message naming each deferred
 /// family and its reason, for the subcommands to print and exit on.
 pub fn require(families: &[&DeferredFamily]) -> Result<(), String> {
-    if families.is_empty() {
-        return Ok(());
-    }
-    let mut detail = String::new();
-    for f in families {
-        detail.push_str(&format!("\n  - {} ({}): {}", f.name, f.headers, f.reason));
-    }
-    Err(format!(
-        "not yet available in the Rust facade (oakengine): these family(ies) are still deferred \
+	if families.is_empty() {
+		return Ok(());
+	}
+	let mut detail = String::new();
+	for f in families {
+		detail.push_str(&format!("\n  - {} ({}): {}", f.name, f.headers, f.reason));
+	}
+	Err(format!(
+		"not yet available in the Rust facade (oakengine): these family(ies) are still deferred \
          (see src/facade/rust/src/deferred.rs):{detail}"
-    ))
+	))
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
-    fn empty_family_list_is_available() {
-        assert!(require(&[]).is_ok());
-    }
+	#[test]
+	fn empty_family_list_is_available() {
+		assert!(require(&[]).is_ok());
+	}
 
-    #[test]
-    fn deferred_family_lists_a_reason() {
-        let err = require(&[&INIT]).unwrap_err();
-        assert!(err.contains("not yet available"));
-        assert!(err.contains("init"));
-        assert!(err.contains("oakengine"));
-    }
+	#[test]
+	fn deferred_family_lists_a_reason() {
+		let err = require(&[&INIT]).unwrap_err();
+		assert!(err.contains("not yet available"));
+		assert!(err.contains("init"));
+		assert!(err.contains("oakengine"));
+	}
 
-    #[test]
-    fn all_cli_families_are_currently_deferred() {
-        // Keeps this file honest: if any family the CLI depends on flips to
-        // available, the subcommand ports in src/cmd/ become reachable and
-        // the tests asserting "not yet available" must be revisited.
-        let all: [&[&DeferredFamily]; 5] = [
-            &[&INIT],
-            &[&NODE],
-            &[&TIMELINE],
-            &[&RENDER],
-            &[&EXPORT],
-        ];
-        for families in all {
-            assert!(require(families).is_err());
-        }
-    }
+	#[test]
+	fn all_cli_families_are_currently_deferred() {
+		// Keeps this file honest: if any family the CLI depends on flips to
+		// available, the subcommand ports in src/cmd/ become reachable and
+		// the tests asserting "not yet available" must be revisited.
+		let all: [&[&DeferredFamily]; 5] =
+			[&[&INIT], &[&NODE], &[&TIMELINE], &[&RENDER], &[&EXPORT]];
+		for families in all {
+			assert!(require(families).is_err());
+		}
+	}
 }

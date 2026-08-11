@@ -26,7 +26,7 @@ use std::sync::Arc;
 
 use oakplugin::error::{Error, OAKPLUGIN_E_FAILED, OAKPLUGIN_E_NOT_FOUND, OAKPLUGIN_OK};
 use oakplugin::handle::{
-	get, guard, guard_handle, make_borrowed, make_owned, RefBox, Registry, CHandle,
+	get, guard, guard_handle, make_borrowed, make_owned, CHandle, RefBox, Registry,
 };
 
 /// 析构标志：以"被析构次数"断言对象的销毁时机（引用计数语义的
@@ -141,12 +141,18 @@ fn guard_maps_panic_err_ok() {
 		guard(|| Err(Error::Invalid)),
 		oakplugin::error::OAKPLUGIN_E_INVALID
 	);
-	assert_eq!(guard(|| Err(Error::State)), oakplugin::error::OAKPLUGIN_E_STATE);
+	assert_eq!(
+		guard(|| Err(Error::State)),
+		oakplugin::error::OAKPLUGIN_E_STATE
+	);
 	assert_eq!(
 		guard(|| Err(Error::Failed("x".into()))),
 		oakplugin::error::OAKPLUGIN_E_FAILED
 	);
-	assert_eq!(guard(|| Err(Error::NoMem)), oakplugin::error::OAKPLUGIN_E_NOMEM);
+	assert_eq!(
+		guard(|| Err(Error::NoMem)),
+		oakplugin::error::OAKPLUGIN_E_NOMEM
+	);
 
 	// panic -> OAKPLUGIN_E_FAILED，且 panic 不越过 guard 边界
 	// （catch_unwind 语义：本测试线程存活即证明未 unwind）。

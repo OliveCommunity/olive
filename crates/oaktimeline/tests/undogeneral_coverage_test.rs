@@ -28,7 +28,7 @@ use oaktimeline::bridge::node::{
 	oaknode_track_get_block_at, oaknode_track_get_block_count, oaknode_track_prepend_block,
 };
 use oaktimeline::bridge::teststubs::{MockKind, MockNode};
-use oaktimeline::handle::{CHandle, get, get_mut, make_owned};
+use oaktimeline::handle::{get, get_mut, make_owned, CHandle};
 use oaktimeline::undocommon::Command;
 use oaktimeline::undogeneral::{
 	BlockEnableDisableCommand, BlockResizeCommand, BlockResizeWithMediaInCommand,
@@ -108,8 +108,12 @@ fn transition_remove_graph_redo_undo_drop() {
 	let c = mk_clip();
 	set_times(&b, (0, 1), (10, 1), (10, 1), (0, 1));
 	set_times(&c, (10, 1), (20, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), c.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), c.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 
 	{
 		let mut cmd = TransitionRemoveCommand::new(b.clone(), true);
@@ -127,7 +131,9 @@ fn transition_remove_trait_dispatch() {
 	let t = make_track();
 	let b = mk_clip();
 	set_times(&b, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 
 	let mut keep = TransitionRemoveCommand::new(b.clone(), false);
 	Command::redo(&mut keep);
@@ -150,9 +156,15 @@ fn replace_block_gap_merge_two_gaps() {
 	set_times(&g1, (0, 1), (10, 1), (10, 1), (0, 1));
 	set_times(&blk, (10, 1), (15, 1), (5, 1), (0, 1));
 	set_times(&g2, (15, 1), (25, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), g2.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), blk.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), g1.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), g2.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), blk.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), g1.clone());
+	}
 
 	{
 		let mut cmd = TrackReplaceBlockWithGapCommand::new(t.clone(), blk.clone(), false);
@@ -174,9 +186,15 @@ fn replace_block_gap_merge_two_gaps() {
 		set_times(&g1b, (0, 1), (10, 1), (10, 1), (0, 1));
 		set_times(&blkb, (10, 1), (15, 1), (5, 1), (0, 1));
 		set_times(&g2b, (15, 1), (25, 1), (10, 1), (0, 1));
-		unsafe { oaknode_track_prepend_block(t2.clone(), g2b.clone()); }
-		unsafe { oaknode_track_prepend_block(t2.clone(), blkb.clone()); }
-		unsafe { oaknode_track_prepend_block(t2.clone(), g1b.clone()); }
+		unsafe {
+			oaknode_track_prepend_block(t2.clone(), g2b.clone());
+		}
+		unsafe {
+			oaknode_track_prepend_block(t2.clone(), blkb.clone());
+		}
+		unsafe {
+			oaknode_track_prepend_block(t2.clone(), g1b.clone());
+		}
 
 		let mut cmd = TrackReplaceBlockWithGapCommand::new(t2.clone(), blkb.clone(), false);
 		cmd.redo();
@@ -193,8 +211,12 @@ fn replace_block_gap_extend_next_gap() {
 	let g = mk_gap();
 	set_times(&blk, (0, 1), (10, 1), (10, 1), (0, 1));
 	set_times(&g, (10, 1), (20, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), g.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), blk.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), g.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), blk.clone());
+	}
 
 	let mut cmd = TrackReplaceBlockWithGapCommand::new(t.clone(), blk.clone(), false);
 	cmd.redo();
@@ -212,8 +234,12 @@ fn replace_block_gap_our_gap() {
 	let nxt = mk_clip();
 	set_times(&blk, (0, 1), (10, 1), (10, 1), (0, 1));
 	set_times(&nxt, (10, 1), (20, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), nxt.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), blk.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), nxt.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), blk.clone());
+	}
 
 	{
 		let mut cmd = TrackReplaceBlockWithGapCommand::new(t.clone(), blk.clone(), false);
@@ -234,8 +260,12 @@ fn replace_block_gap_at_end_preceding_gap() {
 	let blk = mk_clip();
 	set_times(&g, (0, 1), (10, 1), (10, 1), (0, 1));
 	set_times(&blk, (10, 1), (20, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), blk.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), g.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), blk.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), g.clone());
+	}
 
 	let mut cmd = TrackReplaceBlockWithGapCommand::new(t.clone(), blk.clone(), false);
 	cmd.redo();
@@ -251,8 +281,12 @@ fn replace_block_gap_at_end_preceding_clip() {
 	let blk = mk_clip();
 	set_times(&a, (0, 1), (10, 1), (10, 1), (0, 1));
 	set_times(&blk, (10, 1), (20, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), blk.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), a.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), blk.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), a.clone());
+	}
 
 	let mut cmd = TrackReplaceBlockWithGapCommand::new(t.clone(), blk.clone(), false);
 	cmd.redo();
@@ -272,9 +306,15 @@ fn replace_block_gap_handle_transitions() {
 	set_times(&a, (0, 1), (10, 1), (10, 1), (0, 1));
 	set_times(&blk, (10, 1), (20, 1), (10, 1), (0, 1));
 	set_times(&b, (20, 1), (30, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), blk.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), a.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), blk.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), a.clone());
+	}
 
 	let mut cmd = TrackReplaceBlockWithGapCommand::new(t.clone(), blk.clone(), true);
 	cmd.redo();
@@ -291,7 +331,9 @@ fn replace_block_gap_trait_dispatch() {
 	let t = make_track();
 	let blk = mk_clip();
 	set_times(&blk, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), blk.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), blk.clone());
+	}
 
 	let mut cmd = TrackReplaceBlockWithGapCommand::new(t.clone(), blk.clone(), false);
 	Command::redo(&mut cmd);
@@ -319,7 +361,9 @@ fn insert_gaps_extend_gap() {
 	list_add_track(&list, &t);
 	let g = mk_gap();
 	set_times(&g, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), g.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), g.clone());
+	}
 
 	let mut cmd = TrackListInsertGaps::new(list.clone(), Rational::new(5, 1), Rational::new(3, 1));
 	cmd.prepare();
@@ -338,7 +382,9 @@ fn insert_gaps_split_clip() {
 	list_add_track(&list, &t);
 	let clip = mk_clip();
 	set_times(&clip, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), clip.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), clip.clone());
+	}
 
 	let mut cmd = TrackListInsertGaps::new(list.clone(), Rational::new(5, 1), Rational::new(3, 1));
 	cmd.prepare();
@@ -360,7 +406,9 @@ fn insert_gaps_clip_at_point() {
 	list_add_track(&list, &t);
 	let clip = mk_clip();
 	set_times(&clip, (5, 1), (10, 1), (5, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), clip.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), clip.clone());
+	}
 
 	let mut cmd = TrackListInsertGaps::new(list.clone(), Rational::new(5, 1), Rational::new(3, 1));
 	cmd.prepare();
@@ -377,7 +425,9 @@ fn insert_gaps_clip_at_end() {
 	list_add_track(&list, &t);
 	let clip = mk_clip();
 	set_times(&clip, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), clip.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), clip.clone());
+	}
 
 	let mut cmd = TrackListInsertGaps::new(list.clone(), Rational::new(10, 1), Rational::new(3, 1));
 	cmd.prepare();
@@ -391,9 +441,16 @@ fn insert_gaps_clip_at_end() {
 fn insert_gaps_locked_and_null_track() {
 	let list = make_list();
 	// A null entry in the track list is skipped.
-	unsafe { get_mut::<MockNode>(&list).unwrap().blocks.push(std::ptr::null_mut()); }
+	unsafe {
+		get_mut::<MockNode>(&list)
+			.unwrap()
+			.blocks
+			.push(std::ptr::null_mut());
+	}
 	let locked = make_track();
-	unsafe { get_mut::<MockNode>(&locked).unwrap().locked = true; }
+	unsafe {
+		get_mut::<MockNode>(&locked).unwrap().locked = true;
+	}
 	list_add_track(&list, &locked);
 
 	let mut cmd = TrackListInsertGaps::new(list.clone(), Rational::new(5, 1), Rational::new(3, 1));
@@ -408,7 +465,12 @@ fn insert_gaps_locked_and_null_track() {
 fn insert_gaps_null_block() {
 	let list = make_list();
 	let t = make_track();
-	unsafe { get_mut::<MockNode>(&t).unwrap().blocks.push(std::ptr::null_mut()); }
+	unsafe {
+		get_mut::<MockNode>(&t)
+			.unwrap()
+			.blocks
+			.push(std::ptr::null_mut());
+	}
 	list_add_track(&list, &t);
 
 	let mut cmd = TrackListInsertGaps::new(list.clone(), Rational::new(5, 1), Rational::new(3, 1));
@@ -425,7 +487,9 @@ fn insert_gaps_trait_dispatch() {
 	list_add_track(&list, &t);
 	let g = mk_gap();
 	set_times(&g, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), g.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), g.clone());
+	}
 
 	let mut cmd = TrackListInsertGaps::new(list.clone(), Rational::new(5, 1), Rational::new(3, 1));
 	Command::redo(&mut cmd);
@@ -446,15 +510,21 @@ fn add_default_transition_prepare_branches() {
 	set_times(&a, (10, 1), (20, 1), (10, 1), (0, 1));
 	set_times(&b, (20, 1), (30, 1), (10, 1), (0, 1));
 	set_times(&g2, (30, 1), (40, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), g2.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), a.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), g1.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), g2.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), a.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), g1.clone());
+	}
 
-	let mut cmd = TimelineAddDefaultTransitionCommand::new(
-		vec![a.clone(), b.clone()],
-		Rational::new(30, 1),
-	);
+	let mut cmd =
+		TimelineAddDefaultTransitionCommand::new(vec![a.clone(), b.clone()], Rational::new(30, 1));
 	cmd.prepare();
 	cmd.redo();
 	cmd.undo();

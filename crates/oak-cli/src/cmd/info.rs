@@ -21,24 +21,24 @@ use crate::cmd::{port_not_wired, require_or, EXIT_ERROR};
 
 /// Run `info`. `project` is the .ove path from the command line.
 pub fn run(project: String) -> i32 {
-    if let Err(code) = require_or(
-        "info",
-        &[
-            &crate::deferred::INIT,
-            &crate::deferred::NODE,
-            &crate::deferred::TIMELINE,
-        ],
-        EXIT_ERROR,
-    ) {
-        return code;
-    }
-    // Facade port (unreachable while the families above are deferred):
-    //   oakengine_init(OAKENGINE_INIT_HEADLESS)
-    //   project_create + project_load(project, ...)
-    //   name/filename/is_modified/sequence_count/sequence_at(...) +
-    //     fmt::sequence() / fmt::footage_entry() for each
-    //   project_free + oakengine_shutdown()
-    // The formatters already exist in crate::fmt and are golden-tested.
-    let _ = &project;
-    port_not_wired("info", EXIT_ERROR)
+	if let Err(code) = require_or(
+		"info",
+		&[
+			&crate::deferred::INIT,
+			&crate::deferred::NODE,
+			&crate::deferred::TIMELINE,
+		],
+		EXIT_ERROR,
+	) {
+		return code;
+	}
+	// Facade port (unreachable while the families above are deferred):
+	//   oakengine_init(OAKENGINE_INIT_HEADLESS)
+	//   project_create + project_load(project, ...)
+	//   name/filename/is_modified/sequence_count/sequence_at(...) +
+	//     fmt::sequence() / fmt::footage_entry() for each
+	//   project_free + oakengine_shutdown()
+	// The formatters already exist in crate::fmt and are golden-tested.
+	let _ = &project;
+	port_not_wired("info", EXIT_ERROR)
 }

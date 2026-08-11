@@ -27,43 +27,43 @@ use crate::cmd::{port_not_wired, require_or, EXIT_RENDER_UNAVAILABLE, EXIT_USAGE
 /// then [`crate::ppm::write_ppm`] / [`crate::wav::write_wav`] per frame) is
 /// gated on the deferred families below.
 pub fn run(project: String, start_seconds: &str, end_seconds: &str, out_dir: &str) -> i32 {
-    let start: f64 = match start_seconds.parse() {
-        Ok(v) => v,
-        Err(_) => {
-            eprintln!("error: invalid start seconds \"{start_seconds}\"");
-            return EXIT_USAGE;
-        }
-    };
-    let end: f64 = match end_seconds.parse() {
-        Ok(v) => v,
-        Err(_) => {
-            eprintln!("error: invalid end seconds \"{end_seconds}\"");
-            return EXIT_USAGE;
-        }
-    };
-    if end <= start {
-        eprintln!("error: invalid end seconds \"{end_seconds}\"");
-        return EXIT_USAGE;
-    }
+	let start: f64 = match start_seconds.parse() {
+		Ok(v) => v,
+		Err(_) => {
+			eprintln!("error: invalid start seconds \"{start_seconds}\"");
+			return EXIT_USAGE;
+		}
+	};
+	let end: f64 = match end_seconds.parse() {
+		Ok(v) => v,
+		Err(_) => {
+			eprintln!("error: invalid end seconds \"{end_seconds}\"");
+			return EXIT_USAGE;
+		}
+	};
+	if end <= start {
+		eprintln!("error: invalid end seconds \"{end_seconds}\"");
+		return EXIT_USAGE;
+	}
 
-    if let Err(code) = require_or(
-        "render",
-        &[
-            &crate::deferred::INIT,
-            &crate::deferred::NODE,
-            &crate::deferred::TIMELINE,
-            &crate::deferred::RENDER,
-        ],
-        EXIT_RENDER_UNAVAILABLE,
-    ) {
-        return code;
-    }
-    // Facade port (unreachable while the families above are deferred):
-    //   oakengine_init(HEADLESS | RENDER), chdir to the project dir,
-    //   project_load, sequence 0 frame rate -> start_ts/end_ts,
-    //   renderer_create(f32, fr_num, fr_den), then for each timestamp
-    //   render_frame -> ppm::write_ppm (progress on stderr), then
-    //   render_audio -> wav::write_wav. Both writers are golden-tested.
-    let _ = (&project, &start, &end, &out_dir);
-    port_not_wired("render", EXIT_RENDER_UNAVAILABLE)
+	if let Err(code) = require_or(
+		"render",
+		&[
+			&crate::deferred::INIT,
+			&crate::deferred::NODE,
+			&crate::deferred::TIMELINE,
+			&crate::deferred::RENDER,
+		],
+		EXIT_RENDER_UNAVAILABLE,
+	) {
+		return code;
+	}
+	// Facade port (unreachable while the families above are deferred):
+	//   oakengine_init(HEADLESS | RENDER), chdir to the project dir,
+	//   project_load, sequence 0 frame rate -> start_ts/end_ts,
+	//   renderer_create(f32, fr_num, fr_den), then for each timestamp
+	//   render_frame -> ppm::write_ppm (progress on stderr), then
+	//   render_audio -> wav::write_wav. Both writers are golden-tested.
+	let _ = (&project, &start, &end, &out_dir);
+	port_not_wired("render", EXIT_RENDER_UNAVAILABLE)
 }

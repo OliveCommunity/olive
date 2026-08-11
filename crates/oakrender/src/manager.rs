@@ -203,7 +203,10 @@ mod tests {
 		RenderManager::init().unwrap();
 		assert!(RenderManager::global().is_some());
 		// Idempotence: second init is a state error.
-		assert_eq!(RenderManager::init().unwrap_err().code(), Error::State.code());
+		assert_eq!(
+			RenderManager::init().unwrap_err().code(),
+			Error::State.code()
+		);
 		RenderManager::shutdown();
 		assert!(RenderManager::global().is_none());
 		// Re-init works after shutdown (C++ destroy_instance semantics).
@@ -238,7 +241,9 @@ mod tests {
 
 	#[test]
 	fn disk_cache_size_and_clear() {
-		let _guard = crate::bridge::common::ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::bridge::common::ENV_TEST_LOCK
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let dir = std::env::temp_dir().join("oakrender-diskcache-test");
 		std::env::set_var("OAK_CONFIG_DIR", &dir);
 		std::fs::create_dir_all(dir.join("mediacache").join("sub")).unwrap();
@@ -253,7 +258,9 @@ mod tests {
 
 	#[test]
 	fn disk_cache_size_missing_dir_is_zero() {
-		let _guard = crate::bridge::common::ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::bridge::common::ENV_TEST_LOCK
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let dir = std::env::temp_dir().join("oakrender-diskcache-missing");
 		std::env::set_var("OAK_CONFIG_DIR", &dir);
 		let _ = std::fs::remove_dir_all(&dir);

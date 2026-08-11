@@ -28,7 +28,8 @@ use oaktimeline::bridge::node::{
 };
 use oaktimeline::bridge::teststubs::{MockKind, MockNode};
 use oaktimeline::common::MovementMode;
-use oaktimeline::handle::{CHandle, OAKTIMELINE_ABI_VERSION, get, get_mut, make_owned};
+use oaktimeline::handle::{get, get_mut, make_owned, CHandle, OAKTIMELINE_ABI_VERSION};
+use oaktimeline::undocommon::Command;
 use oaktimeline::undogeneral::{
 	BlockEnableDisableCommand, BlockResizeCommand, BlockResizeWithMediaInCommand,
 	BlockSetMediaInCommand, TimelineAddDefaultTransitionCommand, TimelineAddTrackCommand,
@@ -36,11 +37,11 @@ use oaktimeline::undogeneral::{
 	TransitionRemoveCommand,
 };
 use oaktimeline::undopointer::{
-	BlockTrimCommand, TrackPlaceBlockCommand, TrackSlideCommand,
+	BlockTrimCommand, TrackMoveBlockCommand, TrackPlaceBlockCommand, TrackSlideCommand,
 };
 use oaktimeline::undoripple::{
-	TrackListRippleRemoveAreaCommand, TrackRippleRemoveAreaCommand, TimelineRippleDeleteGapsAtRegionsCommand,
-	TimelineRippleRemoveAreaCommand,
+	TimelineRippleDeleteGapsAtRegionsCommand, TimelineRippleRemoveAreaCommand,
+	TrackListRippleRemoveAreaCommand, TrackRippleRemoveAreaCommand,
 };
 use oaktimeline::undosplit::{
 	BlockSplitCommand, BlockSplitPreservingLinksCommand, TrackSplitAtTimeCommand,
@@ -48,7 +49,6 @@ use oaktimeline::undosplit::{
 use oaktimeline::undotrack::{
 	TrackInsertBlockAfterCommand, TrackPrependBlockCommand, TrackReplaceBlockCommand,
 };
-use oaktimeline::undocommon::Command;
 
 /// `TimelineAddTrackCommand` redo adds a track; undo removes it. The
 /// newly-created track is exposed via `track()`.
@@ -113,6 +113,65 @@ fn place_block_command_redo_undo() {
 	assert_eq!(count(&t), 0);
 }
 
+/// `TrackMoveBlockCommand` redo gaps the block's old spot and places it at
+/// the new in point (keeping the length); undo restores the original
+/// position.
+#[test]
+fn track_move_block_redo_undo() {
+	let list = make_list();
+	let t = make_track();
+	list_add_track(&list, &t);
+	let b = mk_clip();
+	set_times(&b, (0, 1), (10, 1), (10, 1), (0, 1));
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
+
+	let mut cmd = TrackMoveBlockCommand::new(list.clone(), 0, b.clone(), Rational::new(20, 1));
+	cmd.redo();
+	// The old spot is a gap; the block sits at the new in point, length kept.
+	assert_eq!(count(&t), 2);
+	assert_eq!(b_in(&b), (20, 1));
+	assert_eq!(blen(&b), (10, 1));
+
+	cmd.undo();
+	assert_eq!(count(&t), 1);
+	assert_eq!(b_in(&b), (0, 1));
+
+	cmd.redo();
+	assert_eq!(count(&t), 2);
+	assert_eq!(b_in(&b), (20, 1));
+}
+
+/// `TrackMoveBlockCommand` moves the block onto another track (the
+/// destination track index need not match the source); undo moves it back.
+#[test]
+fn track_move_block_cross_track_redo_undo() {
+	let list = make_list();
+	let t0 = make_track();
+	let t1 = make_track();
+	list_add_track(&list, &t0);
+	list_add_track(&list, &t1);
+	let b = mk_clip();
+	set_times(&b, (0, 1), (10, 1), (10, 1), (0, 1));
+	unsafe {
+		oaknode_track_prepend_block(t0.clone(), b.clone());
+	}
+
+	let mut cmd = TrackMoveBlockCommand::new(list.clone(), 1, b.clone(), Rational::new(20, 1));
+	cmd.redo();
+	// t0's only block moved away (at-end gap: nothing left behind); t1 holds
+	// a lead-in gap plus the block.
+	assert_eq!(count(&t0), 0);
+	assert_eq!(count(&t1), 2);
+	assert_eq!(b_in(&b), (20, 1));
+
+	cmd.undo();
+	assert_eq!(count(&t0), 1);
+	assert_eq!(count(&t1), 0);
+	assert_eq!(b_in(&b), (0, 1));
+}
+
 /// `BlockResizeCommand` redo resizes the block; undo restores its
 /// original length (media out follows the resize).
 #[test]
@@ -172,11 +231,22 @@ fn block_trim_command_redo_undo() {
 	set_times(&g1, (0, 1), (10, 1), (10, 1), (0, 1));
 	set_times(&b, (10, 1), (20, 1), (10, 1), (0, 1));
 	set_times(&c, (20, 1), (30, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), c.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), g1.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), c.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), g1.clone());
+	}
 
-	let mut cmd = BlockTrimCommand::new(t.clone(), b.clone(), Rational::new(6, 1), MovementMode::TrimOut);
+	let mut cmd = BlockTrimCommand::new(
+		t.clone(),
+		b.clone(),
+		Rational::new(6, 1),
+		MovementMode::TrimOut,
+	);
 	cmd.prepare();
 
 	cmd.redo();
@@ -199,9 +269,15 @@ fn replace_block_with_gap_redo_undo() {
 	set_times(&g, (0, 1), (10, 1), (10, 1), (0, 1));
 	set_times(&blk, (10, 1), (15, 1), (5, 1), (0, 1));
 	set_times(&nxt, (15, 1), (25, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), nxt.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), blk.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), g.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), nxt.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), blk.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), g.clone());
+	}
 
 	let mut cmd = TrackReplaceBlockWithGapCommand::new(t.clone(), blk.clone(), false);
 
@@ -234,7 +310,9 @@ fn track_prepend_block_redo_undo() {
 	let t = make_track();
 	let b = mk_clip();
 	set_times(&b, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 
 	let b2 = mk_clip();
 	set_times(&b2, (0, 1), (10, 1), (10, 1), (0, 1));
@@ -254,7 +332,9 @@ fn track_insert_block_after_redo_undo() {
 	let t = make_track();
 	let b = mk_clip();
 	set_times(&b, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 
 	let b2 = mk_clip();
 	set_times(&b2, (0, 1), (10, 1), (10, 1), (0, 1));
@@ -274,7 +354,9 @@ fn track_replace_block_redo_undo() {
 	let t = make_track();
 	let b = mk_clip();
 	set_times(&b, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 
 	let b2 = mk_clip();
 	set_times(&b2, (0, 1), (10, 1), (10, 1), (0, 1));
@@ -306,7 +388,9 @@ fn track_commands_trait_dispatch() {
 	Command::undo(&mut prepend);
 	assert_eq!(count(&t), 0);
 
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 	let b2 = mk_clip();
 	set_times(&b2, (0, 1), (10, 1), (10, 1), (0, 1));
 	let mut ins = TrackInsertBlockAfterCommand::new(t.clone(), b2.clone(), b.clone());
@@ -331,7 +415,9 @@ fn block_split_command_redo_undo() {
 	let t = make_track();
 	let b = mk_clip();
 	set_times(&b, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 
 	let mut cmd = BlockSplitCommand::new(b.clone(), Rational::new(5, 1));
 	cmd.prepare();
@@ -353,12 +439,12 @@ fn block_split_preserving_links_redo_undo() {
 	let t = make_track();
 	let clip = mk_clip();
 	set_times(&clip, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), clip.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), clip.clone());
+	}
 
-	let mut cmd = BlockSplitPreservingLinksCommand::new(
-		vec![clip.clone()],
-		vec![Rational::new(5, 1)],
-	);
+	let mut cmd =
+		BlockSplitPreservingLinksCommand::new(vec![clip.clone()], vec![Rational::new(5, 1)]);
 	cmd.prepare();
 	assert_eq!(count(&t), 2);
 	assert!(cmd.get_split(clip.clone(), 0).is_some());
@@ -389,7 +475,9 @@ fn block_split_redo_without_prepare() {
 	let t = make_track();
 	let b = mk_clip();
 	set_times(&b, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 
 	let mut cmd = BlockSplitCommand::new(b.clone(), Rational::new(4, 1));
 	cmd.redo();
@@ -405,7 +493,9 @@ fn split_commands_trait_dispatch_and_get_split() {
 	let t = make_track();
 	let clip = mk_clip();
 	set_times(&clip, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), clip.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), clip.clone());
+	}
 
 	// `BlockSplitCommand` via the trait.
 	let mut s = BlockSplitCommand::new(clip.clone(), Rational::new(5, 1));
@@ -419,10 +509,8 @@ fn split_commands_trait_dispatch_and_get_split() {
 	// `BlockSplitPreservingLinksCommand`: prepare applies, undo unsplits,
 	// redo re-applies; `get_split` None paths.
 	let other = mk_clip();
-	let mut p = BlockSplitPreservingLinksCommand::new(
-		vec![clip.clone()],
-		vec![Rational::new(5, 1)],
-	);
+	let mut p =
+		BlockSplitPreservingLinksCommand::new(vec![clip.clone()], vec![Rational::new(5, 1)]);
 	p.prepare();
 	assert_eq!(count(&t), 2);
 	assert!(p.get_split(clip.clone(), 0).is_some());
@@ -448,7 +536,9 @@ fn track_ripple_remove_area_redo_undo() {
 	let t = make_track();
 	let b = mk_clip();
 	set_times(&b, (10, 1), (20, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 
 	let mut cmd = TrackRippleRemoveAreaCommand::new(
 		t.clone(),
@@ -475,7 +565,9 @@ fn track_list_ripple_remove_area_redo_undo() {
 	list_add_track(&list, &t);
 	let b = mk_clip();
 	set_times(&b, (10, 1), (20, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 
 	let mut cmd = TrackListRippleRemoveAreaCommand::new(
 		list.clone(),
@@ -502,7 +594,9 @@ fn timeline_ripple_remove_area_redo_undo() {
 	list_add_track(&list, &t);
 	let b = mk_clip();
 	set_times(&b, (10, 1), (20, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 
 	let mut cmd = TimelineRippleRemoveAreaCommand::new(
 		seq.clone(),
@@ -526,7 +620,9 @@ fn track_list_insert_gaps_redo_undo() {
 	list_add_track(&list, &t);
 	let clip = mk_clip();
 	set_times(&clip, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), clip.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), clip.clone());
+	}
 
 	let mut cmd = TrackListInsertGaps::new(list.clone(), Rational::new(5, 1), Rational::new(3, 1));
 	cmd.prepare();
@@ -550,11 +646,16 @@ fn ripple_delete_gaps_redo_undo() {
 	list_add_track(&list, &t);
 	let gap = mk_gap();
 	set_times(&gap, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), gap.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), gap.clone());
+	}
 
 	let mut cmd = TimelineRippleDeleteGapsAtRegionsCommand::new(
 		seq.clone(),
-		vec![(t.clone(), TimeRange::new(Rational::new(0, 1), Rational::new(10, 1)))],
+		vec![(
+			t.clone(),
+			TimeRange::new(Rational::new(0, 1), Rational::new(10, 1)),
+		)],
 	);
 	cmd.prepare();
 	assert!(cmd.has_commands());
@@ -579,9 +680,15 @@ fn track_slide_command_redo_undo() {
 	set_times(&g1, (0, 1), (10, 1), (10, 1), (0, 1));
 	set_times(&b, (10, 1), (20, 1), (10, 1), (0, 1));
 	set_times(&g2, (20, 1), (30, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), g2.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), g1.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), g2.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), g1.clone());
+	}
 
 	let mut cmd = TrackSlideCommand::new(
 		t.clone(),
@@ -621,8 +728,12 @@ fn transition_remove_redo_undo() {
 	let c = mk_clip();
 	set_times(&b, (0, 1), (10, 1), (10, 1), (0, 1));
 	set_times(&c, (10, 1), (20, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), c.clone()); }
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), c.clone());
+	}
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 
 	let mut cmd = TransitionRemoveCommand::new(b.clone(), false);
 
@@ -647,19 +758,17 @@ fn all_edit_commands_box_to_chandle() {
 	list_add_track(&list, &t);
 	let b = mk_clip();
 	set_times(&b, (0, 1), (10, 1), (10, 1), (0, 1));
-	unsafe { oaknode_track_prepend_block(t.clone(), b.clone()); }
+	unsafe {
+		oaknode_track_prepend_block(t.clone(), b.clone());
+	}
 	let b2 = mk_clip();
 
 	let mut handles: Vec<CHandle> = Vec::new();
 	handles.push(BlockResizeCommand::new(b.clone(), Rational::new(6, 1)).to_command());
-	handles.push(
-		BlockResizeWithMediaInCommand::new(b.clone(), Rational::new(6, 1)).to_command(),
-	);
+	handles.push(BlockResizeWithMediaInCommand::new(b.clone(), Rational::new(6, 1)).to_command());
 	handles.push(BlockSetMediaInCommand::new(b.clone(), Rational::new(4, 1)).to_command());
 	handles.push(TimelineAddTrackCommand::new(list.clone()).to_command());
-	handles.push(
-		TimelineAddTrackCommand::with_automerge(list.clone(), true).to_command(),
-	);
+	handles.push(TimelineAddTrackCommand::with_automerge(list.clone(), true).to_command());
 	handles.push(TimelineRemoveTrackCommand::new(t.clone()).to_command());
 	handles.push(TransitionRemoveCommand::new(b.clone(), false).to_command());
 	handles.push(TrackReplaceBlockWithGapCommand::new(t.clone(), b.clone(), false).to_command());
@@ -668,14 +777,26 @@ fn all_edit_commands_box_to_chandle() {
 		TrackListInsertGaps::new(list.clone(), Rational::new(5, 1), Rational::new(3, 1))
 			.to_command(),
 	);
-	handles.push(TimelineAddDefaultTransitionCommand::new(vec![], Rational::new(30, 1)).to_command());
+	handles
+		.push(TimelineAddDefaultTransitionCommand::new(vec![], Rational::new(30, 1)).to_command());
 	handles.push(
-		BlockTrimCommand::new(t.clone(), b.clone(), Rational::new(6, 1), MovementMode::TrimOut)
-			.to_command(),
+		BlockTrimCommand::new(
+			t.clone(),
+			b.clone(),
+			Rational::new(6, 1),
+			MovementMode::TrimOut,
+		)
+		.to_command(),
 	);
 	handles.push(
-		TrackSlideCommand::new(t.clone(), vec![b.clone()], b.clone(), b2.clone(), Rational::new(5, 1))
-			.to_command(),
+		TrackSlideCommand::new(
+			t.clone(),
+			vec![b.clone()],
+			b.clone(),
+			b2.clone(),
+			Rational::new(5, 1),
+		)
+		.to_command(),
 	);
 	handles.push(
 		TrackPlaceBlockCommand::new(list.clone(), 0, b.clone(), Rational::new(0, 1)).to_command(),
@@ -706,7 +827,10 @@ fn all_edit_commands_box_to_chandle() {
 	handles.push(
 		TimelineRippleDeleteGapsAtRegionsCommand::new(
 			seq.clone(),
-			vec![(t.clone(), TimeRange::new(Rational::new(0, 1), Rational::new(10, 1)))],
+			vec![(
+				t.clone(),
+				TimeRange::new(Rational::new(0, 1), Rational::new(10, 1)),
+			)],
 		)
 		.to_command(),
 	);
@@ -717,9 +841,7 @@ fn all_edit_commands_box_to_chandle() {
 	);
 	handles.push(TrackSplitAtTimeCommand::new(t.clone(), Rational::new(5, 1)).to_command());
 	handles.push(TrackPrependBlockCommand::new(t.clone(), b2.clone()).to_command());
-	handles.push(
-		TrackInsertBlockAfterCommand::new(t.clone(), b2.clone(), b.clone()).to_command(),
-	);
+	handles.push(TrackInsertBlockAfterCommand::new(t.clone(), b2.clone(), b.clone()).to_command());
 	handles.push(TrackReplaceBlockCommand::new(t.clone(), b.clone(), b2.clone()).to_command());
 
 	for h in handles {
@@ -785,13 +907,7 @@ fn mk_gap() -> CHandle {
 }
 
 /// Set a block's in/out/length/media-in points directly.
-fn set_times(
-	h: &CHandle,
-	in_: (i32, i32),
-	out: (i32, i32),
-	len: (i32, i32),
-	mi: (i32, i32),
-) {
+fn set_times(h: &CHandle, in_: (i32, i32), out: (i32, i32), len: (i32, i32), mi: (i32, i32)) {
 	let b = unsafe { get_mut::<MockNode>(h).unwrap() };
 	b.in_ = in_;
 	b.out = out;
@@ -802,6 +918,11 @@ fn set_times(
 /// A block's length as `(num, den)`.
 fn blen(h: &CHandle) -> (i32, i32) {
 	unsafe { get::<MockNode>(h).unwrap().length }
+}
+
+/// A block's in point as `(num, den)`.
+fn b_in(h: &CHandle) -> (i32, i32) {
+	unsafe { get::<MockNode>(h).unwrap().in_ }
 }
 
 /// A block's media-in as `(num, den)`.

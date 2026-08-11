@@ -20,7 +20,12 @@
 //! the real task logic run against controllable behavior. Each stub family
 //! exposes `set_*` helpers used by the tests to drive success/failure paths.
 
-#![allow(non_snake_case, dead_code, unused_variables, clippy::missing_safety_doc)]
+#![allow(
+	non_snake_case,
+	dead_code,
+	unused_variables,
+	clippy::missing_safety_doc
+)]
 
 use std::ffi::{c_char, c_int, c_void};
 use std::sync::atomic::{AtomicI32, AtomicI64, Ordering};
@@ -28,9 +33,9 @@ use std::sync::atomic::{AtomicI32, AtomicI64, Ordering};
 // arena, which the `real-oakrender` feature compiles out.
 #[cfg(not(feature = "real-oakrender"))]
 use std::sync::atomic::AtomicUsize;
-use std::sync::Mutex;
 #[cfg(not(feature = "real-oakrender"))]
 use std::sync::Condvar;
+use std::sync::Mutex;
 
 // ---------------------------------------------------------------------------
 // Fake handle helpers
@@ -120,8 +125,14 @@ pub static DESIRED_PIXEL_FORMAT: AtomicI32 = AtomicI32::new(0);
 pub static IMAGE_SEQUENCE_DIGIT_COUNT: AtomicI32 = AtomicI32::new(0);
 pub static CONFIG_DEFAULT_SEQ_FRAME_RATE: AtomicI32 = AtomicI32::new(0); // 0 => config_get returns nothing
 pub static PROXY_FFMPEG_PATH: Mutex<String> = Mutex::new(String::new());
-pub static SUBMIT_CB: Mutex<Option<unsafe extern "C" fn(*const oaktask::bridge::codec::OakCodecTaskRequest, *mut c_void) -> c_int>> =
-	Mutex::new(None);
+pub static SUBMIT_CB: Mutex<
+	Option<
+		unsafe extern "C" fn(
+			*const oaktask::bridge::codec::OakCodecTaskRequest,
+			*mut c_void,
+		) -> c_int,
+	>,
+> = Mutex::new(None);
 // Simulated-oakrender-arena state below is only linked in stub mode: the
 // `real-oakrender` feature replaces the render stubs with the real
 // oakrender exports, so these statics and the `#[no_mangle]` render stubs
@@ -261,7 +272,12 @@ pub fn reset_stubs() {
 
 #[no_mangle]
 pub unsafe extern "C" fn oakcodec_set_task_submit_cb(
-	cb: Option<unsafe extern "C" fn(*const oaktask::bridge::codec::OakCodecTaskRequest, *mut c_void) -> c_int>,
+	cb: Option<
+		unsafe extern "C" fn(
+			*const oaktask::bridge::codec::OakCodecTaskRequest,
+			*mut c_void,
+		) -> c_int,
+	>,
 	_userdata: *mut c_void,
 ) {
 	*SUBMIT_CB.lock().unwrap() = cb;
@@ -294,12 +310,16 @@ pub unsafe extern "C" fn oakcodec_decoder_open(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakcodec_decoder_close(_decoder: oaktask::bridge::codec::OakDecoder) -> c_int {
+pub unsafe extern "C" fn oakcodec_decoder_close(
+	_decoder: oaktask::bridge::codec::OakDecoder,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakcodec_decoder_is_open(_decoder: oaktask::bridge::codec::OakDecoder) -> c_int {
+pub unsafe extern "C" fn oakcodec_decoder_is_open(
+	_decoder: oaktask::bridge::codec::OakDecoder,
+) -> c_int {
 	1
 }
 
@@ -346,11 +366,17 @@ pub unsafe extern "C" fn oakcodec_decoder_last_error(
 	buf: *mut c_char,
 	size: c_int,
 ) -> c_int {
-	write_cstr(&DECODER_LAST_ERROR.lock().unwrap().clone(), buf as *mut u8, size)
+	write_cstr(
+		&DECODER_LAST_ERROR.lock().unwrap().clone(),
+		buf as *mut u8,
+		size,
+	)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakcodec_decoder_get_image_sequence_digit_count(_filename: *const c_char) -> c_int {
+pub unsafe extern "C" fn oakcodec_decoder_get_image_sequence_digit_count(
+	_filename: *const c_char,
+) -> c_int {
 	IMAGE_SEQUENCE_DIGIT_COUNT.load(Ordering::SeqCst)
 }
 
@@ -360,14 +386,25 @@ pub unsafe extern "C" fn oakcodec_decoder_get_image_sequence_index(filename: *co
 	let s = if filename.is_null() {
 		String::new()
 	} else {
-		std::ffi::CStr::from_ptr(filename).to_string_lossy().into_owned()
+		std::ffi::CStr::from_ptr(filename)
+			.to_string_lossy()
+			.into_owned()
 	};
 	let stem = match s.rfind('.') {
 		Some(dot) => &s[..dot],
 		None => s.as_str(),
 	};
-	let digits: String = stem.chars().rev().take_while(|c| c.is_ascii_digit()).collect();
-	digits.chars().rev().collect::<String>().parse().unwrap_or(-1)
+	let digits: String = stem
+		.chars()
+		.rev()
+		.take_while(|c| c.is_ascii_digit())
+		.collect();
+	digits
+		.chars()
+		.rev()
+		.collect::<String>()
+		.parse()
+		.unwrap_or(-1)
 }
 
 #[no_mangle]
@@ -380,13 +417,19 @@ pub unsafe extern "C" fn oakcodec_decoder_transform_image_sequence_file_name(
 	let s = if filename.is_null() {
 		String::new()
 	} else {
-		std::ffi::CStr::from_ptr(filename).to_string_lossy().into_owned()
+		std::ffi::CStr::from_ptr(filename)
+			.to_string_lossy()
+			.into_owned()
 	};
 	let (stem, ext) = match s.rfind('.') {
 		Some(dot) => (&s[..dot], &s[dot..]),
 		None => (s.as_str(), ""),
 	};
-	let digits: String = stem.chars().rev().take_while(|c| c.is_ascii_digit()).collect();
+	let digits: String = stem
+		.chars()
+		.rev()
+		.take_while(|c| c.is_ascii_digit())
+		.collect();
 	let count = digits.len().max(1);
 	let prefix = &stem[..stem.len() - digits.len()];
 	let out = format!("{prefix}{:0count$}{ext}", number);
@@ -417,7 +460,9 @@ pub unsafe extern "C" fn oakcodec_encoder_set_video_option(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakcodec_encoder_open(_encoder: oaktask::bridge::codec::OakEncoder) -> c_int {
+pub unsafe extern "C" fn oakcodec_encoder_open(
+	_encoder: oaktask::bridge::codec::OakEncoder,
+) -> c_int {
 	ENCODER_OPEN_RESULT.load(Ordering::SeqCst)
 }
 
@@ -449,7 +494,9 @@ pub unsafe extern "C" fn oakcodec_encoder_write_subtitle(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakcodec_encoder_flush(_encoder: oaktask::bridge::codec::OakEncoder) -> c_int {
+pub unsafe extern "C" fn oakcodec_encoder_flush(
+	_encoder: oaktask::bridge::codec::OakEncoder,
+) -> c_int {
 	0
 }
 
@@ -460,14 +507,20 @@ pub unsafe extern "C" fn oakcodec_encoder_last_error(
 	size: c_int,
 ) -> c_int {
 	if ENCODER_FLUSH_ERROR.load(Ordering::SeqCst) != 0 {
-		write_cstr(&ENCODER_LAST_ERROR.lock().unwrap().clone(), buf as *mut u8, size)
+		write_cstr(
+			&ENCODER_LAST_ERROR.lock().unwrap().clone(),
+			buf as *mut u8,
+			size,
+		)
 	} else {
 		0
 	}
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakcodec_encoder_get_desired_pixel_format(_encoder: oaktask::bridge::codec::OakEncoder) -> c_int {
+pub unsafe extern "C" fn oakcodec_encoder_get_desired_pixel_format(
+	_encoder: oaktask::bridge::codec::OakEncoder,
+) -> c_int {
 	DESIRED_PIXEL_FORMAT.load(Ordering::SeqCst)
 }
 
@@ -484,7 +537,11 @@ pub unsafe extern "C" fn oakcodec_encoding_generate_matrix(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakcodec_export_format_get_extension(_format: c_int, buf: *mut c_char, size: c_int) -> c_int {
+pub unsafe extern "C" fn oakcodec_export_format_get_extension(
+	_format: c_int,
+	buf: *mut c_char,
+	size: c_int,
+) -> c_int {
 	write_cstr("srt", buf as *mut u8, size)
 }
 
@@ -543,10 +600,16 @@ pub unsafe extern "C" fn oakcommon_videoparams_init_basic(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakcommon_videoparams_free(_params: *mut oaktask::bridge::common::OakVideoParams) {}
+pub unsafe extern "C" fn oakcommon_videoparams_free(
+	_params: *mut oaktask::bridge::common::OakVideoParams,
+) {
+}
 
 #[no_mangle]
-pub unsafe extern "C" fn oakcommon_videoparams_get_width(_params: oaktask::bridge::common::OakVideoParams, width: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oakcommon_videoparams_get_width(
+	_params: oaktask::bridge::common::OakVideoParams,
+	width: *mut c_int,
+) -> c_int {
 	if !width.is_null() {
 		*width = VIDEO_WIDTH.load(Ordering::SeqCst);
 	}
@@ -554,7 +617,10 @@ pub unsafe extern "C" fn oakcommon_videoparams_get_width(_params: oaktask::bridg
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakcommon_videoparams_get_height(_params: oaktask::bridge::common::OakVideoParams, height: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oakcommon_videoparams_get_height(
+	_params: oaktask::bridge::common::OakVideoParams,
+	height: *mut c_int,
+) -> c_int {
 	if !height.is_null() {
 		*height = VIDEO_HEIGHT.load(Ordering::SeqCst);
 	}
@@ -562,7 +628,10 @@ pub unsafe extern "C" fn oakcommon_videoparams_get_height(_params: oaktask::brid
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakcommon_videoparams_get_format(_params: oaktask::bridge::common::OakVideoParams, format: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oakcommon_videoparams_get_format(
+	_params: oaktask::bridge::common::OakVideoParams,
+	format: *mut c_int,
+) -> c_int {
 	if !format.is_null() {
 		*format = 0;
 	}
@@ -570,7 +639,10 @@ pub unsafe extern "C" fn oakcommon_videoparams_get_format(_params: oaktask::brid
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakcommon_videoparams_set_format(_params: oaktask::bridge::common::OakVideoParams, _format: c_int) -> c_int {
+pub unsafe extern "C" fn oakcommon_videoparams_set_format(
+	_params: oaktask::bridge::common::OakVideoParams,
+	_format: c_int,
+) -> c_int {
 	0
 }
 
@@ -634,17 +706,26 @@ pub unsafe extern "C" fn oakcommon_videoparams_get_video_type(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakcommon_videoparams_set_video_type(_params: oaktask::bridge::common::OakVideoParams, _video_type: c_int) -> c_int {
+pub unsafe extern "C" fn oakcommon_videoparams_set_video_type(
+	_params: oaktask::bridge::common::OakVideoParams,
+	_video_type: c_int,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakcommon_videoparams_set_start_time(_params: oaktask::bridge::common::OakVideoParams, _start: i64) -> c_int {
+pub unsafe extern "C" fn oakcommon_videoparams_set_start_time(
+	_params: oaktask::bridge::common::OakVideoParams,
+	_start: i64,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakcommon_videoparams_set_duration(_params: oaktask::bridge::common::OakVideoParams, _duration: i64) -> c_int {
+pub unsafe extern "C" fn oakcommon_videoparams_set_duration(
+	_params: oaktask::bridge::common::OakVideoParams,
+	_duration: i64,
+) -> c_int {
 	0
 }
 
@@ -715,7 +796,10 @@ pub unsafe extern "C" fn oakcommon_colortransform_init_output(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakcommon_colortransform_free(_transform: *mut oaktask::bridge::common::OakColorTransform) {}
+pub unsafe extern "C" fn oakcommon_colortransform_free(
+	_transform: *mut oaktask::bridge::common::OakColorTransform,
+) {
+}
 
 #[no_mangle]
 pub unsafe extern "C" fn oakcommon_config_get(
@@ -728,7 +812,9 @@ pub unsafe extern "C" fn oakcommon_config_get(
 		return 0;
 	}
 	let key = std::ffi::CStr::from_ptr(key).to_string_lossy().into_owned();
-	if key == "DefaultSequenceFrameRate" && CONFIG_DEFAULT_SEQ_FRAME_RATE.load(Ordering::SeqCst) != 0 {
+	if key == "DefaultSequenceFrameRate"
+		&& CONFIG_DEFAULT_SEQ_FRAME_RATE.load(Ordering::SeqCst) != 0
+	{
 		write_cstr("25/1", buf as *mut u8, size)
 	} else {
 		0
@@ -736,12 +822,20 @@ pub unsafe extern "C" fn oakcommon_config_get(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakcommon_config_get_int(_group: *const c_char, _key: *const c_char, default: c_int) -> c_int {
+pub unsafe extern "C" fn oakcommon_config_get_int(
+	_group: *const c_char,
+	_key: *const c_char,
+	default: c_int,
+) -> c_int {
 	default
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakcommon_config_get_bool(_group: *const c_char, _key: *const c_char, default: c_int) -> c_int {
+pub unsafe extern "C" fn oakcommon_config_get_bool(
+	_group: *const c_char,
+	_key: *const c_char,
+	default: c_int,
+) -> c_int {
 	default
 }
 
@@ -755,135 +849,216 @@ pub unsafe extern "C" fn oaknode_project_init() -> oaktask::bridge::node::OakNod
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_free(_project: *mut oaktask::bridge::node::OakNodeProject) {}
+pub unsafe extern "C" fn oaknode_project_free(
+	_project: *mut oaktask::bridge::node::OakNodeProject,
+) {
+}
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_initialize(_project: oaktask::bridge::node::OakNodeProject) -> c_int {
+pub unsafe extern "C" fn oaknode_project_initialize(
+	_project: oaktask::bridge::node::OakNodeProject,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_clear(_project: oaktask::bridge::node::OakNodeProject) -> c_int {
+pub unsafe extern "C" fn oaknode_project_clear(
+	_project: oaktask::bridge::node::OakNodeProject,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_root(_project: oaktask::bridge::node::OakNodeProject) -> oaktask::bridge::node::OakNodeFolder {
+pub unsafe extern "C" fn oaknode_project_root(
+	_project: oaktask::bridge::node::OakNodeProject,
+) -> oaktask::bridge::node::OakNodeFolder {
 	fake_handle()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_name(_project: oaktask::bridge::node::OakNodeProject, buf: *mut c_char, size: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_project_name(
+	_project: oaktask::bridge::node::OakNodeProject,
+	buf: *mut c_char,
+	size: c_int,
+) -> c_int {
 	write_cstr("proj", buf as *mut u8, size)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_filename(_project: oaktask::bridge::node::OakNodeProject, buf: *mut c_char, size: c_int) -> c_int {
-	write_cstr(&PROJECT_FILENAME.lock().unwrap().clone(), buf as *mut u8, size)
+pub unsafe extern "C" fn oaknode_project_filename(
+	_project: oaktask::bridge::node::OakNodeProject,
+	buf: *mut c_char,
+	size: c_int,
+) -> c_int {
+	write_cstr(
+		&PROJECT_FILENAME.lock().unwrap().clone(),
+		buf as *mut u8,
+		size,
+	)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_pretty_filename(_project: oaktask::bridge::node::OakNodeProject, buf: *mut c_char, size: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_project_pretty_filename(
+	_project: oaktask::bridge::node::OakNodeProject,
+	buf: *mut c_char,
+	size: c_int,
+) -> c_int {
 	write_cstr("pretty", buf as *mut u8, size)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_set_filename(_project: oaktask::bridge::node::OakNodeProject, _filename: *const c_char) -> c_int {
+pub unsafe extern "C" fn oaknode_project_set_filename(
+	_project: oaktask::bridge::node::OakNodeProject,
+	_filename: *const c_char,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_is_modified(_project: oaktask::bridge::node::OakNodeProject) -> c_int {
+pub unsafe extern "C" fn oaknode_project_is_modified(
+	_project: oaktask::bridge::node::OakNodeProject,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_set_modified(_project: oaktask::bridge::node::OakNodeProject, _modified: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_project_set_modified(
+	_project: oaktask::bridge::node::OakNodeProject,
+	_modified: c_int,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_is_new(_project: oaktask::bridge::node::OakNodeProject) -> c_int {
+pub unsafe extern "C" fn oaknode_project_is_new(
+	_project: oaktask::bridge::node::OakNodeProject,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_cache_path(_project: oaktask::bridge::node::OakNodeProject, buf: *mut c_char, size: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_project_cache_path(
+	_project: oaktask::bridge::node::OakNodeProject,
+	buf: *mut c_char,
+	size: c_int,
+) -> c_int {
 	write_cstr("/tmp/oak-cache", buf as *mut u8, size)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_copy_settings(_dst: oaktask::bridge::node::OakNodeProject, _src: oaktask::bridge::node::OakNodeProject) -> c_int {
+pub unsafe extern "C" fn oaknode_project_copy_settings(
+	_dst: oaktask::bridge::node::OakNodeProject,
+	_src: oaktask::bridge::node::OakNodeProject,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_get_cache_location_setting(_project: oaktask::bridge::node::OakNodeProject) -> c_int {
+pub unsafe extern "C" fn oaknode_project_get_cache_location_setting(
+	_project: oaktask::bridge::node::OakNodeProject,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_set_cache_location_setting(_project: oaktask::bridge::node::OakNodeProject, _setting: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_project_set_cache_location_setting(
+	_project: oaktask::bridge::node::OakNodeProject,
+	_setting: c_int,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_get_custom_cache_path(_project: oaktask::bridge::node::OakNodeProject, buf: *mut c_char, size: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_project_get_custom_cache_path(
+	_project: oaktask::bridge::node::OakNodeProject,
+	buf: *mut c_char,
+	size: c_int,
+) -> c_int {
 	write_cstr("", buf as *mut u8, size)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_set_custom_cache_path(_project: oaktask::bridge::node::OakNodeProject, _path: *const c_char) -> c_int {
+pub unsafe extern "C" fn oaknode_project_set_custom_cache_path(
+	_project: oaktask::bridge::node::OakNodeProject,
+	_path: *const c_char,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_get_uuid(_project: oaktask::bridge::node::OakNodeProject, buf: *mut c_char, size: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_project_get_uuid(
+	_project: oaktask::bridge::node::OakNodeProject,
+	buf: *mut c_char,
+	size: c_int,
+) -> c_int {
 	write_cstr("uuid", buf as *mut u8, size)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_add_node(_project: oaktask::bridge::node::OakNodeProject, _node: oaktask::bridge::node::OakNodeNode) -> c_int {
+pub unsafe extern "C" fn oaknode_project_add_node(
+	_project: oaktask::bridge::node::OakNodeProject,
+	_node: oaktask::bridge::node::OakNodeNode,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_remove_node(_project: oaktask::bridge::node::OakNodeProject, _node: oaktask::bridge::node::OakNodeNode) -> c_int {
+pub unsafe extern "C" fn oaknode_project_remove_node(
+	_project: oaktask::bridge::node::OakNodeProject,
+	_node: oaktask::bridge::node::OakNodeNode,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_node_count(_project: oaktask::bridge::node::OakNodeProject) -> c_int {
+pub unsafe extern "C" fn oaknode_project_node_count(
+	_project: oaktask::bridge::node::OakNodeProject,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_project_node_at(_project: oaktask::bridge::node::OakNodeProject, _index: c_int) -> oaktask::bridge::node::OakNodeNode {
+pub unsafe extern "C" fn oaknode_project_node_at(
+	_project: oaktask::bridge::node::OakNodeProject,
+	_index: c_int,
+) -> oaktask::bridge::node::OakNodeNode {
 	fake_handle()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_folder_create(_project: oaktask::bridge::node::OakNodeProject) -> oaktask::bridge::node::OakNodeFolder {
+pub unsafe extern "C" fn oaknode_folder_create(
+	_project: oaktask::bridge::node::OakNodeProject,
+) -> oaktask::bridge::node::OakNodeFolder {
 	fake_handle()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_folder_child_count(_folder: oaktask::bridge::node::OakNodeFolder) -> c_int {
+pub unsafe extern "C" fn oaknode_folder_child_count(
+	_folder: oaktask::bridge::node::OakNodeFolder,
+) -> c_int {
 	FOLDER_CHILD_COUNT.load(Ordering::SeqCst)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_folder_child_at(_folder: oaktask::bridge::node::OakNodeFolder, _index: c_int) -> oaktask::bridge::node::OakNodeNode {
+pub unsafe extern "C" fn oaknode_folder_child_at(
+	_folder: oaktask::bridge::node::OakNodeFolder,
+	_index: c_int,
+) -> oaktask::bridge::node::OakNodeNode {
 	fake_handle()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_folder_add_child(_folder: oaktask::bridge::node::OakNodeFolder, _child: oaktask::bridge::node::OakNodeNode) -> c_int {
+pub unsafe extern "C" fn oaknode_folder_add_child(
+	_folder: oaktask::bridge::node::OakNodeFolder,
+	_child: oaktask::bridge::node::OakNodeNode,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_folder_as_node(folder: oaktask::bridge::node::OakNodeFolder) -> oaktask::bridge::node::OakNodeNode {
+pub unsafe extern "C" fn oaknode_folder_as_node(
+	folder: oaktask::bridge::node::OakNodeFolder,
+) -> oaktask::bridge::node::OakNodeNode {
 	folder
 }
 
@@ -896,32 +1071,49 @@ pub unsafe extern "C" fn oaknode_command_create_folder_add_child(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_command_create_remove_node(_node: oaktask::bridge::node::OakNodeNode) -> oaktask::bridge::undo::OakUndoCommand {
+pub unsafe extern "C" fn oaknode_command_create_remove_node(
+	_node: oaktask::bridge::node::OakNodeNode,
+) -> oaktask::bridge::undo::OakUndoCommand {
 	fake_handle()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_folder_remove_child(_folder: oaktask::bridge::node::OakNodeFolder, _child: oaktask::bridge::node::OakNodeNode) -> c_int {
+pub unsafe extern "C" fn oaknode_folder_remove_child(
+	_folder: oaktask::bridge::node::OakNodeFolder,
+	_child: oaktask::bridge::node::OakNodeNode,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_folder_move_children(_nodes: *const oaktask::bridge::node::OakNodeNode, _count: c_int, _dest: oaktask::bridge::node::OakNodeFolder) -> c_int {
+pub unsafe extern "C" fn oaknode_folder_move_children(
+	_nodes: *const oaktask::bridge::node::OakNodeNode,
+	_count: c_int,
+	_dest: oaktask::bridge::node::OakNodeFolder,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_folder_has_child_recursive(_folder: oaktask::bridge::node::OakNodeFolder, _child: oaktask::bridge::node::OakNodeNode) -> c_int {
+pub unsafe extern "C" fn oaknode_folder_has_child_recursive(
+	_folder: oaktask::bridge::node::OakNodeFolder,
+	_child: oaktask::bridge::node::OakNodeNode,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_folder_index_of_child(_folder: oaktask::bridge::node::OakNodeFolder, _child: oaktask::bridge::node::OakNodeNode) -> c_int {
+pub unsafe extern "C" fn oaknode_folder_index_of_child(
+	_folder: oaktask::bridge::node::OakNodeFolder,
+	_child: oaktask::bridge::node::OakNodeNode,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_folder_parent_of(_node: oaktask::bridge::node::OakNodeNode) -> oaktask::bridge::node::OakNodeFolder {
+pub unsafe extern "C" fn oaknode_folder_parent_of(
+	_node: oaktask::bridge::node::OakNodeNode,
+) -> oaktask::bridge::node::OakNodeFolder {
 	fake_handle()
 }
 
@@ -935,13 +1127,23 @@ pub unsafe extern "C" fn oaknode_footage_create(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_footage_as_node(footage: oaktask::bridge::node::OakNodeFootage) -> oaktask::bridge::node::OakNodeNode {
+pub unsafe extern "C" fn oaknode_footage_as_node(
+	footage: oaktask::bridge::node::OakNodeFootage,
+) -> oaktask::bridge::node::OakNodeNode {
 	footage
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_footage_filename(_footage: oaktask::bridge::node::OakNodeFootage, buf: *mut c_char, size: c_int) -> c_int {
-	write_cstr(&FOOTAGE_FILENAME.lock().unwrap().clone(), buf as *mut u8, size)
+pub unsafe extern "C" fn oaknode_footage_filename(
+	_footage: oaktask::bridge::node::OakNodeFootage,
+	buf: *mut c_char,
+	size: c_int,
+) -> c_int {
+	write_cstr(
+		&FOOTAGE_FILENAME.lock().unwrap().clone(),
+		buf as *mut u8,
+		size,
+	)
 }
 
 #[no_mangle]
@@ -950,49 +1152,70 @@ pub unsafe extern "C" fn oaknode_footage_set_filename(
 	filename: *const c_char,
 ) -> c_int {
 	if !filename.is_null() {
-		*FOOTAGE_FILENAME.lock().unwrap() =
-			std::ffi::CStr::from_ptr(filename).to_string_lossy().into_owned();
+		*FOOTAGE_FILENAME.lock().unwrap() = std::ffi::CStr::from_ptr(filename)
+			.to_string_lossy()
+			.into_owned();
 	}
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_footage_is_valid(_footage: oaktask::bridge::node::OakNodeFootage) -> c_int {
+pub unsafe extern "C" fn oaknode_footage_is_valid(
+	_footage: oaktask::bridge::node::OakNodeFootage,
+) -> c_int {
 	FOOTAGE_VALID.load(Ordering::SeqCst)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_footage_timestamp(_footage: oaktask::bridge::node::OakNodeFootage, _out_timestamp: *mut i64) -> c_int {
+pub unsafe extern "C" fn oaknode_footage_timestamp(
+	_footage: oaktask::bridge::node::OakNodeFootage,
+	_out_timestamp: *mut i64,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_footage_set_timestamp(_footage: oaktask::bridge::node::OakNodeFootage, _timestamp: i64) -> c_int {
+pub unsafe extern "C" fn oaknode_footage_set_timestamp(
+	_footage: oaktask::bridge::node::OakNodeFootage,
+	_timestamp: i64,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_footage_decoder(_footage: oaktask::bridge::node::OakNodeFootage, buf: *mut c_char, size: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_footage_decoder(
+	_footage: oaktask::bridge::node::OakNodeFootage,
+	buf: *mut c_char,
+	size: c_int,
+) -> c_int {
 	write_cstr("ffmpeg", buf as *mut u8, size)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_footage_total_stream_count(_footage: oaktask::bridge::node::OakNodeFootage) -> c_int {
+pub unsafe extern "C" fn oaknode_footage_total_stream_count(
+	_footage: oaktask::bridge::node::OakNodeFootage,
+) -> c_int {
 	FOOTAGE_STREAM_COUNT.load(Ordering::SeqCst)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_footage_video_stream_count(_footage: oaktask::bridge::node::OakNodeFootage) -> c_int {
+pub unsafe extern "C" fn oaknode_footage_video_stream_count(
+	_footage: oaktask::bridge::node::OakNodeFootage,
+) -> c_int {
 	1
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_footage_audio_stream_count(_footage: oaktask::bridge::node::OakNodeFootage) -> c_int {
+pub unsafe extern "C" fn oaknode_footage_audio_stream_count(
+	_footage: oaktask::bridge::node::OakNodeFootage,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_footage_subtitle_stream_count(_footage: oaktask::bridge::node::OakNodeFootage) -> c_int {
+pub unsafe extern "C" fn oaknode_footage_subtitle_stream_count(
+	_footage: oaktask::bridge::node::OakNodeFootage,
+) -> c_int {
 	0
 }
 
@@ -1012,22 +1235,33 @@ pub unsafe extern "C" fn oaknode_footage_duration(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_footage_proxy_enabled(_footage: oaktask::bridge::node::OakNodeFootage) -> c_int {
+pub unsafe extern "C" fn oaknode_footage_proxy_enabled(
+	_footage: oaktask::bridge::node::OakNodeFootage,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_footage_set_proxy_enabled(_footage: oaktask::bridge::node::OakNodeFootage, _enabled: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_footage_set_proxy_enabled(
+	_footage: oaktask::bridge::node::OakNodeFootage,
+	_enabled: c_int,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_footage_proxy_path(_footage: oaktask::bridge::node::OakNodeFootage, buf: *mut c_char, size: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_footage_proxy_path(
+	_footage: oaktask::bridge::node::OakNodeFootage,
+	buf: *mut c_char,
+	size: c_int,
+) -> c_int {
 	write_cstr("", buf as *mut u8, size)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_footage_proxy_state(_footage: oaktask::bridge::node::OakNodeFootage) -> c_int {
+pub unsafe extern "C" fn oaknode_footage_proxy_state(
+	_footage: oaktask::bridge::node::OakNodeFootage,
+) -> c_int {
 	0
 }
 
@@ -1044,7 +1278,9 @@ pub unsafe extern "C" fn oaknode_footage_set_proxy(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_footage_clear_proxy(_footage: oaktask::bridge::node::OakNodeFootage) -> c_int {
+pub unsafe extern "C" fn oaknode_footage_clear_proxy(
+	_footage: oaktask::bridge::node::OakNodeFootage,
+) -> c_int {
 	0
 }
 
@@ -1098,20 +1334,29 @@ pub unsafe extern "C" fn oaknode_sequence_create() -> oaktask::bridge::node::Oak
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_sequence_free(_sequence: *mut oaktask::bridge::node::OakNodeSequence) {}
+pub unsafe extern "C" fn oaknode_sequence_free(
+	_sequence: *mut oaktask::bridge::node::OakNodeSequence,
+) {
+}
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_sequence_set_default_parameters(_sequence: oaktask::bridge::node::OakNodeSequence) -> c_int {
+pub unsafe extern "C" fn oaknode_sequence_set_default_parameters(
+	_sequence: oaktask::bridge::node::OakNodeSequence,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_sequence_as_node(sequence: oaktask::bridge::node::OakNodeSequence) -> oaktask::bridge::node::OakNodeNode {
+pub unsafe extern "C" fn oaknode_sequence_as_node(
+	sequence: oaktask::bridge::node::OakNodeSequence,
+) -> oaktask::bridge::node::OakNodeNode {
 	sequence
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_sequence_from_node(node: oaktask::bridge::node::OakNodeNode) -> oaktask::bridge::node::OakNodeSequence {
+pub unsafe extern "C" fn oaknode_sequence_from_node(
+	node: oaktask::bridge::node::OakNodeNode,
+) -> oaktask::bridge::node::OakNodeSequence {
 	node
 }
 
@@ -1133,7 +1378,11 @@ pub unsafe extern "C" fn oaknode_sequence_get_track_list(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_sequence_get_track_count(_sequence: oaktask::bridge::node::OakNodeSequence, _type: c_int, count: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_sequence_get_track_count(
+	_sequence: oaktask::bridge::node::OakNodeSequence,
+	_type: c_int,
+	count: *mut c_int,
+) -> c_int {
 	if !count.is_null() {
 		*count = 0;
 	}
@@ -1154,7 +1403,10 @@ pub unsafe extern "C" fn oaknode_sequence_get_track_at(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_sequence_get_all_track_count(_sequence: oaktask::bridge::node::OakNodeSequence, count: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_sequence_get_all_track_count(
+	_sequence: oaktask::bridge::node::OakNodeSequence,
+	count: *mut c_int,
+) -> c_int {
 	if !count.is_null() {
 		*count = 0;
 	}
@@ -1174,7 +1426,11 @@ pub unsafe extern "C" fn oaknode_sequence_get_all_track_at(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_sequence_get_playhead(_sequence: oaktask::bridge::node::OakNodeSequence, n: *mut c_int, d: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_sequence_get_playhead(
+	_sequence: oaktask::bridge::node::OakNodeSequence,
+	n: *mut c_int,
+	d: *mut c_int,
+) -> c_int {
 	if !n.is_null() {
 		*n = 0;
 	}
@@ -1185,12 +1441,20 @@ pub unsafe extern "C" fn oaknode_sequence_get_playhead(_sequence: oaktask::bridg
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_sequence_set_playhead(_sequence: oaktask::bridge::node::OakNodeSequence, _n: c_int, _d: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_sequence_set_playhead(
+	_sequence: oaktask::bridge::node::OakNodeSequence,
+	_n: c_int,
+	_d: c_int,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_sequence_get_length(_sequence: oaktask::bridge::node::OakNodeSequence, n: *mut c_int, d: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_sequence_get_length(
+	_sequence: oaktask::bridge::node::OakNodeSequence,
+	n: *mut c_int,
+	d: *mut c_int,
+) -> c_int {
 	if !n.is_null() {
 		*n = SEQUENCE_LENGTH_NUM.load(Ordering::SeqCst);
 	}
@@ -1201,7 +1465,11 @@ pub unsafe extern "C" fn oaknode_sequence_get_length(_sequence: oaktask::bridge:
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_sequence_get_video_length(_sequence: oaktask::bridge::node::OakNodeSequence, n: *mut c_int, d: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_sequence_get_video_length(
+	_sequence: oaktask::bridge::node::OakNodeSequence,
+	n: *mut c_int,
+	d: *mut c_int,
+) -> c_int {
 	if !n.is_null() {
 		*n = 0;
 	}
@@ -1212,7 +1480,11 @@ pub unsafe extern "C" fn oaknode_sequence_get_video_length(_sequence: oaktask::b
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_sequence_get_audio_length(_sequence: oaktask::bridge::node::OakNodeSequence, n: *mut c_int, d: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_sequence_get_audio_length(
+	_sequence: oaktask::bridge::node::OakNodeSequence,
+	n: *mut c_int,
+	d: *mut c_int,
+) -> c_int {
 	if !n.is_null() {
 		*n = 0;
 	}
@@ -1223,12 +1495,17 @@ pub unsafe extern "C" fn oaknode_sequence_get_audio_length(_sequence: oaktask::b
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_sequence_verify_length(_sequence: oaktask::bridge::node::OakNodeSequence) -> c_int {
+pub unsafe extern "C" fn oaknode_sequence_verify_length(
+	_sequence: oaktask::bridge::node::OakNodeSequence,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_sequence_get_video_stream_count(_sequence: oaktask::bridge::node::OakNodeSequence, count: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_sequence_get_video_stream_count(
+	_sequence: oaktask::bridge::node::OakNodeSequence,
+	count: *mut c_int,
+) -> c_int {
 	if !count.is_null() {
 		*count = 1;
 	}
@@ -1236,7 +1513,10 @@ pub unsafe extern "C" fn oaknode_sequence_get_video_stream_count(_sequence: oakt
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_sequence_get_audio_stream_count(_sequence: oaktask::bridge::node::OakNodeSequence, count: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_sequence_get_audio_stream_count(
+	_sequence: oaktask::bridge::node::OakNodeSequence,
+	count: *mut c_int,
+) -> c_int {
 	if !count.is_null() {
 		*count = 0;
 	}
@@ -1277,12 +1557,18 @@ pub unsafe extern "C" fn oaknode_sequence_get_audio_params(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_sequence_set_audio_params(_sequence: oaktask::bridge::node::OakNodeSequence, _index: c_int, _params: *const c_void) -> c_int {
+pub unsafe extern "C" fn oaknode_sequence_set_audio_params(
+	_sequence: oaktask::bridge::node::OakNodeSequence,
+	_index: c_int,
+	_params: *const c_void,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_track_as_node(track: oaktask::bridge::node::OakNodeTrack) -> oaktask::bridge::node::OakNodeNode {
+pub unsafe extern "C" fn oaknode_track_as_node(
+	track: oaktask::bridge::node::OakNodeTrack,
+) -> oaktask::bridge::node::OakNodeNode {
 	track
 }
 
@@ -1295,7 +1581,10 @@ pub unsafe extern "C" fn oaknode_track_create(_type: c_int) -> oaktask::bridge::
 pub unsafe extern "C" fn oaknode_track_free(_track: *mut oaktask::bridge::node::OakNodeTrack) {}
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_track_get_type(_track: oaktask::bridge::node::OakNodeTrack, r#type: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_track_get_type(
+	_track: oaktask::bridge::node::OakNodeTrack,
+	r#type: *mut c_int,
+) -> c_int {
 	if !r#type.is_null() {
 		*r#type = TRACK_TYPE.load(Ordering::SeqCst);
 	}
@@ -1303,22 +1592,34 @@ pub unsafe extern "C" fn oaknode_track_get_type(_track: oaktask::bridge::node::O
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_track_set_type(_track: oaktask::bridge::node::OakNodeTrack, _type: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_track_set_type(
+	_track: oaktask::bridge::node::OakNodeTrack,
+	_type: c_int,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_track_get_index(_track: oaktask::bridge::node::OakNodeTrack, _index: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_track_get_index(
+	_track: oaktask::bridge::node::OakNodeTrack,
+	_index: *mut c_int,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_track_set_index(_track: oaktask::bridge::node::OakNodeTrack, _index: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_track_set_index(
+	_track: oaktask::bridge::node::OakNodeTrack,
+	_index: c_int,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_track_get_sequence(_track: oaktask::bridge::node::OakNodeTrack, out: *mut oaktask::bridge::node::OakNodeSequence) -> c_int {
+pub unsafe extern "C" fn oaknode_track_get_sequence(
+	_track: oaktask::bridge::node::OakNodeTrack,
+	out: *mut oaktask::bridge::node::OakNodeSequence,
+) -> c_int {
 	if !out.is_null() {
 		*out = fake_handle();
 	}
@@ -1326,7 +1627,10 @@ pub unsafe extern "C" fn oaknode_track_get_sequence(_track: oaktask::bridge::nod
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_tracklist_get_sequence(_list: oaktask::bridge::node::OakNodeTrackList, out: *mut oaktask::bridge::node::OakNodeSequence) -> c_int {
+pub unsafe extern "C" fn oaknode_tracklist_get_sequence(
+	_list: oaktask::bridge::node::OakNodeTrackList,
+	out: *mut oaktask::bridge::node::OakNodeSequence,
+) -> c_int {
 	if !out.is_null() {
 		*out = fake_handle();
 	}
@@ -1334,22 +1638,34 @@ pub unsafe extern "C" fn oaknode_tracklist_get_sequence(_list: oaktask::bridge::
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_tracklist_get_track_input_id(_list: oaktask::bridge::node::OakNodeTrackList, buf: *mut c_char, size: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_tracklist_get_track_input_id(
+	_list: oaktask::bridge::node::OakNodeTrackList,
+	buf: *mut c_char,
+	size: c_int,
+) -> c_int {
 	write_cstr("sub_in", buf as *mut u8, size)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_tracklist_array_append(_list: oaktask::bridge::node::OakNodeTrackList) -> c_int {
+pub unsafe extern "C" fn oaknode_tracklist_array_append(
+	_list: oaktask::bridge::node::OakNodeTrackList,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_tracklist_array_remove_last(_list: oaktask::bridge::node::OakNodeTrackList) -> c_int {
+pub unsafe extern "C" fn oaknode_tracklist_array_remove_last(
+	_list: oaktask::bridge::node::OakNodeTrackList,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_tracklist_get_array_index_from_cache_index(_list: oaktask::bridge::node::OakNodeTrackList, _ci: c_int, out: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_tracklist_get_array_index_from_cache_index(
+	_list: oaktask::bridge::node::OakNodeTrackList,
+	_ci: c_int,
+	out: *mut c_int,
+) -> c_int {
 	if !out.is_null() {
 		*out = _ci;
 	}
@@ -1357,12 +1673,18 @@ pub unsafe extern "C" fn oaknode_tracklist_get_array_index_from_cache_index(_lis
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_tracklist_get_type(_list: oaktask::bridge::node::OakNodeTrackList, _type: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_tracklist_get_type(
+	_list: oaktask::bridge::node::OakNodeTrackList,
+	_type: *mut c_int,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_tracklist_get_track_count(_list: oaktask::bridge::node::OakNodeTrackList, count: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_tracklist_get_track_count(
+	_list: oaktask::bridge::node::OakNodeTrackList,
+	count: *mut c_int,
+) -> c_int {
 	if !count.is_null() {
 		if _list.ctx.is_null() {
 			*count = 0;
@@ -1374,7 +1696,11 @@ pub unsafe extern "C" fn oaknode_tracklist_get_track_count(_list: oaktask::bridg
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_tracklist_get_track_at(_list: oaktask::bridge::node::OakNodeTrackList, _index: c_int, out: *mut oaktask::bridge::node::OakNodeTrack) -> c_int {
+pub unsafe extern "C" fn oaknode_tracklist_get_track_at(
+	_list: oaktask::bridge::node::OakNodeTrackList,
+	_index: c_int,
+	out: *mut oaktask::bridge::node::OakNodeTrack,
+) -> c_int {
 	if !out.is_null() {
 		*out = fake_handle();
 	}
@@ -1396,17 +1722,24 @@ pub unsafe extern "C" fn oaknode_block_gap_create() -> oaktask::bridge::node::Oa
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_block_transition_create(_kind: c_int) -> oaktask::bridge::node::OakNodeBlock {
+pub unsafe extern "C" fn oaknode_block_transition_create(
+	_kind: c_int,
+) -> oaktask::bridge::node::OakNodeBlock {
 	fake_handle()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_block_as_node(block: oaktask::bridge::node::OakNodeBlock) -> oaktask::bridge::node::OakNodeNode {
+pub unsafe extern "C" fn oaknode_block_as_node(
+	block: oaktask::bridge::node::OakNodeBlock,
+) -> oaktask::bridge::node::OakNodeNode {
 	block
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_block_get_kind(_block: oaktask::bridge::node::OakNodeBlock, out_kind: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_block_get_kind(
+	_block: oaktask::bridge::node::OakNodeBlock,
+	out_kind: *mut c_int,
+) -> c_int {
 	if !out_kind.is_null() {
 		*out_kind = BLOCK_KIND.load(Ordering::SeqCst);
 	}
@@ -1515,13 +1848,19 @@ pub unsafe extern "C" fn oaknode_transition_set_offsets_and_length(
 // ---------------------------------------------------------------------------
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_track_append_block(_track: oaktask::bridge::node::OakNodeTrack, _block: oaktask::bridge::node::OakNodeBlock) -> c_int {
+pub unsafe extern "C" fn oaknode_track_append_block(
+	_track: oaktask::bridge::node::OakNodeTrack,
+	_block: oaktask::bridge::node::OakNodeBlock,
+) -> c_int {
 	APPENDED_BLOCKS.fetch_add(1, Ordering::SeqCst);
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_track_get_block_count(_track: oaktask::bridge::node::OakNodeTrack, count: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_track_get_block_count(
+	_track: oaktask::bridge::node::OakNodeTrack,
+	count: *mut c_int,
+) -> c_int {
 	if !count.is_null() {
 		*count = TRACK_BLOCK_COUNT.load(Ordering::SeqCst);
 	}
@@ -1529,7 +1868,11 @@ pub unsafe extern "C" fn oaknode_track_get_block_count(_track: oaktask::bridge::
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_track_get_block_at(_track: oaktask::bridge::node::OakNodeTrack, _index: c_int, out: *mut oaktask::bridge::node::OakNodeBlock) -> c_int {
+pub unsafe extern "C" fn oaknode_track_get_block_at(
+	_track: oaktask::bridge::node::OakNodeTrack,
+	_index: c_int,
+	out: *mut oaktask::bridge::node::OakNodeBlock,
+) -> c_int {
 	if !out.is_null() {
 		*out = fake_handle();
 	}
@@ -1537,7 +1880,11 @@ pub unsafe extern "C" fn oaknode_track_get_block_at(_track: oaktask::bridge::nod
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_track_get_length(_track: oaktask::bridge::node::OakNodeTrack, numerator: *mut c_int, denominator: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_track_get_length(
+	_track: oaktask::bridge::node::OakNodeTrack,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
+) -> c_int {
 	if !numerator.is_null() {
 		*numerator = TRACK_LENGTH_NUM.load(Ordering::SeqCst);
 	}
@@ -1552,12 +1899,18 @@ pub unsafe extern "C" fn oaknode_track_get_length(_track: oaktask::bridge::node:
 // ---------------------------------------------------------------------------
 
 #[no_mangle]
-pub unsafe extern "C" fn oaktimeline_add_track_command(_list: oaktask::bridge::node::OakNodeTrackList) -> oaktask::bridge::undo::OakUndoCommand {
+pub unsafe extern "C" fn oaktimeline_add_track_command(
+	_list: oaktask::bridge::node::OakNodeTrackList,
+) -> oaktask::bridge::undo::OakUndoCommand {
 	fake_handle()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_tracklist_get_total_length(_list: oaktask::bridge::node::OakNodeTrackList, n: *mut c_int, d: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_tracklist_get_total_length(
+	_list: oaktask::bridge::node::OakNodeTrackList,
+	n: *mut c_int,
+	d: *mut c_int,
+) -> c_int {
 	if !n.is_null() {
 		*n = 0;
 	}
@@ -1568,7 +1921,10 @@ pub unsafe extern "C" fn oaknode_tracklist_get_total_length(_list: oaktask::brid
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_tracklist_get_array_size(_list: oaktask::bridge::node::OakNodeTrackList, size: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_tracklist_get_array_size(
+	_list: oaktask::bridge::node::OakNodeTrackList,
+	size: *mut c_int,
+) -> c_int {
 	if !size.is_null() {
 		*size = 0;
 	}
@@ -1576,30 +1932,45 @@ pub unsafe extern "C" fn oaknode_tracklist_get_array_size(_list: oaktask::bridge
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_tracklist_add_track(_list: oaktask::bridge::node::OakNodeTrackList, _track: oaktask::bridge::node::OakNodeTrack) -> c_int {
+pub unsafe extern "C" fn oaknode_tracklist_add_track(
+	_list: oaktask::bridge::node::OakNodeTrackList,
+	_track: oaktask::bridge::node::OakNodeTrack,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_tracklist_remove_track(_list: oaktask::bridge::node::OakNodeTrackList, _track: oaktask::bridge::node::OakNodeTrack) -> c_int {
+pub unsafe extern "C" fn oaknode_tracklist_remove_track(
+	_list: oaktask::bridge::node::OakNodeTrackList,
+	_track: oaktask::bridge::node::OakNodeTrack,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_colormanager_init(_project: oaktask::bridge::node::OakNodeProject) -> oaktask::bridge::node::OakNodeColorManager {
+pub unsafe extern "C" fn oaknode_colormanager_init(
+	_project: oaktask::bridge::node::OakNodeProject,
+) -> oaktask::bridge::node::OakNodeColorManager {
 	fake_handle()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_colormanager_free(_manager: *mut oaktask::bridge::node::OakNodeColorManager) {}
+pub unsafe extern "C" fn oaknode_colormanager_free(
+	_manager: *mut oaktask::bridge::node::OakNodeColorManager,
+) {
+}
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_colormanager_wrap_borrowed(_native: *mut c_void) -> oaktask::bridge::node::OakNodeColorManager {
+pub unsafe extern "C" fn oaknode_colormanager_wrap_borrowed(
+	_native: *mut c_void,
+) -> oaktask::bridge::node::OakNodeColorManager {
 	fake_handle()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_colormanager_initialize(_manager: oaktask::bridge::node::OakNodeColorManager) -> c_int {
+pub unsafe extern "C" fn oaknode_colormanager_initialize(
+	_manager: oaktask::bridge::node::OakNodeColorManager,
+) -> c_int {
 	0
 }
 
@@ -1625,7 +1996,10 @@ pub unsafe extern "C" fn oaknode_serializer_savedata_create(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_serializer_savedata_free(_save_data: *mut oaktask::bridge::node::OakNodeSerializerSaveData) {}
+pub unsafe extern "C" fn oaknode_serializer_savedata_free(
+	_save_data: *mut oaktask::bridge::node::OakNodeSerializerSaveData,
+) {
+}
 
 #[no_mangle]
 pub unsafe extern "C" fn oaknode_serializer_savedata_set_nodes(
@@ -1647,7 +2021,11 @@ pub unsafe extern "C" fn oaknode_serializer_savedata_set_property(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_serializer_save_to_xml(_save_data: oaktask::bridge::node::OakNodeSerializerSaveData, buf: *mut c_char, size: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_serializer_save_to_xml(
+	_save_data: oaktask::bridge::node::OakNodeSerializerSaveData,
+	buf: *mut c_char,
+	size: c_int,
+) -> c_int {
 	write_cstr("<oakproj/>", buf as *mut u8, size)
 }
 
@@ -1667,20 +2045,32 @@ pub unsafe extern "C" fn oaknode_serializer_load_from_xml(
 	if !_out_load_data.is_null() {
 		*_out_load_data = fake_handle();
 	}
-	write_cstr(&SERIALIZER_DETAILS.lock().unwrap().clone(), _details as *mut u8, _details_size);
+	write_cstr(
+		&SERIALIZER_DETAILS.lock().unwrap().clone(),
+		_details as *mut u8,
+		_details_size,
+	);
 	SERIALIZER_LOAD_RET.load(Ordering::SeqCst)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_serializer_loaddata_free(_load_data: *mut oaktask::bridge::node::OakNodeSerializerLoadData) {}
+pub unsafe extern "C" fn oaknode_serializer_loaddata_free(
+	_load_data: *mut oaktask::bridge::node::OakNodeSerializerLoadData,
+) {
+}
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_serializer_loaddata_node_count(_load_data: oaktask::bridge::node::OakNodeSerializerLoadData) -> c_int {
+pub unsafe extern "C" fn oaknode_serializer_loaddata_node_count(
+	_load_data: oaktask::bridge::node::OakNodeSerializerLoadData,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_serializer_loaddata_node_at(_load_data: oaktask::bridge::node::OakNodeSerializerLoadData, _index: c_int) -> oaktask::bridge::node::OakNodeNode {
+pub unsafe extern "C" fn oaknode_serializer_loaddata_node_at(
+	_load_data: oaktask::bridge::node::OakNodeSerializerLoadData,
+	_index: c_int,
+) -> oaktask::bridge::node::OakNodeNode {
 	fake_handle()
 }
 
@@ -1696,7 +2086,9 @@ pub unsafe extern "C" fn oaknode_serializer_loaddata_get_property(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_serializer_loaddata_connection_count(_load_data: oaktask::bridge::node::OakNodeSerializerLoadData) -> c_int {
+pub unsafe extern "C" fn oaknode_serializer_loaddata_connection_count(
+	_load_data: oaktask::bridge::node::OakNodeSerializerLoadData,
+) -> c_int {
 	0
 }
 
@@ -1726,10 +2118,16 @@ pub unsafe extern "C" fn oaknode_serializer_save_to_file(
 	if !out_code.is_null() {
 		*out_code = code;
 	}
-	write_cstr(&SERIALIZER_DETAILS.lock().unwrap().clone(), _details as *mut u8, _details_size);
+	write_cstr(
+		&SERIALIZER_DETAILS.lock().unwrap().clone(),
+		_details as *mut u8,
+		_details_size,
+	);
 	if code == 0 && !filename.is_null() {
 		// Success path writes a real file so tests can assert existence.
-		let name = std::ffi::CStr::from_ptr(filename).to_string_lossy().into_owned();
+		let name = std::ffi::CStr::from_ptr(filename)
+			.to_string_lossy()
+			.into_owned();
 		let _ = std::fs::write(&name, b"oakproj-stub");
 	}
 	0
@@ -1747,7 +2145,9 @@ pub unsafe extern "C" fn oaknode_serializer_load_from_file(
 	// code is controllable otherwise.
 	let mut code = SERIALIZER_LOAD_CODE.load(Ordering::SeqCst);
 	if !filename.is_null() {
-		let name = std::ffi::CStr::from_ptr(filename).to_string_lossy().into_owned();
+		let name = std::ffi::CStr::from_ptr(filename)
+			.to_string_lossy()
+			.into_owned();
 		if !std::path::Path::new(&name).exists() {
 			code = 4; // OAKNODE_SERIALIZER_RESULT_FILE_ERROR
 		}
@@ -1755,22 +2155,37 @@ pub unsafe extern "C" fn oaknode_serializer_load_from_file(
 	if !out_code.is_null() {
 		*out_code = code;
 	}
-	write_cstr(&SERIALIZER_DETAILS.lock().unwrap().clone(), _details as *mut u8, _details_size);
+	write_cstr(
+		&SERIALIZER_DETAILS.lock().unwrap().clone(),
+		_details as *mut u8,
+		_details_size,
+	);
 	SERIALIZER_LOAD_RET.load(Ordering::SeqCst)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_node_get_label(_node: oaktask::bridge::node::OakNodeNode, buf: *mut c_char, size: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_node_get_label(
+	_node: oaktask::bridge::node::OakNodeNode,
+	buf: *mut c_char,
+	size: c_int,
+) -> c_int {
 	write_cstr(&NODE_LABEL.lock().unwrap().clone(), buf as *mut u8, size)
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_node_set_label(_node: oaktask::bridge::node::OakNodeNode, _label: *const c_char) -> c_int {
+pub unsafe extern "C" fn oaknode_node_set_label(
+	_node: oaktask::bridge::node::OakNodeNode,
+	_label: *const c_char,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_node_get_id(_node: oaktask::bridge::node::OakNodeNode, buf: *mut c_char, size: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_node_get_id(
+	_node: oaktask::bridge::node::OakNodeNode,
+	buf: *mut c_char,
+	size: c_int,
+) -> c_int {
 	write_cstr(&NODE_ID.lock().unwrap().clone(), buf as *mut u8, size)
 }
 
@@ -1801,7 +2216,10 @@ pub unsafe extern "C" fn oaknode_node_find_input_footage(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_node_get_project(_node: oaktask::bridge::node::OakNodeNode, out: *mut oaktask::bridge::node::OakNodeProject) -> c_int {
+pub unsafe extern "C" fn oaknode_node_get_project(
+	_node: oaktask::bridge::node::OakNodeNode,
+	out: *mut oaktask::bridge::node::OakNodeProject,
+) -> c_int {
 	if !out.is_null() {
 		*out = fake_handle();
 	}
@@ -1835,12 +2253,18 @@ pub unsafe extern "C" fn oaknode_node_get_input_string(
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_node_create_copy(_node: oaktask::bridge::node::OakNodeNode) -> oaktask::bridge::node::OakNodeNode {
+pub unsafe extern "C" fn oaknode_node_create_copy(
+	_node: oaktask::bridge::node::OakNodeNode,
+) -> oaktask::bridge::node::OakNodeNode {
 	fake_handle()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_node_copy_inputs(_dst: oaktask::bridge::node::OakNodeNode, _src: oaktask::bridge::node::OakNodeNode, _include_connections: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_node_copy_inputs(
+	_dst: oaktask::bridge::node::OakNodeNode,
+	_src: oaktask::bridge::node::OakNodeNode,
+	_include_connections: c_int,
+) -> c_int {
 	0
 }
 
@@ -1851,16 +2275,22 @@ pub unsafe extern "C" fn oaknode_node_connect(
 	input_id: *const c_char,
 ) -> c_int {
 	if !input_id.is_null() {
-		CONNECT_INPUT_IDS
-			.lock()
-			.unwrap()
-			.push(std::ffi::CStr::from_ptr(input_id).to_string_lossy().into_owned());
+		CONNECT_INPUT_IDS.lock().unwrap().push(
+			std::ffi::CStr::from_ptr(input_id)
+				.to_string_lossy()
+				.into_owned(),
+		);
 	}
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_node_set_value_hint_track(_node: oaktask::bridge::node::OakNodeNode, _input_id: *const c_char, _track_type: c_int, _track_index: c_int) -> c_int {
+pub unsafe extern "C" fn oaknode_node_set_value_hint_track(
+	_node: oaktask::bridge::node::OakNodeNode,
+	_input_id: *const c_char,
+	_track_type: c_int,
+	_track_index: c_int,
+) -> c_int {
 	0
 }
 
@@ -1879,17 +2309,25 @@ pub unsafe extern "C" fn oaknode_node_get_video_frame_cache(
 pub unsafe extern "C" fn oaknode_node_free(_node: *mut oaktask::bridge::node::OakNodeNode) {}
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_factory_create_from_id(_type_id: *const c_char) -> oaktask::bridge::node::OakNodeNode {
+pub unsafe extern "C" fn oaknode_factory_create_from_id(
+	_type_id: *const c_char,
+) -> oaktask::bridge::node::OakNodeNode {
 	fake_handle()
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_viewer_set_video_params(_viewer: oaktask::bridge::node::OakNodeNode, _params: *const oaktask::bridge::common::OakVideoParams) -> c_int {
+pub unsafe extern "C" fn oaknode_viewer_set_video_params(
+	_viewer: oaktask::bridge::node::OakNodeNode,
+	_params: *const oaktask::bridge::common::OakVideoParams,
+) -> c_int {
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oaknode_viewer_set_audio_params(_viewer: oaktask::bridge::node::OakNodeNode, _params: *const c_void) -> c_int {
+pub unsafe extern "C" fn oaknode_viewer_set_audio_params(
+	_viewer: oaktask::bridge::node::OakNodeNode,
+	_params: *const c_void,
+) -> c_int {
 	0
 }
 
@@ -2072,7 +2510,10 @@ pub fn stub_complete(id: usize) {
 pub fn stub_wait_submitted(count: usize) {
 	let mut guard = TICKET_SUBMIT_CV.0.lock().unwrap_or_else(|e| e.into_inner());
 	while TICKET_SUBMITTED.load(Ordering::SeqCst) < count {
-		guard = TICKET_SUBMIT_CV.1.wait(guard).unwrap_or_else(|e| e.into_inner());
+		guard = TICKET_SUBMIT_CV
+			.1
+			.wait(guard)
+			.unwrap_or_else(|e| e.into_inner());
 	}
 }
 
@@ -2096,11 +2537,16 @@ pub unsafe extern "C" fn oakrender_cancelatom_init() -> oaktask::bridge::render:
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_cancelatom_free(_atom: *mut oaktask::bridge::render::OakCancelAtom) {}
+pub unsafe extern "C" fn oakrender_cancelatom_free(
+	_atom: *mut oaktask::bridge::render::OakCancelAtom,
+) {
+}
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_cancelatom_cancel(_atom: oaktask::bridge::render::OakCancelAtom) -> c_int {
+pub unsafe extern "C" fn oakrender_cancelatom_cancel(
+	_atom: oaktask::bridge::render::OakCancelAtom,
+) -> c_int {
 	ATOM_CANCELLED.store(1, Ordering::SeqCst);
 	// Simulate cancellation propagating into in-flight renders: every
 	// pending ticket finishes (its completion fires exactly once), waking
@@ -2108,7 +2554,11 @@ pub unsafe extern "C" fn oakrender_cancelatom_cancel(_atom: oaktask::bridge::ren
 	// real oakrender does when a cancel atom is shared into the render.
 	let ids: Vec<usize> = {
 		let tickets = TICKETS.lock().unwrap_or_else(|e| e.into_inner());
-		tickets.iter().filter(|t| !t.finished).map(|t| t.id).collect()
+		tickets
+			.iter()
+			.filter(|t| !t.finished)
+			.map(|t| t.id)
+			.collect()
 	};
 	for id in ids {
 		stub_complete(id);
@@ -2118,7 +2568,10 @@ pub unsafe extern "C" fn oakrender_cancelatom_cancel(_atom: oaktask::bridge::ren
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_cancelatom_is_cancelled(_atom: oaktask::bridge::render::OakCancelAtom, cancelled: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oakrender_cancelatom_is_cancelled(
+	_atom: oaktask::bridge::render::OakCancelAtom,
+	cancelled: *mut c_int,
+) -> c_int {
 	if !cancelled.is_null() {
 		*cancelled = ATOM_CANCELLED.load(Ordering::SeqCst);
 	}
@@ -2127,7 +2580,10 @@ pub unsafe extern "C" fn oakrender_cancelatom_is_cancelled(_atom: oaktask::bridg
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_cancelatom_heard_cancel(_atom: oaktask::bridge::render::OakCancelAtom, heard: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oakrender_cancelatom_heard_cancel(
+	_atom: oaktask::bridge::render::OakCancelAtom,
+	heard: *mut c_int,
+) -> c_int {
 	if !heard.is_null() {
 		*heard = 0;
 	}
@@ -2146,7 +2602,14 @@ pub unsafe extern "C" fn oakrender_ticket_render_frame(
 	} else {
 		((*params).time_num, (*params).time_den)
 	};
-	stub_register_ticket(OAKRENDER_TICKET_VIDEO, time_num, time_den, (0, 1, 0, 1), cb, userdata)
+	stub_register_ticket(
+		OAKRENDER_TICKET_VIDEO,
+		time_num,
+		time_den,
+		(0, 1, 0, 1),
+		cb,
+		userdata,
+	)
 }
 
 #[cfg(not(feature = "real-oakrender"))]
@@ -2174,7 +2637,9 @@ pub unsafe extern "C" fn oakrender_ticket_render_audio(
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_ticket_is_finished(ticket: oaktask::bridge::render::OakRenderTicket) -> c_int {
+pub unsafe extern "C" fn oakrender_ticket_is_finished(
+	ticket: oaktask::bridge::render::OakRenderTicket,
+) -> c_int {
 	match stub_ticket_id(ticket) {
 		Some(id) => {
 			let tickets = TICKETS.lock().unwrap_or_else(|e| e.into_inner());
@@ -2190,7 +2655,9 @@ pub unsafe extern "C" fn oakrender_ticket_is_finished(ticket: oaktask::bridge::r
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_ticket_wait(ticket: oaktask::bridge::render::OakRenderTicket) -> c_int {
+pub unsafe extern "C" fn oakrender_ticket_wait(
+	ticket: oaktask::bridge::render::OakRenderTicket,
+) -> c_int {
 	if let Some(id) = stub_ticket_id(ticket) {
 		let mut tickets = TICKETS.lock().unwrap_or_else(|e| e.into_inner());
 		while !tickets.iter().any(|t| t.id == id && t.finished) {
@@ -2202,7 +2669,9 @@ pub unsafe extern "C" fn oakrender_ticket_wait(ticket: oaktask::bridge::render::
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_ticket_cancel(ticket: oaktask::bridge::render::OakRenderTicket) -> c_int {
+pub unsafe extern "C" fn oakrender_ticket_cancel(
+	ticket: oaktask::bridge::render::OakRenderTicket,
+) -> c_int {
 	if let Some(id) = stub_ticket_id(ticket) {
 		// The real cancel contract: the ticket finishes and its completion
 		// still fires exactly once (a NULL result via get_frame).
@@ -2213,7 +2682,9 @@ pub unsafe extern "C" fn oakrender_ticket_cancel(ticket: oaktask::bridge::render
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_ticket_get_type(ticket: oaktask::bridge::render::OakRenderTicket) -> c_int {
+pub unsafe extern "C" fn oakrender_ticket_get_type(
+	ticket: oaktask::bridge::render::OakRenderTicket,
+) -> c_int {
 	match stub_ticket_id(ticket) {
 		Some(id) => {
 			let tickets = TICKETS.lock().unwrap_or_else(|e| e.into_inner());
@@ -2257,7 +2728,10 @@ pub unsafe extern "C" fn oakrender_ticket_get_time(
 	let info = match stub_ticket_id(ticket) {
 		Some(id) => {
 			let tickets = TICKETS.lock().unwrap_or_else(|e| e.into_inner());
-			tickets.iter().find(|t| t.id == id).map(|t| (t.time_num, t.time_den))
+			tickets
+				.iter()
+				.find(|t| t.id == id)
+				.map(|t| (t.time_num, t.time_den))
 		}
 		None => None,
 	};
@@ -2307,7 +2781,10 @@ pub unsafe extern "C" fn oakrender_ticket_get_range(
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_ticket_get_samples(_ticket: oaktask::bridge::render::OakRenderTicket, out: *mut *mut c_void) -> c_int {
+pub unsafe extern "C" fn oakrender_ticket_get_samples(
+	_ticket: oaktask::bridge::render::OakRenderTicket,
+	out: *mut *mut c_void,
+) -> c_int {
 	if !out.is_null() {
 		*out = std::ptr::null_mut();
 	}
@@ -2316,11 +2793,15 @@ pub unsafe extern "C" fn oakrender_ticket_get_samples(_ticket: oaktask::bridge::
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_ticket_free(_ticket: *mut oaktask::bridge::render::OakRenderTicket) {}
+pub unsafe extern "C" fn oakrender_ticket_free(
+	_ticket: *mut oaktask::bridge::render::OakRenderTicket,
+) {
+}
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_project_copier_create() -> oaktask::bridge::render::OakRenderProjectCopier {
+pub unsafe extern "C" fn oakrender_project_copier_create(
+) -> oaktask::bridge::render::OakRenderProjectCopier {
 	unsafe extern "C" fn noop(_ctx: *mut c_void) {}
 	oaktask::bridge::render::OakRenderProjectCopier {
 		ctx: 7usize as *mut c_void,
@@ -2332,23 +2813,34 @@ pub unsafe extern "C" fn oakrender_project_copier_create() -> oaktask::bridge::r
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_project_copier_free(_copier: *mut oaktask::bridge::render::OakRenderProjectCopier) {}
+pub unsafe extern "C" fn oakrender_project_copier_free(
+	_copier: *mut oaktask::bridge::render::OakRenderProjectCopier,
+) {
+}
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_project_copier_set_project(_copier: oaktask::bridge::render::OakRenderProjectCopier, _project: oaktask::bridge::node::OakNodeProject) -> c_int {
+pub unsafe extern "C" fn oakrender_project_copier_set_project(
+	_copier: oaktask::bridge::render::OakRenderProjectCopier,
+	_project: oaktask::bridge::node::OakNodeProject,
+) -> c_int {
 	0
 }
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_project_copier_get_copy(_copier: oaktask::bridge::render::OakRenderProjectCopier, original: oaktask::bridge::node::OakNodeNode) -> oaktask::bridge::node::OakNodeNode {
+pub unsafe extern "C" fn oakrender_project_copier_get_copy(
+	_copier: oaktask::bridge::render::OakRenderProjectCopier,
+	original: oaktask::bridge::node::OakNodeNode,
+) -> oaktask::bridge::node::OakNodeNode {
 	original
 }
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_project_copier_get_copied_project(_copier: oaktask::bridge::render::OakRenderProjectCopier) -> oaktask::bridge::node::OakNodeProject {
+pub unsafe extern "C" fn oakrender_project_copier_get_copied_project(
+	_copier: oaktask::bridge::render::OakRenderProjectCopier,
+) -> oaktask::bridge::node::OakNodeProject {
 	fake_handle()
 }
 
@@ -2370,17 +2862,23 @@ pub unsafe extern "C" fn oakrender_color_processor_create(
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_color_processor_free(_processor: *mut oaktask::bridge::render::OakColorProcessor) {}
+pub unsafe extern "C" fn oakrender_color_processor_free(
+	_processor: *mut oaktask::bridge::render::OakColorProcessor,
+) {
+}
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_color_processor_is_valid(_processor: oaktask::bridge::render::OakColorProcessor) -> c_int {
+pub unsafe extern "C" fn oakrender_color_processor_is_valid(
+	_processor: oaktask::bridge::render::OakColorProcessor,
+) -> c_int {
 	1
 }
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_codec_frame_free(_frame: *mut oaktask::bridge::codec::OakFrame) {}
+pub unsafe extern "C" fn oakrender_codec_frame_free(_frame: *mut oaktask::bridge::codec::OakFrame) {
+}
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
@@ -2404,7 +2902,10 @@ pub unsafe extern "C" fn oakrender_cache_get_invalidated_ranges(
 
 #[cfg(not(feature = "real-oakrender"))]
 #[no_mangle]
-pub unsafe extern "C" fn oakrender_cache_free(_cache: *mut oaktask::bridge::render::OakRenderCache) {}
+pub unsafe extern "C" fn oakrender_cache_free(
+	_cache: *mut oaktask::bridge::render::OakRenderCache,
+) {
+}
 
 // ---------------------------------------------------------------------------
 // bridge::undo stubs
@@ -2424,13 +2925,19 @@ pub unsafe extern "C" fn oakundo_command_init_multi() -> oaktask::bridge::undo::
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakundo_command_multi_add_child(_multi: oaktask::bridge::undo::OakUndoCommand, _child: oaktask::bridge::undo::OakUndoCommand) -> c_int {
+pub unsafe extern "C" fn oakundo_command_multi_add_child(
+	_multi: oaktask::bridge::undo::OakUndoCommand,
+	_child: oaktask::bridge::undo::OakUndoCommand,
+) -> c_int {
 	MULTI_CHILDREN.fetch_add(1, Ordering::SeqCst);
 	0
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakundo_command_multi_child_count(_multi: oaktask::bridge::undo::OakUndoCommand, out: *mut c_int) -> c_int {
+pub unsafe extern "C" fn oakundo_command_multi_child_count(
+	_multi: oaktask::bridge::undo::OakUndoCommand,
+	out: *mut c_int,
+) -> c_int {
 	if !out.is_null() {
 		*out = MULTI_CHILDREN.load(Ordering::SeqCst);
 	}
@@ -2438,7 +2945,11 @@ pub unsafe extern "C" fn oakundo_command_multi_child_count(_multi: oaktask::brid
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakundo_command_multi_child(_multi: oaktask::bridge::undo::OakUndoCommand, _index: c_int, out: *mut oaktask::bridge::undo::OakUndoCommand) -> c_int {
+pub unsafe extern "C" fn oakundo_command_multi_child(
+	_multi: oaktask::bridge::undo::OakUndoCommand,
+	_index: c_int,
+	out: *mut oaktask::bridge::undo::OakUndoCommand,
+) -> c_int {
 	if !out.is_null() {
 		*out = fake_handle();
 	}
@@ -2446,7 +2957,9 @@ pub unsafe extern "C" fn oakundo_command_multi_child(_multi: oaktask::bridge::un
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakundo_command_redo_now(_command: oaktask::bridge::undo::OakUndoCommand) -> c_int {
+pub unsafe extern "C" fn oakundo_command_redo_now(
+	_command: oaktask::bridge::undo::OakUndoCommand,
+) -> c_int {
 	// Approximate redo: the folder gains the accumulated children.
 	let delta = MULTI_CHILDREN.load(Ordering::SeqCst);
 	if delta > 0 {
@@ -2457,7 +2970,9 @@ pub unsafe extern "C" fn oakundo_command_redo_now(_command: oaktask::bridge::und
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakundo_command_undo_now(_command: oaktask::bridge::undo::OakUndoCommand) -> c_int {
+pub unsafe extern "C" fn oakundo_command_undo_now(
+	_command: oaktask::bridge::undo::OakUndoCommand,
+) -> c_int {
 	let delta = REDO_DELTA.load(Ordering::SeqCst);
 	if delta > 0 {
 		FOLDER_CHILD_COUNT.fetch_sub(delta, Ordering::SeqCst);
@@ -2467,4 +2982,7 @@ pub unsafe extern "C" fn oakundo_command_undo_now(_command: oaktask::bridge::und
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn oakundo_command_free(_command: *mut oaktask::bridge::undo::OakUndoCommand) {}
+pub unsafe extern "C" fn oakundo_command_free(
+	_command: *mut oaktask::bridge::undo::OakUndoCommand,
+) {
+}

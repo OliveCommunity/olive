@@ -30,7 +30,10 @@ use std::ffi::c_int;
 use std::sync::atomic::Ordering;
 
 use common::*;
-use oaktask::bridge::codec::{OakCodecTaskRequest, OAKCODEC_E_CANCELLED, OAKCODEC_E_FAILED, OAKCODEC_TASK_CONFORM, OAKCODEC_TASK_PROXY};
+use oaktask::bridge::codec::{
+	OakCodecTaskRequest, OAKCODEC_E_CANCELLED, OAKCODEC_E_FAILED, OAKCODEC_TASK_CONFORM,
+	OAKCODEC_TASK_PROXY,
+};
 use oaktask::error::Result;
 use oaktask::ffi::manager::oaktask_manager_shutdown;
 use oaktask::ffi::project::oaktask_create_export;
@@ -158,7 +161,10 @@ fn conform_run_reports_cancelled_conform() {
 	};
 	assert_eq!(submit(&request), OAKCODEC_E_FAILED);
 	// The cancelled conform removes its partial working files.
-	assert!(!working.exists(), "working files must be cleaned up on cancel");
+	assert!(
+		!working.exists(),
+		"working files must be cleaned up on cancel"
+	);
 	assert!(!out.exists());
 	unsafe { oaktask_manager_shutdown() };
 }
@@ -537,5 +543,8 @@ fn task_base_api_and_events() {
 /// The error marker `Task::cancelled()` maps to OAKTASK_E_CANCELLED.
 #[test]
 fn cancelled_marker_maps_to_code() {
-	assert_eq!(oaktask::task::cancelled().code(), oaktask::error::OAKTASK_E_CANCELLED);
+	assert_eq!(
+		oaktask::task::cancelled().code(),
+		oaktask::error::OAKTASK_E_CANCELLED
+	);
 }

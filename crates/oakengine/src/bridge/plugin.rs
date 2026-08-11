@@ -72,7 +72,10 @@ pub fn oakplugin_host_plugin_id_at(index: c_int, buf: *mut c_char, buf_size: c_i
 
 /// Direct call into the `oakplugin` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oakplugin_host_plugin_label(plugin_id: *const c_char, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub fn oakplugin_host_plugin_label(
+	plugin_id: *const c_char,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
 	unsafe { oakplugin::ffi::oakplugin_host_plugin_label(plugin_id, buf, buf_size) }
 }
-

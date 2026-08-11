@@ -43,7 +43,7 @@ use std::ffi::{c_char, c_int, c_void};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::bridge::codec::{EncodingParamsPOD, zeroed_encoding_params};
+use crate::bridge::codec::{zeroed_encoding_params, EncodingParamsPOD};
 use crate::bridge::node as n;
 use crate::bridge::task as t;
 use crate::codec::OakEngineEncodingParams;
@@ -353,11 +353,16 @@ pub unsafe extern "C" fn oakengine_task_start_time(task: *mut OakEngineTask) -> 
 pub unsafe extern "C" fn oakengine_task_is_cancelled(task: *mut OakEngineTask) -> c_int {
 	guard_int(|| unsafe {
 		let h = unbox(task)?;
-		Ok(if meta_get(h.ctx as usize).map(|m| m.cancelled).unwrap_or(false) {
-			1
-		} else {
-			0
-		})
+		Ok(
+			if meta_get(h.ctx as usize)
+				.map(|m| m.cancelled)
+				.unwrap_or(false)
+			{
+				1
+			} else {
+				0
+			},
+		)
 	})
 }
 
@@ -509,9 +514,12 @@ pub unsafe extern "C" fn oakengine_task_create_project_save_otio(
 		if filename.is_empty() {
 			return Ok(std::ptr::null_mut());
 		}
-		let c_filename =
-			std::ffi::CString::new(filename).map_err(|_| Error::Failed("invalid filename".into()))?;
-		Ok(box_task(t::oaktask_create_project_save_otio(ph, c_filename.as_ptr())))
+		let c_filename = std::ffi::CString::new(filename)
+			.map_err(|_| Error::Failed("invalid filename".into()))?;
+		Ok(box_task(t::oaktask_create_project_save_otio(
+			ph,
+			c_filename.as_ptr(),
+		)))
 	})
 }
 
@@ -655,22 +663,27 @@ fn export_params_pod(params: *const OakEngineEncodingParams) -> Result<EncodingP
 	// filename (two-stage; writes NUL-terminated into `buf`)
 	let mut buf = [0 as c_char; 1024];
 	let rc = unsafe {
-		crate::codec::oakengine_encoding_params_filename(params, buf.as_mut_ptr(), buf.len() as c_int)
+		crate::codec::oakengine_encoding_params_filename(
+			params,
+			buf.as_mut_ptr(),
+			buf.len() as c_int,
+		)
 	};
 	if rc < 0 {
 		return Err(Error::Invalid);
 	}
 	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-	unsafe { std::ptr::copy_nonoverlapping(buf.as_ptr() as *const u8, pod.filename.as_mut_ptr(), len) };
+	unsafe {
+		std::ptr::copy_nonoverlapping(buf.as_ptr() as *const u8, pod.filename.as_mut_ptr(), len)
+	};
 
 	pod.format = unsafe { crate::codec::oakengine_encoding_params_format(params) };
 	pod.video_enabled = unsafe { crate::codec::oakengine_encoding_params_video_enabled(params) };
 	pod.video_codec = unsafe { crate::codec::oakengine_encoding_params_video_codec(params) };
 	pod.audio_enabled = unsafe { crate::codec::oakengine_encoding_params_audio_enabled(params) };
 	pod.audio_codec = unsafe { crate::codec::oakengine_encoding_params_audio_codec(params) };
-	pod.subtitles_enabled = unsafe {
-		crate::codec::oakengine_encoding_params_subtitles_enabled(params)
-	};
+	pod.subtitles_enabled =
+		unsafe { crate::codec::oakengine_encoding_params_subtitles_enabled(params) };
 	unsafe {
 		crate::codec::oakengine_encoding_params_get_export_length(
 			params,
@@ -741,7 +754,9 @@ pub unsafe extern "C" fn oakengine_task_import_file_count(task: *mut OakEngineTa
 /// run, after a cancelled run, or on a second call). Ownership detaches
 /// from the task; push it with `oakengine_undo_push` or free it.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_task_import_get_command(task: *mut OakEngineTask) -> *mut c_void {
+pub unsafe extern "C" fn oakengine_task_import_get_command(
+	task: *mut OakEngineTask,
+) -> *mut c_void {
 	guard_ptr(|| unsafe {
 		let h = unbox(task)?;
 		let cmd = t::oaktask_import_take_command(h);
@@ -839,7 +854,9 @@ pub unsafe extern "C" fn oakengine_task_import_invalid_file_at(
 /// Each call returns a fresh borrowed handle the caller releases with
 /// `oakengine_project_free`.
 #[no_mangle]
-pub unsafe extern "C" fn oakengine_task_save_get_project(task: *mut OakEngineTask) -> *mut OakEngineProject {
+pub unsafe extern "C" fn oakengine_task_save_get_project(
+	task: *mut OakEngineTask,
+) -> *mut OakEngineProject {
 	guard_ptr(|| unsafe {
 		let h = unbox(task)?;
 		match meta_get(h.ctx as usize).and_then(|m| m.save_project) {

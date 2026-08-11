@@ -448,7 +448,11 @@ impl PluginCache {
 		paths.push(PathBuf::from("../OFX/Plugins"));
 		paths.push(PathBuf::from("../share/olive/ofx/Plugins"));
 		paths.push(PathBuf::from("../lib/olive/ofx/Plugins"));
-		for var in ["OLIVE_OFX_PLUGIN_PATH", "OLIVE_PLUGIN_PATH", "OFX_PLUGIN_PATH"] {
+		for var in [
+			"OLIVE_OFX_PLUGIN_PATH",
+			"OLIVE_PLUGIN_PATH",
+			"OFX_PLUGIN_PATH",
+		] {
 			if let Ok(raw) = std::env::var(var) {
 				paths.extend(raw.split(':').filter(|p| !p.is_empty()).map(PathBuf::from));
 			}
@@ -519,11 +523,7 @@ impl PluginCache {
 	///
 	/// # Safety
 	/// `handle` 必须是有效 dlopen 句柄。
-	unsafe fn collect_plugins(
-		&self,
-		handle: *mut c_void,
-		bundle: &Path,
-	) -> Vec<Arc<Plugin>> {
+	unsafe fn collect_plugins(&self, handle: *mut c_void, bundle: &Path) -> Vec<Arc<Plugin>> {
 		let get_no: unsafe extern "C" fn() -> c_int =
 			match unsafe { dlsym_fn(handle, "OfxGetNumberOfPlugins") } {
 				Some(f) => f,
@@ -571,7 +571,9 @@ impl PluginCache {
 		let api = if ofx_ref.plugin_api.is_null() {
 			return None;
 		} else {
-			unsafe { CStr::from_ptr(ofx_ref.plugin_api) }.to_str().ok()?
+			unsafe { CStr::from_ptr(ofx_ref.plugin_api) }
+				.to_str()
+				.ok()?
 		};
 		if api != "OfxImageEffectPluginAPI" || ofx_ref.api_version != 1 {
 			return None;
@@ -609,10 +611,7 @@ impl PluginCache {
 		let empty = PropertySet::new();
 
 		// load（HS: ofxhImageEffectAPI.cpp:158-165；OK/ReplyDefault 接受）。
-		let stat = unsafe {
-			plugin
-				.call_action(ACTION_LOAD, std::ptr::null_mut(), &empty, &empty)
-		};
+		let stat = unsafe { plugin.call_action(ACTION_LOAD, std::ptr::null_mut(), &empty, &empty) };
 		if stat != status::OK && stat != status::REPLY_DEFAULT {
 			return None;
 		}
@@ -675,10 +674,16 @@ impl PluginCache {
 	/// 卸载全部（shutdown 路径）。`scanned_paths` 一并清空——
 	/// 否则再 init 后的扫描会被去重短路（缓存已空但路径仍在）。
 	pub(crate) fn unload_all(&self) {
-		self.plugins.lock().unwrap_or_else(|e| e.into_inner()).clear();
+		self.plugins
+			.lock()
+			.unwrap_or_else(|e| e.into_inner())
+			.clear();
 		let mut bins = self.binaries.lock().unwrap_or_else(|e| e.into_inner());
 		bins.clear(); // Drop → dlclose
-		self.scanned_paths.lock().unwrap_or_else(|e| e.into_inner()).clear();
+		self.scanned_paths
+			.lock()
+			.unwrap_or_else(|e| e.into_inner())
+			.clear();
 	}
 }
 
@@ -716,15 +721,27 @@ fn init_descriptor_props(props: &PropertySet, bundle: &Path) {
 	props.define(PROP_SUPPORTED_CONTEXTS, vec![]);
 	props.set_one("OfxImageEffectPluginPropGrouping", Value::String(cs("")));
 	props.set_one("OfxImageEffectPluginPropSingleInstance", Value::Int(0));
-	props.set_one("OfxImageEffectPluginRenderThreadSafety", Value::String(cs("OfxImageEffectRenderInstanceSafe")));
+	props.set_one(
+		"OfxImageEffectPluginRenderThreadSafety",
+		Value::String(cs("OfxImageEffectRenderInstanceSafe")),
+	);
 	props.set_one("OfxImageEffectPluginPropHostFrameThreading", Value::Int(1));
-	props.set_one("OfxImageEffectPluginPropOverlayInteractV1", Value::Pointer(std::ptr::null_mut()));
+	props.set_one(
+		"OfxImageEffectPluginPropOverlayInteractV1",
+		Value::Pointer(std::ptr::null_mut()),
+	);
 	props.set_one("OfxImageEffectPropSupportsMultiResolution", Value::Int(1));
 	props.set_one(PROP_SUPPORTS_TILES, Value::Int(1));
 	props.set_one("OfxImageEffectPropTemporalClipAccess", Value::Int(0));
 	props.define("OfxImageEffectPropSupportedPixelDepths", vec![]);
-	props.set_one("OfxImageEffectPluginPropFieldRenderTwiceAlways", Value::Int(1));
-	props.set_one("OfxImageEffectPropSupportsMultipleClipDepths", Value::Int(0));
+	props.set_one(
+		"OfxImageEffectPluginPropFieldRenderTwiceAlways",
+		Value::Int(1),
+	);
+	props.set_one(
+		"OfxImageEffectPropSupportsMultipleClipDepths",
+		Value::Int(0),
+	);
 	props.set_one("OfxImageEffectPropSupportsMultipleClipPARs", Value::Int(0));
 	props.define("OfxImageEffectPropClipPreferencesSlaveParam", vec![]);
 	props.set_one(PROP_SEQUENTIAL, Value::Int(0));
@@ -840,8 +857,9 @@ impl Host {
 			&ctx_desc.props as *const PropertySet,
 			crate::suites::tag::DESCRIPTOR,
 		);
-		let stat =
-			unsafe { plugin.call_action(ACTION_DESCRIBE_IN_CONTEXT, desc_handle, &in_args, &in_args) };
+		let stat = unsafe {
+			plugin.call_action(ACTION_DESCRIBE_IN_CONTEXT, desc_handle, &in_args, &in_args)
+		};
 		if stat != status::OK && stat != status::REPLY_DEFAULT {
 			return Err(crate::error::Error::Failed(format!(
 				"describeInContext 失败：{stat}"
@@ -930,7 +948,9 @@ impl Host {
 			if let Some(arc) = w.upgrade() {
 				// 置 destroyed 标记后再通知：实例随后的 Drop 不得再
 				// 调已卸载的插件入口（二次 destroyInstance → 悬垂）。
-				arc.value.destroyed.store(true, std::sync::atomic::Ordering::Relaxed);
+				arc.value
+					.destroyed
+					.store(true, std::sync::atomic::Ordering::Relaxed);
 				arc.value.notify_destroy();
 				arc.value
 					.cancel
@@ -954,8 +974,14 @@ impl Host {
 fn init_host_props(props: &PropertySet) {
 	props.set_one("OfxPropName", Value::String(cs("Oak Video Editor")));
 	props.set_one("OfxPropLabel", Value::String(cs("Oak Video Editor")));
-	props.set_one("OfxPropVersionLabel", Value::String(cs(env!("CARGO_PKG_VERSION"))));
-	props.define("OfxPropVersion", vec![Value::Int(0), Value::Int(0), Value::Int(0)]);
+	props.set_one(
+		"OfxPropVersionLabel",
+		Value::String(cs(env!("CARGO_PKG_VERSION"))),
+	);
+	props.define(
+		"OfxPropVersion",
+		vec![Value::Int(0), Value::Int(0), Value::Int(0)],
+	);
 	// 能力宣告：协商的宿主侧输入（phase 1 全链路 F32+RGBA）。
 	props.define(
 		"OfxImageEffectPropSupportedPixelDepths",
@@ -985,10 +1011,22 @@ fn init_host_props(props: &PropertySet) {
 fn init_instance_props(props: &PropertySet, instance: &Instance) {
 	props.set_one(PROP_TYPE, Value::String(cs("OfxTypeImageEffectInstance")));
 	props.set_one(PROP_CONTEXT, Value::String(cs(&instance.context)));
-	props.set_one(PROP_PLUGIN_HANDLE, Value::Pointer(instance.plugin.ofx_plugin));
-	props.define(PROP_PROJECT_SIZE, vec![Value::Double(1920.0), Value::Double(1080.0)]);
-	props.define(PROP_PROJECT_OFFSET, vec![Value::Double(0.0), Value::Double(0.0)]);
-	props.define(PROP_PROJECT_EXTENT, vec![Value::Double(1920.0), Value::Double(1080.0)]);
+	props.set_one(
+		PROP_PLUGIN_HANDLE,
+		Value::Pointer(instance.plugin.ofx_plugin),
+	);
+	props.define(
+		PROP_PROJECT_SIZE,
+		vec![Value::Double(1920.0), Value::Double(1080.0)],
+	);
+	props.define(
+		PROP_PROJECT_OFFSET,
+		vec![Value::Double(0.0), Value::Double(0.0)],
+	);
+	props.define(
+		PROP_PROJECT_EXTENT,
+		vec![Value::Double(1920.0), Value::Double(1080.0)],
+	);
 	props.set_one(PROP_PROJECT_PAR, Value::Double(1.0));
 	props.set_one(PROP_EFFECT_DURATION, Value::Double(1.0));
 	props.set_one(PROP_SEQUENTIAL, Value::Int(0));

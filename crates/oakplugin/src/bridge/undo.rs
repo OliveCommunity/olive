@@ -322,7 +322,10 @@ pub mod stub {
 		0
 	}
 
-	pub(super) unsafe fn command_multi_add_child_impl(multi: CommandHandle, child: CommandHandle) -> i32 {
+	pub(super) unsafe fn command_multi_add_child_impl(
+		multi: CommandHandle,
+		child: CommandHandle,
+	) -> i32 {
 		if multi.is_null() || child.is_null() {
 			return -40001;
 		}

@@ -72,8 +72,8 @@ impl SequenceBehavior {
 	/// `ViewerOutput::set_default_parameters()`; the config lookups use
 	/// oakcommon's defaults when the config module is absent).
 	pub fn set_default_parameters(&mut self) {
-		let width = crate::bridge::common::config_get_int("DefaultSequenceWidth", "", 1920)
-			.unwrap_or(1920);
+		let width =
+			crate::bridge::common::config_get_int("DefaultSequenceWidth", "", 1920).unwrap_or(1920);
 		let height = crate::bridge::common::config_get_int("DefaultSequenceHeight", "", 1080)
 			.unwrap_or(1080);
 		let sample_rate =
@@ -100,7 +100,14 @@ impl SequenceBehavior {
 
 	/// Recompute the cached lengths from the track lists (C++
 	/// `ViewerOutput::verify_length()`).
-	pub fn verify_length(&mut self, lengths: (oakcore_rs::Rational, oakcore_rs::Rational, oakcore_rs::Rational)) {
+	pub fn verify_length(
+		&mut self,
+		lengths: (
+			oakcore_rs::Rational,
+			oakcore_rs::Rational,
+			oakcore_rs::Rational,
+		),
+	) {
 		let (video, audio, overall) = lengths;
 		self.last_length = overall;
 		let _ = (video, audio);

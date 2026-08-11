@@ -98,8 +98,8 @@ impl BackendKind {
 				return BackendKind::from_config_string(&v);
 			}
 		}
-		let configured = crate::bridge::common::config_get_string(None, "GraphicsBackend")
-			.unwrap_or_default();
+		let configured =
+			crate::bridge::common::config_get_string(None, "GraphicsBackend").unwrap_or_default();
 		BackendKind::from_config_string(&configured)
 	}
 
@@ -107,13 +107,25 @@ impl BackendKind {
 	fn wgpu_fallbacks(self) -> Vec<wgpu::Backends> {
 		match self {
 			BackendKind::Auto | BackendKind::Metal => {
-				vec![wgpu::Backends::METAL, wgpu::Backends::VULKAN, wgpu::Backends::GL]
+				vec![
+					wgpu::Backends::METAL,
+					wgpu::Backends::VULKAN,
+					wgpu::Backends::GL,
+				]
 			}
 			BackendKind::Vulkan => {
-				vec![wgpu::Backends::VULKAN, wgpu::Backends::METAL, wgpu::Backends::GL]
+				vec![
+					wgpu::Backends::VULKAN,
+					wgpu::Backends::METAL,
+					wgpu::Backends::GL,
+				]
 			}
 			BackendKind::Gl => {
-				vec![wgpu::Backends::GL, wgpu::Backends::METAL, wgpu::Backends::VULKAN]
+				vec![
+					wgpu::Backends::GL,
+					wgpu::Backends::METAL,
+					wgpu::Backends::VULKAN,
+				]
 			}
 			BackendKind::Cpu => Vec::new(),
 		}
@@ -193,29 +205,27 @@ impl GpuContext {
 				backends,
 				..Default::default()
 			});
-			let adapter = match pollster_block_on(instance.request_adapter(
-				&wgpu::RequestAdapterOptions {
+			let adapter =
+				match pollster_block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
 					power_preference: wgpu::PowerPreference::HighPerformance,
 					compatible_surface: None,
 					force_fallback_adapter: false,
-				},
-			)) {
-				Ok(a) => a,
-				Err(_) => continue, // try the next backend in the fallback order
-			};
+				})) {
+					Ok(a) => a,
+					Err(_) => continue, // try the next backend in the fallback order
+				};
 			let info = adapter.get_info();
-			let (device, queue) = match pollster_block_on(adapter.request_device(
-				&wgpu::DeviceDescriptor {
+			let (device, queue) =
+				match pollster_block_on(adapter.request_device(&wgpu::DeviceDescriptor {
 					label: Some("oakrender"),
 					required_features: wgpu::Features::empty(),
 					required_limits: wgpu::Limits::default(),
 					memory_hints: wgpu::MemoryHints::default(),
 					trace: wgpu::Trace::Off,
-				},
-			)) {
-				Ok(dq) => dq,
-				Err(_) => continue,
-			};
+				})) {
+					Ok(dq) => dq,
+					Err(_) => continue,
+				};
 			let kind = BackendKind::from_wgpu_backend(info.backend);
 			if kind == BackendKind::Cpu {
 				continue;
@@ -346,7 +356,7 @@ impl GpuContext {
 		let w = entry.width as usize;
 		let h = entry.height as usize;
 		let linesize = w * 4 * 4; // Rgba32Float
-		// copy_texture_to_buffer requires a 256-byte-aligned row stride.
+							// copy_texture_to_buffer requires a 256-byte-aligned row stride.
 		let padded = (linesize + 255) & !255;
 
 		let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -387,9 +397,11 @@ impl GpuContext {
 		// Map + block until the callback fires (headless-safe: no surface,
 		// no event loop; PollType::Wait drives the callbacks).
 		let (tx, rx) = std::sync::mpsc::channel();
-		buffer.slice(..).map_async(wgpu::MapMode::Read, move |result| {
-			let _ = tx.send(result.is_ok());
-		});
+		buffer
+			.slice(..)
+			.map_async(wgpu::MapMode::Read, move |result| {
+				let _ = tx.send(result.is_ok());
+			});
 		let _ = self.device.poll(wgpu::PollType::wait());
 		if !rx.recv().unwrap_or(false) {
 			return Err(Error::Failed("texture download map failed".into()));
@@ -446,16 +458,14 @@ impl GpuContext {
 
 		let src_view = src_tex.create_view(&wgpu::TextureViewDescriptor::default());
 		let dst_view = dst_tex.create_view(&wgpu::TextureViewDescriptor::default());
-		let bind_group = self
-			.device
-			.create_bind_group(&wgpu::BindGroupDescriptor {
-				label: Some("oakrender-blit-bg"),
-				layout: &self.blit_bind_group_layout(),
-				entries: &[wgpu::BindGroupEntry {
-					binding: 0,
-					resource: wgpu::BindingResource::TextureView(&src_view),
-				}],
-			});
+		let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+			label: Some("oakrender-blit-bg"),
+			layout: &self.blit_bind_group_layout(),
+			entries: &[wgpu::BindGroupEntry {
+				binding: 0,
+				resource: wgpu::BindingResource::TextureView(&src_view),
+			}],
+		});
 
 		let mut encoder = self
 			.device
@@ -486,26 +496,29 @@ impl GpuContext {
 	}
 
 	fn blit_bind_group_layout(&self) -> wgpu::BindGroupLayout {
-		self.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-			label: Some("oakrender-blit-layout"),
-			entries: &[wgpu::BindGroupLayoutEntry {
-				binding: 0,
-				visibility: wgpu::ShaderStages::FRAGMENT,
-				ty: wgpu::BindingType::Texture {
-					sample_type: wgpu::TextureSampleType::Float { filterable: false },
-					view_dimension: wgpu::TextureViewDimension::D2,
-					multisampled: false,
-				},
-				count: None,
-			}],
-		})
+		self.device
+			.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+				label: Some("oakrender-blit-layout"),
+				entries: &[wgpu::BindGroupLayoutEntry {
+					binding: 0,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Texture {
+						sample_type: wgpu::TextureSampleType::Float { filterable: false },
+						view_dimension: wgpu::TextureViewDimension::D2,
+						multisampled: false,
+					},
+					count: None,
+				}],
+			})
 	}
 
 	fn create_blit_pipeline(&self) -> Result<wgpu::RenderPipeline> {
-		let shader = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-			label: Some("oakrender-blit-shader"),
-			source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(BLIT_WGSL)),
-		});
+		let shader = self
+			.device
+			.create_shader_module(wgpu::ShaderModuleDescriptor {
+				label: Some("oakrender-blit-shader"),
+				source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(BLIT_WGSL)),
+			});
 		let layout = self.blit_bind_group_layout();
 		let pipeline_layout = self
 			.device
@@ -759,7 +772,12 @@ impl DisplayRenderer {
 	}
 
 	/// Upload pixels into a texture (GPU: backend upload; CPU: buffer copy).
-	pub fn upload_texture(&self, texture: &mut Texture, pixels: *const u8, linesize: usize) -> Result<()> {
+	pub fn upload_texture(
+		&self,
+		texture: &mut Texture,
+		pixels: *const u8,
+		linesize: usize,
+	) -> Result<()> {
 		let size = texture.size();
 		match texture {
 			Texture::Gpu { token, ctx, .. } => {
@@ -772,9 +790,9 @@ impl DisplayRenderer {
 					return Err(Error::Invalid);
 				}
 				let h = frame.height as usize;
-				frame.data.copy_from_slice(unsafe {
-					std::slice::from_raw_parts(pixels, stride * h)
-				});
+				frame
+					.data
+					.copy_from_slice(unsafe { std::slice::from_raw_parts(pixels, stride * h) });
 				Ok(())
 			}
 		}
@@ -804,11 +822,14 @@ impl DisplayRenderer {
 		processor: Option<&crate::color::ColorProcessor>,
 	) -> Result<()> {
 		match (src, dst) {
-			(Some(Texture::Gpu { token: s, ctx, .. }), Texture::Gpu { token: d, ctx: dctx, .. })
-				if Arc::ptr_eq(ctx, dctx) =>
-			{
-				ctx.blit(*s, *d, processor)
-			}
+			(
+				Some(Texture::Gpu { token: s, ctx, .. }),
+				Texture::Gpu {
+					token: d,
+					ctx: dctx,
+					..
+				},
+			) if Arc::ptr_eq(ctx, dctx) => ctx.blit(*s, *d, processor),
 			(Some(Texture::Cpu(sf)), Texture::Cpu(df)) => {
 				if sf.width != df.width || sf.height != df.height {
 					return Err(Error::Invalid);
@@ -835,7 +856,10 @@ impl DisplayRenderer {
 		dst: *mut u8,
 		linesize: usize,
 	) -> Result<()> {
-		let ctx = self.ctx.as_ref().ok_or(Error::Failed("no GPU context".into()))?;
+		let ctx = self
+			.ctx
+			.as_ref()
+			.ok_or(Error::Failed("no GPU context".into()))?;
 		let frame = ctx.download(texture_id as u64)?;
 		let want_linesize = params.effective_width() as usize * 4 * 4;
 		if linesize != want_linesize {
@@ -901,12 +925,18 @@ mod tests {
 		}
 		// C++ legacy values map onto the CPU fallback (documented).
 		assert_eq!(BackendKind::from_config_string("dummy"), BackendKind::Cpu);
-		assert_eq!(BackendKind::from_config_string("multiprocess"), BackendKind::Cpu);
+		assert_eq!(
+			BackendKind::from_config_string("multiprocess"),
+			BackendKind::Cpu
+		);
 		// Unknown → Auto.
 		assert_eq!(BackendKind::from_config_string("bogus"), BackendKind::Auto);
 		assert_eq!(BackendKind::from_config_string(""), BackendKind::Auto);
 		// to_config_string round-trips.
-		assert_eq!(BackendKind::from_config_string(BackendKind::Metal.to_config_string()), BackendKind::Metal);
+		assert_eq!(
+			BackendKind::from_config_string(BackendKind::Metal.to_config_string()),
+			BackendKind::Metal
+		);
 	}
 
 	#[test]
@@ -984,7 +1014,13 @@ mod tests {
 		let out = ctx.download(dst).unwrap();
 		assert_eq!(out.data, frame.data, "plain-copy blit is pixel-exact");
 		// Color-managed blit is documented-deferred.
-		assert!(ctx.blit(src, dst, Some(&crate::color::ColorProcessor::pass_through())).is_err());
+		assert!(ctx
+			.blit(
+				src,
+				dst,
+				Some(&crate::color::ColorProcessor::pass_through())
+			)
+			.is_err());
 		ctx.destroy_texture(src);
 		ctx.destroy_texture(dst);
 	}
@@ -1052,8 +1088,12 @@ mod tests {
 		frame.allocate();
 		frame.data[0] = 0x77;
 		let mut upload_target = r3.create_texture(&pod, None).unwrap();
-		r3.upload_texture(&mut upload_target, frame.data.as_ptr(), frame.linesize_bytes())
-			.unwrap();
+		r3.upload_texture(
+			&mut upload_target,
+			frame.data.as_ptr(),
+			frame.linesize_bytes(),
+		)
+		.unwrap();
 		let mut buf = vec![0u8; frame.linesize_bytes() * 4];
 		r3.download_texture(&upload_target, buf.as_mut_ptr(), frame.linesize_bytes())
 			.unwrap();
@@ -1072,17 +1112,25 @@ mod tests {
 		pod.height = 2;
 		let mut src = r.create_texture(&pod, None).unwrap();
 		let mut dst = r.create_texture(&pod, None).unwrap();
-		let Texture::Cpu(sf) = &mut src else { unreachable!() };
+		let Texture::Cpu(sf) = &mut src else {
+			unreachable!()
+		};
 		sf.data[0] = 0x11;
 		sf.data[4] = 0x22;
 		// Plain copy.
 		r.blit_color_managed(Some(&src), &mut dst, None).unwrap();
-		let Texture::Cpu(df) = &dst else { unreachable!() };
+		let Texture::Cpu(df) = &dst else {
+			unreachable!()
+		};
 		assert_eq!(df.data[0], 0x11);
 		assert_eq!(df.data[4], 0x22);
 		// Pass-through processor is a no-op.
-		r.blit_color_managed(Some(&src), &mut dst, Some(&crate::color::ColorProcessor::pass_through()))
-			.unwrap();
+		r.blit_color_managed(
+			Some(&src),
+			&mut dst,
+			Some(&crate::color::ColorProcessor::pass_through()),
+		)
+		.unwrap();
 		// Size mismatch rejected.
 		let mut pod2 = VideoParamsPod::default();
 		pod2.width = 3;

@@ -199,7 +199,10 @@ impl ConfigStore {
 					Some(slash) => {
 						let group = key[..slash].to_string();
 						let sub = key[slash + 1..].to_string();
-						sections.entry(group).or_default().insert(sub, value_to_string(value));
+						sections
+							.entry(group)
+							.or_default()
+							.insert(sub, value_to_string(value));
 					}
 					None => {
 						sections
@@ -234,7 +237,9 @@ impl ConfigStore {
 				"Failed to save application settings. The application may lack write \
 				 permissions for this location.",
 			);
-			return Err(Error::Failed("temp config file could not be written".into()));
+			return Err(Error::Failed(
+				"temp config file could not be written".into(),
+			));
 		}
 
 		// CPP-PARITY: rename temp -> real; on POSIX this overwrites
@@ -247,7 +252,9 @@ impl ConfigStore {
 					"Error saving settings",
 					"Failed to overwrite the application settings file.",
 				);
-				return Err(Error::Failed("config.ini could not be renamed into place".into()));
+				return Err(Error::Failed(
+					"config.ini could not be renamed into place".into(),
+				));
 			}
 		}
 
@@ -444,10 +451,19 @@ impl ConfigStore {
 		guard.insert("DefaultSequenceHeight".into(), ConfigValue::Int(1080));
 		// Rational settings are stored as strings in oakcore_rational
 		// "num/den" form; this mirrors the old default Rational(1001, 30000).
-		guard.insert("DefaultSequenceFrameRate".into(), ConfigValue::String("1001/30000".into()));
-		guard.insert("DefaultSequencePixelAspect".into(), ConfigValue::String("1/1".into()));
+		guard.insert(
+			"DefaultSequenceFrameRate".into(),
+			ConfigValue::String("1001/30000".into()),
+		);
+		guard.insert(
+			"DefaultSequencePixelAspect".into(),
+			ConfigValue::String("1/1".into()),
+		);
 		guard.insert("DefaultSequenceInterlacing".into(), ConfigValue::Int(0));
-		guard.insert("DefaultSequenceAudioFrequency".into(), ConfigValue::Int(48000));
+		guard.insert(
+			"DefaultSequenceAudioFrequency".into(),
+			ConfigValue::Int(48000),
+		);
 		guard.insert("DefaultSequenceAudioLayout".into(), ConfigValue::Int(3));
 		guard.insert("OfflinePixelFormat".into(), ConfigValue::Int(4));
 
@@ -456,7 +472,10 @@ impl ConfigStore {
 		guard.insert("UseGLFinish".into(), ConfigValue::Bool(false));
 		guard.insert("ReassocLinToNonLin".into(), ConfigValue::Bool(false));
 
-		guard.insert("GraphicsBackend".into(), ConfigValue::String("opengl".into()));
+		guard.insert(
+			"GraphicsBackend".into(),
+			ConfigValue::String("opengl".into()),
+		);
 		guard.insert("LUTLibraryPaths".into(), ConfigValue::String(String::new()));
 
 		guard.insert("DiskCacheSaveInterval".into(), ConfigValue::Int(10000));
@@ -692,10 +711,8 @@ mod tests {
 	/// Point `OAK_CONFIG_DIR` at an isolated temp dir, run `f`, then clean up.
 	fn with_temp_config<T>(f: impl FnOnce(&Path) -> T) -> T {
 		let _guard = test_lock().lock().unwrap();
-		let dir = std::env::temp_dir().join(format!(
-			"oakcommon_configstore_test_{}",
-			std::process::id()
-		));
+		let dir =
+			std::env::temp_dir().join(format!("oakcommon_configstore_test_{}", std::process::id()));
 		let _ = std::fs::create_dir_all(&dir);
 		std::env::set_var("OAK_CONFIG_DIR", &dir);
 		let result = f(&dir);
@@ -763,7 +780,10 @@ mod tests {
 		assert_eq!(s.get_bool(None, "ProxyIncludeAudio", -1), 1);
 
 		assert_eq!(s.get(None, "GraphicsBackend").unwrap(), "opengl");
-		assert_eq!(s.get(None, "DefaultSequenceFrameRate").unwrap(), "1001/30000");
+		assert_eq!(
+			s.get(None, "DefaultSequenceFrameRate").unwrap(),
+			"1001/30000"
+		);
 		assert_eq!(s.get(None, "DefaultSequencePixelAspect").unwrap(), "1/1");
 		assert_eq!(s.get(None, "LUTLibraryPaths").unwrap(), "");
 		assert_eq!(s.get(None, "DiskCacheBehind").unwrap(), "0/1");
@@ -788,8 +808,14 @@ mod tests {
 		let _g = test_lock().lock().unwrap();
 		let s = ConfigStore::instance();
 		s.reset_defaults().unwrap();
-		assert!(matches!(s.get(None, "DefinitelyMissing"), Err(Error::NotFound)));
-		assert!(matches!(s.entry_type(None, "DefinitelyMissing"), Err(Error::NotFound)));
+		assert!(matches!(
+			s.get(None, "DefinitelyMissing"),
+			Err(Error::NotFound)
+		));
+		assert!(matches!(
+			s.entry_type(None, "DefinitelyMissing"),
+			Err(Error::NotFound)
+		));
 		assert!(matches!(s.get(None, ""), Err(Error::Invalid)));
 		assert!(matches!(s.entry_type(None, ""), Err(Error::Invalid)));
 	}
@@ -889,7 +915,10 @@ mod tests {
 		s.reset_defaults().unwrap();
 		s.set_int(Some("audio"), "sample_rate", 44100);
 		assert_eq!(s.get_int(Some("audio"), "sample_rate", 0), 44100);
-		assert_eq!(s.entry_type(Some("audio"), "sample_rate").unwrap(), EntryType::Int);
+		assert_eq!(
+			s.entry_type(Some("audio"), "sample_rate").unwrap(),
+			EntryType::Int
+		);
 
 		// Empty group and None are equivalent (flat keys).
 		s.set_int(Some(""), "flatkey", 7);
@@ -983,7 +1012,10 @@ UnknownTypedThing=hello
 			s.load().unwrap();
 			assert_eq!(s.get_int(None, "DefaultSequenceWidth", -1), 640);
 			assert_eq!(s.get_bool(None, "UseProxyMedia", -1), 0);
-			assert_eq!(s.get(Some("section"), "UnknownTypedThing").unwrap(), "hello");
+			assert_eq!(
+				s.get(Some("section"), "UnknownTypedThing").unwrap(),
+				"hello"
+			);
 		});
 	}
 
@@ -1019,8 +1051,12 @@ UnknownTypedThing=hello
 		_userdata: *mut c_void,
 	) {
 		unsafe {
-			let title = std::ffi::CStr::from_ptr(title).to_string_lossy().into_owned();
-			let message = std::ffi::CStr::from_ptr(message).to_string_lossy().into_owned();
+			let title = std::ffi::CStr::from_ptr(title)
+				.to_string_lossy()
+				.into_owned();
+			let message = std::ffi::CStr::from_ptr(message)
+				.to_string_lossy()
+				.into_owned();
 			REPORTED.lock().unwrap().push((title, message));
 		}
 	}
@@ -1042,7 +1078,9 @@ UnknownTypedThing=hello
 			let reported = REPORTED.lock().unwrap().clone();
 			assert_eq!(reported.len(), 1);
 			assert_eq!(reported[0].0, "Error loading settings");
-			assert!(reported[0].1.contains("Failed to load application settings"));
+			assert!(reported[0]
+				.1
+				.contains("Failed to load application settings"));
 		});
 	}
 
@@ -1066,12 +1104,12 @@ UnknownTypedThing=hello
 
 	#[test]
 	fn test_value_to_string_all_types() {
-		assert_eq!(
-			value_to_string(&ConfigValue::String("hi".into())),
-			"hi"
-		);
+		assert_eq!(value_to_string(&ConfigValue::String("hi".into())), "hi");
 		assert_eq!(value_to_string(&ConfigValue::Int(-42)), "-42");
-		assert_eq!(value_to_string(&ConfigValue::Int(i64::MAX)), "9223372036854775807");
+		assert_eq!(
+			value_to_string(&ConfigValue::Int(i64::MAX)),
+			"9223372036854775807"
+		);
 		assert_eq!(value_to_string(&ConfigValue::Double(2.5)), "2.5");
 		assert_eq!(value_to_string(&ConfigValue::Double(0.0)), "0");
 		assert_eq!(value_to_string(&ConfigValue::Bool(true)), "true");
@@ -1080,7 +1118,10 @@ UnknownTypedThing=hello
 
 	#[test]
 	fn test_to_entry_type() {
-		assert_eq!(to_entry_type(&ConfigValue::String(String::new())), EntryType::String);
+		assert_eq!(
+			to_entry_type(&ConfigValue::String(String::new())),
+			EntryType::String
+		);
 		assert_eq!(to_entry_type(&ConfigValue::Int(0)), EntryType::Int);
 		assert_eq!(to_entry_type(&ConfigValue::Double(0.0)), EntryType::Double);
 		assert_eq!(to_entry_type(&ConfigValue::Bool(false)), EntryType::Bool);
@@ -1352,8 +1393,11 @@ UnknownTypedThing=hello
 	#[test]
 	fn test_merge_order_defaults_file_runtime() {
 		with_temp_config(|dir| {
-			std::fs::write(dir.join("config.ini"), "DefaultSequenceWidth=800\nCustomFromFile=yes\n")
-				.unwrap();
+			std::fs::write(
+				dir.join("config.ini"),
+				"DefaultSequenceWidth=800\nCustomFromFile=yes\n",
+			)
+			.unwrap();
 			let s = ConfigStore::instance();
 
 			// A runtime set made BEFORE load() is wiped: load() resets to
@@ -1394,7 +1438,10 @@ FlatAfterEmptySection=ok
 			let s = ConfigStore::instance();
 			s.load().unwrap();
 			// Malformed lines are skipped, not errors.
-			assert!(matches!(s.get(None, "BareLineWithoutEquals"), Err(Error::NotFound)));
+			assert!(matches!(
+				s.get(None, "BareLineWithoutEquals"),
+				Err(Error::NotFound)
+			));
 			// Value keeps everything after the FIRST '='.
 			assert_eq!(s.get(Some("g"), "KeyWithEquals").unwrap(), "a=b");
 			// "[]" empties the group, so the key is flat.
@@ -1427,10 +1474,8 @@ FlatAfterEmptySection=ok
 	#[test]
 	fn test_save_failure_reports_error() {
 		let _g = test_lock().lock().unwrap();
-		let dir = std::env::temp_dir().join(format!(
-			"oakcommon_configstore_test_{}",
-			std::process::id()
-		));
+		let dir =
+			std::env::temp_dir().join(format!("oakcommon_configstore_test_{}", std::process::id()));
 		let _ = std::fs::create_dir_all(&dir);
 		// Point OAK_CONFIG_DIR at a regular FILE so writing
 		// "<dir>/config.ini.tmp" fails (create_dir_all on it is a silent

@@ -23,12 +23,13 @@ use std::sync::atomic::Ordering;
 
 use oaktask::error::{OAKTASK_E_STATE, OAKTASK_OK};
 use oaktask::ffi::manager::{
-	oaktask_manager_at, oaktask_manager_count, oaktask_manager_delete_finished, oaktask_manager_init,
-	oaktask_manager_shutdown, oaktask_register_codec_submitter,
+	oaktask_manager_at, oaktask_manager_count, oaktask_manager_delete_finished,
+	oaktask_manager_init, oaktask_manager_shutdown, oaktask_register_codec_submitter,
 };
 use oaktask::ffi::project::oaktask_create_project_save;
 use oaktask::ffi::task::{
-	oaktask_debug_alive_count, oaktask_task_free, oaktask_task_is_finished, oaktask_task_start, oaktask_task_wait,
+	oaktask_debug_alive_count, oaktask_task_free, oaktask_task_is_finished, oaktask_task_start,
+	oaktask_task_wait,
 };
 use oaktask::handle::CHandle;
 
@@ -192,7 +193,10 @@ fn codec_submit_runs_conform_synchronously() {
 	let ret = unsafe { cb(&request, std::ptr::null_mut()) };
 	assert_eq!(ret, 0); // OAKCODEC_OK
 	assert!(final0.exists(), "final pcm file was not moved into place");
-	assert!(final1.exists(), "second channel pcm file was not moved into place");
+	assert!(
+		final1.exists(),
+		"second channel pcm file was not moved into place"
+	);
 	let _ = std::fs::remove_file(&final0);
 	let _ = std::fs::remove_file(&final1);
 	let _ = std::fs::remove_file(&working0);

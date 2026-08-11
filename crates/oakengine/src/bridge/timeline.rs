@@ -79,15 +79,19 @@ pub fn oaktimeline_marker_list_free(list: *mut CHandle) {
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaktimeline_marker_add(
-		list: CHandle,
-		in_num: c_int,
-		in_den: c_int,
-		out_num: c_int,
-		out_den: c_int,
-		name: *const c_char,
-		color: c_int,
-	) -> c_int {
-	unsafe { oaktimeline::ffi::marker::oaktimeline_marker_add(list, in_num, in_den, out_num, out_den, name, color) }
+	list: CHandle,
+	in_num: c_int,
+	in_den: c_int,
+	out_num: c_int,
+	out_den: c_int,
+	name: *const c_char,
+	color: c_int,
+) -> c_int {
+	unsafe {
+		oaktimeline::ffi::marker::oaktimeline_marker_add(
+			list, in_num, in_den, out_num, out_den, name, color,
+		)
+	}
 }
 
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
@@ -99,31 +103,39 @@ pub fn oaktimeline_marker_count(list: CHandle, out_count: *mut c_int) -> c_int {
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaktimeline_marker_at(
-		list: CHandle,
-		index: c_int,
-		in_num: *mut c_int,
-		in_den: *mut c_int,
-		out_num: *mut c_int,
-		out_den: *mut c_int,
-		color: *mut c_int,
-		name_buf: *mut c_char,
-		buf_size: c_int,
-	) -> c_int {
-	unsafe { oaktimeline::ffi::marker::oaktimeline_marker_at(list, index, in_num, in_den, out_num, out_den, color, name_buf, buf_size) }
+	list: CHandle,
+	index: c_int,
+	in_num: *mut c_int,
+	in_den: *mut c_int,
+	out_num: *mut c_int,
+	out_den: *mut c_int,
+	color: *mut c_int,
+	name_buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	unsafe {
+		oaktimeline::ffi::marker::oaktimeline_marker_at(
+			list, index, in_num, in_den, out_num, out_den, color, name_buf, buf_size,
+		)
+	}
 }
 
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaktimeline_marker_add_command(
-		list: CHandle,
-		in_num: c_int,
-		in_den: c_int,
-		out_num: c_int,
-		out_den: c_int,
-		name: *const c_char,
-		color: c_int,
-	) -> CHandle {
-	unsafe { oaktimeline::ffi::marker::oaktimeline_marker_add_command(list, in_num, in_den, out_num, out_den, name, color) }
+	list: CHandle,
+	in_num: c_int,
+	in_den: c_int,
+	out_num: c_int,
+	out_den: c_int,
+	name: *const c_char,
+	color: c_int,
+) -> CHandle {
+	unsafe {
+		oaktimeline::ffi::marker::oaktimeline_marker_add_command(
+			list, in_num, in_den, out_num, out_den, name, color,
+		)
+	}
 }
 
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
@@ -135,25 +147,31 @@ pub fn oaktimeline_marker_remove_at_command(list: CHandle, index: c_int) -> CHan
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaktimeline_marker_set_time_command(
-		list: CHandle,
-		index: c_int,
-		in_num: c_int,
-		in_den: c_int,
-		out_num: c_int,
-		out_den: c_int,
-	) -> CHandle {
-	unsafe { oaktimeline::ffi::marker::oaktimeline_marker_set_time_command(list, index, in_num, in_den, out_num, out_den) }
+	list: CHandle,
+	index: c_int,
+	in_num: c_int,
+	in_den: c_int,
+	out_num: c_int,
+	out_den: c_int,
+) -> CHandle {
+	unsafe {
+		oaktimeline::ffi::marker::oaktimeline_marker_set_time_command(
+			list, index, in_num, in_den, out_num, out_den,
+		)
+	}
 }
 
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaktimeline_marker_set_props_command(
-		list: CHandle,
-		index: c_int,
-		color: c_int,
-		name: *const c_char,
-	) -> CHandle {
-	unsafe { oaktimeline::ffi::marker::oaktimeline_marker_set_props_command(list, index, color, name) }
+	list: CHandle,
+	index: c_int,
+	color: c_int,
+	name: *const c_char,
+) -> CHandle {
+	unsafe {
+		oaktimeline::ffi::marker::oaktimeline_marker_set_props_command(list, index, color, name)
+	}
 }
 
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
@@ -195,42 +213,62 @@ pub fn oaktimeline_workarea_set_enabled(w: CHandle, enabled: c_int) -> c_int {
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaktimeline_workarea_get(
-		w: CHandle,
-		in_num: *mut c_int,
-		in_den: *mut c_int,
-		out_num: *mut c_int,
-		out_den: *mut c_int,
-		enabled: *mut c_int,
-	) -> c_int {
-	unsafe { oaktimeline::ffi::workarea::oaktimeline_workarea_get(w, in_num, in_den, out_num, out_den, enabled) }
+	w: CHandle,
+	in_num: *mut c_int,
+	in_den: *mut c_int,
+	out_num: *mut c_int,
+	out_den: *mut c_int,
+	enabled: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaktimeline::ffi::workarea::oaktimeline_workarea_get(
+			w, in_num, in_den, out_num, out_den, enabled,
+		)
+	}
 }
 
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaktimeline_workarea_set_range(
-		w: CHandle,
-		in_num: c_int,
-		in_den: c_int,
-		out_num: c_int,
-		out_den: c_int,
-	) -> c_int {
-	unsafe { oaktimeline::ffi::workarea::oaktimeline_workarea_set_range(w, in_num, in_den, out_num, out_den) }
+	w: CHandle,
+	in_num: c_int,
+	in_den: c_int,
+	out_num: c_int,
+	out_den: c_int,
+) -> c_int {
+	unsafe {
+		oaktimeline::ffi::workarea::oaktimeline_workarea_set_range(
+			w, in_num, in_den, out_num, out_den,
+		)
+	}
 }
 
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaktimeline_workarea_set_range_command(
-		w: CHandle,
-		in_num: c_int,
-		in_den: c_int,
-		out_num: c_int,
-		out_den: c_int,
-		old_in_num: c_int,
-		old_in_den: c_int,
-		old_out_num: c_int,
-		old_out_den: c_int,
-	) -> CHandle {
-	unsafe { oaktimeline::ffi::workarea::oaktimeline_workarea_set_range_command(w, in_num, in_den, out_num, out_den, old_in_num, old_in_den, old_out_num, old_out_den) }
+	w: CHandle,
+	in_num: c_int,
+	in_den: c_int,
+	out_num: c_int,
+	out_den: c_int,
+	old_in_num: c_int,
+	old_in_den: c_int,
+	old_out_num: c_int,
+	old_out_den: c_int,
+) -> CHandle {
+	unsafe {
+		oaktimeline::ffi::workarea::oaktimeline_workarea_set_range_command(
+			w,
+			in_num,
+			in_den,
+			out_num,
+			out_den,
+			old_in_num,
+			old_in_den,
+			old_out_num,
+			old_out_den,
+		)
+	}
 }
 
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
@@ -242,12 +280,14 @@ pub fn oaktimeline_workarea_set_enabled_command(w: CHandle, enabled: c_int) -> C
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaktimeline_workarea_reset(
-		in_num: *mut c_int,
-		in_den: *mut c_int,
-		out_num: *mut c_int,
-		out_den: *mut c_int,
-	) -> c_int {
-	unsafe { oaktimeline::ffi::workarea::oaktimeline_workarea_reset(in_num, in_den, out_num, out_den) }
+	in_num: *mut c_int,
+	in_den: *mut c_int,
+	out_num: *mut c_int,
+	out_den: *mut c_int,
+) -> c_int {
+	unsafe {
+		oaktimeline::ffi::workarea::oaktimeline_workarea_reset(in_num, in_den, out_num, out_den)
+	}
 }
 
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
@@ -277,13 +317,21 @@ pub fn oaktimeline_remove_track_command(track: CHandle) -> CHandle {
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaktimeline_place_block_command(
-		list: CHandle,
-		track_index: c_int,
-		block: CHandle,
-		in_num: i64,
-		in_den: i64,
-	) -> CHandle {
-	unsafe { oaktimeline::ffi::edit::oaktimeline_place_block_command(list, track_index, block, in_num, in_den) }
+	list: CHandle,
+	track_index: c_int,
+	block: CHandle,
+	in_num: i64,
+	in_den: i64,
+) -> CHandle {
+	unsafe {
+		oaktimeline::ffi::edit::oaktimeline_place_block_command(
+			list,
+			track_index,
+			block,
+			in_num,
+			in_den,
+		)
+	}
 }
 
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
@@ -294,83 +342,149 @@ pub fn oaktimeline_replace_block_with_gap_command(track: CHandle, block: CHandle
 
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaktimeline_trim_command(
-		track: CHandle,
-		block: CHandle,
-		new_length_num: i64,
-		new_length_den: i64,
-		mode: c_int,
-	) -> CHandle {
-	unsafe { oaktimeline::ffi::edit::oaktimeline_trim_command(track, block, new_length_num, new_length_den, mode) }
+pub fn oaktimeline_move_block_command(
+	list: CHandle,
+	track_index: c_int,
+	block: CHandle,
+	in_num: i64,
+	in_den: i64,
+) -> CHandle {
+	unsafe {
+		oaktimeline::ffi::edit::oaktimeline_move_block_command(
+			list,
+			track_index,
+			block,
+			in_num,
+			in_den,
+		)
+	}
 }
 
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
-pub fn oaktimeline_split_command(blocks: *const CHandle, count: c_int, point_num: i64, point_den: i64) -> CHandle {
-	unsafe { oaktimeline::ffi::edit::oaktimeline_split_command(blocks, count, point_num, point_den) }
+pub fn oaktimeline_trim_command(
+	track: CHandle,
+	block: CHandle,
+	new_length_num: i64,
+	new_length_den: i64,
+	mode: c_int,
+) -> CHandle {
+	unsafe {
+		oaktimeline::ffi::edit::oaktimeline_trim_command(
+			track,
+			block,
+			new_length_num,
+			new_length_den,
+			mode,
+		)
+	}
+}
+
+/// Direct call into the `oaktimeline` crate (single-lib unification; the
+/// `#[no_mangle]` export stays for the external C ABI).
+pub fn oaktimeline_split_command(
+	blocks: *const CHandle,
+	count: c_int,
+	point_num: i64,
+	point_den: i64,
+) -> CHandle {
+	unsafe {
+		oaktimeline::ffi::edit::oaktimeline_split_command(blocks, count, point_num, point_den)
+	}
 }
 
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaktimeline_split_preserving_links_command(
-		blocks: *const CHandle,
-		count: c_int,
-		point_nums: *const i64,
-		point_dens: *const i64,
-		time_count: c_int,
-	) -> CHandle {
-	unsafe { oaktimeline::ffi::edit::oaktimeline_split_preserving_links_command(blocks, count, point_nums, point_dens, time_count) }
+	blocks: *const CHandle,
+	count: c_int,
+	point_nums: *const i64,
+	point_dens: *const i64,
+	time_count: c_int,
+) -> CHandle {
+	unsafe {
+		oaktimeline::ffi::edit::oaktimeline_split_preserving_links_command(
+			blocks, count, point_nums, point_dens, time_count,
+		)
+	}
 }
 
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaktimeline_ripple_delete_gaps_command(
-		sequence: CHandle,
-		in_nums: *const i64,
-		in_dens: *const i64,
-		out_nums: *const i64,
-		out_dens: *const i64,
-		tracks: *const CHandle,
-		range_count: c_int,
-	) -> CHandle {
-	unsafe { oaktimeline::ffi::edit::oaktimeline_ripple_delete_gaps_command(sequence, in_nums, in_dens, out_nums, out_dens, tracks, range_count) }
+	sequence: CHandle,
+	in_nums: *const i64,
+	in_dens: *const i64,
+	out_nums: *const i64,
+	out_dens: *const i64,
+	tracks: *const CHandle,
+	range_count: c_int,
+) -> CHandle {
+	unsafe {
+		oaktimeline::ffi::edit::oaktimeline_ripple_delete_gaps_command(
+			sequence,
+			in_nums,
+			in_dens,
+			out_nums,
+			out_dens,
+			tracks,
+			range_count,
+		)
+	}
 }
 
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaktimeline_slide_command(
-		track: CHandle,
-		blocks: *const CHandle,
-		block_count: c_int,
-		in_adjacent: CHandle,
-		out_adjacent: CHandle,
-		movement_num: i64,
-		movement_den: i64,
-	) -> CHandle {
-	unsafe { oaktimeline::ffi::edit::oaktimeline_slide_command(track, blocks, block_count, in_adjacent, out_adjacent, movement_num, movement_den) }
+	track: CHandle,
+	blocks: *const CHandle,
+	block_count: c_int,
+	in_adjacent: CHandle,
+	out_adjacent: CHandle,
+	movement_num: i64,
+	movement_den: i64,
+) -> CHandle {
+	unsafe {
+		oaktimeline::ffi::edit::oaktimeline_slide_command(
+			track,
+			blocks,
+			block_count,
+			in_adjacent,
+			out_adjacent,
+			movement_num,
+			movement_den,
+		)
+	}
 }
 
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaktimeline_ripple_remove_area_command(
-		track: CHandle,
-		in_num: i64,
-		in_den: i64,
-		out_num: i64,
-		out_den: i64,
-	) -> CHandle {
-	unsafe { oaktimeline::ffi::edit::oaktimeline_ripple_remove_area_command(track, in_num, in_den, out_num, out_den) }
+	track: CHandle,
+	in_num: i64,
+	in_den: i64,
+	out_num: i64,
+	out_den: i64,
+) -> CHandle {
+	unsafe {
+		oaktimeline::ffi::edit::oaktimeline_ripple_remove_area_command(
+			track, in_num, in_den, out_num, out_den,
+		)
+	}
 }
 
 /// Direct call into the `oaktimeline` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
 pub fn oaktimeline_insert_gaps_command(
-		list: CHandle,
-		point_num: i64,
-		point_den: i64,
-		length_num: i64,
-		length_den: i64,
-	) -> CHandle {
-	unsafe { oaktimeline::ffi::edit::oaktimeline_insert_gaps_command(list, point_num, point_den, length_num, length_den) }
+	list: CHandle,
+	point_num: i64,
+	point_den: i64,
+	length_num: i64,
+	length_den: i64,
+) -> CHandle {
+	unsafe {
+		oaktimeline::ffi::edit::oaktimeline_insert_gaps_command(
+			list, point_num, point_den, length_num, length_den,
+		)
+	}
 }
-

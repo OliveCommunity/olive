@@ -58,7 +58,8 @@ impl CHandle {
 			release: None,
 			abi_version: 0,
 		}
-	}	/// Whether this is the empty (zero) handle.
+	}
+	/// Whether this is the empty (zero) handle.
 	pub fn is_null(&self) -> bool {
 		self.ctx.is_null()
 	}
