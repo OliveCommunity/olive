@@ -84,13 +84,44 @@ pub(crate) fn synthetic_frame(frame: Frame) -> RenderImage {
 		}
 	}
 
-	let mut bytes = Vec::with_capacity((width * height * 4) as usize);
+	f32_rgba_to_bgra_image(width, height, &samples)
+}
+
+/// Downconverts an F32 RGBA frame (the engine pipeline's pixel format) to a
+/// BGRA8 [`RenderImage`] for the viewers' CPU-frame path. Samples are
+/// clamped to `0.0..=1.0` before quantization; `samples` must hold exactly
+/// `width * height * 4` values (tightly packed rows).
+///
+/// Shared by the synthetic test pattern and the real engine's rendered
+/// frames ([`super::real`]).
+pub(crate) fn f32_rgba_to_bgra_image(width: u32, height: u32, samples: &[f32]) -> RenderImage {
+	assert_eq!(
+		samples.len(),
+		(width * height * 4) as usize,
+		"F32 RGBA frame must be tightly packed"
+	);
+	let mut bytes = Vec::with_capacity(samples.len());
 	for i in (0..samples.len()).step_by(4) {
-		bytes.push((samples[i + 2] * 255.0) as u8); // B
-		bytes.push((samples[i + 1] * 255.0) as u8); // G
-		bytes.push((samples[i] * 255.0) as u8); // R
-		bytes.push((samples[i + 3] * 255.0) as u8); // A
+		bytes.push((samples[i + 2].clamp(0.0, 1.0) * 255.0) as u8); // B
+		bytes.push((samples[i + 1].clamp(0.0, 1.0) * 255.0) as u8); // G
+		bytes.push((samples[i].clamp(0.0, 1.0) * 255.0) as u8); // R
+		bytes.push((samples[i + 3].clamp(0.0, 1.0) * 255.0) as u8); // A
 	}
-	let buffer = image::RgbaImage::from_raw(width, height, bytes).expect("synthetic frame");
+	let buffer = image::RgbaImage::from_raw(width, height, bytes).expect("BGRA frame");
 	RenderImage::new(smallvec::SmallVec::from_elem(image::Frame::new(buffer), 1))
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn f32_rgba_converts_to_bgra_bytes() {
+		// One red-ish pixel and one pixel exercising clamping.
+		let samples = [1.0, 0.0, 0.5, 1.0, 2.0, -1.0, 0.25, 1.0];
+		let image = f32_rgba_to_bgra_image(2, 1, &samples);
+		let frame = image.as_bytes(0).expect("one frame"); // BGRA8, tightly packed
+		assert_eq!(&frame[0..4], &[127, 0, 255, 255]);
+		assert_eq!(&frame[4..8], &[63, 0, 255, 255]);
+	}
 }

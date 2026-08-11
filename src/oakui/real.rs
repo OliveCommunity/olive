@@ -41,10 +41,13 @@
 //!
 //! # What is still mock/stub
 //!
-//! * The viewer frames are the shared synthetic SMPTE pattern ([`frames`]),
-//!   driven by the real sequence frame rate — the real frame transport
-//!   (render worker over shared memory, the facade's worker module) is a
-//!   separate process surface not bound yet.
+//! * The source monitor's viewer frames are the shared synthetic SMPTE
+//!   pattern ([`frames`]): the facade renderer binds a *sequence* handle
+//!   only, so there is no surface to render a single footage node for the
+//!   material viewer. The program monitor renders real frames through the
+//!   facade CPU renderer ([`RealEngine::render_program_frame`]) at a proxy
+//!   resolution; the full-resolution async render worker (the facade's
+//!   worker module) is a separate process surface not bound yet.
 //! * Effect stack, node graph and audio meter feed empty/silent data: the
 //!   facade surfaces for them (effect chains, graph nodes, audio levels)
 //!   are not bound in this increment.
@@ -84,7 +87,7 @@ use super::ffi::*;
 use super::engine::{
 	AppEngine, EngineGateway, ExportEvent, ExportSession, Monitor, Project, Sequence, VideoFormat,
 };
-use super::frames::synthetic_frame;
+use super::frames::{f32_rgba_to_bgra_image, synthetic_frame};
 use super::transport::TransportState;
 
 /// `oakengine_timeline.h` track-type constants.
@@ -101,6 +104,11 @@ const EXPORT_SAMPLE_FORMAT: c_int = 0;
 
 /// The project name of a blank project before it is saved.
 const UNTITLED: &str = "Untitled Project";
+
+/// `PixelFormat::F32` (the render pipeline's internal format): F32 RGBA,
+/// 16 bytes per pixel. The viewer renderer is created with this so the
+/// frame accessors hand back float samples the app downconverts itself.
+const PIXEL_FORMAT_F32: c_int = 4;
 
 // ---------------------------------------------------------------------------
 // oaktask module C ABI entries the facade does not wrap
@@ -200,6 +208,45 @@ impl Drop for SequenceHandle {
 			free_box(self.0);
 		}
 	}
+}
+
+/// An owned facade renderer handle; freed with `oakengine_renderer_free`.
+///
+/// The facade renderer box is NOT a module-handle box (it is the facade's
+/// own `RendererBox`), so it must never go through [`free_box`]; the
+/// dedicated free is the only valid deallocator. The renderer borrows the
+/// sequence handle it was created from, so it must be dropped before the
+/// sequence (see [`RealEngine::drop_project`]).
+struct RendererHandle(*mut OakEngineRenderer);
+
+// SAFETY: see [`ProjectHandle`].
+unsafe impl Send for RendererHandle {}
+unsafe impl Sync for RendererHandle {}
+
+impl RendererHandle {
+	fn ptr(&self) -> *mut OakEngineRenderer {
+		self.0
+	}
+}
+
+impl Drop for RendererHandle {
+	fn drop(&mut self) {
+		unsafe {
+			oakengine_renderer_free(self.0);
+		}
+	}
+}
+
+/// The lifecycle state of the program monitor's lazily created renderer.
+enum RendererSlot {
+	/// No renderer yet; the next `cpu_frame` tries to create one.
+	Untried,
+	/// The live per-sequence renderer.
+	Ready(RendererHandle),
+	/// Creation failed (or no sequence is open); don't retry until the
+	/// project changes, so a broken setup doesn't retry — and log — on
+	/// every frame.
+	Unavailable,
 }
 
 // ---------------------------------------------------------------------------
@@ -543,10 +590,19 @@ pub struct RealEngine {
 	program_playing: bool,
 	/// Phase counter driving the (silent) audio levels.
 	meter_phase: u32,
-	/// Cache of the synthetic CPU frames handed to the viewers, keyed by
-	/// monitor. Entries are the playhead frame that produced the image, so a
-	/// paused viewer never regenerates its picture.
+	/// Cache of the CPU frames handed to the viewers, keyed by monitor.
+	/// Entries are the playhead frame that produced the image, so a paused
+	/// viewer never regenerates its picture. The program monitor's entries
+	/// are real rendered frames (see [`RealEngine::render_program_frame`]);
+	/// the source monitor's are the synthetic pattern (the facade renderer
+	/// binds a sequence only — footage-node rendering is a documented gap).
 	cpu_frame_cache: Mutex<HashMap<Monitor, (i64, Arc<RenderImage>)>>,
+	/// The program monitor's cached renderer, created lazily from the
+	/// current sequence at a proxy resolution. The mutex both provides the
+	/// interior mutability `cpu_frame` (a `&self` read) needs and serializes
+	/// the synchronous render calls. Reset to [`RendererSlot::Untried`]
+	/// (before the sequence is freed) in [`RealEngine::drop_project`].
+	renderer: Mutex<RendererSlot>,
 	/// Whether the project has unsaved changes (mirrors the facade flag).
 	modified: bool,
 }
@@ -572,6 +628,7 @@ impl RealEngine {
 			program_playing: false,
 			meter_phase: 0,
 			cpu_frame_cache: Mutex::new(HashMap::new()),
+			renderer: Mutex::new(RendererSlot::Untried),
 			modified: false,
 		}
 	}
@@ -609,6 +666,131 @@ impl RealEngine {
 		}
 	}
 
+	/// Brings up the module's process-global render manager if it is not
+	/// running yet (without it `render_frame` fails with NULL + last_error).
+	/// Returns false when the manager could not be started.
+	fn ensure_render_manager() -> bool {
+		unsafe {
+			if oakrender_manager_available() != 0 {
+				return true;
+			}
+			oakrender_manager_init();
+			oakrender_manager_available() != 0
+		}
+	}
+
+	/// The proxy resolution the viewer renderer runs at: the sequence's
+	/// aspect scaled to a small long edge. Rendering is a synchronous call
+	/// made from `cpu_frame` (a `&self` read on the UI thread), so the
+	/// geometry stays tiny to keep the block short; the async render worker
+	/// (full-resolution, off-thread) is a separate transport surface not
+	/// bound yet.
+	fn proxy_render_size(&self) -> Option<(c_int, c_int)> {
+		let info = self.sequence_info.as_ref()?;
+		let (w, h) = (info.format.width.max(1), info.format.height.max(1));
+		const MAX_LONG_EDGE: u32 = 480;
+		let scale = MAX_LONG_EDGE as f64 / w.max(h) as f64;
+		let width = ((w as f64 * scale).round() as u32).max(2);
+		let height = ((h as f64 * scale).round() as u32).max(2);
+		Some((width as c_int, height as c_int))
+	}
+
+	/// Renders one program-monitor frame through the facade CPU renderer:
+	/// creates the per-sequence renderer lazily (cached in `self.renderer`),
+	/// renders `frame`, and downconverts the F32 RGBA result to BGRA8.
+	/// Returns `None` (the caller falls back to the synthetic pattern) when
+	/// no sequence is open, the render manager is unavailable, or the render
+	/// itself fails.
+	fn render_program_frame(&self, frame: Frame) -> Option<RenderImage> {
+		let seq = self.seq_ptr()?;
+		if !Self::ensure_render_manager() {
+			return None;
+		}
+		let mut slot = self.renderer.lock().unwrap();
+		match &*slot {
+			RendererSlot::Unavailable => return None,
+			RendererSlot::Untried => {
+				let created = self.create_renderer(seq);
+				*slot = match created {
+					Some(handle) => RendererSlot::Ready(handle),
+					None => RendererSlot::Unavailable,
+				};
+			}
+			RendererSlot::Ready(_) => {}
+		}
+		let RendererSlot::Ready(handle) = &*slot else {
+			return None;
+		};
+		let renderer = handle.ptr();
+		let frame_ptr = unsafe { oakengine_renderer_render_frame(renderer, frame.0) };
+		if frame_ptr.is_null() {
+			let error = read_string(|buf, size| unsafe {
+				oakengine_renderer_last_error(renderer, buf, size)
+			});
+			println!("[real engine] render_frame failed: {error}");
+			// Don't retry (and re-log) on every frame.
+			*slot = RendererSlot::Unavailable;
+			return None;
+		}
+		// Read the frame (F32 RGBA, rows padded to linesize), repack it
+		// tightly, then downconvert.
+		let (width, height, linesize, format) = unsafe {
+			(
+				oakengine_frame_width(frame_ptr),
+				oakengine_frame_height(frame_ptr),
+				oakengine_frame_linesize_bytes(frame_ptr),
+				oakengine_frame_format(frame_ptr),
+			)
+		};
+		let data = unsafe { oakengine_frame_data(frame_ptr) };
+		let mut image = None;
+		if width > 0 && height > 0 && format == PIXEL_FORMAT_F32 && !data.is_null() {
+			let row_bytes = (width * 4 * 4) as usize;
+			let linesize = (linesize as usize).max(row_bytes);
+			let mut samples = vec![0.0f32; (width * height * 4) as usize];
+			for y in 0..height as usize {
+				unsafe {
+					std::ptr::copy_nonoverlapping(
+						(data as *const u8).add(y * linesize),
+						samples.as_mut_ptr().add(y * row_bytes / 4) as *mut u8,
+						row_bytes,
+					);
+				}
+			}
+			image = Some(f32_rgba_to_bgra_image(width as u32, height as u32, &samples));
+		}
+		unsafe {
+			oakengine_frame_free(frame_ptr);
+		}
+		image
+	}
+
+	/// Creates the per-sequence renderer at the proxy resolution (see
+	/// [`RealEngine::proxy_render_size`]). The renderer borrows the sequence
+	/// handle; the caller owns the slot it is stored in.
+	fn create_renderer(&self, seq: *mut OakEngineSequence) -> Option<RendererHandle> {
+		let (width, height) = self.proxy_render_size()?;
+		let rate = self.sequence_info.as_ref()?.format.rate;
+		// Pixel format 4 = PixelFormat::F32 (the pipeline format);
+		// timestamp units are frames at this rate.
+		let renderer = unsafe {
+			oakengine_renderer_create(
+				seq,
+				width,
+				height,
+				PIXEL_FORMAT_F32,
+				rate.num as c_int,
+				rate.den as c_int,
+				std::ptr::null(),
+			)
+		};
+		if renderer.is_null() {
+			println!("[real engine] renderer_create failed; viewer keeps the synthetic frame");
+			return None;
+		}
+		Some(RendererHandle(renderer))
+	}
+
 	/// Adopts a newly created/loaded facade project, freeing any previous
 	/// one, and rebuilds every snapshot. `blank` projects get a default
 	/// sequence; loaded ones use the first sequence.
@@ -643,10 +825,14 @@ impl RealEngine {
 		cx.notify();
 	}
 
-	/// Frees the project and every borrowed handle (sequence first).
+	/// Frees the project and every borrowed handle (renderer and sequence
+	/// first: the renderer borrows the sequence, and the sequence is
+	/// borrowed from the project).
 	fn drop_project(&mut self) {
+		*self.renderer.lock().unwrap() = RendererSlot::Untried;
 		drop(self.sequence.take());
 		drop(self.project.take());
+		self.cpu_frame_cache.lock().unwrap().clear();
 		self.tracks.clear();
 		self.bin_roots.clear();
 		self.bin_children.clear();
@@ -841,6 +1027,8 @@ impl RealEngine {
 		}
 		self.refresh_sequence_info();
 		self.rebuild_timeline();
+		// The sequence content changed: cached rendered frames are stale.
+		self.cpu_frame_cache.lock().unwrap().clear();
 		self.modified = true;
 		cx.notify();
 	}
@@ -1055,7 +1243,19 @@ impl AppEngine for RealEngine {
 				return image.clone();
 			}
 		}
-		let image = Arc::new(synthetic_frame(frame));
+		// The program monitor renders the current sequence through the
+		// facade CPU renderer (falling back to the synthetic pattern when
+		// rendering is unavailable). The source monitor keeps the synthetic
+		// pattern: the facade renderer binds a *sequence* handle only, so
+		// there is currently no surface to render a single footage node for
+		// the material viewer — that is a documented facade gap.
+		let image = match monitor {
+			Monitor::Program => self
+				.render_program_frame(frame)
+				.map(Arc::new)
+				.unwrap_or_else(|| Arc::new(synthetic_frame(frame))),
+			Monitor::Source => Arc::new(synthetic_frame(frame)),
+		};
 		cache.insert(monitor, (frame.0, image.clone()));
 		image
 	}
@@ -1320,6 +1520,7 @@ impl AppEngine for RealEngine {
 			}
 			self.refresh_sequence_info();
 			self.rebuild_timeline();
+			self.cpu_frame_cache.lock().unwrap().clear();
 			self.modified = true;
 			cx.notify();
 		}
@@ -1332,6 +1533,7 @@ impl AppEngine for RealEngine {
 			}
 			self.refresh_sequence_info();
 			self.rebuild_timeline();
+			self.cpu_frame_cache.lock().unwrap().clear();
 			self.modified = true;
 			cx.notify();
 		}
@@ -1816,5 +2018,80 @@ mod tests {
 
 		unsafe { oakengine_project_free(project2) };
 		let _ = std::fs::remove_file(&save_path);
+	}
+
+	/// End-to-end CPU render through the same facade path
+	/// [`RealEngine::render_program_frame`] uses: with the render manager up,
+	/// `render_frame` on an in-memory sequence produces a real F32 frame at
+	/// the renderer's proxy geometry, and the samples are well-formed
+	/// (finite, in range). The sequence is empty, so the picture is black — content
+	/// correctness with real footage needs the footage-input surface the
+	/// facade does not bind yet (documented gap); what is asserted here is
+	/// the full transport: renderer lifecycle, frame geometry/format/stride
+	/// and sane sample values.
+	#[test]
+	fn real_render_frame_e2e() {
+		if !RealEngine::ensure_render_manager() {
+			panic!("the render manager failed to start");
+		}
+
+		let project = unsafe { oakengine_project_create() };
+		assert!(!project.is_null());
+		assert_eq!(unsafe { oakengine_project_new(project) }, 0);
+		let name = CString::new("Render E2E").unwrap();
+		let sequence = unsafe { oakengine_sequence_new(project, name.as_ptr()) };
+		assert!(!sequence.is_null());
+
+		// The app's proxy size: sequence aspect (default 1920x1080) scaled
+		// to a 480px long edge, F32 at 25 fps.
+		let renderer = unsafe {
+			oakengine_renderer_create(sequence, 480, 270, PIXEL_FORMAT_F32, 25, 1, std::ptr::null())
+		};
+		assert!(!renderer.is_null(), "renderer_create must succeed");
+
+		let frame = unsafe { oakengine_renderer_render_frame(renderer, 0) };
+		assert!(!frame.is_null(), "render_frame must produce a frame");
+		assert_eq!(unsafe { oakengine_frame_width(frame) }, 480);
+		assert_eq!(unsafe { oakengine_frame_height(frame) }, 270);
+		assert_eq!(unsafe { oakengine_frame_format(frame) }, PIXEL_FORMAT_F32);
+		let linesize = unsafe { oakengine_frame_linesize_bytes(frame) };
+		assert!(linesize >= 480 * 4 * 4, "linesize covers a full row");
+		let data = unsafe { oakengine_frame_data(frame) } as *const f32;
+		assert!(!data.is_null());
+
+		// Sample pixels across the frame: all values must be finite and in
+		// range; an empty sequence renders transparent black (all zeros).
+		let stride = linesize as usize / 4;
+		let mut nonzero = 0usize;
+		for &(x, y) in &[(0usize, 0usize), (240, 135), (479, 269)] {
+			let base = y * stride + x * 4;
+			let px = unsafe { std::slice::from_raw_parts(data.add(base), 4) };
+			assert!(px.iter().all(|v| v.is_finite() && (0.0..=1.0).contains(v)), "samples in range: {px:?}");
+			nonzero += px.iter().filter(|&&v| v != 0.0).count();
+		}
+		// Document the current empty-sequence behavior: a transparent-black
+		// program. When footage input is bound, extend this to assert
+		// non-black content.
+		assert_eq!(nonzero, 0, "an empty sequence renders transparent black");
+
+		// A second frame at a later timestamp renders too.
+		let frame2 = unsafe { oakengine_renderer_render_frame(renderer, 30) };
+		assert!(!frame2.is_null());
+		unsafe { oakengine_frame_free(frame2) };
+
+		// Invalid arguments are rejected (geometry, pixel format).
+		assert!(unsafe {
+			oakengine_renderer_create(sequence, 0, 270, PIXEL_FORMAT_F32, 25, 1, std::ptr::null())
+		}
+		.is_null());
+		assert!(unsafe {
+			oakengine_renderer_create(sequence, 480, 270, 99999, 25, 1, std::ptr::null())
+		}
+		.is_null());
+
+		unsafe { oakengine_frame_free(frame) };
+		unsafe { oakengine_renderer_free(renderer) };
+		unsafe { free_box(sequence) };
+		unsafe { oakengine_project_free(project) };
 	}
 }

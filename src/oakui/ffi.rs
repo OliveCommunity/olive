@@ -102,7 +102,9 @@ macro_rules! engine_handle {
 engine_handle! {
 	OakEngineClip,
 	OakEngineEncodingParams,
+	OakEngineFrame,
 	OakEngineProject,
+	OakEngineRenderer,
 	OakEngineSequence,
 	OakEngineTask,
 }
@@ -477,6 +479,66 @@ unsafe extern "C" {
 	pub fn oakengine_track_height_internal_to_pixels(height: f64) -> c_int;
 	/// `oakengine_track_height_pixels_to_internal`.
 	pub fn oakengine_track_height_pixels_to_internal(pixels: c_int) -> f64;
+
+	// -- oakengine::render (CPU frame renderer) --
+	//
+	// The renderer binds a sequence handle to an output geometry; each
+	// `render_frame` submits an oakrender ticket, waits for it and returns
+	// the produced frame (F32 RGBA when created with pixel format 4). The
+	// renderer box is opaque: it is freed ONLY with
+	// `oakengine_renderer_free` (never [`free_box`] — the facade box is not
+	// a module-handle box). Frames are freed with `oakengine_frame_free`.
+
+	/// `oakengine_renderer_create` — owned renderer box (NULL on invalid
+	/// arguments: NULL sequence, non-positive geometry/rate, or a pixel
+	/// format outside 0..=4). `output_colorspace` may be NULL.
+	pub fn oakengine_renderer_create(
+		seq: *mut OakEngineSequence,
+		width: c_int,
+		height: c_int,
+		pixel_format: c_int,
+		frame_rate_num: c_int,
+		frame_rate_den: c_int,
+		output_colorspace: *const c_char,
+	) -> *mut OakEngineRenderer;
+	/// `oakengine_renderer_free` — consuming free (NULL no-op).
+	pub fn oakengine_renderer_free(self_: *mut OakEngineRenderer);
+	/// `oakengine_renderer_render_frame` — synchronous render of the frame at
+	/// `timestamp` (in the renderer's frame-rate units). NULL on failure
+	/// (see `oakengine_renderer_last_error`).
+	pub fn oakengine_renderer_render_frame(
+		self_: *mut OakEngineRenderer,
+		timestamp: i64,
+	) -> *mut OakEngineFrame;
+	/// `oakengine_renderer_last_error` (buf/size).
+	pub fn oakengine_renderer_last_error(
+		self_: *const OakEngineRenderer,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int;
+	/// `oakengine_frame_width`.
+	pub fn oakengine_frame_width(self_: *const OakEngineFrame) -> c_int;
+	/// `oakengine_frame_height`.
+	pub fn oakengine_frame_height(self_: *const OakEngineFrame) -> c_int;
+	/// `oakengine_frame_format` — `PixelFormat::Format` (4 = F32).
+	pub fn oakengine_frame_format(self_: *const OakEngineFrame) -> c_int;
+	/// `oakengine_frame_linesize_bytes` — row stride in bytes.
+	pub fn oakengine_frame_linesize_bytes(self_: *const OakEngineFrame) -> c_int;
+	/// `oakengine_frame_data` — borrowed pixel data (valid until free).
+	pub fn oakengine_frame_data(self_: *const OakEngineFrame) -> *const c_void;
+	/// `oakengine_frame_free` — consuming free (NULL no-op).
+	pub fn oakengine_frame_free(self_: *mut OakEngineFrame);
+
+	// -- oakrender module C ABI (carried by the dylib) --
+
+	/// `oakrender_manager_init` — bring up the module's process-global
+	/// render manager. Without it `render_frame` fails with NULL +
+	/// last_error. The facade does not wrap this; like the `oaktask_*`
+	/// entries below, the symbol is exported by the dylib itself. Fails
+	/// (nonzero) when the manager is already initialized.
+	pub fn oakrender_manager_init() -> c_int;
+	/// `oakrender_manager_available` — 1 when the render manager is up.
+	pub fn oakrender_manager_available() -> c_int;
 
 	// -- oaktask module C ABI (carried by the dylib) --
 
