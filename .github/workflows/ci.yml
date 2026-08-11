@@ -7,376 +7,172 @@ on:
   pull_request:
     branches:
       - main
-  schedule:
-    # Daily at 03:17 UTC to keep ccache/dependency caches warm
-    - cron: '17 3 * * *'
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   build-test:
+    name: Build & test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [warp-ubuntu-latest-x64-8x, warp-macos-15-arm64-6x, warp-windows-latest-x64-16x]
-    env:
-      CMAKE_BUILD_TYPE: Release
-      CCACHE_DIR: ${{ github.workspace }}/.ccache
-      CCACHE_MAXSIZE: 1G
-      # Enable OFX integration tests that require external plugin bundles
-      RUN_OFX_ITEST: "1"
-      # Enable plugin subsystem smoke tests
-      OAK_PLUGIN_SMOKE_TEST: "1"
+        os:
+          - warp-ubuntu-latest-x64-8x
+          - warp-macos-15-arm64-6x
+          - warp-windows-latest-x64-16x
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
-          submodules: 'true'
+          # gpui/ is a git submodule; its crates are workspace members of
+          # their own repo and build as path dependencies of oakapp.
+          submodules: true
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
 
       # ------------------------------------------------------------------
-      # Linux dependencies
+      # System dependencies
       # ------------------------------------------------------------------
-      - name: Install dependencies (Linux)
+      - name: Install system dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
+          # Codec/filter libraries for the ffmpeg-sys-next build feature
+          # (see tooling/install-deps.sh).
+          tooling/install-deps.sh
+          # Real OpenColorIO (ocio-sys real bridge) plus the headless test
+          # infra gpui needs: X11, software Mesa Vulkan (lavapipe) and xvfb.
           sudo apt-get install -y \
-            ninja-build pkg-config nasm \
-            qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
-            libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
-            ffmpeg \
-            libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
-            portaudio19-dev libgl1-mesa-dev libgl1-mesa-dri libxkbcommon-dev ccache \
-            xvfb libvulkan-dev mesa-vulkan-drivers vulkan-tools libshaderc-dev
+            libopencolorio-dev \
+            libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
+            libvulkan-dev libxkbcommon-dev xvfb
 
-      # ------------------------------------------------------------------
-      # macOS dependencies
-      # ------------------------------------------------------------------
-      - name: Install dependencies (macOS)
+      - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew update
-          brew install ninja pkg-config ccache qt@6 ffmpeg openimageio opencolorio openexr portaudio expat molten-vk vulkan-headers
-          echo "$(brew --prefix qt@6)/bin" >> "$GITHUB_PATH"
-          echo "CMAKE_PREFIX_PATH=$(brew --prefix qt@6)" >> "$GITHUB_ENV"
+          tooling/install-deps.sh
+          brew install opencolorio
 
-      # ------------------------------------------------------------------
-      # OpenTimelineIO (required dependency, built from source; cached)
-      # ------------------------------------------------------------------
-      - name: Cache OpenTimelineIO (Unix)
-        if: runner.os != 'Windows'
-        id: otio-cache
-        uses: actions/cache@v4
-        with:
-          path: otio-install
-          key: otio-0.16.0-${{ runner.os }}-v2
-
-      - name: Set OTIO location (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          echo "OTIO_LOCATION=${PWD}/otio-install" >> "$GITHUB_ENV"
-          # With OTIO_FIND_IMATH=ON the system (brew/apt) Imath must be the
-          # only Imath header set in play; drop any bundled headers a stale
-          # cache entry may have brought back (they collide with the system
-          # include guards and break ImathBox.h).
-          rm -rf "${PWD}/otio-install/include/Imath"
-
-      - name: Build OpenTimelineIO (Unix)
-        if: runner.os != 'Windows' && steps.otio-cache.outputs.cache-hit != 'true'
-        run: |
-          git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
-          cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
-            -DOTIO_SHARED_LIBS=ON \
-            -DOTIO_PYTHON_BINDINGS=OFF \
-            -DOTIO_FIND_IMATH=ON \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
-          cmake --build OpenTimelineIO/build
-          cmake --install OpenTimelineIO/build
-
-      # ------------------------------------------------------------------
-      # Windows dependencies (MSYS2)
-      # ------------------------------------------------------------------
-      - name: Setup MSYS2
+      - name: Setup MSYS2 (Windows)
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
           update: true
-          cache: true
           install: >-
             git
-            mingw-w64-ucrt-x86_64-cmake
-            mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-qt6-base
-            mingw-w64-ucrt-x86_64-qt6-tools
-            mingw-w64-ucrt-x86_64-ffmpeg
-            mingw-w64-ucrt-x86_64-openimageio
-            mingw-w64-ucrt-x86_64-opencolorio
-            mingw-w64-ucrt-x86_64-openexr
-            mingw-w64-ucrt-x86_64-fmt
-            mingw-w64-ucrt-x86_64-expat
-            mingw-w64-ucrt-x86_64-portaudio
-            mingw-w64-ucrt-x86_64-vulkan-headers
-            mingw-w64-ucrt-x86_64-vulkan-loader
-            mingw-w64-ucrt-x86_64-make
-            mingw-w64-ucrt-x86_64-ccache
 
-      # ------------------------------------------------------------------
-      # OpenTimelineIO (required dependency, built from source; cached).
-      # Must come after Setup MSYS2 (uses the msys2 shell).
-      # ------------------------------------------------------------------
-      - name: Cache OpenTimelineIO (Windows)
-        if: runner.os == 'Windows'
-        id: otio-cache-win
-        uses: actions/cache@v4
-        with:
-          path: otio-install
-          key: otio-0.16.0-${{ runner.os }}-v2
-
-      - name: Set OTIO location (Windows)
+      - name: Install system dependencies (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          echo "OTIO_LOCATION=${PWD}/otio-install" >> "$GITHUB_ENV"
-          # No rpath on Windows: test executables need the OTIO DLLs on PATH.
-          # OTIO's MinGW install puts the DLLs in lib/, not bin/.
-          echo "$(cygpath -w "${PWD}/otio-install/lib")" >> "$GITHUB_PATH"
-
-      - name: Build OpenTimelineIO (Windows)
-        if: runner.os == 'Windows' && steps.otio-cache-win.outputs.cache-hit != 'true'
-        shell: msys2 {0}
-        run: |
-          git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
-          cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
-            -DOTIO_SHARED_LIBS=ON \
-            -DOTIO_PYTHON_BINDINGS=OFF \
-            -DOTIO_FIND_IMATH=ON \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
-          cmake --build OpenTimelineIO/build
-          cmake --install OpenTimelineIO/build
+          bash tooling/install-deps.sh
+          pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-opencolorio
 
       # ------------------------------------------------------------------
-      # Compile cache (ccache) — restored before configure so the launcher
-      # flags below pick it up on all three platforms
+      # Build environment
       # ------------------------------------------------------------------
-      - name: Restore ccache
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/.ccache
-          key: ccache-${{ runner.os }}-${{ github.ref_name }}-${{ github.sha }}
-          restore-keys: |
-            ccache-${{ runner.os }}-${{ github.ref_name }}-
-            ccache-${{ runner.os }}-
-
-      # ------------------------------------------------------------------
-      # Configure
-      # ------------------------------------------------------------------
-      - name: Configure (Linux)
+      # ocio-sys builds a stub bridge unless these are set; the oakcommon
+      # ocioutils tests need the real library (see crates/oakcommon/.cargo/
+      # config.toml, which only applies to builds run from that directory).
+      - name: Configure build environment (Linux)
         if: runner.os == 'Linux'
         run: |
-          cmake -S . -B build -G Ninja \
-            -DBUILD_TESTS=ON \
-            -DBUILD_QT6=ON \
-            -DOCIO_LOCATION=/usr \
-            -DOTIO_LOCATION=${OTIO_LOCATION} \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+          echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
+          echo "OCIO_INSTALL_DIR=/usr" >> "$GITHUB_ENV"
+          echo "OCIO_RS_LINK=dynamic" >> "$GITHUB_ENV"
 
-      - name: Configure (macOS)
+      - name: Configure build environment (macOS)
         if: runner.os == 'macOS'
         run: |
-          cmake -S . -B build -G Ninja \
-            -DBUILD_TESTS=ON \
-            -DBUILD_QT6=ON \
-            -DOCIO_LOCATION=$(brew --prefix opencolorio) \
-            -DOTIO_LOCATION=${OTIO_LOCATION} \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+          echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
+          echo "OCIO_INSTALL_DIR=/opt/homebrew/opt/opencolorio" >> "$GITHUB_ENV"
+          echo "OCIO_RS_LINK=dynamic" >> "$GITHUB_ENV"
+          # Homebrew quirks: lame.pc / snappy / libopenjp2.pc live off the
+          # default pkg-config search paths (see docs/build.md).
+          echo "CFLAGS=-I/opt/homebrew/include" >> "$GITHUB_ENV"
+          echo "LDFLAGS=-L/opt/homebrew/lib" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig/openjpeg" >> "$GITHUB_ENV"
 
-      - name: Configure (Windows)
+      - name: Configure build environment (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          cmake -S . -B build -G Ninja \
-            -DBUILD_TESTS=ON \
-            -DBUILD_QT6=ON \
-            -DOTIO_LOCATION=${OTIO_LOCATION} \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+          echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
+          echo "OCIO_INSTALL_DIR=/ucrt64" >> "$GITHUB_ENV"
+          echo "OCIO_RS_LINK=dynamic" >> "$GITHUB_ENV"
 
       # ------------------------------------------------------------------
-      # Build Oak
+      # Caches
       # ------------------------------------------------------------------
-      - name: Build
+      # Covers the whole target/ dir plus ~/.cargo; shared across branches
+      # of the same OS.
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: oak-workspace
+
+      # The project FFmpeg (release/8.0, static, all free codecs + hwaccel)
+      # is built by tooling/ffmpeg/build-ffmpeg.sh — 10-20 min on a cold
+      # cache. It does not depend on the Rust toolchain, so key it on the
+      # script itself and keep it out of rust-cache.
+      - name: Cache project FFmpeg
+        uses: actions/cache@v4
+        with:
+          path: .cache/ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('tooling/ffmpeg/build-ffmpeg.sh') }}
+
+      # ------------------------------------------------------------------
+      # Project FFmpeg (script + FFMPEG_DIR; see docs/build.md)
+      # ------------------------------------------------------------------
+      - name: Build project FFmpeg (Linux/macOS)
         if: runner.os != 'Windows'
         run: |
-          cmake --build build --config ${{ env.CMAKE_BUILD_TYPE }}
-          ccache -s
+          tooling/ffmpeg/build-ffmpeg.sh
+          echo "FFMPEG_DIR=$PWD/.cache/ffmpeg" >> "$GITHUB_ENV"
+
+      - name: Build project FFmpeg (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          bash tooling/ffmpeg/build-ffmpeg.sh
+          echo "FFMPEG_DIR=$(cygpath -m "$PWD/.cache/ffmpeg")" >> "$GITHUB_ENV"
+
+      # ------------------------------------------------------------------
+      # Build & test
+      # ------------------------------------------------------------------
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: cargo build --workspace --locked
+
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        run: cargo build --workspace --locked
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run: |
-          cmake --build build --config ${{ env.CMAKE_BUILD_TYPE }}
-          ccache -s
+        run: cargo build --workspace --locked
 
-      # ------------------------------------------------------------------
-      # Clone and build OpenFX-Misc plugins (used by OFX integration tests)
-      # ------------------------------------------------------------------
-      - name: Clone OpenFX-Misc
-        run: git clone --recursive --depth 1 https://github.com/NatronGitHub/openfx-misc.git
-
-      - name: Build OpenFX-Misc plugins (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          cd openfx-misc
-          make -j"$(nproc)"
-          sudo make install
-          PLUGIN_FILE=$(find /usr/OFX/Plugins /usr/local/OFX/Plugins . -name "*.ofx.bundle" -print -quit 2>/dev/null | head -1)
-          if [ -n "$PLUGIN_FILE" ]; then
-            PLUGIN_DIR=$(dirname "$PLUGIN_FILE")
-          else
-            PLUGIN_DIR="$PWD"
-          fi
-          echo "OAK_OFX_ITEST=1" >> "$GITHUB_ENV"
-          echo "OAK_OFX_PLUGIN_PATH=$PLUGIN_DIR" >> "$GITHUB_ENV"
-          echo "OAK_OFX_PLUGIN_ID=net.sf.openfx.ChromaKeyerPlugin" >> "$GITHUB_ENV"
-
-      # The Windows runners have no GPU: WGL falls back to the GDI software
-      # OpenGL 1.1 implementation and every render worker dies calling 3.2
-      # core entry points. Drop Mesa's llvmpipe opengl32.dll next to every
-      # binary that creates a GL context (the application directory wins the
-      # DLL search order over System32).
-      - name: Install Mesa software OpenGL (Windows)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          curl -sSL -o /tmp/mesa.7z \
-            https://github.com/pal1000/mesa-dist-win/releases/download/26.1.5/mesa3d-26.1.5-release-mingw.7z
-          "/c/Program Files/7-Zip/7z.exe" x /tmp/mesa.7z -o/tmp/mesa > /dev/null
-          ls -la /tmp/mesa /tmp/mesa/x64
-          for d in build/engine build/worker build/cli build/tests/gtest build/app; do
-            if [ -d "$d" ]; then
-              cp /tmp/mesa/x64/*.dll "$d/"
-              # Qt ignores an app-local opengl32.dll for WGL (it always binds
-              # the System32 one); its documented software-GL override is
-              # opengl32sw.dll, loaded when QT_OPENGL=software.
-              cp "$d/opengl32.dll" "$d/opengl32sw.dll"
-              ls "$d"/opengl32sw.dll "$d"/libgallium_wgl.dll
-            fi
-          done
-          echo "QT_OPENGL=software" >> "$GITHUB_ENV"
-
-      # ------------------------------------------------------------------
-      # Run all tests (including previously environment-gated OFX tests)
-      # ------------------------------------------------------------------
+      # xvfb + 24-bit screen: the gpui #[gpui::test] tests open real windows
+      # and render through wgpu on Mesa's software Vulkan (lavapipe).
       - name: Test (Linux)
         if: runner.os == 'Linux'
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: xvfb-run -a ctest --test-dir build --output-on-failure -C ${{ env.CMAKE_BUILD_TYPE }}
-
-      # Diagnostic: if the Linux test run failed, re-run the suspect gtest
-      # filter under gdb to capture a native backtrace of the segfault.
-      # Also break on dlclose to see who unloads the render backend library
-      # before RenderManager's destructor calls into it.
-      - name: gtest segfault backtrace (Linux)
-        if: runner.os == 'Linux' && failure()
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: |
-          sudo apt-get update && sudo apt-get install -y gdb
-          xvfb-run -a gdb -batch \
-            -ex run \
-            -ex 'bt full' \
-            -ex 'info proc mappings' \
-            -ex 'info symbol $pc' \
-            --args ./build/tests/gtest/olive-gtest \
-            --gtest_filter='MainWindow.ConstructsOffscreenWithPanelsAndMenus' || true
+        run: xvfb-run -a -s "-screen 0 1920x1080x24" cargo test --workspace --locked
 
       - name: Test (macOS)
         if: runner.os == 'macOS'
-        run: ctest --test-dir build --output-on-failure -C ${{ env.CMAKE_BUILD_TYPE }}
+        run: cargo test --workspace --locked
 
       - name: Test (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run: ctest --test-dir build --output-on-failure -C ${{ env.CMAKE_BUILD_TYPE }}
-
-      # Diagnostic: if the Windows test run failed, show which DLLs the
-      # engine test executables cannot resolve (0xc0000135).
-      - name: Missing DLL diagnosis (Windows)
-        if: runner.os == 'Windows' && failure()
-        shell: msys2 {0}
-        run: |
-          echo "PATH=$PATH"
-          ldd build/engine/oakengine_ipc_test.exe | grep -i "not found" || true
-          objdump -p build/engine/oakengine_ipc_test.exe | grep "DLL Name" | sort -u
-          ls otio-install/lib otio-install/bin 2>/dev/null || true
-          echo "=== render worker stderr logs ==="
-          for f in "$TEMP"/oak-render-worker-*.stderr.log "$TMP"/oak-render-worker-*.stderr.log /tmp/oak-render-worker-*.stderr.log; do
-            [ -f "$f" ] && { echo "--- $f"; tail -50 "$f"; }
-          done
-
-      # ------------------------------------------------------------------
-      # Filtered gtest runs for clearer CI output
-      # ------------------------------------------------------------------
-      - name: Plugin Smoke Tests (Linux)
-        if: runner.os == 'Linux'
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: xvfb-run -a ./build/tests/gtest/olive-gtest --gtest_filter="PluginSmoke*"
-
-      - name: Plugin Smoke Tests (macOS)
-        if: runner.os == 'macOS'
-        run: ./build/tests/gtest/olive-gtest --gtest_filter="PluginSmoke*"
-
-      - name: Plugin Smoke Tests (Windows)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: ./build/tests/gtest/olive-gtest --gtest_filter="PluginSmoke*"
-
-      - name: OFX Integration Tests (Linux)
-        if: runner.os == 'Linux'
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: xvfb-run -a ./build/tests/gtest/olive-gtest --gtest_filter="PluginIntegration.*:PluginMisc.*"
-
-      - name: OFX Integration Tests (macOS)
-        if: runner.os == 'macOS'
-        run: ./build/tests/gtest/olive-gtest --gtest_filter="PluginIntegration.*:PluginMisc.*"
-
-      - name: Audio Smoke Tests (Linux)
-        if: runner.os == 'Linux'
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: xvfb-run -a ./build/tests/gtest/olive-gtest --gtest_filter="AudioSmoke*"
-
-      - name: Audio Smoke Tests (macOS)
-        if: runner.os == 'macOS'
-        run: ./build/tests/gtest/olive-gtest --gtest_filter="AudioSmoke*"
-
-      - name: Audio Smoke Tests (Windows)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: ./build/tests/gtest/olive-gtest --gtest_filter="AudioSmoke*"
-
-      - name: Viewer Smoke Tests (Linux)
-        if: runner.os == 'Linux'
-        env:
-          QT_QPA_PLATFORM: offscreen
-        run: xvfb-run -a ./build/tests/gtest/olive-gtest --gtest_filter="ViewerSmoke*"
-
-      - name: Viewer Smoke Tests (macOS)
-        if: runner.os == 'macOS'
-        run: ./build/tests/gtest/olive-gtest --gtest_filter="ViewerSmoke*"
-
-      - name: Viewer Smoke Tests (Windows)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: ./build/tests/gtest/olive-gtest --gtest_filter="ViewerSmoke*"
+        run: cargo test --workspace --locked

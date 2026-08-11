@@ -110,3 +110,35 @@ gpui_platform = { path = "gpui/crates/gpui_platform", features = ["test-support"
 # Screenshot capture: `examples/screenshot.rs` saves the rendered window PNG
 # (the `image` crate is already in the lockfile through gpui).
 image = "0.25"
+
+# ---------------------------------------------------------------------------
+# cargo-packager metadata (the CD workflow, .github/workflows/cd.yml, packages
+# the release binaries with `cargo packager`; the schema lives at
+# https://docs.crabnebula.dev/packager/configuration/).
+#
+# Binaries are resolved relative to `target/<profile>` (oak-editor is the
+# main binary; oak-cli / oak-worker are bundled alongside). They must exist
+# before packaging runs — `cargo packager` does NOT build the app itself, so
+# CD builds with `cargo build --release` first.
+#
+# `icons/icon.png` is NOT committed: it is generated from `Oak_Icon.svg`
+# (rsvg-convert) in CD right before packaging, because cargo-packager needs a
+# bitmap (it converts a square PNG into .icns / .ico / hicolor PNGs itself).
+# Keep the path here in sync with the CD workflow.
+# ---------------------------------------------------------------------------
+[package.metadata.packager]
+name = "oak"
+productName = "Oak"
+identifier = "org.oakvideoeditor.Oak"
+description = "Oak Video Editor"
+longDescription = "Oak Video Editor: a free, open-source non-linear video editor written in Rust."
+authors = ["Oak Team"]
+copyright = "Copyright (C) 2026 Oak Team"
+licenseFile = "LICENSE"
+category = "Video"
+icons = ["icons/icon.png"]
+binaries = [
+    { path = "oak-editor", main = true },
+    { path = "oak-cli", main = false },
+    { path = "oak-worker", main = false },
+]

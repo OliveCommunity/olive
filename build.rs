@@ -32,28 +32,25 @@
 //! * `target/<profile>/liboakengine.dylib` — when built as a workspace
 //!   member (`cargo build -p oakengine`).
 //!
-//! Both copies carry the same Mach-O install name pointing back into
-//! `target/<profile>/deps/`, so dyld finds the dylib by that absolute path
-//! at load time; the `-rpath` flag covers configurations where the install
-//! name is `@rpath`-relative instead.
+//! macOS: the dylib carries a Mach-O install name pointing back into
+//! `target/<profile>/deps/`, so dyld finds it by that absolute path at
+//! load time; the `-rpath` flag covers `@rpath`-relative configurations.
 //!
-//! # Host symbols (`-export_dynamic`)
+//! Linux: undefined symbols in a `.so` need no link-time flag; the app's
+//! own link only needs the search path plus `-Wl,--export-dynamic` (the
+//! ELF equivalent of `-export_dynamic`) so the host symbols resolve from
+//! the binary at runtime. An `$ORIGIN`-relative rpath lets a packaged
+//! binary find a sibling `liboakengine.so`.
 //!
-//! The dylib is linked with `-Wl,-undefined,dynamic_lookup` (see
-//! crates/oakengine/build.rs), so its remaining undefined imports — the
-//! C++ host symbols `oakcore_audioparams_*`, `oakcore_rational_*` and
-//! `fb_*` that [`host_syms`](crate::oakui::host_syms) provides — are
-//! resolved at runtime from the app binary. `-Wl,-export_dynamic` makes
-//! the binary's own symbols visible to dyld for that resolution.
-//!
-//! macOS-specific: this is the only platform the app targets (the dylib
-//! mechanism is a Mach-O feature); on any other target the script does
-//! nothing.
+//! Windows: NOT SUPPORTED YET — a DLL cannot carry the undefined
+//! `oakcore_*` imports (they need a stub import library or delay-load
+//! plumbing that does not exist yet), so the app does not link there.
 
 use std::path::PathBuf;
 
 fn main() {
-	if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
+	let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+	if os != "macos" && os != "linux" {
 		return;
 	}
 
@@ -63,52 +60,67 @@ fn main() {
 	let profile = std::env::var("PROFILE").unwrap_or_else(|_| "debug".to_string());
 	let profile_dir = target_dir.join(&profile);
 	let deps_dir = profile_dir.join("deps");
+	let dylib = if os == "macos" { "liboakengine.dylib" } else { "liboakengine.so" };
 
 	// The un-hashed dependency artifact is the normal case; the
 	// workspace-member copy is the fallback. If only the hashed artifact
-	// exists (liboakengine-<hash>.dylib), link it by full path.
-	if deps_dir.join("liboakengine.dylib").exists() {
-		link_search(&deps_dir);
-	} else if profile_dir.join("liboakengine.dylib").exists() {
-		link_search(&profile_dir);
-	} else if let Some(hashed) = find_hashed_dylib(&deps_dir) {
+	// exists (liboakengine-<hash>.so), link it by full path.
+	if deps_dir.join(dylib).exists() {
+		link_search(&deps_dir, os == "macos");
+	} else if profile_dir.join(dylib).exists() {
+		link_search(&profile_dir, os == "macos");
+	} else if let Some(hashed) = find_hashed_dylib(&deps_dir, os == "macos") {
 		println!("cargo:rustc-link-arg={}", hashed.display());
-		println!("cargo:rustc-link-arg=-Wl,-rpath,{}", deps_dir.display());
-		println!("cargo:rustc-link-arg=-Wl,-export_dynamic");
+		rpath_and_export(&deps_dir, os == "macos");
 	} else {
 		panic!(
-			"liboakengine.dylib not found under {}: build the workspace from the repo root \
+			"{dylib} not found under {}: build the workspace from the repo root \
 			 (cargo build -p oakengine) so the liboakengine cdylib is produced before the app links",
 			profile_dir.display()
 		);
 	}
 }
 
-/// Emits the link-search path plus `-loakengine`, the runtime `-rpath` and
+/// Emits the link-search path plus `-loakengine`, the runtime rpath and
 /// the host-symbol export flag (see the module docs).
-fn link_search(dir: &std::path::Path) {
+fn link_search(dir: &std::path::Path, macos: bool) {
 	println!("cargo:rustc-link-search=native={}", dir.display());
 	println!("cargo:rustc-link-lib=dylib=oakengine");
-	println!("cargo:rustc-link-arg=-Wl,-rpath,{}", dir.display());
-	println!("cargo:rustc-link-arg=-Wl,-export_dynamic");
-	// gpui_macos reaches the IOSurface API through the `core-video` crate,
-	// which depends on `io-surface` with `default-features = false` — that
-	// disables io-surface's `link` feature, so nothing adds the
-	// IOSurface.framework to the final link and the binary fails with
-	// undefined `_IOSurface*` symbols. The app's build script is the
-	// single place that configures the macOS link, so link the framework
-	// here.
-	println!("cargo:rustc-link-lib=framework=IOSurface");
+	rpath_and_export(dir, macos);
+	if macos {
+		// gpui_macos reaches the IOSurface API through the `core-video`
+		// crate, which depends on `io-surface` with `default-features =
+		// false` — that disables io-surface's `link` feature, so nothing
+		// adds the IOSurface.framework to the final link and the binary
+		// fails with undefined `_IOSurface*` symbols. The app's build
+		// script is the single place that configures the macOS link, so
+		// link the framework here.
+		println!("cargo:rustc-link-lib=framework=IOSurface");
+	}
 }
 
-/// Finds `liboakengine-<hash>.dylib` in `deps/` (some cargo configurations
-/// name dependency cdylibs with a hash suffix).
-fn find_hashed_dylib(deps_dir: &std::path::Path) -> Option<PathBuf> {
+/// The rpath (absolute deps dir + `$ORIGIN` on Linux) and the flag that
+/// exports the binary's own symbols for the dylib's runtime lookups.
+fn rpath_and_export(dir: &std::path::Path, macos: bool) {
+	if macos {
+		println!("cargo:rustc-link-arg=-Wl,-rpath,{}", dir.display());
+		println!("cargo:rustc-link-arg=-Wl,-export_dynamic");
+	} else {
+		println!("cargo:rustc-link-arg=-Wl,-rpath,{}", dir.display());
+		println!("cargo:rustc-link-arg=-Wl,-rpath,$ORIGIN");
+		println!("cargo:rustc-link-arg=-Wl,--export-dynamic");
+	}
+}
+
+/// Finds `liboakengine-<hash>.{dylib,so}` in `deps/` (some cargo
+/// configurations name dependency cdylibs with a hash suffix).
+fn find_hashed_dylib(deps_dir: &std::path::Path, macos: bool) -> Option<PathBuf> {
+	let suffix = if macos { ".dylib" } else { ".so" };
 	let entries = std::fs::read_dir(deps_dir).ok()?;
 	for entry in entries.flatten() {
 		let name = entry.file_name();
 		let name = name.to_string_lossy();
-		if name.starts_with("liboakengine-") && name.ends_with(".dylib") {
+		if name.starts_with("liboakengine-") && name.ends_with(suffix) {
 			return Some(entry.path());
 		}
 	}
