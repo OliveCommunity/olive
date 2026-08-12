@@ -54,6 +54,7 @@ use std::sync::Mutex;
 
 use oakengine::audio::{
 	oakengine_audio_clear_buffered_output, oakengine_audio_create_instance,
+	oakengine_audio_output_levels,
 	oakengine_audio_destroy_instance, oakengine_audio_estimate_envelope_offset,
 	oakengine_audio_estimate_stretch_and_offset, oakengine_audio_get_input_device,
 	oakengine_audio_get_output_device, oakengine_audio_hard_reset, oakengine_audio_manager_handle,
@@ -1220,5 +1221,60 @@ fn processor_full_open_convert_cycle() {
 		common::oakcore_audioparams_free(from);
 		common::oakcore_audioparams_free(to);
 		unsafe { oakengine_audio_processor_free(p) };
+	});
+}
+
+// ---------------------------------------------------------------------------
+// oakengine_audio_output_levels
+// ---------------------------------------------------------------------------
+
+/// The output-level meter export: validation, the no-output case, and a
+/// real peak readback over pushed F32 stereo samples.
+#[test]
+fn audio_output_levels() {
+	with_manager(|| unsafe {
+		// Out-arg validation (facade E_INVALID; no manager needed).
+		let mut peaks = [0.0f32; 4];
+		assert_eq!(oakengine_audio_output_levels(std::ptr::null_mut(), 4), OAKENGINE_E_INVALID);
+		assert_eq!(oakengine_audio_output_levels(peaks.as_mut_ptr(), 0), OAKENGINE_E_INVALID);
+		assert_eq!(oakengine_audio_output_levels(peaks.as_mut_ptr(), -1), OAKENGINE_E_INVALID);
+
+		// Fresh-ish manager, nothing buffered: 0 channels.
+		assert_eq!(oakengine_audio_destroy_instance(), 0);
+		assert_eq!(oakengine_audio_create_instance(), 0);
+		assert_eq!(oakengine_audio_output_levels(peaks.as_mut_ptr(), 4), 0);
+
+		// Push 480 frames of packed F32 stereo: left ramps to 0.25, right
+		// ramps to ~1.0. The levels are the per-channel linear peaks.
+		assert_eq!(oakengine_audio_set_output_device(42), 0);
+		assert_eq!(oakengine_audio_clear_buffered_output(), 0);
+		let frames = 480usize;
+		let mut samples = Vec::with_capacity(frames * 2);
+		for i in 0..frames {
+			let t = i as f32 / frames as f32;
+			samples.push(0.25f32 * t);
+			samples.push(t);
+		}
+		let params = audio_params(48000, 0x3, 10); // 10 = packed F32
+		let rc = oakengine_audio_push_to_output(
+			params as *const c_void,
+			samples.as_ptr() as *const std::ffi::c_char,
+			(samples.len() * 4) as i64,
+			std::ptr::null_mut(),
+			0,
+		);
+		common::oakcore_audioparams_free(params);
+		assert_eq!(rc, 0);
+
+		let n = oakengine_audio_output_levels(peaks.as_mut_ptr(), 4);
+		assert_eq!(n, 2);
+		let last = (frames - 1) as f32 / frames as f32;
+		assert!((peaks[0] - 0.25 * last).abs() < 1e-6, "left peak: {}", peaks[0]);
+		assert!((peaks[1] - last).abs() < 1e-6, "right peak: {}", peaks[1]);
+
+		// Capacity smaller than the channel count truncates the write but
+		// still reports the real channel count.
+		let mut one = [0.0f32; 1];
+		assert_eq!(oakengine_audio_output_levels(one.as_mut_ptr(), 1), 2);
 	});
 }

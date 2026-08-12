@@ -692,6 +692,25 @@ pub unsafe extern "C" fn oakengine_project_footage_is_online(
 	})
 }
 
+/// `oakengine_project_footage_at` — the footage node at `index`, boxed
+/// (freed with `oakengine_node_free`); NULL for an invalid index or
+/// project. The node is borrowed from the project graph, so it stays
+/// valid until the project is freed.
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_project_footage_at(
+	self_: *const OakEngineProject,
+	index: c_int,
+) -> *mut OakEngineNode {
+	guard_ptr(|| unsafe {
+		let h = unbox(self_)?;
+		let footage = project_node_at_of_type(h, TYPE_ID_FOOTAGE, index);
+		if footage.is_null() {
+			return Ok(std::ptr::null_mut());
+		}
+		Ok(box_handle::<OakEngineNode>(footage))
+	})
+}
+
 /// `oakengine_project_can_undo`.
 #[no_mangle]
 pub extern "C" fn oakengine_project_can_undo(self_: *const OakEngineProject) -> c_int {

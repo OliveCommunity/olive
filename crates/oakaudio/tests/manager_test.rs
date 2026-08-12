@@ -33,7 +33,8 @@ use oakaudio::ffi::manager::{
 	oakaudio_manager_hard_reset, oakaudio_manager_instance, oakaudio_manager_push_to_output,
 	oakaudio_manager_reset_output_clock, oakaudio_manager_seconds,
 	oakaudio_manager_set_input_device, oakaudio_manager_set_output_device,
-	oakaudio_manager_set_output_notify_interval, oakaudio_manager_start_recording,
+	oakaudio_manager_output_levels, oakaudio_manager_set_output_notify_interval,
+	oakaudio_manager_start_recording,
 	oakaudio_manager_stop_output, oakaudio_manager_stop_recording,
 };
 
@@ -406,4 +407,72 @@ fn free_null_noop() {
 	assert_eq!(unsafe { oakaudio_debug_alive_count() }, before);
 
 	unsafe { oakaudio_manager_destroy_instance() };
+}
+
+/// output_levels: validation, the no-output case, and a real peak
+/// readback over pushed packed-F32 stereo samples (left ramps to 0.25,
+/// right to ~1.0 — the per-channel linear peaks).
+#[test]
+fn output_levels_reports_buffered_peaks() {
+	let _guard = lock();
+	unsafe { oakaudio_manager_destroy_instance() };
+	assert_eq!(unsafe { oakaudio_manager_create_instance() }, OAKAUDIO_OK);
+	let m = instance();
+
+	// Invalid out args.
+	let mut peaks = [0.0f32; 4];
+	assert_eq!(
+		unsafe { oakaudio_manager_output_levels(m, std::ptr::null_mut(), 4) },
+		OAKAUDIO_E_INVALID
+	);
+	assert_eq!(unsafe { oakaudio_manager_output_levels(m, peaks.as_mut_ptr(), 0) }, OAKAUDIO_E_INVALID);
+
+	// The manager singleton retains output params across tests in this
+	// binary, so the "no output" case is not reachable here; instead
+	// verify a cleared buffer reports zeroed peaks (channel count from
+	// the configured layout, 0 only when nothing was ever configured).
+	assert_eq!(unsafe { oakaudio_manager_set_output_device(m, 42) }, OAKAUDIO_OK);
+	assert_eq!(unsafe { oakaudio_manager_clear_buffered_output(m) }, OAKAUDIO_OK);
+	let cleared = unsafe { oakaudio_manager_output_levels(m, peaks.as_mut_ptr(), 4) };
+	assert!(cleared >= 0);
+	for p in &peaks[..cleared as usize] {
+		assert_eq!(*p, 0.0, "cleared buffer must have silent peaks");
+	}
+
+	// Push 480 frames of packed F32 stereo (format 10), stereo layout 0x3.
+	let frames = 480usize;
+	let mut samples = Vec::with_capacity(frames * 2);
+	for i in 0..frames {
+		let t = i as f32 / frames as f32;
+		samples.push(0.25f32 * t);
+		samples.push(t);
+	}
+	let rc = unsafe {
+		oakaudio_manager_push_to_output(
+			m,
+			48000,
+			0x3,
+			10,
+			samples.as_ptr() as *const c_char,
+			(samples.len() * 4) as i64,
+			std::ptr::null_mut(),
+			0,
+		)
+	};
+	assert_eq!(rc, OAKAUDIO_OK);
+
+	let n = unsafe { oakaudio_manager_output_levels(m, peaks.as_mut_ptr(), 4) };
+	assert_eq!(n, 2);
+	let last = (frames - 1) as f32 / frames as f32;
+	assert!((peaks[0] - 0.25 * last).abs() < 1e-6, "left peak: {}", peaks[0]);
+	assert!((peaks[1] - last).abs() < 1e-6, "right peak: {}", peaks[1]);
+
+	// Undersized buffer truncates the write, not the reported count.
+	let mut one = [0.0f32; 1];
+	assert_eq!(unsafe { oakaudio_manager_output_levels(m, one.as_mut_ptr(), 1) }, 2);
+
+	// Leave the singleton as we found it: the push flipped
+	// `output_started`, which other tests' seconds() assertions depend on.
+	assert_eq!(unsafe { oakaudio_manager_stop_output(m) }, OAKAUDIO_OK);
+	assert_eq!(unsafe { oakaudio_manager_clear_buffered_output(m) }, OAKAUDIO_OK);
 }

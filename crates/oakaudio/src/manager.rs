@@ -372,6 +372,73 @@ pub fn find_device_by_name_s(name: &std::ffi::CStr, _is_output_device: bool) -> 
 	PA_NO_DEVICE
 }
 
+/// Peak level (linear, 0..1 and above) of each channel of the buffered,
+/// not-yet-consumed output, written to `peaks` in channel order.
+/// Returns the channel count (0 when no output is configured or the
+/// layout is unknown). Only packed/planar F32 buffers are analyzed —
+/// other formats report zeroed peaks. The analysis window is the most
+/// recent 8192 frames of the queue.
+///
+/// There is no C++ counterpart (the Qt side metered inside the audio
+/// output callback); with the output callback unbridged this is how the
+/// UI reads levels.
+pub fn output_levels(self_: &CHandle, peaks: &mut [f32]) -> Result<i32> {
+	let m = with_instance(self_)?;
+	let Some(params) = m.output_params else {
+		return Ok(0);
+	};
+	let channels = params.channel_count();
+	if channels <= 0 {
+		return Ok(0);
+	}
+	let n = (channels as usize).min(peaks.len());
+	for p in &mut peaks[..n] {
+		*p = 0.0;
+	}
+	use crate::params::SampleFormat;
+	let packed = params.format == SampleFormat::F32;
+	let planar = params.format == SampleFormat::F32Planar;
+	if !packed && !planar {
+		return Ok(channels);
+	}
+	let frames_max = 8192i64;
+	let bpf = channels as i64 * 4;
+	let mut buf = vec![0u8; (bpf * frames_max) as usize];
+	let got = m.output_buffer.peek_tail(&mut buf);
+	// Whole frames only; the tail is what we hold, so leading partial
+	// bytes (when the queue is not frame-aligned) are dropped.
+	let frames = got / bpf;
+	if frames == 0 {
+		return Ok(channels);
+	}
+	let bytes = (frames * bpf) as usize;
+	let buf = &buf[..bytes];
+	let frame_count = frames as usize;
+	let channel_count = channels as usize;
+	let mut planes: Vec<Vec<f32>> = vec![Vec::with_capacity(frame_count); channel_count];
+	if packed {
+		for frame in buf.chunks_exact(bpf as usize) {
+			for ch in 0..channel_count {
+				let b = &frame[ch * 4..ch * 4 + 4];
+				planes[ch].push(f32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+			}
+		}
+	} else {
+		for (ch, plane) in planes.iter_mut().enumerate() {
+			let start = ch * frame_count * 4;
+			for b in buf[start..start + frame_count * 4].chunks_exact(4) {
+				plane.push(f32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+			}
+		}
+	}
+	let views: Vec<&[f32]> = planes.iter().map(Vec::as_slice).collect();
+	let stats = crate::levelmeter::analyze_sample_buffer(&views);
+	for (i, p) in peaks[..n].iter_mut().enumerate() {
+		*p = stats.channels[i].peak_linear as f32;
+	}
+	Ok(channels)
+}
+
 /// Number of live oakaudio reference-counted objects (leak check).
 pub fn debug_alive_count() -> i32 {
 	crate::handle::alive_count()

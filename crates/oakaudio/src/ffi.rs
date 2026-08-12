@@ -22,7 +22,7 @@
 //! unwrap handles, call safe Rust, and map results through
 //! [`crate::handle::guard*`].
 
-use std::ffi::{c_char, c_double, c_int, CStr};
+use std::ffi::{c_char, c_double, c_float, c_int, CStr};
 
 use oakcore_rs::Rational;
 
@@ -215,6 +215,23 @@ pub mod manager {
 	#[no_mangle]
 	pub unsafe extern "C" fn oakaudio_manager_stop_output(_self: CHandle) -> c_int {
 		guard(|| crate::manager::stop_output(&_self))
+	}
+
+	/// `oakaudio_manager_output_levels` — per-channel linear peaks of the
+	/// buffered output into `peaks` (up to `capacity` entries). Returns
+	/// the channel count (0 when nothing is buffered or no output is
+	/// configured). OAKAUDIO_E_INVALID for NULL/zero-capacity out args.
+	#[no_mangle]
+	pub unsafe extern "C" fn oakaudio_manager_output_levels(
+		_self: CHandle,
+		peaks: *mut c_float,
+		capacity: c_int,
+	) -> c_int {
+		guard_int(|| {
+			invalid_if(peaks.is_null() || capacity <= 0)?;
+			let slice = unsafe { std::slice::from_raw_parts_mut(peaks, capacity as usize) };
+			crate::manager::output_levels(&_self, slice)
+		})
 	}
 
 	/// `oakaudio_manager_seconds`: write elapsed playback seconds into `out`.

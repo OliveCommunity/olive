@@ -218,6 +218,12 @@ pub fn oakaudio_manager_seconds(_self: CHandle, out: *mut c_double) -> c_int {
 
 /// Direct call into the `oakaudio` crate (single-lib unification; the
 /// `#[no_mangle]` export stays for the external C ABI).
+pub fn oakaudio_manager_output_levels(_self: CHandle, peaks: *mut f32, capacity: c_int) -> c_int {
+	unsafe { oakaudio::ffi::manager::oakaudio_manager_output_levels(_self, peaks, capacity) }
+}
+
+/// Direct call into the `oakaudio` crate (single-lib unification; the
+/// `#[no_mangle]` export stays for the external C ABI).
 pub fn oakaudio_processor_init() -> CHandle {
 	unsafe { oakaudio::ffi::processor::oakaudio_processor_init() }
 }

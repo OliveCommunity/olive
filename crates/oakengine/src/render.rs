@@ -17,12 +17,14 @@
 //! `engine/include/oakengine/{renderer,color,lut}.h` over the oakrender
 //! module.
 //!
-//! - The **renderer** is a facade-owned box binding a sequence handle to
-//!   an output geometry; each render call submits an oakrender ticket
-//!   (`OakVideoTicketParams`), waits for it and returns the produced
-//!   frame (`OakCodecFrame` wrapped in `OakEngineFrame`). Audio rendering
-//!   submits the ticket but the crate's samples path is unimplemented, so
-//!   it fails with the reason in `last_error`.
+//! - The **renderer** is a facade-owned box binding an output node
+//!   (usually a sequence, or any single node via
+//!   `oakengine_renderer_create_for_node`) to an output geometry; each
+//!   render call submits an oakrender ticket (`OakVideoTicketParams`),
+//!   waits for it and returns the produced frame (`OakCodecFrame` wrapped
+//!   in `OakEngineFrame`). Audio rendering submits the ticket but the
+//!   crate's samples path is unimplemented, so it fails with the reason
+//!   in `last_error`.
 //! - The **frame accessors** read the wrapped `OakCodecFrame`
 //!   (`channel_count` has no crate accessor and reports 0).
 //! - The **color processor** family maps onto
@@ -110,10 +112,11 @@ pub unsafe extern "C" fn oakengine_render_cache_set_multicam_node(
 // Renderer
 // ---------------------------------------------------------------------------
 
-/// Facade-side renderer box: the bound sequence + output geometry.
+/// Facade-side renderer box: the bound output node + output geometry.
 struct RendererBox {
-	/// Unboxed sequence node handle (borrowed).
-	seq: CHandle,
+	/// Unboxed output node handle (borrowed): a sequence, or any node the
+	/// module can evaluate (footage, generator, ...).
+	output_node: CHandle,
 	/// Output width.
 	width: c_int,
 	/// Output height.
@@ -180,20 +183,20 @@ unsafe fn make_video_params(b: &RendererBox) -> Result<CHandle> {
 	}
 }
 
-/// `oakengine_renderer_create` — NULL for invalid arguments.
-#[no_mangle]
-pub unsafe extern "C" fn oakengine_renderer_create(
-	seq: *mut OakEngineSequence,
+/// Build a renderer box for `output_node` (a sequence or any node the
+/// module can evaluate) with the given geometry. Returns NULL for
+/// non-positive geometry/rate or a pixel format outside the oakcore enum.
+unsafe fn make_renderer_box(
+	output_node: CHandle,
 	width: c_int,
 	height: c_int,
 	pixel_format: c_int,
 	frame_rate_num: c_int,
 	frame_rate_den: c_int,
 	output_colorspace: *const c_char,
-) -> *mut OakEngineRenderer {
-	guard_ptr(|| unsafe {
-		if seq.is_null() || width <= 0 || height <= 0 || frame_rate_num <= 0 || frame_rate_den <= 0
-		{
+) -> Result<*mut OakEngineRenderer> {
+	unsafe {
+		if width <= 0 || height <= 0 || frame_rate_num <= 0 || frame_rate_den <= 0 {
 			return Ok(std::ptr::null_mut());
 		}
 		// Validate the pixel format against the oakcore enum. The
@@ -207,9 +210,8 @@ pub unsafe extern "C" fn oakengine_renderer_create(
 			return Ok(std::ptr::null_mut());
 		}
 		let _ = crate::handle::read_cstr(output_colorspace); // resolved by the module at render time
-		let seq_handle = unbox(seq)?;
 		let boxed = Box::new(RendererBox {
-			seq: seq_handle,
+			output_node,
 			width,
 			height,
 			pixel_format,
@@ -219,6 +221,67 @@ pub unsafe extern "C" fn oakengine_renderer_create(
 			last_error: String::new(),
 		});
 		Ok(Box::into_raw(boxed) as *mut OakEngineRenderer)
+	}
+}
+
+/// `oakengine_renderer_create` — NULL for invalid arguments.
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_renderer_create(
+	seq: *mut OakEngineSequence,
+	width: c_int,
+	height: c_int,
+	pixel_format: c_int,
+	frame_rate_num: c_int,
+	frame_rate_den: c_int,
+	output_colorspace: *const c_char,
+) -> *mut OakEngineRenderer {
+	guard_ptr(|| unsafe {
+		if seq.is_null() {
+			return Ok(std::ptr::null_mut());
+		}
+		let seq_handle = unbox(seq)?;
+		make_renderer_box(
+			seq_handle,
+			width,
+			height,
+			pixel_format,
+			frame_rate_num,
+			frame_rate_den,
+			output_colorspace,
+		)
+	})
+}
+
+/// `oakengine_renderer_create_for_node` — like `oakengine_renderer_create`,
+/// but binds any node instead of a sequence: the surface for rendering a
+/// single footage/generator node (the source monitor). The renderer is
+/// freed with `oakengine_renderer_free` and renders with
+/// `oakengine_renderer_render_frame`, exactly like the sequence renderer.
+/// NULL for invalid arguments.
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_renderer_create_for_node(
+	node: *mut OakEngineNode,
+	width: c_int,
+	height: c_int,
+	pixel_format: c_int,
+	frame_rate_num: c_int,
+	frame_rate_den: c_int,
+	output_colorspace: *const c_char,
+) -> *mut OakEngineRenderer {
+	guard_ptr(|| unsafe {
+		if node.is_null() {
+			return Ok(std::ptr::null_mut());
+		}
+		let node_handle = unbox(node)?;
+		make_renderer_box(
+			node_handle,
+			width,
+			height,
+			pixel_format,
+			frame_rate_num,
+			frame_rate_den,
+			output_colorspace,
+		)
 	})
 }
 
@@ -272,7 +335,7 @@ pub unsafe extern "C" fn oakengine_renderer_render_frame(
 		let b = renderer_mut(self_)?;
 		let video_params = make_video_params(b)?;
 		let params = OakVideoTicketParams {
-			output_node: b.seq,
+			output_node: b.output_node,
 			video_params,
 			audio_params: std::ptr::null(),
 			time_num: timestamp * i64::from(b.frame_rate_den),
@@ -325,7 +388,7 @@ pub unsafe extern "C" fn oakengine_renderer_render_audio(
 		let end_num = (start_timestamp + length_timestamp) * i64::from(b.frame_rate_den);
 		let den = i64::from(b.frame_rate_num);
 		let ticket = r::oakrender_ticket_render_audio(
-			b.seq,
+			b.output_node,
 			start_num,
 			den,
 			end_num,

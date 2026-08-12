@@ -320,6 +320,12 @@ unsafe extern "C" {
 	) -> c_int;
 	/// `oakengine_project_footage_count`.
 	pub fn oakengine_project_footage_count(self_: *const OakEngineProject) -> c_int;
+	/// `oakengine_project_footage_at` — boxed footage node at `index` (free
+	/// with `oakengine_node_free`); NULL for an invalid index.
+	pub fn oakengine_project_footage_at(
+		self_: *const OakEngineProject,
+		index: c_int,
+	) -> *mut OakEngineNode;
 	/// `oakengine_project_footage_filename` (buf/size).
 	pub fn oakengine_project_footage_filename(
 		self_: *const OakEngineProject,
@@ -616,6 +622,19 @@ unsafe extern "C" {
 		frame_rate_den: c_int,
 		output_colorspace: *const c_char,
 	) -> *mut OakEngineRenderer;
+	/// `oakengine_renderer_create_for_node` — like `oakengine_renderer_create`,
+	/// but binds any node instead of a sequence: the surface for rendering a
+	/// single footage node (the source monitor). Freed and rendered exactly
+	/// like the sequence renderer.
+	pub fn oakengine_renderer_create_for_node(
+		node: *mut OakEngineNode,
+		width: c_int,
+		height: c_int,
+		pixel_format: c_int,
+		frame_rate_num: c_int,
+		frame_rate_den: c_int,
+		output_colorspace: *const c_char,
+	) -> *mut OakEngineRenderer;
 	/// `oakengine_renderer_free` — consuming free (NULL no-op).
 	pub fn oakengine_renderer_free(self_: *mut OakEngineRenderer);
 	/// `oakengine_renderer_render_frame` — synchronous render of the frame at
@@ -643,6 +662,13 @@ unsafe extern "C" {
 	pub fn oakengine_frame_data(self_: *const OakEngineFrame) -> *const c_void;
 	/// `oakengine_frame_free` — consuming free (NULL no-op).
 	pub fn oakengine_frame_free(self_: *mut OakEngineFrame);
+
+	// -- oakengine::audio --
+
+	/// `oakengine_audio_output_levels` — per-channel linear peaks of the
+	/// buffered output into `peaks` (up to `capacity` entries); returns
+	/// the channel count (0 = nothing buffered), negative on error.
+	pub fn oakengine_audio_output_levels(peaks: *mut f32, capacity: c_int) -> c_int;
 
 	// -- oakrender module C ABI (carried by the dylib) --
 

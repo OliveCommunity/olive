@@ -45,8 +45,9 @@ use std::sync::{Mutex, MutexGuard};
 
 use oakengine::handle::OakEngineAudioBuffer;
 use oakengine::node::{
-	oakengine_node_factory_create_from_id, oakengine_node_free, oakengine_project_create,
-	oakengine_project_free, oakengine_project_new,
+	oakengine_footage_free, oakengine_node_factory_create_from_id, oakengine_node_free,
+	oakengine_project_create, oakengine_project_footage_at, oakengine_project_footage_count,
+	oakengine_project_free, oakengine_project_import_footage, oakengine_project_new,
 };
 use oakengine::render::{
 	oakengine_audio_channel_count, oakengine_audio_data, oakengine_audio_free,
@@ -73,9 +74,9 @@ use oakengine::render::{
 	oakengine_render_cache_set_display_color_processor, oakengine_render_cache_set_multicam_node,
 	oakengine_render_manager_backend_to_string, oakengine_render_manager_requested_backend,
 	oakengine_render_manager_set_aggressive_garbage_collection, oakengine_renderer_cancel,
-	oakengine_renderer_create, oakengine_renderer_free, oakengine_renderer_last_error,
-	oakengine_renderer_render_audio, oakengine_renderer_render_frame, oakengine_renderer_set_mode,
-	OakColorTransformPod,
+	oakengine_renderer_create, oakengine_renderer_create_for_node, oakengine_renderer_free,
+	oakengine_renderer_last_error, oakengine_renderer_render_audio,
+	oakengine_renderer_render_frame, oakengine_renderer_set_mode, OakColorTransformPod,
 };
 use oakengine::timeline::oakengine_sequence_new;
 
@@ -415,6 +416,154 @@ fn renderer_render_frame_e2e() {
 /// A scratch error buffer helper.
 fn err_buf() -> [c_char; 128] {
 	[0 as c_char; 128]
+}
+
+/// End-to-end single-node CPU render: `oakengine_renderer_create_for_node`
+/// binds a footage node (instead of a sequence) and `render_frame` produces
+/// a real F32 frame through the module's eval pipeline. The footage node
+/// comes from `oakengine_project_footage_at` (the import registered it in
+/// the project graph) — the surface the source monitor renders through.
+#[test]
+fn renderer_render_frame_for_node_e2e() {
+	common::force_link();
+	let _g = state_lock();
+
+	unsafe { oakrender::ffi::manager::oakrender_manager_shutdown() };
+	assert_eq!(
+		unsafe { oakrender::ffi::manager::oakrender_manager_init() },
+		0
+	);
+
+	let base = unsafe { oakrender::ffi::cache::oakrender_debug_alive_count() };
+
+	let project = unsafe { oakengine_project_create() };
+	assert_eq!(unsafe { oakengine_project_new(project) }, 0);
+
+	// Import a footage file so the project graph owns a footage node.
+	let media = temp_media_file();
+	let media_c = std::ffi::CString::new(media.to_string_lossy().into_owned()).unwrap();
+	let footage = unsafe { oakengine_project_import_footage(project, media_c.as_ptr()) };
+	assert!(!footage.is_null());
+	unsafe { oakengine_footage_free(footage) };
+	assert_eq!(unsafe { oakengine_project_footage_count(project) }, 1);
+
+	// The footage node at index 0 is boxed; freed with node_free.
+	let node = unsafe { oakengine_project_footage_at(project, 0) };
+	assert!(
+		!node.is_null(),
+		"imported footage must be addressable by index"
+	);
+
+	// NULL project / out-of-range indices → NULL.
+	assert!(unsafe { oakengine_project_footage_at(std::ptr::null(), 0) }.is_null());
+	assert!(unsafe { oakengine_project_footage_at(project, -1) }.is_null());
+	assert!(unsafe { oakengine_project_footage_at(project, 5) }.is_null());
+
+	// NULL node → NULL renderer for every geometry combination.
+	for (w, h, pf, num, den) in [
+		(1920, 1080, 4, 30000, 1001),
+		(0, 1080, 4, 30000, 1001),
+		(1920, 0, 4, 30000, 1001),
+		(1920, 1080, 4, 0, 1001),
+	] {
+		let r = unsafe {
+			oakengine_renderer_create_for_node(
+				std::ptr::null_mut(),
+				w,
+				h,
+				pf,
+				num,
+				den,
+				std::ptr::null(),
+			)
+		};
+		assert!(r.is_null(), "NULL node (w={w} h={h} {num}/{den}) must give NULL");
+	}
+
+	// 1920x1080 F32 renderer over the footage node.
+	let r = unsafe {
+		oakengine_renderer_create_for_node(
+			node,
+			1920,
+			1080,
+			4,
+			30000,
+			1001,
+			std::ptr::null(),
+		)
+	};
+	assert!(!r.is_null());
+
+	// A legal render returns a real frame with the renderer's geometry.
+	let f = unsafe { oakengine_renderer_render_frame(r, 0) };
+	assert!(
+		!f.is_null(),
+		"render_frame over a footage node must produce a frame"
+	);
+	assert_eq!(unsafe { oakengine_frame_width(f) }, 1920);
+	assert_eq!(unsafe { oakengine_frame_height(f) }, 1080);
+	assert_eq!(unsafe { oakengine_frame_format(f) }, 4); // F32 pipeline format
+	assert_eq!(unsafe { oakengine_frame_linesize_bytes(f) }, 1920 * 4 * 4);
+	assert!(!unsafe { oakengine_frame_data(f) }.is_null());
+	assert_eq!(
+		unsafe { oakrender::ffi::cache::oakrender_debug_alive_count() },
+		base + 1
+	);
+	unsafe { oakengine_frame_free(f) };
+	assert_eq!(
+		unsafe { oakrender::ffi::cache::oakrender_debug_alive_count() },
+		base
+	);
+
+	// Illegal geometry / pixel format with a valid node → NULL.
+	let r_bad_geom = unsafe {
+		oakengine_renderer_create_for_node(
+			node,
+			0,
+			1080,
+			4,
+			30000,
+			1001,
+			std::ptr::null(),
+		)
+	};
+	assert!(r_bad_geom.is_null(), "zero width must give NULL");
+	let r_bad_pf = unsafe {
+		oakengine_renderer_create_for_node(
+			node,
+			64,
+			48,
+			99999,
+			30000,
+			1001,
+			std::ptr::null(),
+		)
+	};
+	assert!(r_bad_pf.is_null(), "garbage pixel format must give NULL");
+
+	unsafe { oakengine_renderer_free(r) };
+	unsafe { oakengine_node_free(node) };
+	unsafe { oakengine_project_free(project) };
+	assert_eq!(
+		unsafe { oakrender::ffi::cache::oakrender_debug_alive_count() },
+		base
+	);
+
+	unsafe { oakrender::ffi::manager::oakrender_manager_shutdown() };
+	assert_eq!(
+		unsafe { oakrender::ffi::manager::oakrender_manager_available() },
+		0
+	);
+}
+
+/// Fresh media file under the system temp dir with a unique name.
+fn temp_media_file() -> std::path::PathBuf {
+	let p = std::env::temp_dir().join(format!(
+		"oak-it-render-media-{}.mp4",
+		std::process::id()
+	));
+	std::fs::write(&p, b"not-real-media").expect("write temp file");
+	p
 }
 
 // ---------------------------------------------------------------------------

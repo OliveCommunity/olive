@@ -28,7 +28,8 @@ use std::ffi::{c_char, c_double, c_int, c_void};
 use crate::bridge::audio as a;
 use crate::error::Error;
 use crate::handle::{
-	box_handle, free_box, guard, guard_i64, guard_void, unbox, CHandle, OakEngineAudioProcessor,
+	box_handle, free_box, guard, guard_i64, guard_int, guard_void, unbox, CHandle,
+	OakEngineAudioProcessor,
 };
 
 /// paNoDevice — no audio device selected.
@@ -147,6 +148,31 @@ pub extern "C" fn oakengine_audio_clear_buffered_output() -> c_int {
 			return Err(Error::Failed("no AudioManager instance".into()));
 		}
 		Error::from_module(unsafe { a::oakaudio_manager_clear_buffered_output(m) })
+	})
+}
+
+/// `oakengine_audio_output_levels` — per-channel linear peaks of the
+/// buffered, not-yet-consumed output into `peaks` (up to `capacity`
+/// entries). Returns the channel count (0 when nothing is buffered).
+/// The UI's audio meter reads this; there is no C++ counterpart (the Qt
+/// side metered inside the output callback, which is not bridged).
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_audio_output_levels(peaks: *mut f32, capacity: c_int) -> c_int {
+	guard_int(|| {
+		if peaks.is_null() || capacity <= 0 {
+			return Err(Error::Invalid);
+		}
+		let m = manager();
+		if m.is_null() {
+			return Err(Error::Failed("no AudioManager instance".into()));
+		}
+		// The module returns the channel count (>= 0) or a negative
+		// OAKAUDIO_E_* code, which passes through untouched.
+		let n = a::oakaudio_manager_output_levels(m, peaks, capacity);
+		if n < 0 {
+			return Err(Error::Module(n));
+		}
+		Ok(n)
 	})
 }
 

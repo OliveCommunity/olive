@@ -41,13 +41,16 @@
 //!
 //! # What is still mock/stub
 //!
-//! * The source monitor's viewer frames are the shared synthetic SMPTE
-//!   pattern ([`frames`]): the facade renderer binds a *sequence* handle
-//!   only, so there is no surface to render a single footage node for the
-//!   material viewer. The program monitor renders real frames through the
-//!   facade CPU renderer ([`RealEngine::render_program_frame`]) at a proxy
-//!   resolution; the full-resolution async render worker (the facade's
-//!   worker module) is a separate process surface not bound yet.
+//! * The source monitor renders the selected footage node's frame through
+//!   the facade CPU renderer
+//!   ([`RealEngine::render_source_frame`],
+//!   via the node-binding `oakengine_renderer_create_for_node`) at a proxy
+//!   resolution — the same pattern as the program monitor
+//!   ([`RealEngine::render_program_frame`]). Actual media *decode* is
+//!   still a module gap (the oakrender eval's footage hook is deferred),
+//!   so both viewers show the pipeline's generated frame, not the file's
+//!   pixels; the full-resolution async render worker (the facade's worker
+//!   module) is a separate process surface not bound yet.
 //! * Effect stack — the selected clip's effect chain is bound: the stack
 //!   reads the chain through the facade (see
 //!   [`EffectStackDataSource`](EffectStackDataSource) for `RealEngine`)
@@ -653,10 +656,10 @@ pub struct RealEngine {
 	/// Cache of the CPU frames handed to the viewers, keyed by monitor.
 	/// Entries are the playhead frame that produced the image plus the scope
 	/// samples analyzed in the same pass, so a paused viewer never
-	/// regenerates its picture (or its scopes). The program monitor's entries
-	/// are real rendered frames (see [`RealEngine::render_program_frame`]);
-	/// the source monitor's are the synthetic pattern (the facade renderer
-	/// binds a sequence only — footage-node rendering is a documented gap).
+	/// regenerates its picture (or its scopes). Both monitors hold real
+	/// rendered frames (see [`RealEngine::render_program_frame`] /
+	/// [`RealEngine::render_source_frame`]); the synthetic pattern is only
+	/// the failure fallback.
 	cpu_frame_cache: Mutex<HashMap<Monitor, (i64, Arc<RenderImage>, ScopeData)>>,
 	/// The program monitor's cached renderer, created lazily from the
 	/// current sequence at a proxy resolution. The mutex both provides the
@@ -664,6 +667,12 @@ pub struct RealEngine {
 	/// the synchronous render calls. Reset to [`RendererSlot::Untried`]
 	/// (before the sequence is freed) in [`RealEngine::drop_project`].
 	renderer: Mutex<RendererSlot>,
+	/// The source monitor's cached renderer, created lazily from the
+	/// currently selected footage node at a proxy resolution (same slot
+	/// semantics as `renderer`). Reset to [`RendererSlot::Untried`] when
+	/// the selection changes or the project is dropped — the renderer binds
+	/// the footage node, so a new selection must bind the new node.
+	source_renderer: Mutex<RendererSlot>,
 	/// Whether the project has unsaved changes (mirrors the facade flag).
 	modified: bool,
 }
@@ -692,6 +701,7 @@ impl RealEngine {
 			meter_phase: 0,
 			cpu_frame_cache: Mutex::new(HashMap::new()),
 			renderer: Mutex::new(RendererSlot::Untried),
+			source_renderer: Mutex::new(RendererSlot::Untried),
 			modified: false,
 		}
 	}
@@ -862,6 +872,140 @@ impl RealEngine {
 		Some(RendererHandle(renderer))
 	}
 
+	/// The material-bin footage index of the selected entry, if any. The bin
+	/// children are numbered `100 + index` (see [`RealEngine::rebuild_bin`]);
+	/// folder/project roots are not footage.
+	fn selected_footage_index(&self) -> Option<c_int> {
+		let id = self.selected_item?;
+		if id >= 100 {
+			Some((id - 100) as c_int)
+		} else {
+			None
+		}
+	}
+
+	/// The selected footage's facade node view (a boxed node handle the
+	/// caller frees with `oakengine_node_free`), or `None` when no footage
+	/// is selected or the index is out of range.
+	fn selected_footage_node(&self) -> Option<*mut OakEngineNode> {
+		let project = self.project_ptr()?;
+		let index = self.selected_footage_index()?;
+		let node = unsafe { oakengine_project_footage_at(project, index) };
+		if node.is_null() {
+			None
+		} else {
+			Some(node)
+		}
+	}
+
+	/// Creates the per-footage renderer at the proxy resolution (see
+	/// [`RealEngine::proxy_render_size`]). The renderer borrows the footage
+	/// node handle; the caller owns the slot it is stored in.
+	fn create_node_renderer(&self, node: *mut OakEngineNode) -> Option<RendererHandle> {
+		let (width, height) = self.proxy_render_size()?;
+		let rate = self.sequence_info.as_ref()?.format.rate;
+		let renderer = unsafe {
+			oakengine_renderer_create_for_node(
+				node,
+				width,
+				height,
+				PIXEL_FORMAT_F32,
+				rate.num as c_int,
+				rate.den as c_int,
+				std::ptr::null(),
+			)
+		};
+		if renderer.is_null() {
+			println!(
+				"[real engine] renderer_create_for_node failed; viewer keeps the synthetic frame"
+			);
+			return None;
+		}
+		Some(RendererHandle(renderer))
+	}
+
+	/// Renders one source-monitor frame through the facade CPU renderer:
+	/// creates the per-footage renderer lazily (cached in
+	/// `self.source_renderer`, bound to the currently selected footage
+	/// node), renders `frame`, analyzes the scope samples from the F32 RGBA
+	/// result, and downconverts to BGRA8. Returns `None` (the caller falls
+	/// back to the synthetic pattern) when no footage is selected, the
+	/// render manager is unavailable, or the render itself fails.
+	fn render_source_frame(&self, frame: Frame) -> Option<(RenderImage, ScopeData)> {
+		let node = self.selected_footage_node()?;
+		if !Self::ensure_render_manager() {
+			// SAFETY: `node` is a box from `selected_footage_node`.
+			unsafe { oakengine_node_free(node) };
+			return None;
+		}
+		let mut slot = self.source_renderer.lock().unwrap();
+		match &*slot {
+			RendererSlot::Unavailable => {
+				unsafe { oakengine_node_free(node) };
+				return None;
+			}
+			RendererSlot::Untried => {
+				let created = self.create_node_renderer(node);
+				*slot = match created {
+					Some(handle) => RendererSlot::Ready(handle),
+					None => RendererSlot::Unavailable,
+				};
+			}
+			RendererSlot::Ready(_) => {}
+		}
+		// SAFETY: `node` is a live box; freed on every path below.
+		unsafe { oakengine_node_free(node) };
+		let RendererSlot::Ready(handle) = &*slot else {
+			return None;
+		};
+		let renderer = handle.ptr();
+		let frame_ptr = unsafe { oakengine_renderer_render_frame(renderer, frame.0) };
+		if frame_ptr.is_null() {
+			let error = read_string(|buf, size| unsafe {
+				oakengine_renderer_last_error(renderer, buf, size)
+			});
+			println!("[real engine] source render_frame failed: {error}");
+			// Don't retry (and re-log) on every frame.
+			*slot = RendererSlot::Unavailable;
+			return None;
+		}
+		// Read the frame (F32 RGBA, rows padded to linesize), repack it
+		// tightly, then downconvert.
+		let (width, height, linesize, format) = unsafe {
+			(
+				oakengine_frame_width(frame_ptr),
+				oakengine_frame_height(frame_ptr),
+				oakengine_frame_linesize_bytes(frame_ptr),
+				oakengine_frame_format(frame_ptr),
+			)
+		};
+		let data = unsafe { oakengine_frame_data(frame_ptr) };
+		let mut image = None;
+		if width > 0 && height > 0 && format == PIXEL_FORMAT_F32 && !data.is_null() {
+			let row_bytes = (width * 4 * 4) as usize;
+			let linesize = (linesize as usize).max(row_bytes);
+			let mut samples = vec![0.0f32; (width * height * 4) as usize];
+			for y in 0..height as usize {
+				unsafe {
+					std::ptr::copy_nonoverlapping(
+						(data as *const u8).add(y * linesize),
+						samples.as_mut_ptr().add(y * row_bytes / 4) as *mut u8,
+						row_bytes,
+					);
+				}
+			}
+			let scope = analyze_f32_rgba(width as u32, height as u32, &samples);
+			image = Some((
+				f32_rgba_to_bgra_image(width as u32, height as u32, &samples),
+				scope,
+			));
+		}
+		unsafe {
+			oakengine_frame_free(frame_ptr);
+		}
+		image
+	}
+
 	/// Adopts a newly created/loaded facade project, freeing any previous
 	/// one, and rebuilds every snapshot. `blank` projects get a default
 	/// sequence; loaded ones use the first sequence.
@@ -907,6 +1051,7 @@ impl RealEngine {
 	/// borrowed from the project).
 	fn drop_project(&mut self) {
 		*self.renderer.lock().unwrap() = RendererSlot::Untried;
+		*self.source_renderer.lock().unwrap() = RendererSlot::Untried;
 		drop(self.sequence.take());
 		drop(self.project.take());
 		self.cpu_frame_cache.lock().unwrap().clear();
@@ -1443,9 +1588,17 @@ impl ProjectDataSource for RealEngine {
 
 impl AudioMeterDataSource for RealEngine {
 	fn levels(&self) -> Vec<f32> {
-		// Real audio levels are not exposed by the facade; report a silent
-		// (but alive) meter.
-		vec![0.0, 0.0]
+		// Per-channel linear peaks of the engine's buffered audio output
+		// (facade `oakengine_audio_output_levels`, clamped to the meter's
+		// 0..1 range). Silent when nothing has been pushed to the output
+		// (no playback audio path yet) or on any facade error.
+		let mut peaks = [0.0f32; 8];
+		// SAFETY: `peaks` is a live 8-entry buffer; capacity matches.
+		let n = unsafe { oakengine_audio_output_levels(peaks.as_mut_ptr(), peaks.len() as c_int) };
+		if n <= 0 {
+			return vec![0.0, 0.0];
+		}
+		peaks[..n as usize].iter().map(|p| p.clamp(0.0, 1.0)).collect()
 	}
 }
 
@@ -1480,15 +1633,14 @@ impl AppEngine for RealEngine {
 				return image.clone();
 			}
 		}
-		// The program monitor renders the current sequence through the
-		// facade CPU renderer (falling back to the synthetic pattern when
-		// rendering is unavailable). The source monitor keeps the synthetic
-		// pattern: the facade renderer binds a *sequence* handle only, so
-		// there is currently no surface to render a single footage node for
-		// the material viewer — that is a documented facade gap.
+		// Both monitors render through the facade CPU renderer (falling
+		// back to the synthetic pattern when rendering is unavailable): the
+		// program monitor renders the current sequence, the source monitor
+		// renders the currently selected footage node at the source clock's
+		// playhead frame.
 		let rendered = match monitor {
 			Monitor::Program => self.render_program_frame(frame),
-			Monitor::Source => None,
+			Monitor::Source => self.render_source_frame(frame),
 		};
 		let (image, scope) = match rendered {
 			Some((image, scope)) => (Arc::new(image), scope),
@@ -1562,7 +1714,15 @@ impl AppEngine for RealEngine {
 	}
 
 	fn select_item(&mut self, id: u64, cx: &mut Context<Self>) {
+		let changed = self.selected_item != Some(id);
 		self.selected_item = Some(id);
+		if changed {
+			// The source monitor renders the selected footage node: a new
+			// selection must rebind the renderer and drop the stale cached
+			// frame (the cache key only tracks the playhead frame).
+			*self.source_renderer.lock().unwrap() = RendererSlot::Untried;
+			self.cpu_frame_cache.lock().unwrap().remove(&Monitor::Source);
+		}
 		cx.notify();
 	}
 

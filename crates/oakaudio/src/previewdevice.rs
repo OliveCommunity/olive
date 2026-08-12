@@ -192,3 +192,19 @@ impl Default for PreviewAudioDevice {
 		PreviewAudioDevice::new()
 	}
 }
+
+impl PreviewAudioDevice {
+	/// Copy up to `data.len()` bytes from the TAIL of the queued buffer
+	/// without consuming them (the level meter peeks at what is about to
+	/// play; the oldest bytes are irrelevant for that). Returns the byte
+	/// count copied.
+	pub fn peek_tail(&self, data: &mut [u8]) -> i64 {
+		let inner = self.lock.lock().unwrap();
+		let copy = (data.len() as i64).min(inner.buffer.len() as i64);
+		if copy > 0 {
+			let start = inner.buffer.len() - copy as usize;
+			data[..copy as usize].copy_from_slice(&inner.buffer[start..]);
+		}
+		copy
+	}
+}
