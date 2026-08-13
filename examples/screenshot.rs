@@ -17,27 +17,45 @@
 //! Offscreen screenshot capture for the app window.
 //!
 //! Renders the full [`OakApp`] shell at 1600×900 (2× = 3200×1866 px) in an
-//! offscreen macOS window and writes the PNG to
-//! `app/rust/docs/screenshot-window.png`, using the same
-//! [`VisualTestAppContext`] machinery the gpui visual tests use. The window
-//! is created at `(-10000, -10000)` so nothing flickers on screen.
+//! offscreen macOS window and writes the PNGs to
+//! `docs/screenshot-window.png` (zh-CN) and `docs/screenshot-window-en.png`
+//! (en-US), using the same [`VisualTestAppContext`] machinery the gpui visual
+//! tests use. The window is created at `(-10000, -10000)` so nothing
+//! flickers on screen.
+//!
+//! Unlike the real app's startup ([`oakapp::app::run`]) the example must
+//! initialize the i18n layer itself, or every menu renders in the en-US
+//! fallback while the panels fall back to their built-in Chinese defaults.
+//! The active language is captured first and restored at the end, so the
+//! persisted preference is untouched.
 //!
 //! Run it on the macOS main thread (examples run on the main thread, unlike
 //! `#[test]` harness threads):
 //!
 //! ```text
-//! cargo run --example screenshot               # 1600×900 → docs/screenshot-window.png
-//! cargo run --example screenshot -- 1100 900   # any size (still overwrites the same file)
+//! cargo run --example screenshot               # 1600×900 → both PNGs
+//! cargo run --example screenshot -- 1100 900   # any size (same filenames)
 //! ```
 
 use gpui::{px, size, AnyWindowHandle, AppContext, Result, VisualTestAppContext};
 use gpui_platform::current_platform;
 use oakapp::app::OakApp;
+use oakapp::i18n::{self, Language};
 use oakapp::oakui::MockEngine;
 
 const DEFAULT_WIDTH: f32 = 1600.0;
 const DEFAULT_HEIGHT: f32 = 900.0;
-const OUT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-window.png");
+const OUT_ZH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-window.png");
+const OUT_EN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-window-en.png");
+
+/// Logical y of the timeline toolbar row, which sits at the top of the
+/// bottom dock panel in the default layout: the dock starts at y 27.5 (the
+/// menu bar height), the viewers get 60% of the remaining height, and a 6px
+/// split handle separates them from the timeline. The toolbar is its 31px
+/// first row. The assertion scans a small band around it so minor layout
+/// drift does not false-negative.
+const TOOLBAR_Y: f32 = 541.0;
+const TOOLBAR_BAND: f32 = 44.0;
 
 fn main() -> Result<()> {
 	let args: Vec<String> = std::env::args().skip(1).collect();
@@ -53,21 +71,59 @@ fn main() -> Result<()> {
 	let mut cx = VisualTestAppContext::new(current_platform(false));
 	cx.update(|app| app.init_colors());
 
-	let window = cx.open_offscreen_window(size(px(width), px(height)), |window, cx| {
-		cx.new(|cx| OakApp::<MockEngine>::new(window, None, cx))
-	})?;
+	// Initialize the UI language like the real app's startup would: zh-CN
+	// for the primary screenshot, then en-US for the English one. The
+	// original persisted language is restored at the end.
+	let original = i18n::language();
+	i18n::set_language(Language::ZhCN);
+	{
+		let handle = open_shell(&mut cx, width, height);
+		let image = cx.capture_screenshot(handle)?;
+		std::fs::create_dir_all(std::path::Path::new(OUT_ZH).parent().unwrap())?;
+		image.save(OUT_ZH)?;
+		println!("wrote {OUT_ZH} ({}×{})", image.width(), image.height());
+		assert_toolbar(&image, "zh-CN");
+	}
+	i18n::set_language(Language::EnUs);
+	{
+		let handle = open_shell(&mut cx, width, height);
+		let image = cx.capture_screenshot(handle)?;
+		std::fs::create_dir_all(std::path::Path::new(OUT_EN).parent().unwrap())?;
+		image.save(OUT_EN)?;
+		println!("wrote {OUT_EN} ({}×{})", image.width(), image.height());
+		assert_toolbar(&image, "en-US");
+	}
+	i18n::set_language(original);
+
+	Ok(())
+}
+
+/// Opens the app shell offscreen and draws enough frames for the layout to
+/// settle and the async toolbar-icon assets to decode: the node editor fits
+/// its graph once the canvas size is known, the viewers upload their first
+/// CPU frame, and the PNG toolbar icons load through the background executor
+/// on the frame after the asset future resolves.
+fn open_shell(
+	cx: &mut VisualTestAppContext,
+	width: f32,
+	height: f32,
+) -> AnyWindowHandle {
+	let window = cx
+		.open_offscreen_window(size(px(width), px(height)), |window, cx| {
+			// Compact pro-app text metrics, matching the real app's startup
+			// (`src/app.rs run_with` sets rem 14px; gpui's default is 16px).
+			window.set_rem_size(px(14.0));
+			cx.new(|cx| OakApp::<MockEngine>::new(window, None, cx))
+		})
+		.expect("offscreen window opens");
 	let handle: AnyWindowHandle = window.into();
 
-	// Draw enough frames for the layout to settle and the async toolbar-icon
-	// assets to decode: the node editor fits its graph once the canvas size
-	// is known, the viewers upload their first CPU frame, and the PNG
-	// toolbar icons load through the background executor on the frame after
-	// the asset future resolves.
 	for _ in 0..16 {
 		cx.run_until_parked();
 		cx.update_window(handle, |_root, window, app| {
 			let _ = window.draw(app);
-		})?;
+		})
+		.expect("window still open");
 	}
 	cx.run_until_parked();
 
@@ -75,25 +131,27 @@ fn main() -> Result<()> {
 		cx.run_until_parked();
 		cx.update_window(handle, |_root, window, app| {
 			let _ = window.draw(app);
-		})?;
+		})
+		.expect("window still open");
 	}
 	cx.run_until_parked();
+	handle
+}
 
-	let image = cx.capture_screenshot(handle)?;
-
-	// The timeline toolbar's tool icons (16px at 2× = 32px on 48px pitch)
-	// must render: the toolbar is the 31px row at the top of the bottom dock
-	// panel. Scan the bottom strip for the 8 tool cells and require most of
-	// them to contain bright glyph pixels, so a broken icon load fails the
-	// capture loudly instead of shipping an empty toolbar.
-	let th = height * 2.0;
+/// The timeline toolbar's tool icons (16px at 2× = 32px on 48px pitch) must
+/// render: the toolbar is the 31px row at the top of the bottom dock panel.
+/// Scan the tool cells for bright glyph pixels, so a broken icon load fails
+/// the capture loudly instead of shipping an empty toolbar.
+fn assert_toolbar(image: &image::RgbaImage, language: &str) {
+	// The image is 2× the logical size; convert logical → pixel y. TOOLBAR_Y
+	// is measured from the window's top edge.
 	let mut rendered = 0usize;
-	for (index, cell_x) in [24u32, 88, 152, 216, 280, 344, 408, 472].iter().enumerate() {
+	for (index, cell_x) in [12u32, 44, 76, 108, 140, 172, 204, 236].iter().enumerate() {
 		let mut bright = 0u32;
-		for dy in 0..80i32 {
-			for dx in 0..32i32 {
+		for dy in 0..(TOOLBAR_BAND as i32 * 2) {
+			for dx in 0..40i32 {
 				let x = (*cell_x as i32 + dx) as u32;
-				let y = (th as i32 - 320 + dy).max(0) as u32;
+				let y = ((TOOLBAR_Y as i32 - TOOLBAR_BAND as i32 / 2) * 2 + dy).max(0) as u32;
 				if x >= image.width() || y >= image.height() {
 					continue;
 				}
@@ -103,18 +161,13 @@ fn main() -> Result<()> {
 				}
 			}
 		}
-		println!("[screenshot] toolbar tool {index} bright pixels: {bright}");
+		println!("[screenshot] {language} toolbar tool {index} bright pixels: {bright}");
 		if bright > 20 {
 			rendered += 1;
 		}
 	}
 	assert!(
 		rendered >= 6,
-		"timeline toolbar icons did not render (only {rendered}/8 tool cells had pixels)"
+		"{language} timeline toolbar icons did not render (only {rendered}/8 tool cells had pixels)"
 	);
-
-	std::fs::create_dir_all(std::path::Path::new(OUT).parent().unwrap())?;
-	image.save(OUT)?;
-	println!("wrote {OUT} ({}×{})", image.width(), image.height());
-	Ok(())
 }

@@ -117,6 +117,13 @@ pub trait EngineGateway: Sized {
 	/// The current sequence of the open project, if any.
 	fn current_sequence(&self) -> Option<&Sequence>;
 
+	/// The display name of the source media shown in the source viewer, used
+	/// in the viewer header and dock tab. Empty when the engine has no source
+	/// media loaded.
+	fn source_media_name(&self) -> String {
+		String::new()
+	}
+
 	/// Open a project file. The backend loads it and becomes the source of
 	/// truth for [`project`](EngineGateway::project) /
 	/// [`current_sequence`](EngineGateway::current_sequence).

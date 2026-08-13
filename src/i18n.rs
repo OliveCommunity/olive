@@ -268,9 +268,6 @@ const EN: &[(&str, &str)] = &[
 	("history.set_in_point", "Set In Point"),
 	// --- node editor ---
 	("node.fit", "Fit"),
-	// --- viewer header chips ---
-	("viewer.source", "Source Viewer · Source"),
-	("viewer.program", "Program Viewer · Program"),
 	// --- program viewer tabs and scope labels ---
 	("viewer.picture", "Picture"),
 	("viewer.scopes", "Scopes"),
@@ -418,9 +415,6 @@ const ZH: &[(&str, &str)] = &[
 	("history.set_in_point", "设置入点"),
 	// --- node editor ---
 	("node.fit", "适配"),
-	// --- viewer header chips ---
-	("viewer.source", "素材查看器 · 源"),
-	("viewer.program", "序列查看器 · 节目"),
 	// --- program viewer tabs and scope labels ---
 	("viewer.picture", "画面"),
 	("viewer.scopes", "示波器"),

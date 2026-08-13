@@ -26,7 +26,7 @@ use gpui_widgets::viewer::{ViewerEvent, ViewerWidget};
 
 use crate::oakui::timecode::{format_fps, format_resolution};
 use crate::oakui::{AppEngine, Monitor};
-use crate::panels::chip;
+use crate::panels::{chip, viewer_title};
 use crate::panels::ids::SOURCE_VIEWER;
 
 /// The source viewer panel.
@@ -94,11 +94,14 @@ impl<E: AppEngine> Render for SourceViewerPanel<E> {
 			.current_sequence()
 			.map(|sequence| sequence.format)
 			.unwrap_or(crate::oakui::VideoFormat::hd_1080p25());
+		let media = self.engine.read(cx).source_media_name();
+		let title = viewer_title("panel.source_viewer", &media);
 
 		div()
 			.size_full()
 			.flex()
 			.flex_col()
+			.overflow_hidden()
 			.child(
 				div()
 					.flex()
@@ -108,14 +111,21 @@ impl<E: AppEngine> Render for SourceViewerPanel<E> {
 					.py_1()
 					.border_b_1()
 					.border_color(colors.border)
-					.child(chip(&colors, crate::i18n::tr("viewer.source")))
+					.child(chip(&colors, title))
 					.child(chip(
 						&colors,
 						format_resolution(format.width, format.height),
 					))
 					.child(chip(&colors, format_fps(format.rate))),
 			)
-			.child(div().flex_1().child(self.viewer.clone()))
+			.child(
+				div()
+					.flex_1()
+					.min_w_0()
+					.min_h_0()
+					.overflow_hidden()
+					.child(self.viewer.clone()),
+			)
 	}
 }
 
@@ -126,13 +136,16 @@ impl<E: AppEngine> DockPanel for SourceViewerPanel<E> {
 		SOURCE_VIEWER
 	}
 
-	fn title(&self, _cx: &App) -> SharedString {
-		crate::i18n::tr("panel.source_viewer").into()
+	fn title(&self, cx: &App) -> SharedString {
+		viewer_title("panel.source_viewer", &self.engine.read(cx).source_media_name()).into()
 	}
 
-	fn tab_content(&self, _cx: &App) -> AnyElement {
+	fn tab_content(&self, cx: &App) -> AnyElement {
 		div()
-			.child(crate::i18n::tr("panel.source_viewer"))
+			.child(viewer_title(
+				"panel.source_viewer",
+				&self.engine.read(cx).source_media_name(),
+			))
 			.into_any_element()
 	}
 }

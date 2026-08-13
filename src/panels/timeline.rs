@@ -37,9 +37,7 @@
 //! narrow widths the sliders squeezed into the ruler's right side). They
 //! now live in a fixed-width trailing slot beside the timeline body, and the
 //! timeline wrapper is `min_w_0` so the ruler always keeps the remaining
-//! space — no overlap at 1600×900 or down to ~1100px wide. On hidpi (2x)
-//! displays the render compensates for a gpui view-positioning quirk with a
-//! top padding on the timeline canvas (see the note in [`Render::render`]).
+//! space — no overlap at 1600×900 or down to ~1100px wide.
 
 use gpui::colors::DefaultColors;
 use gpui::dock::{DockPanel, PanelEvent};
@@ -161,21 +159,8 @@ impl<E: AppEngine> TimelinePanel<E> {
 }
 
 impl<E: AppEngine> Render for TimelinePanel<E> {
-	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let colors = cx.default_colors().clone();
-
-		// The gpui view-positioning code prepaints a view's root at the panel
-		// content origin rather than at its flex wrapper's position, which is
-		// only noticeable on hidpi (2x) displays where the fixed 31px toolbar
-		// row and the timeline view's own 32px ruler row would otherwise
-		// overlap. The canvas wrapper carries a compensating top padding on
-		// hidpi so the ruler lands just below the toolbar; at 1x the layout
-		// is already correct and no padding is applied.
-		let view_offset = if window.scale_factor() > 1.5 {
-			TOOLBAR_HEIGHT + 2.0
-		} else {
-			0.0
-		};
 
 		// --- toolbar row (fixed 31px, above the ruler) --------------------
 		let mut toolbar = div()
@@ -345,7 +330,6 @@ impl<E: AppEngine> Render for TimelinePanel<E> {
 							.debug_selector(|| "timeline-canvas".into())
 							.flex_1()
 							.min_w_0()
-							.pt(px(view_offset))
 							.child(self.timeline.clone()),
 					)
 					.child(right_controls),

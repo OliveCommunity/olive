@@ -63,13 +63,26 @@ impl Render for HistoryPanel {
 				div()
 					.flex()
 					.items_center()
-					.justify_between()
 					.gap_2()
 					.px_3()
 					.py_1()
 					.text_color(colors.text)
-					.child(div().child(label))
-					.child(div().text_color(colors.disabled).child(*timestamp)),
+					.child(
+						div()
+							.flex_1()
+							.min_w_0()
+							.overflow_hidden()
+							.whitespace_nowrap()
+							.text_ellipsis()
+							.child(label),
+					)
+					.child(
+						div()
+							.flex_shrink_0()
+							.whitespace_nowrap()
+							.text_color(colors.disabled)
+							.child(*timestamp),
+					),
 			);
 		}
 		div().size_full().flex().flex_col().child(list)

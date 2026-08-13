@@ -32,8 +32,8 @@ use gpui_widgets::viewer::{ViewerEvent, ViewerWidget};
 
 use crate::oakui::timecode::{format_fps, format_resolution};
 use crate::oakui::{AppEngine, Monitor};
-use crate::panels::chip;
 use crate::panels::ids::PROGRAM_VIEWER;
+use crate::panels::{chip, viewer_title};
 
 /// Width of the audio level strip, per the design (26px).
 const METER_WIDTH: f32 = 26.0;
@@ -199,15 +199,32 @@ impl<E: AppEngine> Render for ProgramViewerPanel<E> {
 			.current_sequence()
 			.map(|sequence| sequence.format)
 			.unwrap_or(crate::oakui::VideoFormat::hd_1080p25());
+		let sequence_name = self
+			.engine
+			.read(cx)
+			.current_sequence()
+			.map(|sequence| sequence.name.clone())
+			.unwrap_or_default();
+		let title = viewer_title("panel.program_viewer", &sequence_name);
 
 		let body = match self.tab {
 			ProgramViewTab::Picture => div()
 				.flex_1()
 				.flex()
-				.child(div().flex_1().child(self.viewer.clone()))
+				.min_h_0()
+				.min_w_0()
+				.child(
+					div()
+						.flex_1()
+						.min_w_0()
+						.min_h_0()
+						.overflow_hidden()
+						.child(self.viewer.clone()),
+				)
 				.child(
 					div()
 						.w(px(METER_WIDTH))
+						.flex_shrink_0()
 						.border_l_1()
 						.border_color(colors.border)
 						.child(self.meter.clone()),
@@ -252,6 +269,7 @@ impl<E: AppEngine> Render for ProgramViewerPanel<E> {
 			.size_full()
 			.flex()
 			.flex_col()
+			.overflow_hidden()
 			.child(
 				div()
 					.flex()
@@ -261,7 +279,7 @@ impl<E: AppEngine> Render for ProgramViewerPanel<E> {
 					.py_1()
 					.border_b_1()
 					.border_color(colors.border)
-					.child(chip(&colors, crate::i18n::tr("viewer.program")))
+					.child(chip(&colors, title))
 					.child(chip(
 						&colors,
 						format_resolution(format.width, format.height),
@@ -293,13 +311,25 @@ impl<E: AppEngine> DockPanel for ProgramViewerPanel<E> {
 		PROGRAM_VIEWER
 	}
 
-	fn title(&self, _cx: &App) -> SharedString {
-		crate::i18n::tr("panel.program_viewer").into()
+	fn title(&self, cx: &App) -> SharedString {
+		let name = self
+			.engine
+			.read(cx)
+			.current_sequence()
+			.map(|sequence| sequence.name.clone())
+			.unwrap_or_default();
+		viewer_title("panel.program_viewer", &name).into()
 	}
 
-	fn tab_content(&self, _cx: &App) -> AnyElement {
+	fn tab_content(&self, cx: &App) -> AnyElement {
+		let name = self
+			.engine
+			.read(cx)
+			.current_sequence()
+			.map(|sequence| sequence.name.clone())
+			.unwrap_or_default();
 		div()
-			.child(crate::i18n::tr("panel.program_viewer"))
+			.child(viewer_title("panel.program_viewer", &name))
 			.into_any_element()
 	}
 }

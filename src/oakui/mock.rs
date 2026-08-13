@@ -445,16 +445,20 @@ impl MockEngine {
 				label: label.into(),
 				color,
 			};
-		let video = |h: f32| Hsla {
-			h,
-			s: 0.55,
-			l: 0.45,
+		// Clip colors follow the design's timeline: video and audio clips are
+		// green bars (#48a26d), slightly lighter for audio. The `h` argument
+		// is kept so the call sites read like before; every demo clip shares
+		// the design accent.
+		let video = |_h: f32| Hsla {
+			h: 0.402,
+			s: 0.385,
+			l: 0.459,
 			a: 1.0,
 		};
-		let audio = |h: f32| Hsla {
-			h,
-			s: 0.45,
-			l: 0.55,
+		let audio = |_h: f32| Hsla {
+			h: 0.402,
+			s: 0.32,
+			l: 0.54,
 			a: 1.0,
 		};
 		let node_color = |h: f32| Hsla {
@@ -948,7 +952,9 @@ impl MockEngine {
 	/// The demo audio levels: animated while the program monitor plays.
 	fn meter_levels(&self) -> Vec<f32> {
 		if !self.program_playing {
-			return vec![0.03, 0.03];
+			// Idle rest level: low but visible, so the program viewer's level
+			// strip reads as alive (the design shows a lit green strip).
+			return vec![0.42, 0.35];
 		}
 		let t = (self.meter_phase % 120) as f32 / 120.0 * std::f32::consts::TAU;
 		let level = 0.25 + 0.55 * (t.sin() * 0.6 + (2.0 * t).sin() * 0.4).abs();
@@ -967,6 +973,12 @@ impl EngineGateway for MockEngine {
 
 	fn current_sequence(&self) -> Option<&Sequence> {
 		Some(&self.sequence)
+	}
+
+	fn source_media_name(&self) -> String {
+		// The demo "source" media shown in the source viewer: the first
+		// footage item of the mock project.
+		"第一稿.mp4".into()
 	}
 
 	fn open_project(&mut self, path: PathBuf, cx: &mut Context<Self>) {

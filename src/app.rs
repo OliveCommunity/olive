@@ -46,7 +46,7 @@ use gpui::{
 	div, prelude::*, px, size, App, AsyncWindowContext, Bounds, Context, Entity, PathPromptOptions,
 	Render, Window, WindowBounds, WindowOptions,
 };
-use gpui_widgets::audio_meter::AudioLevelMeter;
+use gpui_widgets::audio_meter::{AudioLevelMeter, MeterOrientation};
 use gpui_widgets::dialog::progress::{progress_dialog, ProgressContent};
 use gpui_widgets::dialog::{DialogButton, Modal, ModalEvent, ModalOptions};
 use gpui_widgets::menu::{Menu, MenuBar, MenuBarEntry, MenuBarEvent, MenuItem};
@@ -204,8 +204,10 @@ impl<E: AppEngine> PanelRegistry for AppPanelRegistry<E> {
 			)),
 			"program-viewer" => Some(PanelHandle::new(
 				cx.new(|cx| {
-					let meter =
-						cx.new(|cx| AudioLevelMeter::new(30, self.engine.clone(), window, cx));
+					let meter = cx.new(|cx| {
+						AudioLevelMeter::new(30, self.engine.clone(), window, cx)
+							.with_orientation(MeterOrientation::Vertical)
+					});
 					ProgramViewerPanel::new(
 						self.engine.clone(),
 						self.program_clock.clone(),
@@ -279,7 +281,10 @@ impl<E: AppEngine> OakApp<E> {
 				));
 			timeline.update(cx, |view, _| view.set_clip_decorator(decorator));
 		}
-		let meter = cx.new(|cx| AudioLevelMeter::new(3, engine.clone(), window, cx));
+		let meter = cx.new(|cx| {
+			AudioLevelMeter::new(3, engine.clone(), window, cx)
+				.with_orientation(MeterOrientation::Vertical)
+		});
 
 		// --- menu bar ------------------------------------------------------
 		let menu_bar = cx.new(|cx| MenuBar::new(1, make_menus(true), window, cx));
@@ -375,10 +380,27 @@ impl<E: AppEngine> OakApp<E> {
 			);
 		});
 
-		// Tune the default split ratios: top 70%, project bin 17% of the row.
+		// Tune the default split ratios: viewers 60% / timeline 40%, project
+		// bin 17% of the row. The timeline share leaves room for all four
+		// tracks (V2/V1 video + A1/A2 audio) plus the ruler and toolbar at
+		// 1600×900; the viewers keep the remaining ~60%. The program viewer
+		// (with its audio level strip) is the active tab of its group, so the
+		// shell opens on the design's visible 素材查看器 | 序列查看器 row rather
+		// than on the node editor.
 		let mut layout: DockLayout = dock.read(cx).layout().clone();
-		layout.resize_split(&NodePath(vec![]), 0.70);
+		layout.resize_split(&NodePath(vec![]), 0.60);
 		layout.resize_split(&NodePath(vec![0]), 0.17);
+		// The program viewer's transport row (six transport buttons, the
+		// timecode, the 安全框/缩放 toggles) plus its 26px meter strip needs
+		// ~430px at 1600×900 — more than an equal share of the row gives it,
+		// and the design makes the program monitor the prominent viewer. Tilt
+		// the source/program and program/inspector boundaries accordingly so
+		// the transport's trailing toggles are not clipped.
+		layout.resize_split_child(&NodePath(vec![0]), 1, 0.52);
+		layout.resize_split_child(&NodePath(vec![0]), 2, 0.62);
+		if let Some(path) = layout.find_panel(PROGRAM_VIEWER) {
+			layout.set_tabs_active(&path, PROGRAM_VIEWER);
+		}
 		dock.update(cx, |dock, cx| dock.set_layout(layout, cx));
 
 		// --- status bar ----------------------------------------------------
@@ -962,7 +984,7 @@ impl<E: AppEngine> Render for OakApp<E> {
 			.flex()
 			.flex_col()
 			.child(self.menu_bar.clone())
-			.child(div().flex_1().child(self.dock.clone()))
+			.child(div().flex_1().min_h_0().child(self.dock.clone()))
 			.child(self.status_bar.clone());
 		if let Some(modal) = self.modal.modal_entity() {
 			root = root.child(modal);

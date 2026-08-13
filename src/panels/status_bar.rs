@@ -94,7 +94,7 @@ impl<E: AppEngine> Render for StatusBar<E> {
 			))
 			.child(div().px_2().text_color(colors.disabled).child(project))
 			.child(div().px_2().text_color(colors.disabled).child(format!(
-				"{} · {}",
+				"{} {}",
 				crate::i18n::tr("status.backend"),
 				self.engine.read(cx).backend_name(),
 			)))
