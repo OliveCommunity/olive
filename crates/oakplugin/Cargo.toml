@@ -19,6 +19,8 @@ oakcore-rs = { path = "../oakcore" }
 oakundo = { path = "../oakundo" }
 oaknode = { path = "../oaknode" }
 oakrender = { path = "../oakrender" }
+# Error derive（Display + std::error::Error，见 src/error.rs）；理由已登记 README。
+thiserror = "2"
 
 [features]
 # 测试桩（库内状态访问器）：cargo test --features test-stubs 时桥直连

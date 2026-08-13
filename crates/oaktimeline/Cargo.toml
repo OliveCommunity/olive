@@ -21,3 +21,5 @@ oakcore-rs = { path = "../oakcore" }
 oakundo = { path = "../oakundo" }
 oaknode = { path = "../oaknode" }
 oakcommon = { path = "../oakcommon" }
+# Error trait derive for the crate-internal error enum.
+thiserror = "2"

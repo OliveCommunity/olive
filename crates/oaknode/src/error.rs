@@ -17,6 +17,8 @@
 //! Error codes, mirroring `include/node/error.h` verbatim; project-wide
 //! -MMCCCC scheme (module registry in include/common/error.h), pass-through untranslated.
 
+use thiserror::Error;
+
 /// Success.
 pub const OAKNODE_OK: i32 = 0;
 /// Null handle or invalid argument.
@@ -34,17 +36,22 @@ pub const OAKNODE_E_NOMEM: i32 = -30005;
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Crate-internal error.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Error)]
 pub enum Error {
 	/// Null handle or invalid argument.
+	#[error("node: empty handle or invalid argument")]
 	Invalid,
 	/// Wrong state.
+	#[error("node: call not valid in current state")]
 	State,
 	/// Operation failed (context string is log-only).
+	#[error("node: operation failed: {0}")]
 	Failed(String),
 	/// Not found.
+	#[error("node: entry not found")]
 	NotFound,
 	/// Out of memory.
+	#[error("node: allocation failed")]
 	NoMem,
 }
 
@@ -60,3 +67,55 @@ impl Error {
 		}
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn public_codes_match_header_values() {
+		// Load-bearing values from include/node/error.h (module 03).
+		assert_eq!(OAKNODE_OK, 0);
+		assert_eq!(OAKNODE_E_INVALID, -30001);
+		assert_eq!(OAKNODE_E_STATE, -30002);
+		assert_eq!(OAKNODE_E_FAILED, -30003);
+		assert_eq!(OAKNODE_E_NOT_FOUND, -30004);
+		assert_eq!(OAKNODE_E_NOMEM, -30005);
+	}
+
+	#[test]
+	fn code_maps_each_variant() {
+		assert_eq!(Error::Invalid.code(), OAKNODE_E_INVALID);
+		assert_eq!(Error::State.code(), OAKNODE_E_STATE);
+		assert_eq!(Error::Failed("boom".to_string()).code(), OAKNODE_E_FAILED);
+		assert_eq!(Error::NotFound.code(), OAKNODE_E_NOT_FOUND);
+		assert_eq!(Error::NoMem.code(), OAKNODE_E_NOMEM);
+	}
+
+	#[test]
+	fn display_is_non_empty_for_each_variant() {
+		let variants = [
+			Error::Invalid,
+			Error::State,
+			Error::Failed("context".to_string()),
+			Error::NotFound,
+			Error::NoMem,
+		];
+		for e in &variants {
+			assert!(!e.to_string().is_empty());
+		}
+	}
+
+	#[test]
+	fn failed_display_includes_context() {
+		let e = Error::Failed("context info".to_string());
+		assert!(e.to_string().contains("context info"));
+	}
+
+	#[test]
+	fn error_is_object_safe() {
+		let e: Box<dyn std::error::Error> = Box::new(Error::NoMem);
+		assert!(!e.to_string().is_empty());
+	}
+}
+

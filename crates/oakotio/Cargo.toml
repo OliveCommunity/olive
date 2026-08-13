@@ -42,6 +42,9 @@ oakcore-rs = { path = "../oakcore" }
 # (src/common/rust/Cargo.toml).
 quick-xml = "0.41.0"
 
+# Error trait derive for the crate error enum.
+thiserror = "2"
+
 [dev-dependencies]
 
 # oakcore-rs: exact Rational comparisons in the integration tests

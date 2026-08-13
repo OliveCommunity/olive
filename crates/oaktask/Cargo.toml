@@ -42,3 +42,5 @@ oakotio = { path = "../oakotio" }
 # render-real integration test's cargo invocation working (it links the
 # real oakrender — now always — and skips the ticket stubs).
 oakrender = { path = "../oakrender" }
+# Error trait derive for the crate-internal error enum.
+thiserror = "2"

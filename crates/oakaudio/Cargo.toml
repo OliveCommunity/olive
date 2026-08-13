@@ -21,3 +21,5 @@ ffmpeg-next = "9"
 # Real audio output (M12 P1): the preview playback stream. The PortAudio
 # C library must be installed (macOS: brew install portaudio).
 portaudio = "0.8"
+# `std::error::Error` impls for the crate-internal error enum.
+thiserror = "2"

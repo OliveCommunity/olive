@@ -16,6 +16,8 @@
 
 //! Error and info codes (M10 §2.1; -MMCCCC scheme, module 10).
 
+use thiserror::Error;
+
 /// Success.
 pub const OAKSTORAGE_OK: i32 = 0;
 /// Project version too old (info code, positive).
@@ -45,23 +47,31 @@ pub const OAKSTORAGE_E_NOMEM: i32 = -100008;
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Crate-internal error.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum Error {
 	/// Null handle or invalid argument.
+	#[error("storage: invalid argument")]
 	Invalid,
 	/// Wrong state.
+	#[error("storage: call not valid in the current state")]
 	State,
 	/// Not found.
+	#[error("storage: not found")]
 	NotFound,
 	/// Operation failed (context string is log-only).
+	#[error("storage: operation failed: {0}")]
 	Failed(String),
 	/// No backend claimed the URI.
+	#[error("storage: no backend claimed the URI")]
 	NoBackend,
 	/// Format error.
+	#[error("storage: format error: {0}")]
 	Format(String),
 	/// I/O error.
+	#[error("storage: I/O error: {0}")]
 	Io(String),
 	/// Out of memory.
+	#[error("storage: out of memory")]
 	NoMem,
 }
 
@@ -78,5 +88,59 @@ impl Error {
 			Error::Io(_) => OAKSTORAGE_E_IO,
 			Error::NoMem => OAKSTORAGE_E_NOMEM,
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// One instance of every variant (data-carrying ones get a sample
+	/// payload).
+	fn all_errors() -> Vec<Error> {
+		vec![
+			Error::Invalid,
+			Error::State,
+			Error::NotFound,
+			Error::Failed("boom".to_string()),
+			Error::NoBackend,
+			Error::Format("bad xml".to_string()),
+			Error::Io("disk full".to_string()),
+			Error::NoMem,
+		]
+	}
+
+	#[test]
+	fn display_is_non_empty_for_every_variant() {
+		for e in all_errors() {
+			let s = e.to_string();
+			assert!(!s.is_empty(), "Display produced an empty message for {e:?}");
+		}
+	}
+
+	#[test]
+	fn error_is_object_safe() {
+		// `Box<dyn std::error::Error>` must be constructible for every
+		// variant; `source()` stays None (no wrapped downstream error).
+		let errors: Vec<Box<dyn std::error::Error>> = all_errors()
+			.into_iter()
+			.map(|e| Box::new(e) as Box<dyn std::error::Error>)
+			.collect();
+		for e in &errors {
+			assert!(!e.to_string().is_empty());
+			assert!(e.source().is_none());
+		}
+	}
+
+	#[test]
+	fn code_is_unaffected_by_trait_impl() {
+		assert_eq!(Error::Invalid.code(), OAKSTORAGE_E_INVALID);
+		assert_eq!(Error::State.code(), OAKSTORAGE_E_STATE);
+		assert_eq!(Error::NotFound.code(), OAKSTORAGE_E_NOT_FOUND);
+		assert_eq!(Error::Failed("boom".to_string()).code(), OAKSTORAGE_E_FAILED);
+		assert_eq!(Error::NoBackend.code(), OAKSTORAGE_E_NO_BACKEND);
+		assert_eq!(Error::Format("bad xml".to_string()).code(), OAKSTORAGE_E_FORMAT);
+		assert_eq!(Error::Io("disk full".to_string()).code(), OAKSTORAGE_E_IO);
+		assert_eq!(Error::NoMem.code(), OAKSTORAGE_E_NOMEM);
 	}
 }

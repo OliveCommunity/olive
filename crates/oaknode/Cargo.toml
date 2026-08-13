@@ -13,6 +13,7 @@ oakcore-rs = { path = "../oakcore" }
 oakcommon = { path = "../oakcommon" }
 oakundo = { path = "../oakundo" }
 oakcodec = { path = "../oakcodec" }
+thiserror = "2"
 
 [features]
 # In-crate stubs for the oakundo C ABI (and other module bridges) so

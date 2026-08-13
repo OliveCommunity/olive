@@ -17,6 +17,8 @@
 //! 错误码。与 `include/*/error.h` 逐字对应；项目统一 -MMCCCC 方案
 //! （模块号注册表见 include/common/error.h），跨模块透传不翻译。
 
+use thiserror::Error;
+
 /// 成功。
 pub const OAKPLUGIN_OK: i32 = 0;
 /// 空句柄或非法参数。
@@ -34,17 +36,22 @@ pub const OAKPLUGIN_E_NOMEM: i32 = -90005;
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// crate 内部错误。`code()` 给出对外错误码。
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum Error {
 	/// 空句柄或非法参数。
+	#[error("plugin: invalid argument")]
 	Invalid,
 	/// 状态不允许。
+	#[error("plugin: call not valid in the current state")]
 	State,
 	/// 底层失败，附人类可读上下文（仅日志，不出界）。
+	#[error("plugin: operation failed: {0}")]
 	Failed(String),
 	/// 未找到。
+	#[error("plugin: not found")]
 	NotFound,
 	/// 分配失败。
+	#[error("plugin: out of memory")]
 	NoMem,
 }
 
@@ -58,5 +65,53 @@ impl Error {
 			Error::NotFound => OAKPLUGIN_E_NOT_FOUND,
 			Error::NoMem => OAKPLUGIN_E_NOMEM,
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// One instance of every variant (data-carrying ones get a sample
+	/// payload).
+	fn all_errors() -> Vec<Error> {
+		vec![
+			Error::Invalid,
+			Error::State,
+			Error::Failed("boom".to_string()),
+			Error::NotFound,
+			Error::NoMem,
+		]
+	}
+
+	#[test]
+	fn display_is_non_empty_for_every_variant() {
+		for e in all_errors() {
+			let s = e.to_string();
+			assert!(!s.is_empty(), "Display produced an empty message for {e:?}");
+		}
+	}
+
+	#[test]
+	fn error_is_object_safe() {
+		// `Box<dyn std::error::Error>` must be constructible for every
+		// variant; `source()` stays None (no wrapped downstream error).
+		let errors: Vec<Box<dyn std::error::Error>> = all_errors()
+			.into_iter()
+			.map(|e| Box::new(e) as Box<dyn std::error::Error>)
+			.collect();
+		for e in &errors {
+			assert!(!e.to_string().is_empty());
+			assert!(e.source().is_none());
+		}
+	}
+
+	#[test]
+	fn code_is_unaffected_by_trait_impl() {
+		assert_eq!(Error::Invalid.code(), OAKPLUGIN_E_INVALID);
+		assert_eq!(Error::State.code(), OAKPLUGIN_E_STATE);
+		assert_eq!(Error::Failed("boom".to_string()).code(), OAKPLUGIN_E_FAILED);
+		assert_eq!(Error::NotFound.code(), OAKPLUGIN_E_NOT_FOUND);
+		assert_eq!(Error::NoMem.code(), OAKPLUGIN_E_NOMEM);
 	}
 }

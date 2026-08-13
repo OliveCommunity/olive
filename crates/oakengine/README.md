@@ -40,8 +40,10 @@ tests/
 ### Dependencies
 
 The facade's regular dependencies are `serde`/`serde_json` (the worker's
-NDJSON control-plane protocol, `src/worker.rs`) and `libc` (POSIX
-`shm_open`/`mmap`/`munmap`/`shm_unlink` for `src/ipc.rs`). Every module
+NDJSON control-plane protocol, `src/worker.rs`), `libc` (POSIX
+`shm_open`/`mmap`/`munmap`/`shm_unlink` for `src/ipc.rs`) and `thiserror`
+(the `Display` + `std::error::Error` impl for the facade error enum,
+`src/error.rs`). Every module
 call crosses the module C ABI as an `extern "C"` import (`src/bridge/`),
 and the module crates themselves are real dependencies: [`linkage`](src/linkage.rs)
 anchors them so their `#[no_mangle]` exports are linked into the

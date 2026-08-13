@@ -16,47 +16,75 @@
 
 //! Error type for the oakotio binding.
 
-use std::fmt;
-
 /// Errors produced by loading or saving OpenTimelineIO JSON.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum OtioError {
 	/// The document could not be parsed (or a value could not be
 	/// serialized) as JSON.
-	Json(serde_json::Error),
+	#[error("OpenTimelineIO JSON error: {0}")]
+	Json(#[from] serde_json::Error),
 	/// The underlying file could not be read or written.
-	Io(std::io::Error),
-}
-
-impl fmt::Display for OtioError {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			OtioError::Json(e) => write!(f, "OpenTimelineIO JSON error: {e}"),
-			OtioError::Io(e) => write!(f, "OpenTimelineIO file error: {e}"),
-		}
-	}
-}
-
-impl std::error::Error for OtioError {
-	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-		match self {
-			OtioError::Json(e) => Some(e),
-			OtioError::Io(e) => Some(e),
-		}
-	}
-}
-
-impl From<serde_json::Error> for OtioError {
-	fn from(e: serde_json::Error) -> OtioError {
-		OtioError::Json(e)
-	}
-}
-
-impl From<std::io::Error> for OtioError {
-	fn from(e: std::io::Error) -> OtioError {
-		OtioError::Io(e)
-	}
+	#[error("OpenTimelineIO file error: {0}")]
+	Io(#[from] std::io::Error),
 }
 
 /// Convenience alias used by the binding API.
 pub type Result<T> = std::result::Result<T, OtioError>;
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use std::error::Error as _;
+
+	/// Every variant renders a non-empty, module-prefixed message.
+	#[test]
+	fn display_is_non_empty() {
+		let json_err = serde_json::from_str::<()>("not json").unwrap_err();
+		let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "no such file");
+		let cases = [
+			(
+				OtioError::Json(json_err),
+				"OpenTimelineIO JSON error: ",
+			),
+			(OtioError::Io(io_err), "OpenTimelineIO file error: "),
+		];
+		for (err, prefix) in cases {
+			let msg = err.to_string();
+			assert!(!msg.is_empty(), "Display for {err:?} is empty");
+			assert!(msg.starts_with(prefix), "{msg:?} lacks module prefix");
+		}
+	}
+
+	/// The wrapped error is reachable through `source()` (downstream error
+	/// wrapping relationship).
+	#[test]
+	fn source_forwards() {
+		let json_err = serde_json::from_str::<()>("not json").unwrap_err();
+		let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "no such file");
+		assert!(OtioError::Json(json_err).source().is_some());
+		assert!(OtioError::Io(io_err).source().is_some());
+	}
+
+	/// The `From` conversions (used by `?`) still work.
+	#[test]
+	fn from_conversions() {
+		let json_err = serde_json::from_str::<()>("not json").unwrap_err();
+		let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "no such file");
+		assert!(matches!(OtioError::from(json_err), OtioError::Json(_)));
+		assert!(matches!(OtioError::from(io_err), OtioError::Io(_)));
+	}
+
+	/// The error is object-safe: every variant boxes into
+	/// `Box<dyn std::error::Error>`.
+	#[test]
+	fn object_safe() {
+		let json_err = serde_json::from_str::<()>("not json").unwrap_err();
+		let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "no such file");
+		let errs: Vec<Box<dyn std::error::Error>> =
+			vec![Box::new(OtioError::Json(json_err)), Box::new(OtioError::Io(io_err))];
+		assert_eq!(errs.len(), 2);
+		for err in &errs {
+			assert!(!err.to_string().is_empty());
+		}
+	}
+}

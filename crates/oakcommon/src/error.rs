@@ -17,6 +17,8 @@
 //! Error codes, mirroring `include/common/error.h`; project-wide
 //! -MMCCCC scheme (module 01), pass-through untranslated.
 
+use thiserror::Error;
+
 /// Success.
 pub const OAKCOMMON_OK: i32 = 0;
 /// Empty handle or invalid argument.
@@ -34,17 +36,22 @@ pub const OAKCOMMON_E_NOMEM: i32 = -10005;
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Crate-internal error.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum Error {
 	/// Empty handle or invalid argument.
+	#[error("common: empty handle or invalid argument")]
 	Invalid,
 	/// Wrong state.
+	#[error("common: call not valid in current state")]
 	State,
 	/// Operation failed (context string is log-only).
+	#[error("common: operation failed: {0}")]
 	Failed(String),
 	/// Not found.
+	#[error("common: entry not found")]
 	NotFound,
 	/// Out of memory.
+	#[error("common: allocation failed")]
 	NoMem,
 }
 
@@ -152,5 +159,31 @@ mod tests {
 		assert!(matches!(e, Error::Failed(_)));
 		assert_eq!(e.code(), OAKCOMMON_E_FAILED);
 		assert!(format!("{e:?}").contains("bad colorspace"));
+	}
+
+	#[test]
+	fn display_is_non_empty_for_each_variant() {
+		let variants = [
+			Error::Invalid,
+			Error::State,
+			Error::Failed("context".to_string()),
+			Error::NotFound,
+			Error::NoMem,
+		];
+		for e in &variants {
+			assert!(!e.to_string().is_empty());
+		}
+	}
+
+	#[test]
+	fn failed_display_includes_context() {
+		let e = Error::Failed("context info".to_string());
+		assert!(e.to_string().contains("context info"));
+	}
+
+	#[test]
+	fn error_is_object_safe() {
+		let e: Box<dyn std::error::Error> = Box::new(Error::NoMem);
+		assert!(!e.to_string().is_empty());
 	}
 }

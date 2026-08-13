@@ -10,3 +10,4 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 oakcore-rs = { path = "../oakcore" }
+thiserror = "2"

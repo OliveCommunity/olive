@@ -3964,6 +3964,7 @@ dependencies = [
  "oakcore-rs",
  "oakffmpeg-link",
  "portaudio",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -3973,6 +3974,7 @@ dependencies = [
  "ffmpeg-next",
  "oakcore-rs",
  "oakffmpeg-link",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -3984,6 +3986,7 @@ dependencies = [
  "oakcore-rs",
  "ocio-rs",
  "quick-xml 0.41.0",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -4007,6 +4010,7 @@ dependencies = [
  "oakundo",
  "serde",
  "serde_json",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -4021,6 +4025,7 @@ dependencies = [
  "oakcommon",
  "oakcore-rs",
  "oakundo",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -4031,6 +4036,7 @@ dependencies = [
  "quick-xml 0.41.0",
  "serde",
  "serde_json",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -4042,6 +4048,7 @@ dependencies = [
  "oaknode",
  "oakrender",
  "oakundo",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -4053,6 +4060,7 @@ dependencies = [
  "oakcore-rs",
  "oaknode",
  "ocio-rs",
+ "thiserror 2.0.20",
  "wgpu 25.0.2",
 ]
 
@@ -4068,6 +4076,7 @@ dependencies = [
  "oakrender",
  "oaktimeline",
  "oakundo",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -4078,6 +4087,7 @@ dependencies = [
  "oakcore-rs",
  "oaknode",
  "oakundo",
+ "thiserror 2.0.20",
 ]
 
 [[package]]
@@ -4085,6 +4095,7 @@ name = "oakundo"
 version = "0.1.0"
 dependencies = [
  "oakcore-rs",
+ "thiserror 2.0.20",
 ]
 
 [[package]]

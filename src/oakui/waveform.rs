@@ -87,15 +87,12 @@ impl WaveformCache {
 	/// when missing. Failures (missing media, no audio stream) leave the
 	/// clip silent (no waveform drawn).
 	pub fn refresh(&self, clip: u64, filename: &str, duration_frames: i64) {
-		eprintln!("DBG-WFC: refresh clip={clip}");
 		if self.get(clip).is_some() {
-			eprintln!("DBG-WFC: cache hit");
 			return;
 		}
 		let Some(waveform) = extract(filename, duration_frames, self.fps) else {
 			return;
 		};
-		eprintln!("DBG-WFC: inserting");
 		let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
 		if !map.contains_key(&clip) {
 			map.insert(clip, Arc::new(waveform));

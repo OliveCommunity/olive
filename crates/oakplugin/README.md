@@ -180,6 +180,9 @@ src/
 - **依赖登记**：`cc`（build-dependencies）——编译 C shim 的唯一
   稳妥方式（手写 `Command::new("cc")` 无法处理跨平台 flag/交叉编译；
   零运行时依赖不变）。M11 第 2 期未新增依赖。
+- **依赖登记**：`thiserror`（dependencies）——为 crate 错误枚举
+  （src/error.rs）派生 `Display` + `std::error::Error` 的惯例实现；
+  项目内其他模块（oakotio 等）已采用同版本（"2"），避免手写样板。
 - suite 函数表经 `suite_v1()` 等 accessor 暴露（`static` 初始化
   放 lazy/OnceLock 里），`fetch_suite` 只查表。
 - **GL 上下文归属**：oakplugin 不持有 GL 上下文（C ABI 无

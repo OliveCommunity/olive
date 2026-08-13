@@ -25,6 +25,8 @@ wgpu = "25"
 # the vendored OpenColorIO C++ sources (cmake/ninja required); without it
 # ocio-sys builds a stub (all color tests then early-return).
 ocio-rs = { version = "0.2", features = ["bundled"] }
+# `std::error::Error` impls for the crate-internal error enum.
+thiserror = "2"
 
 [dev-dependencies]
 # Test binaries that pull oakcodec's decoder (the direct-call bridge) link

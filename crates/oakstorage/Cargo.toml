@@ -15,6 +15,9 @@ panic = "unwind"
 oakcore-rs = { path = "../oakcore" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+# Error derive (Display + std::error::Error) for the crate error enum
+# (src/error.rs). Same major version the other modules use (oakotio, ...).
+thiserror = "2"
 # Native OTIO JSON model (project-local; see src/bindings/oakotio).
 oakotio = { path = "../oakotio" }
 # Database backends via SeaORM (sync facade: a private current-thread

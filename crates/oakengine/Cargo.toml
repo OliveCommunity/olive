@@ -16,6 +16,9 @@ serde_json = "1"
 # POSIX shm_open/mmap/munmap/shm_unlink constants + syscalls for the
 # shared-memory frame-slot transport (src/ipc.rs).
 libc = "0.2"
+# Error derive (Display + std::error::Error) for the crate error enum
+# (src/error.rs). Same major version the other modules use (oakotio, ...).
+thiserror = "2"
 
 # Every module call crosses the module C ABI as an `extern "C"` import
 # (src/bridge/). The module crates below are REAL dependencies so their
