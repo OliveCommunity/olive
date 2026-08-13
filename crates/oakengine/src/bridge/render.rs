@@ -134,6 +134,8 @@ pub fn oakrender_ticket_render_audio(
 	mode: c_int,
 	cb: Option<unsafe extern "C" fn(CHandle, *mut c_void)>,
 	userdata: *mut c_void,
+	montage: *const oakrender::ffi::OakMontageClip,
+	montage_count: c_int,
 ) -> CHandle {
 	unsafe {
 		oakrender::ffi::ticket::oakrender_ticket_render_audio(
@@ -146,8 +148,16 @@ pub fn oakrender_ticket_render_audio(
 			mode,
 			cb,
 			userdata,
+			montage,
+			montage_count,
 		)
 	}
+}
+
+/// `oakrender_audio_samples_free` — release the samples block returned
+/// by `oakrender_ticket_get_samples` (NULL no-op).
+pub fn oakrender_audio_samples_free(samples: *mut c_void) {
+	unsafe { oakrender::ffi::ticket::oakrender_audio_samples_free(samples) }
 }
 
 /// Direct call into the `oakrender` crate (single-lib unification; the

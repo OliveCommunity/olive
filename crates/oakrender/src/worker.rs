@@ -344,7 +344,7 @@ mod tests {
 			if let Some(g) = &gate {
 				g.fetch_add(1, Ordering::SeqCst);
 			}
-			Ok(Texture::dummy())
+			Ok(crate::ticket::TicketPayload::Video(Texture::dummy()))
 		});
 		Job {
 			node_identity: tag,
@@ -358,6 +358,8 @@ mod tests {
 				cache_dir: None,
 				cache_id: None,
 				cache_timebase: None,
+				footage: None,
+				montage: Vec::new(),
 			}),
 			produce,
 			done: Box::new(move |r| {
@@ -409,7 +411,7 @@ mod tests {
 						std::thread::sleep(Duration::from_millis(1));
 					}
 				}
-				Ok(Texture::dummy())
+				Ok(crate::ticket::TicketPayload::Video(Texture::dummy()))
 			});
 			let job = Job {
 				node_identity: i,
@@ -423,6 +425,8 @@ mod tests {
 					cache_dir: None,
 					cache_id: None,
 					cache_timebase: None,
+					footage: None,
+					montage: Vec::new(),
 				}),
 				produce,
 				done: Box::new(move |r| {
@@ -463,7 +467,7 @@ mod tests {
 		let tx1 = tx.clone();
 		let tx2 = tx.clone();
 		let boom: Producer = Arc::new(|_, _| panic!("boom"));
-		let ok: Producer = Arc::new(|_, _| Ok(Texture::dummy()));
+		let ok: Producer = Arc::new(|_, _| Ok(crate::ticket::TicketPayload::Video(Texture::dummy())));
 		let params = Arc::new(VideoTicketParams {
 			viewer: 0,
 			time: Rational::new(0, 1),
@@ -473,6 +477,8 @@ mod tests {
 			cache_dir: None,
 			cache_id: None,
 			cache_timebase: None,
+			footage: None,
+			montage: Vec::new(),
 		});
 		pool.post(Job {
 			node_identity: 0,

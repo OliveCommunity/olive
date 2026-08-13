@@ -795,7 +795,7 @@ mod tests {
 			if filename.ends_with("test_video.mp4") {
 				let mut desc = FootageDescription::new("fake");
 				let vp =
-					unsafe { oakcommon_videoparams_init_with_time_base(1920, 1080, 1001, 30000) };
+					unsafe { oakcommon_videoparams_init_with_time_base(1920, 1080, 1001, 30000, 0, 4, 1, 1, 0, 1) };
 				unsafe { oakcommon_videoparams_set_stream_index(vp.clone(), 0) };
 				desc.push_stream(StreamEntry::Video(vp));
 				Some(desc)
@@ -830,7 +830,7 @@ mod tests {
 			&self,
 			_p: &RetrieveVideoParams,
 		) -> crate::error::Result<Arc<Frame>> {
-			let params = unsafe { oakcommon_videoparams_init_basic(100, 50) };
+			let params = unsafe { oakcommon_videoparams_init_basic(100, 50, 0, 4, 1, 1, 0, 1) };
 			let frame = Arc::new(Frame::with_params(params));
 			if self.retain_frame {
 				// Keep an alias alive so the ffi decode sees a shared Arc.

@@ -29,5 +29,25 @@
 fn main() {
 	if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
 		println!("cargo:rustc-cdylib-link-arg=-Wl,-undefined,dynamic_lookup");
+		// The static FFmpeg's transitive system deps (libz etc.) are
+		// recorded as `@rpath/libz.1.dylib`; the dylib itself carries the
+		// rpath so standalone binaries (and the packaged app) resolve
+		// them without extra host rpaths.
+		println!("cargo:rustc-cdylib-link-arg=-Wl,-rpath,/usr/lib");
+	}
+	// The dlsym codec bridge (M12 P0) resolves `oakcodec_*` from the
+	// process-global scope; the engine test binaries statically link the
+	// module crates, so their symbols must be exported from the main
+	// executable.
+	println!("cargo:rustc-link-arg-tests=-Wl,-export_dynamic");
+	if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+		// The bundled OpenColorIO's macos system monitor references
+		// IOKit / ColorSync / CoreGraphics display APIs; the engine
+		// dylib links with `-undefined,dynamic_lookup`, so test binaries
+		// must resolve them.
+		for fw in ["IOKit", "ColorSync", "CoreGraphics"] {
+			println!("cargo:rustc-link-arg-tests=-framework");
+			println!("cargo:rustc-link-arg-tests={fw}");
+		}
 	}
 }

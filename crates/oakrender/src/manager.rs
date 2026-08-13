@@ -69,8 +69,10 @@ impl RenderManager {
 		let backend = BackendKind::from_user_config();
 		let mut pool = WorkerPool::new(0);
 		pool.start();
-		let producer: crate::ticket::Producer =
-			Arc::new(|time, params| eval::render_produced_frame(time, params));
+		let producer: crate::ticket::Producer = Arc::new(|time, params| {
+			eval::render_produced_frame(time, params)
+				.map(crate::ticket::TicketPayload::Video)
+		});
 		let tickets = Arc::new(TicketArena::new(pool.clone(), producer));
 		*guard = Some(Arc::new(RenderManager {
 			pool,

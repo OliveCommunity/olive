@@ -248,25 +248,22 @@ fn manager_device_lifecycle() {
 			OAKENGINE_E_FAILED
 		);
 
-		// No output device selected → clean E_FAILED with a diagnostic.
+		// M12 P1: with no explicit device the push still succeeds — the
+		// samples buffer for the default output device (unavailable
+		// devices keep playback silent instead of failing the push).
 		assert_eq!(unsafe { oakengine_audio_set_output_device(-1) }, 0);
 		let params = audio_params(48000, 3, 10); // f32 packed, stereo, 48 kHz
-		let mut err = [0i8; 128];
 		assert_eq!(
 			unsafe {
 				oakengine_audio_push_to_output(
 					params as *const c_void,
 					c"data".as_ptr(),
 					4,
-					err.as_mut_ptr(),
-					err.len() as c_int,
+					std::ptr::null_mut(),
+					0,
 				)
 			},
-			AUDIO_E_FAILED
-		);
-		assert_eq!(
-			unsafe { CStr::from_ptr(err.as_ptr()) }.to_str().unwrap(),
-			"No output device is set"
+			0
 		);
 		common::oakcore_audioparams_free(params);
 
@@ -1239,9 +1236,13 @@ fn audio_output_levels() {
 		assert_eq!(oakengine_audio_output_levels(peaks.as_mut_ptr(), 0), OAKENGINE_E_INVALID);
 		assert_eq!(oakengine_audio_output_levels(peaks.as_mut_ptr(), -1), OAKENGINE_E_INVALID);
 
-		// Fresh-ish manager, nothing buffered: 0 channels.
+		// Fresh-ish manager, nothing buffered: 0 channels. The Rust
+		// singleton survives destroy (the OnceLock cannot be reset; a
+		// DESTROYED flag flips instead), so the output buffer from a
+		// previous test may still hold samples — clear it explicitly.
 		assert_eq!(oakengine_audio_destroy_instance(), 0);
 		assert_eq!(oakengine_audio_create_instance(), 0);
+		assert_eq!(oakengine_audio_clear_buffered_output(), 0);
 		assert_eq!(oakengine_audio_output_levels(peaks.as_mut_ptr(), 4), 0);
 
 		// Push 480 frames of packed F32 stereo: left ramps to 0.25, right

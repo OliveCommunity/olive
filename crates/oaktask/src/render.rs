@@ -272,6 +272,10 @@ impl RenderTask {
 				abi_version: 0,
 			},
 			cache: self.cache,
+			footage_filename: std::ptr::null(),
+			footage_stream: 0,
+			montage: std::ptr::null(),
+			montage_count: 0,
 		};
 
 		let ticket = unsafe {

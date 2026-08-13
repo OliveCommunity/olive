@@ -19,9 +19,10 @@
 //! (`oaknode_project_deep_copy` / `sync_copy`); this module only tracks
 //! which copy belongs to which viewer and when to re-sync.
 //!
-//! The oaknode C ABI functions are resolved through [`crate::bridge::node`]
-//! (dlsym); without liboaknode linked (cargo test) the copy operations
-//! fail explainably and the success-path tests are `#[ignore]`d.
+//! The oaknode C ABI functions go through [`crate::bridge::node`]; oaknode
+//! never implemented the deep-copy symbols (single-lib plan §4.1 — dead
+//! direction), so the copy operations fail explainably and the
+//! success-path tests are `#[ignore]`d.
 
 use crate::bridge::node::{ChangeRecord, ProjectHandle};
 use crate::error::{Error, Result};

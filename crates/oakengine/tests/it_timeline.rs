@@ -224,8 +224,17 @@ unsafe fn clip_at_ok(
 /// in-to-out), track structure, clip editing (split / trim / delete /
 /// ripple / link / toggle), the marker-handle and workarea-handle
 /// families, the free contracts, and the oaknode alive-count deltas.
+/// Serializes the binary's tests: the module's live-handle ledger is
+/// process-global and several tests assert its deltas, so parallel
+/// execution would race the counts.
+fn zu_lock() -> std::sync::MutexGuard<'static, ()> {
+	static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+	LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 #[test]
 fn timeline_zu_lifecycle() {
+	let _zu = zu_lock();
 	common::force_link();
 	let _ = force_runtime_syms();
 
@@ -1658,6 +1667,7 @@ fn timeline_zu_lifecycle() {
 /// clean documented value — never a crash/abort/panic.
 #[test]
 fn timeline_zu_failure_paths() {
+	let _zu = zu_lock();
 	common::force_link();
 	let _ = force_runtime_syms();
 
@@ -2396,6 +2406,7 @@ fn timeline_zu_failure_paths() {
 /// set with a ripple request is exercised in `timeline_zu_lifecycle`.)
 #[test]
 fn timeline_zu_crash_repros() {
+	let _zu = zu_lock();
 	common::force_link();
 	// NULL clips with a zero count is a legal empty set -> clean no-op.
 	assert_eq!(
@@ -2407,4 +2418,68 @@ fn timeline_zu_crash_repros() {
 		unsafe { oakengine_clip_toggle_enabled(std::ptr::null_mut(), 1) },
 		-1
 	);
+}
+
+/// M12 P4: cross-track clip move — one undoable entry gaps the source
+/// track and places the clip on the destination track.
+#[test]
+fn move_clip_to_track_crosses_tracks() {
+	let _zu = zu_lock();
+	common::force_link();
+
+	let project = unsafe { oakengine_project_create() };
+	assert_eq!(unsafe { oakengine_project_new(project) }, 0);
+	let name = std::ffi::CString::new("CrossTrack").unwrap();
+	let seq = unsafe { oakengine_sequence_new(project, name.as_ptr()) };
+	assert!(!seq.is_null());
+	assert_eq!(unsafe { oakengine_sequence_add_track(seq, 0) }, 0);
+	assert_eq!(unsafe { oakengine_sequence_add_track(seq, 0) }, 1);
+
+	// Two clips on track 0.
+	let media = std::env::temp_dir().join(format!("oak_it_cross_{}.mp4", std::process::id()));
+	let media_c = std::ffi::CString::new(media.to_string_lossy().into_owned()).unwrap();
+	assert_eq!(
+		unsafe { oakengine::testmedia::oakengine_testmedia_write_clip(media_c.as_ptr(), 64, 64, 10, 10) },
+		0
+	);
+	let footage = unsafe { oakengine::node::oakengine_project_import_footage(project, media_c.as_ptr()) };
+	assert!(!footage.is_null());
+	let c1 = unsafe { oakengine::timeline::oakengine_sequence_add_footage_clip_ex(seq, footage, 0, 0, 0, 10, 0) };
+	assert!(!c1.is_null());
+	let c2 = unsafe { oakengine::timeline::oakengine_sequence_add_footage_clip_ex(seq, footage, 0, 0, 10, 20, 0) };
+	assert!(!c2.is_null());
+	unsafe { oakengine::node::oakengine_footage_free(footage) };
+
+	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 0) }, 2);
+	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 1) }, 0);
+
+	// Move the first clip (index 0) to track 1 at frame 5.
+	let rc = unsafe {
+		oakengine::timeline::oakengine_sequence_move_clip_to_track(seq, 0, 0, 0, 1, 5)
+	};
+	assert_eq!(rc, 0, "cross-track move succeeds");
+	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 0) }, 1);
+	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 1) }, 1);
+
+	// The moved clip starts at frame 5 on the destination track.
+	let moved = unsafe { oakengine_sequence_clip_at(seq, 0, 1, 0) };
+	assert!(!moved.is_null());
+	let mut in_ts: i64 = -1;
+	let mut out_ts: i64 = -1;
+	let mut media_in: i64 = -1;
+	assert_eq!(
+		unsafe { oakengine_clip_get_range(moved, &mut in_ts, &mut out_ts, &mut media_in) },
+		0
+	);
+	assert_eq!(in_ts, 5, "placed at the requested in point");
+
+	// Undo restores both clips on track 0.
+	assert_eq!(unsafe { oakengine::node::oakengine_project_undo(project) }, 0);
+	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 0) }, 2);
+	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 1) }, 0);
+	unsafe { oakengine::node::oakengine_project_redo(project) };
+	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 0) }, 1);
+	assert_eq!(unsafe { oakengine_sequence_clip_count(seq, 0, 1) }, 1);
+
+	let _ = std::fs::remove_file(&media);
 }

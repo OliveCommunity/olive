@@ -72,7 +72,7 @@ impl PreviewAudioDevice {
 	/// (`PreviewAudioDevice::read`): the notify callback fires AFTER the
 	/// internal lock is released, and only when an interval boundary is
 	/// crossed by this read.
-	pub fn read(&mut self, data: &mut [u8]) -> i64 {
+	pub fn read(&self, data: &mut [u8]) -> i64 {
 		let mut notify = false;
 		let copy_length;
 		{
@@ -116,7 +116,7 @@ impl PreviewAudioDevice {
 	///
 	/// `// CPP-PARITY: src/audio/src/previewaudiodevice.cpp:69`
 	/// (`PreviewAudioDevice::write`).
-	pub fn write(&mut self, data: &[u8]) -> i64 {
+	pub fn write(&self, data: &[u8]) -> i64 {
 		let mut inner = self.lock.lock().unwrap();
 		inner.buffer.extend_from_slice(data);
 		data.len() as i64
@@ -127,7 +127,7 @@ impl PreviewAudioDevice {
 	///
 	/// `// CPP-PARITY: src/audio/src/previewaudiodevice.cpp:31`
 	/// (`PreviewAudioDevice::set_params` = `samples_to_bytes(1)`).
-	pub fn set_params(&mut self, params: AudioParams) {
+	pub fn set_params(&self, params: AudioParams) {
 		self.set_bytes_per_frame(params.samples_to_bytes(1) as i32);
 	}
 
@@ -137,12 +137,12 @@ impl PreviewAudioDevice {
 	}
 
 	/// Override the frame size directly.
-	pub fn set_bytes_per_frame(&mut self, bytes: i32) {
+	pub fn set_bytes_per_frame(&self, bytes: i32) {
 		self.lock.lock().unwrap().bytes_per_frame = bytes;
 	}
 
 	/// Set the notify interval in bytes.
-	pub fn set_notify_interval(&mut self, interval: i64) {
+	pub fn set_notify_interval(&self, interval: i64) {
 		self.lock.lock().unwrap().notify_interval = interval;
 	}
 
@@ -162,7 +162,7 @@ impl PreviewAudioDevice {
 	///
 	/// `// CPP-PARITY: src/audio/src/previewaudiodevice.cpp:77`
 	/// (`PreviewAudioDevice::clear`): also resets the consumed-frames clock.
-	pub fn clear(&mut self) {
+	pub fn clear(&self) {
 		let mut inner = self.lock.lock().unwrap();
 		inner.buffer.clear();
 		inner.bytes_read = 0;

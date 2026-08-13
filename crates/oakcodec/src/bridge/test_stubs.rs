@@ -35,7 +35,9 @@ use std::ffi::{c_char, c_int, c_void, CStr};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-use crate::bridge::common::{OakAudioParams, OakNodeBlock, OakSubtitleParams, OakVideoParams};
+use crate::bridge::common::{
+	OakAudioParams, OakFileFunctions, OakNodeBlock, OakOIIOUtils, OakSubtitleParams, OakVideoParams,
+};
 use crate::bridge::render::{OakCancelAtom, OakCodecFrame, OakRenderRenderer, OakRenderTexture};
 use crate::handle::OAKCODEC_ABI_VERSION;
 
@@ -119,12 +121,25 @@ pub extern "C" fn oakcommon_videoparams_init() -> OakVideoParams {
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_videoparams_init_basic(width: c_int, height: c_int) -> OakVideoParams {
+pub extern "C" fn oakcommon_videoparams_init_basic(
+	width: c_int,
+	height: c_int,
+	pixel_format: c_int,
+	nb_channels: c_int,
+	pixel_aspect_num: c_int,
+	pixel_aspect_den: c_int,
+	interlacing: c_int,
+	divider: c_int,
+) -> OakVideoParams {
 	new_params_handle(MockParams {
 		width,
 		height,
-		divider: 1,
-		channel_count: 4, // internal RGBA pipeline layout
+		format: pixel_format,
+		channel_count: nb_channels,
+		pixel_aspect_num,
+		pixel_aspect_den,
+		interlacing,
+		divider,
 		..Default::default()
 	})
 }
@@ -136,14 +151,24 @@ pub extern "C" fn oakcommon_videoparams_init_with_time_base(
 	height: c_int,
 	time_base_num: i64,
 	time_base_den: i64,
+	pixel_format: c_int,
+	nb_channels: c_int,
+	pixel_aspect_num: c_int,
+	pixel_aspect_den: c_int,
+	interlacing: c_int,
+	divider: c_int,
 ) -> OakVideoParams {
 	new_params_handle(MockParams {
 		width,
 		height,
 		time_base_num,
 		time_base_den,
-		divider: 1,
-		channel_count: 4, // internal RGBA pipeline layout
+		format: pixel_format,
+		channel_count: nb_channels,
+		pixel_aspect_num,
+		pixel_aspect_den,
+		interlacing,
+		divider,
 		..Default::default()
 	})
 }
@@ -165,37 +190,52 @@ pub extern "C" fn oakcommon_videoparams_free(params: *mut OakVideoParams) {
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_videoparams_get_width(params: OakVideoParams) -> c_int {
-	params_get(params.ctx).width
+pub extern "C" fn oakcommon_videoparams_get_width(params: OakVideoParams, width: *mut c_int) -> c_int {
+	let w = params_get(params.ctx).width;
+	if width.is_null() {
+		return -1;
+	}
+	unsafe { *width = w };
+	0
 }
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_videoparams_get_height(params: OakVideoParams) -> c_int {
-	params_get(params.ctx).height
+pub extern "C" fn oakcommon_videoparams_get_height(params: OakVideoParams, height: *mut c_int) -> c_int {
+	let h = params_get(params.ctx).height;
+	if height.is_null() {
+		return -1;
+	}
+	unsafe { *height = h };
+	0
 }
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_videoparams_get_format(params: OakVideoParams) -> c_int {
-	params_get(params.ctx).format
+pub extern "C" fn oakcommon_videoparams_get_format(params: OakVideoParams, format: *mut c_int) -> c_int {
+	let f = params_get(params.ctx).format;
+	if format.is_null() {
+		return -1;
+	}
+	unsafe { *format = f };
+	0
 }
 
 #[no_mangle]
 #[cfg(test)]
 pub extern "C" fn oakcommon_videoparams_get_time_base(
 	params: OakVideoParams,
-	out_num: *mut i64,
-	out_den: *mut i64,
+	numerator: *mut c_int,
+	denominator: *mut c_int,
 ) -> c_int {
 	let p = params_get(params.ctx);
-	if !out_num.is_null() {
-		unsafe { *out_num = p.time_base_num };
+	if !numerator.is_null() {
+		unsafe { *numerator = p.time_base_num as c_int };
 	}
-	if !out_den.is_null() {
-		unsafe { *out_den = p.time_base_den };
+	if !denominator.is_null() {
+		unsafe { *denominator = p.time_base_den as c_int };
 	}
-	1
+	0
 }
 
 #[no_mangle]
@@ -218,20 +258,37 @@ pub extern "C" fn oakcommon_videoparams_set_format(params: OakVideoParams, forma
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_videoparams_get_is_valid(params: OakVideoParams) -> c_int {
+pub extern "C" fn oakcommon_videoparams_get_is_valid(params: OakVideoParams, is_valid: *mut c_int) -> c_int {
 	let p = params_get(params.ctx);
-	((p.width > 0) && (p.height > 0)) as c_int
+	let v = (p.width > 0 && p.height > 0) as c_int;
+	if is_valid.is_null() {
+		return -1;
+	}
+	unsafe { *is_valid = v };
+	0
 }
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_videoparams_equals(a: OakVideoParams, b: OakVideoParams) -> c_int {
-	(params_get(a.ctx) == params_get(b.ctx)) as c_int
+pub extern "C" fn oakcommon_videoparams_equals(
+	a: OakVideoParams,
+	b: OakVideoParams,
+	equal: *mut c_int,
+) -> c_int {
+	let eq = (params_get(a.ctx) == params_get(b.ctx)) as c_int;
+	if equal.is_null() {
+		return -1;
+	}
+	unsafe { *equal = eq };
+	0
 }
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_videoparams_static_get_bytes_per_pixel(format: c_int) -> c_int {
+pub extern "C" fn oakcommon_videoparams_static_get_bytes_per_pixel(
+	format: c_int,
+	_channels: c_int,
+) -> c_int {
 	// U10 packs to 4 bytes; U8 to 1; U16/F16 to 2; F32 to 4.
 	match format {
 		0 => 1, // U8
@@ -261,8 +318,16 @@ pub extern "C" fn oakcommon_videoparams_frame_rate_as_time_base(
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_videoparams_get_stream_index(params: OakVideoParams) -> c_int {
-	params_get(params.ctx).stream_index
+pub extern "C" fn oakcommon_videoparams_get_stream_index(
+	params: OakVideoParams,
+	index: *mut c_int,
+) -> c_int {
+	let i = params_get(params.ctx).stream_index;
+	if index.is_null() {
+		return -1;
+	}
+	unsafe { *index = i };
+	0
 }
 
 #[no_mangle]
@@ -273,8 +338,16 @@ pub extern "C" fn oakcommon_videoparams_set_stream_index(params: OakVideoParams,
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_videoparams_get_divider(params: OakVideoParams) -> c_int {
-	params_get(params.ctx).divider
+pub extern "C" fn oakcommon_videoparams_get_divider(
+	params: OakVideoParams,
+	divider: *mut c_int,
+) -> c_int {
+	let d = params_get(params.ctx).divider;
+	if divider.is_null() {
+		return -1;
+	}
+	unsafe { *divider = d };
+	0
 }
 
 #[no_mangle]
@@ -302,32 +375,72 @@ pub extern "C" fn oakcommon_videoparams_get_frame_rate(
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_videoparams_get_duration(params: OakVideoParams) -> i64 {
-	params_get(params.ctx).duration
+pub extern "C" fn oakcommon_videoparams_get_duration(
+	params: OakVideoParams,
+	duration: *mut i64,
+) -> c_int {
+	let d = params_get(params.ctx).duration;
+	if duration.is_null() {
+		return -1;
+	}
+	unsafe { *duration = d };
+	0
 }
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_videoparams_get_channel_count(params: OakVideoParams) -> c_int {
-	params_get(params.ctx).channel_count
+pub extern "C" fn oakcommon_videoparams_get_channel_count(
+	params: OakVideoParams,
+	count: *mut c_int,
+) -> c_int {
+	let c = params_get(params.ctx).channel_count;
+	if count.is_null() {
+		return -1;
+	}
+	unsafe { *count = c };
+	0
 }
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_videoparams_get_color_primaries(params: OakVideoParams) -> c_int {
-	params_get(params.ctx).color_primaries
+pub extern "C" fn oakcommon_videoparams_get_color_primaries(
+	params: OakVideoParams,
+	primaries: *mut c_int,
+) -> c_int {
+	let p = params_get(params.ctx).color_primaries;
+	if primaries.is_null() {
+		return -1;
+	}
+	unsafe { *primaries = p };
+	0
 }
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_videoparams_get_color_transfer(params: OakVideoParams) -> c_int {
-	params_get(params.ctx).color_trc
+pub extern "C" fn oakcommon_videoparams_get_color_transfer(
+	params: OakVideoParams,
+	transfer: *mut c_int,
+) -> c_int {
+	let t = params_get(params.ctx).color_trc;
+	if transfer.is_null() {
+		return -1;
+	}
+	unsafe { *transfer = t };
+	0
 }
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_videoparams_get_interlacing(params: OakVideoParams) -> c_int {
-	params_get(params.ctx).interlacing
+pub extern "C" fn oakcommon_videoparams_get_interlacing(
+	params: OakVideoParams,
+	interlacing: *mut c_int,
+) -> c_int {
+	let i = params_get(params.ctx).interlacing;
+	if interlacing.is_null() {
+		return -1;
+	}
+	unsafe { *interlacing = i };
+	0
 }
 
 #[no_mangle]
@@ -639,7 +752,14 @@ pub extern "C" fn oakcore_rational_free(rational: *mut c_void) {
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_subtitleparams_get_stream_index(_params: OakSubtitleParams) -> c_int {
+pub extern "C" fn oakcommon_subtitleparams_get_stream_index(
+	_params: OakSubtitleParams,
+	index: *mut c_int,
+) -> c_int {
+	if index.is_null() {
+		return -1;
+	}
+	unsafe { *index = 0 };
 	0
 }
 
@@ -710,11 +830,14 @@ static FAKE_PATH: &[u8] = b"/mock/config/oak\0";
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_filefunctions_init() {}
+pub extern "C" fn oakcommon_filefunctions_init() -> OakFileFunctions {
+	OakFileFunctions::null()
+}
 
 #[no_mangle]
 #[cfg(test)]
 pub extern "C" fn oakcommon_filefunctions_get_configuration_location(
+	_self_: OakFileFunctions,
 	buf: *mut c_char,
 	buf_size: c_int,
 ) -> c_int {
@@ -723,21 +846,38 @@ pub extern "C" fn oakcommon_filefunctions_get_configuration_location(
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_filefunctions_get_unique_file_identifier(path: *const c_char) -> i64 {
-	if path.is_null() {
-		return 0;
+pub extern "C" fn oakcommon_filefunctions_get_unique_file_identifier(
+	_self_: OakFileFunctions,
+	path: *const c_char,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	if path.is_null() || buf.is_null() {
+		return -1;
 	}
-	unsafe { CStr::from_ptr(path) }
+	let hash = unsafe { CStr::from_ptr(path) }
 		.to_bytes()
 		.iter()
 		.fold(14695981039346656037u64, |acc, &b| {
 			(acc ^ b as u64).wrapping_mul(1099511628211)
-		}) as i64
+		});
+	let s = format!("{}", hash as i64);
+	let bytes = s.as_bytes();
+	let n = bytes.len() + 1;
+	if buf_size < n as c_int {
+		return n as c_int;
+	}
+	unsafe {
+		std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, bytes.len());
+		*buf.add(bytes.len()) = 0;
+	}
+	0
 }
 
 #[no_mangle]
 #[cfg(test)]
 pub extern "C" fn oakcommon_filefunctions_get_application_path(
+	_self_: OakFileFunctions,
 	buf: *mut c_char,
 	buf_size: c_int,
 ) -> c_int {
@@ -755,12 +895,7 @@ pub extern "C" fn oakcommon_filefunctions_free(_ptr: *mut c_void) {}
 #[no_mangle]
 #[cfg(test)]
 pub extern "C" fn oakcommon_colortransform_init_output(
-	_src_colorspace: c_int,
-	_src_trc: c_int,
-	_dst_colorspace: c_int,
-	_dst_trc: c_int,
-	_premultiplied: c_int,
-	_chroma_coeffs: *const c_void,
+	_output: *const c_char,
 ) -> OakVideoParams {
 	oakcommon_videoparams_init()
 }
@@ -788,40 +923,82 @@ pub extern "C" fn oakcommon_colortransform_free(params: *mut OakVideoParams) {
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_ffmpegutils_get_native_sample_format(sample_format: c_int) -> c_int {
-	sample_format
+pub extern "C" fn oakcommon_ffmpegutils_get_native_sample_format(
+	smp_fmt: c_int,
+	out: *mut c_int,
+) -> c_int {
+	if out.is_null() {
+		return -1;
+	}
+	unsafe { *out = smp_fmt };
+	0
 }
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_ffmpegutils_get_compatible_pixel_format(format: c_int) -> c_int {
-	format
+pub extern "C" fn oakcommon_ffmpegutils_get_compatible_pixel_format(
+	pix_fmt: c_int,
+	out: *mut c_int,
+) -> c_int {
+	if out.is_null() {
+		return -1;
+	}
+	unsafe { *out = pix_fmt };
+	0
 }
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_ffmpegutils_get_ffmpeg_pixel_format(format: c_int) -> c_int {
-	format
+pub extern "C" fn oakcommon_ffmpegutils_get_ffmpeg_pixel_format(
+	pix_fmt: c_int,
+	_channel_count: c_int,
+	out: *mut c_int,
+) -> c_int {
+	if out.is_null() {
+		return -1;
+	}
+	unsafe { *out = pix_fmt };
+	0
 }
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_ffmpegutils_get_ffmpeg_sample_format(format: c_int) -> c_int {
-	format
+pub extern "C" fn oakcommon_ffmpegutils_get_ffmpeg_sample_format(
+	smp_fmt: c_int,
+	out: *mut c_int,
+) -> c_int {
+	if out.is_null() {
+		return -1;
+	}
+	unsafe { *out = smp_fmt };
+	0
 }
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_ffmpegutils_get_compatible_bridge_pixel_format(format: c_int) -> c_int {
-	format
+pub extern "C" fn oakcommon_ffmpegutils_get_compatible_bridge_pixel_format(
+	pix_fmt: c_int,
+	_maximum_pix_fmt: c_int,
+	out: *mut c_int,
+) -> c_int {
+	if out.is_null() {
+		return -1;
+	}
+	unsafe { *out = pix_fmt };
+	0
 }
 
 #[no_mangle]
 #[cfg(test)]
 pub extern "C" fn oakcommon_ffmpegutils_convert_jpeg_space_to_regular_space(
-	format: c_int,
+	pix_fmt: c_int,
+	out: *mut c_int,
 ) -> c_int {
-	format
+	if out.is_null() {
+		return -1;
+	}
+	unsafe { *out = pix_fmt };
+	0
 }
 
 // ---------------------------------------------------------------------------
@@ -830,40 +1007,58 @@ pub extern "C" fn oakcommon_ffmpegutils_convert_jpeg_space_to_regular_space(
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_oiioutils_init() {}
-
-#[no_mangle]
-#[cfg(test)]
-pub extern "C" fn oakcommon_oiioutils_get_oiio_base_type_from_format(format: c_int) -> c_int {
-	format
+pub extern "C" fn oakcommon_oiioutils_init() -> OakOIIOUtils {
+	OakOIIOUtils::null()
 }
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_oiioutils_get_format_from_oiio_basetype(basetype: c_int) -> c_int {
-	basetype
+pub extern "C" fn oakcommon_oiioutils_get_oiio_base_type_from_format(
+	_self_: OakOIIOUtils,
+	pixel_format: c_int,
+	out_base_type: *mut c_int,
+) -> c_int {
+	if out_base_type.is_null() {
+		return -1;
+	}
+	unsafe { *out_base_type = pixel_format };
+	0
+}
+
+#[no_mangle]
+#[cfg(test)]
+pub extern "C" fn oakcommon_oiioutils_get_format_from_oiio_basetype(
+	_self_: OakOIIOUtils,
+	base_type: c_int,
+	out_pixel_format: *mut c_int,
+) -> c_int {
+	if out_pixel_format.is_null() {
+		return -1;
+	}
+	unsafe { *out_pixel_format = base_type };
+	0
 }
 
 #[no_mangle]
 #[cfg(test)]
 pub extern "C" fn oakcommon_oiioutils_get_pixel_aspect_ratio(
-	_width: c_int,
-	_height: c_int,
-	out_num: *mut c_int,
-	out_den: *mut c_int,
+	_self_: OakOIIOUtils,
+	_pixel_aspect_ratio: f64,
+	out_numerator: *mut c_int,
+	out_denominator: *mut c_int,
 ) -> c_int {
-	if !out_num.is_null() {
-		unsafe { *out_num = 1 };
+	if !out_numerator.is_null() {
+		unsafe { *out_numerator = 1 };
 	}
-	if !out_den.is_null() {
-		unsafe { *out_den = 1 };
+	if !out_denominator.is_null() {
+		unsafe { *out_denominator = 1 };
 	}
-	1
+	0
 }
 
 #[no_mangle]
 #[cfg(test)]
-pub extern "C" fn oakcommon_oiioutils_free() {}
+pub extern "C" fn oakcommon_oiioutils_free(_self_: *mut OakOIIOUtils) {}
 
 // ---------------------------------------------------------------------------
 // oakrender_cancelatom_* (real in-memory cancel state)

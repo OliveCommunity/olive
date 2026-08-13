@@ -286,6 +286,20 @@ pub trait AppEngine:
 
 	/// Closes the current project, leaving the app with no sequence.
 	fn close_project(&mut self, cx: &mut Context<Self>);
+	/// The timeline waveform cache (M12 P4); `None` when the backend
+	/// does not provide waveforms.
+	fn waveform_cache(&self) -> Option<std::sync::Arc<crate::oakui::waveform::WaveformCache>> {
+		None
+	}
+
+	/// Import a media file into the project (M12 P3). Default: no-op.
+	fn import_footage(
+		&mut self,
+		_path: std::path::PathBuf,
+		_cx: &mut Context<Self>,
+	) -> Result<(), String> {
+		Ok(())
+	}
 
 	/// Starts an export of the current sequence in `format` to `path` and
 	/// returns a session the host polls for progress and can cancel.

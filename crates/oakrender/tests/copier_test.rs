@@ -40,10 +40,10 @@ fn frame_producer() -> oakrender::ticket::Producer {
 		let mut p = VideoParamsPod::default();
 		p.width = 4;
 		p.height = 4;
-		f.set_video_params(p);
-		f.allocate();
-		Ok(Texture::wrap_frame(f))
-	})
+	f.set_video_params(p);
+	f.allocate();
+	Ok(oakrender::ticket::TicketPayload::Video(Texture::wrap_frame(f)))
+})
 }
 
 fn cacher() -> (oakrender::autocacher::PreviewAutoCacher, WorkerPool) {

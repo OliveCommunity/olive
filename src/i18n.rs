@@ -137,6 +137,8 @@ pub const WIDGET_KEYS: &[&str] = &[
 	"viewer.clear_range",
 	"effect_stack.empty",
 	"effect_stack.add",
+	"explorer.tree",
+	"explorer.icons",
 ];
 
 /// Installs the active language's widget strings into the
@@ -179,6 +181,7 @@ const EN: &[(&str, &str)] = &[
 	// --- File ---
 	("menu.file.new_project", "New Project…"),
 	("menu.file.open_project", "Open Project…"),
+	("menu.file.import_footage", "Import Footage…"),
 	("menu.file.save", "Save"),
 	("menu.file.save_as", "Save As…"),
 	("menu.file.close", "Close Project"),
@@ -282,6 +285,8 @@ const EN: &[(&str, &str)] = &[
 	("viewer.step_forward", "Next Frame"),
 	("viewer.out_point", "Set Out Point"),
 	("viewer.clear_range", "Clear In/Out Range"),
+	("explorer.tree", "Tree"),
+	("explorer.icons", "Icons"),
 	// --- widget-baked strings (synced to gpui_widgets::i18n) ---
 	("viewer.safe_frames", "Safe Frames"),
 	("viewer.zoom", "Zoom"),
@@ -294,6 +299,7 @@ const EN: &[(&str, &str)] = &[
 	("dialog.cancel", "Cancel"),
 	("dialog.close", "Close"),
 	("file.open.title", "Open Project"),
+	("file.import_footage.title", "Import Footage"),
 	("file.save_as.title", "Save Project As"),
 	("preferences.title", "Preferences"),
 	("preferences.backend", "Renderer backend"),
@@ -325,6 +331,7 @@ const ZH: &[(&str, &str)] = &[
 	// --- File ---
 	("menu.file.new_project", "新建项目…"),
 	("menu.file.open_project", "打开项目…"),
+	("menu.file.import_footage", "导入素材…"),
 	("menu.file.save", "保存"),
 	("menu.file.save_as", "另存为…"),
 	("menu.file.close", "关闭项目"),
@@ -428,6 +435,8 @@ const ZH: &[(&str, &str)] = &[
 	("viewer.step_forward", "下一帧"),
 	("viewer.out_point", "设置出点"),
 	("viewer.clear_range", "清除入出点"),
+	("explorer.tree", "树"),
+	("explorer.icons", "图标"),
 	// --- widget-baked strings (synced to gpui_widgets::i18n) ---
 	("viewer.safe_frames", "安全框"),
 	("viewer.zoom", "缩放"),
@@ -440,6 +449,7 @@ const ZH: &[(&str, &str)] = &[
 	("dialog.cancel", "取消"),
 	("dialog.close", "关闭"),
 	("file.open.title", "打开项目"),
+	("file.import_footage.title", "导入素材"),
 	("file.save_as.title", "项目另存为"),
 	("preferences.title", "偏好设置"),
 	("preferences.backend", "渲染后端"),

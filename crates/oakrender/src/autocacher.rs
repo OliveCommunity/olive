@@ -150,6 +150,8 @@ impl PreviewAutoCacher {
 				cache_dir: None,
 				cache_id: None,
 				cache_timebase: None,
+				footage: None,
+				montage: Vec::new(),
 			},
 			Box::new(|_| {}),
 		);
@@ -185,6 +187,8 @@ impl PreviewAutoCacher {
 				cache_dir: None,
 				cache_id: None,
 				cache_timebase: None,
+				footage: None,
+				montage: Vec::new(),
 			},
 			done,
 		);
@@ -303,7 +307,7 @@ mod tests {
 			p.height = 4;
 			f.set_video_params(p);
 			f.allocate();
-			Ok(Texture::wrap_frame(f))
+			Ok(crate::ticket::TicketPayload::Video(Texture::wrap_frame(f)))
 		})
 	}
 

@@ -36,6 +36,7 @@ use crate::bridge::common::{
 };
 use crate::frame::Frame;
 use oakcore_rs::Rational;
+use std::ffi::c_int;
 
 /// Fixed header size, in bytes, of an OIIO frame buffer.
 ///
@@ -221,8 +222,14 @@ pub fn oiio_buffer_to_frame(buffer: &[u8]) -> crate::error::Result<Frame> {
 		oakcommon_videoparams_init_with_time_base(
 			header.width,
 			header.height,
-			header.time_base_num,
-			header.time_base_den,
+			header.time_base_num as c_int,
+			header.time_base_den as c_int,
+			0,
+			4,
+			1,
+			1,
+			0,
+			1,
 		)
 	};
 	unsafe {
@@ -347,7 +354,7 @@ mod tests {
 	/// test-stub params pattern as `frame.rs`.
 	fn make_frame() -> Frame {
 		// SAFETY: test-stub videoparams; ownership moves into `with_params`.
-		let params = unsafe { oakcommon_videoparams_init_with_time_base(100, 50, 1, 30) };
+		let params = unsafe { oakcommon_videoparams_init_with_time_base(100, 50, 1, 30, 0, 4, 1, 1, 0, 1) };
 		unsafe { oakcommon_videoparams_set_format(params.clone(), 0) }; // U8
 		let mut frame = Frame::with_params(params);
 		frame.set_timestamp(Rational::new(5, 2));

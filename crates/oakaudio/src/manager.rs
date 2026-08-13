@@ -53,11 +53,15 @@ struct ManagerInner {
 	input_device: i32,
 	/// Output params the buffer is configured for.
 	output_params: Option<AudioParams>,
-	/// Queued output samples feeding the (virtual) playback clock.
-	output_buffer: PreviewAudioDevice,
+	/// Queued output samples feeding the playback clock (shared with the
+	/// PortAudio output callback).
+	output_buffer: std::sync::Arc<PreviewAudioDevice>,
 	/// Whether the output "stream" is running (stand-in for
 	/// `Pa_IsStreamActive`).
 	output_started: bool,
+	/// The real PortAudio output stream (M12 P1; opened lazily on the
+	/// first pushed samples).
+	output_device_stream: crate::outputdevice::PortAudioOutput,
 	/// Active oakcodec recording encoder (NULL when idle).
 	recording: Option<CHandle>,
 }
@@ -77,8 +81,9 @@ impl Default for ManagerInner {
 			output_device: PA_NO_DEVICE,
 			input_device: PA_NO_DEVICE,
 			output_params: None,
-			output_buffer: PreviewAudioDevice::new(),
+			output_buffer: std::sync::Arc::new(PreviewAudioDevice::new()),
 			output_started: false,
+			output_device_stream: crate::outputdevice::PortAudioOutput::new(),
 			recording: None,
 		}
 	}
@@ -115,6 +120,16 @@ pub fn create_instance() -> Result<()> {
 /// [`create_instance`] resurrects the existing box).
 pub fn destroy_instance() {
 	DESTROYED.store(true, Ordering::SeqCst);
+	// The C++ singleton is deleted on destroy; the OnceLock cannot be
+	// reset, so the resurrection must at least come back with a fresh
+	// playback state (the previous session's output params/buffer would
+	// otherwise leak into the next session's meters and clock).
+	if let Some(m) = MANAGER.get() {
+		let mut inner = m.lock().unwrap_or_else(|e| e.into_inner());
+		inner.output_params = None;
+		inner.output_buffer.clear();
+		inner.output_started = false;
+	}
 }
 
 /// Return a handle to the process-wide AudioManager (borrowed; empty when
@@ -172,12 +187,18 @@ pub fn push_to_output(
 	_error_buf: &mut [u8],
 ) -> Result<()> {
 	let mut m = with_instance(self_)?;
-	if m.output_device == PA_NO_DEVICE {
-		return Err(Error::Failed("No output device is set".to_string()));
-	}
 	if m.output_params.as_ref() != Some(&params) {
 		m.output_params = Some(params);
 		m.output_buffer.set_params(params);
+		// M12 P1: open (or re-open) the real output stream on a format
+		// change; device < 0 selects the system default. A stream
+		// failure keeps the samples buffered (silent playback) instead
+		// of failing the push.
+		let device = m.output_device;
+		let rate = params.sample_rate;
+		let channels = params.channel_count();
+		let sink = m.output_buffer.clone();
+		let _ = m.output_device_stream.ensure_open(device, rate, channels, sink);
 	}
 	m.output_buffer.write(samples);
 	m.output_started = true;
@@ -247,6 +268,8 @@ pub fn set_output_device(self_: &CHandle, device: i32) -> Result<()> {
 	m.output_device = device;
 	m.output_started = false;
 	m.output_buffer.clear();
+	// The stream reopens with the new device on the next push.
+	m.output_device_stream.close();
 	Ok(())
 }
 
@@ -271,6 +294,7 @@ pub fn hard_reset(self_: &CHandle) -> Result<()> {
 	let mut m = with_instance(self_)?;
 	m.output_started = false;
 	m.output_buffer.clear();
+	m.output_device_stream.close();
 	Ok(())
 }
 
@@ -442,4 +466,72 @@ pub fn output_levels(self_: &CHandle, peaks: &mut [f32]) -> Result<i32> {
 /// Number of live oakaudio reference-counted objects (leak check).
 pub fn debug_alive_count() -> i32 {
 	crate::handle::alive_count()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// M12 P1 acceptance: the PortAudio output callback pulls pushed
+	/// samples and advances the playback clock. Requires real audio
+	/// hardware; skips (returns) when PortAudio is unavailable.
+	#[test]
+	fn output_callback_consumes_pushed_samples() {
+		// Skip when there is no audio system (CI boxes).
+		let pa = match portaudio::PortAudio::new() {
+			Ok(pa) => pa,
+			Err(_) => return,
+		};
+		if pa.default_output_device().is_err() {
+			return;
+		}
+
+		DESTROYED.store(false, Ordering::SeqCst);
+		let _ = MANAGER.get_or_init(|| Mutex::new(ManagerInner::default()));
+		let h = instance();
+		assert!(!h.is_null());
+
+		// A 440 Hz sine, 0.2 s at 48 kHz stereo, packed F32.
+		let params = AudioParams {
+			sample_rate: 48000,
+			channel_layout: 0x3,
+			format: crate::params::SampleFormat::F32,
+		};
+		let frames = 9600usize;
+		let mut samples = Vec::with_capacity(frames * 2);
+		for i in 0..frames {
+			let v = (i as f32 * 440.0 * std::f32::consts::TAU / 48000.0).sin() * 0.5;
+			samples.push(v);
+			samples.push(v);
+		}
+		let bytes: Vec<u8> = samples
+			.iter()
+			.flat_map(|s| s.to_le_bytes())
+			.collect();
+		push_to_output(
+			&h,
+			params,
+			&bytes,
+			&mut vec![0u8; 256],
+		)
+		.expect("push succeeds even without an explicit device");
+
+		// Give the audio thread time to consume.
+		std::thread::sleep(std::time::Duration::from_millis(300));
+		let consumed = {
+			let m = with_instance(&h).unwrap();
+			m.output_buffer.output_frames_consumed()
+		};
+		assert!(
+			consumed > 0,
+			"the output callback must consume pushed frames"
+		);
+		assert!(
+			consumed >= frames as i64 - 1024,
+			"most pushed frames are consumed: {consumed}"
+		);
+
+		let mut m = with_instance(&h).unwrap();
+		m.output_device_stream.close();
+	}
 }

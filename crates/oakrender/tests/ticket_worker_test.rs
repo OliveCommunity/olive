@@ -28,6 +28,14 @@ use oakrender::error::Error;
 use oakrender::frame::VideoParamsPod;
 use oakrender::texture::{Frame, Texture};
 use oakrender::ticket::{TicketArena, TicketId, VideoTicketParams};
+
+/// Unwrap a video ticket payload for assertions.
+fn res_video(res: &oakrender::ticket::TicketPayload) -> &oakrender::texture::Texture {
+	match res {
+		oakrender::ticket::TicketPayload::Video(t) => t,
+		_ => panic!("expected a video payload"),
+	}
+}
 use oakrender::worker::{GraphSnapshotStore, WorkerPool};
 
 fn small_frame() -> Frame {
@@ -41,7 +49,7 @@ fn small_frame() -> Frame {
 }
 
 fn ok_producer() -> oakrender::ticket::Producer {
-	Arc::new(|_, _| Ok(Texture::wrap_frame(small_frame())))
+	Arc::new(|_, _| Ok(oakrender::ticket::TicketPayload::Video(Texture::wrap_frame(small_frame()))))
 }
 
 fn params(time: Rational) -> VideoTicketParams {
@@ -54,6 +62,8 @@ fn params(time: Rational) -> VideoTicketParams {
 		cache_dir: None,
 		cache_id: None,
 		cache_timebase: None,
+		footage: None,
+		montage: Vec::new(),
 	}
 }
 
@@ -90,8 +100,8 @@ fn ticket_completion_once_success() {
 	);
 
 	let res = arena.result(id).unwrap().unwrap();
-	assert_eq!(res.size(), (8, 4));
-	assert_eq!(res.format(), oakcore_rs::PixelFormat::F32);
+	assert_eq!(res_video(&res).size(), (8, 4));
+	assert_eq!(res_video(&res).format(), oakcore_rs::PixelFormat::F32);
 	assert!(arena.is_finished(id));
 	pool.shutdown();
 }
@@ -108,7 +118,7 @@ fn ticket_completion_once_on_cancel() {
 		while !release2.load(Ordering::Acquire) {
 			std::thread::sleep(Duration::from_millis(1));
 		}
-		Ok(Texture::wrap_frame(small_frame()))
+		Ok(oakrender::ticket::TicketPayload::Video(Texture::wrap_frame(small_frame())))
 	});
 	let arena = TicketArena::new(pool.clone(), blocking);
 
@@ -146,7 +156,7 @@ fn shutdown_drains_completions() {
 			while !gate.load(Ordering::Acquire) {
 				std::thread::sleep(Duration::from_millis(1));
 			}
-			Ok(Texture::wrap_frame(small_frame()))
+			Ok(oakrender::ticket::TicketPayload::Video(Texture::wrap_frame(small_frame())))
 		})
 	};
 	let arena = TicketArena::new(pool.clone(), blocking);
@@ -235,7 +245,7 @@ fn process_pool_roundtrip() {
 	pp.start().unwrap();
 	let (tx, rx) = mpsc::channel();
 	let produce: oakrender::ticket::Producer =
-		Arc::new(|_, _| Ok(Texture::wrap_frame(small_frame())));
+		Arc::new(|_, _| Ok(oakrender::ticket::TicketPayload::Video(Texture::wrap_frame(small_frame()))));
 	let job = oakrender::worker::Job {
 		node_identity: 1,
 		time: Rational::new(0, 1),
@@ -328,7 +338,7 @@ fn ffi_ticket_render_frame_roundtrip() {
 				while !gate.load(Ordering::Acquire) {
 					std::thread::sleep(Duration::from_millis(1));
 				}
-				Ok(Texture::wrap_frame(small_frame()))
+				Ok(oakrender::ticket::TicketPayload::Video(Texture::wrap_frame(small_frame())))
 			});
 			assert!(pool.post(oakrender::worker::Job {
 				node_identity: 99,
@@ -342,6 +352,8 @@ fn ffi_ticket_render_frame_roundtrip() {
 					cache_dir: None,
 					cache_id: None,
 					cache_timebase: None,
+					footage: None,
+					montage: Vec::new(),
 				}),
 				produce: producer,
 				done: Box::new(move |_| {
@@ -434,6 +446,8 @@ fn ffi_ticket_render_audio() {
 			0,
 			None,
 			std::ptr::null_mut(),
+			std::ptr::null(),
+			0,
 		);
 		assert!(h.is_null());
 
@@ -448,6 +462,8 @@ fn ffi_ticket_render_audio() {
 			0,
 			None,
 			std::ptr::null_mut(),
+			std::ptr::null(),
+			0,
 		);
 		assert!(!h.is_null());
 		assert_eq!(ffi::ticket::oakrender_ticket_get_type(h), 1); // audio

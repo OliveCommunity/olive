@@ -279,8 +279,11 @@ fn read_string(f: impl Fn(*mut c_char, c_int) -> c_int) -> String {
 	if needed <= 0 {
 		return String::new();
 	}
-	let mut buf = vec![0 as c_char; needed as usize];
-	f(buf.as_mut_ptr(), needed as c_int);
+	// The facade's two-stage getters report the length WITHOUT the
+	// trailing NUL (`string_result` subtracts one); the buffer must
+	// carry the NUL too.
+	let mut buf = vec![0 as c_char; needed as usize + 1];
+	f(buf.as_mut_ptr(), needed as c_int + 1);
 	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
 	String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, len) })
 		.into_owned()
@@ -515,103 +518,9 @@ fn clip_color(index: u64) -> Hsla {
 	}
 }
 
-/// A node in the real node graph. The facade's graph surface is not bound in
-/// this increment, so the graph is always empty — the types exist to satisfy
-/// the data-source trait.
-#[derive(Debug, Clone)]
-pub struct RealNode {
-	id: NodeId,
-}
-
-impl NodeData for RealNode {
-	type Port = RealPort;
-
-	fn id(&self) -> NodeId {
-		self.id
-	}
-
-	fn title(&self) -> SharedString {
-		SharedString::new_static("")
-	}
-
-	fn position(&self) -> gpui::Point<Pixels> {
-		point(px(0.0), px(0.0))
-	}
-
-	fn inputs(&self) -> Vec<Self::Port> {
-		Vec::new()
-	}
-
-	fn outputs(&self) -> Vec<Self::Port> {
-		Vec::new()
-	}
-
-	fn header_color(&self) -> Option<Hsla> {
-		None
-	}
-
-	fn is_collapsed(&self) -> bool {
-		false
-	}
-
-	fn is_enabled(&self) -> bool {
-		false
-	}
-}
-
-/// A port on a real node (always empty for now).
-#[derive(Debug, Clone)]
-pub struct RealPort;
-
-impl PortData for RealPort {
-	fn id(&self) -> PortId {
-		PortId(0)
-	}
-
-	fn kind(&self) -> PortKind {
-		PortKind::Input
-	}
-
-	fn label(&self) -> SharedString {
-		SharedString::new_static("")
-	}
-
-	fn data_type(&self) -> PortDataType {
-		PortDataType::new("video", hsla(0.55, 0.75, 0.6, 1.0))
-	}
-
-	fn is_connected(&self) -> bool {
-		false
-	}
-}
-
-/// An edge in the real node graph (always empty for now).
-#[derive(Debug, Clone)]
-pub struct RealEdge {
-	id: EdgeId,
-}
-
-impl EdgeData for RealEdge {
-	fn id(&self) -> EdgeId {
-		self.id
-	}
-
-	fn from_node(&self) -> NodeId {
-		NodeId(0)
-	}
-
-	fn from_port(&self) -> PortId {
-		PortId(0)
-	}
-
-	fn to_node(&self) -> NodeId {
-		NodeId(0)
-	}
-
-	fn to_port(&self) -> PortId {
-		PortId(0)
-	}
-}
+/// A node in the real node graph (M12 P2: built from the facade's
+/// project-node enumeration by [`crate::oakui::nodegraph`]).
+pub use crate::oakui::nodegraph::{RealEdge, RealNode, RealPort};
 
 // ---------------------------------------------------------------------------
 // The engine
@@ -634,10 +543,9 @@ pub struct RealEngine {
 	pub program_clock: Entity<RealClock>,
 	/// The timeline snapshot (rebuilt on open/edit).
 	tracks: Vec<RealTrack>,
-	/// The material-bin root entries.
-	bin_roots: Vec<ProjectEntry>,
-	/// The material-bin children of the footage folder.
-	bin_children: Vec<ProjectEntry>,
+	/// Timeline waveform cache (M12 P4), created lazily at the current
+	/// frame rate.
+	waveforms: Mutex<Option<Arc<crate::oakui::waveform::WaveformCache>>>,
 	/// The selected material-bin entry (demo state).
 	selected_item: Option<u64>,
 	/// The single selected timeline clip — the effect stack's target
@@ -678,6 +586,54 @@ pub struct RealEngine {
 }
 
 impl RealEngine {
+	/// Render one tick's worth of audio at the program playhead and queue
+	/// it for playback (M12 P1). Failures are silent: playback continues
+	/// video-only.
+	fn pull_audio_tick(&mut self, cx: &mut Context<Self>) {
+		let renderer = {
+			let slot = self.renderer.lock().unwrap_or_else(|e| e.into_inner());
+			match &*slot {
+				RendererSlot::Ready(handle) => RendererHandle(handle.0),
+				_ => return,
+			}
+		};
+		let fps = self.frame_rate();
+		let frame = self.clock_frame(Monitor::Program, cx).0;
+		if frame < 0 {
+			return;
+		}
+		// ~1/60 s of sequence per tick.
+		let chunk = ((fps.num as f64 / fps.den as f64) / 60.0).max(0.001) as i64;
+		let buf = unsafe { oakengine_renderer_render_audio(renderer.0, frame, chunk) };
+		if buf.is_null() {
+			return;
+		}
+		let rate = unsafe { oakengine_audio_sample_rate(buf) };
+		let channels = unsafe { oakengine_audio_channel_count(buf) };
+		let frames = unsafe { oakengine_audio_sample_count(buf) };
+		let data = unsafe { oakengine_audio_data(buf, 0) };
+		if rate > 0 && channels > 0 && frames > 0 && !data.is_null() {
+			// Packed F32 (10 = the engine's packed F32 sample format);
+			// layout: 1ch → mono mask, else stereo.
+			let layout: u64 = if channels == 1 { 0x4 } else { 0x3 };
+			let params =
+				unsafe { oakcore_audioparams_create(rate, layout, 10) };
+			if !params.is_null() {
+				unsafe {
+					oakengine_audio_push_to_output(
+						params,
+						data as *const c_char,
+						frames * i64::from(channels) * 4,
+						std::ptr::null_mut(),
+						0,
+					);
+					oakcore_audioparams_free(params);
+				}
+			}
+		}
+		unsafe { oakengine_audio_free(buf) };
+	}
+
 	/// Builds an engine with no project open.
 	pub fn new(cx: &mut Context<Self>) -> Self {
 		let rate = VideoFormat::hd_1080p25().rate;
@@ -692,8 +648,7 @@ impl RealEngine {
 			source_clock: cx.new(|_cx| RealClock::new(rate)),
 			program_clock: cx.new(|_cx| RealClock::new(rate)),
 			tracks: Vec::new(),
-			bin_roots: Vec::new(),
-			bin_children: Vec::new(),
+			waveforms: Mutex::new(None),
 			selected_item: None,
 			selected_clip: None,
 			expanded_effects: BTreeSet::new(),
@@ -872,29 +827,36 @@ impl RealEngine {
 		Some(RendererHandle(renderer))
 	}
 
-	/// The material-bin footage index of the selected entry, if any. The bin
-	/// children are numbered `100 + index` (see [`RealEngine::rebuild_bin`]);
-	/// folder/project roots are not footage.
-	fn selected_footage_index(&self) -> Option<c_int> {
-		let id = self.selected_item?;
-		if id >= 100 {
-			Some((id - 100) as c_int)
-		} else {
-			None
-		}
-	}
-
-	/// The selected footage's facade node view (a boxed node handle the
-	/// caller frees with `oakengine_node_free`), or `None` when no footage
-	/// is selected or the index is out of range.
+	/// The selected entry's footage node (M12 P3: entry ids are the
+	/// nodes' stable identities), or `None` when the selection is a
+	/// folder or absent.
+	///
+	/// # Safety
+	/// The returned box is freed with `oakengine_node_free`.
 	fn selected_footage_node(&self) -> Option<*mut OakEngineNode> {
 		let project = self.project_ptr()?;
-		let index = self.selected_footage_index()?;
-		let node = unsafe { oakengine_project_footage_at(project, index) };
-		if node.is_null() {
-			None
-		} else {
-			Some(node)
+		let id = self.selected_item?;
+		unsafe {
+			// The identity must resolve to a footage entry (a folder or
+			// sequence id must not be treated as footage).
+			let count = unsafe { oakengine_project_footage_count(project) };
+			let mut is_footage = false;
+			for i in 0..count.max(0) {
+				let f = unsafe { oakengine_project_footage_at(project, i) };
+				if f.is_null() {
+					continue;
+				}
+				let matches = unsafe { oakengine_node_identity(f) } == id;
+				unsafe { oakengine_node_free(f) };
+				if matches {
+					is_footage = true;
+					break;
+				}
+			}
+			if !is_footage {
+				return None;
+			}
+			crate::oakui::projectbrowser::find_by_identity(project, id)
 		}
 	}
 
@@ -1042,7 +1004,7 @@ impl RealEngine {
 		self.sequence = Some(SequenceHandle(sequence));
 		self.refresh_sequence_info();
 		self.rebuild_timeline();
-		self.rebuild_bin();
+
 		cx.notify();
 	}
 
@@ -1056,8 +1018,7 @@ impl RealEngine {
 		drop(self.project.take());
 		self.cpu_frame_cache.lock().unwrap().clear();
 		self.tracks.clear();
-		self.bin_roots.clear();
-		self.bin_children.clear();
+
 		self.sequence_info = None;
 		self.modified = false;
 		self.project_info = Project {
@@ -1135,6 +1096,17 @@ impl RealEngine {
 			}
 		}
 		self.tracks = out;
+		// M12 P4: refresh the audio waveforms for the visible audio clips.
+		if let Some(cache) = self.waveform_cache() {
+			for track in &self.tracks {
+				if track.kind != TrackKind::Audio {
+					continue;
+				}
+				for clip in &track.clips {
+					self.refresh_clip_waveform(cache.clone(), clip);
+				}
+			}
+		}
 	}
 
 	/// Snapshots one track (with its clips) from the facade.
@@ -1216,30 +1188,49 @@ impl RealEngine {
 	}
 
 	/// Rebuilds the material-bin snapshot from the facade project's footage.
-	fn rebuild_bin(&mut self) {
-		self.bin_roots.clear();
-		self.bin_children.clear();
-		let Some(project) = self.project_ptr() else {
+	/// The waveform cache (created lazily at the current frame rate).
+	fn waveform_cache(&self) -> Option<Arc<crate::oakui::waveform::WaveformCache>> {
+		let mut slot = self.waveforms.lock().unwrap_or_else(|e| e.into_inner());
+		if slot.is_none() {
+			let fps = self
+				.sequence_info
+				.as_ref()
+				.map(|s| s.format.rate.num as f32 / s.format.rate.den.max(1) as f32)
+				.unwrap_or(25.0);
+			*slot = Some(crate::oakui::waveform::WaveformCache::new(fps));
+		}
+		slot.clone()
+	}
+
+	/// Extract (or reuse) the waveform of one audio clip.
+	fn refresh_clip_waveform(
+		&self,
+		cache: Arc<crate::oakui::waveform::WaveformCache>,
+		clip: &RealClip,
+	) {
+		let Some(seq) = self.seq_ptr() else {
 			return;
 		};
-		let name = self.project_info.name.clone();
-		self.bin_roots = vec![
-			ProjectEntry::new(1, crate::i18n::tr("bin.footage"), true),
-			ProjectEntry::new(2, name, false),
-		];
-		let count = unsafe { oakengine_project_footage_count(project) };
-		let mut children = Vec::new();
-		for i in 0..count.max(0) {
-			let filename = read_string(|buf, size| unsafe {
-				oakengine_project_footage_filename(project, i, buf, size)
-			});
-			let label = Path::new(&filename)
-				.file_name()
-				.map(|f| f.to_string_lossy().into_owned())
-				.unwrap_or(filename);
-			children.push(ProjectEntry::new(100 + i as u64, label, false));
+		let clip_ptr = unsafe {
+			oakengine_sequence_clip_at(
+				seq,
+				TRACK_TYPE_AUDIO,
+				clip.track_index as c_int,
+				clip.clip_index as c_int,
+			)
+		};
+		if clip_ptr.is_null() {
+			return;
 		}
-		self.bin_children = children;
+		let filename = read_string(|buf, size| unsafe {
+			oakengine_clip_get_media_filename(clip_ptr, buf, size)
+		});
+		unsafe { free_box(clip_ptr) };
+		if filename.is_empty() {
+			return;
+		}
+		let duration_frames = (clip.range.end.0 - clip.range.start.0).max(1);
+		cache.refresh(clip.id.0, &filename, duration_frames);
 	}
 
 	/// Looks up the snapshot clip coordinates by `ClipId`.
@@ -1506,6 +1497,11 @@ impl EngineGateway for RealEngine {
 		}
 		self.mirror_program_playhead(cx);
 		self.meter_phase = self.meter_phase.wrapping_add(1);
+		// M12 P1: while the program plays, pull the audio for the
+		// current playhead window and queue it for the output device.
+		if self.program_playing {
+			self.pull_audio_tick(cx);
+		}
 		cx.notify();
 	}
 }
@@ -1558,30 +1554,45 @@ impl NodeGraphDataSource for RealEngine {
 	type Edge = RealEdge;
 
 	fn nodes(&self) -> Vec<Self::Node> {
-		// The node-graph surface of the facade is not bound in this
-		// increment; the canvas shows empty.
-		Vec::new()
+		// SAFETY: the project box is live while the engine holds it.
+		unsafe {
+			crate::oakui::nodegraph::build_graph(self.project_ptr().unwrap_or(std::ptr::null_mut())).0
+		}
 	}
 
 	fn edges(&self) -> Vec<Self::Edge> {
-		Vec::new()
+		// SAFETY: the project box is live while the engine holds it.
+		unsafe {
+			crate::oakui::nodegraph::build_graph(self.project_ptr().unwrap_or(std::ptr::null_mut())).1
+		}
 	}
 
-	fn can_connect(&self, _from: PortId, _to: PortId) -> bool {
-		false
+	fn can_connect(&self, from: PortId, to: PortId) -> bool {
+		// SAFETY: the project box is live while the engine holds it.
+		let src = unsafe {
+			crate::oakui::nodegraph::RealGraphSource::snapshot(
+				self.project_ptr().unwrap_or(std::ptr::null_mut()),
+			)
+		};
+		src.can_connect(from, to)
 	}
 }
 
 impl ProjectDataSource for RealEngine {
 	fn roots(&self) -> Vec<ProjectEntry> {
-		self.bin_roots.clone()
+		// SAFETY: the project box is live while the engine holds it.
+		unsafe {
+			crate::oakui::projectbrowser::roots(self.project_ptr().unwrap_or(std::ptr::null_mut()))
+		}
 	}
 
 	fn children(&self, parent_id: u64) -> Vec<ProjectEntry> {
-		if parent_id == 1 {
-			self.bin_children.clone()
-		} else {
-			Vec::new()
+		// SAFETY: the project box is live while the engine holds it.
+		unsafe {
+			crate::oakui::projectbrowser::children(
+				self.project_ptr().unwrap_or(std::ptr::null_mut()),
+				parent_id,
+			)
 		}
 	}
 }
@@ -1883,8 +1894,20 @@ impl AppEngine for RealEngine {
 		match event {
 			NodeGraphEvent::NodeMovePreview { .. }
 			| NodeGraphEvent::ViewChanged { .. }
-			| NodeGraphEvent::BackgroundClicked { .. } => {}
-			_ => println!("[real engine] node-graph request not applied (not bound yet)"),
+			| NodeGraphEvent::BackgroundClicked { .. }
+			| NodeGraphEvent::SelectionChanged { .. } => {}
+			_ => {
+				// SAFETY: the project box is live while the engine holds it.
+				let result = unsafe {
+					crate::oakui::nodegraph::apply_edit(
+						self.project_ptr().unwrap_or(std::ptr::null_mut()),
+						event,
+					)
+				};
+				if let Err(e) = result {
+					println!("[real engine] node-graph request rejected: {e}");
+				}
+			}
 		}
 		cx.notify();
 	}
@@ -1940,32 +1963,36 @@ impl AppEngine for RealEngine {
 				new_track,
 				new_start,
 			} => {
-				// `oakengine_sequence_move_clip` moves the clip on its own
-				// track (the capi passes the source track straight through to
-				// the place command); a cross-track drag is not expressible
-				// through that signature.
+				// M12 P4: cross-track moves go through the dedicated
+				// facade export (one undoable entry); same-track moves
+				// use the classic export.
 				let Some((track_type, track_index, clip_index)) = self.clip_coords(*clip) else {
 					return;
 				};
 				let Some(seq) = self.seq_ptr() else {
 					return;
 				};
-				if *new_track as c_int != track_index as c_int {
-					println!(
-						"[real engine] move clip ({track_type:?},{track_index},{clip_index}): \
-						 cross-track moves are not supported by the facade"
-					);
-					cx.notify();
-					return;
-				}
-				let rc = unsafe {
-					oakengine_sequence_move_clip(
-						seq,
-						Self::track_type_of(track_type),
-						track_index as c_int,
-						clip_index as c_int,
-						new_start.0,
-					)
+				let rc = if *new_track as c_int != track_index as c_int {
+					unsafe {
+						oakengine_sequence_move_clip_to_track(
+							seq,
+							Self::track_type_of(track_type),
+							track_index as c_int,
+							clip_index as c_int,
+							*new_track as c_int,
+							new_start.0,
+						)
+					}
+				} else {
+					unsafe {
+						oakengine_sequence_move_clip(
+							seq,
+							Self::track_type_of(track_type),
+							track_index as c_int,
+							clip_index as c_int,
+							new_start.0,
+						)
+					}
 				};
 				self.apply_edit(rc, "move clip", cx);
 			}
@@ -2569,6 +2596,13 @@ pub fn renderer_backends() -> Vec<&'static str> {
 mod tests {
 	use super::*;
 
+	/// Serializes the media/FFmpeg-heavy tests: the engine dylib's static
+	/// FFmpeg is not thread-safe against concurrent decode sessions.
+	fn media_lock() -> std::sync::MutexGuard<'static, ()> {
+		static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+		LOCK.lock().unwrap_or_else(|e| e.into_inner())
+	}
+
 	#[test]
 	fn project_format_dispatches_by_extension() {
 		assert_eq!(
@@ -2696,6 +2730,7 @@ mod tests {
 	/// and sane sample values.
 	#[test]
 	fn real_render_frame_e2e() {
+		let _media = media_lock();
 		if !RealEngine::ensure_render_manager() {
 			panic!("the render manager failed to start");
 		}
@@ -2745,10 +2780,77 @@ mod tests {
 			);
 			nonzero += px.iter().filter(|&&v| v != 0.0).count();
 		}
-		// Document the current empty-sequence behavior: a transparent-black
-		// program. When footage input is bound, extend this to assert
-		// non-black content.
 		assert_eq!(nonzero, 0, "an empty sequence renders transparent black");
+		unsafe { oakengine_frame_free(frame) };
+
+		// M12 P0: with a clip of real media on the video track, the same
+		// renderer must produce the decoded footage (known content, non
+		// black). The media is program-generated.
+		let media = std::env::temp_dir().join(format!(
+			"oakapp_e2e_media_{}.mp4",
+			std::process::id()
+		));
+		let media_c = CString::new(media.to_string_lossy().into_owned()).unwrap();
+		assert_eq!(
+			unsafe { oakengine_testmedia_write_clip(media_c.as_ptr(), 64, 64, 10, 10) },
+			0,
+			"generate e2e test media"
+		);
+		let footage = unsafe { oakengine_project_import_footage(project, media_c.as_ptr()) };
+		assert!(!footage.is_null(), "import_footage must succeed");
+		assert_eq!(unsafe { oakengine_project_footage_count(project) }, 1);
+		assert_eq!(
+			unsafe {
+				oakengine_sequence_add_track(sequence, TRACK_TYPE_VIDEO)
+			},
+			0
+		);
+		// Clip covering [0, 10) frames at 25 fps.
+		let clip = unsafe {
+			oakengine_sequence_add_footage_clip_ex(
+				sequence,
+				footage,
+				TRACK_TYPE_VIDEO,
+				0,
+				0,
+				10,
+				0,
+			)
+		};
+		if clip.is_null() {
+			let msg = read_string(|buf, size| unsafe {
+				oakengine_sequence_last_error(buf, size)
+			});
+			panic!("add_footage_clip failed: {msg}");
+		}
+		unsafe { oakengine_footage_free(footage) };
+		let frame = unsafe { oakengine_renderer_render_frame(renderer, 0) };
+		assert!(!frame.is_null(), "render_frame with a clip must produce a frame");
+		let data = unsafe { oakengine_frame_data(frame) } as *const f32;
+		let mut nonzero = 0usize;
+		for &(x, y) in &[(0usize, 0usize), (240, 135), (479, 269)] {
+			let base = y * stride + x * 4;
+			let px = unsafe { std::slice::from_raw_parts(data.add(base), 4) };
+			assert!(
+				px.iter().all(|v| v.is_finite() && (0.0..=1.0).contains(v)),
+				"samples in range: {px:?}"
+			);
+			nonzero += px.iter().filter(|&&v| v != 0.0).count();
+		}
+		assert!(
+			nonzero > 0,
+			"the sequence with a footage clip must render non-black pixels"
+		);
+		// Known content: the test clip's left half is red on frame 0 —
+		// the center-left pixel must be red-dominant.
+		let base = 135 * stride + 120 * 4;
+		let px = unsafe { std::slice::from_raw_parts(data.add(base), 4) };
+		assert!(
+			px[0] > 0.5 && px[1] < 0.4 && px[2] < 0.4,
+			"center-left pixel stays red from the decoded clip: {px:?}"
+		);
+		unsafe { oakengine_frame_free(frame) };
+		let _ = std::fs::remove_file(&media);
 
 		// A second frame at a later timestamp renders too.
 		let frame2 = unsafe { oakengine_renderer_render_frame(renderer, 30) };
@@ -2765,9 +2867,51 @@ mod tests {
 		}
 		.is_null());
 
-		unsafe { oakengine_frame_free(frame) };
 		unsafe { oakengine_renderer_free(renderer) };
 		unsafe { free_box(sequence) };
 		unsafe { oakengine_project_free(project) };
+	}
+
+	/// M12 P3 acceptance: importing a media file makes it appear in the
+	/// project browser's real folder tree.
+	#[test]
+	fn real_project_browser_lists_imported_footage() {
+		let _media = media_lock();
+		let project = unsafe { oakengine_project_create() };
+		assert!(!project.is_null());
+		assert_eq!(unsafe { oakengine_project_new(project) }, 0);
+
+		// Generate a real media file through the facade, import it.
+		let media = std::env::temp_dir().join(format!(
+			"oakapp_browser_{}.mp4",
+			std::process::id()
+		));
+		let cpath = CString::new(media.to_string_lossy().into_owned()).unwrap();
+		assert_eq!(
+			unsafe { oakengine_testmedia_write_clip(cpath.as_ptr(), 64, 64, 10, 10) },
+			0
+		);
+		let footage = unsafe { oakengine_project_import_footage(project, cpath.as_ptr()) };
+		assert!(!footage.is_null(), "import must succeed");
+		unsafe { oakengine_footage_free(footage) };
+
+		// The project browser (ProjectDataSource) must list it.
+		let roots = unsafe { crate::oakui::projectbrowser::roots(project) };
+		assert!(!roots.is_empty(), "the root folder lists entries");
+		let media_name = media.file_name().unwrap().to_string_lossy().into_owned();
+		let entry = roots
+			.iter()
+			.find(|e| e.name.as_ref() == media_name)
+			.expect("the imported footage is listed by its file name");
+		assert!(!entry.is_dir, "footage entries are files");
+		assert!(entry.id != 0, "entry id is the node identity");
+
+		// Double-click behavior: the entry id resolves back to the footage
+		// node through `find_by_identity`.
+		let node = unsafe { crate::oakui::projectbrowser::find_by_identity(project, entry.id) };
+		assert!(node.is_some(), "selection resolves to a node");
+		unsafe { oakengine_node_free(node.unwrap()) };
+
+		let _ = std::fs::remove_file(&media);
 	}
 }

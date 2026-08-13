@@ -578,7 +578,7 @@ mod tests {
 		assert_eq!(rc, crate::error::OAKCODEC_OK);
 
 		// write_video with a real frame handle.
-		let params = unsafe { oakcommon_videoparams_init_basic(16, 16) };
+		let params = unsafe { oakcommon_videoparams_init_basic(16, 16, 0, 4, 1, 1, 0, 1) };
 		let mut fh = unsafe { oakcodec_frame_init_with_params(params) };
 		assert_eq!(
 			unsafe { oakcodec_frame_allocate(fh) },
@@ -705,7 +705,7 @@ mod tests {
 		assert_eq!(rc, OAKCODEC_E_INVALID);
 
 		// Writes before open -> E_STATE.
-		let params = unsafe { oakcommon_videoparams_init_basic(4, 4) };
+		let params = unsafe { oakcommon_videoparams_init_basic(4, 4, 0, 4, 1, 1, 0, 1) };
 		let mut fh = unsafe { oakcodec_frame_init_with_params(params) };
 		let rc = unsafe { oakcodec_encoder_write_video(h, fh) };
 		assert_eq!(rc, OAKCODEC_E_STATE);

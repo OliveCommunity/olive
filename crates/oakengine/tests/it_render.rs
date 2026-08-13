@@ -440,8 +440,15 @@ fn renderer_render_frame_for_node_e2e() {
 	assert_eq!(unsafe { oakengine_project_new(project) }, 0);
 
 	// Import a footage file so the project graph owns a footage node.
+	// M12 P0: the renderer now DECODES footage-node renders, so the
+	// media must be real — generated programmatically through the facade.
 	let media = temp_media_file();
 	let media_c = std::ffi::CString::new(media.to_string_lossy().into_owned()).unwrap();
+	assert_eq!(
+		unsafe { oakengine::testmedia::oakengine_testmedia_write_clip(media_c.as_ptr(), 64, 64, 10, 10) },
+		0,
+		"generate real media for the footage-node render"
+	);
 	let footage = unsafe { oakengine_project_import_footage(project, media_c.as_ptr()) };
 	assert!(!footage.is_null());
 	unsafe { oakengine_footage_free(footage) };
@@ -505,6 +512,16 @@ fn renderer_render_frame_for_node_e2e() {
 	assert_eq!(unsafe { oakengine_frame_format(f) }, 4); // F32 pipeline format
 	assert_eq!(unsafe { oakengine_frame_linesize_bytes(f) }, 1920 * 4 * 4);
 	assert!(!unsafe { oakengine_frame_data(f) }.is_null());
+	// M12 P0: the footage node render decodes the media — the frame
+	// carries the test clip's known content (non-black, red-dominant
+	// left half).
+	let data = unsafe { oakengine_frame_data(f) } as *const f32;
+	let stride = 1920 * 4;
+	let px = unsafe { std::slice::from_raw_parts(data.add(540 * stride + 480 * 4), 4) };
+	assert!(
+		px[0] > 0.5 && px[1] < 0.4 && px[2] < 0.4,
+		"footage-node render decodes the known pattern: {px:?}"
+	);
 	assert_eq!(
 		unsafe { oakrender::ffi::cache::oakrender_debug_alive_count() },
 		base + 1
@@ -597,23 +614,17 @@ fn frame_accessors_null_safe() {
 /// documented neutral value for NULL (and any) handles.
 #[test]
 fn audio_buffer_stubs() {
-	let fake = 0x1 as *const OakEngineAudioBuffer;
+	// M12 P1: the accessors are real (they read the rendered-samples
+	// box); NULL stays safe and yields zero/NULL.
 	assert_eq!(unsafe { oakengine_audio_sample_rate(std::ptr::null()) }, 0);
-	assert_eq!(unsafe { oakengine_audio_sample_rate(fake) }, 0);
 	assert_eq!(
 		unsafe { oakengine_audio_channel_count(std::ptr::null()) },
 		0
 	);
-	assert_eq!(unsafe { oakengine_audio_channel_count(fake) }, 0);
 	assert_eq!(unsafe { oakengine_audio_sample_count(std::ptr::null()) }, 0);
-	assert_eq!(unsafe { oakengine_audio_sample_count(fake) }, 0);
 	assert!(unsafe { oakengine_audio_data(std::ptr::null(), 0) }.is_null());
-	assert!(unsafe { oakengine_audio_data(fake, 0) }.is_null());
-	assert!(unsafe { oakengine_audio_data(fake, -1) }.is_null());
-	assert!(unsafe { oakengine_audio_data(fake, 8) }.is_null());
-	// The free is an empty no-op; NULL and garbage pointers are safe.
+	// The free is NULL-safe.
 	unsafe { oakengine_audio_free(std::ptr::null_mut()) };
-	unsafe { oakengine_audio_free(fake as *mut OakEngineAudioBuffer) };
 }
 
 // ---------------------------------------------------------------------------
@@ -1155,4 +1166,165 @@ fn oakrender_debug_alive_and_double_free() {
 		unsafe { oakrender::ffi::cache::oakrender_debug_alive_count() },
 		base
 	);
+}
+
+#[test]
+fn renderer_montage_with_clip_e2e() {
+	common::force_link();
+	let _g = state_lock();
+
+	unsafe { oakrender::ffi::manager::oakrender_manager_shutdown() };
+	assert_eq!(unsafe { oakrender::ffi::manager::oakrender_manager_init() }, 0);
+
+	let project = unsafe { oakengine_project_create() };
+	assert_eq!(unsafe { oakengine_project_new(project) }, 0);
+	let name = std::ffi::CString::new("Montage E2E").unwrap();
+	let seq = unsafe { oakengine_sequence_new(project, name.as_ptr()) };
+	assert!(!seq.is_null());
+	assert_eq!(unsafe { oakengine::timeline::oakengine_sequence_add_track(seq, 0) }, 0);
+
+	// Generate real test media through the facade, import it, place a
+	// clip covering [0, 10) frames.
+	let media = std::env::temp_dir().join(format!("oak_it_montage_{}.mp4", std::process::id()));
+	let mc = std::ffi::CString::new(media.to_string_lossy().into_owned()).unwrap();
+	assert_eq!(
+		unsafe { oakengine::testmedia::oakengine_testmedia_write_clip(mc.as_ptr(), 64, 64, 10, 10) },
+		0
+	);
+	let footage = unsafe { oakengine_project_import_footage(project, mc.as_ptr()) };
+	assert!(!footage.is_null(), "import must succeed");
+	let clip = unsafe {
+		oakengine::timeline::oakengine_sequence_add_footage_clip_ex(seq, footage, 0, 0, 0, 10, 0)
+	};
+	assert!(!clip.is_null(), "add_footage_clip_ex must succeed");
+	unsafe { oakengine_footage_free(footage) };
+
+	let renderer = unsafe { oakengine_renderer_create(seq, 64, 64, 4, 10, 1, std::ptr::null()) };
+	assert!(!renderer.is_null());
+	let frame = unsafe { oakengine_renderer_render_frame(renderer, 0) };
+	assert!(!frame.is_null(), "montage render must produce a frame");
+	let linesize = unsafe { oakengine_frame_linesize_bytes(frame) };
+	let data = unsafe { oakengine_frame_data(frame) } as *const f32;
+	assert!(!data.is_null());
+	let stride = linesize as usize / 4;
+	let base = 32 * stride + 8 * 4;
+	let px = unsafe { std::slice::from_raw_parts(data.add(base), 4) };
+	assert!(px[0] > 0.5, "left half red from the decoded clip: {px:?}");
+
+	unsafe { oakengine_frame_free(frame) };
+	let _ = std::fs::remove_file(&media);
+}
+
+#[test]
+fn decode_via_dylib_rlib_direct() {
+	// The same decode call the montage producer makes, invoked directly
+	// through the oakrender rlib — isolates the dlsym bridge vs the FFmpeg
+	// duplication question.
+	let media = std::env::temp_dir().join(format!("oak_it_direct_{}.mp4", std::process::id()));
+	let mc = std::ffi::CString::new(media.to_string_lossy().into_owned()).unwrap();
+	assert_eq!(
+		unsafe { oakengine::testmedia::oakengine_testmedia_write_clip(mc.as_ptr(), 64, 64, 10, 10) },
+		0
+	);
+	let tex = oakrender::eval::render_footage_frame(
+		&media.to_string_lossy(),
+		0,
+		oakcore_rs::Rational::new(0, 1),
+		(64, 64),
+		oakcore_rs::PixelFormat::F32,
+	)
+	.expect("the dlsym codec bridge must decode inside the engine binary");
+	let oakrender::texture::Texture::Cpu(frame) = &tex else {
+		panic!("non-CPU texture");
+	};
+	assert!(frame.data.iter().any(|&b| b != 0), "non-black decode");
+	let _ = std::fs::remove_file(&media);
+}
+
+#[test]
+fn renderer_render_audio_montage_e2e() {
+	common::force_link();
+	let _g = state_lock();
+
+	unsafe { oakrender::ffi::manager::oakrender_manager_shutdown() };
+	assert_eq!(unsafe { oakrender::ffi::manager::oakrender_manager_init() }, 0);
+
+	let project = unsafe { oakengine_project_create() };
+	assert_eq!(unsafe { oakengine_project_new(project) }, 0);
+	let name = std::ffi::CString::new("Audio E2E").unwrap();
+	let seq = unsafe { oakengine_sequence_new(project, name.as_ptr()) };
+	assert!(!seq.is_null());
+	assert_eq!(unsafe { oakengine::timeline::oakengine_sequence_add_track(seq, 0) }, 0);
+	assert_eq!(unsafe { oakengine::timeline::oakengine_sequence_add_track(seq, 1) }, 0);
+
+	// Generated media with a 440 Hz sine audio track.
+	let media = std::env::temp_dir().join(format!("oak_it_audio_{}.mp4", std::process::id()));
+	let mc = std::ffi::CString::new(media.to_string_lossy().into_owned()).unwrap();
+	assert_eq!(
+		unsafe { oakengine::testmedia::oakengine_testmedia_write_clip(mc.as_ptr(), 64, 64, 10, 10) },
+		0
+	);
+	let footage = unsafe { oakengine_project_import_footage(project, mc.as_ptr()) };
+	assert!(!footage.is_null(), "import must succeed");
+	// Video clip on track 0, linked audio clip on track 1.
+	let vclip = unsafe {
+		oakengine::timeline::oakengine_sequence_add_footage_clip_ex(seq, footage, 0, 0, 0, 10, 0)
+	};
+	assert!(!vclip.is_null(), "video clip must be placed");
+	let aclip = unsafe {
+		oakengine::timeline::oakengine_sequence_add_footage_clip_ex(seq, footage, 1, 0, 0, 10, 0)
+	};
+	assert!(!aclip.is_null(), "audio clip must be placed");
+	unsafe { oakengine_footage_free(footage) };
+
+	// Render the audio of the first 0.1 s (2 frames at 10 fps) — the
+	// sine must come back as non-silent interleaved samples.
+	let renderer = unsafe { oakengine_renderer_create(seq, 64, 64, 4, 10, 1, std::ptr::null()) };
+	assert!(!renderer.is_null());
+	let buf = unsafe { oakengine_renderer_render_audio(renderer, 0, 1) };
+	assert!(!buf.is_null(), "render_audio must produce a buffer");
+	assert_eq!(unsafe { oakengine_audio_sample_rate(buf) }, 48000);
+	assert_eq!(unsafe { oakengine_audio_channel_count(buf) }, 2);
+	let frames = unsafe { oakengine_audio_sample_count(buf) };
+	assert!(frames >= 4800, "0.1 s at 48 kHz: {frames} frames");
+	let data = unsafe { oakengine_audio_data(buf, 0) };
+	assert!(!data.is_null());
+	let samples = unsafe { std::slice::from_raw_parts(data, frames as usize * 2) };
+	let peak = samples.iter().fold(0.0f32, |a, &s| a.max(s.abs()));
+	assert!(peak > 0.1, "the sine tone must be audible: peak={peak}");
+	let mut nonzero = 0usize;
+	for &s in samples.iter().take(960) {
+		if s != 0.0 {
+			nonzero += 1;
+		}
+	}
+	assert!(nonzero > 100, "samples carry the tone: {nonzero}");
+
+	unsafe { oakengine_audio_free(buf) };
+	let _ = std::fs::remove_file(&media);
+}
+
+#[test]
+fn probe_and_waveform_extract_e2e() {
+	common::force_link();
+	let _g = state_lock();
+
+	let media = std::env::temp_dir().join(format!("oak_it_wf_{}.mp4", std::process::id()));
+	let mc = std::ffi::CString::new(media.to_string_lossy().into_owned()).unwrap();
+	assert_eq!(
+		unsafe { oakengine::testmedia::oakengine_testmedia_write_clip(mc.as_ptr(), 64, 64, 10, 10) },
+		0
+	);
+	// Probe first (the waveform extractor's first step).
+	let probe = unsafe { oakcodec::ffi::decoder::oakcodec_decoder_probe(mc.as_ptr()) };
+	assert!(!probe.is_null(), "probe must succeed");
+	let mut info = unsafe { std::mem::zeroed::<oakcodec::decoder::OakCodecAudioStreamInfo>() };
+	let r = unsafe {
+		oakcodec::ffi::decoder::oakcodec_decoder_probe_get_audio_stream(probe, 0, &mut info)
+	};
+	eprintln!("probe audio rc={r} rate={} ch={}", info.sample_rate, info.channel_count);
+	assert_eq!(r, 0);
+	let mut probe = probe;
+	unsafe { oakcodec::ffi::decoder::oakcodec_decoder_free(&mut probe) };
+	let _ = std::fs::remove_file(&media);
 }

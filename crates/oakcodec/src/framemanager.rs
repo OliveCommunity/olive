@@ -157,7 +157,7 @@ mod tests {
 		assert_eq!(mgr.live_count(), 0);
 		assert_eq!(mgr.peak_count(), 0);
 
-		let params = unsafe { oakcommon_videoparams_init_basic(64, 64) };
+		let params = unsafe { oakcommon_videoparams_init_basic(64, 64, 0, 4, 1, 1, 0, 1) };
 		let frame = mgr.create_frame(params);
 		assert_eq!(mgr.live_count(), 1);
 		assert_eq!(mgr.peak_count(), 1);
@@ -172,14 +172,14 @@ mod tests {
 	#[test]
 	fn pool_reuses_compatible_frames() {
 		let mgr = FrameManager::new();
-		let params = unsafe { oakcommon_videoparams_init_basic(64, 64) };
+		let params = unsafe { oakcommon_videoparams_init_basic(64, 64, 0, 4, 1, 1, 0, 1) };
 		let f1 = mgr.create_frame(params);
 		mgr.return_frame(Arc::try_unwrap(f1).unwrap());
 		assert_eq!(mgr.live_count(), 0);
 
 		// A compatible request reuses the pooled buffer rather than
 		// allocating a new one.
-		let f2 = mgr.create_frame(unsafe { oakcommon_videoparams_init_basic(64, 64) });
+		let f2 = mgr.create_frame(unsafe { oakcommon_videoparams_init_basic(64, 64, 0, 4, 1, 1, 0, 1) });
 		assert_eq!(mgr.live_count(), 1);
 		assert_eq!(mgr.peak_count(), 1);
 		Arc::try_unwrap(f2).unwrap();
@@ -188,8 +188,8 @@ mod tests {
 	#[test]
 	fn peak_count_tracks_maximum() {
 		let mgr = FrameManager::new();
-		let p1 = unsafe { oakcommon_videoparams_init_basic(64, 64) };
-		let p2 = unsafe { oakcommon_videoparams_init_basic(128, 128) };
+		let p1 = unsafe { oakcommon_videoparams_init_basic(64, 64, 0, 4, 1, 1, 0, 1) };
+		let p2 = unsafe { oakcommon_videoparams_init_basic(128, 128, 0, 4, 1, 1, 0, 1) };
 		let a = mgr.create_frame(p1);
 		let b = mgr.create_frame(p2);
 		assert_eq!(mgr.live_count(), 2);
@@ -203,7 +203,7 @@ mod tests {
 	#[test]
 	fn clear_drops_pooled_frames() {
 		let mgr = FrameManager::new();
-		let params = unsafe { oakcommon_videoparams_init_basic(64, 64) };
+		let params = unsafe { oakcommon_videoparams_init_basic(64, 64, 0, 4, 1, 1, 0, 1) };
 		let f = mgr.create_frame(params);
 		mgr.return_frame(Arc::try_unwrap(f).unwrap());
 		assert_eq!(mgr.pool.lock().unwrap().len(), 1);

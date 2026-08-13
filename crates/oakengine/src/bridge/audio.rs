@@ -74,6 +74,8 @@ extern "C" {
 	) -> *mut c_void;
 	pub fn oakcore_audioparams_free(params: *mut c_void);
 	pub fn oakcore_audioparams_sample_rate(params: *const c_void) -> c_int;
+	/// `oakcore_audioparams_set_time_base` (host-provided).
+	pub fn oakcore_audioparams_set_time_base(params: *mut c_void, num: c_int, den: c_int);
 	pub fn oakcore_audioparams_channel_layout(params: *const c_void) -> u64;
 	pub fn oakcore_audioparams_format(params: *const c_void) -> c_int;
 }

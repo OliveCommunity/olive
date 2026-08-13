@@ -14,13 +14,20 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! oaknode C ABI imports (project copies, node queries).
+//! oaknode C ABI bridge: direct Rust calls into the `oaknode` crate
+//! (project copies, node queries).
 //!
-//! The functions here are declared against the frozen `include/node/*.h`
-//! contract and resolved through [`crate::bridge::dlsym`]. When the
-//! symbols are missing (cargo test without liboaknode) the wrappers fail
-//! with the documented fallbacks; the copier tests that require a live
-//! node module are `#[ignore = "needs oaknode C ABI"]`.
+//! Single-lib unification (see `docs/zh/plans/riir/single-lib.md`): the
+//! live node query below is a compile-time Rust call into `oaknode`'s
+//! `ffi`; handles cross as the shared [`crate::handle::CHandle`]
+//! (`oakcore_rs::handle::CHandle`).
+//!
+//! The copier direction (`project_deep_copy` / `project_sync_copy`) has
+//! **no oaknode implementation**: the `oaknode_project_*` symbols were
+//! declared by the old render bridge but never existed in any crate
+//! (single-lib plan §4.1 — dead direction). They stay as documented
+//! always-fail stubs with the exact previous fallback semantics (empty
+//! handle / explainable error / `node_abi_available() == false`).
 
 use std::ffi::c_int;
 
@@ -63,49 +70,44 @@ pub mod change_kind {
 	pub const FOOTAGE_PROXY: u32 = 7;
 }
 
-/// `oaknode_project_deep_copy(project)` — new in the Rust-era node C ABI.
-/// Returns an owned copied-project handle; empty when the symbol is
-/// missing or the copy failed.
-pub fn project_deep_copy(project: ProjectHandle) -> CHandle {
-	type F = unsafe extern "C" fn(ProjectHandle) -> CHandle;
-	crate::bridge::dlsym::call::<F, CHandle>("oaknode_project_deep_copy", |f| unsafe { f(project) })
-		.unwrap_or_else(CHandle::null)
+/// `oaknode_project_deep_copy(project)` — would return an owned
+/// copied-project handle.
+///
+/// Never implemented: oaknode has no such C ABI export (single-lib plan
+/// §4.1 — dead direction), so this always yields the empty handle, exactly
+/// as the previous runtime-symbol lookup did when the symbol was absent.
+pub fn project_deep_copy(_project: ProjectHandle) -> CHandle {
+	CHandle::null()
 }
 
-/// `oaknode_project_sync_copy(source, copy, changes, count)` — pushes a
-/// recorded change set into the copy. `OAKNODE_OK` (0) on success; a
-/// negative error otherwise (missing symbol → `Error::Failed`).
+/// `oaknode_project_sync_copy(source, copy, changes, count)` — would push
+/// a recorded change set into the copy.
+///
+/// Never implemented: oaknode has no such C ABI export (single-lib plan
+/// §4.1 — dead direction), so this always fails explainably, exactly as
+/// the previous runtime-symbol lookup did when the symbol was absent.
 pub fn project_sync_copy(
-	source: ProjectHandle,
-	copy: ProjectHandle,
-	changes: &[ChangeRecord],
+	_source: ProjectHandle,
+	_copy: ProjectHandle,
+	_changes: &[ChangeRecord],
 ) -> Result<()> {
-	type F =
-		unsafe extern "C" fn(ProjectHandle, ProjectHandle, *const ChangeRecord, c_int) -> c_int;
-	let rc = crate::bridge::dlsym::call::<F, c_int>("oaknode_project_sync_copy", |f| unsafe {
-		f(source, copy, changes.as_ptr(), changes.len() as c_int)
-	})
-	.ok_or_else(|| Error::Failed("oaknode_project_sync_copy missing".into()))?;
-	if rc == 0 {
-		Ok(())
-	} else {
-		Err(Error::Failed(format!("oaknode_project_sync_copy rc={rc}")))
-	}
+	Err(Error::Failed(
+		"oaknode_project_sync_copy missing (not implemented in oaknode)".into(),
+	))
 }
 
 /// `oaknode_node_get_video_frame_cache(node, out)` — borrowed cache
 /// handle of a node. `OAKNODE_OK` (0) on success with `*out` set;
-/// otherwise a negative error (missing symbol → `Error::Failed`).
+/// otherwise a negative error.
 ///
 /// # Safety
 /// `node` must be a valid handle; `out` a valid pointer.
 pub unsafe fn node_get_video_frame_cache(node: NodeHandle, out: *mut CHandle) -> Result<()> {
-	type F = unsafe extern "C" fn(NodeHandle, *mut CHandle) -> c_int;
-	let rc =
-		crate::bridge::dlsym::call::<F, c_int>("oaknode_node_get_video_frame_cache", |f| unsafe {
-			f(node, out)
-		})
-		.ok_or_else(|| Error::Failed("oaknode_node_get_video_frame_cache missing".into()))?;
+	// Direct call into the `oaknode` crate (single-lib unification; the
+	// `#[no_mangle]` export stays for the external C ABI).
+	let rc = unsafe {
+		oaknode::ffi::node::oaknode_node_get_video_frame_cache(node, out as *mut std::ffi::c_void)
+	};
 	if rc == 0 {
 		Ok(())
 	} else {
@@ -115,10 +117,13 @@ pub unsafe fn node_get_video_frame_cache(node: NodeHandle, out: *mut CHandle) ->
 	}
 }
 
-/// Whether the oaknode C ABI is present in the process (tests use this to
-/// gate success-path copier tests).
+/// Whether the oaknode deep-copy C ABI is available.
+///
+/// Constant `false`: `oaknode_project_deep_copy` was never implemented
+/// (single-lib plan §4.1), so the copier success-path tests stay gated
+/// exactly as before.
 pub fn node_abi_available() -> bool {
-	crate::bridge::dlsym::resolve("oaknode_project_deep_copy").is_some()
+	false
 }
 
 /// Node identity of a handle (the box pointer; matches the copier's
@@ -132,20 +137,20 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn deep_copy_missing_symbol_yields_empty_handle() {
-		// Without liboaknode the deep copy cannot exist.
+	fn deep_copy_unavailable_yields_empty_handle() {
+		// oaknode never implemented the deep-copy ABI (dead direction).
 		let h = project_deep_copy(CHandle::null());
 		assert!(h.is_null());
 	}
 
 	#[test]
-	fn sync_copy_missing_symbol_fails_explainably() {
+	fn sync_copy_unavailable_fails_explainably() {
 		let changes = [ChangeRecord {
 			kind: change_kind::NODE_ADD,
 			payload: [0u8; 48],
 		}];
 		let rc = project_sync_copy(CHandle::null(), CHandle::null(), &changes);
-		assert!(rc.is_err(), "missing symbol → explainable failure");
+		assert!(rc.is_err(), "not implemented → explainable failure");
 	}
 
 	#[test]

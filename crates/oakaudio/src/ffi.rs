@@ -30,6 +30,14 @@ use crate::bridge::codec::EncodingParams;
 use crate::error::{Error, OAKAUDIO_E_INVALID};
 use crate::handle::{guard, guard_handle, guard_int, guard_void, invalid_if, write_error, CHandle};
 use crate::params::{AudioParams, SampleFormat};
+
+/// One decoded extraction, cached between the two-stage contract's size
+/// query and its data query (see `oakaudio_waveform_extract`).
+thread_local! {
+	static WAVEFORM_EXTRACT_CACHE: std::cell::RefCell<
+		Option<((String, i32, i32), crate::waveform::ExtractOutcome)>,
+	> = const { std::cell::RefCell::new(None) };
+}
 use crate::waveform::{AudioVisualWaveform, SamplePerChannel};
 
 /// Map a C sample-format int to the native [`SampleFormat`]; out-of-range
@@ -1091,7 +1099,34 @@ pub mod waveform {
 			)?;
 			// SAFETY: the caller guarantees a NUL-terminated string.
 			let filename = unsafe { CStr::from_ptr(filename) };
-			let outcome = crate::waveform::extract(filename, stream_index, samples_per_point)?;
+			// The two-stage contract runs the query twice; decode the
+			// stream ONCE and reuse the outcome for the data pass (the
+			// FFmpeg decoder is not safe against back-to-back sessions
+			// in the same process).
+			let key = (
+				filename.to_string_lossy().into_owned(),
+				stream_index,
+				samples_per_point,
+			);
+			let outcome = {
+				// The cache slot is borrowed inside the closure only (the
+				// guard cannot escape the `with` scope).
+				let cached = WAVEFORM_EXTRACT_CACHE.with(|c| {
+					c.borrow()
+						.as_ref()
+						.filter(|(k, _)| k == &key)
+						.map(|(_, o)| o.clone())
+				});
+				match cached {
+					Some(o) => o,
+					None => {
+						let outcome =
+							crate::waveform::extract(filename, stream_index, samples_per_point)?;
+						WAVEFORM_EXTRACT_CACHE.with(|c| *c.borrow_mut() = Some((key, outcome.clone())));
+						outcome
+					}
+				}
+			};
 			let channels = outcome.channels.max(1);
 			let point_count = outcome.points.len() / channels as usize;
 			// CPP-PARITY: the channel count is reported even for a size-only

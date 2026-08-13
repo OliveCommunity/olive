@@ -11,6 +11,11 @@ crate-type = ["staticlib", "rlib"]
 [dependencies]
 oakcore-rs = { path = "../oakcore" }
 oakcommon = { path = "../oakcommon" }
+# Direct Rust calls (single-lib unification): the decode bridge calls
+# oakcodec's ffi, the node bridge calls oaknode's ffi. Both directions
+# are acyclic (oakcodec → oakcore-rs/oakffmpeg-link; oaknode → oakcodec).
+oakcodec = { path = "../oakcodec" }
+oaknode = { path = "../oaknode" }
 # wgpu: portable GPU backend (Metal/Vulkan/GL/DX12 in one safe API) — the
 # direct replacement for the C++ liboakgl2/liboakvulkan backend plugins.
 # Version 25 (2025 stable line); the only GPU dependency.
@@ -20,3 +25,10 @@ wgpu = "25"
 # the vendored OpenColorIO C++ sources (cmake/ninja required); without it
 # ocio-sys builds a stub (all color tests then early-return).
 ocio-rs = { version = "0.2", features = ["bundled"] }
+
+[dev-dependencies]
+# Test binaries that pull oakcodec's decoder (the direct-call bridge) link
+# oakcodec's ffmpeg unit, which references the host `oakcore_audioparams_*`
+# symbols no Rust crate provides — the `test-stubs` feature compiles
+# oakcodec's host-mocks (same pattern as oaknode's dev-dependencies).
+oakcodec = { path = "../oakcodec", features = ["test-stubs"] }

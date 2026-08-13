@@ -38,6 +38,7 @@ pub mod handle;
 pub mod levelmeter;
 pub mod manager;
 pub mod params;
+pub mod outputdevice;
 pub mod previewdevice;
 pub mod processor;
 pub mod synchronizer;

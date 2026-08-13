@@ -19,8 +19,33 @@
 //! `docs/zh/plans/riir/single-lib.md`). The configuration-location and
 //! disk-cache helpers delegate to oakcommon's own implementation.
 
-use std::ffi::{c_char, c_int};
+use std::ffi::{c_char, c_int, c_void};
 use std::sync::Mutex;
+
+/// `oakcore_audioparams_sample_rate` (host-provided; M12 P1 — the audio
+/// ticket reads the output format from the params handle).
+pub fn audioparams_sample_rate(params: *const c_void) -> c_int {
+	unsafe extern "C" {
+		fn oakcore_audioparams_sample_rate(params: *const c_void) -> c_int;
+	}
+	unsafe { oakcore_audioparams_sample_rate(params) }
+}
+
+/// `oakcore_audioparams_channel_layout` (host-provided).
+pub fn audioparams_channel_layout(params: *const c_void) -> u64 {
+	unsafe extern "C" {
+		fn oakcore_audioparams_channel_layout(params: *const c_void) -> u64;
+	}
+	unsafe { oakcore_audioparams_channel_layout(params) }
+}
+
+/// `oakcore_audioparams_channel_count` (host-provided).
+pub fn audioparams_channel_count(params: *const c_void) -> c_int {
+	unsafe extern "C" {
+		fn oakcore_audioparams_channel_count(params: *const c_void) -> c_int;
+	}
+	unsafe { oakcore_audioparams_channel_count(params) }
+}
 
 /// Read a config string via the two-stage C ABI
 /// (`oakcommon_config_get(group, key, buf, n)`, C++ `Config::current()

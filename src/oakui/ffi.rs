@@ -100,8 +100,10 @@ macro_rules! engine_handle {
 }
 
 engine_handle! {
+	OakEngineAudioBuffer,
 	OakEngineClip,
 	OakEngineEncodingParams,
+	OakEngineFootage,
 	OakEngineFrame,
 	OakEngineNode,
 	OakEngineProject,
@@ -320,6 +322,27 @@ unsafe extern "C" {
 	) -> c_int;
 	/// `oakengine_project_footage_count`.
 	pub fn oakengine_project_footage_count(self_: *const OakEngineProject) -> c_int;
+	/// `oakengine_project_import_footage` — probe and add to the root
+	/// folder; owned footage box (free with `oakengine_footage_free`).
+	pub fn oakengine_project_import_footage(
+		self_: *mut OakEngineProject,
+		path: *const c_char,
+	) -> *mut OakEngineFootage;
+	/// `oakengine_footage_free` — release a footage handle.
+	pub fn oakengine_footage_free(self_: *mut OakEngineFootage);
+	/// `oakengine_sequence_add_footage_clip_ex` — place a clip of
+	/// `footage` on the track, skipping the unenforceable same-project
+	/// check (sequences live in their own scratch project — documented
+	/// module deviation; M12 P0 montage path). Owned clip box.
+	pub fn oakengine_sequence_add_footage_clip_ex(
+		self_: *mut OakEngineSequence,
+		footage: *mut OakEngineFootage,
+		track_type: c_int,
+		track_index: c_int,
+		in_: i64,
+		out: i64,
+		media_in: i64,
+	) -> *mut OakEngineClip;
 	/// `oakengine_project_footage_at` — boxed footage node at `index` (free
 	/// with `oakengine_node_free`); NULL for an invalid index.
 	pub fn oakengine_project_footage_at(
@@ -356,6 +379,99 @@ unsafe extern "C" {
 	) -> c_int;
 	/// `oakengine_project_node_count` — parseable content check.
 	pub fn oakengine_project_node_count(self_: *const OakEngineProject) -> c_int;
+	/// `oakengine_project_node_at` — boxed project node at `index` (free
+	/// with `oakengine_node_free`); NULL for an invalid index.
+	pub fn oakengine_project_node_at(
+		self_: *const OakEngineProject,
+		index: c_int,
+	) -> *mut OakEngineNode;
+	/// `oakengine_project_root` — the project's root folder node (boxed,
+	/// free with `oakengine_node_free`).
+	pub fn oakengine_project_root(self_: *const OakEngineProject) -> *mut OakEngineNode;
+
+	/// `oakengine_folder_item_child_count` — direct children of a folder
+	/// node.
+	pub fn oakengine_folder_item_child_count(folder: *const OakEngineNode) -> c_int;
+	/// `oakengine_folder_item_child` — boxed child at `index` (free with
+	/// `oakengine_node_free`); NULL for an invalid index.
+	pub fn oakengine_folder_item_child(
+		folder: *const OakEngineNode,
+		index: c_int,
+	) -> *mut OakEngineNode;
+	/// `oakengine_node_get_name` (buf/size).
+	pub fn oakengine_node_get_name(
+		self_: *const OakEngineNode,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int;
+	/// `oakengine_node_get_label` (buf/size).
+	pub fn oakengine_node_get_label(
+		self_: *const OakEngineNode,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int;
+	/// `oakengine_node_input_count`.
+	pub fn oakengine_node_input_count(self_: *const OakEngineNode) -> c_int;
+	/// `oakengine_node_input_id` (buf/size) at `index`.
+	pub fn oakengine_node_input_id(
+		self_: *const OakEngineNode,
+		index: c_int,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int;
+	/// `oakengine_node_input_is_connected` — 1 when the input has an edge.
+	pub fn oakengine_node_input_is_connected(
+		self_: *const OakEngineNode,
+		input_id: *const c_char,
+	) -> c_int;
+	/// `oakengine_node_output_connection_count`.
+	pub fn oakengine_node_output_connection_count(self_: *const OakEngineNode) -> c_int;
+	/// `oakengine_node_output_connection_at_ex` — boxed input node + input
+	/// id (free the boxed node with `oakengine_node_free`).
+	pub fn oakengine_node_output_connection_at_ex(
+		self_: *const OakEngineNode,
+		index: c_int,
+		input_node: *mut *mut OakEngineNode,
+		input_id_buf: *mut c_char,
+		input_id_size: c_int,
+		element: *mut c_int,
+		hidden: *mut c_int,
+	) -> c_int;
+	/// `oakengine_node_get_context_position` — graph position of `node`
+	/// in `context`'s position map.
+	pub fn oakengine_node_get_context_position(
+		context: *const OakEngineNode,
+		node: *const OakEngineNode,
+		x: *mut f64,
+		y: *mut f64,
+		expanded: *mut c_int,
+	) -> c_int;
+	/// `oakengine_node_set_context_position` — undoable graph move.
+	pub fn oakengine_node_set_context_position(
+		context: *mut OakEngineNode,
+		node: *mut OakEngineNode,
+		x: f64,
+		y: f64,
+	) -> c_int;
+	/// `oakengine_node_connect` — undoable edge from `output_node` into
+	/// `input_node`'s `input_id`.
+	pub fn oakengine_node_connect(
+		output_node: *mut OakEngineNode,
+		input_node: *mut OakEngineNode,
+		input_id: *const c_char,
+	) -> c_int;
+	/// `oakengine_node_disconnect_ex` — undoable edge removal.
+	pub fn oakengine_node_disconnect_ex(
+		input_node: *mut OakEngineNode,
+		input_id: *const c_char,
+		element: c_int,
+	) -> c_int;
+	/// `oakengine_project_remove_node` — undoable node removal (edges
+	/// disconnected).
+	pub fn oakengine_project_remove_node(
+		self_: *mut OakEngineProject,
+		node: *mut OakEngineNode,
+	) -> c_int;
 
 	// -- oakengine::task --
 
@@ -429,6 +545,9 @@ unsafe extern "C" {
 	pub fn oakengine_sequence_set_playhead(self_: *mut OakEngineSequence, timestamp: i64) -> c_int;
 	/// `oakengine_sequence_add_track`.
 	pub fn oakengine_sequence_add_track(self_: *mut OakEngineSequence, track_type: c_int) -> c_int;
+	/// `oakengine_sequence_last_error` — last editing error for this
+	/// thread (two-stage string).
+	pub fn oakengine_sequence_last_error(buf: *mut c_char, buf_size: c_int) -> c_int;
 	/// `oakengine_sequence_clip_count`.
 	pub fn oakengine_sequence_clip_count(
 		self_: *mut OakEngineSequence,
@@ -458,6 +577,16 @@ unsafe extern "C" {
 		track_index: c_int,
 		clip_index: c_int,
 		time: i64,
+	) -> c_int;
+	/// `oakengine_sequence_move_clip_to_track` — move the clip to a
+	/// different track (M12 P4, cross-track).
+	pub fn oakengine_sequence_move_clip_to_track(
+		seq: *mut OakEngineSequence,
+		track_type: c_int,
+		track_index: c_int,
+		clip_index: c_int,
+		dest_track_index: c_int,
+		new_in: i64,
 	) -> c_int;
 	/// `oakengine_sequence_move_clip` — move the clip so its in point becomes
 	/// `new_in` on the same track.
@@ -527,6 +656,25 @@ unsafe extern "C" {
 	/// `oakengine_clip_as_node` — the clip's node view (borrowed box;
 	/// freed with `oakengine_node_free`).
 	pub fn oakengine_clip_as_node(self_: *const OakEngineClip) -> *mut OakEngineNode;
+	/// `oakengine_clip_get_media_filename` — the clip's upstream footage
+	/// filename (two-stage buf/size; M12 P4).
+	pub fn oakengine_clip_get_media_filename(
+		self_: *const OakEngineClip,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int;
+	/// `oakaudio_waveform_extract` — real waveform extraction (M12 P4):
+	/// two-stage min/max extraction of `filename`'s audio stream.
+	pub fn oakaudio_waveform_extract(
+		filename: *const c_char,
+		stream_index: c_int,
+		samples_per_point: c_int,
+		out_pairs: *mut crate::oakui::waveform::MinMax,
+		capacity_points: c_int,
+		out_channel_count: *mut c_int,
+	) -> c_int;
+
+
 	/// `oakengine_node_effect_count` — the chain length (0 without effects).
 	pub fn oakengine_node_effect_count(self_: *const OakEngineNode) -> c_int;
 	/// `oakengine_node_effect_at` — the `index`-th effect (borrowed box;
@@ -650,6 +798,57 @@ unsafe extern "C" {
 		buf: *mut c_char,
 		buf_size: c_int,
 	) -> c_int;
+	/// `oakengine_renderer_render_audio` — synchronously render
+	/// `length_timestamp` frames of audio starting at `start_timestamp`
+	/// (M12 P1). Owned `OakEngineAudioBuffer`.
+	pub fn oakengine_renderer_render_audio(
+		self_: *mut OakEngineRenderer,
+		start_timestamp: i64,
+		length_timestamp: i64,
+	) -> *mut OakEngineAudioBuffer;
+	/// `oakengine_audio_sample_rate` — the rendered buffer's rate (Hz).
+	pub fn oakengine_audio_sample_rate(self_: *const OakEngineAudioBuffer) -> c_int;
+	/// `oakengine_audio_channel_count`.
+	pub fn oakengine_audio_channel_count(self_: *const OakEngineAudioBuffer) -> c_int;
+	/// `oakengine_audio_sample_count` — interleaved frame count.
+	pub fn oakengine_audio_sample_count(self_: *const OakEngineAudioBuffer) -> i64;
+	/// `oakengine_audio_data` — interleaved f32 samples.
+	pub fn oakengine_audio_data(
+		self_: *const OakEngineAudioBuffer,
+		channel: c_int,
+	) -> *const f32;
+	/// `oakengine_audio_free` — release the buffer.
+	pub fn oakengine_audio_free(self_: *mut OakEngineAudioBuffer);
+	/// `oakengine_audio_push_to_output` — queue interleaved samples
+	/// described by `params` for playback (M12 P1).
+	pub fn oakengine_audio_push_to_output(
+		params: *const c_void,
+		samples: *const c_char,
+		samples_size: i64,
+		error_buf: *mut c_char,
+		error_buf_size: c_int,
+	) -> c_int;
+	/// `oakcore_audioparams_create` — new owned audio params (release
+	/// with `oakcore_audioparams_free`).
+	pub fn oakcore_audioparams_create(
+		sample_rate: c_int,
+		channel_layout: u64,
+		format: c_int,
+	) -> *mut c_void;
+	/// `oakcore_audioparams_free` (NULL no-op).
+	pub fn oakcore_audioparams_free(params: *mut c_void);
+	/// `oakrender_manager_shutdown` — tear down the render manager
+	/// (test/tooling; the app keeps it for the process lifetime).
+	pub fn oakrender_manager_shutdown() -> c_int;
+	/// `oakengine_testmedia_write_clip` — encode the known test pattern
+	/// into `path` (test/tooling only; M12 P0).
+	pub fn oakengine_testmedia_write_clip(
+		path: *const c_char,
+		width: c_int,
+		height: c_int,
+		frame_count: c_int,
+		fps: c_int,
+	) -> c_int;
 	/// `oakengine_frame_width`.
 	pub fn oakengine_frame_width(self_: *const OakEngineFrame) -> c_int;
 	/// `oakengine_frame_height`.
@@ -694,4 +893,14 @@ unsafe extern "C" {
 		cb: Option<OakTaskEventFn>,
 		userdata: *mut c_void,
 	) -> i64;
+}
+
+/// The C-ABI `MinMax` mirror (exported for the integration tests).
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct oakapp_minmax {
+	/// Minimum amplitude.
+	pub min: f32,
+	/// Maximum amplitude.
+	pub max: f32,
 }

@@ -80,7 +80,7 @@ fn h264_params(out: &std::path::Path) -> crate::encodingparams::EncodingParams {
 
 /// Build an allocated F32-RGBA frame with a moving color pattern.
 fn pattern_frame(i: i32) -> Frame {
-	let vp = unsafe { oakcommon_videoparams_init_basic(64, 64) };
+	let vp = unsafe { oakcommon_videoparams_init_basic(64, 64, 0, 4, 1, 1, 0, 1) };
 	unsafe { oakcommon_videoparams_set_format(vp.clone(), PixelFormat::F32 as i32) };
 	let mut f = Frame::with_params(vp);
 	f.set_timestamp(Rational::new(i as i64, 10));
@@ -263,4 +263,39 @@ fn audio_conform_writes_planar_pcm() {
 	}
 
 	let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn testmedia_clip_probe_roundtrip() {
+	let out = std::env::temp_dir().join(format!("oakcodec_tm3_{}.mp4", std::process::id()));
+	crate::testmedia::write_test_clip(&out, 64, 64, 10, 10).expect("generate");
+	let d = FFmpegDecoder::new();
+	let s = CodecStream::with_block(out.to_string_lossy().into_owned(), 0, None);
+	d.open(&s).expect("open");
+	for t in [0i64, 3, 5, 9] {
+		let f = d
+			.retrieve_video_frame(&video_params(s.clone(), Rational::new(t, 10)))
+			.unwrap_or_else(|e| panic!("decode t={t}: {e:?}"));
+		let stride = f.linesize_bytes() as usize;
+		let data = f.data().unwrap();
+		let off = 32 * stride + 8 * 16;
+		let px = [
+			f32::from_le_bytes(data[off..off + 4].try_into().unwrap()),
+			f32::from_le_bytes(data[off + 4..off + 8].try_into().unwrap()),
+			f32::from_le_bytes(data[off + 8..off + 12].try_into().unwrap()),
+			f32::from_le_bytes(data[off + 12..off + 16].try_into().unwrap()),
+		];
+		println!("t={t}/10 px(8,32): {px:?}");
+	}
+	let _ = std::fs::remove_file(&out);
+}
+
+#[test]
+fn testmedia_audio_track_encodes() {
+	let out = std::env::temp_dir().join(format!("oakcodec_tm_audio_{}.mp4", std::process::id()));
+	crate::testmedia::write_test_clip(&out, 64, 64, 10, 10).expect("generate with audio");
+	let d = FFmpegDecoder::new();
+	let desc = d.probe(&out.to_string_lossy(), None).expect("probe");
+	assert!(desc.audio_stream_count() >= 1, "audio stream present");
+	let _ = std::fs::remove_file(&out);
 }

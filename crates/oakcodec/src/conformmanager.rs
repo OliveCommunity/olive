@@ -245,8 +245,12 @@ mod tests {
 
 	#[test]
 	fn unique_identifier_matches_bridge_hash() {
-		// The test stub computes an FNV-1a-64 of the path bytes.
-		let expected = format!("{}", fnv1a64(b"media.mp4") as i64);
+		// The frozen ABI returns the identifier as a string; the
+		// value-style adapter folds it into an FNV-1a-64. The test stub
+		// produces the decimal FNV of the path bytes, so the expected
+		// value is FNV of that decimal string.
+		let stub_id = fnv1a64(b"media.mp4") as i64;
+		let expected = format!("{}", fnv1a64(stub_id.to_string().as_bytes()) as i64);
 		assert_eq!(unique_file_identifier("media.mp4"), expected);
 		// Deterministic: same input, same id.
 		assert_eq!(
@@ -276,7 +280,8 @@ mod tests {
 	fn conform_filename_derivation_and_range() {
 		let m = ConformManager::instance();
 		let cache = temp_subdir("names");
-		let id = fnv1a64(b"media.mp4") as i64;
+		let stub_id = fnv1a64(b"media.mp4") as i64;
+		let id = fnv1a64(stub_id.to_string().as_bytes()) as i64;
 		let base = format!("{}-0.48000.0.3", id);
 		let f0 = m
 			.get_conform_filename(&cache, "media.mp4", 0, 48000, 0x3, 0, 0)

@@ -43,11 +43,10 @@ use gpui::dock::{
 };
 use gpui::timeline::{ClipId, Frame, TimelineEvent, TimelineView};
 use gpui::{
-	div, prelude::*, px, size, App, AsyncWindowContext, Bounds, Context, Entity, Render, Window,
-	WindowBounds, WindowOptions,
+	div, prelude::*, px, size, App, AsyncWindowContext, Bounds, Context, Entity, PathPromptOptions,
+	Render, Window, WindowBounds, WindowOptions,
 };
 use gpui_widgets::audio_meter::AudioLevelMeter;
-use gpui_widgets::dialog::file_dialog::FileDialogContent;
 use gpui_widgets::dialog::progress::{progress_dialog, ProgressContent};
 use gpui_widgets::dialog::{DialogButton, Modal, ModalEvent, ModalOptions};
 use gpui_widgets::menu::{Menu, MenuBar, MenuBarEntry, MenuBarEvent, MenuItem};
@@ -75,6 +74,7 @@ mod menu_ids {
 	pub const CLOSE: usize = 105;
 	pub const EXPORT: usize = 106;
 	pub const QUIT: usize = 107;
+	pub const IMPORT_FOOTAGE: usize = 108;
 
 	pub const UNDO: usize = 201;
 	pub const REDO: usize = 202;
@@ -113,16 +113,15 @@ mod menu_ids {
 
 /// Modal-dialog control ids (see [`ModalEvent::control`]).
 mod modal_ids {
-	pub const FILE_OPEN: usize = 1;
-	pub const FILE_SAVE_AS: usize = 2;
 	pub const PREFERENCES: usize = 3;
 	pub const EXPORT: usize = 4;
 	pub const EXPORT_PROGRESS: usize = 5;
 }
 
-/// What a file dialog's OK button should do.
+/// What a picked platform-dialog path should do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum FileAction {
+	ImportFootage,
 	Open,
 	SaveAs,
 }
@@ -130,11 +129,6 @@ enum FileAction {
 /// The modal currently layered on top of the shell, if any.
 enum ModalState {
 	None,
-	FileDialog {
-		modal: Entity<Modal>,
-		content: Entity<FileDialogContent>,
-		action: FileAction,
-	},
 	Preferences {
 		modal: Entity<Modal>,
 		content: Entity<PreferencesContent>,
@@ -159,8 +153,7 @@ impl ModalState {
 	fn modal_entity(&self) -> Option<Entity<Modal>> {
 		match self {
 			ModalState::None => None,
-			ModalState::FileDialog { modal, .. }
-			| ModalState::Preferences { modal, .. }
+			ModalState::Preferences { modal, .. }
 			| ModalState::Export { modal, .. }
 			| ModalState::Progress { modal, .. } => Some(modal.clone()),
 		}
@@ -277,6 +270,15 @@ impl<E: AppEngine> OakApp<E> {
 		let source_clock = engine.read(cx).source_clock().clone();
 		let program_clock = engine.read(cx).program_clock().clone();
 		let timeline = cx.new(|cx| TimelineView::new(engine.clone(), window, cx).zoom(2.0));
+		// M12 P4: install the waveform decorator when the engine provides
+		// a waveform cache.
+		if let Some(cache) = engine.read(cx).waveform_cache() {
+			let decorator: std::sync::Arc<std::sync::RwLock<dyn gpui::timeline::clip::ClipDecorator>> =
+				std::sync::Arc::new(std::sync::RwLock::new(
+					crate::oakui::waveform::OakClipDecorator { cache },
+				));
+			timeline.update(cx, |view, _| view.set_clip_decorator(decorator));
+		}
 		let meter = cx.new(|cx| AudioLevelMeter::new(3, engine.clone(), window, cx));
 
 		// --- menu bar ------------------------------------------------------
@@ -469,6 +471,7 @@ impl<E: AppEngine> OakApp<E> {
 			// --- File ------------------------------------------------------
 			NEW_PROJECT => self.engine.update(cx, |engine, cx| engine.new_project(cx)),
 			OPEN_PROJECT => self.open_file_dialog(FileAction::Open, cx),
+			IMPORT_FOOTAGE => self.open_file_dialog(FileAction::ImportFootage, cx),
 			SAVE => self.save_project(None, cx),
 			SAVE_AS => self.open_file_dialog(FileAction::SaveAs, cx),
 			CLOSE => self
@@ -677,37 +680,94 @@ impl<E: AppEngine> OakApp<E> {
 		cx.notify();
 	}
 
-	/// Opens the file open / save-as dialog.
+	/// Opens the platform file dialog for `action` and routes the picked
+	/// path(s) through the engine. Open / Import use the path picker (import
+	/// allows multiple files); Save As asks for a new path next to the current
+	/// project. The picker resolves asynchronously, so the chosen path is
+	/// applied in a spawned task via [`Self::on_file_paths`].
 	fn open_file_dialog(&mut self, action: FileAction, cx: &mut Context<Self>) {
-		let (title, control) = match action {
-			FileAction::Open => (crate::i18n::tr("file.open.title"), modal_ids::FILE_OPEN),
-			FileAction::SaveAs => (
-				crate::i18n::tr("file.save_as.title"),
-				modal_ids::FILE_SAVE_AS,
-			),
-		};
-		let current_path = self
-			.engine
-			.read(cx)
-			.project()
-			.map(|p| p.path.clone())
-			.filter(|p| !p.as_os_str().is_empty());
-		self.spawn_modal(cx, move |window, app| {
-			let (modal, content) =
-				gpui_widgets::dialog::file_dialog::file_dialog(control, title, window, app);
-			if action == FileAction::SaveAs {
-				if let Some(path) = &current_path {
-					content.update(app, |content, cx| {
-						content.set_path(path.to_string_lossy().into_owned(), cx)
-					});
+		match action {
+			FileAction::Open | FileAction::ImportFootage => {
+				let prompt = match action {
+					FileAction::Open => crate::i18n::tr("file.open.title"),
+					_ => crate::i18n::tr("file.import_footage.title"),
+				};
+				let receiver = cx.prompt_for_paths(PathPromptOptions {
+					files: true,
+					directories: false,
+					multiple: action == FileAction::ImportFootage,
+					prompt: Some(prompt.into()),
+				});
+				cx.spawn(async move |this, cx| {
+					if let Ok(Ok(Some(paths))) = receiver.await {
+						if !paths.is_empty() {
+							this.update(cx, |this, cx| this.on_file_paths(action, paths, cx));
+						}
+					}
+				})
+				.detach();
+			}
+			FileAction::SaveAs => {
+				let current = self
+					.engine
+					.read(cx)
+					.project()
+					.map(|p| p.path.clone())
+					.filter(|p| !p.as_os_str().is_empty());
+				let (directory, suggested) = match current {
+					Some(path) => (
+						path.parent()
+							.map(|dir| dir.to_path_buf())
+							.unwrap_or_else(|| PathBuf::from(".")),
+						path
+							.file_name()
+							.map(|name| name.to_string_lossy().into_owned()),
+					),
+					None => (PathBuf::from("."), None),
+				};
+				let receiver = cx.prompt_for_new_path(&directory, suggested.as_deref());
+				cx.spawn(async move |this, cx| {
+					if let Ok(Ok(Some(path))) = receiver.await {
+						this.update(cx, |this, cx| {
+							this.on_file_paths(FileAction::SaveAs, vec![path], cx);
+						});
+					}
+				})
+				.detach();
+			}
+		}
+	}
+
+	/// Applies paths picked in the platform dialog through the engine, using
+	/// the action's routing (open / import / save-as).
+	fn on_file_paths(&mut self, action: FileAction, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
+		let result = self.engine.update(cx, |engine, cx| match action {
+			FileAction::Open => match paths.first() {
+				Some(path) => engine.open_project_path(path.clone(), cx),
+				None => Ok(()),
+			},
+			FileAction::SaveAs => match paths.first() {
+				Some(path) => engine.save_project(Some(path.clone()), cx),
+				None => Ok(()),
+			},
+			FileAction::ImportFootage => {
+				// Import accepts several files at once; keep the first failure
+				// for the log after the rest have been attempted.
+				let mut first_error = None;
+				for path in paths {
+					if let Err(err) = engine.import_footage(path.clone(), cx) {
+						first_error.get_or_insert(err);
+					}
+				}
+				match first_error {
+					Some(err) => Err(err),
+					None => Ok(()),
 				}
 			}
-			ModalState::FileDialog {
-				modal,
-				content,
-				action,
-			}
 		});
+		if let Err(err) = result {
+			println!("[file] {action:?} failed: {err}");
+		}
 	}
 
 	/// Opens the preferences dialog.
@@ -866,9 +926,6 @@ impl<E: AppEngine> OakApp<E> {
 	fn on_modal(&mut self, event: &ModalEvent, cx: &mut Context<Self>) {
 		match event {
 			ModalEvent::ButtonClicked { control, button } => match *control {
-				modal_ids::FILE_OPEN | modal_ids::FILE_SAVE_AS => {
-					self.on_file_dialog_button(*button, cx);
-				}
 				modal_ids::EXPORT => {
 					if *button == 0 {
 						self.begin_export(cx);
@@ -895,33 +952,6 @@ impl<E: AppEngine> OakApp<E> {
 				_ => self.close_modal(cx),
 			},
 		}
-	}
-
-	/// Handles the file dialog's OK/Cancel.
-	fn on_file_dialog_button(&mut self, button: usize, cx: &mut Context<Self>) {
-		let ModalState::FileDialog {
-			content, action, ..
-		} = &self.modal
-		else {
-			return;
-		};
-		if button != 0 {
-			self.close_modal(cx);
-			return;
-		}
-		let path = PathBuf::from(content.read(cx).path(cx).to_string());
-		let action = *action;
-		if path.as_os_str().is_empty() {
-			return;
-		}
-		let result = self.engine.update(cx, |engine, cx| match action {
-			FileAction::Open => engine.open_project_path(path.clone(), cx),
-			FileAction::SaveAs => engine.save_project(Some(path.clone()), cx),
-		});
-		if let Err(err) = result {
-			println!("[file] {action:?} failed: {err}");
-		}
-		self.close_modal(cx);
 	}
 }
 
@@ -969,6 +999,7 @@ fn make_menus(dark: bool) -> Vec<MenuBarEntry> {
 			Menu::new(vec![
 				MenuItem::new(NEW_PROJECT, tr("menu.file.new_project")).with_shortcut("⌘N"),
 				MenuItem::new(OPEN_PROJECT, tr("menu.file.open_project")).with_shortcut("⌘O"),
+				MenuItem::new(IMPORT_FOOTAGE, tr("menu.file.import_footage")),
 				MenuItem::new(SAVE, tr("menu.file.save")).with_shortcut("⌘S"),
 				MenuItem::new(SAVE_AS, tr("menu.file.save_as"))
 					.with_shortcut("⇧⌘S")
@@ -1129,7 +1160,14 @@ fn run_with<E: AppEngine>(args: AppArgs) {
 				window_bounds: Some(WindowBounds::Windowed(bounds)),
 				..Default::default()
 			},
-			|window, cx| build_root::<E>(window, initial, cx),
+			|window, cx| {
+				// Compact pro-app text metrics: gpui's default rem is
+				// 16px (desktop-app large); 14px matches the design's
+				// density. All rem-based text scales; px spacing is
+				// unaffected.
+				window.set_rem_size(px(14.0));
+				build_root::<E>(window, initial, cx)
+			},
 		)
 		.expect("failed to open the main window");
 
@@ -1321,6 +1359,53 @@ mod tests {
 			has_modal,
 			"preferences modal should be shown after the menu action"
 		);
+	}
+
+	/// 文件 → 导入素材… opens the *platform* path picker (not the in-window
+	/// file dialog) and routes the picked path to the engine's import; the
+	/// mock engine records it, so the async round trip is observable.
+	#[gpui::test]
+	async fn import_footage_prompts_and_routes_the_picked_path(cx: &mut TestAppContext) {
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		crate::i18n::set_language(crate::i18n::Language::EnUs);
+
+		cx.update(|cx| cx.init_colors());
+		let window = cx.open_window(size(px(1600.0), px(900.0)), |window, cx| {
+			OakApp::<MockEngine>::new(window, None, cx)
+		});
+		cx.run_until_parked();
+		let root = window.root(cx).expect("app root");
+
+		cx.update(|app| root.update(app, |app, cx| app.on_menu(menu_ids::IMPORT_FOOTAGE, cx)));
+		cx.run_until_parked();
+		assert!(
+			cx.did_prompt_for_paths(),
+			"the platform path picker should be shown"
+		);
+
+		// Answer the picker with one file: the async continuation must land it
+		// in the engine's import.
+		let picked = PathBuf::from("/media/raw/interview.mov");
+		cx.simulate_path_prompt_response({
+			let picked = picked.clone();
+			move |options| {
+				assert!(options.multiple, "import allows multiple selection");
+				Some(vec![picked])
+			}
+		});
+		cx.run_until_parked();
+
+		let imported =
+			cx.read(|app| root.read(app).engine.read(app).imported_footage().to_vec());
+		assert_eq!(imported, vec![picked]);
+
+		// Cancelling the picker imports nothing.
+		cx.update(|app| root.update(app, |app, cx| app.on_menu(menu_ids::IMPORT_FOOTAGE, cx)));
+		cx.run_until_parked();
+		cx.simulate_path_prompt_response(|_options| None);
+		cx.run_until_parked();
+		let imported = cx.read(|app| root.read(app).engine.read(app).imported_footage().len());
+		assert_eq!(imported, 1, "a cancelled picker imports nothing");
 	}
 
 	/// The command-line parser understands the project path and the mock

@@ -861,33 +861,29 @@ impl DecoderState {
 
 		let (w, h) = (f.width(), f.height());
 
-		// swscale cannot reliably output float RGBA on every build; prefer
-		// RGBAF32LE and fall back to RGBA64 (converted to f32 below).
-		let bytes =
-			match get_or_create_scaler(&mut video.scaler, src_format, w, h, Pixel::RGBAF32LE, w, h)
-			{
-				Ok(ctx) => {
-					let mut out = ffmpeg::frame::Video::empty();
-					ctx.run(&f, &mut out).map_err(ffmpeg_err)?;
-					let stride = out.stride(0);
-					convert_rgba_f32_le(&out.data(0), w, h, stride)
-				}
-				Err(_) => {
-					let ctx = get_or_create_scaler(
-						&mut video.scaler,
-						src_format,
-						w,
-						h,
-						Pixel::RGBA64LE,
-						w,
-						h,
-					)?;
-					let mut out = ffmpeg::frame::Video::empty();
-					ctx.run(&f, &mut out).map_err(ffmpeg_err)?;
-					let stride = out.stride(0);
-					convert_rgba64_to_f32(&out.data(0), w, h, stride)
-				}
-			};
+		// swscale cannot reliably output float RGBA on every build:
+		// float output is missing from some static FFmpeg swscale
+		// builds ("128bpp not supported by yuv2rgb"), and creating a
+		// float context there can abort instead of erroring — RGBA64 is
+		// REPORTED supported but still aborts, so only RGBAF32LE is
+		// probed (on the builds that have it, e.g. the system FFmpeg,
+		// it works); everything else takes the universal 8-bit RGBA
+		// path converted in Rust.
+		let supported = ffmpeg::software::scaling::support::output(Pixel::RGBAF32LE);
+		let (out_fmt, f32_ok) = if supported {
+			(Pixel::RGBAF32LE, true)
+		} else {
+			(Pixel::RGBA, false)
+		};
+		let ctx = get_or_create_scaler(&mut video.scaler, src_format, w, h, out_fmt, w, h)?;
+		let mut out = ffmpeg::frame::Video::empty();
+		ctx.run(&f, &mut out).map_err(ffmpeg_err)?;
+		let stride = out.stride(0);
+		let bytes = if f32_ok {
+			convert_rgba_f32_le(&out.data(0), w, h, stride)
+		} else {
+			convert_rgba8_to_f32(&out.data(0), w, h, stride)
+		};
 		Ok((w, h, bytes))
 	}
 
@@ -1427,6 +1423,27 @@ fn convert_rgba64_to_f32(data: &[u8], w: u32, h: u32, stride: usize) -> Vec<u8> 
 	out
 }
 
+/// Copy a packed 8-bit RGBA buffer into F32 RGBA bytes (the universal
+/// swscale fallback; M12 P0 — some static FFmpeg swscale builds lack
+/// float output formats).
+fn convert_rgba8_to_f32(data: &[u8], w: u32, h: u32, stride: usize) -> Vec<u8> {
+	let mut out = vec![0u8; (w as usize) * (h as usize) * PIXEL_F32_BYTES];
+	for y in 0..h as usize {
+		let row = &data[y * stride..y * stride + (w as usize) * 4];
+		let dst =
+			&mut out[y * (w as usize) * PIXEL_F32_BYTES..(y + 1) * (w as usize) * PIXEL_F32_BYTES];
+		for (px, src_px) in dst
+			.chunks_exact_mut(PIXEL_F32_BYTES)
+			.zip(row.chunks_exact(4))
+		{
+			for c in 0..4 {
+				px[c * 4..c * 4 + 4].copy_from_slice(&((src_px[c] as f32 / 255.0).to_le_bytes()));
+			}
+		}
+	}
+	out
+}
+
 /// Build an allocated [`Frame`] (F32, RGBA) from raw pixel bytes.
 ///
 /// # CPP-PARITY
@@ -1439,7 +1456,7 @@ fn copy_rgba_f32_to_frame(
 	bytes: &[u8],
 	timestamp: Rational,
 ) -> crate::error::Result<Frame> {
-	let params = unsafe { oakcommon_videoparams_init_basic(width as i32, height as i32) };
+	let params = unsafe { oakcommon_videoparams_init_basic(width as i32, height as i32, 0, 4, 1, 1, 0, 1) };
 	unsafe {
 		oakcommon_videoparams_set_format(params.clone(), PixelFormat::F32 as i32);
 		oakcommon_videoparams_set_channel_count(params.clone(), VIDEO_CHANNELS);
@@ -1528,7 +1545,7 @@ fn probe_file(filename: &str, cancelled: Option<&OakCancelAtom>) -> Option<Foota
 				let frame_rate = stream.avg_frame_rate();
 				let tb = stream.time_base();
 
-				let vp = unsafe { oakcommon_videoparams_init_basic(1, 1) };
+				let vp = unsafe { oakcommon_videoparams_init_basic(1, 1, 0, 4, 1, 1, 0, 1) };
 				unsafe {
 					oakcommon_videoparams_set_stream_index(vp.clone(), i as i32);
 					oakcommon_videoparams_set_width(vp.clone(), (*raw).width);
@@ -1883,7 +1900,7 @@ impl EncoderState {
 				.unwrap_or_else(|| default_pixel_format_for_codec(codec_id));
 			encoder.set_format(pix_fmt);
 
-			let opened = encoder.open().map_err(ffmpeg_err)?;
+			let opened = encoder.open().map_err(|e| { eprintln!("DBG-AUD: audio open failed: {e:?}"); ffmpeg_err(e) })?;
 			stream.set_parameters(&opened);
 
 			let scaler = scaling::Context::get(
@@ -1931,8 +1948,11 @@ impl EncoderState {
 			if params.audio_bit_rate > 0 {
 				encoder.set_bit_rate(params.audio_bit_rate as usize);
 			}
-			let sample_fmt = sample_format_to_ffmpeg(params.audio_sample_format)
-				.unwrap_or_else(|| default_sample_format_for_codec(codec_id));
+			// The encoder always runs in the codec's native sample
+			// format (the params' delivery format is bridged by the
+			// resampler below); forcing an incompatible format here
+			// makes `open` fail with Invalid argument.
+			let sample_fmt = default_sample_format_for_codec(codec_id);
 			encoder.set_format(sample_fmt);
 
 			let opened = encoder.open().map_err(ffmpeg_err)?;
@@ -2000,15 +2020,15 @@ impl EncoderState {
 				.chunks_exact_mut(4)
 				.zip(row.chunks_exact(PIXEL_F32_BYTES))
 			{
-				for c in 0..4 {
-					let v = f32::from_le_bytes([
-						in_px[c * 4],
-						in_px[c * 4 + 1],
-						in_px[c * 4 + 2],
-						in_px[c * 4 + 3],
-					]);
-					out_px[c] = (v * 255.0).clamp(0.0, 1.0) as u8;
-				}
+			for c in 0..4 {
+				let v = f32::from_le_bytes([
+					in_px[c * 4],
+					in_px[c * 4 + 1],
+					in_px[c * 4 + 2],
+					in_px[c * 4 + 3],
+				]);
+				out_px[c] = (v * 255.0).clamp(0.0, 255.0) as u8;
+			}
 			}
 		}
 
@@ -2068,11 +2088,11 @@ impl EncoderState {
 			unsafe { std::slice::from_raw_parts(samples.as_ptr() as *const u8, samples.len() * 4) };
 		input.data_mut(0)[..bytes.len()].copy_from_slice(bytes);
 
-		let mut converted = audio.resampler.convert_to_frame(&input)?;
+		let mut converted = audio.resampler.convert_to_frame(&input).map_err(|e| { eprintln!("DBG-AUD: convert failed: {e:?}"); fail(format!("{e:?}")) })?;
 		converted.set_pts(Some(pts));
 		output.audio_pts += converted.samples() as i64;
 
-		audio.encoder.send_frame(&converted).map_err(ffmpeg_err)?;
+		audio.encoder.send_frame(&converted).map_err(|e| { eprintln!("DBG-AUD: send failed: {e:?}"); ffmpeg_err(e) })?;
 		drain_audio_packets(&mut output.output, audio)
 	}
 

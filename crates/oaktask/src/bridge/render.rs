@@ -137,6 +137,8 @@ pub fn oakrender_ticket_render_audio(
 			mode,
 			cb,
 			userdata,
+			std::ptr::null(),
+			0,
 		)
 	}
 }

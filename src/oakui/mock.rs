@@ -427,6 +427,10 @@ pub struct MockEngine {
 	/// the scope samples analyzed in the same pass, so a paused viewer never
 	/// regenerates its picture (or its scopes).
 	cpu_frame_cache: Mutex<HashMap<Monitor, (i64, Arc<RenderImage>, ScopeData)>>,
+	/// Paths handed to [`AppEngine::import_footage`] since creation; the mock
+	/// has no media pipeline, so it just records them (drives app-level tests
+	/// of the import flow).
+	imported_footage: Vec<PathBuf>,
 }
 
 impl MockEngine {
@@ -665,6 +669,7 @@ impl MockEngine {
 			next_edge_id: 6,
 			node_selection: BTreeSet::new(),
 			cpu_frame_cache: Mutex::new(HashMap::new()),
+			imported_footage: Vec::new(),
 		};
 		// The demo graph is born connected: derive every port's `connected`
 		// flag from the edge list.
@@ -1236,6 +1241,12 @@ impl AppEngine for MockEngine {
 		Ok(())
 	}
 
+	fn import_footage(&mut self, path: PathBuf, cx: &mut Context<Self>) -> Result<(), String> {
+		self.imported_footage.push(path);
+		cx.notify();
+		Ok(())
+	}
+
 	fn save_project(
 		&mut self,
 		_path: Option<PathBuf>,
@@ -1392,6 +1403,12 @@ impl AudioMeterDataSource for MockEngine {
 
 /// Convenience accessors used by panels and the status bar.
 impl MockEngine {
+	/// The paths imported via [`AppEngine::import_footage`] so far (mock state;
+	/// the mock has no media pipeline, it just records the request).
+	pub fn imported_footage(&self) -> &[PathBuf] {
+		&self.imported_footage
+	}
+
 	/// The selected material-bin entry id (demo state).
 	pub fn selected_item(&self) -> Option<u64> {
 		self.selected_item

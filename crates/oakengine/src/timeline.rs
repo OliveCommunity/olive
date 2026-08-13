@@ -1785,6 +1785,48 @@ pub unsafe extern "C" fn oakengine_sequence_add_footage_clip(
 	media_in: i64,
 ) -> *mut OakEngineClip {
 	guard_ptr(|| unsafe {
+		add_footage_clip_impl(seq, footage, track_type, track_index, in_, out, media_in, true)
+	})
+}
+
+/// `oakengine_sequence_add_footage_clip_ex` — like
+/// `oakengine_sequence_add_footage_clip`, but skips the same-project
+/// check (M12 P0).
+///
+/// Sequences created through `oakengine_sequence_new` live in their own
+/// scratch project (documented deviation: the module's whole-subgraph
+/// transfer cannot remap the ids held inside behaviors, so project
+/// membership is not established in the module world). The plain export
+/// therefore rejects every footage clip as "different projects". The
+/// `_ex` variant accepts the module reality: the check is unenforceable
+/// and only the handle validity is required.
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_sequence_add_footage_clip_ex(
+	seq: *mut OakEngineSequence,
+	footage: *mut OakEngineFootage,
+	track_type: c_int,
+	track_index: c_int,
+	in_: i64,
+	out: i64,
+	media_in: i64,
+) -> *mut OakEngineClip {
+	guard_ptr(|| unsafe {
+		add_footage_clip_impl(seq, footage, track_type, track_index, in_, out, media_in, false)
+	})
+}
+
+/// Shared implementation of the footage-clip placement.
+unsafe fn add_footage_clip_impl(
+	seq: *mut OakEngineSequence,
+	footage: *mut OakEngineFootage,
+	track_type: c_int,
+	track_index: c_int,
+	in_: i64,
+	out: i64,
+	media_in: i64,
+	strict_project: bool,
+) -> Result<*mut OakEngineClip> {
+	unsafe {
 		set_seq_error("");
 		let sequence = match unbox(seq) {
 			Ok(h) => h,
@@ -1804,18 +1846,22 @@ pub unsafe extern "C" fn oakengine_sequence_add_footage_clip(
 			set_seq_error("clips are only supported on video and audio tracks");
 			return Ok(std::ptr::null_mut());
 		}
-		// Same-project check.
+		// Same-project check. The `_ex` variant skips it: sequences
+		// created through `oakengine_sequence_new` live in their own
+		// scratch project (documented deviation), so the strict check
+		// can never pass and only handle validity is enforceable.
 		let mut seq_project = CHandle::null();
 		let seq_node = n::oaknode_sequence_as_node(sequence);
 		let rc = n::oaknode_node_get_project(seq_node, &mut seq_project);
 		let mut foot_project = CHandle::null();
 		let rc2 = n::oaknode_node_get_project(footage_h, &mut foot_project);
 		release_handle(seq_node);
-		if rc != 0
-			|| rc2 != 0
-			|| seq_project.is_null()
-			|| foot_project.is_null()
-			|| seq_project.ctx != foot_project.ctx
+		if strict_project
+			&& (rc != 0
+				|| rc2 != 0
+				|| seq_project.is_null()
+				|| foot_project.is_null()
+				|| seq_project.ctx != foot_project.ctx)
 		{
 			release_handle(seq_project);
 			release_handle(foot_project);
@@ -1878,35 +1924,61 @@ pub unsafe extern "C" fn oakengine_sequence_add_footage_clip(
 			len_den as c_int,
 		))?;
 
-		let mut children: Vec<CHandle> = Vec::new();
-		let add_cmd = n::oaknode_command_create_add_node(seq_project_of(sequence), clip);
-		if add_cmd.is_null() {
-			release_handle(list);
-			set_seq_error("node add command failed");
-			return Ok(std::ptr::null_mut());
-		}
-		children.push(add_cmd);
-		// The module clip has no `buffer_in` input (only media/speed/reverse/
-		// pitch/loop inputs), so the footage connection cannot be built; the
-		// whole add fails like the C++ would on a bad edge.
-		let clip_node = n::oaknode_block_as_node(clip);
-		let mut edge = CHandle::null();
-		let rc = n::oaknode_node_connect_undoable(
-			footage_h,
-			clip_node,
-			c"buffer_in".as_ptr(),
-			&mut edge,
-		);
-		release_handle(clip_node);
-		if rc != 0 {
-			for child in &children {
-				release_handle(*child);
+		// The `_ex` variant connects a footage node created directly in
+		// the sequence's scratch project (graph edges cannot cross
+		// projects; the real-project footage node stays untouched for
+		// the project browser). The module clip declares its texture
+		// input as `tex_in` (the C++-era `buffer_in` name does not exist
+		// here); the graph's connect validates the input side only, so
+		// the footage edge builds even though the footage node has no
+		// declared output.
+		//
+		// Order matters: the place command ADOPTS the block into the
+		// sequence's project (remapping the block handle's node id), so
+		// the footage edge is created only after the block is placed —
+		// the edge needs the clip's final (project, id).
+		let scratch_footage = if !strict_project {
+			let scratch = seq_project_of(sequence);
+			let mut out = CHandle::null();
+			if !scratch.is_null() {
+				let mut fbuf = [0 as c_char; 4096];
+				if n::oaknode_footage_filename(
+					footage_h,
+					fbuf.as_mut_ptr(),
+					fbuf.len() as c_int,
+				) >= 0
+				{
+					let fname = crate::handle::read_cstr(fbuf.as_ptr());
+					let fc = std::ffi::CString::new(fname).unwrap_or_default();
+					out = n::oaknode_footage_create(scratch, fc.as_ptr());
+				}
+				release_handle(scratch);
 			}
-			release_handle(list);
-			set_seq_error("footage connection failed: module clips have no buffer input");
-			return Ok(std::ptr::null_mut());
+			out
+		} else {
+			CHandle::null()
+		};
+
+		let mut children: Vec<CHandle> = Vec::new();
+		// The `_ex` variant skips the graph add-node command: it would
+		// move the clip entry into the sequence's project under a fresh
+		// id while leaving the caller's clip handle stale, which then
+		// breaks the place command's adoption (the entry is already
+		// gone). The place command's `adopt_block` performs the move
+		// itself and remaps the block handle; on undo the block is
+		// simply left as an orphan node in the sequence's project.
+		if strict_project {
+			let add_cmd = n::oaknode_command_create_add_node(seq_project_of(sequence), clip);
+			if add_cmd.is_null() {
+				release_handle(list);
+				if !scratch_footage.is_null() {
+					release_handle(scratch_footage);
+				}
+				set_seq_error("node add command failed");
+				return Ok(std::ptr::null_mut());
+			}
+			children.push(add_cmd);
 		}
-		children.push(edge);
 		let place_cmd =
 			tl::oaktimeline_place_block_command(list, track_index, clip, in_num, in_den);
 		if place_cmd.is_null() {
@@ -1914,17 +1986,42 @@ pub unsafe extern "C" fn oakengine_sequence_add_footage_clip(
 				release_handle(*child);
 			}
 			release_handle(list);
+			if !scratch_footage.is_null() {
+				release_handle(scratch_footage);
+			}
 			set_seq_error("place block command failed");
 			return Ok(std::ptr::null_mut());
 		}
 		children.push(place_cmd);
-		release_handle(list);
+		// The commands hold borrowed clones of `list` (no addref), so the
+		// handle must stay alive until the group push has executed the
+		// redos; released right after.
 		if let Err(e) = push_multi_commands(&children, "Add Clip") {
+			release_handle(list);
 			set_seq_error(&format!("failed to push add-clip command: {:?}", e));
 			return Err(e);
 		}
+		release_handle(list);
+		if !scratch_footage.is_null() {
+			let clip_node = n::oaknode_block_as_node(clip);
+			let mut edge = CHandle::null();
+			let rc = n::oaknode_node_connect_undoable(
+				scratch_footage,
+				clip_node,
+				c"tex_in".as_ptr(),
+				&mut edge,
+			);
+			release_handle(clip_node);
+			release_handle(scratch_footage);
+			if rc != 0 || edge.is_null() {
+				set_seq_error("footage connection failed");
+				return Ok(std::ptr::null_mut());
+			}
+			let edge_box = box_handle::<OakEngineClipboard>(edge);
+			push_or_run(edge_box, c"Add Clip".as_ptr())?;
+		}
 		Ok(box_handle::<OakEngineClip>(clip))
-	})
+	}
 }
 
 /// Borrowed project handle of a sequence (temporary; caller releases).
@@ -2109,6 +2206,50 @@ pub unsafe extern "C" fn oakengine_clip_as_node(self_: *const OakEngineClip) -> 
 		}
 		Ok(box_handle::<OakEngineNode>(node))
 	})
+}
+
+/// `oakengine_clip_get_media_filename` — the clip's upstream footage
+/// filename (two-stage buf/size; M12 P4 — the waveform decorator needs
+/// the media file). Negative error when the clip has no media.
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_clip_get_media_filename(
+	self_: *const OakEngineClip,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	guard_int(|| unsafe {
+		if self_.is_null() {
+			return Err(Error::Invalid);
+		}
+	let h = unbox(self_)?;
+	let Some((filename, _)) = timeline_clip_media(h) else {
+		return Err(Error::NotFound);
+	};
+	let rc = crate::handle::write_string(&filename, buf, buf_size);
+	Ok(string_result(rc))
+})
+}
+
+/// Resolve a clip's media `(filename, stream)` through its graph node's
+/// upstream footage (the same walk `crates::render` performs for the
+/// montage).
+unsafe fn timeline_clip_media(clip: CHandle) -> Option<(String, c_int)> {
+	unsafe {
+		let node = n::oaknode_block_as_node(clip);
+		if node.is_null() {
+			return None;
+		}
+		let mut footage = CHandle::null();
+		if n::oaknode_node_find_input_footage(node, &mut footage) != 0 || footage.is_null() {
+			return None;
+		}
+		let mut buf = [0 as c_char; 4096];
+		if n::oaknode_footage_filename(footage, buf.as_mut_ptr(), buf.len() as c_int) < 0 {
+			return None;
+		}
+		let filename = crate::handle::read_cstr(buf.as_ptr());
+		Some((filename, 1))
+	}
 }
 
 /* ---- Editing primitives, round 2: split / ripple delete / trim / move ---- */
@@ -2427,6 +2568,150 @@ pub unsafe extern "C" fn oakengine_sequence_move_clip(
 			tl::oaktimeline_move_block_command(list, track_index, clip, new_in_num, new_in_den);
 		push_command(cmd, "Move Clip")
 	})
+}
+
+/// `oakengine_sequence_move_clip_to_track` — move a clip to a different
+/// track at `new_in` (frame units in the sequence's timebase) as ONE
+/// undoable entry (M12 P4, cross-track move): the source spot becomes a
+/// gap and the clip is placed on the destination track.
+///
+/// The destination track must already exist and hold clips of the same
+/// type (video ↔ video, audio ↔ audio).
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_sequence_move_clip_to_track(
+	seq: *mut OakEngineSequence,
+	track_type: c_int,
+	track_index: c_int,
+	clip_index: c_int,
+	dest_track_index: c_int,
+	new_in: i64,
+) -> c_int {
+	guard(|| unsafe {
+		set_seq_error("");
+		let sequence = match unbox(seq) {
+			Ok(h) => h,
+			Err(_) => {
+				set_seq_error("invalid arguments");
+				return Err(Error::Invalid);
+			}
+		};
+		if track_type < TRACK_TYPE_VIDEO
+			|| track_type > TRACK_TYPE_SUBTITLE
+			|| new_in < 0
+			|| dest_track_index < 0
+		{
+			set_seq_error("invalid arguments");
+			return Err(Error::Invalid);
+		}
+		let mut list = CHandle::null();
+		Error::from_module(n::oaknode_sequence_get_track_list(
+			sequence, track_type, &mut list,
+		))?;
+		let clip = clip_at_index(list, track_index, clip_index);
+		if clip.is_null() {
+			set_seq_error(&format!(
+				"no clip at track {} index {}",
+				track_index, clip_index
+			));
+			return Err(Error::NotFound);
+		}
+		let mut track = CHandle::null();
+		let rc = n::oaknode_block_get_track(clip, &mut track);
+		if rc != 0 || track.is_null() {
+			set_seq_error(&format!(
+				"no clip at track {} index {}",
+				track_index, clip_index
+			));
+			return Err(Error::NotFound);
+		}
+		let mut track_count: c_int = 0;
+		Error::from_module(n::oaknode_tracklist_get_track_count(
+			list, &mut track_count,
+		))?;
+		if dest_track_index >= track_count {
+			set_seq_error(&format!(
+				"destination track {} out of range ({} tracks)",
+				dest_track_index, track_count
+			));
+			return Err(Error::NotFound);
+		}
+		let tb = seq_time_base(sequence)?;
+		let (new_in_num, new_in_den) = ts_to_rational(new_in, tb);
+
+		// One undoable entry: gap the source, re-home the block's in
+		// point, place on the destination. (The module stores a block's
+		// position on the block itself, so the place command alone would
+		// keep the old in point.)
+		let mut children: Vec<CHandle> = Vec::new();
+		let gap_cmd = tl::oaktimeline_replace_block_with_gap_command(track, clip);
+		if gap_cmd.is_null() {
+			set_seq_error("replace-with-gap command failed");
+			return Err(Error::Failed("gap command failed".into()));
+		}
+		children.push(gap_cmd);
+		let mut old_num: c_int = 0;
+		let mut old_den: c_int = 0;
+		Error::from_module(n::oaknode_block_get_in(clip, &mut old_num, &mut old_den))?;
+		let data = Box::into_raw(Box::new(BlockInCmdData {
+			block: clip,
+			old_num,
+			old_den,
+			new_num: new_in_num as c_int,
+			new_den: new_in_den as c_int,
+		}));
+		let in_cmd = vtable_command(block_in_redo, block_in_undo, block_in_free, data as *mut c_void)?;
+		children.push(in_cmd);
+		let place_cmd = tl::oaktimeline_place_block_command(
+			list,
+			dest_track_index,
+			clip,
+			new_in_num,
+			new_in_den,
+		);
+		if place_cmd.is_null() {
+			set_seq_error("place-block command failed");
+			return Err(Error::Failed("place command failed".into()));
+		}
+		children.push(place_cmd);
+		// The commands hold borrowed clones of `list`/`track`/`clip` (no
+		// addref); keep them alive until the redos run.
+		push_multi_commands(&children, "Move Clip to Track")
+	})
+}
+
+/// Vtable data for the block-in re-home step of a cross-track move.
+struct BlockInCmdData {
+	/// The block (borrowed; alive with the sequence).
+	block: CHandle,
+	/// Original in point.
+	old_num: c_int,
+	/// Original in point denominator.
+	old_den: c_int,
+	/// Placement in point.
+	new_num: c_int,
+	/// Placement in point denominator.
+	new_den: c_int,
+}
+
+/// `BlockInCmdData` redo: re-home the block's in point.
+unsafe extern "C" fn block_in_redo(data: *mut c_void) {
+	unsafe {
+		let d = &*(data as *const BlockInCmdData);
+		n::oaknode_block_set_in(d.block, d.new_num, d.new_den);
+	}
+}
+
+/// `BlockInCmdData` undo: restore the original in point.
+unsafe extern "C" fn block_in_undo(data: *mut c_void) {
+	unsafe {
+		let d = &*(data as *const BlockInCmdData);
+		n::oaknode_block_set_in(d.block, d.old_num, d.old_den);
+	}
+}
+
+/// `BlockInCmdData` free.
+unsafe extern "C" fn block_in_free(data: *mut c_void) {
+	unsafe { drop(Box::from_raw(data as *mut BlockInCmdData)) };
 }
 
 /* ---- Batch editing (timeline panel) -------------------------------------- */

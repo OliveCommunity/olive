@@ -32,7 +32,7 @@
 //! - `backend` — wgpu GPU context + display renderer
 //! - `copier` — render-side project-copy client (oaknode C ABI)
 //! - `cancelatom` — the cancellation primitive
-//! - `bridge` — C ABI imports (oakcommon/oaknode/oakcodec, dlsym-resolved)
+//! - `bridge` — direct-call C ABI bridges (oakcommon/oaknode/oakcodec)
 //! - `ffi` — the `include/render/*.h` export layer
 
 #![deny(unsafe_op_in_unsafe_fn)]

@@ -44,10 +44,13 @@ pub mod frames;
 mod host_syms;
 pub mod icons;
 pub mod mock;
+pub mod nodegraph;
+pub mod projectbrowser;
 pub mod real;
 pub mod scopes;
 pub mod timecode;
 pub mod transport;
+pub mod waveform;
 
 pub use engine::{
 	AppEngine, EngineClock, EngineGateway, ExportEvent, ExportSession, Monitor, Project, ScopeData,

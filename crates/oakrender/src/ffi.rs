@@ -128,6 +128,56 @@ pub struct OakVideoTicketParams {
 	pub force_color_transform: OakColorTransform,
 	/// Borrowed frame cache; empty ctx = none.
 	pub cache: OakRenderCache,
+	/// Single-footage decode filename (null = off; M12 P0).
+	pub footage_filename: *const c_char,
+	/// Media stream index for `footage_filename`.
+	pub footage_stream: c_int,
+	/// Sequence montage clip array (null = off; M12 P0). Clips are
+	/// ordered bottom-to-top; the last element is the topmost.
+	pub montage: *const OakMontageClip,
+	/// `montage` element count.
+	pub montage_count: c_int,
+}
+
+/// One sequence-montage clip (M12 P0): the facade resolves the timeline
+/// into this POD list; the render producer decodes and composites.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct OakMontageClip {
+	/// Footage filename (borrowed; alive for the render call).
+	pub filename: *const c_char,
+	/// Media stream index.
+	pub stream_index: c_int,
+	/// Clip in point (sequence time), rational.
+	pub in_num: i64,
+	/// Clip in point denominator.
+	pub in_den: i64,
+	/// Clip out point (sequence time), rational.
+	pub out_num: i64,
+	/// Clip out point denominator.
+	pub out_den: i64,
+	/// Media in point, rational.
+	pub media_in_num: i64,
+	/// Media in point denominator.
+	pub media_in_den: i64,
+	/// Playback gain (1.0 = unity).
+	pub gain: f32,
+}
+
+/// The samples block handed out by `oakrender_ticket_get_samples`
+/// (caller-owned; release with `oakrender_audio_samples_free`). Read by
+/// the facade through the Rust type.
+pub struct OakAudioSamplesOut {
+	/// Interleaved f32 samples.
+	pub data: Box<[f32]>,
+	/// Frame count.
+	pub frame_count: c_int,
+	/// Sample rate (Hz).
+	pub sample_rate: c_int,
+	/// Channel layout mask.
+	pub channel_layout: u64,
+	/// Channel count.
+	pub channel_count: c_int,
 }
 
 /// `oakrender_color_transform_job` (render/renderer.h).
@@ -353,11 +403,11 @@ pub mod manager {
 			let _arena = arena.clone();
 			Box::new(move |result| {
 				let handle = match result {
-					Ok(tex) => match tex.to_frame() {
+					Ok(crate::ticket::TicketPayload::Video(tex)) => match tex.to_frame() {
 						Ok(frame) => frame_handle(frame),
 						Err(_) => CHandle::null(),
 					},
-					Err(_) => CHandle::null(),
+					_ => CHandle::null(),
 				};
 				lock().remove(&rid);
 				unsafe { cb(handle, ts, userdata.ptr()) };
@@ -1107,6 +1157,36 @@ pub mod ticket {
 			});
 			let userdata = RawSend(userdata);
 			// The completion needs the final handle to pass to `cb`.
+			let footage = if !params.footage_filename.is_null() {
+				let filename = unsafe { cstr(params.footage_filename) };
+				filename.filter(|s| !s.is_empty()).map(|s| (s, params.footage_stream))
+			} else {
+				None
+			};
+			let montage = if !params.montage.is_null() && params.montage_count > 0 {
+				let count = params.montage_count.min(1024);
+				let mut out = Vec::with_capacity(count as usize);
+				for i in 0..count {
+					let c = unsafe { &*params.montage.add(i as usize) };
+					let Some(filename) = (unsafe { cstr(c.filename) }) else {
+						continue;
+					};
+					if filename.is_empty() {
+						continue;
+					}
+					out.push(crate::ticket::MontageClip {
+						filename,
+						stream_index: c.stream_index,
+						in_time: oakcore_rs::Rational::new(c.in_num, c.in_den),
+						out_time: oakcore_rs::Rational::new(c.out_num, c.out_den),
+						media_in: oakcore_rs::Rational::new(c.media_in_num, c.media_in_den),
+						gain: c.gain,
+					});
+				}
+				out
+			} else {
+				Vec::new()
+			};
 			arena.submit_video_with_id(
 				id,
 				crate::ticket::VideoTicketParams {
@@ -1122,6 +1202,8 @@ pub mod ticket {
 					cache_dir,
 					cache_id,
 					cache_timebase,
+					footage,
+					montage,
 				},
 				match cb {
 					Some(cb) => Box::new(move |_result| {
@@ -1134,7 +1216,9 @@ pub mod ticket {
 		})
 	}
 
-	/// `oakrender_ticket_render_audio`.
+	/// `oakrender_ticket_render_audio` — range audio render (M12 P1).
+	/// `montage`/`montage_count` carry the clips to mix (same POD as the
+	/// video path; additive trailing fields).
 	#[no_mangle]
 	pub unsafe extern "C" fn oakrender_ticket_render_audio(
 		output_node: OakNodeNode,
@@ -1146,6 +1230,8 @@ pub mod ticket {
 		mode: c_int,
 		cb: Option<unsafe extern "C" fn(OakRenderTicket, *mut c_void)>,
 		userdata: *mut c_void,
+		montage: *const OakMontageClip,
+		montage_count: c_int,
 	) -> OakRenderTicket {
 		crate::handle::guard_handle(|| {
 			if output_node.is_null() || params.is_null() {
@@ -1159,6 +1245,35 @@ pub mod ticket {
 				oakcore_rs::Rational::new(in_num, in_den),
 				oakcore_rs::Rational::new(out_num, out_den),
 			);
+			let sample_rate =
+				crate::bridge::common::audioparams_sample_rate(params as *const c_void).max(1);
+			let channel_layout = crate::bridge::common::audioparams_channel_layout(
+				params as *const c_void,
+			);
+			let montage = if !montage.is_null() && montage_count > 0 {
+				let count = montage_count.min(1024);
+				let mut out = Vec::with_capacity(count as usize);
+				for i in 0..count {
+					let c = unsafe { &*montage.add(i as usize) };
+					let Some(filename) = (unsafe { cstr(c.filename) }) else {
+						continue;
+					};
+					if filename.is_empty() {
+						continue;
+					}
+					out.push(crate::ticket::MontageClip {
+						filename,
+						stream_index: c.stream_index,
+						in_time: oakcore_rs::Rational::new(c.in_num, c.in_den),
+						out_time: oakcore_rs::Rational::new(c.out_num, c.out_den),
+						media_in: oakcore_rs::Rational::new(c.media_in_num, c.media_in_den),
+						gain: c.gain,
+					});
+				}
+				out
+			} else {
+				Vec::new()
+			};
 			let arena = manager.tickets.clone();
 			let id = arena.next_id();
 			let handle = crate::handle::make_owned(TicketBox {
@@ -1168,8 +1283,13 @@ pub mod ticket {
 			let userdata = RawSend(userdata);
 			arena.submit_audio_with_id(
 				id,
-				output_node.ctx as u64,
-				range,
+				crate::ticket::AudioTicketParams {
+					viewer: output_node.ctx as u64,
+					range,
+					sample_rate,
+					channel_layout,
+					montage,
+				},
 				match cb {
 					Some(cb) => Box::new(move |_result| {
 						unsafe { cb(handle, userdata.ptr()) };
@@ -1296,8 +1416,16 @@ pub mod ticket {
 				.arena
 				.result(b.id)
 				.ok_or_else(|| crate::error::Error::Failed("ticket has no result".into()))?;
-			let texture =
-				result.map_err(|_| crate::error::Error::Failed("ticket failed".into()))?;
+			let texture = match result.map_err(|_| {
+				crate::error::Error::Failed("ticket failed".into())
+			})? {
+				crate::ticket::TicketPayload::Video(t) => t,
+				_ => {
+					return Err(crate::error::Error::Failed(
+						"ticket produced audio, not video".into(),
+					));
+				}
+			};
 			let frame = texture.to_frame()?;
 			unsafe { *out = frame_handle(frame) };
 			if unsafe { (*out).is_null() } {
@@ -1307,8 +1435,9 @@ pub mod ticket {
 		})
 	}
 
-	/// `oakrender_ticket_get_samples` — audio rendering is not implemented
-	/// in this pass; always fails explainably.
+	/// `oakrender_ticket_get_samples` — the audio ticket's interleaved
+	/// f32 samples (M12 P1). `*out` receives a heap `OakAudioSamples`
+	/// owned by the caller (release with `oakrender_audio_samples_free`).
 	#[no_mangle]
 	pub unsafe extern "C" fn oakrender_ticket_get_samples(
 		ticket: OakRenderTicket,
@@ -1319,12 +1448,49 @@ pub mod ticket {
 				return Err(crate::error::Error::Invalid);
 			}
 			unsafe { *out = std::ptr::null_mut() };
-			let _ = unsafe { crate::handle::get::<TicketBox>(&ticket) }
+			let b = unsafe { crate::handle::get::<TicketBox>(&ticket) }
 				.ok_or(crate::error::Error::Invalid)?;
-			Err(crate::error::Error::Failed(
-				"audio samples deferred: audio rendering not implemented".into(),
-			))
+			if !b.arena.is_finished(b.id) {
+				return Err(crate::error::Error::State);
+			}
+			let result = b
+				.arena
+				.result(b.id)
+				.ok_or_else(|| crate::error::Error::Failed("ticket has no result".into()))?;
+			let samples = match result.map_err(|_| {
+				crate::error::Error::Failed("audio ticket failed".into())
+			})? {
+				crate::ticket::TicketPayload::Audio(a) => a,
+				_ => {
+					return Err(crate::error::Error::Failed(
+						"ticket produced video, not audio".into(),
+					));
+				}
+			};
+			let boxed = Box::new(OakAudioSamplesOut {
+				data: samples.samples.clone().into_boxed_slice(),
+				frame_count: samples
+					.samples
+					.len()
+					.checked_div(samples.channel_count.max(1) as usize)
+					.unwrap_or(0) as c_int,
+				sample_rate: samples.sample_rate,
+				channel_layout: samples.channel_layout,
+				channel_count: samples.channel_count,
+			});
+			unsafe { *out = Box::into_raw(boxed) as *mut c_void };
+			Ok(())
 		})
+	}
+
+	/// `oakrender_audio_samples_free` — release the samples block returned
+	/// by `oakrender_ticket_get_samples` (NULL no-op).
+	#[no_mangle]
+	pub unsafe extern "C" fn oakrender_audio_samples_free(samples: *mut c_void) {
+		if samples.is_null() {
+			return;
+		}
+		unsafe { drop(Box::from_raw(samples as *mut OakAudioSamplesOut)) };
 	}
 
 	/// `oakrender_ticket_free`.

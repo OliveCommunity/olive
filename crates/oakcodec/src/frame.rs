@@ -388,7 +388,7 @@ mod tests {
 	use crate::bridge::common::oakcommon_videoparams_init_basic;
 
 	fn frame(w: i32, h: i32) -> Frame {
-		let params = unsafe { oakcommon_videoparams_init_basic(w, h) };
+		let params = unsafe { oakcommon_videoparams_init_basic(w, h, 0, 4, 1, 1, 0, 1) };
 		Frame::with_params(params)
 	}
 
@@ -459,12 +459,12 @@ mod tests {
 
 	#[test]
 	fn set_params_recomputes_linesize_without_realloc() {
-		let params = unsafe { oakcommon_videoparams_init_basic(10, 10) };
+		let params = unsafe { oakcommon_videoparams_init_basic(10, 10, 0, 4, 1, 1, 0, 1) };
 		let mut f = Frame::with_params(params);
 		f.allocate().unwrap();
 		let before = f.allocated_size();
 
-		let wider = unsafe { oakcommon_videoparams_init_basic(100, 10) };
+		let wider = unsafe { oakcommon_videoparams_init_basic(100, 10, 0, 4, 1, 1, 0, 1) };
 		f.set_params(wider);
 		// linesize reflects the new width, but the buffer is untouched.
 		assert_eq!(f.linesize_bytes(), 4 * 128);
@@ -478,7 +478,7 @@ mod tests_extra {
 	use crate::bridge::common::oakcommon_videoparams_init_basic;
 
 	fn frame(w: i32, h: i32) -> Frame {
-		let params = unsafe { oakcommon_videoparams_init_basic(w, h) };
+		let params = unsafe { oakcommon_videoparams_init_basic(w, h, 0, 4, 1, 1, 0, 1) };
 		Frame::with_params(params)
 	}
 
@@ -513,7 +513,7 @@ mod tests_extra {
 
 	#[test]
 	fn pixel_format_from_unknown_code_is_invalid() {
-		let p = unsafe { oakcommon_videoparams_init_basic(1, 1) };
+		let p = unsafe { oakcommon_videoparams_init_basic(1, 1, 0, 4, 1, 1, 0, 1) };
 		unsafe { crate::bridge::common::oakcommon_videoparams_set_format(p.clone(), 99) };
 		let f = Frame::with_params(p);
 		assert_eq!(f.format(), PixelFormat::Invalid);

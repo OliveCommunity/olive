@@ -319,7 +319,7 @@ mod tests {
 	#[test]
 	fn frame_lifecycle_golden() {
 		let _g = crate::ffi::lock_tests();
-		let params = unsafe { oakcommon_videoparams_init_basic(100, 50) };
+		let params = unsafe { oakcommon_videoparams_init_basic(100, 50, 0, 4, 1, 1, 0, 1) };
 		let before = handle::alive_count();
 		let mut h = unsafe { oakcodec_frame_init_with_params(params) };
 		assert!(!h.is_null());
@@ -385,7 +385,7 @@ mod tests {
 		);
 
 		// init_basic(0, 0) is not valid -> allocate rejects with E_STATE.
-		let params = unsafe { oakcommon_videoparams_init_basic(0, 0) };
+		let params = unsafe { oakcommon_videoparams_init_basic(0, 0, 0, 4, 1, 1, 0, 1) };
 		let mut h = unsafe { oakcodec_frame_init_with_params(params) };
 		assert!(!h.is_null());
 		assert_eq!(
@@ -433,7 +433,7 @@ mod tests {
 		);
 
 		// set_params replaces the parameter set and recomputes line sizes.
-		let params = unsafe { oakcommon_videoparams_init_basic(100, 50) };
+		let params = unsafe { oakcommon_videoparams_init_basic(100, 50, 0, 4, 1, 1, 0, 1) };
 		let rc = unsafe { oakcodec_frame_set_params(h, params) };
 		assert_eq!(rc, crate::error::OAKCODEC_OK);
 		assert_eq!(unsafe { oakcodec_frame_width(h) }, 100);

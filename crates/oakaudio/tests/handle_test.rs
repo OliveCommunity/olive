@@ -17,12 +17,22 @@
 //! Handle plumbing contract tests (handle.rs).
 
 use oakaudio::error::{OAKAUDIO_E_FAILED, OAKAUDIO_E_INVALID, OAKAUDIO_OK};
+use std::sync::{Mutex, MutexGuard};
+
 use oakaudio::handle::{alive_count, get, guard, guard_handle, make_borrowed, make_owned, CHandle};
+
+/// Serializes the tests: the crate's live-object ledger is process-global,
+/// so parallel tests in this file would race the count assertions.
+fn ledger_lock() -> MutexGuard<'static, ()> {
+	static LOCK: Mutex<()> = Mutex::new(());
+	LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 /// make_owned starts at refcount 1; get returns a typed view; dropping the
 /// handle decrements to 0.
 #[test]
 fn owned_lifecycle() {
+	let _l = ledger_lock();
 	let before = alive_count();
 	let mut h = make_owned(42u32);
 	assert!(!h.is_null());

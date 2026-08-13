@@ -134,15 +134,14 @@ fn push_output_advances_clock() {
 	);
 	assert_eq!(secs, -1.0);
 
-	// Without a device, push fails with a human-readable error. The
-	// singleton state persists across tests, so pin the no-device state
-	// explicitly.
+	// M12 P1: with no explicit device the push still succeeds — the
+	// samples buffer for the default output device (unavailable devices
+	// keep playback silent instead of failing the push).
 	assert_eq!(
 		unsafe { oakaudio_manager_set_output_device(m, -1) },
 		OAKAUDIO_OK
 	);
 	let samples = vec![0u8; 480 * 2 * 4];
-	let mut err = [0 as c_char; 64];
 	let r = unsafe {
 		oakaudio_manager_push_to_output(
 			m,
@@ -151,15 +150,11 @@ fn push_output_advances_clock() {
 			4,
 			samples.as_ptr() as *const c_char,
 			samples.len() as i64,
-			err.as_mut_ptr(),
-			err.len() as i32,
+			std::ptr::null_mut(),
+			0,
 		)
 	};
-	assert_eq!(r, OAKAUDIO_E_FAILED);
-	assert!(
-		err.iter().any(|&b| b != 0),
-		"error_buf must carry a message"
-	);
+	assert_eq!(r, OAKAUDIO_OK);
 
 	// After selecting a device the push succeeds and the clock starts at 0.
 	assert_eq!(

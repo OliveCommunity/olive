@@ -1,0 +1,206 @@
+// Oak Video Editor - Non-Linear Video Editor
+// Copyright (C) 2026 Oak Team
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+//! M12 P4: timeline audio waveforms.
+//!
+//! The [`WaveformCache`] holds per-clip min/max peak data extracted
+//! through `oakaudio_waveform_extract` (the real FFmpeg-backed
+//! extraction); the engine refreshes it when the timeline rebuilds. The
+//! [`OakClipDecorator`] draws the peaks into the timeline's clip body.
+//!
+//! The extraction is keyed by `(clip id, filename)` and cached for the
+//! engine lifetime; the plan's disk cache is a later refinement (the
+//! extractor itself is the real implementation).
+
+use std::collections::HashMap;
+use std::ffi::{c_char, c_int};
+use std::sync::{Arc, Mutex};
+
+use gpui::timeline::clip::ClipDecorator;
+use gpui::timeline::ClipId;
+use gpui::timeline::FrameRange;
+use gpui::{Bounds, Hsla, Pixels, Window};
+
+/// One min/max amplitude pair (mirror of the oakaudio waveform C ABI
+/// `MinMax`: two f32s).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MinMax {
+	/// Minimum amplitude in the window.
+	pub min: f32,
+	/// Maximum amplitude in the window.
+	pub max: f32,
+}
+
+/// The cached waveform of one clip.
+#[derive(Debug, Clone)]
+pub struct ClipWaveform {
+	/// Per-point min/max (first channel).
+	pub peaks: Vec<MinMax>,
+	/// Channel count of the media.
+	pub channel_count: i32,
+	/// Media sample rate.
+	pub sample_rate: i32,
+	/// Samples per point at extraction time.
+	pub samples_per_point: i32,
+	/// The clip's length in timeline frames.
+	pub duration_frames: i64,
+}
+
+/// Per-clip waveform cache (thread-safe; filled by the engine).
+pub struct WaveformCache {
+	/// Peaks by clip id.
+	map: Mutex<HashMap<u64, Arc<ClipWaveform>>>,
+	/// Timeline frame rate (frames per second) for frame→time mapping.
+	fps: f32,
+}
+
+impl WaveformCache {
+	/// Create an empty cache at the given frame rate.
+	pub fn new(fps: f32) -> Arc<WaveformCache> {
+		Arc::new(WaveformCache {
+			map: Mutex::new(HashMap::new()),
+			fps: if fps > 0.0 { fps } else { 25.0 },
+		})
+	}
+
+	/// The cached waveform of `clip`, if extracted.
+	pub fn get(&self, clip: u64) -> Option<Arc<ClipWaveform>> {
+		self.map.lock().unwrap_or_else(|e| e.into_inner()).get(&clip).cloned()
+	}
+
+	/// Ensure `clip` (with media `filename`, `duration_frames` long) has a
+	/// waveform, extracting it through the real codec-backed extractor
+	/// when missing. Failures (missing media, no audio stream) leave the
+	/// clip silent (no waveform drawn).
+	pub fn refresh(&self, clip: u64, filename: &str, duration_frames: i64) {
+		eprintln!("DBG-WFC: refresh clip={clip}");
+		if self.get(clip).is_some() {
+			eprintln!("DBG-WFC: cache hit");
+			return;
+		}
+		let Some(waveform) = extract(filename, duration_frames, self.fps) else {
+			return;
+		};
+		eprintln!("DBG-WFC: inserting");
+		let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
+		if !map.contains_key(&clip) {
+			map.insert(clip, Arc::new(waveform));
+		}
+	}
+}
+
+/// Extract a clip's waveform (first channel) via the oakaudio C ABI.
+	fn extract(filename: &str, duration_frames: i64, _fps: f32) -> Option<ClipWaveform> {
+	let cname = std::ffi::CString::new(filename).ok()?;
+	const SAMPLES_PER_POINT: c_int = 256;
+	unsafe {
+		let mut channels: c_int = 0;
+		let needed = crate::oakui::ffi::oakaudio_waveform_extract(
+			cname.as_ptr(),
+			0, // audio-stream index (probe numbering)
+			SAMPLES_PER_POINT,
+			std::ptr::null_mut(),
+			0,
+			&mut channels,
+		);
+		if needed <= 0 || channels <= 0 {
+			return None;
+		}
+		let mut peaks = vec![MinMax::default(); needed as usize];
+		let rc = crate::oakui::ffi::oakaudio_waveform_extract(
+			cname.as_ptr(),
+			0,
+			SAMPLES_PER_POINT,
+			peaks.as_mut_ptr(),
+			needed,
+			&mut channels,
+		);
+		if rc < 0 {
+			return None;
+		}
+		let count = rc.min(needed) as usize;
+		peaks.truncate(count);
+		Some(ClipWaveform {
+			peaks,
+			channel_count: channels.max(1),
+			sample_rate: 48000,
+			samples_per_point: SAMPLES_PER_POINT,
+			duration_frames,
+		})
+	}
+}
+
+/// The timeline's clip decorator: draws extracted waveforms into audio
+/// clips (M12 P4). Reads the engine-populated cache.
+pub struct OakClipDecorator {
+	/// The waveform cache.
+	pub cache: Arc<WaveformCache>,
+}
+
+impl ClipDecorator for OakClipDecorator {
+	fn paint_waveform(
+		&mut self,
+		window: &mut Window,
+		clip: ClipId,
+		_visible_range: FrameRange,
+		bounds: Bounds<Pixels>,
+	) {
+		let Some(waveform) = self.cache.get(clip.0) else {
+			return;
+		};
+		if waveform.peaks.is_empty() || bounds.size.width.as_f32() <= 0.0 {
+			return;
+		}
+		let width = bounds.size.width.as_f32() as usize;
+		if width == 0 {
+			return;
+		}
+		let height = bounds.size.height.as_f32();
+		let mid = bounds.origin.y.as_f32() + height / 2.0;
+		let half = (height / 2.0).max(1.0) * 0.9;
+
+		// Media seconds covered by one waveform point.
+		let secs_per_point =
+			waveform.samples_per_point.max(1) as f32 / waveform.sample_rate.max(1) as f32;
+		let frames_per_point = secs_per_point * self.cache.fps;
+
+		// Sample one peak per horizontal pixel column.
+		let color = Hsla {
+			h: 0.55,
+			s: 0.5,
+			l: 0.55,
+			a: 0.85,
+		};
+		for x in 0..width {
+			let t = x as f32 / width as f32;
+			let frame = (t * waveform.duration_frames as f32) as usize;
+			let point_index = (frame as f32 / frames_per_point.max(0.0001)) as usize;
+			let point_index = point_index.min(waveform.peaks.len() - 1);
+			let p = waveform.peaks[point_index];
+			let y_top = mid - p.max.max(0.0) * half;
+			let y_bot = mid - p.min.min(0.0) * half;
+			let x_px = bounds.origin.x.as_f32() + x as f32;
+			window.paint_quad(gpui::fill(
+				gpui::Bounds::from_corners(
+					gpui::point(Pixels::from(x_px), Pixels::from(y_top)),
+					gpui::point(Pixels::from(x_px + 1.0), Pixels::from(y_bot.max(y_top))),
+				),
+				color,
+			));
+		}
+	}
+}

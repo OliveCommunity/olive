@@ -23,6 +23,8 @@
 //! color processor families live here too (they need a real OCIO config
 //! and a renderer).
 
+mod common;
+
 use oakcore_rs::{PixelFormat, Rational};
 
 use oakrender::backend::{BackendKind, DisplayRenderer, GpuContext};

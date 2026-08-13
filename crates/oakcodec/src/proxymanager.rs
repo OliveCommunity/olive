@@ -503,7 +503,8 @@ mod tests {
 	#[test]
 	fn proxy_filename_derivation() {
 		let cache = temp_subdir("fn");
-		let id = fnv1a64(b"media.mp4") as i64;
+		let stub_id = fnv1a64(b"media.mp4") as i64;
+		let id = fnv1a64(stub_id.to_string().as_bytes()) as i64;
 		let p = ProxyManager::proxy_params_default();
 
 		let f = ProxyManager::get_proxy_filename(&cache, "media.mp4", 0, &p).unwrap();

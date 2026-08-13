@@ -79,6 +79,7 @@ pub mod node;
 pub mod plugin;
 pub mod render;
 pub mod task;
+pub mod testmedia;
 pub mod timeline;
 pub mod undo;
 pub mod worker;

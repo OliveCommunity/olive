@@ -31,8 +31,45 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use oakcore_rs::{Rational, TimeRange};
 
 use crate::error::{Error, Result};
+use crate::eval;
 use crate::texture::Texture;
 use crate::worker::WorkerPool;
+
+/// One clip of a sequence montage (M12 P0): the facade resolves the
+/// timeline into an ordered list of clips; the producer decodes each and
+/// composites them topmost-last.
+#[derive(Clone, Debug)]
+pub struct MontageClip {
+	/// Footage filename.
+	pub filename: String,
+	/// Media stream index.
+	pub stream_index: i32,
+	/// Clip in point (sequence time).
+	pub in_time: Rational,
+	/// Clip out point (sequence time).
+	pub out_time: Rational,
+	/// Media in point.
+	pub media_in: Rational,
+	/// Playback gain (1.0 = unity).
+	pub gain: f32,
+}
+
+/// Audio ticket parameters (M12 P1): the output format plus the audio
+/// montage to mix over the requested range.
+#[derive(Clone, Debug)]
+pub struct AudioTicketParams {
+	/// Node graph context (copied project identity).
+	pub viewer: u64,
+	/// The range to render (sequence time).
+	pub range: TimeRange,
+	/// Output sample rate (Hz).
+	pub sample_rate: i32,
+	/// Output channel layout mask.
+	pub channel_layout: u64,
+	/// Clips to mix (ordered arbitrarily; gains applied, silence
+	/// elsewhere).
+	pub montage: Vec<MontageClip>,
+}
 
 /// Ticket parameters (Rust view of `oakrender_video_ticket_params`).
 #[derive(Clone, Debug)]
@@ -54,6 +91,11 @@ pub struct VideoTicketParams {
 	pub cache_id: Option<String>,
 	/// Cache timebase.
 	pub cache_timebase: Option<oakcore_rs::Rational>,
+	/// Single-footage decode (footage node render; M12 P0).
+	pub footage: Option<(String, i32)>,
+	/// Sequence montage (ordered topmost-last; M12 P0). When set, the
+	/// footage field is ignored.
+	pub montage: Vec<MontageClip>,
 }
 
 impl VideoTicketParams {
@@ -66,8 +108,31 @@ impl VideoTicketParams {
 	}
 }
 
-/// Completion payload: the rendered texture or the failure reason.
-pub type TicketResult = Result<Texture>;
+/// Audio samples produced by an audio ticket (M12 P1).
+#[derive(Clone, Debug)]
+pub struct AudioSamples {
+	/// Interleaved f32 samples.
+	pub samples: Vec<f32>,
+	/// Sample rate (Hz).
+	pub sample_rate: i32,
+	/// Channel layout mask.
+	pub channel_layout: u64,
+	/// Channel count.
+	pub channel_count: i32,
+}
+
+/// The ticket completion payload: video frames or audio samples.
+#[derive(Clone, Debug)]
+pub enum TicketPayload {
+	/// A rendered video texture.
+	Video(Texture),
+	/// Rendered interleaved audio.
+	Audio(AudioSamples),
+}
+
+/// Completion payload: the rendered texture/samples or the failure
+/// reason.
+pub type TicketResult = Result<TicketPayload>;
 
 /// Completion callback (exactly-once delivery).
 pub type Completion = Box<dyn FnOnce(TicketResult) + Send>;
@@ -192,9 +257,9 @@ impl TicketArena {
 		}
 	}
 
-	/// A producer that always fails (audio rendering is not implemented in
-	/// this pass; used for audio tickets).
-	fn audio_producer() -> Producer {
+	/// A producer that always fails (kept for tests that need a failing
+	/// producer).
+	pub fn audio_producer() -> Producer {
 		Arc::new(|_, _| Err(Error::Failed("audio rendering not implemented".into())))
 	}
 
@@ -268,16 +333,15 @@ impl TicketArena {
 	}
 
 	/// Submit an audio ticket (range pull; C++ render_audio) with a
-	/// caller-reserved id (allocated by [`TicketArena::next_id`]). Audio
-	/// rendering is not implemented in this pass; the completion still
-	/// fires exactly once with `Error::Failed`.
+	/// caller-reserved id (allocated by [`TicketArena::next_id`]). The
+	/// completion fires exactly once.
 	pub fn submit_audio_with_id(
 		&self,
 		id: TicketId,
-		viewer: u64,
-		range: TimeRange,
+		params: AudioTicketParams,
 		done: Completion,
 	) -> TicketId {
+		let range = params.range;
 		let meta = TicketMeta {
 			kind: Some(ticket_kind::AUDIO),
 			time: Some(range.in_()),
@@ -298,7 +362,12 @@ impl TicketArena {
 		});
 		self.allocate(slot.clone());
 
-		let producer = Self::audio_producer();
+		// The audio producer captures the montage + output params; the
+		// video-params field of the job is a dummy (unused by the audio
+		// path).
+		let ap = Arc::new(params);
+		let viewer = ap.viewer;
+		let producer: Producer = Arc::new(move |_, _| eval::render_audio_samples(&ap));
 		let slot_done = slot.clone();
 		let job = crate::worker::Job {
 			node_identity: viewer,
@@ -312,6 +381,8 @@ impl TicketArena {
 				cache_dir: None,
 				cache_id: None,
 				cache_timebase: None,
+				footage: None,
+				montage: Vec::new(),
 			}),
 			produce: producer,
 			done: Box::new(move |result| slot_done.finish(result)),
@@ -322,12 +393,11 @@ impl TicketArena {
 		id
 	}
 
-	/// Submit an audio ticket (range pull; C++ render_audio). Audio
-	/// rendering is not implemented in this pass; the completion still
-	/// fires exactly once with `Error::Failed`.
-	pub fn submit_audio(&self, viewer: u64, range: TimeRange, done: Completion) -> TicketId {
+	/// Submit an audio ticket (range pull; C++ render_audio). The
+	/// completion fires exactly once.
+	pub fn submit_audio(&self, params: AudioTicketParams, done: Completion) -> TicketId {
 		let id = self.next_id();
-		self.submit_audio_with_id(id, viewer, range, done)
+		self.submit_audio_with_id(id, params, done)
 	}
 
 	/// True when the ticket has finished.
@@ -419,7 +489,7 @@ mod tests {
 	}
 
 	fn ok_producer() -> Producer {
-		Arc::new(|_, _| Ok(Texture::wrap_frame(small_frame())))
+		Arc::new(|_, _| Ok(TicketPayload::Video(Texture::wrap_frame(small_frame()))))
 	}
 
 	#[test]
@@ -440,6 +510,8 @@ mod tests {
 				cache_dir: None,
 				cache_id: None,
 				cache_timebase: None,
+				footage: None,
+				montage: Vec::new(),
 			},
 			Box::new(move |r| {
 				let _ = tx.send(r.is_ok());
@@ -455,7 +527,13 @@ mod tests {
 		);
 
 		let res = arena.result(id).unwrap().unwrap();
-		assert_eq!(res.size(), (4, 4));
+		assert_eq!(
+			match res {
+				TicketPayload::Video(t) => t.size(),
+				_ => panic!("video ticket"),
+			},
+			(4, 4)
+		);
 		assert!(arena.is_finished(id));
 		pool.shutdown();
 	}
@@ -472,7 +550,7 @@ mod tests {
 			while !release2.load(Ordering::Acquire) {
 				std::thread::sleep(Duration::from_millis(1));
 			}
-			Ok(Texture::wrap_frame(small_frame()))
+			Ok(TicketPayload::Video(Texture::wrap_frame(small_frame())))
 		});
 		let arena = TicketArena::new(pool.clone(), producer);
 
@@ -487,6 +565,8 @@ mod tests {
 				cache_dir: None,
 				cache_id: None,
 				cache_timebase: None,
+				footage: None,
+				montage: Vec::new(),
 			},
 			Box::new(move |r| {
 				let _ = tx.send(r);
@@ -541,9 +621,14 @@ mod tests {
 		let (tx, rx) = mpsc::channel();
 		let range = TimeRange::new(Rational::new(0, 1), Rational::new(10, 1));
 		let id = arena.submit_audio(
-			7,
-			range,
-			Box::new(move |r| {
+			AudioTicketParams {
+				viewer: 7,
+				range,
+				sample_rate: 48000,
+				channel_layout: 0x3,
+				montage: Vec::new(),
+			},
+			Box::new(move |r: TicketResult| {
 				let _ = tx.send(r.is_err());
 			}),
 		);
@@ -551,7 +636,9 @@ mod tests {
 		assert_eq!(arena.meta(id).unwrap().kind, Some(ticket_kind::AUDIO));
 		assert_eq!(arena.range(id), Some(range));
 		arena.wait(id).unwrap();
-		assert!(rx.recv_timeout(Duration::from_secs(5)).unwrap());
+		// M12 P1: an empty-montage audio ticket succeeds with silence
+		// (the completion must NOT report an error).
+		assert!(!rx.recv_timeout(Duration::from_secs(5)).unwrap());
 		// get_time equivalent: audio tickets report range.in.
 		assert_eq!(arena.time(id), Some(range.in_()));
 		pool.shutdown();
@@ -573,6 +660,8 @@ mod tests {
 				cache_dir: None,
 				cache_id: None,
 				cache_timebase: None,
+				footage: None,
+				montage: Vec::new(),
 			},
 			Box::new(|_| {}),
 		);
@@ -586,6 +675,8 @@ mod tests {
 				cache_dir: None,
 				cache_id: None,
 				cache_timebase: None,
+				footage: None,
+				montage: Vec::new(),
 			},
 			Box::new(|_| {}),
 		);
