@@ -473,16 +473,45 @@ mod tests {
 	use super::*;
 
 	/// M12 P1 acceptance: the PortAudio output callback pulls pushed
-	/// samples and advances the playback clock. Requires real audio
-	/// hardware; skips (returns) when PortAudio is unavailable.
+	/// samples and advances the playback clock. Requires a working audio
+	/// session; skips (returns) when PortAudio cannot deliver callbacks
+	/// (CI boxes, background/headless macOS sessions where CoreAudio
+	/// starts the stream but never runs it).
 	#[test]
 	fn output_callback_consumes_pushed_samples() {
-		// Skip when there is no audio system (CI boxes).
-		let pa = match portaudio::PortAudio::new() {
-			Ok(pa) => pa,
-			Err(_) => return,
-		};
-		if pa.default_output_device().is_err() {
+		// Skip when the audio system cannot actually run a stream: open a
+		// silent stream and require at least one callback within 2 s. A
+		// device existing is not enough — headless sessions report
+		// is_active=true while delivering zero callbacks.
+		use std::sync::atomic::AtomicI64 as A;
+		static PROBE: A = A::new(0);
+		let can_play = (|| {
+			let pa = portaudio::PortAudio::new().ok()?;
+			let dev = pa.default_output_device().ok()?;
+			let info = pa.device_info(dev).ok()?;
+			let params = portaudio::StreamParameters::<f32>::new(
+				dev,
+				2,
+				true,
+				info.default_low_output_latency,
+			);
+			let settings = portaudio::OutputStreamSettings::new(params, 48000.0, 512);
+			let cb = move |args: portaudio::OutputStreamCallbackArgs<f32>| {
+				PROBE.fetch_add(args.frames as i64, Ordering::Relaxed);
+				portaudio::Continue
+			};
+			let mut stream = pa.open_non_blocking_stream(settings, cb).ok()?;
+			stream.start().ok()?;
+			let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+			while std::time::Instant::now() < deadline && PROBE.load(Ordering::Relaxed) == 0 {
+				std::thread::sleep(std::time::Duration::from_millis(50));
+			}
+			let got = PROBE.load(Ordering::Relaxed) > 0;
+			let _ = stream.stop();
+			Some(got)
+		})();
+		if can_play != Some(true) {
+			eprintln!("audio session cannot deliver callbacks; skipping");
 			return;
 		}
 
@@ -516,12 +545,22 @@ mod tests {
 		)
 		.expect("push succeeds even without an explicit device");
 
-		// Give the audio thread time to consume.
-		std::thread::sleep(std::time::Duration::from_millis(300));
-		let consumed = {
-			let m = with_instance(&h).unwrap();
-			m.output_buffer.output_frames_consumed()
-		};
+		// Give the audio thread time to consume. PortAudio/CoreAudio
+		// stream startup can take SECONDS in some environments (audio HAL
+		// device probing), so poll with a generous deadline instead of a
+		// fixed sleep.
+		let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+		let mut consumed = 0i64;
+		while std::time::Instant::now() < deadline {
+			{
+				let m = with_instance(&h).unwrap();
+				consumed = m.output_buffer.output_frames_consumed();
+			}
+			if consumed > 0 {
+				break;
+			}
+			std::thread::sleep(std::time::Duration::from_millis(100));
+		}
 		assert!(
 			consumed > 0,
 			"the output callback must consume pushed frames"

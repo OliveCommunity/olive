@@ -731,12 +731,10 @@ pub fn extract(
 	// Probe for the stream's native rate/layout (stateless).
 	// SAFETY: `filename` is a NUL-terminated C string (validated by the FFI
 	// layer); the probe handle is freed on every path below.
-	eprintln!("DBG-WF: probing");
 	let mut probe = unsafe { crate::bridge::codec::oakcodec_decoder_probe(filename.as_ptr()) };
 	if probe.is_null() {
 		return Err(Error::NotFound);
 	}
-	eprintln!("DBG-WF: probed");
 	let mut info = unsafe { std::mem::zeroed::<AudioStreamInfo>() };
 	let r = unsafe {
 		crate::bridge::codec::oakcodec_decoder_probe_get_audio_stream(
@@ -764,7 +762,6 @@ pub fn extract(
 	// (`retrieve_audio` delivers interleaved f32 at the requested native
 	// rate/layout; the C++ path ran the decode through an identity
 	// fb_audio_graph to obtain planar f32).
-	eprintln!("DBG-WF: opening decoder stream {}", info.stream_index);
 	let decoder = FFmpegDecoder::new();
 	let stream = CodecStream::with_block(
 		filename.to_string_lossy().into_owned(),
@@ -774,7 +771,6 @@ pub fn extract(
 	if let Err(e) = decoder.open(&stream) {
 		return Err(Error::Failed(format!("failed to open decoder: {e:?}")));
 	}
-	eprintln!("DBG-WF: opened");
 
 	if info.time_base_num <= 0 || info.time_base_den <= 0 || info.duration_ts <= 0 {
 		let _ = decoder.close();
@@ -803,7 +799,6 @@ pub fn extract(
 			Rational::new(offset, i64::from(info.sample_rate)),
 			Rational::new(offset + frames, i64::from(info.sample_rate)),
 		);
-		eprintln!("DBG-WF: decoding chunk at {offset}");
 		let mut buf = vec![0f32; frames as usize * channels as usize];
 		match decoder.retrieve_audio(&mut buf, &range, info.sample_rate, layout_mask) {
 			Ok(RetrieveAudioStatus::Success) => {

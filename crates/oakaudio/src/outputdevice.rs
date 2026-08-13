@@ -116,14 +116,18 @@ impl PortAudioOutput {
 		// The callback pulls whole frames from the shared device and
 		// advances the output clock (underrun → silence). `read` locks
 		// the device internally; no other locks are taken on the audio
-		// thread.
+		// thread. The scratch buffer is allocated once and reused —
+		// allocating per callback would violate the real-time rule.
 		let sink_cb = sink.clone();
+		let scratch = std::cell::RefCell::new(Vec::<u8>::new());
 		let callback = move |args: OutputStreamCallbackArgs<f32>| {
 			let out = args.buffer;
 			let frames = args.frames;
 			let total = frames * channels.max(1) as usize;
-			let mut byte_buf = vec![0u8; total * 4];
-			let got = sink_cb.read(&mut byte_buf);
+			let mut scratch = scratch.borrow_mut();
+			scratch.resize(total * 4, 0);
+			let byte_buf = &mut *scratch;
+			let got = sink_cb.read(byte_buf);
 			let frames_got = (got as usize) / (channels.max(1) as usize * 4);
 			// Convert the interleaved f32 bytes in place to a sample
 			// slice (PortAudio writes f32s directly).
