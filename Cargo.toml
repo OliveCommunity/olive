@@ -17,13 +17,7 @@
 # Root manifest: the `oakapp` package (the gpui-based application) plus the
 # Cargo workspace over every crate under crates/.
 #
-# oakstorage (crates/oakstorage) is deliberately excluded: it is a work in
-# progress whose contract tests are still `todo!()` stubs (they cannot pass
-# yet), and it pulls heavy database backends (sea-orm). It stays a
-# standalone crate with its own Cargo.lock; build it with
-# `cd crates/oakstorage && cargo build`.
-#
-# gpui (the oak-gpui fork at gpui/) is excluded too: it is a separate git
+# gpui (the oak-gpui fork at gpui/) is excluded: it is a separate git
 # repository with its own workspace (resolver 3, edition 2024,
 # workspace.package/workspace.dependencies). Without the exclusion its
 # crates would be auto-included here via oakapp's path dependencies and
@@ -32,7 +26,11 @@
 # workspace root, exactly as before the monorepo workspace existed.
 [workspace]
 members = ["crates/*"]
-exclude = ["crates/oakstorage", "gpui"]
+exclude = ["gpui"]
+# NOTE: oakstorage (crates/oakstorage) is a workspace member but NOT a
+# default member (it stays out of the default `cargo build`/`cargo test` at
+# the root, which would also drag in its heavy database backends — sea-orm).
+# Build/test it explicitly with `cargo test -p oakstorage`.
 # NOTE: `crates/oakengine` is deliberately NOT a default member (it stays a
 # workspace member, so `cargo test -p oakengine` works): its in-flight
 # integration tests (`tests/it_*族.rs`, an ongoing rewrite) share temp files

@@ -15,62 +15,1020 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //! oakstorage contract tests (M10 §4 mapping).
+//!
+//! The oaknode serializer persists the node core surface (types,
+//! values, keyframes, label/color, links, connections), settings, uuid,
+//! AND the timeline structure (sequence track lists, track blocks,
+//! block spans, clip footage references) — the .ove tests assert the
+//! full surface; the otio/fcpxml interchange tests exercise the
+//! oakotio model.
 
-/// Byte-exact round-trip: open a golden .ove, save to a temp URI, the
-/// two files are byte-identical; reopening yields a non-empty project.
-#[test]
-fn ove_xml_roundtrip_byte_exact() {
-	todo!()
+use std::ffi::{c_char, c_int, c_uint, CStr, CString};
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+
+use oakcore_rs::Rational;
+use oaknode::block::ClipBlockBehavior;
+use oaknode::footage::FootageBehavior;
+use oaknode::id::NodeId;
+use oaknode::keyframe::{Interpolation, Keyframe};
+use oaknode::node::NodeCore;
+use oaknode::project::Project;
+use oaknode::sequence::SequenceBehavior;
+use oaknode::track::{TrackBehavior, TrackListBehavior, TrackType};
+use oaknode::value::NodeValue;
+use oakstorage::bridge::node;
+use oakstorage::error::{
+	OAKSTORAGE_E_FORMAT, OAKSTORAGE_E_INVALID, OAKSTORAGE_E_IO, OAKSTORAGE_E_NO_BACKEND,
+	OAKSTORAGE_E_STATE, OAKSTORAGE_OK, OAKSTORAGE_TOO_NEW, OAKSTORAGE_TOO_OLD,
+	OAKSTORAGE_UNKNOWN_VERSION,
+};
+use oakstorage::ffi;
+use oakstorage::handle::CHandle;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+fn cs(s: &str) -> CString {
+	CString::new(s).unwrap()
 }
 
-/// Compressed .ove round-trip (OAKSTORAGE_SAVE_COMPRESS) likewise
-/// loads to the identical project content.
-#[test]
-fn ove_xml_compressed_roundtrip() {
-	todo!()
+fn file_uri(path: &Path) -> String {
+	format!("file://{}", path.display())
 }
 
-/// probe: .ove (plain/compressed), .otio, unknown scheme →
-/// E_NO_BACKEND; NULL/empty URI → E_INVALID.
+/// A fresh, unique temp directory for one test.
+fn temp_dir(tag: &str) -> PathBuf {
+	let dir = std::env::temp_dir().join(format!(
+		"oakstorage_it_{}_{}",
+		std::process::id(),
+		tag
+	));
+	let _ = std::fs::remove_dir_all(&dir);
+	std::fs::create_dir_all(&dir).unwrap();
+	dir
+}
+
+fn alive() -> i32 {
+	unsafe { ffi::oakstorage_debug_alive_count() }
+}
+
+fn last_error() -> String {
+	let needed = unsafe { ffi::oakstorage_last_error(std::ptr::null_mut(), 0) };
+	if needed <= 0 {
+		return String::new();
+	}
+	let mut buf = vec![0u8; needed as usize];
+	unsafe { ffi::oakstorage_last_error(buf.as_mut_ptr() as *mut c_char, needed) };
+	buf.pop(); // trailing NUL
+	String::from_utf8(buf).unwrap()
+}
+
+/// Probe for the backend name; `Err(code)` when no backend claims it.
+fn probe_name(uri: &str) -> Result<String, c_int> {
+	let c = cs(uri);
+	let needed = unsafe { ffi::oakstorage_probe(c.as_ptr(), std::ptr::null_mut(), 0) };
+	if needed < 0 {
+		return Err(needed);
+	}
+	let mut buf = vec![0u8; needed as usize];
+	let rc = unsafe { ffi::oakstorage_probe(c.as_ptr(), buf.as_mut_ptr() as *mut c_char, needed) };
+	assert!(rc >= 0, "two-stage probe misbehaved");
+	buf.pop();
+	Ok(String::from_utf8(buf).unwrap())
+}
+
+fn open(uri: &str) -> (CHandle, c_int) {
+	let c = cs(uri);
+	let mut rc = 0;
+	let session = unsafe { ffi::oakstorage_open(c.as_ptr(), &mut rc) };
+	(session, rc)
+}
+
+fn free_session(mut s: CHandle) {
+	unsafe { ffi::oakstorage_project_free(&mut s) };
+}
+
+fn free_project(mut h: CHandle) {
+	node::project_free(&mut h);
+}
+
+fn session_uri(s: &CHandle) -> String {
+	let needed = unsafe { ffi::oakstorage_project_uri(*s, std::ptr::null_mut(), 0) };
+	assert!(needed >= 0, "project_uri failed: {needed}");
+	let mut buf = vec![0u8; needed as usize];
+	let rc = unsafe { ffi::oakstorage_project_uri(*s, buf.as_mut_ptr() as *mut c_char, needed) };
+	assert!(rc >= 0);
+	buf.pop();
+	String::from_utf8(buf).unwrap()
+}
+
+fn r_to_f(r: Rational) -> f64 {
+	r.numerator() as f64 / r.denominator() as f64
+}
+
+fn assert_close(a: f64, b: f64) {
+	assert!((a - b).abs() < 1e-6, "expected {a} close to {b}");
+}
+
+// ---------------------------------------------------------------------------
+// .ove round-trip
+// ---------------------------------------------------------------------------
+
+const MATH: &str = "org.olivevideoeditor.Olive.math";
+
+/// Build the round-trip fixture: root folder + two math nodes with
+/// values/keyframes/label/color/link/connection + settings.
+fn build_roundtrip_project() -> Arc<Mutex<Project>> {
+	let project = Project::new();
+	let mut p = project.lock().unwrap();
+	p.initialize().unwrap();
+
+	let (core, behavior) = (oaknode::factory::Factory::global().find(MATH).unwrap().create)();
+	let a = p.graph.add_node(core, behavior);
+	{
+		let e = p.graph.get_mut(a).unwrap();
+		e.core.label = "Math A".to_string();
+		e.core.override_color = 2;
+		e.core.set_standard_value("param_a_in", -1, NodeValue::Float(2.5));
+		e.core
+			.keyframe_track_mut("param_a_in", -1)
+			.set_key(Keyframe {
+				time: Rational::new(0, 1),
+				value: NodeValue::Float(1.0),
+				interpolation: Interpolation::Linear,
+				bezier_in: (0.0, 0.0),
+				bezier_out: (0.0, 0.0),
+			});
+		e.core
+			.keyframe_track_mut("param_a_in", -1)
+			.set_key(Keyframe {
+				time: Rational::new(1, 1),
+				value: NodeValue::Float(3.0),
+				interpolation: Interpolation::Bezier,
+				bezier_in: (0.1, 0.2),
+				bezier_out: (0.3, 0.4),
+			});
+	}
+	let (core, behavior) = (oaknode::factory::Factory::global().find(MATH).unwrap().create)();
+	let b = p.graph.add_node(core, behavior);
+	p.graph
+		.get_mut(b)
+		.unwrap()
+		.core
+		.set_standard_value("param_a_in", -1, NodeValue::Float(4.0));
+
+	p.graph.connect(a, b, "param_b_in", -1).unwrap();
+	p.graph.link(a, b);
+
+	p.settings
+		.insert("projectname".to_string(), "roundtrip-fixture".to_string());
+	drop(p);
+	project
+}
+
+/// Compare the round-trip-able surface field by field.
+fn assert_roundtrip_fields(orig: &Project, loaded: &Project) {
+	assert_eq!(loaded.uuid, orig.uuid, "uuid");
+	assert_eq!(loaded.settings, orig.settings, "settings");
+
+	let o_ids = orig.graph.node_ids();
+	let l_ids = loaded.graph.node_ids();
+	assert_eq!(l_ids.len(), o_ids.len(), "node count");
+	// Slot order is preserved by the writer, so the ids line up.
+	let o_types: Vec<&str> = o_ids
+		.iter()
+		.map(|id| orig.graph.get(*id).unwrap().behavior.type_id())
+		.collect();
+	let l_types: Vec<&str> = l_ids
+		.iter()
+		.map(|id| loaded.graph.get(*id).unwrap().behavior.type_id())
+		.collect();
+	assert_eq!(l_types, o_types, "node types");
+
+	let a_o = o_ids[1];
+	let a_l = l_ids[1];
+	let b_o = o_ids[2];
+	let b_l = l_ids[2];
+
+	// Label + color.
+	assert_eq!(
+		loaded.graph.get(a_l).unwrap().core.label,
+		orig.graph.get(a_o).unwrap().core.label,
+		"label"
+	);
+	assert_eq!(
+		loaded.graph.get(a_l).unwrap().core.override_color,
+		orig.graph.get(a_o).unwrap().core.override_color,
+		"color"
+	);
+
+	// Standard values.
+	assert_eq!(
+		loaded.graph.get(a_l).unwrap().core.standard_value("param_a_in", -1),
+		orig.graph.get(a_o).unwrap().core.standard_value("param_a_in", -1),
+		"value a"
+	);
+	assert_eq!(
+		loaded.graph.get(b_l).unwrap().core.standard_value("param_a_in", -1),
+		orig.graph.get(b_o).unwrap().core.standard_value("param_a_in", -1),
+		"value b"
+	);
+
+	// Keyframes: count, times, values, interpolation, bezier handles.
+	let keys_o = orig
+		.graph
+		.get(a_o)
+		.unwrap()
+		.core
+		.keyframe_track("param_a_in", -1)
+		.unwrap()
+		.keys()
+		.to_vec();
+	let keys_l = loaded
+		.graph
+		.get(a_l)
+		.unwrap()
+		.core
+		.keyframe_track("param_a_in", -1)
+		.unwrap()
+		.keys()
+		.to_vec();
+	assert_eq!(keys_l.len(), keys_o.len(), "keyframe count");
+	for (ko, kl) in keys_o.iter().zip(&keys_l) {
+		assert_eq!(kl.time, ko.time, "key time");
+		assert_eq!(kl.value.to_double(), ko.value.to_double(), "key value");
+		assert_eq!(kl.interpolation, ko.interpolation, "key interpolation");
+		assert_eq!(kl.bezier_in, ko.bezier_in, "key bezier in");
+		assert_eq!(kl.bezier_out, ko.bezier_out, "key bezier out");
+	}
+
+	// Connection a -> b.param_b_in and the link.
+	assert_eq!(
+		loaded.graph.connected_output(b_l, "param_b_in", -1),
+		Some(a_l),
+		"connection"
+	);
+	assert!(loaded.graph.are_linked(a_l, b_l), "link");
+}
+
+#[test]
+fn ove_xml_roundtrip_field_by_field() {
+	let dir = temp_dir("ove_roundtrip");
+	let path = dir.join("roundtrip.ove");
+	let uri = file_uri(&path);
+
+	let project = build_roundtrip_project();
+	let handle = node::make_project_owned(project.clone());
+	let rc = unsafe { ffi::oakstorage_save(handle, cs(&uri).as_ptr(), 0) };
+	assert_eq!(rc, OAKSTORAGE_OK, "save: {}", last_error());
+	free_project(handle);
+
+	// The file exists and is plain XML.
+	let text = std::fs::read_to_string(&path).unwrap();
+	assert!(text.starts_with("<project version=\"1\">"), "{text}");
+
+	let (session, rc) = open(&uri);
+	assert!(!session.ctx.is_null(), "open failed rc={rc}: {}", last_error());
+	assert_eq!(rc, OAKSTORAGE_OK);
+	assert_eq!(session_uri(&session), uri);
+
+	let proj_handle = unsafe { ffi::oakstorage_project_project(session) };
+	assert!(!proj_handle.ctx.is_null());
+	let loaded = unsafe { node::project_arc(&proj_handle) }.unwrap();
+	{
+		let o = project.lock().unwrap();
+		let l = loaded.lock().unwrap();
+		assert_roundtrip_fields(&o, &l);
+	}
+
+	free_project(proj_handle);
+	free_session(session);
+}
+
+#[test]
+fn ove_xml_compress_flag_still_round_trips() {
+	// OAKSTORAGE_SAVE_COMPRESS is accepted but not implemented (the
+	// oaknode serializer emits plain XML); the file still round-trips.
+	let dir = temp_dir("ove_compress");
+	let path = dir.join("compressed.ove");
+	let uri = file_uri(&path);
+
+	let project = build_roundtrip_project();
+	let handle = node::make_project_owned(project.clone());
+	let rc = unsafe { ffi::oakstorage_save(handle, cs(&uri).as_ptr(), ffi::OAKSTORAGE_SAVE_COMPRESS) };
+	assert_eq!(rc, OAKSTORAGE_OK, "save: {}", last_error());
+	free_project(handle);
+
+	let text = std::fs::read_to_string(&path).unwrap();
+	assert!(text.starts_with("<project"), "compression must not corrupt the file");
+
+	let (session, rc) = open(&uri);
+	assert!(!session.ctx.is_null(), "open failed rc={rc}");
+	assert_eq!(rc, OAKSTORAGE_OK);
+	let proj_handle = unsafe { ffi::oakstorage_project_project(session) };
+	let loaded = unsafe { node::project_arc(&proj_handle) }.unwrap();
+	{
+		let o = project.lock().unwrap();
+		let l = loaded.lock().unwrap();
+		assert_eq!(l.uuid, o.uuid);
+		assert_eq!(l.graph.node_count(), o.graph.node_count());
+		assert_eq!(l.settings, o.settings);
+	}
+	free_project(proj_handle);
+	free_session(session);
+}
+
+/// The .ove backend preserves the full timeline structure: the
+/// sequence, its track lists, the track's block order, each block's
+/// span, and the clip -> footage references (this surface did not
+/// round-trip before the timeline serialization landed).
+#[test]
+fn ove_xml_timeline_roundtrip() {
+	use oaknode::block::ClipBlockBehavior;
+	use oaknode::footage::FootageBehavior;
+	use oaknode::sequence::SequenceBehavior;
+	use oaknode::track::{TrackBehavior, TrackListBehavior, TrackType};
+
+	let dir = temp_dir("ove_timeline");
+	let path = dir.join("timeline.ove");
+	let uri = file_uri(&path);
+
+	let project = build_timeline_project();
+	let handle = node::make_project_owned(project.clone());
+	let rc = unsafe { ffi::oakstorage_save(handle, cs(&uri).as_ptr(), 0) };
+	assert_eq!(rc, OAKSTORAGE_OK, "save: {}", last_error());
+	free_project(handle);
+
+	let (session, rc) = open(&uri);
+	assert!(!session.ctx.is_null(), "open failed rc={rc}: {}", last_error());
+	assert_eq!(rc, OAKSTORAGE_OK);
+	let proj_handle = unsafe { ffi::oakstorage_project_project(session) };
+	let loaded = unsafe { node::project_arc(&proj_handle) }.unwrap();
+	{
+		let l = loaded.lock().unwrap();
+		assert_imported_timeline(&l);
+	}
+
+	// The bin-level detail too: the sequence keeps its three track
+	// lists (video/audio/subtitle) with the right kinds and bases.
+	{
+		let l = loaded.lock().unwrap();
+		let mut seq: Option<(NodeId, Vec<NodeId>)> = None;
+		for id in l.graph.node_ids() {
+			let entry = l.graph.get(id).unwrap();
+			if entry.behavior.type_id() == "org.olivevideoeditor.Olive.sequence" {
+				let s = entry
+					.behavior
+					.as_any()
+					.and_then(|a| a.downcast_ref::<SequenceBehavior>())
+					.unwrap();
+				seq = Some((id, s.track_lists.clone()));
+				break;
+			}
+		}
+		let (_seq_id, lists) = seq.expect("sequence present");
+		assert_eq!(lists.len(), 3, "video/audio/subtitle lists");
+		let vlist = lists[0];
+		let list = l
+			.graph
+			.get(vlist)
+			.unwrap()
+			.behavior
+			.as_any()
+			.and_then(|a| a.downcast_ref::<TrackListBehavior>())
+			.unwrap();
+		assert_eq!(list.kind, TrackType::Video);
+		assert_eq!(list.array_base, 0);
+		assert_eq!(list.tracks.len(), 1);
+		let track = l
+			.graph
+			.get(list.tracks[0])
+			.unwrap()
+			.behavior
+			.as_any()
+			.and_then(|a| a.downcast_ref::<TrackBehavior>())
+			.unwrap();
+		assert_eq!(track.kind, TrackType::Video);
+		assert_eq!(track.blocks.len(), 2);
+		let c1 = l
+			.graph
+			.get(track.blocks[0])
+			.unwrap()
+			.behavior
+			.as_any()
+			.and_then(|a| a.downcast_ref::<ClipBlockBehavior>())
+			.unwrap();
+		assert_close(r_to_f(c1.core.length()), 4.0);
+		assert_close(r_to_f(c1.core.media_in), 0.0);
+		let f1 = l
+			.graph
+			.get(c1.footage.unwrap())
+			.unwrap()
+			.behavior
+			.as_any()
+			.and_then(|a| a.downcast_ref::<FootageBehavior>())
+			.unwrap();
+		assert_eq!(f1.filename, "/a/b.mp4");
+		let c2 = l
+			.graph
+			.get(track.blocks[1])
+			.unwrap()
+			.behavior
+			.as_any()
+			.and_then(|a| a.downcast_ref::<ClipBlockBehavior>())
+			.unwrap();
+		assert_close(r_to_f(c2.core.length()), 2.0);
+		assert_close(r_to_f(c2.core.media_in), 0.4);
+		let f2 = l
+			.graph
+			.get(c2.footage.unwrap())
+			.unwrap()
+			.behavior
+			.as_any()
+			.and_then(|a| a.downcast_ref::<FootageBehavior>())
+			.unwrap();
+		assert_eq!(f2.filename, "/a/c.mp4");
+	}
+	free_project(proj_handle);
+	free_session(session);
+}
+
+// ---------------------------------------------------------------------------
+// Probe dispatch
+// ---------------------------------------------------------------------------
+
 #[test]
 fn probe_dispatch() {
-	todo!()
+	assert_eq!(probe_name("file:///tmp/x.ove").unwrap(), "ove-xml");
+	assert_eq!(probe_name("file:///tmp/x.OTIO").unwrap(), "otio", "case-insensitive");
+	assert_eq!(probe_name("file:///tmp/x.fcpxml").unwrap(), "otio");
+	assert_eq!(probe_name("/tmp/x.ove").unwrap(), "ove-xml", "bare path");
+
+	// No backend claims these.
+	assert_eq!(probe_name("oakdb://user@host/db").unwrap_err(), OAKSTORAGE_E_NO_BACKEND);
+	assert_eq!(probe_name("file:///tmp/x.txt").unwrap_err(), OAKSTORAGE_E_NO_BACKEND);
+
+	// NULL / empty URI -> E_INVALID.
+	let rc = unsafe { ffi::oakstorage_probe(std::ptr::null(), std::ptr::null_mut(), 0) };
+	assert_eq!(rc, OAKSTORAGE_E_INVALID);
+	assert_eq!(probe_name("").unwrap_err(), OAKSTORAGE_E_INVALID);
 }
 
-/// Error paths: nonexistent file → open fails with last_error set;
-/// too-new version header → OAKSTORAGE_TOO_NEW; corrupt XML →
-/// E_FORMAT.
+// ---------------------------------------------------------------------------
+// Open error paths and version info codes
+// ---------------------------------------------------------------------------
+
 #[test]
 fn open_error_paths() {
-	todo!()
+	// Nonexistent file: NULL + E_IO + a non-empty last_error.
+	let (session, rc) = open(&file_uri(&temp_dir("ove_missing").join("nope.ove")));
+	assert!(session.ctx.is_null());
+	assert_eq!(rc, OAKSTORAGE_E_IO);
+	assert!(!last_error().is_empty(), "last_error must be set");
+
+	// Too-new version header -> TOO_NEW info code, no project.
+	let dir = temp_dir("ove_versions");
+	let future = dir.join("future.ove");
+	std::fs::write(&future, "<olive version=\"999999\"></olive>").unwrap();
+	let (session, rc) = open(&file_uri(&future));
+	assert!(session.ctx.is_null());
+	assert_eq!(rc, OAKSTORAGE_TOO_NEW);
+
+	// Corrupt XML -> E_FORMAT.
+	let corrupt = dir.join("corrupt.ove");
+	std::fs::write(&corrupt, "<project><nodes><node></project>").unwrap();
+	let (session, rc) = open(&file_uri(&corrupt));
+	assert!(session.ctx.is_null());
+	assert_eq!(rc, OAKSTORAGE_E_FORMAT);
+
+	// Unparseable garbage -> E_FORMAT (not a version info code).
+	let garbage = dir.join("garbage.ove");
+	std::fs::write(&garbage, "not xml at all").unwrap();
+	let (session, rc) = open(&file_uri(&garbage));
+	assert!(session.ctx.is_null());
+	assert_eq!(rc, OAKSTORAGE_E_FORMAT);
+
+	// Recognized olive root without a version -> UNKNOWN_VERSION.
+	let unversioned = dir.join("unversioned.ove");
+	std::fs::write(&unversioned, "<olive></olive>").unwrap();
+	let (session, rc) = open(&file_uri(&unversioned));
+	assert!(session.ctx.is_null());
+	assert_eq!(rc, OAKSTORAGE_UNKNOWN_VERSION);
+
+	// A known older version loads, reporting TOO_OLD.
+	let old = dir.join("old.ove");
+	std::fs::write(
+		&old,
+		"<olive version=\"210528\"><project version=\"1\"><uuid>{old}</uuid><nodes></nodes><settings></settings></project></olive>",
+	)
+	.unwrap();
+	let (session, rc) = open(&file_uri(&old));
+	assert!(!session.ctx.is_null(), "old version must load");
+	assert_eq!(rc, OAKSTORAGE_TOO_OLD);
+	free_session(session);
+
+	// NULL URI -> E_INVALID.
+	let (session, rc) = unsafe {
+		let c = std::ptr::null();
+		let mut rc = 0;
+		(ffi::oakstorage_open(c, &mut rc), rc)
+	};
+	assert!(session.ctx.is_null());
+	assert_eq!(rc, OAKSTORAGE_E_INVALID);
 }
 
-/// Pluggability proof (M10 §4): register a mock `mem://` backend,
-/// probe/open/save all route through its vtable; after unregister,
-/// probe reports E_NO_BACKEND. This test IS the database-swap
-/// interface verification.
+// ---------------------------------------------------------------------------
+// Backend vtable pluggability (the database-swap interface proof)
+// ---------------------------------------------------------------------------
+
+/// Record of the mock backend's save calls.
+static MOCK_SAVED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+unsafe extern "C" fn mock_can_handle(uri: *const c_char) -> c_int {
+	let s = unsafe { CStr::from_ptr(uri) }.to_str().unwrap_or("");
+	(s.starts_with("mem://")) as c_int
+}
+
+unsafe extern "C" fn mock_load(
+	uri: *const c_char,
+	result_code: *mut c_int,
+	_err_buf: *mut c_char,
+	_err_buf_size: c_int,
+) -> CHandle {
+	let s = unsafe { CStr::from_ptr(uri) }.to_str().unwrap_or("");
+	MOCK_SAVED.lock().unwrap().push(format!("load:{s}"));
+	if !result_code.is_null() {
+		unsafe { *result_code = OAKSTORAGE_OK };
+	}
+	// A real project handle is the "loaded project".
+	node::project_init()
+}
+
+unsafe extern "C" fn mock_save(
+	_project: CHandle,
+	uri: *const c_char,
+	options: c_uint,
+	_err_buf: *mut c_char,
+	_err_buf_size: c_int,
+) -> c_int {
+	let s = unsafe { CStr::from_ptr(uri) }.to_str().unwrap_or("").to_string();
+	MOCK_SAVED.lock().unwrap().push(format!("save:{s}:options={options}"));
+	OAKSTORAGE_OK
+}
+
 #[test]
 fn backend_vtable_pluggability() {
-	todo!()
+	let name = cs("mem-test");
+	let scheme = cs("mem");
+	let vtable = ffi::OakStorageBackendVtable {
+		name: name.as_ptr(),
+		uri_scheme: scheme.as_ptr(),
+		can_handle: Some(mock_can_handle),
+		load: Some(mock_load),
+		save: Some(mock_save),
+	};
+
+	assert_eq!(
+		unsafe { ffi::oakstorage_backend_register(&vtable) },
+		OAKSTORAGE_OK
+	);
+
+	// Probe routes through the foreign vtable.
+	assert_eq!(probe_name("mem://x").unwrap(), "mem-test");
+
+	// Open routes through the vtable's load.
+	let (session, rc) = open("mem://in");
+	assert!(!session.ctx.is_null(), "open failed rc={rc}");
+	assert_eq!(rc, OAKSTORAGE_OK);
+	free_session(session);
+
+	// Save routes through the vtable's save, options passed through.
+	let project = node::project_init();
+	let rc = unsafe { ffi::oakstorage_save(project, cs("mem://out").as_ptr(), ffi::OAKSTORAGE_SAVE_COMPRESS) };
+	assert_eq!(rc, OAKSTORAGE_OK, "save: {}", last_error());
+	free_project(project);
+	{
+		let saved = MOCK_SAVED.lock().unwrap();
+		assert!(saved.iter().any(|s| s == "load:mem://in"), "{saved:?}");
+		assert!(
+			saved
+				.iter()
+				.any(|s| s == "save:mem://out:options=1"),
+			"{saved:?}"
+		);
+	}
+
+	// Duplicate registration is rejected.
+	assert_eq!(
+		unsafe { ffi::oakstorage_backend_register(&vtable) },
+		OAKSTORAGE_E_STATE
+	);
+
+	// Unregister: probe reports E_NO_BACKEND again.
+	assert_eq!(unsafe { ffi::oakstorage_backend_unregister(name.as_ptr()) }, OAKSTORAGE_OK);
+	assert_eq!(probe_name("mem://x").unwrap_err(), OAKSTORAGE_E_NO_BACKEND);
+
+	// Unregister of an unknown name -> E_NOT_FOUND.
+	assert_eq!(
+		unsafe { ffi::oakstorage_backend_unregister(cs("nope").as_ptr()) },
+		oakstorage::error::OAKSTORAGE_E_NOT_FOUND
+	);
 }
 
-/// SQLite backend: save → load round-trip through
-/// `oakdb+sqlite:///…` yields the same project payload as ove-xml
-/// (one serialization truth).
+// ---------------------------------------------------------------------------
+// otio / fcpxml interchange round-trip
+// ---------------------------------------------------------------------------
+
+/// Build the timeline fixture: a sequence "My Seq" with one video track
+/// carrying two clips (footage /a/b.mp4 and /a/c.mp4).
+fn build_timeline_project() -> Arc<Mutex<Project>> {
+	let project = Project::new();
+	let mut p = project.lock().unwrap();
+	p.initialize().unwrap();
+
+	let (seq_id, lists) = node::create_sequence(&mut p.graph);
+	p.graph.get_mut(seq_id).unwrap().core.label = "My Seq".to_string();
+
+	let mut tb = TrackBehavior::new(TrackType::Video);
+	tb.track_list = Some(lists[0]);
+	let track_id = p.graph.add_node(NodeCore::new(), Box::new(tb));
+
+	// Clip 1: 100/25 long, media in 0/1, footage /a/b.mp4.
+	let foot1 = p
+		.graph
+		.add_node(NodeCore::new(), Box::new(FootageBehavior::new("/a/b.mp4")));
+	let clip1 = {
+		let (core, mut behavior) = oaknode::block::clip_create();
+		let clip = behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<ClipBlockBehavior>())
+			.unwrap();
+		clip.core.range = oakcore_rs::TimeRange::new(Rational::new(0, 1), Rational::new(100, 25));
+		clip.core.media_in = Rational::new(0, 1);
+		clip.core.track = Some(track_id);
+		clip.footage = Some(foot1);
+		p.graph.add_node(core, behavior)
+	};
+
+	// Clip 2: 50/25 long, media in 10/25, footage /a/c.mp4.
+	let foot2 = p
+		.graph
+		.add_node(NodeCore::new(), Box::new(FootageBehavior::new("/a/c.mp4")));
+	let clip2 = {
+		let (core, mut behavior) = oaknode::block::clip_create();
+		let clip = behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<ClipBlockBehavior>())
+			.unwrap();
+		clip.core.range = oakcore_rs::TimeRange::new(Rational::new(100, 25), Rational::new(150, 25));
+		clip.core.media_in = Rational::new(10, 25);
+		clip.core.track = Some(track_id);
+		clip.footage = Some(foot2);
+		p.graph.add_node(core, behavior)
+	};
+
+	if let Some(entry) = p.graph.get_mut(track_id) {
+		entry
+			.behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<TrackBehavior>())
+			.unwrap()
+			.blocks = vec![clip1, clip2];
+	}
+	if let Some(entry) = p.graph.get_mut(lists[0]) {
+		entry
+			.behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<TrackListBehavior>())
+			.unwrap()
+			.tracks = vec![track_id];
+	}
+	drop(p);
+	project
+}
+
+/// Assertions over the otio model of a written interchange file.
+fn assert_otio_model(timelines: &[oakotio::Timeline]) {
+	assert_eq!(timelines.len(), 1);
+	let timeline = &timelines[0];
+	assert_eq!(timeline.name(), "My Seq");
+	let tracks: Vec<&oakotio::Track> = timeline
+		.tracks()
+		.children()
+		.iter()
+		.filter_map(|c| c.as_track())
+		.collect();
+	assert_eq!(tracks.len(), 1, "one video track");
+	let track = tracks[0];
+	assert_eq!(track.kind(), "Video");
+	let clips: Vec<&oakotio::Clip> = track
+		.children()
+		.iter()
+		.filter_map(|c| c.as_clip())
+		.collect();
+	assert_eq!(clips.len(), 2, "two clips");
+
+	assert_eq!(clips[0].name(), "b");
+	assert_eq!(
+		clips[0]
+			.media_reference()
+			.unwrap()
+			.as_external_reference()
+			.unwrap()
+			.target_url(),
+		"file:///a/b.mp4"
+	);
+	let r0 = clips[0].source_range().unwrap();
+	assert_close(r0.duration().to_seconds(), 4.0);
+	assert_close(r0.start_time().to_seconds(), 0.0);
+
+	assert_eq!(clips[1].name(), "c");
+	assert_eq!(
+		clips[1]
+			.media_reference()
+			.unwrap()
+			.as_external_reference()
+			.unwrap()
+			.target_url(),
+		"file:///a/c.mp4"
+	);
+	let r1 = clips[1].source_range().unwrap();
+	assert_close(r1.duration().to_seconds(), 2.0);
+	assert_close(r1.start_time().to_seconds(), 0.4);
+}
+
+/// Assertions over the oaknode project imported from an interchange
+/// file: one sequence, one video track, two clips with footage.
+fn assert_imported_timeline(project: &Project) {
+	// Find the sequence and its track lists.
+	let mut seq: Option<(NodeId, Vec<NodeId>)> = None;
+	for id in project.graph.node_ids() {
+		let entry = project.graph.get(id).unwrap();
+		if entry.behavior.type_id() == "org.olivevideoeditor.Olive.sequence" {
+			let s = entry
+				.behavior
+				.as_any()
+				.and_then(|a| a.downcast_ref::<SequenceBehavior>())
+				.unwrap();
+			seq = Some((id, s.track_lists.clone()));
+			break;
+		}
+	}
+	let (seq_id, lists) = seq.expect("imported project has a sequence");
+	assert_eq!(project.graph.get(seq_id).unwrap().core.label, "My Seq");
+
+	// Video list -> one track.
+	let list_entry = project.graph.get(lists[0]).unwrap();
+	let list = list_entry
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<TrackListBehavior>())
+		.unwrap();
+	assert_eq!(list.tracks.len(), 1);
+	let track_id = list.tracks[0];
+	let track = project
+		.graph
+		.get(track_id)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<TrackBehavior>())
+		.unwrap();
+	assert_eq!(track.kind, TrackType::Video);
+	assert_eq!(track.blocks.len(), 2);
+
+	// Clip 1.
+	let c1 = project
+		.graph
+		.get(track.blocks[0])
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<ClipBlockBehavior>())
+		.expect("block 0 is a clip");
+	assert_close(r_to_f(c1.core.length()), 4.0);
+	assert_close(r_to_f(c1.core.media_in), 0.0);
+	let f1 = c1.footage.expect("clip 1 has footage");
+	let filename1 = project
+		.graph
+		.get(f1)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<FootageBehavior>())
+		.unwrap()
+		.filename
+		.clone();
+	assert_eq!(filename1, "/a/b.mp4");
+
+	// Clip 2.
+	let c2 = project
+		.graph
+		.get(track.blocks[1])
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<ClipBlockBehavior>())
+		.expect("block 1 is a clip");
+	assert_close(r_to_f(c2.core.length()), 2.0);
+	assert_close(r_to_f(c2.core.media_in), 0.4);
+	let f2 = c2.footage.expect("clip 2 has footage");
+	let filename2 = project
+		.graph
+		.get(f2)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<FootageBehavior>())
+		.unwrap()
+		.filename
+		.clone();
+	assert_eq!(filename2, "/a/c.mp4");
+}
+
+fn assert_interchange_roundtrip(ext: &str) {
+	let dir = temp_dir(&format!("interchange_{ext}"));
+	let path = dir.join(format!("timeline.{ext}"));
+	let uri = file_uri(&path);
+
+	let project = build_timeline_project();
+	let handle = node::make_project_owned(project.clone());
+	let rc = unsafe { ffi::oakstorage_save(handle, cs(&uri).as_ptr(), 0) };
+	assert_eq!(rc, OAKSTORAGE_OK, "save: {}", last_error());
+	free_project(handle);
+
+	// The written file parses back through oakotio with clips/tracks.
+	match ext {
+		"otio" => {
+			let text = std::fs::read_to_string(&path).unwrap();
+			let root = oakotio::from_json_string(&text).unwrap();
+			let timelines: Vec<oakotio::Timeline> = match root {
+				oakotio::Serializable::Timeline(t) => vec![t],
+				other => panic!("expected a timeline root, got {}", other.schema_name()),
+			};
+			assert_otio_model(&timelines);
+		}
+		"fcpxml" => {
+			let text = std::fs::read_to_string(&path).unwrap();
+			let timelines = oakotio::from_fcpxml_string(&text).unwrap();
+			assert_otio_model(&timelines);
+		}
+		_ => unreachable!(),
+	}
+
+	// And imports back into an equivalent project.
+	let (session, rc) = open(&uri);
+	assert!(!session.ctx.is_null(), "open failed rc={rc}: {}", last_error());
+	assert_eq!(rc, OAKSTORAGE_OK);
+	let proj_handle = unsafe { ffi::oakstorage_project_project(session) };
+	let loaded = unsafe { node::project_arc(&proj_handle) }.unwrap();
+	{
+		let l = loaded.lock().unwrap();
+		assert_imported_timeline(&l);
+	}
+	free_project(proj_handle);
+	free_session(session);
+}
+
 #[test]
-fn sqlite_roundtrip() {
-	todo!()
+fn otio_roundtrip() {
+	assert_interchange_roundtrip("otio");
 }
 
-/// PostgreSQL backend: same round-trip against a local test database;
-/// skipped when no PG is reachable (env-gated).
 #[test]
-fn postgres_roundtrip() {
-	todo!()
+fn fcpxml_roundtrip() {
+	assert_interchange_roundtrip("fcpxml");
 }
 
-/// alive count: open/take/free pairing leaves no leak.
+/// A file whose root is neither a timeline nor a collection fails with
+/// E_FORMAT on open.
+#[test]
+fn otio_bad_root_rejected() {
+	let dir = temp_dir("otio_badroot");
+	let path = dir.join("bad.otio");
+	std::fs::write(&path, "{\"OTIO_SCHEMA\": \"NotATimeline.1\", \"x\": 1}").unwrap();
+	let (session, rc) = open(&file_uri(&path));
+	assert!(session.ctx.is_null());
+	assert_eq!(rc, OAKSTORAGE_E_FORMAT);
+}
+
+// ---------------------------------------------------------------------------
+// NULL / invalid-handle matrix
+// ---------------------------------------------------------------------------
+
+#[test]
+fn null_and_invalid_handles() {
+	// open with NULL / empty URI -> E_INVALID.
+	let mut rc = 0;
+	let session = unsafe { ffi::oakstorage_open(std::ptr::null(), &mut rc) };
+	assert!(session.ctx.is_null());
+	assert_eq!(rc, OAKSTORAGE_E_INVALID);
+
+	// save with a null project handle -> E_INVALID.
+	let rc = unsafe { ffi::oakstorage_save(CHandle::null(), cs("file:///tmp/x.ove").as_ptr(), 0) };
+	assert_eq!(rc, OAKSTORAGE_E_INVALID);
+
+	// save with a null URI -> E_INVALID.
+	let project = node::project_init();
+	let rc = unsafe { ffi::oakstorage_save(project, std::ptr::null(), 0) };
+	assert_eq!(rc, OAKSTORAGE_E_INVALID);
+	free_project(project);
+
+	// save to an unknown-scheme URI -> E_NO_BACKEND.
+	let project = node::project_init();
+	let rc = unsafe { ffi::oakstorage_save(project, cs("oakdb://x").as_ptr(), 0) };
+	assert_eq!(rc, OAKSTORAGE_E_NO_BACKEND);
+	free_project(project);
+
+	// project_free(NULL) is a no-op.
+	unsafe { ffi::oakstorage_project_free(std::ptr::null_mut()) };
+
+	// take_project / project_project on a null handle -> null.
+	let h = unsafe { ffi::oakstorage_project_take_project(CHandle::null()) };
+	assert!(h.ctx.is_null());
+	let h = unsafe { ffi::oakstorage_project_project(CHandle::null()) };
+	assert!(h.ctx.is_null());
+
+	// project_uri on a null handle -> E_INVALID.
+	let rc = unsafe { ffi::oakstorage_project_uri(CHandle::null(), std::ptr::null_mut(), 0) };
+	assert_eq!(rc, OAKSTORAGE_E_INVALID);
+
+	// Empty session shell: take twice yields null the second time.
+	let dir = temp_dir("null_matrix");
+	let path = dir.join("x.ove");
+	let uri = file_uri(&path);
+	let project = build_roundtrip_project();
+	let handle = node::make_project_owned(project);
+	assert_eq!(
+		unsafe { ffi::oakstorage_save(handle, cs(&uri).as_ptr(), 0) },
+		OAKSTORAGE_OK
+	);
+	free_project(handle);
+
+	let (session, _) = open(&uri);
+	let taken = unsafe { ffi::oakstorage_project_take_project(session) };
+	assert!(!taken.ctx.is_null(), "take transfers the project");
+	let again = unsafe { ffi::oakstorage_project_take_project(session) };
+	assert!(again.ctx.is_null(), "second take is empty");
+	let borrowed = unsafe { ffi::oakstorage_project_project(session) };
+	assert!(borrowed.ctx.is_null(), "borrowed is empty after take");
+	free_project(taken);
+	free_session(session);
+
+	// backend_register(NULL) / backend_unregister(NULL) -> E_INVALID.
+	assert_eq!(
+		unsafe { ffi::oakstorage_backend_register(std::ptr::null()) },
+		OAKSTORAGE_E_INVALID
+	);
+	assert_eq!(
+		unsafe { ffi::oakstorage_backend_unregister(std::ptr::null()) },
+		OAKSTORAGE_E_INVALID
+	);
+}
+
+// ---------------------------------------------------------------------------
+// Alive accounting
+// ---------------------------------------------------------------------------
+
 #[test]
 fn alive_count_accounting() {
-	todo!()
+	let dir = temp_dir("alive");
+	let path = dir.join("x.ove");
+	let uri = file_uri(&path);
+	let project = build_roundtrip_project();
+	let handle = node::make_project_owned(project);
+	assert_eq!(
+		unsafe { ffi::oakstorage_save(handle, cs(&uri).as_ptr(), 0) },
+		OAKSTORAGE_OK
+	);
+	free_project(handle);
+
+	let before = alive();
+	{
+		let (session, rc) = open(&uri);
+		assert_eq!(rc, OAKSTORAGE_OK);
+		assert_eq!(alive(), before + 1, "open counts one session");
+
+		// Take transfers the project; the session shell stays alive.
+		let taken = unsafe { ffi::oakstorage_project_take_project(session) };
+		assert!(!taken.ctx.is_null());
+		assert_eq!(alive(), before + 1, "take keeps the session shell");
+
+		free_project(taken);
+		free_session(session);
+	}
+	assert_eq!(alive(), before, "open/take/free pair leaves no leak");
+
+	// A second pairing through project_project (borrowed) as well.
+	let before = alive();
+	{
+		let (session, _) = open(&uri);
+		let borrowed = unsafe { ffi::oakstorage_project_project(session) };
+		assert!(!borrowed.ctx.is_null());
+		free_project(borrowed);
+		free_session(session);
+	}
+	assert_eq!(alive(), before, "borrowed view pairing leaves no leak");
 }

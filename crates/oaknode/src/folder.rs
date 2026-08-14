@@ -111,12 +111,66 @@ impl NodeBehavior for FolderBehavior {
 	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
 		Some(Box::new(FolderBehavior::new(&self.name)))
 	}
+
+	/// Custom project save: the bin children (C++ attaches children
+	/// through the `child_in` input connections; the Rust model keeps
+	/// them in [`FolderBehavior::children`], so the custom segment is
+	/// the persistence channel — old readers skip it).
+	fn save_custom(&self, core: &NodeCore, writer: &mut dyn crate::serializer::XmlWrite) {
+		let _ = core;
+		if !self.children.is_empty() {
+			writer.start_element("children");
+			for c in &self.children {
+				writer.text_element("child", &c.identity().to_string());
+			}
+			writer.end_element(); // children
+		}
+	}
+
+	/// Custom project load; the child references resolve in the
+	/// serializer's post-load pass (which also folds in `child_in`
+	/// connections from C++ files).
+	fn load_custom(
+		&mut self,
+		_core: &mut NodeCore,
+		reader: &mut dyn crate::serializer::XmlRead,
+	) -> bool {
+		while reader.next_start_element() {
+			match reader.name() {
+				"children" => {
+					self.children.clear();
+					while reader.next_start_element() {
+						if reader.name() == "child" {
+							if let Some(id) =
+								crate::serializer::parse_node_ref(&reader.read_element_text())
+							{
+								self.children.push(id);
+							}
+						} else {
+							reader.skip_current_element();
+						}
+					}
+				}
+				_ => reader.skip_current_element(),
+			}
+		}
+		true
+	}
 }
 
-/// Constructor (C++ `Folder::Folder()`): a folder node has no inputs.
+/// Constructor (C++ `Folder::Folder()`): a folder node declares the
+/// `child_in` array input (C++ attaches bin children through it) but no
+/// `enabled_in` (`// CPP-PARITY: folder.cpp:26`).
 pub fn create(name: &str) -> (NodeCore, Box<dyn NodeBehavior>) {
-	// Folders carry no `enabled_in` in C++; keep the bare core.
-	(NodeCore::empty(), Box::new(FolderBehavior::new(name)))
+	let mut core = NodeCore::empty();
+	let mut child = crate::input::Input::new(
+		"child_in",
+		crate::value::ValueType::None,
+		crate::value::NodeValue::None,
+	);
+	child.flags |= crate::input::flags::ARRAY | crate::input::flags::NOT_KEYFRAMABLE;
+	core.add_input(child);
+	(core, Box::new(FolderBehavior::new(name)))
 }
 
 /// Register a folder-typed node (used by the serializer for bin folders;

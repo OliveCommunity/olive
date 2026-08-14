@@ -15,6 +15,10 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Built-in backends.
+//!
+//! The database backend (`database`) is *not* registered: it is the
+//! future replacement (M10 §3 — "数据库替换路径"), provided by a later
+//! proxy. The file backends cover today's surface.
 
 pub mod database;
 pub mod otio;
@@ -25,5 +29,8 @@ use std::sync::Arc;
 /// All built-in backends in arbitration order (registered into
 /// [`crate::registry::Registry::global`] at crate init).
 pub fn builtins() -> Vec<Arc<dyn crate::backend::StorageBackend>> {
-	todo!()
+	vec![
+		Arc::new(ove_xml::OveXmlBackend::new()),
+		Arc::new(otio::OtioBackend::new()),
+	]
 }

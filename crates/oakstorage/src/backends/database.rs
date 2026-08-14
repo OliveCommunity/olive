@@ -39,8 +39,12 @@ impl DatabaseBackend {
 	/// Parse the URI into a SeaORM connection URL + project key
 	/// (query param `?project=` or row id; default: singleton "default"
 	/// project row).
+	///
+	/// Dead until the database proxy lands (the whole backend is a
+	/// declared stub); kept for the schema contract.
+	#[allow(dead_code)]
 	pub(crate) fn parse_target(
-		uri: &crate::uri::StorageUri,
+		_uri: &crate::uri::StorageUri,
 	) -> crate::error::Result<(String, String)> {
 		todo!()
 	}
@@ -56,21 +60,21 @@ impl crate::backend::StorageBackend for DatabaseBackend {
 	}
 
 	fn can_handle(&self, uri: &crate::uri::StorageUri) -> bool {
-		todo!()
+		uri.scheme.starts_with("oakdb")
 	}
 
 	fn load(
 		&self,
-		uri: &crate::uri::StorageUri,
-	) -> crate::error::Result<crate::handle::CHandle> {
+		_uri: &crate::uri::StorageUri,
+	) -> crate::error::Result<crate::backend::LoadResult> {
 		todo!()
 	}
 
 	fn save(
 		&self,
-		project: crate::handle::CHandle,
-		uri: &crate::uri::StorageUri,
-		options: u32,
+		_project: crate::handle::CHandle,
+		_uri: &crate::uri::StorageUri,
+		_options: u32,
 	) -> crate::error::Result<()> {
 		todo!()
 	}

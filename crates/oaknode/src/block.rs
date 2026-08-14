@@ -162,6 +162,77 @@ pub mod transition_input {
 	pub const IN_BLOCK: &str = "in_block_in";
 }
 
+/// Save the shared [`BlockCore`] custom fields (C++ persists the
+/// timeline span through the `length_in` input and the track's block
+/// order; the Rust model owns the range directly, so the custom
+/// segment carries it — new elements old readers skip).
+fn save_block_core(writer: &mut dyn crate::serializer::XmlWrite, core: &BlockCore) {
+	writer.start_element("range");
+	writer.attribute("in", &core.in_().to_display_string());
+	writer.attribute("out", &core.out().to_display_string());
+	writer.end_element(); // range
+	writer.text_element("media_in", &core.media_in.to_display_string());
+	writer.text_element("speed", &format!("{}", core.speed));
+	writer.text_element("reversed", if core.reversed { "1" } else { "0" });
+	writer.text_element("enabled", if core.enabled { "1" } else { "0" });
+	writer.text_element(
+		"maintain_audio_pitch",
+		if core.maintain_audio_pitch { "1" } else { "0" },
+	);
+	writer.text_element("loop_mode", &core.loop_mode.to_string());
+	if let Some(t) = core.track {
+		writer.text_element("track", &t.identity().to_string());
+	}
+}
+
+/// Parse one block custom element. Elements owned by the block core are
+/// applied to `core`; everything else is handed to `extra` so subclass
+/// state (clip footage, transition offsets) can hook in.
+fn load_block_core(
+	reader: &mut dyn crate::serializer::XmlRead,
+	core: &mut BlockCore,
+	extra: &mut dyn FnMut(&str, &mut dyn crate::serializer::XmlRead) -> bool,
+) {
+	while reader.next_start_element() {
+		let name = reader.name().to_string();
+		match name.as_str() {
+			"range" => {
+				let in_ = reader
+					.attribute("in")
+					.map(|t| Rational::from_string(&t))
+					.unwrap_or_else(|| core.in_());
+				let out = reader
+					.attribute("out")
+					.map(|t| Rational::from_string(&t))
+					.unwrap_or_else(|| core.out());
+				core.range = TimeRange::new(in_, out);
+				// Consume the element (self-closing `<range/>` emits an
+				// EndElement token that the element loop must not treat
+				// as its own terminator).
+				let _ = reader.read_element_text();
+			}
+			"media_in" => core.media_in = Rational::from_string(&reader.read_element_text()),
+			"speed" => {
+				core.speed = reader.read_element_text().trim().parse().unwrap_or(core.speed)
+			}
+			"reversed" => core.reversed = reader.read_element_text().trim() == "1",
+			"enabled" => core.enabled = reader.read_element_text().trim() != "0",
+			"maintain_audio_pitch" => {
+				core.maintain_audio_pitch = reader.read_element_text().trim() == "1"
+			}
+			"loop_mode" => {
+				core.loop_mode = reader.read_element_text().trim().parse().unwrap_or(core.loop_mode)
+			}
+			"track" => core.track = crate::serializer::parse_node_ref(&reader.read_element_text()),
+			_ => {
+				if !extra(&name, reader) {
+					reader.skip_current_element();
+				}
+			}
+		}
+	}
+}
+
 impl ClipBlockBehavior {
 	/// New clip with a default length of one second.
 	pub fn new() -> Self {
@@ -230,6 +301,35 @@ impl NodeBehavior for ClipBlockBehavior {
 			footage: self.footage,
 		}))
 	}
+
+	/// Custom project save: the shared block span/state plus the
+	/// footage reference (C++ persists the span through inputs; the Rust
+	/// block owns it in [`BlockCore`]).
+	fn save_custom(&self, core: &NodeCore, writer: &mut dyn crate::serializer::XmlWrite) {
+		let _ = core;
+		save_block_core(writer, &self.core);
+		if let Some(f) = self.footage {
+			writer.text_element("footage", &f.identity().to_string());
+		}
+	}
+
+	/// Custom project load; the footage/track references resolve in the
+	/// serializer's post-load pass.
+	fn load_custom(
+		&mut self,
+		_core: &mut NodeCore,
+		reader: &mut dyn crate::serializer::XmlRead,
+	) -> bool {
+		let footage = &mut self.footage;
+		load_block_core(reader, &mut self.core, &mut |name, reader| match name {
+			"footage" => {
+				*footage = crate::serializer::parse_node_ref(&reader.read_element_text());
+				true
+			}
+			_ => false,
+		});
+		true
+	}
 }
 
 impl NodeBehavior for GapBlockBehavior {
@@ -257,6 +357,23 @@ impl NodeBehavior for GapBlockBehavior {
 		Some(Box::new(GapBlockBehavior {
 			core: self.core.clone(),
 		}))
+	}
+
+	/// Custom project save: the shared block span/state only.
+	fn save_custom(&self, core: &NodeCore, writer: &mut dyn crate::serializer::XmlWrite) {
+		let _ = core;
+		save_block_core(writer, &self.core);
+	}
+
+	/// Custom project load; the track reference resolves in the
+	/// serializer's post-load pass.
+	fn load_custom(
+		&mut self,
+		_core: &mut NodeCore,
+		reader: &mut dyn crate::serializer::XmlRead,
+	) -> bool {
+		load_block_core(reader, &mut self.core, &mut |_, _| false);
+		true
 	}
 }
 
@@ -287,6 +404,36 @@ impl NodeBehavior for TransitionBlockBehavior {
 			in_offset: self.in_offset,
 			out_offset: self.out_offset,
 		}))
+	}
+
+	/// Custom project save: the shared block span/state plus the
+	/// transition offsets.
+	fn save_custom(&self, core: &NodeCore, writer: &mut dyn crate::serializer::XmlWrite) {
+		let _ = core;
+		save_block_core(writer, &self.core);
+		writer.text_element("in_offset", &self.in_offset.to_display_string());
+		writer.text_element("out_offset", &self.out_offset.to_display_string());
+	}
+
+	/// Custom project load; the track reference resolves in the
+	/// serializer's post-load pass.
+	fn load_custom(
+		&mut self,
+		_core: &mut NodeCore,
+		reader: &mut dyn crate::serializer::XmlRead,
+	) -> bool {
+		load_block_core(reader, &mut self.core, &mut |name, reader| match name {
+			"in_offset" => {
+				self.in_offset = Rational::from_string(&reader.read_element_text());
+				true
+			}
+			"out_offset" => {
+				self.out_offset = Rational::from_string(&reader.read_element_text());
+				true
+			}
+			_ => false,
+		});
+		true
 	}
 }
 

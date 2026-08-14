@@ -21,8 +21,9 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use crate::input::Input;
 use crate::node::{Category, NodeBehavior, NodeCore};
-use crate::value::{AudioParams, VideoParams};
+use crate::value::{AudioParams, NodeValue, ValueType, VideoParams};
 
 /// One media stream inside a footage file.
 #[derive(Clone, Debug)]
@@ -208,6 +209,33 @@ impl FootageBehavior {
 		self.proxy_preset_version = 0;
 		self.proxy_enabled = false;
 	}
+
+	/// Constructor for the serializer: the C++ `Footage` input surface
+	/// (`file_in` + the viewer parameter stream arrays) with an unprobed
+	/// behavior (`// CPP-PARITY: footage.cpp:83`, `viewer.cpp:84`).
+	pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
+		let mut core = NodeCore::new();
+		let mut file = Input::new(
+			"file_in",
+			ValueType::Text,
+			NodeValue::Text(String::new()),
+		);
+		file.flags |= crate::input::flags::NOT_CONNECTABLE | crate::input::flags::NOT_KEYFRAMABLE;
+		core.add_input(file);
+		for (id, ty) in [
+			("video_param_in", ValueType::VideoParams),
+			("audio_param_in", ValueType::AudioParams),
+			("subtitle_param_in", ValueType::None),
+		] {
+			let mut input = Input::new(id, ty, NodeValue::None);
+			input.flags |= crate::input::flags::NOT_CONNECTABLE
+				| crate::input::flags::NOT_KEYFRAMABLE
+				| crate::input::flags::ARRAY
+				| crate::input::flags::HIDDEN;
+			core.add_input(input);
+		}
+		(core, Box::new(FootageBehavior::new("")))
+	}
 }
 
 impl NodeBehavior for FootageBehavior {
@@ -237,6 +265,175 @@ impl NodeBehavior for FootageBehavior {
 			valid: self.valid,
 			cancel: self.cancel.clone(),
 		}))
+	}
+
+	/// Custom project save (C++ `Footage::SaveCustom`): the file name,
+	/// media timestamp, proxy state and the probed streams. `<filename>`
+	/// and `<streams>` are Rust additions (C++ reads the name from the
+	/// `file_in` input); old readers skip them.
+	fn save_custom(&self, core: &NodeCore, writer: &mut dyn crate::serializer::XmlWrite) {
+		let _ = core;
+		if !self.filename.is_empty() {
+			writer.text_element("filename", &self.filename);
+		}
+		if self.timestamp != 0 {
+			writer.text_element("timestamp", &self.timestamp.to_string());
+		}
+		if !self.proxy.is_empty() || self.proxy_enabled {
+			writer.start_element("proxy");
+			writer.attribute("enabled", if self.proxy_enabled { "1" } else { "0" });
+			writer.attribute("state", &self.proxy_state.to_string());
+			writer.attribute("stream", &self.proxy_video_stream_index.to_string());
+			writer.attribute("preset", &self.proxy_preset_version.to_string());
+			writer.characters(&self.proxy);
+			writer.end_element(); // proxy
+		}
+		if !self.streams.is_empty() {
+			writer.start_element("streams");
+			for s in &self.streams {
+				writer.start_element("stream");
+				writer.attribute("index", &s.index.to_string());
+				writer.attribute("video", if s.is_video { "1" } else { "0" });
+				writer.attribute("duration", &s.duration.to_display_string());
+				if let Some(v) = s.video {
+					writer.start_element("video");
+					writer.attribute("width", &v.width.to_string());
+					writer.attribute("height", &v.height.to_string());
+					writer.attribute("framerate", &v.frame_rate.to_display_string());
+					writer.attribute("pixelformat", &v.pixel_format.to_string());
+					writer.attribute("channels", &v.channels.to_string());
+					writer.end_element(); // video
+				}
+				if let Some(a) = s.audio {
+					writer.start_element("audio");
+					writer.attribute("samplerate", &a.sample_rate.to_string());
+					writer.attribute("channellayout", &a.channel_layout.to_string());
+					writer.attribute("format", &a.format.to_string());
+					writer.end_element(); // audio
+				}
+				writer.end_element(); // stream
+			}
+			writer.end_element(); // streams
+		}
+	}
+
+	/// Custom project load. C++ segments without a Rust counterpart
+	/// (`sourcestarttime`, `viewer` workarea/markers) are skipped.
+	fn load_custom(
+		&mut self,
+		_core: &mut NodeCore,
+		reader: &mut dyn crate::serializer::XmlRead,
+	) -> bool {
+		while reader.next_start_element() {
+			match reader.name() {
+				"filename" => self.filename = reader.read_element_text(),
+				"timestamp" => {
+					self.timestamp = reader.read_element_text().trim().parse().unwrap_or(0)
+				}
+				"proxy" => {
+					self.proxy_enabled = reader
+						.attribute("enabled")
+						.map(|v| v == "1")
+						.unwrap_or(false);
+					self.proxy_state = reader
+						.attribute("state")
+						.and_then(|v| v.parse().ok())
+						.unwrap_or(0);
+					self.proxy_video_stream_index = reader
+						.attribute("stream")
+						.and_then(|v| v.parse().ok())
+						.unwrap_or(-1);
+					self.proxy_preset_version = reader
+						.attribute("preset")
+						.and_then(|v| v.parse().ok())
+						.unwrap_or(0);
+					self.proxy = reader.read_element_text();
+				}
+				"streams" => {
+					self.streams.clear();
+					while reader.next_start_element() {
+						if reader.name() == "stream" {
+							let index = reader
+								.attribute("index")
+								.and_then(|v| v.parse().ok())
+								.unwrap_or(0);
+							let is_video = reader
+								.attribute("video")
+								.map(|v| v == "1")
+								.unwrap_or(false);
+							let duration = reader
+								.attribute("duration")
+								.map(|v| oakcore_rs::Rational::from_string(&v))
+								.unwrap_or_else(|| oakcore_rs::Rational::new(0, 1));
+							let mut video = None;
+							let mut audio = None;
+							while reader.next_start_element() {
+								match reader.name() {
+									"video" => {
+										video = Some(VideoParams {
+											width: reader
+												.attribute("width")
+												.and_then(|v| v.parse().ok())
+												.unwrap_or(0),
+											height: reader
+												.attribute("height")
+												.and_then(|v| v.parse().ok())
+												.unwrap_or(0),
+											frame_rate: reader
+												.attribute("framerate")
+												.map(|v| oakcore_rs::Rational::from_string(&v))
+												.unwrap_or_else(|| {
+													oakcore_rs::Rational::new(0, 1)
+												}),
+											pixel_format: reader
+												.attribute("pixelformat")
+												.and_then(|v| v.parse().ok())
+												.unwrap_or(0),
+											channels: reader
+												.attribute("channels")
+												.and_then(|v| v.parse().ok())
+												.unwrap_or(0),
+										});
+										// Consume the (self-closing) element.
+										let _ = reader.read_element_text();
+									}
+									"audio" => {
+										audio = Some(AudioParams {
+											sample_rate: reader
+												.attribute("samplerate")
+												.and_then(|v| v.parse().ok())
+												.unwrap_or(0),
+											channel_layout: reader
+												.attribute("channellayout")
+												.and_then(|v| v.parse().ok())
+												.unwrap_or(0),
+											format: reader
+												.attribute("format")
+												.and_then(|v| v.parse().ok())
+												.unwrap_or(0),
+										});
+										// Consume the (self-closing) element.
+										let _ = reader.read_element_text();
+									}
+									_ => reader.skip_current_element(),
+								}
+							}
+							self.streams.push(StreamInfo {
+								index,
+								is_video,
+								video,
+								audio,
+								duration,
+							});
+						} else {
+							reader.skip_current_element();
+						}
+					}
+				}
+				_ => reader.skip_current_element(),
+			}
+		}
+		true
 	}
 
 	fn as_any(&self) -> Option<&dyn std::any::Any> {

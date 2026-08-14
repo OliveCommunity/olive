@@ -119,6 +119,14 @@ impl TrackBehavior {
 		}
 	}
 
+	/// Constructor for the serializer: a track core carries only the
+	/// inherited `enabled_in` (C++ `Track` also declares the `block_in`
+	/// array and `arraymap_in`; the Rust model keeps block membership in
+	/// [`TrackBehavior::blocks`]).
+	pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
+		(NodeCore::new(), Box::new(TrackBehavior::new(TrackType::Video)))
+	}
+
 	/// Block at `index` (None out of range).
 	pub fn block_at(&self, index: usize) -> Option<NodeId> {
 		self.blocks.get(index).copied()
@@ -274,6 +282,13 @@ impl TrackListBehavior {
 		}
 	}
 
+	/// Constructor for the serializer: a track list core carries only
+	/// the inherited `enabled_in` (the list's state lives in the
+	/// behavior; the C++ `TrackList` is a plain QObject, not a node).
+	pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
+		(NodeCore::new(), Box::new(TrackListBehavior::new(TrackType::Video)))
+	}
+
 	/// Track at `index`.
 	pub fn track_at(&self, index: usize) -> Option<NodeId> {
 		self.tracks.get(index).copied()
@@ -327,6 +342,85 @@ impl NodeBehavior for TrackBehavior {
 		}))
 	}
 
+	/// Custom project save (C++ `Track::SaveCustom` writes only the
+	/// height; the type/muted/locked and the block/track-list
+	/// references are Rust additions that older readers skip).
+	fn save_custom(&self, core: &NodeCore, writer: &mut dyn crate::serializer::XmlWrite) {
+		let _ = core;
+		writer.text_element("type", &self.kind.to_c().to_string());
+		writer.text_element("index", &self.index.to_string());
+		writer.text_element("muted", if self.muted { "1" } else { "0" });
+		writer.text_element("locked", if self.locked { "1" } else { "0" });
+		writer.text_element("height", &format!("{}", self.height));
+		if let Some(tl) = self.track_list {
+			writer.text_element("tracklist", &tl.identity().to_string());
+		}
+		if !self.blocks.is_empty() {
+			writer.start_element("blocks");
+			for b in &self.blocks {
+				writer.text_element("block", &b.identity().to_string());
+			}
+			writer.end_element(); // blocks
+		}
+	}
+
+	/// Custom project load. The block/track-list references are packed
+	/// ids resolved by the serializer's post-load pass; a track saved by
+	/// C++ carries only `<height>`, so the kind is filled from the
+	/// sequence `track_in_%1` connection when the custom has none.
+	fn load_custom(
+		&mut self,
+		_core: &mut NodeCore,
+		reader: &mut dyn crate::serializer::XmlRead,
+	) -> bool {
+		while reader.next_start_element() {
+			match reader.name() {
+				"type" => {
+					if let Some(kind) = reader
+						.read_element_text()
+						.trim()
+						.parse::<i32>()
+						.ok()
+						.and_then(TrackType::from_c)
+					{
+						self.kind = kind;
+					}
+				}
+				"index" => {
+					self.index = reader.read_element_text().trim().parse().unwrap_or(self.index)
+				}
+				"muted" => self.muted = reader.read_element_text().trim() == "1",
+				"locked" => self.locked = reader.read_element_text().trim() == "1",
+				"height" => {
+					self.height = reader
+						.read_element_text()
+						.trim()
+						.parse()
+						.unwrap_or(self.height)
+				}
+				"tracklist" => {
+					self.track_list = crate::serializer::parse_node_ref(&reader.read_element_text())
+				}
+				"blocks" => {
+					self.blocks.clear();
+					while reader.next_start_element() {
+						if reader.name() == "block" {
+							if let Some(id) =
+								crate::serializer::parse_node_ref(&reader.read_element_text())
+							{
+								self.blocks.push(id);
+							}
+						} else {
+							reader.skip_current_element();
+						}
+					}
+				}
+				_ => reader.skip_current_element(),
+			}
+		}
+		true
+	}
+
 	fn as_any(&self) -> Option<&dyn std::any::Any> {
 		Some(self)
 	}
@@ -360,6 +454,71 @@ impl NodeBehavior for TrackListBehavior {
 			sequence: self.sequence,
 			array_base: self.array_base,
 		}))
+	}
+
+	/// Custom project save: the list kind, array base and its node
+	/// references (the C++ `TrackList` has no serialization of its own —
+	/// it is a plain QObject owned by the sequence).
+	fn save_custom(&self, core: &NodeCore, writer: &mut dyn crate::serializer::XmlWrite) {
+		let _ = core;
+		writer.text_element("type", &self.kind.to_c().to_string());
+		writer.text_element("arraybase", &self.array_base.to_string());
+		if let Some(s) = self.sequence {
+			writer.text_element("sequence", &s.identity().to_string());
+		}
+		if !self.tracks.is_empty() {
+			writer.start_element("tracks");
+			for t in &self.tracks {
+				writer.text_element("track", &t.identity().to_string());
+			}
+			writer.end_element(); // tracks
+		}
+	}
+
+	/// Custom project load; references resolve in the serializer's
+	/// post-load pass.
+	fn load_custom(
+		&mut self,
+		_core: &mut NodeCore,
+		reader: &mut dyn crate::serializer::XmlRead,
+	) -> bool {
+		while reader.next_start_element() {
+			match reader.name() {
+				"type" => {
+					if let Some(kind) = reader
+						.read_element_text()
+						.trim()
+						.parse::<i32>()
+						.ok()
+						.and_then(TrackType::from_c)
+					{
+						self.kind = kind;
+					}
+				}
+				"arraybase" => {
+					self.array_base = reader.read_element_text().trim().parse().unwrap_or(0)
+				}
+				"sequence" => {
+					self.sequence = crate::serializer::parse_node_ref(&reader.read_element_text())
+				}
+				"tracks" => {
+					self.tracks.clear();
+					while reader.next_start_element() {
+						if reader.name() == "track" {
+							if let Some(id) =
+								crate::serializer::parse_node_ref(&reader.read_element_text())
+							{
+								self.tracks.push(id);
+							}
+						} else {
+							reader.skip_current_element();
+						}
+					}
+				}
+				_ => reader.skip_current_element(),
+			}
+		}
+		true
 	}
 
 	fn as_any(&self) -> Option<&dyn std::any::Any> {

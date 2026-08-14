@@ -20,8 +20,9 @@
 //! `// CPP-PARITY: src/node/src/project/sequence/sequence.{h,cpp}`.
 
 use crate::id::NodeId;
+use crate::input::Input;
 use crate::node::{Category, NodeBehavior, NodeCore};
-use crate::value::{AudioParams, VideoParams};
+use crate::value::{AudioParams, NodeValue, ValueType, VideoParams};
 
 /// Sequence texture/samples input ids (ViewerOutput::k_texture_input /
 /// k_samples_input) and the track input id format (Sequence::
@@ -66,6 +67,53 @@ impl SequenceBehavior {
 			video_params: Vec::new(),
 			audio_params: Vec::new(),
 		}
+	}
+
+	/// Constructor: the C++ `Sequence` input surface with default
+	/// parameters but no track lists (`// CPP-PARITY: sequence.cpp:36`,
+	/// `viewer.cpp:84`). Used by the serializer to rebuild a sequence
+	/// from a file — the track lists arrive as separate nodes.
+	pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
+		let mut core = NodeCore::new();
+		// Viewer parameter streams (C++ ViewerOutput::kVideoParamsInput /
+		// kAudioParamsInput / kSubtitleParamsInput arrays).
+		for (id, ty) in [
+			("video_param_in", ValueType::VideoParams),
+			("audio_param_in", ValueType::AudioParams),
+			("subtitle_param_in", ValueType::None),
+		] {
+			let mut input = Input::new(id, ty, NodeValue::None);
+			input.flags |= crate::input::flags::NOT_CONNECTABLE
+				| crate::input::flags::NOT_KEYFRAMABLE
+				| crate::input::flags::ARRAY
+				| crate::input::flags::HIDDEN;
+			core.add_input(input);
+		}
+		core.add_input(Input::new(
+			TEXTURE_INPUT,
+			ValueType::Texture,
+			NodeValue::None,
+		));
+		core.add_input(Input::new(
+			SAMPLES_INPUT,
+			ValueType::Samples,
+			NodeValue::None,
+		));
+		// One array input per track list (`track_in_%1`; the video list
+		// owns track_in_0, audio track_in_1, subtitle track_in_2 —
+		// `// CPP-PARITY: sequence.h`).
+		for base in 0..3 {
+			let mut track_input = Input::new(
+				&TRACK_INPUT_FORMAT.replace("%1", &base.to_string()),
+				ValueType::None,
+				NodeValue::None,
+			);
+			track_input.flags |= crate::input::flags::ARRAY;
+			core.add_input(track_input);
+		}
+		let mut behavior = SequenceBehavior::new();
+		behavior.set_default_parameters();
+		(core, Box::new(behavior))
 	}
 
 	/// Apply the default video/audio parameters (C++
@@ -139,6 +187,51 @@ impl NodeBehavior for SequenceBehavior {
 
 	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
 		Some(Box::new(SequenceBehavior::new()))
+	}
+
+	/// Custom project save (C++ `Sequence::SaveCustom` writes the
+	/// workarea and markers; those live behind opaque oaktimeline
+	/// handles in Rust, so the track-list references are all that
+	/// persists).
+	fn save_custom(&self, core: &NodeCore, writer: &mut dyn crate::serializer::XmlWrite) {
+		let _ = core;
+		if !self.track_lists.is_empty() {
+			writer.start_element("tracklists");
+			for t in &self.track_lists {
+				writer.text_element("tracklist", &t.identity().to_string());
+			}
+			writer.end_element(); // tracklists
+		}
+	}
+
+	/// Custom project load (C++ `Sequence::LoadCustom`): the track-list
+	/// references are collected here and resolved to live ids by the
+	/// serializer's post-load pass; the C++ workarea/markers segments
+	/// are skipped (opaque handles).
+	fn load_custom(
+		&mut self,
+		_core: &mut NodeCore,
+		reader: &mut dyn crate::serializer::XmlRead,
+	) -> bool {
+		while reader.next_start_element() {
+			match reader.name() {
+				"tracklists" => {
+					while reader.next_start_element() {
+						if reader.name() == "tracklist" {
+							if let Some(id) =
+								crate::serializer::parse_node_ref(&reader.read_element_text())
+							{
+								self.track_lists.push(id);
+							}
+						} else {
+							reader.skip_current_element();
+						}
+					}
+				}
+				_ => reader.skip_current_element(),
+			}
+		}
+		true
 	}
 
 	fn as_any(&self) -> Option<&dyn std::any::Any> {

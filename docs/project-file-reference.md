@@ -488,6 +488,146 @@ Used by `Footage`, `Sequence`, etc.
 - `<outputpassthrough>`: pointer id of the node that provides the group's output.
   - `<outputpassthrough>`：提供组输出的节点指针 ID。
 
+### 5.5 Rust serializer extensions / Rust 序列化器扩展
+
+The Rust serializer (`crates/oaknode/src/serializer.rs`) persists the
+timeline structure through the per-node `<custom>` segments. The C++
+format encodes it through connections (sequence `track_in_%1` array →
+tracks, track `block_in` array → blocks); the Rust model keeps the
+hierarchy in the behavior structs, so the segments below carry it. All
+elements are **additive**: older readers (C++ `LoadCustom`,
+`skipCurrentElement`) skip them, and the C++ reader remains byte-able
+to open Rust files (only losing the fields below).
+
+Rust 序列化器通过各节点的 `<custom>` 段持久化时间线结构。C++ 格式用连接编码
+（sequence 的 `track_in_%1` 数组 → 轨道，track 的 `block_in` 数组 → 块）；
+Rust 模型把层级放在行为结构体中，因此由以下段承载。所有元素都是**新增的**：
+旧读取器（C++ `LoadCustom`、`skipCurrentElement`）会跳过它们。
+
+`Sequence` (`org.olivevideoeditor.Olive.sequence`):
+
+```xml
+<custom>
+  <tracklists>
+    <tracklist>ptr</tracklist>
+  </tracklists>
+</custom>
+```
+
+- `<tracklists>`: the video/audio/subtitle `TrackList` node references
+  (C++ writes workarea/markers here; those are opaque handles in Rust).
+  - `<tracklists>`：视频/音频/字幕 `TrackList` 节点引用（C++ 在此写
+    workarea/markers；Rust 中是透明句柄）。
+
+`TrackList` (`org.olivevideoeditor.Olive.tracklist`):
+
+```xml
+<custom>
+  <type>0</type>
+  <arraybase>0</arraybase>
+  <sequence>ptr</sequence>
+  <tracks>
+    <track>ptr</track>
+  </tracks>
+</custom>
+```
+
+- `<type>`: `Track::Type` integer (0 video, 1 audio, 2 subtitle).
+  - `<type>`：`Track::Type` 整数（0 视频、1 音频、2 字幕）。
+- `<arraybase>`: the sequence `track_in_%1` input index this list owns.
+  - `<arraybase>`：该列表拥有的 sequence `track_in_%1` 输入下标。
+- `<sequence>`: the owning sequence node reference.
+  - `<sequence>`：所属 sequence 节点引用。
+- `<tracks>`: the `Track` node references in stack order.
+  - `<tracks>`：按栈序排列的 `Track` 节点引用。
+
+`Track` (`org.olivevideoeditor.Olive.track`):
+
+```xml
+<custom>
+  <type>0</type>
+  <index>0</index>
+  <muted>0</muted>
+  <locked>0</locked>
+  <height>3</height>
+  <tracklist>ptr</tracklist>
+  <blocks>
+    <block>ptr</block>
+  </blocks>
+</custom>
+```
+
+- `<height>`: the C++ element (internal units); the rest are Rust
+  additions. When `<type>` is absent (a C++ file), the kind is derived
+  from the sequence `track_in_%1` connection.
+  - `<height>` 是 C++ 元素（内部单位）；其余为 Rust 新增。当 `<type>`
+    缺失（C++ 文件）时，从 sequence `track_in_%1` 连接推断类型。
+
+Blocks (`clipblock` / `gapblock` / `transitionblock`):
+
+```xml
+<custom>
+  <range in="0/1" out="4/1"/>
+  <media_in>0/1</media_in>
+  <speed>1</speed>
+  <reversed>0</reversed>
+  <enabled>1</enabled>
+  <maintain_audio_pitch>0</maintain_audio_pitch>
+  <loop_mode>0</loop_mode>
+  <track>ptr</track>
+  <!-- clipblock only / 仅 clipblock -->
+  <footage>ptr</footage>
+  <!-- transitionblock only / 仅 transitionblock -->
+  <in_offset>0/1</in_offset>
+  <out_offset>0/1</out_offset>
+</custom>
+```
+
+- `<range>`: the block's timeline span (C++ derives in/out from the
+  track order; the Rust block owns it).
+  - `<range>`：块的时间线区间（C++ 从轨道顺序推导 in/out；Rust 块直接持有）。
+- `<track>` / `<footage>`: owning track / connected footage references.
+  - `<track>` / `<footage>`：所属轨道 / 关联素材引用。
+
+`Footage` (`org.olivevideoeditor.Olive.footage`): the C++ elements
+(`timestamp`, `proxy`, `sourcestarttime`, `viewer`) plus:
+
+```xml
+<custom>
+  <filename>/path/to/file.mp4</filename>
+  <streams>
+    <stream index="0" video="1" duration="num/den">
+      <video width="1920" height="1080" framerate="25/1"
+             pixelformat="4" channels="4"/>
+    </stream>
+    <stream index="1" video="0" duration="num/den">
+      <audio samplerate="48000" channellayout="3" format="4"/>
+    </stream>
+  </streams>
+</custom>
+```
+
+- `<filename>`: the media path (C++ stores it in the `file_in` input;
+  Rust reads either on load). `<streams>`: the probed stream table.
+  - `<filename>`：媒体路径（C++ 存在 `file_in` 输入里；Rust 加载时两者都读）。
+    `<streams>`：探测到的流表。
+
+`Folder` (`org.olivevideoeditor.Olive.folder`):
+
+```xml
+<custom>
+  <children>
+    <child>ptr</child>
+  </children>
+</custom>
+```
+
+- `<children>`: the bin children (C++ attaches them through the
+  `child_in` input connections, which the Rust reader also folds in).
+  The folder node declares the `child_in` array input for C++ files.
+  - `<children>`：素材箱子项（C++ 通过 `child_in` 输入连接挂载；Rust 读取器
+    也把这些连接并入）。folder 节点声明 `child_in` 数组输入以兼容 C++ 文件。
+
 ---
 
 ## 6. `VideoParams` / 视频参数

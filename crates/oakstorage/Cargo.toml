@@ -8,9 +8,6 @@ license = "GPL-3.0-or-later"
 [lib]
 crate-type = ["staticlib", "rlib"]
 
-[profile.release]
-panic = "unwind"
-
 [dependencies]
 oakcore-rs = { path = "../oakcore" }
 serde = { version = "1", features = ["derive"] }
@@ -18,6 +15,10 @@ serde_json = { version = "1", features = ["preserve_order"] }
 # Error derive (Display + std::error::Error) for the crate error enum
 # (src/error.rs). Same major version the other modules use (oakotio, ...).
 thiserror = "2"
+# The node graph engine: project + serializer families power the ove-xml
+# backend; the sequence/track/block model powers the otio interchange
+# (see src/bridge/node.rs — direct Rust calls, single-lib unification).
+oaknode = { path = "../oaknode" }
 # Native OTIO JSON model (project-local; see src/bindings/oakotio).
 oakotio = { path = "../oakotio" }
 # Database backends via SeaORM (sync facade: a private current-thread
@@ -25,3 +26,10 @@ oakotio = { path = "../oakotio" }
 # backends/database.rs). sqlx-postgres + sqlx-sqlite cover PG/SQLite.
 sea-orm = { version = "2", features = ["sqlx-postgres", "sqlx-sqlite", "runtime-tokio"] }
 tokio = { version = "1", features = ["rt", "macros"] }
+
+[dev-dependencies]
+# oakcodec's oakcore_*/oakrender_* host-mocks (test-stubs feature): the
+# oakstorage test binary links the real oakcodec (via oaknode), whose
+# ffmpeg unit references those cross-crate symbols that no Rust crate
+# provides (same setup as oaknode's own dev-dependencies).
+oakcodec = { path = "../oakcodec", features = ["test-stubs"] }

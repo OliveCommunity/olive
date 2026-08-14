@@ -677,7 +677,11 @@ pub trait NodeBehavior: Send {
 		core: &mut NodeCore,
 		reader: &mut dyn crate::serializer::XmlRead,
 	) -> bool {
-		let _ = (core, reader);
+		let _ = core;
+		// The default has no custom state; consume the segment so the
+		// node-body parser continues at the correct depth (the reader is
+		// positioned on the `<custom>` start element).
+		reader.skip_current_element();
 		true
 	}
 

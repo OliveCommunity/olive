@@ -9667,7 +9667,14 @@ pub mod serializer {
 				.filter(|(_, to, _, _)| *to == id)
 				.map(|(from, _, input, element)| (from, input, element))
 				.collect();
-			crate::serializer::save_node(&mut writer, &entry.core, id, &type_id, &connections)?;
+			crate::serializer::save_node(
+				&mut writer,
+				&entry.core,
+				&*entry.behavior,
+				id,
+				&type_id,
+				&connections,
+			)?;
 			// Serialize per-node properties as text elements.
 			let mut props: Vec<(&String, &String)> = sd
 				.properties

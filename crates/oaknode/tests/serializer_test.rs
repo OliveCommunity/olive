@@ -141,3 +141,731 @@ fn corrupt_and_future_files_rejected() {
 	// Garbage text.
 	assert!(oaknode::serializer::load("not xml at all").is_err());
 }
+
+/// The C++-era fixture project (`tests/project_with_footage.ove`, a
+/// 230220 full save with the `<olive>`/`<project>` container) loads with
+/// its bin and timeline structure intact: the root folder holds the
+/// footage + sequence children, the footage file name and timestamp
+/// survive, and the sequence's viewer connections resolve.
+#[test]
+fn golden_project_with_footage_loads() {
+	use oaknode::folder::FolderBehavior;
+	use oaknode::footage::FootageBehavior;
+	use oaknode::sequence::SequenceBehavior;
+
+	let xml = std::fs::read_to_string(concat!(
+		env!("CARGO_MANIFEST_DIR"),
+		"/../../tests/project_with_footage.ove"
+	))
+	.unwrap();
+	let project = oaknode::serializer::load(&xml).unwrap();
+	let p = project.lock().unwrap();
+
+	// The root folder (from the settings "root" key) holds the bin.
+	let root = p.graph.get(p.root).expect("root folder resolves");
+	assert_eq!(
+		root.behavior.type_id(),
+		"org.olivevideoeditor.Olive.folder"
+	);
+	let folder = root
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<FolderBehavior>())
+		.expect("root is a folder");
+	assert_eq!(folder.name, "Root");
+	assert_eq!(folder.children.len(), 2, "folder holds footage + sequence");
+
+	// Child 0: footage with the demo.mp4 file name (the C++ fixture
+	// stores it in the `file_in` input) and its media timestamp.
+	let footage_id = folder.children[0];
+	let footage_entry = p.graph.get(footage_id).unwrap();
+	assert_eq!(
+		footage_entry.behavior.type_id(),
+		"org.olivevideoeditor.Olive.footage"
+	);
+	let footage = footage_entry
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<FootageBehavior>())
+		.unwrap();
+	assert_eq!(footage.filename, "demo.mp4");
+	assert_eq!(footage.timestamp, 1780763070093);
+
+	// Child 1: the sequence, connected to the footage (tex_in/samples_in).
+	let seq_id = folder.children[1];
+	let seq_entry = p.graph.get(seq_id).unwrap();
+	assert_eq!(
+		seq_entry.behavior.type_id(),
+		"org.olivevideoeditor.Olive.sequence"
+	);
+	assert_eq!(seq_entry.core.label, "Fixture Sequence");
+	let seq = seq_entry
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<SequenceBehavior>())
+		.unwrap();
+	// The fixture carries no tracks: the three `track_in_%1` inputs
+	// exist but no track-list nodes are present.
+	assert!(seq.track_lists.is_empty());
+	assert_eq!(
+		p.graph.connected_output(seq_id, "tex_in", -1),
+		Some(footage_id)
+	);
+	assert_eq!(
+		p.graph.connected_output(seq_id, "samples_in", -1),
+		Some(footage_id)
+	);
+
+	// Settings survived (incl. the root key).
+	assert_eq!(
+		p.settings.get("root").map(String::as_str),
+		Some("94432914284304")
+	);
+}
+
+/// Build a full-featured project for the timeline round-trip: a root
+/// folder holding a footage (streams/proxy/timestamp) and a sequence
+/// with video/audio track lists, tracks with clips and a gap, an effect
+/// chain with keyframes, plus settings and a link.
+fn build_full_project() -> std::sync::Arc<std::sync::Mutex<oaknode::project::Project>> {
+	use oakcore_rs::{Rational, TimeRange};
+	use oaknode::block::{clip_create, gap_create, ClipBlockBehavior, GapBlockBehavior};
+	use oaknode::folder::FolderBehavior;
+	use oaknode::footage::{FootageBehavior, StreamInfo};
+	use oaknode::keyframe::{Interpolation, Keyframe};
+	use oaknode::node::NodeCore;
+	use oaknode::project::Project;
+	use oaknode::sequence::SequenceBehavior;
+	use oaknode::track::{TrackBehavior, TrackListBehavior, TrackType};
+	use oaknode::value::{AudioParams, NodeValue, VideoParams};
+
+	let project = Project::new();
+	let mut p = project.lock().unwrap();
+	p.initialize().unwrap();
+	p.settings
+		.insert("projectname".to_string(), "full-featured".to_string());
+	let folder_id = p.root;
+
+	// Footage with streams, proxy state and a media timestamp.
+	let footage_id = {
+		let (core, mut behavior) = FootageBehavior::create();
+		let f = behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<FootageBehavior>())
+			.unwrap();
+		f.filename = "/media/demo.mp4".to_string();
+		f.timestamp = 1780763070093;
+		f.proxy = "/media/demo_proxy.mp4".to_string();
+		f.proxy_enabled = true;
+		f.proxy_state = 2;
+		f.proxy_video_stream_index = 0;
+		f.proxy_preset_version = 1;
+		f.streams = vec![
+			StreamInfo {
+				index: 0,
+				is_video: true,
+				video: Some(VideoParams {
+					width: 1920,
+					height: 1080,
+					frame_rate: Rational::new(25, 1),
+					pixel_format: 4,
+					channels: 4,
+				}),
+				audio: None,
+				duration: Rational::new(217600, 12800),
+			},
+			StreamInfo {
+				index: 1,
+				is_video: false,
+				video: None,
+				audio: Some(AudioParams {
+					sample_rate: 48000,
+					channel_layout: 3,
+					format: 4,
+				}),
+				duration: Rational::new(816000, 48000),
+			},
+		];
+		p.graph.add_node(core, behavior)
+	};
+	{
+		let entry = p.graph.get_mut(folder_id).unwrap();
+		let folder = entry
+			.behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<FolderBehavior>())
+			.unwrap();
+		folder.add_child(footage_id);
+	}
+
+	// Sequence + its video/audio track lists.
+	let (score, sbehavior) = SequenceBehavior::create();
+	let seq_id = p.graph.add_node(score, sbehavior);
+	let vlist_id = {
+		let mut behavior = TrackListBehavior::new(TrackType::Video);
+		behavior.sequence = Some(seq_id);
+		behavior.array_base = 0;
+		p.graph.add_node(NodeCore::new(), Box::new(behavior))
+	};
+	let alist_id = {
+		let mut behavior = TrackListBehavior::new(TrackType::Audio);
+		behavior.sequence = Some(seq_id);
+		behavior.array_base = 1;
+		p.graph.add_node(NodeCore::new(), Box::new(behavior))
+	};
+
+	// Video track: clips + gap.
+	let vtrack_id = {
+		let mut behavior = TrackBehavior::new(TrackType::Video);
+		behavior.track_list = Some(vlist_id);
+		behavior.index = 0;
+		behavior.height = 4.0;
+		behavior.muted = true;
+		p.graph.add_node(NodeCore::new(), Box::new(behavior))
+	};
+	let clip1_id = {
+		let (core, mut behavior) = clip_create();
+		let c = behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<ClipBlockBehavior>())
+			.unwrap();
+		c.core.range = TimeRange::new(Rational::new(0, 1), Rational::new(100, 25));
+		c.core.media_in = Rational::new(0, 1);
+		c.core.speed = 1.0;
+		c.core.enabled = true;
+		c.core.track = Some(vtrack_id);
+		c.footage = Some(footage_id);
+		p.graph.add_node(core, behavior)
+	};
+	let gap1_id = {
+		let (core, mut behavior) = gap_create();
+		let g = behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<GapBlockBehavior>())
+			.unwrap();
+		g.core.range = TimeRange::new(Rational::new(100, 25), Rational::new(120, 25));
+		g.core.track = Some(vtrack_id);
+		p.graph.add_node(core, behavior)
+	};
+	let clip2_id = {
+		let (core, mut behavior) = clip_create();
+		let c = behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<ClipBlockBehavior>())
+			.unwrap();
+		c.core.range = TimeRange::new(Rational::new(120, 25), Rational::new(220, 25));
+		c.core.media_in = Rational::new(10, 25);
+		c.core.speed = 1.5;
+		c.core.reversed = true;
+		c.core.loop_mode = 2;
+		c.core.track = Some(vtrack_id);
+		c.footage = Some(footage_id);
+		p.graph.add_node(core, behavior)
+	};
+
+	// An opacity effect on clip1 with a keyframed value.
+	let _effect_id = {
+		let (core, behavior) = (oaknode::factory::Factory::global()
+			.find("org.olivevideoeditor.Olive.opacity")
+			.unwrap()
+			.create)();
+		let id = p.graph.add_node(core, behavior);
+		p.graph.get_mut(id).unwrap().core.set_standard_value(
+			"opacity_in",
+			-1,
+			NodeValue::Float(0.5),
+		);
+		p.graph
+			.get_mut(id)
+			.unwrap()
+			.core
+			.keyframe_track_mut("opacity_in", -1)
+			.set_key(Keyframe {
+				time: Rational::new(0, 1),
+				value: NodeValue::Float(1.0),
+				interpolation: Interpolation::Linear,
+				bezier_in: (0.0, 0.0),
+				bezier_out: (0.0, 0.0),
+			});
+		p.graph
+			.get_mut(id)
+			.unwrap()
+			.core
+			.keyframe_track_mut("opacity_in", -1)
+			.set_key(Keyframe {
+				time: Rational::new(1, 1),
+				value: NodeValue::Float(0.0),
+				interpolation: Interpolation::Bezier,
+				bezier_in: (0.1, 0.2),
+				bezier_out: (0.3, 0.4),
+			});
+		p.graph.connect(id, clip1_id, "tex_in", -1).unwrap();
+		id
+	};
+
+	// Audio track + its clip.
+	let atrack_id = {
+		let mut behavior = TrackBehavior::new(TrackType::Audio);
+		behavior.track_list = Some(alist_id);
+		behavior.index = 0;
+		behavior.locked = true;
+		p.graph.add_node(NodeCore::new(), Box::new(behavior))
+	};
+	let clip3_id = {
+		let (core, mut behavior) = clip_create();
+		let c = behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<ClipBlockBehavior>())
+			.unwrap();
+		c.core.range = TimeRange::new(Rational::new(0, 1), Rational::new(50, 25));
+		c.core.media_in = Rational::new(5, 25);
+		c.core.track = Some(atrack_id);
+		c.footage = Some(footage_id);
+		p.graph.add_node(core, behavior)
+	};
+
+	// Wire the hierarchy (behavior fields, the Rust model).
+	{
+		let entry = p.graph.get_mut(seq_id).unwrap();
+		entry.core.label = "Full Sequence".to_string();
+		entry.core.override_color = 3;
+		let s = entry
+			.behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<SequenceBehavior>())
+			.unwrap();
+		s.track_lists = vec![vlist_id, alist_id];
+	}
+	// The bin: the sequence joins the folder after the footage.
+	{
+		let entry = p.graph.get_mut(folder_id).unwrap();
+		let folder = entry
+			.behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<FolderBehavior>())
+			.unwrap();
+		folder.add_child(seq_id);
+	}
+	{
+		let entry = p.graph.get_mut(vlist_id).unwrap();
+		let tl = entry
+			.behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<TrackListBehavior>())
+			.unwrap();
+		tl.tracks = vec![vtrack_id];
+	}
+	{
+		let entry = p.graph.get_mut(vtrack_id).unwrap();
+		let t = entry
+			.behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<TrackBehavior>())
+			.unwrap();
+		t.blocks = vec![clip1_id, gap1_id, clip2_id];
+	}
+	{
+		let entry = p.graph.get_mut(alist_id).unwrap();
+		let tl = entry
+			.behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<TrackListBehavior>())
+			.unwrap();
+		tl.tracks = vec![atrack_id];
+	}
+	{
+		let entry = p.graph.get_mut(atrack_id).unwrap();
+		let t = entry
+			.behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<TrackBehavior>())
+			.unwrap();
+		t.blocks = vec![clip3_id];
+	}
+
+	// Link the two video clips.
+	p.graph.link(clip1_id, clip2_id);
+
+	drop(p);
+	project
+}
+
+/// Borrowed track list of a node.
+fn list_of<'a>(
+	p: &'a oaknode::project::Project,
+	id: oaknode::id::NodeId,
+) -> &'a oaknode::track::TrackListBehavior {
+	p.graph
+		.get(id)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<oaknode::track::TrackListBehavior>())
+		.unwrap()
+}
+
+/// Field-by-field comparison of the round-tripped full project.
+fn assert_full_roundtrip_fields(orig: &oaknode::project::Project, loaded: &oaknode::project::Project) {
+	use oaknode::block::ClipBlockBehavior;
+	use oaknode::folder::FolderBehavior;
+	use oaknode::footage::FootageBehavior;
+	use oaknode::sequence::SequenceBehavior;
+	use oaknode::track::{TrackBehavior, TrackListBehavior, TrackType};
+
+	// Project shell: uuid + settings.
+	assert_eq!(loaded.uuid, orig.uuid, "uuid");
+	assert_eq!(loaded.settings, orig.settings, "settings");
+
+	// The graph keeps its node count, types and edge count.
+	assert_eq!(loaded.graph.node_count(), orig.graph.node_count(), "node count");
+	let o_types: Vec<&str> = orig
+		.graph
+		.node_ids()
+		.iter()
+		.map(|id| orig.graph.get(*id).unwrap().behavior.type_id())
+		.collect();
+	let l_types: Vec<&str> = loaded
+		.graph
+		.node_ids()
+		.iter()
+		.map(|id| loaded.graph.get(*id).unwrap().behavior.type_id())
+		.collect();
+	assert_eq!(l_types, o_types, "node types");
+	assert_eq!(
+		loaded.graph.output_connections_all().len(),
+		orig.graph.output_connections_all().len(),
+		"edge count"
+	);
+
+	// Map original id -> loaded id (slot order is preserved).
+	let o_ids = orig.graph.node_ids();
+	let l_ids = loaded.graph.node_ids();
+
+	// Root folder: children + bin membership.
+	let of = orig
+		.graph
+		.get(orig.root)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<FolderBehavior>())
+		.unwrap();
+	let lf = loaded
+		.graph
+		.get(loaded.root)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<FolderBehavior>())
+		.unwrap();
+	assert_eq!(lf.name, of.name, "folder name");
+	assert_eq!(lf.children.len(), of.children.len(), "folder children");
+	let o_footage = of.children[0];
+	let o_seq = of.children[1];
+	let l_footage = lf.children[0];
+	let l_seq = lf.children[1];
+
+	// Footage: filename, timestamp, proxy and streams.
+	let o_f = orig
+		.graph
+		.get(o_footage)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<FootageBehavior>())
+		.unwrap();
+	let l_f = loaded
+		.graph
+		.get(l_footage)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<FootageBehavior>())
+		.unwrap();
+	assert_eq!(l_f.filename, o_f.filename, "footage filename");
+	assert_eq!(l_f.timestamp, o_f.timestamp, "footage timestamp");
+	assert_eq!(l_f.proxy, o_f.proxy, "footage proxy path");
+	assert_eq!(l_f.proxy_enabled, o_f.proxy_enabled, "proxy enabled");
+	assert_eq!(l_f.proxy_state, o_f.proxy_state, "proxy state");
+	assert_eq!(
+		l_f.proxy_video_stream_index, o_f.proxy_video_stream_index,
+		"proxy stream"
+	);
+	assert_eq!(l_f.proxy_preset_version, o_f.proxy_preset_version, "proxy preset");
+	assert_eq!(l_f.streams.len(), o_f.streams.len(), "stream count");
+	for (ls, os) in l_f.streams.iter().zip(&o_f.streams) {
+		assert_eq!(ls.index, os.index, "stream index");
+		assert_eq!(ls.is_video, os.is_video, "stream video flag");
+		assert_eq!(ls.video, os.video, "stream video params");
+		assert_eq!(ls.audio, os.audio, "stream audio params");
+		assert_eq!(ls.duration, os.duration, "stream duration");
+	}
+
+	// Sequence: label/color, track lists (kind, base, backrefs).
+	let o_s = orig
+		.graph
+		.get(o_seq)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<SequenceBehavior>())
+		.unwrap();
+	let l_s = loaded
+		.graph
+		.get(l_seq)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<SequenceBehavior>())
+		.unwrap();
+	assert_eq!(
+		loaded.graph.get(l_seq).unwrap().core.label,
+		orig.graph.get(o_seq).unwrap().core.label,
+		"sequence label"
+	);
+	assert_eq!(
+		loaded.graph.get(l_seq).unwrap().core.override_color,
+		orig.graph.get(o_seq).unwrap().core.override_color,
+		"sequence color"
+	);
+	assert_eq!(l_s.track_lists.len(), o_s.track_lists.len(), "track list count");
+	let (o_vlist, l_vlist) = (o_s.track_lists[0], l_s.track_lists[0]);
+	let (o_alist, l_alist) = (o_s.track_lists[1], l_s.track_lists[1]);
+
+	let o_vl = list_of(orig, o_vlist);
+	let l_vl = list_of(loaded, l_vlist);
+	assert_eq!(l_vl.kind, o_vl.kind, "video list kind");
+	assert_eq!(l_vl.array_base, o_vl.array_base, "video list base");
+	assert_eq!(l_vl.sequence, Some(l_seq), "video list sequence backref");
+	assert_eq!(l_vl.tracks.len(), o_vl.tracks.len(), "video list track count");
+	let (o_vtrack, l_vtrack) = (o_vl.tracks[0], l_vl.tracks[0]);
+	let o_al = list_of(orig, o_alist);
+	let l_al = list_of(loaded, l_alist);
+	assert_eq!(l_al.kind, o_al.kind, "audio list kind");
+	assert_eq!(l_al.array_base, o_al.array_base, "audio list base");
+	assert_eq!(l_al.sequence, Some(l_seq), "audio list sequence backref");
+	assert_eq!(l_al.tracks.len(), o_al.tracks.len(), "audio list track count");
+	let (o_atrack, l_atrack) = (o_al.tracks[0], l_al.tracks[0]);
+
+	// Video track: kind/blocks/muted/locked/height/index/backref.
+	let o_t = orig
+		.graph
+		.get(o_vtrack)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<TrackBehavior>())
+		.unwrap();
+	let l_t = loaded
+		.graph
+		.get(l_vtrack)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<TrackBehavior>())
+		.unwrap();
+	assert_eq!(l_t.kind, TrackType::Video, "video track kind");
+	assert_eq!(l_t.muted, o_t.muted, "video track muted");
+	assert_eq!(l_t.locked, o_t.locked, "video track locked");
+	assert_eq!(l_t.height, o_t.height, "video track height");
+	assert_eq!(l_t.index, o_t.index, "video track index");
+	assert_eq!(l_t.track_list, Some(l_vlist), "video track list backref");
+	assert_eq!(l_t.blocks.len(), o_t.blocks.len(), "video track block count");
+	let o_clip1 = o_t.blocks[0];
+	let o_gap1 = o_t.blocks[1];
+	let o_clip2 = o_t.blocks[2];
+	let l_clip1 = l_t.blocks[0];
+	let l_gap1 = l_t.blocks[1];
+	let l_clip2 = l_t.blocks[2];
+
+	// Clip 1: range/media_in/speed/reversed/enabled/pitch/loop, track
+	// and footage backrefs, and the effect connection.
+	let o_c1 = orig
+		.graph
+		.get(o_clip1)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<ClipBlockBehavior>())
+		.unwrap();
+	let l_c1 = loaded
+		.graph
+		.get(l_clip1)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<ClipBlockBehavior>())
+		.unwrap();
+	assert_eq!(l_c1.core.range, o_c1.core.range, "clip1 range");
+	assert_eq!(l_c1.core.media_in, o_c1.core.media_in, "clip1 media in");
+	assert_eq!(l_c1.core.speed, o_c1.core.speed, "clip1 speed");
+	assert_eq!(l_c1.core.reversed, o_c1.core.reversed, "clip1 reversed");
+	assert_eq!(l_c1.core.enabled, o_c1.core.enabled, "clip1 enabled");
+	assert_eq!(
+		l_c1.core.maintain_audio_pitch, o_c1.core.maintain_audio_pitch,
+		"clip1 pitch"
+	);
+	assert_eq!(l_c1.core.loop_mode, o_c1.core.loop_mode, "clip1 loop");
+	assert_eq!(l_c1.core.track, Some(l_vtrack), "clip1 track backref");
+	assert_eq!(l_c1.footage, Some(l_footage), "clip1 footage backref");
+
+	// Gap 1: range + track backref.
+	let o_g1 = orig
+		.graph
+		.get(o_gap1)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<oaknode::block::GapBlockBehavior>())
+		.unwrap();
+	let l_g1 = loaded
+		.graph
+		.get(l_gap1)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<oaknode::block::GapBlockBehavior>())
+		.unwrap();
+	assert_eq!(l_g1.core.range, o_g1.core.range, "gap range");
+	assert_eq!(l_g1.core.track, Some(l_vtrack), "gap track backref");
+
+	// Clip 2 (speed/reversed set).
+	let o_c2 = orig
+		.graph
+		.get(o_clip2)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<ClipBlockBehavior>())
+		.unwrap();
+	let l_c2 = loaded
+		.graph
+		.get(l_clip2)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<ClipBlockBehavior>())
+		.unwrap();
+	assert_eq!(l_c2.core.range, o_c2.core.range, "clip2 range");
+	assert_eq!(l_c2.core.media_in, o_c2.core.media_in, "clip2 media in");
+	assert_eq!(l_c2.core.speed, o_c2.core.speed, "clip2 speed");
+	assert_eq!(l_c2.core.reversed, o_c2.core.reversed, "clip2 reversed");
+	assert_eq!(l_c2.core.loop_mode, o_c2.core.loop_mode, "clip2 loop");
+	assert_eq!(l_c2.footage, Some(l_footage), "clip2 footage backref");
+
+	// Audio track + clip 3.
+	let o_at = orig
+		.graph
+		.get(o_atrack)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<TrackBehavior>())
+		.unwrap();
+	let l_at = loaded
+		.graph
+		.get(l_atrack)
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<TrackBehavior>())
+		.unwrap();
+	assert_eq!(l_at.kind, TrackType::Audio, "audio track kind");
+	assert_eq!(l_at.locked, o_at.locked, "audio track locked");
+	assert_eq!(l_at.track_list, Some(l_alist), "audio track list backref");
+	assert_eq!(l_at.blocks.len(), o_at.blocks.len(), "audio track block count");
+	let o_c3 = orig
+		.graph
+		.get(o_at.blocks[0])
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<ClipBlockBehavior>())
+		.unwrap();
+	let l_c3 = loaded
+		.graph
+		.get(l_at.blocks[0])
+		.unwrap()
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<ClipBlockBehavior>())
+		.unwrap();
+	assert_eq!(l_c3.core.range, o_c3.core.range, "clip3 range");
+	assert_eq!(l_c3.core.media_in, o_c3.core.media_in, "clip3 media in");
+	assert_eq!(l_c3.core.track, Some(l_atrack), "clip3 track backref");
+	assert_eq!(l_c3.footage, Some(l_footage), "clip3 footage backref");
+
+	// Effect chain: the effect feeds clip1's tex_in.
+	let o_effect = orig
+		.graph
+		.connected_output(o_clip1, "tex_in", -1)
+		.expect("clip1 has an effect");
+	let l_effect = loaded
+		.graph
+		.connected_output(l_clip1, "tex_in", -1)
+		.expect("clip1 has an effect after load");
+	let o_effect_i = o_ids.iter().position(|id| *id == o_effect).unwrap();
+	let l_effect_i = l_ids.iter().position(|id| *id == l_effect).unwrap();
+	assert_eq!(l_effect_i, o_effect_i, "effect slot");
+	// The effect's keyframes survive.
+	let ok = orig
+		.graph
+		.get(o_effect)
+		.unwrap()
+		.core
+		.keyframe_track("opacity_in", -1)
+		.unwrap()
+		.keys()
+		.to_vec();
+	let lk = loaded
+		.graph
+		.get(l_effect)
+		.unwrap()
+		.core
+		.keyframe_track("opacity_in", -1)
+		.unwrap()
+		.keys()
+		.to_vec();
+	assert_eq!(lk.len(), ok.len(), "keyframe count");
+	for (ko, kl) in ok.iter().zip(&lk) {
+		assert_eq!(kl.time, ko.time, "key time");
+		assert_eq!(kl.value.to_double(), ko.value.to_double(), "key value");
+		assert_eq!(kl.interpolation, ko.interpolation, "key interpolation");
+		assert_eq!(kl.bezier_in, ko.bezier_in, "key bezier in");
+		assert_eq!(kl.bezier_out, ko.bezier_out, "key bezier out");
+	}
+
+	// The clip link survives.
+	assert!(
+		loaded.graph.are_linked(l_clip1, l_clip2),
+		"clip link survives"
+	);
+	assert!(
+		loaded.graph.are_linked(l_clip2, l_clip1),
+		"clip link symmetric"
+	);
+}
+
+/// Round-trip the full-featured project: save, load, compare field by
+/// field, and re-save idempotently.
+#[test]
+fn roundtrip_full_timeline() {
+	let project = build_full_project();
+	let xml = {
+		let p = project.lock().unwrap();
+		oaknode::serializer::save(&p).unwrap()
+	};
+	let loaded = oaknode::serializer::load(&xml).unwrap();
+	{
+		let o = project.lock().unwrap();
+		let l = loaded.lock().unwrap();
+		assert_full_roundtrip_fields(&o, &l);
+	}
+
+	// Re-save is idempotent (byte-identical).
+	let xml2 = {
+		let l = loaded.lock().unwrap();
+		oaknode::serializer::save(&l).unwrap()
+	};
+	assert_eq!(xml, xml2, "re-save is idempotent");
+}

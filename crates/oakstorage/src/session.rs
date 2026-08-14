@@ -32,21 +32,38 @@ pub struct Session {
 impl Session {
 	/// Wrap a freshly loaded project.
 	pub fn new(uri: StorageUri, project: CHandle) -> Self {
-		todo!()
+		Session {
+			uri,
+			project: Some(project),
+		}
 	}
 
 	/// Source URI.
 	pub fn uri(&self) -> &StorageUri {
-		todo!()
+		&self.uri
 	}
 
 	/// Borrowed project handle (None after take).
 	pub fn project(&self) -> Option<&CHandle> {
-		todo!()
+		self.project.as_ref()
 	}
 
-	/// Transfer the project out (C++ take_project semantics).
+	/// Transfer the project out (C++ take_project semantics); the
+	/// session becomes an empty shell, and the caller owns the returned
+	/// handle (release it with `oaknode_project_free`).
 	pub fn take(&mut self) -> Option<CHandle> {
-		todo!()
+		self.project.take()
+	}
+}
+
+impl Drop for Session {
+	fn drop(&mut self) {
+		// Release the still-held project handle (the `take` path already
+		// removed it).
+		if let Some(h) = self.project.take() {
+			if let Some(f) = h.release {
+				unsafe { f(h.ctx) };
+			}
+		}
 	}
 }

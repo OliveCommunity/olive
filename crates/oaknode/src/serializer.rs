@@ -278,6 +278,15 @@ pub fn interpolation_from_c(t: i32) -> Interpolation {
 	}
 }
 
+/// Parse a serialized node identity (a `<node>` `ptr` value or a
+/// timeline reference) into a packed [`NodeId`]. The id is not resolved
+/// to a live graph slot until the serializer's post-load pass maps it
+/// through the id table (the packing only survives Rust-written files;
+/// C++ `ptr` values are arbitrary addresses).
+pub fn parse_node_ref(text: &str) -> Option<NodeId> {
+	text.trim().parse::<u64>().ok().and_then(NodeId::from_identity)
+}
+
 /// Save a whole project to the current-version XML format.
 pub fn save(project: &Project) -> crate::error::Result<String> {
 	use crate::error::Error;
@@ -303,7 +312,7 @@ pub fn save(project: &Project) -> crate::error::Result<String> {
 			.filter(|(_, to, _, _)| *to == id)
 			.map(|(from, _, input, element)| (from, input, element))
 			.collect();
-		save_node(&mut writer, &entry.core, id, &type_id, &connections)?;
+		save_node(&mut writer, &entry.core, &*entry.behavior, id, &type_id, &connections)?;
 		writer.end_element(); // node
 	}
 	writer.end_element(); // nodes
@@ -321,10 +330,12 @@ pub fn save(project: &Project) -> crate::error::Result<String> {
 }
 
 /// Save one node (C++ `Node::save`). `connections` lists the node's
-/// input connections `(source, input_id, element)`.
+/// input connections `(source, input_id, element)`. The per-type custom
+/// segment is written through [`NodeBehavior::save_custom`].
 pub fn save_node(
 	writer: &mut dyn XmlWrite,
 	core: &NodeCore,
+	behavior: &dyn crate::node::NodeBehavior,
 	id: NodeId,
 	type_id: &str,
 	connections: &[(NodeId, String, i32)],
@@ -333,8 +344,25 @@ pub fn save_node(
 	writer.attribute("id", type_id);
 	writer.attribute("ptr", &id.identity().to_string());
 
-	if !core.label.is_empty() {
-		writer.text_element("label", &core.label);
+	// Folders persist their display name through the label (C++
+	// `Folder::Name()` returns the label; the Rust model keeps the name
+	// in the behavior, so fall back to it when the label is empty).
+	let label = if !core.label.is_empty() {
+		Some(core.label.as_str())
+	} else if let Some(f) = behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<crate::folder::FolderBehavior>())
+	{
+		if f.name.is_empty() {
+			None
+		} else {
+			Some(f.name.as_str())
+		}
+	} else {
+		None
+	};
+	if let Some(label) = label {
+		writer.text_element("label", label);
 	}
 	if core.override_color != -1 {
 		writer.text_element("color", &core.override_color.to_string());
@@ -375,6 +403,7 @@ pub fn save_node(
 	writer.end_element(); // caches
 
 	writer.start_element("custom");
+	behavior.save_custom(core, writer);
 	writer.end_element(); // custom
 
 	Ok(())
@@ -507,7 +536,11 @@ pub fn load(xml: &str) -> crate::error::Result<Arc<Mutex<Project>>> {
 	Ok(project)
 }
 
-/// Parse the `<project>` body: uuid, nodes, settings.
+/// Parse the `<project>` body: uuid, nodes, settings. C++ full saves
+/// wrap the data in a container (`<olive><project><project version="1">
+/// ...</project><layout>...</layout></project>` — `// CPP-PARITY:
+/// serializer230220.cpp`); a nested `<project>` element is descended
+/// into transparently instead of skipped.
 fn load_project_body(reader: &mut dyn XmlRead, project: &mut Project) -> crate::error::Result<()> {
 	use crate::error::Error;
 	// Identity -> NodeId map for connection resolution.
@@ -517,8 +550,14 @@ fn load_project_body(reader: &mut dyn XmlRead, project: &mut Project) -> crate::
 	// Deferred links: (identity_a, identity_b).
 	let mut links: Vec<(u64, u64)> = Vec::new();
 
-	while reader.next_start_element() {
+	loop {
+		if !reader.next_start_element() {
+			break;
+		}
 		match reader.name() {
+			// The C++ full-save container: descend and parse its children
+			// as the project body.
+			"project" => {}
 			"uuid" => {
 				project.uuid = reader.read_element_text();
 			}
@@ -579,6 +618,13 @@ fn load_project_body(reader: &mut dyn XmlRead, project: &mut Project) -> crate::
 		}
 	}
 
+	// Rebuild the timeline structure: the custom segments carry packed
+	// references that only resolve now that every node is live.
+	resolve_timeline_refs(&mut project.graph, &id_map);
+	// Fold C++ `child_in` connections into the folder children and
+	// reattach each child to its bin folder.
+	resolve_folder_children(&mut project.graph, &id_map);
+
 	Ok(())
 }
 
@@ -598,20 +644,20 @@ fn load_node(
 		.and_then(|p| p.parse::<u64>().ok())
 		.unwrap_or(0);
 
-	// Instantiate the node type; folders and unknown types fall back to
-	// an empty folder-ish core.
+	// Instantiate the node type; timeline structural types (which are
+	// not in the factory menu) are reconstructed directly, unknown
+	// types fall back to an error.
 	let (mut core, behavior): (NodeCore, Box<dyn crate::node::NodeBehavior>) =
-		if type_id == "org.olivevideoeditor.Olive.folder" {
-			crate::folder::create("Folder")
-		} else {
-			match crate::factory::Factory::global().find(&type_id) {
+		match create_timeline_type(&type_id) {
+			Some(x) => x,
+			None => match crate::factory::Factory::global().find(&type_id) {
 				Some(meta) => (meta.create)(),
 				None => {
 					// Unknown type: skip the element body.
 					reader.skip_current_element();
 					return Err(Error::Failed(format!("unknown node type '{}'", type_id)));
 				}
-			}
+			},
 		};
 
 	// The node enters the graph before its body is parsed so deferred
@@ -621,17 +667,45 @@ fn load_node(
 		id_map.insert(ptr, id);
 	}
 
-	// Parse the node body (into the entry's core).
+	// Parse the node body (into the entry's core and behavior).
 	let entry = graph.get_mut(id).ok_or(Error::NotFound)?;
-	load_node_body(reader, &mut entry.core, id, connections, links)?;
+	load_node_body(reader, &mut entry.core, &mut *entry.behavior, id, connections, links)?;
 
 	Ok(id)
+}
+
+/// Reconstruct a timeline structural node type for loading. These types
+/// are absent from the factory menu (the app creates them through
+/// dedicated APIs, C++ `factory.cpp` lists only user-creatable nodes);
+/// the serializer instantiates them directly, following the existing
+/// folder special case.
+fn create_timeline_type(
+	type_id: &str,
+) -> Option<(NodeCore, Box<dyn crate::node::NodeBehavior>)> {
+	match type_id {
+		"org.olivevideoeditor.Olive.folder" => Some(crate::folder::create("Folder")),
+		"org.olivevideoeditor.Olive.footage" => Some(crate::footage::FootageBehavior::create()),
+		"org.olivevideoeditor.Olive.sequence" => {
+			Some(crate::sequence::SequenceBehavior::create())
+		}
+		"org.olivevideoeditor.Olive.tracklist" => {
+			Some(crate::track::TrackListBehavior::create())
+		}
+		"org.olivevideoeditor.Olive.track" => Some(crate::track::TrackBehavior::create()),
+		"org.olivevideoeditor.Olive.clipblock" => Some(crate::block::clip_create()),
+		"org.olivevideoeditor.Olive.gapblock" => Some(crate::block::gap_create()),
+		"org.olivevideoeditor.Olive.transitionblock" => {
+			Some(crate::block::transition_create())
+		}
+		_ => None,
+	}
 }
 
 /// Parse the body of a `<node>` element (label/color/inputs/links/...).
 fn load_node_body(
 	reader: &mut dyn XmlRead,
 	core: &mut NodeCore,
+	behavior: &mut dyn crate::node::NodeBehavior,
 	node_id: NodeId,
 	connections: &mut Vec<(u64, NodeId, String, i32)>,
 	links: &mut Vec<(u64, u64)>,
@@ -679,7 +753,12 @@ fn load_node_body(
 					}
 				}
 			}
-			"caches" | "custom" => reader.skip_current_element(),
+			"caches" => reader.skip_current_element(),
+			"custom" => {
+				// The reader is positioned at `<custom>`; the behavior
+				// parses its own segment (the default no-op skips it).
+				behavior.load_custom(core, reader);
+			}
 			_ => reader.skip_current_element(),
 		}
 	}
@@ -811,6 +890,178 @@ fn load_immediate(
 		// No keyframes: drop any pre-existing track.
 		core.keyframes
 			.retain(|(i, e, _)| !(i == input_id && *e == element));
+	}
+}
+
+/// Resolve the packed node references the timeline custom segments
+/// parsed during load: each packed id is mapped through the load-time
+/// id table to the live graph id (Rust files write packed identities;
+/// C++ files use arbitrary pointer values). Unresolvable references are
+/// dropped. Track kinds missing from the custom segment (C++ files)
+/// are derived from the sequence `track_in_%1` connection.
+fn resolve_timeline_refs(graph: &mut Graph, id_map: &std::collections::HashMap<u64, NodeId>) {
+	let resolve = |id: &NodeId| id_map.get(&id.identity()).copied();
+
+	for id in graph.node_ids() {
+		let entry = match graph.get_mut(id) {
+			Some(e) => e,
+			None => continue,
+		};
+		let behavior = &mut *entry.behavior;
+		if let Some(s) = behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<crate::sequence::SequenceBehavior>())
+		{
+			s.track_lists = s.track_lists.iter().filter_map(resolve).collect();
+		} else if let Some(tl) = behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<crate::track::TrackListBehavior>())
+		{
+			tl.tracks = tl.tracks.iter().filter_map(resolve).collect();
+			tl.sequence = tl.sequence.and_then(|s| resolve(&s));
+		} else if let Some(t) = behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<crate::track::TrackBehavior>())
+		{
+			t.blocks = t.blocks.iter().filter_map(resolve).collect();
+			t.track_list = t.track_list.and_then(|l| resolve(&l));
+		} else if let Some(c) = behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<crate::block::ClipBlockBehavior>())
+		{
+			c.core.track = c.core.track.and_then(|t| resolve(&t));
+			c.footage = c.footage.and_then(|f| resolve(&f));
+			// Block links mirror the node links (C++ LinkChangeEvent).
+			c.core.links = entry.core.links.clone();
+		} else if let Some(g) = behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<crate::block::GapBlockBehavior>())
+		{
+			g.core.track = g.core.track.and_then(|t| resolve(&t));
+			g.core.links = entry.core.links.clone();
+		} else if let Some(t) = behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<crate::block::TransitionBlockBehavior>())
+		{
+			t.core.track = t.core.track.and_then(|r| resolve(&r));
+			t.core.links = entry.core.links.clone();
+		} else if let Some(f) = behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<crate::footage::FootageBehavior>())
+		{
+			// C++ files carry the file name in the `file_in` input.
+			if f.filename.is_empty() {
+				if let crate::value::NodeValue::Text(s) =
+					&entry.core.standard_value("file_in", -1)
+				{
+					f.filename = s.clone();
+				}
+			}
+		}
+	}
+
+	// Track kinds absent from the custom segment (C++ files) are
+	// derived from the sequence `track_in_%1` input the track feeds
+	// (`track_in_0` = video, `track_in_1` = audio, `track_in_2` =
+	// subtitle — `// CPP-PARITY: sequence.h`).
+	let mut kind_fixes: Vec<(NodeId, crate::track::TrackType)> = Vec::new();
+	for id in graph.node_ids() {
+		let is_track = graph
+			.get(id)
+			.map(|e| {
+				e.behavior
+					.as_any()
+					.and_then(|a| a.downcast_ref::<crate::track::TrackBehavior>())
+					.is_some()
+			})
+			.unwrap_or(false);
+		if !is_track {
+			continue;
+		}
+		for (_target, input_id, _element) in graph.output_connections(id) {
+			if let Some(base) = input_id.strip_prefix("track_in_") {
+				if let Ok(n) = base.parse::<i32>() {
+					if let Some(kind) = crate::track::TrackType::from_c(n) {
+						kind_fixes.push((id, kind));
+						break;
+					}
+				}
+			}
+		}
+	}
+	for (id, kind) in kind_fixes {
+		if let Some(entry) = graph.get_mut(id) {
+			if let Some(t) = entry
+				.behavior
+				.as_any_mut()
+				.and_then(|a| a.downcast_mut::<crate::track::TrackBehavior>())
+			{
+				t.kind = kind;
+			}
+		}
+	}
+}
+
+/// Fold C++ `child_in` connections into the folder children (the Rust
+/// writer persists them in the folder custom segment) and reattach each
+/// child to its bin folder (`// CPP-PARITY: folder.cpp:43`
+/// `InputConnectedEvent` sets the child's folder).
+fn resolve_folder_children(
+	graph: &mut Graph,
+	id_map: &std::collections::HashMap<u64, NodeId>,
+) {
+	for id in graph.node_ids() {
+		let is_folder = graph
+			.get(id)
+			.map(|e| e.behavior.type_id() == "org.olivevideoeditor.Olive.folder")
+			.unwrap_or(false);
+		if !is_folder {
+			continue;
+		}
+		// Children attached through the input (C++ files).
+		let size = graph
+			.get(id)
+			.map(|e| e.core.input_array_size("child_in"))
+			.unwrap_or(0);
+		let mut connected = Vec::new();
+		for element in 0..size {
+			if let Some(child) = graph.connected_output(id, "child_in", element as i32) {
+				connected.push(child);
+			}
+		}
+		// Resolve the custom-parsed children, then merge the
+		// input-derived ones.
+		let children = {
+			let entry = graph.get_mut(id).unwrap();
+			let folder = match entry
+				.behavior
+				.as_any_mut()
+				.and_then(|a| a.downcast_mut::<crate::folder::FolderBehavior>())
+			{
+				Some(f) => f,
+				None => continue,
+			};
+			// The persisted display name lives in the node label
+			// (C++ `Folder::Name()` returns the label).
+			if !entry.core.label.is_empty() {
+				folder.name = entry.core.label.clone();
+			}
+			folder.children = folder
+				.children
+				.iter()
+				.filter_map(|c| id_map.get(&c.identity()).copied())
+				.collect();
+			for c in connected {
+				folder.add_child(c);
+			}
+			folder.children.clone()
+		};
+		// Reattach each child to its bin folder.
+		for c in children {
+			if let Some(e) = graph.get_mut(c) {
+				e.core.bin_folder = Some(id);
+			}
+		}
 	}
 }
 
