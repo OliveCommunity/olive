@@ -2208,6 +2208,155 @@ pub unsafe extern "C" fn oakengine_clip_as_node(self_: *const OakEngineClip) -> 
 	})
 }
 
+// ---- Sequence node-graph enumeration ----------------------------------------
+//
+// The node-editor surface (M12 P2): the app displays the CURRENT sequence's
+// node graph — the sequence node (the output) plus the blocks, effects and
+// scratch footage of its timeline. The module keeps the sequence in its own
+// scratch project (documented deviation, see `oakengine_sequence_new`), so
+// the graph is exactly that project's node list; positions live in the
+// sequence node's context position map (`oakengine_node_get_context_position`).
+
+/// `oakengine_sequence_as_node` — the sequence's node view (borrowed;
+/// freed with `oakengine_node_free`). The graph surface addresses the
+/// sequence through this handle: the sequence node is the graph's output
+/// node AND the context for its position map.
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_sequence_as_node(
+	self_: *const OakEngineSequence,
+) -> *mut OakEngineNode {
+	guard_ptr(|| unsafe {
+		if self_.is_null() {
+			return Ok(std::ptr::null_mut());
+		}
+		let h = unbox(self_)?;
+		let node = n::oaknode_sequence_as_node(h);
+		if node.is_null() {
+			return Ok(std::ptr::null_mut());
+		}
+		Ok(box_handle::<OakEngineNode>(node))
+	})
+}
+
+/// `oakengine_sequence_node_count` — nodes in the sequence's owning
+/// project (the sequence's graph; 0 for NULL/invalid).
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_sequence_node_count(
+	self_: *const OakEngineSequence,
+) -> c_int {
+	guard_int(|| unsafe {
+		if self_.is_null() {
+			return Ok(0);
+		}
+		let project = seq_project_of(unbox(self_)?);
+		if project.is_null() {
+			return Ok(0);
+		}
+		let count = n::oaknode_project_node_count(project);
+		release_handle(project);
+		Ok(count)
+	})
+}
+
+/// `oakengine_sequence_node_at` — boxed node at `index` (freed with
+/// `oakengine_node_free`); NULL for an invalid index or sequence.
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_sequence_node_at(
+	self_: *const OakEngineSequence,
+	index: c_int,
+) -> *mut OakEngineNode {
+	guard_ptr(|| unsafe {
+		if self_.is_null() || index < 0 {
+			return Ok(std::ptr::null_mut());
+		}
+		let project = seq_project_of(unbox(self_)?);
+		if project.is_null() {
+			return Ok(std::ptr::null_mut());
+		}
+		let node = n::oaknode_project_node_at(project, index);
+		release_handle(project);
+		if node.is_null() {
+			return Ok(std::ptr::null_mut());
+		}
+		Ok(box_handle::<OakEngineNode>(node))
+	})
+}
+
+/// The uuid of a project handle (empty on failure). Project handles are
+/// per-call boxes around the same `Arc`, so ctx pointers cannot be compared;
+/// the uuid is the stable identity.
+///
+/// # Safety
+/// `project` must be a live module project handle.
+unsafe fn project_uuid(project: CHandle) -> String {
+	unsafe {
+		let mut buf = [0 as c_char; 256];
+		let len = n::oaknode_project_get_uuid(project, buf.as_mut_ptr(), buf.len() as c_int);
+		if len < 0 {
+			String::new()
+		} else {
+			read_cstr(buf.as_ptr())
+		}
+	}
+}
+
+/// `oakengine_sequence_remove_node` — undoable removal of `node` from the
+/// sequence's graph (its owning project; the module's remove command drops
+/// incident edges). The sequence node itself (the graph's output) cannot be
+/// removed.
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_sequence_remove_node(
+	self_: *mut OakEngineSequence,
+	node: *mut OakEngineNode,
+) -> c_int {
+	guard(|| unsafe {
+		if self_.is_null() || node.is_null() {
+			set_seq_error("invalid sequence or node");
+			return Err(Error::Invalid);
+		}
+		let sh = unbox(self_)?;
+		let nh = unbox(node)?;
+		let project = seq_project_of(sh);
+		if project.is_null() {
+			return Err(Error::Invalid);
+		}
+		// The node must live in the sequence's OWNING project. Node
+		// identities are per-project arena slots (generation + index), so
+		// two projects produce colliding identities; compare the projects'
+		// uuids instead.
+		let mut node_project = CHandle::null();
+		let rc = n::oaknode_node_get_project(nh, &mut node_project);
+		let node_uuid = if rc == 0 && !node_project.is_null() {
+			project_uuid(node_project)
+		} else {
+			String::new()
+		};
+		release_handle(node_project);
+		let seq_uuid = project_uuid(project);
+		if node_uuid.is_empty() || node_uuid != seq_uuid {
+			release_handle(project);
+			set_seq_error("node does not belong to this sequence's graph");
+			return Err(Error::Invalid);
+		}
+		// The sequence node is the graph's context/output; removing it would
+		// orphan every position map entry and the sequence itself.
+		let seq_node = n::oaknode_sequence_as_node(sh);
+		let is_self = !seq_node.is_null()
+			&& n::oaknode_node_identity(seq_node) == n::oaknode_node_identity(nh);
+		release_handle(seq_node);
+		release_handle(project);
+		if is_self {
+			set_seq_error("the sequence node cannot be removed");
+			return Err(Error::Invalid);
+		}
+		let cmd = n::oaknode_command_create_remove_node(nh);
+		if cmd.ctx.is_null() {
+			return Err(Error::Failed("remove node command failed".into()));
+		}
+		push_command(cmd, "Remove Node")
+	})
+}
+
 /// `oakengine_clip_get_media_filename` — the clip's upstream footage
 /// filename (two-stage buf/size; M12 P4 — the waveform decorator needs
 /// the media file). Negative error when the clip has no media.

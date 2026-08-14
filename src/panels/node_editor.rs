@@ -15,9 +15,10 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //! The node editor panel (节点编辑器): the real `gpui::node_graph` canvas over
-//! the engine's mock graph, with the design's zoom controls (+ / − / 适配).
+//! the engine's graph (the mock's demo graph, or the real engine's current
+//! sequence graph), with the design's zoom controls (+ / − / 适配).
 //!
-//! The graph is a full [`NodeGraphView`] fed by the [`MockEngine`]'s
+//! The graph is a full [`NodeGraphView`] fed by the engine's
 //! [`NodeGraphDataSource`] implementation. Every gesture the view emits
 //! (move, connect, disconnect, delete, selection) is forwarded to the engine
 //! as a request; the engine applies it to its model and notifies, so the

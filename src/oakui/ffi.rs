@@ -656,6 +656,25 @@ unsafe extern "C" {
 	/// `oakengine_clip_as_node` — the clip's node view (borrowed box;
 	/// freed with `oakengine_node_free`).
 	pub fn oakengine_clip_as_node(self_: *const OakEngineClip) -> *mut OakEngineNode;
+	/// `oakengine_sequence_as_node` — the sequence's node view (borrowed
+	/// box; freed with `oakengine_node_free`). The node editor's graph
+	/// output node and the context for its position map.
+	pub fn oakengine_sequence_as_node(self_: *const OakEngineSequence) -> *mut OakEngineNode;
+	/// `oakengine_sequence_node_count` — nodes in the sequence's owning
+	/// project (its graph; 0 for NULL/invalid).
+	pub fn oakengine_sequence_node_count(self_: *const OakEngineSequence) -> c_int;
+	/// `oakengine_sequence_node_at` — boxed graph node at `index` (freed
+	/// with `oakengine_node_free`); NULL for an invalid index or sequence.
+	pub fn oakengine_sequence_node_at(
+		self_: *const OakEngineSequence,
+		index: c_int,
+	) -> *mut OakEngineNode;
+	/// `oakengine_sequence_remove_node` — undoable removal of `node` from
+	/// the sequence's graph (the sequence node itself is protected).
+	pub fn oakengine_sequence_remove_node(
+		self_: *mut OakEngineSequence,
+		node: *mut OakEngineNode,
+	) -> c_int;
 	/// `oakengine_clip_get_media_filename` — the clip's upstream footage
 	/// filename (two-stage buf/size; M12 P4).
 	pub fn oakengine_clip_get_media_filename(

@@ -54,9 +54,15 @@
 //! * Effect stack — the selected clip's effect chain is bound: the stack
 //!   reads the chain through the facade (see
 //!   [`EffectStackDataSource`](EffectStackDataSource) for `RealEngine`)
-//!   and edits go through the facade's undoable effect commands. Node
-//!   graph and audio meter still feed empty/silent data (their facade
-//!   surfaces are not bound in this increment).
+//!   and edits go through the facade's undoable effect commands.
+//! * Node graph — the node editor reads the current sequence's graph
+//!   through the facade's sequence node-graph enumeration (see
+//!   [`NodeGraphDataSource`](NodeGraphDataSource) for `RealEngine`):
+//!   clip → effects → output with real edges plus the synthesized
+//!   clip-to-output wires; connect/disconnect/move/delete are undoable
+//!   facade commands (drag previews never persist).
+//! * Audio meter still feeds silent data (the meter's facade surface is
+//!   not bound in this increment).
 //! * Clip moves go through `oakengine_sequence_move_clip` (same-track only;
 //!   the facade's capi signature has no target-track parameter, so a
 //!   cross-track drag reports "not supported" instead of applying).
@@ -80,8 +86,8 @@ use gpui::effect_stack::{
 	EffectCardKind, EffectData, EffectId, EffectStackDataSource, EffectStackEvent,
 };
 use gpui::node_graph::{
-	EdgeData, EdgeId, NodeData, NodeGraphDataSource, NodeGraphEvent, NodeId, PortData,
-	PortDataType, PortId, PortKind,
+	EdgeData, EdgeId, NodeData, NodeGraphDataSource, NodeGraphEvent, NodeId, PortDataType, PortId,
+	PortKind,
 };
 use gpui::timeline::{
 	ClipData, ClipId, Frame, FrameRange, FrameRate, TimelineDataSource, TimelineEvent, TrackData,
@@ -518,8 +524,8 @@ fn clip_color(index: u64) -> Hsla {
 	}
 }
 
-/// A node in the real node graph (M12 P2: built from the facade's
-/// project-node enumeration by [`crate::oakui::nodegraph`]).
+/// A node in the real node graph (M12 P2: built from the current
+/// sequence's graph by [`crate::oakui::nodegraph`]).
 pub use crate::oakui::nodegraph::{RealEdge, RealNode, RealPort};
 
 // ---------------------------------------------------------------------------
@@ -1554,27 +1560,28 @@ impl NodeGraphDataSource for RealEngine {
 	type Edge = RealEdge;
 
 	fn nodes(&self) -> Vec<Self::Node> {
-		// SAFETY: the project box is live while the engine holds it.
+		// SAFETY: the sequence box is live while the engine holds it.
 		unsafe {
-			crate::oakui::nodegraph::build_graph(self.project_ptr().unwrap_or(std::ptr::null_mut())).0
+			crate::oakui::nodegraph::build_graph(self.seq_ptr().unwrap_or(std::ptr::null_mut())).0
 		}
 	}
 
 	fn edges(&self) -> Vec<Self::Edge> {
-		// SAFETY: the project box is live while the engine holds it.
+		// SAFETY: the sequence box is live while the engine holds it.
 		unsafe {
-			crate::oakui::nodegraph::build_graph(self.project_ptr().unwrap_or(std::ptr::null_mut())).1
+			crate::oakui::nodegraph::build_graph(self.seq_ptr().unwrap_or(std::ptr::null_mut())).1
 		}
 	}
 
 	fn can_connect(&self, from: PortId, to: PortId) -> bool {
-		// SAFETY: the project box is live while the engine holds it.
-		let src = unsafe {
-			crate::oakui::nodegraph::RealGraphSource::snapshot(
-				self.project_ptr().unwrap_or(std::ptr::null_mut()),
+		// SAFETY: the sequence box is live while the engine holds it.
+		unsafe {
+			crate::oakui::nodegraph::can_connect(
+				self.seq_ptr().unwrap_or(std::ptr::null_mut()),
+				from,
+				to,
 			)
-		};
-		src.can_connect(from, to)
+		}
 	}
 }
 
@@ -1892,15 +1899,19 @@ impl AppEngine for RealEngine {
 
 	fn apply_node_graph_event(&mut self, event: &NodeGraphEvent, cx: &mut Context<Self>) {
 		match event {
+			// Preview events never persist: the widget draws dragged nodes at
+			// their model position plus the preview delta, and the position
+			// is written back (as one undoable step) only when the drag ends
+			// in `NodeMoveRequested`.
 			NodeGraphEvent::NodeMovePreview { .. }
 			| NodeGraphEvent::ViewChanged { .. }
 			| NodeGraphEvent::BackgroundClicked { .. }
 			| NodeGraphEvent::SelectionChanged { .. } => {}
 			_ => {
-				// SAFETY: the project box is live while the engine holds it.
+				// SAFETY: the sequence box is live while the engine holds it.
 				let result = unsafe {
 					crate::oakui::nodegraph::apply_edit(
-						self.project_ptr().unwrap_or(std::ptr::null_mut()),
+						self.seq_ptr().unwrap_or(std::ptr::null_mut()),
 						event,
 					)
 				};
@@ -2912,6 +2923,98 @@ mod tests {
 		assert!(node.is_some(), "selection resolves to a node");
 		unsafe { oakengine_node_free(node.unwrap()) };
 
+		let _ = std::fs::remove_file(&media);
+	}
+
+	/// M12 P2 acceptance: a real project with a sequence + footage clip
+	/// builds a NON-EMPTY node graph with the wires the node editor shows:
+	/// the footage feeds the clip's `tex_in` (a real edge), and every clip
+	/// connects to the sequence output through the synthesized wire. Runs
+	/// through the same facade path `RealEngine::nodes()`/`edges()` use.
+	#[test]
+	fn real_node_graph_enumerates_sequence() {
+		let _media = media_lock();
+		let project = unsafe { oakengine_project_create() };
+		assert!(!project.is_null());
+		assert_eq!(unsafe { oakengine_project_new(project) }, 0);
+		let name = CString::new("Node Editor").unwrap();
+		let sequence = unsafe { oakengine_sequence_new(project, name.as_ptr()) };
+		assert!(!sequence.is_null());
+		assert_eq!(unsafe { oakengine_sequence_add_track(sequence, TRACK_TYPE_VIDEO) }, 0);
+
+		let media = std::env::temp_dir().join(format!(
+			"oakapp_nodegraph_{}.mp4",
+			std::process::id()
+		));
+		let cpath = CString::new(media.to_string_lossy().into_owned()).unwrap();
+		assert_eq!(
+			unsafe { oakengine_testmedia_write_clip(cpath.as_ptr(), 64, 64, 10, 10) },
+			0
+		);
+		let footage = unsafe { oakengine_project_import_footage(project, cpath.as_ptr()) };
+		assert!(!footage.is_null(), "import must succeed");
+		let clip = unsafe {
+			oakengine_sequence_add_footage_clip_ex(
+				sequence,
+				footage,
+				TRACK_TYPE_VIDEO,
+				0,
+				0,
+				10,
+				0,
+			)
+		};
+		assert!(!clip.is_null(), "clip placement must succeed");
+		unsafe { oakengine_footage_free(footage) };
+		unsafe { free_box(clip) };
+
+		// The graph through the same builder `RealEngine::nodes()` /
+		// `edges()` use (the sequence handle is the engine's).
+		let (nodes, edges) = unsafe { crate::oakui::nodegraph::build_graph(sequence) };
+		assert!(
+			nodes.len() >= 3,
+			"sequence output + clip + footage (got {} nodes)",
+			nodes.len()
+		);
+		assert!(
+			!edges.is_empty(),
+			"the built graph carries wires (got {} edges)",
+			edges.len()
+		);
+
+		// The output card is the sequence node; a wire lands on it.
+		let seq_node = unsafe { oakengine_sequence_as_node(sequence) };
+		assert!(!seq_node.is_null());
+		let output_id = NodeId(unsafe { oakengine_node_identity(seq_node) });
+		unsafe { oakengine_node_free(seq_node) };
+		assert!(
+			nodes.iter().any(|n| n.id == output_id),
+			"the sequence node is the graph's output card"
+		);
+		let clip_edge = edges
+			.iter()
+			.find(|e| e.to_node == output_id)
+			.expect("a wire lands on the output card");
+		assert!(
+			crate::oakui::nodegraph::is_output_wire(clip_edge.id),
+			"the clip→output wire is the synthesized one"
+		);
+
+		// The footage→clip media edge is a REAL graph edge: the footage
+		// node carries an outgoing connection (built from the module's
+		// `output_connection_at_ex`), so its wire is not the synthesized
+		// kind.
+		let real_edges = edges
+			.iter()
+			.filter(|e| !crate::oakui::nodegraph::is_output_wire(e.id))
+			.count();
+		assert!(
+			real_edges >= 1,
+			"the footage→clip media edge is real (got {real_edges} real edges)"
+		);
+
+		unsafe { free_box(sequence) };
+		unsafe { oakengine_project_free(project) };
 		let _ = std::fs::remove_file(&media);
 	}
 }

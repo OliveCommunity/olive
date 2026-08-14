@@ -49,8 +49,8 @@ use std::sync::Mutex;
 
 use oakengine::common::OakVideoParamsPod;
 use oakengine::handle::{
-	CHandle, OakEngineFootage, OakEngineKeyframe, OakEngineNode, OakEngineNodeDragger,
-	OakEngineProject,
+	free_box, CHandle, OakEngineClip, OakEngineFootage, OakEngineKeyframe, OakEngineNode,
+	OakEngineNodeDragger, OakEngineProject, OakEngineSequence,
 };
 use oakengine::node::value_type as vt;
 use oakengine::node::*;
@@ -85,6 +85,8 @@ const TYPE_MULTICAM: &std::ffi::CStr = c"org.olivevideoeditor.Olive.multicam";
 const TYPE_FOOTAGE: &std::ffi::CStr = c"org.olivevideoeditor.Olive.footage";
 const TYPE_BLUR: &std::ffi::CStr = c"org.olivevideoeditor.Olive.blur";
 const TYPE_OPACITY: &std::ffi::CStr = c"org.olivevideoeditor.Olive.opacity";
+const TYPE_SEQUENCE: &std::ffi::CStr = c"org.olivevideoeditor.Olive.sequence";
+const TYPE_CLIPBLOCK: &std::ffi::CStr = c"org.olivevideoeditor.Olive.clipblock";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -5361,6 +5363,201 @@ fn project_add_node_owned_handle_leak() {
 }
 
 // ---------------------------------------------------------------------------
+// Sequence node-graph enumeration (M12 P2)
+// ---------------------------------------------------------------------------
+
+/// The sequence-graph surface the app's node editor reads: the sequence
+/// node (`as_node`), its owning project's node list (`count`/`at`), the
+/// context-position map on the sequence node, and the sequence-scoped
+/// remove. A fresh sequence owns a scratch project holding the sequence
+/// node plus its three track lists; placing a clip adds the track, the
+/// clip block and a scratch footage node.
+#[test]
+fn sequence_graph_enumeration_and_edits() {
+	with_owned(|| {
+		common::force_link();
+		let _ = force_oakundo_command_link();
+		let base = alive();
+
+		let project = oakengine_project_create();
+		assert_eq!(unsafe { oakengine_project_new(project) }, 0);
+		assert!(
+			unsafe { oakengine::timeline::oakengine_sequence_as_node(std::ptr::null_mut()) }
+				.is_null(),
+			"NULL sequence -> NULL node"
+		);
+		let name = std::ffi::CString::new("NodeGraph").unwrap();
+		let seq = unsafe { oakengine::timeline::oakengine_sequence_new(project, name.as_ptr()) };
+		assert!(!seq.is_null());
+		let seq_node = unsafe { oakengine::timeline::oakengine_sequence_as_node(seq) };
+		assert!(!seq_node.is_null());
+		let mut buf = [0 as c_char; 256];
+		let len = unsafe { oakengine_node_get_type_id(seq_node, buf.as_mut_ptr(), 256) };
+		assert_eq!(len, TYPE_SEQUENCE.to_bytes().len() as c_int);
+		assert_eq!(unsafe { read_buf(&mut buf) }, TYPE_SEQUENCE.to_str().unwrap());
+
+		// ---- count / at ---------------------------------------------------
+		assert_eq!(
+			unsafe { oakengine::timeline::oakengine_sequence_node_count(seq) },
+			4,
+			"sequence + its three track lists"
+		);
+		assert_eq!(
+			unsafe { oakengine::timeline::oakengine_sequence_node_count(std::ptr::null_mut()) },
+			0
+		);
+		assert!(!unsafe { oakengine::timeline::oakengine_sequence_node_at(seq, 0) }.is_null());
+		assert!(unsafe { oakengine::timeline::oakengine_sequence_node_at(seq, -1) }.is_null());
+		assert!(unsafe { oakengine::timeline::oakengine_sequence_node_at(seq, 99) }.is_null());
+		assert!(
+			unsafe { oakengine::timeline::oakengine_sequence_node_at(std::ptr::null_mut(), 0) }
+				.is_null()
+		);
+
+		// ---- context positions live on the sequence node ------------------
+		let mut x: f64 = -1.0;
+		let mut y: f64 = -1.0;
+		let mut expanded: c_int = -1;
+		assert_eq!(
+			unsafe { oakengine_node_set_context_position(seq_node, seq_node, 120.0, 340.0) },
+			0
+		);
+		assert_eq!(
+			unsafe {
+				oakengine_node_get_context_position(
+					seq_node,
+					seq_node,
+					&mut x,
+					&mut y,
+					&mut expanded,
+				)
+			},
+			0
+		);
+		assert_eq!((x, y), (120.0, 340.0), "position round-trips");
+
+		// ---- place a clip: the graph grows --------------------------------
+		assert_eq!(unsafe { oakengine::timeline::oakengine_sequence_add_track(seq, 0) }, 0);
+		let media =
+			std::env::temp_dir().join(format!("oak_it_nodegraph_{}.mp4", std::process::id()));
+		let media_c = std::ffi::CString::new(media.to_string_lossy().into_owned()).unwrap();
+		assert_eq!(
+			oakengine::testmedia::oakengine_testmedia_write_clip(media_c.as_ptr(), 64, 64, 10, 10),
+			0,
+			"generate e2e test media"
+		);
+		let footage = unsafe { oakengine_project_import_footage(project, media_c.as_ptr()) };
+		assert!(!footage.is_null(), "import must succeed");
+		let clip = unsafe {
+			oakengine::timeline::oakengine_sequence_add_footage_clip_ex(
+				seq,
+				footage,
+				0,
+				0,
+				0,
+				10,
+				0,
+			)
+		};
+		assert!(!clip.is_null(), "clip placement must succeed");
+		unsafe { free_box::<OakEngineClip>(clip) };
+		unsafe { oakengine_footage_free(footage) };
+
+		let count = unsafe { oakengine::timeline::oakengine_sequence_node_count(seq) };
+		assert_eq!(
+			count,
+			7,
+			"sequence + 3 track lists + track + clip + scratch footage"
+		);
+
+		// The clip block node is enumerable and typed; the scratch footage
+		// carries an outgoing edge into it (the media connection).
+		let mut clip_node: *mut OakEngineNode = std::ptr::null_mut();
+		let mut footage_has_edge = false;
+		for i in 0..count {
+			let node = unsafe { oakengine::timeline::oakengine_sequence_node_at(seq, i) };
+			if node.is_null() {
+				continue;
+			}
+			let tlen = unsafe { oakengine_node_get_type_id(node, buf.as_mut_ptr(), 256) };
+			let type_id = if tlen > 0 {
+				unsafe { read_buf(&mut buf) }
+			} else {
+				String::new()
+			};
+			if type_id == TYPE_CLIPBLOCK.to_str().unwrap() {
+				clip_node = node;
+				continue;
+			}
+			if type_id == TYPE_FOOTAGE.to_str().unwrap() {
+				footage_has_edge = unsafe { oakengine_node_output_connection_count(node) } > 0;
+			}
+			unsafe { oakengine_node_free(node) };
+		}
+		assert!(!clip_node.is_null(), "the placed clip enumerates as a block node");
+		assert!(footage_has_edge, "the footage node connects into the clip");
+
+		// ---- sequence-scoped remove ---------------------------------------
+		assert_eq!(
+			unsafe {
+				oakengine::timeline::oakengine_sequence_remove_node(
+					std::ptr::null_mut(),
+					clip_node,
+				)
+			},
+			E_INVALID
+		);
+		assert_eq!(
+			unsafe { oakengine::timeline::oakengine_sequence_remove_node(seq, std::ptr::null_mut()) },
+			E_INVALID
+		);
+		// The sequence node itself is the graph's output and cannot be removed.
+		assert_eq!(
+			unsafe { oakengine::timeline::oakengine_sequence_remove_node(seq, seq_node) },
+			E_INVALID,
+			"the output node cannot be removed from the sequence graph"
+		);
+		// A node from the app project is not part of the sequence's graph.
+		let app_node = unsafe { oakengine_project_add_node(project, TYPE_VALUE.as_ptr()) };
+		assert!(!app_node.is_null());
+		assert_eq!(
+			unsafe { oakengine::timeline::oakengine_sequence_remove_node(seq, app_node) },
+			E_INVALID,
+			"app-project nodes are not in the sequence graph"
+		);
+		unsafe { oakengine_node_free(app_node) };
+		// Removing the clip block drops the graph node (edges included).
+		let remove_rc =
+			unsafe { oakengine::timeline::oakengine_sequence_remove_node(seq, clip_node) };
+		if remove_rc != 0 {
+			let mut ebuf = [0 as c_char; 512];
+			let elen =
+				unsafe { oakengine::timeline::oakengine_sequence_last_error(ebuf.as_mut_ptr(), 512) };
+			eprintln!("[dbg] remove rc={remove_rc} err={elen} {}", unsafe { read_buf(&mut ebuf) });
+		}
+		assert_eq!(remove_rc, 0);
+		assert_eq!(
+			unsafe { oakengine::timeline::oakengine_sequence_node_count(seq) },
+			count - 1,
+			"the removed block leaves the sequence graph"
+		);
+
+		unsafe { oakengine_node_free(clip_node) };
+		unsafe { oakengine_node_free(seq_node) };
+		unsafe { free_box::<OakEngineSequence>(seq) };
+		unsafe { oakengine_project_free(project) };
+		let _ = std::fs::remove_file(&media);
+		// No `alive() == base` assertion here: the timeline family's
+		// `oakengine_sequence_add_track` and the `_ex` clip placement keep
+		// owned track/block handles (documented pre-existing facade behavior;
+		// the it_timeline tests never assert the counter on those paths).
+		// The node-family surfaces exercised above (as-node, count/at,
+		// context positions, sequence-scoped remove) are all borrowed and
+		// leak nothing of their own.
+	});
+}
+
+// ---------------------------------------------------------------------------
 // Divergences found while exercising the family end to end — all fixed in
 // the facade (src/node.rs); each item below states the fixed behavior.
 // ---------------------------------------------------------------------------
@@ -5412,4 +5609,11 @@ fn project_add_node_owned_handle_leak() {
 // 10. `oakengine_footage_borrow` addrefs the wrapped handle, so the borrow
 //     and the source node shell each own their own reference: freeing BOTH is
 //     safe (no double-free).
+//
+// 11. `oakengine_sequence_remove_node` verifies membership through the
+//     project UUID, not node identities: every project's arena reuses the
+//     same slot/generation identities, so an identity-only check accepts a
+//     node from ANOTHER project whose identity collides (and would remove
+//     the wrong node). Project handles are per-call boxes around the same
+//     `Arc`, so ctx pointers cannot be compared either.
 // ---------------------------------------------------------------------------
