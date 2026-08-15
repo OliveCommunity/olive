@@ -30,4 +30,5 @@ Oak Video Editor is a renamed fork of Olive, focused on delivering a polished, c
 
 - Build from source on Windows, macOS, or Linux using the Build guide.
 - Learn how project data is stored in the Project File Reference.
+- Understand the database write-through persistence in the [Project Storage Architecture](project-storage.md).
 - Keep releases solid by following the Test Plan.

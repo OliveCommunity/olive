@@ -23,6 +23,11 @@ The binary can be downloaded here:
 
 See [`docs/build.md`](docs/build.md) for build instructions on Windows (MSYS2), Linux (Debian/Ubuntu, Fedora, Arch Linux), and macOS.
 
+## Documentation
+
+- [Project Storage Architecture](docs/project-storage.md) ([中文](docs/zh/project-storage.md)) — database write-through persistence, node-granular journal, persistent undo
+- [Build guide](docs/build.md) · [工程文件格式](docs/zh/project-file-reference.md)
+
 ## Roadmap
 
 | Version | Theme | Core Deliverables | Boundary Notes |
