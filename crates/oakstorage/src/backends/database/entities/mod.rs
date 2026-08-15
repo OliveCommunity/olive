@@ -14,24 +14,16 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Built-in backends.
+//! SeaORM entity models for the four-table schema (plan M13 §1).
 //!
-//! Arbitration order inside `file://`: ove-xml before otio so a `.ove`
-//! path (which the otio backend would also claim as JSON) stays on the
-//! ove backend. The database backend claims its own `oakdb+…` schemes.
+//! One module per entity: the `DeriveEntityModel` macro generates
+//! `Entity`/`Column`/`Model`/`ActiveModel` in the defining module, so
+//! each table gets its own scope. The same definitions serve SQLite
+//! today and PostgreSQL (D3) — the column types (`i64`, `String`,
+//! `Option<String>`, `NaiveDateTime`) map to BIGINT/TEXT/TIMESTAMP on
+//! both.
 
-pub mod database;
-pub mod otio;
-pub mod ove_xml;
-
-use std::sync::Arc;
-
-/// All built-in backends in arbitration order (registered into
-/// [`crate::registry::Registry::global`] at crate init).
-pub fn builtins() -> Vec<Arc<dyn crate::backend::StorageBackend>> {
-	vec![
-		Arc::new(ove_xml::OveXmlBackend::new()),
-		Arc::new(otio::OtioBackend::new()),
-		Arc::new(database::DatabaseBackend::new()),
-	]
-}
+pub mod journal;
+pub mod project;
+pub mod settings;
+pub mod snapshot;

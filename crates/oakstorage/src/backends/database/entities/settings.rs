@@ -14,24 +14,28 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Built-in backends.
-//!
-//! Arbitration order inside `file://`: ove-xml before otio so a `.ove`
-//! path (which the otio backend would also claim as JSON) stays on the
-//! ove backend. The database backend claims its own `oakdb+…` schemes.
+//! The `settings` table: the project's KV settings (plan §1). The
+//! current values are mirrored here on every save; the history lives in
+//! the journal (node_identity = 0 pseudo-node).
 
-pub mod database;
-pub mod otio;
-pub mod ove_xml;
+use sea_orm::entity::prelude::*;
 
-use std::sync::Arc;
-
-/// All built-in backends in arbitration order (registered into
-/// [`crate::registry::Registry::global`] at crate init).
-pub fn builtins() -> Vec<Arc<dyn crate::backend::StorageBackend>> {
-	vec![
-		Arc::new(ove_xml::OveXmlBackend::new()),
-		Arc::new(otio::OtioBackend::new()),
-		Arc::new(database::DatabaseBackend::new()),
-	]
+/// The `settings` entity.
+#[derive(Clone, Debug, PartialEq, Eq, DeriveEntityModel)]
+#[sea_orm(table_name = "settings")]
+pub struct Model {
+	/// Owning project (ON DELETE CASCADE).
+	#[sea_orm(primary_key)]
+	pub project_id: i64,
+	/// Setting key.
+	#[sea_orm(primary_key)]
+	pub key: String,
+	/// Setting value.
+	pub value: String,
 }
+
+/// `settings` has no relations yet.
+#[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
+pub enum Relation {}
+
+impl ActiveModelBehavior for ActiveModel {}

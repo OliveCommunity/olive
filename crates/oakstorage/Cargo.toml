@@ -10,8 +10,13 @@ crate-type = ["staticlib", "rlib"]
 
 [dependencies]
 oakcore-rs = { path = "../oakcore" }
+oakcommon = { path = "../oakcommon" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
+# Timestamp columns in the database schema (plan M13 §1: TIMESTAMP NOT
+# NULL). sea-orm maps chrono NaiveDateTime via its default with-chrono
+# feature; the direct dependency is needed for the entity field types.
+chrono = "0.4"
 # Error derive (Display + std::error::Error) for the crate error enum
 # (src/error.rs). Same major version the other modules use (oakotio, ...).
 thiserror = "2"
