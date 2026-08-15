@@ -25,7 +25,7 @@
 
 use std::ffi::{c_char, c_double, c_int, c_void};
 
-use crate::bridge::audio as a;
+use crate::stubs::audio as a;
 use crate::error::Error;
 use crate::handle::{
 	box_handle, free_box, guard, guard_i64, guard_int, guard_void, unbox, CHandle,
@@ -442,6 +442,51 @@ pub unsafe extern "C" fn oakengine_audio_sync_place_by_waveform_offset(
 		(*out).timeline_in_den = den;
 		(*out).valid = valid;
 		Ok(())
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Waveform extraction
+// ---------------------------------------------------------------------------
+
+/// `oakengine_waveform_extract` — two-stage whole-file min/max waveform
+/// extraction of `filename`'s audio stream (the module's
+/// `oakaudio_waveform_extract`, M12 P4).
+///
+/// First call with `out_pairs == NULL` / `capacity_points == 0` returns the
+/// required point count without writing; the channel count is reported
+/// whenever `out_channel_count` is non-NULL. The data pass writes
+/// `point_count * channel_count` channel-interleaved pairs (the module's
+/// `oakaudio_min_max` POD; `capacity_points` counts points) and returns the
+/// point count. Returns a negative facade `OAKENGINE_E_INVALID` for NULL
+/// `filename` / negative `stream_index` / non-positive `samples_per_point`
+/// / negative `capacity_points`; module decode errors (`OAKAUDIO_E_NOT_FOUND`,
+/// ...) pass through untranslated.
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_waveform_extract(
+	filename: *const c_char,
+	stream_index: c_int,
+	samples_per_point: c_int,
+	out_pairs: *mut a::MinMax,
+	capacity_points: c_int,
+	out_channel_count: *mut c_int,
+) -> c_int {
+	guard_int(|| unsafe {
+		if filename.is_null() || stream_index < 0 || samples_per_point <= 0 || capacity_points < 0 {
+			return Err(Error::Invalid);
+		}
+		let n = a::oakaudio_waveform_extract(
+			filename,
+			stream_index,
+			samples_per_point,
+			out_pairs,
+			capacity_points,
+			out_channel_count,
+		);
+		if n < 0 {
+			return Err(Error::Module(n));
+		}
+		Ok(n)
 	})
 }
 

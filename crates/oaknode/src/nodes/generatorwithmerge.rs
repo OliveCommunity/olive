@@ -93,7 +93,7 @@ impl GeneratorWithMerge {
 	/// and the un-merged case pushes `job` itself.
 	pub fn push_mergable_job(
 		inputs: &crate::value::NodeValueRow,
-		job: crate::bridge::render::TextureHandle,
+		job: crate::handle::CHandle,
 		table: &mut crate::value::NodeValueTable,
 	) {
 		match inputs.get(BASE_INPUT) {

@@ -729,7 +729,7 @@ mod tests {
 		assert_eq!(format_g(-0.0), "-0");
 		assert_eq!(format_g(1920.0), "1920");
 		assert_eq!(format_g(100.0), "100");
-		assert_eq!(format_g(3.14), "3.14");
+		assert_eq!(format_g(3.15), "3.15");
 		assert_eq!(format_g(1.5), "1.5");
 		assert_eq!(format_g(0.1), "0.1");
 		assert_eq!(format_g(-3.5), "-3.5");
@@ -848,9 +848,9 @@ mod tests {
 		let _g = test_lock().lock().unwrap();
 		let s = ConfigStore::instance();
 		s.reset_defaults().unwrap();
-		s.set_double(None, "MyD", 3.14);
-		assert_eq!(s.get_double(None, "MyD", -1.0), 3.14);
-		assert_eq!(s.get(None, "MyD").unwrap(), "3.14");
+		s.set_double(None, "MyD", 3.15);
+		assert_eq!(s.get_double(None, "MyD", -1.0), 3.15);
+		assert_eq!(s.get(None, "MyD").unwrap(), "3.15");
 		assert_eq!(s.entry_type(None, "MyD").unwrap(), EntryType::Double);
 
 		assert_eq!(s.get_double(None, "MissingD", 2.5), 2.5);

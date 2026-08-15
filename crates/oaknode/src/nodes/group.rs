@@ -22,7 +22,7 @@
 //! undo commands `NodeGroupAddInputPassthrough` /
 //! `NodeGroupSetOutputPassthrough`; the C ABI's undoable variants
 //! (`include/node/group.h`) build equivalent vtable commands through
-//! `bridge::undo` in the ffi layer.
+//! oakundo commands in the ops layer.
 
 use crate::factory::NodeMeta;
 use crate::graph::Graph;

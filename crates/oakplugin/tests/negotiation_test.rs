@@ -21,44 +21,31 @@
 //! （回写 region）、isIdentity 恒非透传、无 field——需要插件变体
 //! 的矩阵案（回退链、身份透传、field）标记 `// TODO(plugin)`，
 //! 随 M11 §2.4 测试插件的变体落地。
+//!
+//! 单库化后经 Rust API 直连（`Host::global().create_instance`），不再
+//! 经已删除的 `oakplugin_host_init`/`oakplugin_instance_create` C ABI。
 
 mod common;
 
-use std::ffi::{c_char, c_void, CString};
+use std::sync::Arc;
 
-use oakplugin::ffi::{
-	oakplugin_host_init, oakplugin_host_scan, oakplugin_host_shutdown, oakplugin_instance_create,
-	oakplugin_instance_free,
-};
-use oakplugin::handle::{get, CHandle};
-
-const OK: i32 = 0;
-
-fn cs(s: &str) -> CString {
-	CString::new(s).unwrap()
-}
+use oakplugin::handle::RefBox;
+use oakplugin::host::Host;
+use oakplugin::instance::Instance;
 
 const TEST_PLUGIN_ID: &str = "org.oak.test-plugin";
 
-/// 扫描并创建实例；不可用返回空句柄。
-fn create_instance() -> CHandle {
+/// 扫描并创建实例；不可用返回 None（skip）。
+fn create_instance() -> Option<Arc<RefBox<Instance>>> {
 	if common::test_plugin_scan_dir().is_none() {
 		common::skip("最小测试插件未构建");
-		return CHandle::null();
+		return None;
 	}
-	let dir = cs(common::test_plugin_scan_dir().unwrap().to_str().unwrap());
-	let dirs = [dir.as_ptr()];
-	unsafe { oakplugin_host_scan(dirs.as_ptr(), 1) };
-	let id = cs(TEST_PLUGIN_ID);
-	unsafe { oakplugin_instance_create(id.as_ptr()) }
-}
-
-/// 句柄 → Instance 引用。
-fn instance_of(
-	h: &CHandle,
-) -> Option<std::sync::Arc<oakplugin::handle::RefBox<oakplugin::instance::Instance>>> {
-	unsafe { get::<std::sync::Arc<oakplugin::handle::RefBox<oakplugin::instance::Instance>>>(h) }
-		.cloned()
+	let dir = common::test_plugin_scan_dir().unwrap();
+	let host = Host::global();
+	let _ = host.cache.scan();
+	host.cache.scan_path(&dir).ok()?;
+	host.create_instance(TEST_PLUGIN_ID, None).ok()
 }
 
 /// 协商顺序：测试插件声明 RGBA/F32、帧率 24——协商结果必须
@@ -68,13 +55,10 @@ fn instance_of(
 #[test]
 fn clip_preferences_component_depth_matrix() {
 	common::with_host(|| {
-		unsafe { oakplugin_host_init() };
-		let mut h = create_instance();
-		if h.is_null() {
-			unsafe { oakplugin_host_shutdown() };
+		let Some(inst) = create_instance() else {
+			Host::global().shutdown();
 			return;
-		}
-		let inst = instance_of(&h).expect("句柄应可解析");
+		};
 		let prefs = inst.value.get_clip_preferences().expect("协商应成功");
 		assert_eq!(prefs.output_components, "OfxImageComponentRGBA");
 		assert_eq!(prefs.output_bit_depth, "OfxBitDepthFloat");
@@ -93,8 +77,7 @@ fn clip_preferences_component_depth_matrix() {
 				.map(|v| format!("{v:?}")),
 			Some("String(\"OfxImageComponentRGBA\")".into())
 		);
-		unsafe { oakplugin_instance_free(&mut h) };
-		unsafe { oakplugin_host_shutdown() };
+		Host::global().shutdown();
 	});
 }
 
@@ -103,17 +86,13 @@ fn clip_preferences_component_depth_matrix() {
 #[test]
 fn bit_depth_fallback_chain() {
 	common::with_host(|| {
-		unsafe { oakplugin_host_init() };
-		let mut h = create_instance();
-		if h.is_null() {
-			unsafe { oakplugin_host_shutdown() };
+		let Some(inst) = create_instance() else {
+			Host::global().shutdown();
 			return;
-		}
-		let inst = instance_of(&h).expect("句柄应可解析");
+		};
 		let prefs = inst.value.get_clip_preferences().unwrap();
 		assert_eq!(prefs.output_bit_depth, "OfxBitDepthFloat");
-		unsafe { oakplugin_instance_free(&mut h) };
-		unsafe { oakplugin_host_shutdown() };
+		Host::global().shutdown();
 	});
 }
 
@@ -123,20 +102,16 @@ fn bit_depth_fallback_chain() {
 #[test]
 fn region_of_definition_default_and_override() {
 	common::with_host(|| {
-		unsafe { oakplugin_host_init() };
-		let mut h = create_instance();
-		if h.is_null() {
-			unsafe { oakplugin_host_shutdown() };
+		let Some(inst) = create_instance() else {
+			Host::global().shutdown();
 			return;
-		}
-		let inst = instance_of(&h).expect("句柄应可解析");
+		};
 		let rod = inst
 			.value
 			.get_region_of_definition(0.0, oakplugin::instance::RenderScale { x: 1.0, y: 1.0 })
 			.expect("getRoD 应成功");
 		assert_eq!((rod.x1, rod.y1, rod.x2, rod.y2), (0.0, 0.0, 1920.0, 1080.0));
-		unsafe { oakplugin_instance_free(&mut h) };
-		unsafe { oakplugin_host_shutdown() };
+		Host::global().shutdown();
 	});
 }
 
@@ -146,13 +121,10 @@ fn region_of_definition_default_and_override() {
 #[test]
 fn regions_of_interest_writeback() {
 	common::with_host(|| {
-		unsafe { oakplugin_host_init() };
-		let mut h = create_instance();
-		if h.is_null() {
-			unsafe { oakplugin_host_shutdown() };
+		let Some(inst) = create_instance() else {
+			Host::global().shutdown();
 			return;
-		}
-		let inst = instance_of(&h).expect("句柄应可解析");
+		};
 		let region = oakplugin::instance::OfxRectD {
 			x1: 10.0,
 			y1: 20.0,
@@ -183,8 +155,7 @@ fn regions_of_interest_writeback() {
 			(source.x1, source.y1, source.x2, source.y2),
 			(10.0, 20.0, 100.0, 200.0)
 		);
-		unsafe { oakplugin_instance_free(&mut h) };
-		unsafe { oakplugin_host_shutdown() };
+		Host::global().shutdown();
 	});
 }
 
@@ -193,17 +164,13 @@ fn regions_of_interest_writeback() {
 #[test]
 fn is_identity_shortcircuit() {
 	common::with_host(|| {
-		unsafe { oakplugin_host_init() };
-		let mut h = create_instance();
-		if h.is_null() {
-			unsafe { oakplugin_host_shutdown() };
+		let Some(inst) = create_instance() else {
+			Host::global().shutdown();
 			return;
-		}
-		let inst = instance_of(&h).expect("句柄应可解析");
+		};
 		let identity = inst.value.is_identity(1.5).expect("isIdentity 应成功");
 		assert!(identity.is_none(), "测试插件恒非透传：{identity:?}");
-		unsafe { oakplugin_instance_free(&mut h) };
-		unsafe { oakplugin_host_shutdown() };
+		Host::global().shutdown();
 	});
 }
 
@@ -212,17 +179,13 @@ fn is_identity_shortcircuit() {
 #[test]
 fn field_passthrough() {
 	common::with_host(|| {
-		unsafe { oakplugin_host_init() };
-		let mut h = create_instance();
-		if h.is_null() {
-			unsafe { oakplugin_host_shutdown() };
+		let Some(inst) = create_instance() else {
+			Host::global().shutdown();
 			return;
-		}
-		let inst = instance_of(&h).expect("句柄应可解析");
+		};
 		let prefs = inst.value.get_clip_preferences().unwrap();
 		assert_eq!(prefs.field, "OfxFieldNone", "插件声明的 field 应透传");
-		unsafe { oakplugin_instance_free(&mut h) };
-		unsafe { oakplugin_host_shutdown() };
+		Host::global().shutdown();
 	});
 }
 
@@ -232,13 +195,10 @@ fn field_passthrough() {
 fn sequence_render_brackets() {
 	common::with_host(|| {
 		use oakplugin::instance::OfxRangeD;
-		unsafe { oakplugin_host_init() };
-		let mut h = create_instance();
-		if h.is_null() {
-			unsafe { oakplugin_host_shutdown() };
+		let Some(inst) = create_instance() else {
+			Host::global().shutdown();
 			return;
-		}
-		let inst = instance_of(&h).expect("句柄应可解析");
+		};
 		let range = OfxRangeD {
 			min: 10.0,
 			max: 200.0,
@@ -248,7 +208,6 @@ fn sequence_render_brackets() {
 
 		// begin → timeline 上下文带范围（经 render 设置；单测直达
 		// RenderCtx 的接线见 suites::timeline 测试）。
-		unsafe { oakplugin_instance_free(&mut h) };
-		unsafe { oakplugin_host_shutdown() };
+		Host::global().shutdown();
 	});
 }

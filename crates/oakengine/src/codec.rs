@@ -16,7 +16,7 @@
 
 //! `engine/include/oakengine/encoding.h` over the oakcodec module.
 //!
-//! Two parts:
+//! Three parts:
 //!
 //! - The container/codec **metadata family** (format names/extensions,
 //!   per-format codec lists, pixel/sample formats, filename helpers,
@@ -30,15 +30,19 @@
 //!   "unset" (the POD's 0 is a valid format, DNxHD); encoder-specific
 //!   video options are kept in a facade-side map (the POD has no such
 //!   field).
+//! - The **exporter family** (`engine/include/oakengine/exporter.h`)
+//!   assembles an encoding-params handle and drives the export task
+//!   synchronously (see the family section at the bottom).
 //!
-//! Presets, preset load/save and the sequence-bound last-used/export
-//! entry points are deferred (see the stubs below and `deferred.rs`).
+//! Presets, preset load/save and the sequence-bound last-used entry
+//! points remain deferred (see the stubs below and `deferred.rs`).
 
+use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ffi::{c_char, c_int, c_void};
+use std::ffi::{c_char, c_double, c_int, c_void};
 
-use crate::bridge::codec as k;
-use crate::bridge::codec::{zeroed_encoding_params, EncodingParamsPOD};
+use crate::stubs::codec as k;
+use crate::pods::{zeroed_encoding_params, EncodingParamsPOD};
 use crate::common::OakVideoParamsPod;
 use crate::error::{Error, Result};
 use crate::handle::{guard, guard_int, string_result};
@@ -55,6 +59,10 @@ pub struct OakEngineEncodingParams {
 struct ParamsBox {
 	pod: EncodingParamsPOD,
 	video_options: HashMap<String, String>,
+	/// Raw scaling-method code exactly as the caller set it: the POD's
+	/// `VideoScalingMethod` enum cannot carry garbage codes, and the
+	/// facade contract accepts any `int` verbatim (round-trips 99 as 99).
+	video_scaling_raw: c_int,
 }
 
 impl ParamsBox {
@@ -64,6 +72,7 @@ impl ParamsBox {
 		ParamsBox {
 			pod,
 			video_options: HashMap::new(),
+			video_scaling_raw: 0,
 		}
 	}
 }
@@ -457,7 +466,7 @@ pub unsafe extern "C" fn oakengine_encoding_params_enable_video(
 		p.pod.video_height = v.height;
 		p.pod.video_time_base_num = v.time_base_num;
 		p.pod.video_time_base_den = v.time_base_den;
-		p.pod.video_pixel_format = v.format;
+		p.pod.video_pixel_format = crate::pods::pixel_format_from_code(v.format);
 		p.pod.video_interlacing = v.interlacing;
 		p.pod.video_pixel_aspect_num = v.pixel_aspect_num;
 		p.pod.video_pixel_aspect_den = v.pixel_aspect_den;
@@ -480,7 +489,7 @@ pub unsafe extern "C" fn oakengine_encoding_params_enable_audio(
 		p.pod.audio_codec = codec;
 		p.pod.audio_sample_rate = sample_rate;
 		p.pod.audio_channel_layout = channel_layout;
-		p.pod.audio_sample_format = sample_format;
+		p.pod.audio_sample_format = crate::pods::sample_format_from_code(sample_format);
 		Ok(())
 	})
 }
@@ -594,7 +603,7 @@ pub unsafe extern "C" fn oakengine_encoding_params_get_video_params(
 		(*out).height = p.pod.video_height;
 		(*out).time_base_num = p.pod.video_time_base_num;
 		(*out).time_base_den = p.pod.video_time_base_den;
-		(*out).format = p.pod.video_pixel_format;
+		(*out).format = p.pod.video_pixel_format as i32;
 		(*out).interlacing = p.pod.video_interlacing;
 		(*out).pixel_aspect_num = p.pod.video_pixel_aspect_num;
 		(*out).pixel_aspect_den = p.pod.video_pixel_aspect_den;
@@ -645,7 +654,7 @@ pub unsafe extern "C" fn oakengine_encoding_params_get_audio_params(
 			*channel_layout = p.pod.audio_channel_layout;
 		}
 		if !sample_format.is_null() {
-			*sample_format = p.pod.audio_sample_format;
+			*sample_format = p.pod.audio_sample_format as i32;
 		}
 		Ok(())
 	})
@@ -964,7 +973,10 @@ pub unsafe extern "C" fn oakengine_encoding_params_set_video_scaling_method(
 ) -> c_int {
 	guard(|| unsafe {
 		let p = params_mut(params)?;
-		p.pod.video_scaling_method = method;
+		// The raw code round-trips verbatim (garbage codes included);
+		// the POD carries the nearest legal enum for the encoder.
+		p.video_scaling_raw = method;
+		p.pod.video_scaling_method = crate::pods::scaling_from_code(method);
 		Ok(())
 	})
 }
@@ -976,7 +988,7 @@ pub unsafe extern "C" fn oakengine_encoding_params_video_scaling_method(
 ) -> c_int {
 	guard_int(|| unsafe {
 		let p = params_ref(params)?;
-		Ok(p.pod.video_scaling_method)
+		Ok(p.video_scaling_raw)
 	})
 }
 
@@ -1073,14 +1085,365 @@ pub unsafe extern "C" fn oakengine_encoding_params_save_file(
 	crate::error::OAKENGINE_E_FAILED
 }
 
-/// `oakengine_export_render_with_params` — **not backed** (the exporter
-/// family is facade-only; see `deferred.rs`). Returns OAKENGINE_E_FAILED.
+// ---------------------------------------------------------------------------
+// Exporter family (exporter.h)
+// ---------------------------------------------------------------------------
+
+// Thread-local reason for the last failed export on this thread (the C++
+// `g_last_error`, `engine/src/capi/export.cpp`). Cleared at the start of
+// every export call; read by [`oakengine_export_last_error`].
+thread_local! {
+	static EXPORT_LAST_ERROR: RefCell<String> = const { RefCell::new(String::new()) };
+}
+
+// Thread-local progress callback installed by
+// [`oakengine_export_set_progress_callback`] (the C++ `g_progress_fn` /
+// `g_progress_userdata`). Per-thread like the C++: the synchronous export
+// runs on the installing thread, so the module task events arrive there.
+thread_local! {
+	static EXPORT_PROGRESS: RefCell<
+		Option<(unsafe extern "C" fn(c_double, *mut c_void), *mut c_void)>,
+	> = const { RefCell::new(None) };
+}
+
+/// The module task progress event id (`OAKTASK_EVENT_PROGRESS`, see
+/// `oakengine_task_subscribe`).
+const EXPORT_EVENT_PROGRESS: c_int = 1;
+
+fn export_last_error_set(msg: String) {
+	EXPORT_LAST_ERROR.with(|e| *e.borrow_mut() = msg);
+}
+
+/// Forward the progress events of a running export to the installed
+/// callback. Installed as the task subscription only while a callback is
+/// set; the module passes the callback's own `userdata` through.
+unsafe extern "C" fn export_progress_event(event_id: c_int, value: f64, userdata: *mut c_void) {
+	if event_id != EXPORT_EVENT_PROGRESS {
+		return;
+	}
+	EXPORT_PROGRESS.with(|slot| {
+		if let Some((cb, _)) = *slot.borrow() {
+			// SAFETY: the callback + userdata follow the installer's
+			// contract; the task emits on its running thread.
+			unsafe { cb(value, userdata) };
+		}
+	});
+}
+
+/// Run an export task synchronously on the calling thread — the shared
+/// tail of every exporter-family entry point: create the task (taking
+/// ownership of `params`), subscribe the installed progress callback, run
+/// through [`oakengine_task_start_sync`], read the task error into the
+/// thread-local last-error slot, and free the task.
+///
+/// Returns OAKENGINE_OK on success, OAKENGINE_E_FAILED otherwise. On the
+/// task-creation failure path `params` ownership stays with the caller
+/// (mirroring [`oakengine_task_create_export`]).
+fn export_run_sync(seq: *mut crate::handle::OakEngineSequence, params: *mut OakEngineEncodingParams) -> c_int {
+	let task = unsafe { crate::task::oakengine_task_create_export(seq, params) };
+	if task.is_null() {
+		export_last_error_set("failed to create the export task".into());
+		return crate::error::OAKENGINE_E_FAILED;
+	}
+	// Progress events through the same module subscription the app's
+	// `start_export` uses (`oakengine_task_subscribe`).
+	EXPORT_PROGRESS.with(|slot| {
+		if let Some((_, userdata)) = *slot.borrow() {
+			unsafe {
+				crate::task::oakengine_task_subscribe(task, Some(export_progress_event), userdata);
+			}
+		}
+	});
+	let ok = unsafe { crate::task::oakengine_task_start_sync(task) };
+	let rc = if ok == 1 {
+		crate::error::OAKENGINE_OK
+	} else {
+		let err = export_task_error(task);
+		export_last_error_set(if err.is_empty() {
+			"export failed".into()
+		} else {
+			err
+		});
+		crate::error::OAKENGINE_E_FAILED
+	};
+	unsafe { crate::task::oakengine_task_free(task) };
+	rc
+}
+
+/// Two-stage read of a task's error string (empty when none).
+fn export_task_error(task: *mut crate::handle::OakEngineTask) -> String {
+	unsafe {
+		let needed = crate::task::oakengine_task_error(task, std::ptr::null_mut(), 0);
+		if needed <= 0 {
+			return String::new();
+		}
+		let mut buf = vec![0 as c_char; needed as usize + 1];
+		let n = crate::task::oakengine_task_error(task, buf.as_mut_ptr(), buf.len() as c_int);
+		if n < 0 {
+			return String::new();
+		}
+		let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+		String::from_utf8_lossy(unsafe {
+			std::slice::from_raw_parts(buf.as_ptr() as *const u8, len)
+		})
+		.into_owned()
+	}
+}
+
+/// `oakengine_export_render_with_params` — render `seq` to the file the
+/// encoding params describe, through the same synchronous export path the
+/// app's `start_export` drives (`oakengine_task_create_export` +
+/// `oakengine_task_start_sync` + free).
+///
+/// Takes ownership of `params` on success (destroyed with the export
+/// task, mirroring [`oakengine_task_create_export`]); on the
+/// task-creation failure path the caller keeps ownership. The sequence
+/// handle is validated for non-NULL only — the C++ "handle is a sequence
+/// of the active project" walk has no Rust analogue (created sequences
+/// live in their own scratch project, see `oakengine_sequence_new`).
+///
+/// Returns OAKENGINE_OK on success; OAKENGINE_E_INVALID for NULL
+/// arguments; OAKENGINE_E_FAILED for creation/run failures (see
+/// [`oakengine_export_last_error`]).
 #[no_mangle]
 pub unsafe extern "C" fn oakengine_export_render_with_params(
-	_seq: *mut crate::handle::OakEngineSequence,
-	_params: *const OakEngineEncodingParams,
+	seq: *mut crate::handle::OakEngineSequence,
+	params: *const OakEngineEncodingParams,
 ) -> c_int {
-	crate::error::OAKENGINE_E_FAILED
+	guard(|| unsafe {
+		export_last_error_set(String::new());
+		if seq.is_null() || params.is_null() {
+			export_last_error_set("invalid arguments".into());
+			return Err(Error::Invalid);
+		}
+		if export_run_sync(seq, params as *mut OakEngineEncodingParams) == crate::error::OAKENGINE_OK {
+			Ok(())
+		} else {
+			Err(Error::Failed("export failed".into()))
+		}
+	})
+}
+
+/// `oakengine_export_render` — render `seq`'s [in_ts, out_ts) range
+/// offline and encode it to `path`.
+///
+/// `in_ts`/`out_ts` are frame timestamps in the sequence's frame-rate
+/// timebase (the export frame rate is the sequence frame rate). `width`/
+/// `height` <= 0 fall back to the sequence's video dimensions; when they
+/// differ the frames are scaled to fit. Video is encoded with the
+/// options' codec (default H.264 in an MP4 container), audio with the
+/// options' codec (default AAC) at the requested rate/layout (defaults:
+/// 48 kHz stereo — the engine has no sequence-audio getter, so the
+/// header's "sequence rate/layout" fallback mirrors the app's export
+/// dialog instead). The options' codec fields carry the exporter.h
+/// `OAKENGINE_EXPORT_VIDEO_*` / `OAKENGINE_EXPORT_AUDIO_*` values,
+/// mapped here onto the engine's `ExportFormat` / `ExportCodec` ids.
+///
+/// The call blocks until the export finishes; progress is reported
+/// through the callback set with [`oakengine_export_set_progress_callback`].
+///
+/// Deviations from the C++ header: no `OAKENGINE_INIT_RENDER`
+/// requirement (the Rust render path is CPU-only and self-contained, see
+/// `oakengine_render_manager_init`) and no "sequence is part of a
+/// project" check (created sequences live in a scratch project).
+///
+/// Returns OAKENGINE_OK on success; OAKENGINE_E_INVALID for bad
+/// arguments; OAKENGINE_E_FAILED for render/encode failures (see
+/// [`oakengine_export_last_error`]).
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_export_render(
+	seq: *mut crate::handle::OakEngineSequence,
+	path: *const c_char,
+	in_ts: i64,
+	out_ts: i64,
+	width: c_int,
+	height: c_int,
+	opts: *const crate::pods::OakExportOptions,
+) -> c_int {
+	guard(|| unsafe {
+		export_last_error_set(String::new());
+		if seq.is_null() || path.is_null() || in_ts < 0 || out_ts <= in_ts {
+			export_last_error_set("invalid arguments".into());
+			return Err(Error::Invalid);
+		}
+		let o = if opts.is_null() {
+			crate::pods::OakExportOptions {
+				video_codec: crate::pods::OAKENGINE_EXPORT_VIDEO_H264,
+				audio_codec: crate::pods::OAKENGINE_EXPORT_AUDIO_AAC,
+				video_bit_rate: 0,
+				audio_sample_rate: 0,
+				audio_channel_count: 0,
+			}
+		} else {
+			*opts
+		};
+
+		// Map the exporter.h codec ids onto the engine's enum ids.
+		let (format, vcodec) = match o.video_codec {
+			crate::pods::OAKENGINE_EXPORT_VIDEO_H264 => (
+				oakcodec::exportformat::Format::MPEG4Video as i32,
+				oakcodec::exportcodec::Codec::H264 as i32,
+			),
+			crate::pods::OAKENGINE_EXPORT_VIDEO_H265 => (
+				oakcodec::exportformat::Format::MPEG4Video as i32,
+				oakcodec::exportcodec::Codec::H265 as i32,
+			),
+			crate::pods::OAKENGINE_EXPORT_VIDEO_PNG_SEQUENCE => (
+				oakcodec::exportformat::Format::PNG as i32,
+				oakcodec::exportcodec::Codec::PNG as i32,
+			),
+			_ => {
+				export_last_error_set(format!("unknown video codec {}", o.video_codec));
+				return Err(Error::Invalid);
+			}
+		};
+		let audio_enabled = o.audio_codec != crate::pods::OAKENGINE_EXPORT_AUDIO_NONE;
+		let acodec = if audio_enabled {
+			match o.audio_codec {
+				crate::pods::OAKENGINE_EXPORT_AUDIO_AAC => oakcodec::exportcodec::Codec::AAC as i32,
+				crate::pods::OAKENGINE_EXPORT_AUDIO_PCM => oakcodec::exportcodec::Codec::PCM as i32,
+				_ => {
+					export_last_error_set(format!("unknown audio codec {}", o.audio_codec));
+					return Err(Error::Invalid);
+				}
+			}
+		} else {
+			0
+		};
+
+		// Sequence geometry + frame rate (the export frame rate is the
+		// sequence's).
+		let mut sw: c_int = 0;
+		let mut sh: c_int = 0;
+		let mut par_num: c_int = 1;
+		let mut par_den: c_int = 1;
+		Error::from_module(crate::timeline::oakengine_sequence_get_video_params(
+			seq,
+			&mut sw,
+			&mut sh,
+			&mut par_num,
+			&mut par_den,
+		))?;
+		let mut rate_num: c_int = 0;
+		let mut rate_den: c_int = 1;
+		Error::from_module(crate::timeline::oakengine_sequence_get_frame_rate(
+			seq,
+			&mut rate_num,
+			&mut rate_den,
+		))?;
+		if rate_num <= 0 || rate_den <= 0 {
+			export_last_error_set("sequence has no valid frame rate".into());
+			return Err(Error::Invalid);
+		}
+		let out_w = if width > 0 { width } else { sw };
+		let out_h = if height > 0 { height } else { sh };
+		if out_w <= 0 || out_h <= 0 {
+			export_last_error_set("sequence has no valid video dimensions".into());
+			return Err(Error::Invalid);
+		}
+		let sample_rate = if o.audio_sample_rate > 0 { o.audio_sample_rate } else { 48000 };
+		let layout: u64 = if o.audio_channel_count > 0 {
+			match o.audio_channel_count {
+				1 => 0x4, // AV_CH_LAYOUT_MONO
+				2 => 0x3, // AV_CH_LAYOUT_STEREO
+				n => {
+					export_last_error_set(format!(
+						"unsupported audio channel count {n} (1 = mono, 2 = stereo)"
+					));
+					return Err(Error::Invalid);
+				}
+			}
+		} else {
+			0x3
+		};
+
+		// Assemble the encoding params through the public setters (the same
+		// path the app's `start_export` uses); the task consumes the handle
+		// once created.
+		let params = oakengine_encoding_params_create();
+		if params.is_null() {
+			export_last_error_set("failed to create encoding params".into());
+			return Err(Error::Failed("failed to create encoding params".into()));
+		}
+		let fail = |msg: &str| -> Result<()> {
+			oakengine_encoding_params_destroy(params);
+			export_last_error_set(msg.into());
+			Err(Error::Failed(msg.into()))
+		};
+		let cpath = std::ffi::CString::new(crate::handle::read_cstr(path))
+			.map_err(|_| Error::Failed("invalid path (NUL byte)".into()))?;
+		if oakengine_encoding_params_set_filename(params, cpath.as_ptr()) != 0 {
+			return fail("failed to set the export filename");
+		}
+		if oakengine_encoding_params_set_format(params, format) != 0 {
+			return fail("failed to set the export format");
+		}
+		let pod = OakVideoParamsPod {
+			width: out_w,
+			height: out_h,
+			time_base_num: rate_den,
+			time_base_den: rate_num,
+			format: 0,
+			pixel_aspect_num: par_num.max(1),
+			pixel_aspect_den: par_den.max(1),
+			interlacing: 0,
+			color_range: 0,
+			divider: 1,
+			video_type: 0,
+			premultiplied_alpha: 0,
+		};
+		if oakengine_encoding_params_enable_video(params, &pod, vcodec) != 0 {
+			return fail("failed to enable video");
+		}
+		if audio_enabled && oakengine_encoding_params_enable_audio(params, sample_rate, layout, 0, acodec) != 0 {
+			return fail("failed to enable audio");
+		}
+		if o.video_bit_rate > 0 {
+			oakengine_encoding_params_set_video_bit_rate(params, o.video_bit_rate);
+		}
+		// Fit scaling (the header's documented behavior when the output
+		// size differs from the sequence's).
+		if oakengine_encoding_params_set_video_scaling_method(params, 0) != 0 {
+			return fail("failed to set the video scaling method");
+		}
+		// Export range as seconds rationals: frame timestamps in the
+		// sequence's frame-rate timebase (frame duration = rate_den/rate_num).
+		let tb_num = i64::from(rate_den);
+		let tb_den = i64::from(rate_num);
+		oakengine_encoding_params_set_custom_range(params, in_ts * tb_num, tb_den, out_ts * tb_num, tb_den);
+		oakengine_encoding_params_set_export_length(params, ((out_ts - in_ts) * tb_num) as c_int, rate_num);
+
+		if export_run_sync(seq, params) == crate::error::OAKENGINE_OK {
+			Ok(())
+		} else {
+			Err(Error::Failed("export failed".into()))
+		}
+	})
+}
+
+/// `oakengine_export_last_error` — the reason for the last failed export
+/// on this thread (buf/size; empty after a successful export).
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_export_last_error(buf: *mut c_char, buf_size: c_int) -> c_int {
+	guard_int(|| {
+		let err = EXPORT_LAST_ERROR.with(|e| e.borrow().clone());
+		Ok(unsafe { crate::handle::write_string(&err, buf, buf_size) })
+	})
+}
+
+/// `oakengine_export_set_progress_callback` — install the progress
+/// callback used by subsequent [`oakengine_export_render`] /
+/// [`oakengine_export_render_with_params`] calls on this thread (NULL
+/// disables). The callback receives `fraction` in [0, 1] and is invoked
+/// on the exporting thread during the synchronous run.
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_export_set_progress_callback(
+	f: Option<unsafe extern "C" fn(c_double, *mut c_void)>,
+	userdata: *mut c_void,
+) {
+	crate::handle::guard_void(|| {
+		EXPORT_PROGRESS.with(|slot| *slot.borrow_mut() = f.map(|cb| (cb, userdata)));
+	});
 }
 
 /// `oakengine_encoding_params_get_last_used` — **not backed** (sequence
@@ -1115,9 +1478,9 @@ pub unsafe extern "C" fn oakengine_encoding_start_audio_recording(
 		if m.is_null() {
 			return Err(Error::State);
 		}
-		let rc = crate::bridge::audio::oakaudio_manager_start_recording(
+		let rc = crate::stubs::audio::oakaudio_manager_start_recording(
 			m,
-			&p.pod as *const oakaudio::bridge::codec::EncodingParams,
+			&p.pod as *const crate::pods::EncodingParamsPOD,
 			errbuf,
 			errbuf_size,
 		);

@@ -30,8 +30,12 @@ use std::ffi::{c_char, c_int, c_void};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Mutex;
 
-use crate::bridge::undo::OakUndoCommandVtable;
-use crate::bridge::{audio as a, common as c, node as n, timeline as tl, undo as u};
+use oakundo::undocommand::OakUndoCommandVtable;
+use crate::stubs::common as c;
+use crate::stubs::node as n;
+use crate::stubs::timeline as tl;
+use crate::stubs::audio as a;
+use oakundo::undocommand as u;
 use crate::error::{Error, Result};
 use crate::handle::{
 	box_handle, free_box, guard, guard_int, guard_ptr, guard_void, read_cstr, string_result, unbox,
@@ -215,13 +219,13 @@ unsafe fn push_multi_commands(children: &[CHandle], name: &str) -> Result<()> {
 		if children.is_empty() {
 			return Ok(());
 		}
-		let multi = u::oakundo_command_init_multi();
+		let multi = u::command_init_multi();
 		if multi.is_null() {
 			return Err(Error::Failed("multi command allocation failed".into()));
 		}
 		let multi_box = box_handle::<OakEngineClipboard>(multi);
 		for child in children {
-			let rc = u::oakundo_command_multi_add_child(multi, *child);
+			let rc = u::command_multi_add_child(multi, *child);
 			if rc != 0 {
 				free_box(multi_box);
 				return Err(Error::Module(rc));
@@ -257,7 +261,7 @@ unsafe fn vtable_command(
 			undo: Some(undo),
 			free_fn: Some(free_fn),
 		};
-		let cmd = u::oakundo_command_init(&vtable, data);
+		let cmd = u::command_init(&vtable, data);
 		if cmd.is_null() {
 			free_fn(data);
 			return Err(Error::Failed("undo command allocation failed".into()));
@@ -1663,23 +1667,18 @@ pub unsafe extern "C" fn oakengine_sequence_add_track(
 		Error::from_module(n::oaknode_sequence_get_track_list(
 			seq, track_type, &mut list,
 		))?;
-		// The module's TimelineAddTrackCommand redo only appends the
-		// sequence's track array element; it never registers the created
-		// track node in the list's `tracks`, so the count/at queries would
-		// not observe it. Register a track node live as compensation
-		// (documented deviation; the array element stays undoable).
+		// The module's TimelineAddTrackCommand redo appends the created
+		// track to the list (with its back-reference and index), so the
+		// count/at queries observe it directly — no separate registration
+		// needed (the old module redo only grew the sequence's track-input
+		// array element, which is why the previous facade registered a
+		// second live track as compensation).
 		let cmd = tl::oaktimeline_add_track_command(list);
 		if cmd.is_null() {
 			release_handle(list);
 			return Err(Error::Failed("add track command failed".into()));
 		}
 		push_command(cmd, "Add Track")?;
-		let track = n::oaknode_track_create(track_type);
-		if track.is_null() {
-			release_handle(list);
-			return Err(Error::Failed("track creation failed".into()));
-		}
-		Error::from_module(n::oaknode_tracklist_add_track(list, track))?;
 		let mut count: c_int = 0;
 		Error::from_module(n::oaknode_sequence_get_track_count(
 			seq, track_type, &mut count,
@@ -4647,7 +4646,7 @@ pub unsafe extern "C" fn oakengine_marker_commit_time(
 			push_command(cmd, "Move Marker")
 		} else {
 			let parent = unbox(command.cast::<OakEngineClipboard>())?;
-			let rc = u::oakundo_command_multi_add_child(parent, cmd);
+			let rc = u::command_multi_add_child(parent, cmd);
 			Error::from_module(rc)
 		}
 	})
@@ -4786,7 +4785,7 @@ pub unsafe extern "C" fn oakengine_marker_set_properties(
 		} else {
 			let parent = unbox(command.cast::<OakEngineClipboard>())?;
 			for child in &children {
-				let rc = u::oakundo_command_multi_add_child(parent, *child);
+				let rc = u::command_multi_add_child(parent, *child);
 				if rc != 0 {
 					return Err(Error::Module(rc));
 				}
@@ -4924,7 +4923,7 @@ pub unsafe extern "C" fn oakengine_workarea_set_range_undoable(
 			push_command(cmd, "Set Workarea Range")
 		} else {
 			let parent = unbox(command.cast::<OakEngineClipboard>())?;
-			let rc = u::oakundo_command_multi_add_child(parent, cmd);
+			let rc = u::command_multi_add_child(parent, cmd);
 			Error::from_module(rc)
 		}
 	})
@@ -4948,7 +4947,7 @@ pub unsafe extern "C" fn oakengine_workarea_set_enabled_undoable(
 			push_command(cmd, "Set Workarea Enabled")
 		} else {
 			let parent = unbox(command.cast::<OakEngineClipboard>())?;
-			let rc = u::oakundo_command_multi_add_child(parent, cmd);
+			let rc = u::command_multi_add_child(parent, cmd);
 			Error::from_module(rc)
 		}
 	})
@@ -5726,16 +5725,9 @@ pub unsafe extern "C" fn oakengine_sequence_add_default_nodes(
 		}
 		let children = [vcmd, acmd];
 		push_multi_commands(&children, "Add Default Nodes")?;
-		// Module-gap compensation: register one live track per type (see
-		// `oakengine_sequence_add_track`).
-		let vtrack = n::oaknode_track_create(TRACK_TYPE_VIDEO);
-		let atrack = n::oaknode_track_create(TRACK_TYPE_AUDIO);
-		if !vtrack.is_null() {
-			n::oaknode_tracklist_add_track(video_list, vtrack);
-		}
-		if !atrack.is_null() {
-			n::oaknode_tracklist_add_track(audio_list, atrack);
-		}
+		// The two commands' redos registered their tracks in the video and
+		// audio lists already (see `oakengine_sequence_add_track`); no
+		// separate registration is needed.
 		release_handle(video_list);
 		release_handle(audio_list);
 		Ok(())

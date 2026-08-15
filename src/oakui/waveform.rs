@@ -17,7 +17,7 @@
 //! M12 P4: timeline audio waveforms.
 //!
 //! The [`WaveformCache`] holds per-clip min/max peak data extracted
-//! through `oakaudio_waveform_extract` (the real FFmpeg-backed
+//! through `oakengine_waveform_extract` (the real FFmpeg-backed
 //! extraction); the engine refreshes it when the timeline rebuilds. The
 //! [`OakClipDecorator`] draws the peaks into the timeline's clip body.
 //!
@@ -100,13 +100,14 @@ impl WaveformCache {
 	}
 }
 
-/// Extract a clip's waveform (first channel) via the oakaudio C ABI.
+/// Extract a clip's waveform (first channel) via the facade's waveform
+/// C ABI.
 	fn extract(filename: &str, duration_frames: i64, _fps: f32) -> Option<ClipWaveform> {
 	let cname = std::ffi::CString::new(filename).ok()?;
 	const SAMPLES_PER_POINT: c_int = 256;
 	unsafe {
 		let mut channels: c_int = 0;
-		let needed = crate::oakui::ffi::oakaudio_waveform_extract(
+		let needed = crate::oakui::ffi::oakengine_waveform_extract(
 			cname.as_ptr(),
 			0, // audio-stream index (probe numbering)
 			SAMPLES_PER_POINT,
@@ -117,20 +118,27 @@ impl WaveformCache {
 		if needed <= 0 || channels <= 0 {
 			return None;
 		}
-		let mut peaks = vec![MinMax::default(); needed as usize];
-		let rc = crate::oakui::ffi::oakaudio_waveform_extract(
+		// The extractor's `out_pairs` receives `point_count *
+		// channel_count` channel-interleaved pairs (capacity is in points),
+		// so the buffer is sized for the media's channel count.
+		let channel_count = channels.max(1) as usize;
+		let mut raw = vec![MinMax::default(); needed as usize * channel_count];
+		let rc = crate::oakui::ffi::oakengine_waveform_extract(
 			cname.as_ptr(),
 			0,
 			SAMPLES_PER_POINT,
-			peaks.as_mut_ptr(),
+			raw.as_mut_ptr(),
 			needed,
 			&mut channels,
 		);
 		if rc < 0 {
 			return None;
 		}
+		// Keep only the first channel: the pairs are interleaved per point
+		// (point i channel c at index i * channels + c).
 		let count = rc.min(needed) as usize;
-		peaks.truncate(count);
+		let mut peaks = Vec::with_capacity(count);
+		peaks.extend((0..count).map(|i| raw[i * channel_count]));
 		Some(ClipWaveform {
 			peaks,
 			channel_count: channels.max(1),

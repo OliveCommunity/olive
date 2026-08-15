@@ -18,9 +18,10 @@
 //! `PluginRenderer::render_plugin`（1857 行 C++ 的一部分）的渲染流程
 //! 语义收编（M11 §4）。
 //!
-//! 目标：oakrender 的 PluginJob 退化为一次 C ABI 调用（
-//! [`crate::ffi::oakplugin_instance_render_job`]），本模块承载全部
-//! OFX 宿主渲染流程。逐段对照的 C++ 行号已注释。
+//! 目标：oakrender 的 PluginJob 语义全部收编进本模块（单库化后
+//! 原 `oakplugin_instance_render_job` C ABI 已删除，facade 直接构造
+//! [`RenderJob`] 调 [`render_frame`]），本模块承载全部 OFX 宿主
+//! 渲染流程。逐段对照的 C++ 行号已注释。
 //!
 //! ## 流程（render_frame，对应 render_plugin）
 //!
@@ -56,28 +57,27 @@
 //! 的一批帧先 [`begin_sequence`] 后 [`end_sequence`]，中间逐帧
 //! [`render_frame`]。
 
-use crate::bridge::render::{self, FrameHandle, RendererHandle, TextureHandle};
 use crate::image::Image;
 use crate::instance::{Instance, OfxRangeD, OfxRectD, RenderScale};
 use crate::property::Value;
+use crate::render::{self, Renderer, Texture};
 
-/// 一帧渲染任务的输入（oakrender PluginJob 的 C ABI 载体；
-/// [`crate::ffi::OakPluginJob`] 的 Rust 侧视图）。
+/// 一帧渲染任务的输入（oakrender PluginJob 的 Rust 侧视图）。
 pub struct RenderJob {
 	/// 帧时间（秒）。
 	pub time: f64,
-	/// 目标纹理（输出；oakrender 侧创建并经句柄传入）。
-	pub dst: TextureHandle,
-	/// 主输入纹理（effect_input_id / SimpleSource；可空）。
-	pub src: TextureHandle,
+	/// 目标纹理（输出；oakrender 侧创建并经值传入）。
+	pub dst: Texture,
+	/// 主输入纹理（effect_input_id / SimpleSource；无则 None）。
+	pub src: Option<Texture>,
 	/// effect 输入 clip 名（job.src 的落点；C++ `node->get_effect_input_id()`）。
 	pub effect_input_id: Option<String>,
 	/// 其余输入 clip 的纹理表（clip 名 → 纹理）。
-	pub inputs: Vec<(String, TextureHandle)>,
+	pub inputs: Vec<(String, Texture)>,
 	/// 参数覆盖（参数名 → oaknode_value POD；对应 NodeValueRow）。
-	pub values: Vec<(String, crate::ffi::OakNodeValue)>,
+	pub values: Vec<(String, crate::node::Value)>,
 	/// GL 渲染器（None → CPU 路径；Some → 视 use_opengl 决策）。
-	pub renderer: Option<RendererHandle>,
+	pub renderer: Option<Renderer>,
 	/// 渲染前是否清空目标（信息性——C++ render_plugin 亦不处理，
 	/// 由上层渲染器负责；见插件渲染器注释）。
 	pub clear_destination: bool,
@@ -90,8 +90,8 @@ impl Default for RenderJob {
 	fn default() -> Self {
 		Self {
 			time: 0.0,
-			dst: TextureHandle::null(),
-			src: TextureHandle::null(),
+			dst: Texture::dummy(),
+			src: None,
 			effect_input_id: None,
 			inputs: Vec::new(),
 			values: Vec::new(),
@@ -109,7 +109,7 @@ impl Default for RenderJob {
 pub fn begin_sequence(
 	inst: &Instance,
 	range: OfxRangeD,
-	gl: Option<RendererHandle>,
+	gl: Option<Renderer>,
 ) -> crate::error::Result<()> {
 	if gl.is_some() {
 		inst.begin_sequence_render_gl(range)
@@ -122,7 +122,7 @@ pub fn begin_sequence(
 pub fn end_sequence(
 	inst: &Instance,
 	range: OfxRangeD,
-	gl: Option<RendererHandle>,
+	gl: Option<Renderer>,
 ) -> crate::error::Result<()> {
 	if gl.is_some() {
 		inst.end_sequence_render_gl(range)
@@ -153,21 +153,22 @@ pub fn render_frame(
 	// 2. use_opengl（pluginrenderer.cpp:1446-1457）：插件声明 GL 支持
 	// 且渲染器是 OpenGL 且目标纹理有 GL id 且像素深度协商可行
 	// （管线 F32 满足插件 kOfxOpenGLPropPixelDepth 声明）。
-	let use_opengl = match job.renderer {
-		Some(r) if unsafe { render::renderer_is_open_gl(r) } == 1 => {
+	// `texture_id` 为桩恒 0（wgpu 无 GL 命名空间）→ 本决策恒回退
+	// CPU 路径，GL 分支保留给 GL 后端落地。
+	let use_opengl = match job.renderer.as_ref() {
+		Some(r) if render::renderer_is_open_gl(r) => {
 			let plugin_gl = plugin_supports_opengl(inst);
 			let depth_ok =
 				crate::suites::gl_render::pick_gl_pixel_depth(&inst.plugin.descriptor.props)
 					.is_some();
-			let dst_id = unsafe { render::texture_id(job.dst) };
+			let dst_id = render::texture_id(&job.dst);
 			plugin_gl && depth_ok && dst_id != 0
 		}
 		_ => false,
 	};
 
 	// 目标帧与参数（F32 校验；输出装配的依据）。
-	let (dst_frame, dst_params, w, h) = read_dst(job.dst)?;
-	let mut dst_frame = dst_frame;
+	let (dst_params, w, h) = read_dst(&job.dst)?;
 	let par = pixel_aspect(&dst_params);
 	// 规范坐标的 RoI/RoD（pluginrenderer.cpp:1595-1603：x2 = 宽 × PAR）。
 	let region_of_interest = OfxRectD {
@@ -182,9 +183,10 @@ pub fn render_frame(
 		if clip.name == "Output" {
 			continue;
 		}
-		let tex = pick_input(&clip.name, job);
-		if usable(tex) {
-			clip.set_input_texture(tex, job.time);
+		if let Some(tex) = pick_input(&clip.name, job) {
+			if usable(&tex) {
+				clip.set_input_texture(Some(tex), job.time);
+			}
 		}
 	}
 
@@ -207,7 +209,7 @@ pub fn render_frame(
 		.find(|c| c.name == "Output")
 		.ok_or_else(|| Error::Failed("实例无 Output clip".into()))?;
 	output_clip.set_region_of_definition(region_of_interest, job.time);
-	output_clip.set_output_texture(job.dst, job.time);
+	output_clip.set_output_texture(Some(job.dst.clone()), job.time);
 
 	// 6. 输入 clip：RoD 与格式（pluginrenderer.cpp:1627-1665；Phase 2
 	// 全链路 F32 → 格式选择恒等，无转换路径）。
@@ -215,7 +217,7 @@ pub fn render_frame(
 		if clip.name == "Output" {
 			continue;
 		}
-		if usable(pick_input(&clip.name, job)) {
+		if pick_input(&clip.name, job).map_or(false, |t| usable(&t)) {
 			clip.set_region_of_definition(region_of_interest, job.time);
 			clip.set_video_params(render::PIXEL_FORMAT_F32, 4);
 		}
@@ -242,8 +244,7 @@ pub fn render_frame(
 	// 9. isIdentity 短路（ofxRendering "Identity Effects"）：插件声明
 	// 本帧等价于某输入 clip → 直接透传该 clip 在透传时间的帧。
 	if let Some((t, clip_name)) = inst.is_identity(job.time)? {
-		passthrough(inst, &clip_name, t, job.dst)?;
-		unsafe { render::frame_free(&mut (dst_frame)) };
+		passthrough(inst, &clip_name, t, &job.dst)?;
 		return Ok(zip_rois(inst, &rois));
 	}
 
@@ -269,7 +270,7 @@ pub fn render_frame(
 			output.clone(),
 		)?;
 		// 输出装配（pluginrenderer.cpp:1762-1834 的 CPU 路径）。
-		write_output_frame(job.dst, &output)?;
+		write_output_frame(&job.dst, &output)?;
 	} else {
 		// GL 路径：插件直接画进已附着的输出纹理（
 		// pluginrenderer.cpp:1784-1834 的 GL 分支）；无 CPU 回读。
@@ -277,12 +278,11 @@ pub fn render_frame(
 			job.time,
 			RenderScale { x: 1.0, y: 1.0 },
 			render_window,
-			job.renderer.unwrap(),
-			job.dst,
+			job.renderer.clone().unwrap(),
+			job.dst.clone(),
 		)?;
 	}
 
-	unsafe { render::frame_free(&mut (dst_frame)) };
 	Ok(zip_rois(inst, &rois))
 }
 
@@ -296,22 +296,11 @@ fn zip_rois(inst: &Instance, rois: &[OfxRectD]) -> Vec<(String, OfxRectD)> {
 		.collect()
 }
 
-/// 读目标纹理的帧与参数（F32 校验）。返回 (帧句柄, 参数, 宽, 高)。
-fn read_dst(
-	dst: TextureHandle,
-) -> crate::error::Result<(FrameHandle, render::VideoParams, f64, f64)> {
+/// 读目标纹理的参数（F32 校验）。返回 (参数, 宽, 高)。
+fn read_dst(dst: &Texture) -> crate::error::Result<(render::VideoParams, f64, f64)> {
 	use crate::error::Error;
-	let mut frame = FrameHandle::null();
-	if unsafe { render::texture_get_frame(dst, &mut frame) } != 0 || frame.is_null() {
-		return Err(Error::Failed("输出纹理无 CPU 帧".into()));
-	}
-	let mut params = render::VideoParams::default();
-	if unsafe { render::frame_get_params(frame, &mut params) } != 0 {
-		unsafe { render::frame_free(&mut frame) };
-		return Err(Error::Failed("输出帧无参数".into()));
-	}
+	let params = render::texture_get_params(dst);
 	if params.format != render::PIXEL_FORMAT_F32 {
-		unsafe { render::frame_free(&mut frame) };
 		return Err(Error::Failed(format!(
 			"输出帧格式 {} 非 F32（Phase 2 约束）",
 			params.format
@@ -319,10 +308,9 @@ fn read_dst(
 	}
 	let (w, h) = (params.width as f64, params.height as f64);
 	if w <= 0.0 || h <= 0.0 {
-		unsafe { render::frame_free(&mut frame) };
 		return Err(Error::Invalid);
 	}
-	Ok((frame, params, w, h))
+	Ok((params, w, h))
 }
 
 /// 目标参数的像素比（缺失 1.0）。
@@ -351,30 +339,32 @@ fn plugin_supports_opengl(inst: &Instance) -> bool {
 		.unwrap_or(false)
 }
 
-/// 输入纹理是否可用（非空且非占位；pluginrenderer.cpp:1504-1513 的
+/// 输入纹理是否可用（非占位；pluginrenderer.cpp:1504-1513 的
 /// is_usable_input——Phase 2 只看非 dummy，帧/Renderer 由 oakrender
 /// 保证）。
-fn usable(tex: TextureHandle) -> bool {
-	!tex.is_null() && unsafe { render::texture_is_dummy(tex) } == 0
+fn usable(tex: &Texture) -> bool {
+	!tex.is_dummy()
 }
 
 /// 按 C++ pluginrenderer.cpp:1527-1543 的规则选输入纹理。
-fn pick_input(clip_name: &str, job: &RenderJob) -> TextureHandle {
-	if job.effect_input_id.as_deref() == Some(clip_name) && !job.src.is_null() {
-		return job.src;
+fn pick_input(clip_name: &str, job: &RenderJob) -> Option<Texture> {
+	if job.effect_input_id.as_deref() == Some(clip_name) {
+		if let Some(src) = &job.src {
+			return Some(src.clone());
+		}
 	}
 	for (name, tex) in &job.inputs {
 		if name == clip_name {
-			return *tex;
+			return Some(tex.clone());
 		}
 	}
 	// SimpleSource 回退（pluginrenderer.cpp:1534-1543：
 	// kOfxImageEffectSimpleSourceClipName 取 k_texture_input，再回退
 	// job.src）。
-	if clip_name == "Source" && !job.src.is_null() {
-		return job.src;
+	if clip_name == "Source" {
+		return job.src.clone();
 	}
-	TextureHandle::null()
+	None
 }
 
 /// isIdentity 透传：把所引输入 clip 在 `t` 的帧拷入输出（CPU 拷贝；
@@ -383,7 +373,7 @@ fn passthrough(
 	inst: &Instance,
 	clip_name: &str,
 	t: f64,
-	dst: TextureHandle,
+	dst: &Texture,
 ) -> crate::error::Result<()> {
 	use crate::error::Error;
 	let clip = inst
@@ -397,59 +387,54 @@ fn passthrough(
 
 /// 参数覆盖（pluginrenderer.cpp:132-290 `apply_param_overrides` 的
 /// Rust 移植）：把每帧的节点值注入实例参数。字符串族（String/
-/// StrChoice）经专用 C ABI（set_param_string），不在此表的 oaknode
+/// StrChoice）经专用路径（set_param_string），不在此表的 oaknode
 /// POD 表达范围内 → 跳过（与 C++ 的 k_file/k_text/k_font/k_str_combo
 /// 走专用桥一致）。
-fn apply_param_overrides(inst: &Instance, values: &[(String, crate::ffi::OakNodeValue)]) {
+fn apply_param_overrides(inst: &Instance, values: &[(String, crate::node::Value)]) {
 	for (key, v) in values {
 		let Some(p) = inst.params.find(key) else {
 			continue;
 		};
-		let Some(pv) = crate::ffi::node_value_to_param(v, &p.def.ofx_type) else {
+		let Some(pv) = crate::param::param_value_from_node(v, &p.def.ofx_type) else {
 			continue;
 		};
 		p.set_ofx(pv);
 	}
 }
 
-/// 把 CPU 图像写入目标纹理的帧（行优先、行跨度感知；F32 校验）。
+/// 把 CPU 图像写入目标纹理（行优先、行跨度感知；F32 校验）。
 /// Phase 2 输出装配的公共落点（CPU render 路径与 isIdentity 透传
-/// 共用）。
-pub(crate) fn write_output_frame(dst: TextureHandle, image: &Image) -> crate::error::Result<()> {
+/// 共用）。GPU 目标纹理经后端 upload 回写（`Texture::Gpu` 分支）。
+pub(crate) fn write_output_frame(dst: &Texture, image: &Image) -> crate::error::Result<()> {
 	use crate::error::Error;
-	let mut frame = FrameHandle::null();
-	if unsafe { render::texture_get_frame(dst, &mut frame) } != 0 || frame.is_null() {
-		return Err(Error::Failed("输出纹理无 CPU 帧".into()));
-	}
-	let mut params = render::VideoParams::default();
-	if unsafe { render::frame_get_params(frame, &mut params) } != 0 {
-		unsafe { render::frame_free(&mut frame) };
-		return Err(Error::Failed("输出帧无参数".into()));
-	}
+	let mut frame = render::texture_get_frame(dst)?;
+	let params = frame.video_params();
 	if params.format != render::PIXEL_FORMAT_F32 {
-		unsafe { render::frame_free(&mut frame) };
 		return Err(Error::Failed("输出帧格式非 F32（Phase 2 约束）".into()));
 	}
 	let (w, h) = (params.width as usize, params.height as usize);
 	let tight = w * image.components().channel_count() * 4;
 	if tight != image.row_bytes() || tight * h != image.pixels().len() {
-		unsafe { render::frame_free(&mut frame) };
 		return Err(Error::Failed("图像尺寸与输出帧不一致".into()));
 	}
-	let dst_ptr = unsafe { render::frame_data(frame) };
+	let dst_ptr = frame.data_mut();
 	if dst_ptr.is_null() {
-		unsafe { render::frame_free(&mut frame) };
 		return Err(Error::Failed("输出帧无数据".into()));
 	}
-	let row = unsafe { render::frame_linesize_bytes(frame) } as usize;
+	let row = frame.linesize_bytes();
 	let row = if row > 0 { row } else { tight };
-	let dst_bytes = unsafe { std::slice::from_raw_parts_mut(dst_ptr as *mut u8, row * h) };
+	let dst_bytes = unsafe { std::slice::from_raw_parts_mut(dst_ptr, row * h) };
 	let pixels = image.pixels();
 	for y in 0..h {
 		let d = y * row;
 		let s = y * tight;
 		dst_bytes[d..d + tight].copy_from_slice(&pixels[s..s + tight]);
 	}
-	unsafe { render::frame_free(&mut frame) };
+	// GPU 目标纹理：拷贝只落在下载帧上，经后端 upload 回写
+	// （CPU 纹理无需上传）。
+	if let Texture::Gpu { token, ctx, .. } = dst {
+		ctx.upload(*token, &frame)
+			.map_err(|e| Error::Failed(format!("输出纹理上传失败：{e}")))?;
+	}
 	Ok(())
 }

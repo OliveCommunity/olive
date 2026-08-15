@@ -73,7 +73,7 @@ pub struct NodeCore {
 	pub inputs: Vec<Input>,
 	/// Keyframe tracks per (input, element).
 	pub keyframes: Vec<(String, i32, KeyframeTrack)>,
-	/// Caches as oakrender handles (created via bridge::render).
+	/// Caches as opaque oakrender handles.
 	pub caches: NodeCaches,
 	/// Node flags bitmask (hidden, dont-show-in-param-view, ...).
 	pub flags: u64,
@@ -429,18 +429,18 @@ impl NodeCore {
 #[derive(Clone)]
 pub struct NodeCaches {
 	/// Video frame hash cache.
-	pub video: crate::bridge::render::CacheHandle,
+	pub video: crate::handle::CHandle,
 	/// Thumbnail cache.
-	pub thumbnail: crate::bridge::render::CacheHandle,
+	pub thumbnail: crate::handle::CHandle,
 	/// Audio playback cache.
-	pub audio: crate::bridge::render::CacheHandle,
+	pub audio: crate::handle::CHandle,
 	/// Waveform cache.
-	pub waveform: crate::bridge::render::CacheHandle,
+	pub waveform: crate::handle::CHandle,
 }
 
 impl Default for NodeCaches {
-	/// All empty handles (caches are created lazily through bridge::render
-	/// when a node enters a project; `// CPP-PARITY: node.cpp:102`).
+	/// All empty handles (caches are created lazily when a node
+	/// enters a project; `// CPP-PARITY: node.cpp:102`).
 	fn default() -> Self {
 		NodeCaches {
 			video: crate::handle::CHandle::null(),
@@ -586,7 +586,7 @@ pub trait NodeBehavior: Send {
 	fn generate_frame(
 		&self,
 		core: &NodeCore,
-		frame: &mut crate::bridge::render::TextureHandle,
+		frame: &mut crate::handle::CHandle,
 		time: Rational,
 	) {
 		let _ = (core, frame, time);

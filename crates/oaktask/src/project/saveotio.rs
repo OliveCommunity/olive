@@ -16,28 +16,33 @@
 
 //! `SaveOTIOTask`, mirroring `src/task/src/project/saveotio/saveotio.h`.
 //!
-//! Serializes a borrowed `OakNodeProject` to an OpenTimelineIO (`.otio`) or
-//! FCPXML (`.fcpxml`) file through the pure-Rust `oakotio` binding (see
-//! `README` decision #6): the project's sequences become `OTIO::Timeline`s
+//! Serializes a borrowed project to an OpenTimelineIO (`.otio`) or FCPXML
+//! (`.fcpxml`) file through the pure-Rust `oakotio` binding (see `README`
+//! decision #6): the project's sequences become `OTIO::Timeline`s
 //! (`serialize_timeline` / `serialize_track` / `serialize_track_list`),
 //! exactly like the C++ `serialize_*` helpers. The format is dispatched
 //! from the filename extension (see [`crate::project::format`]) at the
-//! final write only — the serialization itself is shared. No OTIO or
-//! FCPXML type crosses the oaktask C ABI.
+//! final write only — the serialization itself is shared.
+//!
+//! **Single-lib note**: the project graph is read through the direct
+//! oaknode domain operations in [`crate::nodeops`] (folder children,
+//! sequence track lists, track blocks, footage parameters) instead of the
+//! deleted oaknode C ABI stubs; the project is an
+//! `Arc<Mutex<oaknode::project::Project>>` instead of a borrowed `CHandle`.
 //!
 //! CPP-PARITY: src/task/src/project/saveotio/saveotio.cpp
 
 use oakcore_rs::Rational;
+use oaknode::id::NodeId;
+use oaknode::track::TrackType;
 use oakotio::{
 	Clip, Composable, ExternalReference, Gap, MediaReference, RationalTime, Serializable,
 	SerializableCollection, TimeRange, Timeline, Track, Transition,
 };
 
-use crate::bridge;
 use crate::error::{Error, Result};
-use crate::handle::CHandle;
+use crate::nodeops::{self, ProjectRef};
 use crate::project::format::InterchangeFormat;
-use crate::project::load::buf_to_string;
 use crate::task::{Task, TaskBehavior};
 
 /// `Rational(INT_MIN)` — the initial "no track yet" maximum length
@@ -50,8 +55,8 @@ fn rational_min() -> Rational {
 pub struct SaveOTIOTask {
 	/// The shared task base.
 	pub base: Task,
-	/// Borrowed project to save (borrowed `OakNodeProject`).
-	pub project: CHandle,
+	/// Borrowed project to save (domain project).
+	pub project: ProjectRef,
 	/// Output OTIO filename.
 	pub filename: String,
 }
@@ -61,54 +66,35 @@ impl SaveOTIOTask {
 	/// sequence has no usable frame rate or a track fails to serialize.
 	///
 	/// CPP-PARITY: saveotio.cpp (SaveOTIOTask::serialize_timeline)
-	fn serialize_timeline(sequence: CHandle) -> Option<Timeline> {
-		let mut otio_timeline = Timeline::new(node_label_of(unsafe {
-			bridge::node::oaknode_sequence_as_node(sequence)
-		}));
+	fn serialize_timeline(project: &ProjectRef, sequence: NodeId) -> Option<Timeline> {
+		let mut otio_timeline =
+			Timeline::new(nodeops::node_label(project, sequence));
 
+		// Direct video-params value type (single-lib unification); absent
+		// params leave rate at 0.0 → the documented `None` path.
+		let (num, den) = nodeops::sequence_video_params(project, sequence, 0)
+			.map(|vp| vp.frame_rate())
+			.unwrap_or((0, 1));
 		let mut rate = 0.0f64;
-		{
-			let mut num = 0;
-			let mut den = 1;
-			let mut vp = CHandle::null();
-			if unsafe { bridge::node::oaknode_sequence_get_video_params(sequence, 0, &mut vp) } == 0
-			{
-				unsafe {
-					bridge::common::oakcommon_videoparams_get_frame_rate(vp, &mut num, &mut den);
-				}
-				if den != 0 {
-					rate = num as f64 / den as f64;
-				}
-				if !vp.ctx.is_null() {
-					unsafe {
-						bridge::common::oakcommon_videoparams_free(&mut vp);
-					}
-				}
-			}
+		if den != 0 {
+			rate = num as f64 / den as f64;
 		}
 		if rate.is_nan() || rate <= 0.0 {
 			return None;
 		}
 
-		let mut video_list = CHandle::null();
-		let mut audio_list = CHandle::null();
-		unsafe {
-			bridge::node::oaknode_sequence_get_track_list(
-				sequence,
-				bridge::node::OAKNODE_TRACK_TYPE_VIDEO,
-				&mut video_list,
-			);
-			bridge::node::oaknode_sequence_get_track_list(
-				sequence,
-				bridge::node::OAKNODE_TRACK_TYPE_AUDIO,
-				&mut audio_list,
-			);
-		}
+		let video_list = nodeops::sequence_track_list(project, sequence, TrackType::Video);
+		let audio_list = nodeops::sequence_track_list(project, sequence, TrackType::Audio);
 
-		if !Self::serialize_track_list(video_list, &mut otio_timeline, rate)
-			|| !Self::serialize_track_list(audio_list, &mut otio_timeline, rate)
-		{
-			return None;
+		if let Some(list) = video_list {
+			if !Self::serialize_track_list(project, list, &mut otio_timeline, rate) {
+				return None;
+			}
+		}
+		if let Some(list) = audio_list {
+			if !Self::serialize_track_list(project, list, &mut otio_timeline, rate) {
+				return None;
+			}
 		}
 
 		Some(otio_timeline)
@@ -119,28 +105,18 @@ impl SaveOTIOTask {
 	///
 	/// CPP-PARITY: saveotio.cpp (SaveOTIOTask::serialize_track_list)
 	fn serialize_track_list(
-		list: CHandle,
+		project: &ProjectRef,
+		list: NodeId,
 		otio_timeline: &mut Timeline,
 		sequence_rate: f64,
 	) -> bool {
-		if list.ctx.is_null() {
-			return true;
-		}
-
 		let mut max_track_length = rational_min();
 
-		let mut track_count = 0;
-		unsafe {
-			bridge::node::oaknode_tracklist_get_track_count(list, &mut track_count);
-		}
+		let track_count = nodeops::tracklist_track_count(project, list);
 
 		for i in 0..track_count {
-			let mut track = CHandle::null();
-			unsafe {
-				bridge::node::oaknode_tracklist_get_track_at(list, i, &mut track);
-			}
-			if !track.ctx.is_null() {
-				let length = track_length_of(track);
+			if let Some(track) = nodeops::tracklist_track_at(project, list, i) {
+				let length = nodeops::track_length(project, track);
 				if length > max_track_length {
 					max_track_length = length;
 				}
@@ -148,15 +124,12 @@ impl SaveOTIOTask {
 		}
 
 		for i in 0..track_count {
-			let mut track = CHandle::null();
-			unsafe {
-				bridge::node::oaknode_tracklist_get_track_at(list, i, &mut track);
-			}
-			if track.ctx.is_null() {
+			let Some(track) = nodeops::tracklist_track_at(project, list, i) else {
 				continue;
-			}
+			};
 
-			let Some(otio_track) = Self::serialize_track(track, sequence_rate, max_track_length)
+			let Some(otio_track) =
+				Self::serialize_track(project, track, sequence_rate, max_track_length)
 			else {
 				return false;
 			};
@@ -175,99 +148,62 @@ impl SaveOTIOTask {
 	///
 	/// CPP-PARITY: saveotio.cpp (SaveOTIOTask::serialize_track)
 	fn serialize_track(
-		track: CHandle,
+		project: &ProjectRef,
+		track: NodeId,
 		sequence_rate: f64,
 		max_track_length: Rational,
 	) -> Option<Track> {
-		let mut track_type = bridge::node::OAKNODE_TRACK_TYPE_NONE;
-		unsafe {
-			bridge::node::oaknode_track_get_type(track, &mut track_type);
-		}
+		let track_type = nodeops::track_type(project, track)?;
 
 		let kind = match track_type {
-			bridge::node::OAKNODE_TRACK_TYPE_VIDEO => "Video",
-			bridge::node::OAKNODE_TRACK_TYPE_AUDIO => "Audio",
-			other => {
-				eprintln!("Don't know OTIO track kind for native type {other}");
+			TrackType::Video => "Video",
+			TrackType::Audio => "Audio",
+			TrackType::Subtitle => {
+				eprintln!(
+					"Don't know OTIO track kind for native type {}",
+					track_type.to_c()
+				);
 				return None;
 			}
 		};
 		let mut otio_track = Track::new(kind);
 
-		let mut block_count = 0;
-		unsafe {
-			bridge::node::oaknode_track_get_block_count(track, &mut block_count);
-		}
+		let block_count = nodeops::track_block_count(project, track);
 
 		for i in 0..block_count {
-			let mut block = CHandle::null();
-			unsafe {
-				bridge::node::oaknode_track_get_block_at(track, i, &mut block);
-			}
-			if block.ctx.is_null() {
+			let Some(block) = nodeops::track_block_at(project, track, i) else {
 				continue;
-			}
+			};
 
-			let mut kind = bridge::node::OAKNODE_BLOCK_OTHER;
-			unsafe {
-				bridge::node::oaknode_block_get_kind(block, &mut kind);
-			}
+			let kind = nodeops::block_kind(project, block);
 
 			let otio_block: Option<Composable> = match kind {
-				bridge::node::OAKNODE_BLOCK_CLIP => {
-					let mut otio_clip = Clip::new(node_label_of(unsafe {
-						bridge::node::oaknode_block_as_node(block)
-					}));
+				nodeops::BlockKind::Clip => {
+					let mut otio_clip = Clip::new(nodeops::node_label(project, block));
 
 					otio_clip.set_source_range(TimeRange::new(
-						RationalTime::from_rational(block_in_of(block), sequence_rate),
-						RationalTime::from_rational(block_length_of(block), sequence_rate),
+						RationalTime::from_rational(block_in_of(project, block), sequence_rate),
+						RationalTime::from_rational(block_length_of(project, block), sequence_rate),
 					));
 
-					let mut media = CHandle::null();
-					unsafe {
-						bridge::node::oaknode_node_find_input_footage(
-							bridge::node::oaknode_block_as_node(block),
-							&mut media,
-						);
-					}
-					if !media.ctx.is_null() {
-						let available_range = if track_type
-							== bridge::node::OAKNODE_TRACK_TYPE_VIDEO
-						{
+					let media = nodeops::node_find_input_footage(project, block);
+					if let Some(media) = media {
+						let available_range = if track_type == TrackType::Video {
 							// OTIO ExternalReference uses the source clips
 							// frame rate (or sample rate) as opposed to the
 							// sequences rate.
-							let mut source_frame_rate = 0.0f64;
-							let mut duration = 0.0f64;
-							let mut num = 0;
-							let mut den = 1;
-							let mut vp = CHandle::null();
-							if unsafe {
-								bridge::node::oaknode_footage_get_video_params(media, 0, &mut vp)
-							} == 0
-							{
-								unsafe {
-									bridge::common::oakcommon_videoparams_get_frame_rate(
-										vp, &mut num, &mut den,
-									);
-								}
-								if den != 0 {
-									source_frame_rate = num as f64 / den as f64;
-								}
-								let mut dur = 0i64;
-								unsafe {
-									bridge::common::oakcommon_videoparams_get_duration(
-										vp, &mut dur,
-									);
-								}
-								duration = dur as f64;
-								if !vp.ctx.is_null() {
-									unsafe {
-										bridge::common::oakcommon_videoparams_free(&mut vp);
-									}
-								}
-							}
+							let (source_frame_rate, duration) =
+								nodeops::footage_video_params(project, media, 0)
+									.map(|vp| {
+										let (num, den) = vp.frame_rate();
+										let rate = if den != 0 {
+											num as f64 / den as f64
+										} else {
+											0.0
+										};
+										(rate, vp.duration() as f64)
+									})
+									.unwrap_or((0.0, 0.0));
 							TimeRange::new(
 								RationalTime::new(0.0, source_frame_rate),
 								RationalTime::new(duration, source_frame_rate),
@@ -279,7 +215,7 @@ impl SaveOTIOTask {
 							)
 						};
 
-						let media_url = footage_filename(media);
+						let media_url = nodeops::footage_filename(project, media);
 						if !media_url.is_empty() {
 							otio_clip.set_media_reference(MediaReference::ExternalReference(
 								ExternalReference::new(media_url, Some(available_range)),
@@ -289,32 +225,25 @@ impl SaveOTIOTask {
 
 					Some(Composable::Clip(otio_clip))
 				}
-				bridge::node::OAKNODE_BLOCK_GAP => Some(Composable::Gap(Gap::new(
+				nodeops::BlockKind::Gap => Some(Composable::Gap(Gap::new(
 					TimeRange::new(
-						RationalTime::from_rational(block_in_of(block), 24.0),
-						RationalTime::from_rational(block_length_of(block), 24.0),
+						RationalTime::from_rational(block_in_of(project, block), 24.0),
+						RationalTime::from_rational(block_length_of(project, block), 24.0),
 					),
-					node_label_of(unsafe { bridge::node::oaknode_block_as_node(block) }),
+					nodeops::node_label(project, block),
 				))),
-				bridge::node::OAKNODE_BLOCK_TRANSITION => {
-					let mut otio_transition = Transition::new(node_label_of(unsafe {
-						bridge::node::oaknode_block_as_node(block)
-					}));
+				nodeops::BlockKind::Transition => {
+					let mut otio_transition =
+						Transition::new(nodeops::node_label(project, block));
 
-					let (n, d) = transition_offset_of(block, true);
-					otio_transition.set_in_offset(RationalTime::from_rational(
-						Rational::new(n as i64, d as i64),
-						24.0,
-					));
-					let (n, d) = transition_offset_of(block, false);
-					otio_transition.set_out_offset(RationalTime::from_rational(
-						Rational::new(n as i64, d as i64),
-						24.0,
-					));
+					let n = transition_offset_of(project, block, true);
+					otio_transition.set_in_offset(RationalTime::from_rational(n, 24.0));
+					let n = transition_offset_of(project, block, false);
+					otio_transition.set_out_offset(RationalTime::from_rational(n, 24.0));
 
 					Some(Composable::Transition(otio_transition))
 				}
-				_ => None,
+				nodeops::BlockKind::Other => None,
 			};
 
 			let Some(otio_block) = otio_block else {
@@ -364,25 +293,42 @@ impl TaskBehavior for SaveOTIOTask {
 		// Collect sequences from the root folder (non-recursive, matching
 		// the original list_children_of_type behavior closely enough for
 		// OTIO).
-		let root = unsafe { bridge::node::oaknode_project_root(self.project) };
-		if root.ctx.is_null() {
+		let root = {
+			let guard = self.project.lock().unwrap_or_else(|e| e.into_inner());
+			guard.root
+		};
+		if !root.valid() {
 			task.set_error("Project contains no sequences to export.");
 			return Err(Error::Failed(
 				"Project contains no sequences to export.".to_string(),
 			));
 		}
 
-		let mut sequences: Vec<CHandle> = Vec::new();
-		let child_count = unsafe { bridge::node::oaknode_folder_child_count(root) };
-		for i in 0..child_count {
-			let child = unsafe { bridge::node::oaknode_folder_child_at(root, i) };
-			if child.ctx.is_null() {
-				continue;
-			}
-			if node_id_of(child) == bridge::node::OAKNODE_TYPE_SEQUENCE {
-				// Borrowed sequence alias of the child node handle (all
-				// oaknode handles share the same box layout).
-				sequences.push(child);
+		let mut sequences: Vec<NodeId> = Vec::new();
+		{
+			let guard = self.project.lock().unwrap_or_else(|e| e.into_inner());
+			let Some(entry) = guard.graph.get(root) else {
+				task.set_error("Project contains no sequences to export.");
+				return Err(Error::Failed(
+					"Project contains no sequences to export.".to_string(),
+				));
+			};
+			let Some(folder) = entry
+				.behavior
+				.as_any()
+				.and_then(|a| a.downcast_ref::<oaknode::folder::FolderBehavior>())
+			else {
+				task.set_error("Project contains no sequences to export.");
+				return Err(Error::Failed(
+					"Project contains no sequences to export.".to_string(),
+				));
+			};
+			for child in &folder.children {
+				if let Some(child_entry) = guard.graph.get(*child) {
+					if child_entry.behavior.type_id() == nodeops::SEQUENCE_TYPE_ID {
+						sequences.push(*child);
+					}
+				}
 			}
 		}
 
@@ -395,12 +341,12 @@ impl TaskBehavior for SaveOTIOTask {
 
 		let mut serialized: Vec<Timeline> = Vec::with_capacity(sequences.len());
 		for sequence in &sequences {
-			match Self::serialize_timeline(*sequence) {
+			match Self::serialize_timeline(&self.project, *sequence) {
 				Some(timeline) => serialized.push(timeline),
 				None => {
 					task.set_error(&format!(
 						"Failed to serialize sequence \"{}\"",
-						node_label_of(unsafe { bridge::node::oaknode_sequence_as_node(*sequence) })
+						nodeops::node_label(&self.project, *sequence)
 					));
 					return Err(Error::Failed("Failed to serialize sequence".to_string()));
 				}
@@ -449,90 +395,23 @@ impl TaskBehavior for SaveOTIOTask {
 	}
 }
 
-/// Two-stage read of a node's label.
-fn node_label_of(node: CHandle) -> String {
-	let needed = unsafe { bridge::node::oaknode_node_get_label(node, std::ptr::null_mut(), 0) };
-	if needed <= 0 {
-		return String::new();
-	}
-	let mut buf = vec![0i8; needed as usize];
-	unsafe {
-		bridge::node::oaknode_node_get_label(node, buf.as_mut_ptr(), needed);
-	}
-	buf_to_string(&buf)
-}
-
-/// Two-stage read of a node's type id.
-fn node_id_of(node: CHandle) -> String {
-	let needed = unsafe { bridge::node::oaknode_node_get_id(node, std::ptr::null_mut(), 0) };
-	if needed <= 0 {
-		return String::new();
-	}
-	let mut buf = vec![0i8; needed as usize];
-	unsafe {
-		bridge::node::oaknode_node_get_id(node, buf.as_mut_ptr(), needed);
-	}
-	buf_to_string(&buf)
-}
-
 /// The block's in point as a `Rational` (default 0/1 when unset).
-fn block_in_of(block: CHandle) -> Rational {
-	let mut n = 0;
-	let mut d = 1;
-	unsafe {
-		bridge::node::oaknode_block_get_in(block, &mut n, &mut d);
-	}
-	Rational::new(n as i64, d as i64)
+fn block_in_of(project: &ProjectRef, block: NodeId) -> Rational {
+	nodeops::block_in(project, block)
 }
 
 /// The block's length as a `Rational` (default 0/1 when unset).
-fn block_length_of(block: CHandle) -> Rational {
-	let mut n = 0;
-	let mut d = 1;
-	unsafe {
-		bridge::node::oaknode_block_get_length(block, &mut n, &mut d);
-	}
-	Rational::new(n as i64, d as i64)
-}
-
-/// The track's total length as a `Rational` (default 0/1 when unset).
-fn track_length_of(track: CHandle) -> Rational {
-	let mut n = 0;
-	let mut d = 1;
-	unsafe {
-		bridge::node::oaknode_track_get_length(track, &mut n, &mut d);
-	}
-	Rational::new(n as i64, d as i64)
+fn block_length_of(project: &ProjectRef, block: NodeId) -> Rational {
+	nodeops::block_length(project, block)
 }
 
 /// A transition's in (`in_offset == true`) or out offset as a `Rational`.
-fn transition_offset_of(block: CHandle, in_offset: bool) -> (i32, i32) {
-	let mut n = 0;
-	let mut d = 1;
+fn transition_offset_of(project: &ProjectRef, block: NodeId, in_offset: bool) -> Rational {
 	if in_offset {
-		unsafe {
-			bridge::node::oaknode_transition_get_in_offset(block, &mut n, &mut d);
-		}
+		nodeops::transition_in_offset(project, block)
 	} else {
-		unsafe {
-			bridge::node::oaknode_transition_get_out_offset(block, &mut n, &mut d);
-		}
+		nodeops::transition_out_offset(project, block)
 	}
-	(n, d)
-}
-
-/// Two-stage read of a footage's filename (empty when unset).
-fn footage_filename(footage: CHandle) -> String {
-	let needed =
-		unsafe { bridge::node::oaknode_footage_filename(footage, std::ptr::null_mut(), 0) };
-	if needed <= 0 {
-		return String::new();
-	}
-	let mut buf = vec![0i8; needed as usize];
-	unsafe {
-		bridge::node::oaknode_footage_filename(footage, buf.as_mut_ptr(), needed);
-	}
-	buf_to_string(&buf)
 }
 
 /// The serialized track's duration as an `OTIO::RationalTime` — the sum of

@@ -30,11 +30,8 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]
 
-pub mod bridge;
 pub mod config;
 pub mod error;
-pub mod ffi;
-pub mod handle;
 pub mod levelmeter;
 pub mod manager;
 pub mod params;

@@ -16,67 +16,68 @@
 
 //! `PreCacheTask`, mirroring `src/task/src/precache/precachetask.h`.
 //!
-//! Renders a footage node (or the whole sequence) through
-//! [`crate::render::RenderTask`] to fill the playback cache. Owns a deep copy
-//! of the project (`OakNodeProject`) and borrows the source footage
-//! (`OakNodeFootage`).
+//! Renders a footage node through [`crate::render::RenderTask`] to fill
+//! the playback cache. The footage and its sequence are now
+//! [`crate::nodeops::NodeRef`] domain references (the deleted oaknode C
+//! ABI stubs are gone); video params come from the sequence's parameter
+//! streams and the cache range is the full footage video length.
 //!
-//! **Simplifications over the C++**: the deep project copy / viewer wiring
-//! is not built (the render drives the given viewer directly) and the
-//! timeline work-area intersection is replaced by the full footage length.
+//! **Simplifications over the C++**: the deep project copy / viewer
+//! wiring is not built (the render drives the given footage directly —
+//! the ticket carries the footage filename and the footage node's
+//! identity as the cache key) and the timeline work-area intersection is
+//! replaced by the full footage length. The direct ticket arena's eval
+//! producer does not persist frames to the frame cache yet, so this
+//! render pass warms nothing on disk; the plumbing is in place.
 //!
 //! CPP-PARITY: src/task/src/precache/precachetask.h
 
-use crate::bridge;
+use oakcommon::videoparams::VideoParams;
+
 use crate::error::Result;
-use crate::handle::CHandle;
+use crate::nodeops::{self, NodeRef};
 use crate::render::{RenderTask, RenderTaskBehavior};
 use crate::task::{Task, TaskBehavior};
 use oakcore_rs::{Rational, TimeRange};
 
-/// A pre-cache task: renders frames and audio of a footage node into the
-/// playback cache without any output file.
+/// A pre-cache task: renders frames of a footage node into the playback
+/// cache without any output file.
 pub struct PreCacheTask {
 	/// The render base (itself a task).
 	pub render: RenderTask,
-	/// Owning deep copy of the project (borrowed `OakNodeProject`).
-	pub project: CHandle,
-	/// Borrowed source footage (borrowed `OakNodeFootage`).
-	pub footage: CHandle,
+	/// The footage being cached.
+	pub footage: NodeRef,
 	/// Frame index within the footage being cached.
 	pub index: i32,
-	/// The sequence node (borrowed `OakNodeSequence`).
-	pub sequence: CHandle,
+	/// The sequence context the footage lives in.
+	pub sequence: NodeRef,
 }
 
 impl PreCacheTask {
 	/// Create a pre-cache task for the given footage at `index` inside
-	/// `sequence`.
-	pub fn new(footage: CHandle, index: i32, sequence: CHandle) -> PreCacheTask {
-		// Video params from the sequence (empty when unavailable).
-		let mut video_params = CHandle::null();
-		unsafe {
-			bridge::node::oaknode_sequence_get_video_params(sequence, 0, &mut video_params);
-		}
+	/// `sequence`. The old `footage: CHandle` / `sequence: CHandle`
+	/// signature is replaced by domain [`NodeRef`]s (single-lib
+	/// unification).
+	pub fn new(footage: NodeRef, index: i32, sequence: NodeRef) -> PreCacheTask {
+		// The sequence's video params drive the render timebase (the
+		// deleted `oaknode_sequence_get_video_params` stub is replaced by
+		// the direct behavior query).
+		let video_params: Option<VideoParams> =
+			nodeops::sequence_video_params(&sequence.0, sequence.1, 0);
 
-		let filename = footage_filename(footage);
+		// The footage filename labels the task (the deleted
+		// `oaknode_footage_filename` stub is replaced by the direct
+		// behavior query).
+		let filename = nodeops::footage_filename(&footage.0, footage.1);
 		let title = format!("Pre-caching {filename}:{index}");
-		let base = Task::new(&title, CHandle::null());
-		let render = RenderTask::new(
-			base,
-			video_params,
-			CHandle::null(),
-			sequence,
-			Default::default(),
-			None,
-		);
+		let base = Task::new(&title, None);
 
-		// A scratch project for the render color manager (simplified).
-		let project = unsafe { bridge::node::oaknode_project_init() };
+		// The render target is the footage node itself (pre-cache fills
+		// that footage's frame cache).
+		let render = RenderTask::new(base, video_params, footage.clone(), Default::default(), None);
 
 		PreCacheTask {
 			render,
-			project,
 			footage,
 			index,
 			sequence,
@@ -90,59 +91,42 @@ impl TaskBehavior for PreCacheTask {
 		self.render.base.set_cancel_atom(task.get_cancel_atom());
 
 		// The full footage length is the cache range (simplified: no
-		// work-area intersection).
-		let mut len_num = 0i64;
-		let mut len_den = 1i64;
-		unsafe {
-			bridge::node::oaknode_footage_get_video_length(
-				self.footage,
-				&mut len_num,
-				&mut len_den,
-			);
-		}
-		let range = TimeRange::new(Rational::new(0, 1), Rational::new(len_num, len_den));
+		// work-area intersection). The deleted `oaknode_footage_get_video_length`
+		// stub is replaced by the direct behavior query.
+		let length = nodeops::node_length(&self.footage.0, self.footage.1);
+		let range = TimeRange::new(Rational::new(0, 1), length);
 
-		let mut color_manager = unsafe { bridge::node::oaknode_colormanager_init(self.project) };
-		let mut cache = bridge::render::OakRenderCache::null();
-		unsafe {
-			bridge::node::oaknode_node_get_video_frame_cache(self.sequence, &mut cache);
-		}
-
-		self.render
-			.set_render_inputs(color_manager, cache, 0 /* k_online */, false, range);
+		// No color manager / frame-cache handles exist on the direct
+		// ticket path (the arena keys the cache by the footage node
+		// identity — see `RenderTask::build_video_ticket`).
+		self.render.set_render_inputs(0 /* k_online */, false, range);
 
 		// Drive the render with `self` as the subclass behavior (the C++
 		// virtual dispatch receiver); the render is temporarily moved out to
-		// avoid a self-referential borrow and put back before the handles are
-		// released below.
+		// avoid a self-referential borrow and put back before returning.
 		let mut render =
 			std::mem::replace(&mut self.render, crate::render::RenderTask::placeholder());
 		let result = render.render(task, self);
 		self.render = render;
-
-		if !cache.ctx.is_null() {
-			unsafe {
-				bridge::render::oakrender_cache_free(&mut cache);
-			}
-		}
-		if !color_manager.ctx.is_null() {
-			unsafe {
-				bridge::node::oaknode_colormanager_free(&mut color_manager);
-			}
-		}
 
 		result
 	}
 }
 
 impl RenderTaskBehavior for PreCacheTask {
-	fn frame_downloaded(&mut self, task: &mut Task, frame: CHandle) -> Result<()> {
-		// Do nothing: pre-cache just fills the frame cache.
+	fn frame_downloaded(&mut self, task: &mut Task, frame: &oakrender::texture::Texture) -> Result<()> {
+		// Do nothing: pre-cache just fills the frame cache (the direct
+		// ticket arena records the render through the ticket's cache
+		// identity; see the module docs).
 		let _ = (task, frame);
 		Ok(())
 	}
 
-	fn audio_downloaded(&mut self, task: &mut Task, buffer: CHandle) -> Result<()> {
+	fn audio_downloaded(
+		&mut self,
+		task: &mut Task,
+		buffer: &oakrender::ticket::AudioSamples,
+	) -> Result<()> {
 		// Pre-cache doesn't cache any audio.
 		let _ = (task, buffer);
 		Ok(())
@@ -151,23 +135,5 @@ impl RenderTaskBehavior for PreCacheTask {
 	fn encode_subtitle(&mut self, task: &mut Task, text: &str) -> Result<()> {
 		let _ = (task, text);
 		Ok(())
-	}
-}
-
-/// Two-stage read of the footage filename.
-fn footage_filename(footage: CHandle) -> String {
-	let needed =
-		unsafe { bridge::node::oaknode_footage_filename(footage, std::ptr::null_mut(), 0) };
-	if needed <= 0 {
-		return String::new();
-	}
-	let mut buf = vec![0i8; needed as usize];
-	unsafe {
-		bridge::node::oaknode_footage_filename(footage, buf.as_mut_ptr(), needed);
-	}
-	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-	unsafe {
-		String::from_utf8_lossy(std::slice::from_raw_parts(buf.as_ptr() as *const u8, len))
-			.into_owned()
 	}
 }

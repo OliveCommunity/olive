@@ -25,7 +25,7 @@
 //!
 //! Note: OpenColorIO itself is never linked here. All OCIO work goes
 //! through the color manager (`crate::colormanager`) and the oakrender
-//! bridge (`crate::bridge::render`), mirroring how the C++ node calls
+//! bridge (opaque oakrender handles), mirroring how the C++ node calls
 //! `oakrender_color_processor_*` / `oaknode_colormanager_*` C functions
 //! instead of using OCIO directly.
 
@@ -47,13 +47,13 @@ pub const TEXTURE_INPUT: &str = "tex_in";
 /// bridge), so the field is omitted here: `added_to_graph` /
 /// `removed_from_graph` document the capture/clear, and the processor
 /// generation helpers reach the manager through
-/// `crate::colormanager`/`crate::bridge::render` at call time.
+/// `crate::colormanager`/oakrender at call time.
 pub struct OcioBase {
 	/// Owned color processor handle (C++ `processor_`, an
 	/// `OakColorProcessor`); `None`/empty while no valid processor has
 	/// been generated. Released with the node (C++ destructor calls
 	/// `oakrender_color_processor_free`).
-	processor: Option<crate::bridge::render::ColorProcessorHandle>,
+	processor: Option<crate::handle::CHandle>,
 }
 
 // The processor handle wraps a refcounted C object that is only
@@ -74,7 +74,7 @@ impl OcioBase {
 
 	/// Borrowed view of the owned processor handle (C++
 	/// `OCIOBaseNode::processor()`; callers must NOT free it).
-	pub fn processor(&self) -> Option<&crate::bridge::render::ColorProcessorHandle> {
+	pub fn processor(&self) -> Option<&crate::handle::CHandle> {
 		self.processor.as_ref()
 	}
 
@@ -83,7 +83,7 @@ impl OcioBase {
 	/// `OakColorProcessor` before storing the new one).
 	pub fn set_processor(
 		&mut self,
-		processor: Option<crate::bridge::render::ColorProcessorHandle>,
+		processor: Option<crate::handle::CHandle>,
 	) {
 		// The C++ frees the previous processor via
 		// `oakrender_color_processor_free`; the Rust handle is a

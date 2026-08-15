@@ -56,67 +56,6 @@ pub fn fake_handle(seed: usize) -> oakrender::handle::CHandle {
 	}
 }
 
-/// Pins `OAK_CONFIG_DIR` to a fresh temp directory for the duration of
-/// the guard, keeping cache state writes out of the real media cache.
-/// Serializes against other env-mutating tests via the crate's env lock.
-pub struct CacheDirGuard {
-	old: Option<std::ffi::OsString>,
-	dir: std::path::PathBuf,
-	_env: MutexGuard<'static, ()>,
-}
-
-impl CacheDirGuard {
-	/// Set up a temp cache dir and return the guard (plus the dir).
-	pub fn new() -> Self {
-		let env = oakrender::bridge::common::ENV_TEST_LOCK
-			.lock()
-			.unwrap_or_else(|e| e.into_inner());
-		let old = std::env::var_os("OAK_CONFIG_DIR");
-		let dir = std::env::temp_dir().join(format!("oakrender-it-{}", std::process::id()));
-		let _ = std::fs::remove_dir_all(&dir);
-		std::fs::create_dir_all(&dir).unwrap();
-		std::env::set_var("OAK_CONFIG_DIR", &dir);
-		Self {
-			old,
-			dir,
-			_env: env,
-		}
-	}
-
-	/// The temp directory.
-	pub fn dir(&self) -> &std::path::Path {
-		&self.dir
-	}
-}
-
-impl Drop for CacheDirGuard {
-	fn drop(&mut self) {
-		std::env::remove_var("OAK_CONFIG_DIR");
-		if let Some(old) = self.old.take() {
-			std::env::set_var("OAK_CONFIG_DIR", old);
-		}
-		let _ = std::fs::remove_dir_all(&self.dir);
-	}
-}
-
-/// C string buffer readback helper for two-stage getters.
-pub fn read_two_stage(getter: impl Fn(*mut std::ffi::c_char, i32) -> i32) -> (i32, Option<String>) {
-	use std::ffi::c_char;
-	unsafe {
-		let size = getter(std::ptr::null_mut(), 0);
-		if size <= 0 {
-			return (size, None);
-		}
-		let mut buf = vec![0u8; size as usize];
-		let got = getter(buf.as_mut_ptr() as *mut c_char, size);
-		if got <= 0 {
-			return (got, None);
-		}
-		let end = buf.iter().position(|&b| b == 0).unwrap_or(buf.len());
-		(got, Some(String::from_utf8_lossy(&buf[..end]).into_owned()))
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Host-symbol stand-ins (oakcore_* / fb_find_best_pix_fmt_of_list)
 // ---------------------------------------------------------------------------

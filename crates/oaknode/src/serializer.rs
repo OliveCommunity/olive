@@ -16,8 +16,8 @@
 
 //! Project (de)serialization: the C++ `ProjectSerializer` family.
 //!
-//! XML I/O goes through [`crate::bridge::common`] (oakcommon C ABI;
-//! in-crate stubs under `--features test-stubs`). The XML shape mirrors
+//! XML I/O goes through oakcommon's [`XmlReader`]/[`XmlWriter`] (direct
+//! Rust calls, single-lib unification). The XML shape mirrors
 //! the C++ `Node::save`/`Project::save` writers (`// CPP-PARITY:
 //! src/node/src/node.cpp:node::save`, `// CPP-PARITY:
 //! src/node/src/project.cpp:save`). Byte-exact output parity with the C++
@@ -32,9 +32,9 @@
 
 use std::sync::{Arc, Mutex};
 
+use oakcommon::xmlutils::{XmlReader, XmlWriter};
 use oakcore_rs::Rational;
 
-use crate::bridge::common;
 use crate::graph::Graph;
 use crate::id::NodeId;
 use crate::keyframe::{Interpolation, Keyframe};
@@ -43,7 +43,7 @@ use crate::project::{NodeRef, Project};
 use crate::value::{NodeValue, ValueType};
 
 /// Minimal XML reader surface the serializer needs (implemented over
-/// the oakcommon xml C ABI in `bridge::common`).
+/// oakcommon's `xmlutils`).
 pub trait XmlRead {
 	/// Advance to the next start element; false at end/close.
 	fn next_start_element(&mut self) -> bool;
@@ -73,47 +73,38 @@ pub trait XmlWrite {
 	fn characters(&mut self, _text: &str) {}
 }
 
-/// Reader over the oakcommon XML C ABI.
+/// Reader over oakcommon's [`XmlReader`].
 pub struct XmlReaderBridge {
-	/// The oakcommon reader handle.
-	pub handle: crate::handle::CHandle,
+	/// The oakcommon reader.
+	reader: XmlReader,
 	/// Current element name (cached).
 	name: String,
 }
 
-/// Writer over the oakcommon XML C ABI.
+/// Writer over oakcommon's [`XmlWriter`].
 pub struct XmlWriterBridge {
-	/// The oakcommon writer handle.
-	pub handle: crate::handle::CHandle,
+	/// The oakcommon writer.
+	writer: XmlWriter,
 }
 
 impl XmlReaderBridge {
-	/// Create from XML text; `None` when oakcommon is unavailable.
+	/// Create from XML text; `None` on a parse error.
 	pub fn new(xml: &str) -> Option<XmlReaderBridge> {
-		use std::ffi::CString;
-		let c = CString::new(xml).ok()?;
-		let handle = common::xml_reader_init(c.as_ptr())?;
+		let reader = XmlReader::new(xml).ok()?;
 		Some(XmlReaderBridge {
-			handle,
+			reader,
 			name: String::new(),
 		})
 	}
 }
 
-impl Drop for XmlReaderBridge {
-	fn drop(&mut self) {
-		common::xml_reader_free(&mut self.handle);
-	}
-}
-
 impl XmlRead for XmlReaderBridge {
 	fn next_start_element(&mut self) -> bool {
-		match common::xml_reader_next_start_element(self.handle.clone()) {
-			Some(true) => {
-				self.name = common::xml_reader_name(self.handle.clone()).unwrap_or_default();
-				true
-			}
-			_ => false,
+		if self.reader.read_next_start_element().unwrap_or(false) {
+			self.name = self.reader.name().unwrap_or_default();
+			true
+		} else {
+			false
 		}
 	}
 
@@ -122,64 +113,58 @@ impl XmlRead for XmlReaderBridge {
 	}
 
 	fn attribute(&self, name: &str) -> Option<String> {
-		let count = common::xml_reader_attribute_count(self.handle.clone()).unwrap_or(0);
+		let count = self.reader.attribute_count().unwrap_or(0);
 		for i in 0..count {
-			let attr_name =
-				common::xml_reader_attribute_name(self.handle.clone(), i).unwrap_or_default();
+			let attr_name = self.reader.attribute_name(i).unwrap_or_default();
 			if attr_name == name {
-				return common::xml_reader_attribute_value(self.handle.clone(), i);
+				return self.reader.attribute_value(i).ok();
 			}
 		}
 		None
 	}
 
 	fn read_element_text(&mut self) -> String {
-		common::xml_reader_read_element_text(self.handle.clone()).unwrap_or_default()
+		self.reader.read_element_text().unwrap_or_default()
 	}
 
 	fn skip_current_element(&mut self) {
-		let _ = common::xml_reader_skip_current_element(self.handle.clone());
+		let _ = self.reader.skip_current_element();
 	}
 }
 
 impl XmlWriterBridge {
-	/// Create a writer; `None` when oakcommon is unavailable.
+	/// Create a writer.
 	pub fn new() -> Option<XmlWriterBridge> {
-		let handle = common::xml_writer_init()?;
-		Some(XmlWriterBridge { handle })
+		Some(XmlWriterBridge {
+			writer: XmlWriter::new(),
+		})
 	}
 
 	/// The serialized output.
 	pub fn output(&self) -> String {
-		common::xml_writer_output(self.handle.clone()).unwrap_or_default()
-	}
-}
-
-impl Drop for XmlWriterBridge {
-	fn drop(&mut self) {
-		common::xml_writer_free(&mut self.handle);
+		self.writer.output().unwrap_or_default()
 	}
 }
 
 impl XmlWrite for XmlWriterBridge {
 	fn start_element(&mut self, name: &str) {
-		let _ = common::xml_writer_start_element(self.handle.clone(), name);
+		let _ = self.writer.write_start_element(name);
 	}
 
 	fn end_element(&mut self) {
-		let _ = common::xml_writer_end_element(self.handle.clone());
+		let _ = self.writer.write_end_element();
 	}
 
 	fn attribute(&mut self, name: &str, value: &str) {
-		let _ = common::xml_writer_attribute(self.handle.clone(), name, value);
+		let _ = self.writer.write_attribute(name, value);
 	}
 
 	fn text_element(&mut self, name: &str, text: &str) {
-		let _ = common::xml_writer_text_element(self.handle.clone(), name, text);
+		let _ = self.writer.write_text_element(name, text);
 	}
 
 	fn characters(&mut self, text: &str) {
-		let _ = common::xml_writer_characters(self.handle.clone(), text);
+		let _ = self.writer.write_characters(text);
 	}
 }
 

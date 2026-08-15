@@ -23,10 +23,10 @@ oakrender = { path = "../oakrender" }
 thiserror = "2"
 
 [features]
-# 测试桩（库内状态访问器）：cargo test --features test-stubs 时桥直连
-# 桩，像素路径可在无真实 GL/GPU 的环境下跑通。桩的 C ABI 符号不再
-# no_mangle（真实 oaknode/oakrender/oakundo 已作为 path 依赖链接，
-# 避免重复符号）；真实链路走直接 Rust 调用。
+# 历史 feature（原桥测试桩开关）：单库化后 oaknode/oakrender/oakundo
+# 以 path 依赖直连，句柄式调用面改为本地桩（见 src/node.rs /
+# src/render.rs 的 `// STUB` 标记），本 feature 无 cfg 使用点——
+# 保留以避免工作区/构建脚本 `--features test-stubs` 断裂。
 test-stubs = []
 
 [build-dependencies]

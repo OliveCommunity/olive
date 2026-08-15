@@ -30,7 +30,7 @@
 use std::ffi::{c_char, c_int, c_void};
 use std::sync::{Mutex, OnceLock};
 
-use crate::bridge::common as c;
+use crate::stubs::common as c;
 use crate::error::Error;
 use crate::handle::{
 	box_handle, free_box, guard, guard_int, guard_void, string_result, OakEngineClipboard,

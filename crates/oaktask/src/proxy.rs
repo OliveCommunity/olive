@@ -26,9 +26,10 @@
 use std::io::{BufRead, BufReader};
 use std::process::{Command, Stdio};
 
-use crate::bridge;
+use oakcodec::proxymanager::ProxyManager;
+use oakcodec::task::TaskRequest;
+
 use crate::error::{Error, Result};
-use crate::handle::CHandle;
 use crate::task::{Task, TaskBehavior};
 
 /// The proxy parameters, mirroring `oakcodec_proxy_params` in
@@ -75,22 +76,23 @@ impl ProxyTask {
 	/// Build a proxy task from an oakcodec request and proxy params,
 	/// mirroring the C++ constructor (divider-based requests take the source
 	/// fraction).
-	pub fn new(request: &bridge::codec::OakCodecTaskRequest, params: ProxyParams) -> ProxyTask {
-		let source = unsafe { crate::ffi::taskhandle::cstr_to_string(request.input_filename) };
-		let output = unsafe { crate::ffi::taskhandle::cstr_to_string(request.output_filename) };
+	pub fn new(request: &TaskRequest, params: ProxyParams) -> ProxyTask {
 		let mut params = params;
 		if request.proxy_width > 0 && request.proxy_height > 0 {
 			params.width = request.proxy_width;
 			params.height = request.proxy_height;
 			params.divider = 1;
 		}
-		let title = format!("Generating Proxy {}:{}", source, request.stream_index);
+		let title = format!(
+			"Generating Proxy {}:{}",
+			request.input_filename, request.stream_index
+		);
 		ProxyTask {
-			base: Task::new(&title, CHandle::null()),
-			source_filename: source,
+			base: Task::new(&title, None),
+			source_filename: request.input_filename.to_string(),
 			stream_index: request.stream_index,
 			params,
-			output_filename: output,
+			output_filename: request.output_filename.to_string(),
 			duration_seconds: 0.0,
 		}
 	}
@@ -207,21 +209,16 @@ impl TaskBehavior for ProxyTask {
 	/// Spawn `ffmpeg` with the built arguments, feed `-progress` lines to
 	/// [`ProxyTask::parse_progress`] and emit them as task progress.
 	fn run(&mut self, task: &mut Task) -> Result<()> {
-		let mut ffmpeg_buf = [0i8; 1024];
-		let found = unsafe {
-			bridge::codec::oakcodec_proxy_find_ffmpeg(
-				std::ptr::null(),
-				ffmpeg_buf.as_mut_ptr(),
-				ffmpeg_buf.len() as i32,
-			)
-		};
-		if found <= 0 {
+		// Direct call into oakcodec's proxy manager (single-lib
+		// unification: the old two-stage C ABI getter is gone; an empty
+		// string means "not found").
+		let ffmpeg_path = ProxyManager::find_ffmpeg("");
+		if ffmpeg_path.is_empty() {
 			task.set_error(
 				"Failed to generate proxy: ffmpeg executable was not found. Set the ffmpeg path in Preferences > Disk > Proxy Settings.",
 			);
 			return Err(Error::Failed("ffmpeg executable was not found".to_string()));
 		}
-		let ffmpeg_path = buf_to_string(&ffmpeg_buf);
 
 		// Create the output directory if needed.
 		if let Some(parent) = std::path::Path::new(&self.output_filename).parent() {
@@ -317,15 +314,6 @@ impl TaskBehavior for ProxyTask {
 
 		task.emit_progress(1.0);
 		Ok(())
-	}
-}
-
-/// Read a NUL-terminated C char buffer into a String.
-fn buf_to_string(buf: &[i8]) -> String {
-	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-	unsafe {
-		String::from_utf8_lossy(std::slice::from_raw_parts(buf.as_ptr() as *const u8, len))
-			.into_owned()
 	}
 }
 

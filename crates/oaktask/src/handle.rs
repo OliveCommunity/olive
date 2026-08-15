@@ -40,10 +40,6 @@ pub struct RefBox<T: ?Sized> {
 /// source-compatible. `Send + Sync` come from the shared type.
 pub use oakcore_rs::handle::CHandle;
 
-unsafe extern "C" fn noop_addref(_ctx: *mut std::ffi::c_void) {}
-
-unsafe extern "C" fn noop_release(_ctx: *mut std::ffi::c_void) {}
-
 unsafe extern "C" fn owned_addref<T: 'static>(ctx: *mut std::ffi::c_void) {
 	if !ctx.is_null() {
 		// CPP-PARITY: src/task/c_api/taskhandle.h (task_addref)

@@ -15,11 +15,13 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Footage nodes (C++ `olive::Footage`): media file references.
-//! Probing goes through the oakcodec C ABI (`bridge::codec`) — the C++
-//! transition-stub probe path does not exist here.
+//! Probing goes through the oakcodec decoder registry (direct Rust calls,
+//! single-lib unification).
 //! `// CPP-PARITY: src/node/src/project/footage/footage.{h,cpp}`.
 
 use std::sync::atomic::{AtomicBool, Ordering};
+
+use oakcodec::decoder::Decoder as _;
 
 use crate::input::Input;
 use crate::node::{Category, NodeBehavior, NodeCore};
@@ -84,33 +86,33 @@ impl FootageBehavior {
 		}
 	}
 
-	/// Probe the file through oakcodec (`oakcodec_decoder_probe`),
-	/// filling `streams`. Error on unreadable/corrupt media or when the
-	/// codec module is unavailable; the prior `streams`/`valid` state is
-	/// preserved on failure (no partial state).
+	/// Probe the file through oakcodec's decoder registry, recording the
+	/// recognized decoder id. Error on unreadable/corrupt media; the
+	/// prior `streams`/`valid` state is preserved on failure (no partial
+	/// state).
 	pub fn probe(&mut self) -> crate::error::Result<()> {
 		use crate::error::Error;
-		// Direct call into the oakcodec crate (single-lib unification):
-		// `oakcodec_decoder_probe(filename)` returns the stream-list
-		// handle (owned by the caller).
-		let out = match crate::bridge::codec::decoder_probe(&self.filename) {
-			Some(out) => out,
-			None => {
-				return Err(Error::Failed(
-					"oakcodec unavailable (not linked)".to_string(),
-				));
-			}
-		};
-		if out.is_null() {
-			return Err(Error::Failed(
-				"oakcodec probe returned no streams".to_string(),
-			));
-		}
-		// The probe result handle is an oakcodec stream-list. Reading
-		// stream entries into `streams` is a Phase-2 follow-up (the
-		// exact accessor symbols are pinned when the codec module C ABI
-		// is finalized).
-		let _ = out;
+		// Direct probe through the oakcodec decoder registry (single-lib
+		// unification; replaces the former `oakcodec_decoder_probe` C ABI
+		// call).
+		let desc = oakcodec::decoder::receive_list_of_all_decoders()
+			.into_iter()
+			.find_map(|d| {
+				let desc = d.probe(&self.filename, None)?;
+				if desc.decoder().is_empty()
+					|| (desc.video_stream_count() == 0
+						&& desc.audio_stream_count() == 0
+						&& desc.subtitle_stream_count() == 0)
+				{
+					return None;
+				}
+				Some(desc)
+			})
+			.ok_or_else(|| Error::Failed("oakcodec probe returned no streams".to_string()))?;
+		self.decoder = desc.decoder().to_string();
+		// Reading stream entries into `streams` is a follow-up (the
+		// stream-access surface is pinned when the codec module is
+		// finalized); the probe result itself is dropped here.
 		self.valid = true;
 		Ok(())
 	}

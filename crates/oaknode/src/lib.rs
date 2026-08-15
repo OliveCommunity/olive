@@ -30,11 +30,9 @@
 #![warn(missing_docs)]
 
 pub mod block;
-pub mod bridge;
 pub mod colormanager;
 pub mod error;
 pub mod factory;
-pub mod ffi;
 pub mod folder;
 pub mod footage;
 pub mod graph;

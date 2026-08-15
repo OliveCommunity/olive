@@ -17,39 +17,31 @@
 //! ofxColour（M11 §4）：宿主 OCIO 能力宣告、实例协商属性、输入 clip
 //! 工作空间（ACEScg）、GetOutputColourspace 往返（偏好采纳 +
 //! 交叉引用解析 + 输出写回）。
+//!
+//! 单库化后经 Rust API 直连（`Host::global().create_instance`），不再
+//! 经已删除的 `oakplugin_host_scan`/`oakplugin_instance_create` C ABI。
 
 mod common;
 
-use std::ffi::{c_void, CString};
+use std::sync::Arc;
 
-use oakplugin::ffi::{oakplugin_host_scan, oakplugin_instance_create, oakplugin_instance_free};
-use oakplugin::handle::{get, CHandle};
+use oakplugin::handle::RefBox;
 use oakplugin::host::Host;
+use oakplugin::instance::Instance;
 use oakplugin::property::Value;
 
 const TEST_PLUGIN_ID: &str = "org.oak.test-plugin";
 
-fn cs(s: &str) -> CString {
-	CString::new(s).unwrap()
-}
-
-fn scan_and_create(id: &str) -> CHandle {
+/// 扫描并创建实例；不可用返回 None（skip）。
+fn scan_and_create(id: &str) -> Option<Arc<RefBox<Instance>>> {
 	if common::test_plugin_scan_dir().is_none() {
 		common::skip("最小测试插件未构建");
-		return CHandle::null();
+		return None;
 	}
-	let dir = cs(common::test_plugin_scan_dir().unwrap().to_str().unwrap());
-	let dirs = [dir.as_ptr()];
-	unsafe { oakplugin_host_scan(dirs.as_ptr(), 1) };
-	let id = cs(id);
-	unsafe { oakplugin_instance_create(id.as_ptr()) }
-}
-
-fn instance_of(
-	h: &CHandle,
-) -> Option<std::sync::Arc<oakplugin::handle::RefBox<oakplugin::instance::Instance>>> {
-	unsafe { get::<std::sync::Arc<oakplugin::handle::RefBox<oakplugin::instance::Instance>>>(h) }
-		.cloned()
+	let dir = common::test_plugin_scan_dir().unwrap();
+	let host = Host::global();
+	host.cache.scan_path(&dir).ok()?;
+	host.create_instance(id, None).ok()
 }
 
 fn prop_str(props: &oakplugin::property::PropertySet, name: &str) -> Option<String> {
@@ -84,11 +76,9 @@ fn host_declares_ocio_capability() {
 #[test]
 fn instance_and_clip_colourspace_props() {
 	common::with_host(|| {
-		let mut h = scan_and_create(TEST_PLUGIN_ID);
-		if h.is_null() {
+		let Some(inst) = scan_and_create(TEST_PLUGIN_ID) else {
 			return;
-		}
-		let inst = instance_of(&h).expect("句柄应可解析");
+		};
 		assert_eq!(
 			prop_str(&inst.value.props, "OfxImageEffectPropColourManagementStyle").as_deref(),
 			Some("OfxImageEffectColourManagementOCIO")
@@ -128,7 +118,6 @@ fn instance_and_clip_colourspace_props() {
 				.unwrap_or(true),
 			"输出 clip 色彩空间在 GetOutputColourspace 前未设"
 		);
-		unsafe { oakplugin_instance_free(&mut h) };
 	});
 }
 
@@ -137,11 +126,9 @@ fn instance_and_clip_colourspace_props() {
 #[test]
 fn get_output_colourspace_cross_reference() {
 	common::with_host(|| {
-		let mut h = scan_and_create(TEST_PLUGIN_ID);
-		if h.is_null() {
+		let Some(inst) = scan_and_create(TEST_PLUGIN_ID) else {
 			return;
-		}
-		let inst = instance_of(&h).expect("句柄应可解析");
+		};
 		let cs = inst
 			.value
 			.get_output_colourspace(&[])
@@ -159,7 +146,6 @@ fn get_output_colourspace_cross_reference() {
 			Some("ACEScg"),
 			"输出 clip 已写回解析后的色彩空间"
 		);
-		unsafe { oakplugin_instance_free(&mut h) };
 	});
 }
 
@@ -168,17 +154,14 @@ fn get_output_colourspace_cross_reference() {
 #[test]
 fn get_output_colourspace_preferred() {
 	common::with_host(|| {
-		let mut h = scan_and_create(TEST_PLUGIN_ID);
-		if h.is_null() {
+		let Some(inst) = scan_and_create(TEST_PLUGIN_ID) else {
 			return;
-		}
-		let inst = instance_of(&h).expect("句柄应可解析");
+		};
 		let cs = inst
 			.value
 			.get_output_colourspace(&["ACEScg".to_string(), "linear".to_string()])
 			.expect("GetOutputColourspace 应成功");
 		assert_eq!(cs, "ACEScg", "偏好列表第一个被采纳");
-		unsafe { oakplugin_instance_free(&mut h) };
 	});
 }
 
@@ -186,11 +169,9 @@ fn get_output_colourspace_preferred() {
 #[test]
 fn resolve_colourspace_edge_cases() {
 	common::with_host(|| {
-		let mut h = scan_and_create(TEST_PLUGIN_ID);
-		if h.is_null() {
+		let Some(inst) = scan_and_create(TEST_PLUGIN_ID) else {
 			return;
-		}
-		let inst = instance_of(&h).expect("句柄应可解析");
+		};
 		assert_eq!(
 			inst.value
 				.resolve_colourspace("OfxColourspace_NoSuchClip".to_string()),
@@ -202,6 +183,5 @@ fn resolve_colourspace_edge_cases() {
 			"ACEScg",
 			"非交叉引用原样返回"
 		);
-		unsafe { oakplugin_instance_free(&mut h) };
 	});
 }

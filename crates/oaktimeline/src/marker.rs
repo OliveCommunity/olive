@@ -26,6 +26,7 @@
 //! order via `TimelineMarkerList::resort`/`resort_at`.
 
 use oakcore_rs::{Rational, TimeRange};
+use oakundo::undocommand::UndoCommand;
 
 use crate::handle::{get, get_mut};
 use crate::undocommon::{box_command, Command};
@@ -232,7 +233,7 @@ fn rational_abs(r: Rational) -> Rational {
 
 // ---------------------------------------------------------------------------
 // Marker undo commands. Each struct exposes prepare()/redo()/undo(); the
-// FFI layer wraps it through bridge::undo's vtable (to_command()).
+// undo stack wraps it through undocommon's vtable (to_command()).
 // ---------------------------------------------------------------------------
 
 /// `MarkerAddCommand` (timelinemarker.h).
@@ -302,7 +303,7 @@ impl MarkerAddCommand {
 	}
 
 	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> crate::handle::CHandle {
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }
@@ -369,7 +370,7 @@ impl MarkerRemoveCommand {
 	}
 
 	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> crate::handle::CHandle {
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }
@@ -437,7 +438,7 @@ impl MarkerChangeColorCommand {
 	}
 
 	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> crate::handle::CHandle {
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }
@@ -505,7 +506,7 @@ impl MarkerChangeNameCommand {
 	}
 
 	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> crate::handle::CHandle {
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }
@@ -576,7 +577,7 @@ impl MarkerChangeTimeCommand {
 	}
 
 	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> crate::handle::CHandle {
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }

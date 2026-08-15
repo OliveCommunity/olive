@@ -41,8 +41,7 @@ pub struct RefBox<T: ?Sized> {
 /// The shared ABI value-handle type (single-lib unification, see
 /// `docs/zh/plans/riir/single-lib.md`): one canonical
 /// `{ctx, addref, release, abi_version}` type in `oakcore-rs`, re-exported
-/// here so the crate's `ffi.rs` signatures and handle scaffolding stay
-/// source-compatible.
+/// here so the crate's handle scaffolding stays source-compatible.
 pub use oakcore_rs::handle::CHandle;
 
 /// Generic `addref` implementation: increments the box's reference count.

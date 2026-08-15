@@ -18,16 +18,12 @@
 //! `TimelineMarker` and `TimelineMarkerList` value types plus the five
 //! marker undo commands. The list stays sorted by time (C++
 //! `TimelineMarkerList` re-sorts on mutation), which `resort` enforces
-//! after out-of-band edits. XML load/save matches the format written
-//! by `timelinemarker.cpp`/`timelinemarkerlist.cpp`.
-#![cfg(feature = "test-stubs")]
+//! after out-of-band edits. The XML load/save contract left with the
+//! deleted C ABI export layer (single-lib unification).
 
 use oakcore_rs::{Rational, TimeRange};
-use oaktimeline::bridge::common::{oakcommon_xml_writer_free, oakcommon_xml_writer_init};
-use oaktimeline::bridge::teststubs::{xml_reader_handle, MockXmlNode, MockXmlWriter};
 use oaktimeline::common::EditToInfo;
-use oaktimeline::ffi;
-use oaktimeline::handle::{get, get_mut, make_owned, CHandle};
+use oaktimeline::handle::{get, get_mut, make_owned};
 use oaktimeline::marker::{
 	MarkerAddCommand, MarkerChangeColorCommand, MarkerChangeNameCommand, MarkerChangeTimeCommand,
 	MarkerRemoveCommand, TimelineMarker, TimelineMarkerList,
@@ -592,10 +588,12 @@ fn marker_change_time_command_redo_undo() {
 	);
 }
 
-/// `to_command` boxes a marker command into a CHandle for the undo
-/// stack, matching the C++ `OakUndoCommand` shape.
+/// `to_command` boxes a marker command into an oakundo `UndoCommand`
+/// value for the undo stack (the old C ABI command handle is gone with
+/// the single-lib unification); `redo_now`/`undo_now` drive the same
+/// redo/undo bodies the stack would.
 #[test]
-fn marker_commands_box_to_chandle() {
+fn marker_commands_box_to_undo_command() {
 	let list_h = make_owned(TimelineMarkerList::new());
 	{
 		let l = unsafe { get_mut::<TimelineMarkerList>(&list_h) }.unwrap();
@@ -606,81 +604,27 @@ fn marker_commands_box_to_chandle() {
 		));
 	}
 
-	let cmds: Vec<CHandle> = vec![
-		MarkerAddCommand::new(
-			list_h.clone(),
-			TimeRange::new(Rational::new(5, 1), Rational::new(6, 1)),
-			"n",
-			0,
-		)
-		.to_command(),
-		MarkerRemoveCommand::new(list_h.clone(), 0).to_command(),
-		MarkerChangeColorCommand::new(list_h.clone(), 0, 7).to_command(),
-		MarkerChangeNameCommand::new(list_h.clone(), 0, "z").to_command(),
-		MarkerChangeTimeCommand::new(
-			list_h.clone(),
-			0,
-			TimeRange::new(Rational::new(9, 1), Rational::new(10, 1)),
-		)
-		.to_command(),
-	];
-	for h in &cmds {
-		assert!(!h.is_null());
-		assert_eq!(h.abi_version, 1);
-	}
-}
-
-/// Save writes `<marker name= in= out= color=/>` elements; load parses
-/// them back into an equal list (XML golden round-trip).
-#[test]
-fn marker_list_xml_round_trip() {
-	// Set up a list with one marker.
-	let list_h = make_owned(TimelineMarkerList::new());
-	{
-		let l = unsafe { get_mut::<TimelineMarkerList>(&list_h) }.unwrap();
-		l.add_marker(TimelineMarker::with_time(
-			3,
-			TimeRange::new(Rational::new(10, 1), Rational::new(20, 1)),
-			"m",
-		));
-	}
-
-	// Save into a mock writer.
-	let mut writer = unsafe { oakcommon_xml_writer_init() };
-	let r = unsafe { ffi::marker::oaktimeline_marker_list_save(list_h.clone(), writer.clone()) };
-	assert_eq!(r, 0);
-	let buf = unsafe { get::<MockXmlWriter>(&writer) }
-		.unwrap()
-		.buf
-		.clone();
-	assert!(buf.contains("<marker"), "buf: {buf}");
-	assert!(buf.contains("name=\"m\""), "buf: {buf}");
-	assert!(buf.contains("in=\"10/1\""), "buf: {buf}");
-	assert!(buf.contains("out=\"20/1\""), "buf: {buf}");
-	assert!(buf.contains("color=\"3\""), "buf: {buf}");
-	unsafe { oakcommon_xml_writer_free(&mut writer) };
-
-	// Load back from a mock reader into a fresh list.
-	let reader = xml_reader_handle(vec![MockXmlNode {
-		name: "marker".to_string(),
-		text: String::new(),
-		attrs: vec![
-			("name".to_string(), "m".to_string()),
-			("in".to_string(), "10/1".to_string()),
-			("out".to_string(), "20/1".to_string()),
-			("color".to_string(), "3".to_string()),
-		],
-	}]);
-	let list2_h = make_owned(TimelineMarkerList::new());
-	let r2 = unsafe { ffi::marker::oaktimeline_marker_list_load(list2_h.clone(), reader.clone()) };
-	assert_eq!(r2, 0);
-	let l2 = unsafe { get::<TimelineMarkerList>(&list2_h) }.unwrap();
-	assert_eq!(l2.size(), 1);
-	let m = l2.at(0).unwrap();
-	assert_eq!(m.name(), "m");
-	assert_eq!(m.color(), 3);
-	assert_eq!(m.time().in_(), Rational::new(10, 1));
-	assert_eq!(m.time().out(), Rational::new(20, 1));
+	let mut cmd = MarkerAddCommand::new(
+		list_h.clone(),
+		TimeRange::new(Rational::new(5, 1), Rational::new(6, 1)),
+		"n",
+		0,
+	)
+	.to_command();
+	cmd.redo_now();
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.size(),
+		2
+	);
+	cmd.undo_now();
+	assert_eq!(
+		unsafe { get::<TimelineMarkerList>(&list_h) }
+			.unwrap()
+			.size(),
+		1
+	);
 }
 
 /// Loading a marker with a `color`/`in`/`out` attribute equal to the
@@ -692,14 +636,15 @@ fn marker_defaults_map_to_edit_to_info() {
 	assert_eq!(m.color(), 0);
 	assert_eq!(m.time().in_(), Rational::new(0, 1));
 
-	// `EditToInfo` defaults mirror those sentinels: null handles and the
+	// `EditToInfo` defaults mirror those sentinels: null node references
+	// (`None`, the single-lib replacement for the null `CHandle`) and the
 	// null rational for `nearest_time`.
 	let info = EditToInfo {
-		track: CHandle::null(),
+		track: None,
 		nearest_time: m.time().in_(),
-		nearest_block: CHandle::null(),
+		nearest_block: None,
 	};
-	assert!(info.track.is_null());
-	assert!(info.nearest_block.is_null());
+	assert!(info.track.is_none());
+	assert!(info.nearest_block.is_none());
 	assert_eq!(info.nearest_time, Rational::new(0, 1));
 }

@@ -27,7 +27,6 @@ pub mod commandlineparser;
 pub mod configstore;
 pub mod debug;
 pub mod error;
-pub mod ffi;
 pub mod ffmpegutils;
 pub mod filefunctions;
 pub mod handle;

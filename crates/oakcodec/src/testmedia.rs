@@ -37,11 +37,10 @@
 
 use std::path::Path;
 
+use oakcommon::ocioutils::PixelFormat as OakPixelFormat;
+use oakcommon::videoparams::VideoParams;
 use oakcore_rs::{PixelFormat, Rational, SampleFormat};
 
-use crate::bridge::common::{
-	oakcommon_videoparams_init_basic, oakcommon_videoparams_set_format,
-};
 use crate::encodingparams::EncodingParams;
 use crate::encoder::create_from_params;
 use crate::frame::Frame;
@@ -106,8 +105,17 @@ pub fn write_test_clip(
 
 /// One frame of the known pattern (see module doc).
 fn pattern_frame(i: i32, width: i32, height: i32, fps: i32) -> Frame {
-	let vp = unsafe { oakcommon_videoparams_init_basic(width, height, 0, 4, 1, 1, 0, 1) };
-	unsafe { oakcommon_videoparams_set_format(vp.clone(), PixelFormat::F32 as i32) };
+	let mut vp = VideoParams::new_basic(
+		width,
+		height,
+		OakPixelFormat::from_code(0),
+		4,
+		1,
+		1,
+		0,
+		1,
+	);
+	vp.set_format(OakPixelFormat::from_code(PixelFormat::F32 as i32));
 	let mut f = Frame::with_params(vp);
 	f.set_timestamp(Rational::new(i as i64, fps as i64));
 	f.allocate().expect("test frame allocation");

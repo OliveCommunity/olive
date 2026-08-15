@@ -17,55 +17,40 @@
 //! Ripple commands (`src/timeline/src/timelineundoripple.h`): clearing a time
 //! area on one or all tracks, the ripple tool, and gap deletion at regions.
 //!
-//! Graph mutation goes through the oaknode C ABI (`bridge::node`); command
-//! wrapping through `bridge::undo`. The C++ `std::map<..., TrackHandleLess>`
-//! containers are modelled as order-preserving `Vec<(CHandle, _)>` pairs;
-//! order follows the track handle, matching `TrackHandleLess`.
+//! Graph mutation routes directly through the oaknode Rust domain (the
+//! oaknode C ABI was deleted in the single-lib unification); command
+//! wrapping through `oakundo::undocommand::UndoCommand` values. The C++
+//! `std::map<..., TrackHandleLess>` containers are modelled as
+//! order-preserving `Vec<(NodeRef, _)>` pairs; order follows the track
+//! `NodeId`, matching `TrackHandleLess`.
 //!
 //! The oaknode queries a `prepare()` needs — locating blocks at a time,
 //! detecting gaps, enumerating track lists / sequence tracks and reading the
-//! locked flag — go through the matching `bridge::node` entry points, wrapped
-//! by the thin private helpers below (each annotated with its `// CPP-PARITY`
+//! locked flag — go through the matching `crate::util` helpers, wrapped by
+//! the thin private helpers below (each annotated with its `// CPP-PARITY`
 //! source line).
 
 use oakcore_rs::{Rational, TimeRange};
+use oaknode::graph::NodeEntry;
+use oakundo::undocommand::UndoCommand;
 
-use crate::bridge::node::{
-	oaknode_block_gap_create, oaknode_block_get_kind, oaknode_sequence_get_all_track_at,
-	oaknode_sequence_get_all_track_count, oaknode_sequence_get_track_list,
-	oaknode_track_get_locked, oaknode_track_get_nearest_block_after_or_at,
-	oaknode_track_get_nearest_block_before_or_at, oaknode_track_insert_block_after,
-	oaknode_track_prepend_block, oaknode_track_ripple_remove_block, oaknode_tracklist_get_track_at,
-	oaknode_tracklist_get_track_count,
-};
-use crate::bridge::undo::{oakundo_command_redo_now, oakundo_command_undo_now};
 use crate::common::MovementMode;
-use crate::handle::CHandle;
 use crate::undocommon::{
-	block_can_be_removed, box_command, create_block_remove_command, free_command_handle, Command,
+	block_can_be_removed, box_command, create_block_remove_command, Command,
 };
 use crate::util::{
-	block_add_to_graph, block_in, block_length, block_next, block_out, block_previous,
-	block_remove_from_graph, block_set_length_and_media_in, block_set_length_and_media_out,
-	block_track, free_detached_handle, rat_nd,
+	block_add_to_graph, block_gap_create, block_in, block_kind, block_length, block_next,
+	block_out, block_previous, block_remove_from_graph, block_set_in,
+	block_set_length_and_media_in, block_set_length_and_media_out, block_track,
+	sequence_all_tracks, sequence_track_list,
+	track_insert_block_after, track_locked, track_nearest_block_after_or_at,
+	track_nearest_block_before_or_at, track_prepend_block, track_ripple_remove_block,
+	tracklist_track_at, tracklist_track_count, BlockKind, NodeRef,
 };
 
 use super::undogeneral::BlockResizeCommand;
 use super::undosplit::BlockSplitCommand;
 use super::undotrack::TrackRippleRemoveBlockCommand;
-
-/// Copy a handle's token so it can be re-passed by value to a bridge
-/// function while the original stays stored. `CHandle` is a `#[repr(C)]` POD
-/// without a `Drop`, so the copy is just a struct copy; refcounts are not
-/// touched (the bridge only ever re-boxes/re-releases the object it backs).
-fn hdup(h: &CHandle) -> CHandle {
-	CHandle {
-		ctx: h.ctx,
-		addref: h.addref,
-		release: h.release,
-		abi_version: h.abi_version,
-	}
-}
 
 /// C++ unary `Rational::operator-` (`Rational(num_, -den_)`); the crate's
 /// `Rational` has no `Neg`, so negate by subtracting from zero (same idiom as
@@ -75,102 +60,60 @@ fn rat_neg(r: Rational) -> Rational {
 }
 
 // The helpers below mirror the oaknode C ABI queries the C++ `prepare()`
-// bodies use. Each wraps a `bridge::node` extern (see the `// CPP-PARITY`
-// marker on each).
+// bodies use. Each wraps a `crate::util` oaknode-domain query (see the
+// `// CPP-PARITY` marker on each).
 
 /// C++ `oaknode_track_get_nearest_block_before_or_at`.
 // CPP-PARITY timelineundoripple.cpp:64
-fn nearest_block_before_or_at(track: CHandle, t: Rational) -> CHandle {
-	let (mut n, mut d) = (0, 0);
-	rat_nd(t, &mut n, &mut d);
-	let mut out = CHandle::null();
-	// SAFETY: `out` is a valid out pointer.
-	let _ = unsafe { oaknode_track_get_nearest_block_before_or_at(track, n, d, &mut out) };
-	out
+fn nearest_block_before_or_at(track: &NodeRef, t: Rational) -> Option<NodeRef> {
+	track_nearest_block_before_or_at(track, t)
 }
 
 /// C++ `oaknode_track_get_nearest_block_after_or_at`.
 // CPP-PARITY timelineundoripple.cpp:551
-fn nearest_block_after_or_at(track: CHandle, t: Rational) -> CHandle {
-	let (mut n, mut d) = (0, 0);
-	rat_nd(t, &mut n, &mut d);
-	let mut out = CHandle::null();
-	// SAFETY: `out` is a valid out pointer.
-	let _ = unsafe { oaknode_track_get_nearest_block_after_or_at(track, n, d, &mut out) };
-	out
+fn nearest_block_after_or_at(track: &NodeRef, t: Rational) -> Option<NodeRef> {
+	track_nearest_block_after_or_at(track, t)
 }
 
 /// C++ anonymous-namespace `is_gap` (`oaknode_block_get_kind`).
 // CPP-PARITY timelineundoripple.cpp:448
-fn is_gap(b: CHandle) -> bool {
-	let mut kind = 0;
-	// SAFETY: `kind` is a valid out pointer.
-	if unsafe { oaknode_block_get_kind(b, &mut kind) } != 0 {
-		return false;
-	}
-	kind == 2 // OAKNODE_BLOCK_GAP
+fn is_gap(b: &NodeRef) -> bool {
+	block_kind(b) == BlockKind::Gap
 }
 
 /// C++ `oaknode_tracklist_get_track_count`.
 // CPP-PARITY timelineundoripple.cpp:211
-fn track_list_count(list: CHandle) -> usize {
-	let mut count = 0;
-	// SAFETY: `count` is a valid out pointer.
-	let _ = unsafe { oaknode_tracklist_get_track_count(list, &mut count) };
-	count as usize
+fn track_list_count(list: &NodeRef) -> usize {
+	tracklist_track_count(list)
 }
 
 /// C++ `oaknode_tracklist_get_track_at`.
 // CPP-PARITY timelineundoripple.cpp:215
-fn track_list_at(list: CHandle, index: usize) -> CHandle {
-	let mut out = CHandle::null();
-	// SAFETY: `out` is a valid out pointer.
-	let _ = unsafe { oaknode_tracklist_get_track_at(list, index as i32, &mut out) };
-	out
+fn track_list_at(list: &NodeRef, index: usize) -> Option<NodeRef> {
+	tracklist_track_at(list, index)
 }
 
 /// C++ `oaknode_track_get_locked`.
 // CPP-PARITY timelineundoripple.cpp:221
-fn track_locked(track: CHandle) -> bool {
-	let mut locked = 0;
-	// SAFETY: `locked` is a valid out pointer.
-	let _ = unsafe { oaknode_track_get_locked(track, &mut locked) };
-	locked != 0
+fn track_is_locked(track: &NodeRef) -> bool {
+	track_locked(track)
 }
 
 /// C++ `TimelineRippleRemoveAreaCommand` ctor loop over
 /// `oaknode_sequence_get_track_list` (one list per track type).
 // CPP-PARITY timelineundoripple.cpp:254
-fn sequence_track_lists(timeline: CHandle) -> Vec<CHandle> {
-	// OAKNODE_TRACK_TYPE_VIDEO / AUDIO / SUBTITLE.
+fn sequence_track_lists(timeline: &NodeRef) -> Vec<NodeRef> {
 	let mut lists = Vec::new();
-	for t in [0, 1, 2] {
-		let mut out = CHandle::null();
-		// SAFETY: `out` is a valid out pointer.
-		let _ = unsafe { oaknode_sequence_get_track_list(hdup(&timeline), t, &mut out) };
-		if !out.is_null() {
-			lists.push(out);
+	for kind in [
+		oaknode::track::TrackType::Video,
+		oaknode::track::TrackType::Audio,
+		oaknode::track::TrackType::Subtitle,
+	] {
+		if let Some(list) = sequence_track_list(timeline, kind) {
+			lists.push(list);
 		}
 	}
 	lists
-}
-
-/// C++ `oaknode_sequence_get_all_track_count` / `get_all_track_at`.
-// CPP-PARITY timelineundoripple.cpp:523
-fn sequence_all_tracks(timeline: CHandle) -> Vec<CHandle> {
-	let mut count = 0;
-	// SAFETY: `count` is a valid out pointer.
-	let _ = unsafe { oaknode_sequence_get_all_track_count(hdup(&timeline), &mut count) };
-	let mut tracks = Vec::new();
-	for i in 0..count {
-		let mut out = CHandle::null();
-		// SAFETY: `out` is a valid out pointer.
-		let _ = unsafe { oaknode_sequence_get_all_track_at(hdup(&timeline), i, &mut out) };
-		if !out.is_null() {
-			tracks.push(out);
-		}
-	}
-	tracks
 }
 
 /// `TrackRippleRemoveAreaCommand` — clear the area between `range.in` and
@@ -183,10 +126,10 @@ fn sequence_all_tracks(timeline: CHandle) -> Vec<CHandle> {
 /// that derived state.
 pub struct TrackRippleRemoveAreaCommand {
 	/// Owning track.
-	track: CHandle,
+	track: NodeRef,
 	/// Area to clear.
 	range: TimeRange,
-	/// Whether `prepare` has run (the C ABI command path never calls
+	/// Whether `prepare` has run (the vtable command path never calls
 	/// `prepare()` itself, so `redo` derives the operations on first use).
 	prepared: bool,
 	/// Out-point trim on the first block (`timelineundoripple.h` `trim_out_`).
@@ -196,19 +139,19 @@ pub struct TrackRippleRemoveAreaCommand {
 	/// In-point trim on the trailing block (`trim_in_`).
 	trim_in_: Option<TrimOperation>,
 	/// Block any replacement should be inserted after (`insert_previous_`).
-	insert_previous_: CHandle,
+	insert_previous_: Option<NodeRef>,
 	/// Whether a gap spanning the range may be split (`allow_splitting_gaps_`).
 	allow_splitting_gaps_: bool,
 	/// Split command used when the range cuts through a block (`splice_split_command_`).
 	splice_split_command_: Option<BlockSplitCommand>,
 	/// Node-remove sub-commands for removed blocks (`remove_block_commands_`).
-	remove_block_commands_: Vec<CHandle>,
+	remove_block_commands_: Vec<UndoCommand>,
 }
 
 /// One block trimmed at its out or in edge (C++ `TrimOperation`).
 struct TrimOperation {
 	/// The trimmed block.
-	block: CHandle,
+	block: NodeRef,
 	/// Length before the trim.
 	old_length: Rational,
 	/// Length after the trim.
@@ -219,14 +162,16 @@ struct TrimOperation {
 /// (C++ `RemoveOperation`).
 struct RemoveOperation {
 	/// The removed block.
-	block: CHandle,
-	/// Predecessor to re-insert after on undo.
-	before: CHandle,
+	block: NodeRef,
+	/// Predecessor to re-insert after on undo (`None` = front of the track).
+	before: Option<NodeRef>,
 }
 
 impl TrackRippleRemoveAreaCommand {
 	/// Construct from track + range.
-	pub fn new(track: CHandle, range: TimeRange) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(track: NodeRef, range: TimeRange) -> TrackRippleRemoveAreaCommand`
+	pub fn new(track: NodeRef, range: TimeRange) -> Self {
 		Self {
 			track,
 			range,
@@ -234,7 +179,7 @@ impl TrackRippleRemoveAreaCommand {
 			trim_out_: None,
 			removals_: Vec::new(),
 			trim_in_: None,
-			insert_previous_: CHandle::null(),
+			insert_previous_: None,
 			allow_splitting_gaps_: false,
 			splice_split_command_: None,
 			remove_block_commands_: Vec::new(),
@@ -242,17 +187,21 @@ impl TrackRippleRemoveAreaCommand {
 	}
 
 	/// The block that will follow the cleared area, for inserting a replacement
-	/// (`get_insertion_index`); the empty handle when not applicable.
-	pub fn get_insertion_index(&self) -> CHandle {
-		hdup(&self.insert_previous_)
+	/// (`get_insertion_index`); `None` when not applicable.
+	///
+	/// New signature (single-lib): `pub fn get_insertion_index(&self) -> Option<NodeRef>`
+	pub fn get_insertion_index(&self) -> Option<NodeRef> {
+		self.insert_previous_.clone()
 	}
 
 	/// The block produced by the splice split, if the range split a block
-	/// (`get_spliced_block`); the empty handle when nothing was split.
-	pub fn get_spliced_block(&self) -> CHandle {
+	/// (`get_spliced_block`); `None` when nothing was split.
+	///
+	/// New signature (single-lib): `pub fn get_spliced_block(&self) -> Option<NodeRef>`
+	pub fn get_spliced_block(&self) -> Option<NodeRef> {
 		match &self.splice_split_command_ {
 			Some(cmd) => cmd.new_block(),
-			None => CHandle::null(),
+			None => None,
 		}
 	}
 
@@ -265,110 +214,107 @@ impl TrackRippleRemoveAreaCommand {
 	/// `prepare`: compute the trim/remove operations for the range.
 	///
 	/// Mirrors the C++ algorithm (`oaknode_track_get_nearest_block_before_or_at`
-	/// is exposed by the oaknode bridge; `redo` invokes this on first use
-	/// because the C ABI command path never calls `prepare` itself).
+	/// is a direct oaknode-domain query; `redo` invokes this on first use
+	/// because the vtable command path never calls `prepare` itself).
 	pub fn prepare(&mut self) {
 		// Idempotent: recompute from the current track state, discarding any
 		// previously derived operations.
 		self.trim_out_ = None;
 		self.removals_.clear();
 		self.trim_in_ = None;
-		self.insert_previous_ = CHandle::null();
+		self.insert_previous_ = None;
 		self.splice_split_command_ = None;
 
-		let track = hdup(&self.track);
+		let track = self.track.clone();
 		let in_ = self.range.in_();
 		let out = self.range.out();
 
 		// CPP-PARITY timelineundoripple.cpp:57-64
-		let first_block = nearest_block_before_or_at(track, in_);
-		if first_block.is_null() {
+		let Some(first_block) = nearest_block_before_or_at(&track, in_) else {
 			return;
-		}
-		let fb = hdup(&first_block);
+		};
+		let fb = first_block;
 
 		// Determine if this first block is getting trimmed or removed
-		let first_block_is_out_trimmed = block_in(hdup(&fb)) < in_;
-		let first_block_is_in_trimmed = block_out(hdup(&fb)) > out;
+		let first_block_is_out_trimmed = block_in(&fb) < in_;
+		let first_block_is_in_trimmed = block_out(&fb) > out;
 
 		// Set's the block that any insert command should insert AFTER.
 		self.insert_previous_ = if first_block_is_out_trimmed {
-			hdup(&fb)
+			Some(fb.clone())
 		} else {
-			block_previous(hdup(&fb))
+			block_previous(&fb)
 		};
 
 		// If it's getting trimmed, determine if it's actually getting spliced
 		if first_block_is_out_trimmed && first_block_is_in_trimmed {
-			if !self.allow_splitting_gaps_ && is_gap(hdup(&fb)) {
+			if !self.allow_splitting_gaps_ && is_gap(&fb) {
 				// As a rule, we don't split gaps, so we just treat it as a
 				// trim of the range requested
 				self.trim_out_ = Some(TrimOperation {
-					block: hdup(&fb),
-					old_length: block_length(hdup(&fb)),
-					new_length: block_length(hdup(&fb)) - self.range.length(),
+					block: fb.clone(),
+					old_length: block_length(&fb),
+					new_length: block_length(&fb) - self.range.length(),
 				});
 			} else {
 				// This block is getting spliced, so we'll handle that later
-				self.splice_split_command_ =
-					Some(BlockSplitCommand::new(hdup(&fb), self.range.in_()));
+				self.splice_split_command_ = Some(BlockSplitCommand::new(fb.clone(), in_));
 			}
 		} else {
 			// It's just getting trimmed or removed, so we'll append that operation
 			if first_block_is_out_trimmed {
 				self.trim_out_ = Some(TrimOperation {
-					block: hdup(&fb),
-					old_length: block_length(hdup(&fb)),
-					new_length: block_length(hdup(&fb)) - (block_out(hdup(&fb)) - in_),
+					block: fb.clone(),
+					old_length: block_length(&fb),
+					new_length: block_length(&fb) - (block_out(&fb) - in_),
 				});
 			} else if first_block_is_in_trimmed {
 				self.trim_in_ = Some(TrimOperation {
-					block: hdup(&fb),
-					old_length: block_length(hdup(&fb)),
-					new_length: block_length(hdup(&fb)) - (out - block_in(hdup(&fb))),
+					block: fb.clone(),
+					old_length: block_length(&fb),
+					new_length: block_length(&fb) - (out - block_in(&fb)),
 				});
 			} else {
 				// We know for sure this block is within the range so it will be removed
 				self.removals_.push(RemoveOperation {
-					block: hdup(&fb),
-					before: block_previous(hdup(&fb)),
+					block: fb.clone(),
+					before: block_previous(&fb),
 				});
 			}
 
 			// If the first block is getting in trimmed, we're already at the
 			// end of our range
 			if !first_block_is_in_trimmed {
-				let mut next = block_next(hdup(&fb));
-				while !next.is_null() {
-					let nx = hdup(&next);
+				let mut next = block_next(&fb);
+				while let Some(nx) = next {
 					// The module world allows gaps BETWEEN blocks (their
 					// in/out points are stored, unlike Olive's contiguous
 					// track ordering), so a successor starting at/after the
 					// region does not overlap it and must not be touched.
-					if block_in(hdup(&nx)) >= out {
+					if block_in(&nx) >= out {
 						break;
 					}
-					let trimming = block_out(hdup(&nx)) > out;
+					let trimming = block_out(&nx) > out;
 
 					if trimming {
 						self.trim_in_ = Some(TrimOperation {
-							block: hdup(&nx),
-							old_length: block_length(hdup(&nx)),
-							new_length: block_length(hdup(&nx)) - (out - block_in(hdup(&nx))),
+							block: nx.clone(),
+							old_length: block_length(&nx),
+							new_length: block_length(&nx) - (out - block_in(&nx)),
 						});
 						break;
 					} else {
 						self.removals_.push(RemoveOperation {
-							block: hdup(&nx),
-							before: block_previous(hdup(&nx)),
+							block: nx.clone(),
+							before: block_previous(&nx),
 						});
 
-						if block_out(hdup(&nx)) == out {
+						if block_out(&nx) == out {
 							break;
 						}
 					}
 
-					next = block_next(hdup(&nx));
+					next = block_next(&nx);
 				}
 			}
 		}
@@ -378,8 +324,8 @@ impl TrackRippleRemoveAreaCommand {
 
 	/// `redo`: apply the ripple removal.
 	pub fn redo(&mut self) {
-		// The C ABI command path never invokes `prepare()` (the oakundo
-		// vtable wrapper only dispatches redo/undo), so derive the operations
+		// The vtable command path never invokes `prepare()` (the oakundo
+		// wrapper only dispatches redo/undo), so derive the operations
 		// on first use.
 		if !self.prepared {
 			self.prepare();
@@ -387,54 +333,49 @@ impl TrackRippleRemoveAreaCommand {
 		if self.splice_split_command_.is_some() {
 			// We're just splicing (C++ `redo_now` = prepare + redo)
 			let cmd = self.splice_split_command_.as_mut().unwrap();
-			cmd.prepare();
 			cmd.redo();
 
-			// Trim the in of the split (the module's `BlockSplitCommand`
-			// deviation anchors the halves at the original out / fresh in,
-			// so the in-end trim keeps the split's stored in point).
-			let split = cmd.new_block();
-			if !split.is_null() {
+			// Trim the in of the split (the second half produced by the
+			// split keeps the original out point; the in-end trim shifts
+			// its stored in point to the range out — the module equivalent
+			// of the C++ ripple shifting the remainder earlier).
+			if let Some(split) = cmd.new_block() {
 				let new_len =
-					block_length(split.clone()) - (self.range.out() - block_in(split.clone()));
-				block_set_length_and_media_in(split, new_len);
+					block_length(&split) - (self.range.out() - block_in(&split));
+				block_set_length_and_media_in(&split, new_len);
 			}
 		} else {
 			if let Some(t) = &self.trim_out_ {
 				// An out-end trim keeps the in point (in-anchored; the
 				// C++ setter name is kept, but the module's in/out are
 				// stored values, see the splice trim above).
-				block_set_length_and_media_in(hdup(&t.block), t.new_length);
+				block_set_length_and_media_in(&t.block, t.new_length);
 			}
 
 			if let Some(t) = &self.trim_in_ {
 				// An in-end trim keeps the out point (out-anchored).
-				block_set_length_and_media_out(hdup(&t.block), t.new_length);
+				block_set_length_and_media_out(&t.block, t.new_length);
 			}
 
 			// Perform removals
 			if !self.removals_.is_empty() {
-				let track = hdup(&self.track);
 				for op in &self.removals_ {
 					// Ripple remove them all first
-					let _ = unsafe {
-						oaknode_track_ripple_remove_block(track.clone(), hdup(&op.block))
-					};
+					track_ripple_remove_block(&self.track, &op.block);
 				}
 
 				// Create undo commands for node removals where possible
 				if self.remove_block_commands_.is_empty() {
 					for op in &self.removals_ {
-						if block_can_be_removed(hdup(&op.block)) {
+						if block_can_be_removed(&op.block) {
 							self.remove_block_commands_
-								.push(create_block_remove_command(hdup(&op.block)));
+								.push(create_block_remove_command(&op.block));
 						}
 					}
 				}
 
 				for i in 0..self.remove_block_commands_.len() {
-					let c = hdup(&self.remove_block_commands_[i]);
-					let _ = unsafe { oakundo_command_redo_now(c) };
+					self.remove_block_commands_[i].redo_now();
 				}
 			}
 		}
@@ -448,35 +389,27 @@ impl TrackRippleRemoveAreaCommand {
 		} else {
 			if let Some(t) = &self.trim_out_ {
 				// In-anchored, matching the redo (see above).
-				block_set_length_and_media_in(hdup(&t.block), t.old_length);
+				block_set_length_and_media_in(&t.block, t.old_length);
 			}
 
 			if let Some(t) = &self.trim_in_ {
 				// Out-anchored, matching the redo (see above).
-				block_set_length_and_media_out(hdup(&t.block), t.old_length);
+				block_set_length_and_media_out(&t.block, t.old_length);
 			}
 
 			// Un-remove any blocks
 			for i in (0..self.remove_block_commands_.len()).rev() {
-				let c = hdup(&self.remove_block_commands_[i]);
-				let _ = unsafe { oakundo_command_undo_now(c) };
+				self.remove_block_commands_[i].undo_now();
 			}
 
-			let track = hdup(&self.track);
 			for op in &self.removals_ {
-				let _ = unsafe {
-					oaknode_track_insert_block_after(
-						track.clone(),
-						hdup(&op.block),
-						hdup(&op.before),
-					)
-				};
+				track_insert_block_after(&self.track, &op.block, op.before.as_ref());
 			}
 		}
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }
@@ -491,34 +424,25 @@ impl Command for TrackRippleRemoveAreaCommand {
 	}
 }
 
-impl Drop for TrackRippleRemoveAreaCommand {
-	fn drop(&mut self) {
-		// C++ dtor frees every remove-block command handle.
-		for i in 0..self.remove_block_commands_.len() {
-			free_command_handle(&mut self.remove_block_commands_[i]);
-		}
-		// `splice_split_command_` (a plain `BlockSplitCommand`) is dropped by
-		// the field's own `Drop`.
-	}
-}
-
 /// `TrackListRippleRemoveAreaCommand` — clear a time area across every track
 /// in a list (timelineundoripple.h). Composes a `TrackRippleRemoveAreaCommand`
 /// per track.
 pub struct TrackListRippleRemoveAreaCommand {
 	/// Track list.
-	list: CHandle,
+	list: NodeRef,
 	/// Area to clear.
 	range: TimeRange,
 	/// The tracks actually worked on (`working_tracks_`).
-	working_tracks_: Vec<CHandle>,
+	working_tracks_: Vec<NodeRef>,
 	/// Per-track child commands (`commands_`).
 	commands_: Vec<TrackRippleRemoveAreaCommand>,
 }
 
 impl TrackListRippleRemoveAreaCommand {
 	/// Construct from track list + in + out points.
-	pub fn new(list: CHandle, in_: Rational, out: Rational) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(list: NodeRef, in_: Rational, out: Rational) -> TrackListRippleRemoveAreaCommand`
+	pub fn new(list: NodeRef, in_: Rational, out: Rational) -> Self {
 		Self {
 			list,
 			range: TimeRange::new(in_, out),
@@ -528,29 +452,24 @@ impl TrackListRippleRemoveAreaCommand {
 	}
 
 	/// `prepare`: build the per-track commands.
-	///
-	/// Requires the track-list enumeration and locked-flag queries the bridge
-	/// does not yet expose, so this currently produces no child commands (see
-	/// the module note).
 	pub fn prepare(&mut self) {
 		self.working_tracks_.clear();
 		self.commands_.clear();
 
-		let list = hdup(&self.list);
-		let count = track_list_count(list.clone());
+		let list = self.list.clone();
+		let count = track_list_count(&list);
 		for i in 0..count {
-			let track = track_list_at(list.clone(), i);
-			if track.is_null() {
+			let Some(track) = track_list_at(&list, i) else {
 				continue;
-			}
+			};
 
-			if track_locked(hdup(&track)) {
+			if track_is_locked(&track) {
 				continue;
 			}
 
 			self.commands_
-				.push(TrackRippleRemoveAreaCommand::new(hdup(&track), self.range));
-			self.working_tracks_.push(hdup(&track));
+				.push(TrackRippleRemoveAreaCommand::new(track.clone(), self.range));
+			self.working_tracks_.push(track);
 		}
 	}
 
@@ -570,8 +489,8 @@ impl TrackListRippleRemoveAreaCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }
@@ -589,9 +508,10 @@ impl Command for TrackListRippleRemoveAreaCommand {
 /// `TimelineRippleRemoveAreaCommand` — clear a time area across the whole
 /// timeline (timelineundoripple.h). A multi-command that drives a
 /// `TrackListRippleRemoveAreaCommand` per track list.
+#[allow(dead_code)] // `timeline`/`range` mirror the C++ members; the children carry the work.
 pub struct TimelineRippleRemoveAreaCommand {
 	/// Owning sequence.
-	timeline: CHandle,
+	timeline: NodeRef,
 	/// Area to clear.
 	range: TimeRange,
 	/// Per-track-list children (C++ `MultiUndoCommand` children).
@@ -601,19 +521,16 @@ pub struct TimelineRippleRemoveAreaCommand {
 impl TimelineRippleRemoveAreaCommand {
 	/// Construct from sequence + in + out points.
 	///
-	/// The C++ ctor walks the sequence's track lists via
-	/// `oaknode_sequence_get_track_list` (one per track type) and creates a
-	/// `TrackListRippleRemoveAreaCommand` for each; that query is not yet in
-	/// `bridge::node`, so no children are created until it is (see the module
-	/// note).
-	pub fn new(timeline: CHandle, in_: Rational, out: Rational) -> Self {
+	/// The ctor walks the sequence's track lists (one per track type) and
+	/// creates a `TrackListRippleRemoveAreaCommand` for each.
+	///
+	/// New signature (single-lib): `pub fn new(timeline: NodeRef, in_: Rational, out: Rational) -> TimelineRippleRemoveAreaCommand`
+	pub fn new(timeline: NodeRef, in_: Rational, out: Rational) -> Self {
 		let range = TimeRange::new(in_, out);
 
 		let mut commands_ = Vec::new();
-		for list in sequence_track_lists(hdup(&timeline)) {
-			if !list.is_null() {
-				commands_.push(TrackListRippleRemoveAreaCommand::new(hdup(&list), in_, out));
-			}
+		for list in sequence_track_lists(&timeline) {
+			commands_.push(TrackListRippleRemoveAreaCommand::new(list, in_, out));
 		}
 
 		Self {
@@ -638,8 +555,8 @@ impl TimelineRippleRemoveAreaCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }
@@ -658,31 +575,34 @@ impl Command for TimelineRippleRemoveAreaCommand {
 /// whether a trailing gap should be appended (timelineundoripple.h).
 pub struct RippleInfo {
 	/// Block to ripple.
-	block: CHandle,
+	block: NodeRef,
 	/// Whether to append a gap after the ripple.
 	append_gap: bool,
 }
 
 /// `TrackListRippleToolCommand` — ripple-tool edit: shift blocks on the listed
 /// tracks by `ripple_movement` (timelineundoripple.h).
+#[allow(dead_code)] // `track_list` mirrors the C++ member; the per-track info drives the work.
 pub struct TrackListRippleToolCommand {
 	/// Track list.
-	track_list: CHandle,
-	/// Per-track ripple info, ordered by track handle (TrackHandleLess parity).
-	info: Vec<(CHandle, RippleInfo)>,
+	track_list: NodeRef,
+	/// Per-track ripple info, ordered by track id (TrackHandleLess parity).
+	info: Vec<(NodeRef, RippleInfo)>,
 	/// Signed ripple movement.
 	ripple_movement: Rational,
 	/// Movement mode.
 	movement_mode: MovementMode,
 	/// Per-track working data persisting across redo/undo (`working_data_`).
-	working_data_: Vec<(CHandle, WorkingData)>,
+	working_data_: Vec<(NodeRef, WorkingData)>,
 }
 
 impl TrackListRippleToolCommand {
 	/// Construct from track list + per-track info + movement + mode.
+	///
+	/// New signature (single-lib): `pub fn new(track_list: NodeRef, info: Vec<(NodeRef, RippleInfo)>, ripple_movement: Rational, movement_mode: MovementMode) -> TrackListRippleToolCommand`
 	pub fn new(
-		track_list: CHandle,
-		info: Vec<(CHandle, RippleInfo)>,
+		track_list: NodeRef,
+		info: Vec<(NodeRef, RippleInfo)>,
 		ripple_movement: Rational,
 		movement_mode: MovementMode,
 	) -> Self {
@@ -717,8 +637,8 @@ impl TrackListRippleToolCommand {
 		// reads them afterwards; they are omitted here as dead code.
 
 		for (track, info) in &self.info {
-			let track_copy = hdup(track);
-			let b = hdup(&info.block);
+			let track_copy = track.clone();
+			let b = info.block.clone();
 
 			// Generate block length
 			let mut operation_movement = self.ripple_movement;
@@ -731,22 +651,19 @@ impl TrackListRippleToolCommand {
 				operation_movement = rat_neg(operation_movement);
 			}
 
-			let mut new_block_length = Rational::NULL;
-			if !b.is_null() {
-				new_block_length = block_length(hdup(&b)) + operation_movement;
-			}
+			let new_block_length = block_length(&b) + operation_movement;
 
 			// Fetch or default-construct this track's working data (C++ map
 			// `working_data_[track]`, persisted across redo/undo).
 			let wd_index = match self
 				.working_data_
 				.iter()
-				.position(|(t, _)| t.ctx == track_copy.ctx)
+				.position(|(t, _)| t.id == track_copy.id)
 			{
 				Some(i) => i,
 				None => {
 					self.working_data_
-						.push((hdup(&track_copy), WorkingData::default()));
+						.push((track_copy.clone(), WorkingData::default()));
 					self.working_data_.len() - 1
 				}
 			};
@@ -755,109 +672,99 @@ impl TrackListRippleToolCommand {
 			if info.append_gap {
 				// Rather than rippling the referenced block, we'll insert a gap and
 				// ripple with that
-				let mut gap = hdup(&wd.created_gap);
-
 				if redo {
-					if gap.is_null() {
-						// SAFETY: `oaknode_block_gap_create` returns a fresh owned handle.
-						gap = unsafe { oaknode_block_gap_create() };
-						block_set_length_and_media_out(
-							hdup(&gap),
+					if wd.created_gap.is_none() {
+						let gap = block_gap_create(&track_copy.project);
+						// The gap takes the ripple movement's span ahead of
+						// `b`; positions are stored on the block in the
+						// module model, so both ends are written explicitly
+						// (approximation: the C++ ripple additionally shifts
+						// the successors, which the stored positions render
+						// as an overlap-free gap right before `b`).
+						block_set_in(&gap, block_in(&b));
+						block_set_length_and_media_in(
+							&gap,
 							if self.ripple_movement < Rational::new(0, 1) {
 								rat_neg(self.ripple_movement)
 							} else {
 								self.ripple_movement
 							},
 						);
-						wd.created_gap = hdup(&gap);
-						wd.created_gap_orphaned = true;
+						wd.created_gap = Some(gap);
 					}
+					let gap = wd.created_gap.clone().expect("created above");
 
-					block_add_to_graph(hdup(&gap), hdup(&track_copy));
+					block_add_to_graph(&gap, wd.created_gap_entry.take());
 
-					// C++ `oaknode_track_insert_block_before(track, gap, b)`; the bridge
-					// has no such entry point, so insert after `b`'s predecessor instead
-					// (prepend when `b` is the first block).
-					let before = block_previous(hdup(&b));
-					if before.is_null() {
-						// SAFETY: valid handles.
-						let _ =
-							unsafe { oaknode_track_prepend_block(hdup(&track_copy), hdup(&gap)) };
-					} else {
-						// SAFETY: valid handles.
-						let _ = unsafe {
-							oaknode_track_insert_block_after(hdup(&track_copy), hdup(&gap), before)
-						};
+					// C++ `oaknode_track_insert_block_before(track, gap, b)`;
+					// insert after `b`'s predecessor (prepend when `b` is the
+					// first block).
+					let before = block_previous(&b);
+					match before {
+						Some(prev) => {
+							track_insert_block_after(&track_copy, &gap, Some(&prev))
+						}
+						None => track_prepend_block(&track_copy, &gap),
 					}
-					wd.created_gap_orphaned = false;
 
 					// As an insertion, the earliest change is at the gap's in point
-					wd.earliest_point_of_change = block_in(hdup(&gap));
-				} else {
-					// SAFETY: valid handles.
-					let _ =
-						unsafe { oaknode_track_ripple_remove_block(hdup(&track_copy), hdup(&gap)) };
-					block_remove_from_graph(hdup(&gap), hdup(&track_copy));
-					wd.created_gap_orphaned = true;
+					wd.earliest_point_of_change = block_in(&gap);
+				} else if let Some(gap) = &wd.created_gap {
+					track_ripple_remove_block(&track_copy, gap);
+					if wd.created_gap_entry.is_none() {
+						wd.created_gap_entry = block_remove_from_graph(gap);
+					}
 				}
 			} else if (redo && new_block_length.is_null())
-				|| (!redo && block_track(hdup(&b)).is_null())
+				|| (!redo && block_track(&b).is_none())
 			{
 				// The ripple is the length of this block. We assume that for this to
 				// happen, it must have been a gap that we will now remove.
 				if redo {
 					// The earliest point changes will happen is at the start of this block
-					wd.earliest_point_of_change = block_in(hdup(&b));
+					wd.earliest_point_of_change = block_in(&b);
 
 					// Remove gap from track and from graph
-					wd.removed_gap = hdup(&b);
-					wd.removed_gap_after = block_previous(hdup(&b));
-					// SAFETY: valid handles.
-					let _ =
-						unsafe { oaknode_track_ripple_remove_block(hdup(&track_copy), hdup(&b)) };
-					block_remove_from_graph(hdup(&b), hdup(&track_copy));
-					wd.removed_gap_orphaned = true;
-				} else {
+					wd.removed_gap = Some(b.clone());
+					wd.removed_gap_after = block_previous(&b);
+					track_ripple_remove_block(&track_copy, &b);
+					wd.removed_gap_entry = block_remove_from_graph(&b);
+				} else if let Some(gap) = &wd.removed_gap {
 					// Restore gap to graph and track
-					block_add_to_graph(hdup(&b), hdup(&track_copy));
-					// SAFETY: valid handles; `removed_gap_after` may be empty when the
-					// gap was first on the track, which the ABI tolerates like C++.
-					let _ = unsafe {
-						oaknode_track_insert_block_after(
-							hdup(&track_copy),
-							hdup(&b),
-							hdup(&wd.removed_gap_after),
-						)
-					};
-					wd.removed_gap_orphaned = false;
+					block_add_to_graph(gap, wd.removed_gap_entry.take());
+					track_insert_block_after(
+						&track_copy,
+						gap,
+						wd.removed_gap_after.as_ref(),
+					);
 
 					// The earliest point changes will happen is at the start of this block
-					wd.earliest_point_of_change = block_in(hdup(&b));
+					wd.earliest_point_of_change = block_in(gap);
 				}
 			} else {
 				// Store old length
-				wd.old_length = block_length(hdup(&b));
+				wd.old_length = block_length(&b);
 
 				if self.movement_mode == MovementMode::TrimIn {
 					// The earliest point changes will occur is in point of this block
-					wd.earliest_point_of_change = block_in(hdup(&b));
+					wd.earliest_point_of_change = block_in(&b);
 
 					// Update length
-					block_set_length_and_media_in(hdup(&b), new_block_length);
+					block_set_length_and_media_in(&b, new_block_length);
 				} else {
 					// The earliest point changes will occur is the out point if trimming
 					// out or the in point if trimming in
-					wd.earliest_point_of_change = block_out(hdup(&b));
+					wd.earliest_point_of_change = block_out(&b);
 
 					// Update length
-					block_set_length_and_media_out(hdup(&b), new_block_length);
+					block_set_length_and_media_out(&b, new_block_length);
 				}
 			}
 		}
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }
@@ -872,34 +779,19 @@ impl Command for TrackListRippleToolCommand {
 	}
 }
 
-impl Drop for TrackListRippleToolCommand {
-	fn drop(&mut self) {
-		// C++ dtor: free any gaps still detached from the graph
-		// (timelineundoripple.cpp:278).
-		for (_, wd) in &mut self.working_data_ {
-			if wd.created_gap_orphaned {
-				free_detached_handle(&mut wd.created_gap);
-			}
-			if wd.removed_gap_orphaned {
-				free_detached_handle(&mut wd.removed_gap);
-			}
-		}
-	}
-}
-
 /// `TrackListRippleToolCommand::WorkingData` — per-track state computed during
 /// a ripple edit (timelineundoripple.h).
 pub struct WorkingData {
 	/// Gap created by the ripple.
-	created_gap: CHandle,
-	/// Whether `created_gap` is detached from the graph (owned by this command).
-	created_gap_orphaned: bool,
+	created_gap: Option<NodeRef>,
+	/// Arena entry of `created_gap` while detached from the graph.
+	created_gap_entry: Option<NodeEntry>,
 	/// Gap removed by the ripple.
-	removed_gap: CHandle,
-	/// Whether `removed_gap` is detached from the graph (owned by this command).
-	removed_gap_orphaned: bool,
+	removed_gap: Option<NodeRef>,
+	/// Arena entry of `removed_gap` while detached from the graph.
+	removed_gap_entry: Option<NodeEntry>,
 	/// Block that follows the removed gap.
-	removed_gap_after: CHandle,
+	removed_gap_after: Option<NodeRef>,
 	/// Track length before the edit.
 	old_length: Rational,
 	/// Earliest point affected on the track.
@@ -910,11 +802,11 @@ impl Default for WorkingData {
 	/// C++ default ctor: null block handles, false flags, NULL rationals.
 	fn default() -> Self {
 		Self {
-			created_gap: CHandle::null(),
-			created_gap_orphaned: false,
-			removed_gap: CHandle::null(),
-			removed_gap_orphaned: false,
-			removed_gap_after: CHandle::null(),
+			created_gap: None,
+			created_gap_entry: None,
+			removed_gap: None,
+			removed_gap_entry: None,
+			removed_gap_after: None,
 			old_length: Rational::NULL,
 			earliest_point_of_change: Rational::NULL,
 		}
@@ -925,25 +817,27 @@ impl Default for WorkingData {
 /// given (track, range) regions (timelineundoripple.h).
 pub struct TimelineRippleDeleteGapsAtRegionsCommand {
 	/// Owning sequence.
-	timeline: CHandle,
-	/// Regions to clear, ordered by track handle.
-	regions: Vec<(CHandle, TimeRange)>,
-	/// Gap-removal/resize sub-command handles (`commands_`).
-	commands_: Vec<CHandle>,
+	timeline: NodeRef,
+	/// Regions to clear, ordered by track id.
+	regions: Vec<(NodeRef, TimeRange)>,
+	/// Gap-removal/resize sub-commands (`commands_`).
+	commands_: Vec<UndoCommand>,
 }
 
 /// One requested (track, range) region resolved to a gap block (C++
 /// `RemovalRequest`).
 struct RemovalRequest {
 	/// The gap block to remove or resize.
-	gap: CHandle,
+	gap: NodeRef,
 	/// The region it must clear.
 	range: TimeRange,
 }
 
 impl TimelineRippleDeleteGapsAtRegionsCommand {
 	/// Construct from sequence + regions.
-	pub fn new(timeline: CHandle, regions: Vec<(CHandle, TimeRange)>) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(timeline: NodeRef, regions: Vec<(NodeRef, TimeRange)>) -> TimelineRippleDeleteGapsAtRegionsCommand`
+	pub fn new(timeline: NodeRef, regions: Vec<(NodeRef, TimeRange)>) -> Self {
 		Self {
 			timeline,
 			regions,
@@ -959,48 +853,51 @@ impl TimelineRippleDeleteGapsAtRegionsCommand {
 	/// `prepare`: build the per-region gap-removal commands.
 	///
 	/// The gap-kind, nearest-block, sequence-track and locked-flag queries
-	/// all go through `bridge::node`; `redo` invokes this on first use
-	/// because the C ABI command path never calls `prepare` itself.
+	/// all go through the oaknode domain via `crate::util`; `redo` invokes
+	/// this on first use because the oakundo vtable wrapper only dispatches
+	/// `redo`/`undo`.
 	pub fn prepare(&mut self) {
 		self.commands_.clear();
 
 		let mut max_gaps = 0usize;
-		let mut requested_gaps: Vec<(CHandle, Vec<RemovalRequest>)> = Vec::new();
+		let mut requested_gaps: Vec<(NodeRef, Vec<RemovalRequest>)> = Vec::new();
 
 		// Convert regions to gaps
 		for (track, range) in &self.regions {
-			let track_copy = hdup(track);
-			let block = nearest_block_before_or_at(track_copy.clone(), range.in_());
+			let track_copy = track.clone();
+			let block = nearest_block_before_or_at(&track_copy, range.in_());
 
-			if is_gap(hdup(&block)) {
-				let index = requested_gaps
-					.iter()
-					.position(|(t, _)| t.ctx == track_copy.ctx)
-					.unwrap_or_else(|| {
-						requested_gaps.push((hdup(&track_copy), Vec::new()));
-						requested_gaps.len() - 1
-					});
+			if let Some(block) = block {
+				if is_gap(&block) {
+					let index = requested_gaps
+						.iter()
+						.position(|(t, _)| t.id == track_copy.id)
+						.unwrap_or_else(|| {
+							requested_gaps.push((track_copy.clone(), Vec::new()));
+							requested_gaps.len() - 1
+						});
 
-				let gaps_on_track = &mut requested_gaps[index].1;
-				let this_req = RemovalRequest {
-					gap: hdup(&block),
-					range: *range,
-				};
+					let gaps_on_track = &mut requested_gaps[index].1;
+					let this_req = RemovalRequest {
+						gap: block.clone(),
+						range: *range,
+					};
 
-				// Insertion sort
-				let mut insert_at = None;
-				for i in 0..gaps_on_track.len() {
-					if gaps_on_track[i].range.in_() < range.in_() {
-						insert_at = Some(i);
-						break;
+					// Insertion sort
+					let mut insert_at = None;
+					for i in 0..gaps_on_track.len() {
+						if gaps_on_track[i].range.in_() < range.in_() {
+							insert_at = Some(i);
+							break;
+						}
 					}
-				}
-				match insert_at {
-					Some(i) => gaps_on_track.insert(i, this_req),
-					None => gaps_on_track.push(this_req),
-				}
+					match insert_at {
+						Some(i) => gaps_on_track.insert(i, this_req),
+						None => gaps_on_track.push(this_req),
+					}
 
-				max_gaps = max_gaps.max(gaps_on_track.len());
+					max_gaps = max_gaps.max(gaps_on_track.len());
+				}
 			}
 			// C++ prints "Failed to find corresponding gap to region" to
 			// stderr here; we simply skip the region.
@@ -1009,7 +906,7 @@ impl TimelineRippleDeleteGapsAtRegionsCommand {
 		// For each gap on each track, find a corresponding gap on every other
 		// track (which may include a requested gap) to ripple in order to keep
 		// everything synchronized
-		let mut gap_lengths: Vec<(CHandle, Rational)> = Vec::new();
+		let mut gap_lengths: Vec<(NodeRef, Rational)> = Vec::new();
 		for gap_index in 0..max_gaps {
 			let mut earliest_point = Rational::new(2147483647, 1); // RATIONAL_MAX
 			let mut ripple_length = Rational::new(2147483647, 1); // RATIONAL_MAX
@@ -1025,63 +922,67 @@ impl TimelineRippleDeleteGapsAtRegionsCommand {
 			}
 
 			// Determine which gaps will be involved in this operation
-			let mut gaps: Vec<CHandle> = Vec::new();
+			let mut gaps: Vec<NodeRef> = Vec::new();
 
-			for track in sequence_all_tracks(hdup(&self.timeline)) {
-				if track.is_null() {
-					continue;
-				}
-				if track_locked(hdup(&track)) {
+			for track in sequence_all_tracks(&self.timeline) {
+				if track_is_locked(&track) {
 					continue;
 				}
 
-				let mut gap = CHandle::null();
-				let requested_here = requested_gaps.iter().find(|(t, _)| t.ctx == track.ctx);
+				let mut gap: Option<NodeRef> = None;
+				let requested_here = requested_gaps.iter().find(|(t, _)| t.id == track.id);
 				if let Some((_, requested_on_track)) = requested_here {
 					if gap_index < requested_on_track.len() {
-						gap = hdup(&requested_on_track[gap_index].gap);
+						gap = Some(requested_on_track[gap_index].gap.clone());
 					}
 				}
 
-				if gap.is_null() {
+				if gap.is_none() {
 					// No requested gap was at this index, find one
-					let block = nearest_block_after_or_at(hdup(&track), earliest_point);
-					if !block.is_null() {
+					let block = nearest_block_after_or_at(&track, earliest_point);
+					if let Some(block) = block {
 						// Found a block, test if it's a gap
-						if is_gap(hdup(&block)) {
-							gap = hdup(&block);
+						if is_gap(&block) {
+							gap = Some(block.clone());
 						} else {
-							if block_in(hdup(&block)) == earliest_point {
-								let next = block_next(hdup(&block));
-								if is_gap(hdup(&next)) {
-									gap = hdup(&next);
+							if block_in(&block) == earliest_point {
+								let next = block_next(&block);
+								if let Some(next) = next {
+									if is_gap(&next) {
+										gap = Some(next.clone());
+									} else {
+										ripple_length = Rational::new(0, 1);
+									}
 								} else {
 									ripple_length = Rational::new(0, 1);
 								}
 							} else {
-								let prev = block_previous(hdup(&block));
-								if is_gap(hdup(&prev)) {
-									gap = hdup(&prev);
+								let prev = block_previous(&block);
+								if let Some(prev) = prev {
+									if is_gap(&prev) {
+										gap = Some(prev.clone());
+									} else {
+										ripple_length = Rational::new(0, 1);
+									}
 								} else {
 									ripple_length = Rational::new(0, 1);
 								}
 							}
 						}
-					} else {
-						// Assume track finishes here and track won't be
-						// affected by this operation
 					}
+					// Else: assume track finishes here and track won't be
+					// affected by this operation
 				}
 
-				if !gap.is_null() {
-					let g = hdup(&gap);
-					gaps.push(hdup(&g));
+				if let Some(g) = gap {
+					let g = g.clone();
+					gaps.push(g.clone());
 
-					if !gap_lengths.iter().any(|(b, _)| b.ctx == g.ctx) {
-						gap_lengths.push((hdup(&g), block_length(hdup(&g))));
+					if !gap_lengths.iter().any(|(b, _)| b.id == g.id) {
+						gap_lengths.push((g.clone(), block_length(&g)));
 					}
 
-					if let Some((_, len)) = gap_lengths.iter().find(|(b, _)| b.ctx == g.ctx) {
+					if let Some((_, len)) = gap_lengths.iter().find(|(b, _)| b.id == g.id) {
 						ripple_length = std::cmp::min(ripple_length, *len);
 					}
 				}
@@ -1095,25 +996,27 @@ impl TimelineRippleDeleteGapsAtRegionsCommand {
 				for g in gaps {
 					let g_len = gap_lengths
 						.iter()
-						.find(|(b, _)| b.ctx == g.ctx)
+						.find(|(b, _)| b.id == g.id)
 						.map(|(_, l)| *l)
 						.unwrap_or(Rational::NULL);
 
 					if g_len == ripple_length {
-						self.commands_.push(
-							TrackRippleRemoveBlockCommand::new(block_track(hdup(&g)), hdup(&g))
-								.to_command(),
-						);
+						if let Some(track) = block_track(&g) {
+							self.commands_.push(
+								TrackRippleRemoveBlockCommand::new(track, g.clone())
+									.to_command(),
+							);
+						}
 					} else {
 						let mut new_len = g_len;
 						for (b, l) in gap_lengths.iter_mut() {
-							if b.ctx == g.ctx {
+							if b.id == g.id {
 								*l = *l - ripple_length;
 								new_len = *l;
 							}
 						}
 						self.commands_
-							.push(BlockResizeCommand::new(hdup(&g), new_len).to_command());
+							.push(BlockResizeCommand::new(g.clone(), new_len).to_command());
 					}
 				}
 			}
@@ -1122,7 +1025,7 @@ impl TimelineRippleDeleteGapsAtRegionsCommand {
 
 	/// `redo`: apply the gap deletions.
 	///
-	/// The C ABI command path never invokes `prepare()` (the oakundo vtable
+	/// The vtable command path never invokes `prepare()` (the oakundo vtable
 	/// wrapper only dispatches `redo`/`undo`), so the sub-commands are built
 	/// on first use; later redos re-apply the stored commands.
 	pub fn redo(&mut self) {
@@ -1130,21 +1033,19 @@ impl TimelineRippleDeleteGapsAtRegionsCommand {
 			self.prepare();
 		}
 		for i in 0..self.commands_.len() {
-			let c = hdup(&self.commands_[i]);
-			let _ = unsafe { oakundo_command_redo_now(c) };
+			self.commands_[i].redo_now();
 		}
 	}
 
 	/// `undo`: restore the deleted gaps.
 	pub fn undo(&mut self) {
 		for i in (0..self.commands_.len()).rev() {
-			let c = hdup(&self.commands_[i]);
-			let _ = unsafe { oakundo_command_undo_now(c) };
+			self.commands_[i].undo_now();
 		}
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }
@@ -1156,14 +1057,5 @@ impl Command for TimelineRippleDeleteGapsAtRegionsCommand {
 
 	fn undo(&mut self) {
 		self.undo()
-	}
-}
-
-impl Drop for TimelineRippleDeleteGapsAtRegionsCommand {
-	fn drop(&mut self) {
-		// C++ dtor frees every sub-command (`delete c`).
-		for i in 0..self.commands_.len() {
-			free_command_handle(&mut self.commands_[i]);
-		}
 	}
 }

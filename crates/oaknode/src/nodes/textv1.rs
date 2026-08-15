@@ -241,7 +241,7 @@ impl NodeBehavior for TextGeneratorV1 {
 	/// into the float frame multiplied by the color input. With no
 	/// backend installed, warns once and leaves the frame empty.
 	///
-	/// The Rust frame is an opaque [`crate::bridge::render::TextureHandle`]
+	/// The Rust frame is an opaque [`crate::handle::CHandle`]
 	/// whose pixels cannot be read or written from this crate, so the
 	/// body is a documented no-op; the layout/measure/offset control flow
 	/// is ported in [`Self::layout_request`], [`Self::draw_offsets`] and
@@ -249,7 +249,7 @@ impl NodeBehavior for TextGeneratorV1 {
 	fn generate_frame(
 		&self,
 		core: &NodeCore,
-		frame: &mut crate::bridge::render::TextureHandle,
+		frame: &mut crate::handle::CHandle,
 		time: Rational,
 	) {
 		let _ = (core, frame, time);

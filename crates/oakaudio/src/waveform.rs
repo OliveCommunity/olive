@@ -23,13 +23,12 @@
 use std::collections::BTreeMap;
 use std::ffi::CStr;
 
-use oakcodec::decoder::{CodecStream, Decoder as _, RetrieveAudioStatus};
+use oakcodec::decoder::{receive_list_of_all_decoders, CodecStream, Decoder as _, RetrieveAudioStatus};
 use oakcodec::ffmpeg::FFmpegDecoder;
+use oakcodec::footagedescription::FootageDescription;
 use oakcore_rs::{Rational, TimeRange};
 
-use crate::bridge::codec::AudioStreamInfo;
 use crate::error::{Error, Result};
-use crate::handle::{free_handle, make_owned, CHandle};
 
 /// Maximum channel count accepted by [`extract`]. The C++ plane array is a
 /// fixed `OAKAUDIO_EXTRACT_MAX_CHANNELS` (64) stack buffer; the Rust
@@ -625,32 +624,6 @@ impl RecipOrZero for f64 {
 	}
 }
 
-// ---- Handle plumbing (mirrors processor.rs) --------------------------------
-
-/// Create an empty waveform behind a refcounted handle (count 1).
-pub fn init() -> Result<CHandle> {
-	Ok(make_owned(AudioVisualWaveform::new()))
-}
-
-/// Release one reference to a waveform (NULL/empty no-op).
-pub fn free(self_: *mut CHandle) {
-	unsafe { free_handle(self_) };
-}
-
-/// Borrow the waveform behind a handle; `OAKAUDIO_E_INVALID` for empty.
-pub fn get(self_: &CHandle) -> Result<&AudioVisualWaveform> {
-	// SAFETY: every non-empty handle returned by `init` boxes an
-	// `AudioVisualWaveform`.
-	unsafe { crate::handle::get::<AudioVisualWaveform>(self_) }.ok_or(Error::Invalid)
-}
-
-/// Mutable variant of [`get`].
-pub fn get_mut(self_: &CHandle) -> Result<&mut AudioVisualWaveform> {
-	// SAFETY: every non-empty handle returned by `init` boxes an
-	// `AudioVisualWaveform`.
-	unsafe { crate::handle::get_mut::<AudioVisualWaveform>(self_) }.ok_or(Error::Invalid)
-}
-
 // ---- Whole-file extraction --------------------------------------------------
 
 /// Result of [`extract`]: channel-interleaved min/max pairs.
@@ -714,10 +687,34 @@ fn emit_points(
 	}
 }
 
+/// Probe a file with every registered decoder and return the first valid
+/// description (non-empty decoder id and at least one stream).
+///
+/// Replaces the former `oakcodec_decoder_probe` C ABI call (mirrors
+/// `probe_with_any_decoder` in oakcodec's ffi layer).
+fn probe_description(filename: &str) -> Option<FootageDescription> {
+	for decoder in receive_list_of_all_decoders() {
+		// `continue`, not `?`: an unimplemented/unsupported decoder must
+		// fall through to the next one (the FFmpeg entry is the
+		// format-agnostic fallback last in the registry).
+		let Some(desc) = decoder.probe(filename, None) else {
+			continue;
+		};
+		if !desc.decoder().is_empty()
+			&& (desc.video_stream_count() > 0
+				|| desc.audio_stream_count() > 0
+				|| desc.subtitle_stream_count() > 0)
+		{
+			return Some(desc);
+		}
+	}
+	None
+}
+
 /// Decode a whole audio stream to a channel-interleaved min/max summary.
 ///
-/// The stream is probed through the oakcodec decoder C ABI and decoded with
-/// oakcodec's in-process FFmpeg decoder (interleaved f32 at the native
+/// The stream is probed through oakcodec's in-process decoder registry and
+/// decoded with oakcodec's FFmpeg decoder (interleaved f32 at the native
 /// rate/layout), then reduced to one point per `samples_per_point` source
 /// samples.
 ///
@@ -728,34 +725,33 @@ pub fn extract(
 	stream_index: i32,
 	samples_per_point: i32,
 ) -> Result<ExtractOutcome> {
-	// Probe for the stream's native rate/layout (stateless).
-	// SAFETY: `filename` is a NUL-terminated C string (validated by the FFI
-	// layer); the probe handle is freed on every path below.
-	let mut probe = unsafe { crate::bridge::codec::oakcodec_decoder_probe(filename.as_ptr()) };
-	if probe.is_null() {
-		return Err(Error::NotFound);
+	// Probe for the stream's native rate/layout with the in-process decoder
+	// registry (the Rust equivalent of the former oakcodec decoder probe
+	// C ABI call).
+	let filename_str = filename.to_string_lossy();
+	let desc = probe_description(&filename_str).ok_or(Box::new(Error::NotFound))?;
+	let ap = desc
+		.get_audio_stream(stream_index as usize)
+		.ok_or(Box::new(Error::NotFound))?;
+
+	// The probed stream metadata is a plain value type (oakcodec's
+	// `AudioParams`); the fields map one-to-one onto the former
+	// `oakcodec_audio_stream_info` POD.
+	let sample_rate = ap.sample_rate;
+	let channel_count = ap.channel_count();
+	let channel_layout = ap.channel_layout;
+	let container_stream_index = ap.stream_index;
+	let duration_ts = ap.duration;
+	let (time_base_num, time_base_den) = ap.time_base;
+
+	if sample_rate <= 0 || channel_count <= 0 {
+		return Err(Box::new(Error::Failed("invalid audio stream".to_string())));
 	}
-	let mut info = unsafe { std::mem::zeroed::<AudioStreamInfo>() };
-	let r = unsafe {
-		crate::bridge::codec::oakcodec_decoder_probe_get_audio_stream(
-			probe,
-			stream_index,
-			&mut info,
-		)
-	};
-	// SAFETY: `probe` was created above and is no longer used.
-	unsafe { crate::bridge::codec::oakcodec_decoder_free(&mut probe) };
-	if r != 0 {
-		return Err(Error::NotFound);
-	}
-	if info.sample_rate <= 0 || info.channel_count <= 0 {
-		return Err(Error::Failed("invalid audio stream".to_string()));
-	}
-	let channels = info.channel_count;
+	let channels = channel_count;
 	if channels > EXTRACT_MAX_CHANNELS {
-		return Err(Error::Failed(format!(
+		return Err(Box::new(Error::Failed(format!(
 			"stream has {channels} channels (max {EXTRACT_MAX_CHANNELS})"
-		)));
+		))));
 	}
 
 	// Decode the whole stream through oakcodec's FFmpeg decoder
@@ -764,23 +760,23 @@ pub fn extract(
 	// fb_audio_graph to obtain planar f32).
 	let decoder = FFmpegDecoder::new();
 	let stream = CodecStream::with_block(
-		filename.to_string_lossy().into_owned(),
-		info.stream_index,
+		filename_str.into_owned(),
+		container_stream_index,
 		None,
 	);
 	if let Err(e) = decoder.open(&stream) {
-		return Err(Error::Failed(format!("failed to open decoder: {e:?}")));
+		return Err(Box::new(Error::Failed(format!("failed to open decoder: {e:?}"))));
 	}
 
-	if info.time_base_num <= 0 || info.time_base_den <= 0 || info.duration_ts <= 0 {
+	if time_base_num <= 0 || time_base_den <= 0 || duration_ts <= 0 {
 		let _ = decoder.close();
-		return Err(Error::Failed("invalid audio stream duration".to_string()));
+		return Err(Box::new(Error::Failed("invalid audio stream duration".to_string())));
 	}
 	let duration_sec =
-		info.duration_ts as f64 * f64::from(info.time_base_num) / f64::from(info.time_base_den);
-	let total_frames = (duration_sec * f64::from(info.sample_rate)).round() as i64;
-	let layout_mask = if info.channel_layout != 0 {
-		info.channel_layout
+		duration_ts as f64 * f64::from(time_base_num) / f64::from(time_base_den);
+	let total_frames = (duration_sec * f64::from(sample_rate)).round() as i64;
+	let layout_mask = if channel_layout != 0 {
+		channel_layout
 	} else {
 		ffmpeg_next::ChannelLayout::default(channels).bits()
 	};
@@ -796,11 +792,11 @@ pub fn extract(
 	while offset < total_frames {
 		let frames = (total_frames - offset).min(CHUNK_FRAMES);
 		let range = TimeRange::new(
-			Rational::new(offset, i64::from(info.sample_rate)),
-			Rational::new(offset + frames, i64::from(info.sample_rate)),
+			Rational::new(offset, i64::from(sample_rate)),
+			Rational::new(offset + frames, i64::from(sample_rate)),
 		);
 		let mut buf = vec![0f32; frames as usize * channels as usize];
-		match decoder.retrieve_audio(&mut buf, &range, info.sample_rate, layout_mask) {
+		match decoder.retrieve_audio(&mut buf, &range, sample_rate, layout_mask) {
 			Ok(RetrieveAudioStatus::Success) => {
 				append_pending(&mut pending, &buf, channels);
 				emit_points(
@@ -812,11 +808,11 @@ pub fn extract(
 				);
 			}
 			Ok(status) => {
-				result = Err(Error::Failed(format!("audio retrieve failed: {status:?}")));
+				result = Err(Box::new(Error::Failed(format!("audio retrieve failed: {status:?}"))));
 				break;
 			}
 			Err(e) => {
-				result = Err(Error::Failed(format!("audio retrieve failed: {e:?}")));
+				result = Err(Box::new(Error::Failed(format!("audio retrieve failed: {e:?}"))));
 				break;
 			}
 		}

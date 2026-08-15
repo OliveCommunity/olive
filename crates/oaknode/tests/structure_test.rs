@@ -322,35 +322,6 @@ fn track_block_ordering() {
 	);
 }
 
-/// ClipBlock cache passthrough: the C ABI export accepts the call (the
-/// cache UUID copy is inert until the oakrender bridge creates per-node
-/// caches).
-#[test]
-fn clip_cache_passthrough() {
-	use oaknode::error::OAKNODE_OK;
-	use oaknode::ffi::block::oaknode_block_clip_create;
-	use oaknode::ffi::block::oaknode_block_free;
-	use oaknode::ffi::block::oaknode_clip_add_cache_passthrough_from;
-	use oaknode::ffi::project::oaknode_project_free;
-	use oaknode::ffi::project::oaknode_project_init;
-	use oaknode::handle::CHandle;
-
-	let mut p = unsafe { oaknode_project_init() };
-	let mut clip = unsafe { oaknode_block_clip_create() };
-	let mut other = unsafe { oaknode_block_clip_create() };
-	assert_eq!(
-		unsafe { oaknode_clip_add_cache_passthrough_from(clip.clone(), other.clone()) },
-		OAKNODE_OK
-	);
-	assert_eq!(
-		unsafe { oaknode_clip_add_cache_passthrough_from(CHandle::null(), other.clone()) },
-		oaknode::error::OAKNODE_E_INVALID
-	);
-	unsafe { oaknode_block_free(&mut clip) };
-	unsafe { oaknode_block_free(&mut other) };
-	unsafe { oaknode_project_free(&mut p) };
-}
-
 /// Footage behavior: state without a codec module (probe fails
 /// gracefully without partial state); proxy fields, counts, duration.
 #[test]

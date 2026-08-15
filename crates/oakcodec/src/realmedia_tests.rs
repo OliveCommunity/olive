@@ -21,16 +21,13 @@
 //! 48kHz stereo) and a full H.264 encode round-trip through `/tmp`.
 //!
 //! They live inside the crate (not `tests/`) because the crate's
-//! `#[cfg(test)]` in-memory oakcommon/oakrender stubs — which the
-//! `Frame`/`FootageDescription` paths need — are only linked for the lib
-//! test binary (`tests/` is compiled without `#[cfg(test)]` and cannot
-//! resolve those symbols; see `tests/ffi_contract_test.rs`).
+//! `#[cfg(test)]` in-memory stubs — which the `Frame`/`FootageDescription`
+//! paths need — are only linked for the lib test binary (`tests/` is
+//! compiled without `#[cfg(test)]` and cannot resolve those symbols; see
+//! `tests/ffi_contract_test.rs`).
 
-use crate::bridge::common::{
-	oakcommon_videoparams_get_duration, oakcommon_videoparams_get_frame_rate,
-	oakcommon_videoparams_get_height, oakcommon_videoparams_get_width,
-	oakcommon_videoparams_init_basic, oakcommon_videoparams_set_format,
-};
+use oakcommon::ocioutils::PixelFormat as OakPixelFormat;
+use oakcommon::videoparams::VideoParams;
 use crate::decoder::{
 	CodecStream, Decoder, RenderMode, RetrieveAudioStatus, RetrieveVideoParams,
 	K_COLOR_RANGE_DEFAULT,
@@ -80,8 +77,8 @@ fn h264_params(out: &std::path::Path) -> crate::encodingparams::EncodingParams {
 
 /// Build an allocated F32-RGBA frame with a moving color pattern.
 fn pattern_frame(i: i32) -> Frame {
-	let vp = unsafe { oakcommon_videoparams_init_basic(64, 64, 0, 4, 1, 1, 0, 1) };
-	unsafe { oakcommon_videoparams_set_format(vp.clone(), PixelFormat::F32 as i32) };
+	let mut vp = VideoParams::new_basic(64, 64, OakPixelFormat::from_code(0), 4, 1, 1, 0, 1);
+	vp.set_format(OakPixelFormat::from_code(PixelFormat::F32 as i32));
 	let mut f = Frame::with_params(vp);
 	f.set_timestamp(Rational::new(i as i64, 10));
 	f.allocate().unwrap();
@@ -117,20 +114,10 @@ fn probe_reports_streams_and_duration() {
 
 	// Video stream: 1920x1080, 25fps, 17s at 1/12800 time base.
 	let vp = desc.get_video_stream(0).expect("video stream");
-	assert_eq!(unsafe { oakcommon_videoparams_get_width(vp.clone()) }, 1920);
-	assert_eq!(
-		unsafe { oakcommon_videoparams_get_height(vp.clone()) },
-		1080
-	);
-	assert_eq!(
-		unsafe { oakcommon_videoparams_get_duration(vp.clone()) },
-		17 * 12800
-	);
-
-	let mut num: i32 = 0;
-	let mut den: i32 = 0;
-	unsafe { oakcommon_videoparams_get_frame_rate(vp.clone(), &mut num, &mut den) };
-	assert_eq!((num, den), (25, 1));
+	assert_eq!(vp.width(), 1920);
+	assert_eq!(vp.height(), 1080);
+	assert_eq!(vp.duration(), 17 * 12800);
+	assert_eq!(vp.frame_rate(), (25, 1));
 }
 
 #[test]
@@ -220,8 +207,8 @@ fn encode_h264_roundtrip_to_tmp() {
 	let desc = d.probe(&out_str, None).expect("probe round-trip output");
 	assert_eq!(desc.video_stream_count(), 1);
 	let vp = desc.get_video_stream(0).expect("video stream");
-	assert_eq!(unsafe { oakcommon_videoparams_get_width(vp.clone()) }, 64);
-	assert_eq!(unsafe { oakcommon_videoparams_get_height(vp.clone()) }, 64);
+	assert_eq!(vp.width(), 64);
+	assert_eq!(vp.height(), 64);
 
 	// Decode the first frame of the result.
 	let s = CodecStream::with_block(out_str.clone(), 0, None);

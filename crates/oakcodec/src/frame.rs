@@ -14,19 +14,15 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! `olive::Frame` — a CPU pixel buffer plus an `OakVideoParams` handle.
+//! `olive::Frame` — a CPU pixel buffer plus a [`VideoParams`] value.
 //!
 //! Mirrors `src/codec/src/frame.h`. The params are held as an oakcommon
-//! by-value handle (`bridge::common::OakVideoParams`, refcounted) so the
-//! byte-level ABI of `oakcodec_frame_get_params`/`_set_params` is
-//! unchanged; the pixel data itself is a plain `Vec<u8>`. Line-size and
-//! pixel-format math lives here.
+//! [`VideoParams`] value (single-lib unification; the former refcounted
+//! oakcommon handle is gone, so copies are plain clones); the pixel data
+//! itself is a plain `Vec<u8>`. Line-size and pixel-format math lives
+//! here.
 
-use crate::bridge::common::{
-	oakcommon_videoparams_free, oakcommon_videoparams_get_format, oakcommon_videoparams_get_height,
-	oakcommon_videoparams_get_is_valid, oakcommon_videoparams_get_width,
-	oakcommon_videoparams_init, OakVideoParams,
-};
+use oakcommon::videoparams::VideoParams;
 use oakcore_rs::{PixelFormat, Rational};
 
 /// Number of channels in the internal RGBA pipeline layout
@@ -47,11 +43,11 @@ pub enum Interlacing {
 	BottomFieldFirst = 2,
 }
 
-/// `olive::Frame`: reference-counted CPU pixel buffer + params handle.
+/// `olive::Frame`: reference-counted CPU pixel buffer + params value.
 #[derive(Debug)]
 pub struct Frame {
-	/// Video parameter set (oakcommon handle, refcounted).
-	pub params: Option<OakVideoParams>,
+	/// Video parameter set.
+	pub params: Option<VideoParams>,
 	/// Pixel buffer (unallocated until `allocate`).
 	data: Vec<u8>,
 	/// Distance between rows in bytes (0 until params are set).
@@ -87,40 +83,11 @@ fn bytes_per_pixel(format: PixelFormat, channels: i32) -> i32 {
 	(format.bytes_per_channel() as i32) * channels
 }
 
-/// Increment the refcount of a params handle (a no-op for test-stub handles
-/// whose `addref` is `None`). `pub(crate)` so the ffi layer can hand out
-/// addref'd copies (`oakcodec_frame_get_params`).
-pub(crate) fn params_addref(p: &OakVideoParams) {
-	if let Some(addref) = p.addref {
-		// SAFETY: `addref` is a valid C function pointer targeting `ctx`.
-		unsafe { addref(p.ctx) };
-	}
-}
-
-/// Release a params handle (prefers the `release` function pointer; the
-/// test stubs use `oakcommon_videoparams_free` instead). Nulls `ctx` so the
-/// handle cannot be released twice.
-pub(crate) fn params_release(p: &mut OakVideoParams) {
-	if p.ctx.is_null() {
-		return;
-	}
-	if let Some(release) = p.release {
-		// SAFETY: `release` is a valid C function pointer targeting `ctx`.
-		unsafe { release(p.ctx) };
-	} else {
-		// SAFETY: `p` points at a live handle; `oakcommon_videoparams_free`
-		// is a no-op for the null ctx we leave behind.
-		unsafe { oakcommon_videoparams_free(p) };
-	}
-	p.ctx = std::ptr::null_mut();
-}
-
 impl Frame {
 	/// New frame with default (invalid) params; buffer unallocated.
 	pub fn new() -> Self {
-		let params = unsafe { oakcommon_videoparams_init() };
 		Frame {
-			params: Some(params),
+			params: Some(VideoParams::new()),
 			data: Vec::new(),
 			linesize_bytes: 0,
 			timestamp: Rational::new(0, 1),
@@ -128,9 +95,8 @@ impl Frame {
 		}
 	}
 
-	/// New frame with a copy of `params` (handle addref'd internally).
-	pub fn with_params(params: OakVideoParams) -> Self {
-		params_addref(&params);
+	/// New frame with a copy of `params`.
+	pub fn with_params(params: VideoParams) -> Self {
 		let mut frame = Frame {
 			params: Some(params),
 			data: Vec::new(),
@@ -143,17 +109,13 @@ impl Frame {
 	}
 
 	/// The video parameter set, or `None` when empty.
-	pub fn params(&self) -> Option<&OakVideoParams> {
+	pub fn params(&self) -> Option<&VideoParams> {
 		self.params.as_ref()
 	}
 
-	/// Replace the parameter set (handle addref'd), recompute line sizes,
-	/// do NOT reallocate the buffer.
-	pub fn set_params(&mut self, params: OakVideoParams) {
-		if let Some(mut old) = self.params.take() {
-			params_release(&mut old);
-		}
-		params_addref(&params);
+	/// Replace the parameter set, recompute line sizes, do NOT reallocate
+	/// the buffer.
+	pub fn set_params(&mut self, params: VideoParams) {
 		self.params = Some(params);
 		self.recompute_linesize();
 		// Deliberately do not touch `data`: an existing buffer keeps its
@@ -165,10 +127,8 @@ impl Frame {
 	fn recompute_linesize(&mut self) {
 		self.linesize_bytes = match &self.params {
 			Some(p) => {
-				let w = unsafe { oakcommon_videoparams_get_width(p.clone()) };
-				let fmt =
-					pixel_format_from_i32(unsafe { oakcommon_videoparams_get_format(p.clone()) });
-				Self::generate_linesize_bytes(fmt, w)
+				let fmt = pixel_format_from_i32(p.format().code());
+				Self::generate_linesize_bytes(fmt, p.width())
 			}
 			None => 0,
 		};
@@ -177,12 +137,11 @@ impl Frame {
 	/// Allocate the pixel buffer from the current params.
 	pub fn allocate(&mut self) -> crate::error::Result<()> {
 		let params = match &self.params {
-			Some(p) => p.clone(),
+			Some(p) => p,
 			None => return Err(crate::error::Error::State),
 		};
 
-		let is_valid = unsafe { oakcommon_videoparams_get_is_valid(params.clone()) };
-		if is_valid == 0 {
+		if !params.is_valid() {
 			return Err(crate::error::Error::State);
 		}
 
@@ -191,9 +150,9 @@ impl Frame {
 			return Ok(());
 		}
 
-		let width = unsafe { oakcommon_videoparams_get_width(params.clone()) };
-		let height = unsafe { oakcommon_videoparams_get_height(params.clone()) };
-		let format = pixel_format_from_i32(unsafe { oakcommon_videoparams_get_format(params) });
+		let width = params.width();
+		let height = params.height();
+		let format = pixel_format_from_i32(params.format().code());
 
 		let linesize = Self::generate_linesize_bytes(format, width);
 		let size = (linesize as usize).wrapping_mul(height as usize);
@@ -256,7 +215,7 @@ impl Frame {
 	/// Frame width in pixels (0 when params are empty).
 	pub fn width(&self) -> i32 {
 		match &self.params {
-			Some(p) => unsafe { oakcommon_videoparams_get_width(p.clone()) },
+			Some(p) => p.width(),
 			None => 0,
 		}
 	}
@@ -264,7 +223,7 @@ impl Frame {
 	/// Frame height in pixels (0 when params are empty).
 	pub fn height(&self) -> i32 {
 		match &self.params {
-			Some(p) => unsafe { oakcommon_videoparams_get_height(p.clone()) },
+			Some(p) => p.height(),
 			None => 0,
 		}
 	}
@@ -272,9 +231,7 @@ impl Frame {
 	/// Pixel format (`OakPixelFormat` value).
 	pub fn format(&self) -> PixelFormat {
 		match &self.params {
-			Some(p) => {
-				pixel_format_from_i32(unsafe { oakcommon_videoparams_get_format(p.clone()) })
-			}
+			Some(p) => pixel_format_from_i32(p.format().code()),
 			None => PixelFormat::Invalid,
 		}
 	}
@@ -282,10 +239,9 @@ impl Frame {
 	/// Plane channel count of the params format.
 	///
 	/// # CPP-PARITY
-	/// `src/codec/src/frame.h` reads this from the params handle via
-	/// `oakcommon_videoparams_get_channel_count`, which is not exposed in the
-	/// Rust bridge. Decoder frames are always produced in the internal RGBA
-	/// layout, so this returns [`VIDEO_CHANNELS`] (4).
+	/// `src/codec/src/frame.h` reads this from the params via
+	/// `VideoParams::channel_count`. Decoder frames are always produced in
+	/// the internal RGBA layout, so this returns [`VIDEO_CHANNELS`] (4).
 	pub fn channel_count(&self) -> i32 {
 		VIDEO_CHANNELS
 	}
@@ -317,7 +273,7 @@ impl Frame {
 	///
 	/// # CPP-PARITY
 	/// `src/codec/src/frame.cpp` — the destination params are carried by
-	/// the C++ callers via `oakcommon_videoparams_*`; Rust keeps the
+	/// the C++ callers via `VideoParams` setters; Rust keeps the
 	/// equivalent state in `self.params`.
 	///
 	/// When the current params format already matches the format the buffer
@@ -372,23 +328,13 @@ impl Frame {
 	}
 }
 
-impl Drop for Frame {
-	/// Release the owned params handle when the last reference dies,
-	/// mirroring the C++ `Frame::~Frame`.
-	fn drop(&mut self) {
-		if let Some(mut p) = self.params.take() {
-			params_release(&mut p);
-		}
-	}
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::bridge::common::oakcommon_videoparams_init_basic;
+	use oakcommon::ocioutils::PixelFormat as OakPixelFormat;
 
 	fn frame(w: i32, h: i32) -> Frame {
-		let params = unsafe { oakcommon_videoparams_init_basic(w, h, 0, 4, 1, 1, 0, 1) };
+		let params = VideoParams::new_basic(w, h, OakPixelFormat::from_code(0), 4, 1, 1, 0, 1);
 		Frame::with_params(params)
 	}
 
@@ -459,12 +405,13 @@ mod tests {
 
 	#[test]
 	fn set_params_recomputes_linesize_without_realloc() {
-		let params = unsafe { oakcommon_videoparams_init_basic(10, 10, 0, 4, 1, 1, 0, 1) };
+		let params = VideoParams::new_basic(10, 10, OakPixelFormat::from_code(0), 4, 1, 1, 0, 1);
 		let mut f = Frame::with_params(params);
 		f.allocate().unwrap();
 		let before = f.allocated_size();
 
-		let wider = unsafe { oakcommon_videoparams_init_basic(100, 10, 0, 4, 1, 1, 0, 1) };
+		let wider =
+			VideoParams::new_basic(100, 10, OakPixelFormat::from_code(0), 4, 1, 1, 0, 1);
 		f.set_params(wider);
 		// linesize reflects the new width, but the buffer is untouched.
 		assert_eq!(f.linesize_bytes(), 4 * 128);
@@ -475,10 +422,10 @@ mod tests {
 #[cfg(test)]
 mod tests_extra {
 	use super::*;
-	use crate::bridge::common::oakcommon_videoparams_init_basic;
+	use oakcommon::ocioutils::PixelFormat as OakPixelFormat;
 
 	fn frame(w: i32, h: i32) -> Frame {
-		let params = unsafe { oakcommon_videoparams_init_basic(w, h, 0, 4, 1, 1, 0, 1) };
+		let params = VideoParams::new_basic(w, h, OakPixelFormat::from_code(0), 4, 1, 1, 0, 1);
 		Frame::with_params(params)
 	}
 
@@ -513,8 +460,8 @@ mod tests_extra {
 
 	#[test]
 	fn pixel_format_from_unknown_code_is_invalid() {
-		let p = unsafe { oakcommon_videoparams_init_basic(1, 1, 0, 4, 1, 1, 0, 1) };
-		unsafe { crate::bridge::common::oakcommon_videoparams_set_format(p.clone(), 99) };
+		let mut p = VideoParams::new_basic(1, 1, OakPixelFormat::from_code(0), 4, 1, 1, 0, 1);
+		p.set_format(OakPixelFormat::from_code(99));
 		let f = Frame::with_params(p);
 		assert_eq!(f.format(), PixelFormat::Invalid);
 	}

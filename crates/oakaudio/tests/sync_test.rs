@@ -15,24 +15,22 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //! AudioSynchronizer + AudioWaveformSync contract tests
-//! (synchronizer.rs, waveformsync.rs), through the C ABI.
+//! (synchronizer.rs, waveformsync.rs), calling the public Rust API.
 
 mod common;
 
-use oakaudio::error::OAKAUDIO_E_INVALID;
-use oakaudio::ffi::sync::{
-	oakaudio_sync_estimate_envelope_offset, oakaudio_sync_estimate_stretch_and_offset,
-	oakaudio_sync_extract_rms_envelope, oakaudio_sync_place_by_source_time,
-	oakaudio_sync_place_by_waveform_offset, OffsetResult, SourceClip, StretchOffsetResult,
+use oakcore_rs::Rational;
+use oakaudio::synchronizer::{place_by_source_time, place_by_waveform_offset, SourceClip};
+use oakaudio::waveformsync::{
+	estimate_envelope_offset, estimate_envelope_offset_valid, estimate_stretch_and_offset,
+	extract_rms_envelope,
 };
 
 fn clip(source: i64, media_in: i64, has_source: bool) -> SourceClip {
 	SourceClip {
-		source_start_time_num: source,
-		source_start_time_den: 1,
-		media_in_num: media_in,
-		media_in_den: 1,
-		has_source_start_time: has_source as i32,
+		source_start_time: Rational::new(source, 1),
+		media_in: Rational::new(media_in, 1),
+		has_source_start_time: has_source,
 	}
 }
 
@@ -43,28 +41,15 @@ fn clip(source: i64, media_in: i64, has_source: bool) -> SourceClip {
 fn place_by_source_time_matching() {
 	let reference = clip(0, 0, true);
 	let candidate = clip(0, 0, true);
-	let (mut num, mut den, mut valid) = (0i64, 0i64, 0i32);
-	let r = unsafe {
-		oakaudio_sync_place_by_source_time(
-			&reference, &candidate, 5, 1, &mut num, &mut den, &mut valid,
-		)
-	};
-	assert_eq!(r, 0);
-	assert_eq!(num, 5);
-	assert_eq!(den, 1);
-	assert_eq!(valid, 1);
+	let placement = place_by_source_time(&reference, &candidate, Rational::new(5, 1));
+	assert!(placement.valid);
+	assert_eq!(placement.timeline_in, Rational::new(5, 1));
 
-	// A source-less candidate is invalid: valid=0, null rational.
+	// A source-less candidate is invalid: valid=false, null rational.
 	let candidate = clip(0, 0, false);
-	let r = unsafe {
-		oakaudio_sync_place_by_source_time(
-			&reference, &candidate, 5, 1, &mut num, &mut den, &mut valid,
-		)
-	};
-	assert_eq!(r, 0);
-	assert_eq!(valid, 0);
-	assert_eq!(num, 0);
-	assert_eq!(den, 0);
+	let placement = place_by_source_time(&reference, &candidate, Rational::new(5, 1));
+	assert!(!placement.valid);
+	assert!(placement.timeline_in.is_null());
 }
 
 /// place_by_source_time: when source times disagree by a known delta, the
@@ -73,62 +58,28 @@ fn place_by_source_time_matching() {
 fn place_by_source_time_delta() {
 	let reference = clip(5, 0, true);
 	let candidate = clip(12, 0, true);
-	let (mut num, mut den, mut valid) = (0i64, 0i64, 0i32);
-	let r = unsafe {
-		oakaudio_sync_place_by_source_time(
-			&reference, &candidate, 0, 1, &mut num, &mut den, &mut valid,
-		)
-	};
-	assert_eq!(r, 0);
+	let placement = place_by_source_time(&reference, &candidate, Rational::new(0, 1));
 	// 0 + (12 + 0) - (5 + 0) = 7
-	assert_eq!(num, 7);
-	assert_eq!(den, 1);
-	assert_eq!(valid, 1);
-
-	// A zero denominator is rejected up front.
-	let r = unsafe {
-		oakaudio_sync_place_by_source_time(
-			&reference, &candidate, 0, 0, &mut num, &mut den, &mut valid,
-		)
-	};
-	assert_eq!(r, OAKAUDIO_E_INVALID);
+	assert!(placement.valid);
+	assert_eq!(placement.timeline_in, Rational::new(7, 1));
 }
 
 /// place_by_waveform_offset converts a sample offset at a sample rate into
-/// a timeline-in shift; out_valid is 1 on success and 0 for a null rate.
+/// a timeline-in shift; out_valid is false for a null rate.
 #[test]
 fn place_by_waveform_offset_conversion() {
-	let (mut num, mut den, mut valid) = (0i64, 0i64, 0i32);
-	let r = unsafe {
-		oakaudio_sync_place_by_waveform_offset(0, 1, 48000, 48000, &mut num, &mut den, &mut valid)
-	};
-	assert_eq!(r, 0);
-	assert_eq!(num, 1);
-	assert_eq!(den, 1);
-	assert_eq!(valid, 1);
+	let placement = place_by_waveform_offset(Rational::new(0, 1), 48000, 48000);
+	assert!(placement.valid);
+	assert_eq!(placement.timeline_in, Rational::new(1, 1));
 
-	let r = unsafe {
-		oakaudio_sync_place_by_waveform_offset(1, 2, 48000, 48000, &mut num, &mut den, &mut valid)
-	};
-	assert_eq!(r, 0);
-	assert_eq!(num, 3);
-	assert_eq!(den, 2);
-	assert_eq!(valid, 1);
+	let placement = place_by_waveform_offset(Rational::new(1, 2), 48000, 48000);
+	assert!(placement.valid);
+	assert_eq!(placement.timeline_in, Rational::new(3, 2));
 
-	// A null rate is invalid (valid=0, null rational), and the FFI rejects
-	// a zero timeline denominator.
-	let r = unsafe {
-		oakaudio_sync_place_by_waveform_offset(1, 2, 48000, 0, &mut num, &mut den, &mut valid)
-	};
-	assert_eq!(r, 0);
-	assert_eq!(valid, 0);
-	assert_eq!(num, 0);
-	assert_eq!(den, 0);
-
-	let r = unsafe {
-		oakaudio_sync_place_by_waveform_offset(1, 0, 48000, 48000, &mut num, &mut den, &mut valid)
-	};
-	assert_eq!(r, OAKAUDIO_E_INVALID);
+	// A null rate is invalid (valid=false, null rational).
+	let placement = place_by_waveform_offset(Rational::new(1, 2), 48000, 0);
+	assert!(!placement.valid);
+	assert!(placement.timeline_in.is_null());
 }
 
 /// extract_rms_envelope produces one value per window; a window larger than
@@ -137,85 +88,31 @@ fn place_by_waveform_offset_conversion() {
 fn extract_rms_envelope_shape() {
 	let data: Vec<f32> = (0..100).map(|i| i as f32).collect();
 	let planes = common::planar_from(&data, 2);
-	let ptrs: Vec<*const f32> = planes.iter().map(|p| p.as_ptr()).collect();
+	let refs: Vec<&[f32]> = planes.iter().map(Vec::as_slice).collect();
 
-	let mut out = vec![0.0f64; 16];
-	let n = unsafe {
-		oakaudio_sync_extract_rms_envelope(ptrs.as_ptr(), 2, 100, 10, out.as_mut_ptr(), 16)
-	};
-	assert_eq!(n, 10);
-	assert!(out.iter().take(10).all(|&v| v > 0.0));
+	let env = extract_rms_envelope(&refs, 10);
+	assert_eq!(env.len(), 10);
+	assert!(env.iter().all(|&v| v > 0.0));
 
-	let n = unsafe {
-		oakaudio_sync_extract_rms_envelope(ptrs.as_ptr(), 2, 100, 200, out.as_mut_ptr(), 16)
-	};
-	assert_eq!(n, 1);
-
-	// Invalid inputs.
-	assert_eq!(
-		unsafe {
-			oakaudio_sync_extract_rms_envelope(std::ptr::null(), 2, 100, 10, out.as_mut_ptr(), 16)
-		},
-		OAKAUDIO_E_INVALID
-	);
-	assert_eq!(
-		unsafe {
-			oakaudio_sync_extract_rms_envelope(ptrs.as_ptr(), 0, 100, 10, out.as_mut_ptr(), 16)
-		},
-		OAKAUDIO_E_INVALID
-	);
-	assert_eq!(
-		unsafe {
-			oakaudio_sync_extract_rms_envelope(ptrs.as_ptr(), 2, 100, 0, out.as_mut_ptr(), 16)
-		},
-		OAKAUDIO_E_INVALID
-	);
-	assert_eq!(
-		unsafe {
-			oakaudio_sync_extract_rms_envelope(ptrs.as_ptr(), 2, 100, 10, out.as_mut_ptr(), -1)
-		},
-		OAKAUDIO_E_INVALID
-	);
-	// Two-stage: NULL out returns the required count.
-	let n = unsafe {
-		oakaudio_sync_extract_rms_envelope(ptrs.as_ptr(), 2, 100, 10, std::ptr::null_mut(), 0)
-	};
-	assert_eq!(n, 10);
+	let env = extract_rms_envelope(&refs, 200);
+	assert_eq!(env.len(), 1);
 }
 
 /// estimate_envelope_offset: for a candidate delayed by N windows relative
-/// to the reference, the returned offset is +N windows and valid=1.
+/// to the reference, the returned offset is +N windows and valid=true.
 #[test]
 fn envelope_offset_recovers_delay() {
 	let reference: Vec<f64> = (0..10).map(|i| i as f64).collect();
 	let mut candidate = vec![0.0f64; 10];
 	candidate[2..].copy_from_slice(&reference[..8]);
-	let mut out = OffsetResult {
-		offset_samples: 0,
-		confidence: 0.0,
-		valid: 0,
-	};
-	let r = unsafe {
-		oakaudio_sync_estimate_envelope_offset(
-			reference.as_ptr(),
-			10,
-			candidate.as_ptr(),
-			10,
-			std::ptr::null(),
-			std::ptr::null(),
-			100,
-			10,
-			&mut out,
-		)
-	};
-	assert_eq!(r, 0);
-	assert_eq!(out.valid, 1);
+	let out = estimate_envelope_offset(&reference, &candidate, 100, 10);
+	assert!(out.valid);
 	assert_eq!(out.offset_samples, 200);
 	assert!((out.confidence - 1.0).abs() < 1e-9);
 }
 
-/// estimate_envelope_offset: windows masked invalid on either side are
-/// excluded from correlation; empty masks are treated as all-valid.
+/// estimate_envelope_offset_valid: windows masked invalid on either side
+/// are excluded from correlation; empty masks are treated as all-valid.
 #[test]
 fn envelope_offset_respects_valid_masks() {
 	let reference: Vec<f64> = (0..10).map(|i| i as f64).collect();
@@ -224,68 +121,35 @@ fn envelope_offset_respects_valid_masks() {
 
 	// Only the last reference window is valid -> no lag has >= 2 valid
 	// overlap windows, so the estimate is invalid.
-	let mut ref_valid = [1u8; 10];
-	ref_valid[..9].fill(0);
-	let mut out = OffsetResult {
-		offset_samples: 0,
-		confidence: 0.0,
-		valid: 0,
-	};
-	let r = unsafe {
-		oakaudio_sync_estimate_envelope_offset(
-			reference.as_ptr(),
-			10,
-			candidate.as_ptr(),
-			10,
-			ref_valid.as_ptr(),
-			std::ptr::null(),
-			100,
-			10,
-			&mut out,
-		)
-	};
-	assert_eq!(r, 0);
-	assert_eq!(out.valid, 0);
+	let mut ref_valid = vec![false; 10];
+	ref_valid[9] = true;
+	let out = estimate_envelope_offset_valid(
+		&reference,
+		&candidate,
+		&ref_valid,
+		&[],
+		100,
+		10,
+	);
+	assert!(!out.valid);
 	assert_eq!(out.confidence, 0.0);
 
 	// Fully-valid masks behave like the unmasked call.
-	let mut valid = [1u8; 10];
-	let r = unsafe {
-		oakaudio_sync_estimate_envelope_offset(
-			reference.as_ptr(),
-			10,
-			candidate.as_ptr(),
-			10,
-			valid.as_ptr(),
-			valid.as_ptr(),
-			100,
-			10,
-			&mut out,
-		)
-	};
-	assert_eq!(r, 0);
-	assert_eq!(out.valid, 1);
+	let valid = vec![true; 10];
+	let out = estimate_envelope_offset_valid(
+		&reference,
+		&candidate,
+		&valid,
+		&valid,
+		100,
+		10,
+	);
+	assert!(out.valid);
 	assert_eq!(out.offset_samples, 200);
-
-	// NULL arrays / non-positive lengths are invalid.
-	let r = unsafe {
-		oakaudio_sync_estimate_envelope_offset(
-			std::ptr::null(),
-			10,
-			candidate.as_ptr(),
-			10,
-			std::ptr::null(),
-			std::ptr::null(),
-			100,
-			10,
-			&mut out,
-		)
-	};
-	assert_eq!(r, OAKAUDIO_E_INVALID);
 }
 
 /// estimate_stretch_and_offset: a candidate sampled at 2x the reference
-/// rate reports rate ~2.0 (>1 = speed up) with a valid=1 result. A
+/// rate reports rate ~2.0 (>1 = speed up) with a valid=true result. A
 /// non-linear (sine) reference is used — normalized correlation of linear
 /// ramps is degenerate (any rate correlates 1.0), but only the true rate
 /// resamples the sine back onto the reference exactly.
@@ -302,78 +166,43 @@ fn stretch_offset_recovers_rate() {
 			candidate.push((reference[k] + reference[k + 1]) / 2.0);
 		}
 	}
-	let mut out = StretchOffsetResult {
-		rate: 0.0,
-		offset_samples: 0,
-		confidence: 0.0,
-		valid: 0,
-	};
-	let r = unsafe {
-		oakaudio_sync_estimate_stretch_and_offset(
-			reference.as_ptr(),
-			10,
-			candidate.as_ptr(),
-			candidate.len() as i32,
-			std::ptr::null(),
-			std::ptr::null(),
-			100,
-			10,
-			0.5,
-			3.0,
-			0.1,
-			&mut out,
-		)
-	};
-	assert_eq!(r, 0);
-	assert_eq!(out.valid, 1);
+	let out = estimate_stretch_and_offset(
+		&reference,
+		&candidate,
+		&[],
+		&[],
+		100,
+		10,
+		0.5,
+		3.0,
+		0.1,
+	);
+	assert!(out.valid);
 	assert!((out.rate - 2.0).abs() < 0.15, "rate = {}", out.rate);
 	assert!(out.confidence > 0.99, "confidence = {}", out.confidence);
 
-	// Invalid rate parameters are rejected.
-	let r = unsafe {
-		oakaudio_sync_estimate_stretch_and_offset(
-			reference.as_ptr(),
-			10,
-			candidate.as_ptr(),
-			candidate.len() as i32,
-			std::ptr::null(),
-			std::ptr::null(),
-			100,
-			10,
-			0.0,
-			3.0,
-			0.1,
-			&mut out,
-		)
-	};
-	assert_eq!(r, OAKAUDIO_E_INVALID);
+	// Invalid rate parameters are rejected (invalid result, defaults).
+	let out = estimate_stretch_and_offset(
+		&reference,
+		&candidate,
+		&[],
+		&[],
+		100,
+		10,
+		0.0,
+		3.0,
+		0.1,
+	);
+	assert!(!out.valid);
 }
 
 /// estimate_* on identical silent envelopes yields low/no confidence and
-/// valid=0 (no correlation peak).
+/// valid=false (no correlation peak).
 #[test]
 fn silent_inputs_invalid() {
 	let silence = vec![0.0f64; 10];
-	let mut out = OffsetResult {
-		offset_samples: 0,
-		confidence: 0.0,
-		valid: 0,
-	};
-	let r = unsafe {
-		oakaudio_sync_estimate_envelope_offset(
-			silence.as_ptr(),
-			10,
-			silence.as_ptr(),
-			10,
-			std::ptr::null(),
-			std::ptr::null(),
-			100,
-			10,
-			&mut out,
-		)
-	};
-	assert_eq!(r, 0);
-	assert_eq!(out.valid, 0);
+	let out = estimate_envelope_offset(&silence, &silence, 100, 10);
+	assert!(!out.valid);
 	assert_eq!(out.confidence, 0.0);
 }
 

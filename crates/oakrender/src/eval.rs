@@ -25,9 +25,14 @@
 //! depend on the oakcodec / oaknode / oakplugin C ABIs and fail with
 //! explainable errors (their success-path tests are `#[ignore]`d).
 
-use std::ffi::c_int;
+use std::sync::Arc;
 
-use oakcore_rs::{PixelFormat, Rational};
+use oakcodec::decoder::{
+	CodecStream, Decoder as _, RenderMode, RetrieveAudioStatus, RetrieveVideoParams,
+	K_COLOR_RANGE_DEFAULT,
+};
+use oakcodec::ffmpeg::FFmpegDecoder;
+use oakcore_rs::{PixelFormat, Rational, TimeRange};
 
 use crate::error::{Error, Result};
 use crate::frame::VideoParamsPod;
@@ -261,11 +266,13 @@ pub fn render_produced_frame(
 /// Process-wide open decoder sessions, keyed by (filename, stream).
 /// Sessions are mutex-serialized inside the oakcodec box, so sharing
 /// one handle across worker threads is safe.
-static DECODERS: std::sync::OnceLock<std::sync::Mutex<
-	std::collections::HashMap<(String, i32), crate::handle::CHandle>,
->> = std::sync::OnceLock::new();
+static DECODERS: std::sync::OnceLock<
+	std::sync::Mutex<std::collections::HashMap<(String, i32), Arc<dyn oakcodec::decoder::Decoder>>>,
+> = std::sync::OnceLock::new();
 
-fn decoders() -> std::sync::MutexGuard<'static, std::collections::HashMap<(String, i32), crate::handle::CHandle>> {
+fn decoders(
+) -> std::sync::MutexGuard<'static, std::collections::HashMap<(String, i32), Arc<dyn oakcodec::decoder::Decoder>>>
+{
 	DECODERS
 		.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 		.lock()
@@ -273,23 +280,20 @@ fn decoders() -> std::sync::MutexGuard<'static, std::collections::HashMap<(Strin
 }
 
 /// Open (or reuse) the decoder session for `(filename, stream_index)`.
-fn open_decoder(filename: &str, stream_index: i32) -> Result<crate::handle::CHandle> {
+fn open_decoder(filename: &str, stream_index: i32) -> Result<Arc<dyn oakcodec::decoder::Decoder>> {
 	{
 		let cache = decoders();
-		if let Some(h) = cache.get(&(filename.to_string(), stream_index)) {
-			if !h.is_null() {
-				return Ok(*h);
-			}
+		if let Some(d) = cache.get(&(filename.to_string(), stream_index)) {
+			return Ok(d.clone());
 		}
 	}
-	let decoder = crate::bridge::codec::decoder_init();
-	if decoder.is_null() {
-		return Err(Error::Failed("footage decode: decoder_init failed".into()));
-	}
-	crate::bridge::codec::decoder_open(decoder, filename, stream_index)
+	let decoder: Arc<dyn oakcodec::decoder::Decoder> = Arc::new(FFmpegDecoder::new());
+	let stream = CodecStream::with_block(filename.to_string(), stream_index, None);
+	decoder
+		.open(&stream)
 		.map_err(|e| Error::Failed(format!("footage decode open: {e:?}")))?;
 	let mut cache = decoders();
-	cache.insert((filename.to_string(), stream_index), decoder);
+	cache.insert((filename.to_string(), stream_index), decoder.clone());
 	Ok(decoder)
 }
 
@@ -303,49 +307,44 @@ pub fn render_footage_frame(
 	format: PixelFormat,
 ) -> Result<Texture> {
 	let decoder = open_decoder(filename, stream_index)?;
-	let frame_handle = crate::bridge::codec::decoder_decode_video(
-		decoder,
-		time.numerator(),
-		time.denominator(),
-	);
-	if frame_handle.is_null() {
-		let detail = crate::bridge::codec::decoder_last_error(decoder);
-		return Err(Error::Failed(format!(
-			"footage decode at {time:?}: {detail}"
-		)));
-	}
+	let params = RetrieveVideoParams {
+		stream: CodecStream::with_block(filename.to_string(), stream_index, None),
+		time,
+		length: TimeRange::default(),
+		force_range: K_COLOR_RANGE_DEFAULT,
+		is_image_sequence: false,
+		image_sequence_digits: 0,
+		image_sequence_number: 0,
+		mode: RenderMode::Offline,
+		alpha_is_premultiplied: false,
+	};
+	let decoded = decoder
+		.retrieve_video_frame(&params)
+		.map_err(|e| Error::Failed(format!("footage decode at {time:?}: {e:?}")))?;
 
-	let src_w = crate::bridge::codec::frame_width(frame_handle);
-	let src_h = crate::bridge::codec::frame_height(frame_handle);
-	let src_linesize = crate::bridge::codec::frame_linesize_bytes(frame_handle);
-	let _alloc = crate::bridge::codec::frame_is_allocated(frame_handle);
+	let src_w = decoded.width();
+	let src_h = decoded.height();
+	let src_linesize = decoded.linesize_bytes();
 	let (w, h) = size;
-	if src_w <= 0
-		|| src_h <= 0
-		|| src_linesize <= 0
-		|| crate::bridge::codec::frame_is_allocated(frame_handle) == 0
-	{
-		frame_free(frame_handle);
+	if src_w <= 0 || src_h <= 0 || src_linesize <= 0 || !decoded.is_allocated() {
 		return Err(Error::Failed("footage decode: bad decoded frame".into()));
 	}
 
 	let mut dst = generate_frame(time, (w, h), format)?;
 	let dst_linesize = dst.linesize_bytes() as i32;
-	let src_data = unsafe { crate::bridge::codec::frame_const_data(frame_handle) };
-	if src_data.is_null() {
-		frame_free(frame_handle);
-		return Err(Error::Failed("footage decode: no frame data".into()));
-	}
+	let src_data = match decoded.data() {
+		Some(d) => d,
+		None => return Err(Error::Failed("footage decode: no frame data".into())),
+	};
 
 	if src_w == w && src_h == h && src_linesize == dst_linesize {
 		let bytes = (src_h as usize)
 			.checked_mul(src_linesize as usize)
 			.ok_or(Error::NoMem)?;
-		let src_slice = unsafe { std::slice::from_raw_parts(src_data, bytes) };
-		dst.data[..bytes].copy_from_slice(src_slice);
+		dst.data[..bytes].copy_from_slice(&src_data[..bytes]);
 	} else {
 		scale_rgba_f32(
-			src_data,
+			src_data.as_ptr(),
 			src_linesize,
 			src_w,
 			src_h,
@@ -355,7 +354,6 @@ pub fn render_footage_frame(
 			h,
 		);
 	}
-	frame_free(frame_handle);
 	Ok(Texture::wrap_frame(dst))
 }
 
@@ -402,19 +400,14 @@ pub fn render_audio_samples(
 		let media_end = media_start + (out_time - in_time);
 		let mut buf = vec![0.0f32; frames * channels as usize];
 		let decoder = open_decoder(&clip.filename, clip.stream_index)?;
-		let rc = crate::bridge::codec::decoder_decode_audio(
-			decoder,
-			media_start.numerator(),
-			media_start.denominator(),
-			media_end.numerator(),
-			media_end.denominator(),
-			rate,
-			params.channel_layout,
-			buf.as_mut_ptr(),
-			frames as c_int,
-		);
-		let written = rc.unwrap_or(0).max(0) as usize;
-		let written = written.min(frames);
+		let range = TimeRange::new(media_start, media_end);
+		let status = decoder
+			.retrieve_audio(&mut buf, &range, rate, params.channel_layout)
+			.map_err(|e| Error::Failed(format!("footage audio decode: {e:?}")))?;
+		let written = match status {
+			RetrieveAudioStatus::Success => frames,
+			_ => 0,
+		};
 		// Mix into the accumulator (per-channel gain).
 		for i in 0..written * channels as usize {
 			acc[start_frame * channels as usize + i] += buf[i] * clip.gain;
@@ -427,11 +420,6 @@ pub fn render_audio_samples(
 		channel_layout: params.channel_layout,
 		channel_count: channels,
 	}))
-}
-
-/// Free a codec frame handle (Copy-handle dance).
-fn frame_free(mut h: crate::handle::CHandle) {
-	crate::bridge::codec::frame_free(&mut h);
 }
 
 /// Bilinear scale an F32-RGBA image (row-major with per-row strides).

@@ -243,7 +243,7 @@ mod tests {
 
 	#[test]
 	fn disk_cache_size_and_clear() {
-		let _guard = crate::bridge::common::ENV_TEST_LOCK
+		let _guard = crate::commonutil::ENV_TEST_LOCK
 			.lock()
 			.unwrap_or_else(|e| e.into_inner());
 		let dir = std::env::temp_dir().join("oakrender-diskcache-test");
@@ -260,7 +260,7 @@ mod tests {
 
 	#[test]
 	fn disk_cache_size_missing_dir_is_zero() {
-		let _guard = crate::bridge::common::ENV_TEST_LOCK
+		let _guard = crate::commonutil::ENV_TEST_LOCK
 			.lock()
 			.unwrap_or_else(|e| e.into_inner());
 		let dir = std::env::temp_dir().join("oakrender-diskcache-missing");

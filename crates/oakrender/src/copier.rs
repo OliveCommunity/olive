@@ -15,17 +15,67 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Render-side project copy client (the C++ ProjectCopier, inverted):
-//! all copying happens inside oaknode
-//! (`oaknode_project_deep_copy` / `sync_copy`); this module only tracks
-//! which copy belongs to which viewer and when to re-sync.
-//!
-//! The oaknode C ABI functions go through [`crate::bridge::node`]; oaknode
-//! never implemented the deep-copy symbols (single-lib plan §4.1 — dead
-//! direction), so the copy operations fail explainably and the
-//! success-path tests are `#[ignore]`d.
+//! all copying happens inside oaknode. oaknode never implemented the
+//! deep-copy direction (single-lib plan §4.1 — dead direction), so the
+//! copy operations fail explainably and the success-path tests are
+//! `#[ignore]`d.
 
-use crate::bridge::node::{ChangeRecord, ProjectHandle};
 use crate::error::{Error, Result};
+
+/// A project handle (oaknode-owned; the shared canonical handle type).
+pub type ProjectHandle = crate::handle::CHandle;
+
+/// One change record (see oaknode `ChangeRecord`).
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ChangeRecord {
+	/// Discriminant (see oaknode `ChangeRecord`).
+	pub kind: u32,
+	/// Payload bytes (per-kind layout documented in project.h).
+	pub payload: [u8; 48],
+}
+
+/// Change-record discriminants (oaknode project.h).
+pub mod change_kind {
+	/// Node added.
+	pub const NODE_ADD: u32 = 0;
+	/// Node removed.
+	pub const NODE_REMOVE: u32 = 1;
+	/// Edge added.
+	pub const EDGE_ADD: u32 = 2;
+	/// Edge removed.
+	pub const EDGE_REMOVE: u32 = 3;
+	/// Value change.
+	pub const VALUE_CHANGE: u32 = 4;
+	/// Value hint change.
+	pub const VALUE_HINT_CHANGE: u32 = 5;
+	/// Project setting change.
+	pub const PROJECT_SETTING_CHANGE: u32 = 6;
+	/// Footage proxy change.
+	pub const FOOTAGE_PROXY: u32 = 7;
+}
+
+/// `oaknode_project_deep_copy(project)` — would return an owned
+/// copied-project handle.
+///
+/// Never implemented: oaknode has no such Rust function (single-lib plan
+/// §4.1 — dead direction), so this always yields the empty handle, exactly
+/// as the previous runtime-symbol lookup did when the symbol was absent.
+pub fn project_deep_copy(_project: ProjectHandle) -> ProjectHandle {
+	ProjectHandle::null()
+}
+
+/// `oaknode_project_sync_copy` — never implemented (dead direction); the
+/// sync always fails explainably.
+pub fn project_sync_copy(
+	_source: ProjectHandle,
+	_copy: ProjectHandle,
+	_changes: &[ChangeRecord],
+) -> Result<()> {
+	Err(Error::Failed(
+		"oaknode_project_sync_copy missing (not implemented in oaknode)".into(),
+	))
+}
 
 /// A handle to a render-side project copy.
 pub struct ProjectCopy {
@@ -62,7 +112,7 @@ impl ProjectCopy {
 		}
 		// Release any previous copy.
 		self.release_copy();
-		let copy = crate::bridge::node::project_deep_copy(source);
+		let copy = crate::copier::project_deep_copy(source);
 		if copy.is_null() {
 			return Err(Error::Failed(
 				"oaknode_project_deep_copy failed (symbol missing or copy error)".into(),
@@ -89,7 +139,7 @@ impl ProjectCopy {
 		if copy.is_null() {
 			return Err(Error::State);
 		}
-		crate::bridge::node::project_sync_copy(source, copy, changes)?;
+		crate::copier::project_sync_copy(source, copy, changes)?;
 		self.last_sync_generation += 1;
 		self.has_pending_updates = false;
 		Ok(())
@@ -163,7 +213,7 @@ mod tests {
 	fn sync_without_project_is_state_error() {
 		let mut pc = ProjectCopy::new();
 		let changes = [ChangeRecord {
-			kind: crate::bridge::node::change_kind::NODE_ADD,
+			kind: crate::copier::change_kind::NODE_ADD,
 			payload: [0u8; 48],
 		}];
 		assert_eq!(pc.sync(&changes).unwrap_err().code(), Error::State.code());
@@ -177,9 +227,10 @@ mod tests {
 	}
 
 	#[test]
-	#[ignore = "needs oaknode C ABI (oaknode_project_deep_copy)"]
+	#[ignore = "needs oaknode deep-copy (not implemented)"]
 	fn deep_copy_roundtrip_with_real_node() {
-		// Requires a live liboaknode; run with the app linked.
+		// oaknode never implemented the deep-copy direction; the copy
+		// always fails explainably, which is what the live path checks.
 		let mut pc = ProjectCopy::new();
 		let src = ProjectHandle {
 			ctx: 1 as *mut std::ffi::c_void,
@@ -187,10 +238,8 @@ mod tests {
 			release: None,
 			abi_version: crate::handle::OAKRENDER_ABI_VERSION,
 		};
-		if crate::bridge::node::node_abi_available() {
-			pc.set_project(src).unwrap();
-			assert_ne!(pc.copy, 0);
-			assert!(pc.copied_project().is_some());
-		}
+		pc.set_project(src).unwrap();
+		assert_ne!(pc.copy, 0);
+		assert!(pc.copied_project().is_some());
 	}
 }

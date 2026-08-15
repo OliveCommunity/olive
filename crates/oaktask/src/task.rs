@@ -20,8 +20,9 @@
 //! concrete task (`ConformTask`, `ProxyTask`, …) is its own struct and the
 //! shared lifecycle lives here; the per-task work is supplied through
 //! [`TaskBehavior`] (a trait object, per architectural decision #1 in
-//! README.md). Cancellation rides on a borrowed oakrender `OakCancelAtom`
-//! reached through `crate::bridge::render`.
+//! README.md). Cancellation rides on a shared
+//! `oakcommon::cancelatom::CancelAtom` (single-lib unification: the old
+//! oakrender cancelatom C ABI is gone).
 //!
 //! CPP-PARITY: src/task/src/task.h
 //!
@@ -38,9 +39,9 @@
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
-use crate::bridge;
+use oakcommon::cancelatom::CancelAtom;
+
 use crate::error::{Error, Result};
-use crate::handle::CHandle;
 
 /// Event type emitted through a task's [`EventListener`], mirroring the
 /// C++ `EventType` enum (`k_event_started`/`k_event_progress`/`k_event_finished`).
@@ -74,7 +75,7 @@ pub trait TaskBehavior {
 }
 
 /// Values the subscribe wrapper needs to re-encode [`TaskEvent`]s into the
-/// C ABI callback signature `(event_id, value, userdata)`. The C++ emits
+/// legacy `(event_id, value, userdata)` callback signature. The C++ emits
 /// the start timestamp with `k_event_started` and 1.0/0.0 with
 /// `k_event_finished`; `TaskEvent` carries neither, so the task publishes
 /// them into this shared state before emitting (decision #1 in README.md).
@@ -97,14 +98,13 @@ struct TaskDone {
 	succeeded: bool,
 }
 
-/// The base task. Owns lifecycle state plus a borrowed oakrender cancel
-/// atom; the concrete behavior lives in a [`TaskBehavior`] trait object.
+/// The base task. Owns lifecycle state plus a shared `CancelAtom`; the
+/// concrete behavior lives in a [`TaskBehavior`] trait object.
 pub struct Task {
 	title: String,
 	error: Option<String>,
 	start_time: Option<std::time::Instant>,
-	cancel_atom: CHandle,
-	owns_atom: bool,
+	cancel_atom: Arc<CancelAtom>,
 	event_listener: Option<EventListener>,
 	cancel_event: Option<Box<dyn FnMut() + Send>>,
 	started: bool,
@@ -113,40 +113,21 @@ pub struct Task {
 	behavior: Option<Box<dyn TaskBehavior + Send>>,
 	/// Finish/success flag pair + wakeup condvar (race-free readers).
 	done: Arc<(Mutex<TaskDone>, Condvar)>,
-	/// Values published for the C ABI subscribe wrapper.
+	/// Values published for the legacy subscribe wrapper.
 	subscriber: Option<Arc<SubscriberState>>,
 }
 
-impl Drop for Task {
-	fn drop(&mut self) {
-		// Free the cancellation atom only when we created it ourselves;
-		// borrowed atoms are released by their owner.
-		if self.owns_atom && !self.cancel_atom.is_null() {
-			let mut atom = self.cancel_atom;
-			unsafe {
-				bridge::render::oakrender_cancelatom_free(&mut atom);
-			}
-		}
-	}
-}
-
 impl Task {
-	/// Create a new task with the given title and a borrowed oakrender
-	/// cancel atom. When `cancel_atom` is empty a fresh atom is created and
-	/// owned by the task (mirroring the C++ constructor).
-	pub fn new(title: &str, cancel_atom: CHandle) -> Task {
-		let (cancel_atom, owns_atom) = if cancel_atom.is_null() {
-			let atom = unsafe { bridge::render::oakrender_cancelatom_init() };
-			(atom, true)
-		} else {
-			(cancel_atom, false)
-		};
+	/// Create a new task with the given title. When `cancel_atom` is `None`
+	/// a fresh atom is created and owned by the task (mirroring the C++
+	/// constructor); `Some` shares the caller's atom (mirrors the old
+	/// borrowed-oakrender-atom constructor).
+	pub fn new(title: &str, cancel_atom: Option<Arc<CancelAtom>>) -> Task {
 		Task {
 			title: title.to_string(),
 			error: None,
 			start_time: None,
-			cancel_atom,
-			owns_atom,
+			cancel_atom: cancel_atom.unwrap_or_else(|| Arc::new(CancelAtom::new())),
 			event_listener: None,
 			cancel_event: None,
 			started: false,
@@ -207,50 +188,29 @@ impl Task {
 		ret
 	}
 
-	/// Request cancellation through the borrowed oakrender cancel atom, then
-	/// invoke the cancel event callback if one is registered.
+	/// Request cancellation through the shared cancel atom, then invoke the
+	/// cancel event callback if one is registered.
 	pub fn cancel(&mut self) {
-		if !self.cancel_atom.is_null() {
-			let atom = self.cancel_atom;
-			unsafe {
-				bridge::render::oakrender_cancelatom_cancel(atom);
-			}
-		}
+		self.cancel_atom.cancel();
 		if let Some(cb) = self.cancel_event.as_mut() {
 			cb();
 		}
 	}
 
-	/// Whether cancellation was requested (queries the oakrender atom).
+	/// Whether cancellation was requested (queries the shared atom).
 	pub fn is_cancelled(&self) -> bool {
-		if self.cancel_atom.is_null() {
-			return false;
-		}
-		let atom = self.cancel_atom;
-		let mut cancelled = 0;
-		unsafe {
-			bridge::render::oakrender_cancelatom_is_cancelled(atom, &mut cancelled);
-		}
-		cancelled != 0
+		self.cancel_atom.is_cancelled()
 	}
 
-	/// The borrowed cancel atom handle (empty for tasks without one).
-	pub fn get_cancel_atom(&self) -> CHandle {
-		self.cancel_atom
+	/// The shared cancel atom (a clone of the task's `Arc`).
+	pub fn get_cancel_atom(&self) -> Arc<CancelAtom> {
+		self.cancel_atom.clone()
 	}
 
-	/// Replace the cancel atom. A previously owned atom is freed; the new
-	/// atom is borrowed (never freed by this task). Used to share one atom
-	/// between a task and its behavior's inner base task.
-	pub fn set_cancel_atom(&mut self, atom: CHandle) {
-		if self.owns_atom && !self.cancel_atom.is_null() {
-			let mut old = self.cancel_atom;
-			unsafe {
-				bridge::render::oakrender_cancelatom_free(&mut old);
-			}
-		}
+	/// Replace the cancel atom. Used to share one atom between a task and
+	/// its behavior's inner base task.
+	pub fn set_cancel_atom(&mut self, atom: Arc<CancelAtom>) {
 		self.cancel_atom = atom;
-		self.owns_atom = false;
 	}
 
 	/// Register the event listener. Replaces any previous listener.
@@ -263,7 +223,7 @@ impl Task {
 		self.cancel_event = Some(cb);
 	}
 
-	/// Publish the shared values used by the C ABI subscribe wrapper.
+	/// Publish the shared values used by the legacy subscribe wrapper.
 	pub fn set_subscriber(&mut self, state: Arc<SubscriberState>) {
 		self.subscriber = Some(state);
 	}
@@ -353,8 +313,8 @@ pub fn system_time_ms() -> i64 {
 		.unwrap_or(0)
 }
 
-/// Marker error returned when a task is cancelled, so the C ABI can map it to
-/// `OAKTASK_E_CANCELLED` (distinct from a generic failure).
+/// Marker error returned when a task is cancelled, so the legacy ABI can map
+/// it to `OAKTASK_E_CANCELLED` (distinct from a generic failure).
 pub fn cancelled() -> Error {
 	Error::Cancelled
 }

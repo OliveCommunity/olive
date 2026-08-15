@@ -19,7 +19,7 @@
 //!
 //! DECLARATION ONLY. This node is a thin wrapper over an OFX plugin
 //! instance that lives behind the `oakplugin` crate's C ABI bridge
-//! (`crate::bridge`); no OFX types (`OFX::Host::ImageEffect::Instance`,
+//! (opaque oakrender handles); no OFX types (`OFX::Host::ImageEffect::Instance`,
 //! `kOfxParam*`, ...) are declared here. The plugin instance is
 //! represented as the opaque [`PluginInstanceHandle`] below — the real
 //! definition belongs to the oakplugin bridge module and this draft
@@ -242,14 +242,14 @@ impl NodeBehavior for PluginNode {
 	/// the destination frame if needed and zero-fills it (plugins do
 	/// their real image work in the plugin job, not here).
 	///
-	/// The Rust frame is an opaque [`crate::bridge::render::TextureHandle`]
+	/// The Rust frame is an opaque [`crate::handle::CHandle`]
 	/// whose pixels cannot be read or written from this crate, so the
 	/// body is a documented no-op (`// CPP-PARITY: plugin.cpp`
 	/// `generate_frame`).
 	fn generate_frame(
 		&self,
 		core: &NodeCore,
-		frame: &mut crate::bridge::render::TextureHandle,
+		frame: &mut crate::handle::CHandle,
 		time: Rational,
 	) {
 		let _ = (core, frame, time);

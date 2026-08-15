@@ -30,11 +30,13 @@ pub struct Session {
 }
 
 impl Session {
-	/// Wrap a freshly loaded project.
+	/// Wrap a freshly loaded project. A null handle (the version-info
+	/// path: TOO_OLD/TOO_NEW/UNKNOWN_VERSION carries no project) maps to
+	/// `None`, not `Some(null)`.
 	pub fn new(uri: StorageUri, project: CHandle) -> Self {
 		Session {
 			uri,
-			project: Some(project),
+			project: (!project.is_null()).then_some(project),
 		}
 	}
 

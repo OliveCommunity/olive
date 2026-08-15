@@ -19,15 +19,12 @@
 
 mod common;
 
+use std::ffi::CString;
+
 use common::write_wav_header_only;
-use oakaudio::ffi::waveform::MinMax;
-use oakaudio::ffi::waveform::{
-	oakaudio_waveform_extract, oakaudio_waveform_free, oakaudio_waveform_get_summary,
-	oakaudio_waveform_init, oakaudio_waveform_overwrite_samples,
-	oakaudio_waveform_set_channel_count,
-};
-use oakaudio::params::{frames_to_rational, rational_to_samples, SampleFormat};
 use oakcore_rs::Rational;
+use oakaudio::params::{frames_to_rational, rational_to_samples, AudioParams, SampleFormat};
+use oakaudio::waveform::{extract, AudioVisualWaveform};
 
 /// SampleFormat planar-first ordering matches the authoritative C++ enum:
 /// f32_p == 4 == OAKAUDIO_PROCESSOR_OUTPUT_FORMAT. This guards the
@@ -60,7 +57,7 @@ fn sample_time_conversion_roundtrip() {
 /// rational conversion edge cases (NaN / out-of-range / tiny -> null).
 #[test]
 fn params_value_types() {
-	use oakaudio::params::{rational_from_double, AudioParams};
+	use oakaudio::params::rational_from_double;
 
 	let p = AudioParams {
 		sample_rate: 48000,
@@ -89,23 +86,17 @@ fn waveform_mipmap_scale_parity() {
 	// 1024 ramp samples @ 48000 Hz, two channels.
 	let ch0: Vec<f32> = (0..1024).map(|i| i as f32 * 0.001).collect();
 	let ch1: Vec<f32> = (0..1024).map(|i| -(i as f32) * 0.001).collect();
-	let planes = [ch0.as_ptr(), ch1.as_ptr()];
+	let planes = [ch0.as_slice(), ch1.as_slice()];
 
-	let mut w = unsafe { oakaudio_waveform_init() };
-	assert!(!w.ctx.is_null());
-	assert_eq!(unsafe { oakaudio_waveform_set_channel_count(w, 2) }, 0);
-	assert_eq!(
-		unsafe { oakaudio_waveform_overwrite_samples(w, planes.as_ptr(), 1024, 48000, 0, 1) },
-		0
-	);
+	let mut w = AudioVisualWaveform::new();
+	w.set_channel_count(2);
+	w.overwrite_samples(&planes, 48000, Rational::new(0, 1));
 
 	// One summary point is produced for any queried window; a 1/1024 s
 	// window (one 1024-rate mipmap point ~ 46.875 source samples) must
 	// bracket a narrower range than a 1/64 s window (~750 samples).
-	let mut fine = [MinMax { min: 0.0, max: 0.0 }; 2];
-	let fine_points =
-		unsafe { oakaudio_waveform_get_summary(w, 0, 1, 1, 1024, fine.as_mut_ptr(), 2) };
-	assert_eq!(fine_points, 1);
+	let fine = w.get_summary_from_time(Rational::new(0, 1), Rational::new(1, 1024));
+	assert_eq!(fine.len(), 2);
 	assert_eq!(fine[0].min, 0.0);
 	assert!(
 		(fine[0].max - 0.046).abs() < 1e-5,
@@ -119,10 +110,8 @@ fn waveform_mipmap_scale_parity() {
 	);
 	assert_eq!(fine[1].max, 0.0);
 
-	let mut coarse = [MinMax { min: 0.0, max: 0.0 }; 2];
-	let coarse_points =
-		unsafe { oakaudio_waveform_get_summary(w, 0, 1, 1, 64, coarse.as_mut_ptr(), 2) };
-	assert_eq!(coarse_points, 1);
+	let coarse = w.get_summary_from_time(Rational::new(0, 1), Rational::new(1, 64));
+	assert_eq!(coarse.len(), 2);
 	assert_eq!(coarse[0].min, 0.0);
 	assert!(
 		(coarse[0].max - 0.749).abs() < 1e-5,
@@ -139,8 +128,6 @@ fn waveform_mipmap_scale_parity() {
 	// Coarser windows necessarily cover more source samples.
 	assert!(coarse[0].max > fine[0].max);
 	assert!(coarse[1].min < fine[1].min);
-
-	unsafe { oakaudio_waveform_free(&mut w) };
 }
 
 /// levelmeter dB conversion: peak_db == 20*log10(peak_linear) and the
@@ -164,57 +151,30 @@ fn levelmeter_db_golden() {
 
 /// waveformsync envelope offset golden: a reference ramp delayed by two
 /// windows in the candidate is recovered as +2 windows with full
-/// confidence through the C ABI.
+/// confidence.
 #[test]
 fn waveform_sync_offset_golden() {
-	use oakaudio::ffi::sync::{oakaudio_sync_estimate_envelope_offset, OffsetResult};
 	let reference: Vec<f64> = (0..10).map(|i| i as f64 * 0.1 + 0.1).collect();
 	let mut candidate = vec![0.0f64; 10];
 	candidate[2..].copy_from_slice(&reference[..8]);
-	let mut out = OffsetResult {
-		offset_samples: 0,
-		confidence: 0.0,
-		valid: 0,
-	};
-	let r = unsafe {
-		oakaudio_sync_estimate_envelope_offset(
-			reference.as_ptr(),
-			reference.len() as i32,
-			candidate.as_ptr(),
-			candidate.len() as i32,
-			std::ptr::null(),
-			std::ptr::null(),
-			100,
-			10,
-			&mut out,
-		)
-	};
-	assert_eq!(r, 0);
-	assert_eq!(out.valid, 1);
+	let out = oakaudio::waveformsync::estimate_envelope_offset(&reference, &candidate, 100, 10);
+	assert!(out.valid);
 	assert_eq!(out.offset_samples, 200);
 	assert!((out.confidence - 1.0).abs() < 1e-9);
 }
 
-/// oakaudio_waveform_extract channel cap: a stream claiming more than
-/// OAKAUDIO_EXTRACT_MAX_CHANNELS (64) channels is rejected rather than
-/// overflowing the internal plane array.
+/// waveform::extract channel cap: a stream claiming more than
+/// EXTRACT_MAX_CHANNELS (64) channels is rejected rather than overflowing
+/// the internal plane array.
 #[test]
 fn extract_channel_cap() {
 	let path = std::env::temp_dir().join(format!("oakaudio_cap_{}.wav", std::process::id()));
 	write_wav_header_only(&path, 65, 48000).unwrap();
 
-	let mut out_channels = 0i32;
-	let cpath = std::ffi::CString::new(path.to_str().unwrap()).unwrap();
-	let r = unsafe {
-		oakaudio_waveform_extract(
-			cpath.as_ptr(),
-			0,
-			4,
-			std::ptr::null_mut(),
-			0,
-			&mut out_channels,
-		)
-	};
-	assert!(r < 0, "oversized stream must be rejected, got {r}");
+	let cpath = CString::new(path.to_str().unwrap()).unwrap();
+	assert!(
+		extract(&cpath, 0, 4).is_err(),
+		"oversized stream must be rejected"
+	);
 	std::fs::remove_file(&path).ok();
 }

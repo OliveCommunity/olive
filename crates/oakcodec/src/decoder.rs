@@ -26,11 +26,21 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
 
+use oakcommon::cancelatom::CancelAtom;
 use oakcore_rs::{Rational, TimeRange};
 
-use crate::bridge::render::{OakCancelAtom, OakRenderTexture};
 use crate::footagedescription::FootageDescription;
 use crate::frame::Frame;
+
+/// `OakRenderTexture` — refcounted GPU texture handle (an oakrender type,
+/// opaque to oakcodec). The codec crate cannot depend on oakrender (the
+/// dependency cycle), so it only ever produces an empty handle — the
+/// shared [`crate::handle::CHandle`] carries that value unchanged.
+pub type OakRenderTexture = crate::handle::CHandle;
+
+/// `OakNodeBlock` — opaque node-block handle owned elsewhere; the codec
+/// only stores and forwards it (borrowed, never dereferenced).
+pub type OakNodeBlock = crate::handle::CHandle;
 
 /// `oakcodec_video_stream_info` — POD probe output describing one video
 /// stream; see `include/codec/decoder.h`.
@@ -158,7 +168,7 @@ pub enum RetrieveState {
 pub struct CodecStream {
 	filename: String,
 	stream: i32,
-	block: Option<crate::bridge::common::OakNodeBlock>,
+	block: Option<OakNodeBlock>,
 }
 
 impl CodecStream {
@@ -175,7 +185,7 @@ impl CodecStream {
 	pub fn with_block(
 		filename: String,
 		stream: i32,
-		block: Option<crate::bridge::common::OakNodeBlock>,
+		block: Option<OakNodeBlock>,
 	) -> Self {
 		CodecStream {
 			filename,
@@ -212,7 +222,7 @@ impl CodecStream {
 	}
 
 	/// Associated timeline block (borrowed; only compared, never used).
-	pub fn block(&self) -> Option<crate::bridge::common::OakNodeBlock> {
+	pub fn block(&self) -> Option<OakNodeBlock> {
 		self.block.clone()
 	}
 }
@@ -241,7 +251,7 @@ pub trait Decoder: Send + Sync {
 	fn probe(
 		&self,
 		filename: &str,
-		cancelled: Option<&OakCancelAtom>,
+		cancelled: Option<&CancelAtom>,
 	) -> Option<FootageDescription>;
 
 	/// Open `stream` for decoding. Thread-safe.
@@ -281,7 +291,7 @@ pub trait Decoder: Send + Sync {
 		sample_rate: i32,
 		channel_layout: u64,
 		sample_format: i32,
-		cancelled: Option<&OakCancelAtom>,
+		cancelled: Option<&CancelAtom>,
 	) -> crate::error::Result<()>;
 
 	/// Offset of the audio start relative to the video (rational seconds).
@@ -326,7 +336,7 @@ impl Decoder for UnimplementedDecoder {
 	fn probe(
 		&self,
 		_filename: &str,
-		_cancelled: Option<&OakCancelAtom>,
+		_cancelled: Option<&CancelAtom>,
 	) -> Option<FootageDescription> {
 		None
 	}
@@ -377,7 +387,7 @@ impl Decoder for UnimplementedDecoder {
 		_sample_rate: i32,
 		_channel_layout: u64,
 		_sample_format: i32,
-		_cancelled: Option<&OakCancelAtom>,
+		_cancelled: Option<&CancelAtom>,
 	) -> crate::error::Result<()> {
 		Err(crate::error::Error::Failed(
 			"decoder not yet implemented".to_string(),
@@ -400,13 +410,13 @@ pub fn create_from_id(id: &str) -> Option<Arc<dyn Decoder>> {
 /// not injected, in which case the built-in list below is used.
 static TEST_DECODERS: OnceLock<Mutex<Vec<Arc<dyn Decoder>>>> = OnceLock::new();
 
-/// Serializes every test that reads the built-in decoder registry. The ffi
-/// decoder tests inject through `crate::ffi::lock_tests()` (the shared
-/// `TEST_LOCK`), so the registry assertions below take that same lock to
-/// never race with an injected list.
+/// Serializes every test that reads the built-in decoder registry. Tests
+/// inject through [`set_test_decoders`] under [`crate::lock_tests`] (the
+/// shared test lock), so the registry assertions below take that same lock
+/// to never race with an injected list.
 #[cfg(test)]
-fn registry_guard() -> std::sync::MutexGuard<'static, ()> {
-	crate::ffi::lock_tests()
+fn registry_guard() -> crate::TestLock {
+	crate::lock_tests()
 }
 
 /// Replace the decoder registry with `list`; pass an empty list to restore

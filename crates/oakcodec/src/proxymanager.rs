@@ -19,11 +19,12 @@
 //! Mirrors `src/codec/src/proxymanager.h`. Stateless (NOTES.md): actual
 //! transcodes are delegated to the global task submit callback
 //! ([`crate::task`]); with no registrar, `get_or_start` reports the proxy
-//! as missing. `proxy_params_from_config` reads the oakcommon config C ABI
+//! as missing. `proxy_params_from_config` reads the oakcommon config store
 //! with the compiled-in defaults as fallback (1280x720 / divider 1 / crf 23
 //! / "mp4" / "veryfast" / audio included).
 
-use std::ffi::{c_char, CString};
+use oakcommon::configstore::ConfigStore;
+use oakcommon::filefunctions::FileFunctions;
 use std::path::Path;
 
 /// Proxy state of a proxy file on disk.
@@ -336,97 +337,35 @@ fn cstr_slice(a: &[u8; 32]) -> &str {
 
 /// `oakcommon_config_get_int` wrapper (null group).
 fn config_get_int(key: &str, default: i32) -> i32 {
-	let ckey = cstring(key);
-	// # Safety: `ckey` is a valid NUL-terminated C string alive for the call.
-	unsafe {
-		crate::bridge::common::oakcommon_config_get_int(std::ptr::null(), ckey.as_ptr(), default)
-	}
+	ConfigStore::instance().get_int(None, key, default)
 }
 
 /// `oakcommon_config_get_bool` wrapper (null group).
 fn config_get_bool(key: &str, default: i32) -> i32 {
-	let ckey = cstring(key);
-	// # Safety: `ckey` is a valid NUL-terminated C string alive for the call.
-	unsafe {
-		crate::bridge::common::oakcommon_config_get_bool(std::ptr::null(), ckey.as_ptr(), default)
-	}
+	ConfigStore::instance().get_bool(None, key, default)
 }
 
-/// Two-stage `oakcommon_config_get` string read; `None` when the stored
-/// value is empty or absent.
+/// `oakcommon_config_get` string read; `None` when the stored value is
+/// empty or absent.
 fn config_get_str(key: &str) -> Option<String> {
-	let ckey = cstring(key);
-	// # Safety: `ckey` is valid; first call asks only for the required size.
-	let size = unsafe {
-		crate::bridge::common::oakcommon_config_get(
-			std::ptr::null(),
-			ckey.as_ptr(),
-			std::ptr::null_mut(),
-			0,
-		)
-	};
-	if size <= 1 {
-		return None;
+	match ConfigStore::instance().get(None, key) {
+		Ok(s) if !s.is_empty() => Some(s),
+		_ => None,
 	}
-	let mut buf = vec![0u8; size as usize];
-	// # Safety: `buf` has `size` bytes; the call fills at most `size` bytes.
-	unsafe {
-		crate::bridge::common::oakcommon_config_get(
-			std::ptr::null(),
-			ckey.as_ptr(),
-			buf.as_mut_ptr() as *mut c_char,
-			size,
-		);
-	}
-	let mut end = buf.len();
-	while end > 0 && buf[end - 1] == 0 {
-		end -= 1;
-	}
-	Some(String::from_utf8_lossy(&buf[..end]).into_owned())
 }
 
-/// `oakcommon_filefunctions_get_unique_file_identifier` wrapper (the bridge
-/// returns a 64-bit id directly).
+/// `oakcommon_filefunctions_get_unique_file_identifier` wrapper.
 fn unique_file_identifier(filename: &str) -> String {
-	let c = match CString::new(filename) {
-		Ok(c) => c,
-		Err(_) => return String::new(),
-	};
-	// # Safety: `c` is a valid NUL-terminated C string alive for the call.
-	let id = unsafe {
-		crate::bridge::common::oakcommon_filefunctions_get_unique_file_identifier(c.as_ptr())
-	};
-	format!("{}", id)
+	FileFunctions::new()
+		.get_unique_file_identifier(filename)
+		.unwrap_or_default()
 }
 
-/// Two-stage `oakcommon_filefunctions_get_application_path` read.
+/// `oakcommon_filefunctions_get_application_path` read.
 fn application_path() -> String {
-	// # Safety: first call asks only for the required size.
-	let size = unsafe {
-		crate::bridge::common::oakcommon_filefunctions_get_application_path(std::ptr::null_mut(), 0)
-	};
-	if size <= 1 {
-		return String::new();
-	}
-	let mut buf = vec![0u8; size as usize];
-	// # Safety: `buf` has `size` bytes; the call fills at most `size` bytes.
-	unsafe {
-		crate::bridge::common::oakcommon_filefunctions_get_application_path(
-			buf.as_mut_ptr() as *mut c_char,
-			size,
-		);
-	}
-	let mut end = buf.len();
-	while end > 0 && buf[end - 1] == 0 {
-		end -= 1;
-	}
-	String::from_utf8_lossy(&buf[..end]).into_owned()
-}
-
-/// Build a NUL-terminated C string from a Rust string; empty on embedded
-/// NUL (defensive only — callers pass sane keys).
-fn cstring(s: &str) -> CString {
-	CString::new(s).unwrap_or_else(|_| CString::new("").unwrap())
+	FileFunctions::new()
+		.get_application_path()
+		.unwrap_or_default()
 }
 
 /// True when `p` is a regular file with at least one execute bit set.
@@ -456,14 +395,6 @@ mod tests {
 		dir.to_string_lossy().into_owned()
 	}
 
-	fn fnv1a64(bytes: &[u8]) -> u64 {
-		let mut h: u64 = 14695981039346656037;
-		for &b in bytes {
-			h ^= b as u64;
-			h = h.wrapping_mul(1099511628211);
-		}
-		h
-	}
 
 	#[test]
 	fn proxy_params_default_values() {
@@ -503,24 +434,40 @@ mod tests {
 	#[test]
 	fn proxy_filename_derivation() {
 		let cache = temp_subdir("fn");
-		let stub_id = fnv1a64(b"media.mp4") as i64;
-		let id = fnv1a64(stub_id.to_string().as_bytes()) as i64;
 		let p = ProxyManager::proxy_params_default();
 
-		let f = ProxyManager::get_proxy_filename(&cache, "media.mp4", 0, &p).unwrap();
-		assert_eq!(f, format!("{}/proxy/{}-0.1280x720.v1.a1.mp4", cache, id));
+		// A missing source carries no unique-file identifier
+		// (get_unique_file_identifier is empty for non-existent files —
+		// C++ parity), so the name is the plain size/version/audio tags.
+		let missing = std::path::Path::new(&temp_subdir("missing")).join("nope.mp4");
+		let f = ProxyManager::get_proxy_filename(&cache, missing.to_str().unwrap(), 0, &p).unwrap();
+		assert_eq!(f, format!("{}/proxy/-0.1280x720.v1.a1.mp4", cache));
+
+		// An existing source embeds a stable per-file identifier.
+		let existing = std::path::Path::new(&temp_subdir("existing")).join("real.mp4");
+		std::fs::write(&existing, b"media").unwrap();
+		let f1 =
+			ProxyManager::get_proxy_filename(&cache, existing.to_str().unwrap(), 0, &p).unwrap();
+		let f2 =
+			ProxyManager::get_proxy_filename(&cache, existing.to_str().unwrap(), 0, &p).unwrap();
+		assert!(
+			f1.contains("-0.1280x720.v1.a1.mp4"),
+			"size/version/audio tags present: {f1}"
+		);
+		assert!(f1 != format!("{}/proxy/-0.1280x720.v1.a1.mp4", cache), "id embedded: {f1}");
+		assert_eq!(f1, f2, "the identifier is stable for the same file");
 
 		// Divider mode tags the divider instead of an absolute size.
 		let mut d = p.clone();
 		d.divider = 2;
-		let f2 = ProxyManager::get_proxy_filename(&cache, "media.mp4", 0, &d).unwrap();
-		assert!(f2.contains(".div2."));
+		let f3 = ProxyManager::get_proxy_filename(&cache, missing.to_str().unwrap(), 0, &d).unwrap();
+		assert!(f3.contains(".div2."));
 
 		// No audio.
 		let mut na = p.clone();
 		na.include_audio = 0;
-		let f3 = ProxyManager::get_proxy_filename(&cache, "media.mp4", 0, &na).unwrap();
-		assert!(f3.contains(".a0."));
+		let f4 = ProxyManager::get_proxy_filename(&cache, missing.to_str().unwrap(), 0, &na).unwrap();
+		assert!(f4.contains(".a0."));
 	}
 
 	#[test]

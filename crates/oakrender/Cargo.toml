@@ -29,8 +29,6 @@ ocio-rs = { version = "0.2", features = ["bundled"] }
 thiserror = "2"
 
 [dev-dependencies]
-# Test binaries that pull oakcodec's decoder (the direct-call bridge) link
-# oakcodec's ffmpeg unit, which references the host `oakcore_audioparams_*`
-# symbols no Rust crate provides — the `test-stubs` feature compiles
-# oakcodec's host-mocks (same pattern as oaknode's dev-dependencies).
-oakcodec = { path = "../oakcodec", features = ["test-stubs"] }
+# oakcodec is also a plain dependency above; the dev-dependency re-entry
+# used to enable oakcodec's `test-stubs` host-mocks, which no longer exist
+# (single-lib unification removed the oakcore_audioparams_* C ABI calls).

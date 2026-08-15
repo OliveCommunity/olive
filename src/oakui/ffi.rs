@@ -20,16 +20,10 @@
 //! ONLY its `oakengine_*` C ABI — it never depends on the `oakengine` crate
 //! as an rlib. This module declares every exported function the real engine
 //! binding uses, with the exact signatures from the facade's `#[no_mangle]`
-//! exports (`crates/oakengine/src/*.rs`), plus the two `oaktask_*` module
-//! exports the dylib carries alongside the facade (interchange
-//! load/save getter and the task event subscription, see the comments
-//! below).
-//!
-//! The facade also exports the module C ABIs (`oakundo_*`, `oakcommon_*`,
-//! ...) inside the same dylib; the module functions the app needs beyond
-//! the facade's wrapping (`oaktask_load_take_project`,
-//! `oaktask_task_subscribe`) are declared here too and resolve from the
-//! dylib.
+//! exports (`crates/oakengine/src/*.rs`). The facade wraps the module
+//! C ABIs that are also embedded in the same dylib (`oakundo_*`,
+//! `oakcommon_*`, ...), so everything the app touches resolves through an
+//! `oakengine_*` symbol.
 //!
 //! # Handle layout mirrors
 //!
@@ -125,8 +119,8 @@ pub trait HandleBox: Sized {
 /// `oakengine_*_free` export.
 ///
 /// # Safety
-/// The handle must be a live module handle (e.g. from
-/// `oaktask_load_take_project`).
+/// The handle must be a live module handle (e.g. from a facade export that
+/// hands one over for the app to box).
 pub unsafe fn box_handle<T: HandleBox>(handle: CHandle) -> *mut T {
 	// SAFETY: the caller passes a live handle; the box is managed by the
 	// C ABI consumers from here on.
@@ -682,9 +676,9 @@ unsafe extern "C" {
 		buf: *mut c_char,
 		buf_size: c_int,
 	) -> c_int;
-	/// `oakaudio_waveform_extract` — real waveform extraction (M12 P4):
+	/// `oakengine_waveform_extract` — real waveform extraction (M12 P4):
 	/// two-stage min/max extraction of `filename`'s audio stream.
-	pub fn oakaudio_waveform_extract(
+	pub fn oakengine_waveform_extract(
 		filename: *const c_char,
 		stream_index: c_int,
 		samples_per_point: c_int,
@@ -856,9 +850,9 @@ unsafe extern "C" {
 	) -> *mut c_void;
 	/// `oakcore_audioparams_free` (NULL no-op).
 	pub fn oakcore_audioparams_free(params: *mut c_void);
-	/// `oakrender_manager_shutdown` — tear down the render manager
+	/// `oakengine_render_manager_shutdown` — tear down the render manager
 	/// (test/tooling; the app keeps it for the process lifetime).
-	pub fn oakrender_manager_shutdown() -> c_int;
+	pub fn oakengine_render_manager_shutdown() -> c_int;
 	/// `oakengine_testmedia_write_clip` — encode the known test pattern
 	/// into `path` (test/tooling only; M12 P0).
 	pub fn oakengine_testmedia_write_clip(
@@ -888,27 +882,28 @@ unsafe extern "C" {
 	/// the channel count (0 = nothing buffered), negative on error.
 	pub fn oakengine_audio_output_levels(peaks: *mut f32, capacity: c_int) -> c_int;
 
-	// -- oakrender module C ABI (carried by the dylib) --
+	// -- oakengine::render (manager lifecycle) --
 
-	/// `oakrender_manager_init` — bring up the module's process-global
-	/// render manager. Without it `render_frame` fails with NULL +
-	/// last_error. The facade does not wrap this; like the `oaktask_*`
-	/// entries below, the symbol is exported by the dylib itself. Fails
-	/// (nonzero) when the manager is already initialized.
-	pub fn oakrender_manager_init() -> c_int;
-	/// `oakrender_manager_available` — 1 when the render manager is up.
-	pub fn oakrender_manager_available() -> c_int;
+	/// `oakengine_render_manager_init` — bring up the module's
+	/// process-global render manager. Without it `render_frame` fails with
+	/// NULL + last_error. Fails (nonzero) when the manager is already
+	/// initialized.
+	pub fn oakengine_render_manager_init() -> c_int;
+	/// `oakengine_render_manager_available` — 1 when the render manager is up.
+	pub fn oakengine_render_manager_available() -> c_int;
 
-	// -- oaktask module C ABI (carried by the dylib) --
+	// -- oakengine::task (interchange load result + event subscription) --
 
-	/// `oaktask_load_take_project` — take the project an interchange
-	/// load/load-otio task produced (ownership moves to the caller).
-	pub fn oaktask_load_take_project(t: CHandle) -> CHandle;
-	/// `oaktask_task_subscribe` — register the task event callback
+	/// `oakengine_task_load_take_project` — take the project an
+	/// interchange load/load-otio task produced (ownership moves to the
+	/// caller; release with `oakengine_project_free`). NULL when the task
+	/// is not a load task or has no project yet.
+	pub fn oakengine_task_load_take_project(task: *mut OakEngineTask) -> *mut OakEngineProject;
+	/// `oakengine_task_subscribe` — register the task event callback
 	/// (`OAKTASK_EVENT_STARTED`=0, `OAKTASK_EVENT_PROGRESS`=1,
 	/// `OAKTASK_EVENT_FINISHED`=2).
-	pub fn oaktask_task_subscribe(
-		t: CHandle,
+	pub fn oakengine_task_subscribe(
+		task: *mut OakEngineTask,
 		cb: Option<OakTaskEventFn>,
 		userdata: *mut c_void,
 	) -> i64;

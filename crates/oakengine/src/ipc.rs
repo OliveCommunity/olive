@@ -14,22 +14,33 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Render-worker IPC: named shared memory holding the frame-slot pools —
-//! the Rust port of `engine/render/ipc/` (`sharedmemoryregion.cpp`,
-//! `oliveimpl/render/ipc/frameslotpool.cpp`) behind the frozen C ABI in
-//! `engine/include/oakengine/ipc.h`.
+//! Render-worker IPC: the control-plane NDJSON protocol and the
+//! shared-memory frame-slot transport, owned by the oakengine facade and
+//! exported through the frozen `oakengine_ipc_*` C ABI
+//! (`engine/include/oakengine/ipc.h`); the `oak-worker` binary consumes it
+//! purely through the C ABI. The transport is the Rust port of
+//! `engine/render/ipc/` + `ipcmessage.cpp`.
 //!
-//! Two pieces, mirroring the C++ exactly:
+//! Two halves:
 //!
-//!   - [`SharedMemoryRegion`]: a named POSIX segment (`shm_open` + `mmap`,
-//!     `munmap` + `shm_unlink` on close). One process creates the segment
-//!     (owner, unlinks on close); the peer attaches to it by key.
-//!   - [`FrameSlotPool`]: a fixed pool of equal-sized frame slots laid out
-//!     inside a region, with lock-free hand-off through two
+//!   - **Control plane.** One compact JSON object per line on the stdio
+//!     pipes (worker.cpp / ipcmessage.cpp `write_message`/`read_message`).
+//!     Every message carries a `"type"` string; the field names below are
+//!     the ones the C++ serializers actually emit
+//!     (`engine/render/ipc/ipcmessage.cpp`): note `ticket` / `node` /
+//!     `channels` / `slot` — the longer names (`ticket_id`, `node_uuid`,
+//!     `channel_count`, `output_slot`) exist only on the C POD structs in
+//!     `ipc.h`. [`write_message`]/[`error_message`] build the wire lines.
+//!   - **Data plane.** Named shared memory holding the frame-slot pools —
+//!     the port of `engine/render/ipc/` (`sharedmemoryregion.cpp`,
+//!     `frameslotpool.cpp`): [`SharedMemoryRegion`] maps a named POSIX
+//!     segment (`shm_open` + `mmap`, `munmap` + `shm_unlink` on close),
+//!     and [`FrameSlotPool`] lays out a fixed pool of equal-sized frame
+//!     slots inside it with lock-free hand-off through two
 //!     [`SpscRingBuffer`]s of slot indices (free + ready). Each ring is a
 //!     single-producer/single-consumer structure; the filler owns
-//!     `free.pop` + `ready.push`, the drainer owns `ready.pop` + `free.push`,
-//!     so no mutex is ever taken.
+//!     `free.pop` + `ready.push`, the drainer owns `ready.pop` +
+//!     `free.push`, so no mutex is ever taken.
 //!
 //! **The in-memory layout is the version-1 wire protocol** the app and the
 //! render worker share, and it never changes: the byte offsets below are
@@ -40,14 +51,177 @@
 //!
 //! This module is deliberately unsafe-heavy and self-contained: it touches
 //! raw shared memory and raw POSIX syscalls, and everything else in the
-//! facade reaches it through the safe wrapper methods and the C ABI exports
-//! at the bottom.
+//! crate reaches it through the safe wrapper methods.
+//!
+//! Message types (M = main/editor, W = worker):
+//!   handshake     M<->W  negotiate protocol version + announce shm geometry
+//!   load_graph    M ->W  path to a temp file holding the serialized graph
+//!   render_frame  M ->W  request a frame render (ticket, node, time, params)
+//!   frame_ready   W ->M  a rendered frame is published (slot + ticket)
+//!   cancel        M ->W  abandon an in-flight ticket
+//!   graph_update  M ->W  reserved (no payload struct yet)
+//!   shutdown      M ->W  finish current work and exit cleanly
+//!   error         W ->M  worker-side failure report ("message" field)
+//!
+//! Items the worker does not emit yet (frame_ready, graph_update,
+//! `FrameReadyMsg`) and message ids it ignores (`cancel`) are kept as the
+//! documented protocol surface; `dead_code` until the frame-slot transport
+//! is driven by a real graph (see [`crate::worker`]).
+
+#![allow(dead_code)]
 
 use std::ffi::{c_char, c_int, c_void};
+use std::io::{self, Write};
 use std::ptr;
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+
 use crate::handle::{guard_int, guard_ptr};
+
+/// `"handshake"`.
+pub const TYPE_HANDSHAKE: &str = "handshake";
+/// `"load_graph"`.
+pub const TYPE_LOAD_GRAPH: &str = "load_graph";
+/// `"render_frame"`.
+pub const TYPE_RENDER_FRAME: &str = "render_frame";
+/// `"frame_ready"`.
+pub const TYPE_FRAME_READY: &str = "frame_ready";
+/// `"cancel"`.
+pub const TYPE_CANCEL: &str = "cancel";
+/// `"graph_update"`.
+pub const TYPE_GRAPH_UPDATE: &str = "graph_update";
+/// `"shutdown"`.
+pub const TYPE_SHUTDOWN: &str = "shutdown";
+/// `"error"`.
+pub const TYPE_ERROR: &str = "error";
+
+/// `handshake` — field-for-field equivalent of `oak_ipc_handshake`
+/// (ipc.h). Wire field names match the C++ serializer.
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+#[serde(default)]
+pub struct HandshakeMsg {
+	/// Protocol version.
+	pub protocol_version: i32,
+	/// Worker->main output shared-memory segment key.
+	pub shm_key: String,
+	/// Main->worker input shared-memory segment key (optional).
+	pub input_shm_key: String,
+	/// Number of main->worker input frame slots.
+	pub input_slots: i32,
+	/// Number of worker->main output frame slots.
+	pub output_slots: i32,
+	/// Per-output-slot pixel block size.
+	pub slot_data_bytes: i64,
+	/// Per-input-slot pixel block size.
+	pub input_slot_data_bytes: i64,
+}
+
+impl HandshakeMsg {
+	/// The worker's startup handshake (`worker.cpp startup_handshake()`).
+	pub fn to_json(&self) -> Value {
+		json!({
+			"type": TYPE_HANDSHAKE,
+			"protocol_version": self.protocol_version,
+			"shm_key": self.shm_key,
+			"input_shm_key": self.input_shm_key,
+			"input_slots": self.input_slots,
+			"output_slots": self.output_slots,
+			"slot_data_bytes": self.slot_data_bytes,
+			"input_slot_data_bytes": self.input_slot_data_bytes,
+		})
+	}
+}
+
+/// `render_frame` — request a frame render. Wire names per ipcmessage.cpp:
+/// `ticket`, `node`, `channels` (not the ipc.h POD names).
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+#[serde(default)]
+pub struct RenderFrameMsg {
+	/// Correlates with the eventual frame_ready.
+	pub ticket: i64,
+	/// Viewer node stable uuid in the loaded graph.
+	pub node: String,
+	/// Frame timestamp numerator.
+	pub time_num: i64,
+	/// Frame timestamp denominator.
+	pub time_den: i64,
+	/// Forced output size (0 = graph default).
+	pub width: i32,
+	/// Forced output height (0 = graph default).
+	pub height: i32,
+	/// Forced PixelFormat (-1 = default).
+	pub format: i32,
+	/// Channel count (0 = default).
+	pub channels: i32,
+	/// RenderMode.
+	pub mode: i32,
+	/// Optional decoded input slot (-1 = none).
+	pub input_slot: i32,
+	/// Ordered decoded input slots.
+	pub input_slots: Vec<i32>,
+	/// Output color transform present?
+	pub has_color_transform: bool,
+	/// Color transform targets the display space.
+	pub color_is_display: bool,
+	/// Output color space name.
+	pub color_output: String,
+	/// Output color view name.
+	pub color_view: String,
+	/// Output color look name.
+	pub color_look: String,
+}
+
+/// `frame_ready` — a rendered frame is published (wire names `ticket`/
+/// `slot`).
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+#[serde(default)]
+pub struct FrameReadyMsg {
+	/// Correlates with the render_frame request.
+	pub ticket: i64,
+	/// Index into the worker->main output FrameSlotPool.
+	pub slot: i32,
+}
+
+/// `cancel` — abandon an in-flight ticket by id.
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+#[serde(default)]
+pub struct CancelMsg {
+	/// The in-flight ticket id to abandon.
+	pub ticket: i64,
+}
+
+/// `load_graph` — path to a temporary file holding the serialized graph.
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+#[serde(default)]
+pub struct LoadGraphMsg {
+	/// Path to the temporary file holding the serialized graph.
+	pub path: String,
+}
+
+/// Build a worker-side error report, mirroring `error_message()` in
+/// worker.cpp: `{"type":"error","message":...}` plus `"ticket"` when
+/// non-zero.
+pub fn error_message(message: &str, ticket: Option<i64>) -> Value {
+	match ticket.filter(|t| *t != 0) {
+		Some(t) => json!({ "type": TYPE_ERROR, "message": message, "ticket": t }),
+		None => json!({ "type": TYPE_ERROR, "message": message }),
+	}
+}
+
+/// Write one NDJSON message line (compact JSON + `\n`), the Rust port of
+/// `ipcmessage.cpp write_message()`.
+pub fn write_message(w: &mut impl Write, msg: &Value) -> io::Result<()> {
+	let line =
+		serde_json::to_string(msg).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+	w.write_all(line.as_bytes())?;
+	w.write_all(b"\n")
+}
+
+// ---------------------------------------------------------------------------
+// Shared-memory frame-slot transport
+// ---------------------------------------------------------------------------
 
 /// `OAK_IPC_SHM_KEY_CAP` — capacity of shm key strings (ipc.h), incl. NUL.
 pub const OAK_IPC_SHM_KEY_CAP: usize = 128;
@@ -77,6 +251,8 @@ pub enum ShmMode {
 }
 
 impl ShmMode {
+	/// Map the C ABI mode integer (`OAK_IPC_SHM_MODE_CREATE` = 0,
+	/// `OAK_IPC_SHM_MODE_ATTACH` = 1) back to the enum.
 	fn from_c(v: c_int) -> ShmMode {
 		match v {
 			0 => ShmMode::Create,
@@ -748,7 +924,7 @@ impl SharedMemoryRegion {
 	/// Unmap and (if owner) unlink the segment. Also called by `Drop`.
 	pub fn close(&mut self) {
 		if !self.data.is_null() {
-			unsafe { libc::munmap(self.data as *mut c_void, self.size) };
+			unsafe { libc::munmap(self.data as *mut std::ffi::c_void, self.size) };
 			self.data = ptr::null_mut();
 		}
 		if self.fd >= 0 {
@@ -804,7 +980,503 @@ impl Drop for SharedMemoryRegion {
 	}
 }
 
-// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	// ---- Control-plane protocol ------------------------------------------
+
+	#[test]
+	fn handshake_wire_format_matches_cpp_field_names() {
+		let hs = HandshakeMsg {
+			protocol_version: 1,
+			shm_key: "olive-rw-1234-0-out".into(),
+			input_shm_key: "".into(),
+			input_slots: 0,
+			output_slots: 6,
+			slot_data_bytes: 4096,
+			input_slot_data_bytes: 0,
+		};
+		let value = hs.to_json();
+		// Key order is not part of the contract (JSON objects; the C++
+		// QJsonObject is hash-ordered too), but the names must match the
+		// C++ serializer exactly.
+		assert_eq!(value["type"], "handshake");
+		assert_eq!(value["protocol_version"], 1);
+		assert_eq!(value["shm_key"], "olive-rw-1234-0-out");
+		assert_eq!(value["input_shm_key"], "");
+		assert_eq!(value["input_slots"], 0);
+		assert_eq!(value["output_slots"], 6);
+		assert_eq!(value["slot_data_bytes"], 4096);
+		assert_eq!(value["input_slot_data_bytes"], 0);
+		// And the serialized line must parse back to the same object.
+		let round: serde_json::Value =
+			serde_json::from_str(&serde_json::to_string(&value).unwrap()).unwrap();
+		assert_eq!(round, value);
+	}
+
+	#[test]
+	fn render_frame_parse_accepts_cpp_field_names() {
+		let json = r#"{"type":"render_frame","ticket":42,"node":"abcd","time_num":1,"time_den":24,"width":1920,"height":1080,"format":-1,"channels":0,"mode":0,"input_slot":-1,"input_slots":[],"has_color_transform":false,"color_output":"","color_view":"","color_look":""}"#;
+		let m: RenderFrameMsg = serde_json::from_str(json).unwrap();
+		assert_eq!(m.ticket, 42);
+		assert_eq!(m.node, "abcd");
+		assert_eq!(m.time_num, 1);
+		assert_eq!(m.time_den, 24);
+		assert_eq!(m.width, 1920);
+		assert_eq!(m.input_slot, -1);
+	}
+
+	#[test]
+	fn render_frame_defaults_on_missing_fields() {
+		// The C++ parser defaults missing fields (QJsonValue defaults);
+		// serde(default) mirrors that.
+		let m: RenderFrameMsg =
+			serde_json::from_str(r#"{"type":"render_frame","ticket":7}"#).unwrap();
+		assert_eq!(m.ticket, 7);
+		assert_eq!(m.time_den, 0);
+		assert!(m.node.is_empty());
+		assert!(!m.has_color_transform);
+	}
+
+	#[test]
+	fn error_message_carries_ticket_only_when_nonzero() {
+		assert_eq!(
+			error_message("boom", None),
+			json!({ "type": "error", "message": "boom" })
+		);
+		assert_eq!(
+			error_message("boom", Some(0)),
+			json!({ "type": "error", "message": "boom" })
+		);
+		assert_eq!(
+			error_message("boom", Some(9)),
+			json!({ "type": "error", "message": "boom", "ticket": 9 })
+		);
+	}
+
+	#[test]
+	fn write_message_emits_one_json_line() {
+		let mut buf = Vec::new();
+		write_message(&mut buf, &json!({ "type": "shutdown" })).unwrap();
+		assert_eq!(String::from_utf8(buf).unwrap(), "{\"type\":\"shutdown\"}\n");
+	}
+
+	// ---- Shared-memory transport -----------------------------------------
+
+	/// A unique, temporary POSIX segment key for a test (pid + counter), so
+	/// parallel test runs never collide.
+	fn test_key(name: &str) -> String {
+		static COUNTER: AtomicU32 = AtomicU32::new(0);
+		let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+		SharedMemoryRegion::make_key(i64::from(std::process::id()), (n & 0x7FFF) as i32)
+			+ &format!("-{name}")
+	}
+
+	/// Create one segment and map it a second time — the in-process
+	/// equivalent of two processes sharing a segment. Returns
+	/// `(owner_region, peer_region)`; both must be kept alive for the
+	/// whole test (the peer is an attach that does not unlink).
+	fn two_mappings(key: &str, size: usize) -> (SharedMemoryRegion, SharedMemoryRegion) {
+		let mut owner = SharedMemoryRegion::new();
+		assert!(
+			owner.open(key, size, ShmMode::Create),
+			"create failed: {}",
+			owner.error()
+		);
+		let mut peer = SharedMemoryRegion::new();
+		assert!(
+			peer.open(key, size, ShmMode::Attach),
+			"attach failed: {}",
+			peer.error()
+		);
+		(owner, peer)
+	}
+
+	// ---- SpscRingBuffer -------------------------------------------------
+
+	#[test]
+	fn ring_bytes_needed_matches_cpp_layout() {
+		// 12 header bytes + capacity * 4.
+		assert_eq!(SpscRingBuffer::bytes_needed(4), 12 + 16);
+		assert_eq!(SpscRingBuffer::bytes_needed(5), 12 + 20);
+		assert_eq!(SpscRingBuffer::bytes_needed(0), 12);
+	}
+
+	#[test]
+	fn ring_empty_full_and_single_entry() {
+		let key = test_key("ring-empty");
+		let size = SpscRingBuffer::bytes_needed(4);
+		let (owner, peer) = two_mappings(&key, size);
+		// SAFETY: both mappings are live and at least `size` bytes.
+		let prod = unsafe { SpscRingBuffer::create(owner.data(), 4) };
+		let cons = unsafe { SpscRingBuffer::attach(peer.data()) };
+
+		assert!(unsafe { cons.is_empty_approx() });
+		let mut v = 99;
+		assert!(!unsafe { cons.pop(&mut v) });
+		assert_eq!(v, 99);
+
+		assert!(unsafe { prod.push(7) });
+		assert!(!unsafe { cons.is_empty_approx() });
+		assert_eq!(unsafe { cons.size_approx() }, 1);
+		assert!(unsafe { cons.pop(&mut v) });
+		assert_eq!(v, 7);
+		assert!(unsafe { cons.is_empty_approx() });
+	}
+
+	#[test]
+	fn ring_capacity_minus_one_live_entries() {
+		// A ring of capacity N holds at most N-1 entries (one slot is
+		// always left empty to tell full from empty).
+		let key = test_key("ring-cap");
+		let size = SpscRingBuffer::bytes_needed(4);
+		let (owner, peer) = two_mappings(&key, size);
+		// SAFETY: live mappings.
+		let prod = unsafe { SpscRingBuffer::create(owner.data(), 4) };
+		let cons = unsafe { SpscRingBuffer::attach(peer.data()) };
+
+		for i in 0..3 {
+			assert!(unsafe { prod.push(i) });
+		}
+		// The 4th push must fail: head would collide with tail.
+		assert!(!unsafe { prod.push(99) });
+
+		let mut v = 0;
+		for expected in 0..3 {
+			assert!(unsafe { cons.pop(&mut v) });
+			assert_eq!(v, expected);
+		}
+		assert!(!unsafe { cons.pop(&mut v) });
+	}
+
+	#[test]
+	fn ring_wraparound_preserves_order() {
+		// Fill, drain, then wrap past the end of the slot array: cursors
+		// are modulo-capacity, order must be preserved across the wrap.
+		let key = test_key("ring-wrap");
+		let size = SpscRingBuffer::bytes_needed(4);
+		let (owner, peer) = two_mappings(&key, size);
+		// SAFETY: live mappings.
+		let prod = unsafe { SpscRingBuffer::create(owner.data(), 4) };
+		let cons = unsafe { SpscRingBuffer::attach(peer.data()) };
+
+		for i in 0..3 {
+			assert!(unsafe { prod.push(i) });
+		}
+		let mut v = 0;
+		for _ in 0..3 {
+			assert!(unsafe { cons.pop(&mut v) });
+		}
+		// Ring is empty again; push past the wrap point.
+		for i in 3..6 {
+			assert!(unsafe { prod.push(i) });
+		}
+		for expected in 3..6 {
+			assert!(unsafe { cons.pop(&mut v) });
+			assert_eq!(v, expected);
+		}
+	}
+
+	// ---- FrameSlotPool --------------------------------------------------
+
+	#[test]
+	fn framepool_bytes_needed_matches_cpp_offsets() {
+		// Recompute by hand with the C++ layout: header 64, each ring
+		// align_up(12 + 4*(n+1), 64), meta align_up(176*n, 64), data
+		// align_up(slot_bytes, 64) * n.
+		let check = |n: u32, slot: usize| {
+			let ring = align_up(12 + 4 * (n as usize + 1), 64);
+			let expected =
+				64 + ring + ring + align_up(176 * n as usize, 64) + align_up(slot, 64) * n as usize;
+			assert_eq!(FrameSlotPool::bytes_needed(n, slot), expected);
+		};
+		check(4, 4096);
+		check(6, 1_000_000);
+		check(1, 64);
+		check(3, 100);
+	}
+
+	#[test]
+	fn framepool_create_attach_two_processes_both_directions() {
+		// "Two processes": two mappings of the same segment. Owner creates
+		// the pool; the peer attaches. A filler on one side and a drainer
+		// on the other exchange slots in both directions.
+		let key = test_key("pool-bidi");
+		let slots = 4u32;
+		let slot_bytes = 64usize;
+		let size = FrameSlotPool::bytes_needed(slots, slot_bytes);
+		let (owner, peer) = two_mappings(&key, size);
+
+		// SAFETY: both mappings are live and sized by bytes_needed.
+		let filler = unsafe { FrameSlotPool::create(owner.data(), slots, slot_bytes) };
+		let drainer = unsafe { FrameSlotPool::attach(peer.data()) };
+
+		assert!(filler.is_valid());
+		assert!(drainer.is_valid());
+		assert_eq!(drainer.slot_count(), slots);
+		assert_eq!(drainer.slot_data_bytes(), slot_bytes);
+
+		// Filler acquires every slot exactly once (seeded free ring), then
+		// the free ring is empty.
+		let mut got = Vec::new();
+		for _ in 0..slots {
+			let mut s = 0;
+			assert!(unsafe { filler.acquire(&mut s) });
+			got.push(s);
+		}
+		got.sort_unstable();
+		assert_eq!(got, vec![0, 1, 2, 3]);
+		let mut extra = 0;
+		assert!(!unsafe { filler.acquire(&mut extra) });
+		// Drainer sees nothing ready yet.
+		assert!(!unsafe { drainer.consume(&mut extra) });
+
+		// Filler writes pixels + meta into two slots and publishes them.
+		for (i, slot) in [0u32, 2u32].iter().enumerate() {
+			// SAFETY: `slot` was acquired above.
+			let data = unsafe { filler.slot_data(*slot) };
+			unsafe { ptr::write_bytes(data, (i * 40 + 1) as u8, slot_bytes) };
+			// SAFETY: slot in range.
+			let meta = unsafe { &mut *filler.meta(*slot) };
+			meta.id = 100 + *slot as i64;
+			meta.width = 8;
+			meta.height = 8;
+			meta.data_size = slot_bytes as i32;
+			assert!(unsafe { filler.publish(*slot) });
+		}
+
+		// Drainer consumes them through its own mapping and sees the same
+		// payloads and metadata.
+		let mut consumed = Vec::new();
+		for _ in 0..2 {
+			let mut s = 0;
+			assert!(unsafe { drainer.consume(&mut s) });
+			// SAFETY: s was consumed.
+			let data = unsafe { drainer.slot_data_const(s) };
+			let meta = unsafe { &*drainer.meta_const(s) };
+			assert_eq!(meta.id, 100 + s as i64);
+			assert_eq!(meta.width, 8);
+			assert_eq!(meta.data_size, slot_bytes as i32);
+			// SAFETY: slot_bytes readable in the slot block.
+			let first = unsafe { *data };
+			assert_eq!(first, ((s as usize / 2) * 40 + 1) as u8);
+			consumed.push(s);
+		}
+		consumed.sort_unstable();
+		assert_eq!(consumed, vec![0, 2]);
+		assert!(!unsafe { drainer.consume(&mut extra) });
+
+		// Drainer releases the slots back; the filler can acquire them
+		// again — the full round trip through both rings.
+		for s in consumed {
+			assert!(unsafe { drainer.release(s) });
+		}
+		let mut s = 0;
+		assert!(unsafe { filler.acquire(&mut s) });
+		assert_eq!(s, 0);
+	}
+
+	#[test]
+	fn framepool_wraparound_and_full_edges() {
+		// Small pool: cycle every slot many times, verifying the rings'
+		// modulo behavior end to end.
+		let key = test_key("pool-wrap");
+		let slots = 3u32;
+		let slot_bytes = 32usize;
+		let size = FrameSlotPool::bytes_needed(slots, slot_bytes);
+		let (owner, peer) = two_mappings(&key, size);
+
+		// SAFETY: live mappings.
+		let filler = unsafe { FrameSlotPool::create(owner.data(), slots, slot_bytes) };
+		let drainer = unsafe { FrameSlotPool::attach(peer.data()) };
+
+		for cycle in 0..4u32 {
+			let mut published = Vec::new();
+			for _ in 0..slots {
+				let mut s = 0;
+				assert!(unsafe { filler.acquire(&mut s) }, "cycle {cycle}");
+				// SAFETY: acquired slot.
+				unsafe { ptr::write_bytes(filler.slot_data(s), cycle as u8, slot_bytes) };
+				// SAFETY: slot in range.
+				let meta = unsafe { &mut *filler.meta(s) };
+				meta.id = i64::from(cycle * 100 + s);
+				assert!(unsafe { filler.publish(s) });
+				published.push(s);
+			}
+			// Pool is full on the filler side.
+			let mut x = 0;
+			assert!(!unsafe { filler.acquire(&mut x) });
+
+			// Drain everything on the drainer side.
+			let mut consumed = Vec::new();
+			for _ in 0..slots {
+				let mut s = 0;
+				assert!(unsafe { drainer.consume(&mut s) });
+				// SAFETY: consumed slot.
+				let meta = unsafe { &*drainer.meta_const(s) };
+				assert_eq!(meta.id, i64::from(cycle * 100 + s));
+				// SAFETY: 1 byte readable.
+				assert_eq!(unsafe { *drainer.slot_data_const(s) }, cycle as u8);
+				consumed.push(s);
+			}
+			assert!(!unsafe { drainer.consume(&mut x) });
+			consumed.sort_unstable();
+			assert_eq!(consumed, vec![0, 1, 2]);
+
+			for s in consumed {
+				assert!(unsafe { drainer.release(s) });
+			}
+		}
+	}
+
+	#[test]
+	fn framepool_attach_rejects_wrong_magic() {
+		let key = test_key("pool-badmagic");
+		let size = FrameSlotPool::bytes_needed(2, 16);
+		let (owner, _peer) = two_mappings(&key, size);
+		// Overwrite the header area with garbage — no pool magic.
+		// SAFETY: owner mapping is live.
+		unsafe { ptr::write_bytes(owner.data(), 0xAB, 64) };
+		// SAFETY: buffer is live.
+		let pool = unsafe { FrameSlotPool::attach(owner.data()) };
+		assert!(!pool.is_valid());
+		assert_eq!(pool.slot_count(), 0);
+		assert_eq!(pool.slot_data_bytes(), 0);
+	}
+
+	#[test]
+	fn framepool_pool_over_reused_segment_is_consistent() {
+		// A pool that has been cycled fully and then attached fresh reports
+		// the same geometry as bytes_needed computed it.
+		let key = test_key("pool-geometry");
+		let slots = 5u32;
+		let slot_bytes = 1000usize;
+		let size = FrameSlotPool::bytes_needed(slots, slot_bytes);
+		let (owner, peer) = two_mappings(&key, size);
+		// SAFETY: live mappings.
+		let _ = unsafe { FrameSlotPool::create(owner.data(), slots, slot_bytes) };
+		let attached = unsafe { FrameSlotPool::attach(peer.data()) };
+		assert!(attached.is_valid());
+		assert_eq!(attached.slot_count(), slots);
+		assert_eq!(attached.slot_data_bytes(), slot_bytes);
+		// Slot stride is 64-aligned (matches the C++ data layout).
+		// SAFETY: valid pool.
+		let s0 = unsafe { attached.slot_data(0) };
+		let s1 = unsafe { attached.slot_data(1) };
+		assert_eq!(s1 as usize - s0 as usize, align_up(slot_bytes, K_ALIGN));
+	}
+
+	// ---- SharedMemoryRegion ---------------------------------------------
+
+	#[test]
+	fn region_create_attach_write_visibility() {
+		let key = test_key("region-vis");
+		let size = 4096usize;
+		let (mut owner, mut peer) = two_mappings(&key, size);
+		assert!(owner.is_valid());
+		assert!(peer.is_valid());
+		assert_eq!(owner.size(), size);
+		assert_eq!(peer.size(), size);
+		assert_eq!(owner.key(), key);
+		assert_eq!(peer.key(), key);
+
+		// Owner writes; peer sees it through its own mapping.
+		// SAFETY: both mappings are live with `size` bytes.
+		unsafe {
+			let dst = owner.data() as *mut u32;
+			*dst = 0xDEADBEEF;
+		}
+		// SAFETY: peer mapping live.
+		let seen = unsafe { *(peer.data() as *const u32) };
+		assert_eq!(seen, 0xDEADBEEF);
+
+		// Peer writes back; owner sees it.
+		// SAFETY: peer mapping live.
+		unsafe {
+			let dst = peer.data() as *mut u32;
+			*dst = 0x12345678;
+		}
+		// SAFETY: owner mapping live.
+		assert_eq!(unsafe { *(owner.data() as *const u32) }, 0x12345678);
+
+		// Closing the ATTACH side does not unlink: while the owner lives,
+		// a third mapping can still open the name.
+		peer.close();
+		assert!(!peer.is_valid());
+		let mut third = SharedMemoryRegion::new();
+		assert!(third.open(&key, size, ShmMode::Attach), "{}", third.error());
+		assert!(third.is_valid());
+		third.close();
+
+		// Closing the OWNER unlinks the segment; further attaches fail.
+		owner.close();
+		assert!(!owner.is_valid());
+		let mut fourth = SharedMemoryRegion::new();
+		assert!(!fourth.open(&key, size, ShmMode::Attach));
+	}
+
+	#[test]
+	fn region_create_replaces_stale_segment() {
+		// Mirrors the C++: Create unlinks any stale segment with the same
+		// name first (crash cleanup), so a second Create SUCCEEDS and owns
+		// a fresh, zeroed segment.
+		let key = test_key("region-exists");
+		let size = 128usize;
+		let (mut owner, _peer) = two_mappings(&key, size);
+		assert!(owner.is_valid());
+		// SAFETY: owner mapping live.
+		unsafe { *(owner.data() as *mut u32) = 0xCAFEBABE };
+
+		let mut second = SharedMemoryRegion::new();
+		assert!(
+			second.open(&key, size, ShmMode::Create),
+			"{}",
+			second.error()
+		);
+		assert!(second.is_valid());
+		// The replacement segment is fresh (zeroed by create).
+		// SAFETY: second mapping live.
+		assert_eq!(unsafe { *(second.data() as *const u32) }, 0);
+	}
+
+	#[test]
+	fn region_attach_fails_when_segment_too_small() {
+		// macOS rounds shm segment sizes up to a 16 KiB minimum, so use
+		// sizes above that to exercise the size check.
+		let key = test_key("region-small");
+		let (owner, _peer) = two_mappings(&key, 4096);
+		assert!(owner.is_valid());
+
+		// Attaching with a larger size than the segment must fail (the
+		// fstat check, mirroring the C++).
+		let mut big = SharedMemoryRegion::new();
+		assert!(!big.open(&key, 65536, ShmMode::Attach));
+		assert!(!big.is_valid());
+		assert!(!big.error().is_empty());
+	}
+
+	#[test]
+	fn region_make_key_format() {
+		assert_eq!(SharedMemoryRegion::make_key(4242, 3), "olive-rw-4242-3");
+		assert_eq!(SharedMemoryRegion::make_key(1, 0), "olive-rw-1-0");
+	}
+
+	#[test]
+	fn region_keys_are_isolation_safe() {
+		// Keys with slashes are flattened to a single-slash POSIX name.
+		let key = "a/b/c";
+		let size = 64usize;
+		let (mut owner, mut peer) = two_mappings(key, size);
+		assert!(owner.is_valid());
+		assert!(peer.is_valid());
+		// The actual POSIX name is "/a_b_c".
+		// SAFETY: mapping live.
+		unsafe { *(owner.data() as *mut u32) = 7 };
+		// SAFETY: peer mapping live.
+		assert_eq!(unsafe { *(peer.data() as *const u32) }, 7);
+	}
+}
 // C ABI exports (engine/include/oakengine/ipc.h)
 // ---------------------------------------------------------------------------
 
@@ -1219,7 +1891,7 @@ pub unsafe extern "C" fn oakengine_ipc_framepool_release(
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-mod tests {
+mod cabi_tests {
 	use super::*;
 
 	/// A unique, temporary POSIX segment key for a test (pid + counter), so

@@ -14,132 +14,173 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Split commands (`src/timeline/src/timelineundosplit.h`). All graph
-//! operations go through the oaknode C ABI.
+//! Split commands (`src/timeline/src/timelineundosplit.h`). Graph
+//! operations go directly through the oaknode Rust domain (the oaknode
+//! C ABI was deleted in the single-lib unification).
 //!
 //! The C++ oracles (`timelineundosplit.cpp`) clone the split block in the
 //! project graph (`oaknode_node_copy_in_graph` + `oaknode_block_from_node`),
 //! run a captured node-graph reconnect command, preserve link groups
 //! (`oaknode_block_are_linked`), move out-transitions across the split
 //! (`oaknode_node_disconnect`/`oaknode_node_connect`), and add cache
-//! passthrough (`oaknode_clip_add_cache_passthrough_from`). None of those
-//! symbols are exposed by this crate's oaknode bridge, so those branches are
-//! omitted here and noted at each site; the remaining length/insert/remove
-//! logic mirrors the C++.
+//! passthrough (`oaknode_clip_add_cache_passthrough_from`). The clone is
+//! restored via `NodeBehavior::duplicate` (the Rust equivalent of
+//! `Node::Copy`) and link preservation via `Graph::link`; the
+//! transition/cache/reconnect steps have no Rust equivalent yet and are
+//! noted at each site.
 
 use oakcore_rs::Rational;
+use oaknode::graph::NodeEntry;
+use oakundo::undocommand::UndoCommand;
 
-use crate::bridge::node::{
-	oaknode_block_clip_create, oaknode_track_insert_block_after, oaknode_track_ripple_remove_block,
-};
-use crate::handle::CHandle;
 use crate::util::{
-	block_in, block_length, block_out, block_set_length_and_media_in,
-	block_set_length_and_media_out, block_track, same_block,
+	block_add_to_graph, block_in, block_length, block_out, block_remove_from_graph,
+	block_set_length_and_media_in, block_set_length_and_media_out, block_track,
+	track_insert_block_after, track_ripple_remove_block, GraphBlockRange, NodeRef,
 };
 
 /// `BlockSplitCommand` — split one block at a point
 /// (timelineundosplit.h).
+///
+/// The split keeps the original block anchored at its in-point (it becomes
+/// the first half `[in, point)`) and anchors the cloned `new_block` at its
+/// out-point (it becomes the second half `[point, out)`), inserted right
+/// after the original so the track order mirrors the timeline order.
 pub struct BlockSplitCommand {
 	/// Block to split.
-	block: CHandle,
+	block: NodeRef,
 	/// Split point.
 	point: Rational,
 	/// Second block created by the split (valid after `redo`).
-	new_block: CHandle,
+	new_block: Option<NodeRef>,
+	/// Arena entry of the second block while it is detached from the
+	/// graph (between `undo` and the next `redo`).
+	new_block_entry: Option<NodeEntry>,
 	/// Length of `block` before the split, restored on `undo`.
 	old_length: Rational,
 }
 
 impl BlockSplitCommand {
 	/// Construct from block + split point.
-	pub fn new(block: CHandle, point: Rational) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(block: NodeRef, point: Rational) -> BlockSplitCommand`
+	pub fn new(block: NodeRef, point: Rational) -> Self {
 		Self {
 			block,
 			point,
-			new_block: CHandle::null(),
+			new_block: None,
+			new_block_entry: None,
 			old_length: Rational::new(0, 1),
 		}
 	}
 
-	/// `prepare`: create the second half of the split. The C++ clone is
-	/// performed by `oaknode_node_copy_in_graph` + `oaknode_block_from_node`,
-	/// which are absent from this bridge, so a fresh clip block is created.
+	/// `prepare`: create the second half by cloning the original block in
+	/// the project graph (the Rust equivalent of the C++
+	/// `oaknode_node_copy_in_graph`; the clone happens through the
+	/// behavior's `duplicate`, which copies the block core too).
 	pub fn prepare(&mut self) {
-		if self.new_block.is_null() {
-			// SAFETY: `oaknode_block_clip_create` returns an owned handle.
-			self.new_block = unsafe { oaknode_block_clip_create() };
+		if self.new_block.is_some() {
+			return;
 		}
+		let id = {
+			let project = self.block.project.clone();
+			let mut p = project.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+			let entry = match p.graph.get(self.block.id) {
+				Some(e) => e,
+				None => return,
+			};
+			let new_core = entry.core.clone();
+			let new_behavior = match entry.behavior.duplicate(&entry.core) {
+				Some(b) => b,
+				None => return,
+			};
+			p.graph.add_node(new_core, new_behavior)
+		};
+		self.new_block = Some(NodeRef::new(self.block.project.clone(), id));
 	}
 
 	/// `redo`: shrink `block` to the first half, grow `new_block` to the
 	/// second half, and insert it after `block`.
 	///
-	/// The split keeps the ORIGINAL block anchored at its out-point (it
-	/// becomes the second half `[point, out)`) and anchors the fresh
-	/// `new_block` at its in-point (it becomes the first half
-	/// `[in, point)`), matching the C++ `Block::set_length_and_media_out` /
-	/// `set_length_and_media_in` semantics of the module.
+	/// The split keeps the ORIGINAL block anchored at its in-point (the
+	/// C++ `set_length_and_media_in` on the original) and anchors the
+	/// cloned `new_block` at its out-point (the C++
+	/// `set_length_and_media_out` on the copy — the copy carried the
+	/// original span, so the out point is preserved exactly).
 	pub fn redo(&mut self) {
 		// Create the second half if redo is invoked without a preceding
-		// prepare() (the C ABI command path may call redo directly).
-		if self.new_block.is_null() {
-			// SAFETY: `oaknode_block_clip_create` returns an owned handle.
-			self.new_block = unsafe { oaknode_block_clip_create() };
-		}
+		// prepare() (the vtable command path may call redo directly).
+		self.prepare();
 
-		self.old_length = block_length(self.block.clone());
+		// The C++ asserts `point_` lies strictly inside the block; that
+		// would panic across the FFI boundary, so it is intentionally not
+		// replicated — a split point outside the span is clamped by the
+		// rational arithmetic below.
+		self.old_length = block_length(&self.block);
 
-		let block_in = block_in(self.block.clone());
-		let block_out = block_out(self.block.clone());
+		let block_in = block_in(&self.block);
+		let block_out = block_out(&self.block);
 
-		// The C++ asserts `point_` lies strictly inside the block; that would
-		// panic across the FFI boundary, so it is intentionally not replicated.
 		let first_half_length = self.point - block_in;
 		let second_half_length = block_out - self.point;
 
-		let track = block_track(self.block.clone());
+		if let Some(new_block) = &self.new_block {
+			// Re-attach the second half if a previous undo detached it.
+			if self.new_block_entry.is_some() {
+				block_add_to_graph(new_block, self.new_block_entry.take());
+			}
+			// In-anchored length for the first half keeps the original's in
+			// point (the C++ `set_length_and_media_in`); the out-anchored
+			// length for the second half keeps the copy's out point (the
+			// C++ `set_length_and_media_out`).
+			block_set_length_and_media_in(&self.block, first_half_length);
+			block_set_length_and_media_out(new_block, second_half_length);
 
-		// Out-anchored length for the second half keeps the original's out
-		// point (the C++ `set_length_and_media_out`); the in-anchored length
-		// for the first half grows the fresh block from its default in of 0
-		// (the C++ `set_length_and_media_in`). The two were previously
-		// swapped, which anchored the halves at the wrong points.
-		block_set_length_and_media_out(self.block.clone(), second_half_length);
-		block_set_length_and_media_in(self.new_block.clone(), first_half_length);
-
-		// SAFETY: bridge inserts `new_block` after `block` on `track`.
-		let _ = unsafe {
-			oaknode_track_insert_block_after(track, self.new_block.clone(), self.block.clone())
-		};
+			if let Some(track) = block_track(&self.block) {
+				track_insert_block_after(&track, new_block, Some(&self.block));
+			}
+		}
 
 		// The C++ also re-runs a `reconnect_tree_command_` (the node-graph
 		// re-connection captured while cloning) and moves an out transition
-		// onto `new_block` via `oaknode_*` connection APIs; those symbols are
-		// absent from this bridge, so both are omitted here.
+		// onto `new_block` via `oaknode_*` connection APIs; the Rust block
+		// has no transition edges, so both are omitted here.
 	}
 
 	/// `undo`: restore `block`'s original length and remove the second half.
 	pub fn undo(&mut self) {
-		let track = block_track(self.block.clone());
-
-		block_set_length_and_media_out(self.block.clone(), self.old_length);
-
-		// SAFETY: bridge ripple-removes `new_block` from `track`.
-		let _ = unsafe { oaknode_track_ripple_remove_block(track, self.new_block.clone()) };
+		if let Some(track) = block_track(&self.block) {
+			// The redo shrank the original from its in point (it became the
+			// first half, in-anchored), so the restore grows it in-anchored
+			// too — the module stores the span on the block (the C++
+			// `set_length_and_media_out` derives positions from the track
+			// order and does not apply here).
+			block_set_length_and_media_in(&self.block, self.old_length);
+			if let Some(new_block) = &self.new_block {
+				track_ripple_remove_block(&track, new_block);
+				// Detach the second half from the graph (the C++ re-parents
+				// it to the scratch memory manager); the entry is owned by
+				// this command until the next redo.
+				if self.new_block_entry.is_none() {
+					self.new_block_entry = block_remove_from_graph(new_block);
+				}
+			}
+		}
 
 		// The C++ first moves a previously-moved out transition back onto
-		// `block` and runs `reconnect_tree_command_`'s undo; both need oaknode
-		// symbols absent from this bridge, so they are omitted here.
+		// `block` and runs `reconnect_tree_command_`'s undo; the Rust block
+		// has no transition edges, so those are omitted here.
 	}
 
 	/// The second block created by the split; only valid after `redo`.
-	pub fn new_block(&self) -> CHandle {
+	///
+	/// New signature (single-lib): `pub fn new_block(&self) -> Option<NodeRef>`
+	pub fn new_block(&self) -> Option<NodeRef> {
 		self.new_block.clone()
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		crate::undocommon::box_command(self)
 	}
 }
@@ -158,19 +199,21 @@ impl crate::undocommon::Command for BlockSplitCommand {
 /// times, preserving link groups (timelineundosplit.h).
 pub struct BlockSplitPreservingLinksCommand {
 	/// Blocks to split.
-	blocks: Vec<CHandle>,
+	blocks: Vec<NodeRef>,
 	/// Split times.
 	times: Vec<Rational>,
 	/// Child split commands, executed in order on `redo`.
 	commands: Vec<BlockSplitCommand>,
 	/// `splits[time_index][block_index]`: second half created for that
-	/// block/time, or an empty handle when the block was not split there.
-	splits: Vec<Vec<CHandle>>,
+	/// block/time, or `None` when the block was not split there.
+	splits: Vec<Vec<Option<NodeRef>>>,
 }
 
 impl BlockSplitPreservingLinksCommand {
 	/// Construct from blocks + times (one per block).
-	pub fn new(blocks: Vec<CHandle>, times: Vec<Rational>) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(blocks: Vec<NodeRef>, times: Vec<Rational>) -> BlockSplitPreservingLinksCommand`
+	pub fn new(blocks: Vec<NodeRef>, times: Vec<Rational>) -> Self {
 		Self {
 			blocks,
 			times,
@@ -183,7 +226,7 @@ impl BlockSplitPreservingLinksCommand {
 	pub fn prepare(&mut self) {
 		let n_times = self.times.len();
 		let n_blocks = self.blocks.len();
-		self.splits = vec![vec![CHandle::null(); n_blocks]; n_times];
+		self.splits = vec![vec![None; n_blocks]; n_times];
 
 		for i in 0..n_times {
 			let time = self.times[i];
@@ -192,8 +235,8 @@ impl BlockSplitPreservingLinksCommand {
 			// panic across the FFI boundary, so it is not replicated.
 
 			for j in 0..n_blocks {
-				let b_in = block_in(self.blocks[j].clone());
-				let b_out = block_out(self.blocks[j].clone());
+				let b_in = block_in(&self.blocks[j]);
+				let b_out = block_out(&self.blocks[j]);
 
 				if b_in < time && b_out > time {
 					let mut split = BlockSplitCommand::new(self.blocks[j].clone(), time);
@@ -205,19 +248,35 @@ impl BlockSplitPreservingLinksCommand {
 			}
 		}
 
-		// The C++ then relinks every pair of originally-linked blocks by
-		// creating link commands between their split halves
-		// (`oaknode_block_are_linked`); that symbol is absent from this
-		// bridge, so link preservation is omitted.
+		// Link preservation (C++ `oaknode_block_are_linked` +
+		// link commands between the halves): every pair of originally
+		// linked blocks that was split at the same time has its new
+		// halves linked too (`Graph::link` mirrors `Node::link`).
+		let Some(first) = self.blocks.first() else {
+			return;
+		};
+		let project = first.project.clone();
+		let mut p = project.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+		for i in 0..n_times {
+			for j in 0..n_blocks {
+				for k in (j + 1)..n_blocks {
+					if p.graph.are_linked(self.blocks[j].id, self.blocks[k].id) {
+						if let (Some(a), Some(b)) = (&self.splits[i][j], &self.splits[i][k]) {
+							p.graph.link(a.id, b.id);
+						}
+					}
+				}
+			}
+		}
 	}
 
 	/// `redo`: redo every child command in order.
 	///
-	/// The C ABI command path never invokes `prepare()` (the oakundo vtable
-	/// wrapper only dispatches `redo`/`undo`), so the children are built on
-	/// first redo; `prepare` itself redoes each child as it builds it, so the
-	/// first redo has nothing left to run. Later redos (after an undo) run
-	/// the stored children directly.
+	/// The vtable command path never invokes `prepare()` (the oakundo
+	/// wrapper only dispatches `redo`/`undo`), so the children are built
+	/// on first redo; `prepare` itself redoes each child as it builds it,
+	/// so the first redo has nothing left to run. Later redos (after an
+	/// undo) run the stored children directly.
 	pub fn redo(&mut self) {
 		if self.commands.is_empty() {
 			self.prepare();
@@ -237,23 +296,26 @@ impl BlockSplitPreservingLinksCommand {
 
 	/// The block produced by splitting `original` at `time_index`;
 	/// `None` when not applicable (timelineundosplit.h `get_split`).
-	pub fn get_split(&self, original: CHandle, time_index: usize) -> Option<CHandle> {
+	///
+	/// New signature (single-lib): `pub fn get_split(&self, original: &NodeRef, time_index: usize) -> Option<NodeRef>`
+	pub fn get_split(&self, original: &NodeRef, time_index: usize) -> Option<NodeRef> {
 		if time_index < self.times.len() {
 			for (i, b) in self.blocks.iter().enumerate() {
-				if same_block(b.clone(), original.clone()) {
+				if b.id == original.id {
 					return self
 						.splits
 						.get(time_index)
 						.and_then(|row| row.get(i))
-						.cloned();
+						.cloned()
+						.flatten();
 				}
 			}
 		}
 		None
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		crate::undocommon::box_command(self)
 	}
 }
@@ -272,7 +334,7 @@ impl crate::undocommon::Command for BlockSplitPreservingLinksCommand {
 /// (timelineundosplit.h).
 pub struct TrackSplitAtTimeCommand {
 	/// Owning track.
-	track: CHandle,
+	track: NodeRef,
 	/// Split point.
 	point: Rational,
 	/// Inner per-block split command, built by `prepare`.
@@ -281,7 +343,9 @@ pub struct TrackSplitAtTimeCommand {
 
 impl TrackSplitAtTimeCommand {
 	/// Construct from track + point.
-	pub fn new(track: CHandle, point: Rational) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(track: NodeRef, point: Rational) -> TrackSplitAtTimeCommand`
+	pub fn new(track: NodeRef, point: Rational) -> Self {
 		Self {
 			track,
 			point,
@@ -289,17 +353,36 @@ impl TrackSplitAtTimeCommand {
 		}
 	}
 
-	/// `prepare`: build the per-block split command. The C++ finds the block
-	/// via `oaknode_track_get_block_containing_time`, which is not exposed by
-	/// this crate's oaknode bridge (and there is no block-enumeration helper
-	/// to search for it), so the inner command cannot be built here and
-	/// redo/undo remain no-ops until that lookup API exists.
+	/// `prepare`: build the per-block split command. The C++ finds the
+	/// block via `oaknode_track_get_block_containing_time`; the Rust
+	/// equivalent is `TrackBehavior::block_containing_time` over the
+	/// graph-backed block range.
 	pub fn prepare(&mut self) {
-		let _ = (self.track.clone(), self.point);
+		if self.command.is_some() {
+			return;
+		}
+		let block_id = {
+			let project = self.track.project.clone();
+			let p = project.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+			p.graph
+				.get(self.track.id)
+				.and_then(|e| e.behavior.as_any())
+				.and_then(|a| a.downcast_ref::<oaknode::track::TrackBehavior>())
+				.and_then(|t| {
+					t.block_containing_time(self.point, &GraphBlockRange { graph: &p.graph })
+				})
+		};
+		if let Some(id) = block_id {
+			self.command = Some(BlockSplitCommand::new(
+				NodeRef::new(self.track.project.clone(), id),
+				self.point,
+			));
+		}
 	}
 
 	/// `redo`: forward to the inner command.
 	pub fn redo(&mut self) {
+		self.prepare();
 		if let Some(c) = self.command.as_mut() {
 			c.redo();
 		}
@@ -312,8 +395,8 @@ impl TrackSplitAtTimeCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		crate::undocommon::box_command(self)
 	}
 }

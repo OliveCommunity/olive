@@ -19,7 +19,7 @@
 //!
 //! Note: OpenColorIO itself is never linked here; it is reached through
 //! the color manager (`crate::colormanager`) and the oakrender bridge
-//! (`crate::bridge::render`), like the C++ node's
+//! (oakrender, opaque handles), like the C++ node's
 //! `oakrender_color_processor_create_lut` / `oakrender_lut_*` calls.
 
 use std::sync::Mutex;
@@ -57,7 +57,7 @@ struct ProcessorState {
 	last_direction: i64,
 	/// Cached processor for change detection (C++ `last_processor_`);
 	/// released with the node.
-	last_processor: Option<crate::bridge::render::ColorProcessorHandle>,
+	last_processor: Option<crate::handle::CHandle>,
 	/// Human-readable reason no LUT processor is active (C++
 	/// `last_error_`); empty when a valid processor is in use or no LUT
 	/// file has been selected yet.

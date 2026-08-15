@@ -14,61 +14,50 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! The render worker — the Rust port of `engine/src/capi/worker.cpp`
-//! behind the frozen C ABI in `engine/include/oakengine/worker.h`.
+//! The render worker — the Rust port of `engine/src/capi/worker.cpp`,
+//! owned by the oakengine facade and exported through the frozen
+//! `oakengine_worker_*` C ABI (`engine/include/oakengine/worker.h`); the
+//! `oak-worker` binary is a pure C-ABI consumer that links the built
+//! `liboakengine` dylib.
 //!
-//! Like the C++ side, this is where the worker's whole runtime lives:
-//!
-//!   - **Backend selection.** [`create_renderer`] initializes the render
-//!     backend through the oakrender module C ABI
-//!     (`oakrender_display_renderer_create_dynamic` + `_init`), falling
-//!     back to the direct OpenGL renderer exactly like the C++
-//!     `create_renderer()` chain. The worker executable itself never
-//!     touches a renderer — it is a thin shell calling
-//!     [`oakengine_worker_main`].
+//!   - **Backend selection.** [`Renderer::create`] initializes the render
+//!     backend through the oakrender crate's direct Rust API
+//!     ([`oakrender::backend::DisplayRenderer`]), falling back to the
+//!     direct OpenGL renderer exactly like the C++ `create_renderer()`
+//!     chain.
 //!   - **The session.** [`WorkerSession`] holds the renderer, the
 //!     shared-memory frame-slot pools ([`crate::ipc::FrameSlotPool`]) and
 //!     the shutdown flag, and answers one NDJSON control message at a time.
-//!   - **The main loop.** [`worker_main`] (and its C ABI wrapper
-//!     [`oakengine_worker_main`]) creates the session, loads the runtime
-//!     config, writes the startup handshake, and serves the stdin/stdout
-//!     NDJSON loop until a `shutdown` message or EOF.
+//!   - **The main loop.** [`worker_main`] creates the session, loads the
+//!     runtime config, writes the startup handshake, and serves the
+//!     stdin/stdout NDJSON loop until a `shutdown` message or EOF.
 //!
 //! The control-plane protocol is the same NDJSON the C++ worker speaks
 //! (`engine/render/ipc/ipcmessage.cpp`): one compact JSON object per line,
-//! `"type"`-dispatched, with `handshake` carrying the shared-memory
-//! geometry the worker attaches to via the real [`crate::ipc`] transport.
-//! `load_graph`/`render_frame` reproduce the C++ validation and then
-//! answer with the documented "not yet available" errors (the oaknode
-//! graph crate is still a skeleton).
+//! `"type"`-dispatched ([`crate::ipc`]), with `handshake` carrying the
+//! shared-memory geometry the worker attaches to via the real
+//! [`crate::ipc`] transport. `load_graph`/`render_frame` reproduce the
+//! C++ validation and then answer with the documented "not yet available"
+//! errors (the oaknode graph crate is still a skeleton).
+//!
+//! The bottom of this file is the C ABI export section: the
+//! [`OakWorkerSession`] opaque handle and the `oakengine_worker_*`
+//! exports verbatim from `engine/include/oakengine/worker.h`.
 
 use std::ffi::{c_char, c_int};
 use std::io::{self, BufRead, Write};
 
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::Value;
 
-use crate::bridge::render as render_ffi;
-use crate::handle::CHandle;
-use crate::ipc::{FrameSlotPool, SharedMemoryRegion, ShmMode};
+use oakrender::backend::{BackendKind, DisplayRenderer};
 
-/// Protocol version announced in the startup handshake (`k_protocol_version`).
-pub const PROTOCOL_VERSION: i32 = 1;
+use crate::ipc::{
+	error_message, write_message, FrameSlotPool, HandshakeMsg, LoadGraphMsg, RenderFrameMsg,
+	SharedMemoryRegion, ShmMode, TYPE_CANCEL, TYPE_HANDSHAKE, TYPE_LOAD_GRAPH, TYPE_RENDER_FRAME,
+	TYPE_SHUTDOWN,
+};
 
-/// `"handshake"`.
-const TYPE_HANDSHAKE: &str = "handshake";
-/// `"load_graph"`.
-const TYPE_LOAD_GRAPH: &str = "load_graph";
-/// `"render_frame"`.
-const TYPE_RENDER_FRAME: &str = "render_frame";
-/// `"cancel"`.
-const TYPE_CANCEL: &str = "cancel";
-/// `"shutdown"`.
-const TYPE_SHUTDOWN: &str = "shutdown";
-/// `"error"`.
-const TYPE_ERROR: &str = "error";
-
-/// Why `load_graph` answers "not yet available" after the real file checks.
+/// Why `load_graph` answers "not yet available" (after the real file checks).
 const GRAPH_STUB: &str = "load_graph: node-graph deserialization is not yet available in the \
      Rust worker (the oaknode crate is a todo!() skeleton; see worker/rust/README.md)";
 
@@ -77,82 +66,8 @@ const RENDER_STUB: &str = "render_frame: frame rendering is not yet available in
      worker (no node-graph or render-pipeline backing; the shm frame-slot transport is \
      attached but there is no graph to render; see worker/rust/README.md)";
 
-/// `handshake` — field-for-field equivalent of `oak_ipc_handshake` (ipc.h);
-/// wire field names match the C++ serializer.
-#[derive(Serialize, Deserialize, Default, Debug, Clone)]
-#[serde(default)]
-pub struct HandshakeMsg {
-	/// Protocol version.
-	pub protocol_version: i32,
-	/// Worker->main output shared-memory segment key.
-	pub shm_key: String,
-	/// Main->worker input shared-memory segment key (optional).
-	pub input_shm_key: String,
-	/// Number of main->worker input frame slots.
-	pub input_slots: i32,
-	/// Number of worker->main output frame slots.
-	pub output_slots: i32,
-	/// Per-output-slot pixel block size.
-	pub slot_data_bytes: i64,
-	/// Per-input-slot pixel block size.
-	pub input_slot_data_bytes: i64,
-}
-
-/// `load_graph` — path to a temporary file holding the serialized graph.
-#[derive(Serialize, Deserialize, Default, Debug, Clone)]
-#[serde(default)]
-pub struct LoadGraphMsg {
-	/// Temporary file holding the serialized node graph.
-	pub path: String,
-}
-
-/// `render_frame` — request a frame render (wire names per ipcmessage.cpp).
-#[derive(Serialize, Deserialize, Default, Debug, Clone)]
-#[serde(default)]
-pub struct RenderFrameMsg {
-	/// Correlates with the eventual frame_ready.
-	pub ticket: i64,
-	/// Viewer node stable uuid in the loaded graph.
-	pub node: String,
-	/// Frame timestamp numerator.
-	pub time_num: i64,
-	/// Frame timestamp denominator.
-	pub time_den: i64,
-	/// Forced output width (0 = graph default).
-	pub width: i32,
-	/// Forced output height (0 = graph default).
-	pub height: i32,
-	/// Forced `PixelFormat::Format` (-1 = default).
-	pub format: i32,
-	/// Channel count (0 = default).
-	pub channels: i32,
-	/// RenderMode::Mode.
-	pub mode: i32,
-	/// Optional decoded input slot (-1 = none).
-	pub input_slot: i32,
-	/// Ordered decoded input slots.
-	pub input_slots: Vec<i32>,
-	/// Output color transform present?
-	pub has_color_transform: bool,
-	/// 1 when the transform is a display transform.
-	pub color_is_display: bool,
-	/// Output colorspace or display name.
-	pub color_output: String,
-	/// Display view.
-	pub color_view: String,
-	/// Display look.
-	pub color_look: String,
-}
-
-/// Build a worker-side error report, mirroring `error_message()` in
-/// worker.cpp: `{"type":"error","message":...}` plus `"ticket"` when
-/// non-zero.
-fn error_message(message: &str, ticket: Option<i64>) -> Value {
-	match ticket.filter(|t| *t != 0) {
-		Some(t) => json!({ "type": TYPE_ERROR, "message": message, "ticket": t }),
-		None => json!({ "type": TYPE_ERROR, "message": message }),
-	}
-}
+/// Protocol version announced in the startup handshake (`k_protocol_version`).
+pub const PROTOCOL_VERSION: i32 = 1;
 
 /// Log a worker-side message to stderr, mirroring worker.cpp `log_error()`
 /// (the `worker: ` prefix).
@@ -170,17 +85,18 @@ pub fn is_no_backend(backend: &str) -> bool {
 // Renderer (backend selection)
 // ---------------------------------------------------------------------------
 
-/// A live, initialized oakrender display renderer handle (destroyed on
-/// drop).
+/// A live, initialized oakrender display renderer (destroyed on drop).
 pub struct Renderer {
-	handle: CHandle,
+	/// The oakrender crate's value-typed display renderer (single-lib
+	/// unification; the CHandle-based C ABI is deleted).
+	inner: DisplayRenderer,
 }
 
 impl Renderer {
-	/// Create and initialize a renderer through the oakrender module C ABI,
-	/// trying the named dynamic backend first and falling back to the
-	/// direct OpenGL renderer — the exact fallback chain of worker.cpp
-	/// `create_renderer()`.
+	/// Create and initialize a renderer through the oakrender crate's
+	/// direct Rust API, trying the named dynamic backend first and falling
+	/// back to the direct OpenGL renderer — the exact fallback chain of
+	/// worker.cpp `create_renderer()`.
 	pub fn create(backend: &str) -> Result<Renderer, String> {
 		match Self::create_dynamic(backend) {
 			Ok(r) => Ok(r),
@@ -195,58 +111,38 @@ impl Renderer {
 		}
 	}
 
-	/// Try the named dynamic backend through the module C ABI
-	/// (`oakrender_display_renderer_create_dynamic` + `_init`).
+	/// Try the named dynamic backend (`DisplayRenderer::new` +
+	/// `init`, the single-lib equivalent of
+	/// `oakrender_display_renderer_create_dynamic` + `_init`).
 	fn create_dynamic(backend: &str) -> Result<Renderer, String> {
-		let c = std::ffi::CString::new(backend)
-			.map_err(|_| format!("invalid backend id {backend:?}"))?;
-		// SAFETY: `c` is a valid NUL-terminated string the function only
-		// reads during the call.
-		let handle = unsafe { render_ffi::oakrender_display_renderer_create_dynamic(c.as_ptr()) };
-		Self::init_handle(handle, &format!("dynamic {backend}"))
+		let renderer = DisplayRenderer::new(BackendKind::from_config_string(backend));
+		Self::init_inner(renderer, &format!("dynamic {backend}"))
 	}
 
 	/// Fall back to the direct OpenGL renderer.
 	fn create_opengl() -> Result<Renderer, String> {
-		// SAFETY: no arguments; the function returns an owned handle.
-		let handle = unsafe { render_ffi::oakrender_display_renderer_create_opengl() };
-		Self::init_handle(handle, "direct OpenGL")
+		let renderer = DisplayRenderer::new(BackendKind::Gl);
+		Self::init_inner(renderer, "direct OpenGL")
 	}
 
-	/// Initialize a freshly created renderer handle.
-	fn init_handle(mut handle: CHandle, what: &str) -> Result<Renderer, String> {
-		if handle.is_null() {
-			return Err(format!("failed to create {what} renderer"));
+	/// Initialize a freshly created renderer.
+	fn init_inner(mut renderer: DisplayRenderer, what: &str) -> Result<Renderer, String> {
+		// NULL gl_context makes the backend use its default device/context
+		// path.
+		if let Err(e) = renderer.init(std::ptr::null_mut()) {
+			return Err(format!("failed to initialize {what} renderer ({e})"));
 		}
-		// SAFETY: `handle` is live and owned by us; NULL gl_context makes
-		// the backend use its default device/context path.
-		let rc =
-			unsafe { render_ffi::oakrender_display_renderer_init(handle, std::ptr::null_mut()) };
-		if rc != 0 {
-			// SAFETY: the handle is still owned by us (init failed).
-			unsafe { render_ffi::oakrender_display_renderer_destroy(&mut handle) };
-			return Err(format!("failed to initialize {what} renderer (rc={rc})"));
-		}
-		Ok(Renderer { handle })
+		Ok(Renderer { inner: renderer })
 	}
 
 	/// 1 when the renderer is OpenGL-based (the C++ worker uses the GL
 	/// context to announce the negotiated GL version in the handshake).
 	///
-	/// Not called yet: the oakrender module C ABI exposes no GL context
+	/// Not called yet: the oakrender module exposes no GL context
 	/// version, so the startup handshake omits `gl_major`/`gl_minor`.
 	#[allow(dead_code)]
 	pub fn is_open_gl(&self) -> bool {
-		// SAFETY: `self.handle` is the live handle from init_handle().
-		unsafe { render_ffi::oakrender_display_renderer_is_open_gl(self.handle) == 1 }
-	}
-}
-
-impl Drop for Renderer {
-	fn drop(&mut self) {
-		// SAFETY: `self.handle` is the owned handle from init_handle() and
-		// is not used after this.
-		unsafe { render_ffi::oakrender_display_renderer_destroy(&mut self.handle) };
+		self.inner.is_open_gl()
 	}
 }
 
@@ -272,7 +168,7 @@ impl WorkerSession {
 	/// Create a session for `backend`, mirroring
 	/// `oakengine_worker_session_create()`: "none"/"" skips renderer
 	/// creation, anything else initializes the render backend through the
-	/// oakrender module C ABI (dynamic -> OpenGL fallback).
+	/// oakrender crate's direct Rust API (dynamic -> OpenGL fallback).
 	pub fn create(backend: &str) -> Result<WorkerSession, String> {
 		let renderer = if is_no_backend(backend) {
 			None
@@ -311,11 +207,9 @@ impl WorkerSession {
 			return true;
 		}
 		log_error("runtime: loading color-manager default config");
-		// SAFETY: no arguments; the function initializes process-wide state.
-		let rc = unsafe { render_ffi::oakrender_color_manager_set_up_default_config() };
-		if rc != 0 {
+		if let Err(e) = oakrender::color::set_up_default_config() {
 			log_error(&format!(
-				"runtime: color-manager default config failed (rc={rc}); continuing"
+				"runtime: color-manager default config failed ({e}); continuing"
 			));
 		}
 		log_error(
@@ -332,7 +226,7 @@ impl WorkerSession {
 	/// announces their geometry in its handshake reply.
 	///
 	/// Deviation from the C++: `gl_major`/`gl_minor` are omitted because
-	/// the oakrender module C ABI exposes no GL context version.
+	/// the oakrender module exposes no GL context version.
 	pub fn startup_handshake(&self) -> Value {
 		HandshakeMsg {
 			protocol_version: PROTOCOL_VERSION,
@@ -497,58 +391,9 @@ impl WorkerSession {
 	}
 }
 
-impl HandshakeMsg {
-	/// Serialize to the wire `handshake` object.
-	pub fn to_json(&self) -> Value {
-		json!({
-			"type": TYPE_HANDSHAKE,
-			"protocol_version": self.protocol_version,
-			"shm_key": self.shm_key,
-			"input_shm_key": self.input_shm_key,
-			"input_slots": self.input_slots,
-			"output_slots": self.output_slots,
-			"slot_data_bytes": self.slot_data_bytes,
-			"input_slot_data_bytes": self.input_slot_data_bytes,
-		})
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
-
-/// Write one NDJSON message line (compact JSON + `\n`), the Rust port of
-/// `ipcmessage.cpp write_message()`.
-fn write_message(w: &mut impl Write, msg: &Value) -> io::Result<()> {
-	let line =
-		serde_json::to_string(msg).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-	w.write_all(line.as_bytes())?;
-	w.write_all(b"\n")
-}
-
-/// Scan argv for `--backend <name>` (worker.cpp `oakengine_worker_main`).
-/// The default is `"opengl"`; the value is lowercased; the last flag wins.
-fn parse_backend(argc: c_int, argv: *mut *mut c_char) -> String {
-	let mut backend = "opengl".to_string();
-	if argc > 0 && !argv.is_null() {
-		// SAFETY: `argv` points to `argc` NUL-terminated C strings (the C
-		// runtime's argv), and we only read the entries.
-		let args = unsafe { std::slice::from_raw_parts(argv, argc as usize) };
-		let mut i = 1usize;
-		while i < args.len() {
-			// SAFETY: `args[i]` is a valid NUL-terminated C string.
-			let arg = unsafe { crate::handle::read_cstr(args[i]) };
-			if arg == "--backend" && i + 1 < args.len() {
-				// SAFETY: `args[i + 1]` is a valid NUL-terminated C string.
-				backend = unsafe { crate::handle::read_cstr(args[i + 1]) }.to_ascii_lowercase();
-				i += 2;
-			} else {
-				i += 1;
-			}
-		}
-	}
-	backend
-}
 
 /// Full render-worker main, transport-agnostic in the backend name.
 ///
@@ -559,7 +404,8 @@ fn parse_backend(argc: c_int, argv: *mut *mut c_char) -> String {
 /// exit code.
 pub fn worker_main(backend: &str) -> i32 {
 	// 1. Session creation initializes the render backend through the
-	//    oakrender module C ABI (oakengine_worker_session_create()).
+	//    oakrender crate's direct Rust API
+	//    (oakengine_worker_session_create()).
 	let mut session = match WorkerSession::create(backend) {
 		Ok(s) => s,
 		Err(msg) => {
@@ -628,6 +474,325 @@ pub fn worker_main(backend: &str) -> i32 {
 }
 
 // ---------------------------------------------------------------------------
+// Unit tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::ipc::{FrameSlotPool, SharedMemoryRegion, ShmMode};
+	use serde_json::json;
+	use std::ptr;
+
+	fn test_key(name: &str) -> String {
+		static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+		let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+		SharedMemoryRegion::make_key(i64::from(std::process::id()), (n & 0x7FFF) as i32)
+			+ &format!("-w-{name}")
+	}
+
+	/// The "parent" side of a handshake: create an output segment holding a
+	/// pool, optionally an input segment, and return the handshake message
+	/// plus the owner regions (kept alive by the caller).
+	fn parent_side(
+		slots: i32,
+		slot_bytes: i64,
+		input: bool,
+	) -> (Value, SharedMemoryRegion, Option<SharedMemoryRegion>) {
+		let out_key = test_key("out");
+		let out_bytes = FrameSlotPool::bytes_needed(slots as u32, slot_bytes as usize);
+		let mut out_region = SharedMemoryRegion::new();
+		assert!(
+			out_region.open(&out_key, out_bytes, ShmMode::Create),
+			"{}",
+			out_region.error()
+		);
+		// SAFETY: live mapping sized by bytes_needed.
+		let _pool =
+			unsafe { FrameSlotPool::create(out_region.data(), slots as u32, slot_bytes as usize) };
+
+		let (in_key, in_bytes, in_region) = if input {
+			let in_key = test_key("in");
+			let in_bytes = FrameSlotPool::bytes_needed(slots as u32, slot_bytes as usize);
+			let mut in_region = SharedMemoryRegion::new();
+			assert!(in_region.open(&in_key, in_bytes, ShmMode::Create));
+			// SAFETY: live mapping.
+			let _ = unsafe {
+				FrameSlotPool::create(in_region.data(), slots as u32, slot_bytes as usize)
+			};
+			(Some(in_key), Some(in_bytes), Some(in_region))
+		} else {
+			(None, None, None)
+		};
+
+		let hs = json!({
+			"type": "handshake",
+			"protocol_version": PROTOCOL_VERSION,
+			"shm_key": out_key,
+			"input_shm_key": in_key.unwrap_or_default(),
+			"input_slots": if input { slots } else { 0 },
+			"output_slots": slots,
+			"slot_data_bytes": slot_bytes,
+			"input_slot_data_bytes": in_bytes.unwrap_or(0),
+		});
+		(hs, out_region, in_region)
+	}
+
+	#[test]
+	fn no_backend_detection_matches_cpp() {
+		assert!(is_no_backend(""));
+		assert!(is_no_backend("none"));
+		assert!(is_no_backend("NONE"));
+		assert!(!is_no_backend("opengl"));
+		assert!(!is_no_backend("vulkan"));
+	}
+
+	#[test]
+	fn none_backend_session_has_no_renderer_but_serves_messages() {
+		let mut s = WorkerSession::create("none").unwrap();
+		assert!(!s.has_renderer());
+		let resp = s.handle_line(r#"{"type":"shutdown"}"#);
+		assert!(resp.is_none());
+		assert!(s.shutdown_requested());
+	}
+
+	#[test]
+	fn startup_handshake_is_protocol_version_1_with_empty_geometry() {
+		let s = WorkerSession::create("none").unwrap();
+		let hs = s.startup_handshake();
+		assert_eq!(
+			hs,
+			json!({
+				"type": "handshake",
+				"protocol_version": 1,
+				"shm_key": "",
+				"input_shm_key": "",
+				"input_slots": 0,
+				"output_slots": 0,
+				"slot_data_bytes": 0,
+				"input_slot_data_bytes": 0,
+			})
+		);
+	}
+
+	#[test]
+	fn malformed_line_yields_error_response() {
+		let mut s = WorkerSession::create("none").unwrap();
+		let resp = s.handle_line("this is not json").unwrap();
+		assert_eq!(resp["type"], "error");
+		assert_eq!(resp["message"], "malformed control message");
+	}
+
+	#[test]
+	fn unknown_message_type_yields_error_response() {
+		let mut s = WorkerSession::create("none").unwrap();
+		let resp = s.handle_line(r#"{"type":"frobnicate"}"#).unwrap();
+		assert_eq!(resp["message"], "unknown message type: frobnicate");
+	}
+
+	#[test]
+	fn cancel_and_shutdown_produce_no_response() {
+		let mut s = WorkerSession::create("none").unwrap();
+		assert!(s.handle_line(r#"{"type":"cancel","ticket":5}"#).is_none());
+		assert!(s.handle_line(r#"{"type":"shutdown"}"#).is_none());
+		assert!(s.shutdown_requested());
+	}
+
+	#[test]
+	fn handshake_wrong_protocol_version() {
+		let mut s = WorkerSession::create("none").unwrap();
+		let resp = s
+			.handle_line(
+				r#"{"type":"handshake","protocol_version":99,"shm_key":"k","output_slots":1,"slot_data_bytes":16}"#,
+			)
+			.unwrap();
+		assert_eq!(resp["message"], "unsupported protocol version 99");
+	}
+
+	#[test]
+	fn handshake_missing_geometry() {
+		let mut s = WorkerSession::create("none").unwrap();
+		let resp = s
+			.handle_line(r#"{"type":"handshake","protocol_version":1}"#)
+			.unwrap();
+		assert_eq!(
+			resp["message"],
+			"handshake missing output shared-memory geometry"
+		);
+	}
+
+	#[test]
+	fn handshake_attaches_real_output_pool() {
+		let mut s = WorkerSession::create("none").unwrap();
+		let (hs, out_region, _in) = parent_side(4, 4096, false);
+		let resp = s.handle_line(&hs.to_string());
+		assert!(resp.is_none(), "unexpected error: {resp:?}");
+		// The session now holds a real attached pool with the parent's
+		// geometry.
+		let out_pool = s.output_pool.as_ref().unwrap();
+		assert_eq!(out_pool.slot_count(), 4);
+		assert_eq!(out_pool.slot_data_bytes(), 4096);
+
+		// The two views share the same rings, not copies: the parent pops a
+		// free slot and the worker's pool sees the ring cursor move; the
+		// parent's publish lands in the worker's ready ring.
+		// SAFETY: `out_region` is a live mapping containing the pool the
+		// session attached to.
+		let parent_pool = unsafe { FrameSlotPool::attach(out_region.data()) };
+		let mut parent_slot = 0;
+		assert!(unsafe { parent_pool.acquire(&mut parent_slot) });
+		assert_eq!(parent_slot, 0);
+		let mut worker_slot = 0;
+		assert!(unsafe { out_pool.acquire(&mut worker_slot) });
+		assert_eq!(worker_slot, 1, "worker must see the parent's free-ring pop");
+
+		// SAFETY: `parent_slot` was acquired by the parent; slot_bytes
+		// writable.
+		unsafe {
+			ptr::write_bytes(parent_pool.slot_data(parent_slot), 0xAB, 64);
+		}
+		assert!(unsafe { parent_pool.publish(parent_slot) });
+		let mut consumed = 0;
+		assert!(unsafe { out_pool.consume(&mut consumed) });
+		assert_eq!(consumed, parent_slot);
+		// SAFETY: `consumed` was consumed by the worker's pool.
+		assert_eq!(unsafe { *out_pool.slot_data_const(consumed) }, 0xAB);
+		// Clean up so the region drop at test end unlinks cleanly.
+		unsafe { out_pool.release(consumed) };
+		unsafe { out_pool.release(worker_slot) };
+	}
+
+	#[test]
+	fn handshake_attaches_input_pool_too() {
+		let mut s = WorkerSession::create("none").unwrap();
+		let (hs, _out, _in) = parent_side(2, 256, true);
+		let resp = s.handle_line(&hs.to_string());
+		assert!(resp.is_none(), "unexpected error: {resp:?}");
+		assert!(s.input_pool.is_some());
+		let in_pool = s.input_pool.as_ref().unwrap();
+		assert_eq!(in_pool.slot_count(), 2);
+		assert_eq!(in_pool.slot_data_bytes(), 256);
+	}
+
+	#[test]
+	fn handshake_attach_failure_reports_error() {
+		let mut s = WorkerSession::create("none").unwrap();
+		// A key that was never created.
+		let resp = s
+			.handle_line(
+				&json!({
+					"type": "handshake",
+					"protocol_version": 1,
+					"shm_key": format!("olive-rw-{}-missing", std::process::id()),
+					"output_slots": 4,
+					"slot_data_bytes": 4096,
+				})
+				.to_string(),
+			)
+			.unwrap();
+		assert_eq!(resp["type"], "error");
+		assert!(resp["message"]
+			.as_str()
+			.unwrap()
+			.starts_with("failed to attach shared memory: "));
+		assert!(s.output_pool.is_none());
+	}
+
+	#[test]
+	fn handshake_rejects_non_pool_segment() {
+		let mut s = WorkerSession::create("none").unwrap();
+		// A real segment of the right size that does not contain a pool
+		// (zeroed memory → wrong magic). Sized so the attach size check
+		// passes and the magic check fires.
+		let key = test_key("nopool");
+		let bytes = FrameSlotPool::bytes_needed(4, 4096);
+		let mut region = SharedMemoryRegion::new();
+		assert!(region.open(&key, bytes, ShmMode::Create));
+		let resp = s
+			.handle_line(
+				&json!({
+					"type": "handshake",
+					"protocol_version": 1,
+					"shm_key": key,
+					"output_slots": 4,
+					"slot_data_bytes": 4096,
+				})
+				.to_string(),
+			)
+			.unwrap();
+		assert_eq!(
+			resp["message"],
+			"shared memory does not contain a frame slot pool"
+		);
+	}
+
+	#[test]
+	fn handshake_missing_input_geometry_is_an_error() {
+		let mut s = WorkerSession::create("none").unwrap();
+		let (mut hs, _out, _in) = parent_side(2, 256, false);
+		// Ask for input slots without announcing their geometry.
+		hs["input_slots"] = json!(2);
+		let resp = s.handle_line(&hs.to_string()).unwrap();
+		assert_eq!(
+			resp["message"],
+			"handshake missing input shared-memory geometry"
+		);
+	}
+
+	#[test]
+	fn load_graph_checks_are_real_then_stub() {
+		let mut s = WorkerSession::create("none").unwrap();
+
+		let missing = "/definitely/not/a/real/graph.ove";
+		let resp = s
+			.handle_line(&json!({ "type": "load_graph", "path": missing }).to_string())
+			.unwrap();
+		assert_eq!(
+			resp["message"],
+			format!("graph file does not exist: {missing}")
+		);
+
+		let empty = std::env::temp_dir().join("oak_worker_main_test_empty.ove");
+		std::fs::write(&empty, b"").unwrap();
+		let resp = s
+			.handle_line(
+				&json!({ "type": "load_graph", "path": empty.display().to_string() }).to_string(),
+			)
+			.unwrap();
+		assert_eq!(
+			resp["message"],
+			format!("graph file is empty: {}", empty.display())
+		);
+		let _ = std::fs::remove_file(&empty);
+
+		let real = std::env::temp_dir().join("oak_worker_main_test_graph.ove");
+		std::fs::write(&real, b"<root/>").unwrap();
+		let resp = s
+			.handle_line(
+				&json!({ "type": "load_graph", "path": real.display().to_string() }).to_string(),
+			)
+			.unwrap();
+		assert!(resp["message"]
+			.as_str()
+			.unwrap()
+			.contains("node-graph deserialization is not yet available"));
+		let _ = std::fs::remove_file(&real);
+	}
+
+	#[test]
+	fn render_frame_reports_stub_with_ticket() {
+		let mut s = WorkerSession::create("none").unwrap();
+		let resp = s
+			.handle_line(r#"{"type":"render_frame","ticket":123,"node":"abc"}"#)
+			.unwrap();
+		assert_eq!(resp["type"], "error");
+		assert_eq!(resp["ticket"], 123);
+		assert!(resp["message"]
+			.as_str()
+			.unwrap()
+			.contains("frame rendering is not yet available"));
+	}
+}
 // C ABI exports (engine/include/oakengine/worker.h)
 // ---------------------------------------------------------------------------
 
@@ -757,6 +922,30 @@ pub unsafe extern "C" fn oakengine_worker_session_shutdown_requested(
 	})
 }
 
+/// Scan argv for `--backend <name>` (worker.cpp `oakengine_worker_main`).
+/// The default is `"opengl"`; the value is lowercased; the last flag wins.
+fn parse_backend(argc: c_int, argv: *mut *mut c_char) -> String {
+	let mut backend = "opengl".to_string();
+	if argc > 0 && !argv.is_null() {
+		// SAFETY: `argv` points to `argc` NUL-terminated C strings (the C
+		// runtime's argv), and we only read the entries.
+		let args = unsafe { std::slice::from_raw_parts(argv, argc as usize) };
+		let mut i = 1usize;
+		while i < args.len() {
+			// SAFETY: `args[i]` is a valid NUL-terminated C string.
+			let arg = unsafe { crate::handle::read_cstr(args[i]) };
+			if arg == "--backend" && i + 1 < args.len() {
+				// SAFETY: `args[i + 1]` is a valid NUL-terminated C string.
+				backend = unsafe { crate::handle::read_cstr(args[i + 1]) }.to_ascii_lowercase();
+				i += 2;
+			} else {
+				i += 1;
+			}
+		}
+	}
+	backend
+}
+
 /// `oakengine_worker_main` — full render-worker main. Parses `--backend`,
 /// initializes the renderer, sends the startup handshake and runs the
 /// stdin/stdout NDJSON loop until a shutdown message or EOF. Returns the
@@ -774,7 +963,7 @@ pub unsafe extern "C" fn oakengine_worker_main(argc: c_int, argv: *mut *mut c_ch
 // ---------------------------------------------------------------------------
 
 #[cfg(test)]
-mod tests {
+mod cabi_tests {
 	use super::*;
 	use crate::ipc::{self, FrameSlotPool, SharedMemoryRegion, ShmMode};
 	use serde_json::json;

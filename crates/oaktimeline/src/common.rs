@@ -19,8 +19,8 @@
 //!
 //! Enum discriminants are value-compatible with both `include/timeline/edit.h`
 //! (`OAKTIMELINE_MOVEMENT_*`) and `include/timeline/displaymode.h`
-//! (`OAK_TIMELINE_THUMBNAIL_*` / `OAK_TIMELINE_WAVEFORMS_*`); `ffi.rs` maps
-//! between them mechanically.
+//! (`OAK_TIMELINE_THUMBNAIL_*` / `OAK_TIMELINE_WAVEFORMS_*`); the deleted C
+//! ABI export layer used to map between them mechanically.
 
 use oakcore_rs::Rational;
 
@@ -92,13 +92,14 @@ pub enum WaveformMode {
 }
 
 /// `Timeline::EditToInfo` (timelinecommon.h): where the nearest block edge
-/// falls for a pointer edit. Not `Copy`/`Clone`/`Debug` — it owns
-/// [`crate::handle::CHandle`]s, which are opaque refcounted handles.
+/// falls for a pointer edit. The node references are the single-lib
+/// domain handles ([`crate::util::NodeRef`] — `None` where the C ABI
+/// used a null handle).
 pub struct EditToInfo {
 	/// Owning track of the nearest block.
-	pub track: crate::handle::CHandle,
+	pub track: Option<crate::util::NodeRef>,
 	/// Nearest edit point time.
 	pub nearest_time: Rational,
 	/// Nearest block.
-	pub nearest_block: crate::handle::CHandle,
+	pub nearest_block: Option<crate::util::NodeRef>,
 }

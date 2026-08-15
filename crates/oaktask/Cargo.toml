@@ -9,18 +9,12 @@ license = "GPL-3.0-or-later"
 crate-type = ["staticlib", "rlib"]
 
 [features]
-# Link the real oakrender crate (dev-dependency) into the integration test
-# binary and drop the oakrender ticket stubs from tests/common, so
-# `tests/render_real_integration_test.rs` drives oaktask's render loop
-# against the actual oakrender ticket arena (CPU path, no GPU).
-#
-# Build it with:
-#   cargo test --features real-oakrender --test render_real_integration_test
-#
-# The flag is per-binary: `cargo test --features real-oakrender` (without
-# `--test`) also compiles the stub-based tests, which cannot coexist with
-# the real oakrender exports in one binary (duplicate `#[no_mangle]`
-# symbols), so always pass the `--test` filter when the feature is on.
+# Historical marker feature (single-lib unification). The stub-based render
+# integration test it selected (`tests/render_real_integration_test.rs`,
+# which linked the real oakrender ticket arena against oaktask's deleted
+# bridge::render C ABI declarations) was removed together with the C ABI
+# layer. The flag is retained so older `cargo test` invocations keep
+# parsing; it has no effect today.
 real-oakrender = []
 
 [dependencies]
@@ -29,7 +23,6 @@ oakundo = { path = "../oakundo" }
 oakcommon = { path = "../oakcommon" }
 oakcodec = { path = "../oakcodec" }
 oaknode = { path = "../oaknode" }
-oaktimeline = { path = "../oaktimeline" }
 
 # Pure-Rust OpenTimelineIO JSON binding (serde model of the OTIO JSON format
 # covering exactly the object graph the C++ loadotio/saveotio tasks use).
@@ -37,10 +30,11 @@ oaktimeline = { path = "../oaktimeline" }
 # LoadOTIOTask/SaveOTIOTask parse/serialize through this crate.
 oakotio = { path = "../oakotio" }
 
-# oakrender is a regular path dependency (single-lib: bridge/render.rs calls
-# its ffi directly). The `real-oakrender` marker feature keeps the
-# render-real integration test's cargo invocation working (it links the
-# real oakrender — now always — and skips the ticket stubs).
+# oakrender is a regular path dependency (single-lib: the direct ticket
+# arena in `oakrender::ticket` will back the render loop once the
+# CHandle-based loop is rewired; until then `src/stubs.rs` stands in for
+# the deleted ticket C ABI). The `real-oakrender` marker feature keeps the
+# old render-real integration test's cargo invocation parsing (see above).
 oakrender = { path = "../oakrender" }
 # Error trait derive for the crate-internal error enum.
 thiserror = "2"

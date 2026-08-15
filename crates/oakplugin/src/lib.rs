@@ -21,21 +21,27 @@
 //! - **OFX 宿主**：扫描 bundle、加载插件、实现八张 suite
 //!   （property/memory/image_effect/param/message/progress/timeline/
 //!   multithread），驱动 describe/createInstance/render 等 action。
-//! - **桥**：把 OFX 实例的参数接到 oaknode（[`bridge::node`]）、把
-//!   clip 的输入输出接到 oakrender 纹理（[`bridge::render`]）、把
-//!   参数修改包成 undo 命令（[`bridge::undo`]）。
-//! - **C ABI 出口**（[`ffi`]）：逐字实现 `include/plugin/*.h`。
+//! - **桥**：把 OFX 实例的参数接到 oaknode（[`node`]，节点值 POD +
+//!   身份注册表与 undoable 回写）、把 clip 的输入输出接到 oakrender
+//!   纹理（[`render`]，纹理/帧/渲染器值类型）、把参数修改包成 undo
+//!   命令（直接经 `oakundo::undocommand::UndoCommand`，见
+//!   [`instance::Instance::submit_undo_command`]）。
 //!
-//! ## FFI 纪律（全 crate 最高优先级约定）
+//! ## 单库化（single-lib unification）
 //!
-//! 1. 每个 `extern "C"` 导出函数体必须包
-//!    [`handle::guard`]/[`handle::guard_ptr`]（catch_unwind + 错误码
-//!    映射）。panic 越过 FFI 边界是 release 阻断级缺陷。
-//! 2. 句柄一律 [`handle::RefBox`]；`ctx` 是不透明指针，含义只在本
-//!    crate 内解释。
-//! 3. 插件可在任意自起线程回调 suite（multithread suite 存活期
-//!    内）；一切共享状态走 `Mutex`，句柄注册表见 [`handle::Registry`]。
-//! 4. OFX 语义以 openfx HostSupport 为参照系；协商与时序实现点必须
+//! 本 crate 的 C ABI 出口（原 [`ffi`]）与模块桥（原 [`bridge`]）已
+//! 删除：oaknode/oakrender/oakundo 均以 path 依赖直接链接。桥以
+//! 直接 Rust 类型重建（[`node`] 的身份注册表与
+//! `set_input_*_undoable`；[`render`] 的 `Texture`/`Frame`/`Renderer`
+//! 值类型），仅 GPU 相关且 wgpu 模型无等价物的调用面保留标注桩
+//! （[`render::texture_id`]——GL 命名空间不存在，见 `// STUB`
+//! 标记）。
+//!
+//! ## 句柄纪律（全 crate 最高优先级约定）
+//!
+//! 1. 插件可在任意自起线程回调 suite（multithread suite 存活期
+//!    内）；一切共享状态走 `Mutex`。
+//! 2. OFX 语义以 openfx HostSupport 为参照系；协商与时序实现点必须
 //!    注释对应 HostSupport 文件与行号（格式：`// HS: ofxhImageEffect.cpp:2776`）。
 //!
 //! ## 第 1 期范围
@@ -47,17 +53,17 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]
 
-pub mod bridge;
 pub mod clip;
 pub mod descriptor;
 pub mod error;
-pub mod ffi;
 pub mod handle;
 pub mod host;
 pub mod image;
 pub mod instance;
+pub mod node;
 pub mod param;
 pub mod progress;
 pub mod property;
+pub mod render;
 pub mod render_driver;
 pub mod suites;

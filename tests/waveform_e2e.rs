@@ -22,7 +22,7 @@
 //! waveform test stays isolated from the in-lib media tests.
 
 use oakapp::oakui::ffi::{
-	oakaudio_waveform_extract, oakengine_testmedia_write_clip, oakapp_minmax,
+	oakengine_waveform_extract, oakengine_testmedia_write_clip, oakapp_minmax,
 };
 use oakapp::oakui::waveform::{WaveformCache, MinMax};
 

@@ -8,14 +8,6 @@ license = "GPL-3.0-or-later"
 [lib]
 crate-type = ["staticlib", "rlib"]
 
-[features]
-# Compile the in-crate mock implementations (src/bridge/teststubs.rs) so the
-# integration tests can resolve `bridge::teststubs`; the bridge fns route to
-# them under this feature (see single-lib.md). Plain Rust mocks, no
-# `#[no_mangle]` — they coexist with the real oaknode/oakundo/oakcommon
-# path dependencies. Every test run must pass this flag (README "testing").
-test-stubs = []
-
 [dependencies]
 oakcore-rs = { path = "../oakcore" }
 oakundo = { path = "../oakundo" }

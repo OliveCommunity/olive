@@ -20,9 +20,8 @@
 //! 运行时装配成 oak-test-plugin.ofx.bundle）：filter 上下文、
 //! Double 参数 gain、双 clip（Source/Output）。插件未构建时相关
 //! 用例经 [`skip`] 提前返回。
-//! 测试桩在库内（bridge::render::stub，`--features test-stubs`）：
-//! 全链路像素路径可在 cargo test 跑通；真实链路在 standalone
-//! ctest。本文档的 run 命令见 crate README。
+//! 单库化后像素路径经 oakrender 值模型（`oakrender::texture::Texture`）
+//! 驱动；渲染 goldens 待该迁移落地。
 
 use std::path::PathBuf;
 

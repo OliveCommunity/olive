@@ -14,72 +14,122 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Shared node-removal helpers and the C-command wrapper
-//! (`src/timeline/src/timelineundocommon.h`). All node-graph access goes
-//! through the oaknode C ABI (`bridge::node`) and undo through
-//! `bridge::undo`.
+//! Shared node-removal helpers and the command wrapper
+//! (`src/timeline/src/timelineundocommon.h`). Since the single-lib
+//! unification, commands are `oakundo::undocommand::UndoCommand` values
+//! (the oakundo C ABI and the oaknode C ABI are both gone); node-graph
+//! access goes directly through the oaknode Rust domain
+//! ([`crate::util::NodeRef`] + the project's graph arena).
 //!
 //! `CHandleCommandWrapper` in C++ subclasses `olive::UndoCommand` to wrap a
-//! raw `OakUndoCommand`; the Rust equivalent holds a command `CHandle` and
-//! forwards `redo`/`undo` to `bridge::undo::oakundo_command_redo_now/undo_now`.
+//! raw `OakUndoCommand`; the Rust equivalent holds an
+//! [`oakundo::undocommand::UndoCommand`] and forwards `redo`/`undo` to
+//! `redo_now`/`undo_now`.
 
 use std::ffi::c_void;
 
-use crate::bridge::node::{
-	oaknode_block_as_node, oaknode_command_create_remove_node, oaknode_node_output_connection_count,
-};
-use crate::bridge::undo::{
-	oakundo_command_free, oakundo_command_init, oakundo_command_redo_now, oakundo_command_undo_now,
-};
-use crate::handle::CHandle;
+use oaknode::graph::NodeEntry;
+use oakundo::undocommand::{OakUndoCommandVtable, UndoCommand};
+
+use crate::util::{block_add_to_graph, block_remove_from_graph, NodeRef};
+
+/// An empty (all callbacks absent) command — the failure-path result of
+/// the deleted oaknode remove-command factory (an empty command handle).
+pub(crate) fn empty_command() -> UndoCommand {
+	UndoCommand::from_vtable(
+		OakUndoCommandVtable {
+			redo: None,
+			undo: None,
+			free_fn: None,
+		},
+		std::ptr::null_mut(),
+	)
+}
+
+/// `oaknode_command_create_remove_node` — a command that detaches a node
+/// from the project graph on `redo` (the detached entry is owned by this
+/// command) and re-inserts it, identity-preserving, on `undo`. The C++
+/// equivalent runs `node->setParent(&memory_manager_)` / the reverse.
+struct RemoveNodeCommand {
+	/// The node to remove.
+	node: NodeRef,
+	/// Arena entry detached on `redo`, owned here until `undo`.
+	entry: Option<NodeEntry>,
+}
+
+impl RemoveNodeCommand {
+	/// Construct from the node to remove.
+	fn new(node: NodeRef) -> Self {
+		Self { node, entry: None }
+	}
+}
+
+impl Command for RemoveNodeCommand {
+	/// `redo`: detach the node from the graph.
+	fn redo(&mut self) {
+		if self.entry.is_none() {
+			self.entry = block_remove_from_graph(&self.node);
+		}
+	}
+
+	/// `undo`: re-insert the node into the graph at its original slot.
+	fn undo(&mut self) {
+		if let Some(entry) = self.entry.take() {
+			block_add_to_graph(&self.node, Some(entry));
+		}
+	}
+}
 
 /// `node_can_be_removed(Node)`: true when the node has no output
 /// connections (timelineundocommon.h).
-pub fn node_can_be_removed(node: CHandle) -> bool {
-	let mut count = 0;
-	// SAFETY: `count` is a valid out pointer.
-	let _ = unsafe { oaknode_node_output_connection_count(node, &mut count) };
-	count == 0
+pub fn node_can_be_removed(node: &NodeRef) -> bool {
+	let p = node.project.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+	p.graph.output_connections(node.id).is_empty()
 }
 
-/// `node_can_be_removed(Block)`: delegates via `oaknode_block_as_node`.
-pub fn block_can_be_removed(block: CHandle) -> bool {
-	node_can_be_removed(unsafe { oaknode_block_as_node(block) })
+/// `node_can_be_removed(Block)`: the block is checked through its
+/// generic-node view.
+pub fn block_can_be_removed(block: &NodeRef) -> bool {
+	node_can_be_removed(block)
 }
 
 /// `create_remove_command(Node)` — `oaknode_command_create_remove_node`.
-pub fn create_remove_command(node: CHandle) -> CHandle {
-	unsafe { oaknode_command_create_remove_node(node) }
+pub fn create_remove_command(node: &NodeRef) -> UndoCommand {
+	box_command(RemoveNodeCommand::new(node.clone()))
 }
 
-/// `create_remove_command(Block)` — via `oaknode_block_as_node`.
-pub fn create_block_remove_command(block: CHandle) -> CHandle {
-	create_remove_command(unsafe { oaknode_block_as_node(block) })
+/// `create_remove_command(Block)`.
+pub fn create_block_remove_command(block: &NodeRef) -> UndoCommand {
+	create_remove_command(block)
 }
 
 /// `create_and_run_remove_command(Node)` — create then `redo_now`.
-pub fn create_and_run_remove_command(node: CHandle) -> CHandle {
-	let command = create_remove_command(node);
-	// SAFETY: `command` is a valid handle returned by the bridge.
-	let _ = unsafe { oakundo_command_redo_now(command.clone()) };
+pub fn create_and_run_remove_command(node: &NodeRef) -> UndoCommand {
+	let mut command = create_remove_command(node);
+	command.redo_now();
 	command
 }
 
-/// `create_and_run_remove_command(Block)` — via `oaknode_block_as_node`.
-pub fn create_and_run_block_remove_command(block: CHandle) -> CHandle {
-	create_and_run_remove_command(unsafe { oaknode_block_as_node(block) })
+/// `create_and_run_remove_command(Block)`.
+pub fn create_and_run_block_remove_command(block: &NodeRef) -> UndoCommand {
+	create_and_run_remove_command(block)
 }
 
-/// `free_command_handle`: release and null a command handle; NULL/empty
-/// no-op.
-pub fn free_command_handle(command: *mut CHandle) {
-	// SAFETY: passed through to the bridge, which handles NULL.
-	unsafe { oakundo_command_free(command) };
+/// `free_command_handle`: release and null a command; NULL no-op. With the
+/// `UndoCommand` value type, "freeing" is overwriting the pointee with an
+/// empty command (the old value drops, running its `free_fn`).
+pub fn free_command_handle(command: *mut UndoCommand) {
+	if command.is_null() {
+		return;
+	}
+	// SAFETY: the caller passes a valid pointer; overwriting drops the old
+	// value and installs the no-op command.
+	unsafe { *command = empty_command() };
 }
 
 /// Trait implemented by every timeline undo command. The crate's commands
-/// are boxed into an oakundo vtable command via [`box_command`]; the bridge's
-/// `redo_now`/`undo_now` dispatch to these callbacks.
+/// are boxed into an oakundo vtable command via [`box_command`]; the
+/// command's `redo_now`/`undo_now` dispatch to these callbacks.
 pub trait Command {
 	/// Apply the change.
 	fn redo(&mut self);
@@ -96,7 +146,7 @@ unsafe extern "C" fn redo_cb<T: Command>(userdata: *mut c_void) {
 		return;
 	}
 	// SAFETY: box_command allocated a `Box<T>`; still alive because the
-	// command handle owns it.
+	// command owns it.
 	(unsafe { &mut *(userdata as *mut T) }).redo();
 }
 
@@ -120,66 +170,56 @@ unsafe extern "C" fn free_cb<T: Command>(userdata: *mut c_void) {
 	if userdata.is_null() {
 		return;
 	}
-	// SAFETY: the handle owns this box; destroying the handle drops it.
+	// SAFETY: the command owns this box; dropping it frees the command.
 	unsafe { drop(Box::from_raw(userdata as *mut T)) };
 }
 
-/// Box a command into an oakundo vtable command handle. The handle owns the
-/// boxed `T`; `redo_now`/`undo_now` dispatch to `T::redo`/`T::undo`, and
-/// freeing the handle drops `T`.
-pub(crate) fn box_command<T: Command + 'static>(cmd: T) -> CHandle {
+/// Box a command into an oakundo vtable command value. The command owns
+/// the boxed `T`; `redo_now`/`undo_now` dispatch to `T::redo`/`T::undo`,
+/// and dropping the command drops `T`.
+pub(crate) fn box_command<T: Command + 'static>(cmd: T) -> UndoCommand {
 	let userdata = Box::into_raw(Box::new(cmd)) as *mut c_void;
-	let vtable = crate::bridge::undo::OakUndoCommandVtable {
+	let vtable = OakUndoCommandVtable {
 		redo: Some(redo_cb::<T>),
 		undo: Some(undo_cb::<T>),
 		free_fn: Some(free_cb::<T>),
 	};
-	// SAFETY: `vtable` and `userdata` remain valid for the command's lifetime
-	// (the bridge copies the vtable and owns `userdata`).
-	unsafe { oakundo_command_init(&vtable, userdata) }
+	// `from_vtable` copies the vtable and takes ownership of `userdata`.
+	UndoCommand::from_vtable(vtable, userdata)
 }
 
-/// `CHandleCommandWrapper` — an oakundo vtable command exposed as a
-/// timeline-level command. `redo`/`undo` forward to `bridge::undo`;
-/// dropping frees the handle.
+/// `CHandleCommandWrapper` — an oakundo command exposed as a timeline-level
+/// command. `redo`/`undo` forward to `redo_now`/`undo_now`; dropping drops
+/// the wrapped command.
 pub struct CHandleCommandWrapper {
-	/// Wrapped command handle.
-	command: CHandle,
+	/// Wrapped command; `None` mirrors the old empty (null) command handle.
+	command: Option<UndoCommand>,
 }
 
 impl CHandleCommandWrapper {
-	/// Construct over an owned command handle.
-	pub fn new(command: CHandle) -> Self {
-		Self { command }
+	/// Construct over an owned command value.
+	pub fn new(command: UndoCommand) -> Self {
+		Self {
+			command: Some(command),
+		}
 	}
 
-	/// Whether the wrapped command is non-empty.
+	/// Whether the wrapper holds a command (the old non-null check).
 	pub fn is_valid(&self) -> bool {
-		!self.command.is_null()
+		self.command.is_some()
 	}
 
-	/// `redo`: forward to `oakundo_command_redo_now`.
+	/// `redo`: forward to `UndoCommand::redo_now`.
 	pub fn redo(&mut self) {
-		if !self.command.is_null() {
-			// SAFETY: `self.command` is a valid handle while it is non-empty.
-			let _ = unsafe { oakundo_command_redo_now(self.command.clone()) };
+		if let Some(c) = self.command.as_mut() {
+			c.redo_now();
 		}
 	}
 
-	/// `undo`: forward to `oakundo_command_undo_now`.
+	/// `undo`: forward to `UndoCommand::undo_now`.
 	pub fn undo(&mut self) {
-		if !self.command.is_null() {
-			// SAFETY: `self.command` is a valid handle while it is non-empty.
-			let _ = unsafe { oakundo_command_undo_now(self.command.clone()) };
-		}
-	}
-}
-
-impl Drop for CHandleCommandWrapper {
-	fn drop(&mut self) {
-		if !self.command.is_null() {
-			// SAFETY: `self.command` is a valid owned handle.
-			unsafe { oakundo_command_free(&mut self.command) };
+		if let Some(c) = self.command.as_mut() {
+			c.undo_now();
 		}
 	}
 }
@@ -187,7 +227,7 @@ impl Drop for CHandleCommandWrapper {
 /// `MultiUndoCommand` — a command that runs several child commands in order
 /// on `redo` and in reverse on `undo` (timelineundocommon.h
 /// `MultiUndoCommand`). Children are boxed `Command`s; the whole group wraps
-/// into a single oakundo vtable handle via [`box_command`].
+/// into a single oakundo vtable command via [`box_command`].
 pub struct MultiUndoCommand {
 	/// Child commands, run in order on `redo`.
 	commands: Vec<Box<dyn Command>>,
@@ -211,8 +251,8 @@ impl MultiUndoCommand {
 		self.commands.is_empty()
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }

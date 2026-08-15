@@ -41,6 +41,7 @@ pub struct Subtitle {
 }
 
 /// `olive::SubtitleParams` — a handle-wrapped subtitle parameter set.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SubtitleParams {
 	/// Stream index within the source file.
 	stream_index: i32,

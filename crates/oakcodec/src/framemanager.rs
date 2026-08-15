@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::Duration;
 
-use crate::bridge::common::{oakcommon_videoparams_equals, OakVideoParams};
+use oakcommon::videoparams::VideoParams;
 use crate::frame::Frame;
 
 /// `olive::FrameManager`: singleton frame pool with background GC.
@@ -71,7 +71,7 @@ impl FrameManager {
 
 	/// Create a frame with the given params (borrowed from the pool when a
 	/// compatible free frame exists, else freshly allocated).
-	pub fn create_frame(&self, params: OakVideoParams) -> Arc<Frame> {
+	pub fn create_frame(&self, params: VideoParams) -> Arc<Frame> {
 		let frame = {
 			let mut pool = self.pool.lock().unwrap();
 			match pool.iter().position(|f| frame_matches(f, &params)) {
@@ -138,18 +138,21 @@ fn spawn_gc_thread_once(mgr: &'static FrameManager) {
 }
 
 /// True when `frame` carries params equal to `params`.
-fn frame_matches(frame: &Frame, params: &OakVideoParams) -> bool {
+fn frame_matches(frame: &Frame, params: &VideoParams) -> bool {
 	let Some(frame_params) = frame.params() else {
 		return false;
 	};
-	let eq = unsafe { oakcommon_videoparams_equals(frame_params.clone(), params.clone()) };
-	eq != 0
+	frame_params.equals(params)
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::bridge::common::oakcommon_videoparams_init_basic;
+	use oakcommon::ocioutils::PixelFormat as OakPixelFormat;
+
+	fn test_params(w: i32, h: i32) -> VideoParams {
+		VideoParams::new_basic(w, h, OakPixelFormat::from_code(0), 4, 1, 1, 0, 1)
+	}
 
 	#[test]
 	fn create_and_return_tracks_counts() {
@@ -157,7 +160,7 @@ mod tests {
 		assert_eq!(mgr.live_count(), 0);
 		assert_eq!(mgr.peak_count(), 0);
 
-		let params = unsafe { oakcommon_videoparams_init_basic(64, 64, 0, 4, 1, 1, 0, 1) };
+		let params = test_params(64, 64);
 		let frame = mgr.create_frame(params);
 		assert_eq!(mgr.live_count(), 1);
 		assert_eq!(mgr.peak_count(), 1);
@@ -172,14 +175,14 @@ mod tests {
 	#[test]
 	fn pool_reuses_compatible_frames() {
 		let mgr = FrameManager::new();
-		let params = unsafe { oakcommon_videoparams_init_basic(64, 64, 0, 4, 1, 1, 0, 1) };
+		let params = test_params(64, 64);
 		let f1 = mgr.create_frame(params);
 		mgr.return_frame(Arc::try_unwrap(f1).unwrap());
 		assert_eq!(mgr.live_count(), 0);
 
 		// A compatible request reuses the pooled buffer rather than
 		// allocating a new one.
-		let f2 = mgr.create_frame(unsafe { oakcommon_videoparams_init_basic(64, 64, 0, 4, 1, 1, 0, 1) });
+		let f2 = mgr.create_frame(test_params(64, 64));
 		assert_eq!(mgr.live_count(), 1);
 		assert_eq!(mgr.peak_count(), 1);
 		Arc::try_unwrap(f2).unwrap();
@@ -188,8 +191,8 @@ mod tests {
 	#[test]
 	fn peak_count_tracks_maximum() {
 		let mgr = FrameManager::new();
-		let p1 = unsafe { oakcommon_videoparams_init_basic(64, 64, 0, 4, 1, 1, 0, 1) };
-		let p2 = unsafe { oakcommon_videoparams_init_basic(128, 128, 0, 4, 1, 1, 0, 1) };
+		let p1 = test_params(64, 64);
+		let p2 = test_params(128, 128);
 		let a = mgr.create_frame(p1);
 		let b = mgr.create_frame(p2);
 		assert_eq!(mgr.live_count(), 2);
@@ -203,7 +206,7 @@ mod tests {
 	#[test]
 	fn clear_drops_pooled_frames() {
 		let mgr = FrameManager::new();
-		let params = unsafe { oakcommon_videoparams_init_basic(64, 64, 0, 4, 1, 1, 0, 1) };
+		let params = test_params(64, 64);
 		let f = mgr.create_frame(params);
 		mgr.return_frame(Arc::try_unwrap(f).unwrap());
 		assert_eq!(mgr.pool.lock().unwrap().len(), 1);

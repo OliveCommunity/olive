@@ -16,9 +16,10 @@
 
 //! Project load/save/import tasks, mirroring `src/task/src/project/*`.
 //!
-//! These tasks move data across the oaknode C ABI: they borrow node handles
-//! while running and take ownership only on the `take_*` accessors
-//! (architectural decision #5 in README.md).
+//! These tasks move data through the direct oaknode domain model
+//! (`Arc<Mutex<oaknode::project::Project>>` + `oaknode::id::NodeId`);
+//! they borrow the project while running and hand ownership over on the
+//! `take_*` accessors (architectural decision #5 in README.md).
 
 pub mod format;
 pub mod import;

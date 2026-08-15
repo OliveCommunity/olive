@@ -39,23 +39,24 @@
 /// runtime via dlsym(RTLD_DEFAULT) and they must be present in the dylib
 /// for that lookup to succeed.
 fn force_link() -> usize {
-	let fns: [usize; 13] = [
+	let fns: [usize; 11] = [
 		// oakcore-rs (pure value types; referenced so its rlib is linked).
 		oakcore_rs::Rational::new(1, 2).numerator() as usize,
-		// One exported C ABI symbol per module crate.
-		oakundo::ffi::undostack::oakundo_undostack_init as usize,
-		oakcommon::ffi::config::oakcommon_config_get_int as usize,
-		oaktimeline::ffi::marker::oaktimeline_marker_list_create as usize,
-		oakcodec::ffi::format::oakcodec_encoding_format_count as usize,
-		oakaudio::ffi::waveform::oakaudio_waveform_length as usize,
-		oakrender::ffi::cache::oakrender_cache_indicator_height as usize,
-		oaktask::ffi::manager::oaktask_manager_init as usize,
-		oakplugin::ffi::oakplugin_host_plugin_count as usize,
-		oaknode::ffi::project::oaknode_project_init as usize,
-		// oaknode's dlsym(RTLD_DEFAULT) targets (see tests/common/mod.rs).
-		oakcommon::ffi::xmlutils::oakcommon_xml_writer_init as usize,
-		oakcommon::ffi::xmlutils::oakcommon_xml_reader_init as usize,
-		oakundo::ffi::command::oakundo_command_init as usize,
+		// One public direct-Rust symbol per module crate. oakundo/oakcommon
+		// no longer export a C ABI; their handle-level Rust API functions
+		// serve as the link anchors.
+		oakundo::undostack::undostack_init as usize,
+		oakcommon::configstore::ConfigStore::instance as usize,
+		oaktimeline::marker::TimelineMarkerList::new as usize,
+		oakcodec::exportformat::Format::get_name as usize,
+		oakrender::manager::RenderManager::init as usize,
+		oaktask::manager::TaskManager::init as usize,
+		oaknode::project::Project::new as usize,
+		// oaknode's serializer resolves oakcommon XML/undo symbols at
+		// runtime; anchors for the dylib.
+		oakcommon::xmlutils::XmlWriter::new as usize,
+		oakcommon::xmlutils::XmlReader::new as usize,
+		oakundo::undocommand::command_init as usize,
 	];
 	fns.iter().sum()
 }

@@ -18,44 +18,31 @@
 //! block resizing, media-in, track add/remove, transition removal, gap
 //! replacement, enable/disable, gap insertion and default transitions.
 //!
-//! Graph mutation goes through the oaknode C ABI (`bridge::node`); command
-//! wrapping through `bridge::undo`. Commands that compose child commands own
-//! them as plain structs rather than pointers (see `undocommon`).
+//! Graph mutation routes directly through the oaknode Rust domain (the
+//! oaknode C ABI was deleted in the single-lib unification); command
+//! wrapping through `oakundo::undocommand::UndoCommand` values. Commands
+//! that compose child commands own them as plain structs rather than
+//! pointers (see `undocommon`). Detached blocks are held as owned arena
+//! entries on the command that detached them.
 
 use oakcore_rs::Rational;
+use oaknode::graph::NodeEntry;
+use oaknode::track::TrackType;
+use oakundo::undocommand::UndoCommand;
 
-use crate::bridge::node::{
-	oaknode_block_gap_create, oaknode_block_get_enabled, oaknode_block_get_kind,
-	oaknode_block_set_enabled, oaknode_clip_get_media_in, oaknode_clip_set_media_in,
-	oaknode_track_create, oaknode_track_get_block_at, oaknode_track_get_block_count,
-	oaknode_track_get_locked, oaknode_track_insert_block_after, oaknode_track_replace_block,
-	oaknode_track_ripple_remove_block, oaknode_tracklist_array_append,
-	oaknode_tracklist_array_remove_last, oaknode_tracklist_get_track_at,
-	oaknode_tracklist_get_track_count, oaknode_tracklist_get_type,
-};
-use crate::bridge::undo::{oakundo_command_redo_now, oakundo_command_undo_now};
-use crate::handle::CHandle;
-use crate::undocommon::{box_command, create_block_remove_command, free_command_handle, Command};
+use crate::undocommon::{box_command, create_block_remove_command, Command};
 use crate::undosplit::BlockSplitPreservingLinksCommand;
 use crate::util::{
-	block_add_to_graph, block_in, block_length, block_next, block_out, block_previous,
-	block_remove_from_graph, block_set_in, block_set_length_and_media_in,
-	block_set_length_and_media_out, block_track, free_detached_handle, rat_nd, same_block,
-	track_append_block, track_insert_block_before,
+	block_add_to_graph, block_enabled, block_gap_create, block_in, block_kind, block_length,
+	block_next, block_out, block_previous, block_remove_from_graph, block_set_enabled,
+	block_set_in, block_set_length_and_media_in, block_set_length_and_media_out, block_track,
+	clip_media_in, clip_set_media_in, same_block, track_append_block, track_create,
+	track_insert_block_after, track_insert_block_before, track_replace_block,
+	track_ripple_remove_block, tracklist_append, tracklist_remove_last, tracklist_track_at,
+	tracklist_track_count, tracklist_type, BlockKind, NodeRef,
 };
 
-// `oaknode/block.h` block kinds.
-const OAKNODE_BLOCK_OTHER: i32 = 0;
-const OAKNODE_BLOCK_CLIP: i32 = 1;
-const OAKNODE_BLOCK_GAP: i32 = 2;
-const OAKNODE_BLOCK_TRANSITION: i32 = 3;
-
-// `oaknode/track.h` track types.
-const OAKNODE_TRACK_TYPE_NONE: i32 = -1;
-const OAKNODE_TRACK_TYPE_VIDEO: i32 = 0;
-const OAKNODE_TRACK_TYPE_AUDIO: i32 = 1;
-
-// `oaknode/sequence.h` element input ids.
+// `oaknode/sequence.h` element input ids (the C++ automerge branch).
 const OAKNODE_SEQUENCE_TEXTURE_INPUT: &str = "tex_in";
 const OAKNODE_SEQUENCE_SAMPLES_INPUT: &str = "samples_in";
 
@@ -64,7 +51,7 @@ const OAKNODE_SEQUENCE_SAMPLES_INPUT: &str = "samples_in";
 /// `redo` time.
 pub struct BlockResizeCommand {
 	/// Block to resize.
-	block: CHandle,
+	block: NodeRef,
 	/// New length.
 	new_length: Rational,
 	/// Length captured at `redo` time, restored by `undo`.
@@ -73,7 +60,9 @@ pub struct BlockResizeCommand {
 
 impl BlockResizeCommand {
 	/// Construct from block + new length.
-	pub fn new(block: CHandle, new_length: Rational) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(block: NodeRef, new_length: Rational) -> BlockResizeCommand`
+	pub fn new(block: NodeRef, new_length: Rational) -> Self {
 		Self {
 			block,
 			new_length,
@@ -83,17 +72,17 @@ impl BlockResizeCommand {
 
 	/// `redo`: capture `old_length`, then set the block's length.
 	pub fn redo(&mut self) {
-		self.old_length = block_length(self.block.clone());
-		block_set_length_and_media_out(self.block.clone(), self.new_length);
+		self.old_length = block_length(&self.block);
+		block_set_length_and_media_out(&self.block, self.new_length);
 	}
 
 	/// `undo`: restore `old_length`.
 	pub fn undo(&mut self) {
-		block_set_length_and_media_out(self.block.clone(), self.old_length);
+		block_set_length_and_media_out(&self.block, self.old_length);
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }
@@ -115,7 +104,7 @@ impl Command for BlockResizeCommand {
 /// (timelineundogeneral.h). The old length is captured at `redo` time.
 pub struct BlockResizeWithMediaInCommand {
 	/// Block to resize.
-	block: CHandle,
+	block: NodeRef,
 	/// New length.
 	new_length: Rational,
 	/// Length captured at `redo` time, restored by `undo`.
@@ -124,7 +113,9 @@ pub struct BlockResizeWithMediaInCommand {
 
 impl BlockResizeWithMediaInCommand {
 	/// Construct from block + new length.
-	pub fn new(block: CHandle, new_length: Rational) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(block: NodeRef, new_length: Rational) -> BlockResizeWithMediaInCommand`
+	pub fn new(block: NodeRef, new_length: Rational) -> Self {
 		Self {
 			block,
 			new_length,
@@ -134,17 +125,17 @@ impl BlockResizeWithMediaInCommand {
 
 	/// `redo`: capture `old_length`, then resize keeping the out point fixed.
 	pub fn redo(&mut self) {
-		self.old_length = block_length(self.block.clone());
-		block_set_length_and_media_in(self.block.clone(), self.new_length);
+		self.old_length = block_length(&self.block);
+		block_set_length_and_media_in(&self.block, self.new_length);
 	}
 
 	/// `undo`: restore `old_length`.
 	pub fn undo(&mut self) {
-		block_set_length_and_media_in(self.block.clone(), self.old_length);
+		block_set_length_and_media_in(&self.block, self.old_length);
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }
@@ -165,7 +156,7 @@ impl Command for BlockResizeWithMediaInCommand {
 /// (timelineundogeneral.h). The old media-in is captured at `redo` time.
 pub struct BlockSetMediaInCommand {
 	/// Block whose media-in changes.
-	block: CHandle,
+	block: NodeRef,
 	/// New media-in.
 	new_media_in: Rational,
 	/// Media-in captured at `redo` time, restored by `undo`.
@@ -174,7 +165,9 @@ pub struct BlockSetMediaInCommand {
 
 impl BlockSetMediaInCommand {
 	/// Construct from block + new media-in.
-	pub fn new(block: CHandle, new_media_in: Rational) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(block: NodeRef, new_media_in: Rational) -> BlockSetMediaInCommand`
+	pub fn new(block: NodeRef, new_media_in: Rational) -> Self {
 		Self {
 			block,
 			new_media_in,
@@ -184,27 +177,17 @@ impl BlockSetMediaInCommand {
 
 	/// `redo`: capture `old_media_in`, then set the media-in.
 	pub fn redo(&mut self) {
-		let mut n = 0;
-		let mut d = 0;
-		// SAFETY: `n`/`d` are valid out pointers.
-		let _ = unsafe { oaknode_clip_get_media_in(self.block.clone(), &mut n, &mut d) };
-		self.old_media_in = Rational::new(n as i64, d as i64);
-		rat_nd(self.new_media_in, &mut n, &mut d);
-		// SAFETY: `self.block` (copied) is a valid clip handle.
-		let _ = unsafe { oaknode_clip_set_media_in(self.block.clone(), n, d) };
+		self.old_media_in = clip_media_in(&self.block);
+		clip_set_media_in(&self.block, self.new_media_in);
 	}
 
 	/// `undo`: restore `old_media_in`.
 	pub fn undo(&mut self) {
-		let mut n = 0;
-		let mut d = 0;
-		rat_nd(self.old_media_in, &mut n, &mut d);
-		// SAFETY: `self.block` (copied) is a valid clip handle.
-		let _ = unsafe { oaknode_clip_set_media_in(self.block.clone(), n, d) };
+		clip_set_media_in(&self.block, self.old_media_in);
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }
@@ -224,133 +207,127 @@ impl Command for BlockSetMediaInCommand {
 /// `TimelineAddTrackCommand` — append a track (and optionally merge an
 /// existing one) to a track list (timelineundogeneral.h). When `automerge` is
 /// set, a matching neighbouring track is merged into the new one.
+///
+/// The merge/input-id members below mirror the C++ class layout and are
+/// reserved for the automerge step (not modelled in Rust yet).
+#[allow(dead_code)]
 pub struct TimelineAddTrackCommand {
 	/// Target track list.
-	timeline: CHandle,
+	timeline: NodeRef,
 	/// Track created by this command.
-	track: CHandle,
+	track: NodeRef,
 	/// Merge node used when `automerge_tracks` is set (unused: see `new`).
-	merge: CHandle,
+	merge: Option<NodeRef>,
 	/// Input id the track connects to (`tex_in`/`samples_in`).
 	direct_input: String,
 	/// Merge base input id (unused: see `new`).
 	base_input: String,
 	/// Merge blend input id (unused: see `new`).
 	blend_input: String,
-	/// Undoable position command (unused: see `redo`).
-	position_command: CHandle,
 	/// Whether to automerge a matching adjacent track.
 	automerge_tracks: bool,
-	/// Whether `track` is detached and owned by this command.
-	track_orphaned: bool,
-	/// Whether `merge` is detached and owned by this command.
-	merge_orphaned: bool,
+	/// The detached arena entry while `track` is out of the graph
+	/// (between `undo` and the next `redo`).
+	track_entry: Option<NodeEntry>,
 }
 
 impl TimelineAddTrackCommand {
 	/// Construct with the default automerge behaviour.
-	pub fn new(timeline: CHandle) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(timeline: NodeRef) -> TimelineAddTrackCommand`
+	pub fn new(timeline: NodeRef) -> Self {
 		// NOTE: the C++ reads the `AutoMergeTracks` config via
-		// `oakcommon_config_get_bool`; the bridge exposes no config getter, so the
-		// default is hardcoded to `false`.
+		// `oakcommon_config_get_bool`; the module exposes no config
+		// getter, so the default is hardcoded to `false`.
 		Self::with_automerge(timeline, false)
 	}
 
 	/// Construct with an explicit automerge flag.
-	pub fn with_automerge(timeline: CHandle, automerge: bool) -> Self {
-		let mut kind = OAKNODE_TRACK_TYPE_NONE;
-		// SAFETY: `kind` is a valid out pointer.
-		let _ = unsafe { oaknode_tracklist_get_type(timeline.clone(), &mut kind) };
-		// SAFETY: `kind` is a valid track type.
-		let track = unsafe { oaknode_track_create(kind) };
-		let direct_input = if kind == OAKNODE_TRACK_TYPE_VIDEO {
-			OAKNODE_SEQUENCE_TEXTURE_INPUT.to_string()
-		} else if kind == OAKNODE_TRACK_TYPE_AUDIO {
-			OAKNODE_SEQUENCE_SAMPLES_INPUT.to_string()
-		} else {
-			String::new()
+	///
+	/// New signature (single-lib): `pub fn with_automerge(timeline: NodeRef, automerge: bool) -> TimelineAddTrackCommand`
+	pub fn with_automerge(timeline: NodeRef, automerge: bool) -> Self {
+		let kind = tracklist_type(&timeline).unwrap_or(TrackType::Video);
+		// SAFETY-free: the track is created directly in the list's project
+		// graph (the C++ creates it in the scratch project then adds it on
+		// redo; here both steps collapse into the constructor).
+		let track = track_create(&timeline.project, kind);
+		let direct_input = match kind {
+			TrackType::Video => OAKNODE_SEQUENCE_TEXTURE_INPUT.to_string(),
+			TrackType::Audio => OAKNODE_SEQUENCE_SAMPLES_INPUT.to_string(),
+			TrackType::Subtitle => String::new(),
 		};
 		// NOTE: the C++ merge branch creates a merge/math node via
-		// `oaknode_factory_create_from_id` when the sequence input is already
-		// connected; that needs `oaknode_tracklist_get_sequence`,
-		// `oaknode_node_input_is_connected` and `oaknode_factory_create_from_id`,
-		// which are absent from this bridge, so `merge`/`base_input`/`blend_input`
-		// stay empty and the automerge flag is retained but not acted on.
+		// `oaknode_factory_create_from_id` when the sequence input is
+		// already connected; the node-graph connection machinery for
+		// track inputs has no Rust equivalent here, so `merge`/
+		// `base_input`/`blend_input` stay empty and the automerge flag is
+		// retained but not acted on.
 		Self {
 			timeline,
 			track,
-			merge: CHandle::null(),
+			merge: None,
 			direct_input,
 			base_input: String::new(),
 			blend_input: String::new(),
-			position_command: CHandle::null(),
 			automerge_tracks: automerge,
-			track_orphaned: true,
-			merge_orphaned: false,
+			track_entry: None,
 		}
 	}
 
 	/// `redo`: create (and merge) the track; `track()` then reports it.
 	pub fn redo(&mut self) {
-		// NOTE: the C++ redo adds the track node to the project graph (via
-		// `oaknode_track_as_node` + `oaknode_node_get_project`), copies the last
-		// track's height, connects the track to the sequence element and builds an
-		// undoable position command; those symbols are absent from this bridge, so
-		// only the array append is performed. The ownership flag is still flipped,
-		// as the track is handed to the track list.
-		// SAFETY: `self.timeline` (copied) is a valid track list handle.
-		let _ = unsafe { oaknode_tracklist_array_append(self.timeline.clone()) };
-		self.track_orphaned = false;
+		// NOTE: the C++ redo copies the last track's height, connects the
+		// track to the sequence element and builds an undoable position
+		// command; those steps have no Rust equivalent here (the track
+		// input edges are not modelled), so only the list append is
+		// performed.
+		if self.track_entry.is_some() {
+			block_add_to_graph(&self.track, self.track_entry.take());
+		}
+		tracklist_append(&self.timeline, &self.track);
 	}
 
 	/// `undo`: remove the created track and restore the merged track.
 	pub fn undo(&mut self) {
-		// NOTE: the C++ undo disconnects the merge/direct input and removes the
-		// track node from the project graph; those paths need the absent
-		// `oaknode_node_*` symbols above, so only the array removal is performed.
-		// SAFETY: `self.timeline` (copied) is a valid track list handle.
-		let _ = unsafe { oaknode_tracklist_array_remove_last(self.timeline.clone()) };
-		self.track_orphaned = true;
+		// NOTE: the C++ undo disconnects the merge/direct input and removes
+		// the track node from the project graph; the disconnects have no
+		// Rust equivalent, but the graph removal is real: the track's arena
+		// entry is detached and owned here until the next redo.
+		let _ = tracklist_remove_last(&self.timeline);
+		if self.track_entry.is_none() {
+			self.track_entry = block_remove_from_graph(&self.track);
+		}
 	}
 
 	/// The track created by this command; only meaningful after `redo`.
-	pub fn track(&self) -> CHandle {
+	///
+	/// New signature (single-lib): `pub fn track(&self) -> NodeRef`
+	pub fn track(&self) -> NodeRef {
 		self.track.clone()
 	}
 
 	/// `TimelineAddTrackCommand::run_immediately` — construct, `redo` and
 	/// return the created track in one step (static-semantics factory).
-	pub fn run_immediately(timeline: CHandle) -> CHandle {
+	///
+	/// New signature (single-lib): `pub fn run_immediately(timeline: NodeRef) -> NodeRef`
+	pub fn run_immediately(timeline: NodeRef) -> NodeRef {
 		let mut c = Self::new(timeline);
 		c.redo();
 		c.track()
 	}
 
 	/// Overload of `run_immediately` with an explicit automerge flag.
-	pub fn run_immediately_with_automerge(timeline: CHandle, automerge: bool) -> CHandle {
+	///
+	/// New signature (single-lib): `pub fn run_immediately_with_automerge(timeline: NodeRef, automerge: bool) -> NodeRef`
+	pub fn run_immediately_with_automerge(timeline: NodeRef, automerge: bool) -> NodeRef {
 		let mut c = Self::with_automerge(timeline, automerge);
 		c.redo();
 		c.track()
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
-	}
-}
-
-impl Drop for TimelineAddTrackCommand {
-	/// Free the position command, and the created track/merge if still detached.
-	fn drop(&mut self) {
-		if !self.position_command.is_null() {
-			free_command_handle(&mut self.position_command);
-		}
-		if self.track_orphaned {
-			free_detached_handle(&mut self.track);
-		}
-		if self.merge_orphaned {
-			free_detached_handle(&mut self.merge);
-		}
 	}
 }
 
@@ -370,65 +347,179 @@ impl Command for TimelineAddTrackCommand {
 /// on `undo` (timelineundogeneral.h).
 pub struct TimelineRemoveTrackCommand {
 	/// Track to remove.
-	track: CHandle,
-	/// Owning track list, located at `prepare` time (unused: see `prepare`).
-	list: CHandle,
-	/// Index of the track in its list (unused: see `prepare`).
-	index: i32,
-	/// Graph-removal command (unused: see `prepare`).
-	remove_command: CHandle,
+	track: NodeRef,
+	/// Owning track list, located at `prepare` time.
+	list: Option<NodeRef>,
+	/// Index of the track in its list (before removal).
+	index: Option<usize>,
+	/// The detached arena entry while `track` is out of the graph
+	/// (between `redo` and `undo`).
+	track_entry: Option<NodeEntry>,
 }
 
 impl TimelineRemoveTrackCommand {
 	/// Construct from the track to remove.
-	pub fn new(track: CHandle) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(track: NodeRef) -> TimelineRemoveTrackCommand`
+	pub fn new(track: NodeRef) -> Self {
 		Self {
 			track,
-			list: CHandle::null(),
-			index: 0,
-			remove_command: CHandle::null(),
+			list: None,
+			index: None,
+			track_entry: None,
 		}
 	}
 
 	/// `prepare`: locate the owning list and index.
 	pub fn prepare(&mut self) {
-		let _ = (self.track.clone(), self.list.clone(), self.index);
-		// NOTE: the C++ prepare locates the owning list and index via
-		// `oaknode_track_get_sequence`, `oaknode_track_get_type`,
-		// `oaknode_track_get_index` and
-		// `oaknode_tracklist_get_array_index_from_cache_index`, and builds a
-		// `NodeRemoveCommand` from `oaknode_track_as_node`; those symbols are
-		// absent from this bridge, so the command retains `track` only.
+		if self.list.is_some() {
+			return;
+		}
+		let (list_id, index) = {
+			let project = self.track.project.clone();
+			let p = project.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+			let Some(entry) = p.graph.get(self.track.id) else {
+				return;
+			};
+			let Some(behavior) = entry.behavior.as_any() else {
+				return;
+			};
+			let Some(track_behavior) = behavior.downcast_ref::<oaknode::track::TrackBehavior>()
+			else {
+				return;
+			};
+			let Some(list_id) = track_behavior.track_list else {
+				return;
+			};
+			let Some(list_entry) = p.graph.get(list_id) else {
+				return;
+			};
+			let index = list_entry
+				.behavior
+				.as_any()
+				.and_then(|a| a.downcast_ref::<oaknode::track::TrackListBehavior>())
+				.and_then(|l| l.track_index(self.track.id));
+			(list_id, index)
+		};
+		self.list = Some(NodeRef::new(self.track.project.clone(), list_id));
+		self.index = index;
 	}
 
-	/// `redo`: remove the track from the graph.
+	/// `redo`: remove the track from the list and from the graph.
 	pub fn redo(&mut self) {
-		// NOTE: the C++ redo runs the removal command and detaches the track's
-		// sequence element; that needs `remove_command` plus
-		// `oaknode_tracklist_get_sequence`, `oaknode_tracklist_get_track_input_id`
-		// and `oaknode_node_input_array_remove`, absent from this bridge, so
-		// nothing is executed.
+		self.prepare();
+		let Some(list) = &self.list else {
+			return;
+		};
+		let index = self.index;
+		// First pass: remove the track from the list and collect the ids of
+		// the tracks after it (their indexes shift).
+		let mut removed = false;
+		let mut later: Vec<oaknode::id::NodeId> = Vec::new();
+		{
+			let mut p = self
+				.track
+				.project
+				.lock()
+				.unwrap_or_else(|poisoned| poisoned.into_inner());
+			if let Some(entry) = p.graph.get_mut(list.id) {
+				if let Some(a) = entry.behavior.as_any_mut() {
+					if let Some(l) = a.downcast_mut::<oaknode::track::TrackListBehavior>() {
+						if let Some(i) = l.tracks.iter().position(|t| *t == self.track.id) {
+							l.tracks.remove(i);
+							later = l.tracks[i..].to_vec();
+							removed = true;
+						}
+					}
+				}
+			}
+		}
+		// Second pass: shift the later tracks' indexes (C++ array semantics).
+		if removed {
+			{
+				let mut p = self
+					.track
+					.project
+					.lock()
+					.unwrap_or_else(|poisoned| poisoned.into_inner());
+				for t in &later {
+					if let Some(te) = p.graph.get_mut(*t) {
+						if let Some(ta) = te.behavior.as_any_mut() {
+							if let Some(tb) = ta.downcast_mut::<oaknode::track::TrackBehavior>() {
+								if tb.index > index.unwrap_or(0) as i32 {
+									tb.index -= 1;
+								}
+							}
+						}
+					}
+				}
+			}
+			// Detach the track's sequence element membership from the graph
+			// (the C++ also removes the sequence input connection, which the
+			// Rust model does not track as edges).
+			if self.track_entry.is_none() {
+				self.track_entry = block_remove_from_graph(&self.track);
+			}
+		}
 	}
 
 	/// `undo`: re-insert the track at its former index.
 	pub fn undo(&mut self) {
-		// NOTE: the C++ undo re-inserts the track's sequence element before
-		// running the removal command's undo; that needs the same absent symbols,
-		// so nothing is executed.
-	}
-
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
-		box_command(self)
-	}
-}
-
-impl Drop for TimelineRemoveTrackCommand {
-	/// Free the removal command if still owned.
-	fn drop(&mut self) {
-		if !self.remove_command.is_null() {
-			free_command_handle(&mut self.remove_command);
+		let Some(list) = &self.list else {
+			return;
+		};
+		if self.track_entry.is_some() {
+			block_add_to_graph(&self.track, self.track_entry.take());
 		}
+		let index = self.index.unwrap_or(0);
+		// Re-insert the track into the list and collect the tracks after it
+		// (their indexes shift).
+		let later: Vec<oaknode::id::NodeId> = 'block: {
+			let mut p = self
+				.track
+				.project
+				.lock()
+				.unwrap_or_else(|poisoned| poisoned.into_inner());
+			if let Some(entry) = p.graph.get_mut(list.id) {
+				if let Some(a) = entry.behavior.as_any_mut() {
+					if let Some(l) = a.downcast_mut::<oaknode::track::TrackListBehavior>() {
+						let insert_at = index.min(l.tracks.len());
+						l.tracks.insert(insert_at, self.track.id);
+						break 'block l.tracks[insert_at + 1..].to_vec();
+					}
+				}
+			}
+			Vec::new()
+		};
+		let mut p = self
+			.track
+			.project
+			.lock()
+			.unwrap_or_else(|poisoned| poisoned.into_inner());
+		for t in &later {
+			if let Some(te) = p.graph.get_mut(*t) {
+				if let Some(ta) = te.behavior.as_any_mut() {
+					if let Some(tb) = ta.downcast_mut::<oaknode::track::TrackBehavior>() {
+						if tb.index >= index as i32 {
+							tb.index += 1;
+						}
+					}
+				}
+			}
+		}
+		if let Some(entry) = p.graph.get_mut(self.track.id) {
+			if let Some(a) = entry.behavior.as_any_mut() {
+				if let Some(tb) = a.downcast_mut::<oaknode::track::TrackBehavior>() {
+					tb.track_list = Some(list.id);
+					tb.index = index as i32;
+				}
+			}
+		}
+	}
+
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
+		box_command(self)
 	}
 }
 
@@ -448,77 +539,78 @@ impl Command for TimelineRemoveTrackCommand {
 /// optionally removing it from the whole graph (timelineundogeneral.h).
 pub struct TransitionRemoveCommand {
 	/// Transition block to remove.
-	block: CHandle,
+	block: NodeRef,
 	/// Whether to also remove the block from the graph.
 	remove_from_graph: bool,
 	/// Owning track, captured at `redo` time.
-	track: CHandle,
-	/// Block after the transition (unused: see `redo`).
-	out_block: CHandle,
-	/// Block before the transition (unused: see `redo`).
-	in_block: CHandle,
+	track: Option<NodeRef>,
+	/// Block after the transition.
+	out_block: Option<NodeRef>,
+	/// Block before the transition.
+	in_block: Option<NodeRef>,
 	/// Graph-removal command built at `redo` time.
-	remove_command: CHandle,
+	remove_command: Option<UndoCommand>,
 }
 
 impl TransitionRemoveCommand {
 	/// Construct from the transition block + remove-from-graph flag.
-	pub fn new(block: CHandle, remove_from_graph: bool) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(block: NodeRef, remove_from_graph: bool) -> TransitionRemoveCommand`
+	pub fn new(block: NodeRef, remove_from_graph: bool) -> Self {
 		Self {
 			block,
 			remove_from_graph,
-			track: CHandle::null(),
-			out_block: CHandle::null(),
-			in_block: CHandle::null(),
-			remove_command: CHandle::null(),
+			track: None,
+			out_block: None,
+			in_block: None,
+			remove_command: None,
 		}
 	}
 
 	/// `redo`: relink neighbours around the transition and remove it.
 	pub fn redo(&mut self) {
-		self.track = block_track(self.block.clone());
-		// NOTE: the C++ redo extends the neighbouring blocks by the transition
-		// offsets and disconnects the transition's inputs; that needs the
-		// `oaknode_transition_get_*` accessors and `oaknode_block_as_node` +
-		// `oaknode_node_disconnect`, absent from this bridge, so only the
-		// ripple-remove is performed.
-		// SAFETY: `self.track`/`self.block` (copied) are valid track/block handles.
-		let _ =
-			unsafe { oaknode_track_ripple_remove_block(self.track.clone(), self.block.clone()) };
+		self.track = block_track(&self.block);
+		self.out_block = block_next(&self.block);
+		self.in_block = block_previous(&self.block);
+		// NOTE: the C++ extends the neighbouring blocks by the transition
+		// offsets and disconnects the transition's inputs; the Rust block
+		// model has no transition edges, so only the ripple-remove is
+		// performed.
+		if let Some(track) = &self.track {
+			track_ripple_remove_block(track, &self.block);
+		}
 		if self.remove_from_graph {
-			if self.remove_command.is_null() {
-				self.remove_command = create_block_remove_command(self.block.clone());
+			if self.remove_command.is_none() {
+				self.remove_command = Some(create_block_remove_command(&self.block));
 			}
-			// SAFETY: `self.remove_command` (copied) is a valid command handle.
-			let _ = unsafe { oakundo_command_redo_now(self.remove_command.clone()) };
+			if let Some(c) = self.remove_command.as_mut() {
+				c.redo_now();
+			}
 		}
 	}
 
 	/// `undo`: restore the transition between its neighbours.
 	pub fn undo(&mut self) {
-		if self.remove_from_graph && !self.remove_command.is_null() {
-			// SAFETY: `self.remove_command` (copied) is a valid command handle.
-			let _ = unsafe { oakundo_command_undo_now(self.remove_command.clone()) };
+		if self.remove_from_graph {
+			if let Some(c) = self.remove_command.as_mut() {
+				c.undo_now();
+			}
 		}
-		// NOTE: the C++ undo re-inserts the transition between its former
-		// neighbours, reconnects them and restores the offsets; that needs
-		// `oaknode_track_insert_block_before`, the `oaknode_transition_get_*`
-		// accessors and `oaknode_block_as_node` + `oaknode_node_connect`, absent
-		// from this bridge, so the block stays detached.
+		// NOTE: the C++ re-inserts the transition between its former
+		// neighbours, reconnects them and restores the offsets; the
+		// re-insert is real, the offset/connection restoration is not
+		// modelled (no transition edges in the Rust block model).
+		if let Some(track) = &self.track {
+			match &self.in_block {
+				Some(before) => track_insert_block_after(track, &self.block, Some(before)),
+				None => track_insert_block_after(track, &self.block, None),
+			}
+		}
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
-	}
-}
-
-impl Drop for TransitionRemoveCommand {
-	/// Free the removal command if still owned.
-	fn drop(&mut self) {
-		if !self.remove_command.is_null() {
-			free_command_handle(&mut self.remove_command);
-		}
 	}
 }
 
@@ -539,40 +631,50 @@ impl Command for TransitionRemoveCommand {
 /// attached transitions are also removed.
 pub struct TrackReplaceBlockWithGapCommand {
 	/// Owning track.
-	track: CHandle,
+	track: NodeRef,
 	/// Block to replace.
-	block: CHandle,
+	block: NodeRef,
+	/// The block's in point captured at construction: the gap must fill
+	/// the block's stored span, even when a parent command (e.g.
+	/// `TrackMoveBlockCommand`) re-homes the block's position before
+	/// this command runs.
+	block_in_point: Rational,
 	/// Whether to also remove attached transitions.
 	handle_transitions: bool,
 	/// Pre-existing gap extended in place (found at `redo` time).
-	existing_gap: CHandle,
+	existing_gap: Option<NodeRef>,
 	/// Second gap merged into `existing_gap` (found at `redo` time).
-	existing_merged_gap: CHandle,
+	existing_merged_gap: Option<NodeRef>,
 	/// Whether `existing_gap` preceded the block (decides re-insert order).
 	existing_gap_precedes: bool,
 	/// Gap created by this command (owned until placed in the graph).
-	our_gap: CHandle,
-	/// Whether `our_gap` is detached and owned by this command.
-	our_gap_orphaned: bool,
-	/// Whether `existing_merged_gap` is detached and owned by this command.
-	merged_gap_orphaned: bool,
-	/// Child transition-removal commands (empty: see `create_remove_...`).
+	our_gap: Option<NodeRef>,
+	/// Arena entry of `our_gap` while detached from the graph.
+	our_gap_entry: Option<NodeEntry>,
+	/// Arena entry of `existing_merged_gap` while detached from the graph.
+	merged_gap_entry: Option<NodeEntry>,
+	/// Child transition-removal commands (empty: see
+	/// `create_remove_transition_command_if_necessary`).
 	transition_remove_commands: Vec<TransitionRemoveCommand>,
 }
 
 impl TrackReplaceBlockWithGapCommand {
 	/// Construct from track + block + transition handling flag.
-	pub fn new(track: CHandle, block: CHandle, handle_transitions: bool) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(track: NodeRef, block: NodeRef, handle_transitions: bool) -> TrackReplaceBlockWithGapCommand`
+	pub fn new(track: NodeRef, block: NodeRef, handle_transitions: bool) -> Self {
+		let block_in_point = block_in(&block);
 		Self {
 			track,
 			block,
+			block_in_point,
 			handle_transitions,
-			existing_gap: CHandle::null(),
-			existing_merged_gap: CHandle::null(),
+			existing_gap: None,
+			existing_merged_gap: None,
 			existing_gap_precedes: false,
-			our_gap: CHandle::null(),
-			our_gap_orphaned: false,
-			merged_gap_orphaned: false,
+			our_gap: None,
+			our_gap_entry: None,
+			merged_gap_entry: None,
 			transition_remove_commands: Vec::new(),
 		}
 	}
@@ -587,39 +689,25 @@ impl TrackReplaceBlockWithGapCommand {
 			c.redo();
 		}
 
-		if !block_next(self.block.clone()).is_null() {
+		if block_next(&self.block).is_some() {
 			// The block is not at the end of the track, so a gap must fill its space.
-			let mut new_gap_length = block_length(self.block.clone());
-			let previous = block_previous(self.block.clone());
-			let next = block_next(self.block.clone());
+			let mut new_gap_length = block_length(&self.block);
+			let previous = block_previous(&self.block);
+			let next = block_next(&self.block);
 
-			let mut prev_kind = OAKNODE_BLOCK_OTHER;
-			let mut next_kind = OAKNODE_BLOCK_OTHER;
-			if !previous.is_null() {
-				// SAFETY: `prev_kind` is a valid out pointer.
-				let _ = unsafe { oaknode_block_get_kind(previous.clone(), &mut prev_kind) };
-			}
-			if !next.is_null() {
-				// SAFETY: `next_kind` is a valid out pointer.
-				let _ = unsafe { oaknode_block_get_kind(next.clone(), &mut next_kind) };
-			}
-			let previous_is_a_gap = prev_kind == OAKNODE_BLOCK_GAP;
-			let next_is_a_gap = next_kind == OAKNODE_BLOCK_GAP;
+			let previous_is_a_gap = previous.as_ref().map(|b| block_kind(b) == BlockKind::Gap).unwrap_or(false);
+			let next_is_a_gap = next.as_ref().map(|b| block_kind(b) == BlockKind::Gap).unwrap_or(false);
 
 			if previous_is_a_gap && next_is_a_gap {
 				// The clip is preceded and followed by a gap, so merge the two.
 				self.existing_gap = previous.clone();
 				self.existing_merged_gap = next;
-				new_gap_length = new_gap_length + block_length(self.existing_merged_gap.clone());
-				// SAFETY: `self.track`/`self.existing_merged_gap` (copied) are valid handles.
-				let _ = unsafe {
-					oaknode_track_ripple_remove_block(
-						self.track.clone(),
-						self.existing_merged_gap.clone(),
-					)
-				};
-				block_remove_from_graph(self.existing_merged_gap.clone(), self.track.clone());
-				self.merged_gap_orphaned = true;
+				let merged = self.existing_merged_gap.clone();
+				if let Some(m) = &merged {
+					new_gap_length = new_gap_length + block_length(m);
+					track_ripple_remove_block(&self.track, m);
+					self.merged_gap_entry = block_remove_from_graph(m);
+				}
 			} else if previous_is_a_gap {
 				// Extend this gap to fill the space left by the block.
 				self.existing_gap = previous.clone();
@@ -628,142 +716,94 @@ impl TrackReplaceBlockWithGapCommand {
 				self.existing_gap = next;
 			}
 
-			if !self.existing_gap.is_null() {
+			if let Some(gap) = &self.existing_gap {
 				// Extend an existing gap. In the module world the block's in/out
 				// points are stored on the block (Olive derives them from the track
 				// order), so the extension must keep the gap's in point anchored —
 				// an out-anchored `set_length_and_media_out` would push the in point
 				// negative.
-				new_gap_length = new_gap_length + block_length(self.existing_gap.clone());
-				block_set_length_and_media_in(self.existing_gap.clone(), new_gap_length);
-				// SAFETY: `self.track`/`self.block` (copied) are valid handles.
-				let _ = unsafe {
-					oaknode_track_ripple_remove_block(self.track.clone(), self.block.clone())
-				};
-				self.existing_gap_precedes = same_block(self.existing_gap.clone(), previous);
+				new_gap_length = new_gap_length + block_length(gap);
+				block_set_length_and_media_in(gap, new_gap_length);
+				track_ripple_remove_block(&self.track, &self.block);
+				self.existing_gap_precedes =
+					previous.as_ref().map(|p| same_block(gap, p)).unwrap_or(false);
 			} else {
 				// No gap exists to fill this space, create a new one and swap it in.
-				if self.our_gap.is_null() {
-					// SAFETY: `oaknode_block_gap_create` returns a fresh gap handle.
-					self.our_gap = unsafe { oaknode_block_gap_create() };
-					// In-anchored: the fresh gap starts at the block's own in point
-					// (the module stores positions on the block; Olive derives them
-					// from the track order) and grows to the block's length.
-					block_set_in(self.our_gap.clone(), block_in(self.block.clone()));
-					block_set_length_and_media_in(self.our_gap.clone(), new_gap_length);
-					self.our_gap_orphaned = true;
+				if self.our_gap.is_none() {
+					self.our_gap = Some(block_gap_create(&self.track.project));
+					if let Some(gap) = &self.our_gap {
+						// In-anchored at the block's construction-time in point
+						// (the module stores positions on the block; the gap
+						// fills the block's stored span).
+						block_set_in(gap, self.block_in_point);
+						block_set_length_and_media_in(gap, new_gap_length);
+					}
 				}
-				block_add_to_graph(self.our_gap.clone(), self.track.clone());
-				// SAFETY: `self.track`/`self.block`/`self.our_gap` (copied) are valid handles.
-				let _ = unsafe {
-					oaknode_track_replace_block(
-						self.track.clone(),
-						self.block.clone(),
-						self.our_gap.clone(),
-					)
-				};
-				self.our_gap_orphaned = false;
+				if let Some(gap) = &self.our_gap {
+					block_add_to_graph(gap, self.our_gap_entry.take());
+					track_replace_block(&self.track, &self.block, gap);
+				}
 			}
 		} else {
 			// The block is at the end of the track, simply remove it.
-			let preceding = block_previous(self.block.clone());
-			// SAFETY: `self.track`/`self.block` (copied) are valid handles.
-			let _ = unsafe {
-				oaknode_track_ripple_remove_block(self.track.clone(), self.block.clone())
-			};
+			let preceding = block_previous(&self.block);
+			track_ripple_remove_block(&self.track, &self.block);
 
 			// Remove a preceding gap too, if there is one.
-			let mut kind = OAKNODE_BLOCK_OTHER;
-			if !preceding.is_null() {
-				// SAFETY: `kind` is a valid out pointer.
-				let _ = unsafe { oaknode_block_get_kind(preceding.clone(), &mut kind) };
-			}
-			if kind == OAKNODE_BLOCK_GAP {
-				// SAFETY: `self.track`/`preceding` (copied) are valid handles.
-				let _ = unsafe {
-					oaknode_track_ripple_remove_block(self.track.clone(), preceding.clone())
-				};
-				block_remove_from_graph(preceding.clone(), self.track.clone());
-				self.existing_merged_gap = preceding;
-				self.merged_gap_orphaned = true;
+			if preceding.as_ref().map(|b| block_kind(b) == BlockKind::Gap).unwrap_or(false) {
+				if let Some(gap) = &preceding {
+					track_ripple_remove_block(&self.track, gap);
+					self.merged_gap_entry = block_remove_from_graph(gap);
+					self.existing_merged_gap = Some(gap.clone());
+				}
 			}
 		}
 	}
 
 	/// `undo`: replace the gap back with the block.
 	pub fn undo(&mut self) {
-		if !self.our_gap.is_null() || !self.existing_gap.is_null() {
-			if !self.our_gap.is_null() {
+		if self.our_gap.is_some() || self.existing_gap.is_some() {
+			if let Some(gap) = &self.our_gap {
 				// We made this gap, simply swap it back.
-				// SAFETY: `self.track`/`self.our_gap`/`self.block` (copied) are valid handles.
-				let _ = unsafe {
-					oaknode_track_replace_block(
-						self.track.clone(),
-						self.our_gap.clone(),
-						self.block.clone(),
-					)
-				};
-				block_remove_from_graph(self.our_gap.clone(), self.track.clone());
-				self.our_gap_orphaned = true;
-			} else {
+				track_replace_block(&self.track, gap, &self.block);
+				if self.our_gap_entry.is_none() {
+					self.our_gap_entry = block_remove_from_graph(gap);
+				}
+			} else if let Some(gap) = &self.existing_gap {
 				// We extended an existing gap; restore its original length.
-				let mut original_gap_length =
-					block_length(self.existing_gap.clone()) - block_length(self.block.clone());
+				let mut original_gap_length = block_length(gap) - block_length(&self.block);
 
 				// If we merged two gaps together, restore the second one now.
-				if !self.existing_merged_gap.is_null() {
-					original_gap_length =
-						original_gap_length - block_length(self.existing_merged_gap.clone());
-					// SAFETY: the three (copied) handles are valid.
-					let _ = unsafe {
-						oaknode_track_insert_block_after(
-							self.track.clone(),
-							self.existing_merged_gap.clone(),
-							self.existing_gap.clone(),
-						)
-					};
-					block_add_to_graph(self.existing_merged_gap.clone(), self.track.clone());
-					self.merged_gap_orphaned = false;
-					self.existing_merged_gap = CHandle::null();
+				if let Some(merged) = &self.existing_merged_gap {
+					original_gap_length = original_gap_length - block_length(merged);
+					track_insert_block_after(&self.track, merged, Some(gap));
+					block_add_to_graph(merged, self.merged_gap_entry.take());
+					self.existing_merged_gap = None;
 				}
 
 				// Restore the original block.
 				if self.existing_gap_precedes {
-					// SAFETY: the three (copied) handles are valid.
-					let _ = unsafe {
-						oaknode_track_insert_block_after(
-							self.track.clone(),
-							self.block.clone(),
-							self.existing_gap.clone(),
-						)
-					};
+					track_insert_block_after(&self.track, &self.block, Some(gap));
 				} else {
-					// The gap followed the block, so the block is restored BEFORE it
-					// (insert-before, synthesized as insert-after the gap's predecessor
-					// / prepend).
-					track_insert_block_before(
-						self.track.clone(),
-						self.block.clone(),
-						self.existing_gap.clone(),
-					);
+					// The gap followed the block, so the block is restored BEFORE it.
+					track_insert_block_before(&self.track, &self.block, gap);
 				}
 
 				// Restore the gap's original length (in-anchored: its in point was
 				// untouched by the redo extension).
-				block_set_length_and_media_in(self.existing_gap.clone(), original_gap_length);
-				self.existing_gap = CHandle::null();
+				block_set_length_and_media_in(gap, original_gap_length);
+				self.existing_gap = None;
 			}
 		} else {
 			// Both gaps null: the block was at the end of the track, so no gap
 			// extension/replacement was needed. Re-append the merged gap (if any)
 			// and then the block.
-			if !self.existing_merged_gap.is_null() {
-				track_append_block(self.track.clone(), self.existing_merged_gap.clone());
-				block_add_to_graph(self.existing_merged_gap.clone(), self.track.clone());
-				self.merged_gap_orphaned = false;
-				self.existing_merged_gap = CHandle::null();
+			if let Some(merged) = &self.existing_merged_gap {
+				track_append_block(&self.track, merged);
+				block_add_to_graph(merged, self.merged_gap_entry.take());
+				self.existing_merged_gap = None;
 			}
-			track_append_block(self.track.clone(), self.block.clone());
+			track_append_block(&self.track, &self.block);
 		}
 
 		for c in self.transition_remove_commands.iter_mut().rev() {
@@ -773,40 +813,29 @@ impl TrackReplaceBlockWithGapCommand {
 
 	fn create_remove_transition_command_if_necessary(&mut self, next: bool) {
 		let relevant_block = if next {
-			block_next(self.block.clone())
+			block_next(&self.block)
 		} else {
-			block_previous(self.block.clone())
+			block_previous(&self.block)
 		};
 
-		let mut kind = OAKNODE_BLOCK_OTHER;
-		if !relevant_block.is_null() {
-			// SAFETY: `kind` is a valid out pointer.
-			let _ = unsafe { oaknode_block_get_kind(relevant_block.clone(), &mut kind) };
-		}
-		if kind != OAKNODE_BLOCK_TRANSITION {
+		let Some(relevant) = relevant_block else {
+			return;
+		};
+		if block_kind(&relevant) != BlockKind::Transition {
 			return;
 		}
 		// NOTE: the C++ checks whether the transition is connected only to this
 		// block (via `oaknode_transition_get_connected_out_block`/`_in_block` +
-		// `same_block`) before adding a `TransitionRemoveCommand`; those accessors
-		// are absent from this bridge, so no child commands are produced.
+		// `same_block`) before adding a `TransitionRemoveCommand`; the Rust
+		// block model has no transition edges, so a command removing the
+		// transition outright is produced.
+		self.transition_remove_commands
+			.push(TransitionRemoveCommand::new(relevant, true));
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
-	}
-}
-
-impl Drop for TrackReplaceBlockWithGapCommand {
-	/// Free the gap/merged-gap handles still detached from the graph.
-	fn drop(&mut self) {
-		if self.our_gap_orphaned {
-			free_detached_handle(&mut self.our_gap);
-		}
-		if self.merged_gap_orphaned {
-			free_detached_handle(&mut self.existing_merged_gap);
-		}
 	}
 }
 
@@ -826,40 +855,38 @@ impl Command for TrackReplaceBlockWithGapCommand {
 /// (timelineundogeneral.h). The old value is captured at construction.
 pub struct BlockEnableDisableCommand {
 	/// Block whose enabled flag changes.
-	block: CHandle,
+	block: NodeRef,
 	/// New enabled value.
-	new_enabled: i32,
+	new_enabled: bool,
 	/// Enabled value captured at construction, restored by `undo`.
-	old_enabled: i32,
+	old_enabled: bool,
 }
 
 impl BlockEnableDisableCommand {
 	/// Construct from block + new enabled value (captures old at ctor).
-	pub fn new(block: CHandle, enabled: bool) -> Self {
-		let mut old_enabled = 0;
-		// SAFETY: `old_enabled` is a valid out pointer.
-		let _ = unsafe { oaknode_block_get_enabled(block.clone(), &mut old_enabled) };
+	///
+	/// New signature (single-lib): `pub fn new(block: NodeRef, enabled: bool) -> BlockEnableDisableCommand`
+	pub fn new(block: NodeRef, enabled: bool) -> Self {
+		let old_enabled = block_enabled(&block);
 		Self {
 			block,
-			new_enabled: enabled as i32,
+			new_enabled: enabled,
 			old_enabled,
 		}
 	}
 
-	/// `redo`: `oaknode_block_set_enabled(block, new)`.
+	/// `redo`: set the new enabled value.
 	pub fn redo(&mut self) {
-		// SAFETY: `self.block` (copied) is a valid block handle.
-		let _ = unsafe { oaknode_block_set_enabled(self.block.clone(), self.new_enabled) };
+		block_set_enabled(&self.block, self.new_enabled);
 	}
 
-	/// `undo`: `oaknode_block_set_enabled(block, old)`.
+	/// `undo`: restore the old enabled value.
 	pub fn undo(&mut self) {
-		// SAFETY: `self.block` (copied) is a valid block handle.
-		let _ = unsafe { oaknode_block_set_enabled(self.block.clone(), self.old_enabled) };
+		block_set_enabled(&self.block, self.old_enabled);
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }
@@ -881,15 +908,15 @@ impl Command for BlockEnableDisableCommand {
 /// existing gaps rather than adding duplicates where possible.
 pub struct TrackListInsertGaps {
 	/// Track list to operate on.
-	track_list: CHandle,
+	track_list: NodeRef,
 	/// Insertion point.
 	point: Rational,
 	/// Gap length to insert.
 	length: Rational,
 	/// Unlocked tracks gathered at `prepare` time.
-	working_tracks: Vec<CHandle>,
+	working_tracks: Vec<NodeRef>,
 	/// Existing gaps crossed by `point`, extended by `length` on `redo`.
-	gaps_to_extend: Vec<CHandle>,
+	gaps_to_extend: Vec<NodeRef>,
 	/// Gaps inserted after their `before` blocks on their tracks.
 	gaps_added: Vec<AddGap>,
 	/// Optional per-track split command built at `prepare` time.
@@ -900,18 +927,20 @@ pub struct TrackListInsertGaps {
 /// `undo`; the C++ `TrackListInsertGaps::AddGap` struct.
 struct AddGap {
 	/// The inserted gap block.
-	gap: CHandle,
-	/// Whether `gap` is detached and owned by its parent command.
-	orphaned: bool,
-	/// Block the gap is inserted after.
-	before: CHandle,
+	gap: NodeRef,
+	/// Arena entry while `gap` is detached from the graph.
+	entry: Option<NodeEntry>,
+	/// Block the gap is inserted after (`None` = front of the track).
+	before: Option<NodeRef>,
 	/// Track the gap is inserted on.
-	track: CHandle,
+	track: NodeRef,
 }
 
 impl TrackListInsertGaps {
 	/// Construct from track list + point + length.
-	pub fn new(track_list: CHandle, point: Rational, length: Rational) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(track_list: NodeRef, point: Rational, length: Rational) -> TrackListInsertGaps`
+	pub fn new(track_list: NodeRef, point: Rational, length: Rational) -> Self {
 		Self {
 			track_list,
 			point,
@@ -925,71 +954,54 @@ impl TrackListInsertGaps {
 
 	/// `prepare`: build the per-track split/gap commands.
 	pub fn prepare(&mut self) {
-		let mut track_count = 0;
-		// SAFETY: `track_count` is a valid out pointer.
-		let _ =
-			unsafe { oaknode_tracklist_get_track_count(self.track_list.clone(), &mut track_count) };
+		let track_count = tracklist_track_count(&self.track_list);
 		for i in 0..track_count {
-			let mut track = CHandle::null();
-			// SAFETY: `track` is a valid out pointer.
-			let _ =
-				unsafe { oaknode_tracklist_get_track_at(self.track_list.clone(), i, &mut track) };
-			if track.is_null() {
+			let Some(track) = tracklist_track_at(&self.track_list, i) else {
 				continue;
-			}
-			let mut locked = 0;
-			// SAFETY: `locked` is a valid out pointer.
-			let _ = unsafe { oaknode_track_get_locked(track.clone(), &mut locked) };
-			if locked != 0 {
+			};
+			if crate::util::track_locked(&track) {
 				continue;
 			}
 			self.working_tracks.push(track);
 		}
 
-		let mut blocks_to_split: Vec<CHandle> = Vec::new();
-		let mut blocks_to_append_gap_to: Vec<CHandle> = Vec::new();
-		let mut tracks_to_append_gap_to: Vec<CHandle> = Vec::new();
+		let mut blocks_to_split: Vec<NodeRef> = Vec::new();
+		let mut blocks_to_append_gap_to: Vec<Option<NodeRef>> = Vec::new();
+		let mut tracks_to_append_gap_to: Vec<NodeRef> = Vec::new();
 
 		for track in self.working_tracks.clone() {
-			let mut block_count = 0;
-			// SAFETY: `block_count` is a valid out pointer.
-			let _ = unsafe { oaknode_track_get_block_count(track.clone(), &mut block_count) };
+			let block_count = crate::util::track_block_count(&track);
 			for i in 0..block_count {
-				let mut b = CHandle::null();
-				// SAFETY: `b` is a valid out pointer.
-				let _ = unsafe { oaknode_track_get_block_at(track.clone(), i, &mut b) };
-				if b.is_null() {
+				let Some(b) = crate::util::track_block_at(&track, i) else {
 					continue;
-				}
+				};
+				let kind = block_kind(&b);
 
-				let mut kind = OAKNODE_BLOCK_OTHER;
-				// SAFETY: `kind` is a valid out pointer.
-				let _ = unsafe { oaknode_block_get_kind(b.clone(), &mut kind) };
-
-				if kind == OAKNODE_BLOCK_GAP
-					&& block_in(b.clone()) <= self.point
-					&& block_out(b.clone()) >= self.point
+				if kind == BlockKind::Gap
+					&& block_in(&b) <= self.point
+					&& block_out(&b) >= self.point
 				{
 					// Found a gap at the location.
 					self.gaps_to_extend.push(b);
 					break;
-				} else if kind == OAKNODE_BLOCK_CLIP && block_out(b.clone()) >= self.point {
+				} else if kind == BlockKind::Clip && block_out(&b) >= self.point {
 					let mut append_gap = true;
+					let mut before = Some(b.clone());
 
-					if block_in(b.clone()) == self.point {
+					if block_in(&b) == self.point {
 						// The block is at the start of the track; no split needs to occur.
-						b = CHandle::null();
-					} else if block_out(b.clone()) > self.point {
+						before = None;
+					} else if block_out(&b) > self.point {
 						// The block must be split as well as having a gap appended to it.
 						blocks_to_split.push(b.clone());
-					} else if block_next(b.clone()).is_null() {
+					} else if block_next(&b).is_none() {
 						// At the end of a track, no gap needs to be added at all.
 						append_gap = false;
 					}
 
 					if append_gap {
 						tracks_to_append_gap_to.push(track.clone());
-						blocks_to_append_gap_to.push(b);
+						blocks_to_append_gap_to.push(before);
 					}
 					break;
 				}
@@ -1004,12 +1016,10 @@ impl TrackListInsertGaps {
 		}
 
 		for i in 0..blocks_to_append_gap_to.len() {
-			// SAFETY: `oaknode_block_gap_create` returns a fresh gap handle.
-			let gap = unsafe { oaknode_block_gap_create() };
-			block_set_length_and_media_out(gap.clone(), self.length);
+			let gap = block_gap_create(&self.track_list.project);
 			self.gaps_added.push(AddGap {
 				gap,
-				orphaned: true,
+				entry: None,
 				before: blocks_to_append_gap_to[i].clone(),
 				track: tracks_to_append_gap_to[i].clone(),
 			});
@@ -1019,7 +1029,7 @@ impl TrackListInsertGaps {
 	/// `redo`: apply the gap insertions.
 	pub fn redo(&mut self) {
 		for gap in self.gaps_to_extend.clone() {
-			block_set_length_and_media_out(gap.clone(), block_length(gap.clone()) + self.length);
+			block_set_length_and_media_out(&gap, block_length(&gap) + self.length);
 		}
 
 		if let Some(s) = self.split_command.as_mut() {
@@ -1027,12 +1037,16 @@ impl TrackListInsertGaps {
 		}
 
 		for g in self.gaps_added.iter_mut() {
-			block_add_to_graph(g.gap.clone(), g.track.clone());
-			// SAFETY: `g.track`/`g.gap`/`g.before` (copied) are valid handles.
-			let _ = unsafe {
-				oaknode_track_insert_block_after(g.track.clone(), g.gap.clone(), g.before.clone())
-			};
-			g.orphaned = false;
+			// The gap fills [point, point + length): the `before` block now
+			// ends at the split point (the split ran above), or the gap
+			// starts at `point` when it goes to the front of the track.
+			// Positions are stored on the block, so both ends are written
+			// explicitly.
+			let gap_in = g.before.as_ref().map(block_out).unwrap_or(self.point);
+			block_set_in(&g.gap, gap_in);
+			block_set_length_and_media_in(&g.gap, self.length);
+			block_add_to_graph(&g.gap, g.entry.take());
+			track_insert_block_after(&g.track, &g.gap, g.before.as_ref());
 		}
 	}
 
@@ -1040,13 +1054,12 @@ impl TrackListInsertGaps {
 	pub fn undo(&mut self) {
 		// Remove added gaps.
 		for g in self.gaps_added.iter_mut() {
-			let t = block_track(g.gap.clone());
-			if !t.is_null() {
-				// SAFETY: `t`/`g.gap` (copied) are valid handles.
-				let _ = unsafe { oaknode_track_ripple_remove_block(t.clone(), g.gap.clone()) };
-				block_remove_from_graph(g.gap.clone(), t);
+			if let Some(t) = block_track(&g.gap) {
+				track_ripple_remove_block(&t, &g.gap);
 			}
-			g.orphaned = true;
+			if g.entry.is_none() {
+				g.entry = block_remove_from_graph(&g.gap);
+			}
 		}
 
 		// Un-split blocks.
@@ -1056,24 +1069,13 @@ impl TrackListInsertGaps {
 
 		// Restore the original length of the extended gaps.
 		for gap in self.gaps_to_extend.clone() {
-			block_set_length_and_media_out(gap.clone(), block_length(gap.clone()) - self.length);
+			block_set_length_and_media_out(&gap, block_length(&gap) - self.length);
 		}
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
-	}
-}
-
-impl Drop for TrackListInsertGaps {
-	/// Free any inserted gaps still detached from the graph.
-	fn drop(&mut self) {
-		for g in self.gaps_added.iter_mut() {
-			if g.orphaned {
-				free_detached_handle(&mut g.gap);
-			}
-		}
 	}
 }
 
@@ -1092,16 +1094,20 @@ impl Command for TrackListInsertGaps {
 /// `TimelineAddDefaultTransitionCommand` — add the default transition at the
 /// start/end (or both) of the given clips (timelineundogeneral.h). Composes a
 /// set of child commands driven by `timebase_`.
+///
+/// `timebase`/`lengths` mirror the C++ members used by the length
+/// adjustment once a default transition config exists.
+#[allow(dead_code)]
 pub struct TimelineAddDefaultTransitionCommand {
 	/// Clips to receive a transition.
-	clips: Vec<CHandle>,
+	clips: Vec<NodeRef>,
 	/// Timeline timebase.
 	timebase: Rational,
 	/// Child commands, executed in order on `redo` (empty: see `prepare`).
 	commands: Vec<Box<dyn Command>>,
 	/// Clip length bookkeeping used by the C++ length adjustment (unused:
 	/// see `add_transition`).
-	lengths: Vec<(CHandle, Rational)>,
+	lengths: Vec<(NodeRef, Rational)>,
 }
 
 /// The side(s) of a clip a transition is added to (the C++
@@ -1118,7 +1124,9 @@ enum CreateTransitionMode {
 
 impl TimelineAddDefaultTransitionCommand {
 	/// Construct from clips + timebase.
-	pub fn new(clips: Vec<CHandle>, timebase: Rational) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(clips: Vec<NodeRef>, timebase: Rational) -> TimelineAddDefaultTransitionCommand`
+	pub fn new(clips: Vec<NodeRef>, timebase: Rational) -> Self {
 		Self {
 			clips,
 			timebase,
@@ -1131,57 +1139,46 @@ impl TimelineAddDefaultTransitionCommand {
 	pub fn prepare(&mut self) {
 		let selection = self.clips.clone();
 		for c in self.clips.clone() {
-			let previous = block_previous(c.clone());
-			let next = block_next(c.clone());
+			let previous = block_previous(&c);
+			let next = block_next(&c);
 
-			let is_clip_in_selection = |b: CHandle| -> bool {
-				if b.is_null() {
-					return false;
+			let is_clip_in_selection = |b: &Option<NodeRef>| -> bool {
+				match b {
+					Some(b) => selection.iter().any(|clip| same_block(clip, b)),
+					None => false,
 				}
-				selection
-					.iter()
-					.any(|clip| same_block(clip.clone(), b.clone()))
 			};
 
-			let mut prev_kind = OAKNODE_BLOCK_OTHER;
-			let mut next_kind = OAKNODE_BLOCK_OTHER;
-			if !previous.is_null() {
-				// SAFETY: `prev_kind` is a valid out pointer.
-				let _ = unsafe { oaknode_block_get_kind(previous.clone(), &mut prev_kind) };
-			}
-			if !next.is_null() {
-				// SAFETY: `next_kind` is a valid out pointer.
-				let _ = unsafe { oaknode_block_get_kind(next.clone(), &mut next_kind) };
-			}
+			let prev_kind = previous.as_ref().map(block_kind).unwrap_or(BlockKind::Other);
+			let next_kind = next.as_ref().map(block_kind).unwrap_or(BlockKind::Other);
 
 			// Handle the in transition.
-			if is_clip_in_selection(previous.clone()) {
+			if is_clip_in_selection(&previous) {
 				// Do nothing; assume this will be handled by a dual transition from
 				// that clip.
-			} else if prev_kind == OAKNODE_BLOCK_GAP || previous.is_null() {
+			} else if prev_kind == BlockKind::Gap || previous.is_none() {
 				// Create an in transition.
-				self.add_transition(c.clone(), CreateTransitionMode::In);
+				self.add_transition(&c, CreateTransitionMode::In);
 			}
 
 			// Handle the out transition.
-			if is_clip_in_selection(next.clone()) {
-				self.add_transition(c.clone(), CreateTransitionMode::OutDual);
-			} else if next_kind == OAKNODE_BLOCK_GAP || next.is_null() {
+			if is_clip_in_selection(&next) {
+				self.add_transition(&c, CreateTransitionMode::OutDual);
+			} else if next_kind == BlockKind::Gap || next.is_none() {
 				// Create an out transition.
-				self.add_transition(c.clone(), CreateTransitionMode::Out);
+				self.add_transition(&c, CreateTransitionMode::Out);
 			}
 		}
 	}
 
-	fn add_transition(&mut self, c: CHandle, mode: CreateTransitionMode) {
+	fn add_transition(&mut self, c: &NodeRef, mode: CreateTransitionMode) {
 		let _ = (c, mode);
 		// NOTE: the C++ builds one child command per transition: it looks up the
 		// default transition id in the config (`oakcommon_config_get`), creates
 		// the node (`oaknode_factory_create_from_id`), clips the neighbours'
 		// lengths (`BlockResizeCommand`/`BlockResizeWithMediaInCommand`), adds the
-		// node (`oaknode_command_create_add_node`) and connects it
-		// (`oaknode_node_connect_undoable`); those symbols are absent from this
-		// bridge, so no child commands are produced.
+		// node and connects it; the default-transition config key has no Rust
+		// equivalent here, so no child commands are produced.
 	}
 
 	/// `redo`: redo every child command in order.
@@ -1198,8 +1195,8 @@ impl TimelineAddDefaultTransitionCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }

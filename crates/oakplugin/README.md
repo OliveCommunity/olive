@@ -24,45 +24,59 @@ src/
   instance.rs   Instance：action 调用面（render/协商/RoD/RoI/isIdentity/
                 render_gl/GetOutputColourspace）
   render_driver.rs pluginrenderer.cpp 渲染流程收编（M11 §4 新增）
-  clip.rs       ClipInstance：clip↔oakrender 纹理桥（bridge::render）
+  clip.rs       ClipInstance：clip↔oakrender 纹理桥（render.rs）
   image.rs      Image：帧缓冲/纹理的 OFX 视图
-  param.rs      12 种参数实例 + param↔oaknode 桥（bridge::node/undo）
+  param.rs      12 种参数实例 + param↔oaknode 桥（node.rs/undo）
   progress.rs   PluginProgressReporter
-  bridge/       oak 其余模块的 C ABI 导入（extern "C" 声明）
-    node.rs     render.rs  undo.rs
-  ffi.rs        include/plugin/*.h 的全部导出（C ABI 出口层）
+  node.rs       oaknode 桥：节点值 POD、身份注册表、undoable 回写
+  render.rs     oakrender 桥：Texture/Frame/Renderer 值类型调用面
 ```
 
-## 桥布局决策（M11 第 1 期冻结；第 2 期增补）
+## 桥布局决策（M11 第 1 期冻结；第 2 期增补；单库化修订）
 
-- **`bridge::node::Value`** = `include/node/node.h:93` 的 `oaknode_value`
+单库化（single-lib unification）后 `bridge/`（C ABI 导入）与
+`ffi.rs`（导出层）已删除：oakundo/oaknode/oakrender 以 path 依赖
+直连，桥改用直接 Rust 类型。
+
+- **`node::Value`** = `include/node/node.h:93` 的 `oaknode_value`
   POD，字段逐字一致（`type`/`num`/`den`/`f[4]`；`type` 取值见
   `node_value_type`）。字符串族输入（k_file/k_text/k_font/
-  k_str_combo）无 POD 表示，走 `*_input_string_*` 专用桥函数
-  （`set_input_string_undoable`）。`ffi::OakNodeValue` 是同布局的
-  出口层镜像（两处独立声明避免模块环）。
-- **帧访问 C ABI**（`bridge::render`）= `oakrender_display_texture_*`
-  （`get_frame`/`is_dummy`）+ `oakrender_codec_frame_*`
-  （`get_params`/`data`/`free`），与 `include/render/renderer.h` 一致；
-  `oakrender_display_texture_wrap_native` 是 C++ 专属符号（TexturePtr
-  引用），Rust 不可调——**输出纹理由 oakrender 侧创建并经句柄传入**：
-  `ClipInstance::set_output_texture` 挂入后，`store_output_image` 取
-  其 CPU 帧整帧拷贝（全链路 F32，尺寸不符明确报错）。
-- **GL 纹理桥**（M11 §4 增补）：`bridge::render` 增加渲染器族
-  （`renderer_create_dynamic`/`init`/`is_open_gl`/`destroy`）与纹理族
-  （`texture_create`/`upload`/`download`/`retain`/`free`/`id`/
-  `get_params`/`renderer_download_from_texture`），以及
-  `frame_linesize_bytes`（CPU 拷贝的行跨度感知修复）。行跨度单位
-  统一为**字节**（renderer.h:206 明文契约；C++ 调用点传像素行跨度，
-  由 oakrender 侧实现 C ABI 时换算）。
-- **undo 打包**（`bridge::undo`）= `oakundo_command_init_multi`/
-  `redo_now`/`multi_add_child`/`free`；paramEditBegin/End 的编辑事务
-  在 `Instance` 上维护深度与累积 multi（C++ `submit_undo_command` 语义：
-  事务内子命令立即 redo 生效并并入 multi，editEnd 整体 redo+释放）。
+  k_str_combo）无 POD 表示，走 `set_input_string_undoable`。
+  `Value::to_node_value`/`Value::from_node_value` 与
+  `oaknode::value::NodeValue` 互转（按 POD kind；STRING 族无数据）。
+- **节点绑定与回写**（`node.rs`）：进程级身份注册表
+  `register_node(project, id)` → 打包身份
+  （`oaknode::id::NodeId::identity()`）→
+  `Instance::bind_node(identity)`；`node_from_identity` 按身份反查
+  `NodeRef { project, id }`（弱引用映射，project 释放后自然失效）。
+  `set_input_undoable`/`set_input_string_undoable` 构造未执行的
+  `oakundo::undocommand::UndoCommand`（closure-vtable 模式，与
+  `oaknode::ops::set_value_at_time_command` 同构）：redo 锁 project、
+  `graph.get_mut(id)`、`NodeCore::set_standard_value`；undo 回放
+  创建期快照的旧值。失败（未知输入/失效节点/非字符串族输入）
+  返回 `NodeBridgeError`，调用方按 no-op 处理。
+- **纹理/帧/渲染器值类型**（`render.rs`）：
+  `Texture = oakrender::texture::Texture`、`Frame =
+  oakrender::texture::Frame`（值语义，drop 自动释放后端 token，
+  原 `texture_free`/`frame_free` 调用面删除）、
+  `Renderer = Arc<dyn oakrender::backend::GpuContextLike>`（渲染器
+  即后端上下文）。`texture_create(params, pixels, linesize)` 构造
+  CPU 包装纹理（行跨度感知拷贝，GPU 上传由后端延迟）；
+  `texture_get_frame`/`texture_get_params`/
+  `renderer_is_open_gl` 为真实实现。**保留桩**：`texture_id` 恒 0
+  ——wgpu 后端无 OpenGL 纹理名，GL suite 的 `OpenGLTextureIndex`
+  属性与 use_opengl 决策据此回退 CPU 路径。
+  `ClipInstance::set_output_texture` 挂入后，`store_output_image`
+  取 CPU 帧整帧拷贝（全链路 F32，尺寸不符明确报错；GPU 目标经
+  `GpuContextLike::upload` 回写）。
+- **undo 打包** = 直接经 `oakundo::undocommand::UndoCommand`；
+  paramEditBegin/End 的编辑事务在 `Instance` 上维护深度与累积
+  multi（C++ `submit_undo_command` 语义：事务内子命令立即 redo
+  生效并并入 multi，editEnd 整体 redo+释放）。
 - **param↔node 值转换**（`param.rs`）：`set_from_node`（节点→插件，
   按参数类型映射，维度截断/补零）、`to_node_value`（插件→节点，
   RGB 补 alpha=1，与 C++ `RGBInstance::set` 一致）。字符串参数经
-  `oaknode_node_set_input_string_undoable`。
+  `node::set_input_string_undoable`。
 - **节点绑定**：`Instance::bind_node(identity)`（C++ `set_node_handle`
   的 Rust 侧）；回写只在 `ChangeReason::PluginEdited` 触发，未绑定/
   身份查无时 no-op。

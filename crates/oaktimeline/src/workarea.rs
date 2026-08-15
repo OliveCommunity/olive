@@ -22,6 +22,7 @@
 //! job.
 
 use oakcore_rs::{Rational, TimeRange};
+use oakundo::undocommand::UndoCommand;
 
 /// The reset sentinel `k_reset_in` (timelineworkarea.h): 0/1. Exposed as a
 /// function because `Rational::new` is not yet `const` in oakcore-rs.
@@ -125,7 +126,7 @@ impl WorkareaSetEnabledCommand {
 	}
 
 	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> crate::handle::CHandle {
+	pub fn to_command(self) -> UndoCommand {
 		crate::undocommon::box_command(self)
 	}
 }
@@ -163,8 +164,8 @@ impl WorkareaSetRangeCommand {
 	}
 
 	/// Construct from work area + new range + explicitly supplied old
-	/// range (used by the FFI layer, which may have a previously captured
-	/// range; `new` delegates here with the current range).
+	/// range (used by callers that may have a previously captured range;
+	/// `new` delegates here with the current range).
 	pub fn new_with_old(
 		workarea: crate::handle::CHandle,
 		range: TimeRange,
@@ -192,7 +193,7 @@ impl WorkareaSetRangeCommand {
 	}
 
 	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> crate::handle::CHandle {
+	pub fn to_command(self) -> UndoCommand {
 		crate::undocommon::box_command(self)
 	}
 }

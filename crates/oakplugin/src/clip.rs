@@ -17,17 +17,16 @@
 //! clip 实例：clip ↔ oakrender 纹理桥。
 //!
 //! 对应 C++ 的 `OliveClipInstance`。纹理数据经
-//! [`crate::bridge::render`] 的 oakrender C ABI 流动；OFX 侧只看到
-//! [`crate::image::Image`]（CPU 路径）。
+//! [`crate::render`]（oakrender 值类型：`Texture`/`Frame`）流动；
+//! OFX 侧只看到 [`crate::image::Image`]（CPU 路径）。
 //!
 //! `#[repr(C)]` + props 在偏移 0（句柄约定，见 [`crate::suites::tag`]；
 //! clip handle 即 `&props`）。
 //!
-//! `// TODO(bridge)`：`fetch_image`/`store_output_image` 依赖
-//! bridge::render 的帧访问 C ABI（声明未冻结），保留 todo!()。
-//! **已落地（M11 第 1 期）**：帧访问 C ABI 在 [`crate::bridge::render`]
-//! 冻结（`oakrender_display_texture_*`/`oakrender_codec_frame_*`），
-//! 两处桥实现完成。
+//! 单库化后 oakrender 的 ffi 已删除：帧访问走
+//! [`oakrender::texture::Texture::to_frame`] 值路径（GPU 纹理经后端
+//! 下载、CPU 纹理克隆），帧释放随值 drop 自动发生（原
+//! `texture_get_frame`/`frame_free` 句柄调用面随桩删除）。
 
 use crate::instance::{OfxRangeD, OfxRectD, RenderScale};
 use crate::property::PropertySet;
@@ -40,12 +39,12 @@ pub struct ClipInstance {
 	pub props: PropertySet,
 	/// clip 名。
 	pub name: String,
-	/// 当前输入纹理（oakrender 句柄的借用拷贝；输出 clip 为 None）。
-	input_texture: std::sync::Mutex<Option<crate::bridge::render::TextureHandle>>,
+	/// 当前输入纹理（oakrender 值；输出 clip 为 None）。
+	input_texture: std::sync::Mutex<Option<crate::render::Texture>>,
 	/// 当前输出纹理（C++ `output_textures_` 的 phase 1 单槽；
 	/// [`store_output_image`](Self::store_output_image) 的回写目标；
 	/// 输入 clip 为 None）。
-	output_texture: std::sync::Mutex<Option<crate::bridge::render::TextureHandle>>,
+	output_texture: std::sync::Mutex<Option<crate::render::Texture>>,
 }
 
 /// 从 clip 属性读协商分量（getClipPreferences 写入）。
@@ -136,29 +135,19 @@ impl ClipInstance {
 	}
 
 	/// 挂接输入纹理（oaknode 侧 clip 输入值变化时由 param/render 桥
-	/// 调用）。`time` 用于多帧纹理选择。空句柄断开。
-	pub fn set_input_texture(&self, texture: crate::bridge::render::TextureHandle, _time: f64) {
-		let mut slot = self.input_texture.lock().unwrap_or_else(|e| e.into_inner());
-		if texture.is_null() {
-			*slot = None;
-		} else {
-			*slot = Some(texture);
-		}
+	/// 调用）。`time` 用于多帧纹理选择。None 断开。
+	pub fn set_input_texture(&self, texture: Option<crate::render::Texture>, _time: f64) {
+		*self.input_texture.lock().unwrap_or_else(|e| e.into_inner()) = texture;
 	}
 
-	/// 挂接输出纹理（render 驱动创建并经句柄传入；C++
+	/// 挂接输出纹理（render 驱动创建并经值传入；C++
 	/// `setOutputTexture` 的 phase 1 单槽版）。`time` 用于多帧纹理
-	/// 选择（`// [P2]`）。空句柄断开。
-	pub fn set_output_texture(&self, texture: crate::bridge::render::TextureHandle, _time: f64) {
-		let mut slot = self
+	/// 选择（`// [P2]`）。None 断开。
+	pub fn set_output_texture(&self, texture: Option<crate::render::Texture>, _time: f64) {
+		*self
 			.output_texture
 			.lock()
-			.unwrap_or_else(|e| e.into_inner());
-		if texture.is_null() {
-			*slot = None;
-		} else {
-			*slot = Some(texture);
-		}
+			.unwrap_or_else(|e| e.into_inner()) = texture;
 	}
 
 	/// 抓取本 clip 在 `time` 的图像（OFX clipGetImage 的宿主侧）。
@@ -174,7 +163,7 @@ impl ClipInstance {
 		scale: RenderScale,
 		region: Option<OfxRectD>,
 	) -> crate::error::Result<crate::image::Image> {
-		use crate::bridge::render::*;
+		use crate::render::PIXEL_FORMAT_F32;
 		use crate::error::Error;
 
 		let _ = (time, scale);
@@ -188,18 +177,13 @@ impl ClipInstance {
 			.clone()
 			.ok_or(Error::NotFound)?;
 		// 占位纹理（dummy）：视作无输入。
-		if unsafe { crate::bridge::render::texture_is_dummy(texture) } != 0 {
+		if texture.is_dummy() {
 			return Err(Error::NotFound);
 		}
-		let mut frame = FrameHandle::null();
-		let r = unsafe { crate::bridge::render::texture_get_frame(texture, &mut frame) };
-		if r != 0 || frame.is_null() {
-			return Err(Error::Failed("纹理无 CPU 帧".into()));
-		}
-		let mut params = VideoParams::default();
-		unsafe { crate::bridge::render::frame_get_params(frame, &mut params) };
+		// 纹理 → CPU 帧（GPU 纹理后端下载；帧随 drop 释放）。
+		let frame = crate::render::texture_get_frame(&texture)?;
+		let params = frame.video_params();
 		if params.format != PIXEL_FORMAT_F32 {
-			unsafe { crate::bridge::render::frame_free(&mut frame) };
 			return Err(Error::Failed(format!(
 				"输入帧格式 {} 非 F32（第 1 期约束）",
 				params.format
@@ -220,9 +204,8 @@ impl ClipInstance {
 				y2: h,
 			},
 		);
-		let src = unsafe { crate::bridge::render::frame_data(frame) };
+		let src = frame.data();
 		if src.is_null() {
-			unsafe { crate::bridge::render::frame_free(&mut frame) };
 			return Err(Error::Failed("帧无数据".into()));
 		}
 		// 行优先拷贝（帧行跨度经 linesize 读取——真实 oakrender 帧可
@@ -230,16 +213,15 @@ impl ClipInstance {
 		// 行，对真实 oakrender 的填充帧会写错列）。
 		let channels = components.channel_count();
 		let tight = (w as usize) * channels * 4;
-		let row = unsafe { crate::bridge::render::frame_linesize_bytes(frame) } as usize;
+		let row = frame.linesize_bytes();
 		let row = if row > 0 { row } else { tight };
-		let src_bytes = unsafe { std::slice::from_raw_parts(src as *const u8, row * h as usize) };
+		let src_bytes = unsafe { std::slice::from_raw_parts(src, row * h as usize) };
 		let dst = image.pixels_mut();
 		for y in 0..h as usize {
 			let s = y * row;
 			let d = y * tight;
 			dst[d..d + tight].copy_from_slice(&src_bytes[s..s + tight]);
 		}
-		unsafe { crate::bridge::render::frame_free(&mut frame) };
 		Ok(image)
 	}
 
@@ -247,17 +229,19 @@ impl ClipInstance {
 	/// [`crate::instance::Instance::render`] 的调用方使用）。
 	///
 	/// 输出纹理由 oakrender 侧创建并经 [`Self::set_output_texture`]
-	/// 挂入——本函数取该纹理的 CPU 帧（`texture_get_frame`），按帧
+	/// 挂入——本函数取该纹理的 CPU 帧（GPU 纹理经后端下载，写回后
+	/// 对 `Texture::Gpu` 再经
+	/// [`oakrender::backend::GpuContextLike::upload`] 上传），按帧
 	/// 参数校验 F32 与尺寸后整帧拷贝图像像素（全链路 F32；C++
 	/// pluginrenderer 的 `readback/wrap` 路径第 1 期以 CPU 拷贝表达，
-	/// GL 走 [`crate::bridge::render`] 的 `// [P2]`）。未挂输出纹理
+	/// GL 走 [`crate::render`] 的 `// [P2]`）。未挂输出纹理
 	/// 或纹理为占位（dummy）→ [`crate::error::Error::NotFound`]。
-	/// 成功返回纹理句柄（借用拷贝，调用方负责其生命周期）。
+	/// 成功返回纹理值（克隆，随 drop 释放）。
 	pub fn store_output_image(
 		&self,
 		image: &crate::image::Image,
-	) -> crate::error::Result<crate::bridge::render::TextureHandle> {
-		use crate::bridge::render::*;
+	) -> crate::error::Result<crate::render::Texture> {
+		use crate::render::{texture_get_frame, PIXEL_FORMAT_F32};
 		use crate::error::Error;
 
 		let texture = self
@@ -266,18 +250,12 @@ impl ClipInstance {
 			.unwrap_or_else(|e| e.into_inner())
 			.clone()
 			.ok_or(Error::NotFound)?;
-		if unsafe { texture_is_dummy(texture) } != 0 {
+		if texture.is_dummy() {
 			return Err(Error::NotFound);
 		}
-		let mut frame = FrameHandle::null();
-		let r = unsafe { texture_get_frame(texture, &mut frame) };
-		if r != 0 || frame.is_null() {
-			return Err(Error::Failed("输出纹理无 CPU 帧".into()));
-		}
-		let mut params = VideoParams::default();
-		unsafe { frame_get_params(frame, &mut params) };
+		let mut frame = texture_get_frame(&texture)?;
+		let params = frame.video_params();
 		if params.format != PIXEL_FORMAT_F32 {
-			unsafe { frame_free(&mut frame) };
 			return Err(Error::Failed(format!(
 				"输出帧格式 {} 非 F32（第 1 期约束）",
 				params.format
@@ -287,33 +265,37 @@ impl ClipInstance {
 		// 图像与帧必须同尺寸（全链路 F32；宽高/行宽/总长逐项校验）。
 		let tight = w * image.components().channel_count() * 4;
 		if tight != image.row_bytes() || tight * h != image.pixels().len() {
-			unsafe { frame_free(&mut frame) };
 			return Err(Error::Failed("图像尺寸与输出帧不一致".into()));
 		}
-		let dst = unsafe { frame_data(frame) };
+		let dst = frame.data_mut();
 		if dst.is_null() {
-			unsafe { frame_free(&mut frame) };
 			return Err(Error::Failed("输出帧无数据".into()));
 		}
 		// 行优先拷贝（目标帧行跨度经 linesize 读取——真实 oakrender
 		// 帧可有行填充；M11 §4 修复同 fetch_image）。
-		let row = unsafe { frame_linesize_bytes(frame) } as usize;
+		let row = frame.linesize_bytes();
 		let row = if row > 0 { row } else { tight };
-		let dst_bytes = unsafe { std::slice::from_raw_parts_mut(dst as *mut u8, row * h) };
+		let dst_bytes = unsafe { std::slice::from_raw_parts_mut(dst, row * h) };
 		let pixels = image.pixels();
 		for y in 0..h {
 			let d = y * row;
 			let s = y * tight;
 			dst_bytes[d..d + tight].copy_from_slice(&pixels[s..s + tight]);
 		}
-		unsafe { frame_free(&mut frame) };
+		// GPU 目标纹理：拷贝只落在下载帧上，经后端 upload 回写
+		// （CPU 纹理无需上传）。
+		if let crate::render::Texture::Gpu { token, ctx, .. } = &texture {
+			ctx.upload(*token, &frame)
+				.map_err(|e| Error::Failed(format!("输出纹理上传失败：{e}")))?;
+		}
 		Ok(texture)
 	}
 
 	/// 本 clip 的时间域（clipGetFrameRange）。
 	///
-	/// `// TODO(bridge)`：输入范围经 oakrender 帧的时间基推导
-	/// （time_base）——随 renderer 桥落地。
+	/// `// TODO(value-model)`：输入范围经 oakrender 帧的时间基推导
+	/// （time_base）——随 clip 迁移到 `oakrender::texture::Texture`
+	/// 值模型落地。
 	pub fn frame_range(&self) -> crate::error::Result<OfxRangeD> {
 		let _ = OfxRangeD::default();
 		Err(crate::error::Error::Failed(

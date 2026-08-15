@@ -130,22 +130,15 @@ const UNTITLED: &str = "Untitled Project";
 const PIXEL_FORMAT_F32: c_int = 4;
 
 // ---------------------------------------------------------------------------
-// oaktask module C ABI entries the facade does not wrap
+// Facade task event subscription
 // ---------------------------------------------------------------------------
 //
-// Two module-level exports are needed here that the facade does not wrap:
-// `oaktask_load_take_project` (the loaded-project getter for the
-// interchange load task) and `oaktask_task_subscribe` (the task event
-// callback that delivers export progress). Both take the module `CHandle`,
-// which is the same value handle the facade's own boxes wrap (exposed here
-// through [`ffi::unbox`]), and both symbols are exported by the dylib
-// itself (it carries the module C ABIs). The declarations live in [`ffi`];
-// this keeps the *operations* on the facade contract while bridging two
-// getter/event gaps the facade intentionally leaves open (see
-// `oakengine/src/deferred.rs`).
+// The export path subscribes to task events through the facade's
+// `oakengine_task_subscribe` (wrapping the module's `oaktask_task_subscribe`);
+// the callback fires on the task's own thread.
 
-/// The C callback the module task event subscription invokes on the task's
-/// own thread. `userdata` is the raw pointer of a leaked
+/// The C callback the facade task subscription invokes on the task's own
+/// thread. `userdata` is the raw pointer of a leaked
 /// `mpsc::Sender<ExportEvent>` the export thread reclaims after the run.
 unsafe extern "C" fn export_event_cb(event_id: c_int, value: f64, userdata: *mut c_void) {
 	let Some(sender) = (userdata as *const mpsc::Sender<ExportEvent>).as_ref() else {
@@ -708,11 +701,11 @@ impl RealEngine {
 	/// Returns false when the manager could not be started.
 	fn ensure_render_manager() -> bool {
 		unsafe {
-			if oakrender_manager_available() != 0 {
+			if oakengine_render_manager_available() != 0 {
 				return true;
 			}
-			oakrender_manager_init();
-			oakrender_manager_available() != 0
+			oakengine_render_manager_init();
+			oakengine_render_manager_available() != 0
 		}
 	}
 
@@ -2331,17 +2324,12 @@ impl AppEngine for RealEngine {
 			return Err("failed to create the export task".into());
 		}
 
-		// Progress events through the module task callback.
-		let module_handle =
-			unsafe { unbox(task) }.ok_or_else(|| "invalid export task handle".to_string())?;
+		// Progress events through the facade task subscription (the callback
+		// is invoked on the task's own thread with the raw userdata pointer).
 		let (tx, rx) = mpsc::channel::<ExportEvent>();
 		let cb_userdata = SendPtr(Box::into_raw(Box::new(tx.clone())));
 		unsafe {
-			oaktask_task_subscribe(
-				module_handle,
-				Some(export_event_cb),
-				cb_userdata.0 as *mut c_void,
-			);
+			oakengine_task_subscribe(task, Some(export_event_cb), cb_userdata.0 as *mut c_void);
 		}
 
 		// The task pointer is shared between the cancel handle and the worker
@@ -2456,9 +2444,8 @@ impl RealEngine {
 	}
 
 	/// Opens an `.otio` / `.fcpxml` project through the oaktask interchange
-	/// loader and adopts the loaded project (the facade exposes no
-	/// load-result getter, so the module's `oaktask_load_take_project` is
-	/// called directly — see the module docs).
+	/// loader and adopts the loaded project (`oakengine_task_load_take_project`
+	/// hands over the loader's project after a successful run).
 	fn open_interchange(&mut self, path: &PathBuf, cx: &mut Context<Self>) -> Result<(), String> {
 		let Some(cpath) = cstr_path(path) else {
 			return Err("invalid project path".into());
@@ -2469,15 +2456,14 @@ impl RealEngine {
 		}
 		let rc = unsafe { oakengine_task_start_sync(task) };
 		let error = Self::task_error(task);
-		let module_handle = unsafe { unbox(task) };
-		let loaded = module_handle.and_then(|h| {
-			let project = unsafe { oaktask_load_take_project(h) };
+		let loaded = {
+			let project = unsafe { oakengine_task_load_take_project(task) };
 			if project.is_null() {
 				None
 			} else {
-				Some(unsafe { box_handle::<OakEngineProject>(project) })
+				Some(project)
 			}
-		});
+		};
 		unsafe { oakengine_task_free(task) };
 		if rc == 0 {
 			return Err(format!("failed to load \"{}\": {error}", path.display()));

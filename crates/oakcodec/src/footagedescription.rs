@@ -23,19 +23,21 @@
 //! `Track::Type` mapping and XML load/save are intentionally not reproduced
 //! (NOTES.md §4) — use [`FootageDescription::stream_is_video`] etc.
 
+use oakcommon::subtitleparams::SubtitleParams;
+use oakcommon::videoparams::VideoParams;
 use oakcore_rs::{Rational, TimeRange};
 
-use crate::bridge::common::{OakAudioParams, OakSubtitleParams, OakVideoParams};
+use crate::audioparams::AudioParams;
 
 /// One stream entry in a footage description.
 #[derive(Clone, Debug)]
 pub enum StreamEntry {
-	/// A video stream (params handle, addref'd).
-	Video(OakVideoParams),
+	/// A video stream.
+	Video(VideoParams),
 	/// An audio stream.
-	Audio(OakAudioParams),
-	/// A subtitle stream (params handle, addref'd).
-	Subtitle(OakSubtitleParams),
+	Audio(AudioParams),
+	/// A subtitle stream.
+	Subtitle(SubtitleParams),
 }
 
 /// `olive::FootageDescription` — the decoder name plus stream inventory.
@@ -127,7 +129,7 @@ impl FootageDescription {
 	}
 
 	/// The `index`-th video stream's params (by video-stream ordinal).
-	pub fn get_video_stream(&self, index: usize) -> Option<&OakVideoParams> {
+	pub fn get_video_stream(&self, index: usize) -> Option<&VideoParams> {
 		self.streams
 			.iter()
 			.filter_map(|s| match s {
@@ -138,7 +140,7 @@ impl FootageDescription {
 	}
 
 	/// The `index`-th audio stream's params (by audio-stream ordinal).
-	pub fn get_audio_stream(&self, index: usize) -> Option<&OakAudioParams> {
+	pub fn get_audio_stream(&self, index: usize) -> Option<&AudioParams> {
 		self.streams
 			.iter()
 			.filter_map(|s| match s {
@@ -149,7 +151,7 @@ impl FootageDescription {
 	}
 
 	/// The `index`-th subtitle stream's params (by subtitle-stream ordinal).
-	pub fn get_subtitle_stream(&self, index: usize) -> Option<&OakSubtitleParams> {
+	pub fn get_subtitle_stream(&self, index: usize) -> Option<&SubtitleParams> {
 		self.streams
 			.iter()
 			.filter_map(|s| match s {
@@ -210,31 +212,34 @@ impl FootageDescription {
 mod tests {
 	use super::*;
 
-	fn video_params(index: i32) -> OakVideoParams {
-		OakVideoParams {
-			ctx: index as usize as *mut std::ffi::c_void,
-			addref: None,
-			release: None,
-			abi_version: crate::handle::OAKCODEC_ABI_VERSION,
+	fn video_params(index: i32) -> VideoParams {
+		let mut vp = VideoParams::new_basic(
+			1920,
+			1080,
+			oakcommon::ocioutils::PixelFormat::from_code(0),
+			4,
+			1,
+			1,
+			0,
+			1,
+		);
+		vp.set_stream_index(index);
+		vp
+	}
+
+	fn audio_params() -> AudioParams {
+		AudioParams {
+			sample_rate: 48000,
+			channel_layout: 0x3,
+			format: 0,
+			stream_index: 1,
+			duration: 0,
+			time_base: (1, 48000),
 		}
 	}
 
-	fn audio_params() -> OakAudioParams {
-		OakAudioParams {
-			ctx: std::ptr::null_mut(),
-			addref: None,
-			release: None,
-			abi_version: crate::handle::OAKCODEC_ABI_VERSION,
-		}
-	}
-
-	fn subtitle_params() -> OakSubtitleParams {
-		OakSubtitleParams {
-			ctx: std::ptr::null_mut(),
-			addref: None,
-			release: None,
-			abi_version: crate::handle::OAKCODEC_ABI_VERSION,
-		}
+	fn subtitle_params() -> SubtitleParams {
+		SubtitleParams::new()
 	}
 
 	#[test]

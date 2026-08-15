@@ -99,7 +99,7 @@ impl BackendKind {
 			}
 		}
 		let configured =
-			crate::bridge::common::config_get_string(None, "GraphicsBackend").unwrap_or_default();
+			crate::commonutil::config_get_string(None, "GraphicsBackend").unwrap_or_default();
 		BackendKind::from_config_string(&configured)
 	}
 

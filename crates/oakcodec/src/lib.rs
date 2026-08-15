@@ -29,7 +29,10 @@
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]
 
-pub mod bridge;
+#[cfg(test)]
+use std::sync::{Mutex, MutexGuard};
+
+pub mod audioparams;
 pub mod conformmanager;
 pub mod decoder;
 pub mod encoder;
@@ -37,7 +40,6 @@ pub mod encodingparams;
 pub mod error;
 pub mod exportcodec;
 pub mod exportformat;
-pub mod ffi;
 pub mod ffmpeg;
 pub mod footagedescription;
 pub mod frame;
@@ -53,6 +55,51 @@ pub mod timecodemetadata;
 
 #[cfg(test)]
 mod realmedia_tests;
+
+/// Process-wide test lock: serializes every test that reads or mutates
+/// crate-global state (the injected decoder registry, the handle alive
+/// count). One lock for the whole crate — tests race only with each
+/// other, never with production code.
+#[cfg(test)]
+static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+/// RAII guard over [`TEST_LOCK`]: the lock is taken when the guard is
+/// created ([`TestLock::acquire`]) and released when it is dropped —
+/// including through panics, so a failing test can never deadlock the
+/// tests that follow. Poison-tolerant: a panicking holder does not leave
+/// the mutex poisoned for the next acquirer.
+#[cfg(test)]
+pub struct TestLock {
+	/// The held lock guard; dropping it releases [`TEST_LOCK`] (never read,
+	/// only dropped — the whole point of the RAII guard).
+	#[allow(dead_code)]
+	guard: MutexGuard<'static, ()>,
+}
+
+#[cfg(test)]
+impl TestLock {
+	/// Acquire exclusive access to the crate's shared test state, blocking
+	/// until every earlier holder has released it.
+	pub fn acquire() -> TestLock {
+		TestLock {
+			guard: TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner()),
+		}
+	}
+}
+
+#[cfg(test)]
+impl Drop for TestLock {
+	fn drop(&mut self) {
+		// Dropping the held guard releases TEST_LOCK; the explicit Drop
+		// documents the acquire-on-create / release-on-drop contract.
+	}
+}
+
+/// Acquire the process-wide test lock (see [`TestLock::acquire`]).
+#[cfg(test)]
+pub(crate) fn lock_tests() -> TestLock {
+	TestLock::acquire()
+}
 
 // Keep the oakffmpeg-link rlib referenced so its build script's native
 // link flags (the static FFmpeg's transitive dependencies) reach the

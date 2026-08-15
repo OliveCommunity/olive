@@ -17,7 +17,10 @@
 //! Free functions replacing the C++ `Node` static methods
 //! (COVERAGE.md §6/§9).
 
+use std::ffi::c_void;
+
 use oakcore_rs::TimeRange;
+use oakundo::undocommand::{OakUndoCommandVtable, UndoCommand};
 
 use crate::graph::Graph;
 use crate::id::NodeId;
@@ -111,7 +114,7 @@ pub fn copy_inputs(
 /// (C++ `copy_dependency_graph` / `copy_node_in_graph` /
 /// `copy_node_and_dependency_graph_minus_items`). Returns the new
 /// node ids (source order). Undo packaging happens at the caller via
-/// bridge::undo.
+/// oakundo's `UndoCommand`.
 pub fn copy_subgraph(
 	graph: &mut Graph,
 	nodes: &[NodeId],
@@ -147,10 +150,64 @@ fn lock_any<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 	m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// Userdata payload behind a closure-backed undo command: the boxed
+/// redo/undo closures.
+struct ClosureCommand {
+	/// The redo closure.
+	redo: Box<dyn FnMut() + Send>,
+	/// The undo closure.
+	undo: Box<dyn FnMut() + Send>,
+}
+
+/// `OakUndoCommandVtable` redo thunk for [`ClosureCommand`] userdata.
+unsafe extern "C" fn closure_redo(ud: *mut c_void) {
+	// SAFETY: `ud` is the `ClosureCommand` box created by
+	// `command_from_closures` and still owned by the command.
+	let c = unsafe { &mut *(ud as *mut ClosureCommand) };
+	(c.redo)();
+}
+
+/// `OakUndoCommandVtable` undo thunk for [`ClosureCommand`] userdata.
+unsafe extern "C" fn closure_undo(ud: *mut c_void) {
+	// SAFETY: see `closure_redo`.
+	let c = unsafe { &mut *(ud as *mut ClosureCommand) };
+	(c.undo)();
+}
+
+/// `OakUndoCommandVtable` free thunk for [`ClosureCommand`] userdata.
+unsafe extern "C" fn closure_free(ud: *mut c_void) {
+	if !ud.is_null() {
+		// SAFETY: the box is destroyed exactly once, by the command that
+		// owns it.
+		unsafe { drop(Box::from_raw(ud as *mut ClosureCommand)) };
+	}
+}
+
+/// Build an un-executed [`UndoCommand`] from redo/undo closures (the
+/// direct-Rust replacement of the former oakundo bridge
+/// `command_from_closures`).
+fn command_from_closures(
+	redo: impl FnMut() + Send + 'static,
+	undo: impl FnMut() + Send + 'static,
+) -> UndoCommand {
+	let ud = Box::into_raw(Box::new(ClosureCommand {
+		redo: Box::new(redo),
+		undo: Box::new(undo),
+	}));
+	UndoCommand::from_vtable(
+		OakUndoCommandVtable {
+			redo: Some(closure_redo),
+			undo: Some(closure_undo),
+			free_fn: Some(closure_free),
+		},
+		ud as *mut c_void,
+	)
+}
+
 /// Set a keyframed/standard value at a time, returning an un-executed
 /// undo command (C++ `Node::set_value_at_time` static; command creation
-/// via bridge::undo). The mutation is chosen from the current state at
-/// creation time, like the C++ (`// CPP-PARITY: node.cpp:1782`):
+/// via oakundo's `UndoCommand`). The mutation is chosen from the current
+/// state at creation time, like the C++ (`// CPP-PARITY: node.cpp:1782`):
 /// - keyframing input with a key at `time` -> replace the key's value;
 /// - keyframing input without a key -> insert a key (best type =
 ///   closest key's type, default Linear);
@@ -166,7 +223,7 @@ pub fn set_value_at_time_command(
 	element: i32,
 	time: oakcore_rs::Rational,
 	value: &crate::value::NodeValue,
-) -> crate::error::Result<crate::handle::CHandle> {
+) -> crate::error::Result<UndoCommand> {
 	use crate::error::Error;
 	use crate::keyframe::{Interpolation, Keyframe};
 
@@ -202,7 +259,7 @@ pub fn set_value_at_time_command(
 				// Replace the key's value (preserving type/handles).
 				let project_redo = project.clone();
 				let project_undo = project.clone();
-				Ok(crate::bridge::undo::command_from_closures(
+				Ok(command_from_closures(
 					{
 						let value = value.clone();
 						let input = input.clone();
@@ -229,8 +286,7 @@ pub fn set_value_at_time_command(
 							}
 						}
 					},
-				)
-				.ok_or(Error::NoMem)?)
+				))
 			}
 			None => {
 				let input_redo = input.clone();
@@ -250,7 +306,7 @@ pub fn set_value_at_time_command(
 				let project_redo = project.clone();
 				let project_undo = project.clone();
 				let value_redo = value.clone();
-				Ok(crate::bridge::undo::command_from_closures(
+				Ok(command_from_closures(
 					move || {
 						let mut g = lock_any(&project_redo);
 						if let Some(e) = g.graph.get_mut(node) {
@@ -272,8 +328,7 @@ pub fn set_value_at_time_command(
 								.remove_key(time);
 						}
 					},
-				)
-				.ok_or(Error::NoMem)?)
+				))
 			}
 		}
 	} else {
@@ -287,7 +342,7 @@ pub fn set_value_at_time_command(
 		let input_redo = input.clone();
 		let input_undo = input.clone();
 		let value_redo = value.clone();
-		Ok(crate::bridge::undo::command_from_closures(
+		Ok(command_from_closures(
 			move || {
 				let mut g = lock_any(&project_redo);
 				if let Some(e) = g.graph.get_mut(node) {
@@ -301,7 +356,6 @@ pub fn set_value_at_time_command(
 					e.core.set_standard_value(&input_undo, element, old.clone());
 				}
 			},
-		)
-		.ok_or(Error::NoMem)?)
+		))
 	}
 }

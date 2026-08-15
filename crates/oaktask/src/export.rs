@@ -16,10 +16,19 @@
 
 //! `ExportTask`, mirroring `src/task/src/export/export.h`.
 //!
-//! Renders the viewer output through [`crate::render::RenderTask`] and writes
-//! it to a file via the oakcodec encoder (`bridge::codec`), mapping each
-//! rendered [`Rational`] frame to an `OakFrame` and each rendered
-//! [`TimeRange`] to audio samples.
+//! Renders the viewer output through [`crate::render::RenderTask`] and
+//! writes it to a file via the direct oakcodec encoder API
+//! (`oakcodec::encoder::{create_from_params, Encoder}` — single-lib
+//! unification; the old encoder C ABI is gone), mapping each rendered
+//! frame to an `Encoder::write_video` call and each rendered audio buffer
+//! to `Encoder::write_audio`.
+//!
+//! The viewer and color-manager arguments of the deleted C ABI path are
+//! replaced by a single [`crate::nodeops::NodeRef`] viewer (the color
+//! manager no longer crosses into the render tickets — the direct ticket
+//! arena performs no color management). Rendered frames arrive as
+//! `oakrender::texture::Texture` values and are converted to
+//! `oakcodec::frame::Frame` values for the encoder.
 //!
 //! **Simplifications over the C++**: no temporary-file rename dance (the
 //! encoder writes straight to the requested filename), no sidecar subtitle
@@ -29,45 +38,36 @@
 //!
 //! CPP-PARITY: src/task/src/export/export.h
 
-use crate::bridge;
-use crate::bridge::codec::OakCodecEncodingParams;
+use std::sync::Arc;
+
+use oakcodec::encoder::{create_from_params, Encoder};
+use oakcodec::encodingparams::EncodingParams as CodecEncodingParams;
+use oakcommon::videoparams::VideoParams as CommonVideoParams;
+use oakrender::texture::Texture;
+
 use crate::error::{Error, Result};
-use crate::ffi::taskhandle::cstr;
-use crate::handle::CHandle;
+use crate::nodeops::{self, NodeRef};
 use crate::render::{ForceParams, RenderTask, RenderTaskBehavior};
 use crate::task::{Task, TaskBehavior};
 use oakcore_rs::{Rational, TimeRange};
 
-/// An export task. Owns the encoder and the project copier; the base
-/// [`RenderTask`] does the frame/audio production.
+/// An export task. Owns the encoder; the base [`RenderTask`] does the
+/// frame/audio production.
 pub struct ExportTask {
 	/// The render base (itself a task).
 	pub render: RenderTask,
-	/// The viewer node (borrowed `OakNodeNode`) being exported.
-	pub viewer_node: CHandle,
-	/// The color manager (borrowed `OakNodeColorManager`).
-	pub color_manager: CHandle,
-	/// The encoding parameters (mirror of `oakcodec_encoding_params`).
+	/// The node being exported (footage or sequence).
+	pub viewer_node: NodeRef,
+	/// The encoding parameters (mirror of the codec-side params).
 	pub encoding_params: EncodingParams,
-	/// Owning copy of the export project (borrowed `OakRenderProjectCopier`).
-	/// Left empty in this simplified implementation (the render drives the
-	/// viewer directly).
-	pub copier: CHandle,
-	/// The opened encoder.
-	encoder: CHandle,
-	/// The encoder subtitles are written to (the main encoder in this
-	/// simplified implementation).
-	subtitle_encoder: CHandle,
-	/// Frame counter for progress reporting.
-	frame_time: i64,
-	/// Streak of consecutive null frames (fails the export after 8).
-	null_frame_streak: i32,
+	/// The opened encoder (direct oakcodec trait object).
+	encoder: Option<Arc<dyn Encoder>>,
 }
 
-/// Mirror of `oakcodec_encoding_params` in `include/codec/encoder.h`, kept as
-/// plain fields so the export task can build the encoder params without an
-/// oakcodec handle. Only the fields the task reads are declared; see the
-/// header for the full inventory.
+/// Mirror of the codec encoding params, kept as plain fields so the export
+/// task can be configured without a codec-side handle. Only the fields the
+/// task reads are declared; see `oakcodec::encodingparams::EncodingParams`
+/// for the full inventory.
 pub struct EncodingParams {
 	/// Output filename.
 	pub filename: String,
@@ -91,6 +91,10 @@ pub struct EncodingParams {
 	pub audio_enabled: bool,
 	/// Audio codec id.
 	pub audio_codec: i32,
+	/// Audio sample rate (Hz) the encoder opens with.
+	pub audio_sample_rate: i32,
+	/// ffmpeg-style channel layout mask the encoder opens with.
+	pub audio_channel_layout: u64,
 	/// Whether subtitles are exported.
 	pub subtitles_enabled: bool,
 	/// Export length numerator (seconds rational).
@@ -100,76 +104,35 @@ pub struct EncodingParams {
 }
 
 impl ExportTask {
-	/// Build a new export task from the viewer, color manager, and encoding
-	/// params.
-	pub fn new(viewer: CHandle, color_manager: CHandle, params: EncodingParams) -> ExportTask {
-		let label = node_label(viewer);
+	/// Build a new export task from the viewer node and the encoding
+	/// params. The old `viewer: CHandle` / `color_manager: CHandle`
+	/// signature is replaced by the domain viewer [`NodeRef`] (single-lib
+	/// unification; the color manager is dropped with the C ABI — see the
+	/// module docs).
+	pub fn new(viewer: NodeRef, params: EncodingParams) -> ExportTask {
+		let label = nodeops::node_label(&viewer.0, viewer.1);
 		let title = format!("Exporting \"{label}\"");
-		let base = Task::new(&title, CHandle::null());
-		let render = RenderTask::new(
-			base,
-			CHandle::null(),
-			CHandle::null(),
-			viewer,
-			ForceParams::default(),
-			None,
-		);
+		let base = Task::new(&title, None);
+		// The render base needs the viewer's frame rate to step one frame
+		// per video frame (the export range is in sequence/footage time);
+		// without it the frame loop falls back to a 1/1 timebase and
+		// exports one frame per second (observed in the facade's
+		// `it_export` run).
+		let video_params = nodeops::sequence_video_params(&viewer.0, viewer.1, 0)
+			.or_else(|| nodeops::footage_video_params(&viewer.0, viewer.1, 0));
+		let render = RenderTask::new(base, video_params, viewer.clone(), ForceParams::default(), None);
 		ExportTask {
 			render,
 			viewer_node: viewer,
-			color_manager,
 			encoding_params: params,
-			copier: CHandle::null(),
-			encoder: CHandle::null(),
-			subtitle_encoder: CHandle::null(),
-			frame_time: 0,
-			null_frame_streak: 0,
+			encoder: None,
 		}
 	}
 
-	/// Build the C-ABI encoding-params POD for the encoder from the Rust
+	/// Build the codec `EncodingParams` POD for the encoder from the Rust
 	/// mirror (zeroed fields = disabled/defaults).
-	fn build_codec_params(&self) -> OakCodecEncodingParams {
-		let mut params = OakCodecEncodingParams {
-			filename: [0; 1024],
-			format: 0,
-			video_enabled: 0,
-			video_codec: 0,
-			video_width: 0,
-			video_height: 0,
-			video_time_base_num: 0,
-			video_time_base_den: 0,
-			video_pixel_format: 0,
-			video_interlacing: 0,
-			video_pixel_aspect_num: 0,
-			video_pixel_aspect_den: 0,
-			video_bit_rate: 0,
-			video_min_bit_rate: 0,
-			video_max_bit_rate: 0,
-			video_buffer_size: 0,
-			video_threads: 0,
-			video_pix_fmt: [0; 64],
-			video_is_image_sequence: 0,
-			video_scaling_method: 0,
-			audio_enabled: 0,
-			audio_codec: 0,
-			audio_sample_rate: 0,
-			audio_channel_layout: 0,
-			audio_sample_format: 0,
-			audio_bit_rate: 0,
-			subtitles_enabled: 0,
-			subtitles_codec: 0,
-			subtitles_are_sidecar: 0,
-			subtitles_sidecar_format: 0,
-			color_transform_output: [0; 256],
-			export_length_num: 0,
-			export_length_den: 0,
-			has_custom_range: 0,
-			custom_range_in_num: 0,
-			custom_range_in_den: 0,
-			custom_range_out_num: 0,
-			custom_range_out_den: 0,
-		};
+	fn build_codec_params(&self) -> CodecEncodingParams {
+		let mut params = CodecEncodingParams::default();
 		let bytes = self.encoding_params.filename.as_bytes();
 		let n = bytes.len().min(1023);
 		params.filename[..n].copy_from_slice(&bytes[..n]);
@@ -180,9 +143,12 @@ impl ExportTask {
 		params.video_height = self.encoding_params.video_height;
 		params.video_time_base_num = self.encoding_params.video_time_base_num;
 		params.video_time_base_den = self.encoding_params.video_time_base_den;
-		params.video_pixel_format = self.encoding_params.video_pixel_format;
+		params.video_pixel_format =
+			crate::nodeops::pixel_format_from_code(self.encoding_params.video_pixel_format);
 		params.audio_enabled = self.encoding_params.audio_enabled as i32;
 		params.audio_codec = self.encoding_params.audio_codec;
+		params.audio_sample_rate = self.encoding_params.audio_sample_rate;
+		params.audio_channel_layout = self.encoding_params.audio_channel_layout;
 		params.subtitles_enabled = self.encoding_params.subtitles_enabled as i32;
 		params.export_length_num = self.encoding_params.export_length_num;
 		params.export_length_den = self.encoding_params.export_length_den;
@@ -190,17 +156,63 @@ impl ExportTask {
 	}
 
 	/// Resolve the export range: the custom range when set, otherwise the
-	/// whole sequence length.
+	/// whole viewer length (direct `oaknode` domain query; the deleted
+	/// `oaknode_sequence_get_length` stub is gone).
 	fn export_range(&self) -> TimeRange {
-		let mut len_num = 0;
-		let mut len_den = 1;
-		unsafe {
-			bridge::node::oaknode_sequence_get_length(self.viewer_node, &mut len_num, &mut len_den);
+		let length = nodeops::node_length(&self.viewer_node.0, self.viewer_node.1);
+		TimeRange::new(Rational::new(0, 1), length)
+	}
+
+	/// Copy a rendered `oakrender` CPU texture into an `oakcodec` frame
+	/// with the matching video params (row-wise copy — line sizes may
+	/// differ between the render and codec frame layouts).
+	fn to_codec_frame(texture: &Texture) -> Result<oakcodec::frame::Frame> {
+		let Texture::Cpu(frame) = texture else {
+			return Err(Error::Failed(
+				"Render produced a GPU texture; the CPU encoder path cannot consume it"
+					.to_string(),
+			));
+		};
+		let params = CommonVideoParams::new_basic(
+			frame.width,
+			frame.height,
+			oakcommon::ocioutils::PixelFormat::from_code(frame.format as i32),
+			4,
+			1,
+			1,
+			0,
+			1,
+		);
+		let mut out = oakcodec::frame::Frame::with_params(params);
+		out.set_timestamp(frame.timestamp);
+		out.allocate().map_err(|e| {
+			Error::Failed(format!("Failed to allocate encoder frame: {e:?}"))
+		})?;
+		let dst_stride = out.linesize_bytes() as usize;
+		let Some(dst) = out.data_mut() else {
+			return Err(Error::Failed(
+				"Encoder frame allocation produced no buffer".to_string(),
+			));
+		};
+		let src = frame.data.as_slice();
+		let src_stride = frame.linesize_bytes();
+		let row_bytes = std::cmp::min(src_stride, dst_stride)
+			.min(src.len())
+			.min(dst.len());
+		if src_stride == dst_stride && src.len() == dst.len() {
+			dst.copy_from_slice(src);
+		} else {
+			for y in 0..frame.height as usize {
+				let src_start = y * src_stride;
+				let dst_start = y * dst_stride;
+				if src_start + row_bytes > src.len() || dst_start + row_bytes > dst.len() {
+					break;
+				}
+				dst[dst_start..dst_start + row_bytes]
+					.copy_from_slice(&src[src_start..src_start + row_bytes]);
+			}
 		}
-		TimeRange::new(
-			Rational::new(0, 1),
-			Rational::new(len_num as i64, len_den as i64),
-		)
+		Ok(out)
 	}
 }
 
@@ -210,19 +222,18 @@ impl TaskBehavior for ExportTask {
 		self.render.base.set_cancel_atom(task.get_cancel_atom());
 
 		let codec_params = self.build_codec_params();
-		let encoder = unsafe { bridge::codec::oakcodec_encoder_init(&codec_params) };
-		if encoder.ctx.is_null() {
+		let Some(encoder) = create_from_params(&codec_params) else {
 			task.set_error("Failed to create encoder");
 			return Err(Error::Failed("Failed to create encoder".to_string()));
-		}
-		self.encoder = encoder;
+		};
+		self.encoder = Some(encoder.clone());
 
-		if unsafe { bridge::codec::oakcodec_encoder_open(encoder) } != 0 {
-			let err = encoder_error(encoder);
+		if let Err(e) = encoder.open() {
+			let err = encoder.get_error();
 			task.set_error(&format!("Failed to open file: {err}"));
+			let _ = e;
 			return Err(Error::Failed("Failed to open file".to_string()));
 		}
-		self.subtitle_encoder = encoder;
 
 		let export_range = self.export_range();
 
@@ -232,14 +243,14 @@ impl TaskBehavior for ExportTask {
 		if self.encoding_params.video_enabled {
 			force.force_width = self.encoding_params.video_width;
 			force.force_height = self.encoding_params.video_height;
-			force.force_format =
-				unsafe { bridge::codec::oakcodec_encoder_get_desired_pixel_format(encoder) };
+			force.force_format = encoder
+				.desired_pixel_format()
+				.map(|f| f as i32)
+				.unwrap_or(-1);
 			force.force_channel_count = 4; // RGBA
 		}
 		self.render.force_params = force;
 		self.render.set_render_inputs(
-			self.color_manager,
-			CHandle::null(),
 			0, // RenderMode::k_online
 			self.encoding_params.audio_enabled,
 			export_range,
@@ -256,10 +267,11 @@ impl TaskBehavior for ExportTask {
 		result?;
 
 		// Flush the encoder and surface any trailing error.
-		unsafe {
-			bridge::codec::oakcodec_encoder_flush(self.encoder);
+		if let Err(_) = encoder.flush() {
+			// Fall through to the error read below (the flush error is
+			// surfaced through `get_error()` like the C ABI did).
 		}
-		let err = encoder_error(self.encoder);
+		let err = encoder.get_error();
 		if !err.is_empty() {
 			task.set_error(&err);
 			return Err(Error::Failed("Encoder flush failed".to_string()));
@@ -270,94 +282,55 @@ impl TaskBehavior for ExportTask {
 }
 
 impl RenderTaskBehavior for ExportTask {
-	fn frame_downloaded(&mut self, task: &mut Task, frame: CHandle) -> Result<()> {
-		if frame.ctx.is_null() {
-			self.null_frame_streak += 1;
-			if self.null_frame_streak >= 8 {
-				task.set_error(&format!(
-					"Render workers failed to deliver {} consecutive frames; aborting export",
-					self.null_frame_streak
-				));
-				return Err(Error::Failed("Too many null frames".to_string()));
-			}
+	fn frame_downloaded(&mut self, task: &mut Task, frame: &Texture) -> Result<()> {
+		let Some(encoder) = &self.encoder else {
 			return Ok(());
-		}
-		self.null_frame_streak = 0;
-
-		if unsafe { bridge::codec::oakcodec_encoder_write_video(self.encoder, frame) } != 0 {
-			let err = encoder_error(self.encoder);
+		};
+		let codec_frame = Self::to_codec_frame(frame)?;
+		if let Err(_) = encoder.write_video(&codec_frame) {
+			let err = encoder.get_error();
 			task.set_error(&err);
-			return Err(Error::Failed("Failed to write video frame".to_string()));
+			return Err(Error::Failed("Failed to write frame".to_string()));
 		}
-
-		self.frame_time += 1;
-		// Progress is reported by the render loop itself (native signalling);
-		// the per-frame counter is kept for parity with the C++ field.
+		// Progress is reported by the render loop itself (native signalling).
 		Ok(())
 	}
 
-	fn audio_downloaded(&mut self, task: &mut Task, buffer: CHandle) -> Result<()> {
-		// Simplified: audio writing is not wired through the sample buffer
-		// in this rewrite (the encoder receives the interleaved samples from
-		// the codec side directly). The hook exists for parity with the C++
-		// virtual and always succeeds.
-		let _ = (task, buffer);
+	fn audio_downloaded(
+		&mut self,
+		task: &mut Task,
+		samples: &oakrender::ticket::AudioSamples,
+	) -> Result<()> {
+		let Some(encoder) = &self.encoder else {
+			return Ok(());
+		};
+		let frame_count = if samples.channel_count > 0 {
+			samples.samples.len() / samples.channel_count as usize
+		} else {
+			0
+		};
+		if let Err(_) = encoder.write_audio(&samples.samples, frame_count as i32) {
+			let err = encoder.get_error();
+			task.set_error(&err);
+			return Err(Error::Failed("Failed to write audio".to_string()));
+		}
 		Ok(())
 	}
 
 	fn encode_subtitle(&mut self, task: &mut Task, text: &str) -> Result<()> {
-		if !self.encoding_params.subtitles_enabled || self.subtitle_encoder.ctx.is_null() {
+		if !self.encoding_params.subtitles_enabled {
 			return Ok(());
 		}
+		let Some(encoder) = &self.encoder else {
+			return Ok(());
+		};
 		// The simplified path does not carry the subtitle block's in/out
 		// times; write with 0.0/0.0 (the encoder default interval).
-		if unsafe {
-			bridge::codec::oakcodec_encoder_write_subtitle(
-				self.subtitle_encoder,
-				cstr(text),
-				0.0,
-				0.0,
-			)
-		} != 0
-		{
-			let err = encoder_error(self.subtitle_encoder);
+		if let Err(_) = encoder.write_subtitle(text, 0.0, 0.0) {
+			let err = encoder.get_error();
 			task.set_error(&err);
 			return Err(Error::Failed("Failed to write subtitle".to_string()));
 		}
 		Ok(())
 	}
-}
-
-/// Two-stage read of the viewer node's label.
-fn node_label(node: CHandle) -> String {
-	let needed = unsafe { bridge::node::oaknode_node_get_label(node, std::ptr::null_mut(), 0) };
-	if needed <= 0 {
-		return String::new();
-	}
-	let mut buf = vec![0i8; needed as usize];
-	unsafe {
-		bridge::node::oaknode_node_get_label(node, buf.as_mut_ptr(), needed);
-	}
-	buf_to_string(&buf)
-}
-
-/// Read a NUL-terminated char buffer into a String (lossy).
-fn buf_to_string(buf: &[i8]) -> String {
-	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-	unsafe {
-		String::from_utf8_lossy(std::slice::from_raw_parts(buf.as_ptr() as *const u8, len))
-			.into_owned()
-	}
-}
-
-/// Two-stage read of the encoder's last error string.
-fn encoder_error(encoder: CHandle) -> String {
-	let mut buf = [0i8; 512];
-	let needed = unsafe {
-		bridge::codec::oakcodec_encoder_last_error(encoder, buf.as_mut_ptr(), buf.len() as i32)
-	};
-	if needed <= 0 {
-		return String::new();
-	}
-	buf_to_string(&buf)
 }

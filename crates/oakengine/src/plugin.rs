@@ -26,7 +26,7 @@
 use std::ffi::{c_char, c_int, c_void};
 use std::sync::{Mutex, OnceLock};
 
-use crate::bridge::plugin as p;
+use crate::stubs::plugin as p;
 use crate::error::Error;
 use crate::handle::guard;
 

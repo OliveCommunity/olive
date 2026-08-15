@@ -20,25 +20,27 @@
 //! - The **renderer** is a facade-owned box binding an output node
 //!   (usually a sequence, or any single node via
 //!   `oakengine_renderer_create_for_node`) to an output geometry; each
-//!   render call submits an oakrender ticket (`OakVideoTicketParams`),
-//!   waits for it and returns the produced frame (`OakCodecFrame` wrapped
-//!   in `OakEngineFrame`). Audio rendering submits the ticket but the
-//!   crate's samples path is unimplemented, so it fails with the reason
-//!   in `last_error`.
-//! - The **frame accessors** read the wrapped `OakCodecFrame`
+//!   render call submits an oakrender ticket (`OakVideoTicketParams`)
+//!   through the manager's real ticket arena, waits for it and returns
+//!   the produced frame (`oakrender::texture::Frame` wrapped in
+//!   `OakEngineFrame`). Audio rendering goes through the arena's audio
+//!   path (`oakrender::eval::render_audio_samples`) and returns the
+//!   interleaved samples in `OakEngineAudioBuffer`.
+//! - The **frame accessors** read the wrapped frame
 //!   (`channel_count` has no crate accessor and reports 0).
-//! - The **color processor** family maps onto
-//!   `oakrender_color_processor_*`; the engine's `oak_color_transform`
-//!   POD is converted into an oakcommon colortransform handle for
-//!   `create_transform`. The color-manager list queries, standalone
-//!   config handle and LUT directory/file library have no crate backing
-//!   and are documented stubs (see `deferred.rs`).
+//! - The **color processor** family maps onto the real
+//!   `oakrender::color::ColorProcessor`; the engine's
+//!   `oak_color_transform` POD is converted into an oakcommon
+//!   colortransform handle for `create_transform`. The color-manager
+//!   list queries, standalone config handle and LUT directory/file
+//!   library have no crate backing and are documented stubs (see
+//!   `deferred.rs`).
 
 use std::cell::RefCell;
 use std::ffi::{c_char, c_double, c_int, c_void};
 
-use crate::bridge::render as r;
-use crate::bridge::render::{OakRenderVideoParams, OakVideoTicketParams};
+use crate::stubs::render as r;
+use crate::pods::{OakRenderVideoParams, OakVideoTicketParams};
 use crate::error::{Error, Result};
 use crate::handle::{
 	box_handle, free_box, guard, guard_int, guard_ptr, guard_void, string_result, unbox, CHandle,
@@ -50,6 +52,33 @@ use crate::handle::{
 // Render manager / cacher
 // ---------------------------------------------------------------------------
 
+/// `oakengine_render_manager_init` — bring up the module's process-global
+/// render manager (0 on success; without it `render_frame` fails with NULL
+/// + last_error). The module's `OAKRENDER_E_STATE` (-70002) passes through
+/// when the manager is already initialized.
+#[no_mangle]
+pub extern "C" fn oakengine_render_manager_init() -> c_int {
+	guard(|| Error::from_module(unsafe { r::oakrender_manager_init() }))
+}
+
+/// `oakengine_render_manager_available` — 1 when the render manager is up,
+/// 0 otherwise.
+#[no_mangle]
+pub extern "C" fn oakengine_render_manager_available() -> c_int {
+	guard_int(|| Ok(unsafe { r::oakrender_manager_available() }))
+}
+
+/// `oakengine_render_manager_shutdown` — tear down the module's render
+/// manager (no-op when none is up; always 0, like
+/// `oakengine_audio_destroy_instance`).
+#[no_mangle]
+pub extern "C" fn oakengine_render_manager_shutdown() -> c_int {
+	guard_void(|| unsafe {
+		r::oakrender_manager_shutdown();
+	});
+	crate::error::OAKENGINE_OK
+}
+
 /// `oakengine_render_manager_set_aggressive_garbage_collection`.
 #[no_mangle]
 pub extern "C" fn oakengine_render_manager_set_aggressive_garbage_collection(
@@ -58,24 +87,45 @@ pub extern "C" fn oakengine_render_manager_set_aggressive_garbage_collection(
 	guard(|| Error::from_module(unsafe { r::oakrender_manager_set_aggressive_gc(aggressive) }))
 }
 
-/// `oakengine_render_manager_requested_backend` — **not backed** (the
-/// oakrender crate exposes the current backend, not the requested one).
-/// Returns 0 (k_open_gl).
+/// `oakengine_render_manager_requested_backend` — the backend the manager
+/// was asked for (0 = k_open_gl, 1 = k_metal, 2 = k_vulkan, 3 = k_cpu;
+/// -1 when the manager is down).
 #[no_mangle]
 pub extern "C" fn oakengine_render_manager_requested_backend() -> c_int {
-	0
+	guard_int(|| {
+		match oakrender::manager::RenderManager::global() {
+			Some(m) => Ok(match m.requested_backend {
+				oakrender::backend::BackendKind::Auto => 0,
+				oakrender::backend::BackendKind::Metal => 1,
+				oakrender::backend::BackendKind::Vulkan => 2,
+				oakrender::backend::BackendKind::Gl => 0,
+				oakrender::backend::BackendKind::Cpu => 3,
+			}),
+			None => Ok(-1),
+		}
+	})
 }
 
-/// `oakengine_render_manager_backend_to_string` — **not backed** (the
-/// crate enumerates backend ids, not enum→string). Returns
-/// OAKENGINE_E_FAILED.
+/// `oakengine_render_manager_backend_to_string` — the config name of the
+/// backend ordinal (E_INVALID out of range).
 #[no_mangle]
 pub unsafe extern "C" fn oakengine_render_manager_backend_to_string(
-	_backend: c_int,
-	_buf: *mut c_char,
-	_buf_size: c_int,
+	backend: c_int,
+	buf: *mut c_char,
+	buf_size: c_int,
 ) -> c_int {
-	crate::error::OAKENGINE_E_FAILED
+	guard_int(|| {
+		let kind = match backend {
+			0 => oakrender::backend::BackendKind::Gl,
+			1 => oakrender::backend::BackendKind::Metal,
+			2 => oakrender::backend::BackendKind::Vulkan,
+			3 => oakrender::backend::BackendKind::Cpu,
+			_ => return Err(Error::Invalid),
+		};
+		Ok(unsafe {
+			crate::handle::write_string(kind.to_config_string(), buf, buf_size)
+		})
+	})
 }
 
 /// `oakengine_render_cache_set_display_color_processor` — NULL clears.
@@ -171,19 +221,19 @@ unsafe fn renderer_mut(ptr: *mut OakEngineRenderer) -> Result<&'static mut Rende
 /// Build an oakcommon video-params handle for the renderer's geometry.
 unsafe fn make_video_params(b: &RendererBox) -> Result<CHandle> {
 	unsafe {
-		let params = crate::bridge::common::oakcommon_videoparams_init();
+		let params = crate::stubs::common::oakcommon_videoparams_init();
 		if params.is_null() {
 			return Err(Error::Failed("video params allocation failed".into()));
 		}
-		let mut rc = crate::bridge::common::oakcommon_videoparams_set_width(params, b.width);
+		let mut rc = crate::stubs::common::oakcommon_videoparams_set_width(params, b.width);
 		if rc == 0 {
-			rc = crate::bridge::common::oakcommon_videoparams_set_height(params, b.height);
+			rc = crate::stubs::common::oakcommon_videoparams_set_height(params, b.height);
 		}
 		if rc == 0 {
-			rc = crate::bridge::common::oakcommon_videoparams_set_format(params, b.pixel_format);
+			rc = crate::stubs::common::oakcommon_videoparams_set_format(params, b.pixel_format);
 		}
 		if rc == 0 {
-			rc = crate::bridge::common::oakcommon_videoparams_set_time_base(
+			rc = crate::stubs::common::oakcommon_videoparams_set_time_base(
 				params,
 				b.frame_rate_den,
 				b.frame_rate_num,
@@ -191,7 +241,7 @@ unsafe fn make_video_params(b: &RendererBox) -> Result<CHandle> {
 		}
 		if rc != 0 {
 			let mut p = params;
-			crate::bridge::common::oakcommon_videoparams_free(&mut p);
+			crate::stubs::common::oakcommon_videoparams_free(&mut p);
 			return Err(Error::Failed("video params setup failed".into()));
 		}
 		Ok(params)
@@ -254,7 +304,7 @@ unsafe fn make_renderer_box(
 unsafe fn resolve_footage(node: CHandle) -> Result<FootageSpec> {
 	unsafe {
 		let mut buf = [0 as c_char; 4096];
-		let rc = crate::bridge::node::oaknode_footage_filename(node, buf.as_mut_ptr(), buf.len() as c_int);
+		let rc = crate::stubs::node::oaknode_footage_filename(node, buf.as_mut_ptr(), buf.len() as c_int);
 		if rc < 0 {
 			return Err(Error::Failed("node is not footage".into()));
 		}
@@ -270,18 +320,18 @@ unsafe fn resolve_footage(node: CHandle) -> Result<FootageSpec> {
 /// graph node → its upstream footage.
 unsafe fn clip_media(clip: CHandle) -> Option<(String, c_int)> {
 	unsafe {
-		let node = crate::bridge::node::oaknode_block_as_node(clip);
+		let node = crate::stubs::node::oaknode_block_as_node(clip);
 		if node.is_null() {
 			return None;
 		}
 		let mut footage = CHandle::null();
-		if crate::bridge::node::oaknode_node_find_input_footage(node, &mut footage) != 0
+		if crate::stubs::node::oaknode_node_find_input_footage(node, &mut footage) != 0
 			|| footage.is_null()
 		{
 			return None;
 		}
 		let mut buf = [0 as c_char; 4096];
-		if crate::bridge::node::oaknode_footage_filename(
+		if crate::stubs::node::oaknode_footage_filename(
 			footage,
 			buf.as_mut_ptr(),
 			buf.len() as c_int,
@@ -302,7 +352,7 @@ unsafe fn build_audio_montage(
 	b: &RendererBox,
 	range: oakcore_rs::TimeRange,
 ) -> (Vec<MontagePod>, Vec<std::ffi::CString>) {
-	use crate::bridge::node as n;
+	use crate::stubs::node as n;
 	unsafe {
 		let mut pods = Vec::new();
 		let mut names = Vec::new();
@@ -374,7 +424,7 @@ unsafe fn build_audio_montage(
 }
 
 /// The `OakMontageClip` POD the render module's ticket reads.
-type MontagePod = oakrender::ffi::OakMontageClip;
+type MontagePod = crate::pods::MontagePod;
 
 /// Build the video montage for `b` at sequence time `time` (rational):
 /// every clip covering `time` on video tracks, ordered bottom-to-top
@@ -385,7 +435,7 @@ unsafe fn build_video_montage(
 	b: &RendererBox,
 	time: oakcore_rs::Rational,
 ) -> (Vec<MontagePod>, Vec<std::ffi::CString>) {
-	use crate::bridge::node as n;
+	use crate::stubs::node as n;
 	unsafe {
 		let mut pods = Vec::new();
 		let mut names = Vec::new();
@@ -618,7 +668,7 @@ pub unsafe extern "C" fn oakengine_renderer_render_frame(
 		let ticket = r::oakrender_ticket_render_frame(&params, None, std::ptr::null_mut());
 		let _ = (&keep_alive, &montage);
 		let mut vp = video_params;
-		crate::bridge::common::oakcommon_videoparams_free(&mut vp);
+		crate::stubs::common::oakcommon_videoparams_free(&mut vp);
 		if ticket.is_null() {
 			b.last_error = "render ticket submission failed".into();
 			return Ok(std::ptr::null_mut());
@@ -659,8 +709,8 @@ pub unsafe extern "C" fn oakengine_renderer_render_audio(
 		// the range) and the output format.
 		let (pods, names) = build_audio_montage(b, range);
 		let mut keep: Vec<std::ffi::CString> = names;
-		let params = crate::bridge::audio::oakcore_audioparams_create(48000, 0x3, 10); // packed F32 stereo
-		crate::bridge::audio::oakcore_audioparams_set_time_base(params, 1, 48000);
+		let params = crate::stubs::audio::oakcore_audioparams_create(48000, 0x3, 10); // packed F32 stereo
+		crate::stubs::audio::oakcore_audioparams_set_time_base(params, 1, 48000);
 		let ticket = r::oakrender_ticket_render_audio(
 			b.output_node,
 			start_num,
@@ -678,7 +728,7 @@ pub unsafe extern "C" fn oakengine_renderer_render_audio(
 			},
 			pods.len() as c_int,
 		);
-		crate::bridge::audio::oakcore_audioparams_free(params);
+		crate::stubs::audio::oakcore_audioparams_free(params);
 		if ticket.is_null() {
 			b.last_error = "audio render ticket submission failed".into();
 			return Ok(std::ptr::null_mut());
@@ -693,7 +743,7 @@ pub unsafe extern "C" fn oakengine_renderer_render_audio(
 			b.last_error = "audio render failed".into();
 			return Ok(std::ptr::null_mut());
 		}
-		let raw = samples as *const oakrender::ffi::OakAudioSamplesOut;
+		let raw = samples as *const crate::pods::OakAudioSamplesOut;
 		let boxed = AudioSamplesBox {
 			data: (*raw).data.clone(),
 			frame_count: (*raw).frame_count as i64,
@@ -1210,7 +1260,7 @@ pub unsafe extern "C" fn oakengine_color_processor_create(
 		}
 		let empty = crate::common::empty_cstr();
 		let ct = if (*dest).is_display != 0 {
-			crate::bridge::common::oakcommon_colortransform_init_display(
+			crate::stubs::common::oakcommon_colortransform_init_display(
 				if (*dest).output.is_null() {
 					empty
 				} else {
@@ -1228,7 +1278,7 @@ pub unsafe extern "C" fn oakengine_color_processor_create(
 				},
 			)
 		} else {
-			crate::bridge::common::oakcommon_colortransform_init_output(
+			crate::stubs::common::oakcommon_colortransform_init_output(
 				if (*dest).output.is_null() {
 					empty
 				} else {
@@ -1247,7 +1297,7 @@ pub unsafe extern "C" fn oakengine_color_processor_create(
 		};
 		let proc = r::oakrender_color_processor_create_transform(mgr_handle, input, ct, direction);
 		let mut ct_handle = ct;
-		crate::bridge::common::oakcommon_colortransform_free(&mut ct_handle);
+		crate::stubs::common::oakcommon_colortransform_free(&mut ct_handle);
 		if proc.is_null() {
 			LAST_COLOR_ERROR.with(|e| *e.borrow_mut() = "could not create color processor".into());
 			return Ok(std::ptr::null_mut());

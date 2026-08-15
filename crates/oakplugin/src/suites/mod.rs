@@ -171,13 +171,14 @@ pub(crate) fn current_output() -> Option<std::sync::Arc<crate::image::Image>> {
 /// 纹理（对应 C++ 里实例渲染期的 GL 状态；ofxGPURender.h
 /// "OpenGL Current Context" 一节要求宿主在 Render 期间持有 GL
 /// 上下文——本设计的约定是调用方（oakrender 的 PluginJob 路径）在
-/// 进入 render_job 前已把渲染器上下文置为 current，本表只传递句柄）。
-#[derive(Clone, Copy)]
+/// 进入 render_job 前已把渲染器上下文置为 current，本表只传递
+/// 渲染器引用与输出纹理值）。
+#[derive(Clone)]
 pub struct GlCtx {
-	/// 当前渲染器（oakrender 句柄）。
-	pub renderer: crate::bridge::render::RendererHandle,
+	/// 当前渲染器（oakrender 后端上下文）。
+	pub renderer: crate::render::Renderer,
 	/// 已附着的输出纹理（渲染目标；GL 模式下插件把结果画进它）。
-	pub output_texture: crate::bridge::render::TextureHandle,
+	pub output_texture: crate::render::Texture,
 	/// 当前 GL 纹理的实际像素深度（kOfxBitDepth* 静态串；Phase 2
 	/// 全链路 F32，由 render_gl 按插件 kOfxOpenGLPropPixelDepth 协商
 	/// 后填入——纹理句柄的 kOfxImageEffectPropPixelDepth 以它为准）。
@@ -197,7 +198,7 @@ pub fn set_gl_ctx(ctx: Option<GlCtx>) {
 /// 读取 GL 渲染上下文（无上下文返回 None——clipLoadTexture 在非
 /// GL 渲染期调用时按规范返回 kOfxStatErrMissingHostFeature）。
 pub(crate) fn gl_ctx() -> Option<GlCtx> {
-	GL_CTX.with(|c| *c.borrow())
+	GL_CTX.with(|c| c.borrow().clone())
 }
 
 /// 宿主进程身份（fetchSuite 的 version 检查用；= OFX API 1.5）。
@@ -307,16 +308,45 @@ mod tests {
 	#[test]
 	fn gl_ctx_tls() {
 		assert!(gl_ctx().is_none());
-		let renderer = crate::handle::CHandle::null();
-		let tex = crate::handle::CHandle::null();
+		// 最小 GpuContextLike 假实现（无 GPU 适配器需求）。
+		struct FakeGpu;
+		impl oakrender::backend::GpuContextLike for FakeGpu {
+			fn kind(&self) -> oakrender::backend::BackendKind {
+				oakrender::backend::BackendKind::Cpu
+			}
+			fn destroy_texture(&self, _token: u64) {}
+			fn upload(
+				&self,
+				_token: u64,
+				_frame: &oakrender::texture::Frame,
+			) -> oakrender::error::Result<()> {
+				Ok(())
+			}
+			fn download(&self, _token: u64) -> oakrender::error::Result<oakrender::texture::Frame> {
+				Ok(oakrender::texture::Frame::new())
+			}
+			fn blit(
+				&self,
+				_src: u64,
+				_dst: u64,
+				_processor: Option<&oakrender::color::ColorProcessor>,
+			) -> oakrender::error::Result<()> {
+				Ok(())
+			}
+		}
+		let renderer: crate::render::Renderer = std::sync::Arc::new(FakeGpu);
+		let tex = crate::render::Texture::dummy();
 		set_gl_ctx(Some(GlCtx {
 			renderer,
-			output_texture: tex,
+			output_texture: tex.clone(),
 			gl_pixel_depth: "OfxBitDepthFloat",
 		}));
 		let got = gl_ctx().unwrap();
-		assert!(got.renderer.is_null());
-		assert!(got.output_texture.is_null());
+		assert_eq!(
+			got.renderer.kind(),
+			oakrender::backend::BackendKind::Cpu
+		);
+		assert!(got.output_texture.is_dummy());
 		assert_eq!(got.gl_pixel_depth, "OfxBitDepthFloat");
 		set_gl_ctx(None);
 		assert!(gl_ctx().is_none());

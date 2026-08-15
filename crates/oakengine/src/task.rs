@@ -43,9 +43,9 @@ use std::ffi::{c_char, c_int, c_void};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::bridge::codec::{zeroed_encoding_params, EncodingParamsPOD};
-use crate::bridge::node as n;
-use crate::bridge::task as t;
+use crate::pods::{zeroed_encoding_params, EncodingParamsPOD};
+use crate::stubs::node as n;
+use crate::stubs::task as t;
 use crate::codec::OakEngineEncodingParams;
 use crate::common::OakVideoParamsPod;
 use crate::error::{Error, Result};
@@ -654,9 +654,9 @@ pub unsafe extern "C" fn oakengine_task_create_export(
 ///
 /// The oaktask crate's `convert_encoding_params` consumes exactly these
 /// fields (filename, format, video/audio/subtitle enables, codecs,
-/// dimensions, time base, pixel format, export length), so a POD carrying
-/// them is behaviorally identical to the original for the export task; all
-/// other POD fields stay zeroed.
+/// dimensions, time base, pixel format, audio rate/layout, export length),
+/// so a POD carrying them is behaviorally identical to the original for
+/// the export task; all other POD fields stay zeroed.
 fn export_params_pod(params: *const OakEngineEncodingParams) -> Result<EncodingParamsPOD> {
 	let mut pod = zeroed_encoding_params();
 
@@ -682,6 +682,24 @@ fn export_params_pod(params: *const OakEngineEncodingParams) -> Result<EncodingP
 	pod.video_codec = unsafe { crate::codec::oakengine_encoding_params_video_codec(params) };
 	pod.audio_enabled = unsafe { crate::codec::oakengine_encoding_params_audio_enabled(params) };
 	pod.audio_codec = unsafe { crate::codec::oakengine_encoding_params_audio_codec(params) };
+	// Audio rate/layout flow through so the encoder opens with the
+	// requested rate (the module export reads them from the POD). The
+	// sample format is NOT carried: the FFmpeg encoder always runs in the
+	// codec's native format and resamples (see `FFmpegEncoder::open`).
+	if pod.audio_enabled != 0 {
+		let mut sample_rate: c_int = 0;
+		let mut channel_layout: u64 = 0;
+		unsafe {
+			crate::codec::oakengine_encoding_params_get_audio_params(
+				params,
+				&mut sample_rate,
+				&mut channel_layout,
+				std::ptr::null_mut(),
+			);
+		}
+		pod.audio_sample_rate = sample_rate;
+		pod.audio_channel_layout = channel_layout;
+	}
 	pod.subtitles_enabled =
 		unsafe { crate::codec::oakengine_encoding_params_subtitles_enabled(params) };
 	unsafe {
@@ -703,7 +721,7 @@ fn export_params_pod(params: *const OakEngineEncodingParams) -> Result<EncodingP
 			pod.video_height = v.height;
 			pod.video_time_base_num = v.time_base_num;
 			pod.video_time_base_den = v.time_base_den;
-			pod.video_pixel_format = v.format;
+			pod.video_pixel_format = crate::pods::pixel_format_from_code(v.format);
 		}
 	}
 	Ok(pod)
@@ -863,5 +881,55 @@ pub unsafe extern "C" fn oakengine_task_save_get_project(
 			Some(p) => Ok(box_handle::<OakEngineProject>(p.addref())),
 			None => Ok(std::ptr::null_mut()),
 		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Load task results / event subscription
+// ---------------------------------------------------------------------------
+
+/// `oakengine_task_load_take_project` — take the project an interchange
+/// (OVE/OTIO) load task produced after a successful run; ownership moves to
+/// the caller (release with `oakengine_project_free`). NULL for a NULL
+/// task, a task that never ran, or a task that is not a load task.
+///
+/// The module's `oaktask_load_take_project` is the load-result getter the
+/// engine facade has no export for (the app's interchange-open path); it is
+/// wrapped here so the app can stay on the `oakengine_*` surface.
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_task_load_take_project(
+	task: *mut OakEngineTask,
+) -> *mut OakEngineProject {
+	guard_ptr(|| unsafe {
+		let h = unbox(task)?;
+		let project = t::oaktask_load_take_project(h);
+		if project.is_null() {
+			return Ok(std::ptr::null_mut());
+		}
+		Ok(box_handle::<OakEngineProject>(project))
+	})
+}
+
+/// `oakengine_task_subscribe` — register the task event callback invoked on
+/// the task's own thread (`OAKTASK_EVENT_STARTED`=0, `OAKTASK_EVENT_PROGRESS`=1,
+/// `OAKTASK_EVENT_FINISHED`=2); one subscription replaces the previous one.
+///
+/// Returns 0 on success; facade `OAKENGINE_E_INVALID` (-1) for a NULL task
+/// or NULL callback; module error codes pass through untranslated. The
+/// callback and `userdata` follow the module's `oaktask_event_fn` contract
+/// (the engine facade has no subscription export of its own; the app's
+/// export-progress path uses this wrapper).
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_task_subscribe(
+	task: *mut OakEngineTask,
+	cb: Option<t::OakTaskEventFn>,
+	userdata: *mut c_void,
+) -> i64 {
+	guard_i64(|| unsafe {
+		let h = unbox(task)?;
+		if cb.is_none() {
+			return Err(Error::Invalid);
+		}
+		Ok(t::oaktask_task_subscribe(h, cb, userdata))
 	})
 }

@@ -17,23 +17,26 @@
 //! Codec task submitter registration, mirroring
 //! `src/task/src/codecbridge.h`.
 //!
-//! Wires oakcodec's task-submit callback (`oakcodec_set_task_submit_cb`) so
-//! conform/proxy requests from the codec side land back in the task module.
-//! This is a two-module coupling; the actual callback signatures live in
-//! `crate::bridge::codec` mirroring `include/codec/task.h` verbatim.
+//! Wires oakcodec's task-submit callback (`oakcodec::task::set_task_submit_cb`)
+//! so conform/proxy requests from the codec side land back in the task
+//! module. The registration is a direct Rust closure (single-lib
+//! unification: the old extern-C submit callback is gone).
 //!
 //! CPP-PARITY: src/task/src/codecbridge.h
 
-use std::ffi::{c_char, c_int, c_void};
+use oakcodec::error::Error as CodecError;
+use oakcodec::proxymanager::ProxyManager;
+use oakcodec::task::{
+	set_task_submit_cb, task_submit_is_registered, TaskKind, TaskRequest, TaskSubmitFn,
+};
 
-use crate::bridge;
 use crate::conform::ConformTask;
 use crate::error::{Error, Result};
 use crate::proxy::{ProxyParams, ProxyTask};
 use crate::task::Task;
 
-/// Convert an oakcodec proxy-params POD into the Rust [`ProxyParams`].
-fn proxy_params_from_codec(params: &bridge::codec::OakCodecProxyParams) -> ProxyParams {
+/// Convert oakcodec proxy params into the Rust [`ProxyParams`].
+fn proxy_params_from_codec(params: &oakcodec::proxymanager::ProxyParams) -> ProxyParams {
 	ProxyParams {
 		width: params.width,
 		height: params.height,
@@ -41,72 +44,48 @@ fn proxy_params_from_codec(params: &bridge::codec::OakCodecProxyParams) -> Proxy
 		version: params.version,
 		crf: params.crf,
 		include_audio: params.include_audio != 0,
-		extension: unsafe { cstr_buf_to_string(&params.extension) },
-		preset: unsafe { cstr_buf_to_string(&params.preset) },
+		extension: cstr_buf_to_string(&params.extension),
+		preset: cstr_buf_to_string(&params.preset),
 	}
 }
 
-/// Read a NUL-terminated char array into a String (lossy).
-unsafe fn cstr_buf_to_string(buf: &[u8]) -> String {
+/// Read a NUL-terminated byte array into a String (lossy).
+fn cstr_buf_to_string(buf: &[u8]) -> String {
 	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-	let bytes = unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, len) };
-	String::from_utf8_lossy(bytes).into_owned()
+	String::from_utf8_lossy(&buf[..len]).into_owned()
 }
 
 /// The installed submit callback, mirroring `submit_codec_task` in
 /// codecbridge.cpp (interim contract: submission is synchronous).
-///
-/// # Safety
-/// `req` must be a valid `OakCodecTaskRequest` or null.
-unsafe extern "C" fn submit_codec_task(
-	req: *const bridge::codec::OakCodecTaskRequest,
-	_userdata: *mut c_void,
-) -> c_int {
-	if req.is_null() {
-		return bridge::codec::OAKCODEC_E_INVALID;
-	}
-	let request = unsafe { &*req };
-
+fn submit_codec_task(
+	req: &TaskRequest,
+	_userdata: *mut std::ffi::c_void,
+) -> oakcodec::error::Result<()> {
 	// Build the concrete task on an outer base so the behavior can be
 	// driven by `start()`; both share the cancellation atom.
-	match request.kind {
-		bridge::codec::OAKCODEC_TASK_CONFORM => {
-			let task = ConformTask::new(request);
+	match req.kind {
+		TaskKind::Conform => {
+			let task = ConformTask::new(req);
 			let atom = task.base.get_cancel_atom();
 			let title = task.base.title().to_string();
-			let mut outer = Task::new(&title, atom);
+			let mut outer = Task::new(&title, Some(atom));
 			outer.set_behavior(Box::new(task));
-			match outer.start() {
-				Ok(()) => 0,
-				Err(_) => bridge::codec::OAKCODEC_E_FAILED,
-			}
+			outer
+				.start()
+				.map_err(|_| CodecError::Failed("conform task failed".to_string()))
 		}
-		bridge::codec::OAKCODEC_TASK_PROXY => {
-			let mut codec_params = bridge::codec::OakCodecProxyParams {
-				width: 0,
-				height: 0,
-				divider: 0,
-				version: 0,
-				crf: 0,
-				include_audio: 0,
-				extension: [0; 32],
-				preset: [0; 32],
-			};
-			unsafe {
-				bridge::codec::oakcodec_proxy_params_default(&mut codec_params);
-			}
+		TaskKind::Proxy => {
+			let codec_params = ProxyManager::proxy_params_from_config();
 			let params = proxy_params_from_codec(&codec_params);
-			let task = ProxyTask::new(request, params);
+			let task = ProxyTask::new(req, params);
 			let atom = task.base.get_cancel_atom();
 			let title = task.base.title().to_string();
-			let mut outer = Task::new(&title, atom);
+			let mut outer = Task::new(&title, Some(atom));
 			outer.set_behavior(Box::new(task));
-			match outer.start() {
-				Ok(()) => 0,
-				Err(_) => bridge::codec::OAKCODEC_E_FAILED,
-			}
+			outer
+				.start()
+				.map_err(|_| CodecError::Failed("proxy task failed".to_string()))
 		}
-		_ => bridge::codec::OAKCODEC_E_INVALID,
 	}
 }
 
@@ -116,21 +95,18 @@ pub fn register_codec_task_submitter() -> Result<()> {
 	if is_codec_task_submitter_registered() {
 		return Err(Error::State);
 	}
-	unsafe {
-		bridge::codec::oakcodec_set_task_submit_cb(Some(submit_codec_task), std::ptr::null_mut());
-	}
+	let cb: &'static TaskSubmitFn = Box::leak(Box::new(submit_codec_task));
+	set_task_submit_cb(Some(cb), std::ptr::null_mut());
 	Ok(())
 }
 
 /// Remove the task-module submitter from oakcodec. Idempotent.
 pub fn unregister_codec_task_submitter() -> Result<()> {
-	unsafe {
-		bridge::codec::oakcodec_set_task_submit_cb(None, std::ptr::null_mut());
-	}
+	set_task_submit_cb(None, std::ptr::null_mut());
 	Ok(())
 }
 
 /// Whether a submitter is currently installed (queries oakcodec).
 pub fn is_codec_task_submitter_registered() -> bool {
-	unsafe { bridge::codec::oakcodec_task_submit_is_registered() != 0 }
+	task_submit_is_registered()
 }

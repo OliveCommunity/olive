@@ -117,20 +117,15 @@ impl SequenceBehavior {
 	}
 
 	/// Apply the default video/audio parameters (C++
-	/// `ViewerOutput::set_default_parameters()`; the config lookups use
-	/// oakcommon's defaults when the config module is absent).
+	/// `ViewerOutput::set_default_parameters()`; the config lookups read
+	/// the oakcommon config store directly).
 	pub fn set_default_parameters(&mut self) {
-		let width =
-			crate::bridge::common::config_get_int("DefaultSequenceWidth", "", 1920).unwrap_or(1920);
-		let height = crate::bridge::common::config_get_int("DefaultSequenceHeight", "", 1080)
-			.unwrap_or(1080);
-		let sample_rate =
-			crate::bridge::common::config_get_int("DefaultSequenceAudioFrequency", "", 48000)
-				.unwrap_or(48000);
-		let fps_num = crate::bridge::common::config_get_int("DefaultSequenceFrameRateNum", "", 30)
-			.unwrap_or(30);
-		let fps_den = crate::bridge::common::config_get_int("DefaultSequenceFrameRateDen", "", 1)
-			.unwrap_or(1);
+		let config = oakcommon::configstore::ConfigStore::instance();
+		let width = config.get_int(None, "DefaultSequenceWidth", 1920);
+		let height = config.get_int(None, "DefaultSequenceHeight", 1080);
+		let sample_rate = config.get_int(None, "DefaultSequenceAudioFrequency", 48000);
+		let fps_num = config.get_int(None, "DefaultSequenceFrameRateNum", 30);
+		let fps_den = config.get_int(None, "DefaultSequenceFrameRateDen", 1);
 
 		self.video_params = vec![VideoParams {
 			width,

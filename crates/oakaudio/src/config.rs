@@ -17,20 +17,16 @@
 //! The `audio_config` namespace from `src/audio/src/configbridge.*`:
 //! audio-specific configuration read through the oakcommon C ABI.
 
+use std::error::Error;
 use std::ffi::CString;
-
+use std::str::FromStr;
+use oakcommon::configstore::*;
 /// PortAudio output buffer size in frames; 0 = let PortAudio choose.
 ///
 /// `// CPP-PARITY: src/audio/src/configbridge.cpp:30`
 /// (`audio_config::output_buffer_size`).
 pub fn output_buffer_size() -> i32 {
-	unsafe {
-		crate::bridge::common::oakcommon_config_get_int(
-			std::ptr::null(),
-			c"AudioOutputBufferSize".as_ptr(),
-			0,
-		)
-	}
+	ConfigStore::instance().get_int(None, "AudioOutputBufferSize", 0)
 }
 
 /// Name of the configured audio device for `is_output_device`
@@ -39,35 +35,19 @@ pub fn output_buffer_size() -> i32 {
 /// `// CPP-PARITY: src/audio/src/configbridge.cpp:36`
 /// (`audio_config::device_name`): two-stage size query; `size <= 1`
 /// (absent or empty string) yields the empty string.
-pub fn device_name(is_output_device: bool) -> CString {
+pub fn device_name(is_output_device: bool) -> Result<String, Box<dyn Error>> {
 	let key = if is_output_device {
-		c"AudioOutput"
+		"AudioOutput"
 	} else {
-		c"AudioInput"
+		"AudioInput"
 	};
-	unsafe {
-		let size = crate::bridge::common::oakcommon_config_get(
-			std::ptr::null(),
-			key.as_ptr(),
-			std::ptr::null_mut(),
-			0,
-		);
-		if size <= 1 {
-			// Absent (OAKCOMMON_E_NOT_FOUND) or empty
-			return CString::default();
-		}
-		let mut buf = vec![0u8; size as usize];
-		if crate::bridge::common::oakcommon_config_get(
-			std::ptr::null(),
-			key.as_ptr(),
-			buf.as_mut_ptr() as *mut std::ffi::c_char,
-			size,
-		) < 0
-		{
-			return CString::default();
-		}
-		// The buffer is NUL-terminated by the callee.
-		CString::from_vec_with_nul(buf)
-			.unwrap_or_else(|e| CString::new(e.into_bytes()).unwrap_or_default())
+	let store = ConfigStore::instance();
+	let size = i32::from_str(store.get(None, key)?.as_str())?;
+	if size <= 1 {
+		// Absent (OAKCOMMON_E_NOT_FOUND) or empty
+		return Err(Box::new(crate::error::Error::NotFound));
 	}
+	let mut buf = vec![0u8; size as usize];
+	let name = store.get(None, key)?;
+	Ok(name)
 }

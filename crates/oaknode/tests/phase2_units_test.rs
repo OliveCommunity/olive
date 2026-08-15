@@ -357,55 +357,77 @@ fn serializer_value_codecs() {
 	);
 }
 
-/// bridge::undo: vtable commands + multi commands through the stubs.
-///
-/// Needs the `test-stubs` feature: the bridge resolves `oakundo_*`
-/// symbols via dlsym, which only resolves in the test binary when the
-/// in-crate stubs are compiled in.
-#[cfg(feature = "test-stubs")]
+/// oakundo `UndoCommand`: vtable commands + multi commands (direct Rust
+/// calls, single-lib unification).
 #[test]
 fn undo_command_roundtrip() {
+	use std::ffi::c_void;
 	use std::sync::atomic::{AtomicI32, Ordering};
 	use std::sync::Arc;
+	use oakundo::undocommand::{OakUndoCommandVtable, UndoCommand};
+
+	struct Closures {
+		redo: Box<dyn FnMut() + Send>,
+		undo: Box<dyn FnMut() + Send>,
+	}
+
+	unsafe extern "C" fn redo_thunk(ud: *mut c_void) {
+		let c = unsafe { &mut *(ud as *mut Closures) };
+		(c.redo)();
+	}
+	unsafe extern "C" fn undo_thunk(ud: *mut c_void) {
+		let c = unsafe { &mut *(ud as *mut Closures) };
+		(c.undo)();
+	}
+	unsafe extern "C" fn free_thunk(ud: *mut c_void) {
+		if !ud.is_null() {
+			unsafe { drop(Box::from_raw(ud as *mut Closures)) };
+		}
+	}
+
+	fn from_closures(
+		redo: impl FnMut() + Send + 'static,
+		undo: impl FnMut() + Send + 'static,
+	) -> UndoCommand {
+		let ud = Box::into_raw(Box::new(Closures {
+			redo: Box::new(redo),
+			undo: Box::new(undo),
+		}));
+		UndoCommand::from_vtable(
+			OakUndoCommandVtable {
+				redo: Some(redo_thunk),
+				undo: Some(undo_thunk),
+				free_fn: Some(free_thunk),
+			},
+			ud as *mut c_void,
+		)
+	}
 
 	let value = Arc::new(AtomicI32::new(0));
 	let value_redo = value.clone();
 	let value_undo = value.clone();
 	let value_check = value.clone();
-	let mut cmd = oaknode::bridge::undo::command_from_closures(
+	let mut cmd = from_closures(
 		move || {
 			value_redo.fetch_add(1, Ordering::SeqCst);
 		},
 		move || {
 			value_undo.fetch_sub(1, Ordering::SeqCst);
 		},
-	)
-	.expect("undo stub available");
+	);
 
 	// redo applies, undo reverts; redo_now is idempotent.
-	assert_eq!(
-		oaknode::bridge::undo::command_redo_now(cmd.clone()).unwrap(),
-		0
-	);
+	cmd.redo_now();
 	assert_eq!(value_check.load(Ordering::SeqCst), 1);
-	assert_eq!(
-		oaknode::bridge::undo::command_redo_now(cmd.clone()).unwrap(),
-		0
-	);
+	cmd.redo_now();
 	assert_eq!(
 		value_check.load(Ordering::SeqCst),
 		1,
 		"redo no-ops when done"
 	);
-	assert_eq!(
-		oaknode::bridge::undo::command_undo_now(cmd.clone()).unwrap(),
-		0
-	);
+	cmd.undo_now();
 	assert_eq!(value_check.load(Ordering::SeqCst), 0);
-	assert_eq!(
-		oaknode::bridge::undo::command_undo_now(cmd.clone()).unwrap(),
-		0
-	);
+	cmd.undo_now();
 	assert_eq!(
 		value_check.load(Ordering::SeqCst),
 		0,
@@ -413,8 +435,8 @@ fn undo_command_roundtrip() {
 	);
 
 	// Multi command batches children.
-	let mut multi = oaknode::bridge::undo::command_init_multi().unwrap();
-	let mut child = oaknode::bridge::undo::command_from_closures(
+	let mut multi = UndoCommand::multi();
+	let child = from_closures(
 		{
 			let value = value_check.clone();
 			move || {
@@ -427,26 +449,12 @@ fn undo_command_roundtrip() {
 				value.fetch_sub(1, Ordering::SeqCst);
 			}
 		},
-	)
-	.unwrap();
-	assert_eq!(
-		oaknode::bridge::undo::command_multi_add_child(multi.clone(), child.clone()).unwrap(),
-		0
 	);
-	assert_eq!(
-		oaknode::bridge::undo::command_redo_now(multi.clone()).unwrap(),
-		0
-	);
+	multi.multi_add_child(child);
+	multi.redo_now();
 	assert_eq!(value_check.load(Ordering::SeqCst), 1);
-	assert_eq!(
-		oaknode::bridge::undo::command_undo_now(multi.clone()).unwrap(),
-		0
-	);
+	multi.undo_now();
 	assert_eq!(value_check.load(Ordering::SeqCst), 0);
-
-	oaknode::bridge::undo::command_free(&mut cmd);
-	oaknode::bridge::undo::command_free(&mut multi);
-	oaknode::bridge::undo::command_free(&mut child);
 }
 
 /// track.rs: branch coverage the ffi contract tests leave open —

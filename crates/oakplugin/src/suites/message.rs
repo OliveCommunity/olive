@@ -23,10 +23,8 @@
 //! 到本模块的 `oak_ofx_message_impl`。
 //!
 //! 消息出口 = facade 注册的 `oakplugin_message_fn`
-//! （include/plugin/host.h）。注意：骨架 ffi.rs 声明的 `MessageFn`
-//! 与头文件不符（头文件是 `(type, message, userdata)`，骨架是
-//! `(userdata, level, message)`）——做 ffi.rs 时以头文件为准修正。
-//! 本模块按头文件契约建模。
+//! （include/plugin/host.h）。本模块按头文件契约建模。
+//! （原 C ABI 出口层已随单库化删除；注册点由 facade 直接调用。）
 
 use std::ffi::{c_char, c_int, c_void, CStr};
 
@@ -37,14 +35,12 @@ use crate::suites::status;
 pub(crate) type MessageHandler =
 	unsafe extern "C" fn(*const c_char, *const c_char, *mut c_void) -> c_int;
 
-/// 消息出口注册表（ffi 层经 `oakplugin_host_set_message_handler`
-/// 写入，suite 读；userdata 以 usize 存，避免裸指针破坏 static 的
-/// Send/Sync 推导）。
+/// 消息出口注册表（facade 写入，suite 读；userdata 以 usize 存，
+/// 避免裸指针破坏 static 的 Send/Sync 推导）。
 static HANDLER: std::sync::Mutex<(Option<MessageHandler>, usize)> =
 	std::sync::Mutex::new((None, 0));
 
-/// 注册/注销消息出口（ffi 层 `oakplugin_host_set_message_handler`
-/// 调用；公开：测试直接注入捕获器）。
+/// 注册/注销消息出口（facade 调用；公开：测试直接注入捕获器）。
 pub fn set_handler(f: Option<MessageHandler>, userdata: *mut c_void) {
 	let mut h = HANDLER.lock().unwrap_or_else(|e| e.into_inner());
 	*h = (f, userdata as usize);

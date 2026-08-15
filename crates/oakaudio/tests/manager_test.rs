@@ -14,171 +14,96 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! AudioManager contract tests (manager.rs), through the C ABI. The
-//! manager is a process-wide singleton, so every test holds the shared
+//! AudioManager contract tests (manager.rs), calling the public Rust API.
+//! The manager is a process-wide singleton, so every test holds the shared
 //! `MANAGER_LOCK`.
 
 mod common;
 
-use std::ffi::c_char;
+use common::lock_manager;
+use oakcodec::encodingparams::EncodingParams;
+use oakaudio::error::{Error, OAKAUDIO_E_INVALID};
+use oakaudio::manager::instance;
+use oakaudio::params::{AudioParams, SampleFormat};
 
-use common::MANAGER_LOCK;
-use oakaudio::bridge::codec::EncodingParams;
-use oakaudio::error::{OAKAUDIO_E_FAILED, OAKAUDIO_E_INVALID, OAKAUDIO_OK};
-use oakaudio::ffi::manager::{
-	oakaudio_debug_alive_count, oakaudio_manager_clear_buffered_output,
-	oakaudio_manager_create_instance, oakaudio_manager_destroy_instance,
-	oakaudio_manager_find_config_device_by_name_s, oakaudio_manager_find_device_by_name_s,
-	oakaudio_manager_free, oakaudio_manager_get_input_device, oakaudio_manager_get_output_device,
-	oakaudio_manager_hard_reset, oakaudio_manager_instance, oakaudio_manager_push_to_output,
-	oakaudio_manager_reset_output_clock, oakaudio_manager_seconds,
-	oakaudio_manager_set_input_device, oakaudio_manager_set_output_device,
-	oakaudio_manager_output_levels, oakaudio_manager_set_output_notify_interval,
-	oakaudio_manager_start_recording,
-	oakaudio_manager_stop_output, oakaudio_manager_stop_recording,
-};
-
-fn instance() -> oakaudio::handle::CHandle {
-	unsafe { oakaudio_manager_instance() }
-}
-
-/// Lock the manager singleton for a test. The manager state persists across
-/// tests (the `OnceLock` cannot be reset), so a panicked test must not
-/// poison the lock for the rest of the binary.
-fn lock() -> std::sync::MutexGuard<'static, ()> {
-	MANAGER_LOCK.lock().unwrap_or_else(|p| p.into_inner())
-}
-
-fn encoding_params() -> EncodingParams {
-	let mut filename = [0u8; 1024];
-	for (i, b) in b"oakaudio_test.wav\0".iter().enumerate() {
-		filename[i] = *b;
-	}
-	EncodingParams {
-		filename,
-		format: 0,
-		video_enabled: 0,
-		video_codec: 0,
-		video_width: 0,
-		video_height: 0,
-		video_time_base_num: 0,
-		video_time_base_den: 0,
-		video_pixel_format: 0,
-		video_interlacing: 0,
-		video_pixel_aspect_num: 0,
-		video_pixel_aspect_den: 0,
-		video_bit_rate: 0,
-		video_min_bit_rate: 0,
-		video_max_bit_rate: 0,
-		video_buffer_size: 0,
-		video_threads: 0,
-		video_pix_fmt: [0u8; 64],
-		video_is_image_sequence: 0,
-		video_scaling_method: 0,
-		audio_enabled: 1,
-		audio_codec: 13, // PCM_S16LE (the .wav recording codec)
-		audio_sample_rate: 48000,
-		audio_channel_layout: 3,
-		audio_sample_format: 8,
-		audio_bit_rate: 128000,
-		subtitles_enabled: 0,
-		subtitles_codec: 0,
-		subtitles_are_sidecar: 0,
-		subtitles_sidecar_format: 0,
-		color_transform_output: [0u8; 256],
-		export_length_num: 0,
-		export_length_den: 0,
-		has_custom_range: 0,
-		custom_range_in_num: 0,
-		custom_range_in_den: 0,
-		custom_range_out_num: 0,
-		custom_range_out_den: 0,
+/// Audio params for the tests: stereo f32 at 48 kHz.
+fn stereo() -> AudioParams {
+	AudioParams {
+		sample_rate: 48000,
+		channel_layout: 0x3,
+		format: SampleFormat::F32,
 	}
 }
 
-/// create_instance/destroy_instance toggle the singleton; instance() returns
-/// a valid borrowed handle between them and NULL after destroy.
+/// A WAV recording config (format 7 = WAV).
+fn wav_params(filename: &str) -> EncodingParams {
+	let mut params = EncodingParams::default();
+	params.format = 7;
+	params.audio_enabled = 1;
+	params.audio_codec = 13; // PCM_S16LE
+	params.audio_sample_rate = 48000;
+	params.audio_channel_layout = 0x3;
+	params.audio_sample_format = SampleFormat::S16;
+	params.audio_bit_rate = 128000;
+	let bytes = filename.as_bytes();
+	params.filename[..bytes.len()].copy_from_slice(bytes);
+	params
+}
+
+/// create_instance/destroy_instance toggle the singleton; instance()
+/// returns a live guard between them and None after destroy.
 #[test]
 fn singleton_lifecycle() {
-	let _guard = lock();
-	unsafe { oakaudio_manager_destroy_instance() };
-	assert!(instance().ctx.is_null());
+	let _guard = lock_manager();
+	oakaudio::manager::ManagerInner::destroy_instance();
+	assert!(instance().is_none());
 
-	unsafe { oakaudio_manager_create_instance() };
-	let m = instance();
-	assert!(!m.ctx.is_null());
-	unsafe { oakaudio_manager_free(&mut m.clone()) };
+	oakaudio::manager::ManagerInner::create_instance().unwrap();
+	assert!(instance().is_some());
 
-	unsafe { oakaudio_manager_destroy_instance() };
-	assert!(instance().ctx.is_null());
-	unsafe { oakaudio_manager_create_instance() };
-	assert!(!instance().ctx.is_null());
+	oakaudio::manager::ManagerInner::destroy_instance();
+	assert!(instance().is_none());
+	oakaudio::manager::ManagerInner::create_instance().unwrap();
+	assert!(instance().is_some());
+}
+
+/// A fresh singleton for a test: destroy resets the playback state
+/// (`output_started`, buffered params) that earlier tests in this binary
+/// may have left behind.
+fn fresh_instance() {
+	oakaudio::manager::ManagerInner::destroy_instance();
+	oakaudio::manager::ManagerInner::create_instance().unwrap();
 }
 
 /// push_to_output accepts raw interleaved bytes and starts the virtual
-/// playback clock; without a device it fails with a message in error_buf.
+/// playback clock; without a device the push still succeeds and keeps the
+/// samples buffered (unavailable devices play silence instead of failing).
 ///
-/// The virtual device never consumes frames (PortAudio is not bridged), so
-/// the clock reads 0.0 rather than advancing.
+/// The clock reads 0.0 after the push starts; a real audio device may have
+/// consumed a few frames by the time the assertion runs, so the bound is
+/// `>= 0` rather than exact (the callback-advances-clock behavior is pinned
+/// by manager.rs' own unit test).
 #[test]
-fn push_output_advances_clock() {
-	let _guard = lock();
-	unsafe { oakaudio_manager_create_instance() };
-	let m = instance();
+fn push_output_starts_clock() {
+	let _guard = lock_manager();
+	fresh_instance();
+	let mut m = instance().unwrap();
 
 	// No stream yet: seconds() reports -1.
 	let mut secs = 0.0f64;
-	assert_eq!(
-		unsafe { oakaudio_manager_seconds(m, &mut secs) },
-		OAKAUDIO_OK
-	);
+	m.seconds(&mut secs).unwrap();
 	assert_eq!(secs, -1.0);
 
-	// M12 P1: with no explicit device the push still succeeds — the
-	// samples buffer for the default output device (unavailable devices
-	// keep playback silent instead of failing the push).
-	assert_eq!(
-		unsafe { oakaudio_manager_set_output_device(m, -1) },
-		OAKAUDIO_OK
-	);
+	// With no explicit device the push still succeeds (M12 P1).
+	m.set_output_device(-1).unwrap();
 	let samples = vec![0u8; 480 * 2 * 4];
-	let r = unsafe {
-		oakaudio_manager_push_to_output(
-			m,
-			48000,
-			3,
-			4,
-			samples.as_ptr() as *const c_char,
-			samples.len() as i64,
-			std::ptr::null_mut(),
-			0,
-		)
-	};
-	assert_eq!(r, OAKAUDIO_OK);
+	m.push_to_output(stereo(), &samples, &mut vec![0u8; 64]).unwrap();
 
 	// After selecting a device the push succeeds and the clock starts at 0.
-	assert_eq!(
-		unsafe { oakaudio_manager_set_output_device(m, 0) },
-		OAKAUDIO_OK
-	);
-	let mut err = [0 as c_char; 64];
-	let r = unsafe {
-		oakaudio_manager_push_to_output(
-			m,
-			48000,
-			3,
-			4,
-			samples.as_ptr() as *const c_char,
-			samples.len() as i64,
-			err.as_mut_ptr(),
-			err.len() as i32,
-		)
-	};
-	assert_eq!(r, OAKAUDIO_OK);
-	unsafe { oakaudio_manager_seconds(m, &mut secs) };
-	assert_eq!(secs, 0.0);
-
-	unsafe { oakaudio_manager_destroy_instance() };
+	m.set_output_device(0).unwrap();
+	m.push_to_output(stereo(), &samples, &mut vec![0u8; 64]).unwrap();
+	m.seconds(&mut secs).unwrap();
+	assert!(secs >= 0.0, "clock started (got {secs})");
 }
 
 /// set/get output & input device: getters report a device, setters persist
@@ -186,183 +111,102 @@ fn push_output_advances_clock() {
 /// clears buffers).
 #[test]
 fn device_selection_roundtrip() {
-	let _guard = lock();
-	unsafe { oakaudio_manager_create_instance() };
-	let m = instance();
+	let _guard = lock_manager();
+	fresh_instance();
+	let mut m = instance().unwrap();
 
-	assert_eq!(
-		unsafe { oakaudio_manager_set_output_device(m, 42) },
-		OAKAUDIO_OK
-	);
-	assert_eq!(unsafe { oakaudio_manager_get_output_device(m) }, 42);
-	assert_eq!(
-		unsafe { oakaudio_manager_set_input_device(m, 7) },
-		OAKAUDIO_OK
-	);
-	assert_eq!(unsafe { oakaudio_manager_get_input_device(m) }, 7);
+	m.set_output_device(42).unwrap();
+	assert_eq!(m.get_output_device().unwrap(), 42);
+	m.set_input_device(7).unwrap();
+	assert_eq!(m.get_input_device().unwrap(), 7);
 
-	assert_eq!(unsafe { oakaudio_manager_hard_reset(m) }, OAKAUDIO_OK);
-	assert_eq!(unsafe { oakaudio_manager_get_output_device(m) }, 42);
-	assert_eq!(unsafe { oakaudio_manager_get_input_device(m) }, 7);
+	m.hard_reset().unwrap();
+	assert_eq!(m.get_output_device().unwrap(), 42);
+	assert_eq!(m.get_input_device().unwrap(), 7);
 
 	// The stream stopped, so the clock is back at -1.
 	let mut secs = 0.0f64;
-	unsafe { oakaudio_manager_seconds(m, &mut secs) };
+	m.seconds(&mut secs).unwrap();
 	assert_eq!(secs, -1.0);
-
-	unsafe { oakaudio_manager_destroy_instance() };
 }
 
-/// set_output_notify_interval stores the interval; clear_buffered_output
-/// drops queued bytes, stop_output halts the stream, and reset_output_clock
-/// restarts the counter.
+/// set_output_notify_interval stores the interval (negative is rejected);
+/// clear_buffered_output drops queued bytes, stop_output halts the stream,
+/// and reset_output_clock restarts the counter.
 #[test]
 fn output_control_flags() {
-	let _guard = lock();
-	unsafe { oakaudio_manager_create_instance() };
-	let m = instance();
+	let _guard = lock_manager();
+	fresh_instance();
+	let mut m = instance().unwrap();
 
+	m.set_output_notify_interval(1024).unwrap();
+	let err = m.set_output_notify_interval(-1).unwrap_err();
 	assert_eq!(
-		unsafe { oakaudio_manager_set_output_notify_interval(m, 1024) },
-		OAKAUDIO_OK
+		err.downcast_ref::<oakaudio::error::Error>().map(|e| e.code()),
+		Some(OAKAUDIO_E_INVALID)
 	);
-	assert_eq!(
-		unsafe { oakaudio_manager_set_output_notify_interval(m, -1) },
-		OAKAUDIO_E_INVALID
-	);
-	assert_eq!(
-		unsafe { oakaudio_manager_clear_buffered_output(m) },
-		OAKAUDIO_OK
-	);
-	assert_eq!(
-		unsafe { oakaudio_manager_reset_output_clock(m) },
-		OAKAUDIO_OK
-	);
+	m.clear_buffered_output().unwrap();
+	m.reset_output_clock().unwrap();
 
 	// Push starts the stream, then stop_output halts it (clock -> -1).
-	unsafe { oakaudio_manager_set_output_device(m, 0) };
+	m.set_output_device(0).unwrap();
 	let samples = vec![0u8; 480 * 2 * 4];
-	assert_eq!(
-		unsafe {
-			oakaudio_manager_push_to_output(
-				m,
-				48000,
-				3,
-				4,
-				samples.as_ptr() as *const c_char,
-				samples.len() as i64,
-				std::ptr::null_mut(),
-				0,
-			)
-		},
-		OAKAUDIO_OK
-	);
-	assert_eq!(unsafe { oakaudio_manager_stop_output(m) }, OAKAUDIO_OK);
+	m.push_to_output(stereo(), &samples, &mut vec![0u8; 64]).unwrap();
+	m.stop_output().unwrap();
 	let mut secs = 1.0f64;
-	unsafe { oakaudio_manager_seconds(m, &mut secs) };
+	m.seconds(&mut secs).unwrap();
 	assert_eq!(secs, -1.0);
-
-	unsafe { oakaudio_manager_destroy_instance() };
 }
 
-/// start_recording validates its parameters: NULL params or a disabled
-/// audio track return OAKAUDIO_E_INVALID with an error string. The full
-/// encoder-open success path (oakcodec writes a real file via ffmpeg) is
-/// an end-to-end concern covered by the codec crate's own tests; with the
-/// real oakcodec linked, `start_recording` either opens the encoder
-/// (OAKAUDIO_OK, environment-dependent) or reports the encoder's
-/// last-error string — both are correct manager behavior, so this test
-/// pins the manager's own validation only.
+/// start_recording validates its state: with no input device it fails with
+/// a reason; with a device the encoder open either succeeds (OAKAUDIO_OK,
+/// environment-dependent) or reports the encoder's diagnostic — both are
+/// correct manager behavior, so the test pins the manager's own handling
+/// only.
 #[test]
 fn recording_start_stop() {
-	let _guard = lock();
-	unsafe { oakaudio_manager_create_instance() };
-	let m = instance();
-	unsafe { oakaudio_manager_set_input_device(m, 0) };
+	let _guard = lock_manager();
+	fresh_instance();
+	let mut m = instance().unwrap();
 
-	let mut err = [0 as c_char; 64];
-	let params = encoding_params();
-	// With a real encoder, the attempt must at least reach the encoder
-	// (a failure must surface a diagnostic in error_buf, not crash).
-	let r =
-		unsafe { oakaudio_manager_start_recording(m, &params, err.as_mut_ptr(), err.len() as i32) };
-	if r != 0 {
-		assert!(
-			err.iter().any(|&b| b != 0),
-			"failed start_recording must report a reason"
-		);
-		let _ = std::fs::remove_file("oakaudio_test.wav");
-	} else {
-		assert_eq!(unsafe { oakaudio_manager_stop_recording(m) }, OAKAUDIO_OK);
-		// The real encoder writes the output file during open; clean it up.
-		let _ = std::fs::remove_file("oakaudio_test.wav");
+	// No input device -> explainable failure, no crash.
+	m.set_input_device(-1).unwrap();
+	assert!(m.start_recording(&wav_params("unused.wav"), &mut vec![0u8; 64]).is_err());
+
+	m.set_input_device(0).unwrap();
+	let path = std::env::temp_dir().join(format!("oakaudio_rec_{}.wav", std::process::id()));
+	let filename = path.to_str().unwrap();
+	let mut err = vec![0u8; 256];
+	match m.start_recording(&wav_params(filename), &mut err) {
+		Ok(()) => {
+			assert!(m.stop_recording().is_ok());
+		}
+		Err(e) => {
+			assert!(!e.to_string().is_empty(), "failure must carry a reason");
+		}
 	}
-
-	// NULL params is invalid and reports the reason in error_buf.
-	let mut err = [0 as c_char; 64];
-	let r = unsafe {
-		oakaudio_manager_start_recording(m, std::ptr::null(), err.as_mut_ptr(), err.len() as i32)
-	};
-	assert_eq!(r, OAKAUDIO_E_INVALID);
-	assert!(err.iter().any(|&b| b != 0));
-
-	// A disabled audio track is likewise invalid.
-	let mut disabled = encoding_params();
-	disabled.audio_enabled = 0;
-	let mut err = [0 as c_char; 64];
-	let r = unsafe {
-		oakaudio_manager_start_recording(m, &disabled, err.as_mut_ptr(), err.len() as i32)
-	};
-	assert_eq!(r, OAKAUDIO_E_INVALID);
-	assert!(err.iter().any(|&b| b != 0));
-
-	unsafe { oakaudio_manager_destroy_instance() };
+	let _ = std::fs::remove_file(path);
 }
 
-/// Device enumeration is not bridged: every name/config lookup falls back to
-/// paNoDevice (-1); a NULL name is OAKAUDIO_E_INVALID. The config-backed
-/// buffer size/name helpers degrade to their defaults.
+/// Config defaults are read from the (empty) oakcommon store: buffer size
+/// falls back to 0 and device names are absent.
 #[test]
-fn device_name_lookup() {
-	let _guard = lock();
-
-	assert_eq!(
-		unsafe { oakaudio_manager_find_device_by_name_s(std::ptr::null(), 1) },
-		OAKAUDIO_E_INVALID
-	);
-	let name = c"anything";
-	assert_eq!(
-		unsafe { oakaudio_manager_find_device_by_name_s(name.as_ptr(), 1) },
-		-1
-	);
-	assert_eq!(
-		unsafe { oakaudio_manager_find_config_device_by_name_s(1) },
-		-1
-	);
-	assert_eq!(
-		unsafe { oakaudio_manager_find_config_device_by_name_s(0) },
-		-1
-	);
-
-	// config::output_buffer_size() reads its default (0) from the stub;
-	// device_name degrades to the empty string.
+fn config_defaults() {
 	assert_eq!(oakaudio::config::output_buffer_size(), 0);
-	assert!(oakaudio::config::device_name(true).as_c_str().is_empty());
-	assert!(oakaudio::config::device_name(false).as_c_str().is_empty());
+	assert!(oakaudio::config::device_name(true).is_err(), "no configured output device");
+	assert!(oakaudio::config::device_name(false).is_err(), "no configured input device");
 }
 
-/// PreviewAudioDevice pull-side plumbing (read/notify callback/clock) that
-/// the manager path only touches indirectly.
+/// PreviewAudioDevice pull-side plumbing (read/notify callback/clock).
 #[test]
 fn preview_device_pull_side() {
-	use oakaudio::params::AudioParams;
 	use oakaudio::previewdevice::PreviewAudioDevice;
 
 	let mut dev = PreviewAudioDevice::new();
 	dev.set_params(AudioParams {
 		sample_rate: 48000,
 		channel_layout: 3,
-		format: oakaudio::params::SampleFormat::F32,
+		format: SampleFormat::F32,
 	});
 	assert_eq!(dev.bytes_per_frame(), 8);
 
@@ -389,85 +233,65 @@ fn preview_device_pull_side() {
 	assert_eq!(dev.output_frames_consumed(), 0);
 }
 
-/// free(NULL)/free(empty) are no-ops on the manager handle.
-#[test]
-fn free_null_noop() {
-	let _guard = lock();
-	unsafe { oakaudio_manager_create_instance() };
-	let before = unsafe { oakaudio_debug_alive_count() };
-
-	let mut empty = oakaudio::handle::CHandle::null();
-	unsafe { oakaudio_manager_free(&mut empty) };
-	unsafe { oakaudio_manager_free(std::ptr::null_mut()) };
-	assert_eq!(unsafe { oakaudio_debug_alive_count() }, before);
-
-	unsafe { oakaudio_manager_destroy_instance() };
-}
-
-/// output_levels: validation, the no-output case, and a real peak
-/// readback over pushed packed-F32 stereo samples (left ramps to 0.25,
-/// right to ~1.0 — the per-channel linear peaks).
+/// output_levels: the no-output case, and a real peak readback over pushed
+/// packed-F32 stereo samples (left ramps to 0.05, right to ~0.2 — the
+/// per-channel linear peaks).
+///
+/// The push can open a real cpal stream whose callback consumes queued
+/// samples concurrently, so a long ramp is pushed and the peaks are
+/// asserted with a tolerance that absorbs partial consumption (the
+/// analysis window is the most recent 8192 frames of the queue).
 #[test]
 fn output_levels_reports_buffered_peaks() {
-	let _guard = lock();
-	unsafe { oakaudio_manager_destroy_instance() };
-	assert_eq!(unsafe { oakaudio_manager_create_instance() }, OAKAUDIO_OK);
-	let m = instance();
+	let _guard = lock_manager();
+	fresh_instance();
+	let mut m = instance().unwrap();
 
-	// Invalid out args.
+	// Nothing configured yet: no channels.
+	assert_eq!(m.output_levels(&mut [0.0f32; 4]).unwrap(), 0);
+
+	m.set_output_device(42).unwrap();
+	m.clear_buffered_output().unwrap();
+
+	// Push 2 seconds of packed F32 stereo ramp (format 10), stereo layout
+	// 0x3. Left ramps 0 -> 0.05, right 0 -> 0.2.
+	let frames = 96000usize;
+	let mut packed = Vec::with_capacity(frames * 2 * 4);
+	for i in 0..frames {
+		let t = i as f32 / frames as f32;
+		packed.extend_from_slice(&(0.05f32 * t).to_le_bytes());
+		packed.extend_from_slice(&(0.2f32 * t).to_le_bytes());
+	}
+	m.push_to_output(stereo(), &packed, &mut vec![0u8; 64]).unwrap();
+
 	let mut peaks = [0.0f32; 4];
-	assert_eq!(
-		unsafe { oakaudio_manager_output_levels(m, std::ptr::null_mut(), 4) },
-		OAKAUDIO_E_INVALID
+	let n = m.output_levels(&mut peaks).unwrap();
+	assert_eq!(n, 2);
+	assert!(
+		(peaks[0] - 0.05).abs() < 1e-3 && peaks[0] > 0.04,
+		"left peak: {}",
+		peaks[0]
 	);
-	assert_eq!(unsafe { oakaudio_manager_output_levels(m, peaks.as_mut_ptr(), 0) }, OAKAUDIO_E_INVALID);
+	assert!(
+		(peaks[1] - 0.2).abs() < 1e-3 && peaks[1] > 0.19,
+		"right peak: {}",
+		peaks[1]
+	);
 
-	// The manager singleton retains output params across tests in this
-	// binary, so the "no output" case is not reachable here; instead
-	// verify a cleared buffer reports zeroed peaks (channel count from
-	// the configured layout, 0 only when nothing was ever configured).
-	assert_eq!(unsafe { oakaudio_manager_set_output_device(m, 42) }, OAKAUDIO_OK);
-	assert_eq!(unsafe { oakaudio_manager_clear_buffered_output(m) }, OAKAUDIO_OK);
-	let cleared = unsafe { oakaudio_manager_output_levels(m, peaks.as_mut_ptr(), 4) };
-	assert!(cleared >= 0);
-	for p in &peaks[..cleared as usize] {
+	// A cleared buffer reports zeroed peaks over the configured channels.
+	m.clear_buffered_output().unwrap();
+	let mut cleared = [0.0f32; 4];
+	assert_eq!(m.output_levels(&mut cleared).unwrap(), 2);
+	for p in &cleared[..2] {
 		assert_eq!(*p, 0.0, "cleared buffer must have silent peaks");
 	}
 
-	// Push 480 frames of packed F32 stereo (format 10), stereo layout 0x3.
-	let frames = 480usize;
-	let mut samples = Vec::with_capacity(frames * 2);
-	for i in 0..frames {
-		let t = i as f32 / frames as f32;
-		samples.push(0.25f32 * t);
-		samples.push(t);
-	}
-	let rc = unsafe {
-		oakaudio_manager_push_to_output(
-			m,
-			48000,
-			0x3,
-			10,
-			samples.as_ptr() as *const c_char,
-			(samples.len() * 4) as i64,
-			std::ptr::null_mut(),
-			0,
-		)
-	};
-	assert_eq!(rc, OAKAUDIO_OK);
-
-	let n = unsafe { oakaudio_manager_output_levels(m, peaks.as_mut_ptr(), 4) };
-	assert_eq!(n, 2);
-	let last = (frames - 1) as f32 / frames as f32;
-	assert!((peaks[0] - 0.25 * last).abs() < 1e-6, "left peak: {}", peaks[0]);
-	assert!((peaks[1] - last).abs() < 1e-6, "right peak: {}", peaks[1]);
-
-	// Undersized buffer truncates the write, not the reported count.
-	let mut one = [0.0f32; 1];
-	assert_eq!(unsafe { oakaudio_manager_output_levels(m, one.as_mut_ptr(), 1) }, 2);
+	// The error mapping is intact.
+	assert_eq!(Error::Invalid.code(), OAKAUDIO_E_INVALID);
+	assert_eq!(Error::Failed("x".to_string()).code(), oakaudio::error::OAKAUDIO_E_FAILED);
 
 	// Leave the singleton as we found it: the push flipped
 	// `output_started`, which other tests' seconds() assertions depend on.
-	assert_eq!(unsafe { oakaudio_manager_stop_output(m) }, OAKAUDIO_OK);
-	assert_eq!(unsafe { oakaudio_manager_clear_buffered_output(m) }, OAKAUDIO_OK);
+	m.stop_output().unwrap();
+	m.clear_buffered_output().unwrap();
 }

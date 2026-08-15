@@ -22,7 +22,7 @@
 //! `Unavailable`. Deterministic per-channel filenames derive from the
 //! source + target audio params.
 
-use std::ffi::CString;
+use oakcommon::filefunctions::FileFunctions;
 use std::path::Path;
 
 /// Conform state of one audio stream.
@@ -184,18 +184,11 @@ fn conform_filenames(
 	out
 }
 
-/// `oakcommon_filefunctions_get_unique_file_identifier` wrapper (the bridge
-/// returns a 64-bit id directly).
+/// `oakcommon_filefunctions_get_unique_file_identifier` wrapper.
 fn unique_file_identifier(filename: &str) -> String {
-	let c = match CString::new(filename) {
-		Ok(c) => c,
-		Err(_) => return String::new(),
-	};
-	// # Safety: `c` is a valid NUL-terminated C string alive for the call.
-	let id = unsafe {
-		crate::bridge::common::oakcommon_filefunctions_get_unique_file_identifier(c.as_ptr())
-	};
-	format!("{}", id)
+	FileFunctions::new()
+		.get_unique_file_identifier(filename)
+		.unwrap_or_default()
 }
 
 /// True when every conform filename already exists on disk.
@@ -234,34 +227,23 @@ mod tests {
 		dir.to_string_lossy().into_owned()
 	}
 
-	fn fnv1a64(bytes: &[u8]) -> u64 {
-		let mut h: u64 = 14695981039346656037;
-		for &b in bytes {
-			h ^= b as u64;
-			h = h.wrapping_mul(1099511628211);
-		}
-		h
-	}
-
 	#[test]
-	fn unique_identifier_matches_bridge_hash() {
-		// The frozen ABI returns the identifier as a string; the
-		// value-style adapter folds it into an FNV-1a-64. The test stub
-		// produces the decimal FNV of the path bytes, so the expected
-		// value is FNV of that decimal string.
-		let stub_id = fnv1a64(b"media.mp4") as i64;
-		let expected = format!("{}", fnv1a64(stub_id.to_string().as_bytes()) as i64);
-		assert_eq!(unique_file_identifier("media.mp4"), expected);
+	fn unique_identifier_uses_file_metadata() {
+		// The identifier is the 16-digit FNV-1a hex of (absolute path +
+		// mtime); a missing file has no identifier.
+		assert_eq!(unique_file_identifier("no-such-file.mp4"), "");
+		let dir = temp_subdir("id");
+		let file = std::path::Path::new(&dir).join("media.mp4");
+		std::fs::write(&file, b"x").unwrap();
+		let id = unique_file_identifier(&file.to_string_lossy());
+		assert_eq!(id.len(), 16);
+		assert!(id.chars().all(|c| c.is_ascii_hexdigit()));
 		// Deterministic: same input, same id.
-		assert_eq!(
-			unique_file_identifier("media.mp4"),
-			unique_file_identifier("media.mp4")
-		);
+		assert_eq!(id, unique_file_identifier(&file.to_string_lossy()));
+		let other = std::path::Path::new(&dir).join("other.mp4");
+		std::fs::write(&other, b"y").unwrap();
 		// Different input, different id.
-		assert_ne!(
-			unique_file_identifier("media.mp4"),
-			unique_file_identifier("other.mp4")
-		);
+		assert_ne!(id, unique_file_identifier(&other.to_string_lossy()));
 	}
 
 	#[test]
@@ -279,21 +261,23 @@ mod tests {
 	#[test]
 	fn conform_filename_derivation_and_range() {
 		let m = ConformManager::instance();
+		let src_dir = temp_subdir("names");
+		let src = std::path::Path::new(&src_dir).join("media.mp4");
+		std::fs::write(&src, b"x").unwrap();
 		let cache = temp_subdir("names");
-		let stub_id = fnv1a64(b"media.mp4") as i64;
-		let id = fnv1a64(stub_id.to_string().as_bytes()) as i64;
+		let id = unique_file_identifier(&src.to_string_lossy());
 		let base = format!("{}-0.48000.0.3", id);
 		let f0 = m
-			.get_conform_filename(&cache, "media.mp4", 0, 48000, 0x3, 0, 0)
+			.get_conform_filename(&cache, &src.to_string_lossy(), 0, 48000, 0x3, 0, 0)
 			.unwrap();
 		let f1 = m
-			.get_conform_filename(&cache, "media.mp4", 0, 48000, 0x3, 0, 1)
+			.get_conform_filename(&cache, &src.to_string_lossy(), 0, 48000, 0x3, 0, 1)
 			.unwrap();
 		assert_eq!(f0, format!("{}/{}.0.pcm", cache, base));
 		assert_eq!(f1, format!("{}/{}.1.pcm", cache, base));
 		// Out of range.
 		assert!(matches!(
-			m.get_conform_filename(&cache, "media.mp4", 0, 48000, 0x3, 0, 5),
+			m.get_conform_filename(&cache, &src.to_string_lossy(), 0, 48000, 0x3, 0, 5),
 			Err(crate::error::Error::NotFound)
 		));
 	}

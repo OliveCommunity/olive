@@ -17,14 +17,17 @@
 //! `ConformTask`, mirroring `src/task/src/conform/conform.h`.
 //!
 //! Transcodes an audio stream to a PCM cache file (oakcodec kind
-//! `OAKCODEC_TASK_CONFORM`) and reports progress as it decodes.
+//! `OAKCODEC_TASK_CONFORM`) and reports progress as it decodes. The
+//! decoder is reached through the direct Rust API
+//! (`oakcodec::decoder::{receive_list_of_all_decoders, Decoder}`) —
+//! single-lib unification; the old oakcodec decoder C ABI is gone.
 //!
 //! CPP-PARITY: src/task/src/conform/conform.h
 
-use crate::bridge;
+use oakcodec::decoder::CodecStream;
+use oakcodec::task::TaskRequest;
+
 use crate::error::{Error, Result};
-use crate::ffi::taskhandle::cstr;
-use crate::handle::CHandle;
 use crate::task::{Task, TaskBehavior};
 
 /// A conform task: copies/channels of one audio stream into per-channel
@@ -53,14 +56,15 @@ pub struct ConformTask {
 impl ConformTask {
 	/// Build a conform task from an oakcodec request, mirroring the C++
 	/// constructor.
-	pub fn new(request: &bridge::codec::OakCodecTaskRequest) -> ConformTask {
-		let input = unsafe { crate::ffi::taskhandle::cstr_to_string(request.input_filename) };
-		let output = unsafe { crate::ffi::taskhandle::cstr_to_string(request.output_filename) };
-		let title = format!("Conforming Audio {}:{}", input, request.stream_index);
+	pub fn new(request: &TaskRequest) -> ConformTask {
+		let title = format!(
+			"Conforming Audio {}:{}",
+			request.input_filename, request.stream_index
+		);
 		ConformTask {
-			base: Task::new(&title, CHandle::null()),
-			input_filename: input,
-			output_filename: output,
+			base: Task::new(&title, None),
+			input_filename: request.input_filename.to_string(),
+			output_filename: request.output_filename.to_string(),
 			stream_index: request.stream_index,
 			sample_rate: request.sample_rate,
 			channel_layout: request.channel_layout,
@@ -106,7 +110,7 @@ impl ConformTask {
 }
 
 impl TaskBehavior for ConformTask {
-	/// Run the conform via the oakcodec decoder (`bridge::codec`), emitting
+	/// Run the conform via the direct oakcodec decoder API, emitting
 	/// progress as audio is decoded and written to the working files, then
 	/// rename working → final.
 	fn run(&mut self, task: &mut Task) -> Result<()> {
@@ -119,92 +123,67 @@ impl TaskBehavior for ConformTask {
 		self.final_names = final_names;
 		self.working_names = working_names;
 
-		let decoder = unsafe { bridge::codec::oakcodec_decoder_init() };
-		if decoder.ctx.is_null() {
+		let atom = task.get_cancel_atom();
+
+		// Pick the first registered decoder that can probe the file (the
+		// C++ picks the decoder the footage was created with; probing in
+		// registry order is the direct-Rust equivalent).
+		let decoder = oakcodec::decoder::receive_list_of_all_decoders()
+			.into_iter()
+			.find(|d| d.probe(&self.input_filename, Some(&atom)).is_some());
+		let Some(decoder) = decoder else {
 			task.set_error("Failed to create decoder");
 			return Err(Error::Failed("Failed to create decoder".to_string()));
-		}
-		let mut decoder = decoder;
+		};
 
 		let result = (|| {
-			let open_result = unsafe {
-				bridge::codec::oakcodec_decoder_open(
-					decoder,
-					cstr(&self.input_filename),
-					self.stream_index,
-				)
-			};
-			if open_result != 0 {
-				let err = decoder_error(decoder);
-				task.set_error(&format!("Failed to open decoder for audio conform: {err}"));
+			let stream =
+				CodecStream::with_block(self.input_filename.clone(), self.stream_index, None);
+			if let Err(e) = decoder.open(&stream) {
+				task.set_error(&format!("Failed to open decoder for audio conform: {e}"));
 				return false;
 			}
 
-			let working_ptrs: Vec<*const std::ffi::c_char> =
-				self.working_names.iter().map(|n| cstr(n)).collect();
-			let conform_result = unsafe {
-				bridge::codec::oakcodec_decoder_conform_audio(
-					decoder,
-					working_ptrs.as_ptr(),
-					working_ptrs.len() as i32,
-					self.sample_rate,
-					self.channel_layout,
-					self.sample_format,
-					task.get_cancel_atom(),
-				)
-			};
-			unsafe {
-				bridge::codec::oakcodec_decoder_close(decoder);
-			}
+			let conform_result = decoder.conform_audio(
+				&self.working_names,
+				self.sample_rate,
+				self.channel_layout,
+				self.sample_format,
+				Some(&atom),
+			);
+			let _ = decoder.close();
 
-			if conform_result == 0 {
-				// Rename each working file into place; a failure aborts the
-				// rest (mirroring the C++ loop).
-				for i in 0..self.working_names.len() {
-					if std::fs::rename(&self.working_names[i], &self.final_names[i]).is_err() {
-						task.set_error("Failed to move conformed audio into place");
-						return false;
+			match conform_result {
+				Ok(()) => {
+					// Rename each working file into place; a failure aborts
+					// the rest (mirroring the C++ loop).
+					for i in 0..self.working_names.len() {
+						if std::fs::rename(&self.working_names[i], &self.final_names[i]).is_err() {
+							task.set_error("Failed to move conformed audio into place");
+							return false;
+						}
 					}
+					true
 				}
-				true
-			} else {
-				// Clean up any partial working files.
-				for name in &self.working_names {
-					let _ = std::fs::remove_file(name);
+				Err(_) => {
+					// Clean up any partial working files.
+					for name in &self.working_names {
+						let _ = std::fs::remove_file(name);
+					}
+					if atom.is_cancelled() {
+						task.set_error("Audio conform was cancelled");
+					} else {
+						task.set_error("Audio conform failed");
+					}
+					false
 				}
-				if conform_result == bridge::codec::OAKCODEC_E_CANCELLED {
-					task.set_error("Audio conform was cancelled");
-				} else {
-					task.set_error("Audio conform failed");
-				}
-				false
 			}
 		})();
-
-		unsafe {
-			bridge::codec::oakcodec_decoder_free(&mut decoder);
-		}
 
 		if result {
 			Ok(())
 		} else {
 			Err(Error::Failed("Audio conform failed".to_string()))
 		}
-	}
-}
-
-/// Two-stage read of the decoder's last error string.
-fn decoder_error(decoder: CHandle) -> String {
-	let mut buf = [0i8; 256];
-	let needed = unsafe {
-		bridge::codec::oakcodec_decoder_last_error(decoder, buf.as_mut_ptr(), buf.len() as i32)
-	};
-	if needed <= 0 {
-		return String::new();
-	}
-	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-	unsafe {
-		String::from_utf8_lossy(std::slice::from_raw_parts(buf.as_ptr() as *const u8, len))
-			.into_owned()
 	}
 }

@@ -35,8 +35,8 @@ use crate::property::PropertySet;
 pub struct EditTransaction {
 	/// 嵌套深度（editBegin/End 必须配对）。
 	depth: i32,
-	/// 事务累积的 multi 命令（空句柄 = 尚无子命令）。
-	multi: crate::bridge::undo::CommandHandle,
+	/// 事务累积的 multi 命令（None = 尚无子命令）。
+	multi: Option<oakundo::undocommand::UndoCommand>,
 	/// 事务内回写次数（标签计数）。
 	param_count: i32,
 	/// 第一条回写的标签。
@@ -48,7 +48,7 @@ impl EditTransaction {
 	pub fn new() -> Self {
 		Self {
 			depth: 0,
-			multi: crate::bridge::undo::CommandHandle::null(),
+			multi: None,
 			param_count: 0,
 			first_label: String::new(),
 		}
@@ -141,8 +141,9 @@ impl Drop for Instance {
 
 impl Instance {
 	/// 绑定 oaknode 节点（C++ `set_node_handle` 的 Rust 侧；装配期由
-	/// facade/测试调用）。`identity` 为 [`crate::host::instance_registry`]
-	/// 无关的 oaknode 节点身份（`oaknode_node_identity` 的地址语义）；
+	/// facade/测试调用）。`identity` 为 [`crate::node::register_node`]
+	/// 返回的 oaknode 节点身份（[`oaknode::id::NodeId::identity`] 的
+	/// 打包值，经 [`crate::node::node_from_identity`] 反查）；
 	/// 0 解除绑定。
 	pub fn bind_node(&self, identity: usize) {
 		self.node_identity
@@ -154,7 +155,7 @@ impl Instance {
 		let mut e = self.edit.lock().unwrap_or_else(|e| e.into_inner());
 		e.depth += 1;
 		if e.depth == 1 {
-			e.multi = crate::bridge::undo::CommandHandle::null();
+			e.multi = None;
 			e.param_count = 0;
 			e.first_label.clear();
 		}
@@ -168,9 +169,12 @@ impl Instance {
 		if e.depth > 0 {
 			e.depth -= 1;
 		}
-		if e.depth == 0 && !e.multi.is_null() {
-			unsafe { crate::bridge::undo::command_redo_now(e.multi) };
-			unsafe { crate::bridge::undo::command_free(&mut e.multi) };
+		if e.depth == 0 {
+			if let Some(mut multi) = e.multi.take() {
+				multi.redo_now();
+				// drop(multi)：释放 multi 与子命令（命令值语义）。
+				drop(multi);
+			}
 			e.param_count = 0;
 			e.first_label.clear();
 		}
@@ -185,28 +189,24 @@ impl Instance {
 	/// oliveplugininstance.cpp:390-414 `submit_undo_command`）：
 	/// 编辑事务内并入 multi（子命令立即 redo 生效，值即时可见），
 	/// 否则单命令 redo 后释放。
-	pub(crate) fn submit_undo_command(
-		&self,
-		mut cmd: crate::bridge::undo::CommandHandle,
-		label: &str,
-	) {
-		if cmd.is_null() {
-			return;
-		}
+	pub(crate) fn submit_undo_command(&self, mut cmd: oakundo::undocommand::UndoCommand, label: &str) {
 		if self.in_edit() {
 			let mut e = self.edit.lock().unwrap_or_else(|e| e.into_inner());
-			if e.multi.is_null() {
-				e.multi = unsafe { crate::bridge::undo::command_init_multi() };
+			if e.multi.is_none() {
+				e.multi = Some(oakundo::undocommand::UndoCommand::multi());
 			}
 			e.param_count += 1;
 			if e.first_label.is_empty() {
 				e.first_label = label.to_string();
 			}
-			unsafe { crate::bridge::undo::command_redo_now(cmd) };
-			unsafe { crate::bridge::undo::command_multi_add_child(e.multi, cmd) };
+			cmd.redo_now();
+			e.multi
+				.as_mut()
+				.expect("multi 已在上面初始化")
+				.multi_add_child(cmd);
 		} else {
-			unsafe { crate::bridge::undo::command_redo_now(cmd) };
-			unsafe { crate::bridge::undo::command_free(&mut cmd) };
+			cmd.redo_now();
+			drop(cmd);
 		}
 	}
 
@@ -651,8 +651,8 @@ impl Instance {
 		time: f64,
 		scale: RenderScale,
 		window: OfxRectD,
-		renderer: crate::bridge::render::RendererHandle,
-		output_texture: crate::bridge::render::TextureHandle,
+		renderer: crate::render::Renderer,
+		output_texture: crate::render::Texture,
 	) -> crate::error::Result<()> {
 		use crate::host::ACTION_RENDER;
 

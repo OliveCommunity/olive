@@ -23,9 +23,13 @@
 //! `can_undo` is false at the bottom (see `undostack.cpp::clear`).
 
 use std::collections::VecDeque;
+use std::ffi::{c_char, c_int, CStr};
+use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::sync::Mutex;
 
-use crate::error::{Error, Result};
-use crate::undocommand::UndoCommand;
+use crate::error::{Error, OAKUNDO_E_FAILED, Result};
+use crate::handle::{get, guard, guard_handle, guard_void, make_owned, CHandle};
+use crate::undocommand::{command_take, UndoCommand};
 
 /// Maximum number of retained history rows (`k_max_undo_commands`).
 pub const K_MAX_UNDO_COMMANDS: usize = 200;
@@ -217,4 +221,205 @@ impl Default for UndoStack {
 	fn default() -> Self {
 		Self::new()
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Handle-level stack API (sunk from the former C ABI export layer)
+// ---------------------------------------------------------------------------
+
+/// Read a NUL-terminated C string; `NULL` yields an empty string
+/// (mirrors the C++ `name ? name : ""`).
+fn read_name(name: *const c_char) -> String {
+	if name.is_null() {
+		String::new()
+	} else {
+		// SAFETY: `name` is a valid NUL-terminated string supplied by the
+		// caller, or NULL (already handled).
+		unsafe { CStr::from_ptr(name) }.to_string_lossy().into_owned()
+	}
+}
+
+/// Lock the stack behind `stack` and run `f` on it. `E_INVALID` for an
+/// empty handle. A poisoned mutex is recovered (its inner value is still
+/// valid).
+pub fn with_stack<R>(stack: &CHandle, f: impl FnOnce(&mut UndoStack) -> Result<R>) -> Result<R> {
+	// SAFETY: the stack handle always boxes a `Mutex<UndoStack>` (created
+	// by `undostack_init`).
+	let m = unsafe { get::<Mutex<UndoStack>>(stack) }.ok_or(Error::Invalid)?;
+	let mut guard = m.lock().unwrap_or_else(|e| e.into_inner());
+	f(&mut guard)
+}
+
+/// Create a fresh stack handle (refcount 1) (`oakundo_undostack_init`).
+pub fn undostack_init() -> CHandle {
+	guard_handle(|| Ok(make_owned(Mutex::new(UndoStack::new()))))
+}
+
+/// Release a stack handle in place; `NULL` / empty handles are no-ops
+/// (`oakundo_undostack_free`).
+pub fn undostack_free(stack: *mut CHandle) {
+	guard_void(|| unsafe {
+		if stack.is_null() || (*stack).ctx.is_null() {
+			return;
+		}
+		if let Some(release) = (*stack).release {
+			release((*stack).ctx);
+		}
+		(*stack).ctx = std::ptr::null_mut();
+	})
+}
+
+/// Push a command handle onto the stack (redo then record; the stack
+/// takes ownership of the command value, leaving a non-owning shell)
+/// (`oakundo_undostack_push`).
+pub fn undostack_push(stack: CHandle, command: CHandle, name: *const c_char) -> c_int {
+	guard(|| {
+		with_stack(&stack, |s| unsafe {
+			let cmd = command_take(command.ctx)?;
+			let name = read_name(name);
+			s.push(cmd, &name);
+			Ok(())
+		})
+	})
+}
+
+/// Push an already-executed command handle (redo skipped)
+/// (`oakundo_undostack_push_pre_executed`).
+pub fn undostack_push_pre_executed(stack: CHandle, command: CHandle, name: *const c_char) -> c_int {
+	guard(|| {
+		with_stack(&stack, |s| unsafe {
+			let cmd = command_take(command.ctx)?;
+			let name = read_name(name);
+			s.push_pre_executed(cmd, &name);
+			Ok(())
+		})
+	})
+}
+
+/// Undo one command on the stack (`oakundo_undostack_undo`).
+pub fn undostack_undo(stack: CHandle) -> c_int {
+	guard(|| with_stack(&stack, |s| s.undo()))
+}
+
+/// Redo one command on the stack (`oakundo_undostack_redo`).
+pub fn undostack_redo(stack: CHandle) -> c_int {
+	guard(|| with_stack(&stack, |s| s.redo()))
+}
+
+/// Jump to a done-command index (clamped to 0; `index` is i64)
+/// (`oakundo_undostack_jump`).
+pub fn undostack_jump(stack: CHandle, index: i64) -> c_int {
+	guard(|| {
+		with_stack(&stack, |s| {
+			s.jump(index);
+			Ok(())
+		})
+	})
+}
+
+/// Clear the stack back to the empty bottom command
+/// (`oakundo_undostack_clear`).
+pub fn undostack_clear(stack: CHandle) -> c_int {
+	guard(|| {
+		with_stack(&stack, |s| {
+			s.clear();
+			Ok(())
+		})
+	})
+}
+
+/// Write whether an undo is possible (`oakundo_undostack_can_undo`).
+pub fn undostack_can_undo(stack: CHandle, out_value: *mut c_int) -> c_int {
+	guard(|| unsafe {
+		if out_value.is_null() {
+			return Err(Error::Invalid);
+		}
+		with_stack(&stack, |s| {
+			*out_value = if s.can_undo() { 1 } else { 0 };
+			Ok(())
+		})
+	})
+}
+
+/// Write whether a redo is possible (`oakundo_undostack_can_redo`).
+pub fn undostack_can_redo(stack: CHandle, out_value: *mut c_int) -> c_int {
+	guard(|| unsafe {
+		if out_value.is_null() {
+			return Err(Error::Invalid);
+		}
+		with_stack(&stack, |s| {
+			*out_value = if s.can_redo() { 1 } else { 0 };
+			Ok(())
+		})
+	})
+}
+
+/// Write the total history row count (`oakundo_undostack_count`).
+pub fn undostack_count(stack: CHandle, out_count: *mut i64) -> c_int {
+	guard(|| unsafe {
+		if out_count.is_null() {
+			return Err(Error::Invalid);
+		}
+		with_stack(&stack, |s| {
+			*out_count = s.command_count();
+			Ok(())
+		})
+	})
+}
+
+/// Write the done-command count (`oakundo_undostack_index`).
+pub fn undostack_index(stack: CHandle, out_index: *mut i64) -> c_int {
+	guard(|| unsafe {
+		if out_index.is_null() {
+			return Err(Error::Invalid);
+		}
+		with_stack(&stack, |s| {
+			*out_index = s.done_count();
+			Ok(())
+		})
+	})
+}
+
+/// Two-stage label getter for the row at `row`: returns the required
+/// size (including NUL), or an error code; copies (truncating) when a
+/// buffer is supplied (`oakundo_undostack_command_text`).
+pub fn undostack_command_text(stack: CHandle, row: i64, buf: *mut c_char, buf_size: c_int) -> c_int {
+	let result = catch_unwind(AssertUnwindSafe(|| -> Result<i32> {
+		with_stack(&stack, |s| {
+			if row < 0 || row >= s.command_count() {
+				return Err(Error::NotFound);
+			}
+			let name = s.command_name(row)?;
+			let required = (name.len() + 1) as i32;
+			if !buf.is_null() && buf_size > 0 {
+				let copy_len = name.len().min((buf_size as usize).saturating_sub(1));
+				let bytes = name.as_bytes();
+				// SAFETY: `buf` points to `buf_size` writable bytes and we
+				// write at most `copy_len` (+ one NUL) of them.
+				unsafe {
+					std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, copy_len);
+					*buf.add(copy_len) = 0;
+				}
+			}
+			Ok(required)
+		})
+	}));
+	match result {
+		Ok(Ok(required)) => required,
+		Ok(Err(e)) => e.code(),
+		Err(_) => OAKUNDO_E_FAILED,
+	}
+}
+
+/// Write whether the row at `row` is done (`oakundo_undostack_command_is_done`).
+pub fn undostack_command_is_done(stack: CHandle, row: i64, out_value: *mut c_int) -> c_int {
+	guard(|| unsafe {
+		if out_value.is_null() {
+			return Err(Error::Invalid);
+		}
+		with_stack(&stack, |s| {
+			*out_value = if s.command_is_done(row)? { 1 } else { 0 };
+			Ok(())
+		})
+	})
 }

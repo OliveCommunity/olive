@@ -21,20 +21,20 @@
 //! architectural mapping (per-header domain modules, no UndoCommand
 //! inheritance → vtable commands).
 //!
-//! ## FFI discipline
+//! ## Single-lib unification
 //!
-//! Identical to the oaknode crate: every export goes through
-//! [`handle::guard*`], handles are opaque refcounted boxes, and all
-//! cross-module access goes through the oaknode/oakundo/oakcommon C ABIs
-//! (`bridge::*`).
+//! The C ABI export layer (`ffi.rs`) and the oaknode/oakundo/oakcommon
+//! bridge (`bridge/`) were deleted in the single-lib unification: undo
+//! commands are now `oakundo::undocommand::UndoCommand` values and every
+//! node/block/track reference is a [`util::NodeRef`] — an
+//! `Arc<Mutex<oaknode::project::Project>>` + `oaknode::id::NodeId` pair
+//! that the commands manipulate through the oaknode Rust domain directly.
 
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]
 
-pub mod bridge;
 pub mod common;
 pub mod error;
-pub mod ffi;
 pub mod handle;
 pub mod marker;
 pub mod undocommon;

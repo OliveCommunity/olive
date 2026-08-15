@@ -18,18 +18,16 @@
 //!
 //! 对应 C++ 的 `ParamInstance`/`OliveParamInstance`。桥的语义
 //! （M9 已定）：节点输入值变化 → 写回 OFX 参数；OFX 参数被插件
-//! 改动 → 经 oaknode C ABI 回写节点（undoable 经
-//! [`crate::bridge::undo`]）。
+//! 改动 → 经 oaknode 回写节点（undoable 经
+//! `oakundo::undocommand::UndoCommand`）。
 //!
 //! 句柄约定（[`crate::suites::tag`]）：`ParamDef`/`ParamInstance`
 //! `#[repr(C)]` 且 `props` 在偏移 0；元素装箱（`Vec<Box<..>>`）保证
 //! Vec 重分配不移动对象、句柄不悬垂。
 //!
-//! `// TODO(bridge)`：`set_from_node`/`notify_instance_changed` 依赖
-//! bridge::node 的 `Value` 布局（声明尚未冻结），保留 todo!()。
-//! **已落地（M11 第 1 期）**：Value 布局随 [`crate::bridge::node`]
-//! 冻结（`include/node/node.h` 的 `oaknode_value` POD），两处 todo
-//! 已实现。
+//! 节点值布局：随 [`crate::node`] 冻结（`include/node/node.h` 的
+//! `oaknode_value` POD）；单库化后 oaknode 的身份注册表随其 ffi
+//! 删除，回写路径是保留失败路径的本地桩（见 [`crate::node`]）。
 
 use std::ffi::CString;
 
@@ -532,55 +530,55 @@ impl ParamInstance {
 	/// （OAKNODE_VALUE_STRING）的 POD 不携带数据——此路径不改值
 	/// （走 facade 的字符串 API，见 `include/plugin/instance.h`）。
 	/// 类型不匹配 → 忽略（保持现值；C++ `node_get` 失败时参数不回写）。
-	pub fn set_from_node(&self, node_value: &crate::bridge::node::Value) {
-		use crate::bridge::node::node_value_type as T;
-		let v = node_value;
-		let mapped: Option<ParamValue> = match self.def.ofx_type.as_str() {
-			TYPE_DOUBLE => {
-				(v.r#type == T::FLOAT).then(|| ParamValue::Double([v.f[0], 0.0, 0.0], 1))
-			}
-			TYPE_DOUBLE2D => {
-				(v.r#type == T::VEC2).then(|| ParamValue::Double([v.f[0], v.f[1], 0.0], 2))
-			}
-			TYPE_DOUBLE3D => {
-				(v.r#type == T::VEC3).then(|| ParamValue::Double([v.f[0], v.f[1], v.f[2]], 3))
-			}
-			TYPE_INTEGER => (v.r#type == T::INT).then(|| ParamValue::Int([v.num as i32, 0, 0], 1)),
-			TYPE_INTEGER2D | TYPE_INTEGER3D => {
-				let dim = if self.def.ofx_type == TYPE_INTEGER2D {
-					2
-				} else {
-					3
-				};
-				Some(ParamValue::Int(
-					[v.f[0] as i32, v.f[1] as i32, v.f[2] as i32],
-					dim,
-				))
-			}
-			TYPE_BOOLEAN => (v.r#type == T::BOOL).then(|| ParamValue::Bool(v.num != 0)),
-			TYPE_CHOICE => (v.r#type == T::COMBO).then(|| ParamValue::Choice(v.num as i32)),
-			TYPE_RGB => {
-				(v.r#type == T::COLOR).then(|| ParamValue::Color([v.f[0], v.f[1], v.f[2], 0.0], 3))
-			}
-			TYPE_RGBA => (v.r#type == T::COLOR)
-				.then(|| ParamValue::Color([v.f[0], v.f[1], v.f[2], v.f[3]], 4)),
-			_ => None, // 字符串/无值类：POD 无数据，不改值
-		};
-		if let Some(pv) = mapped {
+	pub fn set_from_node(&self, node_value: &crate::node::Value) {
+		if let Some(pv) = param_value_from_node(node_value, &self.def.ofx_type) {
 			self.set_ofx(pv);
 		}
 	}
 }
 
-/// ParamValue → [`crate::bridge::node::Value`]（插件→节点方向；
-/// 字符串族经 [`crate::bridge::node::set_input_string_undoable`]）。
+/// 节点值 → ParamValue（按参数类型解释；字符串族走专用路径）。
+/// 镜像 `set_from_node` 的映射表；render 驱动的参数覆盖
+/// （apply_param_overrides）复用同一转换。
+pub(crate) fn param_value_from_node(
+	v: &crate::node::Value,
+	ofx_type: &str,
+) -> Option<ParamValue> {
+	use crate::node::node_value_type as T;
+	match ofx_type {
+		TYPE_DOUBLE => (v.r#type == T::FLOAT).then(|| ParamValue::Double([v.f[0], 0.0, 0.0], 1)),
+		TYPE_DOUBLE2D => (v.r#type == T::VEC2).then(|| ParamValue::Double([v.f[0], v.f[1], 0.0], 2)),
+		TYPE_DOUBLE3D => {
+			(v.r#type == T::VEC3).then(|| ParamValue::Double([v.f[0], v.f[1], v.f[2]], 3))
+		}
+		TYPE_INTEGER => (v.r#type == T::INT).then(|| ParamValue::Int([v.num as i32, 0, 0], 1)),
+		TYPE_INTEGER2D | TYPE_INTEGER3D => {
+			let dim = if ofx_type == TYPE_INTEGER2D { 2 } else { 3 };
+			Some(ParamValue::Int(
+				[v.f[0] as i32, v.f[1] as i32, v.f[2] as i32],
+				dim,
+			))
+		}
+		TYPE_BOOLEAN => (v.r#type == T::BOOL).then(|| ParamValue::Bool(v.num != 0)),
+		TYPE_CHOICE => (v.r#type == T::COMBO).then(|| ParamValue::Choice(v.num as i32)),
+		TYPE_RGB => {
+			(v.r#type == T::COLOR).then(|| ParamValue::Color([v.f[0], v.f[1], v.f[2], 0.0], 3))
+		}
+		TYPE_RGBA => (v.r#type == T::COLOR)
+			.then(|| ParamValue::Color([v.f[0], v.f[1], v.f[2], v.f[3]], 4)),
+		_ => None, // 字符串/无值类：POD 无数据，不改值
+	}
+}
+
+/// ParamValue → [`crate::node::Value`]（插件→节点方向；
+/// 字符串族经 [`crate::node::set_input_string_undoable`]）。
 /// 镜像 C++ `paraminstance.h` 的 `value_int`/`value_double`/
 /// `value_vec`/`value_color` 构造：RGB 颜色补 alpha=1（C++
 /// `RGBInstance::set` 的 `value_color(r,g,b,1.0)`）。无值类与 Bytes
 /// 无节点对应 → None。
-pub(crate) fn to_node_value(v: &ParamValue) -> Option<crate::bridge::node::Value> {
-	use crate::bridge::node::node_value_type as T;
-	let mut out = crate::bridge::node::Value::default();
+pub(crate) fn to_node_value(v: &ParamValue) -> Option<crate::node::Value> {
+	use crate::node::node_value_type as T;
+	let mut out = crate::node::Value::default();
 	match v {
 		ParamValue::Double(d, 1) => {
 			out.r#type = T::FLOAT;
@@ -659,15 +657,18 @@ impl ParamSetInstance {
 }
 
 /// 插件 → 节点方向的回写入口（instanceChanged action 触发）。
-/// 经 [`crate::bridge::node`] 定位绑定节点（身份注册表），再经
-/// [`crate::bridge::undo`] 包成 undoable 修改。未绑定节点时 no-op。
+/// 经 [`crate::node`] 定位绑定节点（身份注册表），再经
+/// `oakundo::undocommand::UndoCommand` 包成 undoable 修改。未绑定
+/// 节点或身份查无时 no-op（单库化后身份注册表重建为
+/// [`crate::node::register_node`]/[`crate::node::node_from_identity`]；
+/// facade 装配期登记，project 释放后弱条目自然失效）。
 ///
 /// 语义对照 C++ `paraminstance.h` 的 `set()` 路径（`detail::node_set`/
 /// `node_set_at`）：
 /// - 只回写 [`ChangeReason::PluginEdited`]（插件自改）。UserEdited/
 ///   TimeChanged 是宿主侧变更，值已由 [`ParamInstance::set_from_node`]
 ///   同步，不重复写回；
-/// - 字符串族经 `oaknode_node_set_input_string_undoable`
+/// - 字符串族经 [`crate::node::set_input_string_undoable`]
 ///   （POD 不携带字符串数据）；
 /// - 无值类（PushButton/Group/Page）与 Bytes 无节点对应 → no-op；
 /// - 编辑事务内（[`crate::instance::Instance::in_edit`]）并入 multi
@@ -677,7 +678,7 @@ pub(crate) fn notify_instance_changed(
 	param_name: &str,
 	reason: ChangeReason,
 ) {
-	use crate::bridge::{node, undo};
+	use crate::node;
 	use std::sync::atomic::Ordering;
 
 	if !matches!(reason, ChangeReason::PluginEdited) {
@@ -688,42 +689,27 @@ pub(crate) fn notify_instance_changed(
 	if node_id == 0 {
 		return;
 	}
-	// 身份查无（注册表无此项 / 桥符号缺失）→ no-op。
-	let node_handle = unsafe { node::node_from_identity(node_id) };
-	if node_handle.is_null() {
+	// 身份查无（未登记 / project 已释放）→ no-op。
+	let Some(node_ref) = node::node_from_identity(node_id) else {
 		return;
-	}
+	};
 	let Some(param) = instance.params.find(param_name) else {
 		return;
 	};
 	let value = param.get();
 	let label = format!("Change {param_name}");
-	let Some(cname) = CString::new(param_name).ok() else {
-		return;
-	};
 	match to_node_value(&value) {
 		Some(nv) => {
-			let mut cmd = undo::CommandHandle::null();
-			let r = unsafe { node::set_input_undoable(node_handle, cname.as_ptr(), &nv, &mut cmd) };
-			if r == 0 && !cmd.is_null() {
+			if let Ok(cmd) = node::set_input_undoable(&node_ref, param_name, &nv) {
 				instance.submit_undo_command(cmd, &label);
 			}
 		}
 		None => match &value {
 			ParamValue::String(s) | ParamValue::StrChoice(s) => {
-				let Some(cval) = CString::new(s.to_bytes()).ok() else {
+				let Ok(s) = s.to_str() else {
 					return;
 				};
-				let mut cmd = undo::CommandHandle::null();
-				let r = unsafe {
-					node::set_input_string_undoable(
-						node_handle,
-						cname.as_ptr(),
-						cval.as_ptr(),
-						&mut cmd,
-					)
-				};
-				if r == 0 && !cmd.is_null() {
+				if let Ok(cmd) = node::set_input_string_undoable(&node_ref, param_name, s) {
 					instance.submit_undo_command(cmd, &label);
 				}
 			}
@@ -746,7 +732,7 @@ pub enum ChangeReason {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::bridge::node::node_value_type as T;
+	use crate::node::node_value_type as T;
 
 	fn param(ofx_type: &str) -> ParamInstance {
 		ParamInstance::from_def(ParamDef::new("p", ofx_type))
@@ -756,7 +742,7 @@ mod tests {
 	/// paraminstance.h 的 value_* 构造）。
 	#[test]
 	fn to_node_value_mapping() {
-		use crate::bridge::node::Value;
+		use crate::node::Value;
 		let c = |t: i32| Value {
 			r#type: t,
 			num: 0,
@@ -834,15 +820,15 @@ mod tests {
 	fn set_from_node_dimension_rules() {
 		// Integer2D 缺第三维补零；浮点截断。
 		let p = param(TYPE_INTEGER2D);
-		p.set_from_node(&crate::bridge::node::Value::vec(&[1.9, 2.9]));
+		p.set_from_node(&crate::node::Value::vec(&[1.9, 2.9]));
 		assert_eq!(p.get(), ParamValue::Int([1, 2, 0], 2));
 		// StrChoice 参数遇 STRING 类型：POD 无数据 → 不改值。
 		let p = param(TYPE_STRCHOICE);
-		p.set_from_node(&crate::bridge::node::Value::string());
+		p.set_from_node(&crate::node::Value::string());
 		assert!(matches!(p.get(), ParamValue::StrChoice(_)));
 		// Bytes/Custom 参数：任意节点值都不改（无映射）。
 		let p = param(TYPE_CUSTOM);
-		p.set_from_node(&crate::bridge::node::Value::float(3.0));
+		p.set_from_node(&crate::node::Value::float(3.0));
 		assert!(matches!(p.get(), ParamValue::Bytes(_)));
 	}
 }

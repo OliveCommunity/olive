@@ -17,20 +17,22 @@
 //! Edge-path coverage: error-code mapping, borrowed handles, refcount
 //! symmetry, shell handles after `command_take`, `Default` impls, and the
 //! `push_pre_executed` redo-tail/cap paths. Everything here goes through
-//! the crate's public API or the C ABI.
+//! the crate's public Rust API (the handle-level functions sunk from the
+//! former C ABI layer).
 
 use oakundo::error::{
 	Error, OAKUNDO_E_FAILED, OAKUNDO_E_INVALID, OAKUNDO_E_NOMEM, OAKUNDO_E_NOT_FOUND,
 	OAKUNDO_E_STATE,
 };
-use oakundo::ffi::command::{oakundo_command_init, oakundo_command_redo_now};
-use oakundo::ffi::undostack::{
-	oakundo_undostack_index, oakundo_undostack_init, oakundo_undostack_push,
-	oakundo_undostack_push_pre_executed, oakundo_undostack_undo,
-};
 use oakundo::handle::{make_borrowed, make_owned};
-use oakundo::undocommand::{MultiUndoCommand, OakUndoCommandVtable, UndoCommand};
-use oakundo::undostack::{EmptyCommand, UndoStack, K_MAX_UNDO_COMMANDS};
+use oakundo::undocommand::{
+	command_free, command_init, command_init_multi, command_multi_child_count, command_redo_now,
+	MultiUndoCommand, OakUndoCommandVtable, UndoCommand,
+};
+use oakundo::undostack::{
+	undostack_can_redo, undostack_free, undostack_index, undostack_init, undostack_push,
+	undostack_push_pre_executed, undostack_undo, EmptyCommand, UndoStack, K_MAX_UNDO_COMMANDS,
+};
 
 /// Every `Error` variant maps to its documented public code.
 #[test]
@@ -115,29 +117,21 @@ fn taken_command_shell_is_inert() {
 		undo: None,
 		free_fn: None,
 	};
-	let mut stack = unsafe { oakundo_undostack_init() };
-	let cmd = unsafe { oakundo_command_init(&vtable, std::ptr::null_mut()) };
+	let mut stack = undostack_init();
+	let cmd = command_init(&vtable, std::ptr::null_mut());
 	assert!(!cmd.ctx.is_null());
 
 	let name = c"once";
-	assert_eq!(
-		unsafe { oakundo_undostack_push(stack, cmd, name.as_ptr()) },
-		0
-	);
+	assert_eq!(undostack_push(stack, cmd, name.as_ptr()), 0);
 
 	// The shell no longer holds a command value.
-	assert_eq!(unsafe { oakundo_command_redo_now(cmd) }, OAKUNDO_E_INVALID);
+	assert_eq!(command_redo_now(cmd), OAKUNDO_E_INVALID);
 	// Taking the same box twice is a state error.
-	assert_eq!(
-		unsafe { oakundo_undostack_push(stack, cmd, name.as_ptr()) },
-		OAKUNDO_E_STATE
-	);
+	assert_eq!(undostack_push(stack, cmd, name.as_ptr()), OAKUNDO_E_STATE);
 
 	let mut release = cmd;
-	unsafe {
-		oakundo::ffi::command::oakundo_command_free(&mut release);
-		oakundo::ffi::undostack::oakundo_undostack_free(&mut stack);
-	}
+	command_free(&mut release);
+	undostack_free(&mut stack);
 }
 
 /// `push_pre_executed` also drops the redoable tail and evicts the oldest
@@ -149,49 +143,37 @@ fn push_pre_executed_clears_redo_tail_and_caps() {
 		undo: None,
 		free_fn: None,
 	};
-	let mut stack = unsafe { oakundo_undostack_init() };
+	let mut stack = undostack_init();
 	let name = c"row";
 
 	// Push two, undo one, then push_pre_executed: redo tail is dropped.
 	for _ in 0..2 {
-		let cmd = unsafe { oakundo_command_init(&vtable, std::ptr::null_mut()) };
-		assert_eq!(
-			unsafe { oakundo_undostack_push(stack, cmd, name.as_ptr()) },
-			0
-		);
+		let cmd = command_init(&vtable, std::ptr::null_mut());
+		assert_eq!(undostack_push(stack, cmd, name.as_ptr()), 0);
 		let mut shell = cmd;
-		unsafe { oakundo::ffi::command::oakundo_command_free(&mut shell) };
+		command_free(&mut shell);
 	}
-	assert_eq!(unsafe { oakundo_undostack_undo(stack) }, 0);
-	let cmd = unsafe { oakundo_command_init(&vtable, std::ptr::null_mut()) };
-	assert_eq!(
-		unsafe { oakundo_undostack_push_pre_executed(stack, cmd, name.as_ptr()) },
-		0
-	);
+	assert_eq!(undostack_undo(stack), 0);
+	let cmd = command_init(&vtable, std::ptr::null_mut());
+	assert_eq!(undostack_push_pre_executed(stack, cmd, name.as_ptr()), 0);
 	let mut can_redo: i32 = 1;
-	assert_eq!(
-		unsafe { oakundo::ffi::undostack::oakundo_undostack_can_redo(stack, &mut can_redo) },
-		0
-	);
+	assert_eq!(undostack_can_redo(stack, &mut can_redo), 0);
 	assert_eq!(can_redo, 0, "push_pre_executed drops the redoable tail");
 
 	// Fill past the cap with pre-executed commands: the oldest rows are
 	// evicted and the count stays at K_MAX_UNDO_COMMANDS.
 	for _ in 0..(K_MAX_UNDO_COMMANDS + 10) {
-		let cmd = unsafe { oakundo_command_init(&vtable, std::ptr::null_mut()) };
-		assert_eq!(
-			unsafe { oakundo_undostack_push_pre_executed(stack, cmd, name.as_ptr()) },
-			0
-		);
+		let cmd = command_init(&vtable, std::ptr::null_mut());
+		assert_eq!(undostack_push_pre_executed(stack, cmd, name.as_ptr()), 0);
 	}
 	let mut index: i64 = 0;
-	assert_eq!(unsafe { oakundo_undostack_index(stack, &mut index) }, 0);
+	assert_eq!(undostack_index(stack, &mut index), 0);
 	assert_eq!(
 		index, K_MAX_UNDO_COMMANDS as i64,
 		"pre-executed rows evict at the cap"
 	);
 
-	unsafe { oakundo::ffi::undostack::oakundo_undostack_free(&mut stack) };
+	undostack_free(&mut stack);
 }
 
 /// `make_owned` on a stack mutex is what `undostack_init` uses; the
@@ -217,7 +199,7 @@ fn command_box_refcounting_and_taken_multi_shell() {
 		free_fn: None,
 	};
 
-	let mut cmd = unsafe { oakundo_command_init(&vtable, std::ptr::null_mut()) };
+	let mut cmd = command_init(&vtable, std::ptr::null_mut());
 	assert!(!cmd.ctx.is_null());
 
 	// NULL ctx is a no-op for both refcount callbacks.
@@ -232,20 +214,12 @@ fn command_box_refcounting_and_taken_multi_shell() {
 
 	// A multi command pushed into a stack is taken; the remaining shell
 	// must fail cleanly on child access.
-	let mut stack = unsafe { oakundo_undostack_init() };
-	let mut multi = unsafe { oakundo::ffi::command::oakundo_command_init_multi() };
+	let mut stack = undostack_init();
+	let mut multi = command_init_multi();
 	let name = c"m";
-	assert_eq!(
-		unsafe { oakundo_undostack_push(stack, multi, name.as_ptr()) },
-		0
-	);
+	assert_eq!(undostack_push(stack, multi, name.as_ptr()), 0);
 	let mut out: i32 = -1;
-	assert_eq!(
-		unsafe { oakundo::ffi::command::oakundo_command_multi_child_count(multi, &mut out) },
-		OAKUNDO_E_INVALID
-	);
-	unsafe {
-		oakundo::ffi::command::oakundo_command_free(&mut multi);
-		oakundo::ffi::undostack::oakundo_undostack_free(&mut stack);
-	}
+	assert_eq!(command_multi_child_count(multi, &mut out), OAKUNDO_E_INVALID);
+	command_free(&mut multi);
+	undostack_free(&mut stack);
 }

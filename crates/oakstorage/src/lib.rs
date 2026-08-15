@@ -25,10 +25,9 @@
 
 pub mod backend;
 pub mod backends;
-pub mod bridge;
 pub mod error;
-pub mod ffi;
 pub mod handle;
+pub mod nodeutil;
 pub mod registry;
 pub mod session;
 pub mod uri;

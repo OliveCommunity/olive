@@ -66,7 +66,7 @@ use oaknode::sequence::SequenceBehavior;
 use oaknode::track::{TrackBehavior, TrackListBehavior, TrackType};
 
 use crate::backend::LoadResult;
-use crate::bridge::node;
+use crate::nodeutil as node;
 use crate::error::{Error, Result};
 use crate::uri::StorageUri;
 

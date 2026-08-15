@@ -29,7 +29,7 @@
 //!   语义，第 1 期账本不需要 → OK no-op，见 memory.rs 文档）。
 //!
 //! `// TODO(clip)`：clipGetImage 依赖 [`crate::clip::ClipInstance::fetch_image`]
-//! （bridge::render 帧访问 C ABI 未冻结），代码已齐、运行时待 clip.rs。
+//! （oakrender 帧访问随单库化改为本地桩，见 [`crate::render`]），代码已齐、运行时待 clip.rs。
 
 use std::collections::HashMap;
 use std::ffi::{c_char, c_double, c_int, c_void, CStr};
@@ -258,7 +258,8 @@ unsafe extern "C" fn clip_get_property_set(clip: *mut c_void, out: *mut *mut c_v
 /// clipGetImage：抓取输入图像并登记到存活表，返回图像属性集 handle
 /// （HS:2003-2049；`getImage` 失败 → Failed）。
 ///
-/// `// TODO(clip)`：fetch_image 待 bridge::render 帧访问 C ABI。
+/// `// TODO(clip)`：fetch_image 待 clip 迁移到
+/// `oakrender::texture::Texture` 值模型（当前帧访问为本地桩）。
 unsafe extern "C" fn clip_get_image(
 	clip: *mut c_void,
 	time: c_double,

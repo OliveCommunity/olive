@@ -56,32 +56,20 @@ use ffmpeg::software::{resampling, scaling};
 use ffmpeg::{ChannelLayout, Dictionary, Error as FfmpegError, Rational as FfRational};
 use ffmpeg_next as ffmpeg;
 
+use oakcommon::cancelatom::CancelAtom;
+use oakcommon::ocioutils::PixelFormat as OakPixelFormat;
+use oakcommon::videoparams::{Interlacing, VideoParams, VideoType};
 use oakcore_rs::{PixelFormat, Rational, SampleFormat, TimeRange};
 
-use crate::bridge::common::{
-	oakcommon_videoparams_init_basic, oakcommon_videoparams_set_channel_count,
-	oakcommon_videoparams_set_duration, oakcommon_videoparams_set_format,
-	oakcommon_videoparams_set_frame_rate, oakcommon_videoparams_set_height,
-	oakcommon_videoparams_set_interlacing, oakcommon_videoparams_set_pixel_aspect_ratio,
-	oakcommon_videoparams_set_premultiplied_alpha, oakcommon_videoparams_set_start_time,
-	oakcommon_videoparams_set_stream_index, oakcommon_videoparams_set_time_base,
-	oakcommon_videoparams_set_video_type, oakcommon_videoparams_set_width,
-	oakcore_audioparams_create, oakcore_audioparams_set_duration,
-	oakcore_audioparams_set_stream_index, oakcore_audioparams_set_time_base, OakAudioParams,
-};
-use crate::bridge::render::{oakrender_cancelatom_is_cancelled, OakCancelAtom, OakRenderTexture};
-use crate::decoder::{CodecStream, Decoder, RetrieveAudioStatus, RetrieveVideoParams};
+use crate::audioparams::AudioParams;
+use crate::decoder::{CodecStream, Decoder, OakRenderTexture, RetrieveAudioStatus, RetrieveVideoParams};
 use crate::encoder::Encoder;
 use crate::encodingparams::EncodingParams;
 use crate::footagedescription::{FootageDescription, StreamEntry};
 use crate::frame::Frame;
 
-/// `OAKCOMMON_VIDEO_INTERLACE_NONE` (oakcommon `common/videoparams.h`).
-const OAKCOMMON_VIDEO_INTERLACE_NONE: i32 = 0;
 /// `OAKCOMMON_COLOR_RANGE_FULL`.
 const OAKCOMMON_COLOR_RANGE_FULL: i32 = 1;
-/// `OAKCOMMON_VIDEO_TYPE_VIDEO`.
-const OAKCOMMON_VIDEO_TYPE_VIDEO: i32 = 0;
 /// The format-level time base (microseconds), `FB_TIME_BASE` in the bridge.
 const FB_TIME_BASE: i64 = 1_000_000;
 /// `AV_NOPTS_VALUE`.
@@ -112,18 +100,12 @@ fn fail(msg: impl Into<String>) -> crate::error::Error {
 	crate::error::Error::Failed(msg.into())
 }
 
-/// `cancel_atom_is_cancelled` — NULL/empty-handle-safe check of an
-/// oakrender cancel atom (borrowed pointer).
+/// `cancel_atom_is_cancelled` — check of a cancel atom (borrowed pointer).
 ///
 /// # CPP-PARITY
 /// `src/codec/src/ffmpeg/ffmpegdecoder.cpp` (anonymous namespace helper).
-fn cancel_atom_is_cancelled(cancelled: Option<&OakCancelAtom>) -> bool {
-	match cancelled {
-		Some(atom) if !atom.ctx.is_null() => unsafe {
-			oakrender_cancelatom_is_cancelled(atom.clone()) != 0
-		},
-		_ => false,
-	}
+fn cancel_atom_is_cancelled(cancelled: Option<&CancelAtom>) -> bool {
+	cancelled.is_some_and(|atom| atom.is_cancelled())
 }
 
 /// Whether an FFmpeg error means "end of stream" or "try again".
@@ -261,7 +243,7 @@ impl Decoder for FFmpegDecoder {
 	fn probe(
 		&self,
 		filename: &str,
-		cancelled: Option<&OakCancelAtom>,
+		cancelled: Option<&CancelAtom>,
 	) -> Option<FootageDescription> {
 		ffmpeg_init().ok()?;
 		probe_file(filename, cancelled)
@@ -377,7 +359,7 @@ impl Decoder for FFmpegDecoder {
 		sample_rate: i32,
 		channel_layout: u64,
 		sample_format: i32,
-		cancelled: Option<&OakCancelAtom>,
+		cancelled: Option<&CancelAtom>,
 	) -> crate::error::Result<()> {
 		ffmpeg_init()?;
 		let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -705,7 +687,7 @@ impl DecoderState {
 		&mut self,
 		time: &Rational,
 		any_timecode: bool,
-		cancelled: Option<&OakCancelAtom>,
+		cancelled: Option<&CancelAtom>,
 	) -> crate::error::Result<Option<ffmpeg::frame::Video>> {
 		// Move the video state out so `self.seek` / `self.pull` (which touch
 		// other fields) can be called without conflicting borrows.
@@ -1023,7 +1005,7 @@ impl DecoderState {
 		sample_rate: i32,
 		channel_layout: u64,
 		sample_format: i32,
-		cancelled: Option<&OakCancelAtom>,
+		cancelled: Option<&CancelAtom>,
 	) -> crate::error::Result<()> {
 		if self.input_channel_layout_mask == 0 {
 			return Err(fail(
@@ -1456,11 +1438,18 @@ fn copy_rgba_f32_to_frame(
 	bytes: &[u8],
 	timestamp: Rational,
 ) -> crate::error::Result<Frame> {
-	let params = unsafe { oakcommon_videoparams_init_basic(width as i32, height as i32, 0, 4, 1, 1, 0, 1) };
-	unsafe {
-		oakcommon_videoparams_set_format(params.clone(), PixelFormat::F32 as i32);
-		oakcommon_videoparams_set_channel_count(params.clone(), VIDEO_CHANNELS);
-	}
+	let mut params = VideoParams::new_basic(
+		width as i32,
+		height as i32,
+		OakPixelFormat::from_code(0),
+		4,
+		1,
+		1,
+		0,
+		1,
+	);
+	params.set_format(OakPixelFormat::from_code(PixelFormat::F32 as i32));
+	params.set_channel_count(VIDEO_CHANNELS);
 	let mut frame = Frame::with_params(params);
 	frame.set_timestamp(timestamp);
 	frame.allocate()?;
@@ -1490,7 +1479,7 @@ fn copy_rgba_f32_to_frame(
 /// stream details are taken from stream parameters (no second decode pass),
 /// so `is_still` is always false and interlacing always progressive;
 /// subtitle streams are counted but not added.
-fn probe_file(filename: &str, cancelled: Option<&OakCancelAtom>) -> Option<FootageDescription> {
+fn probe_file(filename: &str, cancelled: Option<&CancelAtom>) -> Option<FootageDescription> {
 	let mut dict = Dictionary::new();
 	dict.set("analyzeduration", "5000000");
 	dict.set("probesize", "20000000");
@@ -1545,29 +1534,25 @@ fn probe_file(filename: &str, cancelled: Option<&OakCancelAtom>) -> Option<Foota
 				let frame_rate = stream.avg_frame_rate();
 				let tb = stream.time_base();
 
-				let vp = unsafe { oakcommon_videoparams_init_basic(1, 1, 0, 4, 1, 1, 0, 1) };
+				let mut vp =
+					VideoParams::new_basic(1, 1, OakPixelFormat::from_code(0), 4, 1, 1, 0, 1);
+				vp.set_stream_index(i as i32);
+				// SAFETY: `raw` points at the live stream's parameters (from
+				// `params.as_ptr()` above), valid for the duration of `probe_file`.
 				unsafe {
-					oakcommon_videoparams_set_stream_index(vp.clone(), i as i32);
-					oakcommon_videoparams_set_width(vp.clone(), (*raw).width);
-					oakcommon_videoparams_set_height(vp.clone(), (*raw).height);
-					oakcommon_videoparams_set_video_type(vp.clone(), OAKCOMMON_VIDEO_TYPE_VIDEO);
-					oakcommon_videoparams_set_format(vp.clone(), native as i32);
-					oakcommon_videoparams_set_channel_count(vp.clone(), VIDEO_CHANNELS);
-					oakcommon_videoparams_set_interlacing(
-						vp.clone(),
-						OAKCOMMON_VIDEO_INTERLACE_NONE,
-					);
-					oakcommon_videoparams_set_pixel_aspect_ratio(vp.clone(), 1, 1);
-					oakcommon_videoparams_set_frame_rate(
-						vp.clone(),
-						frame_rate.0 as i64,
-						frame_rate.1 as i64,
-					);
-					oakcommon_videoparams_set_start_time(vp.clone(), stream.start_time());
-					oakcommon_videoparams_set_time_base(vp.clone(), tb.0 as i64, tb.1 as i64);
-					oakcommon_videoparams_set_duration(vp.clone(), stream.duration());
-					oakcommon_videoparams_set_premultiplied_alpha(vp.clone(), 0);
+					vp.set_width((*raw).width);
+					vp.set_height((*raw).height);
 				}
+				vp.set_video_type(VideoType::Video);
+				vp.set_format(OakPixelFormat::from_code(native as i32));
+				vp.set_channel_count(VIDEO_CHANNELS);
+				vp.set_interlacing(Interlacing::None);
+				vp.set_pixel_aspect_ratio(1, 1);
+				vp.set_frame_rate(frame_rate.0 as i32, frame_rate.1 as i32);
+				vp.set_start_time(stream.start_time());
+				vp.set_time_base(tb.0 as i32, tb.1 as i32);
+				vp.set_duration(stream.duration());
+				vp.set_premultiplied_alpha(false);
 				desc.push_stream(StreamEntry::Video(vp));
 			}
 			MediaType::Audio => {
@@ -1584,22 +1569,26 @@ fn probe_file(filename: &str, cancelled: Option<&OakCancelAtom>) -> Option<Foota
 					};
 				}
 				let sample_rate = unsafe { (*raw).sample_rate };
-				let layout_mask = unsafe { ChannelLayout::from((*raw).ch_layout) }.bits();
-				let ap = unsafe { oakcore_audioparams_create(sample_rate, layout_mask, 0) };
-				if !ap.is_null() {
-					let tb = stream.time_base();
-					unsafe {
-						oakcore_audioparams_set_stream_index(ap, i as i32);
-						oakcore_audioparams_set_duration(ap, stream_duration);
-						oakcore_audioparams_set_time_base(ap, tb.0 as i32, tb.1 as i32);
-					}
-					desc.push_stream(StreamEntry::Audio(OakAudioParams {
-						ctx: ap as *mut std::ffi::c_void,
-						addref: None,
-						release: None,
-						abi_version: crate::handle::OAKCODEC_ABI_VERSION,
-					}));
-				}
+				let raw_layout = unsafe { ChannelLayout::from((*raw).ch_layout) };
+				// Count-only layouts (WAV and other PCM containers report
+				// AV_CHANNEL_ORDER_UNSPEC with a channel count but no mask)
+				// yield a zero mask; derive a default mask from the count so
+				// the stream stays usable (CPP-PARITY channel_layout_from_mask
+				// fallback in the audio processors).
+				let layout_mask = if raw_layout.bits() == 0 && raw_layout.channels() > 0 {
+					ChannelLayout::default(raw_layout.channels()).bits()
+				} else {
+					raw_layout.bits()
+				};
+				let tb = stream.time_base();
+				desc.push_stream(StreamEntry::Audio(AudioParams {
+					sample_rate,
+					channel_layout: layout_mask,
+					format: 0,
+					stream_index: i as i32,
+					duration: stream_duration,
+					time_base: (tb.0 as i32, tb.1 as i32),
+				}));
 			}
 			_ => {}
 		}
@@ -1699,6 +1688,12 @@ struct VideoEncoderState {
 	scaler: scaling::Context,
 	width: u32,
 	height: u32,
+	/// The encoder's time base after `open` (the frame PTS are expressed
+	/// in it; see `FFmpegEncoder::open`).
+	time_base: FfRational,
+	/// One frame in the encoder's time base (the last packet's duration;
+	/// see `FFmpegEncoder::open`).
+	frame_duration: i64,
 }
 
 /// Opened audio encoder + its conversion resampler.
@@ -1877,7 +1872,6 @@ impl EncoderState {
 				.video()
 				.map_err(ffmpeg_err)?;
 			stream.set_parameters(&encoder);
-			stream.set_time_base(time_base);
 
 			encoder.set_width(width);
 			encoder.set_height(height);
@@ -1886,7 +1880,19 @@ impl EncoderState {
 				params.video_pixel_aspect_den.max(1),
 			));
 			encoder.set_frame_rate(Some(frame_rate));
-			encoder.set_time_base(time_base);
+			// The codecs' packet timestamps use a fine tick (x264 encodes at
+			// 1024 ticks per frame); give H.264 an encoder time base scaled
+			// to that so the frame PTS stay integral, and sync the stream to
+			// the encoder's ACTUAL post-open time base (the value the muxer
+			// reads) so the container timing is `seconds * frame_rate`.
+			// Other codecs (e.g. MPEG-2) reject the scaled rate and keep the
+			// nominal frame-duration time base.
+			let tick = if codec_id == ffmpeg::codec::Id::H264 {
+				FfRational(time_base.0, time_base.1 * 1024)
+			} else {
+				time_base
+			};
+			encoder.set_time_base(tick);
 			if params.video_bit_rate > 0 {
 				encoder.set_bit_rate(params.video_bit_rate as usize);
 			}
@@ -1902,6 +1908,20 @@ impl EncoderState {
 
 			let opened = encoder.open().map_err(|e| { eprintln!("DBG-AUD: audio open failed: {e:?}"); ffmpeg_err(e) })?;
 			stream.set_parameters(&opened);
+			// The encoder may adjust the time base during `open` (x264
+			// picks its own); sync the stream to the encoder's ACTUAL time
+			// base so the container timing matches the frame PTS computed
+			// from it (a mismatched stream time base crams the whole video
+			// into the first milliseconds).
+			let time_base = opened.time_base();
+			stream.set_time_base(time_base);
+			// One frame in the encoder's time base, used to fill the last
+			// packet's duration: the muxer normally derives it from the
+			// codec context attached to the stream, but the ffmpeg-next
+			// flow never attaches one, so the final frame would carry
+			// duration 0 and the track would be one frame short.
+			let frame_duration = (time_base.1 as i64 * i64::from(frame_rate.1))
+				/ (i64::from(time_base.0) * i64::from(frame_rate.0)).max(1);
 
 			let scaler = scaling::Context::get(
 				Pixel::RGBA,
@@ -1920,6 +1940,8 @@ impl EncoderState {
 				scaler,
 				width,
 				height,
+				time_base,
+				frame_duration,
 			});
 		}
 
@@ -1987,7 +2009,7 @@ impl EncoderState {
 	}
 
 	/// Encode one frame (F32 RGBA) into the open output.
-	fn write_video(&mut self, frame: &Frame, params: &EncodingParams) -> crate::error::Result<()> {
+	fn write_video(&mut self, frame: &Frame, _params: &EncodingParams) -> crate::error::Result<()> {
 		let output = self
 			.output
 			.as_mut()
@@ -2040,12 +2062,11 @@ impl EncoderState {
 
 		// # CPP-PARITY
 		// `FFmpegEncoder::write_frame` passes the frame time in seconds; the
-		// Rust `Frame` carries the timestamp as a rational.
+		// Rust `Frame` carries the timestamp as a rational. The PTS is
+		// expressed in the encoder's own time base (captured at open), so
+		// the container timing is exactly `seconds * rate`.
 		let secs = frame.timestamp().to_f64();
-		let tb = FfRational(
-			params.video_time_base_num.max(1),
-			params.video_time_base_den.max(1),
-		);
+		let tb = video.time_base;
 		let pts = (secs * tb.1 as f64 / tb.0 as f64).round() as i64;
 		scaled.set_pts(Some(pts));
 
@@ -2078,22 +2099,57 @@ impl EncoderState {
 		let channels = audio.resampler.dst_channels.max(1);
 		let in_frames = samples.len() / channels;
 
-		// Presentation timestamp in the output stream time base (1/sample_rate).
-		let pts = output.audio_pts;
+		// The encoder accepts at most `frame_size` samples per frame (AAC:
+		// 1024), so the (possibly whole-range) input buffer is split into
+		// chunks. The resampler converts at the same rate (the rendered
+		// audio rate equals the encoder rate), but swr may buffer a small
+		// delay, so the input chunk is shrunk until its predicted output
+		// fits `frame_size`.
+		let frame_size = audio.encoder.frame_size().max(1) as usize;
+		let mut offset = 0usize;
+		while offset < in_frames {
+			let mut take = frame_size.min(in_frames - offset);
+			loop {
+				let out = unsafe { sys::swr_get_out_samples(audio.resampler.ctx.as_mut_ptr(), take as i32) };
+				if out >= 0 && out as usize <= frame_size {
+					break;
+				}
+				take = take.saturating_sub(1);
+				if take == 0 {
+					take = 1;
+					break;
+				}
+			}
 
-		let layout = channel_layout_from_mask(params.audio_channel_layout);
-		let mut input =
-			ffmpeg::frame::Audio::new(Sample::F32(SampleType::Packed), in_frames, layout);
-		let bytes =
-			unsafe { std::slice::from_raw_parts(samples.as_ptr() as *const u8, samples.len() * 4) };
-		input.data_mut(0)[..bytes.len()].copy_from_slice(bytes);
+			// Presentation timestamp in the output stream time base (1/sample_rate).
+			let pts = output.audio_pts;
+			let layout = channel_layout_from_mask(params.audio_channel_layout);
+			let chunk = &samples[offset * channels..(offset + take) * channels];
+			let mut input = ffmpeg::frame::Audio::new(Sample::F32(SampleType::Packed), take, layout);
+			let bytes = unsafe {
+				std::slice::from_raw_parts(chunk.as_ptr() as *const u8, chunk.len() * 4)
+			};
+			input.data_mut(0)[..bytes.len()].copy_from_slice(bytes);
 
-		let mut converted = audio.resampler.convert_to_frame(&input).map_err(|e| { eprintln!("DBG-AUD: convert failed: {e:?}"); fail(format!("{e:?}")) })?;
-		converted.set_pts(Some(pts));
-		output.audio_pts += converted.samples() as i64;
-
-		audio.encoder.send_frame(&converted).map_err(|e| { eprintln!("DBG-AUD: send failed: {e:?}"); ffmpeg_err(e) })?;
-		drain_audio_packets(&mut output.output, audio)
+			let mut converted = audio.resampler.convert_to_frame(&input).map_err(|e| {
+				eprintln!("DBG-AUD: convert failed: {e:?}");
+				fail(format!("{e:?}"))
+			})?;
+			if converted.samples() > 0 {
+				converted.set_pts(Some(pts));
+				output.audio_pts += converted.samples() as i64;
+				audio
+					.encoder
+					.send_frame(&converted)
+					.map_err(|e| {
+						eprintln!("DBG-AUD: send failed: {e:?}");
+						ffmpeg_err(e)
+					})?;
+				drain_audio_packets(&mut output.output, audio)?;
+			}
+			offset += take;
+		}
+		Ok(())
 	}
 
 	/// Flush encoders, write the trailer and close the output (idempotent).
@@ -2128,6 +2184,9 @@ fn drain_video_encoder(
 		match video.encoder.receive_packet(&mut pkt) {
 			Ok(()) => {
 				pkt.set_stream(video.stream_index);
+				if pkt.duration() <= 0 {
+					pkt.set_duration(video.frame_duration);
+				}
 				pkt.write_interleaved(output).map_err(ffmpeg_err)?;
 			}
 			Err(e) if is_eof_or_eagain(&e) => break,
@@ -2167,6 +2226,12 @@ fn drain_video_packets(
 		match video.encoder.receive_packet(&mut pkt) {
 			Ok(()) => {
 				pkt.set_stream(video.stream_index);
+				// The final frame carries no duration (see the
+				// `frame_duration` note); fill it so the track length is
+				// the full export range.
+				if pkt.duration() <= 0 {
+					pkt.set_duration(video.frame_duration);
+				}
 				pkt.write_interleaved(output).map_err(ffmpeg_err)?;
 			}
 			Err(e) if is_eof_or_eagain(&e) => break,

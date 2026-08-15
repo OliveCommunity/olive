@@ -21,9 +21,7 @@
 //! created the object).
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::ptr;
 use std::sync::atomic::{AtomicI32, AtomicU32, Ordering};
-
 use crate::error::{self, OAKCODEC_E_FAILED};
 
 /// Number of boxed handle objects currently alive (leak/debug checking).
@@ -183,9 +181,9 @@ mod tests {
 
 	#[test]
 	fn make_owned_lifecycle_tracks_alive_count() {
-		// The shared ffi test lock serializes the crate's `alive_count`
+		// The shared test lock serializes the crate's `alive_count`
 		// assertions against every other test that creates handles.
-		let _g = crate::ffi::lock_tests();
+		let _g = crate::lock_tests();
 		let before = alive_count();
 		let h = make_owned(42u32);
 		assert!(!h.is_null());
@@ -214,7 +212,7 @@ mod tests {
 
 	#[test]
 	fn make_borrowed_takes_ownership() {
-		let _g = crate::ffi::lock_tests();
+		let _g = crate::lock_tests();
 		let before = alive_count();
 		let raw = Box::into_raw(Box::new(7u32));
 		let h = unsafe { make_borrowed(raw) };

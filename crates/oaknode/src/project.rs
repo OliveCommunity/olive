@@ -43,7 +43,7 @@ pub struct NodeRef {
 
 impl NodeRef {
 	/// New reference. `owned` selects whether releasing the last handle
-	/// reference accounts the node in [`crate::ffi::debug_alive_count`].
+	/// reference accounts the node in the crate's debug alive count.
 	pub fn new(project: Arc<Mutex<Project>>, id: NodeId, owned: bool) -> NodeRef {
 		NodeRef {
 			project,

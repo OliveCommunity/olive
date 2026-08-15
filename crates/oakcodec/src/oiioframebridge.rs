@@ -30,10 +30,8 @@
 //! timestamp and time base alongside the raw pixel rows, so a buffer can be
 //! turned back into an equivalent [`Frame`] without any external state.
 
-use crate::bridge::common::{
-	oakcommon_videoparams_get_time_base, oakcommon_videoparams_init_with_time_base,
-	oakcommon_videoparams_set_format,
-};
+use oakcommon::ocioutils::PixelFormat as OakPixelFormat;
+use oakcommon::videoparams::VideoParams;
 use crate::frame::Frame;
 use oakcore_rs::Rational;
 use std::ffi::c_int;
@@ -154,14 +152,8 @@ pub fn oiio_frame_to_buffer(frame: &Frame) -> crate::error::Result<Vec<u8>> {
 
 	let (time_base_num, time_base_den) = match frame.params() {
 		Some(p) => {
-			let mut num = 0i64;
-			let mut den = 0i64;
-			// SAFETY: `num`/`den` are live mutable i64s and `p` is a valid
-			// handle; the C function only writes through the two out pointers.
-			unsafe {
-				oakcommon_videoparams_get_time_base(p.clone(), &mut num, &mut den);
-			}
-			(num, den)
+			let (num, den) = p.time_base();
+			(i64::from(num), i64::from(den))
 		}
 		None => (0, 0),
 	};
@@ -215,26 +207,19 @@ pub fn oiio_buffer_to_frame(buffer: &[u8]) -> crate::error::Result<Frame> {
 	}
 
 	// Build the params from the header, then hand ownership to the frame.
-	// SAFETY: the init returns a live handle; the clone for `set_format` is
-	// only read, and the original is moved into `Frame::with_params` (which
-	// takes ownership), so there is no double release.
-	let params = unsafe {
-		oakcommon_videoparams_init_with_time_base(
-			header.width,
-			header.height,
-			header.time_base_num as c_int,
-			header.time_base_den as c_int,
-			0,
-			4,
-			1,
-			1,
-			0,
-			1,
-		)
-	};
-	unsafe {
-		oakcommon_videoparams_set_format(params.clone(), header.format);
-	}
+	let mut params = VideoParams::new_with_time_base(
+		header.width,
+		header.height,
+		header.time_base_num as c_int,
+		header.time_base_den as c_int,
+		OakPixelFormat::from_code(0),
+		4,
+		1,
+		1,
+		0,
+		1,
+	);
+	params.set_format(OakPixelFormat::from_code(header.format));
 	let mut frame = Frame::with_params(params);
 	frame.set_timestamp(Rational::new(header.timestamp_num, header.timestamp_den));
 	frame.allocate()?;
@@ -351,11 +336,21 @@ mod tests {
 	}
 
 	/// A small helper to build a fully allocated, filled frame using the same
-	/// test-stub params pattern as `frame.rs`.
+	/// params pattern as `frame.rs`.
 	fn make_frame() -> Frame {
-		// SAFETY: test-stub videoparams; ownership moves into `with_params`.
-		let params = unsafe { oakcommon_videoparams_init_with_time_base(100, 50, 1, 30, 0, 4, 1, 1, 0, 1) };
-		unsafe { oakcommon_videoparams_set_format(params.clone(), 0) }; // U8
+		let mut params = VideoParams::new_with_time_base(
+			100,
+			50,
+			1,
+			30,
+			OakPixelFormat::from_code(0),
+			4,
+			1,
+			1,
+			0,
+			1,
+		);
+		params.set_format(OakPixelFormat::from_code(0)); // U8
 		let mut frame = Frame::with_params(params);
 		frame.set_timestamp(Rational::new(5, 2));
 		frame.allocate().unwrap();

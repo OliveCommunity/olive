@@ -15,58 +15,55 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Track-level block commands (`src/timeline/src/timelineundotrack.h`).
-//! All graph operations go through the oaknode C ABI (`bridge::node`).
+//! Graph operations go directly through the oaknode Rust domain
+//! ([`crate::util::NodeRef`] + the project graph) since the single-lib
+//! unification removed the oaknode C ABI.
 
-use crate::bridge::node::{
-	oaknode_block_get_previous, oaknode_track_insert_block_after, oaknode_track_prepend_block,
-	oaknode_track_replace_block, oaknode_track_ripple_remove_block,
-};
-use crate::handle::CHandle;
+use oakundo::undocommand::UndoCommand;
+
 use crate::undocommon::{box_command, Command};
+use crate::util::{
+	block_previous, track_insert_block_after, track_prepend_block, track_replace_block,
+	track_ripple_remove_block, NodeRef,
+};
 
 /// `TrackRippleRemoveBlockCommand` — ripple-remove a block from a track
 /// (timelineundotrack.h).
 pub struct TrackRippleRemoveBlockCommand {
 	/// Owning track.
-	track: CHandle,
+	track: NodeRef,
 	/// Block to remove.
-	block: CHandle,
+	block: NodeRef,
 	/// Predecessor of the removed block, captured at `redo` time so `undo`
 	/// can restore the block at its original position.
-	before: CHandle,
+	before: Option<NodeRef>,
 }
 
 impl TrackRippleRemoveBlockCommand {
 	/// Construct from track + block.
-	pub fn new(track: CHandle, block: CHandle) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(track: NodeRef, block: NodeRef) -> TrackRippleRemoveBlockCommand`
+	pub fn new(track: NodeRef, block: NodeRef) -> Self {
 		Self {
 			track,
 			block,
-			before: CHandle::null(),
+			before: None,
 		}
 	}
 
-	/// `redo`: capture the predecessor, then `oaknode_track_ripple_remove_block`.
+	/// `redo`: capture the predecessor, then ripple-remove.
 	pub fn redo(&mut self) {
-		unsafe {
-			oaknode_block_get_previous(self.block.clone(), &mut self.before);
-			oaknode_track_ripple_remove_block(self.track.clone(), self.block.clone());
-		}
+		self.before = block_previous(&self.block);
+		track_ripple_remove_block(&self.track, &self.block);
 	}
 
-	/// `undo`: re-insert via `oaknode_track_insert_block_after`.
+	/// `undo`: re-insert after the captured predecessor.
 	pub fn undo(&mut self) {
-		unsafe {
-			oaknode_track_insert_block_after(
-				self.track.clone(),
-				self.block.clone(),
-				self.before.clone(),
-			);
-		}
+		track_insert_block_after(&self.track, &self.block, self.before.as_ref());
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }
@@ -87,33 +84,31 @@ impl Command for TrackRippleRemoveBlockCommand {
 /// (timelineundotrack.h).
 pub struct TrackPrependBlockCommand {
 	/// Owning track.
-	track: CHandle,
+	track: NodeRef,
 	/// Block to prepend.
-	block: CHandle,
+	block: NodeRef,
 }
 
 impl TrackPrependBlockCommand {
 	/// Construct from track + block.
-	pub fn new(track: CHandle, block: CHandle) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(track: NodeRef, block: NodeRef) -> TrackPrependBlockCommand`
+	pub fn new(track: NodeRef, block: NodeRef) -> Self {
 		Self { track, block }
 	}
 
-	/// `redo`: `oaknode_track_prepend_block`.
+	/// `redo`: prepend the block.
 	pub fn redo(&mut self) {
-		unsafe {
-			oaknode_track_prepend_block(self.track.clone(), self.block.clone());
-		}
+		track_prepend_block(&self.track, &self.block);
 	}
 
-	/// `undo`: `oaknode_track_ripple_remove_block`.
+	/// `undo`: ripple-remove the block.
 	pub fn undo(&mut self) {
-		unsafe {
-			oaknode_track_ripple_remove_block(self.track.clone(), self.block.clone());
-		}
+		track_ripple_remove_block(&self.track, &self.block);
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }
@@ -131,19 +126,22 @@ impl Command for TrackPrependBlockCommand {
 }
 
 /// `TrackInsertBlockAfterCommand` — insert a block after a predecessor
-/// (timelineundotrack.h).
+/// (timelineundotrack.h). A `None` predecessor inserts at the front of
+/// the track.
 pub struct TrackInsertBlockAfterCommand {
 	/// Owning track.
-	track: CHandle,
+	track: NodeRef,
 	/// Block to insert.
-	block: CHandle,
-	/// Predecessor block.
-	before: CHandle,
+	block: NodeRef,
+	/// Predecessor block (`None` = front).
+	before: Option<NodeRef>,
 }
 
 impl TrackInsertBlockAfterCommand {
 	/// Construct from track + block + predecessor.
-	pub fn new(track: CHandle, block: CHandle, before: CHandle) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(track: NodeRef, block: NodeRef, before: Option<NodeRef>) -> TrackInsertBlockAfterCommand`
+	pub fn new(track: NodeRef, block: NodeRef, before: Option<NodeRef>) -> Self {
 		Self {
 			track,
 			block,
@@ -151,26 +149,18 @@ impl TrackInsertBlockAfterCommand {
 		}
 	}
 
-	/// `redo`: `oaknode_track_insert_block_after`.
+	/// `redo`: insert after the predecessor.
 	pub fn redo(&mut self) {
-		unsafe {
-			oaknode_track_insert_block_after(
-				self.track.clone(),
-				self.block.clone(),
-				self.before.clone(),
-			);
-		}
+		track_insert_block_after(&self.track, &self.block, self.before.as_ref());
 	}
 
-	/// `undo`: `oaknode_track_ripple_remove_block`.
+	/// `undo`: ripple-remove the block.
 	pub fn undo(&mut self) {
-		unsafe {
-			oaknode_track_ripple_remove_block(self.track.clone(), self.block.clone());
-		}
+		track_ripple_remove_block(&self.track, &self.block);
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }
@@ -191,16 +181,18 @@ impl Command for TrackInsertBlockAfterCommand {
 /// (equal lengths required) (timelineundotrack.h).
 pub struct TrackReplaceBlockCommand {
 	/// Owning track.
-	track: CHandle,
+	track: NodeRef,
 	/// Block to replace.
-	old: CHandle,
+	old: NodeRef,
 	/// Replacement block.
-	replace: CHandle,
+	replace: NodeRef,
 }
 
 impl TrackReplaceBlockCommand {
 	/// Construct from track + old + replace.
-	pub fn new(track: CHandle, old: CHandle, replace: CHandle) -> Self {
+	///
+	/// New signature (single-lib): `pub fn new(track: NodeRef, old: NodeRef, replace: NodeRef) -> TrackReplaceBlockCommand`
+	pub fn new(track: NodeRef, old: NodeRef, replace: NodeRef) -> Self {
 		Self {
 			track,
 			old,
@@ -208,22 +200,18 @@ impl TrackReplaceBlockCommand {
 		}
 	}
 
-	/// `redo`: `oaknode_track_replace_block(track, old, replace)`.
+	/// `redo`: replace `old` with `replace`.
 	pub fn redo(&mut self) {
-		unsafe {
-			oaknode_track_replace_block(self.track.clone(), self.old.clone(), self.replace.clone());
-		}
+		track_replace_block(&self.track, &self.old, &self.replace);
 	}
 
-	/// `undo`: `oaknode_track_replace_block(track, replace, old)`.
+	/// `undo`: swap back.
 	pub fn undo(&mut self) {
-		unsafe {
-			oaknode_track_replace_block(self.track.clone(), self.replace.clone(), self.old.clone());
-		}
+		track_replace_block(&self.track, &self.replace, &self.old);
 	}
 
-	/// Wrap as an oakundo vtable command handle.
-	pub fn to_command(self) -> CHandle {
+	/// Wrap as an oakundo vtable command value.
+	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
 }

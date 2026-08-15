@@ -26,10 +26,6 @@ src/
   node.rs         node.h + project.h + footage.h (node graph / project / footage)
   timeline.rs     timeline.h (sequences, clips, tracks, markers, workarea)
   task.rs         task.h (background tasks over oaktask)
-  ipc.rs          ipc.h (shm/framepool half): SpscRingBuffer + FrameSlotPool
-                  + POSIX SharedMemoryRegion (the real frame-slot transport)
-  worker.rs       worker.h (render worker): backend selection via the
-                  oakrender module C ABI + fallback, session, NDJSON main
   deferred.rs     documented deferrals (stub detail lives here and in the
                   family modules' stub bodies)
 tests/
@@ -39,11 +35,9 @@ tests/
 
 ### Dependencies
 
-The facade's regular dependencies are `serde`/`serde_json` (the worker's
-NDJSON control-plane protocol, `src/worker.rs`), `libc` (POSIX
-`shm_open`/`mmap`/`munmap`/`shm_unlink` for `src/ipc.rs`) and `thiserror`
-(the `Display` + `std::error::Error` impl for the facade error enum,
-`src/error.rs`). Every module
+The facade's regular dependency is `thiserror` (the `Display` +
+`std::error::Error` impl for the facade error enum, `src/error.rs`). Every
+module
 call crosses the module C ABI as an `extern "C"` import (`src/bridge/`),
 and the module crates themselves are real dependencies: [`linkage`](src/linkage.rs)
 anchors them so their `#[no_mangle]` exports are linked into the
@@ -84,17 +78,17 @@ convention: the return value is the length excluding the NUL
 | plugin | plugin.h | 4 | callbacks are facade state; push_button stubbed (no module API) |
 | codec | encoding.h | 81/85 | metadata family over oakcodec (`include/codec/format.h`); params handle is a facade box over the `oakcodec_encoding_params` POD; presets/load-save/export stubs |
 | render | renderer.h, color.h, lut.h | 60/60 | renderer over oakrender tickets; frame accessors over `OakCodecFrame`; color processor over `oakrender_color_processor_*`; color-manager list queries + LUT library stubs |
-| worker | worker.h | 8 | the render worker: `oakengine_worker_main` + the session family over the oakrender display renderer C ABI (dynamic → OpenGL fallback) and the ipc transport (see `src/worker.rs`) |
-| ipc | ipc.h (shm/framepool) | 28 | named shared-memory segments + frame-slot pools over `SpscRingBuffer` — the real frame-slot transport (see `src/ipc.rs`); the control-plane message serializers (`oakengine_ipc_*_to_json/parse`) are not wrapped (the worker speaks the NDJSON protocol with serde) |
 | node | node.h, project.h, footage.h | 226/327 | the node graph, project and footage families over the oaknode C ABI (`include/node/*.h`); 101 documented stubs where the module lacks the surface (gizmos, plugin messages, input properties, brush, thumbnail/waveform caches, shape/subtitle, keyframe enumeration, ...) — see the stub bodies |
 | timeline | timeline.h | 126/139 | sequences/clips/tracks/markers/workarea over oaknode + oaktimeline; 13 documented stubs (ripple-tracks command, default transitions, move-track/clip, marker-create, auto-cache, cache invalidation, multicam find/switch — module-surface gaps, see the stub bodies) |
 | task | task.h | 27 | the background-task system over oaktask (manager + load/save/import/export creators + result accessors); `create_proxy` stubbed (the module has no proxy-task C creator); start-time/is-cancelled are facade-approximated |
 
 Deferred/stub detail lives in [`deferred`] and in the stub bodies' doc
-comments. `worker` and `ipc` were in the deferred list until the render
-worker landed here — the worker's runtime and the shared-memory frame-slot
-transport are now real (see `src/worker.rs` / `src/ipc.rs`); the ipc.h
-control-plane message serializers remain unwrapped.
+comments. The worker/IPC families (`worker.h`/`ipc.h`) are **not** part of
+the facade anymore: the frozen C++ ABI does not include them, so the
+render worker's runtime and the shared-memory frame-slot transport moved
+into the `oak-worker` crate (`crates/oak-worker/src/{worker,ipc}.rs`,
+self-contained, direct Rust calls into oakrender); the ipc.h control-plane
+message serializers remain unwrapped.
 
 ## Testing
 
@@ -121,14 +115,11 @@ binaries keep the in-crate mocks (ffmpeg_bridge stub / render mocks):
 
 Families whose wrapped behavior requires the real module dylibs carry
 `#[ignore]` tests with a documented reason; the smoke tests here exercise
-the module crates' real implementations. The ipc tests create+attach two
-in-process mappings of real POSIX segments and exchange slot indices and
-payloads in both directions, including wraparound and full/empty edges.
+the module crates' real implementations.
 
 ```
-cargo test          # 71 tests green + 1 ignored (lib 35: ipc 17 + worker 18;
-                    # integration: undo 3, common 4, audio 4, plugin 3, codec 5,
-                    # render 6, linkage 1, node 3, timeline 2 + 1 ignored, task 5)
+cargo test          # lib tests + integration families (undo, common, audio,
+                    # plugin, codec, render, linkage, node, timeline, task)
 cargo build         # cdylib embeds the module C ABIs; oakcore_*/fb_* stay
                     # runtime lookups (see build.rs)
 ```

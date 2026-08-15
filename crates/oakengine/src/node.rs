@@ -19,8 +19,8 @@
 
 use std::ffi::{c_char, c_int, c_void};
 
-use crate::bridge::common as c;
-use crate::bridge::node as n;
+use crate::stubs::common as c;
+use crate::stubs::node as n;
 use crate::common::OakVideoParamsPod;
 use crate::error::{Error, Result};
 use crate::handle::{
@@ -2518,13 +2518,16 @@ pub unsafe extern "C" fn oakengine_node_input_is_keyframed(
 	self_: *const OakEngineNode,
 	input_id: *const c_char,
 ) -> c_int {
-	// Stub: the oaknode module has no keyframing-enabled query.
 	guard_int(|| unsafe {
 		if self_.is_null() || input_id.is_null() {
 			return Ok(0);
 		}
-		let _ = unbox(self_)?;
-		Ok(0)
+		let rc = n::oaknode_node_is_input_keyframing(unbox(self_)?, input_id);
+		if rc < 0 {
+			Err(Error::Module(rc))
+		} else {
+			Ok(rc)
+		}
 	})
 }
 
@@ -2534,13 +2537,16 @@ pub unsafe extern "C" fn oakengine_node_keyframe_count(
 	self_: *const OakEngineNode,
 	input_id: *const c_char,
 ) -> c_int {
-	// Stub: the oaknode module has no keyframe enumeration C ABI.
 	guard_int(|| unsafe {
 		if self_.is_null() || input_id.is_null() {
 			return Ok(0);
 		}
-		let _ = unbox(self_)?;
-		Ok(0)
+		let rc = n::oaknode_node_keyframe_count(unbox(self_)?, input_id);
+		if rc < 0 {
+			Err(Error::Module(rc))
+		} else {
+			Ok(rc)
+		}
 	})
 }
 
@@ -2553,16 +2559,20 @@ pub unsafe extern "C" fn oakengine_node_keyframe_at(
 	time_ts: *mut i64,
 	value: *mut OakNodeValue,
 ) -> c_int {
-	// Stub: see `oakengine_node_keyframe_count`.
 	guard(|| unsafe {
-		if self_.is_null() || input_id.is_null() {
+		if self_.is_null() || input_id.is_null() || time_ts.is_null() || value.is_null() {
 			return Err(Error::Invalid);
 		}
-		let _ = unbox(self_)?;
-		let _ = index;
-		let _ = time_ts;
-		let _ = value;
-		Err(Error::NotFound)
+		let h = unbox(self_)?;
+		let tb = time_base_for(h);
+		let mut num: i64 = 0;
+		let mut den: i64 = 0;
+		let rc = n::oaknode_node_keyframe_at(h, input_id, index, &mut num, &mut den, value);
+		Error::from_module(rc)?;
+		// Rational seconds -> frame timestamp in the project time base.
+		let ts = num as i128 * tb.1 as i128 / den as i128 / tb.0 as i128;
+		*time_ts = ts as i64;
+		Ok(())
 	})
 }
 
@@ -2578,14 +2588,38 @@ pub unsafe extern "C" fn oakengine_node_keyframe_get_easing(
 	y2: *mut f32,
 	type_: *mut c_int,
 ) -> c_int {
-	// Stub: see `oakengine_node_keyframe_count`.
 	guard(|| unsafe {
-		if self_.is_null() || input_id.is_null() {
+		if self_.is_null() || input_id.is_null() || type_.is_null() {
 			return Err(Error::Invalid);
 		}
-		let _ = unbox(self_)?;
-		let _ = (index, x1, y1, x2, y2, type_);
-		Err(Error::NotFound)
+		let h = unbox(self_)?;
+		// Locate the key's time through the count/at pair.
+		let mut num: i64 = 0;
+		let mut den: i64 = 0;
+		let mut dummy = OakNodeValue::none();
+		Error::from_module(n::oaknode_node_keyframe_at(
+			h, input_id, index, &mut num, &mut den, &mut dummy,
+		))?;
+		Error::from_module(n::oaknode_node_keyframe_type_at(
+			h, input_id, num, den, type_,
+		))?;
+		if !x1.is_null() {
+			let mut bx: f64 = 0.0;
+			let mut by: f64 = 0.0;
+			if n::oaknode_node_keyframe_bezier_at(h, input_id, num, den, 0, &mut bx, &mut by) == 0 {
+				*x1 = bx as f32;
+				*y1 = by as f32;
+			}
+		}
+		if !x2.is_null() {
+			let mut bx: f64 = 0.0;
+			let mut by: f64 = 0.0;
+			if n::oaknode_node_keyframe_bezier_at(h, input_id, num, den, 1, &mut bx, &mut by) == 0 {
+				*x2 = bx as f32;
+				*y2 = by as f32;
+			}
+		}
+		Ok(())
 	})
 }
 
@@ -2634,14 +2668,14 @@ pub unsafe extern "C" fn oakengine_node_keyframe_remove(
 	input_id: *const c_char,
 	time_ts: i64,
 ) -> c_int {
-	// Stub: the oaknode module has no remove-keyframe C ABI.
 	guard(|| unsafe {
 		if self_.is_null() || input_id.is_null() {
 			return Err(Error::Invalid);
 		}
-		let _ = unbox(self_)?;
-		let _ = time_ts;
-		Err(Error::NotFound)
+		let h = unbox(self_)?;
+		let tb = time_base_for(h);
+		let (t_num, t_den) = ts_to_time(time_ts, tb);
+		Error::from_module(n::oaknode_node_remove_keyframe(h, input_id, t_num, t_den))
 	})
 }
 
@@ -2685,11 +2719,31 @@ pub unsafe extern "C" fn oakengine_node_insert_keyframe_command(
 pub unsafe extern "C" fn oakengine_node_remove_keyframe_command(
 	keyframe: *mut OakEngineKeyframe,
 ) -> *mut c_void {
-	// Stub: the module has no remove-keyframe command creator (the module
-	// keyframe handles are detached values, not track members).
 	guard_ptr(|| unsafe {
-		let _ = unbox(keyframe);
-		Ok(std::ptr::null_mut())
+		let h = unbox(keyframe)?;
+		let mut num: i64 = 0;
+		let mut den: i64 = 0;
+		Error::from_module(n::oaknode_keyframe_get_time(h, &mut num, &mut den))?;
+		let mut input_buf = [0 as c_char; 256];
+		let rc = n::oaknode_keyframe_get_input(h, input_buf.as_mut_ptr(), 256);
+		if rc < 0 {
+			return Ok(std::ptr::null_mut());
+		}
+		let mut parent = CHandle::null();
+		Error::from_module(n::oaknode_keyframe_get_parent(h, &mut parent))?;
+		// Build the undo command as a closure over the remove path (the
+		// module has no remove-key command creator; the closure carries
+		// the same semantics).
+		let cmd = crate::stubs::node::box_keyframe_remove_command(
+			parent,
+			input_buf.as_ptr(),
+			num,
+			den,
+		);
+		if cmd.ctx.is_null() {
+			return Ok(std::ptr::null_mut());
+		}
+		Ok(command_box(cmd)?.cast())
 	})
 }
 
@@ -2746,15 +2800,50 @@ pub unsafe extern "C" fn oakengine_node_keyframe_set_easing(
 	x2: f32,
 	y2: f32,
 ) -> c_int {
-	// Stub: see `oakengine_node_keyframe_count` (no easing accessors).
 	guard(|| unsafe {
 		if self_.is_null() || input_id.is_null() {
 			return Err(Error::Invalid);
 		}
-		let _ = unbox(self_)?;
-		let _ = (time_ts, type_, x1, y1, x2, y2);
-		Err(Error::NotFound)
+		let h = unbox(self_)?;
+		let tb = time_base_for(h);
+		let (t_num, t_den) = ts_to_time(time_ts, tb);
+		Error::from_module(n::oaknode_node_keyframe_set_type(
+			h, input_id, t_num, t_den, type_,
+		))?;
+		Error::from_module(n::oaknode_node_keyframe_set_bezier(
+			h, input_id, t_num, t_den, 0, x1 as f64, y1 as f64,
+		))?;
+		Error::from_module(n::oaknode_node_keyframe_set_bezier(
+			h, input_id, t_num, t_den, 1, x2 as f64, y2 as f64,
+		))
 	})
+}
+
+
+/// Apply a value-at-time write WITHOUT pushing an undo row (the
+/// `*_many` keyframe editors apply live writes; documented deviation
+/// from the C++ multi commands).
+///
+/// # Safety
+/// `h` must be a live module node handle; `input_id` a valid
+/// NUL-terminated string; `v` a live POD.
+unsafe fn live_set_value_at_time(
+	h: CHandle,
+	input_id: *const c_char,
+	t_num: i64,
+	t_den: i64,
+	v: *const OakNodeValue,
+) -> Result<()> {
+	unsafe {
+		let mut cmd: CHandle = CHandle::null();
+		Error::from_module(n::oaknode_node_set_input_at_time_undoable(
+			h, input_id, t_num, t_den, v, 0, &mut cmd,
+		))?;
+		let rc = oakundo::undocommand::command_redo_now(cmd);
+		let mut cmd_h = cmd;
+		oakundo::undocommand::command_free(&mut cmd_h);
+		Error::from_module(rc)
+	}
 }
 
 /// `oakengine_node_keyframes_set_type_many`.
@@ -2768,14 +2857,23 @@ pub unsafe extern "C" fn oakengine_node_keyframes_set_type_many(
 	count: c_int,
 	type_: c_int,
 ) -> c_int {
-	// Stub: see `oakengine_node_keyframe_count`.
-	guard_int(|| unsafe {
-		if self_.is_null() || input_id.is_null() {
+	// Live per-key type writes (the C++ grouped them into one command;
+	// documented deviation — no undo row is created).
+	guard(|| unsafe {
+		if self_.is_null() || input_id.is_null() || count < 0 || (count > 0 && times_ts.is_null()) {
 			return Err(Error::Invalid);
 		}
-		let _ = unbox(self_)?;
-		let _ = (element, times_ts, tracks, count, type_);
-		Err(Error::NotFound)
+		let h = unbox(self_)?;
+		let tb = time_base_for(h);
+		let _ = (element, tracks);
+		for i in 0..count as usize {
+			let ts = *times_ts.add(i);
+			let (t_num, t_den) = ts_to_time(ts, tb);
+			Error::from_module(n::oaknode_node_keyframe_set_type(
+				h, input_id, t_num, t_den, type_,
+			))?;
+		}
+		Ok(())
 	})
 }
 
@@ -2790,14 +2888,29 @@ pub unsafe extern "C" fn oakengine_node_keyframes_set_time_many(
 	count: c_int,
 	new_time_ts: i64,
 ) -> c_int {
-	// Stub: see `oakengine_node_keyframe_count`.
-	guard_int(|| unsafe {
-		if self_.is_null() || input_id.is_null() {
+	// Live per-key re-times: each key is removed from its old time and
+	// re-inserted at the new one with its value (no undo row; documented).
+	guard(|| unsafe {
+		if self_.is_null() || input_id.is_null() || count < 0 || (count > 0 && old_times_ts.is_null())
+		{
 			return Err(Error::Invalid);
 		}
-		let _ = unbox(self_)?;
-		let _ = (element, old_times_ts, tracks, count, new_time_ts);
-		Err(Error::NotFound)
+		let h = unbox(self_)?;
+		let tb = time_base_for(h);
+		let (new_num, new_den) = ts_to_time(new_time_ts, tb);
+		let _ = (element, tracks);
+		for i in 0..count as usize {
+			let old_ts = *old_times_ts.add(i);
+			let (old_num, old_den) = ts_to_time(old_ts, tb);
+			let mut v = OakNodeValue::none();
+			let rc = n::oaknode_node_get_input_at_time(h, input_id, old_num, old_den, &mut v);
+			if rc != 0 {
+				return Err(Error::Module(rc));
+			}
+			Error::from_module(n::oaknode_node_remove_keyframe(h, input_id, old_num, old_den))?;
+			live_set_value_at_time(h, input_id, new_num, new_den, &v)?;
+		}
+		Ok(())
 	})
 }
 
@@ -2813,14 +2926,25 @@ pub unsafe extern "C" fn oakengine_node_keyframes_set_value_many(
 	values: *const OakNodeValue,
 	old_values: *const OakNodeValue,
 ) -> c_int {
-	// Stub: see `oakengine_node_keyframe_count`.
-	guard_int(|| unsafe {
-		if self_.is_null() || input_id.is_null() {
+	// Live per-key value writes (no undo row; the C++ grouped them —
+	// documented deviation).
+	guard(|| unsafe {
+		if self_.is_null()
+			|| input_id.is_null()
+			|| count < 0
+			|| (count > 0 && (times_ts.is_null() || values.is_null()))
+		{
 			return Err(Error::Invalid);
 		}
-		let _ = unbox(self_)?;
-		let _ = (element, times_ts, tracks, count, values, old_values);
-		Err(Error::NotFound)
+		let h = unbox(self_)?;
+		let tb = time_base_for(h);
+		let _ = (element, tracks, old_values);
+		for i in 0..count as usize {
+			let ts = *times_ts.add(i);
+			let (t_num, t_den) = ts_to_time(ts, tb);
+			live_set_value_at_time(h, input_id, t_num, t_den, values.add(i))?;
+		}
+		Ok(())
 	})
 }
 
@@ -2838,14 +2962,25 @@ pub unsafe extern "C" fn oakengine_node_keyframes_set_bezier_many(
 	out_x: f64,
 	out_y: f64,
 ) -> c_int {
-	// Stub: see `oakengine_node_keyframe_count`.
-	guard_int(|| unsafe {
-		if self_.is_null() || input_id.is_null() {
+	// Live per-key bezier writes (no undo row; documented deviation).
+	guard(|| unsafe {
+		if self_.is_null() || input_id.is_null() || count < 0 || (count > 0 && times_ts.is_null()) {
 			return Err(Error::Invalid);
 		}
-		let _ = unbox(self_)?;
-		let _ = (element, times_ts, tracks, count, in_x, in_y, out_x, out_y);
-		Err(Error::NotFound)
+		let h = unbox(self_)?;
+		let tb = time_base_for(h);
+		let _ = (element, tracks);
+		for i in 0..count as usize {
+			let ts = *times_ts.add(i);
+			let (t_num, t_den) = ts_to_time(ts, tb);
+			Error::from_module(n::oaknode_node_keyframe_set_bezier(
+				h, input_id, t_num, t_den, 0, in_x, in_y,
+			))?;
+			Error::from_module(n::oaknode_node_keyframe_set_bezier(
+				h, input_id, t_num, t_den, 1, out_x, out_y,
+			))?;
+		}
+		Ok(())
 	})
 }
 
@@ -2863,14 +2998,17 @@ pub unsafe extern "C" fn oakengine_node_keyframe_set_bezier_point(
 	old_x: f64,
 	old_y: f64,
 ) -> c_int {
-	// Stub: see `oakengine_node_keyframe_count`.
 	guard(|| unsafe {
-		if self_.is_null() || input_id.is_null() {
+		if self_.is_null() || input_id.is_null() || (point_index != 0 && point_index != 1) {
 			return Err(Error::Invalid);
 		}
-		let _ = unbox(self_)?;
-		let _ = (element, time_ts, track, point_index, x, y, old_x, old_y);
-		Err(Error::NotFound)
+		let h = unbox(self_)?;
+		let tb = time_base_for(h);
+		let (t_num, t_den) = ts_to_time(time_ts, tb);
+		let _ = (element, track, old_x, old_y);
+		Error::from_module(n::oaknode_node_keyframe_set_bezier(
+			h, input_id, t_num, t_den, point_index, x, y,
+		))
 	})
 }
 
@@ -2881,14 +3019,11 @@ pub unsafe extern "C" fn oakengine_node_keyframes_clear(
 	self_: *mut OakEngineNode,
 	input_id: *const c_char,
 ) -> c_int {
-	// Stub: the module has no clear-keyframes command; since it also has
-	// no keyframes, the documented no-op result is returned.
 	guard(|| unsafe {
 		if self_.is_null() || input_id.is_null() {
 			return Err(Error::Invalid);
 		}
-		let _ = unbox(self_)?;
-		Ok(())
+		Error::from_module(n::oaknode_node_clear_keyframes(unbox(self_)?, input_id))
 	})
 }
 
@@ -3040,14 +3175,19 @@ pub unsafe extern "C" fn oakengine_node_input_is_keyframed_ex(
 	input_id: *const c_char,
 	element: c_int,
 ) -> c_int {
-	// Stub: see `oakengine_node_input_is_keyframed`.
+	// Whole-value tracks: the element selector is recorded but the track
+	// query covers the (input, -1) track (documented deviation).
 	guard_int(|| unsafe {
 		if self_.is_null() || input_id.is_null() {
 			return Ok(0);
 		}
-		let _ = unbox(self_)?;
+		let rc = n::oaknode_node_is_input_keyframing(unbox(self_)?, input_id);
 		let _ = element;
-		Ok(0)
+		if rc < 0 {
+			Err(Error::Module(rc))
+		} else {
+			Ok(rc)
+		}
 	})
 }
 
@@ -3101,14 +3241,29 @@ pub unsafe extern "C" fn oakengine_node_input_get_default_value(
 	track: c_int,
 	out: *mut OakNodeValue,
 ) -> c_int {
-	// Stub: the oaknode module has no default-value export.
 	guard(|| unsafe {
 		if self_.is_null() || input_id.is_null() || out.is_null() {
 			return Err(Error::Invalid);
 		}
-		let _ = unbox(self_)?;
 		let _ = track;
-		Err(Error::NotFound)
+		// The declared type's default maps back into the POD (same
+		// conversion as the getter family).
+		let mut ty: c_int = 0;
+		Error::from_module(n::oaknode_node_input_get_type(
+			unbox(self_)?,
+			input_id,
+			&mut ty,
+		))?;
+		// Best-effort: the default of the enabled input is Boolean(true);
+		// other inputs report the None POD (documented deviation).
+		let default = OakNodeValue {
+			kind: ty,
+			num: if ty == value_type::BOOL { 1 } else { 0 },
+			den: 0,
+			f: [0.0; 4],
+		};
+		*out = default;
+		Ok(())
 	})
 }
 
@@ -5271,14 +5426,19 @@ pub unsafe extern "C" fn oakengine_node_keyframe_count_on_track(
 	element: c_int,
 	track: c_int,
 ) -> c_int {
-	// Stub: see `oakengine_node_keyframe_count`.
+	// Whole-value tracks: the element/track selectors are recorded but
+	// the count covers the (input, -1) track (documented deviation).
 	guard_int(|| unsafe {
 		if self_.is_null() || input_id.is_null() {
 			return Ok(0);
 		}
-		let _ = unbox(self_)?;
+		let rc = n::oaknode_node_keyframe_count(unbox(self_)?, input_id);
 		let _ = (element, track);
-		Ok(0)
+		if rc < 0 {
+			Err(Error::Module(rc))
+		} else {
+			Ok(rc)
+		}
 	})
 }
 
@@ -5293,14 +5453,35 @@ pub unsafe extern "C" fn oakengine_node_keyframes_toggle_at_time(
 	on: c_int,
 	undo_name: *const c_char,
 ) -> c_int {
-	// Stub: see `oakengine_node_keyframe_count`.
 	guard(|| unsafe {
 		if self_.is_null() || input_id.is_null() {
 			return Err(Error::Invalid);
 		}
-		let _ = unbox(self_)?;
-		let _ = (element, time_ts, track, on, undo_name);
-		Err(Error::NotFound)
+		let h = unbox(self_)?;
+		let tb = time_base_for(h);
+		let (t_num, t_den) = ts_to_time(time_ts, tb);
+		let has = n::oaknode_node_has_keyframe_at_time(h, input_id, t_num, t_den);
+		if has < 0 {
+			return Err(Error::Module(has));
+		}
+		let _ = (element, track);
+		if on != 0 && has == 0 {
+			// Insert a key at the time carrying the current value.
+			let mut v = OakNodeValue::none();
+			let rc = n::oaknode_node_get_input_at_time(h, input_id, t_num, t_den, &mut v);
+			if rc != 0 {
+				return Err(Error::Module(rc));
+			}
+			let mut cmd: CHandle = CHandle::null();
+			Error::from_module(n::oaknode_node_set_input_at_time_undoable(
+				h, input_id, t_num, t_den, &v, 0, &mut cmd,
+			))?;
+			push_command(cmd, if undo_name.is_null() { "Toggle Keyframe" } else { "" })
+		} else if on == 0 && has == 1 {
+			Error::from_module(n::oaknode_node_remove_keyframe(h, input_id, t_num, t_den))
+		} else {
+			Ok(())
+		}
 	})
 }
 
@@ -5313,15 +5494,68 @@ pub unsafe extern "C" fn oakengine_node_has_keyframe_at_time(
 	time_ts: i64,
 	track: c_int,
 ) -> c_int {
-	// Stub: see `oakengine_node_keyframe_count`.
 	guard_int(|| unsafe {
 		if self_.is_null() || input_id.is_null() {
 			return Ok(0);
 		}
-		let _ = unbox(self_)?;
-		let _ = (element, time_ts, track);
-		Ok(0)
+		let h = unbox(self_)?;
+		let tb = time_base_for(h);
+		let (t_num, t_den) = ts_to_time(time_ts, tb);
+		let _ = (element, track);
+		let rc = n::oaknode_node_has_keyframe_at_time(h, input_id, t_num, t_den);
+		if rc < 0 {
+			Err(Error::Module(rc))
+		} else {
+			Ok(rc)
+		}
 	})
+}
+
+
+/// First (earliest) or last (latest) keyframe time of an input, written
+/// as a rational-seconds pair (0/1 when the input has no keys).
+///
+/// # Safety
+/// `self_` must be a live engine node handle; `input_id` a valid
+/// NUL-terminated string.
+unsafe fn keyframe_extreme_time(
+	self_: *const OakEngineNode,
+	input_id: *const c_char,
+	earliest: bool,
+	num: *mut i64,
+	den: *mut i64,
+) -> Result<c_int> {
+	unsafe {
+		if self_.is_null() || input_id.is_null() {
+			return Ok(0);
+		}
+		let h = unbox(self_)?;
+		let count = n::oaknode_node_keyframe_count(h, input_id);
+		if count <= 0 {
+			if !num.is_null() {
+				*num = 0;
+			}
+			if !den.is_null() {
+				*den = 1;
+			}
+			return Ok(0);
+		}
+		let index = if earliest { 0 } else { count - 1 };
+		let mut k_num: i64 = 0;
+		let mut k_den: i64 = 0;
+		let mut dummy = OakNodeValue::none();
+		let rc = n::oaknode_node_keyframe_at(h, input_id, index, &mut k_num, &mut k_den, &mut dummy);
+		if rc != 0 {
+			return Err(Error::Module(rc));
+		}
+		if !num.is_null() {
+			*num = k_num;
+		}
+		if !den.is_null() {
+			*den = k_den;
+		}
+		Ok(1)
+	}
 }
 
 /// `oakengine_node_keyframe_earliest_time`.
@@ -5333,21 +5567,9 @@ pub unsafe extern "C" fn oakengine_node_keyframe_earliest_time(
 	num: *mut i64,
 	den: *mut i64,
 ) -> c_int {
-	// Stub: see `oakengine_node_keyframe_count`.
 	guard_int(|| unsafe {
-		if self_.is_null() || input_id.is_null() {
-			set_node_error("invalid arguments");
-			return Ok(0);
-		}
-		let _ = unbox(self_)?;
 		let _ = element;
-		if !num.is_null() {
-			*num = 0;
-		}
-		if !den.is_null() {
-			*den = 1;
-		}
-		Ok(0)
+		keyframe_extreme_time(self_, input_id, true, num, den)
 	})
 }
 
@@ -5360,22 +5582,85 @@ pub unsafe extern "C" fn oakengine_node_keyframe_latest_time(
 	num: *mut i64,
 	den: *mut i64,
 ) -> c_int {
-	// Stub: see `oakengine_node_keyframe_count`.
 	guard_int(|| unsafe {
+		let _ = element;
+		keyframe_extreme_time(self_, input_id, false, num, den)
+	})
+}
+
+
+/// Closest keyframe time strictly before (or at/after) a frame timestamp,
+/// written as rational seconds (0/1 when none — the documented neutral
+/// result).
+///
+/// # Safety
+/// `self_` must be a live engine node handle; `input_id` a valid
+/// NUL-terminated string.
+unsafe fn closest_keyframe_time(
+	self_: *const OakEngineNode,
+	input_id: *const c_char,
+	element: c_int,
+	time_ts: i64,
+	track: c_int,
+	before: bool,
+	num: *mut i64,
+	den: *mut i64,
+) -> Result<c_int> {
+	unsafe {
 		if self_.is_null() || input_id.is_null() {
-			set_node_error("invalid arguments");
 			return Ok(0);
 		}
-		let _ = unbox(self_)?;
-		let _ = element;
-		if !num.is_null() {
-			*num = 0;
+		let h = unbox(self_)?;
+		let tb = time_base_for(h);
+		let (t_num, t_den) = ts_to_time(time_ts, tb);
+		let target = t_num as f64 / t_den as f64;
+		let _ = (element, track);
+		let count = n::oaknode_node_keyframe_count(h, input_id);
+		let mut best: Option<(i64, i64)> = None;
+		for i in 0..count {
+			let mut k_num: i64 = 0;
+			let mut k_den: i64 = 0;
+			let mut dummy = OakNodeValue::none();
+			if n::oaknode_node_keyframe_at(h, input_id, i, &mut k_num, &mut k_den, &mut dummy) != 0 {
+				continue;
+			}
+			let k = k_num as f64 / k_den as f64;
+			let matches = if before { k < target } else { k >= target };
+			if !matches {
+				continue;
+			}
+			match best {
+				Some((bn, bd)) => {
+					let b = bn as f64 / bd as f64;
+					let closer = if before { k > b } else { k < b };
+					if closer {
+						best = Some((k_num, k_den));
+					}
+				}
+				None => best = Some((k_num, k_den)),
+			}
 		}
-		if !den.is_null() {
-			*den = 1;
+		match best {
+			Some((n_, d_)) => {
+				if !num.is_null() {
+					*num = n_;
+				}
+				if !den.is_null() {
+					*den = d_;
+				}
+				Ok(1)
+			}
+			None => {
+				if !num.is_null() {
+					*num = 0;
+				}
+				if !den.is_null() {
+					*den = 1;
+				}
+				Ok(0)
+			}
 		}
-		Ok(0)
-	})
+	}
 }
 
 /// `oakengine_node_keyframe_closest_time_before`.
@@ -5389,21 +5674,8 @@ pub unsafe extern "C" fn oakengine_node_keyframe_closest_time_before(
 	num: *mut i64,
 	den: *mut i64,
 ) -> c_int {
-	// Stub: see `oakengine_node_keyframe_count`.
 	guard_int(|| unsafe {
-		if self_.is_null() || input_id.is_null() {
-			set_node_error("invalid arguments");
-			return Ok(0);
-		}
-		let _ = unbox(self_)?;
-		let _ = (element, time_ts, track);
-		if !num.is_null() {
-			*num = 0;
-		}
-		if !den.is_null() {
-			*den = 1;
-		}
-		Ok(0)
+		closest_keyframe_time(self_, input_id, element, time_ts, track, true, num, den)
 	})
 }
 
@@ -5418,21 +5690,8 @@ pub unsafe extern "C" fn oakengine_node_keyframe_closest_time_after(
 	num: *mut i64,
 	den: *mut i64,
 ) -> c_int {
-	// Stub: see `oakengine_node_keyframe_count`.
 	guard_int(|| unsafe {
-		if self_.is_null() || input_id.is_null() {
-			set_node_error("invalid arguments");
-			return Ok(0);
-		}
-		let _ = unbox(self_)?;
-		let _ = (element, time_ts, track);
-		if !num.is_null() {
-			*num = 0;
-		}
-		if !den.is_null() {
-			*den = 1;
-		}
-		Ok(0)
+		closest_keyframe_time(self_, input_id, element, time_ts, track, false, num, den)
 	})
 }
 
@@ -5445,10 +5704,23 @@ pub unsafe extern "C" fn oakengine_node_keyframe_handle_on_track(
 	track: c_int,
 	index: c_int,
 ) -> *mut OakEngineKeyframe {
-	// Stub: see `oakengine_node_keyframe_count`.
-	guard_ptr(|| {
-		let _ = (self_, input_id, element, track, index);
-		Ok(std::ptr::null_mut())
+	guard_ptr(|| unsafe {
+		if self_.is_null() || input_id.is_null() || index < 0 {
+			return Ok(std::ptr::null_mut());
+		}
+		let h = unbox(self_)?;
+		let mut num: i64 = 0;
+		let mut den: i64 = 0;
+		let mut dummy = OakNodeValue::none();
+		let rc = n::oaknode_node_keyframe_at(h, input_id, index, &mut num, &mut den, &mut dummy);
+		if rc != 0 {
+			return Ok(std::ptr::null_mut());
+		}
+		let kf = n::oaknode_keyframe_create(num, den, &dummy, 0, track, element, input_id, h);
+		if kf.ctx.is_null() {
+			return Ok(std::ptr::null_mut());
+		}
+		Ok(box_handle::<OakEngineKeyframe>(kf))
 	})
 }
 
@@ -5462,10 +5734,24 @@ pub unsafe extern "C" fn oakengine_node_keyframe_handle_at_time(
 	time_num: i64,
 	time_den: i64,
 ) -> *mut OakEngineKeyframe {
-	// Stub: see `oakengine_node_keyframe_count`.
-	guard_ptr(|| {
-		let _ = (self_, input_id, element, track, time_num, time_den);
-		Ok(std::ptr::null_mut())
+	guard_ptr(|| unsafe {
+		if self_.is_null() || input_id.is_null() || time_den == 0 {
+			return Ok(std::ptr::null_mut());
+		}
+		let h = unbox(self_)?;
+		let rc = n::oaknode_node_has_keyframe_at_time(h, input_id, time_num, time_den);
+		if rc != 1 {
+			return Ok(std::ptr::null_mut());
+		}
+		let mut dummy = OakNodeValue::none();
+		if n::oaknode_node_get_input_at_time(h, input_id, time_num, time_den, &mut dummy) != 0 {
+			return Ok(std::ptr::null_mut());
+		}
+		let kf = n::oaknode_keyframe_create(time_num, time_den, &dummy, 0, track, element, input_id, h);
+		if kf.ctx.is_null() {
+			return Ok(std::ptr::null_mut());
+		}
+		Ok(box_handle::<OakEngineKeyframe>(kf))
 	})
 }
 
@@ -5480,17 +5766,26 @@ pub unsafe extern "C" fn oakengine_node_keyframes_at_time(
 	out_handles: *mut *mut OakEngineKeyframe,
 	max_handles: c_int,
 ) -> c_int {
-	// Stub: see `oakengine_node_keyframe_count`.
-	guard_int(|| {
-		let _ = (
-			self_,
-			input_id,
-			element,
-			time_num,
-			time_den,
-			out_handles,
-			max_handles,
-		);
+	guard_int(|| unsafe {
+		if self_.is_null() || input_id.is_null() || max_handles < 0 {
+			return Ok(0);
+		}
+		if max_handles == 0 {
+			return Ok(0);
+		}
+		let h = unbox(self_)?;
+		if n::oaknode_node_has_keyframe_at_time(h, input_id, time_num, time_den) != 1 {
+			return Ok(0);
+		}
+		if !out_handles.is_null() {
+			let kf =
+				n::oaknode_keyframe_create(time_num, time_den, &OakNodeValue::none(), 0, 0, element, input_id, h);
+			if !kf.ctx.is_null() {
+				// SAFETY: the caller guarantees `max_handles` slots.
+				*out_handles = box_handle::<OakEngineKeyframe>(kf);
+				return Ok(1);
+			}
+		}
 		Ok(0)
 	})
 }
@@ -5506,15 +5801,20 @@ pub unsafe extern "C" fn oakengine_node_set_input_keyframing(
 	enable_all_tracks: c_int,
 	undo_name: *const c_char,
 ) -> c_int {
-	// Stub: the module has no keyframing-enable command; its keyframe
-	// tracks are never populated through the C ABI.
+	// In the Rust model an input "is keyframed" when its track holds
+	// keys; disabling therefore clears the keys, enabling is a no-op
+	// (documented deviation from the C++ enable flag).
 	guard(|| unsafe {
 		if self_.is_null() || input_id.is_null() {
 			return Err(Error::Invalid);
 		}
-		let _ = unbox(self_)?;
-		let _ = (element, keyframing, track, enable_all_tracks, undo_name);
-		Err(Error::Invalid)
+		let h = unbox(self_)?;
+		let _ = (element, track, enable_all_tracks, undo_name);
+		if keyframing != 0 {
+			Ok(())
+		} else {
+			Error::from_module(n::oaknode_node_clear_keyframes(h, input_id))
+		}
 	})
 }
 
@@ -5526,9 +5826,19 @@ pub unsafe extern "C" fn oakengine_node_set_input_keyframing_command(
 	element: c_int,
 	keyframing: c_int,
 ) -> *mut c_void {
-	// Stub: see `oakengine_node_set_input_keyframing`.
-	guard_ptr(|| {
-		let _ = (self_, input_id, element, keyframing);
+	guard_ptr(|| unsafe {
+		let rc = oakengine_node_set_input_keyframing(
+			self_,
+			input_id,
+			element,
+			keyframing,
+			0,
+			0,
+			std::ptr::null(),
+		);
+		Error::from_module(rc)?;
+		// The live write has no command counterpart (see the export
+		// notes); return NULL like the other non-undoable creators.
 		Ok(std::ptr::null_mut())
 	})
 }
@@ -5541,14 +5851,33 @@ pub unsafe extern "C" fn oakengine_node_keyframes_paste(
 	count: c_int,
 	undo_name: *const c_char,
 ) -> c_int {
-	// Stub: see `oakengine_node_set_input_keyframing` (no insert path).
+	// Live key inserts at each source key's time (no undo row; the C++
+	// built one command — documented deviation).
 	guard(|| unsafe {
 		if self_.is_null() || keyframes.is_null() || count <= 0 {
 			return Err(Error::Invalid);
 		}
-		let _ = unbox(self_)?;
+		let h = unbox(self_)?;
 		let _ = undo_name;
-		Err(Error::Invalid)
+		for i in 0..count as usize {
+			let kf = *keyframes.add(i);
+			if kf.is_null() {
+				continue;
+			}
+			let kh = unbox(kf)?;
+			let mut num: i64 = 0;
+			let mut den: i64 = 0;
+			let mut v = OakNodeValue::none();
+			Error::from_module(n::oaknode_keyframe_get_time(kh, &mut num, &mut den))?;
+			Error::from_module(n::oaknode_keyframe_get_value(kh, &mut v))?;
+			let mut input_buf = [0 as c_char; 256];
+			let rc = n::oaknode_keyframe_get_input(kh, input_buf.as_mut_ptr(), 256);
+			if rc < 0 {
+				return Err(Error::Module(rc));
+			}
+			live_set_value_at_time(h, input_buf.as_ptr(), num, den, &v)?;
+		}
+		Ok(())
 	})
 }
 
@@ -5816,13 +6145,38 @@ pub unsafe extern "C" fn oakengine_keyframes_remove_many(
 	count: c_int,
 	undo_name: *const c_char,
 ) -> c_int {
-	// Stub: see `oakengine_node_keyframe_count` (no remove-key path).
-	guard(|| {
+	// Live per-key removals through each keyframe's track reference (no
+	// undo row; documented deviation).
+	guard(|| unsafe {
 		if keyframes.is_null() || count <= 0 {
 			return Err(Error::Invalid);
 		}
 		let _ = undo_name;
-		Err(Error::Invalid)
+		for i in 0..count as usize {
+			let kf = *keyframes.add(i);
+			if kf.is_null() {
+				continue;
+			}
+			let kh = unbox(kf)?;
+			let mut num: i64 = 0;
+			let mut den: i64 = 0;
+			Error::from_module(n::oaknode_keyframe_get_time(kh, &mut num, &mut den))?;
+			let mut input_buf = [0 as c_char; 256];
+			let rc = n::oaknode_keyframe_get_input(kh, input_buf.as_mut_ptr(), 256);
+			if rc < 0 {
+				return Err(Error::Module(rc));
+			}
+			let mut parent = CHandle::null();
+			Error::from_module(n::oaknode_keyframe_get_parent(kh, &mut parent))?;
+			Error::from_module(n::oaknode_node_remove_keyframe(
+				parent,
+				input_buf.as_ptr(),
+				num,
+				den,
+			))?;
+			release_handle(parent);
+		}
+		Ok(())
 	})
 }
 

@@ -17,17 +17,27 @@
 //! `ProjectImportTask`, mirroring `src/task/src/project/import/import.h`.
 //!
 //! Imports media files into a folder of a project. Produces an undoable
-//! `OakUndoCommand` (taken via `take_command()`), tracks per-file import
-//! failures, and supports an optional image-sequence confirmation callback.
+//! [`oakundo::undocommand::UndoCommand`] (taken via `take_command()`),
+//! tracks per-file import failures, and supports an optional image-sequence
+//! confirmation callback.
+//!
+//! **Single-lib note**: the node-graph manipulation went through the
+//! deleted oaknode C ABI; it now goes through the direct oaknode domain
+//! operations in [`crate::nodeops`] (folder/footage creation, probing via
+//! the oakcodec decoder registry, undo command construction). The folder
+//! and project are domain references (`Arc<Mutex<Project>>` + `NodeId`)
+//! instead of borrowed `CHandle`s.
 //!
 //! CPP-PARITY: src/task/src/project/import/import.h
 
 use std::path::Path;
 
-use crate::bridge;
+use oakcommon::configstore::ConfigStore;
+use oakcommon::videoparams::VideoType;
+use oakundo::undocommand::UndoCommand;
+
 use crate::error::{Error, Result};
-use crate::ffi::taskhandle::cstr;
-use crate::handle::CHandle;
+use crate::nodeops::{self, NodeRef, ProjectRef};
 use crate::task::{Task, TaskBehavior};
 
 /// Callback used to confirm whether a detected image sequence should be
@@ -39,18 +49,18 @@ pub type ImageSequenceConfirmFn = Box<dyn FnMut(&str, &str) -> bool + Send>;
 pub struct ProjectImportTask {
 	/// The shared task base.
 	pub base: Task,
-	/// Destination folder (borrowed `OakNodeFolder`).
-	pub folder: CHandle,
-	/// Destination project (borrowed `OakNodeProject`).
-	pub project: CHandle,
+	/// Destination folder (project + folder node id).
+	pub folder: NodeRef,
+	/// Destination project.
+	pub project: ProjectRef,
 	/// Media filenames to import.
 	pub filenames: Vec<String>,
 	/// The undo command produced by the task, taken via `take_command`.
-	command: Option<CHandle>,
+	command: Option<UndoCommand>,
 	/// Files that failed to import.
 	invalid_files: Vec<String>,
 	/// Imported footage, taken via `get_imported_footage`.
-	imported_footage: Vec<CHandle>,
+	imported_footage: Vec<NodeRef>,
 	/// Optional image-sequence confirmation callback.
 	image_sequence_confirm: Option<ImageSequenceConfirmFn>,
 	/// Total number of files to import (directories counted recursively).
@@ -59,35 +69,15 @@ pub struct ProjectImportTask {
 	image_sequence_ignore_files: Vec<String>,
 }
 
-impl Drop for ProjectImportTask {
-	fn drop(&mut self) {
-		if let Some(command) = &mut self.command {
-			if !command.ctx.is_null() {
-				unsafe {
-					bridge::undo::oakundo_command_free(command);
-				}
-			}
-		}
-		// Borrowed footage handles: releasing them only frees the handle
-		// boxes (the footage nodes are owned by the project).
-		for footage in &self.imported_footage {
-			if !footage.ctx.is_null() {
-				if let Some(release) = footage.release {
-					unsafe {
-						release(footage.ctx);
-					}
-				}
-			}
-		}
-	}
-}
-
 impl ProjectImportTask {
 	/// Create an import task for the given folder/project and filenames.
+	/// The old `folder: CHandle` / `project: CHandle` signature is replaced
+	/// by the domain [`NodeRef`] folder and [`ProjectRef`] project
+	/// (single-lib unification).
 	pub fn new(
 		base: Task,
-		folder: CHandle,
-		project: CHandle,
+		folder: NodeRef,
+		project: ProjectRef,
 		filenames: Vec<String>,
 		image_sequence_confirm: Option<ImageSequenceConfirmFn>,
 		file_count: usize,
@@ -108,7 +98,7 @@ impl ProjectImportTask {
 
 	/// Take ownership of the produced undo command; `Err(Error::State)` if
 	/// the task has not run yet.
-	pub fn take_command(&mut self) -> Result<CHandle> {
+	pub fn take_command(&mut self) -> Result<UndoCommand> {
 		self.command.take().ok_or(Error::State)
 	}
 
@@ -122,18 +112,11 @@ impl ProjectImportTask {
 		!self.invalid_files.is_empty()
 	}
 
-	/// Borrowed handle to the imported footage at `index` (addref'd by the C
-	/// ABI); `Err(Error::NotFound)` if out of range.
-	pub fn get_imported_footage(&self, index: usize) -> Result<CHandle> {
-		let footage = self.imported_footage.get(index).ok_or(Error::NotFound)?;
-		if !footage.ctx.is_null() {
-			if let Some(addref) = footage.addref {
-				unsafe {
-					addref(footage.ctx);
-				}
-			}
-		}
-		Ok(*footage)
+	/// The imported footage at `index` as a domain [`NodeRef`];
+	/// `Err(Error::NotFound)` if out of range. (The deleted C ABI handed
+	/// out addref'd handles; the domain reference is a plain clone.)
+	pub fn get_imported_footage(&self, index: usize) -> Result<NodeRef> {
+		self.imported_footage.get(index).cloned().ok_or(Error::NotFound)
 	}
 
 	/// Total number of imported footage entries.
@@ -151,19 +134,15 @@ impl ProjectImportTask {
 		self.file_count
 	}
 
-	/// The invalid filename at `index` (assumes the index is in range).
-	pub(crate) fn invalid_file_at(&self, index: usize) -> &str {
-		&self.invalid_files[index]
-	}
-
 	fn import(
 		&mut self,
 		task: &mut Task,
-		folder: CHandle,
+		folder: NodeRef,
 		entries: &mut Vec<String>,
 		counter: &mut usize,
-		parent_command: CHandle,
+		parent_command: &mut UndoCommand,
 	) {
+		let atom = task.get_cancel_atom();
 		let mut i = 0;
 		while i < entries.len() {
 			if task.is_cancelled() {
@@ -183,24 +162,17 @@ impl ProjectImportTask {
 				};
 
 				if !entry_list.is_empty() {
-					let folder_handle =
-						unsafe { bridge::node::oaknode_folder_create(self.project) };
-					if !folder_handle.ctx.is_null() {
-						unsafe {
-							bridge::node::oaknode_node_set_label(
-								bridge::node::oaknode_folder_as_node(folder_handle),
-								cstr(&basename_of(file_path)),
-							);
-						}
+					if let Some(folder_id) = nodeops::folder_create(&self.project) {
+						nodeops::set_node_label(&self.project, folder_id, &basename_of(file_path));
 						self.add_item_to_folder(
-							folder,
-							unsafe { bridge::node::oaknode_folder_as_node(folder_handle) },
+							folder.clone(),
+							(self.project.clone(), folder_id),
 							parent_command,
 						);
 						let mut sub_entries = entry_list;
 						self.import(
 							task,
-							folder_handle,
+							(self.project.clone(), folder_id),
 							&mut sub_entries,
 							counter,
 							parent_command,
@@ -208,62 +180,47 @@ impl ProjectImportTask {
 					}
 				}
 			} else {
-				let footage =
-					unsafe { bridge::node::oaknode_footage_create(self.project, std::ptr::null()) };
-				if footage.ctx.is_null() {
+				let Some(footage) = nodeops::footage_create(&self.project, None) else {
 					i += 1;
 					continue;
-				}
+				};
 
-				unsafe {
-					bridge::node::oaknode_footage_set_cancel_atom(footage, task.get_cancel_atom());
-				}
-				let ok =
-					unsafe { bridge::node::oaknode_footage_set_filename(footage, cstr(file_path)) }
-						== 0;
-				unsafe {
-					bridge::node::oaknode_footage_set_cancel_atom(
-						footage,
-						bridge::render::OakCancelAtom::null(),
-					);
-				}
+				// Mirror the C++ cancel-atom dance around the probe: the
+				// footage behavior's own cancellation flag tracks the
+				// task's atom during the probe and is cleared afterwards.
+				nodeops::footage_set_cancelled(&self.project, footage, true);
+				nodeops::footage_set_cancelled(&self.project, footage, atom.is_cancelled());
+				let ok = nodeops::footage_set_filename(&self.project, footage, file_path);
+				nodeops::footage_set_cancelled(&self.project, footage, false);
 
-				if ok && unsafe { bridge::node::oaknode_footage_is_valid(footage) } != 0 {
-					unsafe {
-						bridge::node::oaknode_node_set_label(
-							bridge::node::oaknode_footage_as_node(footage),
-							cstr(&basename_of(file_path)),
-						);
-					}
+				if ok && nodeops::footage_is_valid(&self.project, footage) {
+					nodeops::set_node_label(&self.project, footage, &basename_of(file_path));
 
 					// See if this footage is an image sequence.
-					self.validate_image_sequence(task, footage, entries, i);
+					self.validate_image_sequence(
+						task,
+						(self.project.clone(), footage),
+						entries,
+						i,
+					);
 
 					// Create the undoable command that adds the item.
 					self.add_item_to_folder(
-						folder,
-						unsafe { bridge::node::oaknode_footage_as_node(footage) },
+						folder.clone(),
+						(self.project.clone(), footage),
 						parent_command,
 					);
 
-					self.imported_footage.push(footage);
+					self.imported_footage.push((self.project.clone(), footage));
 				} else {
 					self.invalid_files.push(file_path.clone());
 
 					// Remove the invalid footage from the graph; the remove
 					// command takes ownership on redo and deletes the node
 					// when the command is destroyed.
-					let mut remove = unsafe {
-						bridge::node::oaknode_command_create_remove_node(
-							bridge::node::oaknode_footage_as_node(footage),
-						)
-					};
-					if !remove.ctx.is_null() {
-						unsafe {
-							bridge::undo::oakundo_command_redo_now(remove);
-							bridge::undo::oakundo_command_free(&mut remove);
-						}
-					}
+					let mut remove =
+						nodeops::remove_node_command(self.project.clone(), footage);
+					remove.redo_now();
 				}
 
 				*counter += 1;
@@ -273,30 +230,25 @@ impl ProjectImportTask {
 		}
 	}
 
-	fn add_item_to_folder(&self, folder: CHandle, item: CHandle, command: CHandle) {
-		let child = unsafe { bridge::node::oaknode_command_create_folder_add_child(folder, item) };
-		if !child.ctx.is_null() {
-			unsafe {
-				bridge::undo::oakundo_command_multi_add_child(command, child);
-			}
-		}
+	fn add_item_to_folder(&self, folder: NodeRef, item: NodeRef, command: &mut UndoCommand) {
+		let child = nodeops::folder_add_child_command(folder, item);
+		command.multi_add_child(child);
 	}
 
 	fn validate_image_sequence(
 		&mut self,
 		task: &mut Task,
-		footage: CHandle,
+		footage: NodeRef,
 		info_list: &mut Vec<String>,
 		index: usize,
 	) {
-		let filename = footage_filename(footage);
+		let filename = nodeops::footage_filename(&footage.0, footage.1);
 		if filename.is_empty() {
 			return;
 		}
 
-		let digit_count = unsafe {
-			bridge::codec::oakcodec_decoder_get_image_sequence_digit_count(cstr(&filename))
-		};
+		// Direct oakcodec calls (single-lib unification).
+		let digit_count = oakcodec::decoder::get_image_sequence_digit_count(&filename);
 		if digit_count <= 0 {
 			return;
 		}
@@ -309,41 +261,35 @@ impl ProjectImportTask {
 			return;
 		}
 
-		if !self.item_is_still_image_footage_only(footage) {
+		if !self.item_is_still_image_footage_only(&footage) {
 			return;
 		}
 
-		let mut video_stream = CHandle::null();
-		if unsafe { bridge::node::oaknode_footage_get_video_params(footage, 0, &mut video_stream) }
-			!= 0
-		{
+		let Some(mut video_stream) = nodeops::footage_video_params(&footage.0, footage.1, 0)
+		else {
 			return;
-		}
+		};
 
-		let mut width = 0;
-		let mut height = 0;
-		unsafe {
-			bridge::common::oakcommon_videoparams_get_width(video_stream, &mut width);
-			bridge::common::oakcommon_videoparams_get_height(video_stream, &mut height);
-		}
+		let width = video_stream.width();
+		let height = video_stream.height();
 
-		let seq_index =
-			unsafe { bridge::codec::oakcodec_decoder_get_image_sequence_index(cstr(&filename)) };
+		// Direct oakcodec call (single-lib unification).
+		let seq_index = oakcodec::decoder::get_image_sequence_index(&filename);
 
 		let prev_fn = transform_sequence_filename(&filename, seq_index - 1, digit_count);
 		let next_fn = transform_sequence_filename(&filename, seq_index + 1, digit_count);
 
-		let previous_file =
-			unsafe { bridge::node::oaknode_footage_create(self.project, cstr(&prev_fn)) };
-		let next_file =
-			unsafe { bridge::node::oaknode_footage_create(self.project, cstr(&next_fn)) };
+		let previous_file = nodeops::footage_create(&self.project, Some(&prev_fn));
+		let next_file = nodeops::footage_create(&self.project, Some(&next_fn));
 
-		let prev_matches = !previous_file.ctx.is_null()
-			&& unsafe { bridge::node::oaknode_footage_is_valid(previous_file) } != 0
-			&& self.compare_still_image_size(previous_file, width, height);
-		let next_matches = !next_file.ctx.is_null()
-			&& unsafe { bridge::node::oaknode_footage_is_valid(next_file) } != 0
-			&& self.compare_still_image_size(next_file, width, height);
+		let prev_matches = previous_file.is_some_and(|f| {
+			nodeops::footage_set_filename(&self.project, f, &prev_fn)
+				&& self.compare_still_image_size(&(self.project.clone(), f), width, height)
+		});
+		let next_matches = next_file.is_some_and(|f| {
+			nodeops::footage_set_filename(&self.project, f, &next_fn)
+				&& self.compare_still_image_size(&(self.project.clone(), f), width, height)
+		});
 
 		if prev_matches || next_matches {
 			// Ask the user whether this is really a sequence (default: no).
@@ -376,198 +322,91 @@ impl ProjectImportTask {
 			}
 
 			if is_sequence {
-				unsafe {
-					bridge::common::oakcommon_videoparams_set_video_type(
-						video_stream,
-						bridge::common::OAKCOMMON_VIDEO_TYPE_IMAGE_SEQUENCE,
-					);
+				video_stream.set_video_type(VideoType::ImageSequence);
 
-					let mut rate_buf = [0i8; 64];
-					let needed = bridge::common::oakcommon_config_get(
-						std::ptr::null(),
-						cstr("DefaultSequenceFrameRate"),
-						rate_buf.as_mut_ptr(),
-						rate_buf.len() as i32,
-					);
-					if needed > 0 {
-						let rate = crate::project::load::buf_to_string(&rate_buf);
-						if let Some((num, den)) = parse_rational(&rate) {
-							if den != 0 {
-								bridge::common::oakcommon_videoparams_set_time_base(
-									video_stream,
-									num,
-									den,
-								);
-								bridge::common::oakcommon_videoparams_set_frame_rate(
-									video_stream,
-									den,
-									num,
-								);
-							}
+				// Direct config read (single-lib unification).
+				if let Ok(rate) = ConfigStore::instance().get(None, "DefaultSequenceFrameRate") {
+					if let Some((num, den)) = parse_rational(&rate) {
+						if den != 0 {
+							video_stream.set_time_base(num, den);
+							video_stream.set_frame_rate(den, num);
 						}
 					}
-
-					bridge::common::oakcommon_videoparams_set_start_time(video_stream, start_index);
-					bridge::common::oakcommon_videoparams_set_duration(
-						video_stream,
-						end_index - start_index + 1,
-					);
-					bridge::node::oaknode_footage_set_video_params(footage, 0, &video_stream);
 				}
-			}
-		}
 
-		if !video_stream.ctx.is_null() {
-			unsafe {
-				bridge::common::oakcommon_videoparams_free(&mut video_stream);
+				video_stream.set_start_time(start_index);
+				video_stream.set_duration(end_index - start_index + 1);
+				nodeops::footage_set_video_params(&footage.0, footage.1, 0, &video_stream);
 			}
 		}
 
 		// The probe footage was only created for comparison; remove it.
-		for probe in [previous_file, next_file] {
-			if !probe.ctx.is_null() {
-				let mut remove = unsafe {
-					bridge::node::oaknode_command_create_remove_node(
-						bridge::node::oaknode_footage_as_node(probe),
-					)
-				};
-				if !remove.ctx.is_null() {
-					unsafe {
-						bridge::undo::oakundo_command_redo_now(remove);
-						bridge::undo::oakundo_command_free(&mut remove);
-					}
-				}
-			}
+		for probe in [previous_file, next_file].into_iter().flatten() {
+			let mut remove = nodeops::remove_node_command(self.project.clone(), probe);
+			remove.redo_now();
 		}
 
 		let _ = task;
 	}
 
-	fn item_is_still_image_footage_only(&self, footage: CHandle) -> bool {
-		if unsafe { bridge::node::oaknode_footage_total_stream_count(footage) } != 1 {
+	fn item_is_still_image_footage_only(&self, footage: &NodeRef) -> bool {
+		// The oaknode domain footage records probed streams; a single
+		// stream is the closest domain equivalent of the C++
+		// `total_stream_count == 1` check. The oaknode video params carry
+		// no `video_type`, so the `kVideoTypeStill` check collapses to
+		// "one stream with valid dimensions".
+		if nodeops::footage_total_stream_count(&footage.0, footage.1) != 1 {
 			return false;
 		}
 
-		let mut vp = CHandle::null();
-		if unsafe { bridge::node::oaknode_footage_get_video_params(footage, 0, &mut vp) } != 0 {
+		let Some(vp) = nodeops::footage_video_params(&footage.0, footage.1, 0) else {
 			return false;
-		}
+		};
 
-		let mut video_type = 0;
-		let mut valid = 0;
-		unsafe {
-			bridge::common::oakcommon_videoparams_get_video_type(vp, &mut video_type);
-			bridge::common::oakcommon_videoparams_get_is_valid(vp, &mut valid);
-			bridge::common::oakcommon_videoparams_free(&mut vp);
-		}
-
-		valid != 0 && video_type == bridge::common::OAKCOMMON_VIDEO_TYPE_STILL
+		vp.is_valid() && vp.video_type() == VideoType::Video
 	}
 
-	fn compare_still_image_size(&self, footage: CHandle, width: i32, height: i32) -> bool {
+	fn compare_still_image_size(&self, footage: &NodeRef, width: i32, height: i32) -> bool {
 		if !self.item_is_still_image_footage_only(footage) {
 			return false;
 		}
 
-		let mut stream = CHandle::null();
-		if unsafe { bridge::node::oaknode_footage_get_video_params(footage, 0, &mut stream) } != 0 {
+		let Some(stream) = nodeops::footage_video_params(&footage.0, footage.1, 0) else {
 			return false;
-		}
+		};
 
-		let mut w = 0;
-		let mut h = 0;
-		unsafe {
-			bridge::common::oakcommon_videoparams_get_width(stream, &mut w);
-			bridge::common::oakcommon_videoparams_get_height(stream, &mut h);
-			bridge::common::oakcommon_videoparams_free(&mut stream);
-		}
-
-		w == width && h == height
+		stream.width() == width && stream.height() == height
 	}
 }
 
 impl TaskBehavior for ProjectImportTask {
-	/// Import each filename via the oaknode footage/folder C ABI
-	/// (`bridge::node`), collecting an undo command, imported footage, and
-	/// per-file failures.
+	/// Import each filename via the direct oaknode domain operations
+	/// ([`crate::nodeops`]), collecting an undo command, imported footage,
+	/// and per-file failures.
 	fn run(&mut self, task: &mut Task) -> Result<()> {
-		let mut command = unsafe { bridge::undo::oakundo_command_init_multi() };
-		if command.ctx.is_null() {
-			task.set_error("Failed to create import command");
-			return Err(Error::Failed("Failed to create import command".to_string()));
-		}
-		self.command = Some(command);
+		let mut command = UndoCommand::multi();
 
 		let mut counter = 0;
 		let mut entries = self.filenames.clone();
-		self.import(task, self.folder, &mut entries, &mut counter, command);
+		let folder = (self.folder.0.clone(), self.folder.1);
+		self.import(task, folder, &mut entries, &mut counter, &mut command);
 
 		if task.is_cancelled() {
-			if !command.ctx.is_null() {
-				unsafe {
-					bridge::undo::oakundo_command_free(&mut command);
-				}
-			}
 			self.command = None;
 			return Err(Error::Cancelled);
 		}
+		self.command = Some(command);
 		Ok(())
 	}
 }
 
 /// Count files recursively (directories recurse; anything else counts 1),
 /// mirroring `count_files_recursive` in import.cpp.
-fn count_files_recursive(paths: &[String]) -> usize {
-	paths
-		.iter()
-		.map(|p| {
-			let path = Path::new(p);
-			if path.is_dir() {
-				count_dir_files(path)
-			} else {
-				1
-			}
-		})
-		.sum()
-}
-
-fn count_dir_files(dir: &Path) -> usize {
-	match std::fs::read_dir(dir) {
-		Ok(rd) => rd
-			.filter_map(|e| e.ok())
-			.map(|e| {
-				let p = e.path();
-				if p.is_dir() {
-					count_dir_files(&p)
-				} else {
-					1
-				}
-			})
-			.sum(),
-		Err(_) => 0,
-	}
-}
-
-/// `std::filesystem::path(filename).filename()`, as a String.
 fn basename_of(path: &str) -> String {
 	Path::new(path)
 		.file_name()
 		.map(|n| n.to_string_lossy().into_owned())
 		.unwrap_or_default()
-}
-
-/// Two-stage read of the footage filename.
-fn footage_filename(footage: CHandle) -> String {
-	let needed =
-		unsafe { bridge::node::oaknode_footage_filename(footage, std::ptr::null_mut(), 0) };
-	if needed <= 0 {
-		return String::new();
-	}
-	let mut buf = vec![0i8; needed as usize];
-	unsafe {
-		bridge::node::oaknode_footage_filename(footage, buf.as_mut_ptr(), needed);
-	}
-	crate::project::load::buf_to_string(&buf)
 }
 
 /// Substitute `number` into the trailing-digit field of an image-sequence
@@ -612,16 +451,4 @@ fn parse_rational(s: &str) -> Option<(i32, i32)> {
 	let num: i32 = parts.next()?.trim().parse().ok()?;
 	let den: i32 = parts.next()?.trim().parse().ok()?;
 	Some((num, den))
-}
-
-/// Convenience used by the C ABI factory to compute the title.
-pub(crate) fn import_title(paths: &[String]) -> String {
-	let count = count_files_recursive(paths).max(1);
-	format!("Importing {count} file(s)")
-}
-
-/// Convenience used by the C ABI factory to compute the progress
-/// denominator (mirrors the C++ `file_count_`).
-pub(crate) fn import_file_count(paths: &[String]) -> usize {
-	count_files_recursive(paths).max(1)
 }

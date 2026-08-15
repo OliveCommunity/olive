@@ -19,7 +19,7 @@
 //! Mirrors `src/codec/src/oiio/{oiiodecoder,oiioencoder}.{h,cpp}`. OIIO
 //! frame conversion goes through the local
 //! [`crate::oiioframebridge`] helpers plus oakcommon's OIIO mapping
-//! functions (`oakcommon_oiioutils_*` via `bridge/common.rs`).
+//! functions.
 //!
 //! The OIIO dylib (`liboakoiio`) is not linked into this build, so every
 //! operation that would touch the media engine is a documented stub returning
@@ -60,7 +60,7 @@ impl Decoder for OIIODecoder {
 	fn probe(
 		&self,
 		_filename: &str,
-		_cancelled: Option<&crate::bridge::render::OakCancelAtom>,
+		_cancelled: Option<&oakcommon::cancelatom::CancelAtom>,
 	) -> Option<crate::footagedescription::FootageDescription> {
 		// Probing is a dylib operation; without it we cannot report anything.
 		None
@@ -98,7 +98,7 @@ impl Decoder for OIIODecoder {
 	fn retrieve_video(
 		&self,
 		_p: &RetrieveVideoParams,
-	) -> crate::error::Result<crate::bridge::render::OakRenderTexture> {
+	) -> crate::error::Result<crate::decoder::OakRenderTexture> {
 		Err(crate::error::Error::Failed(Self::NOT_AVAILABLE.to_string()))
 	}
 
@@ -118,7 +118,7 @@ impl Decoder for OIIODecoder {
 		_sample_rate: i32,
 		_channel_layout: u64,
 		_sample_format: i32,
-		_cancelled: Option<&crate::bridge::render::OakCancelAtom>,
+		_cancelled: Option<&oakcommon::cancelatom::CancelAtom>,
 	) -> crate::error::Result<()> {
 		Err(crate::error::Error::Failed(Self::NOT_AVAILABLE.to_string()))
 	}

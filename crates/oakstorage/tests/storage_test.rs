@@ -14,16 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! oakstorage contract tests (M10 §4 mapping).
-//!
-//! The oaknode serializer persists the node core surface (types,
-//! values, keyframes, label/color, links, connections), settings, uuid,
-//! AND the timeline structure (sequence track lists, track blocks,
-//! block spans, clip footage references) — the .ove tests assert the
-//! full surface; the otio/fcpxml interchange tests exercise the
-//! oakotio model.
+//! oakstorage contract tests (M10 §4 mapping), calling the public Rust
+//! API: the backend registry, the `StorageBackend` trait, `StorageUri`
+//! and the `Session` shell. The former `ffi.rs`/`bridge::node.rs` C ABI
+//! is gone; save/load now go through `Registry::global().resolve(uri)`.
 
-use std::ffi::{c_char, c_int, c_uint, CStr, CString};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -37,22 +32,21 @@ use oaknode::project::Project;
 use oaknode::sequence::SequenceBehavior;
 use oaknode::track::{TrackBehavior, TrackListBehavior, TrackType};
 use oaknode::value::NodeValue;
-use oakstorage::bridge::node;
+use oakstorage::backend::{LoadResult, StorageBackend};
 use oakstorage::error::{
 	OAKSTORAGE_E_FORMAT, OAKSTORAGE_E_INVALID, OAKSTORAGE_E_IO, OAKSTORAGE_E_NO_BACKEND,
 	OAKSTORAGE_E_STATE, OAKSTORAGE_OK, OAKSTORAGE_TOO_NEW, OAKSTORAGE_TOO_OLD,
 	OAKSTORAGE_UNKNOWN_VERSION,
 };
-use oakstorage::ffi;
 use oakstorage::handle::CHandle;
+use oakstorage::nodeutil::{make_project_owned, project_arc};
+use oakstorage::registry::Registry;
+use oakstorage::session::Session;
+use oakstorage::uri::StorageUri;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-fn cs(s: &str) -> CString {
-	CString::new(s).unwrap()
-}
 
 fn file_uri(path: &Path) -> String {
 	format!("file://{}", path.display())
@@ -70,58 +64,48 @@ fn temp_dir(tag: &str) -> PathBuf {
 	dir
 }
 
-fn alive() -> i32 {
-	unsafe { ffi::oakstorage_debug_alive_count() }
-}
-
-fn last_error() -> String {
-	let needed = unsafe { ffi::oakstorage_last_error(std::ptr::null_mut(), 0) };
-	if needed <= 0 {
-		return String::new();
+/// Release an owned handle (refcount 1).
+fn release(h: CHandle) {
+	if let Some(release) = h.release {
+		unsafe { release(h.ctx) };
 	}
-	let mut buf = vec![0u8; needed as usize];
-	unsafe { ffi::oakstorage_last_error(buf.as_mut_ptr() as *mut c_char, needed) };
-	buf.pop(); // trailing NUL
-	String::from_utf8(buf).unwrap()
 }
 
-/// Probe for the backend name; `Err(code)` when no backend claims it.
-fn probe_name(uri: &str) -> Result<String, c_int> {
-	let c = cs(uri);
-	let needed = unsafe { ffi::oakstorage_probe(c.as_ptr(), std::ptr::null_mut(), 0) };
-	if needed < 0 {
-		return Err(needed);
-	}
-	let mut buf = vec![0u8; needed as usize];
-	let rc = unsafe { ffi::oakstorage_probe(c.as_ptr(), buf.as_mut_ptr() as *mut c_char, needed) };
-	assert!(rc >= 0, "two-stage probe misbehaved");
-	buf.pop();
-	Ok(String::from_utf8(buf).unwrap())
+/// The backend claiming `uri` (Err for none / invalid URI).
+fn backend_for(uri: &str) -> Result<Arc<dyn StorageBackend>, oakstorage::error::Error> {
+	let parsed = StorageUri::parse(uri)?;
+	Registry::global().resolve(&parsed)
 }
 
-fn open(uri: &str) -> (CHandle, c_int) {
-	let c = cs(uri);
-	let mut rc = 0;
-	let session = unsafe { ffi::oakstorage_open(c.as_ptr(), &mut rc) };
-	(session, rc)
+/// Save `handle` to `uri` with `options`.
+fn save_handle(handle: CHandle, uri: &str, options: u32) -> oakstorage::error::Result<()> {
+	let parsed = StorageUri::parse(uri)?;
+	let backend = Registry::global().resolve(&parsed)?;
+	backend.save(handle, &parsed, options)
 }
 
-fn free_session(mut s: CHandle) {
-	unsafe { ffi::oakstorage_project_free(&mut s) };
+/// Save an `Arc<Mutex<Project>>` to `uri`, releasing the wrapper handle.
+fn save_project(
+	project: &Arc<Mutex<Project>>,
+	uri: &str,
+	options: u32,
+) -> oakstorage::error::Result<()> {
+	let handle = make_project_owned(project.clone());
+	let result = save_handle(handle, uri, options);
+	release(handle);
+	result
 }
 
-fn free_project(mut h: CHandle) {
-	node::project_free(&mut h);
-}
-
-fn session_uri(s: &CHandle) -> String {
-	let needed = unsafe { ffi::oakstorage_project_uri(*s, std::ptr::null_mut(), 0) };
-	assert!(needed >= 0, "project_uri failed: {needed}");
-	let mut buf = vec![0u8; needed as usize];
-	let rc = unsafe { ffi::oakstorage_project_uri(*s, buf.as_mut_ptr() as *mut c_char, needed) };
-	assert!(rc >= 0);
-	buf.pop();
-	String::from_utf8(buf).unwrap()
+/// Open `uri`: resolve the backend, load, wrap the result in a [`Session`].
+/// `Err` is a hard failure (I/O, format, no backend, invalid URI); `Ok`
+/// carries the session plus the version info code (TOO_OLD / TOO_NEW /
+/// UNKNOWN_VERSION) the backend reported.
+fn open(uri: &str) -> oakstorage::error::Result<(Session, i32)> {
+	let parsed = StorageUri::parse(uri)?;
+	let backend = Registry::global().resolve(&parsed)?;
+	let result = backend.load(&parsed)?;
+	let session = Session::new(parsed, result.project);
+	Ok((session, result.version_info))
 }
 
 fn r_to_f(r: Rational) -> f64 {
@@ -280,55 +264,45 @@ fn ove_xml_roundtrip_field_by_field() {
 	let uri = file_uri(&path);
 
 	let project = build_roundtrip_project();
-	let handle = node::make_project_owned(project.clone());
-	let rc = unsafe { ffi::oakstorage_save(handle, cs(&uri).as_ptr(), 0) };
-	assert_eq!(rc, OAKSTORAGE_OK, "save: {}", last_error());
-	free_project(handle);
+	save_project(&project, &uri, 0).unwrap();
 
 	// The file exists and is plain XML.
 	let text = std::fs::read_to_string(&path).unwrap();
 	assert!(text.starts_with("<project version=\"1\">"), "{text}");
 
-	let (session, rc) = open(&uri);
-	assert!(!session.ctx.is_null(), "open failed rc={rc}: {}", last_error());
+	let (session, rc) = open(&uri).unwrap();
+	assert!(session.project().is_some(), "open failed rc={rc}");
 	assert_eq!(rc, OAKSTORAGE_OK);
-	assert_eq!(session_uri(&session), uri);
+	assert_eq!(session.uri().to_uri_string(), uri);
 
-	let proj_handle = unsafe { ffi::oakstorage_project_project(session) };
-	assert!(!proj_handle.ctx.is_null());
-	let loaded = unsafe { node::project_arc(&proj_handle) }.unwrap();
+	let proj_handle = session.project().cloned().unwrap();
+	let loaded = unsafe { project_arc(&proj_handle) }.unwrap();
 	{
 		let o = project.lock().unwrap();
 		let l = loaded.lock().unwrap();
 		assert_roundtrip_fields(&o, &l);
 	}
-
-	free_project(proj_handle);
-	free_session(session);
 }
 
 #[test]
 fn ove_xml_compress_flag_still_round_trips() {
-	// OAKSTORAGE_SAVE_COMPRESS is accepted but not implemented (the
+	// OAKSTORAGE_SAVE_COMPRESS (bit 0) is accepted but not implemented (the
 	// oaknode serializer emits plain XML); the file still round-trips.
 	let dir = temp_dir("ove_compress");
 	let path = dir.join("compressed.ove");
 	let uri = file_uri(&path);
 
 	let project = build_roundtrip_project();
-	let handle = node::make_project_owned(project.clone());
-	let rc = unsafe { ffi::oakstorage_save(handle, cs(&uri).as_ptr(), ffi::OAKSTORAGE_SAVE_COMPRESS) };
-	assert_eq!(rc, OAKSTORAGE_OK, "save: {}", last_error());
-	free_project(handle);
+	save_project(&project, &uri, 1).unwrap();
 
 	let text = std::fs::read_to_string(&path).unwrap();
 	assert!(text.starts_with("<project"), "compression must not corrupt the file");
 
-	let (session, rc) = open(&uri);
-	assert!(!session.ctx.is_null(), "open failed rc={rc}");
+	let (session, rc) = open(&uri).unwrap();
+	assert!(session.project().is_some(), "open failed rc={rc}");
 	assert_eq!(rc, OAKSTORAGE_OK);
-	let proj_handle = unsafe { ffi::oakstorage_project_project(session) };
-	let loaded = unsafe { node::project_arc(&proj_handle) }.unwrap();
+	let proj_handle = session.project().cloned().unwrap();
+	let loaded = unsafe { project_arc(&proj_handle) }.unwrap();
 	{
 		let o = project.lock().unwrap();
 		let l = loaded.lock().unwrap();
@@ -336,8 +310,6 @@ fn ove_xml_compress_flag_still_round_trips() {
 		assert_eq!(l.graph.node_count(), o.graph.node_count());
 		assert_eq!(l.settings, o.settings);
 	}
-	free_project(proj_handle);
-	free_session(session);
 }
 
 /// The .ove backend preserves the full timeline structure: the
@@ -356,16 +328,13 @@ fn ove_xml_timeline_roundtrip() {
 	let uri = file_uri(&path);
 
 	let project = build_timeline_project();
-	let handle = node::make_project_owned(project.clone());
-	let rc = unsafe { ffi::oakstorage_save(handle, cs(&uri).as_ptr(), 0) };
-	assert_eq!(rc, OAKSTORAGE_OK, "save: {}", last_error());
-	free_project(handle);
+	save_project(&project, &uri, 0).unwrap();
 
-	let (session, rc) = open(&uri);
-	assert!(!session.ctx.is_null(), "open failed rc={rc}: {}", last_error());
+	let (session, rc) = open(&uri).unwrap();
+	assert!(session.project().is_some(), "open failed rc={rc}");
 	assert_eq!(rc, OAKSTORAGE_OK);
-	let proj_handle = unsafe { ffi::oakstorage_project_project(session) };
-	let loaded = unsafe { node::project_arc(&proj_handle) }.unwrap();
+	let proj_handle = session.project().cloned().unwrap();
+	let loaded = unsafe { project_arc(&proj_handle) }.unwrap();
 	{
 		let l = loaded.lock().unwrap();
 		assert_imported_timeline(&l);
@@ -451,8 +420,6 @@ fn ove_xml_timeline_roundtrip() {
 			.unwrap();
 		assert_eq!(f2.filename, "/a/c.mp4");
 	}
-	free_project(proj_handle);
-	free_session(session);
 }
 
 // ---------------------------------------------------------------------------
@@ -461,19 +428,27 @@ fn ove_xml_timeline_roundtrip() {
 
 #[test]
 fn probe_dispatch() {
-	assert_eq!(probe_name("file:///tmp/x.ove").unwrap(), "ove-xml");
-	assert_eq!(probe_name("file:///tmp/x.OTIO").unwrap(), "otio", "case-insensitive");
-	assert_eq!(probe_name("file:///tmp/x.fcpxml").unwrap(), "otio");
-	assert_eq!(probe_name("/tmp/x.ove").unwrap(), "ove-xml", "bare path");
+	assert_eq!(backend_for("file:///tmp/x.ove").unwrap().name(), "ove-xml");
+	assert_eq!(
+		backend_for("file:///tmp/x.OTIO").unwrap().name(),
+		"otio",
+		"case-insensitive"
+	);
+	assert_eq!(backend_for("file:///tmp/x.fcpxml").unwrap().name(), "otio");
+	assert_eq!(backend_for("/tmp/x.ove").unwrap().name(), "ove-xml", "bare path");
 
 	// No backend claims these.
-	assert_eq!(probe_name("oakdb://user@host/db").unwrap_err(), OAKSTORAGE_E_NO_BACKEND);
-	assert_eq!(probe_name("file:///tmp/x.txt").unwrap_err(), OAKSTORAGE_E_NO_BACKEND);
+	assert_eq!(
+		backend_for("oakdb://user@host/db").err().unwrap().code(),
+		OAKSTORAGE_E_NO_BACKEND
+	);
+	assert_eq!(
+		backend_for("file:///tmp/x.txt").err().unwrap().code(),
+		OAKSTORAGE_E_NO_BACKEND
+	);
 
-	// NULL / empty URI -> E_INVALID.
-	let rc = unsafe { ffi::oakstorage_probe(std::ptr::null(), std::ptr::null_mut(), 0) };
-	assert_eq!(rc, OAKSTORAGE_E_INVALID);
-	assert_eq!(probe_name("").unwrap_err(), OAKSTORAGE_E_INVALID);
+	// Empty URI -> E_INVALID.
+	assert_eq!(backend_for("").err().unwrap().code(), OAKSTORAGE_E_INVALID);
 }
 
 // ---------------------------------------------------------------------------
@@ -482,39 +457,35 @@ fn probe_dispatch() {
 
 #[test]
 fn open_error_paths() {
-	// Nonexistent file: NULL + E_IO + a non-empty last_error.
-	let (session, rc) = open(&file_uri(&temp_dir("ove_missing").join("nope.ove")));
-	assert!(session.ctx.is_null());
-	assert_eq!(rc, OAKSTORAGE_E_IO);
-	assert!(!last_error().is_empty(), "last_error must be set");
+	// Nonexistent file: Err(Io).
+	let missing = file_uri(&temp_dir("ove_missing").join("nope.ove"));
+	assert_eq!(open(&missing).err().unwrap().code(), OAKSTORAGE_E_IO);
 
 	// Too-new version header -> TOO_NEW info code, no project.
 	let dir = temp_dir("ove_versions");
 	let future = dir.join("future.ove");
 	std::fs::write(&future, "<olive version=\"999999\"></olive>").unwrap();
-	let (session, rc) = open(&file_uri(&future));
-	assert!(session.ctx.is_null());
+	let (session, rc) = open(&file_uri(&future)).unwrap();
+	assert!(session.project().is_none());
 	assert_eq!(rc, OAKSTORAGE_TOO_NEW);
 
 	// Corrupt XML -> E_FORMAT.
 	let corrupt = dir.join("corrupt.ove");
 	std::fs::write(&corrupt, "<project><nodes><node></project>").unwrap();
-	let (session, rc) = open(&file_uri(&corrupt));
-	assert!(session.ctx.is_null());
-	assert_eq!(rc, OAKSTORAGE_E_FORMAT);
+	let err = open(&file_uri(&corrupt)).err().unwrap();
+	assert_eq!(err.code(), OAKSTORAGE_E_FORMAT);
 
 	// Unparseable garbage -> E_FORMAT (not a version info code).
 	let garbage = dir.join("garbage.ove");
 	std::fs::write(&garbage, "not xml at all").unwrap();
-	let (session, rc) = open(&file_uri(&garbage));
-	assert!(session.ctx.is_null());
-	assert_eq!(rc, OAKSTORAGE_E_FORMAT);
+	let err = open(&file_uri(&garbage)).err().unwrap();
+	assert_eq!(err.code(), OAKSTORAGE_E_FORMAT);
 
 	// Recognized olive root without a version -> UNKNOWN_VERSION.
 	let unversioned = dir.join("unversioned.ove");
 	std::fs::write(&unversioned, "<olive></olive>").unwrap();
-	let (session, rc) = open(&file_uri(&unversioned));
-	assert!(session.ctx.is_null());
+	let (session, rc) = open(&file_uri(&unversioned)).unwrap();
+	assert!(session.project().is_none());
 	assert_eq!(rc, OAKSTORAGE_UNKNOWN_VERSION);
 
 	// A known older version loads, reporting TOO_OLD.
@@ -524,115 +495,107 @@ fn open_error_paths() {
 		"<olive version=\"210528\"><project version=\"1\"><uuid>{old}</uuid><nodes></nodes><settings></settings></project></olive>",
 	)
 	.unwrap();
-	let (session, rc) = open(&file_uri(&old));
-	assert!(!session.ctx.is_null(), "old version must load");
+	let (session, rc) = open(&file_uri(&old)).unwrap();
+	assert!(session.project().is_some(), "old version must load");
 	assert_eq!(rc, OAKSTORAGE_TOO_OLD);
-	free_session(session);
 
-	// NULL URI -> E_INVALID.
-	let (session, rc) = unsafe {
-		let c = std::ptr::null();
-		let mut rc = 0;
-		(ffi::oakstorage_open(c, &mut rc), rc)
-	};
-	assert!(session.ctx.is_null());
-	assert_eq!(rc, OAKSTORAGE_E_INVALID);
+	// Empty URI -> E_INVALID.
+	assert_eq!(open("").err().unwrap().code(), OAKSTORAGE_E_INVALID);
 }
 
 // ---------------------------------------------------------------------------
-// Backend vtable pluggability (the database-swap interface proof)
+// Backend pluggability (the database-swap interface proof)
 // ---------------------------------------------------------------------------
 
-/// Record of the mock backend's save calls.
+/// Record of the mock backend's calls.
 static MOCK_SAVED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
-unsafe extern "C" fn mock_can_handle(uri: *const c_char) -> c_int {
-	let s = unsafe { CStr::from_ptr(uri) }.to_str().unwrap_or("");
-	(s.starts_with("mem://")) as c_int
-}
+/// A mock backend claiming `mem://` (the Rust trait shape of the former
+/// C vtable).
+struct MemBackend;
 
-unsafe extern "C" fn mock_load(
-	uri: *const c_char,
-	result_code: *mut c_int,
-	_err_buf: *mut c_char,
-	_err_buf_size: c_int,
-) -> CHandle {
-	let s = unsafe { CStr::from_ptr(uri) }.to_str().unwrap_or("");
-	MOCK_SAVED.lock().unwrap().push(format!("load:{s}"));
-	if !result_code.is_null() {
-		unsafe { *result_code = OAKSTORAGE_OK };
+impl StorageBackend for MemBackend {
+	fn name(&self) -> &'static str {
+		"mem-test"
 	}
-	// A real project handle is the "loaded project".
-	node::project_init()
-}
 
-unsafe extern "C" fn mock_save(
-	_project: CHandle,
-	uri: *const c_char,
-	options: c_uint,
-	_err_buf: *mut c_char,
-	_err_buf_size: c_int,
-) -> c_int {
-	let s = unsafe { CStr::from_ptr(uri) }.to_str().unwrap_or("").to_string();
-	MOCK_SAVED.lock().unwrap().push(format!("save:{s}:options={options}"));
-	OAKSTORAGE_OK
+	fn uri_scheme(&self) -> &'static str {
+		"mem"
+	}
+
+	fn can_handle(&self, uri: &StorageUri) -> bool {
+		uri.scheme == "mem"
+	}
+
+	fn load(&self, uri: &StorageUri) -> oakstorage::error::Result<LoadResult> {
+		MOCK_SAVED
+			.lock()
+			.unwrap()
+			.push(format!("load:{}", uri.to_uri_string()));
+		// A real project handle is the "loaded project".
+		let project = Project::new();
+		Ok(LoadResult::success(make_project_owned(project)))
+	}
+
+	fn save(
+		&self,
+		_project: CHandle,
+		uri: &StorageUri,
+		options: u32,
+	) -> oakstorage::error::Result<()> {
+		MOCK_SAVED
+			.lock()
+			.unwrap()
+			.push(format!("save:{}:options={options}", uri.to_uri_string()));
+		Ok(())
+	}
 }
 
 #[test]
-fn backend_vtable_pluggability() {
-	let name = cs("mem-test");
-	let scheme = cs("mem");
-	let vtable = ffi::OakStorageBackendVtable {
-		name: name.as_ptr(),
-		uri_scheme: scheme.as_ptr(),
-		can_handle: Some(mock_can_handle),
-		load: Some(mock_load),
-		save: Some(mock_save),
-	};
+fn backend_pluggability() {
+	// The process-global registry already holds the built-ins; the mock
+	// is registered under its own name and unregistered at the end.
+	Registry::global().register(Arc::new(MemBackend)).unwrap();
 
-	assert_eq!(
-		unsafe { ffi::oakstorage_backend_register(&vtable) },
-		OAKSTORAGE_OK
-	);
+	// Probe routes through the registered backend.
+	assert_eq!(backend_for("mem://x").unwrap().name(), "mem-test");
 
-	// Probe routes through the foreign vtable.
-	assert_eq!(probe_name("mem://x").unwrap(), "mem-test");
-
-	// Open routes through the vtable's load.
-	let (session, rc) = open("mem://in");
-	assert!(!session.ctx.is_null(), "open failed rc={rc}");
+	// Open routes through the backend's load.
+	let (session, rc) = open("mem://in").unwrap();
+	assert!(session.project().is_some(), "open failed rc={rc}");
 	assert_eq!(rc, OAKSTORAGE_OK);
-	free_session(session);
+	assert!(session.uri().to_uri_string() == "mem://in");
 
-	// Save routes through the vtable's save, options passed through.
-	let project = node::project_init();
-	let rc = unsafe { ffi::oakstorage_save(project, cs("mem://out").as_ptr(), ffi::OAKSTORAGE_SAVE_COMPRESS) };
-	assert_eq!(rc, OAKSTORAGE_OK, "save: {}", last_error());
-	free_project(project);
+	// Save routes through the backend's save, options passed through.
+	let project = Project::new();
+	let handle = make_project_owned(project);
+	save_handle(handle, "mem://out", 1).unwrap();
+	release(handle);
 	{
 		let saved = MOCK_SAVED.lock().unwrap();
 		assert!(saved.iter().any(|s| s == "load:mem://in"), "{saved:?}");
 		assert!(
-			saved
-				.iter()
-				.any(|s| s == "save:mem://out:options=1"),
+			saved.iter().any(|s| s == "save:mem://out:options=1"),
 			"{saved:?}"
 		);
 	}
 
 	// Duplicate registration is rejected.
 	assert_eq!(
-		unsafe { ffi::oakstorage_backend_register(&vtable) },
+		Registry::global().register(Arc::new(MemBackend)).err().unwrap().code(),
 		OAKSTORAGE_E_STATE
 	);
 
 	// Unregister: probe reports E_NO_BACKEND again.
-	assert_eq!(unsafe { ffi::oakstorage_backend_unregister(name.as_ptr()) }, OAKSTORAGE_OK);
-	assert_eq!(probe_name("mem://x").unwrap_err(), OAKSTORAGE_E_NO_BACKEND);
+	assert!(Registry::global().unregister("mem-test").is_ok());
+	assert_eq!(
+		backend_for("mem://x").err().unwrap().code(),
+		OAKSTORAGE_E_NO_BACKEND
+	);
 
 	// Unregister of an unknown name -> E_NOT_FOUND.
 	assert_eq!(
-		unsafe { ffi::oakstorage_backend_unregister(cs("nope").as_ptr()) },
+		Registry::global().unregister("nope").err().unwrap().code(),
 		oakstorage::error::OAKSTORAGE_E_NOT_FOUND
 	);
 }
@@ -648,7 +611,7 @@ fn build_timeline_project() -> Arc<Mutex<Project>> {
 	let mut p = project.lock().unwrap();
 	p.initialize().unwrap();
 
-	let (seq_id, lists) = node::create_sequence(&mut p.graph);
+	let (seq_id, lists) = oakstorage::nodeutil::create_sequence(&mut p.graph);
 	p.graph.get_mut(seq_id).unwrap().core.label = "My Seq".to_string();
 
 	let mut tb = TrackBehavior::new(TrackType::Video);
@@ -854,10 +817,7 @@ fn assert_interchange_roundtrip(ext: &str) {
 	let uri = file_uri(&path);
 
 	let project = build_timeline_project();
-	let handle = node::make_project_owned(project.clone());
-	let rc = unsafe { ffi::oakstorage_save(handle, cs(&uri).as_ptr(), 0) };
-	assert_eq!(rc, OAKSTORAGE_OK, "save: {}", last_error());
-	free_project(handle);
+	save_project(&project, &uri, 0).unwrap();
 
 	// The written file parses back through oakotio with clips/tracks.
 	match ext {
@@ -879,17 +839,15 @@ fn assert_interchange_roundtrip(ext: &str) {
 	}
 
 	// And imports back into an equivalent project.
-	let (session, rc) = open(&uri);
-	assert!(!session.ctx.is_null(), "open failed rc={rc}: {}", last_error());
+	let (session, rc) = open(&uri).unwrap();
+	assert!(session.project().is_some(), "open failed rc={rc}");
 	assert_eq!(rc, OAKSTORAGE_OK);
-	let proj_handle = unsafe { ffi::oakstorage_project_project(session) };
-	let loaded = unsafe { node::project_arc(&proj_handle) }.unwrap();
+	let proj_handle = session.project().cloned().unwrap();
+	let loaded = unsafe { project_arc(&proj_handle) }.unwrap();
 	{
 		let l = loaded.lock().unwrap();
 		assert_imported_timeline(&l);
 	}
-	free_project(proj_handle);
-	free_session(session);
 }
 
 #[test]
@@ -909,9 +867,8 @@ fn otio_bad_root_rejected() {
 	let dir = temp_dir("otio_badroot");
 	let path = dir.join("bad.otio");
 	std::fs::write(&path, "{\"OTIO_SCHEMA\": \"NotATimeline.1\", \"x\": 1}").unwrap();
-	let (session, rc) = open(&file_uri(&path));
-	assert!(session.ctx.is_null());
-	assert_eq!(rc, OAKSTORAGE_E_FORMAT);
+	let err = open(&file_uri(&path)).err().unwrap();
+	assert_eq!(err.code(), OAKSTORAGE_E_FORMAT);
 }
 
 // ---------------------------------------------------------------------------
@@ -920,115 +877,69 @@ fn otio_bad_root_rejected() {
 
 #[test]
 fn null_and_invalid_handles() {
-	// open with NULL / empty URI -> E_INVALID.
-	let mut rc = 0;
-	let session = unsafe { ffi::oakstorage_open(std::ptr::null(), &mut rc) };
-	assert!(session.ctx.is_null());
-	assert_eq!(rc, OAKSTORAGE_E_INVALID);
+	// open with an empty URI -> E_INVALID.
+	assert_eq!(open("").err().unwrap().code(), OAKSTORAGE_E_INVALID);
 
-	// save with a null project handle -> E_INVALID.
-	let rc = unsafe { ffi::oakstorage_save(CHandle::null(), cs("file:///tmp/x.ove").as_ptr(), 0) };
-	assert_eq!(rc, OAKSTORAGE_E_INVALID);
+	// save with a null project handle -> E_INVALID (the project cannot be
+	// read out of an empty handle).
+	let uri = "file:///tmp/x.ove";
+	let backend = backend_for(uri).unwrap();
+	let err = backend
+		.save(CHandle::null(), &StorageUri::parse(uri).unwrap(), 0)
+		.err().unwrap();
+	assert_eq!(err.code(), OAKSTORAGE_E_INVALID);
 
-	// save with a null URI -> E_INVALID.
-	let project = node::project_init();
-	let rc = unsafe { ffi::oakstorage_save(project, std::ptr::null(), 0) };
-	assert_eq!(rc, OAKSTORAGE_E_INVALID);
-	free_project(project);
+	// save to an unknown-scheme URI -> E_NO_BACKEND (never reaches a
+	// backend).
+	let project = Project::new();
+	let handle = make_project_owned(project);
+	let err = save_handle(handle, "oakdb://x", 0).err().unwrap();
+	assert_eq!(err.code(), OAKSTORAGE_E_NO_BACKEND);
+	release(handle);
 
-	// save to an unknown-scheme URI -> E_NO_BACKEND.
-	let project = node::project_init();
-	let rc = unsafe { ffi::oakstorage_save(project, cs("oakdb://x").as_ptr(), 0) };
-	assert_eq!(rc, OAKSTORAGE_E_NO_BACKEND);
-	free_project(project);
-
-	// project_free(NULL) is a no-op.
-	unsafe { ffi::oakstorage_project_free(std::ptr::null_mut()) };
-
-	// take_project / project_project on a null handle -> null.
-	let h = unsafe { ffi::oakstorage_project_take_project(CHandle::null()) };
-	assert!(h.ctx.is_null());
-	let h = unsafe { ffi::oakstorage_project_project(CHandle::null()) };
-	assert!(h.ctx.is_null());
-
-	// project_uri on a null handle -> E_INVALID.
-	let rc = unsafe { ffi::oakstorage_project_uri(CHandle::null(), std::ptr::null_mut(), 0) };
-	assert_eq!(rc, OAKSTORAGE_E_INVALID);
-
-	// Empty session shell: take twice yields null the second time.
+	// take transfers the project; the second take is empty.
 	let dir = temp_dir("null_matrix");
 	let path = dir.join("x.ove");
 	let uri = file_uri(&path);
 	let project = build_roundtrip_project();
-	let handle = node::make_project_owned(project);
-	assert_eq!(
-		unsafe { ffi::oakstorage_save(handle, cs(&uri).as_ptr(), 0) },
-		OAKSTORAGE_OK
-	);
-	free_project(handle);
+	save_project(&project, &uri, 0).unwrap();
 
-	let (session, _) = open(&uri);
-	let taken = unsafe { ffi::oakstorage_project_take_project(session) };
-	assert!(!taken.ctx.is_null(), "take transfers the project");
-	let again = unsafe { ffi::oakstorage_project_take_project(session) };
-	assert!(again.ctx.is_null(), "second take is empty");
-	let borrowed = unsafe { ffi::oakstorage_project_project(session) };
-	assert!(borrowed.ctx.is_null(), "borrowed is empty after take");
-	free_project(taken);
-	free_session(session);
-
-	// backend_register(NULL) / backend_unregister(NULL) -> E_INVALID.
-	assert_eq!(
-		unsafe { ffi::oakstorage_backend_register(std::ptr::null()) },
-		OAKSTORAGE_E_INVALID
-	);
-	assert_eq!(
-		unsafe { ffi::oakstorage_backend_unregister(std::ptr::null()) },
-		OAKSTORAGE_E_INVALID
-	);
+	let (mut session, _) = open(&uri).unwrap();
+	let taken = session.take().expect("take transfers the project");
+	assert!(!taken.ctx.is_null());
+	assert!(session.project().is_none(), "empty shell after take");
+	release(taken);
 }
 
 // ---------------------------------------------------------------------------
-// Alive accounting
+// Session shell lifecycle
 // ---------------------------------------------------------------------------
 
+/// open -> Session owns the project handle; take hands it out and the
+/// shell stays usable (drop-safe).
 #[test]
-fn alive_count_accounting() {
-	let dir = temp_dir("alive");
+fn session_take_transfers_project() {
+	let dir = temp_dir("session");
 	let path = dir.join("x.ove");
 	let uri = file_uri(&path);
 	let project = build_roundtrip_project();
-	let handle = node::make_project_owned(project);
-	assert_eq!(
-		unsafe { ffi::oakstorage_save(handle, cs(&uri).as_ptr(), 0) },
-		OAKSTORAGE_OK
-	);
-	free_project(handle);
+	save_project(&project, &uri, 0).unwrap();
 
-	let before = alive();
-	{
-		let (session, rc) = open(&uri);
-		assert_eq!(rc, OAKSTORAGE_OK);
-		assert_eq!(alive(), before + 1, "open counts one session");
+	let (mut session, rc) = open(&uri).unwrap();
+	assert_eq!(rc, OAKSTORAGE_OK);
+	assert!(session.project().is_some(), "open counts one project");
 
-		// Take transfers the project; the session shell stays alive.
-		let taken = unsafe { ffi::oakstorage_project_take_project(session) };
-		assert!(!taken.ctx.is_null());
-		assert_eq!(alive(), before + 1, "take keeps the session shell");
+	// Take transfers the project; the session shell stays empty.
+	let taken = session.take().unwrap();
+	assert!(!taken.ctx.is_null());
+	assert!(session.project().is_none(), "take empties the shell");
+	release(taken);
+	// Dropping the shell (with the project already taken) is a no-op.
+	drop(session);
 
-		free_project(taken);
-		free_session(session);
-	}
-	assert_eq!(alive(), before, "open/take/free pair leaves no leak");
-
-	// A second pairing through project_project (borrowed) as well.
-	let before = alive();
-	{
-		let (session, _) = open(&uri);
-		let borrowed = unsafe { ffi::oakstorage_project_project(session) };
-		assert!(!borrowed.ctx.is_null());
-		free_project(borrowed);
-		free_session(session);
-	}
-	assert_eq!(alive(), before, "borrowed view pairing leaves no leak");
+	// A second open/take pairing works the same.
+	let (mut session, _) = open(&uri).unwrap();
+	let taken = session.take().unwrap();
+	assert!(!taken.ctx.is_null());
+	release(taken);
 }

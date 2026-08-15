@@ -17,12 +17,20 @@
 //! `LoadOTIOTask`, mirroring `src/task/src/project/loadotio/loadotio.h`.
 //!
 //! Loads an OpenTimelineIO (`.otio`) or FCPXML (`.fcpxml`) file into a new
-//! `OakNodeProject`, with a configurable import-confirmation callback. The
-//! format is dispatched from the filename extension (see
+//! project, with a configurable import-confirmation callback. The format
+//! is dispatched from the filename extension (see
 //! [`crate::project::format`]); the document is parsed with the pure-Rust
-//! `oakotio` binding (see `README` decision #6) and the project is built
-//! through the oaknode / oaktimeline C ABIs exactly like the C++ task, so
-//! no OTIO or FCPXML type crosses the oaktask C ABI.
+//! `oakotio` binding (see `README` decision #6).
+//!
+//! **Single-lib note**: the project is built through the direct oaknode
+//! domain operations in [`crate::nodeops`] (`Project::new()` +
+//! `Project::initialize()`, factory-created sequence/folder/footage/
+//! block/track nodes, graph connections) instead of the deleted oaknode /
+//! oaktimeline C ABIs. Track creation uses the task-local
+//! [`crate::nodeops::add_track_command`] (see its docs for the
+//! oaktimeline-migration note). The loaded project is an
+//! `Arc<Mutex<oaknode::project::Project>>` stored on the base task
+//! (`take_project()`).
 //!
 //! CPP-PARITY: src/task/src/project/loadotio/loadotio.cpp
 
@@ -30,12 +38,12 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Mutex;
 
+use oaknode::id::NodeId;
+use oaknode::track::TrackType;
 use oakotio::Serializable;
 
-use crate::bridge;
 use crate::error::{Error, Result};
-use crate::ffi::taskhandle::cstr;
-use crate::handle::CHandle;
+use crate::nodeops::{self, NodeRef, ProjectRef};
 use crate::project::format::InterchangeFormat;
 use crate::project::load::ProjectLoadBaseTask;
 use crate::task::{Task, TaskBehavior};
@@ -92,32 +100,34 @@ impl TaskBehavior for LoadOTIOTask {
 
 		let timelines = parse_timelines(task, &self.base.filename, format)?;
 
-		let mut project = unsafe { bridge::node::oaknode_project_init() };
-		if project.ctx.is_null() {
-			task.set_error("Failed to create project");
-			return Err(Error::Failed("Failed to create project".to_string()));
-		}
-		unsafe {
-			bridge::node::oaknode_project_initialize(project);
-			bridge::node::oaknode_project_set_modified(project, 1);
+		// Build the project directly through the oaknode domain model
+		// (the deleted `oaknode_project_init` stub is gone).
+		let project: ProjectRef = oaknode::project::Project::new();
+		{
+			let mut guard = project.lock().unwrap_or_else(|e| e.into_inner());
+			if let Err(e) = guard.initialize() {
+				let _ = e;
+				task.set_error("Failed to create project");
+				return Err(Error::Failed("Failed to create project".to_string()));
+			}
+			guard.set_modified(true);
 		}
 
 		// Keep track of imported footage
-		let mut imported_footage: HashMap<String, CHandle> = HashMap::new();
+		let mut imported_footage: HashMap<String, NodeRef> = HashMap::new();
 
 		// Generate a list of sequences with the same names as the timelines.
 		// Assumes each timeline has a unique name.
 		let mut unnamed_sequence_count = 0;
-		let mut sequences: Vec<CHandle> = Vec::new();
+		let mut sequences: Vec<NodeRef> = Vec::new();
 
 		// Variables used for loading bar
 		let mut number_of_clips: f64 = 0.0;
 
 		for timeline in &timelines {
-			let sequence = unsafe { bridge::node::oaknode_sequence_create() };
-			if sequence.ctx.is_null() {
+			let Some(sequence) = nodeops::sequence_create(&project) else {
 				continue;
-			}
+			};
 
 			let label = if !timeline.name().is_empty() {
 				timeline.name().to_string()
@@ -127,17 +137,7 @@ impl TaskBehavior for LoadOTIOTask {
 				unnamed_sequence_count += 1;
 				format!("Sequence {unnamed_sequence_count}")
 			};
-			unsafe {
-				bridge::node::oaknode_node_set_label(
-					bridge::node::oaknode_sequence_as_node(sequence),
-					cstr(&label),
-				);
-			}
-
-			// Set default params incase they aren't edited.
-			unsafe {
-				bridge::node::oaknode_sequence_set_default_parameters(sequence);
-			}
+			nodeops::set_node_label(&project, sequence, &label);
 
 			// Get number of clips for loading bar
 			for track in timeline.tracks().children() {
@@ -146,7 +146,7 @@ impl TaskBehavior for LoadOTIOTask {
 				}
 			}
 
-			sequences.push(sequence);
+			sequences.push((project.clone(), sequence));
 		}
 		if number_of_clips <= 0.0 {
 			number_of_clips = 1.0;
@@ -156,7 +156,7 @@ impl TaskBehavior for LoadOTIOTask {
 		// default accepts everything).
 		let sequence_names: Vec<String> = sequences
 			.iter()
-			.map(|s| node_label_of(unsafe { bridge::node::oaknode_sequence_as_node(*s) }))
+			.map(|(p, s)| nodeops::node_label(p, *s))
 			.collect();
 		let mut confirm = CONFIRM_CALLBACK.lock().unwrap().take();
 		let accepted = match confirm.as_mut() {
@@ -167,62 +167,35 @@ impl TaskBehavior for LoadOTIOTask {
 		if !accepted {
 			// Cancel to indicate to caller that this task did not complete
 			// and to simply dispose of it. The project is never handed to the
-			// base task, so free it here (the C++ base-task destructor does
-			// the same).
+			// base task (the C++ base-task destructor does the same).
 			task.cancel();
-			for sequence in &mut sequences {
-				unsafe {
-					bridge::node::oaknode_sequence_free(sequence);
-				}
-			}
-			if !project.ctx.is_null() {
-				unsafe {
-					bridge::node::oaknode_project_free(&mut project);
-				}
-			}
 			return Ok(());
 		}
 
-		let root_folder = unsafe { bridge::node::oaknode_project_root(project) };
+		let root_folder = {
+			let guard = project.lock().unwrap_or_else(|e| e.into_inner());
+			guard.root
+		};
 		let mut clips_done = 0.0f64;
 
-		for (timeline, sequence) in timelines.iter().zip(&sequences) {
-			let sequence_node = unsafe { bridge::node::oaknode_sequence_as_node(*sequence) };
+		for (timeline, (_, sequence)) in timelines.iter().zip(&sequences) {
+			let sequence_node = *sequence;
 
-			unsafe {
-				bridge::node::oaknode_project_add_node(project, sequence_node);
-			}
-			let mut add_seq = unsafe {
-				bridge::node::oaknode_command_create_folder_add_child(root_folder, sequence_node)
-			};
-			if !add_seq.ctx.is_null() {
-				unsafe {
-					bridge::undo::oakundo_command_redo_now(add_seq);
-					bridge::undo::oakundo_command_free(&mut add_seq);
-				}
-			}
+			let mut add_seq = nodeops::folder_add_child_command(
+				(project.clone(), root_folder),
+				(project.clone(), sequence_node),
+			);
+			add_seq.redo_now();
 
 			// Create a folder for this sequence's footage
-			let sequence_footage = unsafe { bridge::node::oaknode_folder_create(project) };
-			if !sequence_footage.ctx.is_null() {
-				unsafe {
-					bridge::node::oaknode_node_set_label(
-						bridge::node::oaknode_folder_as_node(sequence_footage),
-						cstr(timeline.name()),
-					);
-				}
-				let mut add_folder = unsafe {
-					bridge::node::oaknode_command_create_folder_add_child(
-						root_folder,
-						bridge::node::oaknode_folder_as_node(sequence_footage),
-					)
-				};
-				if !add_folder.ctx.is_null() {
-					unsafe {
-						bridge::undo::oakundo_command_redo_now(add_folder);
-						bridge::undo::oakundo_command_free(&mut add_folder);
-					}
-				}
+			let sequence_footage = nodeops::folder_create(&project);
+			if let Some(folder_id) = sequence_footage {
+				nodeops::set_node_label(&project, folder_id, timeline.name());
+				let mut add_folder = nodeops::folder_add_child_command(
+					(project.clone(), root_folder),
+					(project.clone(), folder_id),
+				);
+				add_folder.redo_now();
 			}
 
 			// Iterate through tracks
@@ -233,8 +206,8 @@ impl TaskBehavior for LoadOTIOTask {
 
 				// Determine what kind of track it is
 				let track_type = match otio_track.kind() {
-					"Video" => bridge::node::OAKNODE_TRACK_TYPE_VIDEO,
-					"Audio" => bridge::node::OAKNODE_TRACK_TYPE_AUDIO,
+					"Video" => TrackType::Video,
+					"Audio" => TrackType::Audio,
 					other => {
 						eprintln!("Found unknown track type: {other}");
 						continue;
@@ -242,43 +215,27 @@ impl TaskBehavior for LoadOTIOTask {
 				};
 
 				// Create a new track
-				let mut track_list = CHandle::null();
-				unsafe {
-					bridge::node::oaknode_sequence_get_track_list(
-						*sequence,
-						track_type,
-						&mut track_list,
-					);
-				}
-				let mut add_track =
-					unsafe { bridge::timeline::oaktimeline_add_track_command(track_list) };
-				if !add_track.ctx.is_null() {
-					unsafe {
-						bridge::undo::oakundo_command_redo_now(add_track);
-						bridge::undo::oakundo_command_free(&mut add_track);
-					}
-				}
-
-				let mut track = CHandle::null();
-				let mut count = 0;
-				unsafe {
-					bridge::node::oaknode_tracklist_get_track_count(track_list, &mut count);
-				}
-				if count > 0 {
-					unsafe {
-						bridge::node::oaknode_tracklist_get_track_at(
-							track_list,
-							count - 1,
-							&mut track,
-						);
-					}
-				}
-				if track.ctx.is_null() {
+				let Some(track_list) =
+					nodeops::sequence_track_list(&project, sequence_node, track_type)
+				else {
 					continue;
-				}
+				};
+				let mut add_track =
+					nodeops::add_track_command(project.clone(), track_list);
+				add_track.redo_now();
+
+				let track_count = nodeops::tracklist_track_count(&project, track_list);
+				let track = if track_count > 0 {
+					nodeops::tracklist_track_at(&project, track_list, track_count - 1)
+				} else {
+					None
+				};
+				let Some(track) = track else {
+					continue;
+				};
 
 				// Get clips from track
-				let mut previous_block = CHandle::null();
+				let mut previous_block: Option<NodeId> = None;
 				let mut prev_block_transition = false;
 
 				for otio_block in otio_track.children() {
@@ -286,35 +243,27 @@ impl TaskBehavior for LoadOTIOTask {
 						break;
 					}
 
-					let block = match otio_block.schema_name() {
-						"Clip" => unsafe { bridge::node::oaknode_block_clip_create() },
-						"Gap" => unsafe { bridge::node::oaknode_block_gap_create() },
+					let block_kind = match otio_block.schema_name() {
+						"Clip" => nodeops::BlockKind::Clip,
+						"Gap" => nodeops::BlockKind::Gap,
 						"Transition" => {
 							// Todo: Look into OTIO supported transitions and add
 							// them to Oak.
-							unsafe {
-								bridge::node::oaknode_block_transition_create(
-									bridge::node::OAKNODE_TRANSITION_CROSS_DISSOLVE,
-								)
-							}
+							nodeops::BlockKind::Transition
 						}
 						other => {
 							// We don't know what this is yet, just create a gap
 							// for now so that *something* is there.
 							eprintln!("Found unknown block type: {other}");
-							unsafe { bridge::node::oaknode_block_gap_create() }
+							nodeops::BlockKind::Gap
 						}
 					};
-					if block.ctx.is_null() {
+					let Some(block) = nodeops::block_create(&project, block_kind) else {
 						continue;
-					}
-
-					let block_node = unsafe { bridge::node::oaknode_block_as_node(block) };
-					unsafe {
-						bridge::node::oaknode_project_add_node(project, block_node);
-						bridge::node::oaknode_node_set_label(block_node, cstr(otio_block.name()));
-						bridge::node::oaknode_track_append_block(track, block);
-					}
+					};
+					let block_node = block;
+					nodeops::set_node_label(&project, block_node, otio_block.name());
+					nodeops::track_append_block(&project, track, block_node);
 
 					if otio_block.schema_name() == "Clip" || otio_block.schema_name() == "Gap" {
 						if let Some(source_range) = otio_block.source_range() {
@@ -325,32 +274,31 @@ impl TaskBehavior for LoadOTIOTask {
 							let duration = oakcore_rs::Rational::from_double(duration_seconds);
 
 							if otio_block.schema_name() == "Clip" {
-								unsafe {
-									bridge::node::oaknode_clip_set_media_in(
-										block,
-										start_time.numerator() as i32,
-										start_time.denominator() as i32,
-									);
-								}
-							}
-							unsafe {
-								bridge::node::oaknode_block_set_length_and_media_out(
-									block,
-									duration.numerator() as i32,
-									duration.denominator() as i32,
+								nodeops::clip_set_media_in(
+									&project,
+									block_node,
+									start_time.numerator(),
+									start_time.denominator(),
 								);
 							}
+							nodeops::block_set_length_and_media_out(
+								&project,
+								block_node,
+								duration.numerator(),
+								duration.denominator(),
+							);
 						}
 					}
 
 					// If the previous block was a transition, connect the
 					// current block to it.
 					if prev_block_transition {
-						unsafe {
-							bridge::node::oaknode_node_connect(
+						if let Some(prev) = previous_block {
+							nodeops::node_connect(
+								&project,
 								block_node,
-								bridge::node::oaknode_block_as_node(previous_block),
-								cstr(bridge::node::OAKNODE_TRANSITION_IN_BLOCK_INPUT),
+								prev,
+								nodeops::TRANSITION_IN_BLOCK_INPUT,
 							);
 						}
 						prev_block_transition = false;
@@ -361,43 +309,37 @@ impl TaskBehavior for LoadOTIOTask {
 						// clip.
 						let in_offset = otio_transition.in_offset().to_rational();
 						let out_offset = otio_transition.out_offset().to_rational();
-						unsafe {
-							bridge::node::oaknode_transition_set_offsets_and_length(
-								block,
-								in_offset.numerator() as i32,
-								in_offset.denominator() as i32,
-								out_offset.numerator() as i32,
-								out_offset.denominator() as i32,
-							);
-						}
+						nodeops::transition_set_offsets_and_length(
+							&project,
+							block_node,
+							in_offset.numerator(),
+							in_offset.denominator(),
+							out_offset.numerator(),
+							out_offset.denominator(),
+						);
 
-						if !previous_block.ctx.is_null() {
-							unsafe {
-								bridge::node::oaknode_node_connect(
-									bridge::node::oaknode_block_as_node(previous_block),
-									block_node,
-									cstr(bridge::node::OAKNODE_TRANSITION_OUT_BLOCK_INPUT),
-								);
-							}
+						if let Some(prev) = previous_block {
+							nodeops::node_connect(
+								&project,
+								prev,
+								block_node,
+								nodeops::TRANSITION_OUT_BLOCK_INPUT,
+							);
 						}
 						prev_block_transition = true;
 
 						// Position transition in its own context.
-						unsafe {
-							set_own_context_position(block_node);
-						}
+						set_own_context_position(&project, block_node);
 					}
 
 					if otio_block.schema_name() == "Gap" {
 						// Position gap in its own context.
-						unsafe {
-							set_own_context_position(block_node);
-						}
+						set_own_context_position(&project, block_node);
 					}
 
 					// Update this after it's used but before any continue
 					// statements.
-					previous_block = block;
+					previous_block = Some(block_node);
 
 					if otio_block.schema_name() == "Clip" {
 						let Some(otio_clip) = otio_block.as_clip() else {
@@ -410,115 +352,90 @@ impl TaskBehavior for LoadOTIOTask {
 							// Link footage
 							let footage_url = external.target_url().to_string();
 
-							let probed_item = if let Some(existing) =
-								imported_footage.get(&footage_url)
-							{
-								*existing
-							} else {
-								let created = unsafe {
-									bridge::node::oaknode_footage_create(
-										project,
-										cstr(&footage_url),
-									)
-								};
-								if !created.ctx.is_null() {
-									imported_footage.insert(footage_url.clone(), created);
+							let probed_item: Option<NodeRef> =
+								if let Some(existing) = imported_footage.get(&footage_url) {
+									Some(existing.clone())
+								} else {
+									let created =
+										nodeops::footage_create(&project, Some(&footage_url));
+									if let Some(created) = created {
+										imported_footage.insert(
+											footage_url.clone(),
+											(project.clone(), created),
+										);
 
-									let label = Path::new(&footage_url)
-										.file_name()
-										.map(|n| n.to_string_lossy().into_owned())
-										.unwrap_or_default();
-									unsafe {
-										bridge::node::oaknode_node_set_label(
-											bridge::node::oaknode_footage_as_node(created),
-											cstr(&label),
+										let label = Path::new(&footage_url)
+											.file_name()
+											.map(|n| n.to_string_lossy().into_owned())
+											.unwrap_or_default();
+										nodeops::set_node_label(&project, created, &label);
+
+										if let Some(folder_id) = sequence_footage {
+											let mut add_footage =
+												nodeops::folder_add_child_command(
+													(project.clone(), folder_id),
+													(project.clone(), created),
+												);
+											add_footage.redo_now();
+										}
+									}
+									created.map(|id| (project.clone(), id))
+								};
+
+							if let Some((_, probed_id)) = probed_item {
+								// Position clip in its own context.
+								set_own_context_position(&project, block_node);
+
+								// Position footage in its context.
+								nodeops::node_set_context_position(
+									&project, block_node, probed_id, -2.0, 0.0, false,
+								);
+
+								// Record the clip-footage link in the domain
+								// model (the C++ finds footage through the
+								// input chain; the Rust clip records it).
+								nodeops::clip_set_footage(&project, block_node, probed_id);
+
+								if track_type == TrackType::Video {
+									if let Some(transform) = factory_create(
+										&project,
+										nodeops::TRANSFORM_TYPE_ID,
+									) {
+										nodeops::node_connect(
+											&project,
+											probed_id,
+											transform,
+											"tex_in",
+										);
+										nodeops::node_connect(
+											&project,
+											transform,
+											block_node,
+											nodeops::CLIP_TEXTURE_INPUT,
+										);
+										nodeops::node_set_context_position(
+											&project, block_node, transform, -1.0, 0.0, false,
 										);
 									}
-
-									if !sequence_footage.ctx.is_null() {
-										let mut add_footage = unsafe {
-											bridge::node::oaknode_command_create_folder_add_child(
-												sequence_footage,
-												bridge::node::oaknode_footage_as_node(created),
-											)
-										};
-										if !add_footage.ctx.is_null() {
-											unsafe {
-												bridge::undo::oakundo_command_redo_now(add_footage);
-												bridge::undo::oakundo_command_free(
-													&mut add_footage,
-												);
-											}
-										}
-									}
-								}
-								created
-							};
-
-							if !probed_item.ctx.is_null() {
-								unsafe {
-									// Position clip in its own context.
-									set_own_context_position(block_node);
-
-									// Position footage in its context.
-									bridge::node::oaknode_node_set_context_position(
-										block_node,
-										bridge::node::oaknode_footage_as_node(probed_item),
-										-2.0,
-										0.0,
-										0,
-									);
-								}
-
-								if track_type == bridge::node::OAKNODE_TRACK_TYPE_VIDEO {
-									let transform = unsafe {
-										bridge::node::oaknode_factory_create_from_id(cstr(
-											bridge::node::OAKNODE_TYPE_TRANSFORM,
-										))
-									};
-									if !transform.ctx.is_null() {
-										unsafe {
-											bridge::node::oaknode_project_add_node(
-												project, transform,
-											);
-											bridge::node::oaknode_node_connect(
-												bridge::node::oaknode_footage_as_node(probed_item),
-												transform,
-												cstr("tex_in"),
-											);
-											bridge::node::oaknode_node_connect(
-												transform,
-												block_node,
-												cstr("buffer_in"),
-											);
-											bridge::node::oaknode_node_set_context_position(
-												block_node, transform, -1.0, 0.0, 0,
-											);
-										}
-									}
 								} else {
-									let volume = unsafe {
-										bridge::node::oaknode_factory_create_from_id(cstr(
-											bridge::node::OAKNODE_TYPE_VOLUME,
-										))
-									};
-									if !volume.ctx.is_null() {
-										unsafe {
-											bridge::node::oaknode_project_add_node(project, volume);
-											bridge::node::oaknode_node_connect(
-												bridge::node::oaknode_footage_as_node(probed_item),
-												volume,
-												cstr("samples_in"),
-											);
-											bridge::node::oaknode_node_connect(
-												volume,
-												block_node,
-												cstr("buffer_in"),
-											);
-											bridge::node::oaknode_node_set_context_position(
-												block_node, volume, -1.0, 0.0, 0,
-											);
-										}
+									if let Some(volume) =
+										factory_create(&project, nodeops::VOLUME_TYPE_ID)
+									{
+										nodeops::node_connect(
+											&project,
+											probed_id,
+											volume,
+											"samples_in",
+										);
+										nodeops::node_connect(
+											&project,
+											volume,
+											block_node,
+											nodeops::CLIP_TEXTURE_INPUT,
+										);
+										nodeops::node_set_context_position(
+											&project, block_node, volume, -1.0, 0.0, false,
+										);
 									}
 								}
 							}
@@ -536,12 +453,18 @@ impl TaskBehavior for LoadOTIOTask {
 	}
 }
 
+/// Create a node from the factory registry (`oaknode_factory_create_from_id`).
+fn factory_create(project: &ProjectRef, type_id: &str) -> Option<NodeId> {
+	let meta = oaknode::factory::Factory::global().find(type_id)?;
+	let (core, behavior) = (meta.create)();
+	let mut guard = project.lock().unwrap_or_else(|e| e.into_inner());
+	Some(guard.graph.add_node(core, behavior))
+}
+
 /// Set the node's position in its own context (the C++
 /// `set_own_context_position` helper in loadotio.cpp).
-unsafe fn set_own_context_position(node: CHandle) {
-	unsafe {
-		bridge::node::oaknode_node_set_context_position(node, node, 0.0, 0.0, 0);
-	}
+fn set_own_context_position(project: &ProjectRef, node: NodeId) {
+	nodeops::node_set_context_position(project, node, node, 0.0, 0.0, false);
 }
 
 /// Parse the document into one `oakotio::Timeline` per sequence, dispatching
@@ -592,17 +515,4 @@ fn parse_timelines(
 			Error::Failed("Failed to load FCPXML".to_string())
 		}),
 	}
-}
-
-/// Two-stage read of a node's label (the C++ `oaknode_node_get_label` usage).
-fn node_label_of(node: CHandle) -> String {
-	let needed = unsafe { bridge::node::oaknode_node_get_label(node, std::ptr::null_mut(), 0) };
-	if needed <= 0 {
-		return String::new();
-	}
-	let mut buf = vec![0i8; needed as usize];
-	unsafe {
-		bridge::node::oaknode_node_get_label(node, buf.as_mut_ptr(), needed);
-	}
-	crate::project::load::buf_to_string(&buf)
 }

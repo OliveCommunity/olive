@@ -28,7 +28,7 @@
 //!
 //! ## Command boxes
 //!
-//! Commands cross the FFI boundary through a dedicated [`CommandBox`]
+//! Commands cross crate boundaries through a dedicated [`CommandBox`]
 //! (not the generic [`crate::handle::RefBox`]): it holds the raw
 //! `*mut UndoCommand`, an `owns` flag (mirroring the C++
 //! `OakUndoCommandBox`) and a refcount. An **owning** box owns and
@@ -36,12 +36,18 @@
 //! reference into a `MultiUndoCommand` or an `UndoStack`) owns only its
 //! shell. `take_command` moves the command value out of an owning box,
 //! turning it into a non-owning shell (the C++ `mark_container_owned`).
+//!
+//! The handle-level functions below (`command_init` ... `command_free`)
+//! were sunk from the former C ABI export layer: they keep the
+//! `CHandle`-based signatures so the facade bridges and integration
+//! tests can drive the command machinery directly. The `CHandle` layer
+//! itself is removed in a later milestone.
 
-use std::ffi::c_void;
+use std::ffi::{c_int, c_void};
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::error::{Error, Result};
-use crate::handle::{CHandle, OAKUNDO_ABI_VERSION};
+use crate::handle::{guard, guard_handle, guard_void, CHandle, OAKUNDO_ABI_VERSION};
 
 /// `oakundo_command_vtable` — the caller-defined redo/undo/free
 /// callback table. Any entry may be `None`; a `None` redo/undo makes
@@ -348,7 +354,7 @@ pub(crate) struct CommandBox {
 ///
 /// # Safety
 /// The returned handle owns `cmd`; release it with `command_release`.
-pub(crate) unsafe fn command_from_owned(cmd: UndoCommand) -> CHandle {
+pub unsafe fn command_from_owned(cmd: UndoCommand) -> CHandle {
 	let boxed = Box::into_raw(Box::new(CommandBox {
 		command: Box::into_raw(Box::new(cmd)),
 		owns: true,
@@ -367,7 +373,7 @@ pub(crate) unsafe fn command_from_owned(cmd: UndoCommand) -> CHandle {
 ///
 /// # Safety
 /// `cmd` must outlive the returned handle.
-pub(crate) unsafe fn command_from_borrowed(cmd: *mut UndoCommand) -> CHandle {
+pub unsafe fn command_from_borrowed(cmd: *mut UndoCommand) -> CHandle {
 	let boxed = Box::into_raw(Box::new(CommandBox {
 		command: cmd,
 		owns: false,
@@ -385,7 +391,7 @@ pub(crate) unsafe fn command_from_borrowed(cmd: *mut UndoCommand) -> CHandle {
 ///
 /// # Safety
 /// `ctx` must come from a valid, live `CommandBox`.
-pub(crate) unsafe fn command_to_ref(ctx: *mut c_void) -> Option<&'static UndoCommand> {
+pub unsafe fn command_to_ref(ctx: *mut c_void) -> Option<&'static UndoCommand> {
 	unsafe {
 		if ctx.is_null() {
 			return None;
@@ -402,7 +408,7 @@ pub(crate) unsafe fn command_to_ref(ctx: *mut c_void) -> Option<&'static UndoCom
 ///
 /// # Safety
 /// `ctx` must come from a valid, live `CommandBox`.
-pub(crate) unsafe fn command_to_mut(ctx: *mut c_void) -> Option<&'static mut UndoCommand> {
+pub unsafe fn command_to_mut(ctx: *mut c_void) -> Option<&'static mut UndoCommand> {
 	unsafe {
 		if ctx.is_null() {
 			return None;
@@ -420,7 +426,7 @@ pub(crate) unsafe fn command_to_mut(ctx: *mut c_void) -> Option<&'static mut Und
 ///
 /// # Safety
 /// `ctx` must come from a valid, live `CommandBox`.
-pub(crate) unsafe fn command_take(ctx: *mut c_void) -> Result<UndoCommand> {
+pub unsafe fn command_take(ctx: *mut c_void) -> Result<UndoCommand> {
 	unsafe {
 		if ctx.is_null() {
 			return Err(Error::Invalid);
@@ -469,4 +475,114 @@ pub(crate) unsafe extern "C" fn command_release(ctx: *mut c_void) {
 			drop(Box::from_raw(boxed));
 		}
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Handle-level command API (sunk from the former C ABI export layer)
+// ---------------------------------------------------------------------------
+
+/// Create a vtable-backed command handle (refcount 1); a `NULL` vtable
+/// yields an empty handle (`oakundo_command_init`).
+pub fn command_init(vtable: *const OakUndoCommandVtable, userdata: *mut c_void) -> CHandle {
+	guard_handle(|| unsafe {
+		if vtable.is_null() {
+			return Ok(CHandle::null());
+		}
+		let table = *vtable;
+		Ok(command_from_owned(UndoCommand::from_vtable(table, userdata)))
+	})
+}
+
+/// Create an empty multi command handle (refcount 1)
+/// (`oakundo_command_init_multi`).
+pub fn command_init_multi() -> CHandle {
+	guard_handle(|| unsafe { Ok(command_from_owned(UndoCommand::multi())) })
+}
+
+/// Add `child` to a multi command handle (the stack/multi takes one
+/// child reference); `E_INVALID` for an empty handle or a non-multi
+/// parent (`oakundo_command_multi_add_child`).
+pub fn command_multi_add_child(multi: CHandle, child: CHandle) -> c_int {
+	guard(|| unsafe {
+		let parent = command_to_mut(multi.ctx).ok_or(Error::Invalid)?;
+		if !parent.is_multi() {
+			return Err(Error::Invalid);
+		}
+		let child_cmd = command_take(child.ctx)?;
+		parent.multi_add_child(child_cmd);
+		Ok(())
+	})
+}
+
+/// Number of children of a multi command handle; `E_INVALID` for an
+/// empty handle or a non-multi parent (`oakundo_command_multi_child_count`).
+pub fn command_multi_child_count(multi: CHandle, out_count: *mut c_int) -> c_int {
+	guard(|| unsafe {
+		if out_count.is_null() {
+			return Err(Error::Invalid);
+		}
+		let parent = command_to_ref(multi.ctx).ok_or(Error::Invalid)?;
+		if !parent.is_multi() {
+			return Err(Error::Invalid);
+		}
+		*out_count = parent.multi_child_count() as c_int;
+		Ok(())
+	})
+}
+
+/// Write a borrowed handle to the child at `index` of a multi command
+/// (the returned handle carries its own shell ref); `E_NOT_FOUND` for
+/// an out-of-range index (`oakundo_command_multi_child`).
+pub fn command_multi_child(multi: CHandle, index: c_int, out_child: *mut CHandle) -> c_int {
+	guard(|| unsafe {
+		if out_child.is_null() {
+			return Err(Error::Invalid);
+		}
+		let parent = command_to_ref(multi.ctx).ok_or(Error::Invalid)?;
+		if !parent.is_multi() {
+			return Err(Error::Invalid);
+		}
+		if index < 0 {
+			return Err(Error::NotFound);
+		}
+		let child = parent.multi_child(index as usize)?;
+		let ptr = child as *const UndoCommand as *mut UndoCommand;
+		*out_child = command_from_borrowed(ptr);
+		Ok(())
+	})
+}
+
+/// Execute a command handle's redo (no-op when already done)
+/// (`oakundo_command_redo_now`).
+pub fn command_redo_now(command: CHandle) -> c_int {
+	guard(|| unsafe {
+		let c = command_to_mut(command.ctx).ok_or(Error::Invalid)?;
+		c.redo_now();
+		Ok(())
+	})
+}
+
+/// Execute a command handle's undo (no-op when not done)
+/// (`oakundo_command_undo_now`).
+pub fn command_undo_now(command: CHandle) -> c_int {
+	guard(|| unsafe {
+		let c = command_to_mut(command.ctx).ok_or(Error::Invalid)?;
+		c.undo_now();
+		Ok(())
+	})
+}
+
+/// Release a command handle in place: run the release callback, then
+/// clear `ctx`. `NULL` / empty handles are no-ops
+/// (`oakundo_command_free`).
+pub fn command_free(command: *mut CHandle) {
+	guard_void(|| unsafe {
+		if command.is_null() || (*command).ctx.is_null() {
+			return;
+		}
+		if let Some(release) = (*command).release {
+			release((*command).ctx);
+		}
+		(*command).ctx = std::ptr::null_mut();
+	})
 }

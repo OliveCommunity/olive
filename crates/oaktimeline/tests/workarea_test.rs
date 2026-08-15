@@ -16,16 +16,11 @@
 
 //! Contract tests for the work area domain (`src/workarea.rs`):
 //! `TimelineWorkArea` value type, its two undo commands, and the
-//! `reset_in`/`reset_out` sentinels. XML load/save matches the format
-//! written by `timelineworkarea.cpp` (`<version=1>` attribute plus
-//! `enabled`/`in`/`out` text elements).
-#![cfg(feature = "test-stubs")]
+//! `reset_in`/`reset_out` sentinels. The XML load/save contract left
+//! with the deleted C ABI export layer (single-lib unification).
 
 use oakcore_rs::{Rational, TimeRange};
-use oaktimeline::bridge::common::{oakcommon_xml_writer_free, oakcommon_xml_writer_init};
-use oaktimeline::bridge::teststubs::{xml_reader_handle, MockXmlNode, MockXmlWriter};
-use oaktimeline::ffi;
-use oaktimeline::handle::{get, get_mut, make_owned};
+use oaktimeline::handle::{get, make_owned};
 use oaktimeline::undocommon::Command;
 use oaktimeline::workarea::{
 	reset_in, reset_out, TimelineWorkArea, WorkareaSetEnabledCommand, WorkareaSetRangeCommand,
@@ -130,22 +125,33 @@ fn workarea_set_range_command_redo_undo() {
 	);
 }
 
-/// `to_command` boxes a work area command into a CHandle for the undo
-/// stack.
+/// `to_command` boxes a work area command into an oakundo `UndoCommand`
+/// value for the undo stack (the old C ABI command handle is gone with
+/// the single-lib unification).
 #[test]
-fn workarea_commands_box_to_chandle() {
+fn workarea_commands_box_to_undo_command() {
 	let wa_h = make_owned(TimelineWorkArea::new());
-	let enabled_cmd = WorkareaSetEnabledCommand::new(wa_h.clone(), true).to_command();
-	assert!(!enabled_cmd.is_null());
-	assert_eq!(enabled_cmd.abi_version, 1);
+	let mut enabled_cmd = WorkareaSetEnabledCommand::new(wa_h.clone(), true).to_command();
+	enabled_cmd.redo_now();
+	assert!(unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().enabled());
+	enabled_cmd.undo_now();
+	assert!(!unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().enabled());
 
-	let range_cmd = WorkareaSetRangeCommand::new(
+	let mut range_cmd = WorkareaSetRangeCommand::new(
 		wa_h.clone(),
 		TimeRange::new(Rational::new(1, 1), Rational::new(2, 1)),
 	)
 	.to_command();
-	assert!(!range_cmd.is_null());
-	assert_eq!(range_cmd.abi_version, 1);
+	range_cmd.redo_now();
+	assert_eq!(
+		unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().in_(),
+		Rational::new(1, 1)
+	);
+	range_cmd.undo_now();
+	assert_eq!(
+		unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().in_(),
+		reset_in()
+	);
 }
 
 /// `Command` trait dispatch routes through the same redo/undo bodies as
@@ -174,87 +180,4 @@ fn workarea_commands_trait_dispatch() {
 		unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().in_(),
 		reset_in()
 	);
-}
-
-/// Save writes `<version=1>` plus `enabled`/`in`/`out` text elements;
-/// load reads them back (XML golden round-trip).
-#[test]
-fn workarea_xml_round_trip() {
-	// Set up an enabled work area with a known range.
-	let wa_h = make_owned(TimelineWorkArea::new());
-	{
-		let wa = unsafe { get_mut::<TimelineWorkArea>(&wa_h) }.unwrap();
-		wa.set_enabled(true);
-		wa.set_range(TimeRange::new(Rational::new(10, 1), Rational::new(20, 1)));
-	}
-
-	// Save into a mock writer.
-	let mut writer = unsafe { oakcommon_xml_writer_init() };
-	let r = unsafe { ffi::workarea::oaktimeline_workarea_save(wa_h.clone(), writer.clone()) };
-	assert_eq!(r, 0);
-	let buf = unsafe { get::<MockXmlWriter>(&writer) }
-		.unwrap()
-		.buf
-		.clone();
-	assert!(buf.contains("version=\"1\""), "buf: {buf}");
-	assert!(buf.contains("<enabled>1</enabled>"), "buf: {buf}");
-	assert!(buf.contains("<in>10/1</in>"), "buf: {buf}");
-	assert!(buf.contains("<out>20/1</out>"), "buf: {buf}");
-	unsafe { oakcommon_xml_writer_free(&mut writer) };
-
-	// Load from a mock reader back into a fresh work area.
-	let reader = xml_reader_handle(vec![
-		MockXmlNode {
-			name: "enabled".to_string(),
-			text: "1".to_string(),
-			attrs: Vec::new(),
-		},
-		MockXmlNode {
-			name: "in".to_string(),
-			text: "10/1".to_string(),
-			attrs: Vec::new(),
-		},
-		MockXmlNode {
-			name: "out".to_string(),
-			text: "20/1".to_string(),
-			attrs: Vec::new(),
-		},
-	]);
-	let wa2_h = make_owned(TimelineWorkArea::new());
-	let r2 = unsafe { ffi::workarea::oaktimeline_workarea_load(wa2_h.clone(), reader.clone()) };
-	assert_eq!(r2, 0);
-	let wa2 = unsafe { get::<TimelineWorkArea>(&wa2_h) }.unwrap();
-	assert!(wa2.enabled());
-	assert_eq!(wa2.in_(), Rational::new(10, 1));
-	assert_eq!(wa2.out(), Rational::new(20, 1));
-}
-
-/// An unset work area serializes to `enabled=0` and round-trips as a
-/// disabled, null-range work area.
-#[test]
-fn workarea_unset_round_trips_disabled() {
-	let wa_h = make_owned(TimelineWorkArea::new());
-
-	let mut writer = unsafe { oakcommon_xml_writer_init() };
-	let r = unsafe { ffi::workarea::oaktimeline_workarea_save(wa_h.clone(), writer.clone()) };
-	assert_eq!(r, 0);
-	let buf = unsafe { get::<MockXmlWriter>(&writer) }
-		.unwrap()
-		.buf
-		.clone();
-	assert!(buf.contains("<enabled>0</enabled>"), "buf: {buf}");
-	unsafe { oakcommon_xml_writer_free(&mut writer) };
-
-	let reader = xml_reader_handle(vec![MockXmlNode {
-		name: "enabled".to_string(),
-		text: "0".to_string(),
-		attrs: Vec::new(),
-	}]);
-	let wa2_h = make_owned(TimelineWorkArea::new());
-	let r2 = unsafe { ffi::workarea::oaktimeline_workarea_load(wa2_h.clone(), reader.clone()) };
-	assert_eq!(r2, 0);
-	let wa2 = unsafe { get::<TimelineWorkArea>(&wa2_h) }.unwrap();
-	assert!(!wa2.enabled());
-	assert_eq!(wa2.in_(), reset_in());
-	assert_eq!(wa2.out(), reset_out());
 }

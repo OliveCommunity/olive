@@ -24,8 +24,9 @@
 
 use std::sync::{Arc, Condvar, Mutex};
 
+use oakcommon::cancelatom::CancelAtom;
+
 use crate::error::{Error, Result};
-use crate::handle::CHandle;
 use crate::task::{Task, TaskBehavior};
 
 /// Shared state between the parked task thread, the owning cache
@@ -41,19 +42,14 @@ pub struct CustomCacheState {
 	/// Callback invoked when the task is cancelled (not by `finish()`).
 	cancelled_callback: Mutex<Option<Box<dyn FnMut() + Send>>>,
 	/// Copy of the task's cancellation atom.
-	atom: CHandle,
+	atom: Arc<CancelAtom>,
 }
 
 impl CustomCacheState {
 	/// Mark the cache fill as complete and wake the parked task.
 	pub fn finish(&self) {
 		*self.cancelled_through_finish.lock().unwrap() = true;
-		if !self.atom.is_null() {
-			let atom = self.atom;
-			unsafe {
-				crate::bridge::render::oakrender_cancelatom_cancel(atom);
-			}
-		}
+		self.atom.cancel();
 		self.wait.notify_one();
 	}
 
@@ -71,12 +67,7 @@ impl CustomCacheState {
 	/// The full C++ `cancel()`: cancel the atom and run the cancel-event
 	/// hook. Used by the owning cache to abort a fill.
 	pub fn cancel(&self) {
-		if !self.atom.is_null() {
-			let atom = self.atom;
-			unsafe {
-				crate::bridge::render::oakrender_cancelatom_cancel(atom);
-			}
-		}
+		self.atom.cancel();
 		self.cancel_event();
 	}
 
@@ -104,7 +95,7 @@ impl CustomCacheTask {
 	pub fn new(sequence_name: &str) -> CustomCacheTask {
 		let base = Task::new(
 			&format!("Caching custom range for \"{sequence_name}\""),
-			CHandle::null(),
+			None,
 		);
 		let state = Arc::new(CustomCacheState {
 			cancelled_through_finish: Mutex::new(false),
@@ -145,7 +136,7 @@ impl TaskBehavior for CustomCacheTask {
 	/// `Err(Error::Cancelled)` if cancelled while waiting.
 	fn run(&mut self, task: &mut Task) -> Result<()> {
 		// Install the cancel hook on the task this behavior actually runs
-		// under (the outer task driven by the manager / C ABI). The
+		// under (the outer task driven by the manager). The
 		// constructor-installed hook on the inner `base` only fires when the
 		// base itself is cancelled; without this the outer `cancel()` would
 		// set the shared atom but never wake the parked thread.

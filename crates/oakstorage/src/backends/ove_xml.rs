@@ -121,8 +121,8 @@ impl crate::backend::StorageBackend for OveXmlBackend {
 			Probe::Current | Probe::Old => {}
 		}
 
-		let project = crate::bridge::node::serializer_load(&xml)?;
-		let handle = crate::bridge::node::make_project_owned(project);
+		let project = crate::nodeutil::serializer_load(&xml)?;
+		let handle = crate::nodeutil::make_project_owned(project);
 		let version_info = if matches!(probe, Probe::Old) {
 			OAKSTORAGE_TOO_OLD
 		} else {
@@ -141,12 +141,12 @@ impl crate::backend::StorageBackend for OveXmlBackend {
 			.local_path()
 			.ok_or(Error::Invalid)?
 			.to_string();
-		let arc = unsafe { crate::bridge::node::project_arc(&project)? };
+		let arc = unsafe { crate::nodeutil::project_arc(&project)? };
 		let xml = {
 			let guard = arc
 				.lock()
 				.map_err(|_| Error::State)?;
-			crate::bridge::node::serializer_save(&guard)?
+			crate::nodeutil::serializer_save(&guard)?
 		};
 		std::fs::write(&path, xml).map_err(|e| Error::Io(e.to_string()))?;
 		Ok(())

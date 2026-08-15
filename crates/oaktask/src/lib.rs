@@ -16,29 +16,24 @@
 
 //! # oaktask — the task execution module (Rust)
 //!
-//! Reimplements the C++ task module behind its frozen C ABI
-//! (`include/task/*.h`). See README.md for the architectural mapping
-//! (inheritance → one module per class + trait objects, cancellation via
-//! the oakrender cancelatom C ABI, events as mutex-guarded callbacks).
-//!
-//! ## FFI discipline
-//!
-//! Identical to the oaknode/oakplugin crates: every export goes through
-//! [`handle::guard*`], handles are opaque refcounted boxes, shared state
-//! behind `Mutex`.
+//! Reimplements the C++ task module (`src/task/src`) as direct Rust
+//! (single-lib unification): inheritance → one module per class + trait
+//! objects, cancellation via `oakcommon::cancelatom::CancelAtom`, events
+//! as boxed callbacks. All node-graph, timeline and render work goes
+//! through the direct `oaknode` / `oakrender` Rust APIs
+//! ([`nodeops`] holds the graph operations the tasks share).
 
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]
 
-pub mod bridge;
 pub mod codecbridge;
 pub mod conform;
 pub mod customcache;
 pub mod error;
 pub mod export;
-pub mod ffi;
 pub mod handle;
 pub mod manager;
+pub mod nodeops;
 pub mod precache;
 pub mod project;
 pub mod proxy;

@@ -8,13 +8,8 @@ license = "GPL-3.0-or-later"
 [lib]
 crate-type = ["staticlib", "rlib"]
 
-[features]
-# Compile the oakcore_*/oakrender_* host-mocks in src/bridge/test_stubs.rs so
-# consumer test binaries that link this crate (e.g. oaknode's) can resolve
-# those cross-crate C-ABI symbols without the host dylibs.
-test-stubs = []
-
 [dependencies]
+oakcommon = { path = "../oakcommon" }
 oakffmpeg-link = { path = "../oakffmpeg-link" }
 oakcore-rs = { path = "../oakcore" }
 # Real media decode/encode. The C++ ffmpeg_bridge library existed only to

@@ -391,7 +391,7 @@ pub fn config_path() -> Option<String> {
 	}
 	Some(format!(
 		"{}/ocioconf/config.ocio",
-		crate::bridge::common::configuration_location()
+		crate::commonutil::configuration_location()
 	))
 }
 

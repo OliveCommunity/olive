@@ -35,7 +35,7 @@
 //! [`write_string`]): the return value is the required length including
 //! the terminating NUL; negative values are error codes.
 
-use std::ffi::{c_char, c_int, c_void};
+use std::ffi::{c_char, c_int};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use crate::error::{Error, Result};
@@ -47,6 +47,95 @@ use crate::error::{Error, Result};
 /// module's `pub` Rust functions without an `extern "C"` declaration.
 /// `Clone + Copy + Send + Sync` come from the shared type.
 pub use oakcore_rs::handle::CHandle;
+
+/// Engine-side boxed payloads holding the oaknode domain (single-lib
+/// unification). Every `oakengine_*` node-family handle ultimately wraps
+/// one of these behind a [`CHandle`]:
+///
+/// - projects box [`domain::ProjectArc`] (`Arc<Mutex<Project>>`);
+/// - nodes, blocks, tracks, footage, sequences and folders box a
+///   [`domain::NodeRef`] (`(Arc<Mutex<Project>>, NodeId)` — the
+///   oaknode crate's `project::NodeRef` value type).
+///
+/// The box is created through `oaknode::handle::make_owned` (refcounted
+/// shell + release callback), so the facade's existing
+/// [`box_handle`]/[`free_box`] discipline (and the addref copies the
+/// engine takes) works unchanged.
+pub mod domain {
+	use std::sync::{Arc, Mutex};
+
+	use oaknode::id::NodeId;
+
+	use crate::handle::CHandle;
+
+	/// Engine-side boxed payload for project handles: shared ownership of
+	/// the oaknode domain project (its graph, settings, filename state).
+	pub type ProjectArc = Arc<Mutex<oaknode::project::Project>>;
+
+	/// Engine-side boxed payload for node/block/track/footage/sequence/
+	/// folder handles: a reference into a project's graph. Reuses the
+	/// oaknode crate's own `NodeRef` value type (project + id + owned
+	/// flag); a stale id fails validation instead of aliasing.
+	pub type NodeRef = oaknode::project::NodeRef;
+
+	/// Box a project payload behind a refcounted handle.
+	pub fn box_project(project: ProjectArc) -> CHandle {
+		oaknode::handle::make_owned(project)
+	}
+
+	/// Box a node reference behind a refcounted handle. `owned` marks
+	/// detached (factory-created) nodes so the engine's debug alive
+	/// counter accounts them exactly once.
+	pub fn box_node(project: ProjectArc, id: NodeId, owned: bool) -> CHandle {
+		oaknode::handle::make_owned(NodeRef::new(project, id, owned))
+	}
+
+	/// Borrow the project payload behind a handle.
+	///
+	/// # Safety
+	/// `h` must be a live handle created by [`box_project`] (or empty).
+	pub unsafe fn project_of(h: &CHandle) -> Option<&ProjectArc> {
+		// SAFETY: forwarded to the oaknode handle contract.
+		unsafe { oaknode::handle::get::<ProjectArc>(h) }
+	}
+
+	/// Borrow the node-reference payload behind a handle.
+	///
+	/// # Safety
+	/// `h` must be a live handle created by [`box_node`] (or empty).
+	pub unsafe fn node_ref_of(h: &CHandle) -> Option<&NodeRef> {
+		// SAFETY: forwarded to the oaknode handle contract.
+		unsafe { oaknode::handle::get::<NodeRef>(h) }
+	}
+
+	/// Mutable view of the node-reference payload (used by the graph
+	/// transfer paths, which rewrite the shared box in place — the
+	/// "write_node_ref" semantics).
+	///
+	/// # Safety
+	/// `h` must be a live handle created by [`box_node`]; the caller must
+	/// hold exclusive access to the boxed value.
+	pub unsafe fn node_ref_mut(h: &CHandle) -> Option<&mut NodeRef> {
+		// SAFETY: forwarded to the shared-box contract.
+		unsafe { boxed_mut::<NodeRef>(h) }
+	}
+
+	/// Mutable typed view into an oaknode-style `RefBox` payload (the
+	/// oaknode crate exposes only a read-only `get`; this mirrors its
+	/// box layout — `refs`/`value` are `pub` fields).
+	///
+	/// # Safety
+	/// `h` must be a live handle boxing `T`; the caller must hold
+	/// exclusive access to the boxed value.
+	pub unsafe fn boxed_mut<T: 'static>(h: &CHandle) -> Option<&mut T> {
+		if h.ctx.is_null() {
+			return None;
+		}
+		// SAFETY: contract above; the box is an
+		// `oaknode::handle::RefBox<T>`.
+		unsafe { Some(&mut (*(h.ctx as *mut oaknode::handle::RefBox<T>)).value) }
+	}
+}
 
 /// Engine opaque handle types, one per `typedef struct OakEngine*` in
 /// `engine/include/oakengine/*.h`. All are thin newtype wrappers around a

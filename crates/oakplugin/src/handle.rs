@@ -56,8 +56,8 @@ pub struct RefBox<T: ?Sized> {
 /// The shared ABI value-handle type (single-lib unification, see
 /// `docs/zh/plans/riir/single-lib.md`): one canonical
 /// `{ctx, addref, release, abi_version}` type in `oakcore-rs`, re-exported
-/// here so the crate's `ffi.rs` signatures and handle scaffolding stay
-/// source-compatible. `Send + Sync` come from the shared type.
+/// here so the crate's handle scaffolding stays source-compatible.
+/// `Send + Sync` come from the shared type.
 pub use oakcore_rs::handle::CHandle;
 
 /// addref 的实现：原子 +1。拥有型与借用型共用——借用型只延长盒子
@@ -177,7 +177,7 @@ where
 	}
 }
 
-/// 无返回值版本：panic 被吞并记录日志（经 bridge 的日志回调）。
+/// 无返回值版本：panic 被吞（日志回调待 message 出口接入后补）。
 pub fn guard_void<F>(f: F)
 where
 	F: FnOnce(),

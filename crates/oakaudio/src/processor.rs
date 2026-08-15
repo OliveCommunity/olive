@@ -32,11 +32,10 @@ use ffmpeg::{ChannelLayout, Error as FfmpegError};
 use ffmpeg_next as ffmpeg;
 
 use crate::error::{Error, Result};
-use crate::handle::{free_handle, make_owned, CHandle};
 use crate::params::{AudioParams, SampleFormat};
 
-/// A closed audio processor (reference count 1; `ctx == NULL` on allocation
-/// failure).
+/// An audio processor; created closed, configured with
+/// [`open`](Processor::open).
 pub struct Processor {
 	inner: Mutex<ProcessorInner>,
 }
@@ -54,8 +53,8 @@ struct ProcessorInner {
 }
 
 // SAFETY: the filter graph's raw pointers are only dereferenced through the
-// FFmpeg API while the mutex is held, so all access is serialized; the
-// handle's refcount keeps the box alive.
+// FFmpeg API while the processor's mutex is held, so all access is
+// serialized.
 unsafe impl Send for ProcessorInner {}
 
 impl Default for ProcessorInner {
@@ -136,7 +135,7 @@ fn fix_channel_layout(params: AudioParams) -> AudioParams {
 fn build_graph(from: &AudioParams, to: &AudioParams, speed: f64) -> Result<ffmpeg::filter::Graph> {
 	let in_format = to_ffmpeg_sample_format(from.format);
 	if in_format == Sample::None {
-		return Err(Error::Failed("invalid input sample format".to_string()));
+		return Err(Box::new(Error::Failed("invalid input sample format".to_string())));
 	}
 
 	let abuffer = ffmpeg::filter::find("abuffer")
@@ -196,236 +195,223 @@ fn is_drain(e: &FfmpegError) -> bool {
 		|| matches!(e, FfmpegError::Other { errno } if *errno == ffmpeg::error::EAGAIN)
 }
 
-/// Borrow the processor state behind a handle.
-fn get_processor(self_: &CHandle) -> Result<&Processor> {
-	// SAFETY: every non-empty handle returned by `init` boxes a `Processor`.
-	unsafe { crate::handle::get::<Processor>(self_) }.ok_or(Error::Invalid)
-}
-
-/// Create a closed processor.
-pub fn init() -> Result<CHandle> {
-	Ok(make_owned(Processor {
-		inner: Mutex::new(ProcessorInner::default()),
-	}))
-}
-
-/// Release one reference to a processor (NULL/empty no-op).
-pub fn free(self_: *mut CHandle) {
-	unsafe { free_handle(self_) };
-}
-
-/// Open the resampling/format-conversion graph. `out_format` is accepted for
-/// interface completeness but the conversion output is always planar f32.
-///
-/// `// CPP-PARITY: src/audio/c_api/processor.cpp:43` (validation order:
-/// empty handle, already-open state, invalid rates/speed, forced output
-/// format) and `src/audio/src/audioprocessor.cpp:82` (graph creation).
-pub fn open(self_: &CHandle, from: AudioParams, to: AudioParams, speed: f64) -> Result<()> {
-	let p = get_processor(self_)?;
-	let mut inner = p.inner.lock().unwrap();
-
-	if inner.graph.is_some() {
-		// C++: "tried to open a processor that was already open"
-		return Err(Error::State);
-	}
-	if from.sample_rate <= 0 || to.sample_rate <= 0 || speed <= 0.0 {
-		return Err(Error::Invalid);
-	}
-	// The C ABI delivers planar float output only; force the output format
-	// stage to f32p (OAKAUDIO_PROCESSOR_OUTPUT_FORMAT == 4).
-	if to.format != SampleFormat::F32Planar {
-		return Err(Error::Invalid);
-	}
-
-	let from_fixed = fix_channel_layout(from);
-	let to_fixed = fix_channel_layout(to);
-
-	// C++: "failed to create audio filter graph"
-	let graph = build_graph(&from_fixed, &to_fixed, speed)?;
-
-	inner.graph = Some(graph);
-	inner.out_frame = ffmpeg::frame::Audio::empty();
-	inner.from = from_fixed;
-	inner.to = to_fixed;
-	Ok(())
-}
-
-/// Close the graph (safe when closed; handle must be non-empty).
-pub fn close(self_: &CHandle) -> Result<()> {
-	let p = get_processor(self_)?;
-	let mut inner = p.inner.lock().unwrap();
-
-	inner.graph = None;
-	inner.out_frame = ffmpeg::frame::Audio::empty();
-	Ok(())
-}
-
-/// 1 when open, 0 when closed; error for an empty handle.
-pub fn is_open(self_: &CHandle) -> Result<bool> {
-	let p = get_processor(self_)?;
-	let inner = p.inner.lock().unwrap();
-	Ok(inner.graph.is_some())
-}
-
-/// Push planar float input and pull converted output. Returns the number of
-/// output frames written.
-///
-/// `// CPP-PARITY: src/audio/c_api/processor.cpp:91` (validation, state
-/// check, null `out_planar` short-circuit) and
-/// `src/audio/src/audioprocessor.cpp:141` (push/pull loop, byte counting).
-pub fn convert(
-	self_: &CHandle,
-	in_planar: *const *const f32,
-	in_frame_count: i32,
-	out_planar: *const *mut f32,
-	out_capacity_frames: i32,
-) -> Result<i32> {
-	let p = get_processor(self_)?;
-	let mut guard = p.inner.lock().unwrap();
-	let inner = &mut *guard;
-
-	if inner.graph.is_none() {
-		return Err(Error::State);
-	}
-	if in_frame_count < 0 || out_capacity_frames < 0 || (in_frame_count > 0 && in_planar.is_null())
-	{
-		return Err(Error::Invalid);
-	}
-
-	let channels = inner.to.channel_count();
-	if channels <= 0 {
-		return Err(Error::State);
-	}
-
-	let from = inner.from;
-	let graph = inner.graph.as_mut().unwrap();
-	let out_frame = &mut inner.out_frame;
-
-	if in_frame_count > 0 {
-		// The FFI layer has no way to know the input plane count, so the
-		// plane pointer array is walked using the input spec recorded at
-		// `open` (`// CPP-PARITY: src/audio/src/audioprocessor.cpp:141`).
-		let nb = in_frame_count as usize;
-		let in_channels = from.channel_count().max(0) as usize;
-		let layout = channel_layout_from_mask(from.channel_layout);
-		let mut frame = ffmpeg::frame::Audio::new(to_ffmpeg_sample_format(from.format), nb, layout);
-		frame.set_rate(from.sample_rate as u32);
-		let planar = from.format.is_planar();
-		// `plane_mut::<T>` requires the exact sample type of the frame
-		// format, so the copy dispatches on the recorded input format.
-		macro_rules! fill {
-			($t:ty) => {{
-				if planar {
-					for ch in 0..in_channels {
-						// SAFETY: `in_planar` is non-null here and the FFI
-						// contract guarantees at least `from.channel_count()`
-						// entries, each pointing at `nb` samples of the
-						// recorded input format.
-						let src = unsafe { *in_planar.add(ch) } as *const $t;
-						let dst = frame.plane_mut::<$t>(ch);
-						unsafe { ptr::copy_nonoverlapping(src, dst.as_mut_ptr(), nb) };
-					}
-				} else {
-					// Packed input: a single plane at `in_planar[0]`.
-					// SAFETY: see above; the plane holds `nb * channels`
-					// samples.
-					let src = unsafe { *in_planar } as *const $t;
-					let dst = frame.plane_mut::<$t>(0);
-					unsafe { ptr::copy_nonoverlapping(src, dst.as_mut_ptr(), nb * in_channels) };
-				}
-			}};
+impl Processor {
+	/// Create a closed processor.
+	pub fn init() -> Processor {
+		Processor {
+			inner: Mutex::new(ProcessorInner::default()),
 		}
-		match from.format {
-			SampleFormat::U8Planar | SampleFormat::U8 => fill!(u8),
-			SampleFormat::S16Planar | SampleFormat::S16 => fill!(i16),
-			SampleFormat::S32Planar | SampleFormat::S32 => fill!(i32),
-			SampleFormat::S64Planar | SampleFormat::S64 => {
-				// ffmpeg-next's typed plane API has no `i64` impl; copy the
-				// 8-byte samples through the raw plane pointers.
-				if planar {
-					for ch in 0..in_channels {
+	}
+
+	/// Open the resampling/format-conversion graph. `out_format` is accepted
+	/// for interface completeness but the conversion output is always planar
+	/// f32.
+	///
+	/// `// CPP-PARITY: src/audio/c_api/processor.cpp:43` (validation order:
+	/// already-open state, invalid rates/speed, forced output format) and
+	/// `src/audio/src/audioprocessor.cpp:82` (graph creation).
+	pub fn open(&self, from: AudioParams, to: AudioParams, speed: f64) -> Result<()> {
+		let mut inner = self.inner.lock().unwrap();
+
+		if inner.graph.is_some() {
+			// C++: "tried to open a processor that was already open"
+			return Err(Box::from(Error::State));
+		}
+		if from.sample_rate <= 0 || to.sample_rate <= 0 || speed <= 0.0 {
+			return Err(Box::from(Error::Invalid));
+		}
+		// The C ABI delivers planar float output only; force the output format
+		// stage to f32p (OAKAUDIO_PROCESSOR_OUTPUT_FORMAT == 4).
+		if to.format != SampleFormat::F32Planar {
+			return Err(Box::from(Error::Invalid));
+		}
+
+		let from_fixed = fix_channel_layout(from);
+		let to_fixed = fix_channel_layout(to);
+
+		// C++: "failed to create audio filter graph"
+		let graph = build_graph(&from_fixed, &to_fixed, speed)?;
+
+		inner.graph = Some(graph);
+		inner.out_frame = ffmpeg::frame::Audio::empty();
+		inner.from = from_fixed;
+		inner.to = to_fixed;
+		Ok(())
+	}
+
+	/// Close the graph (safe when closed).
+	pub fn close(&self) -> Result<()> {
+		let mut inner = self.inner.lock().unwrap();
+
+		inner.graph = None;
+		inner.out_frame = ffmpeg::frame::Audio::empty();
+		Ok(())
+	}
+
+	/// 1 when open, 0 when closed.
+	pub fn is_open(&self) -> Result<bool> {
+		let inner = self.inner.lock().unwrap();
+		Ok(inner.graph.is_some())
+	}
+
+	/// Push planar float input and pull converted output. Returns the number
+	/// of output frames written.
+	///
+	/// `// CPP-PARITY: src/audio/c_api/processor.cpp:91` (validation, state
+	/// check, null `out_planar` short-circuit) and
+	/// `src/audio/src/audioprocessor.cpp:141` (push/pull loop, byte counting).
+	pub fn convert(
+		&self,
+		in_planar: *const *const f32,
+		in_frame_count: i32,
+		out_planar: *const *mut f32,
+		out_capacity_frames: i32,
+	) -> Result<i32> {
+		let mut guard = self.inner.lock().unwrap();
+		let inner = &mut *guard;
+
+		if inner.graph.is_none() {
+			return Err(Box::from(Error::State));
+		}
+		if in_frame_count < 0 || out_capacity_frames < 0 || (in_frame_count > 0 && in_planar.is_null())
+		{
+			return Err(Box::from(Error::Invalid));
+		}
+
+		let channels = inner.to.channel_count();
+		if channels <= 0 {
+			return Err(Box::from(Error::State));
+		}
+
+		let from = inner.from;
+		let graph = inner.graph.as_mut().unwrap();
+		let out_frame = &mut inner.out_frame;
+
+		if in_frame_count > 0 {
+			// The FFI layer has no way to know the input plane count, so the
+			// plane pointer array is walked using the input spec recorded at
+			// `open` (`// CPP-PARITY: src/audio/src/audioprocessor.cpp:141`).
+			let nb = in_frame_count as usize;
+			let in_channels = from.channel_count().max(0) as usize;
+			let layout = channel_layout_from_mask(from.channel_layout);
+			let mut frame = ffmpeg::frame::Audio::new(to_ffmpeg_sample_format(from.format), nb, layout);
+			frame.set_rate(from.sample_rate as u32);
+			let planar = from.format.is_planar();
+			// `plane_mut::<T>` requires the exact sample type of the frame
+			// format, so the copy dispatches on the recorded input format.
+			macro_rules! fill {
+				($t:ty) => {{
+					if planar {
+						for ch in 0..in_channels {
+							// SAFETY: `in_planar` is non-null here and the FFI
+							// contract guarantees at least `from.channel_count()`
+							// entries, each pointing at `nb` samples of the
+							// recorded input format.
+							let src = unsafe { *in_planar.add(ch) } as *const $t;
+							let dst = frame.plane_mut::<$t>(ch);
+							unsafe { ptr::copy_nonoverlapping(src, dst.as_mut_ptr(), nb) };
+						}
+					} else {
+						// Packed input: a single plane at `in_planar[0]`.
+						// SAFETY: see above; the plane holds `nb * channels`
+						// samples.
+						let src = unsafe { *in_planar } as *const $t;
+						let dst = frame.plane_mut::<$t>(0);
+						unsafe { ptr::copy_nonoverlapping(src, dst.as_mut_ptr(), nb * in_channels) };
+					}
+				}};
+			}
+			match from.format {
+				SampleFormat::U8Planar | SampleFormat::U8 => fill!(u8),
+				SampleFormat::S16Planar | SampleFormat::S16 => fill!(i16),
+				SampleFormat::S32Planar | SampleFormat::S32 => fill!(i32),
+				SampleFormat::S64Planar | SampleFormat::S64 => {
+					// ffmpeg-next's typed plane API has no `i64` impl; copy the
+					// 8-byte samples through the raw plane pointers.
+					if planar {
+						for ch in 0..in_channels {
+							// SAFETY: same contract as above; the plane is
+							// `nb * 8` bytes.
+							let src = unsafe { *in_planar.add(ch) } as *const u8;
+							let dst = unsafe { *(*frame.as_mut_ptr()).extended_data.add(ch) };
+							unsafe { ptr::copy_nonoverlapping(src, dst, nb * 8) };
+						}
+					} else {
 						// SAFETY: same contract as above; the plane is
-						// `nb * 8` bytes.
-						let src = unsafe { *in_planar.add(ch) } as *const u8;
-						let dst = unsafe { *(*frame.as_mut_ptr()).extended_data.add(ch) };
-						unsafe { ptr::copy_nonoverlapping(src, dst, nb * 8) };
+						// `nb * channels * 8` bytes.
+						let src = unsafe { *in_planar } as *const u8;
+						let dst = unsafe { *(*frame.as_mut_ptr()).extended_data };
+						unsafe { ptr::copy_nonoverlapping(src, dst, nb * in_channels * 8) };
 					}
-				} else {
-					// SAFETY: same contract as above; the plane is
-					// `nb * channels * 8` bytes.
-					let src = unsafe { *in_planar } as *const u8;
-					let dst = unsafe { *(*frame.as_mut_ptr()).extended_data };
-					unsafe { ptr::copy_nonoverlapping(src, dst, nb * in_channels * 8) };
 				}
+				SampleFormat::F32Planar | SampleFormat::F32 => fill!(f32),
+				SampleFormat::F64Planar | SampleFormat::F64 => fill!(f64),
+				SampleFormat::Invalid => return Err(Box::new(Error::State)),
 			}
-			SampleFormat::F32Planar | SampleFormat::F32 => fill!(f32),
-			SampleFormat::F64Planar | SampleFormat::F64 => fill!(f64),
-			SampleFormat::Invalid => return Err(Error::State),
-		}
-		if let Err(e) = graph.get("in").unwrap().source().add(&frame) {
-			return Err(Error::Failed(format!(
-				"failed to add frame to buffersrc: {e}"
-			)));
-		}
-	}
-
-	// C++: `out_planar ? &buf : nullptr` — with no destination, the input is
-	// pushed but nothing is pulled.
-	if out_planar.is_null() {
-		return Ok(0);
-	}
-
-	let mut total: i64 = 0;
-	loop {
-		let pulled = graph.get("out").unwrap().sink().frame(out_frame);
-		match pulled {
-			Ok(()) => {}
-			Err(e) if is_drain(&e) => break,
-			Err(e) => {
-				return Err(Error::Failed(format!(
-					"failed to pull from buffersink: {e}"
-				)))
+			if let Err(e) = graph.get("in").unwrap().source().add(&frame) {
+				return Err(Box::new(Error::Failed(format!(
+					"failed to add frame to buffersrc: {e}"
+				))));
 			}
 		}
 
-		let nb = out_frame.samples() as i32;
-		if nb > 0 && total < i64::from(out_capacity_frames) {
-			let to_copy = (i64::from(out_capacity_frames) - total).min(i64::from(nb)) as i32;
-			for ch in 0..channels {
-				// SAFETY: the FFI contract guarantees at least `channels`
-				// entries in `out_planar` (NULL entries are skipped).
-				let dst = unsafe { *out_planar.add(ch as usize) };
-				if dst.is_null() {
-					continue;
-				}
-				// Output is planar f32 (enforced by open()); each plane is
-				// `to_copy` float samples.
-				let src = out_frame.plane::<f32>(ch as usize);
-				unsafe {
-					ptr::copy_nonoverlapping(src.as_ptr(), dst, to_copy as usize);
+		// C++: `out_planar ? &buf : nullptr` — with no destination, the input is
+		// pushed but nothing is pulled.
+		if out_planar.is_null() {
+			return Ok(0);
+		}
+
+		let mut total: i64 = 0;
+		loop {
+			let pulled = graph.get("out").unwrap().sink().frame(out_frame);
+			match pulled {
+				Ok(()) => {}
+				Err(e) if is_drain(&e) => break,
+				Err(e) => {
+					return Err(Box::from(Error::Failed(format!(
+						"failed to pull from buffersink: {e}"
+					))))
 				}
 			}
+
+			let nb = out_frame.samples() as i32;
+			if nb > 0 && total < i64::from(out_capacity_frames) {
+				let to_copy = (i64::from(out_capacity_frames) - total).min(i64::from(nb)) as i32;
+				for ch in 0..channels {
+					// SAFETY: the FFI contract guarantees at least `channels`
+					// entries in `out_planar` (NULL entries are skipped).
+					let dst = unsafe { *out_planar.add(ch as usize) };
+					if dst.is_null() {
+						continue;
+					}
+					// Output is planar f32 (enforced by open()); each plane is
+					// `to_copy` float samples.
+					let src = out_frame.plane::<f32>(ch as usize);
+					unsafe {
+						ptr::copy_nonoverlapping(src.as_ptr(), dst, to_copy as usize);
+					}
+				}
+			}
+			total += i64::from(nb);
 		}
-		total += i64::from(nb);
+
+		Ok(total.min(i64::from(out_capacity_frames)) as i32)
 	}
 
-	Ok(total.min(i64::from(out_capacity_frames)) as i32)
-}
+	/// Signal end-of-input to the graph (flushes internal delay).
+	///
+	/// `// CPP-PARITY: src/audio/c_api/processor.cpp:137` (state check)
+	/// and `src/audio/src/audioprocessor.cpp:210` (flush has no failure path; a
+	/// negative push return is logged only).
+	pub fn flush(&self) -> Result<()> {
+		let mut inner = self.inner.lock().unwrap();
 
-/// Signal end-of-input to the graph (flushes internal delay).
-///
-/// `// CPP-PARITY: src/audio/c_api/processor.cpp:137` (empty handle, state)
-/// and `src/audio/src/audioprocessor.cpp:210` (flush has no failure path; a
-/// negative push return is logged only).
-pub fn flush(self_: &CHandle) -> Result<()> {
-	let p = get_processor(self_)?;
-	let mut inner = p.inner.lock().unwrap();
-
-	let Some(graph) = inner.graph.as_mut() else {
-		return Err(Error::State);
-	};
-	let _ = graph.get("in").unwrap().source().flush();
-	Ok(())
+		let Some(graph) = inner.graph.as_mut() else {
+			return Err(Box::from(Error::State));
+		};
+		let _ = graph.get("in").unwrap().source().flush();
+		Ok(())
+	}
 }
 
 /// Format of the conversion output (always planar f32).

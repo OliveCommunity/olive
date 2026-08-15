@@ -18,9 +18,6 @@
 //! or a real cancellation (`Err(Cancelled)`); the cancelled callback fires
 //! only for real cancellations.
 
-mod common;
-
-use common::*;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -36,7 +33,7 @@ fn spawn_parked(
 	let state = cc.state();
 	let atom = cc.base.get_cancel_atom();
 	let title = cc.base.title().to_string();
-	let mut outer = Task::new(&title, atom);
+	let mut outer = Task::new(&title, Some(atom));
 	outer.set_behavior(Box::new(cc));
 	let handle = std::thread::spawn(move || outer.start());
 	// Let the worker park on the condvar.
@@ -48,9 +45,6 @@ fn spawn_parked(
 /// task which then reports success.
 #[test]
 fn finish_completes_parked_task() {
-	let _guard = MANAGER_LOCK.lock().unwrap();
-	reset_stubs();
-
 	let cc = CustomCacheTask::new("my-sequence");
 	assert_eq!(cc.base.title(), "Caching custom range for \"my-sequence\"");
 	let (handle, state) = spawn_parked(cc);
@@ -74,9 +68,6 @@ fn finish_completes_parked_task() {
 /// `finish()`.
 #[test]
 fn cancelled_callback_fires_only_on_real_cancel() {
-	let _guard = MANAGER_LOCK.lock().unwrap();
-	reset_stubs();
-
 	// finish(): the callback must NOT fire.
 	let fired_on_finish = Arc::new(AtomicBool::new(false));
 	let mut cc = CustomCacheTask::new("finish-seq");
@@ -111,9 +102,6 @@ fn cancelled_callback_fires_only_on_real_cancel() {
 /// The cancel hook wakes the parked task even without finish().
 #[test]
 fn cancel_hook_wakes_parked_task() {
-	let _guard = MANAGER_LOCK.lock().unwrap();
-	reset_stubs();
-
 	let cc = CustomCacheTask::new("wake-seq");
 	let (handle, state) = spawn_parked(cc);
 	// Simulate the manager's cancel path (base.cancel -> atom + hook).

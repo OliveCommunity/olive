@@ -136,7 +136,7 @@ impl NodeBehavior for PolygonGenerator {
 	/// scaling and center translation; without a backend the frame is
 	/// left empty (warned once).
 	///
-	/// The Rust `frame` is an opaque [`crate::bridge::render::TextureHandle`]
+	/// The Rust `frame` is an opaque [`crate::handle::CHandle`]
 	/// whose bytes cannot be touched, and this crate has no path-fill
 	/// backend — so neither the clear nor the fill is representable here
 	/// (`// CPP-PARITY: polygon.cpp` `generate_frame`). The path building
@@ -145,7 +145,7 @@ impl NodeBehavior for PolygonGenerator {
 	fn generate_frame(
 		&self,
 		core: &NodeCore,
-		frame: &mut crate::bridge::render::TextureHandle,
+		frame: &mut crate::handle::CHandle,
 		time: oakcore_rs::Rational,
 	) {
 		let _ = (core, frame, time);

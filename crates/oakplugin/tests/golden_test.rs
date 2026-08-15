@@ -68,10 +68,9 @@ fn negotiated_clip_preferences_match() {
 /// 的 `Property::Set` 句柄语义与本 crate 的打标句柄约定不兼容
 /// （插件侧属性写入在进入本宿主属性套件前失败 → describe 返回
 /// kOfxStatErrMissingHostFeature）。真实插件的端到端加载/建实例/
-/// 协商路径由 [`crate::bridge_test` 的 `system_misc_ofx_bundle_smoke`]
-/// （Misc.ofx.bundle，标准 openfx-misc 构建）覆盖。CImg 兼容属
-/// M11 §3.5「CImg 全量 describe/协商冒烟」的宿主保真缺口——属性
-/// 套件适配插件侧 `Property::Set` 句柄后摘除本注解。
+/// 协商路径由 Misc.ofx.bundle（标准 openfx-misc 构建）冒烟覆盖。
+/// CImg 兼容属 M11 §3.5「CImg 全量 describe/协商冒烟」的宿主保真
+/// 缺口——属性套件适配插件侧 `Property::Set` 句柄后摘除本注解。
 #[test]
 #[ignore = "本机 CImg.ofx.bundle 为 Natron 分支构建，属性套件句柄语义不兼容（describe 返回 MissingHostFeature）；Misc 系统冒烟已覆盖真实插件路径"]
 fn cimg_full_describe_smoke() {

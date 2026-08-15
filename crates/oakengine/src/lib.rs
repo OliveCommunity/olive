@@ -66,7 +66,6 @@
 pub use oaknode;
 
 pub mod audio;
-pub mod bridge;
 pub mod codec;
 pub mod common;
 pub mod deferred;
@@ -77,28 +76,35 @@ pub mod ipc;
 pub mod linkage;
 pub mod node;
 pub mod plugin;
+pub mod pods;
 pub mod render;
+pub mod stubs;
 pub mod task;
 pub mod testmedia;
 pub mod timeline;
 pub mod undo;
 pub mod worker;
 
+/// The former `tests/*.rs` integration tests, now unit tests (the facade
+/// is cdylib-only, so integration tests cannot link it as an rlib crate;
+/// see `test_support/mod.rs`).
+#[cfg(test)]
+#[path = "test_support/mod.rs"]
+mod tests;
 #[cfg(test)]
 mod test_link {
 	// The lib's own unit-test binary must link the module crates' rlibs to
-	// satisfy the facade's `extern "C"` imports that the unit tests compile
-	// in — e.g. the worker session's oakrender display renderer (src/worker.rs).
+	// satisfy the facade's imports that the unit tests compile in — e.g.
+	// the render family's oakrender display renderer (src/render.rs).
 	// The integration tests do the same through tests/common/mod.rs
 	// `force_link()`; this covers the `cargo test` unit-test binary.
 	#![allow(dead_code)]
 	fn force_link() -> usize {
 		let fns: [usize; 4] = [
-			oakrender::ffi::renderer::oakrender_display_renderer_create_opengl as *const ()
-				as usize,
-			oaknode::ffi::project::oaknode_project_init as *const () as usize,
-			oaktimeline::ffi::marker::oaktimeline_marker_list_create as *const () as usize,
-			oaktask::ffi::manager::oaktask_manager_init as *const () as usize,
+			oakrender::backend::DisplayRenderer::new as *const () as usize,
+			oaknode::project::Project::new as *const () as usize,
+			oaktimeline::marker::TimelineMarkerList::new as *const () as usize,
+			oaktask::manager::TaskManager::init as *const () as usize,
 		];
 		fns.iter().sum()
 	}

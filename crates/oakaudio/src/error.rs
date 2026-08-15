@@ -33,7 +33,7 @@ pub const OAKAUDIO_E_NOT_FOUND: i32 = -60004;
 pub const OAKAUDIO_E_NOMEM: i32 = -60005;
 
 /// Crate-internal result type; the FFI layer maps it to the codes.
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 /// Crate-internal error.
 #[derive(Debug, thiserror::Error)]

@@ -36,18 +36,22 @@ fn main() {
 		println!("cargo:rustc-cdylib-link-arg=-Wl,-rpath,/usr/lib");
 	}
 	// The dlsym codec bridge (M12 P0) resolves `oakcodec_*` from the
-	// process-global scope; the engine test binaries statically link the
-	// module crates, so their symbols must be exported from the main
-	// executable.
-	println!("cargo:rustc-link-arg-tests=-Wl,-export_dynamic");
+	// process-global scope; the engine's unit-test binary (the former
+	// integration tests live in src/test_support/) statically links the
+	// module crates, so their symbols must be exported from the test
+	// executable. `cargo:rustc-link-arg-tests` is NOT usable: the facade
+	// is cdylib-only, so cargo reports "does not have a test target" for
+	// that directive — use the generic `rustc-link-arg` (harmless no-op
+	// for the cdylib link itself).
+	println!("cargo:rustc-link-arg=-Wl,-export_dynamic");
 	if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
 		// The bundled OpenColorIO's macos system monitor references
 		// IOKit / ColorSync / CoreGraphics display APIs; the engine
 		// dylib links with `-undefined,dynamic_lookup`, so test binaries
 		// must resolve them.
 		for fw in ["IOKit", "ColorSync", "CoreGraphics"] {
-			println!("cargo:rustc-link-arg-tests=-framework");
-			println!("cargo:rustc-link-arg-tests={fw}");
+			println!("cargo:rustc-link-arg=-framework");
+			println!("cargo:rustc-link-arg={fw}");
 		}
 	}
 }

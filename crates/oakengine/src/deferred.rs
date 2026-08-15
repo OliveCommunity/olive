@@ -49,14 +49,15 @@
 //! crates lack the C ABI surface — each stub returns its header's
 //! documented failure value:
 //!
-//! - **codec** (encoding.h, 81/85 wrapped): the preset path/count/name,
-//!   preset load/save and the sequence-bound export/last-used entry
-//!   points (`oakengine_encoding_preset_*`,
+//! - **codec** (encoding.h, 82/85 wrapped): the preset path/count/name,
+//!   preset load/save and the sequence-bound last-used entry points
+//!   (`oakengine_encoding_preset_*`,
 //!   `oakengine_encoding_params_load_file/save_file`,
-//!   `oakengine_export_render_with_params`,
 //!   `oakengine_encoding_params_get/set_last_used`) are stubs — the
-//!   oakcodec crate has no preset API and those entry points need the
-//!   exporter/sequence families.
+//!   oakcodec crate has no preset API and the last-used pair needs the
+//!   deferred node/timeline families. The exporter entry point
+//!   (`oakengine_export_render_with_params`) is backed since M12 (see
+//!   `crate::codec`, "Exporter family").
 //! - **render color** (color.h, 19/31 wrapped): the color-manager list
 //!   queries (colorspace/display/view/look/compliant/luma), the
 //!   standalone config handle and `color_processor_id` /

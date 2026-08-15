@@ -122,7 +122,7 @@ pub enum NodeValue {
 	/// Boolean.
 	Boolean(bool),
 	/// Texture handle (owned reference).
-	Texture(crate::bridge::render::TextureHandle),
+	Texture(crate::handle::CHandle),
 	/// Interleaved/planar sample payload + format.
 	Samples(SampleBuffer),
 	/// Rational.

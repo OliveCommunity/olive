@@ -56,7 +56,7 @@ pub enum ColorRange {
 }
 
 /// `olive::VideoParams` — a handle-wrapped video parameter set.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct VideoParams {
 	/// Frame width in pixels.
 	width: i32,

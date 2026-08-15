@@ -31,7 +31,6 @@
 #![warn(missing_docs)]
 
 pub mod error;
-pub mod ffi;
 pub mod handle;
 pub mod undocommand;
 pub mod undostack;

@@ -20,7 +20,7 @@
 //!
 //! Note: OpenColorIO itself is never linked here; it is reached through
 //! the color manager (`crate::colormanager`) and the oakrender bridge
-//! (`crate::bridge::render`), like the C++ node's
+//! (oakrender, opaque handles), like the C++ node's
 //! `oaknode_colormanager_*` / `oakrender_color_processor_*` calls.
 
 use crate::factory::NodeMeta;
