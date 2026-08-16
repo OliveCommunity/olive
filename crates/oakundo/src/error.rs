@@ -66,6 +66,20 @@ impl Error {
 			Error::NoMem => OAKUNDO_E_NOMEM,
 		}
 	}
+
+	/// Recover the variant for a raw module return code (the numeric value
+	/// round-trips through [`Error::code`]). Used by the handle-level
+	/// composers whose sub-calls report plain `c_int` codes.
+	pub fn from_code(code: i32) -> Error {
+		match code {
+			OAKUNDO_E_INVALID => Error::Invalid,
+			OAKUNDO_E_STATE => Error::State,
+			OAKUNDO_E_FAILED => Error::Failed("operation failed".into()),
+			OAKUNDO_E_NOT_FOUND => Error::NotFound,
+			OAKUNDO_E_NOMEM => Error::NoMem,
+			_ => Error::Failed(format!("module error code {code}")),
+		}
+	}
 }
 
 #[cfg(test)]

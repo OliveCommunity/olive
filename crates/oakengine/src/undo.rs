@@ -17,12 +17,10 @@
 //! `engine/include/oakengine/undo.h` — the process-wide undo stack,
 //! undo groups and command lifecycle over the oakundo module.
 //!
-//! The facade owns the process-wide undo stack (module 00 analogue of
-//! `EngineCore::undo_stack()`): it is created lazily on first use and
-//! lives for the process (mirroring the C++ EngineCore shell, which is
-//! also leaked intentionally). The open undo group is facade state too:
-//! while a group is open, every command a wrapped family hands to
-//! [`push_or_run`] is added to the group instead of the stack.
+//! The process-wide stack, the open undo group and the "command
+//! recorded" notification now live in [`oakundo::global`] (M14 R1: sunk
+//! from this facade); every export here is a thin forward that only adds
+//! the engine's box/unbox, buf/size and error-code conventions.
 //!
 //! Command creators declared in undo.h but backed by other modules
 //! (`oakengine_node_*_command`, `oakengine_track_*_command`,
@@ -30,47 +28,33 @@
 //! the corresponding family modules, mirroring the C++ capi layout.
 
 use std::ffi::{c_char, c_int, c_void};
-use std::sync::{Mutex, OnceLock};
 
 use oakundo::undocommand::{
 	command_free, command_init, command_init_multi, command_multi_add_child,
-	command_multi_child, command_multi_child_count, command_redo_now, command_undo_now,
+	command_multi_child_count, command_redo_now, command_undo_now,
 };
-use oakundo::undostack::{
-	undostack_can_redo, undostack_can_undo, undostack_clear, undostack_command_is_done,
-	undostack_command_text, undostack_count, undostack_index, undostack_init, undostack_jump,
-	undostack_push, undostack_push_pre_executed,
-};
+
 use crate::error::{Error, Result};
-use crate::handle::{box_handle, free_box, guard, guard_void, unbox, CHandle, OakEngineClipboard};
+use crate::handle::{box_handle, free_box, guard, guard_void, unbox, OakEngineClipboard};
 
-/// The process-wide undo stack handle (oakundo `OakUndoStack`), created
-/// lazily and kept for the process lifetime.
-fn global_stack() -> &'static CHandle {
-	static STACK: OnceLock<CHandle> = OnceLock::new();
-	STACK.get_or_init(|| unsafe { undostack_init() })
+/// Map an oakundo error onto the facade error space for the GROUP
+/// functions: `State` (no group open / already open) and the allocation
+/// failure map to the facade's own codes; every other oakundo code passes
+/// through as a module code (the numeric value is preserved).
+fn map_group_err(e: oakundo::error::Error) -> Error {
+	match e {
+		oakundo::error::Error::State => Error::State,
+		oakundo::error::Error::NoMem => Error::NoMem,
+		oakundo::error::Error::Failed(s) => Error::Failed(s),
+		other => Error::Module(other.code()),
+	}
 }
 
-/// Stable opaque token for `oakengine_undo_handle`: the module stack's
-/// `ctx` pointer (never dereferenced by the facade; lives for the
-/// process).
-fn stack_token() -> *mut c_void {
-	global_stack().ctx
-}
-
-/// The currently open undo group (a multi command handle) plus its name.
-struct OpenGroup {
-	/// Multi command handle; owned by this state until end/abort.
-	multi: CHandle,
-	/// Group label.
-	#[allow(dead_code)]
-	name: String,
-}
-
-static GROUP: Mutex<Option<OpenGroup>> = Mutex::new(None);
-
-fn group_lock() -> std::sync::MutexGuard<'static, Option<OpenGroup>> {
-	GROUP.lock().unwrap_or_else(|e| e.into_inner())
+/// Map an oakundo error onto the facade error space for the STACK
+/// queries: every code passes through untranslated as a module code (the
+/// facade contract says module codes cross the boundary verbatim).
+fn map_stack_err(e: oakundo::error::Error) -> Error {
+	Error::Module(e.code())
 }
 
 /// Push `command` onto the stack, add it to the open group, or run it
@@ -85,56 +69,23 @@ pub(crate) unsafe fn push_or_run(
 ) -> Result<()> {
 	let cmd = unsafe { unbox(command_box)? };
 	let label = unsafe { crate::handle::read_cstr(name) };
-	let g = group_lock();
-	if let Some(group) = g.as_ref() {
-		// The module's `oakundo_command_multi_add_child` consumes the
-		// child's command value (command_take), so the eager redo must
-		// happen on the still-owned handle FIRST — the group takes the
-		// already-done command (C++ semantics: add_child + redo_now, net
-		// effect identical for the group's reverse-order undo).
-		let rc = unsafe { command_redo_now(cmd) };
-		if rc != 0 {
-			return Err(Error::Module(rc));
-		}
-		let rc = unsafe { command_multi_add_child(group.multi, cmd) };
-		drop(g);
-		unsafe { free_box(command_box) };
-		return if rc == 0 {
-			Ok(())
-		} else {
-			Err(Error::Module(rc))
-		};
-	}
-	let stack = *global_stack();
-	// The module treats a NULL name like an empty label, but an empty Rust
-	// String's `as_ptr()` is a DANGLING non-NULL pointer (0x1): the module's
-	// `read_name` would strlen it and SIGSEGV. Pass a real NULL instead.
-	let label_ptr = if label.is_empty() {
-		std::ptr::null()
-	} else {
-		label.as_ptr() as *const c_char
-	};
-	let rc = unsafe { undostack_push(stack, cmd, label_ptr) };
+	let rc = unsafe { oakundo::global::push_or_run(cmd, &label) };
+	// The stack/multi took (or rejected) the command value; release the box
+	// shell either way (the command is destroyed with the stack/multi, or
+	// with this shell when the push failed and nobody took it).
+	unsafe { free_box(command_box) };
 	if rc == 0 {
-		// Stack took a reference; release ours by freeing the box. The
-		// command's redo already ran (plan M13 D2): persist the project.
-		unsafe { free_box(command_box) };
-		crate::storage::note_command();
 		Ok(())
 	} else {
-		// Push failed (e.g. empty multi): the module deleted the command;
-		// release the box shell without touching the (already consumed)
-		// handle.
-		unsafe { free_box(command_box) };
 		Err(Error::Module(rc))
 	}
 }
 
 /// `oakengine_undo_handle` — borrowed token of the global undo stack
-/// (NULL never: the facade creates the stack lazily).
+/// (NULL never: the module creates the stack lazily).
 #[no_mangle]
 pub extern "C" fn oakengine_undo_handle() -> *mut c_void {
-	crate::handle::guard_ptr(|| Ok(stack_token()))
+	crate::handle::guard_ptr(|| Ok(oakundo::global::stack_token()))
 }
 
 /// `oakengine_undo_push` — push `command` onto the stack and execute its
@@ -152,102 +103,21 @@ pub unsafe extern "C" fn oakengine_undo_push(command: *mut c_void, name: *const 
 /// `oakengine_undo_group_begin` — start collecting commands into a group.
 #[no_mangle]
 pub extern "C" fn oakengine_undo_group_begin(name: *const c_char) -> c_int {
-	guard(|| {
-		let mut g = group_lock();
-		if g.is_some() {
-			return Err(Error::State);
-		}
-		let multi = unsafe { command_init_multi() };
-		if multi.is_null() {
-			return Err(Error::Failed("undo group allocation failed".into()));
-		}
-		*g = Some(OpenGroup {
-			multi,
-			name: unsafe { crate::handle::read_cstr(name) },
-		});
-		Ok(())
-	})
+	guard(|| oakundo::global::group_begin(name).map_err(map_group_err))
 }
 
 /// `oakengine_undo_group_end` — close the group and push it as one entry.
 /// An empty group is discarded (no undo entry).
 #[no_mangle]
 pub extern "C" fn oakengine_undo_group_end() -> c_int {
-	guard(|| {
-		let mut g = group_lock();
-		let open = g.take().ok_or(Error::State)?;
-		let multi = open.multi;
-		let name = open.name;
-		drop(g);
-		// Same NULL-for-empty convention as `push_or_run`: the module's
-		// `read_name` treats NULL like an empty label, while an empty String's
-		// dangling `as_ptr()` (0x1) would be strlen'd -> SIGSEGV.
-		let name_ptr = if name.is_empty() {
-			std::ptr::null()
-		} else {
-			name.as_ptr() as *const c_char
-		};
-		// push_pre_executed discards an empty multi command. Either way
-		// the stack took (or destroyed) the command; release our own
-		// reference to the multi handle.
-		let stack = *global_stack();
-		let rc = unsafe { undostack_push_pre_executed(stack, multi, name_ptr) };
-		let mut multi_handle = multi;
-		unsafe { command_free(&mut multi_handle) };
-		if rc == 0 {
-			// The group's children were redo'd eagerly at push time; the
-			// whole group is one command (plan §2: commit at group_end).
-			crate::storage::note_command();
-			Ok(())
-		} else {
-			Err(Error::Module(rc))
-		}
-	})
+	guard(|| oakundo::global::group_end().map_err(map_group_err))
 }
 
 /// `oakengine_undo_group_abort` — undo all executed children and discard
 /// the group.
 #[no_mangle]
 pub extern "C" fn oakengine_undo_group_abort() -> c_int {
-	guard(|| {
-		let mut g = group_lock();
-		let open = g.take().ok_or(Error::State)?;
-		drop(g);
-		// The multi command itself is never marked done (each child was
-		// redo'd eagerly at push time), so `undo_now` on it is a no-op.
-		// Undo the executed children individually instead, in reverse
-		// insertion order (mirroring the multi's reverse-order undo), each
-		// through its own borrowed handle.
-		let mut count: c_int = 0;
-		let rc = unsafe { command_multi_child_count(open.multi, &mut count) };
-		if rc != 0 {
-			let mut multi = open.multi;
-			unsafe { command_free(&mut multi) };
-			return Err(Error::Module(rc));
-		}
-		for i in (0..count).rev() {
-			let mut child = CHandle::null();
-			let rc = unsafe { command_multi_child(open.multi, i, &mut child) };
-			if rc != 0 {
-				let mut multi = open.multi;
-				unsafe { command_free(&mut multi) };
-				return Err(Error::Module(rc));
-			}
-			let rc = unsafe { command_undo_now(child) };
-			// The child handle is borrowed (owns:false): release only its
-			// shell — the child value lives on in the multi until the multi
-			// itself is freed below.
-			unsafe { command_free(&mut child) };
-			if rc != 0 {
-				let mut multi = open.multi;
-				unsafe { command_free(&mut multi) };
-				return Err(Error::Module(rc));
-			}
-		}
-		let mut multi = open.multi;
-		unsafe { command_free(&mut multi) };
-		Ok(())
-	})
+	guard(|| oakundo::global::group_abort().map_err(map_group_err))
 }
 
 /// `oakengine_undo_command_redo_now` — execute the redo of `command`
@@ -358,21 +228,13 @@ pub unsafe extern "C" fn oakengine_undo_command_free(command: *mut c_void) {
 /// `oakengine_undo_count` — total number of history rows.
 #[no_mangle]
 pub extern "C" fn oakengine_undo_count() -> i64 {
-	crate::handle::guard_i64(|| unsafe {
-		let mut count: i64 = 0;
-		Error::from_module(undostack_count(*global_stack(), &mut count))?;
-		Ok(count)
-	})
+	crate::handle::guard_i64(|| oakundo::global::count().map_err(map_stack_err))
 }
 
 /// `oakengine_undo_index` — current position in the history.
 #[no_mangle]
 pub extern "C" fn oakengine_undo_index() -> i64 {
-	crate::handle::guard_i64(|| unsafe {
-		let mut index: i64 = 0;
-		Error::from_module(undostack_index(*global_stack(), &mut index))?;
-		Ok(index)
-	})
+	crate::handle::guard_i64(|| oakundo::global::index().map_err(map_stack_err))
 }
 
 /// `oakengine_undo_command_text` — label of the row at `row`
@@ -387,8 +249,8 @@ pub unsafe extern "C" fn oakengine_undo_command_text(
 	// size when `buf` is NULL/too small and copies otherwise, so the
 	// module return value is returned verbatim (guarded against panic),
 	// converted to the engine's length-excluding-NUL convention.
-	crate::handle::guard_int(|| unsafe {
-		let rc = undostack_command_text(*global_stack(), row, buf, buf_size);
+	crate::handle::guard_int(|| {
+		let rc = oakundo::global::command_text(row, buf, buf_size);
 		if rc < 0 {
 			Err(Error::Module(rc))
 		} else {
@@ -401,34 +263,27 @@ pub unsafe extern "C" fn oakengine_undo_command_text(
 /// undone, OAKENGINE_E_NOT_FOUND for an invalid row.
 #[no_mangle]
 pub extern "C" fn oakengine_undo_command_is_done(row: i64) -> c_int {
-	crate::handle::guard_int(|| unsafe {
+	crate::handle::guard_int(|| {
 		let mut value: c_int = 0;
-		Error::from_module(undostack_command_is_done(
-			*global_stack(),
-			row,
-			&mut value,
-		))?;
+		oakundo::global::command_is_done(row, &mut value).map_err(map_stack_err)?;
 		Ok(value)
 	})
 }
 
 /// `oakengine_undo_jump` — undo/redo until the done-command count equals
 /// `index`. On success the bound projects are written through (the jump
-/// executed the undo/redo callbacks that mutated them).
+/// executed the undo/redo callbacks that mutated them) — the module's
+/// command observers fire the write-through subscribers.
 #[no_mangle]
 pub extern "C" fn oakengine_undo_jump(index: i64) -> c_int {
-	let rc = guard(|| unsafe { Error::from_module(undostack_jump(*global_stack(), index)) });
-	if rc == crate::error::OAKENGINE_OK {
-		crate::storage::note_command();
-	}
-	rc
+	guard(|| oakundo::global::jump(index).map_err(map_stack_err))
 }
 
 /// `oakengine_undo_clear` — delete all commands and push the fresh
 /// "New/Open Project" empty command.
 #[no_mangle]
 pub extern "C" fn oakengine_undo_clear() -> c_int {
-	guard(|| unsafe { Error::from_module(undostack_clear(*global_stack())) })
+	guard(|| oakundo::global::clear().map_err(map_stack_err))
 }
 
 /// `oakengine_undo_update_actions` — no-op: the QAction members were
@@ -442,9 +297,9 @@ pub extern "C" fn oakengine_undo_update_actions() -> c_int {
 /// `oakengine_undo_can_undo` — 1/0.
 #[no_mangle]
 pub extern "C" fn oakengine_undo_can_undo() -> c_int {
-	crate::handle::guard_int(|| unsafe {
+	crate::handle::guard_int(|| {
 		let mut value: c_int = 0;
-		Error::from_module(undostack_can_undo(*global_stack(), &mut value))?;
+		oakundo::global::can_undo(&mut value).map_err(map_stack_err)?;
 		Ok(value)
 	})
 }
@@ -452,9 +307,9 @@ pub extern "C" fn oakengine_undo_can_undo() -> c_int {
 /// `oakengine_undo_can_redo` — 1/0.
 #[no_mangle]
 pub extern "C" fn oakengine_undo_can_redo() -> c_int {
-	crate::handle::guard_int(|| unsafe {
+	crate::handle::guard_int(|| {
 		let mut value: c_int = 0;
-		Error::from_module(undostack_can_redo(*global_stack(), &mut value))?;
+		oakundo::global::can_redo(&mut value).map_err(map_stack_err)?;
 		Ok(value)
 	})
 }
