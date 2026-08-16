@@ -541,7 +541,7 @@ impl<E: AppEngine> OakApp<E> {
 			.update(cx, |timeline, cx| timeline.seek(frame, cx));
 		// Mirror the engine's work area into the ruler's view state (M12 P4).
 		// Read every tick so undo/redo and the ruler-drag commit land on the
-		// band promptly; the read is a cheap facade getter.
+		// band promptly; the read is a cheap engine getter.
 		let work_area = self.engine.read(cx).workarea();
 		self.timeline
 			.update(cx, |timeline, _| timeline.state.work_area = work_area.map(|(s, e)| FrameRange::new(s, e)));
@@ -1793,7 +1793,7 @@ fn run_with<E: AppEngine>(args: AppArgs) {
 			if cx.windows().is_empty() {
 				// Persist the preferences (config.ini), then drain the
 				// write-through backlog (save + snapshot of every still-bound
-				// project) and stop the facade's snapshot thread.
+				// project) and stop oakstorage's snapshot thread.
 				crate::oakui::real::config_save();
 				crate::oakui::real::storage_flush();
 				cx.quit();

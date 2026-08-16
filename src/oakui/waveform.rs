@@ -17,16 +17,16 @@
 //! M12 P4: timeline audio waveforms.
 //!
 //! The [`WaveformCache`] holds per-clip min/max peak data extracted
-//! through `oakengine_waveform_extract` (the real FFmpeg-backed
-//! extraction); the engine refreshes it when the timeline rebuilds. The
-//! [`OakClipDecorator`] draws the peaks into the timeline's clip body.
+//! through `oakaudio::waveform::extract` (the real FFmpeg-backed
+//! extraction; M14 R3: a direct module call, no facade); the engine
+//! refreshes it when the timeline rebuilds. The [`OakClipDecorator`] draws
+//! the peaks into the timeline's clip body.
 //!
 //! The extraction is keyed by `(clip id, filename)` and cached for the
 //! engine lifetime; the plan's disk cache is a later refinement (the
 //! extractor itself is the real implementation).
 
 use std::collections::HashMap;
-use std::ffi::{c_char, c_int};
 use std::sync::{Arc, Mutex};
 
 use gpui::timeline::clip::ClipDecorator;
@@ -100,53 +100,35 @@ impl WaveformCache {
 	}
 }
 
-/// Extract a clip's waveform (first channel) via the facade's waveform
-/// C ABI.
+/// Extract a clip's waveform (first channel) via oakaudio's waveform
+/// extractor.
 	fn extract(filename: &str, duration_frames: i64, _fps: f32) -> Option<ClipWaveform> {
 	let cname = std::ffi::CString::new(filename).ok()?;
-	const SAMPLES_PER_POINT: c_int = 256;
-	unsafe {
-		let mut channels: c_int = 0;
-		let needed = crate::oakui::ffi::oakengine_waveform_extract(
-			cname.as_ptr(),
-			0, // audio-stream index (probe numbering)
-			SAMPLES_PER_POINT,
-			std::ptr::null_mut(),
-			0,
-			&mut channels,
-		);
-		if needed <= 0 || channels <= 0 {
-			return None;
-		}
-		// The extractor's `out_pairs` receives `point_count *
-		// channel_count` channel-interleaved pairs (capacity is in points),
-		// so the buffer is sized for the media's channel count.
-		let channel_count = channels.max(1) as usize;
-		let mut raw = vec![MinMax::default(); needed as usize * channel_count];
-		let rc = crate::oakui::ffi::oakengine_waveform_extract(
-			cname.as_ptr(),
-			0,
-			SAMPLES_PER_POINT,
-			raw.as_mut_ptr(),
-			needed,
-			&mut channels,
-		);
-		if rc < 0 {
-			return None;
-		}
-		// Keep only the first channel: the pairs are interleaved per point
-		// (point i channel c at index i * channels + c).
-		let count = rc.min(needed) as usize;
-		let mut peaks = Vec::with_capacity(count);
-		peaks.extend((0..count).map(|i| raw[i * channel_count]));
-		Some(ClipWaveform {
-			peaks,
-			channel_count: channels.max(1),
-			sample_rate: 48000,
-			samples_per_point: SAMPLES_PER_POINT,
-			duration_frames,
-		})
+	const SAMPLES_PER_POINT: i32 = 256;
+	// Audio-stream index 0 (probe numbering).
+	let outcome = oakaudio::waveform::extract(&cname, 0, SAMPLES_PER_POINT).ok()?;
+	if outcome.channels <= 0 || outcome.points.is_empty() {
+		return None;
 	}
+	// Keep only the first channel: the points are channel-interleaved
+	// (point i channel c at index i * channels + c).
+	let channel_count = outcome.channels.max(1) as usize;
+	let count = outcome.points.len() / channel_count;
+	let mut peaks = Vec::with_capacity(count);
+	peaks.extend((0..count).map(|i| {
+		let p = outcome.points[i * channel_count];
+		MinMax {
+			min: p.min,
+			max: p.max,
+		}
+	}));
+	Some(ClipWaveform {
+		peaks,
+		channel_count: outcome.channels.max(1),
+		sample_rate: 48000,
+		samples_per_point: SAMPLES_PER_POINT,
+		duration_frames,
+	})
 }
 
 /// The timeline's clip decorator: draws extracted waveforms into audio

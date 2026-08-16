@@ -14,81 +14,52 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! The real engine: [`RealEngine`] binds the built `liboakengine` dylib
-//! (the frozen `oakengine_*` C ABI over the module crates, see [`ffi`])
-//! behind the same [`EngineGateway`](super::engine::EngineGateway) /
-//! [`AppEngine`](super::engine::AppEngine) seam the mock implements. The
-//! dylib is linked at build time (see the crate's `build.rs`); the app
-//! never depends on the `oakengine` crate as an rlib, so every call below
-//! is a pure `extern "C"` import declared in [`ffi`].
+//! The real engine: [`RealEngine`] drives the oak* module crates directly
+//! (M14 R3 — no `liboakengine` dylib, no C ABI) behind the same
+//! [`EngineGateway`](super::engine::EngineGateway) /
+//! [`AppEngine`](super::engine::AppEngine) seam the mock implements.
+//!
+//! The engine owns the domain project (`Arc<Mutex<oaknode::project::Project>>`)
+//! and the current sequence's `NodeId`; every read is a direct graph walk
+//! and every edit is an oaktimeline/oakundo command pushed onto the
+//! process-wide undo stack ([`oakundo::global`]). The assembly-layer
+//! helpers live in [`super::graphops`] (project/timeline/storage),
+//! [`super::effectchain`] (effect chains) and [`super::renderops`]
+//! (montage resolution, ticket rendering, the export driver); the
+//! node-graph and project-browser snapshots are [`super::nodegraph`] and
+//! [`super::projectbrowser`].
 //!
 //! # What is real here
 //!
-//! * **Project** — open/save/save-as/close through the facade (`.ove`
-//!   serializer; `.otio` / `.fcpxml` through the oaktask interchange
-//!   loader).
+//! * **Project** — open/save-as/close through the oaknode serializer
+//!   (`.ove`; `.otio` / `.fcpxml` through the oaktask interchange tasks).
 //! * **Sequence** — the current sequence's name / format / length / tracks /
-//!   clips are read live from the facade sequence handle.
+//!   clips are read live from the graph.
 //! * **Edits** — timeline edits (trim, split, delete, ripple-delete) and
-//!   track add/remove go through the facade's edit commands, each packaged
-//!   as an undoable entry on the facade's global undo stack. Undo/redo walk
-//!   that stack.
+//!   track add/remove go through the modules' edit commands, each packaged
+//!   as one undoable entry on the global undo stack. Undo/redo walk that
+//!   stack.
 //! * **Export** — the oaktask export task, driven on a background thread,
 //!   with progress events and cancel wired to the module task's event
-//!   callback and cancel atom.
+//!   listener and cancel atom.
 //! * **Config** — the preferences (renderer backend, language, theme,
 //!   cache dir, proxy policy, snapshot interval, default transition,
-//!   audio devices) round-trip through `oakengine_config_*`; the audio
-//!   device selection additionally applies live through
-//!   `oakengine_audio_*_device`.
-//!
-//! # What is still mock/stub
-//!
-//! * The source monitor renders the selected footage node's frame through
-//!   the facade CPU renderer
-//!   ([`RealEngine::render_source_frame`],
-//!   via the node-binding `oakengine_renderer_create_for_node`) at a proxy
-//!   resolution — the same pattern as the program monitor
-//!   ([`RealEngine::render_program_frame`]). Actual media *decode* is
-//!   still a module gap (the oakrender eval's footage hook is deferred),
-//!   so both viewers show the pipeline's generated frame, not the file's
-//!   pixels.
-//! * **Full-resolution rendering is in-process (M12 P5a):** the proxy
-//!   frame (a 480px long edge) is rendered synchronously for immediate
-//!   display; when the playhead rests, a background thread renders the
-//!   same frame at the sequence's native size through its own dedicated
-//!   facade renderer and the cache swaps it in when it lands (see
-//!   [`RealEngine::schedule_full_res`]). The facade's worker *process*
-//!   module (`oakengine_worker_*`, NDJSON control plane) remains unbound:
-//!   its `load_graph`/`render_frame` are documented stubs, so there is no
-//!   render-capable process transport to bind.
-//! * Effect stack — the selected clip's effect chain is bound: the stack
-//!   reads the chain through the facade (see
-//!   [`EffectStackDataSource`](EffectStackDataSource) for `RealEngine`)
-//!   and edits go through the facade's undoable effect commands.
-//! * Node graph — the node editor reads the current sequence's graph
-//!   through the facade's sequence node-graph enumeration (see
-//!   [`NodeGraphDataSource`](NodeGraphDataSource) for `RealEngine`):
-//!   clip → effects → output with real edges plus the synthesized
-//!   clip-to-output wires; connect/disconnect/move/delete are undoable
-//!   facade commands (drag previews never persist).
-//! * Audio meter still feeds silent data (the meter's facade surface is
-//!   not bound in this increment).
-//! * Clip moves go through the facade's move exports: same-track moves use
-//!   `oakengine_sequence_move_clip`, cross-track moves
-//!   `oakengine_sequence_move_clip_to_track` (M12 P4) — each one undoable
-//!   entry, with the source spot becoming a gap.
+//!   audio devices) round-trip through the oakcommon config store; the
+//!   audio device selection additionally applies live through oakaudio's
+//!   manager.
+//! * **Storage** — the write-through library binds every opened project
+//!   through [`oakstorage::writethrough`]; the manager window's library
+//!   operations call the oakstorage database backend directly.
 //!
 //! # Threading note
 //!
-//! Long facade calls (`oakengine_task_start_sync`) run on background threads
-//! so the UI never blocks; the export event callback delivers progress
-//! through a channel the app drains on its tick loop. Cancellation through
-//! `oakengine_task_cancel` mirrors the C++ capi contract (cancel atom set
-//! from the UI thread while the task runs on its own thread).
+//! Long renders (full-resolution fills, exports) run on background
+//! threads; the export task's event listener delivers progress through a
+//! channel the app drains on its tick loop. The background full-res
+//! worker holds the project's `Arc`, so a project drop mid-render is a
+//! non-event (the drained frame is discarded by the generation check).
 
 use std::collections::{BTreeSet, HashMap};
-use std::ffi::{c_char, c_int, c_void, CString};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -97,179 +68,56 @@ use std::time::Instant;
 use gpui::effect_stack::{
 	EffectCardKind, EffectData, EffectId, EffectStackDataSource, EffectStackEvent,
 };
-use gpui::node_graph::{
-	EdgeData, EdgeId, NodeData, NodeGraphDataSource, NodeGraphEvent, NodeId, PortDataType, PortId,
-	PortKind,
-};
+use gpui::node_graph::{NodeGraphDataSource, NodeGraphEvent};
 use gpui::timeline::{
 	ClipData, ClipId, Frame, FrameRange, FrameRate, Marker, TimelineDataSource, TimelineEvent,
 	TrackData, TrackKind, TrimEdge,
 };
-use gpui::{
-	hsla, point, prelude::*, px, App, Context, Entity, Hsla, Pixels, RenderImage, SharedString,
-};
+use gpui::{prelude::*, px, App, Context, Entity, Hsla, Pixels, RenderImage, SharedString};
 use gpui_widgets::audio_meter::AudioMeterDataSource;
 use gpui_widgets::project_explorer::{ProjectDataSource, ProjectEntry};
 use gpui_widgets::viewer::PlaybackClock;
 
+use oaknode::id::NodeId;
+use oaknode::track::TrackType;
+use oaktimeline::handle::CHandle;
+
 use super::engine::{
-	AppEngine, EngineGateway, ExportEvent, ExportSession, LibraryProject, Monitor, Project,
-	ScopeData, Sequence, VideoFormat,
+	AppEngine, EngineGateway, ExportSession, LibraryProject, Monitor, Project, ScopeData, Sequence,
+	VideoFormat,
 };
-use super::ffi::*;
 use super::frames::{f32_rgba_to_bgra_image, synthetic_frame_samples};
+use super::graphops::{self, ProjectRef};
 use super::scopes::analyze_f32_rgba;
 use super::transport::TransportState;
-
-/// `oakengine_timeline.h` track-type constants.
-const TRACK_TYPE_VIDEO: c_int = 0;
-const TRACK_TYPE_AUDIO: c_int = 1;
-const TRACK_TYPE_SUBTITLE: c_int = 2;
-
-/// The sample-rate / layout / format defaults for export audio.
-const EXPORT_SAMPLE_RATE: c_int = 48000;
-/// Stereo channel-layout bitmask (`OLIVE_CHANNEL_LAYOUT_STEREO`).
-const EXPORT_CHANNEL_LAYOUT: u64 = 0x3;
-/// `oakcore_rs::SampleFormat::S16` as int (the encoder default).
-const EXPORT_SAMPLE_FORMAT: c_int = 0;
 
 /// The project name of a blank project before it is saved.
 const UNTITLED: &str = "Untitled Project";
 
-/// `PixelFormat::F32` (the render pipeline's internal format): F32 RGBA,
-/// 16 bytes per pixel. The viewer renderer is created with this so the
-/// frame accessors hand back float samples the app downconverts itself.
-const PIXEL_FORMAT_F32: c_int = 4;
-
 // ---------------------------------------------------------------------------
-// Facade task event subscription
-// ---------------------------------------------------------------------------
-//
-// The export path subscribes to task events through the facade's
-// `oakengine_task_subscribe` (wrapping the module's `oaktask_task_subscribe`);
-// the callback fires on the task's own thread.
-
-/// The C callback the facade task subscription invokes on the task's own
-/// thread. `userdata` is the raw pointer of a leaked
-/// `mpsc::Sender<ExportEvent>` the export thread reclaims after the run.
-unsafe extern "C" fn export_event_cb(event_id: c_int, value: f64, userdata: *mut c_void) {
-	let Some(sender) = (userdata as *const mpsc::Sender<ExportEvent>).as_ref() else {
-		return;
-	};
-	let event = match event_id {
-		0 => ExportEvent::Started,
-		1 => ExportEvent::Progress(value),
-		_ => return, // Finished is reported by the export thread (with the error).
-	};
-	let _ = sender.send(event);
-}
-
-/// Reclaims the leaked `mpsc::Sender` the export callback wrote through.
-/// Takes the whole [`SendPtr`] so closures capture the wrapper (which is
-/// `Send`) rather than the raw field.
-fn reclaim_userdata(userdata: SendPtr<mpsc::Sender<ExportEvent>>) {
-	drop(unsafe { Box::from_raw(userdata.0) });
-}
-
-/// A borrowed facade handle wrapper that is `Send`/`Sync`: the pointee is
-/// only ever accessed through the facade C ABI (whose exports guard with
-/// `catch_unwind` and synchronize their own state).
-#[derive(Clone, Copy)]
-struct SendPtr<T>(*mut T);
-
-// SAFETY: see [`SendPtr`].
-unsafe impl<T> Send for SendPtr<T> {}
-unsafe impl<T> Sync for SendPtr<T> {}
-
-// ---------------------------------------------------------------------------
-// Handle RAII
+// Handle wrappers
 // ---------------------------------------------------------------------------
 
-/// An owned facade project handle; freed with `oakengine_project_free`.
-///
-/// Raw facade pointers are not `Send`/`Sync`, so the wrapper carries
-/// explicit unsafe impls; the handle is only ever dereferenced through the
-/// facade functions (which guard with `catch_unwind`).
-struct ProjectHandle(*mut OakEngineProject);
+/// An owned module handle (the write-through query handle, the
+/// per-sequence marker list and workarea) that is `Send`/`Sync`.
+struct AuxHandle(CHandle);
 
-// SAFETY: the pointer is only used through the facade C ABI; the facade
-// guards every export with catch_unwind, and all calls are serialized on the
-// owning entity's context.
-unsafe impl Send for ProjectHandle {}
-unsafe impl Sync for ProjectHandle {}
+// SAFETY: the pointee is a refcounted module box only ever touched from
+// the UI thread through its own accessor functions; the `Send`/`Sync`
+// impls exist so the gpui entity can carry it.
+unsafe impl Send for AuxHandle {}
+unsafe impl Sync for AuxHandle {}
 
-impl ProjectHandle {
-	fn ptr(&self) -> *mut OakEngineProject {
-		self.0
-	}
-}
-
-impl Drop for ProjectHandle {
-	fn drop(&mut self) {
-		unsafe {
-			oakengine_project_free(self.0);
-		}
-	}
-}
-
-/// A borrowed facade sequence handle (boxed by the facade); freed with
-/// [`free_box`] — and always before the project it was borrowed from.
-struct SequenceHandle(*mut OakEngineSequence);
-
-// SAFETY: see [`ProjectHandle`].
-unsafe impl Send for SequenceHandle {}
-unsafe impl Sync for SequenceHandle {}
-
-impl SequenceHandle {
-	fn ptr(&self) -> *mut OakEngineSequence {
-		self.0
-	}
-}
-
-impl Drop for SequenceHandle {
-	fn drop(&mut self) {
-		unsafe {
-			free_box(self.0);
-		}
-	}
-}
-
-/// An owned facade renderer handle; freed with `oakengine_renderer_free`.
-///
-/// The facade renderer box is NOT a module-handle box (it is the facade's
-/// own `RendererBox`), so it must never go through [`free_box`]; the
-/// dedicated free is the only valid deallocator. The renderer borrows the
-/// sequence handle it was created from, so it must be dropped before the
-/// sequence (see [`RealEngine::drop_project`]).
-struct RendererHandle(*mut OakEngineRenderer);
-
-// SAFETY: see [`ProjectHandle`].
-unsafe impl Send for RendererHandle {}
-unsafe impl Sync for RendererHandle {}
-
-impl RendererHandle {
-	fn ptr(&self) -> *mut OakEngineRenderer {
-		self.0
-	}
-}
-
-impl Drop for RendererHandle {
-	fn drop(&mut self) {
-		unsafe {
-			oakengine_renderer_free(self.0);
-		}
-	}
-}
-
-/// The lifecycle state of the program monitor's lazily created renderer.
+/// The lifecycle state of a monitor's render path (the renders are
+/// stateless ticket submissions; the slot only remembers whether the path
+/// ever failed so a broken setup doesn't retry — and re-log — on every
+/// frame).
 enum RendererSlot {
-	/// No renderer yet; the next `cpu_frame` tries to create one.
+	/// No render attempted yet; the next `cpu_frame` tries one.
 	Untried,
-	/// The live per-sequence renderer.
-	Ready(RendererHandle),
-	/// Creation failed (or no sequence is open); don't retry until the
-	/// project changes, so a broken setup doesn't retry — and log — on
-	/// every frame.
+	/// The render path works for this monitor.
+	Ready,
+	/// The last render failed; don't retry until the project changes.
 	Unavailable,
 }
 
@@ -377,19 +225,14 @@ impl MonitorFrameCache {
 }
 
 /// What a background full-res job renders: the program monitor's sequence
-/// or the source monitor's selected footage node. The boxed handle is
-/// owned by the job and freed by the worker thread.
-#[derive(Clone, Copy)]
+/// or the source monitor's selected footage node. The request also carries
+/// the project's `Arc`, which keeps the graph alive regardless of what the
+/// UI thread does with the engine's own reference.
 enum FullResTarget {
-	/// An addref'd sequence box (released with [`free_box`], last, after
-	/// the renderer so the sequence outlives the renderer's borrowed view).
-	Sequence(SendPtr<OakEngineSequence>),
-	/// A boxed footage node plus an addref'd copy of its project. The node
-	/// box alone does NOT keep the graph alive: dropping the project while
-	/// a job is in flight leaves the node dangling (observed crash:
-	/// misaligned pointer dereference in `oakengine_node_free`). The
-	/// project copy is released after the node.
-	Node(SendPtr<OakEngineNode>, SendPtr<OakEngineProject>),
+	/// The program monitor's sequence.
+	Sequence(NodeId),
+	/// The source monitor's selected footage node.
+	Footage(NodeId),
 }
 
 /// One background full-resolution render request (built on the UI thread
@@ -402,16 +245,16 @@ struct FullResRequest {
 	/// The engine's full-res generation when the job was scheduled (stale
 	/// completions are discarded by the drain).
 	generation: u64,
+	/// The project the target lives in (keeps the graph alive).
+	project: ProjectRef,
 	/// The sequence or footage node to render.
 	target: FullResTarget,
 	/// Output width (the sequence's native size).
-	width: c_int,
+	width: i32,
 	/// Output height.
-	height: c_int,
-	/// Frame-rate numerator.
-	rate_num: c_int,
-	/// Frame-rate denominator.
-	rate_den: c_int,
+	height: i32,
+	/// The sequence's timebase (frame duration = `tb.0 / tb.1` seconds).
+	tb: (i64, i64),
 }
 
 /// A completed full-res frame, delivered through the completion channel.
@@ -427,44 +270,31 @@ struct FullResEvent {
 }
 
 // ---------------------------------------------------------------------------
-// FFI helpers
+// Frame conversion
 // ---------------------------------------------------------------------------
 
-/// Builds a `CString` from a path (lossy on non-UTF-8).
-fn cstr_path(path: &Path) -> Option<CString> {
-	CString::new(path.to_string_lossy().into_owned()).ok()
-}
-
-/// Two-stage read of a facade buf/size string (the return value is the
-/// length excluding the NUL). The closure must call the facade getter inside
-/// its own `unsafe` block.
-fn read_string(f: impl Fn(*mut c_char, c_int) -> c_int) -> String {
-	let needed = f(std::ptr::null_mut(), 0);
-	if needed <= 0 {
-		return String::new();
+/// Repack one F32 RGBA rendered frame (rows padded to linesize) into
+/// tightly packed samples. Returns `(width, height, samples)` when the
+/// frame is well-formed (positive geometry, the pipeline's F32 format).
+fn read_f32_frame(frame: &super::renderops::RenderedFrame) -> Option<(u32, u32, Vec<f32>)> {
+	let (width, height, linesize) = (frame.width, frame.height, frame.linesize);
+	if width <= 0 || height <= 0 || frame.format != super::renderops::PIXEL_FORMAT_F32 {
+		return None;
 	}
-	// The facade's two-stage getters report the length WITHOUT the
-	// trailing NUL (`string_result` subtracts one); the buffer must
-	// carry the NUL too.
-	let mut buf = vec![0 as c_char; needed as usize + 1];
-	f(buf.as_mut_ptr(), needed as c_int + 1);
-	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-	String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, len) })
-		.into_owned()
-}
-
-/// Reads the error buffer the OVE load/save serializer fills.
-fn load_error(err: &mut [c_char]) -> String {
-	let len = err.iter().position(|&c| c == 0).unwrap_or(err.len());
-	let text = String::from_utf8_lossy(unsafe {
-		std::slice::from_raw_parts(err.as_ptr() as *const u8, len)
-	})
-	.into_owned();
-	if text.is_empty() {
-		"the operation failed".to_string()
-	} else {
-		text
+	let row_bytes = (width * 4 * 4) as usize;
+	let linesize = (linesize as usize).max(row_bytes);
+	if frame.data.len() < linesize * height as usize {
+		return None;
 	}
+	let mut samples = vec![0.0f32; (width * height * 4) as usize];
+	for y in 0..height as usize {
+		let row = &frame.data[y * linesize..y * linesize + row_bytes];
+		for (i, px) in row.chunks_exact(4).enumerate() {
+			let v = f32::from_ne_bytes([px[0], px[1], px[2], px[3]]);
+			samples[y * (width as usize) * 4 + i] = v;
+		}
+	}
+	Some((width as u32, height as u32, samples))
 }
 
 // ---------------------------------------------------------------------------
@@ -473,7 +303,7 @@ fn load_error(err: &mut [c_char]) -> String {
 
 /// The real engine's transport clock: the playhead plus the wall-clock
 /// anchor while playing. Mirrors the mock's clock; the engine additionally
-/// writes the program playhead back to the facade sequence.
+/// writes the program playhead back to the sequence.
 pub struct RealClock {
 	/// The transport state (play/pause, playhead, loop range).
 	pub transport: TransportState,
@@ -542,9 +372,9 @@ impl PlaybackClock for RealClock {
 // Timeline model
 // ---------------------------------------------------------------------------
 
-/// A clip on the real timeline: the facade data plus the C-ABI coordinates
-/// (`track_type` / per-type `track_index` / per-track `clip_index`) the edit
-/// commands are addressed with.
+/// A clip on the real timeline: the widget snapshot plus the graph
+/// addressing (the block's `NodeId`; the widget-facing id is its stable
+/// identity).
 #[derive(Debug, Clone)]
 pub struct RealClip {
 	id: ClipId,
@@ -552,9 +382,8 @@ pub struct RealClip {
 	media_in: Frame,
 	label: SharedString,
 	color: Hsla,
-	track_type: TrackKind,
-	track_index: usize,
-	clip_index: usize,
+	/// The block node in the project graph.
+	block: NodeId,
 }
 
 impl ClipData for RealClip {
@@ -579,12 +408,12 @@ impl ClipData for RealClip {
 	}
 }
 
-/// One card of the real effect stack: the facade chain node's identity,
-/// its factory display name, its enabled flag, and the app-owned
-/// expansion state ([`RealEngine::expanded_effects`]). No source/output
-/// cards: the host clip node is the implicit output, the chain's unlinked
-/// upstream input is the implicit source (the effect stack shows only the
-/// editable middle).
+/// One card of the real effect stack: the chain node's identity, its
+/// factory display name, its enabled flag, and the app-owned expansion
+/// state ([`RealEngine::expanded_effects`]). No source/output cards: the
+/// host clip node is the implicit output, the chain's unlinked upstream
+/// input is the implicit source (the effect stack shows only the editable
+/// middle).
 #[derive(Debug, Clone)]
 struct RealEffect {
 	/// The node's stable identity (also the card's `EffectId`).
@@ -630,7 +459,11 @@ pub struct RealTrack {
 	solo: bool,
 	visible: bool,
 	clips: Vec<RealClip>,
-	track_type: c_int,
+	/// The track node in the project graph.
+	track: NodeId,
+	/// The track's per-type index (the facade's clip coordinates; edit
+	/// commands address nodes directly now, but the drop policy and the
+	/// widget's cross-track moves still speak display/per-type indices).
 	track_index: usize,
 }
 
@@ -670,8 +503,8 @@ impl TrackData for RealTrack {
 	}
 }
 
-/// A deterministic clip color from a stable per-clip index (the facade
-/// exposes no clip color).
+/// A deterministic clip color from a stable per-clip index (the module
+/// graph exposes no clip color).
 fn clip_color(index: u64) -> Hsla {
 	let hues = [0.55f32, 0.6, 0.08, 0.3, 0.78, 0.45, 0.9, 0.15];
 	Hsla {
@@ -682,10 +515,9 @@ fn clip_color(index: u64) -> Hsla {
 	}
 }
 
-/// A marker color for a marker color index (the facade marker color
-/// contract): a small palette around the amber accent, so adjacent markers
-/// stay distinguishable.
-fn marker_color(index: c_int) -> Hsla {
+/// A marker color for a marker color index (a small palette around the
+/// amber accent, so adjacent markers stay distinguishable).
+fn marker_color(index: i32) -> Hsla {
 	let hues = [0.10f32, 0.0, 0.55, 0.30, 0.78];
 	let h = hues[(index.max(0) as usize) % hues.len()];
 	Hsla {
@@ -693,6 +525,24 @@ fn marker_color(index: c_int) -> Hsla {
 		s: 0.75,
 		l: 0.55,
 		a: 1.0,
+	}
+}
+
+/// The [`TrackKind`] of a module track type.
+fn track_kind_of(kind: TrackType) -> TrackKind {
+	match kind {
+		TrackType::Video => TrackKind::Video,
+		TrackType::Audio => TrackKind::Audio,
+		TrackType::Subtitle => TrackKind::Subtitle,
+	}
+}
+
+/// The module track type of a [`TrackKind`].
+fn track_type_of(kind: TrackKind) -> TrackType {
+	match kind {
+		TrackKind::Video => TrackType::Video,
+		TrackKind::Audio => TrackType::Audio,
+		TrackKind::Subtitle => TrackType::Subtitle,
 	}
 }
 
@@ -704,13 +554,21 @@ pub use crate::oakui::nodegraph::{RealEdge, RealNode, RealPort};
 // The engine
 // ---------------------------------------------------------------------------
 
-/// The real engine: the facade project/sequence plus the snapshot models the
-/// widgets read.
+/// The real engine: the domain project/sequence plus the snapshot models
+/// the widgets read.
 pub struct RealEngine {
-	/// The owned facade project (None before any project is open).
-	project: Option<ProjectHandle>,
-	/// The borrowed facade sequence (freed before the project on drop).
-	sequence: Option<SequenceHandle>,
+	/// The domain project (None before any project is open).
+	project: Option<ProjectRef>,
+	/// The current sequence node.
+	sequence: Option<NodeId>,
+	/// The write-through binding's query handle (bound at adopt, released
+	/// at drop).
+	storage: Option<AuxHandle>,
+	/// The current sequence's marker list (the module's sequences carry
+	/// none; the app materializes one per open sequence, like the facade).
+	markers: Option<AuxHandle>,
+	/// The current sequence's work area (see `markers`).
+	workarea: Option<AuxHandle>,
 	/// The gateway's cached project info.
 	project_info: Project,
 	/// The gateway's cached sequence info.
@@ -724,7 +582,7 @@ pub struct RealEngine {
 	/// Timeline waveform cache (M12 P4), created lazily at the current
 	/// frame rate.
 	waveforms: Mutex<Option<Arc<crate::oakui::waveform::WaveformCache>>>,
-	/// The selected material-bin entry (demo state).
+	/// The selected material-bin entry (a node identity).
 	selected_item: Option<u64>,
 	/// The single selected timeline clip — the effect stack's target
 	/// (`None` for an empty or multi-clip selection, or before any
@@ -759,17 +617,13 @@ pub struct RealEngine {
 	full_res_rx: Mutex<mpsc::Receiver<FullResEvent>>,
 	/// The sending half of `full_res_rx` (cloned into every job).
 	full_res_tx: Mutex<mpsc::Sender<FullResEvent>>,
-	/// The program monitor's cached renderer, created lazily from the
-	/// current sequence at a proxy resolution. The mutex both provides the
-	/// interior mutability `cpu_frame` (a `&self` read) needs and serializes
-	/// the synchronous render calls. Reset to [`RendererSlot::Untried`]
-	/// (before the sequence is freed) in [`RealEngine::drop_project`].
+	/// The program monitor's render-path state (see [`RendererSlot`]).
+	/// Reset to [`RendererSlot::Untried`] in [`RealEngine::drop_project`].
 	renderer: Mutex<RendererSlot>,
-	/// The source monitor's cached renderer, created lazily from the
-	/// currently selected footage node at a proxy resolution (same slot
-	/// semantics as `renderer`). Reset to [`RendererSlot::Untried`] when
-	/// the selection changes or the project is dropped — the renderer binds
-	/// the footage node, so a new selection must bind the new node.
+	/// The source monitor's render-path state (same slot semantics as
+	/// `renderer`). Reset when the selection changes or the project is
+	/// dropped — the render binds the footage node, so a new selection
+	/// must re-render the new node.
 	source_renderer: Mutex<RendererSlot>,
 }
 
@@ -778,12 +632,11 @@ impl RealEngine {
 	/// it for playback (M12 P1). Failures are silent: playback continues
 	/// video-only.
 	fn pull_audio_tick(&mut self, cx: &mut Context<Self>) {
-		let renderer = {
-			let slot = self.renderer.lock().unwrap_or_else(|e| e.into_inner());
-			match &*slot {
-				RendererSlot::Ready(handle) => RendererHandle(handle.0),
-				_ => return,
-			}
+		let (Some(project), Some(seq)) = (self.project.clone(), self.sequence) else {
+			return;
+		};
+		let Some(tb) = self.time_base() else {
+			return;
 		};
 		let fps = self.frame_rate();
 		let frame = self.clock_frame(Monitor::Program, cx).0;
@@ -792,34 +645,26 @@ impl RealEngine {
 		}
 		// ~1/60 s of sequence per tick.
 		let chunk = ((fps.num as f64 / fps.den as f64) / 60.0).max(0.001) as i64;
-		let buf = unsafe { oakengine_renderer_render_audio(renderer.0, frame, chunk) };
-		if buf.is_null() {
+		let Ok(buf) = super::renderops::render_audio_range(&project, seq, frame, chunk, tb) else {
+			return;
+		};
+		if buf.sample_rate <= 0 || buf.channel_count <= 0 || buf.data.is_empty() {
 			return;
 		}
-		let rate = unsafe { oakengine_audio_sample_rate(buf) };
-		let channels = unsafe { oakengine_audio_channel_count(buf) };
-		let frames = unsafe { oakengine_audio_sample_count(buf) };
-		let data = unsafe { oakengine_audio_data(buf, 0) };
-		if rate > 0 && channels > 0 && frames > 0 && !data.is_null() {
-			// Packed F32 (10 = the engine's packed F32 sample format);
-			// layout: 1ch → mono mask, else stereo.
-			let layout: u64 = if channels == 1 { 0x4 } else { 0x3 };
-			let params =
-				unsafe { oakcore_audioparams_create(rate, layout, 10) };
-			if !params.is_null() {
-				unsafe {
-					oakengine_audio_push_to_output(
-						params,
-						data as *const c_char,
-						frames * i64::from(channels) * 4,
-						std::ptr::null_mut(),
-						0,
-					);
-					oakcore_audioparams_free(params);
-				}
-			}
+		// Packed F32; layout: 1ch → mono mask, else stereo.
+		let layout: u64 = if buf.channel_count == 1 { 0x4 } else { 0x3 };
+		let bytes: Vec<u8> = buf.data.iter().flat_map(|v| v.to_ne_bytes()).collect();
+		if let Some(mut manager) = oakaudio::manager::instance() {
+			let _ = manager.push_to_output(
+				oakaudio::params::AudioParams {
+					sample_rate: buf.sample_rate,
+					channel_layout: layout,
+					format: oakcore_rs::SampleFormat::F32,
+				},
+				&bytes,
+				&mut [],
+			);
 		}
-		unsafe { oakengine_audio_free(buf) };
 	}
 
 	/// Builds an engine with no project open.
@@ -829,6 +674,9 @@ impl RealEngine {
 		Self {
 			project: None,
 			sequence: None,
+			storage: None,
+			markers: None,
+			workarea: None,
 			project_info: Project {
 				name: UNTITLED.into(),
 				path: PathBuf::new(),
@@ -860,66 +708,35 @@ impl RealEngine {
 		}
 	}
 
-	/// The sequence pointer, if a project+sequence is open.
-	fn seq_ptr(&self) -> Option<*mut OakEngineSequence> {
-		self.sequence.as_ref().map(SequenceHandle::ptr)
+	/// The open project reference, if any.
+	fn project_ref(&self) -> Option<&ProjectRef> {
+		self.project.as_ref()
 	}
 
-	/// The project pointer, if a project is open.
-	fn project_ptr(&self) -> Option<*mut OakEngineProject> {
-		self.project.as_ref().map(ProjectHandle::ptr)
-	}
-
-	/// An addref'd copy of the project handle, boxed for the background
-	/// worker — same lifetime contract as [`RealEngine::sequence_copy`]:
-	/// the copy keeps the graph alive after the engine's own project is
-	/// dropped (the source monitor's footage node dangles otherwise).
-	fn project_copy(&self) -> Option<*mut OakEngineProject> {
-		let project = self.project_ptr()?;
-		// SAFETY: `project` is the engine's live project box.
-		let handle = unsafe { unbox(project) }?;
-		let addref = handle.addref?;
-		// SAFETY: `handle` is a live module handle; addref takes a new
-		// reference the copy releases.
-		unsafe { addref(handle.ctx) };
-		Some(unsafe { box_handle::<OakEngineProject>(handle) })
+	/// The sequence's timebase `(rate_den, rate_num)`, if a sequence with
+	/// a valid frame rate is open.
+	fn time_base(&self) -> Option<(i64, i64)> {
+		let project = self.project_ref()?;
+		let guard = graphops::lock(project);
+		graphops::sequence_time_base(&guard.graph, self.sequence?)
 	}
 
 	/// The selected footage's duration in frames at the current rate
 	/// (0 when nothing is selected or the footage was not probed).
 	fn source_length(&self) -> Frame {
-		let Some(project) = self.project_ptr() else {
+		let (Some(project), Some(identity)) = (self.project_ref(), self.selected_item) else {
 			return Frame(0);
 		};
-		let Some(id) = self.selected_item else {
+		let Some(id) = graphops::id_of(identity) else {
 			return Frame(0);
 		};
-		let count = unsafe { oakengine_project_footage_count(project) };
-		for i in 0..count.max(0) {
-			let f = unsafe { oakengine_project_footage_at(project, i) };
-			if f.is_null() {
-				continue;
-			}
-			let matches = unsafe { oakengine_node_identity(f) } == id;
-			if matches {
-				// The footage list yields node boxes; borrow the footage
-				// view for the duration query.
-				let footage = unsafe { oakengine_footage_borrow(f) };
-				unsafe { oakengine_node_free(f) };
-				let mut seconds: f64 = 0.0;
-				let ok = !footage.is_null()
-					&& unsafe { oakengine_footage_get_duration(footage, &mut seconds) } == 0;
-				unsafe { oakengine_footage_free(footage) };
-				if ok && seconds > 0.0 {
-					let rate = self.frame_rate();
-					let fps = rate.num as f64 / rate.den.max(1) as f64;
-					return Frame((seconds * fps).round().max(1.0) as i64);
-				}
-				return Frame(0);
-			}
-			unsafe { oakengine_node_free(f) };
-		}
-		Frame(0)
+		let guard = graphops::lock(project);
+		let Some(seconds) = graphops::footage_duration_seconds(&guard.graph, id) else {
+			return Frame(0);
+		};
+		let rate = self.frame_rate();
+		let fps = rate.num as f64 / rate.den.max(1) as f64;
+		Frame((seconds * fps).round().max(1.0) as i64)
 	}
 
 	/// Current sequence length (0 without a sequence).
@@ -930,479 +747,179 @@ impl RealEngine {
 			.unwrap_or(Frame(0))
 	}
 
-	/// Mirrors the program playhead into the facade sequence (best effort).
+	/// Mirrors the program playhead into the sequence (best effort).
 	fn mirror_program_playhead(&self, cx: &App) {
-		if let Some(seq) = self.seq_ptr() {
-			let frame = self.program_clock.read(cx).transport.frame().0;
-			unsafe {
-				oakengine_sequence_set_playhead(seq, frame);
-			}
-		}
+		let (Some(project), Some(seq)) = (self.project_ref(), self.sequence) else {
+			return;
+		};
+		let Some(tb) = self.time_base() else {
+			return;
+		};
+		let frame = self.program_clock.read(cx).transport.frame().0;
+		graphops::sequence_set_playhead(project, seq, graphops::ts_to_rational(frame, tb));
 	}
 
-	/// Brings up the module's process-global render manager if it is not
-	/// running yet (without it `render_frame` fails with NULL + last_error).
-	/// Returns false when the manager could not be started.
-	fn ensure_render_manager() -> bool {
-		unsafe {
-			if oakengine_render_manager_available() != 0 {
-				return true;
-			}
-			oakengine_render_manager_init();
-			oakengine_render_manager_available() != 0
-		}
-	}
-
-	/// The proxy resolution the viewer renderer runs at: the sequence's
-	/// aspect scaled to a small long edge. Rendering is a synchronous call
-	/// made from `cpu_frame` (a `&self` read on the UI thread), so the
-	/// geometry stays tiny to keep the block short; the full-resolution
-	/// frame is rendered off-thread at the sequence's native size by the
-	/// background job (M12 P5a, see [`RealEngine::schedule_full_res`]).
-	fn proxy_render_size(&self) -> Option<(c_int, c_int)> {
+	/// The proxy resolution the viewer renders at: the sequence's aspect
+	/// scaled to a small long edge. Rendering is a synchronous call made
+	/// from `cpu_frame` (a `&self` read on the UI thread), so the geometry
+	/// stays tiny to keep the block short; the full-resolution frame is
+	/// rendered off-thread at the sequence's native size by the background
+	/// job (M12 P5a, see [`RealEngine::schedule_full_res`]).
+	fn proxy_render_size(&self) -> Option<(i32, i32)> {
 		let info = self.sequence_info.as_ref()?;
 		let (w, h) = (info.format.width.max(1), info.format.height.max(1));
 		const MAX_LONG_EDGE: u32 = 480;
 		let scale = MAX_LONG_EDGE as f64 / w.max(h) as f64;
 		let width = ((w as f64 * scale).round() as u32).max(2);
 		let height = ((h as f64 * scale).round() as u32).max(2);
-		Some((width as c_int, height as c_int))
+		Some((width as i32, height as i32))
 	}
 
-	/// Renders one program-monitor frame through the facade CPU renderer:
-	/// creates the per-sequence renderer lazily (cached in `self.renderer`),
-	/// renders `frame`, analyzes the scope samples from the F32 RGBA result,
-	/// and downconverts to BGRA8. Returns `None` (the caller falls back to
-	/// the synthetic pattern) when no sequence is open, the render manager is
-	/// unavailable, or the render itself fails.
+	/// Renders one program-monitor frame through the oakrender ticket
+	/// arena: builds the sequence's montage at `frame`, renders at the
+	/// proxy geometry, analyzes the scope samples from the F32 RGBA
+	/// result, and downconverts to BGRA8. Returns `None` (the caller falls
+	/// back to the synthetic pattern) when no sequence is open, the render
+	/// manager is unavailable, or the render itself fails.
 	fn render_program_frame(&self, frame: Frame) -> Option<(RenderImage, ScopeData)> {
-		let seq = self.seq_ptr()?;
-		if !Self::ensure_render_manager() {
+		let project = self.project_ref()?.clone();
+		let seq = self.sequence?;
+		let tb = self.time_base()?;
+		if !super::renderops::ensure_render_manager() {
 			return None;
 		}
 		let mut slot = self.renderer.lock().unwrap();
-		match &*slot {
-			RendererSlot::Unavailable => return None,
-			RendererSlot::Untried => {
-				let created = self.create_renderer(seq);
-				*slot = match created {
-					Some(handle) => RendererSlot::Ready(handle),
-					None => RendererSlot::Unavailable,
-				};
-			}
-			RendererSlot::Ready(_) => {}
-		}
-		let RendererSlot::Ready(handle) = &*slot else {
-			return None;
-		};
-		let renderer = handle.ptr();
-		let frame_ptr = unsafe { oakengine_renderer_render_frame(renderer, frame.0) };
-		if frame_ptr.is_null() {
-			let error = read_string(|buf, size| unsafe {
-				oakengine_renderer_last_error(renderer, buf, size)
-			});
-			println!("[real engine] render_frame failed: {error}");
-			// Don't retry (and re-log) on every frame.
-			*slot = RendererSlot::Unavailable;
+		if matches!(*slot, RendererSlot::Unavailable) {
 			return None;
 		}
-		// Read the frame (F32 RGBA, rows padded to linesize), repack it
-		// tightly, then downconvert.
-		let (width, height, linesize, format) = unsafe {
-			(
-				oakengine_frame_width(frame_ptr),
-				oakengine_frame_height(frame_ptr),
-				oakengine_frame_linesize_bytes(frame_ptr),
-				oakengine_frame_format(frame_ptr),
-			)
-		};
-		let data = unsafe { oakengine_frame_data(frame_ptr) };
-		let mut image = None;
-		if width > 0 && height > 0 && format == PIXEL_FORMAT_F32 && !data.is_null() {
-			let row_bytes = (width * 4 * 4) as usize;
-			let linesize = (linesize as usize).max(row_bytes);
-			let mut samples = vec![0.0f32; (width * height * 4) as usize];
-			for y in 0..height as usize {
-				unsafe {
-					std::ptr::copy_nonoverlapping(
-						(data as *const u8).add(y * linesize),
-						samples.as_mut_ptr().add(y * row_bytes / 4) as *mut u8,
-						row_bytes,
-					);
-				}
-			}
-			// The scopes read the same F32 samples the viewer displays.
-			let scope = analyze_f32_rgba(width as u32, height as u32, &samples);
-			image = Some((
-				f32_rgba_to_bgra_image(width as u32, height as u32, &samples),
-				scope,
-			));
-		}
-		unsafe {
-			oakengine_frame_free(frame_ptr);
-		}
-		image
-	}
-
-	/// Creates the per-sequence renderer at the proxy resolution (see
-	/// [`RealEngine::proxy_render_size`]). The renderer borrows the sequence
-	/// handle; the caller owns the slot it is stored in.
-	fn create_renderer(&self, seq: *mut OakEngineSequence) -> Option<RendererHandle> {
 		let (width, height) = self.proxy_render_size()?;
-		let rate = self.sequence_info.as_ref()?.format.rate;
-		// Pixel format 4 = PixelFormat::F32 (the pipeline format);
-		// timestamp units are frames at this rate.
-		let renderer = unsafe {
-			oakengine_renderer_create(
-				seq,
-				width,
-				height,
-				PIXEL_FORMAT_F32,
-				rate.num as c_int,
-				rate.den as c_int,
-				std::ptr::null(),
-			)
-		};
-		if renderer.is_null() {
-			println!("[real engine] renderer_create failed; viewer keeps the synthetic frame");
-			return None;
+		match super::renderops::render_sequence_frame(&project, seq, frame.0, tb, width, height) {
+			Ok(rendered) => {
+				*slot = RendererSlot::Ready;
+				let (width, height, samples) = read_f32_frame(&rendered)?;
+				let scope = analyze_f32_rgba(width, height, &samples);
+				Some((f32_rgba_to_bgra_image(width, height, &samples), scope))
+			}
+			Err(error) => {
+				println!("[real engine] render_frame failed: {error}");
+				// Don't retry (and re-log) on every frame.
+				*slot = RendererSlot::Unavailable;
+				None
+			}
 		}
-		Some(RendererHandle(renderer))
 	}
 
 	/// The selected entry's footage node (M12 P3: entry ids are the
-	/// nodes' stable identities), or `None` when the selection is a
-	/// folder or absent.
-	///
-	/// # Safety
-	/// The returned box is freed with `oakengine_node_free`.
-	fn selected_footage_node(&self) -> Option<*mut OakEngineNode> {
-		let project = self.project_ptr()?;
-		let id = self.selected_item?;
-		unsafe {
-			// The identity must resolve to a footage entry (a folder or
-			// sequence id must not be treated as footage).
-			let count = unsafe { oakengine_project_footage_count(project) };
-			let mut is_footage = false;
-			for i in 0..count.max(0) {
-				let f = unsafe { oakengine_project_footage_at(project, i) };
-				if f.is_null() {
-					continue;
-				}
-				let matches = unsafe { oakengine_node_identity(f) } == id;
-				unsafe { oakengine_node_free(f) };
-				if matches {
-					is_footage = true;
-					break;
-				}
-			}
-			if !is_footage {
-				return None;
-			}
-			crate::oakui::projectbrowser::find_by_identity(project, id)
-		}
+	/// nodes' stable identities), or `None` when the selection is a folder
+	/// or absent.
+	fn selected_footage_node(&self) -> Option<NodeId> {
+		let project = self.project_ref()?;
+		let id = graphops::id_of(self.selected_item?)?;
+		let guard = graphops::lock(project);
+		graphops::footage_behavior(&guard.graph, id).map(|_| id)
 	}
 
-	/// Creates the per-footage renderer at the proxy resolution (see
-	/// [`RealEngine::proxy_render_size`]). The renderer borrows the footage
-	/// node handle; the caller owns the slot it is stored in.
-	fn create_node_renderer(&self, node: *mut OakEngineNode) -> Option<RendererHandle> {
-		let (width, height) = self.proxy_render_size()?;
-		let rate = self.sequence_info.as_ref()?.format.rate;
-		let renderer = unsafe {
-			oakengine_renderer_create_for_node(
-				node,
-				width,
-				height,
-				PIXEL_FORMAT_F32,
-				rate.num as c_int,
-				rate.den as c_int,
-				std::ptr::null(),
-			)
-		};
-		if renderer.is_null() {
-			println!(
-				"[real engine] renderer_create_for_node failed; viewer keeps the synthetic frame"
-			);
-			return None;
-		}
-		Some(RendererHandle(renderer))
-	}
-
-	/// Renders one source-monitor frame through the facade CPU renderer:
-	/// creates the per-footage renderer lazily (cached in
-	/// `self.source_renderer`, bound to the currently selected footage
-	/// node), renders `frame`, analyzes the scope samples from the F32 RGBA
-	/// result, and downconverts to BGRA8. Returns `None` (the caller falls
+	/// Renders one source-monitor frame through the ticket arena: the
+	/// currently selected footage node decoded at the proxy geometry (same
+	/// pipeline as the program monitor). Returns `None` (the caller falls
 	/// back to the synthetic pattern) when no footage is selected, the
 	/// render manager is unavailable, or the render itself fails.
 	fn render_source_frame(&self, frame: Frame) -> Option<(RenderImage, ScopeData)> {
+		let project = self.project_ref()?.clone();
 		let node = self.selected_footage_node()?;
-		if !Self::ensure_render_manager() {
-			// SAFETY: `node` is a box from `selected_footage_node`.
-			unsafe { oakengine_node_free(node) };
+		let tb = self.time_base()?;
+		if !super::renderops::ensure_render_manager() {
 			return None;
 		}
 		let mut slot = self.source_renderer.lock().unwrap();
-		match &*slot {
-			RendererSlot::Unavailable => {
-				unsafe { oakengine_node_free(node) };
-				return None;
-			}
-			RendererSlot::Untried => {
-				let created = self.create_node_renderer(node);
-				*slot = match created {
-					Some(handle) => RendererSlot::Ready(handle),
-					None => RendererSlot::Unavailable,
-				};
-			}
-			RendererSlot::Ready(_) => {}
-		}
-		// SAFETY: `node` is a live box; freed on every path below.
-		unsafe { oakengine_node_free(node) };
-		let RendererSlot::Ready(handle) = &*slot else {
-			return None;
-		};
-		let renderer = handle.ptr();
-		let frame_ptr = unsafe { oakengine_renderer_render_frame(renderer, frame.0) };
-		if frame_ptr.is_null() {
-			let error = read_string(|buf, size| unsafe {
-				oakengine_renderer_last_error(renderer, buf, size)
-			});
-			println!("[real engine] source render_frame failed: {error}");
-			// Don't retry (and re-log) on every frame.
-			*slot = RendererSlot::Unavailable;
+		if matches!(*slot, RendererSlot::Unavailable) {
 			return None;
 		}
-		// Read the frame (F32 RGBA, rows padded to linesize), repack it
-		// tightly, then downconvert.
-		let (width, height, linesize, format) = unsafe {
-			(
-				oakengine_frame_width(frame_ptr),
-				oakengine_frame_height(frame_ptr),
-				oakengine_frame_linesize_bytes(frame_ptr),
-				oakengine_frame_format(frame_ptr),
-			)
-		};
-		let data = unsafe { oakengine_frame_data(frame_ptr) };
-		let mut image = None;
-		if width > 0 && height > 0 && format == PIXEL_FORMAT_F32 && !data.is_null() {
-			let row_bytes = (width * 4 * 4) as usize;
-			let linesize = (linesize as usize).max(row_bytes);
-			let mut samples = vec![0.0f32; (width * height * 4) as usize];
-			for y in 0..height as usize {
-				unsafe {
-					std::ptr::copy_nonoverlapping(
-						(data as *const u8).add(y * linesize),
-						samples.as_mut_ptr().add(y * row_bytes / 4) as *mut u8,
-						row_bytes,
-					);
-				}
+		let (width, height) = self.proxy_render_size()?;
+		match super::renderops::render_footage_frame(&project, node, frame.0, tb, width, height) {
+			Ok(rendered) => {
+				*slot = RendererSlot::Ready;
+				let (width, height, samples) = read_f32_frame(&rendered)?;
+				let scope = analyze_f32_rgba(width, height, &samples);
+				Some((f32_rgba_to_bgra_image(width, height, &samples), scope))
 			}
-			let scope = analyze_f32_rgba(width as u32, height as u32, &samples);
-			image = Some((
-				f32_rgba_to_bgra_image(width as u32, height as u32, &samples),
-				scope,
-			));
-		}
-		unsafe {
-			oakengine_frame_free(frame_ptr);
-		}
-		image
-	}
-
-	/// Repacks one F32 RGBA facade frame (rows padded to linesize) into
-	/// tightly packed samples. Returns `(width, height, samples)` when the
-	/// frame is well-formed (positive geometry, the pipeline's F32 format,
-	/// non-null data).
-	fn read_f32_frame(frame_ptr: *mut OakEngineFrame) -> Option<(u32, u32, Vec<f32>)> {
-		// SAFETY: `frame_ptr` is a live facade frame box.
-		let (width, height, linesize, format) = unsafe {
-			(
-				oakengine_frame_width(frame_ptr),
-				oakengine_frame_height(frame_ptr),
-				oakengine_frame_linesize_bytes(frame_ptr),
-				oakengine_frame_format(frame_ptr),
-			)
-		};
-		let data = unsafe { oakengine_frame_data(frame_ptr) };
-		if width <= 0 || height <= 0 || format != PIXEL_FORMAT_F32 || data.is_null() {
-			return None;
-		}
-		let row_bytes = (width * 4 * 4) as usize;
-		let linesize = (linesize as usize).max(row_bytes);
-		let mut samples = vec![0.0f32; (width * height * 4) as usize];
-		for y in 0..height as usize {
-			// SAFETY: the facade frame holds `height` rows of at least
-			// `linesize` bytes; `samples` holds tightly packed rows.
-			unsafe {
-				std::ptr::copy_nonoverlapping(
-					(data as *const u8).add(y * linesize),
-					samples.as_mut_ptr().add(y * row_bytes / 4) as *mut u8,
-					row_bytes,
-				);
+			Err(error) => {
+				println!("[real engine] source render_frame failed: {error}");
+				*slot = RendererSlot::Unavailable;
+				None
 			}
 		}
-		Some((width as u32, height as u32, samples))
-	}
-
-	/// An addref'd copy of the sequence handle, boxed for the background
-	/// worker. The copy keeps the sequence alive even when the project is
-	/// dropped while a full-res job is in flight; the worker frees it last
-	/// (after the renderer, whose view of the sequence is borrowed).
-	fn sequence_copy(&self) -> Option<*mut OakEngineSequence> {
-		let seq = self.seq_ptr()?;
-		// SAFETY: `seq` is the engine's live sequence box.
-		let handle = unsafe { unbox(seq) }?;
-		let addref = handle.addref?;
-		// SAFETY: `handle` is a live module handle; addref takes a new
-		// reference the copy releases.
-		unsafe { addref(handle.ctx) };
-		Some(unsafe { box_handle::<OakEngineSequence>(handle) })
 	}
 
 	/// Builds the background full-res job for `monitor` at `frame` (the
-	/// program monitor's sequence via an addref'd copy, the source
-	/// monitor's selected footage node) at the sequence's native size.
-	/// Returns None when there is nothing to render (no sequence open, no
-	/// footage selected).
+	/// program monitor's sequence or the source monitor's selected footage
+	/// node) at the sequence's native size. Returns None when there is
+	/// nothing to render (no sequence open, no footage selected).
 	fn build_full_res_request(&self, monitor: Monitor, frame: i64) -> Option<FullResRequest> {
 		let info = self.sequence_info.as_ref()?;
-		let rate = info.format.rate;
-		let width = info.format.width.max(1) as c_int;
-		let height = info.format.height.max(1) as c_int;
 		let target = match monitor {
-			Monitor::Program => FullResTarget::Sequence(SendPtr(self.sequence_copy()?)),
-			Monitor::Source => {
-				// The project copy MUST be taken while the engine's own
-				// project is still alive (it keeps the node valid).
-				FullResTarget::Node(
-					SendPtr(self.selected_footage_node()?),
-					SendPtr(self.project_copy()?),
-				)
-			}
+			Monitor::Program => FullResTarget::Sequence(self.sequence?),
+			Monitor::Source => FullResTarget::Footage(self.selected_footage_node()?),
 		};
 		Some(FullResRequest {
 			monitor,
 			frame,
 			generation: self.full_res_generation,
+			project: self.project_ref()?.clone(),
 			target,
-			width,
-			height,
-			rate_num: rate.num as c_int,
-			rate_den: rate.den as c_int,
+			width: info.format.width.max(1) as i32,
+			height: info.format.height.max(1) as i32,
+			tb: self.time_base()?,
 		})
 	}
 
-	/// Runs one background full-resolution render (the worker thread of the
-	/// full-res path). The dedicated full-size renderer is created, used
-	/// and freed on this thread only, so it never aliases the UI thread's
-	/// proxy renderer; the target box is freed here too (the sequence copy
-	/// last, keeping the sequence alive for the renderer's borrowed view).
-	/// Reports the finished frame through `tx`.
+	/// Runs one background full-resolution render (the worker thread of
+	/// the full-res path) and reports the finished frame through `tx`. The
+	/// request owns a project `Arc`, so the render stays valid even when
+	/// the engine's project is dropped mid-flight (the drain discards the
+	/// stale completion).
 	fn full_res_worker(request: FullResRequest, tx: mpsc::Sender<FullResEvent>) {
 		let FullResRequest {
 			monitor,
 			frame,
 			generation,
+			project,
 			target,
 			width,
 			height,
-			rate_num,
-			rate_den,
+			tb,
 		} = request;
-		if !Self::ensure_render_manager() {
-			Self::release_full_res_target(target);
-			return;
-		}
-		let renderer = unsafe {
-			match target {
-				FullResTarget::Sequence(seq) => {
-					// The sequence copy stays alive until after the
-					// renderer is freed below (the renderer's view is
-					// borrowed), so the box must not be freed here.
-					oakengine_renderer_create(
-						seq.0,
-						width,
-						height,
-						PIXEL_FORMAT_F32,
-						rate_num,
-						rate_den,
-						std::ptr::null(),
-					)
-				}
-				FullResTarget::Node(node, _) => {
-					// The node stays alive until release_full_res_target
-					// (freed exactly once there); the renderer resolves its
-					// footage spec at creation and borrows nothing beyond.
-					oakengine_renderer_create_for_node(
-						node.0,
-						width,
-						height,
-						PIXEL_FORMAT_F32,
-						rate_num,
-						rate_den,
-						std::ptr::null(),
-					)
-				}
-			}
-		};
-		if renderer.is_null() {
-			// SAFETY: the sequence copy is still owned by us (a node was
-			// freed right after creation above).
-			Self::release_full_res_target(target);
-			return;
-		}
-		// SAFETY: `renderer` is the live box created above.
-		let frame_ptr = unsafe { oakengine_renderer_render_frame(renderer, frame) };
 		let mut event = None;
-		if !frame_ptr.is_null() {
-			if let Some((width, height, samples)) = Self::read_f32_frame(frame_ptr) {
-				let image = Arc::new(f32_rgba_to_bgra_image(width, height, &samples));
-				event = Some(FullResEvent {
-					monitor,
-					frame,
-					generation,
-					image,
-				});
+		if super::renderops::ensure_render_manager() {
+			let rendered = match target {
+				FullResTarget::Sequence(seq) => {
+					super::renderops::render_sequence_frame(&project, seq, frame, tb, width, height)
+				}
+				FullResTarget::Footage(node) => {
+					super::renderops::render_footage_frame(&project, node, frame, tb, width, height)
+				}
+			};
+			if let Ok(rendered) = rendered {
+				if let Some((width, height, samples)) = read_f32_frame(&rendered) {
+					event = Some(FullResEvent {
+						monitor,
+						frame,
+						generation,
+						image: Arc::new(f32_rgba_to_bgra_image(width, height, &samples)),
+					});
+				}
 			}
-			// SAFETY: `frame_ptr` is a live frame box from render_frame.
-			unsafe { oakengine_frame_free(frame_ptr) };
 		}
-		// SAFETY: `renderer` is a live renderer box.
-		unsafe { oakengine_renderer_free(renderer) };
-		// SAFETY: the sequence copy outlived the renderer (its borrowed
-		// view was dropped above).
-		Self::release_full_res_target(target);
 		if let Some(event) = event {
 			let _ = tx.send(event);
-		}
-	}
-
-	/// Frees the box a full-res job owns: the sequence copy with
-	/// [`free_box`], the footage node with `oakengine_node_free`.
-	///
-	/// # Safety
-	/// `target` must be a live box owned by the calling job.
-	fn release_full_res_target(target: FullResTarget) {
-		unsafe {
-			match target {
-				FullResTarget::Sequence(seq) => free_box(seq.0),
-				// The node goes first; the addref'd project copy outlives
-				// it (the node's graph must stay alive during the free).
-				FullResTarget::Node(node, project) => {
-					oakengine_node_free(node.0);
-					free_box(project.0);
-				}
-			}
 		}
 	}
 
 	/// Schedules a background full-resolution render for `monitor`'s current
 	/// playhead when the policy says so: the playhead is resting, the frame
 	/// is not already cached full-res, and no job is in flight for this
-	/// monitor (M12 P5a). The job runs on its own thread with a dedicated
-	/// renderer, so the UI thread never blocks.
+	/// monitor (M12 P5a). The job runs on its own thread, so the UI thread
+	/// never blocks.
 	fn schedule_full_res(&mut self, monitor: Monitor, cx: &mut Context<Self>) {
 		let frame = self.clock_frame(monitor, cx).0;
 		if frame < 0 {
@@ -1442,56 +959,68 @@ impl RealEngine {
 		}
 	}
 
-	/// Adopts a newly created/loaded facade project, freeing any previous
-	/// one, and rebuilds every snapshot. `blank` projects get a default
-	/// sequence; loaded ones use the first sequence.
-	fn adopt_project(&mut self, project: *mut OakEngineProject, cx: &mut Context<Self>) {
+	/// Adopts a newly created/loaded project, dropping any previous one,
+	/// and rebuilds every snapshot. The undo stack is cleared (a project
+	/// switch starts a fresh history, mirroring the facade's
+	/// project_new/load) and the project is bound to the write-through
+	/// library. Projects without a sequence get a blank default.
+	fn adopt_project(&mut self, project: ProjectRef, cx: &mut Context<Self>) {
 		self.drop_project();
-		self.project = Some(ProjectHandle(project));
+		oakundo::global::clear().ok();
 
 		// Cached display info.
-		let name = read_string(|buf, size| unsafe { oakengine_project_name(project, buf, size) });
-		let path = PathBuf::from(read_string(|buf, size| unsafe {
-			oakengine_project_filename(project, buf, size)
-		}));
+		let (name, path, first_sequence) = {
+			let guard = graphops::lock(&project);
+			(
+				guard.name(),
+				PathBuf::from(guard.filename().to_string()),
+				graphops::sequence_ids(&guard).first().copied(),
+			)
+		};
 		self.project_info = Project {
-			name: if name.is_empty() {
+			name: if name.is_empty() || name == "(untitled)" {
 				UNTITLED.into()
 			} else {
 				name
 			},
 			path,
 		};
+		self.project = Some(project.clone());
+		self.storage = Some(AuxHandle(graphops::storage_bind(&project)));
 
 		// The sequence: the project's first, or a blank default.
-		let count = unsafe { oakengine_project_sequence_count(project) };
-		let sequence = if count > 0 {
-			unsafe { oakengine_project_sequence_at(project, 0) }
-		} else {
-			let name_c = CString::new("Sequence 1").unwrap();
-			unsafe { oakengine_sequence_new(project, name_c.as_ptr()) }
-		};
-		if sequence.is_null() {
-			return;
-		}
-		self.sequence = Some(SequenceHandle(sequence));
+		let seq = first_sequence
+			.unwrap_or_else(|| graphops::create_sequence(&project, "Sequence 1"));
+		self.sequence = Some(seq);
+		self.markers = Some(AuxHandle(graphops::marker_list_create()));
+		self.workarea = Some(AuxHandle(graphops::workarea_create()));
 		self.refresh_sequence_info();
 		self.rebuild_timeline();
 
 		cx.notify();
 	}
 
-	/// Frees the project and every borrowed handle (renderer and sequence
-	/// first: the renderer borrows the sequence, and the sequence is
-	/// borrowed from the project).
+	/// Drops the project and every auxiliary handle. The undo stack is
+	/// cleared FIRST: its commands reference the marker/workarea
+	/// auxiliaries, so they must be gone before those handles release.
 	fn drop_project(&mut self) {
 		*self.renderer.lock().unwrap() = RendererSlot::Untried;
 		*self.source_renderer.lock().unwrap() = RendererSlot::Untried;
-		drop(self.sequence.take());
-		drop(self.project.take());
+		oakundo::global::clear().ok();
+		if let Some(mut markers) = self.markers.take() {
+			graphops::release_handle(&mut markers.0);
+		}
+		if let Some(mut workarea) = self.workarea.take() {
+			graphops::release_handle(&mut workarea.0);
+		}
+		if let Some(storage) = self.storage.take() {
+			graphops::storage_unbind(storage.0);
+		}
+		self.project = None;
+		self.sequence = None;
 		self.cpu_frame_cache.lock().unwrap().clear();
 		// The sequence an in-flight full-res job may still be rendering is
-		// gone (the job holds its own addref'd copy, so it stays valid, but
+		// gone (the job holds its own project `Arc`, so it stays valid, but
 		// its frame belongs to the dropped project): mark it stale.
 		self.full_res_generation = self.full_res_generation.wrapping_add(1);
 		self.tracks.clear();
@@ -1504,34 +1033,24 @@ impl RealEngine {
 	}
 
 	/// Refreshes the cached `Sequence` (name / format / length) from the
-	/// facade.
+	/// graph.
 	fn refresh_sequence_info(&mut self) {
-		let Some(seq) = self.seq_ptr() else {
+		let (Some(project), Some(seq)) = (self.project.clone(), self.sequence) else {
 			self.sequence_info = None;
 			return;
 		};
-		let name = read_string(|buf, size| unsafe { oakengine_sequence_name(seq, buf, size) });
-		let mut num: c_int = 0;
-		let mut den: c_int = 0;
-		let mut width: c_int = 0;
-		let mut height: c_int = 0;
-		let mut seconds: f64 = 0.0;
-		unsafe {
-			oakengine_sequence_get_frame_rate(seq, &mut num, &mut den);
-			oakengine_sequence_get_video_params(
-				seq,
-				&mut width,
-				&mut height,
-				std::ptr::null_mut(),
-				std::ptr::null_mut(),
-			);
-			oakengine_sequence_get_length(seq, &mut seconds);
-		}
-		let rate = if num > 0 && den > 0 {
-			FrameRate::new(num as u32, den as u32)
-		} else {
-			VideoFormat::hd_1080p25().rate
-		};
+		let guard = graphops::lock(&project);
+		let name = graphops::node_label(&guard.graph, seq);
+		let rate = graphops::sequence_video_params(&guard.graph, seq)
+			.map(|(_, _, r)| {
+				FrameRate::new(r.numerator().max(1) as u32, r.denominator().max(1) as u32)
+			})
+			.unwrap_or(VideoFormat::hd_1080p25().rate);
+		let (width, height) = graphops::sequence_video_params(&guard.graph, seq)
+			.map(|(w, h, _)| (w.max(1) as u32, h.max(1) as u32))
+			.unwrap_or((1920, 1080));
+		let seconds = graphops::sequence_length(&guard.graph, seq);
+		let seconds = seconds.numerator() as f64 / seconds.denominator().max(1) as f64;
 		let length = Frame((seconds * rate.num as f64 / rate.den as f64).round() as i64);
 		self.sequence_info = Some(Sequence {
 			name: if name.is_empty() {
@@ -1540,35 +1059,30 @@ impl RealEngine {
 				name
 			},
 			format: VideoFormat {
-				width: width.max(1) as u32,
-				height: height.max(1) as u32,
+				width,
+				height,
 				rate,
 			},
 			length,
 		});
 	}
 
-	/// Rebuilds the timeline snapshot from the facade sequence.
+	/// Rebuilds the timeline snapshot from the graph.
 	fn rebuild_timeline(&mut self) {
 		self.tracks.clear();
-		let Some(seq) = self.seq_ptr() else {
+		let (Some(project), Some(seq)) = (self.project_ref(), self.sequence) else {
 			return;
 		};
-		let mut video: c_int = 0;
-		let mut audio: c_int = 0;
-		let mut subtitle: c_int = 0;
-		unsafe {
-			oakengine_sequence_track_count(seq, &mut video, &mut audio, &mut subtitle);
-		}
+		let tb = self.time_base();
 		let mut out: Vec<RealTrack> = Vec::new();
-		// Per-type track lists, each displayed topmost-first.
-		for (kind, track_type, count) in [
-			(TrackKind::Video, TRACK_TYPE_VIDEO, video),
-			(TrackKind::Audio, TRACK_TYPE_AUDIO, audio),
-			(TrackKind::Subtitle, TRACK_TYPE_SUBTITLE, subtitle),
-		] {
-			for track_index in (0..count).rev() {
-				out.push(self.snapshot_track(kind, track_type, track_index as usize));
+		{
+			let guard = graphops::lock(project);
+			// Per-type track lists, each displayed topmost-first.
+			for kind in [TrackType::Video, TrackType::Audio, TrackType::Subtitle] {
+				let tracks = graphops::track_ids(&guard.graph, seq, kind);
+				for (track_index, &track_id) in tracks.iter().enumerate().rev() {
+					out.push(Self::snapshot_track(&guard.graph, track_id, kind, track_index, tb));
+				}
 			}
 		}
 		self.tracks = out;
@@ -1585,72 +1099,43 @@ impl RealEngine {
 		}
 	}
 
-	/// Snapshots one track (with its clips) from the facade.
-	fn snapshot_track(&self, kind: TrackKind, track_type: c_int, track_index: usize) -> RealTrack {
-		let Some(seq) = self.seq_ptr() else {
-			return RealTrack {
-				kind,
-				name: SharedString::new_static(""),
-				height: px(64.0),
-				locked: false,
-				muted: false,
-				solo: false,
-				visible: true,
-				clips: Vec::new(),
-				track_type,
-				track_index,
-			};
-		};
+	/// Snapshots one track (with its clips) from the graph.
+	fn snapshot_track(
+		graph: &oaknode::graph::Graph,
+		track: NodeId,
+		kind: TrackType,
+		track_index: usize,
+		tb: Option<(i64, i64)>,
+	) -> RealTrack {
 		let name = match kind {
-			TrackKind::Video => format!("V{}", track_index + 1),
-			TrackKind::Audio => format!("A{}", track_index + 1),
-			TrackKind::Subtitle => format!("S{}", track_index + 1),
+			TrackType::Video => format!("V{}", track_index + 1),
+			TrackType::Audio => format!("A{}", track_index + 1),
+			TrackType::Subtitle => format!("S{}", track_index + 1),
 		};
 		// Height in internal units → pixels.
-		let mut internal: f64 = 0.0;
-		let height = unsafe {
-			if oakengine_track_get_height(seq, track_type, track_index as c_int, &mut internal) == 0
-			{
-				px(oakengine_track_height_internal_to_pixels(internal).max(24) as f32)
-			} else {
-				px(64.0)
-			}
-		};
-
-		let clip_count =
-			unsafe { oakengine_sequence_clip_count(seq, track_type, track_index as c_int) };
-		let mut clips = Vec::with_capacity(clip_count.max(0) as usize);
-		for clip_index in 0..clip_count.max(0) {
-			let clip = unsafe {
-				oakengine_sequence_clip_at(seq, track_type, track_index as c_int, clip_index)
-			};
-			if clip.is_null() {
-				continue;
-			}
-			let mut in_ts: i64 = 0;
-			let mut out_ts: i64 = 0;
-			let mut media_in: i64 = 0;
-			unsafe {
-				oakengine_clip_get_range(clip, &mut in_ts, &mut out_ts, &mut media_in);
-				free_box(clip);
-			}
-			clips.push(RealClip {
-				id: ClipId(
-					(track_type as u64) * 1_000_000
-						+ (track_index as u64 + 1) * 1000
-						+ clip_index as u64,
-				),
-				range: FrameRange::new(Frame(in_ts), Frame(out_ts)),
-				media_in: Frame(media_in),
-				label: format!("Clip {}", clip_index + 1).into(),
-				color: clip_color(clip_index as u64),
-				track_type: kind,
-				track_index,
-				clip_index: clip_index as usize,
-			});
-		}
+		let height = graphops::track_behavior(graph, track)
+			.map(|t| {
+				px(oaknode::track::internal_height_to_pixel_height(t.height).max(24) as f32)
+			})
+			.unwrap_or(px(64.0));
+		let clips = graphops::clip_ids(graph, track)
+			.iter()
+			.enumerate()
+			.filter_map(|(clip_index, &block)| {
+				let (in_r, out_r, media_r) = graphops::clip_range(graph, block)?;
+				let to_ts = |r: oakcore_rs::Rational| tb.map(|tb| graphops::rational_to_ts(r, tb)).unwrap_or(0);
+				Some(RealClip {
+					id: ClipId(block.identity()),
+					range: FrameRange::new(Frame(to_ts(in_r)), Frame(to_ts(out_r))),
+					media_in: Frame(to_ts(media_r)),
+					label: format!("Clip {}", clip_index + 1).into(),
+					color: clip_color(clip_index as u64),
+					block,
+				})
+			})
+			.collect();
 		RealTrack {
-			kind,
+			kind: track_kind_of(kind),
 			name: name.into(),
 			height,
 			locked: false,
@@ -1658,12 +1143,11 @@ impl RealEngine {
 			solo: false,
 			visible: true,
 			clips,
-			track_type,
+			track,
 			track_index,
 		}
 	}
 
-	/// Rebuilds the material-bin snapshot from the facade project's footage.
 	/// The waveform cache (created lazily at the current frame rate).
 	fn waveform_cache(&self) -> Option<Arc<crate::oakui::waveform::WaveformCache>> {
 		let mut slot = self.waveforms.lock().unwrap_or_else(|e| e.into_inner());
@@ -1684,111 +1168,39 @@ impl RealEngine {
 		cache: Arc<crate::oakui::waveform::WaveformCache>,
 		clip: &RealClip,
 	) {
-		let Some(seq) = self.seq_ptr() else {
+		let Some(project) = self.project_ref() else {
 			return;
 		};
-		let clip_ptr = unsafe {
-			oakengine_sequence_clip_at(
-				seq,
-				TRACK_TYPE_AUDIO,
-				clip.track_index as c_int,
-				clip.clip_index as c_int,
-			)
+		let filename = {
+			let guard = graphops::lock(project);
+			graphops::clip_media_filename(&guard.graph, clip.block)
 		};
-		if clip_ptr.is_null() {
+		let Some(filename) = filename else {
 			return;
-		}
-		let filename = read_string(|buf, size| unsafe {
-			oakengine_clip_get_media_filename(clip_ptr, buf, size)
-		});
-		unsafe { free_box(clip_ptr) };
-		if filename.is_empty() {
-			return;
-		}
+		};
 		let duration_frames = (clip.range.end.0 - clip.range.start.0).max(1);
 		cache.refresh(clip.id.0, &filename, duration_frames);
 	}
 
-	/// Looks up the snapshot clip coordinates by `ClipId`.
-	fn clip_coords(&self, id: ClipId) -> Option<(TrackKind, usize, usize)> {
-		for track in &self.tracks {
-			if let Some(clip) = track.clips.iter().find(|c| c.id() == id) {
-				return Some((clip.track_type, clip.track_index, clip.clip_index));
-			}
-		}
-		None
+	/// Looks up the snapshot clip's block node by `ClipId` (the id IS the
+	/// block's stable identity).
+	fn clip_block(&self, id: ClipId) -> Option<NodeId> {
+		let block = graphops::id_of(id.0)?;
+		let project = self.project_ref()?;
+		let guard = graphops::lock(project);
+		graphops::clip_behavior(&guard.graph, block)?;
+		// The clip must be on the CURRENT timeline (a stale id of a
+		// removed clip must not resolve).
+		self.tracks
+			.iter()
+			.any(|t| t.clips.iter().any(|c| c.id == id))
+			.then_some(block)
 	}
 
-	/// The selected clip's facade node view (a boxed node handle the
-	/// caller frees with `oakengine_node_free`), or `None` when no single
-	/// clip is selected or the clip box resolves to no node.
-	fn selected_clip_node(&self) -> Option<*mut OakEngineNode> {
-		let clip_id = self.selected_clip?;
-		let (kind, track_index, clip_index) = self.clip_coords(clip_id)?;
-		let seq = self.seq_ptr()?;
-		let clip = unsafe {
-			oakengine_sequence_clip_at(
-				seq,
-				Self::track_type_of(kind),
-				track_index as c_int,
-				clip_index as c_int,
-			)
-		};
-		if clip.is_null() {
-			return None;
-		}
-		let node = unsafe { oakengine_clip_as_node(clip) };
-		// SAFETY: the clip box is a plain facade box (see `free_box`); the
-		// node box is independent (the facade boxed its own handle copy).
-		unsafe { free_box(clip) };
-		// SAFETY: `node` is a fresh box the caller frees, or NULL.
-		if node.is_null() {
-			None
-		} else {
-			Some(node)
-		}
-	}
-
-	/// Whether `node` can host effects (its effect-input id is non-empty;
-	/// the facade reports `E_NOT_FOUND` for nodes without one).
-	///
-	/// # Safety
-	/// `node` must be a live node box (NULL reports false).
-	unsafe fn node_hosts_effects(node: *mut OakEngineNode) -> bool {
-		let mut buf = [0 as c_char; 64];
-		let mut element: c_int = 0;
-		unsafe {
-			oakengine_node_get_effect_input(
-				node,
-				buf.as_mut_ptr(),
-				buf.len() as c_int,
-				&mut element,
-			) >= 0
-		}
-	}
-
-	/// The effect in `host`'s chain whose identity is `identity` (a boxed
-	/// node handle the caller frees), or `None` when not a member.
-	///
-	/// # Safety
-	/// `host` must be a live node box.
-	unsafe fn chain_effect_by_identity(
-		host: *mut OakEngineNode,
-		identity: u64,
-	) -> Option<*mut OakEngineNode> {
-		let count = unsafe { oakengine_node_effect_count(host) };
-		for i in 0..count.max(0) {
-			let effect = unsafe { oakengine_node_effect_at(host, i) };
-			if effect.is_null() {
-				continue;
-			}
-			if unsafe { oakengine_node_identity(effect) } == identity {
-				return Some(effect);
-			}
-			// SAFETY: `effect` is a box from `oakengine_node_effect_at`.
-			unsafe { oakengine_node_free(effect) };
-		}
-		None
+	/// The selected clip's block node, or `None` when no single clip is
+	/// selected.
+	fn selected_clip_node(&self) -> Option<NodeId> {
+		self.clip_block(self.selected_clip?)
 	}
 
 	/// The display label of the selected clip (its timeline snapshot
@@ -1808,68 +1220,37 @@ impl RealEngine {
 	/// cannot host effects yields an empty list (its `target_label` is
 	/// `None`, so the stack shows the empty state).
 	fn selected_effect_cards(&self) -> Vec<Arc<dyn EffectData>> {
-		let Some(node) = self.selected_clip_node() else {
+		let Some(project) = self.project_ref() else {
 			return Vec::new();
 		};
+		let Some(host) = self.selected_clip_node() else {
+			return Vec::new();
+		};
+		let guard = graphops::lock(project);
 		let mut out: Vec<Arc<dyn EffectData>> = Vec::new();
-		// SAFETY: `node` is a live box; freed on every return path.
-		unsafe {
-			if !Self::node_hosts_effects(node) {
-				oakengine_node_free(node);
-				return out;
-			}
-			let count = oakengine_node_effect_count(node);
-			for i in 0..count.max(0) {
-				let effect = oakengine_node_effect_at(node, i);
-				if effect.is_null() {
-					continue;
-				}
-				let identity = oakengine_node_identity(effect);
-				let type_id = read_string(|buf, size| {
-					// SAFETY: `effect` is a live box; buf/size follow the
-					// facade two-stage convention (the enclosing `unsafe`
-					// block covers this closure body).
-					oakengine_node_get_type_id(effect, buf, size)
-				});
-				let title = CString::new(type_id.clone())
-					.ok()
-					.map(|c| {
-						read_string(|buf, size| {
-							// SAFETY: as above; `c` outlives the call.
-							oakengine_node_factory_name_from_id(c.as_ptr(), buf, size)
-						})
-					})
-					.filter(|n| !n.is_empty())
-					.unwrap_or(type_id);
-				let enabled = oakengine_node_is_enabled(effect) != 0;
-				let expanded = self.expanded_effects.contains(&identity);
-				out.push(Arc::new(RealEffect {
-					id: EffectId(identity),
-					title: title.into(),
-					enabled,
-					expanded,
-				}) as Arc<dyn EffectData>);
-				// SAFETY: `effect` is a box from `oakengine_node_effect_at`.
-				oakengine_node_free(effect);
-			}
-			oakengine_node_free(node);
+		for node in super::effectchain::chain(&guard.graph, host) {
+			let identity = node.identity();
+			let type_id = graphops::node_type_id(&guard.graph, node);
+			let title = oaknode::factory::Factory::global()
+				.find(&type_id)
+				.map(|m| m.name.to_string())
+				.filter(|n| !n.is_empty())
+				.unwrap_or(type_id);
+			out.push(Arc::new(RealEffect {
+				id: EffectId(identity),
+				title: title.into(),
+				enabled: super::effectchain::is_enabled(&guard.graph, node),
+				expanded: self.expanded_effects.contains(&identity),
+			}) as Arc<dyn EffectData>);
 		}
 		out
 	}
 
-	/// The facade track-type constant for a [`TrackKind`].
-	fn track_type_of(kind: TrackKind) -> c_int {
-		match kind {
-			TrackKind::Video => TRACK_TYPE_VIDEO,
-			TrackKind::Audio => TRACK_TYPE_AUDIO,
-			TrackKind::Subtitle => TRACK_TYPE_SUBTITLE,
-		}
-	}
-
-	/// Applies an edit command, then refreshes the snapshots and repaints.
-	fn apply_edit(&mut self, rc: c_int, what: &str, cx: &mut Context<Self>) {
-		if rc != 0 {
-			println!("[real engine] {what} failed (facade error {rc})");
+	/// Applies an edit command's result, then refreshes the snapshots and
+	/// repaints.
+	fn apply_edit(&mut self, result: Result<(), String>, what: &str, cx: &mut Context<Self>) {
+		if let Err(error) = result {
+			println!("[real engine] {what} failed: {error}");
 		}
 		self.refresh_sequence_info();
 		self.rebuild_timeline();
@@ -1878,16 +1259,6 @@ impl RealEngine {
 		self.cpu_frame_cache.lock().unwrap().clear();
 		self.full_res_generation = self.full_res_generation.wrapping_add(1);
 		cx.notify();
-	}
-
-	/// Formats a facade error (two-stage task error buffer) into a message.
-	fn task_error(task: *mut OakEngineTask) -> String {
-		let text = read_string(|buf, size| unsafe { oakengine_task_error(task, buf, size) });
-		if text.is_empty() {
-			"the task failed".to_string()
-		} else {
-			text
-		}
 	}
 }
 
@@ -2024,45 +1395,20 @@ impl TimelineDataSource for RealEngine {
 	}
 
 	fn markers(&self) -> Vec<Marker> {
-		let Some(seq) = self.seq_ptr() else {
+		let Some(markers) = &self.markers else {
 			return Vec::new();
 		};
-		let count = unsafe { oakengine_sequence_marker_count(seq) };
-		if count <= 0 {
+		let Some(tb) = self.time_base() else {
 			return Vec::new();
-		}
-		let mut out = Vec::with_capacity(count as usize);
-		for index in 0..count {
-			let mut time: i64 = 0;
-			let mut name_buf = [0 as c_char; 128];
-			let mut color: c_int = 0;
-			let rc = unsafe {
-				oakengine_sequence_marker_at(
-					seq,
-					index,
-					&mut time,
-					name_buf.as_mut_ptr(),
-					name_buf.len() as c_int,
-					&mut color,
-				)
-			};
-			if rc != 0 {
-				continue;
-			}
-			let len = name_buf.iter().position(|&c| c == 0).unwrap_or(name_buf.len());
-			let name: SharedString =
-				String::from_utf8_lossy(unsafe {
-					std::slice::from_raw_parts(name_buf.as_ptr() as *const u8, len)
-				})
-				.into_owned()
-				.into();
-			out.push(Marker {
-				frame: Frame(time),
-				label: name,
+		};
+		graphops::markers_of(&markers.0)
+			.into_iter()
+			.map(|(time, name, color)| Marker {
+				frame: Frame(graphops::rational_to_ts(time, tb)),
+				label: name.into(),
 				color: Some(marker_color(color)),
-			});
-		}
-		out
+			})
+			.collect()
 	}
 }
 
@@ -2073,12 +1419,13 @@ impl EffectStackDataSource for RealEngine {
 
 	fn target_label(&self) -> Option<SharedString> {
 		let label = self.selected_clip_label()?;
-		let node = self.selected_clip_node()?;
-		// SAFETY: `node` is a live box; freed below. A clip that cannot
-		// host effects keeps the empty state (no label, no cards).
-		let hosts = unsafe { Self::node_hosts_effects(node) };
-		unsafe { oakengine_node_free(node) };
-		hosts.then_some(label)
+		let project = self.project_ref()?;
+		let host = self.selected_clip_node()?;
+		let guard = graphops::lock(project);
+		// A clip that cannot host effects keeps the empty state (no label,
+		// no cards).
+		super::effectchain::effect_input_of(&guard.graph, host)?;
+		Some(label)
 	}
 }
 
@@ -2087,59 +1434,54 @@ impl NodeGraphDataSource for RealEngine {
 	type Edge = RealEdge;
 
 	fn nodes(&self) -> Vec<Self::Node> {
-		// SAFETY: the sequence box is live while the engine holds it.
-		unsafe {
-			crate::oakui::nodegraph::build_graph(self.seq_ptr().unwrap_or(std::ptr::null_mut())).0
-		}
+		let (Some(project), Some(seq)) = (self.project_ref(), self.sequence) else {
+			return Vec::new();
+		};
+		crate::oakui::nodegraph::build_graph(project, seq).0
 	}
 
 	fn edges(&self) -> Vec<Self::Edge> {
-		// SAFETY: the sequence box is live while the engine holds it.
-		unsafe {
-			crate::oakui::nodegraph::build_graph(self.seq_ptr().unwrap_or(std::ptr::null_mut())).1
-		}
+		let (Some(project), Some(seq)) = (self.project_ref(), self.sequence) else {
+			return Vec::new();
+		};
+		crate::oakui::nodegraph::build_graph(project, seq).1
 	}
 
-	fn can_connect(&self, from: PortId, to: PortId) -> bool {
-		// SAFETY: the sequence box is live while the engine holds it.
-		unsafe {
-			crate::oakui::nodegraph::can_connect(
-				self.seq_ptr().unwrap_or(std::ptr::null_mut()),
-				from,
-				to,
-			)
-		}
+	fn can_connect(&self, from: gpui::node_graph::PortId, to: gpui::node_graph::PortId) -> bool {
+		let Some(project) = self.project_ref() else {
+			return false;
+		};
+		crate::oakui::nodegraph::can_connect(project, from, to)
 	}
 }
 
 impl ProjectDataSource for RealEngine {
 	fn roots(&self) -> Vec<ProjectEntry> {
-		// SAFETY: the project box is live while the engine holds it.
-		unsafe {
-			crate::oakui::projectbrowser::roots(self.project_ptr().unwrap_or(std::ptr::null_mut()))
-		}
+		let Some(project) = self.project_ref() else {
+			return Vec::new();
+		};
+		crate::oakui::projectbrowser::roots(project)
 	}
 
 	fn children(&self, parent_id: u64) -> Vec<ProjectEntry> {
-		// SAFETY: the project box is live while the engine holds it.
-		unsafe {
-			crate::oakui::projectbrowser::children(
-				self.project_ptr().unwrap_or(std::ptr::null_mut()),
-				parent_id,
-			)
-		}
+		let Some(project) = self.project_ref() else {
+			return Vec::new();
+		};
+		crate::oakui::projectbrowser::children(project, parent_id)
 	}
 }
 
 impl AudioMeterDataSource for RealEngine {
 	fn levels(&self) -> Vec<f32> {
 		// Per-channel linear peaks of the engine's buffered audio output
-		// (facade `oakengine_audio_output_levels`, clamped to the meter's
-		// 0..1 range). Silent when nothing has been pushed to the output
-		// (no playback audio path yet) or on any facade error.
+		// (oakaudio's manager, clamped to the meter's 0..1 range). Silent
+		// when nothing has been pushed to the output (no playback audio
+		// path yet) or without an AudioManager instance.
+		let Some(manager) = oakaudio::manager::instance() else {
+			return vec![0.0, 0.0];
+		};
 		let mut peaks = [0.0f32; 8];
-		// SAFETY: `peaks` is a live 8-entry buffer; capacity matches.
-		let n = unsafe { oakengine_audio_output_levels(peaks.as_mut_ptr(), peaks.len() as c_int) };
+		let n = manager.output_levels(&mut peaks).unwrap_or(0);
 		if n <= 0 {
 			return vec![0.0, 0.0];
 		}
@@ -2180,7 +1522,7 @@ impl AppEngine for RealEngine {
 		if let Some(image) = cache.entry(monitor).or_default().image_for(frame.0) {
 			return image.clone();
 		}
-		// Both monitors render through the facade CPU renderer (falling
+		// Both monitors render through the oakrender ticket arena (falling
 		// back to the synthetic pattern when rendering is unavailable): the
 		// program monitor renders the current sequence, the source monitor
 		// renders the currently selected footage node at the source clock's
@@ -2222,46 +1564,36 @@ impl AppEngine for RealEngine {
 	}
 
 	fn add_track(&mut self, kind: TrackKind, cx: &mut Context<Self>) {
-		let Some(seq) = self.seq_ptr() else {
+		let (Some(project), Some(seq)) = (self.project.clone(), self.sequence) else {
 			return;
 		};
-		let rc = unsafe { oakengine_sequence_add_track(seq, Self::track_type_of(kind)) };
-		self.apply_edit(rc, "add track", cx);
+		let result = graphops::add_track(&project, seq, track_type_of(kind)).map(|_| ());
+		self.apply_edit(result, "add track", cx);
 	}
 
 	fn remove_track(&mut self, index: usize, cx: &mut Context<Self>) {
 		let Some(track) = self.tracks.get(index) else {
 			return;
 		};
-		let (track_type, track_index) = (track.track_type, track.track_index);
-		let Some(seq) = self.seq_ptr() else {
+		let track_id = track.track;
+		let Some(project) = self.project.clone() else {
 			return;
 		};
-		let rc = unsafe { oakengine_sequence_remove_track(seq, track_type, track_index as c_int) };
-		self.apply_edit(rc, "remove track", cx);
+		self.apply_edit(graphops::remove_track(&project, track_id), "remove track", cx);
 	}
 
 	fn set_track_height(&mut self, height: Pixels, cx: &mut Context<Self>) {
-		let Some(seq) = self.seq_ptr() else {
+		let (Some(project), Some(seq)) = (self.project.clone(), self.sequence) else {
 			return;
 		};
-		let internal =
-			unsafe { oakengine_track_height_pixels_to_internal(f32::from(height) as c_int) };
-		let mut video: c_int = 0;
-		let mut audio: c_int = 0;
-		let mut subtitle: c_int = 0;
-		unsafe {
-			oakengine_sequence_track_count(seq, &mut video, &mut audio, &mut subtitle);
-		}
-		for (track_type, count) in [
-			(TRACK_TYPE_VIDEO, video),
-			(TRACK_TYPE_AUDIO, audio),
-			(TRACK_TYPE_SUBTITLE, subtitle),
-		] {
-			for index in 0..count {
-				unsafe { oakengine_track_set_height(seq, track_type, index, internal) };
+		let internal = oaknode::track::pixel_height_to_internal_height(f32::from(height) as i32);
+		let guard = graphops::lock(&project);
+		for kind in [TrackType::Video, TrackType::Audio, TrackType::Subtitle] {
+			for track in graphops::track_ids(&guard.graph, seq, kind) {
+				graphops::set_track_height(&project, track, internal);
 			}
 		}
+		drop(guard);
 		self.rebuild_timeline();
 		cx.notify();
 	}
@@ -2271,9 +1603,9 @@ impl AppEngine for RealEngine {
 		self.selected_item = Some(id);
 		if changed {
 			// The source monitor renders the selected footage node: a new
-			// selection must rebind the renderer and drop the stale cached
-			// frame (the cache key only tracks the playhead frame), and any
-			// in-flight full-res job for the old selection is stale.
+			// selection must drop the stale cached frame (the cache key only
+			// tracks the playhead frame), and any in-flight full-res job for
+			// the old selection is stale.
 			*self.source_renderer.lock().unwrap() = RendererSlot::Untried;
 			self.cpu_frame_cache.lock().unwrap().remove(&Monitor::Source);
 			self.full_res_generation = self.full_res_generation.wrapping_add(1);
@@ -2290,41 +1622,7 @@ impl AppEngine for RealEngine {
 	}
 
 	fn addable_effects(&self) -> Vec<(String, String)> {
-		// The factory entries flagged `video_effect` and not hidden from
-		// the create menu (per the facade contract). A scratch node per
-		// entry just to read its flags (freed immediately).
-		let mut out = Vec::new();
-		let count = unsafe { oakengine_node_factory_id_count() };
-		let video_flag = unsafe { oakengine_node_flag_video_effect() };
-		let hidden_flag = unsafe { oakengine_node_flag_dont_show_in_create_menu() };
-		for i in 0..count.max(0) {
-			let type_id =
-				read_string(|buf, size| unsafe { oakengine_node_factory_id_at(i, buf, size) });
-			let Some(c_id) = CString::new(type_id.clone()).ok() else {
-				continue;
-			};
-			let node = unsafe { oakengine_node_factory_create_from_id(c_id.as_ptr()) };
-			if node.is_null() {
-				continue;
-			}
-			let flags = unsafe { oakengine_node_get_flags(node) };
-			// SAFETY: `node` is an owned box from the factory.
-			unsafe { oakengine_node_free(node) };
-			if flags & video_flag != 0 && flags & hidden_flag == 0 {
-				let name = read_string(|buf, size| {
-					// SAFETY: `c_id` outlives the call; buf/size follow the
-					// facade two-stage convention.
-					unsafe { oakengine_node_factory_name_from_id(c_id.as_ptr(), buf, size) }
-				});
-				let name = if name.is_empty() {
-					type_id.clone()
-				} else {
-					name
-				};
-				out.push((type_id, name));
-			}
-		}
-		out
+		super::effectchain::addable_effects()
 	}
 
 	fn add_effect(
@@ -2333,40 +1631,32 @@ impl AppEngine for RealEngine {
 		type_id: &str,
 		cx: &mut Context<Self>,
 	) -> Result<(), String> {
+		let Some(project) = self.project.clone() else {
+			return Err("no project open".into());
+		};
 		let Some(host) = self.selected_clip_node() else {
 			return Err("no selected clip".into());
 		};
-		let c_id = CString::new(type_id).map_err(|_| "invalid effect type id".to_string())?;
-		// SAFETY: `host` is a live box; freed below.
-		let rc = unsafe { oakengine_node_effect_insert(host, index as c_int, c_id.as_ptr()) };
-		unsafe { oakengine_node_free(host) };
-		if rc != 0 {
-			return Err(format!("facade error {rc}"));
-		}
-		self.apply_edit(rc, "add effect", cx);
-		Ok(())
+		let result = super::effectchain::insert(&project, host, index, type_id).map(|_| ());
+		self.apply_edit(result.clone(), "add effect", cx);
+		result
 	}
 
 	fn apply_effect_event(&mut self, event: &EffectStackEvent, cx: &mut Context<Self>) {
 		match event {
 			EffectStackEvent::EnableToggled { effect, enabled } => {
-				let Some(host) = self.selected_clip_node() else {
+				let (Some(project), Some(_host)) =
+					(self.project.clone(), self.selected_clip_node())
+				else {
 					cx.notify();
 					return;
 				};
-				// SAFETY: both boxes are live and freed below.
-				let rc = unsafe {
-					let Some(eff) = Self::chain_effect_by_identity(host, effect.0) else {
-						oakengine_node_free(host);
-						cx.notify();
-						return;
-					};
-					let rc = oakengine_node_effect_set_enabled(eff, *enabled as c_int);
-					oakengine_node_free(eff);
-					oakengine_node_free(host);
-					rc
+				let Some(node) = graphops::id_of(effect.0) else {
+					cx.notify();
+					return;
 				};
-				self.apply_edit(rc, "toggle effect", cx);
+				let result = super::effectchain::set_enabled(&project, node, *enabled);
+				self.apply_edit(result, "toggle effect", cx);
 			}
 			EffectStackEvent::ExpansionToggled { effect, expanded } => {
 				// View state only (not undoable); kept here so the card
@@ -2379,42 +1669,30 @@ impl AppEngine for RealEngine {
 				cx.notify();
 			}
 			EffectStackEvent::RemoveRequested(id) => {
-				let Some(host) = self.selected_clip_node() else {
+				let (Some(project), Some(host)) = (self.project.clone(), self.selected_clip_node())
+				else {
 					cx.notify();
 					return;
 				};
-				// SAFETY: both boxes are live and freed below.
-				let rc = unsafe {
-					let Some(eff) = Self::chain_effect_by_identity(host, id.0) else {
-						oakengine_node_free(host);
-						cx.notify();
-						return;
-					};
-					let rc = oakengine_node_effect_remove(host, eff);
-					oakengine_node_free(eff);
-					oakengine_node_free(host);
-					rc
+				let Some(node) = graphops::id_of(id.0) else {
+					cx.notify();
+					return;
 				};
-				self.apply_edit(rc, "remove effect", cx);
+				let result = super::effectchain::remove(&project, host, node);
+				self.apply_edit(result, "remove effect", cx);
 			}
 			EffectStackEvent::ReorderRequested { effect, new_index } => {
-				let Some(host) = self.selected_clip_node() else {
+				let (Some(project), Some(host)) = (self.project.clone(), self.selected_clip_node())
+				else {
 					cx.notify();
 					return;
 				};
-				// SAFETY: both boxes are live and freed below.
-				let rc = unsafe {
-					let Some(eff) = Self::chain_effect_by_identity(host, effect.0) else {
-						oakengine_node_free(host);
-						cx.notify();
-						return;
-					};
-					let rc = oakengine_node_effect_move(host, eff, *new_index as c_int);
-					oakengine_node_free(eff);
-					oakengine_node_free(host);
-					rc
+				let Some(node) = graphops::id_of(effect.0) else {
+					cx.notify();
+					return;
 				};
-				self.apply_edit(rc, "reorder effect", cx);
+				let result = super::effectchain::move_effect(&project, host, node, *new_index);
+				self.apply_edit(result, "reorder effect", cx);
 			}
 			EffectStackEvent::AddRequested { index } => {
 				// The effect choice is a panel-owned menu (see
@@ -2445,15 +1723,11 @@ impl AppEngine for RealEngine {
 			| NodeGraphEvent::BackgroundClicked { .. }
 			| NodeGraphEvent::SelectionChanged { .. } => {}
 			_ => {
-				// SAFETY: the sequence box is live while the engine holds it.
-				let result = unsafe {
-					crate::oakui::nodegraph::apply_edit(
-						self.seq_ptr().unwrap_or(std::ptr::null_mut()),
-						event,
-					)
-				};
-				if let Err(e) = result {
-					println!("[real engine] node-graph request rejected: {e}");
+				if let (Some(project), Some(seq)) = (self.project.clone(), self.sequence) {
+					let result = crate::oakui::nodegraph::apply_edit(&project, seq, event);
+					if let Err(e) = result {
+						println!("[real engine] node-graph request rejected: {e}");
+					}
 				}
 			}
 		}
@@ -2473,92 +1747,68 @@ impl AppEngine for RealEngine {
 				edge,
 				new_frame,
 			} => {
-				let Some((track_type, track_index, clip_index)) = self.clip_coords(*clip) else {
+				let Some(block) = self.clip_block(*clip) else {
+					return;
+				};
+				let Some(project) = self.project.clone() else {
 					return;
 				};
 				// Re-read the clip's current range, then compute the new
-				// in/out pair for `oakengine_clip_trim`.
-				let Some(seq) = self.seq_ptr() else {
+				// in/out pair for the trim.
+				let Some(tb) = self.time_base() else {
 					return;
 				};
-				let clip_ptr = unsafe {
-					oakengine_sequence_clip_at(
-						seq,
-						Self::track_type_of(track_type),
-						track_index as c_int,
-						clip_index as c_int,
+				let (in_ts, out_ts) = {
+					let guard = graphops::lock(&project);
+					let Some((in_r, out_r, _)) = graphops::clip_range(&guard.graph, block) else {
+						return;
+					};
+					(
+						graphops::rational_to_ts(in_r, tb),
+						graphops::rational_to_ts(out_r, tb),
 					)
 				};
-				if clip_ptr.is_null() {
-					return;
-				}
-				let mut in_ts: i64 = 0;
-				let mut out_ts: i64 = 0;
-				let mut media_in: i64 = 0;
-				unsafe {
-					oakengine_clip_get_range(clip_ptr, &mut in_ts, &mut out_ts, &mut media_in);
-				}
 				let (new_in, new_out) = match edge {
 					TrimEdge::Start => (new_frame.0, out_ts),
 					TrimEdge::End => (in_ts, new_frame.0),
 				};
-				let rc = unsafe { oakengine_clip_trim(clip_ptr, new_in, new_out) };
-				unsafe { free_box(clip_ptr) };
-				self.apply_edit(rc, "trim clip", cx);
+				let result = graphops::trim_clip(&project, block, new_in, new_out);
+				self.apply_edit(result, "trim clip", cx);
 			}
 			TimelineEvent::ClipMoveRequested {
 				clip,
 				new_track,
 				new_start,
 			} => {
-				// M12 P4: cross-track moves go through the dedicated
-				// facade export (one undoable entry); same-track moves
-				// use the classic export.
-				let Some((track_type, track_index, clip_index)) = self.clip_coords(*clip) else {
+				// Cross-track moves go through the gap + re-home + place
+				// composition (one undoable entry); same-track moves use
+				// the plain move command.
+				let Some(block) = self.clip_block(*clip) else {
 					return;
 				};
-				let Some(seq) = self.seq_ptr() else {
+				let Some(project) = self.project.clone() else {
 					return;
 				};
-				let rc = if *new_track as c_int != track_index as c_int {
-					unsafe {
-						oakengine_sequence_move_clip_to_track(
-							seq,
-							Self::track_type_of(track_type),
-							track_index as c_int,
-							clip_index as c_int,
-							*new_track as c_int,
-							new_start.0,
-						)
+				let current_track = self
+					.tracks
+					.iter()
+					.position(|t| t.clips.iter().any(|c| c.block == block));
+				let result = match (current_track, self.tracks.get(*new_track)) {
+					(Some(current), _) if current == *new_track => {
+						graphops::move_clip(&project, block, new_start.0)
 					}
-				} else {
-					unsafe {
-						oakengine_sequence_move_clip(
-							seq,
-							Self::track_type_of(track_type),
-							track_index as c_int,
-							clip_index as c_int,
-							new_start.0,
-						)
+					(_, Some(dest)) => {
+						graphops::move_clip_to_track(&project, block, dest.track, new_start.0)
 					}
+					_ => Err("move clip: destination track out of range".to_string()),
 				};
-				self.apply_edit(rc, "move clip", cx);
+				self.apply_edit(result, "move clip", cx);
 			}
 			TimelineEvent::TrackHeightChanged { track, height } => {
-				if let Some(t) = self.tracks.get(*track) {
-					let internal = unsafe {
-						oakengine_track_height_pixels_to_internal(f32::from(height) as c_int)
-					};
-					if let Some(seq) = self.seq_ptr() {
-						unsafe {
-							oakengine_track_set_height(
-								seq,
-								t.track_type,
-								t.track_index as c_int,
-								internal,
-							)
-						};
-					}
+				if let (Some(t), Some(project)) = (self.tracks.get(*track), self.project.clone()) {
+					let internal =
+						oaknode::track::pixel_height_to_internal_height(f32::from(*height) as i32);
+					graphops::set_track_height(&project, t.track, internal);
 					self.rebuild_timeline();
 				}
 				cx.notify();
@@ -2568,116 +1818,105 @@ impl AppEngine for RealEngine {
 			| TimelineEvent::TrackSelected { .. }
 			| TimelineEvent::TransitionChanged { .. }
 			| TimelineEvent::ZoomChanged(_) => {}
-				TimelineEvent::WorkAreaPreview { start, end } => {
-					self.set_workarea_preview(*start, *end, cx);
-				}
-				TimelineEvent::WorkAreaCommitted {
-					start,
-					end,
-					old_start,
-					old_end,
-				} => {
-					self.commit_workarea(*old_start, *old_end, *start, *end, cx);
-				}
+			TimelineEvent::WorkAreaPreview { start, end } => {
+				self.set_workarea_preview(*start, *end, cx);
+			}
+			TimelineEvent::WorkAreaCommitted {
+				start,
+				end,
+				old_start,
+				old_end,
+			} => {
+				self.commit_workarea(*old_start, *old_end, *start, *end, cx);
+			}
 		}
 	}
 
 	fn split_clip(&mut self, clip: ClipId, time: Frame, cx: &mut Context<Self>) {
-		let Some((track_type, track_index, clip_index)) = self.clip_coords(clip) else {
+		let (Some(block), Some(project)) = (self.clip_block(clip), self.project.clone()) else {
 			return;
 		};
-		let Some(seq) = self.seq_ptr() else {
-			return;
-		};
-		let rc = unsafe {
-			oakengine_sequence_split_clip(
-				seq,
-				Self::track_type_of(track_type),
-				track_index as c_int,
-				clip_index as c_int,
-				time.0,
-			)
-		};
-		self.apply_edit(rc, "split clip", cx);
+		let result = graphops::split_clip(&project, block, time.0);
+		self.apply_edit(result, "split clip", cx);
 	}
 
 	fn split_at_playhead(&mut self, cx: &mut Context<Self>) {
 		let frame = self.clock_frame(Monitor::Program, cx);
-		let Some(seq) = self.seq_ptr() else {
+		let Some(project) = self.project.clone() else {
 			return;
 		};
-		let targets: Vec<(c_int, usize, usize)> = self
+		let targets: Vec<NodeId> = self
 			.tracks
 			.iter()
 			.flat_map(|track| {
 				track.clips.iter().filter_map(|clip| {
 					if clip.range.start.0 < frame.0 && frame.0 < clip.range.end.0 {
-						Some((track.track_type, track.track_index, clip.clip_index))
+						Some(clip.block)
 					} else {
 						None
 					}
 				})
 			})
 			.collect();
-		let mut rc = 0;
-		for (track_type, track_index, clip_index) in targets {
-			rc = unsafe {
-				oakengine_sequence_split_clip(
-					seq,
-					track_type,
-					track_index as c_int,
-					clip_index as c_int,
-					frame.0,
-				)
-			};
+		let mut result = Ok(());
+		for block in targets {
+			result = graphops::split_clip(&project, block, frame.0);
 		}
-		self.apply_edit(rc, "split at playhead", cx);
+		self.apply_edit(result, "split at playhead", cx);
 	}
 
 	fn workarea(&self) -> Option<(Frame, Frame)> {
-		let seq = self.seq_ptr()?;
-		if unsafe { oakengine_sequence_workarea_is_enabled(seq) } == 0 {
+		let wa = self.workarea.as_ref()?;
+		let tb = self.time_base()?;
+		let (enabled, range) = graphops::workarea_state(&wa.0)?;
+		if !enabled {
 			return None;
 		}
-		let mut in_ts: i64 = 0;
-		let mut out_ts: i64 = 0;
-		if unsafe { oakengine_sequence_get_workarea(seq, &mut in_ts, &mut out_ts) } != 0 {
-			return None;
-		}
-		Some((Frame(in_ts), Frame(out_ts)))
+		Some((
+			Frame(graphops::rational_to_ts(range.in_(), tb)),
+			Frame(graphops::rational_to_ts(range.out(), tb)),
+		))
 	}
 
 	fn add_marker_at_playhead(&mut self, cx: &mut Context<Self>) {
-		let Some(seq) = self.seq_ptr() else {
+		let (Some(markers), Some(tb)) = (&self.markers, self.time_base()) else {
 			return;
 		};
 		let frame = self.clock_frame(Monitor::Program, cx);
-		let rc = unsafe { oakengine_sequence_marker_add(seq, frame.0, c"".as_ptr()) };
-		self.apply_edit(rc, "add marker", cx);
+		let time = graphops::ts_to_rational(frame.0, tb);
+		let result = graphops::marker_add(&markers.0, time, "", 0);
+		self.apply_edit(result, "add marker", cx);
 	}
 
 	fn remove_marker_at_playhead(&mut self, cx: &mut Context<Self>) {
-		let Some(seq) = self.seq_ptr() else {
+		let (Some(markers), Some(tb)) = (&self.markers, self.time_base()) else {
 			return;
 		};
 		let frame = self.clock_frame(Monitor::Program, cx);
-		let rc = unsafe { oakengine_sequence_marker_remove(seq, frame.0) };
+		let time = graphops::ts_to_rational(frame.0, tb);
 		// Removing a marker that is not there is a benign no-op for the menu
-		// action (the facade reports NOT_FOUND); only rebuild on success.
-		if rc != 0 {
+		// action; only rebuild on success.
+		let Ok(()) = graphops::marker_remove(&markers.0, time) else {
 			return;
-		}
-		self.apply_edit(rc, "remove marker", cx);
+		};
+		self.apply_edit(Ok(()), "remove marker", cx);
 	}
 
 	fn set_workarea_preview(&mut self, start: Frame, end: Frame, cx: &mut Context<Self>) {
-		let Some(seq) = self.seq_ptr() else {
+		let (Some(wa), Some(tb)) = (&self.workarea, self.time_base()) else {
 			return;
 		};
 		// Live, non-undoable: the engine workarea tracks the drag so other
 		// reads (export, snap) stay current; no timeline rebuild needed — the
 		// band itself is widget-local state.
-		unsafe { oakengine_sequence_set_workarea(seq, 1, start.0, end.0) };
+		graphops::workarea_set(
+			&wa.0,
+			true,
+			oakcore_rs::TimeRange::new(
+				graphops::ts_to_rational(start.0, tb),
+				graphops::ts_to_rational(end.0, tb),
+			),
+		);
 		cx.notify();
 	}
 
@@ -2689,86 +1928,55 @@ impl AppEngine for RealEngine {
 		end: Frame,
 		cx: &mut Context<Self>,
 	) {
-		let Some(seq) = self.seq_ptr() else {
+		let (Some(wa), Some(tb)) = (&self.workarea, self.time_base()) else {
 			return;
 		};
-		let rc = unsafe {
-			oakengine_sequence_set_workarea_undoable(
-				seq,
-				1,
-				start.0,
-				end.0,
-				old_start.0,
-				old_end.0,
-			)
-		};
-		self.apply_edit(rc, "set workarea", cx);
+		let result = graphops::workarea_set_undoable(
+			&wa.0,
+			true,
+			oakcore_rs::TimeRange::new(
+				graphops::ts_to_rational(start.0, tb),
+				graphops::ts_to_rational(end.0, tb),
+			),
+			oakcore_rs::TimeRange::new(
+				graphops::ts_to_rational(old_start.0, tb),
+				graphops::ts_to_rational(old_end.0, tb),
+			),
+		);
+		self.apply_edit(result, "set workarea", cx);
 	}
 
 	fn clear_workarea(&mut self, cx: &mut Context<Self>) {
-		let Some(seq) = self.seq_ptr() else {
+		let (Some(wa), Some(tb)) = (&self.workarea, self.time_base()) else {
 			return;
 		};
 		let (old_start, old_end) = self.workarea().unwrap_or((Frame::ZERO, Frame::ZERO));
-		let rc = unsafe {
-			oakengine_sequence_set_workarea_undoable(
-				seq,
-				0,
-				old_start.0,
-				old_end.0,
-				old_start.0,
-				old_end.0,
-			)
-		};
-		self.apply_edit(rc, "clear workarea", cx);
+		let result = graphops::workarea_set_undoable(
+			&wa.0,
+			false,
+			oakcore_rs::TimeRange::new(
+				graphops::ts_to_rational(old_start.0, tb),
+				graphops::ts_to_rational(old_end.0, tb),
+			),
+			oakcore_rs::TimeRange::new(
+				graphops::ts_to_rational(old_start.0, tb),
+				graphops::ts_to_rational(old_end.0, tb),
+			),
+		);
+		self.apply_edit(result, "clear workarea", cx);
 	}
 
 	fn delete_clip(&mut self, clip: ClipId, ripple: bool, cx: &mut Context<Self>) {
-		let Some((track_type, track_index, clip_index)) = self.clip_coords(clip) else {
+		let (Some(block), Some(project)) = (self.clip_block(clip), self.project.clone()) else {
 			return;
 		};
-		let Some(seq) = self.seq_ptr() else {
-			return;
-		};
-		let rc = if ripple {
-			unsafe {
-				oakengine_sequence_ripple_delete_clip(
-					seq,
-					Self::track_type_of(track_type),
-					track_index as c_int,
-					clip_index as c_int,
-				)
-			}
+		let result = if ripple {
+			graphops::ripple_delete_clip(&project, block)
 		} else {
-			let clip_ptr = unsafe {
-				oakengine_sequence_clip_at(
-					seq,
-					Self::track_type_of(track_type),
-					track_index as c_int,
-					clip_index as c_int,
-				)
-			};
-			if clip_ptr.is_null() {
-				return;
-			}
-			let mut clips = [clip_ptr];
-			let mut rippled: c_int = 0;
-			let rc = unsafe {
-				oakengine_sequence_delete_clips(
-					seq,
-					clips.as_mut_ptr(),
-					1,
-					0,
-					std::ptr::null(),
-					0,
-					&mut rippled,
-				)
-			};
-			unsafe { free_box(clip_ptr) };
-			rc
+			graphops::delete_clip(&project, block)
 		};
 		self.apply_edit(
-			rc,
+			result,
 			if ripple {
 				"ripple delete clip"
 			} else {
@@ -2779,22 +1987,16 @@ impl AppEngine for RealEngine {
 	}
 
 	fn can_undo(&self) -> bool {
-		self.project_ptr()
-			.map(|p| unsafe { oakengine_project_can_undo(p) } != 0)
-			.unwrap_or(false)
+		self.project.is_some() && oakundo::global::undoable()
 	}
 
 	fn can_redo(&self) -> bool {
-		self.project_ptr()
-			.map(|p| unsafe { oakengine_project_can_redo(p) } != 0)
-			.unwrap_or(false)
+		self.project.is_some() && oakundo::global::redoable()
 	}
 
 	fn undo(&mut self, cx: &mut Context<Self>) {
-		if let Some(p) = self.project_ptr() {
-			unsafe {
-				oakengine_project_undo(p);
-			}
+		if self.project.is_some() {
+			oakundo::global::undo().ok();
 			self.refresh_sequence_info();
 			self.rebuild_timeline();
 			self.cpu_frame_cache.lock().unwrap().clear();
@@ -2804,10 +2006,8 @@ impl AppEngine for RealEngine {
 	}
 
 	fn redo(&mut self, cx: &mut Context<Self>) {
-		if let Some(p) = self.project_ptr() {
-			unsafe {
-				oakengine_project_redo(p);
-			}
+		if self.project.is_some() {
+			oakundo::global::redo().ok();
 			self.refresh_sequence_info();
 			self.rebuild_timeline();
 			self.cpu_frame_cache.lock().unwrap().clear();
@@ -2817,16 +2017,7 @@ impl AppEngine for RealEngine {
 	}
 
 	fn new_project(&mut self, cx: &mut Context<Self>) {
-		let project = unsafe { oakengine_project_create() };
-		if project.is_null() {
-			println!("[real engine] failed to create a blank project");
-			return;
-		}
-		if unsafe { oakengine_project_new(project) } != 0 {
-			unsafe { oakengine_project_free(project) };
-			println!("[real engine] failed to initialize a blank project");
-			return;
-		}
+		let project = graphops::create_project();
 		self.adopt_project(project, cx);
 	}
 
@@ -2846,7 +2037,7 @@ impl AppEngine for RealEngine {
 		path: PathBuf,
 		cx: &mut Context<Self>,
 	) -> Result<(), String> {
-		if self.project_ptr().is_none() {
+		if self.project.is_none() {
 			return Err("no project open".into());
 		}
 		let ext = path
@@ -2865,28 +2056,11 @@ impl AppEngine for RealEngine {
 	}
 
 	fn import_footage(&mut self, path: PathBuf, cx: &mut Context<Self>) -> Result<(), String> {
-		let Some(project) = self.project_ptr() else {
+		let Some(project) = self.project.clone() else {
 			return Err("no project open".into());
 		};
-		let Some(path_c) = cstr_path(&path) else {
-			return Err("invalid import path".into());
-		};
-		// SAFETY: `project` is the live facade handle the engine owns; the
-		// returned footage box is freed below.
-		let footage = unsafe { oakengine_project_import_footage(project, path_c.as_ptr()) };
-		if footage.is_null() {
-			let error = read_string(|buf, size| unsafe {
-				oakengine_footage_last_error(buf, size)
-			});
-			return Err(if error.is_empty() {
-				format!("failed to import \"{}\"", path.display())
-			} else {
-				error
-			});
-		}
-		// SAFETY: `footage` is an owned facade box (`oakengine_footage_free`).
-		unsafe { oakengine_footage_free(footage) };
-		// The material bin reads the folder tree live from the facade, so a
+		graphops::import_footage(&project, &path)?;
+		// The material bin reads the folder tree live from the graph, so a
 		// notify is enough for the explorer to list the new entry.
 		cx.notify();
 		Ok(())
@@ -2895,45 +2069,32 @@ impl AppEngine for RealEngine {
 	fn drop_footage(
 		&mut self,
 		id: u64,
-		track_kind: TrackKind,
+		_track_kind: TrackKind,
 		track_index: usize,
 		time: Frame,
 		cx: &mut Context<Self>,
 	) {
-		let Some(project) = self.project_ptr() else {
-			return;
-		};
-		let Some(seq) = self.seq_ptr() else {
+		let (Some(project), Some(seq)) = (self.project.clone(), self.sequence) else {
 			return;
 		};
 		// The explorer's entry id IS the footage node's stable identity
-		// (`projectbrowser`); find the matching footage node (its box is
-		// freed below).
-		let mut footage_node: *mut OakEngineNode = std::ptr::null_mut();
-		let mut footage_index: c_int = -1;
-		let count = unsafe { oakengine_project_footage_count(project) };
-		for index in 0..count.max(0) {
-			let node = unsafe { oakengine_project_footage_at(project, index) };
-			if node.is_null() {
-				continue;
-			}
-			if unsafe { oakengine_node_identity(node) } == id {
-				footage_node = node;
-				footage_index = index;
-				break;
-			}
-			// SAFETY: `node` is a box from `oakengine_project_footage_at`.
-			unsafe { oakengine_node_free(node) };
-		}
-		if footage_node.is_null() {
+		// (`projectbrowser`).
+		let Some(footage) = graphops::id_of(id) else {
 			println!("[real engine] drop footage: entry {id} is not a footage node");
 			return;
-		}
-		// Media type by extension: the module's footage is never probed, so
-		// the facade's stream counts are empty (see `filename_is_audio`).
-		let filename = read_string(|buf, size| unsafe {
-			oakengine_project_footage_filename(project, footage_index, buf, size)
-		});
+		};
+		let filename = {
+			let guard = graphops::lock(&project);
+			match graphops::footage_behavior(&guard.graph, footage) {
+				Some(f) => f.filename.clone(),
+				None => {
+					println!("[real engine] drop footage: entry {id} is not a footage node");
+					return;
+				}
+			}
+		};
+		// Media type by extension: the module's footage is not reliably
+		// probed, so the drop's track matching falls back to the extension.
 		let footage_kind = if crate::oakui::filename_is_audio(&filename) {
 			TrackKind::Audio
 		} else {
@@ -2942,8 +2103,6 @@ impl AppEngine for RealEngine {
 		// Track policy (see the `AppEngine::drop_footage` docs): use the
 		// pointed display track when its kind matches, otherwise auto-select
 		// the topmost track of the footage's kind; reject when there is none.
-		// The facade itself validates only the track type (video/audio; it
-		// rejects subtitles) and never the media/track pairing.
 		let target = if let Some(track) = self.tracks.get(track_index) {
 			if track.kind == footage_kind {
 				track_index
@@ -2961,9 +2120,6 @@ impl AppEngine for RealEngine {
 									"[real engine] drop footage: could not add a {:?} track for \"{}\"",
 									footage_kind, filename
 								);
-								// SAFETY: `footage_node` is a box from
-								// `oakengine_project_footage_at`.
-								unsafe { oakengine_node_free(footage_node) };
 								return;
 							}
 						}
@@ -2981,107 +2137,63 @@ impl AppEngine for RealEngine {
 						"[real engine] drop footage: could not add a {:?} track",
 						footage_kind
 					);
-					// SAFETY: `footage_node` is a box from `oakengine_project_footage_at`.
-					unsafe { oakengine_node_free(footage_node) };
 					return;
 				}
 			}
 		} else {
 			println!("[real engine] drop footage: display track {track_index} does not exist");
-			// SAFETY: `footage_node` is a box from `oakengine_project_footage_at`.
-			unsafe { oakengine_node_free(footage_node) };
 			return;
 		};
-		// The display list maps 1:1 onto the facade's per-type track lists
-		// (see `rebuild_timeline`), so the snapshot's coordinates address the
-		// facade track directly.
-		let (track_type, track_index_facade) = {
-			let track = &self.tracks[target];
-			(track.track_type, track.track_index)
-		};
-		// Clip length: the footage's probed duration when available; module
-		// footage is never probed, so fall back to a 10-second default.
+		let track = &self.tracks[target];
+		let (kind, track_index_facade) = (track_type_of(track.kind), track.track_index);
+		// Clip length: the footage's probed duration when available;
+		// otherwise a 10-second default.
 		let fps = self.frame_rate();
 		let fps_f = fps.num as f64 / fps.den.max(1) as f64;
-		let footage = unsafe { oakengine_footage_borrow(footage_node) };
-		let mut seconds: f64 = 0.0;
-		let has_duration = !footage.is_null()
-			&& unsafe { oakengine_footage_get_duration(footage, &mut seconds) } == 0
-			&& seconds > 0.0;
-		let length = if has_duration {
-			(seconds * fps_f).round().max(1.0) as i64
-		} else {
-			(10.0 * fps_f).round().max(1.0) as i64
+		let seconds = {
+			let guard = graphops::lock(&project);
+			graphops::footage_duration_seconds(&guard.graph, footage)
+		};
+		let length = match seconds {
+			Some(s) => (s * fps_f).round().max(1.0) as i64,
+			None => (10.0 * fps_f).round().max(1.0) as i64,
 		};
 		let in_ts = time.0.max(0);
-		// SAFETY: `seq` and `footage` are live facade handles; the returned
-		// owned clip box is freed below.
-		let clip = unsafe {
-			oakengine_sequence_add_footage_clip_ex(
-				seq,
-				footage,
-				track_type,
-				track_index_facade as c_int,
-				in_ts,
-				in_ts + length,
-				0,
-			)
-		};
-		// SAFETY: `footage` is a borrowed box (`oakengine_footage_borrow`);
-		// `footage_node` a box from `oakengine_project_footage_at`.
-		unsafe {
-			if !footage.is_null() {
-				oakengine_footage_free(footage);
-			}
-			oakengine_node_free(footage_node);
-		}
-		let rc = if clip.is_null() {
-			let error = read_string(|buf, size| unsafe {
-				oakengine_sequence_last_error(buf, size)
-			});
-			let error = if error.is_empty() {
-				"add footage clip rejected".to_string()
-			} else {
-				error
-			};
-			println!("[real engine] drop footage rejected: {error}");
-			-1
-		} else {
-			// SAFETY: `clip` is an owned facade box (`free_box`).
-			unsafe { free_box(clip) };
-			0
-		};
-		// The facade export pushes ONE undoable "Add Clip" entry; the refresh
+		let result = graphops::place_footage_clip(
+			&project,
+			seq,
+			footage,
+			kind,
+			track_index_facade,
+			in_ts,
+			in_ts + length,
+			0,
+		)
+		.map(|_| ());
+		// The placement pushes ONE undoable "Add Clip" entry; the refresh
 		// also invalidates the cached rendered frames.
-		self.apply_edit(rc, "drop footage", cx);
+		self.apply_edit(result, "drop footage", cx);
 	}
 
 	// --- project library (M13 D4) --------------------------------------
 
 	fn storage_bound(&self) -> bool {
-		self.project_ptr()
-			.map(|p| unsafe { oakengine_storage_is_bound(p) } != 0)
+		self.storage
+			.as_ref()
+			.map(|h| graphops::storage_bound(&h.0))
 			.unwrap_or(false)
 	}
 
 	fn storage_last_error(&self) -> Option<String> {
-		let project = self.project_ptr()?;
-		let message = read_string(|buf, size| unsafe {
-			oakengine_storage_last_error(project, buf, size)
-		});
-		if message.is_empty() {
-			None
-		} else {
-			Some(message)
-		}
+		graphops::storage_last_error(&self.storage.as_ref()?.0)
 	}
 
 	fn library_projects(&self) -> Result<Vec<LibraryProject>, String> {
-		library_list()
+		graphops::library_list()
 	}
 
 	fn library_create_project(&mut self, name: &str, cx: &mut Context<Self>) -> Result<(), String> {
-		let uuid = library_create(name)?;
+		let uuid = graphops::library_create(name)?;
 		self.open_library_project(&uuid, cx)
 	}
 
@@ -3090,235 +2202,45 @@ impl AppEngine for RealEngine {
 	}
 
 	fn library_delete_project(&mut self, uuid: &str) -> Result<(), String> {
-		let uuid_c = CString::new(uuid).map_err(|_| "invalid uuid".to_string())?;
-		let rc = unsafe { oakengine_library_delete(uuid_c.as_ptr()) };
-		if rc != 0 {
-			return Err(format!("failed to delete the project (error {rc})"));
-		}
-		Ok(())
+		graphops::library_delete(uuid)
+			.map_err(|e| format!("failed to delete the project: {e}"))
 	}
 
 	fn library_rename_project(&mut self, uuid: &str, name: &str) -> Result<(), String> {
-		let uuid_c = CString::new(uuid).map_err(|_| "invalid uuid".to_string())?;
-		let name_c = CString::new(name).map_err(|_| "invalid name".to_string())?;
-		let rc = unsafe { oakengine_library_rename(uuid_c.as_ptr(), name_c.as_ptr()) };
-		if rc != 0 {
-			return Err(format!("failed to rename the project (error {rc})"));
-		}
-		Ok(())
+		graphops::library_rename(uuid, name)
+			.map_err(|e| format!("failed to rename the project: {e}"))
 	}
 
 	fn library_duplicate_project(&mut self, uuid: &str) -> Result<(), String> {
-		let uuid_c = CString::new(uuid).map_err(|_| "invalid uuid".to_string())?;
-		let mut buf = [0 as c_char; 256];
-		// Single call with a stack buffer: the duplicate has a side effect,
-		// so the two-stage (measure-then-read) pattern must not be used.
-		let rc = unsafe {
-			oakengine_library_duplicate(
-				uuid_c.as_ptr(),
-				std::ptr::null(),
-				buf.as_mut_ptr(),
-				buf.len() as c_int,
-			)
-		};
-		if rc < 0 {
-			return Err(format!("failed to duplicate the project (error {rc})"));
-		}
-		Ok(())
+		graphops::library_duplicate(uuid)
+			.map(|_| ())
+			.map_err(|e| format!("failed to duplicate the project: {e}"))
 	}
 
 	fn library_import_project(&mut self, path: PathBuf) -> Result<String, String> {
-		let path_c = cstr_path(&path).ok_or("invalid import path")?;
-		let mut buf = [0 as c_char; 256];
-		// Single call with a stack buffer (side effect; see duplicate).
-		let rc = unsafe {
-			oakengine_library_import(path_c.as_ptr(), buf.as_mut_ptr(), buf.len() as c_int)
-		};
-		if rc < 0 {
-			return Err(format!(
-				"failed to import \"{}\" (error {rc})",
-				path.display()
-			));
-		}
-		let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-		Ok(
-			String::from_utf8_lossy(unsafe {
-				std::slice::from_raw_parts(buf.as_ptr() as *const u8, len)
-			})
-			.into_owned(),
-		)
+		graphops::library_import(&path)
+			.map_err(|e| format!("failed to import \"{}\": {e}", path.display()))
 	}
 
 	fn library_export_project(&mut self, uuid: &str, path: PathBuf) -> Result<(), String> {
-		let uuid_c = CString::new(uuid).map_err(|_| "invalid uuid".to_string())?;
-		let path_c = cstr_path(&path).ok_or("invalid export path")?;
-		let rc = unsafe { oakengine_library_export(uuid_c.as_ptr(), path_c.as_ptr()) };
-		if rc != 0 {
-			return Err(format!(
-				"failed to export the project to \"{}\" (error {rc})",
-				path.display()
-			));
-		}
-		Ok(())
+		graphops::library_export(uuid, &path)
+			.map_err(|e| format!("failed to export the project to \"{}\": {e}", path.display()))
 	}
 
 	fn start_export(&mut self, format: i32, path: PathBuf) -> Result<ExportSession, String> {
-		let Some(seq) = self.seq_ptr() else {
+		let (Some(project), Some(seq)) = (self.project.clone(), self.sequence) else {
 			return Err("no sequence open".into());
 		};
-
-		// Build the encoding params from the sequence's format.
-		let params = unsafe { oakengine_encoding_params_create() };
-		if params.is_null() {
-			return Err("failed to create encoding params".into());
-		}
-		let cpath = cstr_path(&path).ok_or("invalid output path")?;
-		let rc = unsafe { oakengine_encoding_params_set_filename(params, cpath.as_ptr()) };
-		if rc != 0 {
-			unsafe { oakengine_encoding_params_destroy(params) };
-			return Err(format!("failed to set the export filename (error {rc})"));
-		}
-		let rc = unsafe { oakengine_encoding_params_set_format(params, format) };
-		if rc != 0 {
-			unsafe { oakengine_encoding_params_destroy(params) };
-			return Err(format!("failed to set the export format (error {rc})"));
-		}
-		// Video params POD from the sequence; first video codec of the format.
-		let mut width: c_int = 0;
-		let mut height: c_int = 0;
-		let mut par_num: c_int = 1;
-		let mut par_den: c_int = 1;
-		let mut rate_num: c_int = 25;
-		let mut rate_den: c_int = 1;
-		unsafe {
-			oakengine_sequence_get_video_params(
-				seq,
-				&mut width,
-				&mut height,
-				&mut par_num,
-				&mut par_den,
-			);
-			oakengine_sequence_get_frame_rate(seq, &mut rate_num, &mut rate_den);
-		}
-		let video_codec = unsafe { oakengine_encoding_format_video_codec_at(format, 0) };
-		if video_codec < 0 {
-			unsafe { oakengine_encoding_params_destroy(params) };
-			return Err(format!("format {format} has no video codec"));
-		}
-		let pod = OakVideoParamsPod {
-			width: width.max(1),
-			height: height.max(1),
-			time_base_num: rate_den.max(1),
-			time_base_den: rate_num.max(1),
-			format: 0,
-			pixel_aspect_num: par_num.max(1),
-			pixel_aspect_den: par_den.max(1),
-			interlacing: 0,
-			color_range: 0,
-			divider: 1,
-			video_type: 0,
-			premultiplied_alpha: 0,
-		};
-		let rc = unsafe { oakengine_encoding_params_enable_video(params, &pod, video_codec) };
-		if rc != 0 {
-			unsafe { oakengine_encoding_params_destroy(params) };
-			return Err(format!("failed to enable video (error {rc})"));
-		}
-		let audio_codec = unsafe { oakengine_encoding_format_audio_codec_at(format, 0) };
-		if audio_codec < 0 {
-			unsafe { oakengine_encoding_params_destroy(params) };
-			return Err(format!("format {format} has no audio codec"));
-		}
-		let rc = unsafe {
-			oakengine_encoding_params_enable_audio(
-				params,
-				EXPORT_SAMPLE_RATE,
-				EXPORT_CHANNEL_LAYOUT,
-				EXPORT_SAMPLE_FORMAT,
-				audio_codec,
-			)
-		};
-		if rc != 0 {
-			unsafe { oakengine_encoding_params_destroy(params) };
-			return Err(format!("failed to enable audio (error {rc})"));
-		}
-		// Export range: the work area when enabled (M12 P4), otherwise the
-		// whole sequence. Frames → seconds rationals in the sequence's
-		// frame-rate timebase (frame duration = rate_den / rate_num).
-		if let Some((in_ts, out_ts)) = self.workarea().filter(|(s, e)| e.0 > s.0) {
-			let tb_num = i64::from(rate_den.max(1));
-			let tb_den = i64::from(rate_num.max(1));
-			unsafe {
-				oakengine_encoding_params_set_custom_range(
-					params,
-					in_ts.0 * tb_num,
-					tb_den,
-					out_ts.0 * tb_num,
-					tb_den,
-				);
-				oakengine_encoding_params_set_export_length(
-					params,
-					((out_ts.0 - in_ts.0) * tb_num) as c_int,
-					rate_num.max(1),
-				);
-			}
-		} else {
-			let length = self.sequence_length();
-			if length.0 > 0 {
-				unsafe {
-					oakengine_encoding_params_set_export_length(params, length.0 as c_int, 1);
-				}
-			}
-		}
-
-		let task = unsafe { oakengine_task_create_export(seq, params) };
-		if task.is_null() {
-			unsafe { oakengine_encoding_params_destroy(params) };
-			return Err("failed to create the export task".into());
-		}
-
-		// Progress events through the facade task subscription (the callback
-		// is invoked on the task's own thread with the raw userdata pointer).
-		let (tx, rx) = mpsc::channel::<ExportEvent>();
-		let cb_userdata = SendPtr(Box::into_raw(Box::new(tx.clone())));
-		unsafe {
-			oakengine_task_subscribe(task, Some(export_event_cb), cb_userdata.0 as *mut c_void);
-		}
-
-		// The task pointer is shared between the cancel handle and the worker
-		// thread; the thread owns it and frees it when the run ends.
-		let shared = Arc::new(Mutex::new(Some(SendPtr(task))));
-		let cancel = {
-			let shared = shared.clone();
-			Box::new(move || {
-				if let Some(task) = shared.lock().unwrap().as_ref() {
-					unsafe {
-						oakengine_task_cancel(task.0);
-					}
-				}
-			})
-		};
-		let worker = shared.clone();
-		std::thread::spawn(move || {
-			unsafe {
-				let task = worker
-					.lock()
-					.unwrap()
-					.as_ref()
-					.expect("export task present")
-					.0;
-				let ok = oakengine_task_start_sync(task);
-				let error = RealEngine::task_error(task);
-				oakengine_task_free(task);
-				*worker.lock().unwrap() = None;
-				// Reclaim the callback userdata (the task's listener is
-				// one-shot and dropped after the run).
-				reclaim_userdata(cb_userdata);
-				let _ = tx.send(ExportEvent::Finished(ok != 0, error));
-			}
-		});
-
-		Ok(ExportSession { events: rx, cancel })
+		let workarea = self.workarea().map(|(s, e)| (s.0, e.0));
+		let params = super::renderops::encoding_params(
+			&project,
+			seq,
+			format,
+			&path,
+			workarea,
+			self.sequence_length().0,
+		)?;
+		Ok(super::renderops::spawn_export(&project, seq, params))
 	}
 	fn backend_name(&self) -> &'static str {
 		"real"
@@ -3357,36 +2279,15 @@ impl ProjectFormat {
 }
 
 impl RealEngine {
-	/// Opens a `.ove` / `.ovexml` project through the facade serializer.
+	/// Opens a `.ove` / `.ovexml` project through the module serializer.
 	fn open_ove(&mut self, path: &PathBuf, cx: &mut Context<Self>) -> Result<(), String> {
-		let project = unsafe { oakengine_project_create() };
-		if project.is_null() {
-			return Err("failed to create a project".into());
-		}
-		let Some(cpath) = cstr_path(path) else {
-			unsafe { oakengine_project_free(project) };
-			return Err("invalid project path".into());
-		};
-		let mut err = [0 as c_char; 4096];
-		let rc = unsafe {
-			oakengine_project_load(
-				project,
-				cpath.as_ptr(),
-				err.as_mut_ptr(),
-				err.len() as c_int,
-			)
-		};
-		if rc != 0 {
-			let message = load_error(&mut err);
-			unsafe { oakengine_project_free(project) };
-			return Err(format!("failed to load \"{}\": {message}", path.display()));
-		}
+		let project = graphops::load_ove(path)
+			.map_err(|e| format!("failed to load \"{}\": {e}", path.display()))?;
 		// The module serializer cannot parse every legacy document (e.g. the
 		// `<olive>`-rooted format skips its nested `<project>` body), which
 		// loads "successfully" with no content; surface it instead of
 		// pretending the project opened.
-		let nodes = unsafe { oakengine_project_node_count(project) };
-		if nodes == 0 {
+		if graphops::lock(&project).graph.node_count() == 0 {
 			println!(
 				"[real engine] warning: \"{}\" loaded but contained no parseable content; starting from an empty project",
 				path.display()
@@ -3397,28 +2298,27 @@ impl RealEngine {
 	}
 
 	/// Opens an `.otio` / `.fcpxml` project through the oaktask interchange
-	/// loader and adopts the loaded project (`oakengine_task_load_take_project`
-	/// hands over the loader's project after a successful run).
+	/// loader and adopts the loaded project.
 	fn open_interchange(&mut self, path: &PathBuf, cx: &mut Context<Self>) -> Result<(), String> {
-		let Some(cpath) = cstr_path(path) else {
-			return Err("invalid project path".into());
-		};
-		let task = unsafe { oakengine_task_create_project_load_otio(cpath.as_ptr()) };
-		if task.is_null() {
-			return Err("failed to create the interchange load task".into());
-		}
-		let rc = unsafe { oakengine_task_start_sync(task) };
-		let error = Self::task_error(task);
-		let loaded = {
-			let project = unsafe { oakengine_task_load_take_project(task) };
-			if project.is_null() {
-				None
-			} else {
-				Some(project)
-			}
-		};
-		unsafe { oakengine_task_free(task) };
-		if rc == 0 {
+		let title = format!("Loading '{}'", path.display());
+		let result: Arc<Mutex<Option<ProjectRef>>> = Arc::new(Mutex::new(None));
+		let mut driver = oaktask::task::Task::new(&title, None);
+		driver.set_behavior(Box::new(OtioLoadBehavior {
+			inner: oaktask::project::loadotio::LoadOTIOTask::new(
+				oaktask::project::load::ProjectLoadBaseTask::new(
+					oaktask::task::Task::new(&title, None),
+					path.to_string_lossy().into_owned(),
+				),
+			),
+			result: result.clone(),
+		}));
+		let run = driver.start();
+		let loaded = result.lock().unwrap_or_else(|e| e.into_inner()).take();
+		if run.is_err() {
+			let error = driver
+				.error()
+				.map(|s| s.to_string())
+				.unwrap_or_else(|| "the task failed".to_string());
 			return Err(format!("failed to load \"{}\": {error}", path.display()));
 		}
 		match loaded {
@@ -3437,54 +2337,83 @@ impl RealEngine {
 	/// branch of 导出工程文件…; the write-through library stays the primary
 	/// persistence, this only writes a file).
 	fn export_ove(&mut self, path: &Path, _cx: &mut Context<Self>) -> Result<(), String> {
-		let Some(project) = self.project_ptr() else {
+		let Some(project) = self.project.clone() else {
 			return Err("no project open".into());
 		};
-		let Some(cpath) = cstr_path(path) else {
-			return Err("invalid project path".into());
-		};
-		let rc = unsafe { oakengine_project_save(project, cpath.as_ptr()) };
-		if rc != 0 {
-			return Err(format!("failed to export the project (error {rc})"));
-		}
-		// The facade records the target filename (legacy save side effect);
+		graphops::save_ove(&project, path)
+			.map_err(|e| format!("failed to export the project: {e}"))?;
+		// The save records the target filename (legacy save side effect);
 		// refresh the display name to match.
-		let name = read_string(|buf, size| unsafe { oakengine_project_name(project, buf, size) });
-		if !name.is_empty() {
+		let (name, filename) = {
+			let guard = graphops::lock(&project);
+			(guard.name(), guard.filename().to_string())
+		};
+		if !name.is_empty() && name != "(untitled)" {
 			self.project_info.name = name;
 		}
-		let filename =
-			read_string(|buf, size| unsafe { oakengine_project_filename(project, buf, size) });
 		if !filename.is_empty() {
 			self.project_info.path = PathBuf::from(filename);
 		}
 		Ok(())
 	}
 
-	/// Exports as `.otio` / `.fcpxml` through the oaktask save task (the
-	/// facade derives the output filename from the project's own filename).
+	/// Exports as `.otio` / `.fcpxml` through the oaktask save task.
 	fn export_interchange(&mut self, path: &PathBuf, _cx: &mut Context<Self>) -> Result<(), String> {
-		let Some(project) = self.project_ptr() else {
+		let Some(project) = self.project.clone() else {
 			return Err("no project open".into());
 		};
-		let Some(cpath) = cstr_path(path) else {
-			return Err("invalid project path".into());
-		};
-		let rc = unsafe { oakengine_project_set_filename(project, cpath.as_ptr()) };
-		if rc != 0 {
-			return Err(format!("failed to set the output filename (error {rc})"));
-		}
-		let task = unsafe { oakengine_task_create_project_save_otio(project) };
-		if task.is_null() {
-			return Err("failed to create the interchange save task".into());
-		}
-		let rc = unsafe { oakengine_task_start_sync(task) };
-		let error = Self::task_error(task);
-		unsafe { oakengine_task_free(task) };
-		if rc == 0 {
+		let filename = path.to_string_lossy().into_owned();
+		let mut driver = oaktask::task::Task::new("Saving project...", None);
+		driver.set_behavior(Box::new(oaktask::project::saveotio::SaveOTIOTask {
+			base: oaktask::task::Task::new("Saving project...", None),
+			project,
+			filename,
+		}));
+		if driver.start().is_err() {
+			let error = driver
+				.error()
+				.map(|s| s.to_string())
+				.unwrap_or_else(|| "the task failed".to_string());
 			return Err(format!("failed to export \"{}\": {error}", path.display()));
 		}
 		self.project_info.path = path.clone();
+		Ok(())
+	}
+
+	/// Opens the library row `uuid` through the oakstorage database backend
+	/// and adopts it (the adopt binds the project to the write-through
+	/// session, continuing the row's journal from its head seq).
+	fn open_library_project(&mut self, uuid: &str, cx: &mut Context<Self>) -> Result<(), String> {
+		let project = graphops::library_open(uuid)
+			.map_err(|e| format!("failed to open the library project: {e}"))?;
+		self.adopt_project(project, cx);
+		// The project's module name is filename-derived ("(untitled)" for a
+		// library row); display the library row name instead.
+		if let Ok(rows) = graphops::library_list() {
+			if let Some(row) = rows.iter().find(|row| row.uuid == uuid) {
+				self.project_info.name = row.name.clone();
+			}
+		}
+		Ok(())
+	}
+}
+
+/// The OTIO load driver behavior: runs the module load task and stashes
+/// the loaded project for the caller (the facade's `OtioLoadTaskBehavior`
+/// pattern).
+struct OtioLoadBehavior {
+	/// The module load task.
+	inner: oaktask::project::loadotio::LoadOTIOTask,
+	/// The result slot (the loaded project).
+	result: Arc<Mutex<Option<ProjectRef>>>,
+}
+
+impl oaktask::task::TaskBehavior for OtioLoadBehavior {
+	fn run(&mut self, task: &mut oaktask::task::Task) -> oaktask::error::Result<()> {
+		self.inner.run(task)?;
+		if let Ok(project) = self.inner.base.take_project() {
+			*self.result.lock().unwrap_or_else(|e| e.into_inner()) = Some(project);
+		}
 		Ok(())
 	}
 }
@@ -3492,25 +2421,27 @@ impl RealEngine {
 /// Builds the export-format list: (format id, display name, extension) from
 /// the oakcodec encoding enumeration.
 ///
-/// Pure helper so the export dialog can be unit tested; the facade is only
-/// consulted for the real engine.
-pub fn encoding_formats() -> Vec<(c_int, String, String)> {
-	let count = unsafe { oakengine_encoding_format_count() };
+/// Pure helper so the export dialog can be unit tested.
+pub fn encoding_formats() -> Vec<(i32, String, String)> {
 	let mut out = Vec::new();
-	for i in 0..count.max(0) {
-		let name = read_string(|buf, size| unsafe { oakengine_encoding_format_name(i, buf, size) });
-		let ext =
-			read_string(|buf, size| unsafe { oakengine_encoding_format_extension(i, buf, size) });
-		out.push((i, name, ext));
+	for i in 0..(oakcodec::exportformat::Format::Count as i32) {
+		let Some(format) = oakcodec::exportformat::Format::from_i32(i) else {
+			continue;
+		};
+		out.push((
+			i,
+			oakcodec::exportformat::Format::get_name(format),
+			oakcodec::exportformat::Format::get_extension(format),
+		));
 	}
 	out
 }
 
 /// The format id of the default export container: MPEG-4 Video (`.mp4`).
-pub const EXPORT_FORMAT_MP4: c_int = 2;
+pub const EXPORT_FORMAT_MP4: i32 = 2;
 
 // ---------------------------------------------------------------------------
-// Config C ABI (preferences)
+// Config (preferences) — the oakcommon config store directly
 // ---------------------------------------------------------------------------
 
 /// The config key selecting the renderer backend (worker `create_renderer`
@@ -3531,12 +2462,12 @@ pub const CONFIG_KEY_USE_PROXY: &str = "UseProxyMedia";
 pub const CONFIG_KEY_PROXY_DIVIDER: &str = "ProxyDivider";
 /// The config key holding the project snapshot interval in seconds
 /// (`Storage/SnapshotIntervalSec`; the write-through era's "auto-save
-/// interval" — the facade's snapshot thread reads it every pass, default
+/// interval" — oakstorage's snapshot thread reads it every pass, default
 /// 600, ≤ 0 snapshots every dirty save).
 pub const CONFIG_KEY_SNAPSHOT_INTERVAL_SEC: &str = "Storage/SnapshotIntervalSec";
 /// The config key holding the default transition length in seconds
 /// (`DefaultTransitionLength`, decimal string; consumed by the engine's
-/// add-default-transition command — currently a facade stub).
+/// add-default-transition command — currently a module stub).
 pub const CONFIG_KEY_DEFAULT_TRANSITION_SEC: &str = "DefaultTransitionLength";
 /// The config key holding the audio output device NAME (empty = system
 /// default; C++ parity `AudioOutput`).
@@ -3544,63 +2475,47 @@ pub const CONFIG_KEY_AUDIO_OUTPUT: &str = "AudioOutput";
 /// The config key holding the audio input device NAME (`AudioInput`).
 pub const CONFIG_KEY_AUDIO_INPUT: &str = "AudioInput";
 
-/// The default snapshot interval (seconds), mirroring the facade's
+/// The default snapshot interval (seconds), mirroring oakstorage's
 /// compiled-in default.
 pub const DEFAULT_SNAPSHOT_INTERVAL_SEC: i64 = 600;
 /// The default transition length (seconds).
 pub const DEFAULT_TRANSITION_SEC: &str = "0.5";
 
+/// The process-wide config store.
+fn config_store() -> &'static oakcommon::configstore::ConfigStore {
+	oakcommon::configstore::ConfigStore::instance()
+}
+
 /// Loads the persisted configuration from disk (once at startup, before
 /// any preference is read).
 pub fn config_load() {
-	unsafe {
-		oakengine_config_load();
-	}
+	config_store().load().ok();
 }
 
 /// Persists the configuration to disk (the app calls it on exit).
 pub fn config_save() {
-	unsafe {
-		oakengine_config_save();
-	}
+	config_store().save().ok();
 }
 
-/// Reads a config string through the facade config C ABI (empty when
-/// missing).
+/// Reads a config string from the store (empty when missing).
 pub fn config_get_string(key: &str) -> String {
-	let Ok(key_c) = CString::new(key) else {
-		return String::new();
-	};
-	read_string(|buf, size| unsafe { oakengine_config_get_string(key_c.as_ptr(), buf, size) })
+	config_store().get(None, key).unwrap_or_default()
 }
 
-/// Writes a config string through the facade config C ABI.
+/// Writes a config string to the store.
 pub fn config_set_string(key: &str, value: &str) {
-	let (Ok(key_c), Ok(value_c)) = (CString::new(key), CString::new(value)) else {
-		return;
-	};
-	unsafe {
-		oakengine_config_set_string(key_c.as_ptr(), value_c.as_ptr());
-	}
+	config_store().set(None, key, value);
 }
 
-/// Reads a config integer through the facade config C ABI (`default` when
-/// the key is missing or not an integer).
+/// Reads a config integer from the store (`default` when the key is
+/// missing or not an integer).
 pub fn config_get_int(key: &str, default: i64) -> i64 {
-	let Ok(key_c) = CString::new(key) else {
-		return default;
-	};
-	unsafe { oakengine_config_get_int(key_c.as_ptr(), default) }
+	config_store().get_int64(None, key, default)
 }
 
-/// Writes a config integer through the facade config C ABI.
+/// Writes a config integer to the store.
 pub fn config_set_int(key: &str, value: i64) {
-	let Ok(key_c) = CString::new(key) else {
-		return;
-	};
-	unsafe {
-		oakengine_config_set_int(key_c.as_ptr(), value);
-	}
+	config_store().set_int64(None, key, value);
 }
 
 /// Reads a config boolean through the string accessor (the store parses
@@ -3641,32 +2556,18 @@ pub fn set_theme_dark(dark: bool) {
 }
 
 // ---------------------------------------------------------------------------
-// Audio devices (preferences + startup wiring)
+// Audio devices (preferences + startup wiring) — oakaudio's manager directly
 // ---------------------------------------------------------------------------
 
 /// The host's audio output device names in enumeration order (the index is
-/// what `oakengine_audio_set_output_device` takes).
+/// what the manager's `set_output_device` takes).
 pub fn audio_output_devices() -> Vec<String> {
-	let count = unsafe { oakengine_audio_output_device_count() };
-	let mut out = Vec::new();
-	for i in 0..count.max(0) {
-		out.push(read_string(|buf, size| unsafe {
-			oakengine_audio_output_device_name(i, buf, size)
-		}));
-	}
-	out
+	oakaudio::manager::output_device_names()
 }
 
 /// The host's audio input device names (see [`audio_output_devices`]).
 pub fn audio_input_devices() -> Vec<String> {
-	let count = unsafe { oakengine_audio_input_device_count() };
-	let mut out = Vec::new();
-	for i in 0..count.max(0) {
-		out.push(read_string(|buf, size| unsafe {
-			oakengine_audio_input_device_name(i, buf, size)
-		}));
-	}
-	out
+	oakaudio::manager::input_device_names()
 }
 
 /// Selects the output device by NAME (empty = system default), persists the
@@ -3677,14 +2578,10 @@ pub fn set_audio_output_device(name: &str) {
 	let index = if name.is_empty() {
 		-1
 	} else {
-		audio_output_devices()
-			.iter()
-			.position(|n| n == name)
-			.map(|i| i as i64)
-			.unwrap_or(-1)
+		oakaudio::manager::device_index_by_name(name, true).unwrap_or(-1)
 	};
-	unsafe {
-		oakengine_audio_set_output_device(index);
+	if let Some(mut manager) = oakaudio::manager::instance() {
+		manager.set_output_device(index).ok();
 	}
 }
 
@@ -3695,14 +2592,10 @@ pub fn set_audio_input_device(name: &str) {
 	let index = if name.is_empty() {
 		-1
 	} else {
-		audio_input_devices()
-			.iter()
-			.position(|n| n == name)
-			.map(|i| i as i64)
-			.unwrap_or(-1)
+		oakaudio::manager::device_index_by_name(name, false).unwrap_or(-1)
 	};
-	unsafe {
-		oakengine_audio_set_input_device(index);
+	if let Some(mut manager) = oakaudio::manager::instance() {
+		manager.set_input_device(index).ok();
 	}
 }
 
@@ -3728,12 +2621,10 @@ pub fn audio_input_device() -> String {
 }
 
 /// Brings up the AudioManager singleton and applies the persisted device
-/// choices. Called once at startup; without an instance the facade's
-/// `push_to_output` fails silently and playback stays video-only.
+/// choices. Called once at startup; without an instance `push_to_output`
+/// fails silently and playback stays video-only.
 pub fn audio_init_from_config() {
-	unsafe {
-		oakengine_audio_create_instance();
-	}
+	oakaudio::manager::ManagerInner::create_instance().ok();
 	let output = config_get_string(CONFIG_KEY_AUDIO_OUTPUT);
 	if !output.is_empty() {
 		set_audio_output_device(&output);
@@ -3749,13 +2640,13 @@ pub fn audio_init_from_config() {
 // ---------------------------------------------------------------------------
 
 /// The config key selecting the storage backend (see
-/// `crates/oakengine/src/storage.rs`).
+/// `crates/oakstorage/src/writethrough.rs`).
 pub const CONFIG_KEY_STORAGE_BACKEND: &str = "Storage/Backend";
 
 /// Enables the SQLite write-through library unless the user configured the
 /// backend explicitly (any existing value — including "off" — wins over the
-/// app's default). The library path defaults facade-side to
-/// `<system data directory>/library.db`.
+/// app's default). The library path defaults to `<system data
+/// directory>/library.db`.
 pub fn configure_storage() {
 	if config_get_string(CONFIG_KEY_STORAGE_BACKEND).is_empty() {
 		config_set_string(CONFIG_KEY_STORAGE_BACKEND, "sqlite");
@@ -3763,113 +2654,28 @@ pub fn configure_storage() {
 }
 
 /// Flushes every bound project (write-through + snapshot) and stops the
-/// facade's snapshot thread. The app calls this on exit.
+/// snapshot thread. The app calls this on exit.
 pub fn storage_flush() {
-	unsafe {
-		oakengine_storage_flush();
-	}
+	graphops::storage_flush();
 }
 
 /// The library rows, most recently modified first (the project manager's
-/// data source; JSON over the facade's `oakengine_library_list`).
+/// data source).
 pub fn library_list() -> Result<Vec<LibraryProject>, String> {
-	let needed = unsafe { oakengine_library_list(std::ptr::null_mut(), 0) };
-	if needed < 0 {
-		return Err(format!("failed to list the library (error {needed})"));
-	}
-	let mut buf = vec![0 as c_char; needed as usize + 1];
-	unsafe { oakengine_library_list(buf.as_mut_ptr(), needed + 1) };
-	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-	let json =
-		String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, len) })
-			.into_owned();
-	let rows: serde_json::Value =
-		serde_json::from_str(&json).map_err(|e| format!("malformed library list: {e}"))?;
-	let Some(rows) = rows.as_array() else {
-		return Err("malformed library list (not an array)".into());
-	};
-	Ok(rows
-		.iter()
-		.map(|row| {
-			let s = |key: &str| row.get(key).and_then(|v| v.as_str()).unwrap_or_default().to_string();
-			let n = |key: &str| row.get(key).and_then(|v| v.as_i64()).unwrap_or(0);
-			LibraryProject {
-				uuid: s("uuid"),
-				name: s("name"),
-				created_at: n("created_at"),
-				modified_at: n("modified_at"),
-				duration_ms: n("duration_ms"),
-				track_count: n("track_count") as i32,
-				clip_count: n("clip_count") as i32,
-				footage_count: n("footage_count") as i32,
-			}
-		})
-		.collect())
-}
-
-/// Creates a blank project row in the library; returns its uuid. Single
-/// call with a stack buffer: the create has a side effect, so the
-/// two-stage (measure-then-read) pattern must not be used.
-fn library_create(name: &str) -> Result<String, String> {
-	let name_c = CString::new(name).map_err(|_| "invalid name".to_string())?;
-	let mut buf = [0 as c_char; 256];
-	let rc = unsafe { oakengine_library_create(name_c.as_ptr(), buf.as_mut_ptr(), buf.len() as c_int) };
-	if rc < 0 {
-		return Err(format!("failed to create the project (error {rc})"));
-	}
-	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
-	Ok(
-		String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, len) })
-			.into_owned(),
-	)
-}
-
-impl RealEngine {
-	/// Opens the library row `uuid` through the facade's library-load path
-	/// (which binds the project to the write-through session) and adopts it.
-	fn open_library_project(&mut self, uuid: &str, cx: &mut Context<Self>) -> Result<(), String> {
-		let project = unsafe { oakengine_project_create() };
-		if project.is_null() {
-			return Err("failed to create a project".into());
-		}
-		let uuid_c = CString::new(uuid).map_err(|_| "invalid uuid".to_string())?;
-		let mut err = [0 as c_char; 4096];
-		let rc = unsafe {
-			oakengine_project_load_library(
-				project,
-				uuid_c.as_ptr(),
-				err.as_mut_ptr(),
-				err.len() as c_int,
-			)
-		};
-		if rc != 0 {
-			let message = load_error(&mut err);
-			unsafe { oakengine_project_free(project) };
-			return Err(format!("failed to open the library project: {message}"));
-		}
-		self.adopt_project(project, cx);
-		// The facade's project name is filename-derived ("(untitled)" for a
-		// library row); display the library row name instead.
-		if let Ok(rows) = library_list() {
-			if let Some(row) = rows.iter().find(|row| row.uuid == uuid) {
-				self.project_info.name = row.name.clone();
-			}
-		}
-		Ok(())
-	}
+	graphops::library_list()
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use std::sync::mpsc;
+	use std::sync::mpsc as std_mpsc;
 	use std::time::Duration;
 
-	/// Serializes the media/FFmpeg-heavy tests: the engine dylib's static
-	/// FFmpeg is not thread-safe against concurrent decode sessions.
+	/// Serializes the media/FFmpeg-heavy tests (the codec library is not
+	/// thread-safe against concurrent decode sessions) and shares the
+	/// process-global undo stack with the other app test modules.
 	fn media_lock() -> std::sync::MutexGuard<'static, ()> {
-		static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-		LOCK.lock().unwrap_or_else(|e| e.into_inner())
+		crate::oakui::graphops::test_lock()
 	}
 
 	#[test]
@@ -3911,12 +2717,11 @@ mod tests {
 		);
 	}
 
-	/// Serializes the config round-trip tests: the facade config is a
+	/// Serializes the config round-trip tests: the config store is a
 	/// process-global store, so tests mutating the same keys must not run
-	/// concurrently.
+	/// concurrently (shared with the other app test modules).
 	fn config_lock() -> std::sync::MutexGuard<'static, ()> {
-		static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-		LOCK.lock().unwrap_or_else(|e| e.into_inner())
+		crate::oakui::graphops::test_lock()
 	}
 
 	/// Restores `key`'s original value when dropped, so a round-trip test
@@ -3935,8 +2740,8 @@ mod tests {
 		}
 	}
 
-	/// Every preferences-dialog key round-trips through the facade config
-	/// C ABI: the value written is the value read back.
+	/// Every preferences-dialog key round-trips through the config store:
+	/// the value written is the value read back.
 	#[test]
 	fn preferences_keys_round_trip_through_the_config() {
 		let _guard = config_lock();
@@ -3995,9 +2800,9 @@ mod tests {
 		);
 	}
 
-	/// The audio device enumeration crosses the facade without crashing;
-	/// the output and input lists are independent (either may be empty on a
-	/// headless box).
+	/// The audio device enumeration crosses oakaudio's manager without
+	/// crashing; the output and input lists are independent (either may be
+	/// empty on a headless box).
 	#[test]
 	fn audio_device_enumeration_is_stable() {
 		let outputs = audio_output_devices();
@@ -4011,243 +2816,137 @@ mod tests {
 		assert_eq!(audio_output_device(), "");
 	}
 
-	/// The snapshot-interval key is the one the facade's snapshot thread
-	/// reads (`Storage/SnapshotIntervalSec`, see crates/oakengine/src/
-	/// storage.rs) — a rename here would silently disconnect the dialog.
+	/// The snapshot-interval key is the one oakstorage's snapshot thread
+	/// reads (`Storage/SnapshotIntervalSec`, see crates/oakstorage/src/
+	/// writethrough.rs) — a rename here would silently disconnect the dialog.
 	#[test]
-	fn snapshot_interval_key_matches_the_facade() {
+	fn snapshot_interval_key_matches_the_storage_module() {
 		assert_eq!(CONFIG_KEY_SNAPSHOT_INTERVAL_SEC, "Storage/SnapshotIntervalSec");
 	}
 
-
-	/// End-to-end through the facade: a project the engine itself writes
-	/// (save → load round-trip) keeps its identity, and the in-memory
-	/// sequence the app drives (created with `oakengine_sequence_new`) carries
-	/// real tracks. The repository's `tests/project_with_footage.ove` is a
-	/// legacy `<olive>`-rooted document the oaknode serializer cannot parse,
-	/// so the round-trip uses the engine's own current-format writer.
+	/// End-to-end through the module crates: a project the engine itself
+	/// writes (save → load round-trip) keeps its identity, and the
+	/// in-memory sequence the app drives carries real tracks. The
+	/// repository's `tests/project_with_footage.ove` is a legacy
+	/// `<olive>`-rooted document the oaknode serializer cannot parse, so
+	/// the round-trip uses the engine's own current-format writer.
 	///
-	/// NOTE (documented facade gaps): `oakengine_sequence_new` keeps the
-	/// sequence in a module scratch project (not the project's membership), so
-	/// the saved file carries no sequence and a loaded file registers none —
-	/// the app therefore opens any project and works against a fresh in-memory
-	/// sequence (see [`RealEngine::adopt_project`]).
+	/// NOTE: the direct-rlib app keeps the sequence IN the project's graph
+	/// (the facade kept it in a scratch project), so the saved file now
+	/// carries the sequence and its tracks.
 	#[test]
 	fn real_project_save_load_round_trip() {
-		let project = unsafe { oakengine_project_create() };
-		assert!(!project.is_null());
-		assert_eq!(unsafe { oakengine_project_new(project) }, 0);
+		let _media = media_lock();
+		let project = graphops::create_project();
+		let seq = graphops::create_sequence(&project, "Round Trip");
+		let v = graphops::add_track(&project, seq, TrackType::Video).expect("add a video track");
+		let a = graphops::add_track(&project, seq, TrackType::Audio).expect("add an audio track");
+		assert_eq!((v, a), (0, 0), "in-memory tracks");
+		oakundo::global::clear().unwrap();
 
-		// The in-memory sequence the app drives: real tracks over the facade.
-		let name = CString::new("Round Trip").unwrap();
-		let sequence = unsafe { oakengine_sequence_new(project, name.as_ptr()) };
-		assert!(!sequence.is_null());
-		assert_eq!(
-			unsafe { oakengine_sequence_add_track(sequence, TRACK_TYPE_VIDEO) },
-			0
-		);
-		assert_eq!(
-			unsafe { oakengine_sequence_add_track(sequence, TRACK_TYPE_AUDIO) },
-			0
-		);
-		let mut video: c_int = -1;
-		let mut audio: c_int = -1;
-		let mut subtitle: c_int = -1;
-		unsafe {
-			oakengine_sequence_track_count(sequence, &mut video, &mut audio, &mut subtitle);
-		}
-		assert_eq!((video, audio, subtitle), (1, 1, 0), "in-memory tracks");
-
-		// Save as uncompressed `.ovexml` (the module serializer only reads
-		// plain XML).
+		// Save as uncompressed `.ovexml` (the module serializer reads plain
+		// XML).
 		let save_path =
 			std::env::temp_dir().join(format!("oakapp_roundtrip_{}.ovexml", std::process::id()));
-		let cpath = CString::new(save_path.to_string_lossy().into_owned()).unwrap();
-		assert_eq!(
-			unsafe { oakengine_project_set_filename(project, cpath.as_ptr()) },
-			0
-		);
-		assert_eq!(
-			unsafe { oakengine_project_save(project, cpath.as_ptr()) },
-			0
-		);
+		graphops::save_ove(&project, &save_path).expect("save");
 		assert!(save_path.exists());
-		unsafe { free_box(sequence) };
-		unsafe { oakengine_project_free(project) };
 
-		// Load it back through the same facade path the app uses: the file
-		// loads and the project identity round-trips.
-		let project2 = unsafe { oakengine_project_create() };
-		assert!(!project2.is_null());
-		let mut err = [0 as c_char; 4096];
-		let rc = unsafe {
-			oakengine_project_load(
-				project2,
-				cpath.as_ptr(),
-				err.as_mut_ptr(),
-				err.len() as c_int,
+		// Load it back through the same path the app uses: the file loads
+		// and the project identity round-trips.
+		let loaded = graphops::load_ove(&save_path).expect("load");
+		let (loaded_name, sequences) = {
+			let guard = graphops::lock(&loaded);
+			(graphops::project_name(&guard), graphops::sequence_ids(&guard))
+		};
+		assert!(!loaded_name.is_empty(), "the loaded project has a name");
+		assert_eq!(sequences.len(), 1, "the sequence survives the round-trip");
+		let (video, audio) = {
+			let guard = graphops::lock(&loaded);
+			(
+				graphops::track_ids(&guard.graph, sequences[0], TrackType::Video).len(),
+				graphops::track_ids(&guard.graph, sequences[0], TrackType::Audio).len(),
 			)
 		};
-		assert_eq!(rc, 0, "project loads: {}", load_error(&mut err));
-		let loaded_name =
-			read_string(|buf, size| unsafe { oakengine_project_name(project2, buf, size) });
-		assert!(!loaded_name.is_empty(), "the loaded project has a name");
+		assert_eq!((video, audio), (1, 1), "the tracks survive the round-trip");
 
-		unsafe { oakengine_project_free(project2) };
 		let _ = std::fs::remove_file(&save_path);
 	}
 
-	/// End-to-end CPU render through the same facade path
-	/// [`RealEngine::render_program_frame`] uses: with the render manager up,
-	/// `render_frame` on an in-memory sequence produces a real F32 frame at
-	/// the renderer's proxy geometry, and the samples are well-formed
-	/// (finite, in range). The sequence is empty, so the picture is black — content
-	/// correctness with real footage needs the footage-input surface the
-	/// facade does not bind yet (documented gap); what is asserted here is
-	/// the full transport: renderer lifecycle, frame geometry/format/stride
-	/// and sane sample values.
+	/// End-to-end CPU render through the same path
+	/// [`RealEngine::render_program_frame`] uses: with the render manager
+	/// up, rendering an in-memory sequence produces a real F32 frame at the
+	/// requested proxy geometry, and the samples are well-formed (finite, in
+	/// range). The sequence starts empty, so the picture is black; with a
+	/// clip of real media on the video track the same render produces the
+	/// decoded footage (known content, non-black).
 	#[test]
 	fn real_render_frame_e2e() {
 		let _media = media_lock();
-		if !RealEngine::ensure_render_manager() {
+		if !crate::oakui::renderops::ensure_render_manager() {
 			panic!("the render manager failed to start");
 		}
 
-		let project = unsafe { oakengine_project_create() };
-		assert!(!project.is_null());
-		assert_eq!(unsafe { oakengine_project_new(project) }, 0);
-		let name = CString::new("Render E2E").unwrap();
-		let sequence = unsafe { oakengine_sequence_new(project, name.as_ptr()) };
-		assert!(!sequence.is_null());
+		let project = graphops::create_project();
+		let seq = graphops::create_sequence(&project, "Render E2E");
+		let tb = graphops::sequence_time_base(&graphops::lock(&project).graph, seq)
+			.expect("the sequence has a frame rate");
 
 		// The app's proxy size: sequence aspect (default 1920x1080) scaled
-		// to a 480px long edge, F32 at 25 fps.
-		let renderer = unsafe {
-			oakengine_renderer_create(
-				sequence,
-				480,
-				270,
-				PIXEL_FORMAT_F32,
-				25,
-				1,
-				std::ptr::null(),
-			)
-		};
-		assert!(!renderer.is_null(), "renderer_create must succeed");
-
-		let frame = unsafe { oakengine_renderer_render_frame(renderer, 0) };
-		assert!(!frame.is_null(), "render_frame must produce a frame");
-		assert_eq!(unsafe { oakengine_frame_width(frame) }, 480);
-		assert_eq!(unsafe { oakengine_frame_height(frame) }, 270);
-		assert_eq!(unsafe { oakengine_frame_format(frame) }, PIXEL_FORMAT_F32);
-		let linesize = unsafe { oakengine_frame_linesize_bytes(frame) };
-		assert!(linesize >= 480 * 4 * 4, "linesize covers a full row");
-		let data = unsafe { oakengine_frame_data(frame) } as *const f32;
-		assert!(!data.is_null());
-
-		// Sample pixels across the frame: all values must be finite and in
-		// range; an empty sequence renders transparent black (all zeros).
-		let stride = linesize as usize / 4;
-		let mut nonzero = 0usize;
-		for &(x, y) in &[(0usize, 0usize), (240, 135), (479, 269)] {
-			let base = y * stride + x * 4;
-			let px = unsafe { std::slice::from_raw_parts(data.add(base), 4) };
-			assert!(
-				px.iter().all(|v| v.is_finite() && (0.0..=1.0).contains(v)),
-				"samples in range: {px:?}"
-			);
-			nonzero += px.iter().filter(|&&v| v != 0.0).count();
-		}
-		assert_eq!(nonzero, 0, "an empty sequence renders transparent black");
-		unsafe { oakengine_frame_free(frame) };
+		// to a 480px long edge, F32 at the sequence's rate.
+		let frame = crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 480, 270)
+			.expect("render_frame must produce a frame");
+		assert_eq!((frame.width, frame.height), (480, 270));
+		assert_eq!(frame.format, crate::oakui::renderops::PIXEL_FORMAT_F32);
+		assert!(frame.linesize >= 480 * 4 * 4, "linesize covers a full row");
+		let (_, _, samples) = read_f32_frame(&frame).expect("well-formed F32 frame");
+		assert!(
+			samples.iter().all(|v| v.is_finite() && (0.0..=1.0).contains(v)),
+			"samples in range"
+		);
+		assert!(
+			samples.iter().all(|&v| v == 0.0),
+			"an empty sequence renders transparent black"
+		);
 
 		// M12 P0: with a clip of real media on the video track, the same
-		// renderer must produce the decoded footage (known content, non
+		// render must produce the decoded footage (known content, non
 		// black). The media is program-generated.
 		let media = std::env::temp_dir().join(format!(
 			"oakapp_e2e_media_{}.mp4",
 			std::process::id()
 		));
-		let media_c = CString::new(media.to_string_lossy().into_owned()).unwrap();
-		assert_eq!(
-			unsafe { oakengine_testmedia_write_clip(media_c.as_ptr(), 64, 64, 10, 10) },
-			0,
-			"generate e2e test media"
-		);
-		let footage = unsafe { oakengine_project_import_footage(project, media_c.as_ptr()) };
-		assert!(!footage.is_null(), "import_footage must succeed");
-		assert_eq!(unsafe { oakengine_project_footage_count(project) }, 1);
-		assert_eq!(
-			unsafe {
-				oakengine_sequence_add_track(sequence, TRACK_TYPE_VIDEO)
-			},
-			0
-		);
-		// Clip covering [0, 10) frames at 25 fps.
-		let clip = unsafe {
-			oakengine_sequence_add_footage_clip_ex(
-				sequence,
-				footage,
-				TRACK_TYPE_VIDEO,
-				0,
-				0,
-				10,
-				0,
-			)
-		};
-		if clip.is_null() {
-			let msg = read_string(|buf, size| unsafe {
-				oakengine_sequence_last_error(buf, size)
-			});
-			panic!("add_footage_clip failed: {msg}");
-		}
-		unsafe { oakengine_footage_free(footage) };
-		let frame = unsafe { oakengine_renderer_render_frame(renderer, 0) };
-		assert!(!frame.is_null(), "render_frame with a clip must produce a frame");
-		let data = unsafe { oakengine_frame_data(frame) } as *const f32;
-		let mut nonzero = 0usize;
-		for &(x, y) in &[(0usize, 0usize), (240, 135), (479, 269)] {
-			let base = y * stride + x * 4;
-			let px = unsafe { std::slice::from_raw_parts(data.add(base), 4) };
-			assert!(
-				px.iter().all(|v| v.is_finite() && (0.0..=1.0).contains(v)),
-				"samples in range: {px:?}"
-			);
-			nonzero += px.iter().filter(|&&v| v != 0.0).count();
-		}
+		oakcodec::testmedia::write_test_clip(&media, 64, 64, 10, 10)
+			.expect("generate e2e test media");
+		let footage = graphops::import_footage(&project, &media).expect("import_footage");
+		graphops::add_track(&project, seq, TrackType::Video).expect("add a video track");
+		// Clip covering [0, 10) frames at the sequence's rate.
+		graphops::place_footage_clip(&project, seq, footage, TrackType::Video, 0, 0, 10, 0)
+			.expect("clip placement");
+		let frame = crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 480, 270)
+			.expect("render_frame with a clip must produce a frame");
+		let (_, _, samples) = read_f32_frame(&frame).expect("well-formed F32 frame");
+		let nonzero = samples.iter().filter(|&&v| v != 0.0).count();
 		assert!(
 			nonzero > 0,
 			"the sequence with a footage clip must render non-black pixels"
 		);
 		// Known content: the test clip's left half is red on frame 0 —
 		// the center-left pixel must be red-dominant.
-		let base = 135 * stride + 120 * 4;
-		let px = unsafe { std::slice::from_raw_parts(data.add(base), 4) };
+		let px = |x: usize, y: usize| &samples[(y * 480 + x) * 4..][..4];
+		let center_left = px(120, 135);
 		assert!(
-			px[0] > 0.5 && px[1] < 0.4 && px[2] < 0.4,
-			"center-left pixel stays red from the decoded clip: {px:?}"
+			center_left[0] > 0.5 && center_left[1] < 0.4 && center_left[2] < 0.4,
+			"center-left pixel stays red from the decoded clip: {center_left:?}"
 		);
-		unsafe { oakengine_frame_free(frame) };
-		let _ = std::fs::remove_file(&media);
 
 		// A second frame at a later timestamp renders too.
-		let frame2 = unsafe { oakengine_renderer_render_frame(renderer, 30) };
-		assert!(!frame2.is_null());
-		unsafe { oakengine_frame_free(frame2) };
+		assert!(crate::oakui::renderops::render_sequence_frame(&project, seq, 30, tb, 480, 270).is_ok());
 
-		// Invalid arguments are rejected (geometry, pixel format).
-		assert!(unsafe {
-			oakengine_renderer_create(sequence, 0, 270, PIXEL_FORMAT_F32, 25, 1, std::ptr::null())
-		}
-		.is_null());
-		assert!(unsafe {
-			oakengine_renderer_create(sequence, 480, 270, 99999, 25, 1, std::ptr::null())
-		}
-		.is_null());
+		// Invalid geometry is rejected.
+		assert!(crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 0, 270).is_err());
 
-		unsafe { oakengine_renderer_free(renderer) };
-		unsafe { free_box(sequence) };
-		unsafe { oakengine_project_free(project) };
+		oakundo::global::clear().unwrap();
+		let _ = std::fs::remove_file(&media);
 	}
 
 	/// M12 P3 acceptance: importing a media file makes it appear in the
@@ -4255,26 +2954,19 @@ mod tests {
 	#[test]
 	fn real_project_browser_lists_imported_footage() {
 		let _media = media_lock();
-		let project = unsafe { oakengine_project_create() };
-		assert!(!project.is_null());
-		assert_eq!(unsafe { oakengine_project_new(project) }, 0);
+		let project = graphops::create_project();
 
-		// Generate a real media file through the facade, import it.
+		// Generate a real media file, import it.
 		let media = std::env::temp_dir().join(format!(
 			"oakapp_browser_{}.mp4",
 			std::process::id()
 		));
-		let cpath = CString::new(media.to_string_lossy().into_owned()).unwrap();
-		assert_eq!(
-			unsafe { oakengine_testmedia_write_clip(cpath.as_ptr(), 64, 64, 10, 10) },
-			0
-		);
-		let footage = unsafe { oakengine_project_import_footage(project, cpath.as_ptr()) };
-		assert!(!footage.is_null(), "import must succeed");
-		unsafe { oakengine_footage_free(footage) };
+		oakcodec::testmedia::write_test_clip(&media, 64, 64, 10, 10)
+			.expect("generate test media");
+		graphops::import_footage(&project, &media).expect("import must succeed");
 
 		// The project browser (ProjectDataSource) must list it.
-		let roots = unsafe { crate::oakui::projectbrowser::roots(project) };
+		let roots = crate::oakui::projectbrowser::roots(&project);
 		assert!(!roots.is_empty(), "the root folder lists entries");
 		let media_name = media.file_name().unwrap().to_string_lossy().into_owned();
 		let entry = roots
@@ -4286,10 +2978,10 @@ mod tests {
 
 		// Double-click behavior: the entry id resolves back to the footage
 		// node through `find_by_identity`.
-		let node = unsafe { crate::oakui::projectbrowser::find_by_identity(project, entry.id) };
+		let node = crate::oakui::projectbrowser::find_by_identity(&project, entry.id);
 		assert!(node.is_some(), "selection resolves to a node");
-		unsafe { oakengine_node_free(node.unwrap()) };
 
+		oakundo::global::clear().unwrap();
 		let _ = std::fs::remove_file(&media);
 	}
 
@@ -4311,12 +3003,8 @@ mod tests {
 			"oakapp_engine_import_{}.mp4",
 			std::process::id()
 		));
-		let cpath = CString::new(media.to_string_lossy().into_owned()).unwrap();
-		assert_eq!(
-			unsafe { oakengine_testmedia_write_clip(cpath.as_ptr(), 64, 64, 10, 10) },
-			0,
-			"generate e2e test media"
-		);
+		oakcodec::testmedia::write_test_clip(&media, 64, 64, 10, 10)
+			.expect("generate e2e test media");
 		let imported = cx
 			.update(|app| engine.update(app, |engine, cx| engine.import_footage(media.clone(), cx)));
 		assert!(imported.is_ok(), "import through the seam succeeds: {imported:?}");
@@ -4344,47 +3032,27 @@ mod tests {
 	/// builds a NON-EMPTY node graph with the wires the node editor shows:
 	/// the footage feeds the clip's `tex_in` (a real edge), and every clip
 	/// connects to the sequence output through the synthesized wire. Runs
-	/// through the same facade path `RealEngine::nodes()`/`edges()` use.
+	/// through the same builder `RealEngine::nodes()`/`edges()` use.
 	#[test]
 	fn real_node_graph_enumerates_sequence() {
 		let _media = media_lock();
-		let project = unsafe { oakengine_project_create() };
-		assert!(!project.is_null());
-		assert_eq!(unsafe { oakengine_project_new(project) }, 0);
-		let name = CString::new("Node Editor").unwrap();
-		let sequence = unsafe { oakengine_sequence_new(project, name.as_ptr()) };
-		assert!(!sequence.is_null());
-		assert_eq!(unsafe { oakengine_sequence_add_track(sequence, TRACK_TYPE_VIDEO) }, 0);
+		let project = graphops::create_project();
+		let seq = graphops::create_sequence(&project, "Node Editor");
+		graphops::add_track(&project, seq, TrackType::Video).expect("add a video track");
 
 		let media = std::env::temp_dir().join(format!(
 			"oakapp_nodegraph_{}.mp4",
 			std::process::id()
 		));
-		let cpath = CString::new(media.to_string_lossy().into_owned()).unwrap();
-		assert_eq!(
-			unsafe { oakengine_testmedia_write_clip(cpath.as_ptr(), 64, 64, 10, 10) },
-			0
-		);
-		let footage = unsafe { oakengine_project_import_footage(project, cpath.as_ptr()) };
-		assert!(!footage.is_null(), "import must succeed");
-		let clip = unsafe {
-			oakengine_sequence_add_footage_clip_ex(
-				sequence,
-				footage,
-				TRACK_TYPE_VIDEO,
-				0,
-				0,
-				10,
-				0,
-			)
-		};
-		assert!(!clip.is_null(), "clip placement must succeed");
-		unsafe { oakengine_footage_free(footage) };
-		unsafe { free_box(clip) };
+		oakcodec::testmedia::write_test_clip(&media, 64, 64, 10, 10)
+			.expect("generate test media");
+		let footage = graphops::import_footage(&project, &media).expect("import must succeed");
+		graphops::place_footage_clip(&project, seq, footage, TrackType::Video, 0, 0, 10, 0)
+			.expect("clip placement");
 
 		// The graph through the same builder `RealEngine::nodes()` /
-		// `edges()` use (the sequence handle is the engine's).
-		let (nodes, edges) = unsafe { crate::oakui::nodegraph::build_graph(sequence) };
+		// `edges()` use.
+		let (nodes, edges) = crate::oakui::nodegraph::build_graph(&project, seq);
 		assert!(
 			nodes.len() >= 3,
 			"sequence output + clip + footage (got {} nodes)",
@@ -4397,10 +3065,7 @@ mod tests {
 		);
 
 		// The output card is the sequence node; a wire lands on it.
-		let seq_node = unsafe { oakengine_sequence_as_node(sequence) };
-		assert!(!seq_node.is_null());
-		let output_id = NodeId(unsafe { oakengine_node_identity(seq_node) });
-		unsafe { oakengine_node_free(seq_node) };
+		let output_id = gpui::node_graph::NodeId(seq.identity());
 		assert!(
 			nodes.iter().any(|n| n.id == output_id),
 			"the sequence node is the graph's output card"
@@ -4414,10 +3079,8 @@ mod tests {
 			"the clip→output wire is the synthesized one"
 		);
 
-		// The footage→clip media edge is a REAL graph edge: the footage
-		// node carries an outgoing connection (built from the module's
-		// `output_connection_at_ex`), so its wire is not the synthesized
-		// kind.
+		// The footage→clip media edge is a REAL graph edge, so its wire is
+		// not the synthesized kind.
 		let real_edges = edges
 			.iter()
 			.filter(|e| !crate::oakui::nodegraph::is_output_wire(e.id))
@@ -4427,66 +3090,48 @@ mod tests {
 			"the footage→clip media edge is real (got {real_edges} real edges)"
 		);
 
-		unsafe { free_box(sequence) };
-		unsafe { oakengine_project_free(project) };
+		oakundo::global::clear().unwrap();
 		let _ = std::fs::remove_file(&media);
 	}
 
-	/// Regression: the source monitor's full-res job used to carry only the
-	/// footage node box — dropping the project while the job was in flight
-	/// left the node dangling, and the worker's free path died on a
-	/// misaligned pointer inside the module's handle table. The request now
-	/// also carries an addref'd project copy, so this scenario completes
-	/// (and frees cleanly) instead of crashing.
+	/// Regression: the source monitor's full-res job renders the selected
+	/// footage while holding its own project `Arc` — dropping the engine's
+	/// project reference while the job is in flight leaves the job's copy
+	/// alive, so the render completes and frees cleanly.
 	#[test]
 	fn full_res_worker_outlives_a_dropped_project() {
 		let _media = media_lock();
-		if !RealEngine::ensure_render_manager() {
+		if !crate::oakui::renderops::ensure_render_manager() {
 			panic!("the render manager failed to start");
 		}
 
-		let project = unsafe { oakengine_project_create() };
-		assert!(!project.is_null());
-		assert_eq!(unsafe { oakengine_project_new(project) }, 0);
+		let project = graphops::create_project();
+		let seq = graphops::create_sequence(&project, "Full Res Source");
 		let media = std::env::temp_dir().join(format!(
 			"oakapp_fullres_src_{}.mp4",
 			std::process::id()
 		));
-		let media_c = CString::new(media.to_string_lossy().into_owned()).unwrap();
-		assert_eq!(
-			unsafe { oakengine_testmedia_write_clip(media_c.as_ptr(), 64, 64, 10, 10) },
-			0
-		);
-		let footage = unsafe { oakengine_project_import_footage(project, media_c.as_ptr()) };
-		assert!(!footage.is_null(), "import must succeed");
+		oakcodec::testmedia::write_test_clip(&media, 64, 64, 10, 10)
+			.expect("generate test media");
+		let footage = graphops::import_footage(&project, &media).expect("import must succeed");
+		let tb = graphops::sequence_time_base(&graphops::lock(&project).graph, seq).unwrap();
 
-		// The node box from the project's footage list plus the addref'd
-		// project copy (what build_full_res_request now does).
-		let node = unsafe { oakengine_project_footage_at(project, 0) };
-		assert!(!node.is_null());
-		// SAFETY: `footage` is a live box; the node box is independent.
-		unsafe { oakengine_footage_free(footage) };
-		let handle = unsafe { unbox(project) }.expect("project handle");
-		let addref = handle.addref.expect("module handle addref");
-		// SAFETY: `handle` is a live module handle; addref takes a new
-		// reference the copy releases.
-		unsafe { addref(handle.ctx) };
-		let project_copy = unsafe { box_handle::<OakEngineProject>(handle) };
+		// The worker's own project copy (what build_full_res_request hands
+		// it); the caller's reference goes away BEFORE the worker runs —
+		// the pre-Arc crash window.
+		let worker_project = project.clone();
+		drop(project);
 
-		// The engine's own project goes away BEFORE the worker runs — the
-		// pre-fix crash window.
-		unsafe { oakengine_project_free(project) };
-
-		let (tx, rx) = mpsc::channel();
+		let (tx, rx) = std_mpsc::channel();
 		let request = FullResRequest {
 			monitor: Monitor::Source,
 			frame: 0,
 			generation: 1,
-			target: FullResTarget::Node(SendPtr(node), SendPtr(project_copy)),
+			project: worker_project,
+			target: FullResTarget::Footage(footage),
 			width: 64,
 			height: 64,
-			rate_num: 10,
-			rate_den: 1,
+			tb,
 		};
 		std::thread::spawn(move || RealEngine::full_res_worker(request, tx));
 
@@ -4495,6 +3140,7 @@ mod tests {
 			.expect("the worker delivers the frame after the project drop");
 		let bytes = event.image.as_bytes(0).expect("one frame");
 		assert_eq!(bytes.len(), 64 * 64 * 4, "full-res geometry");
+		oakundo::global::clear().unwrap();
 		let _ = std::fs::remove_file(&media);
 	}
 
@@ -4619,72 +3265,42 @@ mod tests {
 		assert!(current.needs_full_res(7, false));
 	}
 
-	/// M12 P5a end-to-end through the facade: a full-res job (the exact
-	/// request [`RealEngine::build_full_res_request`] builds) renders a real
-	/// frame on a background thread — the dedicated sequence renderer is
-	/// created on that thread, the footage clip is decoded, and the frame is
-	/// delivered through the completion channel with the renderer and the
-	/// sequence copy freed by the worker.
+	/// M12 P5a end-to-end: a full-res job (the exact request
+	/// [`RealEngine::build_full_res_request`] builds) renders a real frame
+	/// on a background thread — the footage clip is decoded and the frame
+	/// is delivered through the completion channel.
 	#[test]
 	fn full_res_worker_renders_real_frame() {
 		let _media = media_lock();
-		if !RealEngine::ensure_render_manager() {
+		if !crate::oakui::renderops::ensure_render_manager() {
 			panic!("the render manager failed to start");
 		}
 
-		let project = unsafe { oakengine_project_create() };
-		assert!(!project.is_null());
-		assert_eq!(unsafe { oakengine_project_new(project) }, 0);
-		let name = CString::new("Full Res E2E").unwrap();
-		let sequence = unsafe { oakengine_sequence_new(project, name.as_ptr()) };
-		assert!(!sequence.is_null());
-		assert_eq!(
-			unsafe { oakengine_sequence_add_track(sequence, TRACK_TYPE_VIDEO) },
-			0
-		);
+		let project = graphops::create_project();
+		let seq = graphops::create_sequence(&project, "Full Res E2E");
+		graphops::add_track(&project, seq, TrackType::Video).expect("add a video track");
 
 		let media = std::env::temp_dir().join(format!(
 			"oakapp_fullres_{}.mp4",
 			std::process::id()
 		));
-		let media_c = CString::new(media.to_string_lossy().into_owned()).unwrap();
-		assert_eq!(
-			unsafe { oakengine_testmedia_write_clip(media_c.as_ptr(), 64, 64, 10, 10) },
-			0
-		);
-		let footage = unsafe { oakengine_project_import_footage(project, media_c.as_ptr()) };
-		assert!(!footage.is_null(), "import must succeed");
-		let clip = unsafe {
-			oakengine_sequence_add_footage_clip_ex(
-				sequence,
-				footage,
-				TRACK_TYPE_VIDEO,
-				0,
-				0,
-				10,
-				0,
-			)
-		};
-		assert!(!clip.is_null(), "clip placement must succeed");
-		unsafe { oakengine_footage_free(footage) };
-		unsafe { free_box(clip) };
+		oakcodec::testmedia::write_test_clip(&media, 64, 64, 10, 10)
+			.expect("generate test media");
+		let footage = graphops::import_footage(&project, &media).expect("import must succeed");
+		graphops::place_footage_clip(&project, seq, footage, TrackType::Video, 0, 0, 10, 0)
+			.expect("clip placement");
+		let tb = graphops::sequence_time_base(&graphops::lock(&project).graph, seq).unwrap();
 
-		// The addref'd sequence copy the scheduler hands the worker.
-		let handle = unsafe { unbox(sequence) }.expect("sequence handle");
-		let addref = handle.addref.expect("module handle addref");
-		unsafe { addref(handle.ctx) };
-		let copy = unsafe { box_handle::<OakEngineSequence>(handle) };
-
-		let (tx, rx) = mpsc::channel();
+		let (tx, rx) = std_mpsc::channel();
 		let request = FullResRequest {
 			monitor: Monitor::Program,
 			frame: 0,
 			generation: 1,
-			target: FullResTarget::Sequence(SendPtr(copy)),
+			project: project.clone(),
+			target: FullResTarget::Sequence(seq),
 			width: 320,
 			height: 180,
-			rate_num: 25,
-			rate_den: 1,
+			tb,
 		};
 		std::thread::spawn(move || RealEngine::full_res_worker(request, tx));
 
@@ -4704,8 +3320,7 @@ mod tests {
 			.count();
 		assert!(nonzero > 0, "the footage clip renders non-black pixels");
 
-		unsafe { free_box(sequence) };
-		unsafe { oakengine_project_free(project) };
+		oakundo::global::clear().unwrap();
 		let _ = std::fs::remove_file(&media);
 	}
 

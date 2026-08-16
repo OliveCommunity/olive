@@ -20,20 +20,16 @@
 //! Runs in its own test binary: the FFmpeg teardown state after a video
 //! decode + an audio decode in one process crashes at exit, so the
 //! waveform test stays isolated from the in-lib media tests.
+//!
+//! M14 R3: the extraction is a direct `oakaudio::waveform::extract` call
+//! (no facade).
 
-use oakapp::oakui::ffi::{
-	oakengine_waveform_extract, oakengine_testmedia_write_clip, oakapp_minmax,
-};
-use oakapp::oakui::waveform::{WaveformCache, MinMax};
+use oakapp::oakui::waveform::{MinMax, WaveformCache};
 
 #[test]
 fn waveform_extract_and_cache_hit() {
 	let media = std::env::temp_dir().join(format!("oakapp_waveform_{}.mp4", std::process::id()));
-	let cpath = std::ffi::CString::new(media.to_string_lossy().into_owned()).unwrap();
-	assert_eq!(
-		unsafe { oakengine_testmedia_write_clip(cpath.as_ptr(), 64, 64, 10, 10) },
-		0
-	);
+	oakcodec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate test media");
 	let filename = media.to_string_lossy().into_owned();
 	let cache = WaveformCache::new(25.0);
 	cache.refresh(7, &filename, 250);
@@ -52,9 +48,13 @@ fn waveform_extract_and_cache_hit() {
 	let _ = std::fs::remove_file(&media);
 }
 
-/// The MinMax mirror must stay layout-compatible with the oakaudio C ABI.
+/// The MinMax mirror matches the oakaudio waveform point layout (two
+/// f32s).
 #[test]
 fn minmax_layout_is_two_f32s() {
 	assert_eq!(std::mem::size_of::<MinMax>(), 8);
-	assert_eq!(std::mem::size_of::<oakapp_minmax>(), 8);
+	assert_eq!(
+		std::mem::size_of::<oakaudio::waveform::SamplePerChannel>(),
+		8
+	);
 }

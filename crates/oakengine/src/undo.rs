@@ -103,7 +103,9 @@ pub unsafe extern "C" fn oakengine_undo_push(command: *mut c_void, name: *const 
 /// `oakengine_undo_group_begin` — start collecting commands into a group.
 #[no_mangle]
 pub extern "C" fn oakengine_undo_group_begin(name: *const c_char) -> c_int {
-	guard(|| oakundo::global::group_begin(name).map_err(map_group_err))
+	guard(|| unsafe {
+		oakundo::global::group_begin(&crate::handle::read_cstr(name)).map_err(map_group_err)
+	})
 }
 
 /// `oakengine_undo_group_end` — close the group and push it as one entry.

@@ -17,8 +17,8 @@
 //! M12 P2: the real node-graph surface.
 //!
 //! Builds the gpui node-graph data (`RealNode` / `RealPort` / `RealEdge`)
-//! from the CURRENT SEQUENCE's graph (the facade's sequence node-graph
-//! enumeration; see the `oakengine_sequence_*` exports):
+//! from the CURRENT SEQUENCE's graph (M14 R3: the direct oaknode graph walk
+//! — the app links the module rlibs and reads the project graph itself):
 //!
 //! - the sequence node becomes the output card (rightmost);
 //! - every clip block becomes a card titled with its label (or "Clip");
@@ -26,7 +26,7 @@
 //! - footage nodes (the media) feed the clip's `tex_in` from the left;
 //! - declared inputs become input ports (id string as the label); every
 //!   node exposes one "out" output port (the module declares no outputs;
-//!   edges are enumerated from `output_connection_at_ex`);
+//!   edges are enumerated from `Graph::output_connections`);
 //! - REAL edges connect the source node's main output to the target
 //!   node's input port; a synthesized "clip → output" wire per clip
 //!   connects the clip's main output to the sequence's `tex_in` (the
@@ -37,10 +37,11 @@
 //!   output) when a node has no entry yet — the first drag persists
 //!   through the undoable position setter.
 //!
-//! Identity mapping: `NodeId` = the facade node identity (stable across
+//! Identity mapping: `NodeId` = the module node identity (stable across
 //! frames). `PortId` packs `(node identity, kind, index)` — input port
 //! `(id << 4) | (index << 1)`, output port `(id << 4) | 1`. Identities
-//! are arena indices (low bits zero), so the shifts are injective.
+//! are arena slots (low index bits, zero generation for most nodes), so
+//! the shifts are injective.
 //!
 //! Structural timeline plumbing (track lists, tracks, gaps, transitions)
 //! is NOT displayed: those nodes carry no graph edges in the module world
@@ -48,23 +49,15 @@
 //! clip → effects → output the C++ node editor centers on.
 
 use std::collections::HashMap;
-use std::ffi::{c_char, c_int};
 
 use gpui::node_graph::{
 	EdgeData, EdgeId, NodeData, NodeId, PortData, PortId, PortDataType, PortKind,
 };
 use gpui::{hsla, point, px, Hsla, Pixels, Point, SharedString};
 
-use crate::oakui::ffi::{
-	oakengine_node_connect, oakengine_node_disconnect_ex, oakengine_node_free,
-	oakengine_node_get_context_position, oakengine_node_get_label, oakengine_node_get_name,
-	oakengine_node_get_type_id, oakengine_node_identity, oakengine_node_input_count,
-	oakengine_node_input_id, oakengine_node_input_is_connected,
-	oakengine_node_output_connection_at_ex, oakengine_node_output_connection_count,
-	oakengine_node_set_context_position, oakengine_sequence_as_node, oakengine_sequence_node_at,
-	oakengine_sequence_node_count, oakengine_sequence_remove_node, OakEngineNode,
-	OakEngineSequence,
-};
+use oaknode::id::NodeId as DomainNodeId;
+
+use crate::oakui::graphops::{self, ProjectRef};
 
 /// The sequence node type id (the graph's output card).
 const TYPE_ID_SEQUENCE: &str = "org.olivevideoeditor.Olive.sequence";
@@ -78,7 +71,7 @@ const TYPE_ID_TRACK_LIST: &str = "org.olivevideoeditor.Olive.tracklist";
 const TYPE_ID_GAP_BLOCK: &str = "org.olivevideoeditor.Olive.gapblock";
 const TYPE_ID_TRANSITION_BLOCK: &str = "org.olivevideoeditor.Olive.transitionblock";
 
-/// The "video" wire type used by the real graph (the facade exposes no
+/// The "video" wire type used by the real graph (the module exposes no
 /// per-input type names; all node ports are treated as video).
 fn video_type() -> PortDataType {
 	PortDataType::new("video", hsla(0.55, 0.75, 0.6, 1.0))
@@ -106,36 +99,6 @@ fn unpack_port(id: PortId) -> (u64, PortKind, u32) {
 	} else {
 		(node, PortKind::Input, ((raw >> 1) & 0x7) as u32)
 	}
-}
-
-/// Two-stage string read over a facade `(buf, size)` getter.
-fn read_str(f: impl Fn(*mut c_char, c_int) -> c_int) -> String {
-	let needed = f(std::ptr::null_mut(), 0);
-	if needed <= 0 {
-		return String::new();
-	}
-	let mut buf = vec![0 as c_char; needed as usize + 1];
-	f(buf.as_mut_ptr(), needed as c_int + 1);
-	let len = buf
-		.iter()
-		.position(|&c| c == 0)
-		.unwrap_or(buf.len());
-	String::from_utf8_lossy(unsafe {
-		std::slice::from_raw_parts(buf.as_ptr() as *const u8, len)
-	})
-	.into_owned()
-}
-
-/// Read a NUL-terminated facade string out of a fixed buffer.
-fn read_cstr_buf(buf: &[c_char]) -> String {
-	if buf.first().copied().unwrap_or(0) == 0 {
-		return String::new();
-	}
-	String::from_utf8_lossy(unsafe {
-		std::slice::from_raw_parts(buf.as_ptr() as *const u8, buf.len())
-	})
-	.trim_end_matches('\0')
-	.to_string()
 }
 
 /// A stable REAL edge id from `(from node, to node, input id)` (FNV-1a,
@@ -169,7 +132,7 @@ pub fn is_output_wire(id: EdgeId) -> bool {
 /// A node card in the real graph.
 #[derive(Debug, Clone)]
 pub struct RealNode {
-	/// Facade node identity.
+	/// The module node identity.
 	pub id: NodeId,
 	/// Card title.
 	pub title: SharedString,
@@ -303,20 +266,6 @@ fn node_color(ident: u64) -> Hsla {
 	hsla(hues[(ident as usize) % hues.len()], 0.5, 0.35, 1.0)
 }
 
-/// The type id of a boxed node (empty on failure).
-///
-/// # Safety
-/// `node` must be a live facade node box.
-unsafe fn node_type_id(node: *mut OakEngineNode) -> String {
-	let mut buf = [0 as c_char; 256];
-	let len = unsafe { oakengine_node_get_type_id(node, buf.as_mut_ptr(), buf.len() as c_int) };
-	if len <= 0 {
-		String::new()
-	} else {
-		read_cstr_buf(&buf)
-	}
-}
-
 /// Whether a sequence-graph node should be shown in the node editor: the
 /// media chain (sequence output, clip blocks, footage, effects) only;
 /// structural timeline plumbing (tracks, track lists, gaps, transitions)
@@ -328,249 +277,221 @@ fn is_displayed(type_id: &str) -> bool {
 	)
 }
 
-/// A boxed node plus its type id (freed with `oakengine_node_free`).
+/// A displayed node: its domain id plus its type id.
 struct TypedNode {
-	/// The boxed node.
-	ptr: *mut OakEngineNode,
+	/// The node's domain id.
+	id: DomainNodeId,
 	/// The node's identity.
 	ident: u64,
 	/// The node's type id.
 	type_id: String,
 }
 
-/// The displayable nodes of `seq`'s graph, in graph order.
-///
-/// # Safety
-/// `seq` must be a live facade sequence box.
-unsafe fn graph_nodes(seq: *mut OakEngineSequence) -> Vec<TypedNode> {
-	let mut out = Vec::new();
-	let count = unsafe { oakengine_sequence_node_count(seq) };
-	for i in 0..count.max(0) {
-		let node = unsafe { oakengine_sequence_node_at(seq, i) };
-		if node.is_null() {
-			continue;
-		}
-		let type_id = unsafe { node_type_id(node) };
-		let ident = unsafe { oakengine_node_identity(node) };
-		if ident == 0 || !is_displayed(&type_id) {
-			unsafe { oakengine_node_free(node) };
-			continue;
-		}
-		out.push(TypedNode {
-			ptr: node,
-			ident,
-			type_id,
-		});
-	}
+/// The displayable nodes of the sequence's graph, in identity order (the
+/// sequence node itself exactly once).
+fn graph_nodes(g: &oaknode::graph::Graph, seq: DomainNodeId) -> Vec<TypedNode> {
+	let mut out: Vec<TypedNode> = g
+		.node_ids()
+		.into_iter()
+		.filter_map(|id| {
+			let type_id = graphops::node_type_id(g, id);
+			if !is_displayed(&type_id) {
+				return None;
+			}
+			Some(TypedNode {
+				id,
+				ident: id.identity(),
+				type_id,
+			})
+		})
+		.filter(|n| n.id != seq)
+		.collect();
+	// The sequence node itself: exactly one output card.
+	out.push(TypedNode {
+		id: seq,
+		ident: seq.identity(),
+		type_id: TYPE_ID_SEQUENCE.into(),
+	});
+	out.sort_by_key(|n| n.ident);
 	out
 }
 
-/// Build the (nodes, edges) snapshot of `seq`'s node graph.
-///
-/// # Safety
-/// `seq` must be a live facade sequence box.
-pub unsafe fn build_graph(seq: *mut OakEngineSequence) -> (Vec<RealNode>, Vec<RealEdge>) {
-	unsafe {
-		let mut nodes = Vec::new();
-		let mut edges = Vec::new();
-		if seq.is_null() {
-			return (nodes, edges);
-		}
-		let seq_node = oakengine_sequence_as_node(seq);
-		if seq_node.is_null() {
-			return (nodes, edges);
-		}
-		let seq_ident = oakengine_node_identity(seq_node);
-		let seq_label = read_str(|buf, size| oakengine_node_get_label(seq_node, buf, size));
-		let seq_name = read_str(|buf, size| oakengine_node_get_name(seq_node, buf, size));
+/// The context position of `node` in the sequence's map, or the (0,0)
+/// sentinel the fallback layout replaces.
+fn context_position(
+	g: &oaknode::graph::Graph,
+	seq: DomainNodeId,
+	node: DomainNodeId,
+) -> Point<Pixels> {
+	let placed = g.get(node).and_then(|e| {
+		e.core
+			.context_positions
+			.iter()
+			.find(|(c, _, _)| *c == seq)
+			.map(|(_, pos, _)| *pos)
+	});
+	match placed {
+		Some((x, y)) if x != 0.0 || y != 0.0 => point(px(x as f32), px(y as f32)),
+		_ => point(px(0.0), px(0.0)),
+	}
+}
 
-		// The sequence node itself may or may not be enumerated in its own
-		// project; ensure exactly one output card with the sequence identity
-		// (the enumerated copy, if any, is freed here).
-		let mut all = Vec::new();
-		for typed in graph_nodes(seq) {
-			if typed.ident == seq_ident {
-				oakengine_node_free(typed.ptr);
+/// Build the (nodes, edges) snapshot of the sequence's node graph.
+pub fn build_graph(project: &ProjectRef, seq: DomainNodeId) -> (Vec<RealNode>, Vec<RealEdge>) {
+	let g = graphops::lock(project);
+	let g = &g.graph;
+	let mut nodes = Vec::new();
+	let mut edges = Vec::new();
+	if !g.is_valid(seq) {
+		return (nodes, edges);
+	}
+	let seq_ident = seq.identity();
+	let seq_label = graphops::node_label(g, seq);
+	let seq_name = g
+		.get(seq)
+		.map(|e| e.behavior.name().to_string())
+		.unwrap_or_default();
+
+	let all = graph_nodes(g, seq);
+
+	// Build every card's ports first (inputs, the implicit output), so
+	// real edges can resolve their target port index by matching the
+	// input id against the already-built cards.
+	let mut built: Vec<(TypedNode, RealNode)> = Vec::new();
+	for typed in all {
+		let ident = typed.ident;
+		let title = if typed.type_id == TYPE_ID_SEQUENCE {
+			if seq_label.is_empty() {
+				seq_name.clone()
 			} else {
-				all.push(typed);
+				seq_label.clone()
 			}
-		}
-		all.push(TypedNode {
-			ptr: seq_node,
-			ident: seq_ident,
-			type_id: TYPE_ID_SEQUENCE.into(),
-		});
-		all.sort_by_key(|n| n.ident);
-
-		// Build every card's ports first (inputs, the implicit output), so
-		// real edges can resolve their target port index by matching the
-		// input id against the already-built cards.
-		let mut built: Vec<(TypedNode, RealNode)> = Vec::new();
-		for typed in all {
-			let ident = typed.ident;
-			let title = if typed.type_id == TYPE_ID_SEQUENCE {
-				if seq_label.is_empty() {
-					seq_name.clone()
-				} else {
-					seq_label.clone()
-				}
+		} else {
+			let label = graphops::node_label(g, typed.id);
+			let name = g
+				.get(typed.id)
+				.map(|e| e.behavior.name().to_string())
+				.unwrap_or_default();
+			if label.is_empty() {
+				name
 			} else {
-				let label = read_str(|buf, size| oakengine_node_get_label(typed.ptr, buf, size));
-				let name = read_str(|buf, size| oakengine_node_get_name(typed.ptr, buf, size));
-				if label.is_empty() {
-					name
-				} else {
-					label
-				}
-			};
-
-			// Inputs.
-			let input_count = oakengine_node_input_count(typed.ptr);
-			let mut inputs = Vec::with_capacity(input_count.max(0) as usize);
-			for idx in 0..input_count {
-				let id_str =
-					read_str(|buf, size| oakengine_node_input_id(typed.ptr, idx, buf, size));
-				if id_str.is_empty() {
-					continue;
-				}
-				let cid = std::ffi::CString::new(id_str.clone()).unwrap_or_default();
-				let connected =
-					oakengine_node_input_is_connected(typed.ptr, cid.as_ptr()) == 1;
-				inputs.push(RealPort {
-					id: port_id(ident, PortKind::Input, idx as u32),
-					kind: PortKind::Input,
-					label: id_str.into(),
-					data_type: video_type(),
-					connected,
-				});
+				label
 			}
+		};
 
-			// The single implicit output.
-			let out_count = oakengine_node_output_connection_count(typed.ptr);
-			let outputs = vec![RealPort {
-				id: port_id(ident, PortKind::Output, 0),
-				kind: PortKind::Output,
-				label: SharedString::new_static("out"),
-				data_type: out_type(),
-				connected: out_count > 0,
-			}];
-
-			let position = context_position(seq_node, typed.ptr);
-			built.push((
-				typed,
-				RealNode {
-					id: NodeId(ident),
-					title: title.into(),
-					position,
-					inputs,
-					outputs,
-					header_color: Some(node_color(ident)),
-					collapsed: false,
-					enabled: true,
-				},
-			));
-		}
-
-		// Outgoing REAL edges: every source node's output connections, with
-		// the target port resolved to the index of the input whose id matches
-		// (the module stores edges by input id; the index may differ from 0 —
-		// e.g. a clip's `tex_in` sits after `enabled_in`).
-		let mut node_edges: Vec<(u64, Vec<RealEdge>)> = Vec::new();
-		for (typed, _) in &built {
-			let out_count = oakengine_node_output_connection_count(typed.ptr);
-			let mut edges_of = Vec::new();
-			for j in 0..out_count {
-				let mut input_node: *mut OakEngineNode = std::ptr::null_mut();
-				let mut id_buf = [0 as c_char; 256];
-				let mut element: c_int = -1;
-				let mut hidden: c_int = 0;
-				let rc = oakengine_node_output_connection_at_ex(
-					typed.ptr,
-					j,
-					&mut input_node,
-					id_buf.as_mut_ptr(),
-					id_buf.len() as c_int,
-					&mut element,
-					&mut hidden,
-				);
-				if rc != 0 {
-					continue;
-				}
-				let to_ident = if input_node.is_null() {
-					0
-				} else {
-					oakengine_node_identity(input_node)
-				};
-				if !input_node.is_null() {
-					oakengine_node_free(input_node);
-				}
-				let conn_id = read_cstr_buf(&id_buf);
-				if to_ident == 0 || conn_id.is_empty() {
-					continue;
-				}
-				let to_index = built
-					.iter()
-					.find(|(t, _)| t.ident == to_ident)
-					.and_then(|(_, n)| {
-						n.inputs
-							.iter()
-							.position(|p| p.label.as_ref() == conn_id)
-					})
-					.unwrap_or(0) as u32;
-				edges_of.push(RealEdge {
-					id: real_edge_id(typed.ident, to_ident, &conn_id),
-					from_node: NodeId(typed.ident),
-					from_port: port_id(typed.ident, PortKind::Output, 0),
-					to_node: NodeId(to_ident),
-					to_port: port_id(to_ident, PortKind::Input, to_index),
-				});
-			}
-			node_edges.push((typed.ident, edges_of));
-		}
-
-		// Fallback layout: nodes without a persisted context position get a
-		// deterministic role grid — footage | effects | clips | output as
-		// columns, a per-role row counter as the row (the same grid the
-		// C++-era node editor lays chains out on). Nodes the user has
-		// already dragged keep their persisted position. `fallback_base`
-		// mirrors this grid so the first drag moves from the displayed
-		// position rather than the origin.
-		let mut row_at_role: HashMap<u32, u32> = HashMap::new();
-		for (typed, node) in built.iter_mut() {
-			if node.position != point(px(0.0), px(0.0)) {
+		// Inputs.
+		let input_ids: Vec<String> = g
+			.get(typed.id)
+			.map(|e| e.core.inputs.iter().map(|i| i.id.clone()).collect())
+			.unwrap_or_default();
+		let mut inputs = Vec::with_capacity(input_ids.len());
+		for (idx, id_str) in input_ids.iter().enumerate() {
+			if id_str.is_empty() {
 				continue;
 			}
-			let role = role_of(&typed.type_id, typed.ident == seq_ident);
-			let row = row_at_role.entry(role).or_insert(0);
-			let x = 40.0 + (role as f32) * 260.0;
-			let y = 40.0 + (*row as f32) * 180.0;
-			*row += 1;
-			node.position = point(px(x), px(y));
+			inputs.push(RealPort {
+				id: port_id(ident, PortKind::Input, idx as u32),
+				kind: PortKind::Input,
+				label: id_str.clone().into(),
+				data_type: video_type(),
+				connected: g.is_input_connected(typed.id, id_str, -1),
+			});
 		}
 
-		// Assemble: every built card + its real edges, plus the synthesized
-		// "clip → output" wires (each clip's main output into the sequence's
-		// `tex_in`, its first declared input). Every enumerated box is freed
-		// here (including the sequence node's own view).
-		let clip_input = port_id(seq_ident, PortKind::Input, 0);
-		for (typed, node) in built {
-			if typed.type_id == TYPE_ID_CLIP_BLOCK {
-				edges.push(RealEdge {
-					id: output_wire_id(typed.ident),
-					from_node: node.id,
-					from_port: port_id(typed.ident, PortKind::Output, 0),
-					to_node: NodeId(seq_ident),
-					to_port: clip_input,
-				});
-			}
-			if let Some((_, real)) = node_edges.iter().find(|(id, _)| *id == typed.ident) {
-				edges.extend(real.iter().cloned());
-			}
-			nodes.push(node);
-			oakengine_node_free(typed.ptr);
-		}
-		(nodes, edges)
+		// The single implicit output.
+		let out_count = g.output_connections(typed.id).len();
+		let outputs = vec![RealPort {
+			id: port_id(ident, PortKind::Output, 0),
+			kind: PortKind::Output,
+			label: SharedString::new_static("out"),
+			data_type: out_type(),
+			connected: out_count > 0,
+		}];
+
+		let position = context_position(g, seq, typed.id);
+		built.push((
+			typed,
+			RealNode {
+				id: NodeId(ident),
+				title: title.into(),
+				position,
+				inputs,
+				outputs,
+				header_color: Some(node_color(ident)),
+				collapsed: false,
+				enabled: true,
+			},
+		));
 	}
+
+	// Outgoing REAL edges: every source node's output connections, with
+	// the target port resolved to the index of the input whose id matches
+	// (the module stores edges by input id; the index may differ from 0 —
+	// e.g. a clip's `tex_in` sits after `enabled_in`).
+	let mut node_edges: Vec<(u64, Vec<RealEdge>)> = Vec::new();
+	for (typed, _) in &built {
+		let mut edges_of = Vec::new();
+		for (to, conn_id, _element) in g.output_connections(typed.id) {
+			if !g.is_valid(to) || conn_id.is_empty() {
+				continue;
+			}
+			let to_ident = to.identity();
+			let to_index = built
+				.iter()
+				.find(|(t, _)| t.ident == to_ident)
+				.and_then(|(_, n)| n.inputs.iter().position(|p| p.label.as_ref() == conn_id))
+				.unwrap_or(0) as u32;
+			edges_of.push(RealEdge {
+				id: real_edge_id(typed.ident, to_ident, &conn_id),
+				from_node: NodeId(typed.ident),
+				from_port: port_id(typed.ident, PortKind::Output, 0),
+				to_node: NodeId(to_ident),
+				to_port: port_id(to_ident, PortKind::Input, to_index),
+			});
+		}
+		node_edges.push((typed.ident, edges_of));
+	}
+
+	// Fallback layout: nodes without a persisted context position get a
+	// deterministic role grid — footage | effects | clips | output as
+	// columns, a per-role row counter as the row (the same grid the
+	// C++-era node editor lays chains out on). Nodes the user has
+	// already dragged keep their persisted position. `fallback_base`
+	// mirrors this grid so the first drag moves from the displayed
+	// position rather than the origin.
+	let mut row_at_role: HashMap<u32, u32> = HashMap::new();
+	for (typed, node) in built.iter_mut() {
+		if node.position != point(px(0.0), px(0.0)) {
+			continue;
+		}
+		let role = role_of(&typed.type_id, typed.ident == seq_ident);
+		let row = row_at_role.entry(role).or_insert(0);
+		let x = 40.0 + (role as f32) * 260.0;
+		let y = 40.0 + (*row as f32) * 180.0;
+		*row += 1;
+		node.position = point(px(x), px(y));
+	}
+
+	// Assemble: every built card + its real edges, plus the synthesized
+	// "clip → output" wires (each clip's main output into the sequence's
+	// `tex_in`, its first declared input).
+	let clip_input = port_id(seq_ident, PortKind::Input, 0);
+	for (typed, node) in built {
+		if typed.type_id == TYPE_ID_CLIP_BLOCK {
+			edges.push(RealEdge {
+				id: output_wire_id(typed.ident),
+				from_node: node.id,
+				from_port: port_id(typed.ident, PortKind::Output, 0),
+				to_node: NodeId(seq_ident),
+				to_port: clip_input,
+			});
+		}
+		if let Some((_, real)) = node_edges.iter().find(|(id, _)| *id == typed.ident) {
+			edges.extend(real.iter().cloned());
+		}
+		nodes.push(node);
+	}
+	(nodes, edges)
 }
 
 /// The role column of a displayed node (footage | effects | clips |
@@ -592,90 +513,54 @@ fn role_of(type_id: &str, is_output: bool) -> u32 {
 /// sorted display order (mirrors the fallback grid in `build_graph`).
 /// `apply_edit` uses it so the first drag release writes
 /// `(displayed base + delta)` instead of `(origin + delta)`.
-///
-/// # Safety
-/// `seq`/`seq_node` must be live facade boxes.
-unsafe fn fallback_base(
-	seq: *mut OakEngineSequence,
-	seq_node: *mut OakEngineNode,
-	ident: u64,
-) -> (f64, f64) {
-	unsafe {
-		let seq_ident = oakengine_node_identity(seq_node);
-		let mut all = Vec::new();
-		for typed in graph_nodes(seq) {
-			if typed.ident == seq_ident {
-				oakengine_node_free(typed.ptr);
-			} else {
-				all.push(typed);
-			}
+fn fallback_base(g: &oaknode::graph::Graph, seq: DomainNodeId, ident: u64) -> (f64, f64) {
+	let seq_ident = seq.identity();
+	let all = graph_nodes(g, seq);
+	let target = all
+		.iter()
+		.find(|n| n.ident == ident)
+		.expect("the moved node is part of the displayed graph");
+	let target_role = role_of(&target.type_id, ident == seq_ident);
+	let mut row: u32 = 0;
+	for n in &all {
+		if n.ident == ident {
+			break;
 		}
-		all.push(TypedNode {
-			ptr: seq_node,
-			ident: seq_ident,
-			type_id: TYPE_ID_SEQUENCE.into(),
-		});
-		all.sort_by_key(|n| n.ident);
-		let target = all
-			.iter()
-			.find(|n| n.ident == ident)
-			.expect("the moved node is part of the displayed graph");
-		let target_role = role_of(&target.type_id, ident == seq_ident);
-		let mut row: u32 = 0;
-		for n in &all {
-			if n.ident == ident {
-				break;
-			}
-			if role_of(&n.type_id, n.ident == seq_ident) != target_role {
-				continue;
-			}
-			// Placed nodes do not consume a row.
-			let mut x: f64 = 0.0;
-			let mut y: f64 = 0.0;
-			let mut expanded: c_int = 0;
-			let placed = oakengine_node_get_context_position(
-				seq_node,
-				n.ptr,
-				&mut x,
-				&mut y,
-				&mut expanded,
-			) == 0
-				&& (x != 0.0 || y != 0.0);
-			if !placed {
-				row += 1;
-			}
+		if role_of(&n.type_id, n.ident == seq_ident) != target_role {
+			continue;
 		}
-		// Free the enumerated boxes; `seq_node` belongs to the caller.
-		for n in &all {
-			if n.ptr != seq_node {
-				oakengine_node_free(n.ptr);
-			}
+		// Placed nodes do not consume a row.
+		let placed = g
+			.get(n.id)
+			.and_then(|e| {
+				e.core
+					.context_positions
+					.iter()
+					.find(|(c, _, _)| *c == seq)
+					.map(|(_, pos, _)| *pos)
+			})
+			.map(|(x, y)| x != 0.0 || y != 0.0)
+			.unwrap_or(false);
+		if !placed {
+			row += 1;
 		}
-		(
-			40.0 + f64::from(target_role * 260),
-			40.0 + f64::from(row * 180),
-		)
 	}
+	(
+		40.0 + f64::from(target_role * 260),
+		40.0 + f64::from(row * 180),
+	)
 }
 
-/// The context position of `node` in `seq_node`'s map, or the (0,0)
-/// sentinel the fallback layout replaces.
-///
-/// # Safety
-/// Both pointers must be live facade node boxes.
-unsafe fn context_position(seq_node: *mut OakEngineNode, node: *mut OakEngineNode) -> Point<Pixels> {
-	let mut x: f64 = 0.0;
-	let mut y: f64 = 0.0;
-	let mut expanded: c_int = 0;
-	if unsafe {
-		oakengine_node_get_context_position(seq_node, node, &mut x, &mut y, &mut expanded)
-	} == 0
-		&& (x != 0.0 || y != 0.0)
-	{
-		point(px(x as f32), px(y as f32))
-	} else {
-		point(px(0.0), px(0.0))
+/// Resolve a domain node id from a widget identity, validating it against
+/// the graph.
+fn find_node(g: &oaknode::graph::Graph, ident: u64) -> Result<DomainNodeId, String> {
+	let Some(id) = graphops::id_of(ident) else {
+		return Err(format!("node {ident} not found"));
+	};
+	if !g.is_valid(id) {
+		return Err(format!("node {ident} not found"));
 	}
+	Ok(id)
 }
 
 // ---------------------------------------------------------------------------
@@ -683,269 +568,137 @@ unsafe fn context_position(seq_node: *mut OakEngineNode, node: *mut OakEngineNod
 // ---------------------------------------------------------------------------
 
 /// Whether connecting output port `from` to input port `to` is valid in
-/// `seq`'s graph: output → input, distinct nodes, and the target input
-/// must exist and be free. The sequence node's inputs are connectable
-/// like any other (its `tex_in` starts unconnected; a user wire replaces
-/// the synthesized one once the graph grows real edges).
-///
-/// # Safety
-/// `seq` must be a live facade sequence box.
-pub unsafe fn can_connect(seq: *mut OakEngineSequence, from: PortId, to: PortId) -> bool {
-	unsafe {
-		let (from_node, from_kind, _) = unpack_port(from);
-		let (to_node, to_kind, to_index) = unpack_port(to);
-		if from_kind != PortKind::Output || to_kind != PortKind::Input {
-			return false;
-		}
-		if from_node == to_node {
-			return false;
-		}
-		let Ok(node) = find_boxed(seq, to_node) else {
-			return false;
-		};
-		let count = oakengine_node_input_count(node);
-		if to_index >= count.max(0) as u32 {
-			oakengine_node_free(node);
-			return false;
-		}
-		let id_str =
-			read_str(|buf, size| oakengine_node_input_id(node, to_index as c_int, buf, size));
-		if id_str.is_empty() {
-			oakengine_node_free(node);
-			return false;
-		}
-		let cid = std::ffi::CString::new(id_str).unwrap_or_default();
-		let free = oakengine_node_input_is_connected(node, cid.as_ptr()) == 0;
-		oakengine_node_free(node);
-		free
+/// the graph: output → input, distinct nodes, and the target input must
+/// exist and be free. The sequence node's inputs are connectable like any
+/// other (its `tex_in` starts unconnected; a user wire replaces the
+/// synthesized one once the graph grows real edges).
+pub fn can_connect(project: &ProjectRef, from: PortId, to: PortId) -> bool {
+	let (from_node, from_kind, _) = unpack_port(from);
+	let (to_node, to_kind, to_index) = unpack_port(to);
+	if from_kind != PortKind::Output || to_kind != PortKind::Input {
+		return false;
 	}
+	if from_node == to_node {
+		return false;
+	}
+	let guard = graphops::lock(project);
+	let g = &guard.graph;
+	let Ok(node) = find_node(g, to_node) else {
+		return false;
+	};
+	let Some(entry) = g.get(node) else {
+		return false;
+	};
+	let Some(id_str) = entry.core.inputs.get(to_index as usize).map(|i| i.id.clone()) else {
+		return false;
+	};
+	if id_str.is_empty() {
+		return false;
+	}
+	!g.is_input_connected(node, &id_str, -1)
 }
 
-/// Apply a node-graph edit to `seq`'s graph (undoable through the facade).
-///
-/// # Safety
-/// `seq` must be a live facade sequence box.
-pub unsafe fn apply_edit(
-	seq: *mut OakEngineSequence,
+/// Apply a node-graph edit to the sequence's graph (undoable through the
+/// global undo stack).
+pub fn apply_edit(
+	project: &ProjectRef,
+	seq: DomainNodeId,
 	edit: &gpui::node_graph::NodeGraphEvent,
 ) -> Result<(), String> {
 	use gpui::node_graph::NodeGraphEvent;
-	unsafe {
-		let seq_node = oakengine_sequence_as_node(seq);
-		match edit {
-			NodeGraphEvent::ConnectionRequested { from, to } => {
-				let (from_node, from_kind, _) = unpack_port(*from);
-				let (to_node, to_kind, to_index) = unpack_port(*to);
-				if from_kind != PortKind::Output || to_kind != PortKind::Input {
-					if !seq_node.is_null() {
-						oakengine_node_free(seq_node);
-					}
-					return Err("connection endpoints must be output → input".into());
-				}
-				let src = find_boxed(seq, from_node)?;
-				let dst = find_boxed(seq, to_node)?;
-				let id_str = {
-					let count = oakengine_node_input_count(dst);
-					if to_index >= count.max(0) as u32 {
-						oakengine_node_free(src);
-						oakengine_node_free(dst);
-						if !seq_node.is_null() {
-							oakengine_node_free(seq_node);
-						}
-						return Err("target input out of range".into());
-					}
-					read_str(|buf, size| {
-						oakengine_node_input_id(dst, to_index as c_int, buf, size)
-					})
-				};
-				if id_str.is_empty() {
-					oakengine_node_free(src);
-					oakengine_node_free(dst);
-					if !seq_node.is_null() {
-						oakengine_node_free(seq_node);
-					}
+	match edit {
+		NodeGraphEvent::ConnectionRequested { from, to } => {
+			let (from_node, from_kind, _) = unpack_port(*from);
+			let (to_node, to_kind, to_index) = unpack_port(*to);
+			if from_kind != PortKind::Output || to_kind != PortKind::Input {
+				return Err("connection endpoints must be output → input".into());
+			}
+			let (src, dst, id_str) = {
+				let guard = graphops::lock(project);
+				let g = &guard.graph;
+				let src = find_node(g, from_node)?;
+				let dst = find_node(g, to_node)?;
+				let id_str = g
+					.get(dst)
+					.and_then(|e| e.core.inputs.get(to_index as usize))
+					.map(|i| i.id.clone())
+					.filter(|s| !s.is_empty());
+				let Some(id_str) = id_str else {
 					return Err("target input missing".into());
-				}
-				let cid = std::ffi::CString::new(id_str).unwrap_or_default();
-				let rc = oakengine_node_connect(src, dst, cid.as_ptr());
-				oakengine_node_free(src);
-				oakengine_node_free(dst);
-				if !seq_node.is_null() {
-					oakengine_node_free(seq_node);
-				}
-				if rc != 0 {
-					return Err(format!("connect failed rc={rc}"));
-				}
-				Ok(())
-			}
-			NodeGraphEvent::DisconnectionRequested { edge } => {
-				if is_output_wire(*edge) {
-					// The synthesized clip → output wire is structural; the
-					// facade has no such edge to remove.
-					if !seq_node.is_null() {
-						oakengine_node_free(seq_node);
-					}
-					return Ok(());
-				}
-				let e = self::edge_for(seq, edge.0)?;
-				let cid = std::ffi::CString::new(e.1).unwrap_or_default();
-				let rc = oakengine_node_disconnect_ex(e.0, cid.as_ptr(), -1);
-				oakengine_node_free(e.0);
-				if !seq_node.is_null() {
-					oakengine_node_free(seq_node);
-				}
-				if rc != 0 {
-					return Err(format!("disconnect failed rc={rc}"));
-				}
-				Ok(())
-			}
-			NodeGraphEvent::NodeMoveRequested { nodes, delta } => {
-				for node in nodes {
-					let boxed = find_boxed(seq, node.0)?;
-					let mut x: f64 = 0.0;
-					let mut y: f64 = 0.0;
-					let mut expanded: c_int = 0;
-					let placed = oakengine_node_get_context_position(
-						seq_node,
-						boxed,
-						&mut x,
-						&mut y,
-						&mut expanded,
-					) == 0
-						&& (x != 0.0 || y != 0.0);
-					if !placed {
-						// The node was drawn at its provisional grid spot;
-						// move from there so the release does not jump it
-						// back toward the origin.
-						let (fx, fy) = fallback_base(seq, seq_node, node.0);
-						x = fx;
-						y = fy;
-					}
-					let rc = oakengine_node_set_context_position(
-						seq_node,
-						boxed,
-						x + f64::from(delta.x.as_f32()),
-						y + f64::from(delta.y.as_f32()),
-					);
-					oakengine_node_free(boxed);
-					if rc != 0 {
-						if !seq_node.is_null() {
-							oakengine_node_free(seq_node);
-						}
-						return Err(format!("move failed rc={rc}"));
-					}
-				}
-				if !seq_node.is_null() {
-					oakengine_node_free(seq_node);
-				}
-				Ok(())
-			}
-			NodeGraphEvent::DeleteRequested { nodes, .. } => {
-				for node in nodes {
-					// The output node is the graph's context; never deleted.
-					if node.0 == oakengine_node_identity(seq_node) {
-						continue;
-					}
-					let boxed = find_boxed(seq, node.0)?;
-					let rc = oakengine_sequence_remove_node(seq, boxed);
-					oakengine_node_free(boxed);
-					if rc != 0 {
-						if !seq_node.is_null() {
-							oakengine_node_free(seq_node);
-						}
-						return Err(format!("remove failed rc={rc}"));
-					}
-				}
-				if !seq_node.is_null() {
-					oakengine_node_free(seq_node);
-				}
-				Ok(())
-			}
-			_ => {
-				if !seq_node.is_null() {
-					oakengine_node_free(seq_node);
-				}
-				Ok(())
-			}
+				};
+				(src, dst, id_str)
+			};
+			let cmd = graphops::connect_command(project, src, dst, &id_str)?;
+			graphops::push_command(cmd, "Connect Nodes")
 		}
-	}
-}
-
-/// Boxed sequence-graph node for an identity (freed with
-/// `oakengine_node_free`).
-///
-/// # Safety
-/// `seq` must be a live facade sequence box.
-unsafe fn find_boxed(seq: *mut OakEngineSequence, ident: u64) -> Result<*mut OakEngineNode, String> {
-	unsafe {
-		let count = oakengine_sequence_node_count(seq);
-		for i in 0..count.max(0) {
-			let node = oakengine_sequence_node_at(seq, i);
-			if node.is_null() {
-				continue;
+		NodeGraphEvent::DisconnectionRequested { edge } => {
+			if is_output_wire(*edge) {
+				// The synthesized clip → output wire is structural; the
+				// graph has no such edge to remove.
+				return Ok(());
 			}
-			if oakengine_node_identity(node) == ident {
-				return Ok(node);
-			}
-			oakengine_node_free(node);
+			let (dst, conn_id) = {
+				let guard = graphops::lock(project);
+				let g = &guard.graph;
+				let mut found = None;
+				'outer: for (typed_from, to, conn_id, _) in g.output_connections_all() {
+					if real_edge_id(typed_from.identity(), to.identity(), &conn_id).0 == edge.0 {
+						found = Some((to, conn_id));
+						break 'outer;
+					}
+				}
+				found.ok_or_else(|| format!("edge {} not found", edge.0))?
+			};
+			let cmd = graphops::disconnect_command(project, dst, &conn_id)?;
+			graphops::push_command(cmd, "Disconnect Nodes")
 		}
-		Err(format!("node {ident} not found"))
-	}
-}
-
-/// Resolve a real edge id back to `(input node, input id)`.
-///
-/// # Safety
-/// `seq` must be a live facade sequence box.
-unsafe fn edge_for(
-	seq: *mut OakEngineSequence,
-	edge: u64,
-) -> Result<(*mut OakEngineNode, String), String> {
-	unsafe {
-		let count = oakengine_sequence_node_count(seq);
-		for i in 0..count.max(0) {
-			let node = oakengine_sequence_node_at(seq, i);
-			if node.is_null() {
-				continue;
+		NodeGraphEvent::NodeMoveRequested { nodes, delta } => {
+			for node in nodes {
+				let (id, base) = {
+					let guard = graphops::lock(project);
+					let g = &guard.graph;
+					let id = find_node(g, node.0)?;
+					let placed = g
+						.get(id)
+						.and_then(|e| {
+							e.core
+								.context_positions
+								.iter()
+								.find(|(c, _, _)| *c == seq)
+								.map(|(_, pos, _)| *pos)
+						})
+						.filter(|(x, y)| *x != 0.0 || *y != 0.0);
+					let base = match placed {
+						Some(pos) => pos,
+						None => fallback_base(g, seq, node.0),
+					};
+					(id, base)
+				};
+				let cmd = graphops::set_context_position_command(
+					project,
+					id,
+					seq,
+					base.0 + f64::from(delta.x.as_f32()),
+					base.1 + f64::from(delta.y.as_f32()),
+				)?;
+				graphops::push_command(cmd, "Set Position")?;
 			}
-			let out_count = oakengine_node_output_connection_count(node);
-			for j in 0..out_count {
-				let mut input_node: *mut OakEngineNode = std::ptr::null_mut();
-				let mut id_buf = [0 as c_char; 256];
-				let mut element: c_int = -1;
-				let mut hidden: c_int = 0;
-				if oakengine_node_output_connection_at_ex(
-					node,
-					j,
-					&mut input_node,
-					id_buf.as_mut_ptr(),
-					id_buf.len() as c_int,
-					&mut element,
-					&mut hidden,
-				) != 0
-				{
+			Ok(())
+		}
+		NodeGraphEvent::DeleteRequested { nodes, .. } => {
+			for node in nodes {
+				// The output node is the graph's context; never deleted.
+				if node.0 == seq.identity() {
 					continue;
 				}
-				let from = oakengine_node_identity(node);
-				let to = if input_node.is_null() {
-					0
-				} else {
-					oakengine_node_identity(input_node)
+				let id = {
+					let guard = graphops::lock(project);
+					find_node(&guard.graph, node.0)?
 				};
-				let conn_id = read_cstr_buf(&id_buf);
-				if !input_node.is_null() {
-					oakengine_node_free(input_node);
-				}
-				if real_edge_id(from, to, &conn_id).0 == edge {
-					// The input node was freed; re-box it.
-					let dst = find_boxed(seq, to)?;
-					return Ok((dst, conn_id));
-				}
+				graphops::remove_node(project, id)?;
 			}
-			oakengine_node_free(node);
+			Ok(())
 		}
-		Err(format!("edge {edge} not found"))
+		_ => Ok(()),
 	}
 }
-
-fn node_position_mut(mut _p: Point<Pixels>, _d: u32, _row: f32) {}

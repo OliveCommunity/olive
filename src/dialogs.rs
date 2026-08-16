@@ -21,7 +21,7 @@
 //! Each view owns its widgets and emits nothing itself — the host
 //! (`crate::app::OakApp`) reads the state (format / path) when a dialog
 //! button is clicked, and the preferences view writes its choices straight
-//! through the config C ABI on selection. Theme/language changes
+//! into the oakcommon config store on selection. Theme/language changes
 //! additionally emit a [`PreferencesEvent`] so the host can re-apply the
 //! shell chrome immediately.
 
@@ -51,7 +51,7 @@ use crate::oakui::real::{
 // ---------------------------------------------------------------------------
 
 /// A request the preferences dialog emits for the host shell (the settings
-/// themselves are written through the config C ABI directly; these need
+/// themselves are written into the config store directly; these need
 /// shell chrome — the menu bar / theme — to re-render).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreferencesEvent {
@@ -75,9 +75,9 @@ impl gpui::EventEmitter<PreferencesEvent> for PreferencesContent {}
 ///   the write-through era's auto-save interval) and the default transition
 ///   length (`DefaultTransitionLength`).
 /// * **音频 Audio** — the output / input devices (`AudioOutput` /
-///   `AudioInput`, applied live through the audio facade).
+///   `AudioInput`, applied live through the oakaudio manager).
 ///
-/// Every row writes through the config C ABI on selection, so the choices
+/// Every row writes into the config store on selection, so the choices
 /// survive restarts (the app loads the config at startup and saves it on
 /// exit).
 pub struct PreferencesContent {
@@ -295,8 +295,8 @@ impl PreferencesContent {
 		.detach();
 
 		// --- 音频 Audio: output / input devices -----------------------------
-		// The enumeration goes through the facade even on the mock engine;
-		// the config choice applies the moment the device dropdown changes.
+		// The enumeration reads the oakaudio manager even on the mock
+		// engine; the config choice applies the moment the dropdown changes.
 		let (audio_output, output_devices) =
 			device_combo(5, true, window, cx);
 		let (audio_input, input_devices) =

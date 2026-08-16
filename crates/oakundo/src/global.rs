@@ -31,8 +31,9 @@ use std::sync::{Mutex, OnceLock};
 use crate::error::{Error, Result};
 use crate::handle::CHandle;
 use crate::undocommand::{
-	command_free, command_init_multi, command_multi_add_child, command_multi_child,
-	command_multi_child_count, command_redo_now, command_undo_now,
+	command_free, command_from_owned, command_init_multi, command_multi_add_child,
+	command_multi_child, command_multi_child_count, command_redo_now, command_undo_now,
+	UndoCommand,
 };
 use crate::undostack::{
 	undostack_can_redo, undostack_can_undo, undostack_clear, undostack_command_is_done,
@@ -58,18 +59,6 @@ pub fn stack_token() -> *mut c_void {
 /// queries below).
 fn stack() -> CHandle {
 	*global_stack()
-}
-
-/// Read a NUL-terminated C string; `NULL` yields an empty string.
-fn read_name(name: *const c_char) -> String {
-	if name.is_null() {
-		String::new()
-	} else {
-		// SAFETY: the caller guarantees a valid NUL-terminated string.
-		unsafe { std::ffi::CStr::from_ptr(name) }
-			.to_string_lossy()
-			.into_owned()
-	}
 }
 
 // ---------------------------------------------------------------------------
@@ -127,7 +116,7 @@ fn group_lock() -> std::sync::MutexGuard<'static, Option<OpenGroup>> {
 
 /// Start collecting commands into a group. [`Error::State`] when a group
 /// is already open.
-pub fn group_begin(name: *const c_char) -> Result<()> {
+pub fn group_begin(name: &str) -> Result<()> {
 	let mut g = group_lock();
 	if g.is_some() {
 		return Err(Error::State);
@@ -138,7 +127,7 @@ pub fn group_begin(name: *const c_char) -> Result<()> {
 	}
 	*g = Some(OpenGroup {
 		multi,
-		name: read_name(name),
+		name: name.to_string(),
 	});
 	Ok(())
 }
@@ -260,6 +249,61 @@ pub fn push_or_run(command: CHandle, name: &str) -> c_int {
 }
 
 // ---------------------------------------------------------------------------
+// Safe value-typed surface (M14 R3)
+//
+// The direct-rlib frontends (the app) hold module [`UndoCommand`] values,
+// not CHandles. The functions below are the safe twins of the handle-based
+// API above; the handle marshalling they perform stays inside this crate.
+// ---------------------------------------------------------------------------
+
+/// Push `command` onto the process-wide stack (redo then record), or into
+/// the open group. On a stack record the command observers fire (the
+/// oakstorage write-through persists the edit).
+pub fn push(command: UndoCommand, name: &str) -> Result<()> {
+	// SAFETY: `command_from_owned` boxes the value; `push_or_run` takes the
+	// value out of the handle (stack push or group child), and
+	// `command_free` releases the remaining non-owning shell (dropping the
+	// command itself when nobody took it).
+	let mut handle = unsafe { command_from_owned(command) };
+	if handle.is_null() {
+		return Err(Error::NoMem);
+	}
+	let rc = push_or_run(handle, name);
+	command_free(&mut handle);
+	if rc == 0 {
+		Ok(())
+	} else {
+		Err(Error::from_code(rc))
+	}
+}
+
+/// Step the process-wide stack back one entry (no-op at the bottom). On
+/// success the command observers fire, persisting the reverted state.
+pub fn undo() -> Result<()> {
+	let i = index()?;
+	jump(i - 1)
+}
+
+/// Step the process-wide stack forward one entry (no-op at the top). On
+/// success the command observers fire.
+pub fn redo() -> Result<()> {
+	let i = index()?;
+	jump(i + 1)
+}
+
+/// Whether the process-wide stack has an entry to undo.
+pub fn undoable() -> bool {
+	let mut v: c_int = 0;
+	can_undo(&mut v).is_ok() && v != 0
+}
+
+/// Whether the process-wide stack has an entry to redo.
+pub fn redoable() -> bool {
+	let mut v: c_int = 0;
+	can_redo(&mut v).is_ok() && v != 0
+}
+
+// ---------------------------------------------------------------------------
 // Stack queries and mutations
 // ---------------------------------------------------------------------------
 
@@ -358,6 +402,13 @@ mod tests {
 		COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 	}
 
+	/// A second counting observer (the observers are process-lifetime, so a
+	/// test must not share `COUNT` with the lifecycle test above).
+	static COUNT2: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+	fn counter2() {
+		COUNT2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+	}
+
 	/// The stack/group/observer state is process-wide: every test here runs
 	/// serially under this lock, mirroring the facade's GLOBAL_STACK_LOCK
 	/// pattern.
@@ -395,8 +446,8 @@ mod tests {
 		assert_eq!(COUNT.load(std::sync::atomic::Ordering::SeqCst), 1);
 
 		// Group begin/end fires the observer once at end.
-		assert!(group_begin(c"grouped".as_ptr()).is_ok());
-		assert!(group_begin(c"again".as_ptr()).is_err()); // State
+		assert!(group_begin("grouped").is_ok());
+		assert!(group_begin("again").is_err()); // State
 		let c1 = vtable_command();
 		let c2 = vtable_command();
 		assert_eq!(push_or_run(c1, "c1"), 0);
@@ -409,7 +460,7 @@ mod tests {
 		assert_eq!(COUNT.load(std::sync::atomic::Ordering::SeqCst), 2);
 
 		// Abort fires nothing.
-		assert!(group_begin(c"abort".as_ptr()).is_ok());
+		assert!(group_begin("abort").is_ok());
 		let c3 = vtable_command();
 		assert_eq!(push_or_run(c3, "c3"), 0);
 		assert!(group_abort().is_ok());
@@ -419,6 +470,47 @@ mod tests {
 		// End/abort with no group open: State.
 		assert!(group_end().is_err());
 		assert!(group_abort().is_err());
+
+		assert!(clear().is_ok());
+	}
+
+	/// The safe value-typed surface (M14 R3): `push` redoes and records a
+	/// closure command, `undo`/`redo` step the stack, and the observers
+	/// fire on every recorded mutation.
+	#[test]
+	fn value_push_and_undo_redo() {
+		let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+		COUNT2.store(0, std::sync::atomic::Ordering::SeqCst);
+		add_observer(counter2);
+
+		assert!(clear().is_ok());
+		assert!(!undoable());
+		assert!(!redoable());
+
+		let state = std::sync::Arc::new(std::sync::atomic::AtomicI32::new(0));
+		let (r, u) = (state.clone(), state.clone());
+		let cmd = UndoCommand::from_closures(
+			move || {
+				r.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+			},
+			move || {
+				u.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+			},
+		);
+		push(cmd, "bump").unwrap();
+		assert_eq!(state.load(std::sync::atomic::Ordering::SeqCst), 1);
+		assert!(undoable());
+		assert_eq!(COUNT2.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+		undo().unwrap();
+		assert_eq!(state.load(std::sync::atomic::Ordering::SeqCst), 0);
+		assert!(!undoable());
+		assert!(redoable());
+
+		redo().unwrap();
+		assert_eq!(state.load(std::sync::atomic::Ordering::SeqCst), 1);
+		assert!(undoable());
+		assert!(!redoable());
 
 		assert!(clear().is_ok());
 	}

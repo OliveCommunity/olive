@@ -28,9 +28,10 @@
 members = ["crates/*"]
 exclude = ["gpui"]
 # NOTE: oakstorage (crates/oakstorage) is a workspace member but NOT a
-# default member (it stays out of the default `cargo build`/`cargo test` at
-# the root, which would also drag in its heavy database backends — sea-orm).
-# Build/test it explicitly with `cargo test -p oakstorage`.
+# default member (it stays out of the default-members test matrix to keep
+# `cargo test` at the root fast; the app links it as a normal path
+# dependency, so it builds with the app). Build/test it explicitly with
+# `cargo test -p oakstorage`.
 # NOTE: `crates/oakengine` is deliberately NOT a default member (it stays a
 # workspace member, so `cargo test -p oakengine` works): its in-flight
 # integration tests (`tests/it_*族.rs`, an ongoing rewrite) share temp files
@@ -58,9 +59,8 @@ license = "GPL-3.0-or-later"
 [lib]
 name = "oakapp"
 path = "src/lib.rs"
-# Doctests are disabled: the real engine binding links the `liboakengine`
-# cdylib (see build.rs), which the doctest binary would have to resolve as
-# well for every doc example. The doc examples' assertions are covered by
+# Doctests are disabled: the app links the oak* module crates (which carry
+# media/codec dependencies); the doc examples' assertions are covered by
 # unit tests instead (see `oakui/timecode`).
 
 [[bin]]
@@ -82,18 +82,25 @@ smallvec = "1"
 # Editable-text widget (used by the file / export dialogs' path fields, the
 # same gpui-elements crate gpui_widgets builds on).
 gpui_elements = { path = "gpui/crates/gpui_elements" }
-# The library list crosses the facade C ABI as JSON
-# (`oakengine_library_list`, M13 D4); Value-only parsing, no derive.
-serde_json = "1"
 
-[build-dependencies]
-# The real engine is NOT linked as an rlib: the app binds only the frozen
-# `oakengine_*` C ABI through the built `liboakengine` cdylib (build.rs
-# emits the link-search path / rpath / `#[link(name = "oakengine")]`
-# externs). This build-dependency only orders the build — cargo compiles
-# the engine's cdylib before the app's build script runs, so a fresh
-# `cargo build` at the repo root always finds `liboakengine.dylib`.
-oakengine = { path = "crates/oakengine" }
+# M14 R3: the app is a PURE module-crate consumer — every engine call is a
+# direct Rust call into the oak* rlibs (oaknode for the project graph,
+# oaktimeline/oakundo for the edit commands and the global undo stack,
+# oakrender for the ticket arena, oakcodec for the export formats/test
+# media, oaktask for the export/interchange tasks, oakaudio for the
+# manager/waveforms, oakcommon/oakcore-rs for the config store and shared
+# value types, oakstorage for the write-through library). No liboakengine
+# dylib, no C ABI, no build.rs link step, no host shims.
+oakaudio = { path = "crates/oakaudio" }
+oakcodec = { path = "crates/oakcodec" }
+oakcommon = { path = "crates/oakcommon" }
+oakcore-rs = { path = "crates/oakcore" }
+oaknode = { path = "crates/oaknode" }
+oakrender = { path = "crates/oakrender" }
+oakstorage = { path = "crates/oakstorage" }
+oaktask = { path = "crates/oaktask" }
+oaktimeline = { path = "crates/oaktimeline" }
+oakundo = { path = "crates/oakundo" }
 
 [features]
 default = []

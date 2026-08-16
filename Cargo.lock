@@ -4743,8 +4743,16 @@ dependencies = [
  "gpui_platform",
  "gpui_widgets",
  "image",
- "oakengine",
- "serde_json",
+ "oakaudio",
+ "oakcodec",
+ "oakcommon",
+ "oakcore-rs",
+ "oaknode",
+ "oakrender",
+ "oakstorage",
+ "oaktask",
+ "oaktimeline",
+ "oakundo",
  "smallvec",
 ]
 

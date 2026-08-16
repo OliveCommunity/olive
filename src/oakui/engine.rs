@@ -19,22 +19,18 @@
 //!
 //! # Why a gateway trait
 //!
-//! The UI must never depend on *how* the engine is implemented. Today the
-//! only implementation is the mock ([`super::mock::MockEngine`]) feeding demo
-//! data; later a real backend will bind the `liboakengine` C ABI
-//! (`src/facade/rust`, the frozen `oakengine_*` exports) behind the *same*
-//! trait. Swapping backends then touches only the wiring in
-//! [`crate::app`] — the panels, the widgets and the view state stay as they
-//! are.
+//! The UI must never depend on *how* the engine is implemented. The mock
+//! ([`super::mock::MockEngine`]) feeds demo data; the real backend
+//! ([`super::real::RealEngine`]) drives the oak* module crates' Rust APIs
+//! directly (M14 R3: no C ABI, no FFI) behind the *same* trait. Swapping
+//! backends touches only the wiring in [`crate::app`] — the panels, the
+//! widgets and the view state stay as they are.
 //!
 //! The trait is intentionally narrow: open a project, inspect the current
 //! sequence, and drive the transport (play / pause / step / seek). Timeline
 //! edits arrive as widget request events and are applied by the host through
 //! methods on the engine type itself (see the `MockEngine` docs for the
 //! current mapping), so they do not need to be part of this seam yet.
-//!
-//! Everything here is plain Rust — no C ABI, no FFI. The C-ABI binding is a
-//! later concern of the real backend only.
 
 use std::path::PathBuf;
 use std::sync::Arc;

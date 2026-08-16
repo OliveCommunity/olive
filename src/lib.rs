@@ -21,10 +21,12 @@
 //! the main layout from the design (`design/`), dockable panels built from
 //! the `gpui_widgets` library, and an engine seam (`oakui`) with two
 //! backends: the mock ([`oakui::MockEngine`]) feeding demo data, and the
-//! real engine ([`oakui::RealEngine`]) bound to the built `liboakengine`
-//! dylib through its frozen `oakengine_*` C ABI only (project open/save,
-//! sequence/track/clip data, timeline edits through the oaktimeline edit
-//! commands, the oaktask export path, and the config C ABI).
+//! real engine ([`oakui::RealEngine`]) driving the oak* module crates
+//! directly (M14 R3: project open/save through the oaknode serializer,
+//! timeline edits through the oaktimeline edit commands on the oakundo
+//! global stack, the oakrender ticket arena for the viewers, the oaktask
+//! export path, the oakcommon config store, and the oakstorage
+//! write-through library — no `liboakengine` dylib, no C ABI).
 //!
 //! # Layout
 //!

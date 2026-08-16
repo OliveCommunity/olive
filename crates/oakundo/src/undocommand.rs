@@ -134,6 +134,28 @@ impl UndoCommand {
 		}
 	}
 
+	/// New closure-backed command (M14 R3): `redo`/`undo` are plain Rust
+	/// closures, boxed behind the vtable machinery. This is the safe way
+	/// for direct-rlib consumers (the app) to build composite edit
+	/// commands without writing their own `extern "C"` trampolines.
+	pub fn from_closures(
+		redo: impl FnMut() + Send + 'static,
+		undo: impl FnMut() + Send + 'static,
+	) -> Self {
+		let state = Box::into_raw(Box::new(ClosureCommand {
+			redo: Box::new(redo),
+			undo: Box::new(undo),
+		}));
+		UndoCommand::from_vtable(
+			OakUndoCommandVtable {
+				redo: Some(closure_redo),
+				undo: Some(closure_undo),
+				free_fn: Some(closure_free),
+			},
+			state as *mut c_void,
+		)
+	}
+
 	/// The invariant bottom-of-stack command ("New/Open Project"); all
 	/// callbacks are no-ops and it is never undoable.
 	pub(crate) fn empty() -> Self {
@@ -281,6 +303,53 @@ impl Drop for UndoCommand {
 			}
 		}
 	}
+}
+
+/// Closure-backed command state (see [`UndoCommand::from_closures`]).
+struct ClosureCommand {
+	/// The redo closure.
+	redo: Box<dyn FnMut() + Send>,
+	/// The undo closure.
+	undo: Box<dyn FnMut() + Send>,
+}
+
+/// `redo` trampoline for closure commands.
+///
+/// # Safety
+/// `userdata` must be the `Box<ClosureCommand>` produced by
+/// [`UndoCommand::from_closures`]; the owning command keeps it alive.
+unsafe extern "C" fn closure_redo(userdata: *mut c_void) {
+	if userdata.is_null() {
+		return;
+	}
+	// SAFETY: per the from_closures contract; the command owns the box.
+	let state = unsafe { &mut *(userdata as *mut ClosureCommand) };
+	(state.redo)();
+}
+
+/// `undo` trampoline for closure commands.
+///
+/// # Safety
+/// As [`closure_redo`].
+unsafe extern "C" fn closure_undo(userdata: *mut c_void) {
+	if userdata.is_null() {
+		return;
+	}
+	// SAFETY: per the from_closures contract; the command owns the box.
+	let state = unsafe { &mut *(userdata as *mut ClosureCommand) };
+	(state.undo)();
+}
+
+/// `free` trampoline for closure commands: drops the boxed closures.
+///
+/// # Safety
+/// As [`closure_redo`]; called at most once (the command's final release).
+unsafe extern "C" fn closure_free(userdata: *mut c_void) {
+	if userdata.is_null() {
+		return;
+	}
+	// SAFETY: per the from_closures contract; this is the final release.
+	unsafe { drop(Box::from_raw(userdata as *mut ClosureCommand)) };
 }
 
 /// `olive::MultiUndoCommand` — a composite of child commands.

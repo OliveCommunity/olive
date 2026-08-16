@@ -27,26 +27,29 @@
 //!   [`MockClock`](mock::MockClock), the demo implementation feeding every
 //!   widget's data-source trait.
 //! * [`real`] — [`RealEngine`](real::RealEngine) and
-//!   [`RealClock`](real::RealClock), the real engine binding. It calls only
-//!   the frozen `oakengine_*` C ABI of the built `liboakengine` dylib (see
-//!   [`ffi`] and the crate's `build.rs`) behind the same
+//!   [`RealClock`](real::RealClock), the real engine. M14 R3: it calls the
+//!   oak* module crates' Rust APIs directly (oaknode / oaktimeline /
+//!   oakundo / oakrender / oaktask / oakcodec / oakaudio / oakcommon /
+//!   oakstorage — no `liboakengine` dylib, no C ABI) behind the same
 //!   [`EngineGateway`](engine::EngineGateway) seam the mock implements.
-//! * [`ffi`] — the pure-C declarations of that ABI (extern imports, handle
-//!   layout mirrors, the `OakVideoParamsPod`).
+//! * [`graphops`] / [`effectchain`] / [`renderops`] — the app's assembly
+//!   layer over the module crates: project/timeline/storage helpers, the
+//!   effect-chain composition, and montage/render/export drivers.
 //! * [`transport`] — the play/pause/step/seek state machine (pure, unit
 //!   tested).
 //! * [`timecode`] — timecode / duration / fps / resolution formatting (pure,
 //!   unit tested).
 
+pub mod effectchain;
 pub mod engine;
-pub mod ffi;
 pub mod frames;
-mod host_syms;
+pub mod graphops;
 pub mod icons;
 pub mod mock;
 pub mod nodegraph;
 pub mod projectbrowser;
 pub mod real;
+pub mod renderops;
 pub mod scopes;
 pub mod timecode;
 pub mod transport;
@@ -62,10 +65,9 @@ pub use real::{RealClock, RealEngine};
 /// Whether `name` (a media file name) denotes audio-only media, by
 /// extension.
 ///
-/// The facade's module footage is never probed (`oakengine` imports media
-/// without decoding it), so the stream counts it exposes are always empty
-/// and the timeline drop's track matching falls back to the extension:
-/// known audio containers count as audio, everything else as video.
+/// The module footage is not reliably probed on import, so the timeline
+/// drop's track matching falls back to the extension: known audio
+/// containers count as audio, everything else as video.
 pub fn filename_is_audio(name: &str) -> bool {
 	matches!(
 		std::path::Path::new(name)

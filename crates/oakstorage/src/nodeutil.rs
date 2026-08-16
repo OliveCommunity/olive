@@ -35,6 +35,32 @@ pub fn make_project_owned(project: ProjectArc) -> CHandle {
 	oaknode::handle::make_owned(project)
 }
 
+/// Release one owned reference of a project handle produced by
+/// [`make_project_owned`] (or the database backend's load). The handle is
+/// dead afterwards; the write-through binding keeps its own reference, so
+/// releasing the caller's copy never tears a bound project down.
+pub fn release_project(mut h: CHandle) {
+	if let Some(release) = h.release {
+		// SAFETY: `h` is an owned handle from this module; the release runs
+		// the box's own destructor once per owned reference.
+		unsafe { release(h.ctx) };
+	}
+	h.ctx = std::ptr::null_mut();
+}
+
+/// The boxed project of a handle produced by [`make_project_owned`] or the
+/// database backend's load (both box a `ProjectArc`). `None` for an empty
+/// handle.
+///
+/// The handle ABI carries no type tag, so the caller must only pass handles
+/// from those two producers; the unsafe downcast is contained here instead
+/// of spread across every direct-rlib consumer.
+pub fn project_arc_of(h: &CHandle) -> Option<ProjectArc> {
+	// SAFETY: the documented precondition — handles from this module's
+	// producers box a `ProjectArc`.
+	unsafe { oaknode::handle::get::<ProjectArc>(h) }.cloned()
+}
+
 /// Read the boxed project of a project handle.
 ///
 /// # Safety
