@@ -1553,7 +1553,7 @@ fn run_with<E: AppEngine>(args: AppArgs) {
 mod tests {
 	use super::*;
 	use crate::oakui::EngineGateway as _;
-	use gpui::{px, size, TestAppContext};
+	use gpui::{px, size, ExternalPaths, FileDropEvent, TestAppContext, VisualTestContext};
 
 	/// The 视图/View menu carries a 语言/Language submenu whose items are
 	/// labeled in their own language and whose checkmark follows the active
@@ -1777,6 +1777,55 @@ mod tests {
 		cx.run_until_parked();
 		let imported = cx.read(|app| root.read(app).engine.read(app).imported_footage().len());
 		assert_eq!(imported, 1, "a cancelled picker imports nothing");
+	}
+
+	/// Dragging files onto the project explorer routes them to the engine's
+	/// import: the explorer emits `FileDropRequested` on a real drop and the
+	/// panel's subscription calls `AppEngine::import_footage` per path (the
+	/// mock engine records them). The drop is simulated as the platform
+	/// delivers it — the OS drag entering the window, then the release.
+	#[gpui::test]
+	async fn dropping_files_onto_the_project_browser_imports_them(cx: &mut TestAppContext) {
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let (window, root) = mock_shell(cx);
+		let mut cx = VisualTestContext::from_window(window.into(), cx);
+
+		// The mock shell's parked frame is live: dispatch the drop against it
+		// (an extra draw would repaint the cached element tree and consume the
+		// one-shot interactive listeners).
+		let bounds = cx
+			.debug_bounds("gpui-widgets-explorer-entry-1")
+			.expect("the explorer's first row is rendered");
+		let dropped = PathBuf::from("/media/raw/drag-drop.mov");
+		let paths = ExternalPaths(std::iter::once(dropped.clone()).collect());
+		// Deliver the whole drag sequence against the same rendered frame:
+		// gpui's interactive listeners are registered per render, so a repaint
+		// between the events would consume them before the drop lands.
+		cx.update(|window, cx| {
+			window.dispatch_event(
+				gpui::PlatformInput::FileDrop(FileDropEvent::Entered {
+					position: bounds.center(),
+					paths,
+				}),
+				cx,
+			);
+			window.dispatch_event(
+				gpui::PlatformInput::FileDrop(FileDropEvent::Pending {
+					position: bounds.center(),
+				}),
+				cx,
+			);
+			window.dispatch_event(
+				gpui::PlatformInput::FileDrop(FileDropEvent::Submit {
+					position: bounds.center(),
+				}),
+				cx,
+			);
+		});
+		cx.run_until_parked();
+
+		let imported = cx.read(|app| root.read(app).engine.read(app).imported_footage().to_vec());
+		assert_eq!(imported, vec![dropped]);
 	}
 
 	/// The command-line parser understands the project path and the mock

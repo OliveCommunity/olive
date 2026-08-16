@@ -29,18 +29,20 @@ use std::ffi::{c_char, c_int};
 
 use crate::node::{
 	oakengine_footage_borrow, oakengine_footage_last_error, oakengine_footage_probe,
+	oakengine_folder_add_child, oakengine_folder_item_child, oakengine_folder_item_child_count,
 	oakengine_node_connect, oakengine_node_disconnect, oakengine_node_factory_create_from_id,
 	oakengine_node_factory_id_count, oakengine_node_factory_name_from_id,
 	oakengine_node_factory_node_at, oakengine_node_get_input, oakengine_node_get_input_at_time,
 	oakengine_node_get_label, oakengine_node_get_name, oakengine_node_get_type_id,
-	oakengine_node_input_get_type, oakengine_node_input_id, oakengine_node_input_is_connected,
-	oakengine_node_is_clip, oakengine_node_is_folder, oakengine_node_is_track,
-	oakengine_node_is_viewer_output, oakengine_node_keyframe_count, oakengine_node_set_input,
-	oakengine_node_set_input_at_time, oakengine_node_set_label, oakengine_project_add_node,
-	oakengine_project_create, oakengine_project_filename, oakengine_project_free,
-	oakengine_project_import_footage, oakengine_project_load, oakengine_project_name,
-	oakengine_project_new, oakengine_project_node_at, oakengine_project_node_count,
-	oakengine_project_save, oakengine_project_set_filename, OakNodeValue,
+	oakengine_node_identity, oakengine_node_input_get_type, oakengine_node_input_id,
+	oakengine_node_input_is_connected, oakengine_node_is_clip, oakengine_node_is_folder,
+	oakengine_node_is_track, oakengine_node_is_viewer_output, oakengine_node_keyframe_count,
+	oakengine_node_free, oakengine_node_set_input, oakengine_node_set_input_at_time, oakengine_node_set_label,
+	oakengine_project_add_node, oakengine_project_create, oakengine_project_filename,
+	oakengine_project_free, oakengine_project_import_footage, oakengine_project_load,
+	oakengine_project_name, oakengine_project_new, oakengine_project_node_at,
+	oakengine_project_node_count, oakengine_project_root, oakengine_project_save,
+	oakengine_project_set_filename, OakNodeValue,
 };
 
 /// Registered generator node ids used by the tests.
@@ -213,6 +215,53 @@ fn project_node_keyframe_lifecycle() {
 	assert_eq!(unsafe { oakengine_node_is_track(solid) }, 0);
 	assert_eq!(unsafe { oakengine_node_is_folder(solid) }, 0);
 	assert_eq!(unsafe { oakengine_node_is_viewer_output(solid) }, 0);
+
+	// ---- the project browser's folder-tree walk (M12 P3) -----------------
+	// The traversal exports the material bin walks: `project_root` resolves
+	// the root folder and `folder_item_child_count` / `folder_item_child`
+	// enumerate its children (folders and media alike), all resolved by the
+	// nodes' stable identities. The added nodes sit in the graph only until
+	// an explicit graft (the same FolderAddChild the footage import uses).
+	let root = unsafe { oakengine_project_root(project) };
+	assert!(!root.is_null(), "a new project has a root folder");
+	assert_eq!(unsafe { oakengine_node_is_folder(root) }, 1);
+	assert_eq!(unsafe { oakengine_folder_item_child_count(root) }, 0);
+
+	// Graft two graph nodes under the root folder.
+	assert_eq!(unsafe { oakengine_folder_add_child(root, solid) }, 0);
+	assert_eq!(unsafe { oakengine_folder_add_child(root, transform) }, 0);
+	assert_eq!(
+		unsafe { oakengine_folder_item_child_count(root) },
+		2,
+		"the grafted nodes are listed under the root folder"
+	);
+	let solid_id = unsafe { oakengine_node_identity(solid) };
+	let mut seen_solid = false;
+	for i in 0..2 {
+		let child = unsafe { oakengine_folder_item_child(root, i) };
+		assert!(!child.is_null(), "child {i} resolves");
+		assert!(unsafe { oakengine_node_identity(child) } != 0);
+		if unsafe { oakengine_node_identity(child) } == solid_id {
+			seen_solid = true;
+			// The child carries the node's factory type id.
+			let len = unsafe { oakengine_node_get_type_id(child, buf.as_mut_ptr(), 256) };
+			assert!(len > 0);
+			assert_eq!(unsafe { read_buf(&mut buf) }, TYPE_ID_SOLID);
+			assert_eq!(unsafe { oakengine_node_is_folder(child) }, 0);
+		}
+		unsafe { oakengine_node_free(child) };
+	}
+	assert!(seen_solid, "the solid generator is a root child");
+
+	// Failure paths: NULL project/folder, out-of-range index, non-folder
+	// handles (the app never hands those to the browser).
+	assert!(unsafe { oakengine_project_root(std::ptr::null_mut()) }.is_null());
+	assert_eq!(unsafe { oakengine_folder_item_child_count(std::ptr::null()) }, 0);
+	assert!(unsafe { oakengine_folder_item_child(std::ptr::null(), 0) }.is_null());
+	assert!(unsafe { oakengine_folder_item_child(root, 99) }.is_null());
+	assert_eq!(unsafe { oakengine_folder_item_child_count(solid) }, 0);
+	assert!(unsafe { oakengine_folder_item_child(solid, 0) }.is_null());
+	unsafe { oakengine_node_free(root) };
 
 	// ---- undoable label + readback --------------------------------------
 	assert_eq!(

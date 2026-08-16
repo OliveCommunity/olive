@@ -385,6 +385,10 @@ unsafe extern "C" {
 	) -> *mut OakEngineFootage;
 	/// `oakengine_footage_free` — release a footage handle.
 	pub fn oakengine_footage_free(self_: *mut OakEngineFootage);
+	/// `oakengine_footage_last_error` — last probe/import error on this
+	/// thread (two-stage buf/size getter; empty when the last call
+	/// succeeded).
+	pub fn oakengine_footage_last_error(buf: *mut c_char, buf_size: c_int) -> c_int;
 	/// `oakengine_sequence_add_footage_clip_ex` — place a clip of
 	/// `footage` on the track, skipping the unenforceable same-project
 	/// check (sequences live in their own scratch project — documented

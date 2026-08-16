@@ -2212,6 +2212,34 @@ impl AppEngine for RealEngine {
 		cx.notify();
 	}
 
+	fn import_footage(&mut self, path: PathBuf, cx: &mut Context<Self>) -> Result<(), String> {
+		let Some(project) = self.project_ptr() else {
+			return Err("no project open".into());
+		};
+		let Some(path_c) = cstr_path(&path) else {
+			return Err("invalid import path".into());
+		};
+		// SAFETY: `project` is the live facade handle the engine owns; the
+		// returned footage box is freed below.
+		let footage = unsafe { oakengine_project_import_footage(project, path_c.as_ptr()) };
+		if footage.is_null() {
+			let error = read_string(|buf, size| unsafe {
+				oakengine_footage_last_error(buf, size)
+			});
+			return Err(if error.is_empty() {
+				format!("failed to import \"{}\"", path.display())
+			} else {
+				error
+			});
+		}
+		// SAFETY: `footage` is an owned facade box (`oakengine_footage_free`).
+		unsafe { oakengine_footage_free(footage) };
+		// The material bin reads the folder tree live from the facade, so a
+		// notify is enough for the explorer to list the new entry.
+		cx.notify();
+		Ok(())
+	}
+
 	// --- project library (M13 D4) --------------------------------------
 
 	fn storage_bound(&self) -> bool {
@@ -3111,6 +3139,53 @@ mod tests {
 		let node = unsafe { crate::oakui::projectbrowser::find_by_identity(project, entry.id) };
 		assert!(node.is_some(), "selection resolves to a node");
 		unsafe { oakengine_node_free(node.unwrap()) };
+
+		let _ = std::fs::remove_file(&media);
+	}
+
+	/// M12 P3 acceptance through the app seam: a `RealEngine` built exactly
+	/// as the app builds it imports a generated media file through the same
+	/// [`AppEngine::import_footage`] method the explorer's drag-drop handler
+	/// calls, and the project browser's `roots()` lists the entry under the
+	/// root folder. Selecting the entry (the double-click path) resolves back
+	/// to the footage node.
+	#[gpui::test]
+	async fn real_engine_import_footage_lists_in_the_project_browser(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		let media = std::env::temp_dir().join(format!(
+			"oakapp_engine_import_{}.mp4",
+			std::process::id()
+		));
+		let cpath = CString::new(media.to_string_lossy().into_owned()).unwrap();
+		assert_eq!(
+			unsafe { oakengine_testmedia_write_clip(cpath.as_ptr(), 64, 64, 10, 10) },
+			0,
+			"generate e2e test media"
+		);
+		let imported = cx
+			.update(|app| engine.update(app, |engine, cx| engine.import_footage(media.clone(), cx)));
+		assert!(imported.is_ok(), "import through the seam succeeds: {imported:?}");
+
+		// The project browser (ProjectDataSource) lists the file at the root.
+		let name = media.file_name().unwrap().to_string_lossy().into_owned();
+		let entry = cx.read(|app| {
+			engine
+				.read(app)
+				.roots()
+				.into_iter()
+				.find(|e| e.name.as_ref() == name)
+		});
+		let entry = entry.expect("the imported footage is listed by its file name");
+		assert!(!entry.is_dir, "footage entries are files");
+		assert!(entry.id != 0, "entry id is the node identity");
+
+		// The double-click path: selecting the entry must resolve to a node.
+		cx.update(|app| engine.update(app, |engine, cx| engine.select_item(entry.id, cx)));
 
 		let _ = std::fs::remove_file(&media);
 	}

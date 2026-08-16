@@ -40,9 +40,26 @@ impl<E: AppEngine> ProjectExplorerPanel<E> {
 			&explorer,
 			|this, _explorer, event: &ProjectExplorerEvent, cx| match event {
 				ProjectExplorerEvent::OpenRequested { id, .. } => {
-					// Demo "open": select the item in the engine's model.
+					// Open the item in the engine's model (double-click on a
+					// footage entry selects it for the source viewer).
 					this.engine
 						.update(cx, |engine, cx| engine.select_item(*id, cx));
+				}
+				ProjectExplorerEvent::FileDropRequested { paths, .. } => {
+					// Drag-and-drop import: probe and add each dropped file
+					// (the first failure is logged after the rest run).
+					let mut first_error = None;
+					for path in paths {
+						if let Err(err) =
+							this.engine
+								.update(cx, |engine, cx| engine.import_footage(path.clone(), cx))
+						{
+							first_error.get_or_insert(err);
+						}
+					}
+					if let Some(err) = first_error {
+						println!("[project explorer] import failed: {err}");
+					}
 				}
 				other => println!("[project explorer] request: {other:?}"),
 			},
