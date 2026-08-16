@@ -214,6 +214,10 @@ const EN: &[(&str, &str)] = &[
 	("menu.sequence.add_audio_track", "Add Audio Track"),
 	("menu.sequence.remove_track", "Remove Selected Track"),
 	("menu.sequence.split_at_playhead", "Split Clips at Playhead"),
+	("menu.sequence.add_marker", "Add Marker"),
+	("menu.sequence.remove_marker", "Remove Marker"),
+	("menu.sequence.set_workarea", "Set Work Area"),
+	("menu.sequence.clear_workarea", "Clear Work Area"),
 	("menu.sequence.settings", "Sequence Settings…"),
 	// --- Window ---
 	("menu.window.project", "Project"),
@@ -386,6 +390,10 @@ const ZH: &[(&str, &str)] = &[
 	("menu.sequence.add_audio_track", "添加音频轨道"),
 	("menu.sequence.remove_track", "删除所选轨道"),
 	("menu.sequence.split_at_playhead", "在播放头处分割片段"),
+	("menu.sequence.add_marker", "添加标记"),
+	("menu.sequence.remove_marker", "清除标记"),
+	("menu.sequence.set_workarea", "设置工作区"),
+	("menu.sequence.clear_workarea", "清除工作区"),
 	("menu.sequence.settings", "序列设置…"),
 	// --- Window ---
 	("menu.window.project", "项目"),

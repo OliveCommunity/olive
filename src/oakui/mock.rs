@@ -50,8 +50,8 @@ use gpui::node_graph::{
 	PortDataType, PortId, PortKind,
 };
 use gpui::timeline::{
-	ClipData, ClipId, Frame, FrameRange, FrameRate, TimelineDataSource, TimelineEvent, TrackData,
-	TrackKind, TrimEdge,
+	ClipData, ClipId, Frame, FrameRange, FrameRate, Marker, TimelineDataSource, TimelineEvent,
+	TrackData, TrackKind, TrimEdge,
 };
 use gpui::{
 	hsla, point, prelude::*, px, App, Context, Entity, Hsla, Pixels, Point, RenderImage,
@@ -479,8 +479,7 @@ pub struct MockEngine {
 	imported_footage: Vec<PathBuf>,
 	/// The fake project library the project manager browses (M13 D4): an
 	/// in-memory row set the library trait methods operate on, so the app
-	/// flow (list / open / create / rename / duplicate / delete / import /
-	/// export) is testable without a database.
+	/// flow (list / open / create / rename / duplicate / delete / import /	/// export) is testable without a database.
 	library: Vec<LibraryProject>,
 	/// Id allocator for library rows created at runtime.
 	next_library_id: u64,
@@ -490,6 +489,12 @@ pub struct MockEngine {
 	/// (uuid, path) pairs handed to [`AppEngine::library_export_project`]
 	/// (test observability).
 	library_exported: Vec<(String, PathBuf)>,
+	/// The demo sequence markers (M12 P4): shown on the timeline ruler and
+	/// driven by the 序列 → 添加/清除标记 menu actions.
+	markers: Vec<Marker>,
+	/// The enabled work area (render/export in/out range) of the demo
+	/// sequence, in sequence frames (M12 P4). `None` = disabled.
+	workarea: Option<(Frame, Frame)>,
 }
 
 impl MockEngine {
@@ -737,6 +742,8 @@ impl MockEngine {
 			next_library_id: 100,
 			library_opened: Vec::new(),
 			library_exported: Vec::new(),
+			markers: Vec::new(),
+			workarea: None,
 		};
 		// The demo graph is born connected: derive every port's `connected`
 		// flag from the edge list.
@@ -1229,6 +1236,17 @@ impl AppEngine for MockEngine {
 			| TimelineEvent::TrackSelected { .. }
 			| TimelineEvent::TransitionChanged { .. }
 			| TimelineEvent::ZoomChanged(_) => {}
+				TimelineEvent::WorkAreaPreview { start, end } => {
+					self.set_workarea_preview(*start, *end, cx);
+				}
+				TimelineEvent::WorkAreaCommitted {
+					start,
+					end,
+					old_start,
+					old_end,
+				} => {
+					self.commit_workarea(*old_start, *old_end, *start, *end, cx);
+				}
 		}
 	}
 
@@ -1299,6 +1317,50 @@ impl AppEngine for MockEngine {
 
 	fn redo(&mut self, cx: &mut Context<Self>) {
 		println!("[mock engine] redo: no undo stack in mock mode");
+		cx.notify();
+	}
+
+	fn workarea(&self) -> Option<(Frame, Frame)> {
+		self.workarea
+	}
+
+	fn add_marker_at_playhead(&mut self, cx: &mut Context<Self>) {
+		let frame = self.clock_frame(Monitor::Program, cx);
+		if !self.markers.iter().any(|m| m.frame == frame) {
+			self.markers.push(Marker {
+				frame,
+				label: SharedString::new_static(""),
+				color: None,
+			});
+		}
+		cx.notify();
+	}
+
+	fn remove_marker_at_playhead(&mut self, cx: &mut Context<Self>) {
+		let frame = self.clock_frame(Monitor::Program, cx);
+		self.markers.retain(|m| m.frame != frame);
+		cx.notify();
+	}
+
+	fn set_workarea_preview(&mut self, start: Frame, end: Frame, cx: &mut Context<Self>) {
+		self.workarea = Some((start, end));
+		cx.notify();
+	}
+
+	fn commit_workarea(
+		&mut self,
+		_old_start: Frame,
+		_old_end: Frame,
+		start: Frame,
+		end: Frame,
+		cx: &mut Context<Self>,
+	) {
+		self.workarea = Some((start, end));
+		cx.notify();
+	}
+
+	fn clear_workarea(&mut self, cx: &mut Context<Self>) {
+		self.workarea = None;
 		cx.notify();
 	}
 
@@ -1480,6 +1542,10 @@ impl TimelineDataSource for MockEngine {
 
 	fn track(&self, index: usize) -> Option<Self::Track> {
 		self.tracks.get(index).cloned()
+	}
+
+	fn markers(&self) -> Vec<Marker> {
+		self.markers.clone()
 	}
 }
 
@@ -2032,6 +2098,88 @@ mod tests {
 					* 4) as usize
 			);
 			assert!(bytes.chunks_exact(4).all(|px| px[3] == 255), "opaque alpha");
+		});
+	}
+
+	// -----------------------------------------------------------------------
+	// Sequence markers & work area (M12 P4): the mock state the 序列 menu
+	// actions and the timeline ruler drag drive.
+	// -----------------------------------------------------------------------
+
+	#[gpui::test]
+	async fn marker_menu_actions_add_and_remove_at_playhead(cx: &mut TestAppContext) {
+		cx.update(|app| {
+			let engine = demo_engine(app);
+			// Park the playhead at frame 40 (the program monitor's clock).
+			engine.update(app, |engine, cx| {
+				engine.request_frame(Monitor::Program, Frame(40), cx);
+			});
+
+			// 序列 → 添加标记: a marker appears at the playhead.
+			engine.update(app, |engine, cx| engine.add_marker_at_playhead(cx));
+			let markers = engine.read(app).markers();
+			assert_eq!(markers.len(), 1);
+			assert_eq!(markers[0].frame, Frame(40));
+
+			// Adding again at the same frame is idempotent for the menu.
+			engine.update(app, |engine, cx| engine.add_marker_at_playhead(cx));
+			assert_eq!(engine.read(app).markers().len(), 1);
+
+			// 序列 → 清除标记 removes it.
+			engine.update(app, |engine, cx| engine.remove_marker_at_playhead(cx));
+			assert!(engine.read(app).markers().is_empty());
+		});
+	}
+
+	#[gpui::test]
+	async fn workarea_menu_actions_set_and_clear(cx: &mut TestAppContext) {
+		cx.update(|app| {
+			let engine = demo_engine(app);
+			assert_eq!(engine.read(app).workarea(), None);
+
+			// The menu's commit path (with an explicit old range).
+			engine.update(app, |engine, cx| {
+				engine.commit_workarea(Frame(0), Frame(100), Frame(20), Frame(80), cx);
+			});
+			assert_eq!(engine.read(app).workarea(), Some((Frame(20), Frame(80))));
+
+			// The ruler-drag preview path (live, non-undoable).
+			engine.update(app, |engine, cx| {
+				engine.set_workarea_preview(Frame(25), Frame(75), cx);
+			});
+			assert_eq!(engine.read(app).workarea(), Some((Frame(25), Frame(75))));
+
+			// 序列 → 清除工作区 disables it.
+			engine.update(app, |engine, cx| engine.clear_workarea(cx));
+			assert_eq!(engine.read(app).workarea(), None);
+		});
+	}
+
+	#[gpui::test]
+	async fn timeline_workarea_events_drive_the_mock_engine(cx: &mut TestAppContext) {
+		cx.update(|app| {
+			let engine = demo_engine(app);
+			// The timeline widget's events land on the engine through
+			// apply_timeline_event (the app shell's subscription).
+			engine.update(app, |engine, cx| {
+				engine.apply_timeline_event(
+					&TimelineEvent::WorkAreaPreview {
+						start: Frame(30),
+						end: Frame(90),
+					},
+					cx,
+				);
+				engine.apply_timeline_event(
+					&TimelineEvent::WorkAreaCommitted {
+						start: Frame(30),
+						end: Frame(90),
+						old_start: Frame::ZERO,
+						old_end: Frame(100),
+					},
+					cx,
+				);
+			});
+			assert_eq!(engine.read(app).workarea(), Some((Frame(30), Frame(90))));
 		});
 	}
 }

@@ -709,6 +709,30 @@ fn export_params_pod(params: *const OakEngineEncodingParams) -> Result<EncodingP
 			&mut pod.export_length_den,
 		);
 	}
+	// Custom in/out range (work-area export): copied so the export task
+	// renders exactly [in, out) instead of the whole viewer length.
+	if unsafe { crate::codec::oakengine_encoding_params_has_custom_range(params) } != 0 {
+		let mut in_num: i64 = 0;
+		let mut in_den: i64 = 0;
+		let mut out_num: i64 = 0;
+		let mut out_den: i64 = 0;
+		let rc = unsafe {
+			crate::codec::oakengine_encoding_params_get_custom_range(
+				params,
+				&mut in_num,
+				&mut in_den,
+				&mut out_num,
+				&mut out_den,
+			)
+		};
+		if rc == 0 {
+			pod.has_custom_range = 1;
+			pod.custom_range_in_num = in_num;
+			pod.custom_range_in_den = in_den;
+			pod.custom_range_out_num = out_num;
+			pod.custom_range_out_den = out_den;
+		}
+	}
 
 	if pod.video_enabled != 0 {
 		let mut video = std::mem::MaybeUninit::<OakVideoParamsPod>::uninit();

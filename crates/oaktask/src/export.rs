@@ -101,6 +101,18 @@ pub struct EncodingParams {
 	pub export_length_num: i32,
 	/// Export length denominator.
 	pub export_length_den: i32,
+	/// Whether a custom in/out export range is set (work-area export). When
+	/// set, [`ExportTask::export_range`] renders exactly `[in, out)` instead
+	/// of the whole viewer length.
+	pub has_custom_range: bool,
+	/// Custom range in point numerator (seconds rational).
+	pub custom_range_in_num: i32,
+	/// Custom range in point denominator.
+	pub custom_range_in_den: i32,
+	/// Custom range out point numerator (seconds rational).
+	pub custom_range_out_num: i32,
+	/// Custom range out point denominator.
+	pub custom_range_out_den: i32,
 }
 
 impl ExportTask {
@@ -157,8 +169,27 @@ impl ExportTask {
 
 	/// Resolve the export range: the custom range when set, otherwise the
 	/// whole viewer length (direct `oaknode` domain query; the deleted
-	/// `oaknode_sequence_get_length` stub is gone).
+	/// `oaknode_sequence_get_length` stub is gone). The custom range is the
+	/// work-area / in-out export: `export_params_pod` copies it from the
+	/// facade params handle, so `oakengine_export_render_with_params` and the
+	/// app's work-area export render exactly `[in, out)`.
 	fn export_range(&self) -> TimeRange {
+		if self.encoding_params.has_custom_range
+			&& self.encoding_params.custom_range_in_den != 0
+			&& self.encoding_params.custom_range_out_den != 0
+		{
+			let in_ = Rational::new(
+				i64::from(self.encoding_params.custom_range_in_num),
+				i64::from(self.encoding_params.custom_range_in_den),
+			);
+			let out = Rational::new(
+				i64::from(self.encoding_params.custom_range_out_num),
+				i64::from(self.encoding_params.custom_range_out_den),
+			);
+			if out > in_ {
+				return TimeRange::new(in_, out);
+			}
+		}
 		let length = nodeops::node_length(&self.viewer_node.0, self.viewer_node.1);
 		TimeRange::new(Rational::new(0, 1), length)
 	}

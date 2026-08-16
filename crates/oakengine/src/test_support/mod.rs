@@ -45,6 +45,7 @@ mod it_library;
 mod it_plugin;
 mod it_storage;
 mod it_task;
+mod it_timeline;
 mod it_undo;
 mod linkage;
 mod node;

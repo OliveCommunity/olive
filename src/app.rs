@@ -41,7 +41,9 @@ use std::time::Duration;
 use gpui::dock::{
 	DockArea, DockLayout, DropTarget, DropZone, NodePath, PanelHandle, PanelRegistry,
 };
-use gpui::timeline::{ClipId, Frame, TimelineEvent, TimelineView};
+use gpui::timeline::{
+	ClipData, ClipId, Frame, FrameRange, TimelineEvent, TimelineView, TrackData,
+};
 use gpui::{
 	div, prelude::*, px, size, App, AsyncWindowContext, Bounds, Context, Entity, PathPromptOptions,
 	Render, Window, WindowBounds, WindowOptions,
@@ -100,6 +102,10 @@ mod menu_ids {
 	pub const ADD_AUDIO_TRACK: usize = 502;
 	pub const REMOVE_TRACK: usize = 503;
 	pub const SPLIT_AT_PLAYHEAD: usize = 504;
+	pub const ADD_MARKER: usize = 505;
+	pub const REMOVE_MARKER: usize = 506;
+	pub const SET_WORKAREA: usize = 507;
+	pub const CLEAR_WORKAREA: usize = 508;
 
 	pub const FOCUS_PROJECT: usize = 601;
 	pub const FOCUS_SOURCE_VIEWER: usize = 602;
@@ -511,6 +517,12 @@ impl<E: AppEngine> OakApp<E> {
 		let frame = self.program_clock.read(cx).current_frame();
 		self.timeline
 			.update(cx, |timeline, cx| timeline.seek(frame, cx));
+		// Mirror the engine's work area into the ruler's view state (M12 P4).
+		// Read every tick so undo/redo and the ruler-drag commit land on the
+		// band promptly; the read is a cheap facade getter.
+		let work_area = self.engine.read(cx).workarea();
+		self.timeline
+			.update(cx, |timeline, _| timeline.state.work_area = work_area.map(|(s, e)| FrameRange::new(s, e)));
 		self.meter.update(cx, |meter, cx| meter.update(cx));
 		self.poll_export(cx);
 		cx.notify();
@@ -598,6 +610,16 @@ impl<E: AppEngine> OakApp<E> {
 			SPLIT_AT_PLAYHEAD => self
 				.engine
 				.update(cx, |engine, cx| engine.split_at_playhead(cx)),
+			ADD_MARKER => self
+				.engine
+				.update(cx, |engine, cx| engine.add_marker_at_playhead(cx)),
+			REMOVE_MARKER => self
+				.engine
+				.update(cx, |engine, cx| engine.remove_marker_at_playhead(cx)),
+			SET_WORKAREA => self.set_workarea_from_selection(cx),
+			CLEAR_WORKAREA => self
+				.engine
+				.update(cx, |engine, cx| engine.clear_workarea(cx)),
 			// --- Window ----------------------------------------------------
 			FOCUS_PROJECT => self.focus_panel(PROJECT, cx),
 			FOCUS_SOURCE_VIEWER => self.focus_panel(SOURCE_VIEWER, cx),
@@ -647,6 +669,49 @@ impl<E: AppEngine> OakApp<E> {
 		};
 		self.engine
 			.update(cx, |engine, cx| engine.remove_track(index, cx));
+	}
+
+	/// 序列 → 设置工作区: sets the work area to the bounding range of the
+	/// selected clips, or one frame at the program playhead when nothing is
+	/// selected. Committed as ONE undoable entry whose old side is the
+	/// engine's current work area (mirrors the ruler drag's commit).
+	fn set_workarea_from_selection(&mut self, cx: &mut Context<Self>) {
+		let (old_start, old_end) = self
+			.engine
+			.read(cx)
+			.workarea()
+			.unwrap_or((Frame::ZERO, Frame::ZERO));
+		let (start, end) = self.selection_workarea_range(cx);
+		self.engine.update(cx, |engine, cx| {
+			engine.commit_workarea(old_start, old_end, start, end, cx);
+		});
+	}
+
+	/// The bounding range of the timeline's selected clips; `[playhead,
+	/// playhead + 1)` when nothing is selected (the menu's fallback).
+	fn selection_workarea_range(&self, cx: &App) -> (Frame, Frame) {
+		let ids: Vec<ClipId> = self.timeline.read(cx).selection().iter().copied().collect();
+		let engine = self.engine.read(cx);
+		let mut start: Option<i64> = None;
+		let mut end: i64 = 0;
+		for index in 0..engine.track_count() {
+			if let Some(track) = engine.track(index) {
+				for clip in track.clips() {
+					if ids.contains(&clip.id()) {
+						let range = clip.range();
+						start = Some(start.map_or(range.start.0, |s| s.min(range.start.0)));
+						end = end.max(range.end.0);
+					}
+				}
+			}
+		}
+		match start {
+			Some(s) if end > s => (Frame(s), Frame(end)),
+			_ => {
+				let playhead = self.program_clock.read(cx).current_frame();
+				(playhead, Frame(playhead.0 + 1))
+			}
+		}
 	}
 
 	/// Focuses a dock panel (used by the 窗口 menu).
@@ -1398,6 +1463,10 @@ fn make_menus(dark: bool) -> Vec<MenuBarEntry> {
 				MenuItem::new(ADD_AUDIO_TRACK, tr("menu.sequence.add_audio_track")),
 				MenuItem::new(REMOVE_TRACK, tr("menu.sequence.remove_track")).separated(),
 				MenuItem::new(SPLIT_AT_PLAYHEAD, tr("menu.sequence.split_at_playhead")),
+				MenuItem::new(ADD_MARKER, tr("menu.sequence.add_marker")).with_shortcut("M"),
+				MenuItem::new(REMOVE_MARKER, tr("menu.sequence.remove_marker")).separated(),
+				MenuItem::new(SET_WORKAREA, tr("menu.sequence.set_workarea")),
+				MenuItem::new(CLEAR_WORKAREA, tr("menu.sequence.clear_workarea")),
 				MenuItem::new(704, tr("menu.sequence.settings")).disabled(),
 			]),
 		),

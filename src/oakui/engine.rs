@@ -282,6 +282,52 @@ pub trait AppEngine:
 	/// tool's menu action).
 	fn split_at_playhead(&mut self, cx: &mut Context<Self>);
 
+	// -------------------------------------------------------------------
+	// Sequence markers & work area (M12 P4): the facade surfaces are
+	// undoable, mirroring Olive (MarkerAdd/MarkerRemove/WorkareaSet*).
+	// Defaults: no-op / none, so mock-less engines degrade gracefully.
+	// -------------------------------------------------------------------
+
+	/// The sequence work area (render/export in/out range) when enabled, in
+	/// sequence frames. `None` when disabled or no sequence is open.
+	fn workarea(&self) -> Option<(Frame, Frame)> {
+		None
+	}
+
+	/// Adds a marker at the program playhead (undoable).
+	fn add_marker_at_playhead(&mut self, cx: &mut Context<Self>) {
+		let _ = cx;
+	}
+
+	/// Removes the marker at the program playhead, if any (undoable).
+	fn remove_marker_at_playhead(&mut self, cx: &mut Context<Self>) {
+		let _ = cx;
+	}
+
+	/// Applies a work-area range **live** (not undoable) — the ruler drag
+	/// preview path (Olive's `set_range` during drag).
+	fn set_workarea_preview(&mut self, start: Frame, end: Frame, cx: &mut Context<Self>) {
+		let _ = (start, end, cx);
+	}
+
+	/// Commits a work-area range as ONE undoable entry. `old_start` /
+	/// `old_end` are the range before the change (the ruler drag start).
+	fn commit_workarea(
+		&mut self,
+		old_start: Frame,
+		old_end: Frame,
+		start: Frame,
+		end: Frame,
+		cx: &mut Context<Self>,
+	) {
+		let _ = (old_start, old_end, start, end, cx);
+	}
+
+	/// Clears (disables) the work area (undoable).
+	fn clear_workarea(&mut self, cx: &mut Context<Self>) {
+		let _ = cx;
+	}
+
 	/// Deletes the clip with `clip` id, rippling following content left when
 	/// `ripple` is set.
 	fn delete_clip(&mut self, clip: ClipId, ripple: bool, cx: &mut Context<Self>);

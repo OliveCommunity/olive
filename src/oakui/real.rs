@@ -63,9 +63,10 @@
 //!   facade commands (drag previews never persist).
 //! * Audio meter still feeds silent data (the meter's facade surface is
 //!   not bound in this increment).
-//! * Clip moves go through `oakengine_sequence_move_clip` (same-track only;
-//!   the facade's capi signature has no target-track parameter, so a
-//!   cross-track drag reports "not supported" instead of applying).
+//! * Clip moves go through the facade's move exports: same-track moves use
+//!   `oakengine_sequence_move_clip`, cross-track moves
+//!   `oakengine_sequence_move_clip_to_track` (M12 P4) — each one undoable
+//!   entry, with the source spot becoming a gap.
 //!
 //! # Threading note
 //!
@@ -90,8 +91,8 @@ use gpui::node_graph::{
 	PortKind,
 };
 use gpui::timeline::{
-	ClipData, ClipId, Frame, FrameRange, FrameRate, TimelineDataSource, TimelineEvent, TrackData,
-	TrackKind, TrimEdge,
+	ClipData, ClipId, Frame, FrameRange, FrameRate, Marker, TimelineDataSource, TimelineEvent,
+	TrackData, TrackKind, TrimEdge,
 };
 use gpui::{
 	hsla, point, prelude::*, px, App, Context, Entity, Hsla, Pixels, RenderImage, SharedString,
@@ -513,6 +514,20 @@ fn clip_color(index: u64) -> Hsla {
 		h: hues[(index as usize) % hues.len()],
 		s: 0.55,
 		l: 0.45,
+		a: 1.0,
+	}
+}
+
+/// A marker color for a marker color index (the facade marker color
+/// contract): a small palette around the amber accent, so adjacent markers
+/// stay distinguishable.
+fn marker_color(index: c_int) -> Hsla {
+	let hues = [0.10f32, 0.0, 0.55, 0.30, 0.78];
+	let h = hues[(index.max(0) as usize) % hues.len()];
+	Hsla {
+		h,
+		s: 0.75,
+		l: 0.55,
 		a: 1.0,
 	}
 }
@@ -1524,6 +1539,48 @@ impl TimelineDataSource for RealEngine {
 	fn track(&self, index: usize) -> Option<Self::Track> {
 		self.tracks.get(index).cloned()
 	}
+
+	fn markers(&self) -> Vec<Marker> {
+		let Some(seq) = self.seq_ptr() else {
+			return Vec::new();
+		};
+		let count = unsafe { oakengine_sequence_marker_count(seq) };
+		if count <= 0 {
+			return Vec::new();
+		}
+		let mut out = Vec::with_capacity(count as usize);
+		for index in 0..count {
+			let mut time: i64 = 0;
+			let mut name_buf = [0 as c_char; 128];
+			let mut color: c_int = 0;
+			let rc = unsafe {
+				oakengine_sequence_marker_at(
+					seq,
+					index,
+					&mut time,
+					name_buf.as_mut_ptr(),
+					name_buf.len() as c_int,
+					&mut color,
+				)
+			};
+			if rc != 0 {
+				continue;
+			}
+			let len = name_buf.iter().position(|&c| c == 0).unwrap_or(name_buf.len());
+			let name: SharedString =
+				String::from_utf8_lossy(unsafe {
+					std::slice::from_raw_parts(name_buf.as_ptr() as *const u8, len)
+				})
+				.into_owned()
+				.into();
+			out.push(Marker {
+				frame: Frame(time),
+				label: name,
+				color: Some(marker_color(color)),
+			});
+		}
+		out
+	}
 }
 
 impl EffectStackDataSource for RealEngine {
@@ -2018,6 +2075,17 @@ impl AppEngine for RealEngine {
 			| TimelineEvent::TrackSelected { .. }
 			| TimelineEvent::TransitionChanged { .. }
 			| TimelineEvent::ZoomChanged(_) => {}
+				TimelineEvent::WorkAreaPreview { start, end } => {
+					self.set_workarea_preview(*start, *end, cx);
+				}
+				TimelineEvent::WorkAreaCommitted {
+					start,
+					end,
+					old_start,
+					old_end,
+				} => {
+					self.commit_workarea(*old_start, *old_end, *start, *end, cx);
+				}
 		}
 	}
 
@@ -2071,6 +2139,95 @@ impl AppEngine for RealEngine {
 			};
 		}
 		self.apply_edit(rc, "split at playhead", cx);
+	}
+
+	fn workarea(&self) -> Option<(Frame, Frame)> {
+		let seq = self.seq_ptr()?;
+		if unsafe { oakengine_sequence_workarea_is_enabled(seq) } == 0 {
+			return None;
+		}
+		let mut in_ts: i64 = 0;
+		let mut out_ts: i64 = 0;
+		if unsafe { oakengine_sequence_get_workarea(seq, &mut in_ts, &mut out_ts) } != 0 {
+			return None;
+		}
+		Some((Frame(in_ts), Frame(out_ts)))
+	}
+
+	fn add_marker_at_playhead(&mut self, cx: &mut Context<Self>) {
+		let Some(seq) = self.seq_ptr() else {
+			return;
+		};
+		let frame = self.clock_frame(Monitor::Program, cx);
+		let rc = unsafe { oakengine_sequence_marker_add(seq, frame.0, c"".as_ptr()) };
+		self.apply_edit(rc, "add marker", cx);
+	}
+
+	fn remove_marker_at_playhead(&mut self, cx: &mut Context<Self>) {
+		let Some(seq) = self.seq_ptr() else {
+			return;
+		};
+		let frame = self.clock_frame(Monitor::Program, cx);
+		let rc = unsafe { oakengine_sequence_marker_remove(seq, frame.0) };
+		// Removing a marker that is not there is a benign no-op for the menu
+		// action (the facade reports NOT_FOUND); only rebuild on success.
+		if rc != 0 {
+			return;
+		}
+		self.apply_edit(rc, "remove marker", cx);
+	}
+
+	fn set_workarea_preview(&mut self, start: Frame, end: Frame, cx: &mut Context<Self>) {
+		let Some(seq) = self.seq_ptr() else {
+			return;
+		};
+		// Live, non-undoable: the engine workarea tracks the drag so other
+		// reads (export, snap) stay current; no timeline rebuild needed — the
+		// band itself is widget-local state.
+		unsafe { oakengine_sequence_set_workarea(seq, 1, start.0, end.0) };
+		cx.notify();
+	}
+
+	fn commit_workarea(
+		&mut self,
+		old_start: Frame,
+		old_end: Frame,
+		start: Frame,
+		end: Frame,
+		cx: &mut Context<Self>,
+	) {
+		let Some(seq) = self.seq_ptr() else {
+			return;
+		};
+		let rc = unsafe {
+			oakengine_sequence_set_workarea_undoable(
+				seq,
+				1,
+				start.0,
+				end.0,
+				old_start.0,
+				old_end.0,
+			)
+		};
+		self.apply_edit(rc, "set workarea", cx);
+	}
+
+	fn clear_workarea(&mut self, cx: &mut Context<Self>) {
+		let Some(seq) = self.seq_ptr() else {
+			return;
+		};
+		let (old_start, old_end) = self.workarea().unwrap_or((Frame::ZERO, Frame::ZERO));
+		let rc = unsafe {
+			oakengine_sequence_set_workarea_undoable(
+				seq,
+				0,
+				old_start.0,
+				old_end.0,
+				old_start.0,
+				old_end.0,
+			)
+		};
+		self.apply_edit(rc, "clear workarea", cx);
 	}
 
 	fn delete_clip(&mut self, clip: ClipId, ripple: bool, cx: &mut Context<Self>) {
@@ -2426,11 +2583,32 @@ impl AppEngine for RealEngine {
 			unsafe { oakengine_encoding_params_destroy(params) };
 			return Err(format!("failed to enable audio (error {rc})"));
 		}
-		// Export the whole sequence.
-		let length = self.sequence_length();
-		if length.0 > 0 {
+		// Export range: the work area when enabled (M12 P4), otherwise the
+		// whole sequence. Frames → seconds rationals in the sequence's
+		// frame-rate timebase (frame duration = rate_den / rate_num).
+		if let Some((in_ts, out_ts)) = self.workarea().filter(|(s, e)| e.0 > s.0) {
+			let tb_num = i64::from(rate_den.max(1));
+			let tb_den = i64::from(rate_num.max(1));
 			unsafe {
-				oakengine_encoding_params_set_export_length(params, length.0 as c_int, 1);
+				oakengine_encoding_params_set_custom_range(
+					params,
+					in_ts.0 * tb_num,
+					tb_den,
+					out_ts.0 * tb_num,
+					tb_den,
+				);
+				oakengine_encoding_params_set_export_length(
+					params,
+					((out_ts.0 - in_ts.0) * tb_num) as c_int,
+					rate_num.max(1),
+				);
+			}
+		} else {
+			let length = self.sequence_length();
+			if length.0 > 0 {
+				unsafe {
+					oakengine_encoding_params_set_export_length(params, length.0 as c_int, 1);
+				}
 			}
 		}
 

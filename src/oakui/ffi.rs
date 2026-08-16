@@ -268,6 +268,16 @@ unsafe extern "C" {
 		num: c_int,
 		den: c_int,
 	);
+	/// `oakengine_encoding_params_set_custom_range` — in/out export range as
+	/// seconds rationals (the work-area export; the task renders exactly
+	/// `[in, out)`).
+	pub fn oakengine_encoding_params_set_custom_range(
+		params: *mut OakEngineEncodingParams,
+		in_num: i64,
+		in_den: i64,
+		out_num: i64,
+		out_den: i64,
+	);
 
 	// -- oakengine::common (config) --
 
@@ -695,6 +705,61 @@ unsafe extern "C" {
 		track_type: c_int,
 		track_index: c_int,
 		height: f64,
+	) -> c_int;
+
+	/// `oakengine_sequence_marker_count` — number of timeline markers
+	/// (0 for NULL/invalid).
+	pub fn oakengine_sequence_marker_count(self_: *const OakEngineSequence) -> c_int;
+	/// `oakengine_sequence_marker_at` — marker at `index`: time as a frame
+	/// timestamp (the sequence's timebase), name via the buf/size
+	/// convention, and the color index.
+	pub fn oakengine_sequence_marker_at(
+		self_: *const OakEngineSequence,
+		index: c_int,
+		time: *mut i64,
+		name: *mut c_char,
+		name_size: c_int,
+		color: *mut c_int,
+	) -> c_int;
+	/// `oakengine_sequence_marker_add` — undoable marker at `time_ts`.
+	pub fn oakengine_sequence_marker_add(
+		seq: *mut OakEngineSequence,
+		time_ts: i64,
+		name: *const c_char,
+	) -> c_int;
+	/// `oakengine_sequence_marker_remove` — undoable removal of the marker
+	/// at `time_ts`.
+	pub fn oakengine_sequence_marker_remove(seq: *mut OakEngineSequence, time_ts: i64) -> c_int;
+
+	/// `oakengine_sequence_workarea_is_enabled` — 1 when the work area is
+	/// enabled.
+	pub fn oakengine_sequence_workarea_is_enabled(self_: *const OakEngineSequence) -> c_int;
+	/// `oakengine_sequence_get_workarea` — work-area in/out as frame
+	/// timestamps (the reset sentinel out when never set).
+	pub fn oakengine_sequence_get_workarea(
+		self_: *const OakEngineSequence,
+		in_: *mut i64,
+		out: *mut i64,
+	) -> c_int;
+	/// `oakengine_sequence_set_workarea` — set the enabled flag + range
+	/// live (NOT undoable; the ruler-drag preview path).
+	pub fn oakengine_sequence_set_workarea(
+		self_: *mut OakEngineSequence,
+		enabled: c_int,
+		in_: i64,
+		out: i64,
+	) -> c_int;
+	/// `oakengine_sequence_set_workarea_undoable` — set the enabled flag +
+	/// range as ONE undoable entry ("Set Workarea"). `old_in`/`old_out` are
+	/// the range before the change (the caller captured it, e.g. the
+	/// drag-start range); the old enabled flag is captured by the engine.
+	pub fn oakengine_sequence_set_workarea_undoable(
+		self_: *mut OakEngineSequence,
+		enabled: c_int,
+		in_: i64,
+		out: i64,
+		old_in: i64,
+		old_out: i64,
 	) -> c_int;
 
 	/// `oakengine_track_height_internal_to_pixels`.

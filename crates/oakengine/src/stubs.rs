@@ -10870,21 +10870,27 @@ pub mod timeline {
 		out_den: *mut c_int,
 		enabled: *mut c_int,
 	) -> c_int {
-		if in_num.is_null() || in_den.is_null() || out_num.is_null() || out_den.is_null() {
-			return oaktimeline::error::OAKTIMELINE_E_INVALID;
-		}
 		// SAFETY: work-area handles box TimelineWorkArea.
 		let wa = match unsafe { oaktimeline::handle::get::<oaktimeline::workarea::TimelineWorkArea>(&w) } {
 			Some(wa) => wa,
 			None => return oaktimeline::error::OAKTIMELINE_E_INVALID,
 		};
 		let range = wa.range();
-		// SAFETY: valid out pointers.
+		// Out params may individually be NULL (the header contract); write
+		// each only when the caller supplied a target.
 		unsafe {
-			*in_num = range.in_().numerator() as c_int;
-			*in_den = range.in_().denominator() as c_int;
-			*out_num = range.out().numerator() as c_int;
-			*out_den = range.out().denominator() as c_int;
+			if !in_num.is_null() {
+				*in_num = range.in_().numerator() as c_int;
+			}
+			if !in_den.is_null() {
+				*in_den = range.in_().denominator() as c_int;
+			}
+			if !out_num.is_null() {
+				*out_num = range.out().numerator() as c_int;
+			}
+			if !out_den.is_null() {
+				*out_den = range.out().denominator() as c_int;
+			}
 			if !enabled.is_null() {
 				*enabled = if wa.enabled() { 1 } else { 0 };
 			}
@@ -13699,6 +13705,11 @@ pub mod task {
 			subtitles_enabled: pod.subtitles_enabled != 0,
 			export_length_num: pod.export_length_num,
 			export_length_den: pod.export_length_den,
+			has_custom_range: pod.has_custom_range != 0,
+			custom_range_in_num: pod.custom_range_in_num as i32,
+			custom_range_in_den: pod.custom_range_in_den as i32,
+			custom_range_out_num: pod.custom_range_out_num as i32,
+			custom_range_out_den: pod.custom_range_out_den as i32,
 		};
 		let _ = color_manager; // the domain ExportTask dropped the manager slot
 		let inner = oaktask::export::ExportTask::new(viewer_ref, encoding);

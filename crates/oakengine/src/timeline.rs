@@ -1577,6 +1577,75 @@ pub unsafe extern "C" fn oakengine_sequence_set_workarea(
 	})
 }
 
+/// `oakengine_sequence_set_workarea_undoable` — set the workarea's enabled
+/// flag and in/out range as ONE undoable entry ("Set Workarea").
+///
+/// The old range must be supplied by the caller (the same convention as
+/// `oakengine_workarea_set_range_undoable`): pass the range read before the
+/// change — e.g. the drag-start range of a ruler work-area drag. The enabled
+/// flag's previous value is captured by the module command itself.
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_sequence_set_workarea_undoable(
+	self_: *mut OakEngineSequence,
+	enabled: c_int,
+	in_: i64,
+	out: i64,
+	old_in: i64,
+	old_out: i64,
+) -> c_int {
+	guard(|| unsafe {
+		set_seq_error("");
+		let sequence = match unbox(self_) {
+			Ok(h) => h,
+			Err(_) => {
+				set_seq_error("invalid sequence");
+				return Err(Error::Invalid);
+			}
+		};
+		let tb = match seq_time_base(sequence) {
+			Ok(tb) => tb,
+			Err(_) => {
+				set_seq_error("sequence has no valid frame rate");
+				return Err(Error::State);
+			}
+		};
+		if in_ < 0 || out < 0 || old_in < 0 || old_out < 0 {
+			set_seq_error("invalid workarea range");
+			return Err(Error::Invalid);
+		}
+		let wa = seq_workarea(sequence)?;
+		let (new_in_num, new_in_den) = ts_to_rational(in_, tb);
+		let (new_out_num, new_out_den) = ts_to_rational(out, tb);
+		let (old_in_num, old_in_den) = ts_to_rational(old_in, tb);
+		let (old_out_num, old_out_den) = ts_to_rational(old_out, tb);
+		let enabled_cmd = tl::oaktimeline_workarea_set_enabled_command(wa, enabled);
+		if enabled_cmd.is_null() {
+			release_handle(wa);
+			set_seq_error("workarea enabled command failed");
+			return Err(Error::Failed("workarea enabled command failed".into()));
+		}
+		let range_cmd = tl::oaktimeline_workarea_set_range_command(
+			wa,
+			new_in_num as c_int,
+			new_in_den as c_int,
+			new_out_num as c_int,
+			new_out_den as c_int,
+			old_in_num as c_int,
+			old_in_den as c_int,
+			old_out_num as c_int,
+			old_out_den as c_int,
+		);
+		release_handle(wa);
+		if range_cmd.is_null() {
+			set_seq_error("workarea range command failed");
+			return Err(Error::Failed("workarea range command failed".into()));
+		}
+		// The commands hold borrowed clones of `wa` (no addref); the workarea
+		// lives with the sequence, so it outlives the undo entry.
+		push_multi_commands(&[enabled_cmd, range_cmd], "Set Workarea")
+	})
+}
+
 /// `oakengine_sequence_marker_count` — number of timeline markers.
 #[no_mangle]
 pub unsafe extern "C" fn oakengine_sequence_marker_count(self_: *const OakEngineSequence) -> c_int {
