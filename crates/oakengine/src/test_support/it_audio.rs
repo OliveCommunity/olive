@@ -108,9 +108,10 @@ fn alive() -> c_int {
 	crate::stubs::audio::oakaudio_debug_alive_count()
 }
 
-/// A borrowed `OakAudioParams*` mock handle (tests/common/mod.rs provides
-/// the `oakcore_audioparams_*` accessors the facade reads through).
-fn audio_params(rate: c_int, layout: u64, format: c_int) -> *mut common::OakAudioParams {
+/// A borrowed `OakAudioParams*` handle created through the facade's
+/// in-dylib `oakcore_audioparams_*` accessors (tests/common/mod.rs
+/// re-exports them; see `crate::stubs::audio`).
+fn audio_params(rate: c_int, layout: u64, format: c_int) -> *mut c_void {
 	common::oakcore_audioparams_create(rate, layout, format)
 }
 

@@ -29,9 +29,10 @@ libc = "0.2"
 # oakaudio/oakplugin, and clearly marked STUBs for the handle-based
 # oaknode/oaktimeline paths).
 #
-# The remaining undefined imports are the C++ host-provided symbols
-# (`oakcore_audioparams_*` from liboakcore), which build.rs leaves as
-# runtime lookups for the host app (see src/stubs.rs audio module).
+# The `oakcore_audioparams_*` accessors the audio paths read through are
+# implemented inside the dylib too (src/stubs.rs, module `audio`, M12 P5):
+# they used to be C++ liboakcore host-provided symbols left as runtime
+# lookups, which blocked Windows DLL linking.
 #
 # src/linkage.rs anchors every crate (and oakcore-rs) so the linker pulls
 # their object files into the cdylib.

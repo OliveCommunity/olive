@@ -25,19 +25,16 @@
 //!    would otherwise drop the dev-dependency rlibs from the link and
 //!    leave the imports undefined.
 //!
-//! 2. **Provide the `oakcore_*` symbols** that the
-//!    oakcodec rlib references: `oakcore_audioparams_*` /
-//!    `oakcore_rational_*` live in the C++ liboakcore (only linked in the
-//!    real build), so cargo tests define minimal in-memory mocks — the
-//!    same mock the oakcodec crate itself compiles under `#[cfg(test)]`
-//!    (src/bridge/test_stubs.rs). The real dylib behavior is required
-//!    for actual media decode; those facade tests are `#[ignore]`.
+//! 2. **Re-export the folded-in `oakcore_audioparams_*` accessors** for
+//!    the former mock call sites (`common::oakcore_audioparams_*`). The
+//!    facade used to leave those symbols as runtime lookups for a C++
+//!    liboakcore host, and the tests defined in-memory mocks; M12 P5
+//!    implemented them inside the dylib (crates/oakengine/src/stubs.rs,
+//!    module `audio`), so the tests just use those implementations.
 
 #![allow(dead_code, unused_variables)]
 
-use std::collections::HashMap;
-use std::ffi::{c_int, c_void};
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 
 /// One public direct-Rust symbol per module crate (the module C ABIs are
 /// deleted; this mirrors the anchors in `crates/oakengine/src/linkage.rs`).
@@ -106,201 +103,14 @@ pub fn storage_off_guard() -> std::sync::MutexGuard<'static, ()> {
 }
 
 // ---------------------------------------------------------------------------
-// oakcore_* stubs (see module docs)
+// oakcore_audioparams_* (see module docs)
 // ---------------------------------------------------------------------------
 
-/// Opaque `OakAudioParams` handle type (the real one lives in liboakcore).
-#[repr(C)]
-pub struct OakAudioParams {
-	_opaque: [u8; 0],
-}
-
-/// Per-`OakAudioParams` backing state.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-struct MockAudioParams {
-	sample_rate: i32,
-	channel_layout: u64,
-	format: i32,
-	stream_index: i32,
-	duration: i64,
-	time_base_num: i32,
-	time_base_den: i32,
-}
-
-fn audio_params_store() -> &'static Mutex<HashMap<usize, MockAudioParams>> {
-	static S: OnceLock<Mutex<HashMap<usize, MockAudioParams>>> = OnceLock::new();
-	S.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-fn audio_params_get(ctx: *const c_void) -> MockAudioParams {
-	let store = audio_params_store().lock().unwrap();
-	store.get(&(ctx as usize)).cloned().unwrap_or_default()
-}
-
-fn audio_params_set(ctx: *mut c_void, f: impl FnOnce(&mut MockAudioParams)) {
-	let mut store = audio_params_store().lock().unwrap();
-	if let Some(p) = store.get_mut(&(ctx as usize)) {
-		f(p);
-	}
-}
-
-/// Per-`OakRational` backing state (an owned `(num, den)` pair).
-fn rational_store() -> &'static Mutex<HashMap<usize, (i32, i32)>> {
-	static S: OnceLock<Mutex<HashMap<usize, (i32, i32)>>> = OnceLock::new();
-	S.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_audioparams_create(
-	sample_rate: c_int,
-	channel_layout: u64,
-	format: c_int,
-) -> *mut OakAudioParams {
-	let p = MockAudioParams {
-		sample_rate,
-		channel_layout,
-		format,
-		stream_index: 0,
-		duration: 0,
-		time_base_num: 1,
-		time_base_den: sample_rate,
-	};
-	let raw = Box::into_raw(Box::new(p.clone()));
-	audio_params_store().lock().unwrap().insert(raw as usize, p);
-	raw as *mut OakAudioParams
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_audioparams_free(params: *mut OakAudioParams) {
-	if params.is_null() {
-		return;
-	}
-	audio_params_store()
-		.lock()
-		.unwrap()
-		.remove(&(params as usize));
-	// SAFETY: produced by `oakcore_audioparams_create`; we hold the only
-	// reference after removal.
-	unsafe { drop(Box::from_raw(params as *mut MockAudioParams)) };
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_audioparams_sample_rate(params: *const OakAudioParams) -> c_int {
-	audio_params_get(params as *const c_void).sample_rate
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_audioparams_set_sample_rate(
-	params: *mut OakAudioParams,
-	sample_rate: c_int,
-) {
-	audio_params_set(params as *mut c_void, |p| p.sample_rate = sample_rate);
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_audioparams_channel_layout(params: *const OakAudioParams) -> u64 {
-	audio_params_get(params as *const c_void).channel_layout
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_audioparams_set_channel_layout(params: *mut OakAudioParams, layout: u64) {
-	audio_params_set(params as *mut c_void, |p| p.channel_layout = layout);
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_audioparams_set_time_base(
-	params: *mut OakAudioParams,
-	num: c_int,
-	den: c_int,
-) {
-	audio_params_set(params as *mut c_void, |p| {
-		p.time_base_num = num;
-		p.time_base_den = den;
-	});
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_audioparams_set_format(params: *mut OakAudioParams, format: c_int) {
-	audio_params_set(params as *mut c_void, |p| p.format = format);
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_audioparams_set_stream_index(params: *mut OakAudioParams, index: c_int) {
-	audio_params_set(params as *mut c_void, |p| p.stream_index = index);
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_audioparams_set_duration(params: *mut OakAudioParams, duration: i64) {
-	audio_params_set(params as *mut c_void, |p| p.duration = duration);
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_audioparams_channel_count(params: *const OakAudioParams) -> c_int {
-	audio_params_get(params as *const c_void)
-		.channel_layout
-		.count_ones() as c_int
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_audioparams_format(params: *const OakAudioParams) -> c_int {
-	audio_params_get(params as *const c_void).format
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_audioparams_stream_index(params: *const OakAudioParams) -> c_int {
-	audio_params_get(params as *const c_void).stream_index
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_audioparams_duration(params: *const OakAudioParams) -> i64 {
-	audio_params_get(params as *const c_void).duration
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_audioparams_is_valid(params: *const OakAudioParams) -> c_int {
-	let p = audio_params_get(params as *const c_void);
-	(p.sample_rate > 0 && p.channel_layout != 0 && p.format >= 0) as c_int
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_audioparams_time_base(params: *const OakAudioParams) -> *mut c_void {
-	let p = audio_params_get(params as *const c_void);
-	let r = (p.time_base_num, p.time_base_den);
-	let raw = Box::into_raw(Box::new(r));
-	rational_store().lock().unwrap().insert(raw as usize, r);
-	raw as *mut c_void
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_rational_numerator(rational: *const c_void) -> c_int {
-	rational_store()
-		.lock()
-		.unwrap()
-		.get(&(rational as usize))
-		.map(|r| r.0)
-		.unwrap_or(0)
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_rational_denominator(rational: *const c_void) -> c_int {
-	rational_store()
-		.lock()
-		.unwrap()
-		.get(&(rational as usize))
-		.map(|r| r.1)
-		.unwrap_or(0)
-}
-
-#[no_mangle]
-pub extern "C" fn oakcore_rational_free(rational: *mut c_void) {
-	if rational.is_null() {
-		return;
-	}
-	rational_store()
-		.lock()
-		.unwrap()
-		.remove(&(rational as usize));
-	// SAFETY: produced by `oakcore_audioparams_time_base` as a boxed
-	// `(i32, i32)` pair; we hold the only reference after removal.
-	unsafe { drop(Box::from_raw(rational as *mut (i32, i32))) };
-}
+/// The facade's in-dylib `oakcore_audioparams_*` C ABI (see
+/// `crate::stubs::audio`): the accessors were host-provided mocks until
+/// M12 P5 folded them into the engine, so the tests now share the real
+/// implementations instead of defining per-binary duplicates. Only the
+/// two entry points the test files call (`create`/`free`) are re-exported;
+/// the read accessors are reached through `crate::stubs::audio` where the
+/// tests need them.
+pub use crate::stubs::audio::{oakcore_audioparams_create, oakcore_audioparams_free};

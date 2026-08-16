@@ -20,8 +20,9 @@
 //!
 //! Coverage rules (see the family test charter):
 //!   1. no mocks — every call goes through the real facade into the real
-//!      module crates (the only stubs are the host-provided `oakcore_*`
-//!      symbols in `tests/common`); the output file is a REAL mp4 written
+//!      module crates (the `oakcore_audioparams_*` accessors the facade
+//!      reads through are its own in-dylib implementations, re-exported by
+//!      `tests/common`); the output file is a REAL mp4 written
 //!      by the statically linked FFmpeg (oakcodec encoder), asserted by
 //!      its `ftyp` box;
 //!   2. every exporter-family export is exercised on a legal path with the

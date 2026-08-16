@@ -36,15 +36,18 @@
 //! `target/<profile>/deps/`, so dyld finds it by that absolute path at
 //! load time; the `-rpath` flag covers `@rpath`-relative configurations.
 //!
-//! Linux: undefined symbols in a `.so` need no link-time flag; the app's
-//! own link only needs the search path plus `-Wl,--export-dynamic` (the
-//! ELF equivalent of `-export_dynamic`) so the host symbols resolve from
-//! the binary at runtime. An `$ORIGIN`-relative rpath lets a packaged
-//! binary find a sibling `liboakengine.so`.
+//! Linux: the app's own link needs the search path plus
+//! `-Wl,--export-dynamic` (the ELF equivalent of `-export_dynamic`) so
+//! process-global symbol lookups resolve from the binary at runtime. An
+//! `$ORIGIN`-relative rpath lets a packaged binary find a sibling
+//! `liboakengine.so`.
 //!
-//! Windows: NOT SUPPORTED YET — a DLL cannot carry the undefined
-//! `oakcore_*` imports (they need a stub import library or delay-load
-//! plumbing that does not exist yet), so the app does not link there.
+//! Windows: the engine dylib now links there — the `oakcore_*` runtime
+//! imports were folded into the cdylib in M12 P5 (crates/oakengine/src/
+//! stubs.rs, module `audio`), so `liboakengine.dll` carries no undefined
+//! symbols. The app binary itself still has no Windows link
+//! configuration here and the early return stays; that is a separate
+//! effort (gpui win32 support).
 
 use std::path::PathBuf;
 

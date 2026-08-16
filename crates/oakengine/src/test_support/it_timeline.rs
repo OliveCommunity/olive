@@ -21,8 +21,9 @@
 //! undoable). Coverage rules (see the family test charter):
 //!
 //! 1. no mocks — every call goes through the real facade into the real
-//!    module crates; the only stubs are the host-provided `oakcore_*`
-//!    symbols in `tests/common` (no media is decoded, so no FFmpeg);
+//!    module crates (the `oakcore_audioparams_*` accessors the facade
+//!    reads through are its own in-dylib implementations, re-exported by
+//!    `tests/common`; no media is decoded, so no FFmpeg);
 //! 2. every export under test is exercised on a legal path with the
 //!    result asserted;
 //! 3. illegal inputs (NULL seq, bad track types, out-of-range indices,

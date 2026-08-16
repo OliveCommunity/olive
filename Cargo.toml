@@ -125,6 +125,9 @@ image = "0.25"
 # `icons/icon.png` is NOT committed: it is generated from `Oak_Icon.svg`
 # (rsvg-convert) in CD right before packaging, because cargo-packager needs a
 # bitmap (it converts a square PNG into .icns / .ico / hicolor PNGs itself).
+# It must be 512x512: cargo-packager's tauri-icns 0.1.0 maps only 512x512@1x
+# (and 1024x1024@2x) to an ICNS type — a plain 1024x1024 PNG aborts with
+# "No matching IconType".
 # Keep the path here in sync with the CD workflow.
 # ---------------------------------------------------------------------------
 [package.metadata.packager]

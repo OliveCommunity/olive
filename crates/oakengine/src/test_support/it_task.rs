@@ -19,9 +19,10 @@
 //!
 //! Coverage rules (see the family test charter):
 //!   1. no mocks — every call goes through the real facade into the real
-//!      oaktask/oaknode/oakundo/oakcodec module crates (the only stubs are
-//!      the host-provided `oakcore_*` symbols in `tests/common`,
-//!      the same mechanism the other family tests use);
+//!      oaktask/oaknode/oakundo/oakcodec module crates (the
+//!      `oakcore_audioparams_*` accessors the facade reads through are its
+//!      own in-dylib implementations, re-exported by `tests/common`, the
+//!      same mechanism the other family tests use);
 //!   2. every one of the 27 `oakengine_task_*` / `oakengine_cli_task_*`
 //!      exports is exercised on a legal path with the result asserted;
 //!   3. legal-input matrix (compression flags, url counts, indices, buffer

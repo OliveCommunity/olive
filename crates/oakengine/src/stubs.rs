@@ -3944,7 +3944,7 @@ pub mod node {
 		if params.is_null() {
 			return OAKNODE_E_INVALID;
 		}
-		// SAFETY: the host liboakcore audioparams contract.
+		// SAFETY: the oakcore audioparams contract.
 		let (sample_rate, channel_layout, format) = unsafe {
 			(
 				crate::stubs::audio::oakcore_audioparams_sample_rate(params),
@@ -6064,7 +6064,7 @@ pub mod node {
 			Some(p) => *p,
 			None => return OAKNODE_E_NOT_FOUND,
 		};
-		// SAFETY: the host liboakcore audioparams contract.
+		// SAFETY: the oakcore audioparams contract.
 		let ptr = unsafe {
 			crate::stubs::audio::oakcore_audioparams_create(
 				params.sample_rate,
@@ -6089,7 +6089,7 @@ pub mod node {
 		if params.is_null() || index < 0 {
 			return OAKNODE_E_INVALID;
 		}
-		// SAFETY: the host liboakcore audioparams contract.
+		// SAFETY: the oakcore audioparams contract.
 		let converted = unsafe {
 			oaknode::value::AudioParams {
 				sample_rate: crate::stubs::audio::oakcore_audioparams_sample_rate(params),
@@ -11291,9 +11291,11 @@ pub mod timeline {
 /// bridge functions; the manager CHandle is a borrow-only validity token
 /// (the module owns the process-wide singleton), the processor CHandle
 /// boxes an owned `oakaudio::processor::Processor` with a release
-/// callback. The liboakcore `oakcore_audioparams_*` readers keep their
-/// `extern "C"` declarations — those are host-app-provided symbols
-/// (liboakcore), not module C ABI.
+/// callback. The `oakcore_audioparams_*` C ABI (opaque `AudioParams`
+/// handles in the frozen engine contract) is implemented here, inside the
+/// dylib — the accessors were host-provided (C++ liboakcore, later Rust
+/// mock shims in the app/cli/test binaries) until M12 P5 folded them in
+/// so the cdylib carries no undefined imports.
 pub mod audio {
 	use std::ffi::{c_char, c_double, c_int, c_void, CStr};
 
@@ -11315,23 +11317,116 @@ pub mod audio {
 		StretchOffsetResult,
 	};
 
-	extern "C" {
-		/// `oakcore_audioparams_create` (host liboakcore).
-		pub fn oakcore_audioparams_create(
-			sample_rate: c_int,
-			channel_layout: u64,
-			format: c_int,
-		) -> *mut c_void;
-		/// `oakcore_audioparams_free` (host liboakcore).
-		pub fn oakcore_audioparams_free(params: *mut c_void);
-		/// `oakcore_audioparams_sample_rate` (host liboakcore).
-		pub fn oakcore_audioparams_sample_rate(params: *const c_void) -> c_int;
-		/// `oakcore_audioparams_set_time_base` (host liboakcore).
-		pub fn oakcore_audioparams_set_time_base(params: *mut c_void, num: c_int, den: c_int);
-		/// `oakcore_audioparams_channel_layout` (host liboakcore).
-		pub fn oakcore_audioparams_channel_layout(params: *const c_void) -> u64;
-		/// `oakcore_audioparams_format` (host liboakcore).
-		pub fn oakcore_audioparams_format(params: *const c_void) -> c_int;
+	/// The liboakcore `AudioParams` object layout
+	/// (`oakcore_audioparams.h`): sample rate, ffmpeg channel-layout mask,
+	/// sample format, stream index, duration and time base. Mirrors
+	/// `olive::core::AudioParams` (and the app/cli mock shims it replaces),
+	/// so the engine contract's borrowed/owned `AudioParams*` handles
+	/// round-trip unchanged.
+	#[repr(C)]
+	struct HostAudioParams {
+		sample_rate: c_int,
+		channel_layout: u64,
+		format: c_int,
+		stream_index: c_int,
+		duration: i64,
+		time_base_num: c_int,
+		time_base_den: c_int,
+	}
+
+	/// `oakcore_audioparams_create` — new owned audio params (release with
+	/// `oakcore_audioparams_free`). The time base defaults to 1/sample_rate,
+	/// exactly like the liboakcore constructor.
+	#[no_mangle]
+	pub extern "C" fn oakcore_audioparams_create(
+		sample_rate: c_int,
+		channel_layout: u64,
+		format: c_int,
+	) -> *mut c_void {
+		let den = if sample_rate > 0 { sample_rate } else { 1 };
+		Box::into_raw(Box::new(HostAudioParams {
+			sample_rate,
+			channel_layout,
+			format,
+			stream_index: 0,
+			duration: 0,
+			time_base_num: 1,
+			time_base_den: den,
+		})) as *mut c_void
+	}
+
+	/// `oakcore_audioparams_free` — NULL no-op.
+	///
+	/// # Safety
+	/// `params` must come from [`oakcore_audioparams_create`] or be NULL.
+	#[no_mangle]
+	pub extern "C" fn oakcore_audioparams_free(params: *mut c_void) {
+		if params.is_null() {
+			return;
+		}
+		// SAFETY: produced by `oakcore_audioparams_create`; we hold the only
+		// reference after the box is dropped.
+		unsafe { drop(Box::from_raw(params as *mut HostAudioParams)) };
+	}
+
+	/// `oakcore_audioparams_sample_rate` — 0 for NULL (liboakcore contract).
+	///
+	/// # Safety
+	/// `params` must come from [`oakcore_audioparams_create`] or be NULL.
+	#[no_mangle]
+	pub extern "C" fn oakcore_audioparams_sample_rate(params: *const c_void) -> c_int {
+		if params.is_null() {
+			return 0;
+		}
+		// SAFETY: contract above.
+		unsafe { (*(params as *const HostAudioParams)).sample_rate }
+	}
+
+	/// `oakcore_audioparams_channel_layout` — 0 for NULL.
+	///
+	/// # Safety
+	/// `params` must come from [`oakcore_audioparams_create`] or be NULL.
+	#[no_mangle]
+	pub extern "C" fn oakcore_audioparams_channel_layout(params: *const c_void) -> u64 {
+		if params.is_null() {
+			return 0;
+		}
+		// SAFETY: contract above.
+		unsafe { (*(params as *const HostAudioParams)).channel_layout }
+	}
+
+	/// `oakcore_audioparams_format` — 0 for NULL.
+	///
+	/// # Safety
+	/// `params` must come from [`oakcore_audioparams_create`] or be NULL.
+	#[no_mangle]
+	pub extern "C" fn oakcore_audioparams_format(params: *const c_void) -> c_int {
+		if params.is_null() {
+			return 0;
+		}
+		// SAFETY: contract above.
+		unsafe { (*(params as *const HostAudioParams)).format }
+	}
+
+	/// `oakcore_audioparams_set_time_base` — NULL no-op.
+	///
+	/// # Safety
+	/// `params` must come from [`oakcore_audioparams_create`] or be NULL.
+	#[no_mangle]
+	pub extern "C" fn oakcore_audioparams_set_time_base(
+		params: *mut c_void,
+		num: c_int,
+		den: c_int,
+	) {
+		if params.is_null() {
+			return;
+		}
+		// SAFETY: contract above.
+		unsafe {
+			let p = &mut *(params as *mut HostAudioParams);
+			p.time_base_num = num;
+			p.time_base_den = den;
+		}
 	}
 
 	/// Map an oakaudio `Box<dyn Error>` result to its public module code
@@ -11544,6 +11639,67 @@ pub mod audio {
 			Ok(()) => OAKAUDIO_OK,
 			Err(code) => code,
 		}
+	}
+
+	/// The number of host output devices (enumeration order == the device
+	/// index `set_output_device` takes). Needs no manager instance.
+	pub fn oakaudio_output_device_count() -> c_int {
+		oakaudio::manager::output_device_names().len() as c_int
+	}
+
+	/// The number of host input devices (see [`oakaudio_output_device_count`]).
+	pub fn oakaudio_input_device_count() -> c_int {
+		oakaudio::manager::input_device_names().len() as c_int
+	}
+
+	/// The name of output device `index` (two-stage buf/size; reports the
+	/// required size INCLUDING the NUL, the module convention the facade
+	/// converts with `string_result`).
+	///
+	/// # Safety
+	/// `buf` must point to `buf_size` writable bytes when non-NULL.
+	pub unsafe fn oakaudio_output_device_name(
+		index: c_int,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int {
+		unsafe { device_name_result(oakaudio::manager::output_device_names(), index, buf, buf_size) }
+	}
+
+	/// The name of input device `index` (see [`oakaudio_output_device_name`]).
+	///
+	/// # Safety
+	/// `buf` must point to `buf_size` writable bytes when non-NULL.
+	pub unsafe fn oakaudio_input_device_name(
+		index: c_int,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int {
+		unsafe { device_name_result(oakaudio::manager::input_device_names(), index, buf, buf_size) }
+	}
+
+	/// Shared two-stage string write for the device-name getters: reports
+	/// `len + 1` (the required buffer size including the NUL), writes the
+	/// NUL-terminated name when it fits. `OAKAUDIO_E_NOT_FOUND` for an
+	/// out-of-range index.
+	unsafe fn device_name_result(
+		names: Vec<String>,
+		index: c_int,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int {
+		let Some(name) = names.get(index.max(0) as usize).filter(|_| index >= 0) else {
+			return OAKAUDIO_E_NOT_FOUND;
+		};
+		// SAFETY: `buf` points to `buf_size` writable bytes when non-NULL.
+		unsafe {
+			if !buf.is_null() && buf_size > 0 {
+				let copy = name.len().min((buf_size as usize).saturating_sub(1));
+				std::ptr::copy_nonoverlapping(name.as_ptr(), buf as *mut u8, copy);
+				*buf.add(copy) = 0;
+			}
+		}
+		name.len() as c_int + 1
 	}
 
 	/// Close the output stream and reset the playback state.
@@ -12413,13 +12569,13 @@ pub mod render {
 		let sample_rate = if params.is_null() {
 			48000
 		} else {
-			// SAFETY: the host liboakcore audioparams contract.
+			// SAFETY: the oakcore audioparams contract.
 			unsafe { crate::stubs::audio::oakcore_audioparams_sample_rate(params) }
 		};
 		let channel_layout = if params.is_null() {
 			0x3
 		} else {
-			// SAFETY: the host liboakcore audioparams contract.
+			// SAFETY: the oakcore audioparams contract.
 			unsafe { crate::stubs::audio::oakcore_audioparams_channel_layout(params) }
 		};
 		let audio_params = oakrender::ticket::AudioTicketParams {

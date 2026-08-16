@@ -16,39 +16,41 @@
 
 //! Build-time link configuration for the `liboakengine` cdylib.
 //!
-//! The dylib now carries the module C ABIs itself (oakundo_*, oakcommon_*,
-//! ... — see Cargo.toml), so the only remaining undefined imports are the
-//! C++ host-provided symbols the modules call directly: `oakcore_*`
-//! (liboakcore's `oakcore_audioparams_*` / `oakcore_rational_*`, called by
-//! oakcodec) and `fb_find_best_pix_fmt_of_list` (ffmpeg_bridge, called by
-//! oakcommon's pixel-format helper). Those live in the host Oak process,
-//! which loads this dylib, so macOS `ld` must accept them as runtime
-//! lookups instead of link-time errors. Only the cdylib gets this flag —
-//! the rlib/staticlib (and the worker/cli consumers) are unaffected.
+//! The dylib carries the module C ABIs itself (oakundo_*, oakcommon_*, ...
+//! — see Cargo.toml). The `oakcore_audioparams_*` accessors the audio
+//! paths read through used to be host-provided C++ liboakcore symbols,
+//! left as runtime lookups via `-undefined,dynamic_lookup`; M12 P5
+//! implemented them inside the dylib (src/stubs.rs, module `audio`), so
+//! no undefined imports remain except system frameworks/libc++, and the
+//! cdylib links on every platform (Windows DLLs reject undefined symbols,
+//! which was the blocker).
 
 fn main() {
-	if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
-		println!("cargo:rustc-cdylib-link-arg=-Wl,-undefined,dynamic_lookup");
+	let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+	if os == "macos" {
 		// The static FFmpeg's transitive system deps (libz etc.) are
 		// recorded as `@rpath/libz.1.dylib`; the dylib itself carries the
 		// rpath so standalone binaries (and the packaged app) resolve
 		// them without extra host rpaths.
 		println!("cargo:rustc-cdylib-link-arg=-Wl,-rpath,/usr/lib");
 	}
-	// The dlsym codec bridge (M12 P0) resolves `oakcodec_*` from the
-	// process-global scope; the engine's unit-test binary (the former
-	// integration tests live in src/test_support/) statically links the
-	// module crates, so their symbols must be exported from the test
-	// executable. `cargo:rustc-link-arg-tests` is NOT usable: the facade
-	// is cdylib-only, so cargo reports "does not have a test target" for
-	// that directive — use the generic `rustc-link-arg` (harmless no-op
-	// for the cdylib link itself).
-	println!("cargo:rustc-link-arg=-Wl,-export_dynamic");
-	if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
-		// The bundled OpenColorIO's macos system monitor references
-		// IOKit / ColorSync / CoreGraphics display APIs; the engine
-		// dylib links with `-undefined,dynamic_lookup`, so test binaries
-		// must resolve them.
+	if os == "macos" || os == "linux" {
+		// The dlsym codec bridge (M12 P0) resolves `oakcodec_*` from the
+		// process-global scope; the engine's unit-test binary (the former
+		// integration tests live in src/test_support/) statically links the
+		// module crates, so their symbols must be exported from the test
+		// executable. `cargo:rustc-link-arg-tests` is NOT usable: the facade
+		// is cdylib-only, so cargo reports "does not have a test target" for
+		// that directive — use the generic `rustc-link-arg` (a no-op for the
+		// cdylib link itself, and not emitted on Windows where the flag is
+		// meaningless and would break the DLL link).
+		println!("cargo:rustc-link-arg=-Wl,-export_dynamic");
+	}
+	if os == "macos" {
+		// The bundled OpenColorIO's macOS system monitor references
+		// IOKit / ColorSync / CoreGraphics display APIs; link them for
+		// the cdylib link and the unit-test binary (which statically
+		// pulls the same OCIO rlib).
 		for fw in ["IOKit", "ColorSync", "CoreGraphics"] {
 			println!("cargo:rustc-link-arg=-framework");
 			println!("cargo:rustc-link-arg={fw}");

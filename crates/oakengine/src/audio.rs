@@ -21,7 +21,9 @@
 //! through [`manager()`] (a borrowed handle; empty when no instance
 //! exists — engine semantics then report `paNoDevice`/error as
 //! documented). The borrowed `OakAudioParams*` handles are read through
-//! the liboakcore `oakcore_audioparams_*` accessors.
+//! the `oakcore_audioparams_*` accessors the facade provides itself
+//! (crate::stubs::audio, folded in M12 P5 — they used to be host-provided
+//! liboakcore symbols).
 
 use std::ffi::{c_char, c_double, c_int, c_void};
 
@@ -123,6 +125,58 @@ pub extern "C" fn oakengine_audio_set_input_device(device: i64) -> c_int {
 			return Err(Error::Failed("no AudioManager instance".into()));
 		}
 		Error::from_module(unsafe { a::oakaudio_manager_set_input_device(m, device as c_int) })
+	})
+}
+
+/// `oakengine_audio_output_device_count` — the number of host output
+/// devices; the list index is the device index
+/// `oakengine_audio_set_output_device` takes. Needs no AudioManager
+/// instance.
+#[no_mangle]
+pub extern "C" fn oakengine_audio_output_device_count() -> c_int {
+	guard_int(|| Ok(unsafe { a::oakaudio_output_device_count() }))
+}
+
+/// `oakengine_audio_input_device_count` — the input side of
+/// [`oakengine_audio_output_device_count`].
+#[no_mangle]
+pub extern "C" fn oakengine_audio_input_device_count() -> c_int {
+	guard_int(|| Ok(unsafe { a::oakaudio_input_device_count() }))
+}
+
+/// `oakengine_audio_output_device_name` — the name of output device
+/// `index` (buf/size; the length excludes the NUL).
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_audio_output_device_name(
+	index: c_int,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	guard_int(|| unsafe {
+		let rc = a::oakaudio_output_device_name(index, buf, buf_size);
+		if rc < 0 {
+			Err(Error::Module(rc))
+		} else {
+			Ok(crate::handle::string_result(rc))
+		}
+	})
+}
+
+/// `oakengine_audio_input_device_name` — the input side of
+/// [`oakengine_audio_output_device_name`].
+#[no_mangle]
+pub unsafe extern "C" fn oakengine_audio_input_device_name(
+	index: c_int,
+	buf: *mut c_char,
+	buf_size: c_int,
+) -> c_int {
+	guard_int(|| unsafe {
+		let rc = a::oakaudio_input_device_name(index, buf, buf_size);
+		if rc < 0 {
+			Err(Error::Module(rc))
+		} else {
+			Ok(crate::handle::string_result(rc))
+		}
 	})
 }
 

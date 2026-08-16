@@ -44,10 +44,11 @@ anchors them so their `#[no_mangle]` exports are linked into the
 `liboakengine` cdylib — the dylib carries the module C ABIs (oakundo_*,
 oakcommon_*, oaktimeline_*, oakcodec_*, oakaudio_*, oakrender_*,
 oaktask_*, oakplugin_*, oaknode_*) next to the facade's oakengine_*
-exports. The only remaining imports are the C++ host symbols
-(`oakcore_*` from liboakcore, `fb_*` from ffmpeg_bridge), which
-`build.rs` leaves as runtime lookups (macOS `-undefined dynamic_lookup`)
-resolved from the host Oak process.
+exports. The `oakcore_audioparams_*` accessors the audio paths read
+through are implemented in the dylib too (src/stubs.rs, module `audio`,
+M12 P5) — they used to be C++ host symbols left as runtime lookups
+(macOS `-undefined dynamic_lookup`); the cdylib now carries no undefined
+imports.
 
 ### Handle mapping
 
@@ -103,8 +104,8 @@ binaries keep the in-crate mocks (ffmpeg_bridge stub / render mocks):
   oaknode/oakundo/oakcommon C ABI symbols as link-time externs, which the
   sibling crate rlibs provide; oaknode itself resolves cross-module
   symbols at runtime with `dlsym(RTLD_DEFAULT)`.
-- `tests/common/mod.rs` defines the `oakcore_*` (liboakcore) and `fb_*`
-  (libffmpeg_bridge) symbols the oakcodec/oakaudio rlibs reference, and
+- `tests/common/mod.rs` re-exports the facade's in-dylib
+  `oakcore_audioparams_*` accessors (M12 P5 folded them in) and
   force-links the oakcommon XML writer/reader + the oakundo command
   factory so the oaknode serializer's dlsym lookups resolve in every test
   binary.
@@ -120,8 +121,8 @@ the module crates' real implementations.
 ```
 cargo test          # lib tests + integration families (undo, common, audio,
                     # plugin, codec, render, linkage, node, timeline, task)
-cargo build         # cdylib embeds the module C ABIs; oakcore_*/fb_* stay
-                    # runtime lookups (see build.rs)
+cargo build         # cdylib embeds the module C ABIs + the folded-in
+                    # oakcore_audioparams_* accessors (no undefined imports)
 ```
 
 ## FFI discipline

@@ -21,8 +21,8 @@
 //! They moved here (`src/test_support/`, pulled in by `src/lib.rs` under
 //! `#[cfg(test)]`) and run as unit tests against `crate::*` instead of
 //! `oakengine::*`. The old `#[path = "common/mod.rs"] mod common;` include
-//! is replaced by the single [`common`] declaration below — the
-//! `oakcore_*` mock symbols it defines may exist only once per binary.
+//! is replaced by the single [`common`] declaration below — its
+//! `oakcore_audioparams_*` re-exports may exist only once per binary.
 //!
 //! The node/timeline/render-graph families (and the graph-op tests that
 //! built fixtures through the deleted handle-based module C ABIs) are
