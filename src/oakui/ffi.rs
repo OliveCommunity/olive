@@ -410,6 +410,15 @@ unsafe extern "C" {
 	/// thread (two-stage buf/size getter; empty when the last call
 	/// succeeded).
 	pub fn oakengine_footage_last_error(buf: *mut c_char, buf_size: c_int) -> c_int;
+	/// `oakengine_footage_borrow` — wrap a footage node in a borrowed
+	/// footage box (addref'd; free with `oakengine_footage_free`). NULL
+	/// when `node` is NULL or not a footage node.
+	pub fn oakengine_footage_borrow(node: *mut OakEngineNode) -> *mut OakEngineFootage;
+	/// `oakengine_footage_get_duration` — media duration in seconds.
+	pub fn oakengine_footage_get_duration(
+		self_: *mut OakEngineFootage,
+		seconds: *mut f64,
+	) -> c_int;
 	/// `oakengine_sequence_add_footage_clip_ex` — place a clip of
 	/// `footage` on the track, skipping the unenforceable same-project
 	/// check (sequences live in their own scratch project — documented

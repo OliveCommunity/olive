@@ -14,37 +14,15 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Binary-level tests for `oak-worker`: argument handling and the process
-//! exit contract. The NDJSON control-loop behavior itself is exercised
-//! in-process in `src/session.rs` (a real loop test would require a working
-//! GPU backend, so it stays out of the unit suite).
+//! Binary-level tests for `oak-worker`: the process exit contract. The
+//! NDJSON control-loop behavior itself is exercised in-process in
+//! `src/session.rs` (a real loop test would require a working GPU backend,
+//! so it stays out of the unit suite).
 
 use std::process::Command;
 
 fn bin() -> &'static str {
 	env!("CARGO_BIN_EXE_oak-worker")
-}
-
-#[test]
-fn help_exits_zero() {
-	let out = Command::new(bin())
-		.arg("--help")
-		.output()
-		.expect("spawn oak-worker");
-	assert_eq!(out.status.code(), Some(0));
-	let stdout = String::from_utf8_lossy(&out.stdout);
-	assert!(stdout.contains("oak-worker"));
-	assert!(stdout.contains("--backend"));
-}
-
-#[test]
-fn unknown_flag_is_a_clap_usage_error() {
-	let out = Command::new(bin())
-		.arg("--frobnicate")
-		.output()
-		.expect("spawn oak-worker");
-	// clap's usage-error exit code.
-	assert_eq!(out.status.code(), Some(2));
 }
 
 #[test]

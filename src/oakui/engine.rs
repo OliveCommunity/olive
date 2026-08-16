@@ -444,6 +444,31 @@ pub trait AppEngine:
 		Ok(())
 	}
 
+	/// Places the footage with project-explorer entry `id` on the timeline:
+	/// a clip on the track at display `track_index` starting at `time`
+	/// (undoable where the backend supports it — the facade
+	/// `oakengine_sequence_add_footage_clip_ex` pushes one "Add Clip" undo
+	/// entry).
+	///
+	/// The timeline panel resolves the cursor to a display track + frame and
+	/// forwards them here; the backend resolves `id` to its footage, picks
+	/// the target track and places the clip. Track policy: the pointed track
+	/// is used when its kind matches the footage's media type; a mismatch
+	/// (audio footage onto a video track, or vice versa) auto-selects the
+	/// topmost track of the footage's kind, and the drop is rejected when no
+	/// such track exists (the facade validates only the track type — video
+	/// or audio, subtitles are rejected — never the media/track pairing).
+	/// Default: no-op.
+	fn drop_footage(
+		&mut self,
+		_id: u64,
+		_track_kind: TrackKind,
+		_track_index: usize,
+		_time: Frame,
+		_cx: &mut Context<Self>,
+	) {
+	}
+
 	/// Starts an export of the current sequence in `format` to `path` and
 	/// returns a session the host polls for progress and can cancel.
 	///

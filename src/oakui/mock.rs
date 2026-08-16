@@ -192,6 +192,20 @@ impl PlaybackClock for MockClock {
 // Timeline model
 // ---------------------------------------------------------------------------
 
+/// A recorded timeline drop of a footage entry (mock state; the mock has no
+/// media pipeline, so it records the request and places a demo clip).
+#[derive(Debug, Clone, PartialEq)]
+pub struct MockFootageDrop {
+	/// The dropped project-explorer entry id.
+	pub id: u64,
+	/// The track kind the clip landed on.
+	pub track_kind: TrackKind,
+	/// The display track index the clip landed on.
+	pub track_index: usize,
+	/// The clip's start frame.
+	pub time: Frame,
+}
+
 /// A clip on the demo timeline.
 #[derive(Debug, Clone)]
 pub struct MockClip {
@@ -477,6 +491,11 @@ pub struct MockEngine {
 	/// has no media pipeline, so it just records them (drives app-level tests
 	/// of the import flow).
 	imported_footage: Vec<PathBuf>,
+	/// Footage entries dropped onto the timeline via
+	/// [`AppEngine::drop_footage`] since creation (mock state; each entry is
+	/// the applied (id, track kind, track index, start frame) — drives
+	/// app-level tests of the explorer→timeline drag).
+	footage_drops: Vec<MockFootageDrop>,
 	/// The fake project library the project manager browses (M13 D4): an
 	/// in-memory row set the library trait methods operate on, so the app
 	/// flow (list / open / create / rename / duplicate / delete / import /	/// export) is testable without a database.
@@ -743,6 +762,7 @@ impl MockEngine {
 			node_selection: BTreeSet::new(),
 			cpu_frame_cache: Mutex::new(HashMap::new()),
 			imported_footage: Vec::new(),
+			footage_drops: Vec::new(),
 			library: demo_library(),
 			next_library_id: 100,
 			library_opened: Vec::new(),
@@ -1389,6 +1409,87 @@ impl AppEngine for MockEngine {
 		Ok(())
 	}
 
+	fn drop_footage(
+		&mut self,
+		id: u64,
+		track_kind: TrackKind,
+		track_index: usize,
+		time: Frame,
+		cx: &mut Context<Self>,
+	) {
+		// The footage's media type, inferred from its entry name (the mock
+		// never probes media). Entries the explorer does not list are
+		// rejected.
+		let Some(name) = self.footage_entry_name(id) else {
+			println!("[mock engine] drop footage: entry {id} not in the project");
+			cx.notify();
+			return;
+		};
+		let footage_kind = if crate::oakui::filename_is_audio(&name) {
+			TrackKind::Audio
+		} else {
+			TrackKind::Video
+		};
+		// Track policy (mirrors the facade semantics, see `AppEngine`: the
+		// pointed track is used when it matches the footage's kind; a
+		// mismatch auto-selects the topmost track of the footage's kind; no
+		// matching track rejects the drop).
+		let target = if self.tracks.get(track_index).map(|t| t.kind) == Some(footage_kind) {
+			track_index
+		} else if let Some(index) = self.tracks.iter().position(|t| t.kind == footage_kind) {
+			index
+		} else {
+			println!(
+				"[mock engine] drop footage: no {:?} track for {:?} media \"{name}\"",
+				footage_kind, track_kind
+			);
+			cx.notify();
+			return;
+		};
+		// A 10-second demo clip (the mock has no media durations).
+		let fps = self.frame_rate();
+		let length = Frame(
+			(10.0 * fps.num as f64 / fps.den.max(1) as f64).round().max(1.0) as i64,
+		);
+		let clip = MockClip {
+			id: ClipId(self.next_mock_clip_id()),
+			range: FrameRange::new(Frame(time.0.max(0)), Frame(time.0.max(0) + length.0)),
+			media_in: Frame::ZERO,
+			label: name.clone().into(),
+			color: if footage_kind == TrackKind::Audio {
+				Hsla {
+					h: 0.402,
+					s: 0.32,
+					l: 0.54,
+					a: 1.0,
+				}
+			} else {
+				Hsla {
+					h: 0.402,
+					s: 0.385,
+					l: 0.459,
+					a: 1.0,
+				}
+			},
+		};
+		// Keep the track's clips in ascending frame order (a data-source
+		// consistency requirement of the timeline widget).
+		let track = &mut self.tracks[target];
+		let position = track
+			.clips
+			.iter()
+			.position(|c| c.range.start.0 > time.0)
+			.unwrap_or(track.clips.len());
+		track.clips.insert(position, clip);
+		self.footage_drops.push(MockFootageDrop {
+			id,
+			track_kind: footage_kind,
+			track_index: target,
+			time: Frame(time.0.max(0)),
+		});
+		cx.notify();
+	}
+
 	fn export_project_path(&mut self, _path: PathBuf, cx: &mut Context<Self>) -> Result<(), String> {
 		println!("[mock engine] export: no persistence in mock mode");
 		cx.notify();
@@ -1657,6 +1758,27 @@ impl MockEngine {
 	/// the mock has no media pipeline, it just records the request).
 	pub fn imported_footage(&self) -> &[PathBuf] {
 		&self.imported_footage
+	}
+
+	/// The footage entries dropped onto the timeline so far (mock state; see
+	/// [`MockFootageDrop`]).
+	pub fn footage_drops(&self) -> &[MockFootageDrop] {
+		&self.footage_drops
+	}
+
+	/// The display name of the project-explorer entry with `id`, if any.
+	fn footage_entry_name(&self, id: u64) -> Option<String> {
+		for entry in self.roots() {
+			if entry.id == id {
+				return Some(entry.name.to_string());
+			}
+			for child in self.children(entry.id) {
+				if child.id == id {
+					return Some(child.name.to_string());
+				}
+			}
+		}
+		None
 	}
 
 	/// The undo/redo call counts (test observability; see the fields).

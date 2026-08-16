@@ -20,10 +20,10 @@
 //! shared-memory segments holding an `olive::ipc::FrameSlotPool` — a fixed
 //! pool of frame slots whose free/ready queues are synchronized by the
 //! lock-free single-producer/single-consumer `SpscRingBuffer`. That
-//! machinery is implemented in the facade crate (`oakengine::ipc`, the
-//! Rust port of `engine/render/ipc/` behind
-//! `engine/include/oakengine/ipc.h`) — this module is the worker-side
-//! transport over it.
+//! machinery is implemented in the engine facade (behind the
+//! `oakengine_ipc_*` C ABI in `engine/include/oakengine/ipc.h`) — this
+//! module is the worker-side transport over it, attached through
+//! [`crate::engine_ipc`]'s C-ABI wrappers.
 //!
 //! [`attach_pools`] mirrors the C++ `attach_output_pool()`: attach the
 //! output segment in [`ShmMode::Attach`], map the [`FrameSlotPool`] it
@@ -35,10 +35,16 @@
 //! The node-graph and render-pipeline stubs below carry the same rationale
 //! as before: `oaknode` is a `todo!()` skeleton and the oakrender crate
 //! does not yet evaluate an arbitrary loaded graph to a frame.
+//!
+//! The production attach path is the engine's `OakWorkerSession`
+//! `handle_handshake`; this module is the transport surface the in-process
+//! session mirror ([`crate::session`]) uses, exercised by the unit tests.
 
-use oakengine::ipc::{FrameSlotPool, SharedMemoryRegion, ShmMode};
+#![allow(dead_code)]
 
-use crate::ipc::HandshakeMsg;
+use crate::engine_ipc::{FrameSlotPool, SharedMemoryRegion, ShmMode};
+
+use crate::engine_ipc::HandshakeMsg;
 
 /// Why `load_graph` answers "not yet available" (after the real file checks).
 pub const GRAPH_STUB: &str = "load_graph: node-graph deserialization is not yet available in the \

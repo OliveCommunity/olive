@@ -41,10 +41,13 @@
 
 use gpui::colors::DefaultColors;
 use gpui::dock::{DockPanel, PanelEvent};
-use gpui::timeline::TimelineView;
+use gpui::timeline::{
+	Frame, TimelineView, TrackData, TrackKind, HEADER_WIDTH, MIN_TRACK_HEIGHT, RULER_HEIGHT,
+};
 use gpui::{div, img, prelude::*, px, Context, Entity, Window};
-use gpui::{AnyElement, App, ClickEvent, EventEmitter, Render, SharedString};
+use gpui::{AnyElement, App, ClickEvent, DragMoveEvent, EventEmitter, Render, SharedString};
 use gpui_widgets::checkbox::{CheckBox, CheckBoxEvent, CheckState};
+use gpui_widgets::project_explorer::FootageDrag;
 use gpui_widgets::slider::{Slider, SliderEvent, SliderModel};
 use gpui_widgets::tooltip::tooltip_view;
 use gpui_widgets::value::ValueKind;
@@ -85,6 +88,21 @@ pub struct TimelinePanel<E: AppEngine> {
 	snap: Entity<CheckBox>,
 	/// The currently selected tool (visual only).
 	selected_tool: usize,
+	/// The drop point of an in-flight footage drag: the display track under
+	/// the cursor plus the start frame. `None` outside the clip area or while
+	/// no footage drag is active.
+	footage_drop: Option<FootageDropTarget>,
+}
+
+/// A footage drop target resolved from the cursor: the display track under
+/// the pointer and the clip's start frame.
+struct FootageDropTarget {
+	/// The pointed track's kind.
+	track_kind: TrackKind,
+	/// The pointed display track index.
+	track_index: usize,
+	/// The start frame at the pointer.
+	time: Frame,
 }
 
 impl<E: AppEngine> TimelinePanel<E> {
@@ -154,7 +172,74 @@ impl<E: AppEngine> TimelinePanel<E> {
 			height,
 			snap,
 			selected_tool: 0,
+			footage_drop: None,
 		}
+	}
+
+	/// Resolves the footage-drop target under the cursor: converts the
+	/// pointer (relative to the timeline body) into a display track + start
+	/// frame using the timeline view's zoom/scroll state and the engine's
+	/// track heights — the same affine mapping the timeline itself uses (see
+	/// [`TimelineState::frame_at_point`] and the view's track-row walk).
+	/// Hovering outside the clip area (above the ruler) clears the target.
+	fn update_footage_drop(&mut self, event: &DragMoveEvent<FootageDrag>, cx: &mut Context<Self>) {
+		let now = event.event.position - event.bounds.origin;
+		// The clip area starts below the ruler and right of the track
+		// headers column.
+		if f32::from(now.y) < RULER_HEIGHT {
+			self.footage_drop = None;
+			return;
+		}
+		let clip_x = f32::from(now.x - px(HEADER_WIDTH)).max(0.0);
+		let clip_y = now.y - px(RULER_HEIGHT);
+		let state = self.timeline.read(cx).state.clone();
+		let seq_len = self.engine.read(cx).sequence_length();
+		let time = state.frame_at_point(px(clip_x)).clamp(Frame::ZERO, seq_len);
+		// Walk the display rows top-down, clamping each to the minimum row
+		// height exactly like the timeline's own `track_at_y`.
+		let (track_kind, track_index) = {
+			let engine = self.engine.read(cx);
+			let mut acc = 0.0f32;
+			let mut found = None;
+			for index in 0..engine.track_count() {
+				if let Some(track) = engine.track(index) {
+					acc += f32::from(track.height()).max(MIN_TRACK_HEIGHT);
+					if f32::from(clip_y) < acc {
+						found = Some((track.kind(), index));
+						break;
+					}
+				}
+			}
+			found.unwrap_or_else(|| {
+				let last = engine.track_count().saturating_sub(1);
+				engine
+					.track(last)
+					.map(|t| (t.kind(), last))
+					.unwrap_or((TrackKind::Video, 0))
+			})
+		};
+		self.footage_drop = Some(FootageDropTarget {
+			track_kind,
+			track_index,
+			time,
+		});
+	}
+
+	/// Applies a finished footage drop: routes the payload's footage id with
+	/// the last hovered track + frame to the engine, which resolves the
+	/// footage, validates the track and places the clip (undoable).
+	fn finish_footage_drop(&mut self, drag: &FootageDrag, cx: &mut Context<Self>) {
+		let Some(target) = self.footage_drop.take() else {
+			return;
+		};
+		let FootageDropTarget {
+			track_kind,
+			track_index,
+			time,
+		} = target;
+		self.engine.update(cx, |engine, cx| {
+			engine.drop_footage(drag.0, track_kind, track_index, time, cx);
+		});
 	}
 }
 
@@ -330,6 +415,17 @@ impl<E: AppEngine> Render for TimelinePanel<E> {
 							.debug_selector(|| "timeline-canvas".into())
 							.flex_1()
 							.min_w_0()
+							// Footage drop target: hover resolves the track +
+							// frame (see [`TimelinePanel::update_footage_drop`]),
+							// the release routes the payload to the engine.
+							.on_drag_move(cx.listener(
+								|this, event: &DragMoveEvent<FootageDrag>, _window, cx| {
+									this.update_footage_drop(event, cx);
+								},
+							))
+							.on_drop(cx.listener(|this, drag: &FootageDrag, _window, cx| {
+								this.finish_footage_drop(drag, cx);
+							}))
 							.child(self.timeline.clone()),
 					)
 					.child(right_controls),

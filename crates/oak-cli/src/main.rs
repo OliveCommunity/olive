@@ -29,16 +29,25 @@
 //! Exit codes: 0 success, 1 general error, 2 rendering unavailable,
 //! 64 usage error.
 //!
-//! The facade families every subcommand depends on (init/project/timeline/
-//! render/footage/exporter) are still **deferred** in the `oakengine` crate
-//! (see `src/facade/rust/src/deferred.rs`), so each subcommand validates its
-//! arguments faithfully, then reports the deferral with its reason and exits
-//! with the C++-compatible code — never crashing, never faking output.
+//! This crate is a PURE C-ABI consumer of the built `liboakengine`
+//! cdylib: every engine call goes through the `extern "C"` declarations
+//! in [`ffi`] (linked via `build.rs` + `#[link(name = "oakengine", kind =
+//! "dylib")]`) and the dlsym-resolved optional families in [`optional`].
+//! No module crate is ever called directly. [`host`] plays the C++ host
+//! role the engine dylib expects: it provides the `oakcore_audioparams_*`
+//! symbols the dylib resolves from the process at runtime. [`fmt`],
+//! [`ppm`] and [`wav`] are pure-Rust formatting/writing helpers (exact
+//! ports of the C++ `printf`/writers) — the only non-ABI code here.
+//!
+//! Build order: `cargo build -p oakengine` must run before linking this
+//! binary (`cargo build`/`cargo test -p oak-cli`); `cargo check` never
+//! links and works standalone.
 
 mod cmd;
-mod deferred;
 mod ffi;
 mod fmt;
+mod host;
+mod optional;
 mod ppm;
 mod wav;
 
@@ -76,7 +85,7 @@ Usage:\n\
 Exit codes:\n\
   0   success\n\
   1   general error (bad project/media file, no sequence, I/O failure)\n\
-  2   rendering unavailable or failed (e.g. no GL render backend)\n\
+  2   rendering unavailable or failed (e.g. no render backend)\n\
   64  usage error\n";
 
 /// CLI surface. `--help`/`-h` are handled before clap so the C++ usage text
@@ -132,6 +141,10 @@ enum Command {
 }
 
 fn main() {
+	// Keep the host shims (src/host.rs) referenced so the linker
+	// exports them for the engine dylib's runtime lookups.
+	std::hint::black_box(host::exports());
+
 	let args: Vec<String> = std::env::args().skip(1).collect();
 
 	// argv[1] handling that mirrors the C++ main() exactly.

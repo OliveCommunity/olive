@@ -26,22 +26,11 @@ name = "oak-worker"
 path = "src/main.rs"
 
 [dependencies]
-clap = { version = "4", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# The liboakengine facade (Rust): its worker module owns the whole worker
-# runtime — render backend selection through the oakrender module C ABI,
-# the startup handshake and the NDJSON control loop
-# (`oakengine::worker::worker_main`, the port of engine/src/capi/worker.cpp).
-# This binary is a thin shell over it, like worker/workermain.cpp. Its ipc
-# module provides the real shared-memory frame-slot transport
-# (`oakengine::ipc`) that src/session.rs + src/transport.rs attach through.
-oakengine = { path = "../oakengine" }
-
-# The oakrender module crate (the Rust rewrite of the oakrender module):
-# its C ABI (include/render/renderer.h) is how the facade's worker
-# initializes the render backend — oakrender_display_renderer_create_dynamic()
-# /_init() — the Rust equivalent of the C++ worker's DynamicRenderer/
-# OpenGLRenderer. Linked here so those facade imports resolve in the binary.
-oakrender = { path = "../oakrender" }
+# No oakengine cargo dependency: the worker links the built liboakengine
+# dylib through build.rs (link-search + rpath) and the
+# `#[link(name = "oakengine", kind = "dylib")]` extern block in
+# src/engine_ipc.rs. Every call into editor functionality goes through the
+# oakengine_* C ABI declared there.

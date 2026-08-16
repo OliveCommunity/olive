@@ -16,21 +16,29 @@
 
 //! The worker-side session state machine — the in-process mirror of
 //! `OakWorkerSession` in `engine/src/capi/worker.cpp` (whose production
-//! Rust port lives in `oakengine::worker`).
+//! Rust port lives in the engine behind the `oakengine_worker_session_*`
+//! C ABI).
 //!
 //! The session holds the attached shared-memory frame-slot pools
 //! ([`crate::transport::AttachedPools`]) and the shutdown flag, and
 //! answers one NDJSON control message at a time. Renderer creation and the
-//! main loop are the facade's job (see `crate::main`); this module keeps
-//! the message handling testable in-process against the facade's real
-//! shared-memory transport. Where the C++ session has machinery the Rust
+//! main loop are the engine's job (see `crate::main`); this module keeps
+//! the message handling testable in-process against the engine's real
+//! shared-memory transport ([`crate::engine_ipc`], consumed through the
+//! `oakengine_ipc_*` C ABI). Where the C++ session has machinery the Rust
 //! mirror lacks, the handler reproduces the *validation* faithfully and
 //! then reports the documented stub ([`crate::transport`]) — it never
 //! fakes a result.
+//!
+//! The production session is the engine's `OakWorkerSession`; this mirror
+//! exists to keep the message handling testable in-process without a GPU
+//! backend, so its public surface is exercised by the unit tests only.
+
+#![allow(dead_code)]
 
 use serde_json::Value;
 
-use crate::ipc::{self, HandshakeMsg, LoadGraphMsg, RenderFrameMsg};
+use crate::engine_ipc::{self as ipc, HandshakeMsg, LoadGraphMsg, RenderFrameMsg};
 use crate::transport::{self, AttachedPools};
 
 /// Worker-side session: attached frame-slot pools + message-handling state.
@@ -61,7 +69,7 @@ impl WorkerSession {
 	}
 
 	/// The attached output pool (the worker->main frame-slot pool).
-	pub fn output_pool(&self) -> Option<&oakengine::ipc::FrameSlotPool> {
+	pub fn output_pool(&self) -> Option<&crate::engine_ipc::FrameSlotPool> {
 		self.pools.as_ref().map(|p| &p.output_pool)
 	}
 
@@ -196,7 +204,7 @@ impl Default for WorkerSession {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use oakengine::ipc::{FrameSlotPool, SharedMemoryRegion, ShmMode};
+	use crate::engine_ipc::{FrameSlotPool, SharedMemoryRegion, ShmMode};
 	use serde_json::json;
 
 	/// A unique, temporary POSIX segment key for a test.

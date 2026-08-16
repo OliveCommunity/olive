@@ -16,56 +16,32 @@
 
 //! Subcommand implementations.
 //!
-//! Each subcommand is a faithful port of its `cli/main.cpp` counterpart:
-//! the argument validation is real (same messages, same usage-error code),
-//! and the facade work gates on [`crate::deferred::require`] — while the
-//! families a subcommand needs are deferred, it prints the "not yet
-//! available" error with the reasons and exits with the C++-compatible code
-//! (1 for info/probe, 2 for render/transcode), never crashing.
+//! Every subcommand is a REAL implementation over the `oakengine_*` C ABI
+//! ([`crate::ffi`] + [`crate::optional`]) — a pure consumer of the built
+//! `liboakengine` dylib, exactly like the C++ `cli/main.cpp` host:
+//!
+//!   - `probe`     → `oakengine_footage_probe` + the footage getters
+//!   - `info`      → `oakengine_project_create/load` + project/sequence
+//!     getters
+//!   - `render`    → `oakengine_render_manager_init`,
+//!     `oakengine_renderer_create` / `render_frame` / `render_audio` and
+//!     the frame/audio-buffer accessors
+//!   - `transcode` → project/sequence/clip assembly +
+//!     `oakengine_export_render` for mp4, the renderer frame loop for ppm
+//!
+//! Exit codes: 0 success, 1 general error, 2 rendering unavailable,
+//! 64 usage error.
 
 pub mod info;
 pub mod probe;
 pub mod render;
 pub mod transcode;
 
-use crate::deferred::DeferredFamily;
-
 /// 0 — success.
 pub const EXIT_OK: i32 = 0;
 /// 1 — general error (bad project/media file, no sequence, I/O failure).
 pub const EXIT_ERROR: i32 = 1;
-/// 2 — rendering unavailable or failed (e.g. no GL render backend).
+/// 2 — rendering unavailable or failed (e.g. no render backend).
 pub const EXIT_RENDER_UNAVAILABLE: i32 = 2;
 /// 64 — usage error.
 pub const EXIT_USAGE: i32 = 64;
-
-/// Gate a subcommand on its facade families.
-///
-/// When every family is wrapped this returns `Ok(())` and the subcommand's
-/// port runs; when any is deferred it prints the composed "not yet
-/// available" message to stderr and returns `Err(unavailable_code)` — the
-/// code the C++ binary would exit with when that family's work is
-/// impossible (1 for info/probe, 2 for render/transcode).
-pub fn require_or(
-	cmd: &str,
-	families: &[&DeferredFamily],
-	unavailable_code: i32,
-) -> Result<(), i32> {
-	match crate::deferred::require(families) {
-		Ok(()) => Ok(()),
-		Err(msg) => {
-			eprintln!("error: {cmd}: {msg}");
-			Err(unavailable_code)
-		}
-	}
-}
-
-/// Fallback for the (today unreachable) success arm of `require_or`: the
-/// gate reported the families available, but the call-through port is not
-/// wired yet. Never panics; reports an internal error and returns `code`.
-pub fn port_not_wired(cmd: &str, code: i32) -> i32 {
-	eprintln!(
-		"error: {cmd}: internal error: facade families reported available but no port is wired yet"
-	);
-	code
-}

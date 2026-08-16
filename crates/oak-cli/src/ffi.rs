@@ -14,37 +14,32 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! The `oakengine_*` C ABI surface oak-cli consumes — **declared, not yet
+//! The `oakengine_*` C ABI surface oak-cli consumes — **declared and
 //! linked**.
 //!
 //! This module mirrors — verbatim — every function, opaque handle and POD
 //! struct from the engine headers that the C++ `cli/main.cpp` touches:
 //!
-//!   - `engine/include/oakengine/init.h`      (oakengine_init / shutdown)
 //!   - `engine/include/oakengine/project.h`   (project lifecycle + queries)
 //!   - `engine/include/oakengine/footage.h`   (probe / stream info / import)
 //!   - `engine/include/oakengine/timeline.h`  (sequence + track/clip editing)
-//!   - `engine/include/oakengine/renderer.h`  (renderer + frame + audio buffer)
-//!   - `engine/include/oakengine/exporter.h`  (export options + render)
+//!   - `engine/include/oakengine/renderer.h`  (render manager init, renderer,
+//!     frame + audio buffer)
+//!   - `engine/include/oakengine/videoparams.h` (sequence video params)
 //!
-//! All of these families are **deferred** in the Rust facade crate
-//! (`oakengine`, `src/facade/rust/src/deferred.rs`), so none of the symbols
-//! below is referenced from this crate yet — the subcommands gate on
-//! [`crate::deferred`] and report "not yet available" instead of calling
-//! them. The declarations exist so that:
+//! The `#[link(name = "oakengine", kind = "dylib")]` block resolves every
+//! symbol against the built `liboakengine` cdylib at link time (the
+//! search path comes from `build.rs`; see the Cargo.toml comment for the
+//! build order). Five symbols from the original declaration surface are
+//! NOT exported by the current Rust facade — `oakengine_init`,
+//! `oakengine_shutdown` (init.h) and the exporter trio
+//! `oakengine_export_render` / `oakengine_export_last_error` /
+//! `oakengine_export_set_progress_callback` (exporter.h). Those live in
+//! [`crate::optional`], which resolves them with `dlsym` at call time so
+//! the prescribed call sequences keep working when the facade grows them.
 //!
-//!   1. the exact contract the CLI expects is pinned in one place (types,
-//!      signatures, string conventions, error codes), and
-//!   2. when a family is wrapped by oakengine, the call-through code in
-//!      `src/cmd/` resolves against the already-linked `oakengine` rlib
-//!      without any manifest or signature churn.
-//!
-//! Nothing here is ever called today, so no symbol needs to exist in the
-//! facade yet; that keeps `cargo build` green standalone.
-//!
-//! `dead_code` is expected for this whole surface until the ports land: the
-//! declarations, the POD structs and [`facade_string`] exist precisely to be
-//! consumed by `src/cmd/` once the deferred families are wrapped.
+//! The subcommands in `src/cmd/` call this surface directly — no deferral
+//! gate, no module-crate calls.
 
 #![allow(dead_code)]
 #![allow(non_camel_case_types)]
@@ -168,14 +163,12 @@ pub const OAKENGINE_EXPORT_VIDEO_H264: c_int = 0;
 pub const OAKENGINE_EXPORT_AUDIO_AAC: c_int = 0;
 
 // ---------------------------------------------------------------------------
-// The facade surface (declarations only — see the module docs).
+// The facade surface (the symbols the built liboakengine exports; see the
+// module docs — the five missing ones live in crate::optional).
 // ---------------------------------------------------------------------------
 
+#[link(name = "oakengine", kind = "dylib")]
 extern "C" {
-	// ---- init.h ----------------------------------------------------------
-	pub fn oakengine_init(flags: c_int) -> c_int;
-	pub fn oakengine_shutdown() -> c_int;
-
 	// ---- project.h -------------------------------------------------------
 	pub fn oakengine_project_create() -> *mut OakEngineProject;
 	pub fn oakengine_project_free(self_: *mut OakEngineProject);
@@ -276,6 +269,18 @@ extern "C" {
 		par_num: *mut c_int,
 		par_den: *mut c_int,
 	) -> c_int;
+	pub fn oakengine_sequence_set_video_params(
+		self_: *mut OakEngineSequence,
+		width: c_int,
+		height: c_int,
+		fps_num: c_int,
+		fps_den: c_int,
+		par_num: c_int,
+		par_den: c_int,
+		interlacing: c_int,
+		format: c_int,
+		undoable: c_int,
+	) -> c_int;
 	pub fn oakengine_sequence_track_count(
 		self_: *const OakEngineSequence,
 		video: *mut c_int,
@@ -300,7 +305,26 @@ extern "C" {
 		out_ts: i64,
 		media_in: i64,
 	) -> *mut OakEngineClip;
+	/// Like `oakengine_sequence_add_footage_clip` but skips the
+	/// same-project check: sequences created through `oakengine_sequence_new`
+	/// live in their own scratch project (documented engine deviation), so
+	/// the CLI's transcode flow (footage in the real project, sequence in
+	/// the scratch project) needs the `_ex` variant.
+	pub fn oakengine_sequence_add_footage_clip_ex(
+		seq: *mut OakEngineSequence,
+		footage: *mut OakEngineFootage,
+		track_type: c_int,
+		track_index: c_int,
+		in_ts: i64,
+		out_ts: i64,
+		media_in: i64,
+	) -> *mut OakEngineClip;
 	pub fn oakengine_sequence_last_error(buf: *mut c_char, buf_size: c_int) -> c_int;
+
+	// ---- renderer.h (render manager: the Rust facade's equivalent of the
+	// ---- C++ OAKENGINE_INIT_RENDER engine-core render boot) -------------
+	pub fn oakengine_render_manager_init() -> c_int;
+	pub fn oakengine_render_manager_shutdown() -> c_int;
 
 	// ---- renderer.h ------------------------------------------------------
 	pub fn oakengine_renderer_create(
@@ -343,22 +367,6 @@ extern "C" {
 	pub fn oakengine_audio_sample_count(self_: *const OakEngineAudioBuffer) -> i64;
 	pub fn oakengine_audio_data(self_: *const OakEngineAudioBuffer, channel: c_int) -> *const f32;
 	pub fn oakengine_audio_free(self_: *mut OakEngineAudioBuffer);
-
-	// ---- exporter.h ------------------------------------------------------
-	pub fn oakengine_export_render(
-		seq: *mut OakEngineSequence,
-		path: *const c_char,
-		in_ts: i64,
-		out_ts: i64,
-		width: c_int,
-		height: c_int,
-		opts: *const OakExportOptions,
-	) -> c_int;
-	pub fn oakengine_export_last_error(buf: *mut c_char, buf_size: c_int) -> c_int;
-	pub fn oakengine_export_set_progress_callback(
-		f: OakEngineExportProgressFn,
-		userdata: *mut c_void,
-	);
 }
 
 /// Read a facade string (buf/size convention) into an owned `String`,
@@ -366,21 +374,16 @@ extern "C" {
 /// error/empty string, otherwise the getter is called twice (size query,
 /// then fill) and the trailing NUL is stripped.
 ///
-/// # Safety
-/// `getter` must be one of the `oakengine_*` string getters declared above
-/// and `handle` a live handle for it.
-pub unsafe fn facade_string(
-	getter: unsafe extern "C" fn(*const c_void, *mut c_char, c_int) -> c_int,
-	handle: *const c_void,
-) -> String {
-	unsafe {
-		let size = getter(handle, std::ptr::null_mut(), 0);
-		if size < 0 {
-			return String::new();
-		}
-		let mut s = vec![0u8; size as usize + 1];
-		let n = getter(handle, s.as_mut_ptr() as *mut c_char, size + 1);
-		s.truncate(n.max(0) as usize);
-		String::from_utf8_lossy(&s).into_owned()
+/// `fill` must be one of the `oakengine_*` string getters (handle
+/// getters closed over their live handle, last-error getters applied
+/// directly).
+pub fn string_get(mut fill: impl FnMut(*mut c_char, c_int) -> c_int) -> String {
+	let size = fill(std::ptr::null_mut(), 0);
+	if size < 0 {
+		return String::new();
 	}
+	let mut s = vec![0u8; size as usize + 1];
+	let n = fill(s.as_mut_ptr() as *mut c_char, size + 1);
+	s.truncate(n.max(0) as usize);
+	String::from_utf8_lossy(&s).into_owned()
 }

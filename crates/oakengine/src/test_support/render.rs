@@ -176,3 +176,29 @@ fn lut_library_stubs() {
 		-3
 	);
 }
+
+// repro: render_audio on an empty sequence (playback tick on an empty timeline).
+#[test]
+fn render_audio_empty_sequence_no_crash() {
+	super::common::force_link();
+	unsafe {
+		assert_eq!(crate::render::oakengine_render_manager_init(), 0);
+		let project = crate::node::oakengine_project_create();
+		assert!(!project.is_null());
+		assert_eq!(crate::node::oakengine_project_new(project), 0);
+		let name = std::ffi::CString::new("s").unwrap();
+		let seq = crate::timeline::oakengine_sequence_new(project, name.as_ptr());
+		assert!(!seq.is_null());
+		assert_eq!(crate::timeline::oakengine_sequence_add_track(seq, 1), 0); // audio track, no clips
+		let r = crate::render::oakengine_renderer_create(seq, 64, 64, 4, 25, 1, std::ptr::null());
+		assert!(!r.is_null());
+		for i in 0..5 {
+			let buf = crate::render::oakengine_renderer_render_audio(r, i * 2048, 2048);
+			if !buf.is_null() {
+				crate::render::oakengine_audio_free(buf);
+			}
+		}
+		crate::render::oakengine_renderer_free(r);
+		crate::node::oakengine_project_free(project);
+	}
+}

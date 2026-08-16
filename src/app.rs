@@ -2267,6 +2267,128 @@ mod tests {
 		assert_eq!(imported, vec![dropped]);
 	}
 
+	/// Dragging a media entry from the project explorer onto the timeline
+	/// places a clip there: the row starts a [`FootageDrag`] carrying the
+	/// entry id, the timeline panel resolves the cursor to a display track +
+	/// frame, and the engine records the `drop_footage` request with the
+	/// correct parameters.
+	#[gpui::test]
+	async fn dragging_footage_onto_the_timeline_places_a_clip(cx: &mut TestAppContext) {
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let (window, root) = mock_shell(cx);
+		let mut cx = VisualTestContext::from_window(window.into(), cx);
+
+		// The mock project's root-level footage entry ("第一稿.mp4", id 3) is
+		// the drag source; the timeline's clip area is the drop target.
+		let row = cx
+			.debug_bounds("gpui-widgets-explorer-entry-3")
+			.expect("root-level footage row rendered");
+		let canvas = cx
+			.debug_bounds("timeline-canvas")
+			.expect("timeline body rendered");
+		// A point inside the clip area: 100 px into the ruler's content
+		// (frame 50 at the shell's default zoom of 2 px/frame) on the first
+		// track row (V2, 64 px tall).
+		let drop = gpui::point(
+			canvas.left() + px(gpui::timeline::HEADER_WIDTH + 100.0),
+			canvas.top() + px(gpui::timeline::RULER_HEIGHT + 20.0),
+		);
+
+		// Dispatch the whole gesture against the same rendered frame: gpui's
+		// interactive listeners are registered per render, so a repaint
+		// between the events would consume them before the drop lands (same
+		// caveat as the file-drop test above).
+		cx.update(|window, cx| {
+			window.dispatch_event(
+				gpui::PlatformInput::MouseDown(gpui::MouseDownEvent {
+					position: row.center(),
+					modifiers: gpui::Modifiers::none(),
+					button: gpui::MouseButton::Left,
+					click_count: 1,
+					first_mouse: false,
+				}),
+				cx,
+			);
+			// Move past the drag threshold to start the drag.
+			window.dispatch_event(
+				gpui::PlatformInput::MouseMove(gpui::MouseMoveEvent {
+					position: row.center() + gpui::point(px(6.0), px(0.0)),
+					modifiers: gpui::Modifiers::none(),
+					pressed_button: Some(gpui::MouseButton::Left),
+				}),
+				cx,
+			);
+			// Hover the drop point (the panel resolves the track + frame).
+			window.dispatch_event(
+				gpui::PlatformInput::MouseMove(gpui::MouseMoveEvent {
+					position: drop,
+					modifiers: gpui::Modifiers::none(),
+					pressed_button: Some(gpui::MouseButton::Left),
+				}),
+				cx,
+			);
+			// Release over the drop point.
+			window.dispatch_event(
+				gpui::PlatformInput::MouseUp(gpui::MouseUpEvent {
+					position: drop,
+					modifiers: gpui::Modifiers::none(),
+					button: gpui::MouseButton::Left,
+					click_count: 1,
+				}),
+				cx,
+			);
+		});
+		cx.run_until_parked();
+
+		let drops = cx.read(|app| root.read(app).engine.read(app).footage_drops().to_vec());
+		assert_eq!(drops.len(), 1, "the drop must reach the engine exactly once");
+		assert_eq!(drops[0].id, 3);
+		assert_eq!(drops[0].track_kind, gpui::timeline::TrackKind::Video);
+		assert_eq!(drops[0].track_index, 0);
+		assert_eq!(drops[0].time, gpui::timeline::Frame(50));
+	}
+
+	/// The project explorer lists root-level imported footage in BOTH views:
+	/// the tree shows the entry as a row, and after switching to the icon
+	/// grid the same entry (plus folder children) appears as icons.
+	#[gpui::test]
+	async fn explorer_views_list_root_level_footage(cx: &mut TestAppContext) {
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let (window, _root) = mock_shell(cx);
+		let mut cx = VisualTestContext::from_window(window.into(), cx);
+
+		// Tree view: the root-level footage entry (id 3 "第一稿.mp4") renders
+		// as a row.
+		assert!(
+			cx.debug_bounds("gpui-widgets-explorer-entry-3").is_some(),
+			"tree view shows the root-level footage row"
+		);
+
+		// Switch to the icon grid; root-level footage and folder children
+		// both appear as icons, the folder root itself does not.
+		let toggle = cx
+			.debug_bounds("gpui-widgets-explorer-icons")
+			.expect("icons toggle rendered");
+		cx.simulate_click(toggle.center(), gpui::Modifiers::none());
+		cx.run_until_parked();
+		cx.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+
+		assert!(
+			cx.debug_bounds("gpui-widgets-explorer-icon-3").is_some(),
+			"root-level footage shows as an icon"
+		);
+		assert!(
+			cx.debug_bounds("gpui-widgets-explorer-icon-10").is_some(),
+			"a folder child shows as an icon"
+		);
+		assert!(
+			cx.debug_bounds("gpui-widgets-explorer-icon-1").is_none(),
+			"the footage folder root itself has no icon"
+		);
+	}
+
 	/// The command-line parser understands the project path and the mock
 	/// flag, and the `OAK_ENGINE` env var forces the mock.
 	#[test]

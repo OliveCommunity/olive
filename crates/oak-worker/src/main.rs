@@ -16,62 +16,32 @@
 
 //! oak-worker: headless render worker process (Rust).
 //!
-//! A thin shell over the facade, mirroring `worker/workermain.cpp`: all
-//! runtime logic — render backend selection (dynamic -> OpenGL fallback
-//! through the oakrender module C ABI), the startup handshake and the
-//! NDJSON control loop — lives in `oakengine::worker` (the Rust port of
-//! `engine/src/capi/worker.cpp`, contract in
-//! `engine/include/oakengine/worker.h`). This crate keeps only the CLI
-//! surface (arg parsing) and the in-process session mirror
-//! ([`session`], [`transport`]) that its unit tests exercise against the
-//! facade's real shared-memory transport.
+//! A thin C-ABI shell over the `liboakengine` facade dylib, mirroring
+//! `worker/workermain.cpp`: all runtime logic — render backend selection
+//! (dynamic -> OpenGL fallback through the oakrender module), the startup
+//! handshake and the NDJSON control loop — lives in the engine
+//! (`oakengine_worker_main`, the port of `engine/src/capi/worker.cpp`,
+//! contract in `engine/include/oakengine/worker.h`). This crate keeps only
+//! the argv forwarding, the `#[link]` declarations ([`engine_ipc`]) and
+//! the in-process session mirror ([`session`], [`transport`]) that its
+//! unit tests exercise against the engine's real shared-memory transport.
 //!
 //! See README.md for the full status.
 
-mod ipc;
+#![deny(unsafe_op_in_unsafe_fn)]
+#![warn(missing_docs)]
+
+mod engine_ipc;
 mod session;
 mod transport;
 
+use std::ffi::{c_char, c_int, CString};
 use std::process::exit;
 
-use clap::Parser;
-
-// Force-link the oakrender module crate: the facade's worker module
-// (oakengine::worker) initializes the render backend through the oakrender
-// C ABI, but its bridge imports are `extern "C"` declarations — nothing in
-// the worker source names the crate, so without this the oakrender rlib
-// would not be added to the link and those imports would stay undefined.
-#[allow(unused_imports)]
-use oakrender as _;
-
 /// Protocol version announced in the startup handshake
-/// (`k_protocol_version` in worker.cpp). Mirrors
-/// `oakengine::worker::PROTOCOL_VERSION`.
+/// (`k_protocol_version` in worker.cpp). Mirrors the engine worker
+/// module's `PROTOCOL_VERSION`.
 pub const PROTOCOL_VERSION: i32 = 1;
-
-/// CLI surface (the C++ worker scans argv for `--backend`; clap formalizes
-/// that single option).
-#[derive(Parser, Debug)]
-#[command(
-	name = "oak-worker",
-	about = "Oak render worker: headless render process for the editor's worker pool",
-	disable_version_flag = true
-)]
-struct Args {
-	/// Render backend to initialize: "opengl", "vulkan", "metal", "auto",
-	/// or "none" (no renderer; the process exits 1 like the C++ worker).
-	#[arg(long, default_value = "opengl")]
-	backend: String,
-}
-
-fn main() {
-	let args = Args::parse();
-	// The facade's worker_main is the C++ oakengine_worker_main() — the
-	// whole worker flow. Like workermain.cpp, this main only forwards.
-	exit(oakengine::worker::worker_main(
-		&args.backend.to_ascii_lowercase(),
-	));
-}
 
 /// Log a worker-side message to stderr, mirroring worker.cpp `log_error()`
 /// (the `worker: ` prefix).
@@ -79,27 +49,34 @@ pub fn log_error(message: &str) {
 	eprintln!("worker: {message}");
 }
 
+fn main() {
+	// Forward argv verbatim: the engine's oakengine_worker_main() scans
+	// for `--backend` itself (workermain.cpp does the same).
+	let args: Vec<String> = std::env::args_os()
+		.map(|a| a.to_string_lossy().into_owned())
+		.collect();
+	let cstrings: Vec<CString> = args
+		.iter()
+		.map(|a| CString::new(a.as_str()).unwrap_or_else(|_| CString::new("").unwrap()))
+		.collect();
+	let mut argv: Vec<*mut c_char> = cstrings
+		.iter()
+		.map(|c| c.as_ptr() as *mut c_char)
+		.collect();
+	// SAFETY: `argv` is an array of `argc` NUL-terminated C strings, kept
+	// alive for the whole call; the engine only reads them.
+	let code = unsafe {
+		engine_ipc::oakengine_worker_main(argv.len() as c_int, argv.as_mut_ptr())
+	};
+	exit(code);
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
 
 	#[test]
-	fn clap_parses_backend_default() {
-		use clap::Parser;
-		let args = Args::try_parse_from(["oak-worker"]).unwrap();
-		assert_eq!(args.backend, "opengl");
-	}
-
-	#[test]
-	fn clap_parses_backend_flag() {
-		use clap::Parser;
-		let args = Args::try_parse_from(["oak-worker", "--backend", "none"]).unwrap();
-		assert_eq!(args.backend, "none");
-	}
-
-	#[test]
-	fn clap_rejects_unknown_flags() {
-		use clap::Parser;
-		assert!(Args::try_parse_from(["oak-worker", "--frobnicate"]).is_err());
+	fn protocol_version_is_one() {
+		assert_eq!(PROTOCOL_VERSION, 1);
 	}
 }

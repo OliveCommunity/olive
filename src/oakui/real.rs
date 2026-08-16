@@ -384,9 +384,12 @@ enum FullResTarget {
 	/// An addref'd sequence box (released with [`free_box`], last, after
 	/// the renderer so the sequence outlives the renderer's borrowed view).
 	Sequence(SendPtr<OakEngineSequence>),
-	/// A boxed footage node (freed with `oakengine_node_free` once the
-	/// renderer has resolved its footage spec).
-	Node(SendPtr<OakEngineNode>),
+	/// A boxed footage node plus an addref'd copy of its project. The node
+	/// box alone does NOT keep the graph alive: dropping the project while
+	/// a job is in flight leaves the node dangling (observed crash:
+	/// misaligned pointer dereference in `oakengine_node_free`). The
+	/// project copy is released after the node.
+	Node(SendPtr<OakEngineNode>, SendPtr<OakEngineProject>),
 }
 
 /// One background full-resolution render request (built on the UI thread
@@ -867,6 +870,58 @@ impl RealEngine {
 		self.project.as_ref().map(ProjectHandle::ptr)
 	}
 
+	/// An addref'd copy of the project handle, boxed for the background
+	/// worker — same lifetime contract as [`RealEngine::sequence_copy`]:
+	/// the copy keeps the graph alive after the engine's own project is
+	/// dropped (the source monitor's footage node dangles otherwise).
+	fn project_copy(&self) -> Option<*mut OakEngineProject> {
+		let project = self.project_ptr()?;
+		// SAFETY: `project` is the engine's live project box.
+		let handle = unsafe { unbox(project) }?;
+		let addref = handle.addref?;
+		// SAFETY: `handle` is a live module handle; addref takes a new
+		// reference the copy releases.
+		unsafe { addref(handle.ctx) };
+		Some(unsafe { box_handle::<OakEngineProject>(handle) })
+	}
+
+	/// The selected footage's duration in frames at the current rate
+	/// (0 when nothing is selected or the footage was not probed).
+	fn source_length(&self) -> Frame {
+		let Some(project) = self.project_ptr() else {
+			return Frame(0);
+		};
+		let Some(id) = self.selected_item else {
+			return Frame(0);
+		};
+		let count = unsafe { oakengine_project_footage_count(project) };
+		for i in 0..count.max(0) {
+			let f = unsafe { oakengine_project_footage_at(project, i) };
+			if f.is_null() {
+				continue;
+			}
+			let matches = unsafe { oakengine_node_identity(f) } == id;
+			if matches {
+				// The footage list yields node boxes; borrow the footage
+				// view for the duration query.
+				let footage = unsafe { oakengine_footage_borrow(f) };
+				unsafe { oakengine_node_free(f) };
+				let mut seconds: f64 = 0.0;
+				let ok = !footage.is_null()
+					&& unsafe { oakengine_footage_get_duration(footage, &mut seconds) } == 0;
+				unsafe { oakengine_footage_free(footage) };
+				if ok && seconds > 0.0 {
+					let rate = self.frame_rate();
+					let fps = rate.num as f64 / rate.den.max(1) as f64;
+					return Frame((seconds * fps).round().max(1.0) as i64);
+				}
+				return Frame(0);
+			}
+			unsafe { oakengine_node_free(f) };
+		}
+		Frame(0)
+	}
+
 	/// Current sequence length (0 without a sequence).
 	fn sequence_length(&self) -> Frame {
 		self.sequence_info
@@ -1218,7 +1273,14 @@ impl RealEngine {
 		let height = info.format.height.max(1) as c_int;
 		let target = match monitor {
 			Monitor::Program => FullResTarget::Sequence(SendPtr(self.sequence_copy()?)),
-			Monitor::Source => FullResTarget::Node(SendPtr(self.selected_footage_node()?)),
+			Monitor::Source => {
+				// The project copy MUST be taken while the engine's own
+				// project is still alive (it keeps the node valid).
+				FullResTarget::Node(
+					SendPtr(self.selected_footage_node()?),
+					SendPtr(self.project_copy()?),
+				)
+			}
 		};
 		Some(FullResRequest {
 			monitor,
@@ -1269,10 +1331,11 @@ impl RealEngine {
 						std::ptr::null(),
 					)
 				}
-				FullResTarget::Node(node) => {
-					// SAFETY: the renderer resolves its own footage spec at
-					// creation; the node box is no longer needed after it.
-					let renderer = oakengine_renderer_create_for_node(
+				FullResTarget::Node(node, _) => {
+					// The node stays alive until release_full_res_target
+					// (freed exactly once there); the renderer resolves its
+					// footage spec at creation and borrows nothing beyond.
+					oakengine_renderer_create_for_node(
 						node.0,
 						width,
 						height,
@@ -1280,9 +1343,7 @@ impl RealEngine {
 						rate_num,
 						rate_den,
 						std::ptr::null(),
-					);
-					oakengine_node_free(node.0);
-					renderer
+					)
 				}
 			}
 		};
@@ -1327,7 +1388,12 @@ impl RealEngine {
 		unsafe {
 			match target {
 				FullResTarget::Sequence(seq) => free_box(seq.0),
-				FullResTarget::Node(node) => oakengine_node_free(node.0),
+				// The node goes first; the addref'd project copy outlives
+				// it (the node's graph must stay alive during the free).
+				FullResTarget::Node(node, project) => {
+					oakengine_node_free(node.0);
+					free_box(project.0);
+				}
 			}
 		}
 	}
@@ -1898,11 +1964,19 @@ impl EngineGateway for RealEngine {
 	}
 
 	fn tick(&mut self, cx: &mut Context<Self>) {
+		// Each clock loops at its own monitor's length: the program at the
+		// sequence length, the source at the selected footage's duration
+		// (the sequence length is wrong for footage playback — an empty
+		// project's length 0 used to freeze the source playhead at 0).
 		let length = self.sequence_length();
-		for clock in [&self.source_clock, &self.program_clock] {
+		let source_length = self.source_length();
+		for (clock, len) in [
+			(&self.source_clock, source_length),
+			(&self.program_clock, length),
+		] {
 			let clock = clock.clone();
 			clock.update(cx, |clock, cx| {
-				clock.tick(length);
+				clock.tick(len);
 				cx.notify();
 			});
 		}
@@ -2816,6 +2890,146 @@ impl AppEngine for RealEngine {
 		// notify is enough for the explorer to list the new entry.
 		cx.notify();
 		Ok(())
+	}
+
+	fn drop_footage(
+		&mut self,
+		id: u64,
+		track_kind: TrackKind,
+		track_index: usize,
+		time: Frame,
+		cx: &mut Context<Self>,
+	) {
+		let Some(project) = self.project_ptr() else {
+			return;
+		};
+		let Some(seq) = self.seq_ptr() else {
+			return;
+		};
+		// The explorer's entry id IS the footage node's stable identity
+		// (`projectbrowser`); find the matching footage node (its box is
+		// freed below).
+		let mut footage_node: *mut OakEngineNode = std::ptr::null_mut();
+		let mut footage_index: c_int = -1;
+		let count = unsafe { oakengine_project_footage_count(project) };
+		for index in 0..count.max(0) {
+			let node = unsafe { oakengine_project_footage_at(project, index) };
+			if node.is_null() {
+				continue;
+			}
+			if unsafe { oakengine_node_identity(node) } == id {
+				footage_node = node;
+				footage_index = index;
+				break;
+			}
+			// SAFETY: `node` is a box from `oakengine_project_footage_at`.
+			unsafe { oakengine_node_free(node) };
+		}
+		if footage_node.is_null() {
+			println!("[real engine] drop footage: entry {id} is not a footage node");
+			return;
+		}
+		// Media type by extension: the module's footage is never probed, so
+		// the facade's stream counts are empty (see `filename_is_audio`).
+		let filename = read_string(|buf, size| unsafe {
+			oakengine_project_footage_filename(project, footage_index, buf, size)
+		});
+		let footage_kind = if crate::oakui::filename_is_audio(&filename) {
+			TrackKind::Audio
+		} else {
+			TrackKind::Video
+		};
+		// Track policy (see the `AppEngine::drop_footage` docs): use the
+		// pointed display track when its kind matches, otherwise auto-select
+		// the topmost track of the footage's kind; reject when there is none.
+		// The facade itself validates only the track type (video/audio; it
+		// rejects subtitles) and never the media/track pairing.
+		let target = if let Some(track) = self.tracks.get(track_index) {
+			if track.kind == footage_kind {
+				track_index
+			} else {
+				match self.tracks.iter().position(|t| t.kind == footage_kind) {
+					Some(index) => index,
+					None => {
+						println!(
+							"[real engine] drop footage: no {:?} track for {:?} media \"{}\"",
+							footage_kind, track_kind, filename
+						);
+						// SAFETY: `footage_node` is a box from
+						// `oakengine_project_footage_at`.
+						unsafe { oakengine_node_free(footage_node) };
+						return;
+					}
+				}
+			}
+		} else {
+			println!("[real engine] drop footage: display track {track_index} does not exist");
+			// SAFETY: `footage_node` is a box from `oakengine_project_footage_at`.
+			unsafe { oakengine_node_free(footage_node) };
+			return;
+		};
+		// The display list maps 1:1 onto the facade's per-type track lists
+		// (see `rebuild_timeline`), so the snapshot's coordinates address the
+		// facade track directly.
+		let (track_type, track_index_facade) = {
+			let track = &self.tracks[target];
+			(track.track_type, track.track_index)
+		};
+		// Clip length: the footage's probed duration when available; module
+		// footage is never probed, so fall back to a 10-second default.
+		let fps = self.frame_rate();
+		let fps_f = fps.num as f64 / fps.den.max(1) as f64;
+		let footage = unsafe { oakengine_footage_borrow(footage_node) };
+		let mut seconds: f64 = 0.0;
+		let has_duration = !footage.is_null()
+			&& unsafe { oakengine_footage_get_duration(footage, &mut seconds) } == 0
+			&& seconds > 0.0;
+		let length = if has_duration {
+			(seconds * fps_f).round().max(1.0) as i64
+		} else {
+			(10.0 * fps_f).round().max(1.0) as i64
+		};
+		let in_ts = time.0.max(0);
+		// SAFETY: `seq` and `footage` are live facade handles; the returned
+		// owned clip box is freed below.
+		let clip = unsafe {
+			oakengine_sequence_add_footage_clip_ex(
+				seq,
+				footage,
+				track_type,
+				track_index_facade as c_int,
+				in_ts,
+				in_ts + length,
+				0,
+			)
+		};
+		// SAFETY: `footage` is a borrowed box (`oakengine_footage_borrow`);
+		// `footage_node` a box from `oakengine_project_footage_at`.
+		unsafe {
+			if !footage.is_null() {
+				oakengine_footage_free(footage);
+			}
+			oakengine_node_free(footage_node);
+		}
+		let rc = if clip.is_null() {
+			let error = read_string(|buf, size| unsafe {
+				oakengine_sequence_last_error(buf, size)
+			});
+			let error = if error.is_empty() {
+				"add footage clip rejected".to_string()
+			} else {
+				error
+			};
+			println!("[real engine] drop footage rejected: {error}");
+			-1
+		} else {
+			// SAFETY: `clip` is an owned facade box (`free_box`).
+			unsafe { free_box(clip) };
+			0
+		};
+		// The facade export pushes ONE undoable "Add Clip" entry; the refresh
+		// also invalidates the cached rendered frames.
+		self.apply_edit(rc, "drop footage", cx);
 	}
 
 	// --- project library (M13 D4) --------------------------------------
@@ -4191,6 +4405,72 @@ mod tests {
 
 		unsafe { free_box(sequence) };
 		unsafe { oakengine_project_free(project) };
+		let _ = std::fs::remove_file(&media);
+	}
+
+	/// Regression: the source monitor's full-res job used to carry only the
+	/// footage node box — dropping the project while the job was in flight
+	/// left the node dangling, and the worker's free path died on a
+	/// misaligned pointer inside the module's handle table. The request now
+	/// also carries an addref'd project copy, so this scenario completes
+	/// (and frees cleanly) instead of crashing.
+	#[test]
+	fn full_res_worker_outlives_a_dropped_project() {
+		let _media = media_lock();
+		if !RealEngine::ensure_render_manager() {
+			panic!("the render manager failed to start");
+		}
+
+		let project = unsafe { oakengine_project_create() };
+		assert!(!project.is_null());
+		assert_eq!(unsafe { oakengine_project_new(project) }, 0);
+		let media = std::env::temp_dir().join(format!(
+			"oakapp_fullres_src_{}.mp4",
+			std::process::id()
+		));
+		let media_c = CString::new(media.to_string_lossy().into_owned()).unwrap();
+		assert_eq!(
+			unsafe { oakengine_testmedia_write_clip(media_c.as_ptr(), 64, 64, 10, 10) },
+			0
+		);
+		let footage = unsafe { oakengine_project_import_footage(project, media_c.as_ptr()) };
+		assert!(!footage.is_null(), "import must succeed");
+
+		// The node box from the project's footage list plus the addref'd
+		// project copy (what build_full_res_request now does).
+		let node = unsafe { oakengine_project_footage_at(project, 0) };
+		assert!(!node.is_null());
+		// SAFETY: `footage` is a live box; the node box is independent.
+		unsafe { oakengine_footage_free(footage) };
+		let handle = unsafe { unbox(project) }.expect("project handle");
+		let addref = handle.addref.expect("module handle addref");
+		// SAFETY: `handle` is a live module handle; addref takes a new
+		// reference the copy releases.
+		unsafe { addref(handle.ctx) };
+		let project_copy = unsafe { box_handle::<OakEngineProject>(handle) };
+
+		// The engine's own project goes away BEFORE the worker runs — the
+		// pre-fix crash window.
+		unsafe { oakengine_project_free(project) };
+
+		let (tx, rx) = mpsc::channel();
+		let request = FullResRequest {
+			monitor: Monitor::Source,
+			frame: 0,
+			generation: 1,
+			target: FullResTarget::Node(SendPtr(node), SendPtr(project_copy)),
+			width: 64,
+			height: 64,
+			rate_num: 10,
+			rate_den: 1,
+		};
+		std::thread::spawn(move || RealEngine::full_res_worker(request, tx));
+
+		let event = rx
+			.recv_timeout(Duration::from_secs(20))
+			.expect("the worker delivers the frame after the project drop");
+		let bytes = event.image.as_bytes(0).expect("one frame");
+		assert_eq!(bytes.len(), 64 * 64 * 4, "full-res geometry");
 		let _ = std::fs::remove_file(&media);
 	}
 

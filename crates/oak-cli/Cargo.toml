@@ -28,13 +28,13 @@ path = "src/main.rs"
 [dependencies]
 clap = { version = "4", features = ["derive"] }
 
-# oakfacade is where the frozen oakengine_* C ABI exports live (staticlib +
-# rlib). oak-cli is a pure consumer of that facade, so it links the rlib
-# directly. The families this CLI needs (init / project / timeline / render /
-# footage / exporter) are still deferred in the facade
-# (src/facade/rust/src/deferred.rs), so this crate references no oakengine_*
-# symbol yet: the subcommands validate their arguments and report the
-# deferral (src/deferred.rs). The extern declarations in src/ffi.rs mirror
-# the engine headers verbatim and resolve against this rlib the moment a
-# family is wrapped -- no manifest change needed.
-oakengine = { path = "../oakengine" }
+# oak-cli is a PURE C-ABI consumer of the built `liboakengine` cdylib:
+# every engine call goes through the `extern "C"` declarations in
+# src/ffi.rs (and the dlsym-resolved optional families in src/optional.rs).
+# No oak* crate appears here — not even oakengine, which is cdylib-only:
+# the link happens through build.rs (rustc-link-search + rpath pointing at
+# the profile dir `cargo build -p oakengine` produces the dylib in) and
+# the `#[link(name = "oakengine", kind = "dylib")]` block in src/ffi.rs.
+# Build order: `cargo build -p oakengine` first, then `cargo build` /
+# `cargo test -p oak-cli` (linking and running the binary need the dylib;
+# `cargo check` does not link and works standalone).

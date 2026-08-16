@@ -16,18 +16,25 @@
 
 //! Link configuration for the `oak-worker` binary.
 //!
-//! The facade rlib (src/engine/rust) links the module C ABIs into any
-//! consumer that pulls its codec surface — oak-worker's use of
-//! `oakengine::worker` transitively pulls the facade's codec module, whose
-//! oakcodec references carry a few C++-host imports (`oakcore_audioparams_*`
-//! from liboakcore, `fb_*` from ffmpeg_bridge). Those live in the host Oak
-//! process and are only reachable on media-decode paths this worker never
-//! exercises; the CMake worker has the same property through the
-//! liboakengine dylib (whose build.rs allows runtime lookups). Mirror that
-//! here so the standalone Rust worker binary links.
+//! The worker is a pure C-ABI consumer of the built `liboakengine` dylib
+//! (crates/oakengine, crate-type cdylib): src/engine_ipc.rs declares the
+//! `oakengine_*` symbols with `#[link(name = "oakengine", kind = "dylib")]`.
+//! This build script points the linker at the target profile directory
+//! that holds the dylib (OUT_DIR is
+//! `<target>/<profile>/build/oak-worker-<hash>/out`, so the profile dir is
+//! the third ancestor — where cargo places `liboakengine.dylib` /
+//! `liboakengine.so`) and embeds an rpath so the binary finds the dylib at
+//! runtime without environment variables.
+
+use std::path::Path;
 
 fn main() {
-	if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
-		println!("cargo:rustc-link-arg=-Wl,-undefined,dynamic_lookup");
-	}
+	let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR is set by cargo");
+	let profile_dir = Path::new(&out_dir)
+		.ancestors()
+		.nth(3)
+		.expect("OUT_DIR is nested at least 3 levels under the profile dir");
+
+	println!("cargo:rustc-link-search=native={}", profile_dir.display());
+	println!("cargo:rustc-link-arg=-Wl,-rpath,{}", profile_dir.display());
 }

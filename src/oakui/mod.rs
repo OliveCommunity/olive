@@ -58,4 +58,25 @@ pub use engine::{
 };
 pub use mock::{MockClock, MockEngine};
 pub use real::{RealClock, RealEngine};
+
+/// Whether `name` (a media file name) denotes audio-only media, by
+/// extension.
+///
+/// The facade's module footage is never probed (`oakengine` imports media
+/// without decoding it), so the stream counts it exposes are always empty
+/// and the timeline drop's track matching falls back to the extension:
+/// known audio containers count as audio, everything else as video.
+pub fn filename_is_audio(name: &str) -> bool {
+	matches!(
+		std::path::Path::new(name)
+			.extension()
+			.and_then(|e| e.to_str())
+			.map(|e| e.to_ascii_lowercase())
+			.as_deref(),
+		Some(
+			"wav" | "mp3" | "flac" | "aac" | "ogg" | "oga" | "opus" | "m4a" | "wma" | "aiff"
+				| "aif" | "ac3" | "amr" | "ape" | "caf"
+		)
+	)
+}
 pub use transport::{PlayState, TransportState};
