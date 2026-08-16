@@ -424,6 +424,9 @@ impl<E: AppEngine> Render for TimelinePanel<E> {
 								},
 							))
 							.on_drop(cx.listener(|this, drag: &FootageDrag, _window, cx| {
+								if std::env::var("OAK_DEBUG_DRAG").is_ok() {
+									eprintln!("[drag] timeline drop: {drag:?}");
+								}
 								this.finish_footage_drop(drag, cx);
 							}))
 							.child(self.timeline.clone()),

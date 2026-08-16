@@ -2951,15 +2951,39 @@ impl AppEngine for RealEngine {
 				match self.tracks.iter().position(|t| t.kind == footage_kind) {
 					Some(index) => index,
 					None => {
-						println!(
-							"[real engine] drop footage: no {:?} track for {:?} media \"{}\"",
-							footage_kind, track_kind, filename
-						);
-						// SAFETY: `footage_node` is a box from
-						// `oakengine_project_footage_at`.
-						unsafe { oakengine_node_free(footage_node) };
-						return;
+						// No track of the media's kind: create one (the NLE
+						// convention — Premiere auto-creates on drop).
+						self.add_track(footage_kind, cx);
+						match self.tracks.iter().position(|t| t.kind == footage_kind) {
+							Some(index) => index,
+							None => {
+								println!(
+									"[real engine] drop footage: could not add a {:?} track for \"{}\"",
+									footage_kind, filename
+								);
+								// SAFETY: `footage_node` is a box from
+								// `oakengine_project_footage_at`.
+								unsafe { oakengine_node_free(footage_node) };
+								return;
+							}
+						}
 					}
+				}
+			}
+		} else if self.tracks.is_empty() {
+			// An empty timeline (a fresh sequence has no tracks yet): create
+			// the media's track and drop onto it.
+			self.add_track(footage_kind, cx);
+			match self.tracks.iter().position(|t| t.kind == footage_kind) {
+				Some(index) => index,
+				None => {
+					println!(
+						"[real engine] drop footage: could not add a {:?} track",
+						footage_kind
+					);
+					// SAFETY: `footage_node` is a box from `oakengine_project_footage_at`.
+					unsafe { oakengine_node_free(footage_node) };
+					return;
 				}
 			}
 		} else {
