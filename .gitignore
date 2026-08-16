@@ -15,6 +15,10 @@ CmakeSettings.json
 # clangd's index and likely other things that need not be in the repository
 .cache/
 
+# Generated packaging assets (icons/icon.png is produced from Oak_Icon.svg
+# by rsvg-convert in the CD workflow; see .github/workflows/cd.yml)
+/icons/
+
 # macOS General
 .DS_Store
 .AppleDouble
@@ -115,3 +119,5 @@ otio-install/
 **/target/
 tarpaulin-out/
 .env
+# CD packaging artifacts
+/*.dmg

@@ -244,7 +244,11 @@ impl ManagerInner {
 		self.output_device = device;
 		self.output_started = false;
 		self.output_buffer.clear();
-		// The stream reopens with the new device on the next push.
+		// The stream reopens with the new device on the next push. Drop the
+		// cached params too: `push_to_output` only re-opens the stream on a
+		// params change, so without this the switch would stay silent until
+		// the format changed.
+		self.output_params = None;
 		self.output_device_stream.close();
 		Ok(())
 	}
@@ -438,6 +442,48 @@ pub fn find_device_by_name_s_or_default(name: &String, _is_output_device: bool) 
 		}
 	}
 
+}
+
+/// The host's output device names in enumeration order; the list index is
+/// the device index [`ManagerInner::set_output_device`] takes. The default
+/// device is NOT marked — callers prepend their own "system default" entry
+/// (index -1). Static (needs no manager instance).
+pub fn output_device_names() -> Vec<String> {
+	device_names(true)
+}
+
+/// The host's input device names in enumeration order (see
+/// [`output_device_names`]).
+pub fn input_device_names() -> Vec<String> {
+	device_names(false)
+}
+
+/// Enumerates the default host's devices, keeping only the ones that
+/// support the requested direction; unnamed devices are skipped.
+fn device_names(output: bool) -> Vec<String> {
+	let host = cpal::default_host();
+	let devices = if output {
+		host.output_devices()
+	} else {
+		host.input_devices()
+	};
+	let Ok(devices) = devices else {
+		return Vec::new();
+	};
+	devices
+		.filter_map(|d| d.id().ok().map(|id| id.id().to_string()))
+		.collect()
+}
+
+/// The enumeration index of the device named `name` (`None` when absent);
+/// the inverse of [`output_device_names`]/[`input_device_names`].
+pub fn device_index_by_name(name: &str, output: bool) -> Option<i32> {
+	let names = if output {
+		output_device_names()
+	} else {
+		input_device_names()
+	};
+	names.iter().position(|n| n == name).map(|i| i as i32)
 }
 
 

@@ -68,7 +68,7 @@ use crate::panels::status_bar::StatusBar;
 use crate::panels::timeline::TimelinePanel;
 
 // Menu item ids (unique per menu).
-mod menu_ids {
+pub(crate) mod menu_ids {
 	pub const NEW_PROJECT: usize = 101;
 	pub const OPEN_PROJECT: usize = 102;
 	pub const EXPORT_PROJECT: usize = 103;
@@ -86,17 +86,24 @@ mod menu_ids {
 	pub const PASTE: usize = 205;
 	pub const DELETE: usize = 206;
 	pub const RIPPLE_DELETE: usize = 207;
+	pub const SELECT_ALL: usize = 208;
 
 	pub const THEME_DARK: usize = 301;
 	pub const THEME_LIGHT: usize = 302;
 	pub const LANG_ZH: usize = 303;
 	pub const LANG_EN: usize = 304;
 	pub const PREFERENCES: usize = 305;
+	pub const ZOOM_IN: usize = 306;
+	pub const ZOOM_OUT: usize = 307;
 
 	pub const PLAY_PAUSE: usize = 401;
 	pub const PREV_FRAME: usize = 402;
 	pub const NEXT_FRAME: usize = 403;
 	pub const TO_START: usize = 404;
+	pub const PLAY: usize = 405;
+	pub const PAUSE: usize = 406;
+	pub const SET_IN_POINT: usize = 407;
+	pub const SET_OUT_POINT: usize = 408;
 
 	pub const ADD_VIDEO_TRACK: usize = 501;
 	pub const ADD_AUDIO_TRACK: usize = 502;
@@ -289,6 +296,10 @@ pub struct OakApp<E: AppEngine> {
 	dark: bool,
 	/// The modal currently shown on top of the shell, if any.
 	modal: ModalState<E>,
+	/// The shell's own focus handle: the root element tracks it so the
+	/// keyboard shortcut layer (the root's `on_key_down`) sits on the
+	/// dispatch path even before any panel takes focus.
+	shell_focus: gpui::FocusHandle,
 	/// The running export session, if any.
 	export: Option<ExportRun>,
 	/// The library row pending an export save dialog (manager 导出).
@@ -299,7 +310,13 @@ impl<E: AppEngine> OakApp<E> {
 	/// Builds the whole shell. `initial_path` (a CLI argument) is opened
 	/// after the layout is up.
 	pub fn new(window: &mut Window, initial_path: Option<PathBuf>, cx: &mut Context<Self>) -> Self {
-		apply_theme(cx, &OakTheme::olive_dark());
+		// The persisted theme (config `Theme`) wins; the app defaults to dark.
+		let dark = crate::oakui::real::theme_is_dark();
+		if dark {
+			apply_theme(cx, &OakTheme::olive_dark());
+		} else {
+			apply_theme(cx, &OakTheme::olive_light());
+		}
 		crate::oakui::icons::init(cx);
 
 		// --- engine and shared state ---------------------------------------
@@ -322,7 +339,7 @@ impl<E: AppEngine> OakApp<E> {
 		});
 
 		// --- menu bar ------------------------------------------------------
-		let menu_bar = cx.new(|cx| MenuBar::new(1, make_menus(true), window, cx));
+		let menu_bar = cx.new(|cx| MenuBar::new(1, make_menus(dark), window, cx));
 		cx.subscribe(
 			&menu_bar,
 			|this, _menu: Entity<MenuBar>, event: &MenuBarEvent, cx| {
@@ -483,6 +500,10 @@ impl<E: AppEngine> OakApp<E> {
 			})
 			.detach();
 
+		let shell_focus = cx.focus_handle();
+		// The shell starts focused so the shortcut layer works before any
+		// panel grabs focus.
+		window.focus(&shell_focus, cx);
 		let shell = Self {
 			engine,
 			program_clock,
@@ -491,8 +512,9 @@ impl<E: AppEngine> OakApp<E> {
 			menu_bar,
 			dock,
 			status_bar,
-			dark: true,
+			dark,
 			modal: ModalState::None,
+			shell_focus,
 			export: None,
 			pending_export: None,
 		};
@@ -548,22 +570,21 @@ impl<E: AppEngine> OakApp<E> {
 			REDO => self.engine.update(cx, |engine, cx| engine.redo(cx)),
 			DELETE => self.delete_timeline_selection(false, cx),
 			RIPPLE_DELETE => self.delete_timeline_selection(true, cx),
+			SELECT_ALL => self.select_all_clips(cx),
 			CUT | COPY | PASTE => {
 				println!("[menu] clipboard action {item} not wired yet");
 			}
 			// --- View ------------------------------------------------------
 			THEME_DARK => {
-				self.dark = true;
-				apply_theme(cx, &OakTheme::olive_dark());
-				self.rebuild_menu_bar(cx);
-				cx.notify();
+				crate::oakui::real::set_theme_dark(true);
+				self.apply_dark(true, cx);
 			}
 			THEME_LIGHT => {
-				self.dark = false;
-				apply_theme(cx, &OakTheme::olive_light());
-				self.rebuild_menu_bar(cx);
-				cx.notify();
+				crate::oakui::real::set_theme_dark(false);
+				self.apply_dark(false, cx);
 			}
+			ZOOM_IN => self.zoom_timeline(1.25, cx),
+			ZOOM_OUT => self.zoom_timeline(0.8, cx),
 			LANG_ZH => self.switch_language(crate::i18n::Language::ZhCN, cx),
 			LANG_EN => self.switch_language(crate::i18n::Language::EnUs, cx),
 			PREFERENCES => self.open_preferences(cx),
@@ -589,12 +610,24 @@ impl<E: AppEngine> OakApp<E> {
 				self.engine
 					.update(cx, |engine, cx| engine.step(monitor, 1, cx));
 			}
+			PLAY => {
+				let monitor = Monitor::Program;
+				self.engine
+					.update(cx, |engine, cx| engine.play(monitor, cx));
+			}
+			PAUSE => {
+				let monitor = Monitor::Program;
+				self.engine
+					.update(cx, |engine, cx| engine.pause(monitor, cx));
+			}
 			TO_START => {
 				let monitor = Monitor::Program;
 				self.engine.update(cx, |engine, cx| {
 					engine.request_frame(monitor, Frame::ZERO, cx)
 				});
 			}
+			SET_IN_POINT => self.set_point_at_playhead(true, cx),
+			SET_OUT_POINT => self.set_point_at_playhead(false, cx),
 			// --- Sequence --------------------------------------------------
 			ADD_VIDEO_TRACK => {
 				let kind = gpui::timeline::TrackKind::Video;
@@ -659,6 +692,98 @@ impl<E: AppEngine> OakApp<E> {
 			self.engine
 				.update(cx, |engine, cx| engine.delete_clip(id, ripple, cx));
 		}
+	}
+
+	/// 编辑 → 全选: selects every timeline clip and forwards the selection
+	/// to the engine (the effect stack's target), mirroring what the
+	/// timeline's own `SelectionChanged` subscription does.
+	fn select_all_clips(&mut self, cx: &mut Context<Self>) {
+		let ids: Vec<ClipId> = {
+			let engine = self.engine.read(cx);
+			let mut ids = Vec::new();
+			for index in 0..engine.track_count() {
+				if let Some(track) = engine.track(index) {
+					ids.extend(track.clips().iter().map(|clip| clip.id()));
+				}
+			}
+			ids
+		};
+		self.timeline.update(cx, |view, cx| {
+			view.state.select_range(ids.iter().copied());
+			cx.notify();
+		});
+		self.engine
+			.update(cx, |engine, cx| engine.set_selected_clips(ids, cx));
+	}
+
+	/// 视图 → 放大/缩小: scales the timeline zoom around its left edge
+	/// (`TimelineState::set_zoom` clamps to the widget's zoom range).
+	fn zoom_timeline(&mut self, factor: f32, cx: &mut Context<Self>) {
+		self.timeline.update(cx, |view, cx| {
+			let zoom = view.state.zoom * factor;
+			view.state.set_zoom(zoom, px(0.));
+			cx.notify();
+		});
+	}
+
+	/// 回放 → 设置入点/出点: moves the work area's start (`in_point`) or end
+	/// to the program playhead as ONE undoable entry (the same commit the
+	/// ruler drag and 序列 → 设置工作区 use). Without an existing work area
+	/// the far edge falls back to the sequence bounds.
+	fn set_point_at_playhead(&mut self, in_point: bool, cx: &mut Context<Self>) {
+		let playhead = self.program_clock.read(cx).current_frame();
+		let seq_len = self
+			.engine
+			.read(cx)
+			.current_sequence()
+			.map(|s| s.length)
+			.unwrap_or(Frame(playhead.0 + 1));
+		let (old_start, old_end) = self
+			.engine
+			.read(cx)
+			.workarea()
+			.unwrap_or((Frame::ZERO, seq_len));
+		let (start, end) = if in_point {
+			(playhead, old_end.max(Frame(playhead.0 + 1)))
+		} else {
+			(old_start.min(Frame((playhead.0 - 1).max(0))), playhead)
+		};
+		if end.0 <= start.0 {
+			println!("[playback] set in/out point: empty range, ignored");
+			return;
+		}
+		self.engine.update(cx, |engine, cx| {
+			engine.commit_workarea(old_start, old_end, start, end, cx);
+		});
+	}
+
+	/// Applies the dark/light theme and rebuilds the menu bar (the theme
+	/// checkmark moves). The caller persists the choice through
+	/// [`crate::oakui::real::set_theme_dark`].
+	fn apply_dark(&mut self, dark: bool, cx: &mut Context<Self>) {
+		self.dark = dark;
+		if dark {
+			apply_theme(cx, &OakTheme::olive_dark());
+		} else {
+			apply_theme(cx, &OakTheme::olive_light());
+		}
+		self.rebuild_menu_bar(cx);
+		cx.notify();
+	}
+
+	/// The shell's keyboard shortcut entry point: maps the keystroke through
+	/// [`crate::shortcuts`] and dispatches the matched menu action. While a
+	/// modal dialog is open the shell stays keyboard-quiet, so the dialogs'
+	/// text fields never trigger editing actions.
+	fn on_shortcut(&mut self, keystroke: &gpui::Keystroke, cx: &mut Context<Self>) {
+		if !matches!(self.modal, ModalState::None) {
+			return;
+		}
+		let Some(action) = crate::shortcuts::action_for(keystroke) else {
+			return;
+		};
+		cx.stop_propagation();
+		self.on_menu(action, cx);
 	}
 
 	/// Removes the first track selected in the timeline header.
@@ -986,7 +1111,7 @@ impl<E: AppEngine> OakApp<E> {
 	// -----------------------------------------------------------------------
 
 	/// Closes the current modal.
-	fn close_modal(&mut self, cx: &mut Context<Self>) {
+	pub fn close_modal(&mut self, cx: &mut Context<Self>) {
 		self.modal = ModalState::None;
 		cx.notify();
 	}
@@ -1158,14 +1283,16 @@ impl<E: AppEngine> OakApp<E> {
 		}
 	}
 
-	/// Opens the preferences dialog.
-	fn open_preferences(&mut self, cx: &mut Context<Self>) {
+	/// Opens the preferences dialog. Theme/language selections emit
+	/// [`crate::dialogs::PreferencesEvent`]s, applied to the shell chrome
+	/// immediately; the typed cache directory commits when the dialog closes.
+	pub fn open_preferences(&mut self, cx: &mut Context<Self>) {
 		self.spawn_modal(cx, |window, app| {
 			let content = app.new(|cx| PreferencesContent::new(window, cx));
 			let modal = app.new(|cx| {
 				Modal::new(
 					modal_ids::PREFERENCES,
-					ModalOptions::new(crate::i18n::tr("preferences.title"), px(380.0))
+					ModalOptions::new(crate::i18n::tr("preferences.title"), px(480.0))
 						.with_button(DialogButton::primary(crate::i18n::tr("dialog.close"))),
 					window,
 					cx,
@@ -1174,6 +1301,30 @@ impl<E: AppEngine> OakApp<E> {
 			});
 			ModalState::Preferences { modal, content }
 		});
+		if let ModalState::Preferences { content, .. } = &self.modal {
+			let content = content.clone();
+			cx.subscribe(
+				&content,
+				|this, _content, event: &crate::dialogs::PreferencesEvent, cx| match *event {
+					crate::dialogs::PreferencesEvent::ThemeChanged(dark) => {
+						this.apply_dark(dark, cx);
+					}
+					crate::dialogs::PreferencesEvent::LanguageChanged => {
+						this.rebuild_menu_bar(cx);
+						cx.notify();
+					}
+				},
+			)
+			.detach();
+		}
+	}
+
+	/// Commits the preferences dialog's free-text fields (the cache
+	/// directory path) before the modal closes.
+	fn commit_preferences(&mut self, cx: &mut Context<Self>) {
+		if let ModalState::Preferences { content, .. } = &self.modal {
+			content.update(cx, |content, cx| content.commit_cache_dir(cx));
+		}
 	}
 
 	/// Opens the export dialog.
@@ -1328,7 +1479,10 @@ impl<E: AppEngine> OakApp<E> {
 						self.cancel_export(cx);
 					}
 				}
-				modal_ids::PREFERENCES => self.close_modal(cx),
+				modal_ids::PREFERENCES => {
+					self.commit_preferences(cx);
+					self.close_modal(cx);
+				}
 				modal_ids::MANAGER => self.close_modal(cx),
 				modal_ids::MANAGER_RENAME => {
 					if *button == 0 {
@@ -1356,6 +1510,10 @@ impl<E: AppEngine> OakApp<E> {
 				modal_ids::MANAGER_RENAME | modal_ids::MANAGER_DELETE => {
 					self.back_to_manager(cx);
 				}
+				modal_ids::PREFERENCES => {
+					self.commit_preferences(cx);
+					self.close_modal(cx);
+				}
 				_ => self.close_modal(cx),
 			},
 		}
@@ -1363,11 +1521,18 @@ impl<E: AppEngine> OakApp<E> {
 }
 
 impl<E: AppEngine> Render for OakApp<E> {
-	fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let mut root = div()
 			.size_full()
 			.flex()
 			.flex_col()
+			.track_focus(&self.shell_focus)
+			// The shell's keyboard shortcut layer: keys not consumed by a
+			// focused widget bubble up here and dispatch through the
+			// shortcut table (see `crate::shortcuts`).
+			.on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _window, cx| {
+				this.on_shortcut(&event.keystroke, cx);
+			}))
 			.child(self.menu_bar.clone())
 			.child(div().flex_1().min_h_0().child(self.dock.clone()))
 			.child(self.status_bar.clone());
@@ -1431,10 +1596,11 @@ fn make_menus(dark: bool) -> Vec<MenuBarEntry> {
 				MenuItem::new(CUT, tr("menu.edit.cut")).with_shortcut("⌘X"),
 				MenuItem::new(COPY, tr("menu.edit.copy")).with_shortcut("⌘C"),
 				MenuItem::new(PASTE, tr("menu.edit.paste")).with_shortcut("⌘V"),
-				MenuItem::new(DELETE, tr("menu.edit.delete"))
-					.with_shortcut("⌫")
+				MenuItem::new(DELETE, tr("menu.edit.delete")).with_shortcut("⌫"),
+				MenuItem::new(RIPPLE_DELETE, tr("menu.edit.ripple_delete"))
+					.with_shortcut("⇧⌫")
 					.separated(),
-				MenuItem::new(RIPPLE_DELETE, tr("menu.edit.ripple_delete")),
+				MenuItem::new(SELECT_ALL, tr("menu.edit.select_all")).with_shortcut("A"),
 			]),
 		),
 		MenuBarEntry::new(
@@ -1442,18 +1608,28 @@ fn make_menus(dark: bool) -> Vec<MenuBarEntry> {
 			Menu::new(vec![
 				MenuItem::new(THEME_DARK, tr("menu.view.theme")).with_submenu(theme_submenu),
 				MenuItem::new(LANG_ZH, tr("menu.view.language")).with_submenu(language_submenu),
-				MenuItem::new(PREFERENCES, tr("menu.view.preferences")).separated(),
+				MenuItem::new(ZOOM_IN, tr("menu.view.zoom_in"))
+					.with_shortcut("+")
+					.separated(),
+				MenuItem::new(ZOOM_OUT, tr("menu.view.zoom_out")).with_shortcut("-"),
+				MenuItem::new(PREFERENCES, tr("menu.view.preferences"))
+					.with_shortcut("⌘,")
+					.separated(),
 			]),
 		),
 		MenuBarEntry::new(
 			tr("menu.playback"),
 			Menu::new(vec![
 				MenuItem::new(PLAY_PAUSE, tr("menu.playback.play_pause")).with_shortcut("空格"),
+				MenuItem::new(PLAY, tr("menu.playback.play")).with_shortcut("L"),
+				MenuItem::new(PAUSE, tr("menu.playback.pause")).with_shortcut("K"),
 				MenuItem::new(PREV_FRAME, tr("menu.playback.prev_frame")).with_shortcut("←"),
 				MenuItem::new(NEXT_FRAME, tr("menu.playback.next_frame"))
 					.with_shortcut("→")
 					.separated(),
 				MenuItem::new(TO_START, tr("menu.playback.to_start")).with_shortcut("Home"),
+				MenuItem::new(SET_IN_POINT, tr("menu.playback.set_in_point")).with_shortcut("I"),
+				MenuItem::new(SET_OUT_POINT, tr("menu.playback.set_out_point")).with_shortcut("O"),
 			]),
 		),
 		MenuBarEntry::new(
@@ -1462,7 +1638,8 @@ fn make_menus(dark: bool) -> Vec<MenuBarEntry> {
 				MenuItem::new(ADD_VIDEO_TRACK, tr("menu.sequence.add_video_track")),
 				MenuItem::new(ADD_AUDIO_TRACK, tr("menu.sequence.add_audio_track")),
 				MenuItem::new(REMOVE_TRACK, tr("menu.sequence.remove_track")).separated(),
-				MenuItem::new(SPLIT_AT_PLAYHEAD, tr("menu.sequence.split_at_playhead")),
+				MenuItem::new(SPLIT_AT_PLAYHEAD, tr("menu.sequence.split_at_playhead"))
+					.with_shortcut("S"),
 				MenuItem::new(ADD_MARKER, tr("menu.sequence.add_marker")).with_shortcut("M"),
 				MenuItem::new(REMOVE_MARKER, tr("menu.sequence.remove_marker")).separated(),
 				MenuItem::new(SET_WORKAREA, tr("menu.sequence.set_workarea")),
@@ -1561,6 +1738,10 @@ pub fn run() {
 fn run_with<E: AppEngine>(args: AppArgs) {
 	let initial = args.project.clone();
 	gpui_platform::application().run(move |cx: &mut App| {
+		// Load the persisted preferences (config.ini) before anything reads
+		// them — the language, the theme, the storage backend and the audio
+		// devices all come from the config store.
+		crate::oakui::real::config_load();
 		// Restore the persisted UI language (config `Language` key) before the
 		// first window renders.
 		crate::i18n::init();
@@ -1568,6 +1749,9 @@ fn run_with<E: AppEngine>(args: AppArgs) {
 		// default location) unless the user configured the backend
 		// explicitly.
 		crate::oakui::real::configure_storage();
+		// Bring up the audio manager and apply the persisted device choices
+		// (without an instance, playback pushes fail silently).
+		crate::oakui::real::audio_init_from_config();
 		cx.init_colors();
 		let bounds = Bounds::centered(None, size(px(1600.0), px(900.0)), cx);
 		let initial = initial.clone();
@@ -1607,9 +1791,10 @@ fn run_with<E: AppEngine>(args: AppArgs) {
 		cx.activate(true);
 		cx.on_window_closed(|cx, _| {
 			if cx.windows().is_empty() {
-				// Exit path (plan M13 §2): drain the write-through backlog
-				// (save + snapshot of every still-bound project) and stop
-				// the facade's snapshot thread before quitting.
+				// Persist the preferences (config.ini), then drain the
+				// write-through backlog (save + snapshot of every still-bound
+				// project) and stop the facade's snapshot thread.
+				crate::oakui::real::config_save();
 				crate::oakui::real::storage_flush();
 				cx.quit();
 			}
@@ -1622,6 +1807,7 @@ fn run_with<E: AppEngine>(args: AppArgs) {
 mod tests {
 	use super::*;
 	use crate::oakui::EngineGateway as _;
+	use gpui::timeline::TimelineDataSource as _;
 	use gpui::{px, size, ExternalPaths, FileDropEvent, TestAppContext, VisualTestContext};
 
 	/// The 视图/View menu carries a 语言/Language submenu whose items are
@@ -1800,6 +1986,190 @@ mod tests {
 			"preferences modal should be shown after the menu action"
 		);
 	}
+
+	// -------------------------------------------------------------------
+	// Keyboard shortcuts (M12 P5c)
+	// -------------------------------------------------------------------
+
+	/// Every shortcut-table action exists as a menu item (recursing into
+	/// submenus), so a key press can never dispatch a dead action.
+	#[test]
+	fn every_shortcut_maps_to_a_menu_item() {
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		crate::i18n::set_language(crate::i18n::Language::EnUs);
+
+		fn collect(menu: &Menu, out: &mut Vec<usize>) {
+			for item in &menu.items {
+				out.push(item.id);
+				if let Some(sub) = &item.submenu {
+					collect(sub, out);
+				}
+			}
+		}
+		let mut ids = Vec::new();
+		for entry in make_menus(true) {
+			collect(&entry.menu, &mut ids);
+		}
+		for shortcut in crate::shortcuts::SHORTCUTS {
+			assert!(
+				ids.contains(&shortcut.action),
+				"shortcut {} → action {} has no menu item",
+				shortcut.keystroke,
+				shortcut.action
+			);
+		}
+	}
+
+	/// The menu's shortcut labels mirror the shortcut table's display
+	/// strings (a drift between them would show the user the wrong key).
+	#[test]
+	fn menu_shortcut_labels_match_the_table() {
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		crate::i18n::set_language(crate::i18n::Language::EnUs);
+
+		fn walk(menu: &Menu) -> Vec<(usize, Option<gpui::SharedString>)> {
+			let mut out = Vec::new();
+			for item in &menu.items {
+				out.push((item.id, item.shortcut.clone()));
+				if let Some(sub) = &item.submenu {
+					out.extend(walk(sub));
+				}
+			}
+			out
+		}
+		for entry in make_menus(true) {
+			for (id, label) in walk(&entry.menu) {
+				let Some(label) = label else { continue };
+				let expected = crate::shortcuts::display_for(id)
+					.unwrap_or_else(|| panic!("menu item {id} shows {label} but has no shortcut"));
+				assert_eq!(
+					label.as_ref(),
+					expected,
+					"shortcut label drift on menu item {id}"
+				);
+			}
+		}
+	}
+
+	/// Pressing space on the shell toggles program playback (the keystroke
+	/// bubbles to the shell's key listener and dispatches 回放 → 播放/暂停).
+	#[gpui::test]
+	async fn space_toggles_program_playback(cx: &mut TestAppContext) {
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let (window, root) = mock_shell(cx);
+
+		let playing = cx.read(|app| root.read(app).program_clock.read(app).is_playing());
+		assert!(!playing, "the shell starts paused");
+
+		cx.dispatch_keystroke(
+			window.into(),
+			gpui::Keystroke::parse("space").unwrap(),
+		);
+		cx.run_until_parked();
+		let playing = cx.read(|app| root.read(app).program_clock.read(app).is_playing());
+		assert!(playing, "space starts program playback");
+
+		cx.dispatch_keystroke(
+			window.into(),
+			gpui::Keystroke::parse("space").unwrap(),
+		);
+		cx.run_until_parked();
+		let playing = cx.read(|app| root.read(app).program_clock.read(app).is_playing());
+		assert!(!playing, "space again pauses program playback");
+	}
+
+	/// ⌘Z on the shell dispatches 编辑 → 撤销 to the engine, and "s" splits
+	/// at the playhead.
+	#[gpui::test]
+	async fn edit_shortcuts_dispatch_to_the_engine(cx: &mut TestAppContext) {
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let (window, root) = mock_shell(cx);
+
+		// Move the playhead inside the first clip (the → shortcut steps one
+		// frame), then split with "s": the mock sequence grows by one clip.
+		for _ in 0..10 {
+			cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("right").unwrap());
+		}
+		cx.run_until_parked();
+		let playhead = cx.read(|app| root.read(app).program_clock.read(app).current_frame());
+		assert_eq!(playhead, Frame(10), "→ steps the playhead");
+
+		let clips_before: usize = cx.read(|app| {
+			let engine = root.read(app).engine.read(app);
+			(0..engine.track_count())
+				.filter_map(|i| engine.track(i))
+				.map(|t| t.clips().len())
+				.sum()
+		});
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("s").unwrap());
+		cx.run_until_parked();
+		let clips_after: usize = cx.read(|app| {
+			let engine = root.read(app).engine.read(app);
+			(0..engine.track_count())
+				.filter_map(|i| engine.track(i))
+				.map(|t| t.clips().len())
+				.sum()
+		});
+		assert!(
+			clips_after > clips_before,
+			"split at the playhead adds a clip ({clips_before} → {clips_after})"
+		);
+
+		// ⌘Z / ⌘⇧Z reach the engine's undo/redo (the mock counts the calls).
+		cx.dispatch_keystroke(
+			window.into(),
+			gpui::Keystroke::parse("secondary-z").unwrap(),
+		);
+		cx.dispatch_keystroke(
+			window.into(),
+			gpui::Keystroke::parse("secondary-shift-z").unwrap(),
+		);
+		cx.run_until_parked();
+		let (undo, redo) = cx.read(|app| root.read(app).engine.read(app).undo_redo_calls());
+		assert_eq!((undo, redo), (1, 1), "⌘Z/⌘⇧Z dispatch undo/redo");
+	}
+
+	/// While a modal dialog is open the shell's shortcuts are inert (the
+	/// dialog's text fields must never trigger editing actions).
+	#[gpui::test]
+	async fn shortcuts_are_suppressed_while_a_modal_is_open(cx: &mut TestAppContext) {
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let (window, root) = mock_shell(cx);
+
+		cx.update(|app| root.update(app, |app, cx| app.on_menu(menu_ids::PREFERENCES, cx)));
+		cx.run_until_parked();
+
+		// "s" would split at the playhead without the modal guard.
+		let clips_before: usize = cx.read(|app| {
+			let engine = root.read(app).engine.read(app);
+			(0..engine.track_count())
+				.filter_map(|i| engine.track(i))
+				.map(|t| t.clips().len())
+				.sum()
+		});
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("s").unwrap());
+		cx.dispatch_keystroke(
+			window.into(),
+			gpui::Keystroke::parse("space").unwrap(),
+		);
+		cx.run_until_parked();
+
+		let (clips_after, playing) = cx.read(|app| {
+			let root = root.read(app);
+			let clips: usize = (0..root.engine.read(app).track_count())
+				.filter_map(|i| root.engine.read(app).track(i))
+				.map(|t| t.clips().len())
+				.sum();
+			(clips, root.program_clock.read(app).is_playing())
+		});
+		assert_eq!(clips_after, clips_before, "no split while the modal is open");
+		assert!(!playing, "no playback toggle while the modal is open");
+		assert!(
+			cx.read(|app| matches!(root.read(app).modal, ModalState::Preferences { .. })),
+			"the modal is still open"
+		);
+	}
+
 
 	/// 文件 → 导入素材… opens the *platform* path picker (not the in-window
 	/// file dialog) and routes the picked path to the engine's import; the

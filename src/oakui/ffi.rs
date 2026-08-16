@@ -290,6 +290,17 @@ unsafe extern "C" {
 	) -> c_int;
 	/// `oakengine_config_set_string` — write a string value.
 	pub fn oakengine_config_set_string(key: *const c_char, value: *const c_char) -> c_int;
+	/// `oakengine_config_get_int` — read an integer value (fallback when the
+	/// key is missing or not convertible).
+	pub fn oakengine_config_get_int(key: *const c_char, default_value: i64) -> i64;
+	/// `oakengine_config_set_int` — write an integer value.
+	pub fn oakengine_config_set_int(key: *const c_char, value: i64) -> c_int;
+	/// `oakengine_config_load` — load the configuration from disk (the app
+	/// calls it once at startup, before reading any preference).
+	pub fn oakengine_config_load() -> c_int;
+	/// `oakengine_config_save` — persist the configuration to disk (the app
+	/// calls it on exit).
+	pub fn oakengine_config_save() -> c_int;
 
 	// -- oakengine::storage (write-through session state) --
 
@@ -1011,6 +1022,39 @@ unsafe extern "C" {
 	/// buffered output into `peaks` (up to `capacity` entries); returns
 	/// the channel count (0 = nothing buffered), negative on error.
 	pub fn oakengine_audio_output_levels(peaks: *mut f32, capacity: c_int) -> c_int;
+	/// `oakengine_audio_create_instance` — create the AudioManager singleton
+	/// (no-op when it exists). The app calls it once at startup so playback
+	/// can open an output stream.
+	pub fn oakengine_audio_create_instance() -> c_int;
+	/// `oakengine_audio_get_output_device` — the output device index
+	/// (-1 = none/default).
+	pub fn oakengine_audio_get_output_device() -> i64;
+	/// `oakengine_audio_set_output_device` — set the output device index;
+	/// the stream reopens on the next pushed samples.
+	pub fn oakengine_audio_set_output_device(device: i64) -> c_int;
+	/// `oakengine_audio_get_input_device` — the input device index.
+	pub fn oakengine_audio_get_input_device() -> i64;
+	/// `oakengine_audio_set_input_device` — set the input device index.
+	pub fn oakengine_audio_set_input_device(device: i64) -> c_int;
+	/// `oakengine_audio_output_device_count` — the host's output device
+	/// count (enumeration order == device index).
+	pub fn oakengine_audio_output_device_count() -> c_int;
+	/// `oakengine_audio_output_device_name` — the name of output device
+	/// `index` (buf/size; the length excludes the NUL).
+	pub fn oakengine_audio_output_device_name(
+		index: c_int,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int;
+	/// `oakengine_audio_input_device_count` — the host's input device count.
+	pub fn oakengine_audio_input_device_count() -> c_int;
+	/// `oakengine_audio_input_device_name` — the name of input device
+	/// `index` (buf/size).
+	pub fn oakengine_audio_input_device_name(
+		index: c_int,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int;
 
 	// -- oakengine::render (manager lifecycle) --
 

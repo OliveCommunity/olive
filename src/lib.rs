@@ -31,6 +31,7 @@
 //! * [`app`] — the window shell: menu bar, dock layout, status bar, modal
 //!   dialogs (file open/save-as, preferences, export), tick loop.
 //! * [`dialogs`] — the preferences and export dialog content views.
+//! * [`shortcuts`] — the keyboard shortcut table (keystroke → menu action).
 //! * [`manager`] — the project manager window (M13 D4): the library browser
 //!   with new / open / rename / duplicate / delete / import / export.
 //! * [`panels`] — the dockable panels (viewers, timeline, inspector, ...).
@@ -56,6 +57,7 @@ pub mod i18n;
 pub mod manager;
 pub mod oakui;
 pub mod panels;
+pub mod shortcuts;
 
 /// The application entry point (called from `main.rs`).
 pub fn run() {

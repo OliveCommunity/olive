@@ -50,6 +50,8 @@ const OUT_ZH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-windo
 const OUT_EN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-window-en.png");
 const OUT_MGR_ZH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-manager.png");
 const OUT_MGR_EN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-manager-en.png");
+const OUT_PREF_ZH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-preferences.png");
+const OUT_PREF_EN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-preferences-en.png");
 
 /// Logical y of the timeline toolbar row, which sits at the top of the
 /// bottom dock panel in the default layout: the dock starts at y 27.5 (the
@@ -86,6 +88,7 @@ fn main() -> Result<()> {
 		image.save(OUT_ZH)?;
 		println!("wrote {OUT_ZH} ({}×{})", image.width(), image.height());
 		assert_toolbar(&image, "zh-CN");
+		capture_preferences(&mut cx, handle, &root, OUT_PREF_ZH)?;
 		capture_manager(&mut cx, handle, &root, OUT_MGR_ZH)?;
 	}
 	i18n::set_language(Language::EnUs);
@@ -96,6 +99,7 @@ fn main() -> Result<()> {
 		image.save(OUT_EN)?;
 		println!("wrote {OUT_EN} ({}×{})", image.width(), image.height());
 		assert_toolbar(&image, "en-US");
+		capture_preferences(&mut cx, handle, &root, OUT_PREF_EN)?;
 		capture_manager(&mut cx, handle, &root, OUT_MGR_EN)?;
 	}
 	i18n::set_language(original);
@@ -153,6 +157,28 @@ fn settle(cx: &mut VisualTestAppContext, handle: AnyWindowHandle) {
 		.expect("window still open");
 	}
 	cx.run_until_parked();
+}
+
+/// Opens the preferences dialog on the shell (M12 P5b) and captures it: the
+/// modal lists the grouped settings (general / rendering / cache / proxy /
+/// project / audio). Drives the root ENTITY (not the window handle — see
+/// [`capture_manager`]). The dialog closes afterwards so the manager
+/// capture starts from a clean shell.
+fn capture_preferences(
+	cx: &mut VisualTestAppContext,
+	handle: gpui::WindowHandle<OakApp<MockEngine>>,
+	root: &Entity<OakApp<MockEngine>>,
+	out: &str,
+) -> Result<()> {
+	root.update(cx, |app, cx| app.open_preferences(cx));
+	settle(cx, handle.into());
+	let image = cx.capture_screenshot(handle.into())?;
+	image.save(out)?;
+	println!("wrote {out} ({}×{})", image.width(), image.height());
+	// Close the dialog (the Close button path: commit + dismiss).
+	root.update(cx, |app, cx| app.close_modal(cx));
+	cx.run_until_parked();
+	Ok(())
 }
 
 /// Opens the project manager on the shell (M13 D4) and captures it: the

@@ -36,8 +36,11 @@
 //! * **Export** — the oaktask export task, driven on a background thread,
 //!   with progress events and cancel wired to the module task's event
 //!   callback and cancel atom.
-//! * **Config** — renderer backend + language keys round-trip through
-//!   `oakengine_config_*`.
+//! * **Config** — the preferences (renderer backend, language, theme,
+//!   cache dir, proxy policy, snapshot interval, default transition,
+//!   audio devices) round-trip through `oakengine_config_*`; the audio
+//!   device selection additionally applies live through
+//!   `oakengine_audio_*_device`.
 //!
 //! # What is still mock/stub
 //!
@@ -49,8 +52,16 @@
 //!   ([`RealEngine::render_program_frame`]). Actual media *decode* is
 //!   still a module gap (the oakrender eval's footage hook is deferred),
 //!   so both viewers show the pipeline's generated frame, not the file's
-//!   pixels; the full-resolution async render worker (the facade's worker
-//!   module) is a separate process surface not bound yet.
+//!   pixels.
+//! * **Full-resolution rendering is in-process (M12 P5a):** the proxy
+//!   frame (a 480px long edge) is rendered synchronously for immediate
+//!   display; when the playhead rests, a background thread renders the
+//!   same frame at the sequence's native size through its own dedicated
+//!   facade renderer and the cache swaps it in when it lands (see
+//!   [`RealEngine::schedule_full_res`]). The facade's worker *process*
+//!   module (`oakengine_worker_*`, NDJSON control plane) remains unbound:
+//!   its `load_graph`/`render_frame` are documented stubs, so there is no
+//!   render-capable process transport to bind.
 //! * Effect stack — the selected clip's effect chain is bound: the stack
 //!   reads the chain through the facade (see
 //!   [`EffectStackDataSource`](EffectStackDataSource) for `RealEngine`)
@@ -260,6 +271,156 @@ enum RendererSlot {
 	/// project changes, so a broken setup doesn't retry — and log — on
 	/// every frame.
 	Unavailable,
+}
+
+// ---------------------------------------------------------------------------
+// Full-resolution frame cache (M12 P5a)
+// ---------------------------------------------------------------------------
+//
+// Each monitor displays the small proxy frame immediately and lets a
+// background thread fill the same frame at the sequence's native size;
+// when the fill lands it replaces the proxy in the display path. The cache
+// below is the UI-thread-owned state of that schedule: the two cached
+// frames plus the one in-flight background job per monitor.
+
+/// The proxy frame cached for one monitor: the image plus the scope samples
+/// analyzed in the same render pass (a paused viewer never regenerates
+/// either).
+struct ProxyEntry {
+	/// The playhead frame that produced the frame.
+	frame: i64,
+	/// The viewer image.
+	image: Arc<RenderImage>,
+	/// The scope samples of the same render.
+	scope: ScopeData,
+}
+
+/// A full-resolution frame the background worker filled in. No scope data:
+/// the scopes keep reading the proxy pass (same content, lower resolution),
+/// so a full-res fill costs no extra analysis and the scopes tab behaves
+/// exactly as before.
+struct FullResEntry {
+	/// The playhead frame the frame was rendered for.
+	frame: i64,
+	/// The viewer image at the sequence's native size.
+	image: Arc<RenderImage>,
+}
+
+/// One monitor's display cache: the proxy frame plus the full-resolution
+/// fill, and the identity of the in-flight background job.
+#[derive(Default)]
+struct MonitorFrameCache {
+	/// The last proxy render (immediate display path).
+	proxy: Option<ProxyEntry>,
+	/// The last full-resolution fill (replaces the proxy when its frame
+	/// matches the playhead).
+	full: Option<FullResEntry>,
+	/// The in-flight background job's `(frame, generation)`, or None. Only
+	/// one job runs per monitor; the drain re-schedules when the playhead
+	/// moves while a job is in flight.
+	pending: Option<(i64, u64)>,
+}
+
+impl MonitorFrameCache {
+	/// The image to display for `frame`: the full-resolution fill when the
+	/// worker has landed it, else the proxy frame, else None.
+	fn image_for(&self, frame: i64) -> Option<&Arc<RenderImage>> {
+		if let Some(full) = &self.full {
+			if full.frame == frame {
+				return Some(&full.image);
+			}
+		}
+		if let Some(proxy) = &self.proxy {
+			if proxy.frame == frame {
+				return Some(&proxy.image);
+			}
+		}
+		None
+	}
+
+	/// The scope samples matching [`MonitorFrameCache::image_for`] (always
+	/// the proxy pass; see [`FullResEntry`]).
+	fn scope_for(&self, frame: i64) -> Option<&ScopeData> {
+		let proxy = self.proxy.as_ref()?;
+		(proxy.frame == frame).then_some(&proxy.scope)
+	}
+
+	/// Whether a background full-resolution render should be started for
+	/// `frame`: the playhead is not moving (`playing`), the frame is not
+	/// already cached full-res, and no job is in flight for this monitor.
+	fn needs_full_res(&self, frame: i64, playing: bool) -> bool {
+		// Proxy stays primary while playing (a full-res render would fight
+		// the moving playhead); a cached fill or an in-flight job mean no
+		// new job (the drain re-schedules once the job lands).
+		!playing
+			&& self.pending.is_none()
+			&& !self.full.as_ref().is_some_and(|f| f.frame == frame)
+	}
+
+	/// Installs a completed full-res frame. Returns false — and keeps the
+	/// cache untouched — when the completion is stale (the pending job it
+	/// belongs to no longer matches, i.e. an edit, a selection change or a
+	/// project drop happened while it was in flight).
+	fn install_full_res(
+		&mut self,
+		frame: i64,
+		generation: u64,
+		image: Arc<RenderImage>,
+	) -> bool {
+		if self.pending != Some((frame, generation)) {
+			return false;
+		}
+		self.pending = None;
+		self.full = Some(FullResEntry { frame, image });
+		true
+	}
+}
+
+/// What a background full-res job renders: the program monitor's sequence
+/// or the source monitor's selected footage node. The boxed handle is
+/// owned by the job and freed by the worker thread.
+#[derive(Clone, Copy)]
+enum FullResTarget {
+	/// An addref'd sequence box (released with [`free_box`], last, after
+	/// the renderer so the sequence outlives the renderer's borrowed view).
+	Sequence(SendPtr<OakEngineSequence>),
+	/// A boxed footage node (freed with `oakengine_node_free` once the
+	/// renderer has resolved its footage spec).
+	Node(SendPtr<OakEngineNode>),
+}
+
+/// One background full-resolution render request (built on the UI thread
+/// at schedule time; the worker thread owns it from there).
+struct FullResRequest {
+	/// The monitor the frame belongs to.
+	monitor: Monitor,
+	/// The playhead frame to render.
+	frame: i64,
+	/// The engine's full-res generation when the job was scheduled (stale
+	/// completions are discarded by the drain).
+	generation: u64,
+	/// The sequence or footage node to render.
+	target: FullResTarget,
+	/// Output width (the sequence's native size).
+	width: c_int,
+	/// Output height.
+	height: c_int,
+	/// Frame-rate numerator.
+	rate_num: c_int,
+	/// Frame-rate denominator.
+	rate_den: c_int,
+}
+
+/// A completed full-res frame, delivered through the completion channel.
+struct FullResEvent {
+	/// The monitor the frame belongs to.
+	monitor: Monitor,
+	/// The playhead frame that was rendered.
+	frame: i64,
+	/// The job's generation (see [`FullResRequest`]).
+	generation: u64,
+	/// The rendered viewer image.
+	image: Arc<RenderImage>,
 }
 
 // ---------------------------------------------------------------------------
@@ -576,13 +737,25 @@ pub struct RealEngine {
 	/// Phase counter driving the (silent) audio levels.
 	meter_phase: u32,
 	/// Cache of the CPU frames handed to the viewers, keyed by monitor.
-	/// Entries are the playhead frame that produced the image plus the scope
-	/// samples analyzed in the same pass, so a paused viewer never
-	/// regenerates its picture (or its scopes). Both monitors hold real
-	/// rendered frames (see [`RealEngine::render_program_frame`] /
+	/// Each monitor holds its proxy frame (rendered synchronously on the UI
+	/// thread, with the scope samples analyzed in the same pass) plus the
+	/// full-resolution fill the background worker lands when the playhead
+	/// rests (see [`MonitorFrameCache`]). Both monitors hold real rendered
+	/// frames (see [`RealEngine::render_program_frame`] /
 	/// [`RealEngine::render_source_frame`]); the synthetic pattern is only
 	/// the failure fallback.
-	cpu_frame_cache: Mutex<HashMap<Monitor, (i64, Arc<RenderImage>, ScopeData)>>,
+	cpu_frame_cache: Mutex<HashMap<Monitor, MonitorFrameCache>>,
+	/// Bumped whenever the rendered content can change underneath an
+	/// in-flight background full-res job (an edit, a selection change or a
+	/// project drop); completions tagged with a stale generation are
+	/// discarded by the drain.
+	full_res_generation: u64,
+	/// The channel background full-res jobs report finished frames through;
+	/// drained on the app tick. The mutex keeps the engine `Sync` (the
+	/// channel is only ever touched on the UI thread).
+	full_res_rx: Mutex<mpsc::Receiver<FullResEvent>>,
+	/// The sending half of `full_res_rx` (cloned into every job).
+	full_res_tx: Mutex<mpsc::Sender<FullResEvent>>,
 	/// The program monitor's cached renderer, created lazily from the
 	/// current sequence at a proxy resolution. The mutex both provides the
 	/// interior mutability `cpu_frame` (a `&self` read) needs and serializes
@@ -649,6 +822,7 @@ impl RealEngine {
 	/// Builds an engine with no project open.
 	pub fn new(cx: &mut Context<Self>) -> Self {
 		let rate = VideoFormat::hd_1080p25().rate;
+		let (full_res_tx, full_res_rx) = mpsc::channel::<FullResEvent>();
 		Self {
 			project: None,
 			sequence: None,
@@ -667,6 +841,9 @@ impl RealEngine {
 			program_playing: false,
 			meter_phase: 0,
 			cpu_frame_cache: Mutex::new(HashMap::new()),
+			full_res_generation: 0,
+			full_res_rx: Mutex::new(full_res_rx),
+			full_res_tx: Mutex::new(full_res_tx),
 			renderer: Mutex::new(RendererSlot::Untried),
 			source_renderer: Mutex::new(RendererSlot::Untried),
 		}
@@ -724,9 +901,9 @@ impl RealEngine {
 	/// The proxy resolution the viewer renderer runs at: the sequence's
 	/// aspect scaled to a small long edge. Rendering is a synchronous call
 	/// made from `cpu_frame` (a `&self` read on the UI thread), so the
-	/// geometry stays tiny to keep the block short; the async render worker
-	/// (full-resolution, off-thread) is a separate transport surface not
-	/// bound yet.
+	/// geometry stays tiny to keep the block short; the full-resolution
+	/// frame is rendered off-thread at the sequence's native size by the
+	/// background job (M12 P5a, see [`RealEngine::schedule_full_res`]).
 	fn proxy_render_size(&self) -> Option<(c_int, c_int)> {
 		let info = self.sequence_info.as_ref()?;
 		let (w, h) = (info.format.width.max(1), info.format.height.max(1));
@@ -979,6 +1156,226 @@ impl RealEngine {
 		image
 	}
 
+	/// Repacks one F32 RGBA facade frame (rows padded to linesize) into
+	/// tightly packed samples. Returns `(width, height, samples)` when the
+	/// frame is well-formed (positive geometry, the pipeline's F32 format,
+	/// non-null data).
+	fn read_f32_frame(frame_ptr: *mut OakEngineFrame) -> Option<(u32, u32, Vec<f32>)> {
+		// SAFETY: `frame_ptr` is a live facade frame box.
+		let (width, height, linesize, format) = unsafe {
+			(
+				oakengine_frame_width(frame_ptr),
+				oakengine_frame_height(frame_ptr),
+				oakengine_frame_linesize_bytes(frame_ptr),
+				oakengine_frame_format(frame_ptr),
+			)
+		};
+		let data = unsafe { oakengine_frame_data(frame_ptr) };
+		if width <= 0 || height <= 0 || format != PIXEL_FORMAT_F32 || data.is_null() {
+			return None;
+		}
+		let row_bytes = (width * 4 * 4) as usize;
+		let linesize = (linesize as usize).max(row_bytes);
+		let mut samples = vec![0.0f32; (width * height * 4) as usize];
+		for y in 0..height as usize {
+			// SAFETY: the facade frame holds `height` rows of at least
+			// `linesize` bytes; `samples` holds tightly packed rows.
+			unsafe {
+				std::ptr::copy_nonoverlapping(
+					(data as *const u8).add(y * linesize),
+					samples.as_mut_ptr().add(y * row_bytes / 4) as *mut u8,
+					row_bytes,
+				);
+			}
+		}
+		Some((width as u32, height as u32, samples))
+	}
+
+	/// An addref'd copy of the sequence handle, boxed for the background
+	/// worker. The copy keeps the sequence alive even when the project is
+	/// dropped while a full-res job is in flight; the worker frees it last
+	/// (after the renderer, whose view of the sequence is borrowed).
+	fn sequence_copy(&self) -> Option<*mut OakEngineSequence> {
+		let seq = self.seq_ptr()?;
+		// SAFETY: `seq` is the engine's live sequence box.
+		let handle = unsafe { unbox(seq) }?;
+		let addref = handle.addref?;
+		// SAFETY: `handle` is a live module handle; addref takes a new
+		// reference the copy releases.
+		unsafe { addref(handle.ctx) };
+		Some(unsafe { box_handle::<OakEngineSequence>(handle) })
+	}
+
+	/// Builds the background full-res job for `monitor` at `frame` (the
+	/// program monitor's sequence via an addref'd copy, the source
+	/// monitor's selected footage node) at the sequence's native size.
+	/// Returns None when there is nothing to render (no sequence open, no
+	/// footage selected).
+	fn build_full_res_request(&self, monitor: Monitor, frame: i64) -> Option<FullResRequest> {
+		let info = self.sequence_info.as_ref()?;
+		let rate = info.format.rate;
+		let width = info.format.width.max(1) as c_int;
+		let height = info.format.height.max(1) as c_int;
+		let target = match monitor {
+			Monitor::Program => FullResTarget::Sequence(SendPtr(self.sequence_copy()?)),
+			Monitor::Source => FullResTarget::Node(SendPtr(self.selected_footage_node()?)),
+		};
+		Some(FullResRequest {
+			monitor,
+			frame,
+			generation: self.full_res_generation,
+			target,
+			width,
+			height,
+			rate_num: rate.num as c_int,
+			rate_den: rate.den as c_int,
+		})
+	}
+
+	/// Runs one background full-resolution render (the worker thread of the
+	/// full-res path). The dedicated full-size renderer is created, used
+	/// and freed on this thread only, so it never aliases the UI thread's
+	/// proxy renderer; the target box is freed here too (the sequence copy
+	/// last, keeping the sequence alive for the renderer's borrowed view).
+	/// Reports the finished frame through `tx`.
+	fn full_res_worker(request: FullResRequest, tx: mpsc::Sender<FullResEvent>) {
+		let FullResRequest {
+			monitor,
+			frame,
+			generation,
+			target,
+			width,
+			height,
+			rate_num,
+			rate_den,
+		} = request;
+		if !Self::ensure_render_manager() {
+			Self::release_full_res_target(target);
+			return;
+		}
+		let renderer = unsafe {
+			match target {
+				FullResTarget::Sequence(seq) => {
+					// The sequence copy stays alive until after the
+					// renderer is freed below (the renderer's view is
+					// borrowed), so the box must not be freed here.
+					oakengine_renderer_create(
+						seq.0,
+						width,
+						height,
+						PIXEL_FORMAT_F32,
+						rate_num,
+						rate_den,
+						std::ptr::null(),
+					)
+				}
+				FullResTarget::Node(node) => {
+					// SAFETY: the renderer resolves its own footage spec at
+					// creation; the node box is no longer needed after it.
+					let renderer = oakengine_renderer_create_for_node(
+						node.0,
+						width,
+						height,
+						PIXEL_FORMAT_F32,
+						rate_num,
+						rate_den,
+						std::ptr::null(),
+					);
+					oakengine_node_free(node.0);
+					renderer
+				}
+			}
+		};
+		if renderer.is_null() {
+			// SAFETY: the sequence copy is still owned by us (a node was
+			// freed right after creation above).
+			Self::release_full_res_target(target);
+			return;
+		}
+		// SAFETY: `renderer` is the live box created above.
+		let frame_ptr = unsafe { oakengine_renderer_render_frame(renderer, frame) };
+		let mut event = None;
+		if !frame_ptr.is_null() {
+			if let Some((width, height, samples)) = Self::read_f32_frame(frame_ptr) {
+				let image = Arc::new(f32_rgba_to_bgra_image(width, height, &samples));
+				event = Some(FullResEvent {
+					monitor,
+					frame,
+					generation,
+					image,
+				});
+			}
+			// SAFETY: `frame_ptr` is a live frame box from render_frame.
+			unsafe { oakengine_frame_free(frame_ptr) };
+		}
+		// SAFETY: `renderer` is a live renderer box.
+		unsafe { oakengine_renderer_free(renderer) };
+		// SAFETY: the sequence copy outlived the renderer (its borrowed
+		// view was dropped above).
+		Self::release_full_res_target(target);
+		if let Some(event) = event {
+			let _ = tx.send(event);
+		}
+	}
+
+	/// Frees the box a full-res job owns: the sequence copy with
+	/// [`free_box`], the footage node with `oakengine_node_free`.
+	///
+	/// # Safety
+	/// `target` must be a live box owned by the calling job.
+	fn release_full_res_target(target: FullResTarget) {
+		unsafe {
+			match target {
+				FullResTarget::Sequence(seq) => free_box(seq.0),
+				FullResTarget::Node(node) => oakengine_node_free(node.0),
+			}
+		}
+	}
+
+	/// Schedules a background full-resolution render for `monitor`'s current
+	/// playhead when the policy says so: the playhead is resting, the frame
+	/// is not already cached full-res, and no job is in flight for this
+	/// monitor (M12 P5a). The job runs on its own thread with a dedicated
+	/// renderer, so the UI thread never blocks.
+	fn schedule_full_res(&mut self, monitor: Monitor, cx: &mut Context<Self>) {
+		let frame = self.clock_frame(monitor, cx).0;
+		if frame < 0 {
+			return;
+		}
+		let clock = self.clock(monitor).clone();
+		let playing = clock.read(cx).transport.is_playing();
+		let schedule = {
+			let cache = self.cpu_frame_cache.lock().unwrap();
+			cache
+				.get(&monitor)
+				.is_none_or(|entry| entry.needs_full_res(frame, playing))
+		};
+		if !schedule {
+			return;
+		}
+		let Some(request) = self.build_full_res_request(monitor, frame) else {
+			return;
+		};
+		self.cpu_frame_cache.lock().unwrap().entry(monitor).or_default().pending =
+			Some((frame, request.generation));
+		let tx = self.full_res_tx.lock().unwrap().clone();
+		std::thread::spawn(move || Self::full_res_worker(request, tx));
+	}
+
+	/// Installs completed full-res frames into the cache, discarding stale
+	/// completions (a job that outlived an edit, a selection change or a
+	/// project drop — its generation no longer matches the pending job).
+	fn drain_full_res(&mut self) {
+		let mut cache = self.cpu_frame_cache.lock().unwrap();
+		let rx = self.full_res_rx.lock().unwrap();
+		while let Ok(event) = rx.try_recv() {
+			cache
+				.entry(event.monitor)
+				.or_default()
+				.install_full_res(event.frame, event.generation, event.image);
+		}
+	}
+
 	/// Adopts a newly created/loaded facade project, freeing any previous
 	/// one, and rebuilds every snapshot. `blank` projects get a default
 	/// sequence; loaded ones use the first sequence.
@@ -1027,6 +1424,10 @@ impl RealEngine {
 		drop(self.sequence.take());
 		drop(self.project.take());
 		self.cpu_frame_cache.lock().unwrap().clear();
+		// The sequence an in-flight full-res job may still be rendering is
+		// gone (the job holds its own addref'd copy, so it stays valid, but
+		// its frame belongs to the dropped project): mark it stale.
+		self.full_res_generation = self.full_res_generation.wrapping_add(1);
 		self.tracks.clear();
 
 		self.sequence_info = None;
@@ -1406,8 +1807,10 @@ impl RealEngine {
 		}
 		self.refresh_sequence_info();
 		self.rebuild_timeline();
-		// The sequence content changed: cached rendered frames are stale.
+		// The sequence content changed: cached rendered frames are stale,
+		// and so are any in-flight full-res renders (M12 P5a).
 		self.cpu_frame_cache.lock().unwrap().clear();
+		self.full_res_generation = self.full_res_generation.wrapping_add(1);
 		cx.notify();
 	}
 
@@ -1510,6 +1913,12 @@ impl EngineGateway for RealEngine {
 		if self.program_playing {
 			self.pull_audio_tick(cx);
 		}
+		// M12 P5a: install finished full-resolution frames and schedule
+		// the next fills for the resting playheads (the schedule skips
+		// playing monitors, so playback keeps the proxy path).
+		self.drain_full_res();
+		self.schedule_full_res(Monitor::Source, cx);
+		self.schedule_full_res(Monitor::Program, cx);
 		cx.notify();
 	}
 }
@@ -1690,10 +2099,12 @@ impl AppEngine for RealEngine {
 	fn cpu_frame(&self, monitor: Monitor, cx: &App) -> Arc<RenderImage> {
 		let frame = self.clock_frame(monitor, cx);
 		let mut cache = self.cpu_frame_cache.lock().unwrap();
-		if let Some((cached_frame, image, _)) = cache.get(&monitor) {
-			if *cached_frame == frame.0 {
-				return image.clone();
-			}
+		// The full-resolution fill replaces the proxy when its frame matches
+		// the playhead; otherwise the proxy frame is displayed (rendered
+		// synchronously below on a cache miss, filled by the background
+		// worker once the playhead rests).
+		if let Some(image) = cache.entry(monitor).or_default().image_for(frame.0) {
+			return image.clone();
 		}
 		// Both monitors render through the facade CPU renderer (falling
 		// back to the synthetic pattern when rendering is unavailable): the
@@ -1715,7 +2126,11 @@ impl AppEngine for RealEngine {
 				)
 			}
 		};
-		cache.insert(monitor, (frame.0, image.clone(), scope));
+		cache.entry(monitor).or_default().proxy = Some(ProxyEntry {
+			frame: frame.0,
+			image: image.clone(),
+			scope,
+		});
 		image
 	}
 
@@ -1723,10 +2138,12 @@ impl AppEngine for RealEngine {
 		// Ensure the cache holds the current playhead frame (the analysis
 		// runs inside that render pass, so this never re-walks a frame).
 		let _ = self.cpu_frame(monitor, cx);
+		let frame = self.clock_frame(monitor, cx);
 		let cache = self.cpu_frame_cache.lock().unwrap();
 		cache
 			.get(&monitor)
-			.map(|(_, _, scope)| scope.clone())
+			.and_then(|entry| entry.scope_for(frame.0))
+			.cloned()
 			.unwrap_or_default()
 	}
 
@@ -1781,9 +2198,11 @@ impl AppEngine for RealEngine {
 		if changed {
 			// The source monitor renders the selected footage node: a new
 			// selection must rebind the renderer and drop the stale cached
-			// frame (the cache key only tracks the playhead frame).
+			// frame (the cache key only tracks the playhead frame), and any
+			// in-flight full-res job for the old selection is stale.
 			*self.source_renderer.lock().unwrap() = RendererSlot::Untried;
 			self.cpu_frame_cache.lock().unwrap().remove(&Monitor::Source);
+			self.full_res_generation = self.full_res_generation.wrapping_add(1);
 		}
 		cx.notify();
 	}
@@ -2305,6 +2724,7 @@ impl AppEngine for RealEngine {
 			self.refresh_sequence_info();
 			self.rebuild_timeline();
 			self.cpu_frame_cache.lock().unwrap().clear();
+			self.full_res_generation = self.full_res_generation.wrapping_add(1);
 			cx.notify();
 		}
 	}
@@ -2317,6 +2737,7 @@ impl AppEngine for RealEngine {
 			self.refresh_sequence_info();
 			self.rebuild_timeline();
 			self.cpu_frame_cache.lock().unwrap().clear();
+			self.full_res_generation = self.full_res_generation.wrapping_add(1);
 			cx.notify();
 		}
 	}
@@ -2851,12 +3272,60 @@ pub fn encoding_formats() -> Vec<(c_int, String, String)> {
 pub const EXPORT_FORMAT_MP4: c_int = 2;
 
 // ---------------------------------------------------------------------------
-// Config C ABI (renderer backend + language)
+// Config C ABI (preferences)
 // ---------------------------------------------------------------------------
 
 /// The config key selecting the renderer backend (worker `create_renderer`
 /// backend id).
 pub const CONFIG_KEY_RENDERER_BACKEND: &str = "GraphicsBackend";
+/// The config key holding the UI theme (`"dark"` / `"light"`; the app
+/// defaults to dark when the key is absent).
+pub const CONFIG_KEY_THEME: &str = "Theme";
+/// The config key overriding the disk cache directory (empty = the
+/// platform default `<config dir>/mediacache`; honored by oakcommon's
+/// `default_disk_cache_path`, so oakrender/oaknode caches follow it).
+pub const CONFIG_KEY_DISK_CACHE_PATH: &str = "DiskCachePath";
+/// The config key toggling proxy media use (`UseProxyMedia`, bool).
+pub const CONFIG_KEY_USE_PROXY: &str = "UseProxyMedia";
+/// The config key holding the proxy resolution divider (`ProxyDivider`,
+/// int; 1 = full resolution, 2/4/8/16 = 1/2 … 1/16). oakcodec's
+/// `ProxyManager::proxy_params_from_config` reads it for generation.
+pub const CONFIG_KEY_PROXY_DIVIDER: &str = "ProxyDivider";
+/// The config key holding the project snapshot interval in seconds
+/// (`Storage/SnapshotIntervalSec`; the write-through era's "auto-save
+/// interval" — the facade's snapshot thread reads it every pass, default
+/// 600, ≤ 0 snapshots every dirty save).
+pub const CONFIG_KEY_SNAPSHOT_INTERVAL_SEC: &str = "Storage/SnapshotIntervalSec";
+/// The config key holding the default transition length in seconds
+/// (`DefaultTransitionLength`, decimal string; consumed by the engine's
+/// add-default-transition command — currently a facade stub).
+pub const CONFIG_KEY_DEFAULT_TRANSITION_SEC: &str = "DefaultTransitionLength";
+/// The config key holding the audio output device NAME (empty = system
+/// default; C++ parity `AudioOutput`).
+pub const CONFIG_KEY_AUDIO_OUTPUT: &str = "AudioOutput";
+/// The config key holding the audio input device NAME (`AudioInput`).
+pub const CONFIG_KEY_AUDIO_INPUT: &str = "AudioInput";
+
+/// The default snapshot interval (seconds), mirroring the facade's
+/// compiled-in default.
+pub const DEFAULT_SNAPSHOT_INTERVAL_SEC: i64 = 600;
+/// The default transition length (seconds).
+pub const DEFAULT_TRANSITION_SEC: &str = "0.5";
+
+/// Loads the persisted configuration from disk (once at startup, before
+/// any preference is read).
+pub fn config_load() {
+	unsafe {
+		oakengine_config_load();
+	}
+}
+
+/// Persists the configuration to disk (the app calls it on exit).
+pub fn config_save() {
+	unsafe {
+		oakengine_config_save();
+	}
+}
 
 /// Reads a config string through the facade config C ABI (empty when
 /// missing).
@@ -2877,10 +3346,164 @@ pub fn config_set_string(key: &str, value: &str) {
 	}
 }
 
+/// Reads a config integer through the facade config C ABI (`default` when
+/// the key is missing or not an integer).
+pub fn config_get_int(key: &str, default: i64) -> i64 {
+	let Ok(key_c) = CString::new(key) else {
+		return default;
+	};
+	unsafe { oakengine_config_get_int(key_c.as_ptr(), default) }
+}
+
+/// Writes a config integer through the facade config C ABI.
+pub fn config_set_int(key: &str, value: i64) {
+	let Ok(key_c) = CString::new(key) else {
+		return;
+	};
+	unsafe {
+		oakengine_config_set_int(key_c.as_ptr(), value);
+	}
+}
+
+/// Reads a config boolean through the string accessor (the store parses
+/// `"true"`/`"false"` for registered bool keys).
+pub fn config_get_bool(key: &str, default: bool) -> bool {
+	match config_get_string(key).as_str() {
+		"true" => true,
+		"false" => false,
+		_ => default,
+	}
+}
+
+/// Writes a config boolean (see [`config_get_bool`]).
+pub fn config_set_bool(key: &str, value: bool) {
+	config_set_string(key, if value { "true" } else { "false" });
+}
+
 /// The renderer backends offered in the preferences dialog, in display
 /// order. The first entry is the built-in default.
 pub fn renderer_backends() -> Vec<&'static str> {
 	vec!["opengl", "metal", "vulkan", "none"]
+}
+
+/// The proxy resolution dividers offered in the preferences dialog, in
+/// display order (1 = full resolution).
+pub fn proxy_dividers() -> Vec<i64> {
+	vec![1, 2, 4, 8, 16]
+}
+
+/// Whether the persisted theme is dark (the default).
+pub fn theme_is_dark() -> bool {
+	config_get_string(CONFIG_KEY_THEME) != "light"
+}
+
+/// Persists the theme choice (applied live by the caller).
+pub fn set_theme_dark(dark: bool) {
+	config_set_string(CONFIG_KEY_THEME, if dark { "dark" } else { "light" });
+}
+
+// ---------------------------------------------------------------------------
+// Audio devices (preferences + startup wiring)
+// ---------------------------------------------------------------------------
+
+/// The host's audio output device names in enumeration order (the index is
+/// what `oakengine_audio_set_output_device` takes).
+pub fn audio_output_devices() -> Vec<String> {
+	let count = unsafe { oakengine_audio_output_device_count() };
+	let mut out = Vec::new();
+	for i in 0..count.max(0) {
+		out.push(read_string(|buf, size| unsafe {
+			oakengine_audio_output_device_name(i, buf, size)
+		}));
+	}
+	out
+}
+
+/// The host's audio input device names (see [`audio_output_devices`]).
+pub fn audio_input_devices() -> Vec<String> {
+	let count = unsafe { oakengine_audio_input_device_count() };
+	let mut out = Vec::new();
+	for i in 0..count.max(0) {
+		out.push(read_string(|buf, size| unsafe {
+			oakengine_audio_input_device_name(i, buf, size)
+		}));
+	}
+	out
+}
+
+/// Selects the output device by NAME (empty = system default), persists the
+/// choice to `AudioOutput`, and applies it live: the output stream reopens
+/// on the device with the next pushed samples.
+pub fn set_audio_output_device(name: &str) {
+	config_set_string(CONFIG_KEY_AUDIO_OUTPUT, name);
+	let index = if name.is_empty() {
+		-1
+	} else {
+		audio_output_devices()
+			.iter()
+			.position(|n| n == name)
+			.map(|i| i as i64)
+			.unwrap_or(-1)
+	};
+	unsafe {
+		oakengine_audio_set_output_device(index);
+	}
+}
+
+/// Selects the input device by NAME (empty = system default) and persists
+/// the choice to `AudioInput` (used by recording).
+pub fn set_audio_input_device(name: &str) {
+	config_set_string(CONFIG_KEY_AUDIO_INPUT, name);
+	let index = if name.is_empty() {
+		-1
+	} else {
+		audio_input_devices()
+			.iter()
+			.position(|n| n == name)
+			.map(|i| i as i64)
+			.unwrap_or(-1)
+	};
+	unsafe {
+		oakengine_audio_set_input_device(index);
+	}
+}
+
+/// The configured output device name, validated against the live
+/// enumeration (empty when the configured device is gone).
+pub fn audio_output_device() -> String {
+	let name = config_get_string(CONFIG_KEY_AUDIO_OUTPUT);
+	if name.is_empty() || audio_output_devices().iter().any(|n| *n == name) {
+		name
+	} else {
+		String::new()
+	}
+}
+
+/// The configured input device name (see [`audio_output_device`]).
+pub fn audio_input_device() -> String {
+	let name = config_get_string(CONFIG_KEY_AUDIO_INPUT);
+	if name.is_empty() || audio_input_devices().iter().any(|n| *n == name) {
+		name
+	} else {
+		String::new()
+	}
+}
+
+/// Brings up the AudioManager singleton and applies the persisted device
+/// choices. Called once at startup; without an instance the facade's
+/// `push_to_output` fails silently and playback stays video-only.
+pub fn audio_init_from_config() {
+	unsafe {
+		oakengine_audio_create_instance();
+	}
+	let output = config_get_string(CONFIG_KEY_AUDIO_OUTPUT);
+	if !output.is_empty() {
+		set_audio_output_device(&output);
+	}
+	let input = config_get_string(CONFIG_KEY_AUDIO_INPUT);
+	if !input.is_empty() {
+		set_audio_input_device(&input);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -3001,6 +3624,8 @@ impl RealEngine {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use std::sync::mpsc;
+	use std::time::Duration;
 
 	/// Serializes the media/FFmpeg-heavy tests: the engine dylib's static
 	/// FFmpeg is not thread-safe against concurrent decode sessions.
@@ -3047,6 +3672,115 @@ mod tests {
 			"the default backend is offered"
 		);
 	}
+
+	/// Serializes the config round-trip tests: the facade config is a
+	/// process-global store, so tests mutating the same keys must not run
+	/// concurrently.
+	fn config_lock() -> std::sync::MutexGuard<'static, ()> {
+		static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+		LOCK.lock().unwrap_or_else(|e| e.into_inner())
+	}
+
+	/// Restores `key`'s original value when dropped, so a round-trip test
+	/// never leaks a preference into the rest of the test process.
+	struct ConfigRestore(&'static str, String);
+
+	impl ConfigRestore {
+		fn of(key: &'static str) -> Self {
+			ConfigRestore(key, config_get_string(key))
+		}
+	}
+
+	impl Drop for ConfigRestore {
+		fn drop(&mut self) {
+			config_set_string(self.0, &self.1);
+		}
+	}
+
+	/// Every preferences-dialog key round-trips through the facade config
+	/// C ABI: the value written is the value read back.
+	#[test]
+	fn preferences_keys_round_trip_through_the_config() {
+		let _guard = config_lock();
+
+		// String-valued keys (theme, cache dir, transition seconds, audio
+		// device names, renderer backend).
+		let _theme = ConfigRestore::of(CONFIG_KEY_THEME);
+		config_set_string(CONFIG_KEY_THEME, "light");
+		assert_eq!(config_get_string(CONFIG_KEY_THEME), "light");
+		assert!(!theme_is_dark());
+		config_set_string(CONFIG_KEY_THEME, "dark");
+		assert!(theme_is_dark());
+
+		let _cache = ConfigRestore::of(CONFIG_KEY_DISK_CACHE_PATH);
+		config_set_string(CONFIG_KEY_DISK_CACHE_PATH, "/tmp/oak-test-cache");
+		assert_eq!(
+			config_get_string(CONFIG_KEY_DISK_CACHE_PATH),
+			"/tmp/oak-test-cache"
+		);
+
+		let _transition = ConfigRestore::of(CONFIG_KEY_DEFAULT_TRANSITION_SEC);
+		config_set_string(CONFIG_KEY_DEFAULT_TRANSITION_SEC, "1.5");
+		assert_eq!(
+			config_get_string(CONFIG_KEY_DEFAULT_TRANSITION_SEC),
+			"1.5"
+		);
+
+		let _output = ConfigRestore::of(CONFIG_KEY_AUDIO_OUTPUT);
+		config_set_string(CONFIG_KEY_AUDIO_OUTPUT, "Test Speakers");
+		assert_eq!(config_get_string(CONFIG_KEY_AUDIO_OUTPUT), "Test Speakers");
+
+		let _backend = ConfigRestore::of(CONFIG_KEY_RENDERER_BACKEND);
+		config_set_string(CONFIG_KEY_RENDERER_BACKEND, "metal");
+		assert_eq!(config_get_string(CONFIG_KEY_RENDERER_BACKEND), "metal");
+
+		// The bool key parses through the string accessor (the store's
+		// registered bool entry accepts "true"/"false").
+		let _proxy = ConfigRestore::of(CONFIG_KEY_USE_PROXY);
+		config_set_bool(CONFIG_KEY_USE_PROXY, false);
+		assert!(!config_get_bool(CONFIG_KEY_USE_PROXY, true));
+		config_set_bool(CONFIG_KEY_USE_PROXY, true);
+		assert!(config_get_bool(CONFIG_KEY_USE_PROXY, false));
+
+		// The int keys round-trip through the int accessors (and read back
+		// as strings too — the store serializes typed values).
+		config_set_int(CONFIG_KEY_PROXY_DIVIDER, 4);
+		assert_eq!(config_get_int(CONFIG_KEY_PROXY_DIVIDER, 1), 4);
+		assert_eq!(config_get_string(CONFIG_KEY_PROXY_DIVIDER), "4");
+		config_set_int(CONFIG_KEY_PROXY_DIVIDER, 1);
+
+		config_set_int(CONFIG_KEY_SNAPSHOT_INTERVAL_SEC, 120);
+		assert_eq!(config_get_int(CONFIG_KEY_SNAPSHOT_INTERVAL_SEC, 600), 120);
+		config_set_int(
+			CONFIG_KEY_SNAPSHOT_INTERVAL_SEC,
+			DEFAULT_SNAPSHOT_INTERVAL_SEC,
+		);
+	}
+
+	/// The audio device enumeration crosses the facade without crashing;
+	/// the output and input lists are independent (either may be empty on a
+	/// headless box).
+	#[test]
+	fn audio_device_enumeration_is_stable() {
+		let outputs = audio_output_devices();
+		let inputs = audio_input_devices();
+		assert!(outputs.iter().all(|n| !n.is_empty()));
+		assert!(inputs.iter().all(|n| !n.is_empty()));
+		// An unknown device name validates to "system default" (empty).
+		let _guard = config_lock();
+		let _output = ConfigRestore::of(CONFIG_KEY_AUDIO_OUTPUT);
+		config_set_string(CONFIG_KEY_AUDIO_OUTPUT, "No Such Device");
+		assert_eq!(audio_output_device(), "");
+	}
+
+	/// The snapshot-interval key is the one the facade's snapshot thread
+	/// reads (`Storage/SnapshotIntervalSec`, see crates/oakengine/src/
+	/// storage.rs) — a rename here would silently disconnect the dialog.
+	#[test]
+	fn snapshot_interval_key_matches_the_facade() {
+		assert_eq!(CONFIG_KEY_SNAPSHOT_INTERVAL_SEC, "Storage/SnapshotIntervalSec");
+	}
+
 
 	/// End-to-end through the facade: a project the engine itself writes
 	/// (save → load round-trip) keeps its identity, and the in-memory
@@ -3458,5 +4192,274 @@ mod tests {
 		unsafe { free_box(sequence) };
 		unsafe { oakengine_project_free(project) };
 		let _ = std::fs::remove_file(&media);
+	}
+
+	// -----------------------------------------------------------------------
+	// M12 P5a: the full-resolution fill — scheduling logic (pure)
+	// -----------------------------------------------------------------------
+
+	/// A tiny 2x2 viewer image for cache tests.
+	fn test_image() -> Arc<RenderImage> {
+		let samples = [
+			1.0, 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0,
+		];
+		Arc::new(f32_rgba_to_bgra_image(2, 2, &samples))
+	}
+
+	/// Scope samples matching the test image's pixel count.
+	fn test_scope() -> ScopeData {
+		ScopeData {
+			luma: Arc::new(vec![0.5; 4]),
+			chroma: Arc::new(vec![(0.5, 0.5); 4]),
+		}
+	}
+
+	#[test]
+	fn full_res_fill_replaces_the_proxy_on_display() {
+		let mut cache = MonitorFrameCache::default();
+		cache.proxy = Some(ProxyEntry {
+			frame: 5,
+			image: test_image(),
+			scope: test_scope(),
+		});
+		// The proxy is displayed until the fill lands...
+		let proxy = cache.proxy.as_ref().unwrap().image.clone();
+		assert!(Arc::ptr_eq(cache.image_for(5).unwrap(), &proxy));
+		// ...and the fill wins once it does (the same playhead frame).
+		let fill = test_image();
+		cache.pending = Some((5, 1));
+		assert!(cache.install_full_res(5, 1, fill.clone()));
+		assert!(Arc::ptr_eq(cache.image_for(5).unwrap(), &fill));
+		// The proxy stays cached (the scopes keep reading it).
+		assert!(cache.proxy.is_some());
+	}
+
+	#[test]
+	fn full_res_fill_does_not_cover_other_frames() {
+		let mut cache = MonitorFrameCache::default();
+		cache.proxy = Some(ProxyEntry {
+			frame: 5,
+			image: test_image(),
+			scope: test_scope(),
+		});
+		let fill = test_image();
+		cache.full = Some(FullResEntry {
+			frame: 5,
+			image: fill.clone(),
+		});
+		// The fill covers exactly its own frame.
+		assert!(Arc::ptr_eq(cache.image_for(5).unwrap(), &fill));
+		assert!(cache.image_for(6).is_none(), "other frames are unrendered");
+		// A later proxy render for another frame displays alongside the fill.
+		let proxy6 = test_image();
+		cache.proxy = Some(ProxyEntry {
+			frame: 6,
+			image: proxy6.clone(),
+			scope: test_scope(),
+		});
+		assert!(Arc::ptr_eq(cache.image_for(6).unwrap(), &proxy6));
+		// The scopes always read the proxy pass (the fill carries none).
+		assert_eq!(cache.scope_for(6).unwrap().luma.len(), 4);
+		assert!(cache.scope_for(5).is_none());
+	}
+
+	#[test]
+	fn full_res_policy_skips_playing_cached_and_in_flight_frames() {
+		let cache = MonitorFrameCache::default();
+		assert!(cache.needs_full_res(0, false), "resting playhead schedules");
+		assert!(
+			!cache.needs_full_res(0, true),
+			"playback keeps the proxy path (smoothness)"
+		);
+
+		let mut cached = MonitorFrameCache::default();
+		cached.full = Some(FullResEntry {
+			frame: 5,
+			image: test_image(),
+		});
+		assert!(!cached.needs_full_res(5, false), "already filled");
+
+		let mut in_flight = MonitorFrameCache::default();
+		in_flight.pending = Some((5, 1));
+		assert!(
+			!in_flight.needs_full_res(5, false),
+			"one job in flight per monitor"
+		);
+		assert!(
+			!in_flight.needs_full_res(7, false),
+			"the drain re-schedules the moved playhead when the job lands"
+		);
+	}
+
+	#[test]
+	fn full_res_install_accepts_only_the_pending_job() {
+		// A job that outlived an invalidation must be discarded: the cache
+		// entry was recreated with a fresh pending marker (new frame and
+		// generation), so the old completion does not install.
+		let mut stale = MonitorFrameCache::default();
+		stale.pending = Some((7, 2));
+		assert!(
+			!stale.install_full_res(5, 1, test_image()),
+			"stale generation is discarded"
+		);
+		assert_eq!(stale.pending, Some((7, 2)), "the new job stays pending");
+		assert!(stale.full.is_none(), "nothing is installed");
+
+		// The matching job installs, clears the pending marker and lets the
+		// moved playhead schedule again.
+		let mut current = MonitorFrameCache::default();
+		current.pending = Some((5, 1));
+		assert!(current.install_full_res(5, 1, test_image()));
+		assert!(current.pending.is_none());
+		assert!(current.full.as_ref().is_some_and(|f| f.frame == 5));
+		assert!(current.needs_full_res(7, false));
+	}
+
+	/// M12 P5a end-to-end through the facade: a full-res job (the exact
+	/// request [`RealEngine::build_full_res_request`] builds) renders a real
+	/// frame on a background thread — the dedicated sequence renderer is
+	/// created on that thread, the footage clip is decoded, and the frame is
+	/// delivered through the completion channel with the renderer and the
+	/// sequence copy freed by the worker.
+	#[test]
+	fn full_res_worker_renders_real_frame() {
+		let _media = media_lock();
+		if !RealEngine::ensure_render_manager() {
+			panic!("the render manager failed to start");
+		}
+
+		let project = unsafe { oakengine_project_create() };
+		assert!(!project.is_null());
+		assert_eq!(unsafe { oakengine_project_new(project) }, 0);
+		let name = CString::new("Full Res E2E").unwrap();
+		let sequence = unsafe { oakengine_sequence_new(project, name.as_ptr()) };
+		assert!(!sequence.is_null());
+		assert_eq!(
+			unsafe { oakengine_sequence_add_track(sequence, TRACK_TYPE_VIDEO) },
+			0
+		);
+
+		let media = std::env::temp_dir().join(format!(
+			"oakapp_fullres_{}.mp4",
+			std::process::id()
+		));
+		let media_c = CString::new(media.to_string_lossy().into_owned()).unwrap();
+		assert_eq!(
+			unsafe { oakengine_testmedia_write_clip(media_c.as_ptr(), 64, 64, 10, 10) },
+			0
+		);
+		let footage = unsafe { oakengine_project_import_footage(project, media_c.as_ptr()) };
+		assert!(!footage.is_null(), "import must succeed");
+		let clip = unsafe {
+			oakengine_sequence_add_footage_clip_ex(
+				sequence,
+				footage,
+				TRACK_TYPE_VIDEO,
+				0,
+				0,
+				10,
+				0,
+			)
+		};
+		assert!(!clip.is_null(), "clip placement must succeed");
+		unsafe { oakengine_footage_free(footage) };
+		unsafe { free_box(clip) };
+
+		// The addref'd sequence copy the scheduler hands the worker.
+		let handle = unsafe { unbox(sequence) }.expect("sequence handle");
+		let addref = handle.addref.expect("module handle addref");
+		unsafe { addref(handle.ctx) };
+		let copy = unsafe { box_handle::<OakEngineSequence>(handle) };
+
+		let (tx, rx) = mpsc::channel();
+		let request = FullResRequest {
+			monitor: Monitor::Program,
+			frame: 0,
+			generation: 1,
+			target: FullResTarget::Sequence(SendPtr(copy)),
+			width: 320,
+			height: 180,
+			rate_num: 25,
+			rate_den: 1,
+		};
+		std::thread::spawn(move || RealEngine::full_res_worker(request, tx));
+
+		let event = rx
+			.recv_timeout(Duration::from_secs(20))
+			.expect("the worker delivers the full-res frame");
+		assert_eq!(event.monitor, Monitor::Program);
+		assert_eq!(event.frame, 0);
+		assert_eq!(event.generation, 1);
+		let bytes = event.image.as_bytes(0).expect("one frame");
+		assert_eq!(bytes.len(), 320 * 180 * 4, "full-res geometry");
+		// The test clip's left half is red on frame 0: the decoded footage
+		// must be visible (non-black), like the proxy e2e test asserts.
+		let nonzero = bytes
+			.chunks(4)
+			.filter(|px| px[..3].iter().any(|&c| c != 0))
+			.count();
+		assert!(nonzero > 0, "the footage clip renders non-black pixels");
+
+		unsafe { free_box(sequence) };
+		unsafe { oakengine_project_free(project) };
+		let _ = std::fs::remove_file(&media);
+	}
+
+	/// M12 P5a acceptance through the app seam: a `RealEngine` built exactly
+	/// as the app builds it renders the program frame at the proxy size on
+	/// demand, and the background full-res job fills the sequence's native
+	/// size once the playhead rests (the tick loop schedules, the worker
+	/// renders, the drain installs, `cpu_frame` hands the fill to the
+	/// viewer).
+	#[gpui::test]
+	async fn real_engine_fills_full_res_behind_the_proxy(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		// The sequence's native size is the fill geometry.
+		let (width, height) = cx.read(|app| {
+			let format = engine.read(app).current_sequence().unwrap().format;
+			(format.width, format.height)
+		});
+
+		// The immediate path is the proxy: the first read renders the small
+		// proxy synchronously (no fill has landed yet).
+		let proxy_len = cx.read(|app| {
+			engine
+				.read(app)
+				.cpu_frame(Monitor::Program, app)
+				.as_bytes(0)
+				.unwrap()
+				.len()
+		});
+		assert!(
+			proxy_len < (width * height * 4) as usize,
+			"the immediate display is the proxy (got {proxy_len} bytes)"
+		);
+
+		// Drive the tick loop until the background fill lands and replaces
+		// the proxy in the display path.
+		let full_len = (width * height * 4) as usize;
+		let deadline = std::time::Instant::now() + Duration::from_secs(20);
+		loop {
+			cx.update(|app| engine.update(app, |engine, cx| engine.tick(cx)));
+			let len = cx.read(|app| {
+				engine
+					.read(app)
+					.cpu_frame(Monitor::Program, app)
+					.as_bytes(0)
+					.unwrap()
+					.len()
+			});
+			if len == full_len {
+				break;
+			}
+			assert!(
+				std::time::Instant::now() < deadline,
+				"the full-res fill lands within the deadline (got {len} bytes)"
+			);
+			std::thread::sleep(Duration::from_millis(10));
+		}
 	}
 }

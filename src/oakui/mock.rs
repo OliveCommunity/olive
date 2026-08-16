@@ -495,6 +495,11 @@ pub struct MockEngine {
 	/// The enabled work area (render/export in/out range) of the demo
 	/// sequence, in sequence frames (M12 P4). `None` = disabled.
 	workarea: Option<(Frame, Frame)>,
+	/// Undo/redo call counts (test observability; the mock keeps no undo
+	/// stack, so the counters are the only way to see the dispatch landed).
+	undo_calls: u64,
+	/// See [`MockEngine::undo_calls`].
+	redo_calls: u64,
 }
 
 impl MockEngine {
@@ -744,6 +749,8 @@ impl MockEngine {
 			library_exported: Vec::new(),
 			markers: Vec::new(),
 			workarea: None,
+			undo_calls: 0,
+			redo_calls: 0,
 		};
 		// The demo graph is born connected: derive every port's `connected`
 		// flag from the edge list.
@@ -1312,11 +1319,13 @@ impl AppEngine for MockEngine {
 
 	fn undo(&mut self, cx: &mut Context<Self>) {
 		println!("[mock engine] undo: no undo stack in mock mode");
+		self.undo_calls += 1;
 		cx.notify();
 	}
 
 	fn redo(&mut self, cx: &mut Context<Self>) {
 		println!("[mock engine] redo: no undo stack in mock mode");
+		self.redo_calls += 1;
 		cx.notify();
 	}
 
@@ -1648,6 +1657,11 @@ impl MockEngine {
 	/// the mock has no media pipeline, it just records the request).
 	pub fn imported_footage(&self) -> &[PathBuf] {
 		&self.imported_footage
+	}
+
+	/// The undo/redo call counts (test observability; see the fields).
+	pub fn undo_redo_calls(&self) -> (u64, u64) {
+		(self.undo_calls, self.redo_calls)
 	}
 
 	/// The uuids opened via [`AppEngine::library_open_project`] so far

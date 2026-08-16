@@ -926,10 +926,20 @@ mod tests {
 /// The default disk cache directory (C++ `DiskManager::
 /// get_default_disk_cache_path`): `<configuration location>/mediacache`.
 ///
+/// The `DiskCachePath` config key overrides the location when set (the
+/// preferences dialog's cache-directory setting); an empty/absent value
+/// keeps the default.
+///
 /// Single-lib unification: this used to live in the oakrender crate's
 /// `bridge::common` fallback (see `docs/zh/plans/riir/single-lib.md`);
 /// oaknode and oakrender both call it directly now.
 pub fn default_disk_cache_path() -> String {
+	// A configured override wins (whitespace-only counts as absent).
+	if let Ok(custom) = crate::configstore::ConfigStore::instance().get(None, "DiskCachePath") {
+		if !custom.trim().is_empty() {
+			return custom;
+		}
+	}
 	Path::new(
 		&FileFunctions::new()
 			.get_configuration_location()

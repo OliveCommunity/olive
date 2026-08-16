@@ -25,9 +25,10 @@
 - **扁平化现代 UI**，图标用 C++ 版素材（assets/icons/{dark,light}，
   16px 网格），双主题，中英双语（src/i18n.rs + gpui i18n 钩子）。
 - **平台**：macOS（Apple Silicon）优先；Linux 链接已通（build.rs
-  rpath+--export-dynamic）；Windows 卡在 DLL 不允许未定义符号
-  （oakcore_* 宿主导入），需 stub import lib 或 delay-load（见
-  §5 风险表）。
+  rpath+--export-dynamic）；Windows 的 DLL 未定义符号问题已解决
+  （M12 P5：oakcore_audioparams_* 收编进 dylib，DLL 无未定义符号，
+  oakengine/cli/worker 可链接；app 的 win32 支持仍待 gpui，见 §5
+  风险表）。
 - **插件 GUI**（OFX Interact/Dialog、第三方语言插件自绘窗口）走
   方案 2（已立项时的决议）：引擎侧离屏渲染，app 侧贴图；窗口类
   需求由插件自建窗口、app 不嵌套。对应 M11 第 4 期（UI 类 suite）。
@@ -64,7 +65,7 @@
 | G5 | 全分辨率异步渲染（facade worker 进程面）未绑 | 代理分辨率外的画质 | oakengine::worker NDJSON |
 | G6 | 时间线音频波形未显示 | 波形提取已是真实现（oakaudio/ffmpeg-next） | src/panels/timeline.rs |
 | G7 | move_clip 跨轨 | facade 签名冻结无目标轨参数（需新增导出） | crates/oakengine |
-| G8 | Windows 构建 | DLL 未定义符号问题 | 根 build.rs 注释 |
+| G8 | Windows 构建 | ~~DLL 未定义符号~~ 已解决（M12 P5：oakcore_audioparams_* 收编进 dylib）；剩余为 app 侧 win32（gpui） | 根 build.rs 注释 + §5 风险表 |
 
 ## 2. 分期
 
@@ -127,8 +128,8 @@
 2. 偏好设置完整化（缓存目录、代理策略、自动保存间隔、默认
    过渡等，全部落 oakengine_config_*）。
 3. 键盘快捷键表（对齐 C++ 版快捷键，i18n 无关）。
-4. Windows 支持：解决 DLL 未定义符号（stub import lib 或把
-   oakcore_* 收进 dylib 本体），CI windows job 转绿。
+4. Windows 支持：oakcore_* 已收编进 dylib（M12 P5，DLL 无未定义符号，
+   oakengine/cli/worker 可链接）；CI windows job 转绿待工具链到位。
 5. CD 实跑验证六个包（deb/rpm/pkg.tar.zst/AppImage/NSIS/dmg）
    能装能起。
 
@@ -153,7 +154,7 @@
 
 | 风险 | 影响 | 缓解 |
 |------|------|------|
-| Windows DLL 未定义符号 | Windows 无法出包 | oakcore_* 收编进 dylib 或生成 stub import lib；CI 先保 Linux/macOS |
+| Windows DLL 未定义符号（oakcore_* 宿主导入） | Windows 无法出包 | 已解决（M12 P5）：oakcore_audioparams_* 收编进 dylib，DLL 无未定义符号；CI 先保 Linux/macOS |
 | gpui fork 与上游分叉扩大 | 维护成本 | 只在 gpui_widgets 层扩展；上游同步按季度评审 |
 | 音频回调实时性（PortAudio 回调里禁锁/分配） | 爆音 | 回调只读写无锁环形缓冲；oakaudio PreviewAudioDevice 已是此形态 |
 | OFX 插件 GUI（方案 2）交互延迟 | 插件调参手感 | P5 后单独立项评审（M11 第 4 期） |
