@@ -18,7 +18,7 @@ jobs:
   # ------------------------------------------------------------------
   linux:
     name: Linux packages (deb, AppImage, pacman)
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-8x
 
     steps:
       - name: Checkout
@@ -112,120 +112,120 @@ jobs:
           if-no-files-found: error
 
 #  # ------------------------------------------------------------------
-#  # macOS: Apple Silicon only. cargo-packager cannot fold liboakengine.dylib
-#  # into the bundle (no post-packaging hook; the .app is rebuilt on every
-#  # run), so we package the .app with cargo-packager, embed the dylib next
-#  # to the binaries with install_name_tool, ad-hoc re-sign, then create the
-#  # DMG with hdiutil (the same way the old C++ CD did).
-#  # ------------------------------------------------------------------
-#  macos:
-#    name: macOS DMG (Apple Silicon)
-#    runs-on: warp-macos-15-arm64-6x
-#
-#    steps:
-#      - name: Checkout
-#        uses: actions/checkout@v4
-#        with:
-#          submodules: true
-#
-#      - name: Install Rust (stable)
-#        uses: dtolnay/rust-toolchain@stable
-#
-#      - name: Install system dependencies
-#        run: |
-#          tooling/install-deps.sh
-#          brew install opencolorio librsvg
-#
-#      - name: Configure build environment
-#        run: |
-#          {
-#            echo "OCIO_RS_ENABLE_REAL=1"
-#            echo "OCIO_INSTALL_DIR=/opt/homebrew/opt/opencolorio"
-#            echo "OCIO_RS_LINK=dynamic"
-#            echo "CFLAGS=-I/opt/homebrew/include"
-#            echo "LDFLAGS=-L/opt/homebrew/lib"
-#            echo "PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig/openjpeg"
-#          } >> "$GITHUB_ENV"
-#
-#      - name: Cache cargo artifacts
-#        uses: Swatinem/rust-cache@v2
-#        with:
-#          shared-key: oak-workspace
-#
-#      - name: Cache project FFmpeg
-#        uses: actions/cache@v4
-#        with:
-#          path: .cache/ffmpeg
-#          key: ffmpeg-${{ runner.os }}-${{ hashFiles('tooling/ffmpeg/build-ffmpeg.sh') }}
-#
-#      - name: Build project FFmpeg (static, GPL + free codecs + hwaccel)
-#        run: |
-#          tooling/ffmpeg/build-ffmpeg.sh
-#          echo "FFMPEG_DIR=$PWD/.cache/ffmpeg" >> "$GITHUB_ENV"
-#
-#      - name: Install cargo-packager
-#        run: cargo install cargo-packager --locked
-#
-#      - name: Generate app icon (PNG from Oak_Icon.svg)
-#        run: |
-#          mkdir -p icons
-#          # cargo-packager's tauri-icns 0.1.0 maps only 512x512@1x (and
-#          # 1024x1024@2x); a plain 1024x1024 PNG aborts with "No matching
-#          # IconType", so render 512x512.
-#          rsvg-convert -w 512 -h 512 Oak_Icon.svg -o icons/icon.png
-#          file icons/icon.png
-#
-#      # oakengine is a workspace member but NOT a default member; the
-#      # app/CLI/worker link scripts point the linker at the profile dir
-#      # (target/<profile>/), so build its cdylib there before the rest.
-#      - name: Build (release)
-#        run: |
-#          cargo build --release --locked -p oakengine
-#          cargo build --release --locked
-#
-#      - name: Package .app bundle
-#        run: cargo packager --release --formats app
-#
-#      - name: Embed liboakengine.dylib and re-sign
-#        run: |
-#          set -euo pipefail
-#          APP="target/release/Oak.app"
-#          MACOS="$APP/Contents/MacOS"
-#          # cargo may place the dylib in target/release/deps/ (dependency
-#          # build) or target/release/ (workspace-member build); derive it
-#          # from the main binary's own load reference so the bundled copy
-#          # matches exactly what the binary was linked against.
-#          REF="$(otool -L "$MACOS/oak-editor" | awk '/liboakengine\.dylib/ {print $1; exit}')"
-#          test -n "$REF" && test -f "$REF"
-#          cp "$REF" "$MACOS/liboakengine.dylib"
-#          install_name_tool -id "@executable_path/liboakengine.dylib" "$MACOS/liboakengine.dylib"
-#          # build.rs links the app against the dylib's absolute build path;
-#          # point every binary that references it at the bundled copy.
-#          for bin in oak-editor oak-cli oak-worker; do
-#            if otool -L "$MACOS/$bin" 2>/dev/null | grep -q "liboakengine.dylib"; then
-#              REF="$(otool -L "$MACOS/$bin" | awk '/liboakengine/ {print $1; exit}')"
-#              install_name_tool -change "$REF" "@executable_path/liboakengine.dylib" "$MACOS/$bin"
-#            fi
-#          done
-#          # install_name_tool invalidates the packager's ad-hoc signature.
-#          codesign --force --deep --sign - "$APP"
-#          codesign -dv "$APP" 2>&1 | head -3
-#
-#      - name: Create DMG
-#        run: |
-#          rm -rf dmg-staging
-#          mkdir -p dmg-staging
-#          cp -R target/release/Oak.app dmg-staging/
-#          ln -s /Applications dmg-staging/Applications
-#          hdiutil create -volname "Oak Video Editor" \
-#            -srcfolder dmg-staging -ov -format UDZO Oak-macOS-arm64.dmg
-#
-#      - name: Upload artifact
-#        uses: actions/upload-artifact@v4
-#        with:
-#          name: oak-macos
-#          path: Oak-macOS-arm64.dmg
-#          if-no-files-found: error
+# macOS: Apple Silicon only. cargo-packager cannot fold liboakengine.dylib
+# into the bundle (no post-packaging hook; the .app is rebuilt on every
+# run), so we package the .app with cargo-packager, embed the dylib next
+# to the binaries with install_name_tool, ad-hoc re-sign, then create the
+# DMG with hdiutil (the same way the old C++ CD did).
+# ------------------------------------------------------------------
+macos:
+  name: macOS DMG (Apple Silicon)
+  runs-on: warp-macos-15-arm64-6x
+
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: true
+
+    - name: Install Rust (stable)
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Install system dependencies
+      run: |
+        tooling/install-deps.sh
+        brew install opencolorio librsvg
+
+    - name: Configure build environment
+      run: |
+        {
+          echo "OCIO_RS_ENABLE_REAL=1"
+          echo "OCIO_INSTALL_DIR=/opt/homebrew/opt/opencolorio"
+          echo "OCIO_RS_LINK=dynamic"
+          echo "CFLAGS=-I/opt/homebrew/include"
+          echo "LDFLAGS=-L/opt/homebrew/lib"
+          echo "PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig/openjpeg"
+        } >> "$GITHUB_ENV"
+
+    - name: Cache cargo artifacts
+      uses: Swatinem/rust-cache@v2
+      with:
+        shared-key: oak-workspace
+
+    - name: Cache project FFmpeg
+      uses: actions/cache@v4
+      with:
+        path: .cache/ffmpeg
+        key: ffmpeg-${{ runner.os }}-${{ hashFiles('tooling/ffmpeg/build-ffmpeg.sh') }}
+
+    - name: Build project FFmpeg (static, GPL + free codecs + hwaccel)
+      run: |
+        tooling/ffmpeg/build-ffmpeg.sh
+        echo "FFMPEG_DIR=$PWD/.cache/ffmpeg" >> "$GITHUB_ENV"
+
+    - name: Install cargo-packager
+      run: cargo install cargo-packager --locked
+
+    - name: Generate app icon (PNG from Oak_Icon.svg)
+      run: |
+        mkdir -p icons
+        # cargo-packager's tauri-icns 0.1.0 maps only 512x512@1x (and
+        # 1024x1024@2x); a plain 1024x1024 PNG aborts with "No matching
+        # IconType", so render 512x512.
+        rsvg-convert -w 512 -h 512 Oak_Icon.svg -o icons/icon.png
+        file icons/icon.png
+
+    # oakengine is a workspace member but NOT a default member; the
+    # app/CLI/worker link scripts point the linker at the profile dir
+    # (target/<profile>/), so build its cdylib there before the rest.
+    - name: Build (release)
+      run: |
+        cargo build --release --locked -p oakengine
+        cargo build --release --locked
+
+    - name: Package .app bundle
+      run: cargo packager --release --formats app
+
+    - name: Embed liboakengine.dylib and re-sign
+      run: |
+        set -euo pipefail
+        APP="target/release/Oak.app"
+        MACOS="$APP/Contents/MacOS"
+        # cargo may place the dylib in target/release/deps/ (dependency
+        # build) or target/release/ (workspace-member build); derive it
+        # from the main binary's own load reference so the bundled copy
+        # matches exactly what the binary was linked against.
+        REF="$(otool -L "$MACOS/oak-editor" | awk '/liboakengine\.dylib/ {print $1; exit}')"
+        test -n "$REF" && test -f "$REF"
+        cp "$REF" "$MACOS/liboakengine.dylib"
+        install_name_tool -id "@executable_path/liboakengine.dylib" "$MACOS/liboakengine.dylib"
+        # build.rs links the app against the dylib's absolute build path;
+        # point every binary that references it at the bundled copy.
+        for bin in oak-editor oak-cli oak-worker; do
+          if otool -L "$MACOS/$bin" 2>/dev/null | grep -q "liboakengine.dylib"; then
+            REF="$(otool -L "$MACOS/$bin" | awk '/liboakengine/ {print $1; exit}')"
+            install_name_tool -change "$REF" "@executable_path/liboakengine.dylib" "$MACOS/$bin"
+          fi
+        done
+        # install_name_tool invalidates the packager's ad-hoc signature.
+        codesign --force --deep --sign - "$APP"
+        codesign -dv "$APP" 2>&1 | head -3
+
+    - name: Create DMG
+      run: |
+        rm -rf dmg-staging
+        mkdir -p dmg-staging
+        cp -R target/release/Oak.app dmg-staging/
+        ln -s /Applications dmg-staging/Applications
+        hdiutil create -volname "Oak Video Editor" \
+          -srcfolder dmg-staging -ov -format UDZO Oak-macOS-arm64.dmg
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: oak-macos
+        path: Oak-macOS-arm64.dmg
+        if-no-files-found: error
 
   # ------------------------------------------------------------------
   # Windows: NSIS installer — DISABLED. The app does not link on Windows
@@ -319,14 +319,14 @@ jobs:
   # ------------------------------------------------------------------
   # Publish: attach every platform package to the v* tag's GitHub release
   # (skipped on workflow_dispatch, which only uploads artifacts). The
-  # macOS and Windows jobs are disabled for now (macOS: runner budget;
-  # Windows: app does not link yet) — only the linux packages publish.
+  # Windows stays disabled (the app does not link there yet); macOS is
+  # back on the warp Apple Silicon runner.
   # ------------------------------------------------------------------
   release:
     name: Publish GitHub release
-    needs: [linux]
+    needs: [linux, macos]
     if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-latest-x64-8x
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
