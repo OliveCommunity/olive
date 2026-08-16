@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! oak-cli: headless command-line consumer of the liboakengine C ABI facade.
+//! oak-cli: headless command-line consumer of the oak editor modules.
 //!
 //! Rust rewrite of `cli/main.cpp` (which stays in the tree until cutover).
 //! Same subcommands, same output format, same exit codes:
@@ -29,25 +29,17 @@
 //! Exit codes: 0 success, 1 general error, 2 rendering unavailable,
 //! 64 usage error.
 //!
-//! This crate is a PURE C-ABI consumer of the built `liboakengine`
-//! cdylib: every engine call goes through the `extern "C"` declarations
-//! in [`ffi`] (linked via `build.rs` + `#[link(name = "oakengine", kind =
-//! "dylib")]`) and the dlsym-resolved optional families in [`optional`].
-//! No module crate is ever called directly. [`host`] plays the C++ host
-//! role the engine dylib expects: it provides the `oakcore_audioparams_*`
-//! symbols the dylib resolves from the process at runtime. [`fmt`],
-//! [`ppm`] and [`wav`] are pure-Rust formatting/writing helpers (exact
-//! ports of the C++ `printf`/writers) — the only non-ABI code here.
-//!
-//! Build order: `cargo build -p oakengine` must run before linking this
-//! binary (`cargo build`/`cargo test -p oak-cli`); `cargo check` never
-//! links and works standalone.
+//! Since M14 R2 this crate links the oak* module rlibs directly
+//! (oaknode / oaktimeline / oakcodec / oakrender / oaktask / oakcommon) —
+//! no liboakengine dylib, no C ABI, no host shims. [`engine`] is the
+//! CLI's own assembly layer over the modules; the subcommands in
+//! `src/cmd/` call it (and the modules) directly. [`fmt`], [`ppm`] and
+//! [`wav`] are pure-Rust formatting/writing helpers (exact ports of the
+//! C++ `printf`/writers).
 
 mod cmd;
-mod ffi;
+mod engine;
 mod fmt;
-mod host;
-mod optional;
 mod ppm;
 mod wav;
 
@@ -57,7 +49,7 @@ use clap::{Parser, Subcommand};
 
 /// The exact usage text of `cli/main.cpp`'s `print_usage()` (also the
 /// `--help` output).
-const USAGE: &str = "oak-cli - headless consumer of the liboakengine C ABI\n\
+const USAGE: &str = "oak-cli - headless consumer of the oak editor modules (direct Rust ABI)\n\
 \n\
 Usage:\n\
   oak-cli info <project.ove>\n\
@@ -141,10 +133,6 @@ enum Command {
 }
 
 fn main() {
-	// Keep the host shims (src/host.rs) referenced so the linker
-	// exports them for the engine dylib's runtime lookups.
-	std::hint::black_box(host::exports());
-
 	let args: Vec<String> = std::env::args().skip(1).collect();
 
 	// argv[1] handling that mirrors the C++ main() exactly.

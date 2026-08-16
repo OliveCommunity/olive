@@ -16,18 +16,17 @@
 
 //! Subcommand implementations.
 //!
-//! Every subcommand is a REAL implementation over the `oakengine_*` C ABI
-//! ([`crate::ffi`] + [`crate::optional`]) — a pure consumer of the built
-//! `liboakengine` dylib, exactly like the C++ `cli/main.cpp` host:
+//! Every subcommand is a REAL implementation over the oak* module crates
+//! ([`crate::engine`] + the modules directly) — M14 R2 cut the facade
+//! dylib out of this crate:
 //!
-//!   - `probe`     → `oakengine_footage_probe` + the footage getters
-//!   - `info`      → `oakengine_project_create/load` + project/sequence
-//!     getters
-//!   - `render`    → `oakengine_render_manager_init`,
-//!     `oakengine_renderer_create` / `render_frame` / `render_audio` and
-//!     the frame/audio-buffer accessors
-//!   - `transcode` → project/sequence/clip assembly +
-//!     `oakengine_export_render` for mp4, the renderer frame loop for ppm
+//!   - `probe`     → an `oaknode::footage::FootageBehavior` probe
+//!   - `info`      → `crate::engine::load_project` + the project graph
+//!     walks
+//!   - `render`    → `crate::engine::render_manager_init` + the video/
+//!     audio montage tickets
+//!   - `transcode` → sequence assembly + the montage tickets (ppm) or the
+//!     module export task (mp4)
 //!
 //! Exit codes: 0 success, 1 general error, 2 rendering unavailable,
 //! 64 usage error.

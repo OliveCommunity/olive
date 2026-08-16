@@ -1,6 +1,6 @@
 # oak-cli (Rust)
 
-Headless command-line consumer of the `liboakengine` C ABI facade — the Rust
+Headless command-line consumer of the oak editor module crates — the Rust
 rewrite of `cli/main.cpp` (which stays in the tree until cutover). Same
 subcommands, same output format, same exit codes:
 
@@ -8,19 +8,20 @@ subcommands, same output format, same exit codes:
 |---|---|
 | 0 | success |
 | 1 | general error (bad project/media file, no sequence, I/O failure) |
-| 2 | rendering unavailable or failed (e.g. no GL render backend) |
+| 2 | rendering unavailable or failed (e.g. no render backend) |
 | 64 | usage error |
 
 ## Build and test
 
 ```sh
 cargo build --release      # binary: target/release/oak-cli
-cargo test                 # unit + integration tests (29 tests)
+cargo test                 # unit + integration tests
 ```
 
-The crate builds standalone: its only dependency besides `clap` is the
-`oakengine` rlib (`../oakengine`), which has no third-party
-dependencies.
+The crate is **self-contained** (M14 R2): it links the oak* module rlibs
+directly (`oaknode`, `oaktimeline`, `oakcodec`, `oakrender`, `oaktask`,
+`oakcommon`) — no `liboakengine` dylib, no C ABI, no build.rs link step.
+`cargo test -p oak-cli` stands alone.
 
 ## Subcommands
 
@@ -41,40 +42,17 @@ fixtures (`tests/project_with_footage.ove`, `tests/demo.mp4`); the PPM and
 WAV writers (`src/ppm.rs`, `src/wav.rs`) are the exact ports of the C++
 `write_ppm`/`write_wav` and are unit-tested.
 
-## Facade status: everything is currently deferred
-
-All four subcommands depend on facade families that are still **deferred**
-in the `oakengine` crate (`crates/oakengine/src/deferred.rs`), so today each
-subcommand validates its arguments, then prints a clear "not yet available"
-error naming the missing families and the reasons, and exits with the
-C++-compatible code — it never crashes and never fakes output:
-
-| subcommand | needs | current behavior |
-|---|---|---|
-| `info` | init + node (project/footage) + timeline | "not yet available", exit 1 |
-| `probe` | init + node (footage) | "not yet available", exit 1 |
-| `render` | init + node + timeline + render | "not yet available", exit 2 |
-| `transcode` | init + node + timeline + render + exporter | "not yet available", exit 2 |
-
-The deferral registry is `src/deferred.rs` (field-for-field in sync with the
-facade's own `deferred.rs`). When a family is wrapped by the facade:
-
-1. remove its entry from `src/deferred.rs`,
-2. wire the call-through in `src/cmd/` using the extern declarations in
-   `src/ffi.rs` (verbatim mirrors of the engine headers) and the tested
-   formatters/writers — no manifest or signature change is needed, because
-   the externs resolve against the already-linked `oakfacade` rlib.
-
 ## Layout
 
 ```
 src/
-  main.rs       clap surface, --help/-h + unknown-command handling, dispatch
-  ffi.rs        the oakengine_* surface oak-cli consumes (declarations only)
-  deferred.rs   facade-family availability registry (mirror of facade deferred.rs)
-  fmt.rs        golden output formatters (info/probe)
-  ppm.rs        P6 PPM writer (f32/u8 frames)
-  wav.rs        PCM s16 WAV writer (interleaved float samples)
-  cmd/          per-subcommand validation + deferred gate
-tests/cli.rs    binary-level tests (exit codes, messages, usage errors)
+  main.rs     clap surface, --help/-h + unknown-command handling, dispatch
+  engine.rs   module-native assembly layer (M14 R2): project load/create,
+              footage probe, sequence + clip assembly, montage resolution,
+              ticket rendering, synchronous export
+  fmt.rs      golden output formatters (info/probe)
+  ppm.rs      P6 PPM writer (f32/u8 frames)
+  wav.rs      PCM s16 WAV writer (interleaved float samples)
+  cmd/        per-subcommand validation + module-crate calls
+tests/cli.rs  binary-level tests (exit codes, messages, usage errors)
 ```

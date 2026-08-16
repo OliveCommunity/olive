@@ -4753,12 +4753,21 @@ name = "oak-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "oakcodec",
+ "oakcommon",
+ "oakcore-rs",
+ "oaknode",
+ "oakrender",
+ "oaktask",
+ "oaktimeline",
 ]
 
 [[package]]
 name = "oak-worker"
 version = "0.1.0"
 dependencies = [
+ "libc",
+ "oakrender",
  "serde",
  "serde_json",
 ]

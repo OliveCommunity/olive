@@ -18,10 +18,9 @@
 //! `oak_cli_info`/`oak_cli_render`/`oak_cli_probe`/`oak_cli_transcode`
 //! equivalents).
 //!
-//! The binary is a pure C-ABI consumer of `liboakengine` (see src/ffi.rs),
-//! so these tests need the built dylib present: run `cargo build -p
-//! oakengine` BEFORE `cargo test -p oak-cli` (the link happens at build
-//! time, the load at runtime through the rpath build.rs installs).
+//! The binary links the oak* module crates directly (M14 R2; see
+//! src/engine.rs) — no `liboakengine` dylib is needed at build or run
+//! time, so `cargo test -p oak-cli` stands alone.
 //!
 //! The data-producing paths run against the repo fixtures
 //! (`tests/project_with_footage.ove`, `tests/demo.mp4` — real H.264/AAC
@@ -29,10 +28,10 @@
 //! codes (0 success, 1 general error, 2 rendering unavailable, 64 usage
 //! error), and the argument-validation paths assert the C++ messages.
 //!
-//! The engine's footage probe records the decoder id but drops the
-//! codec's stream descriptions (oaknode module gap), so the probe output
-//! carries real stream counts of 0 and a 0 duration until the module
-//! fills them in — the assertions pin the real contract.
+//! The module probe records the decoder id but drops the codec's stream
+//! descriptions (oaknode module gap), so the probe output carries real
+//! stream counts of 0 and a 0 duration until the module fills them in —
+//! the assertions pin the real contract.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -78,9 +77,8 @@ fn run(args: &[&str]) -> (i32, String, String) {
 	)
 }
 
-/// stderr without dyld's objc class-duplication notices (the engine
-/// dylib embeds FFmpeg's libavdevice, which collides with the host's on
-/// macOS).
+/// stderr, kept for the historical dyld objc notices (the module-linked
+/// binary no longer embeds FFmpeg's libavdevice, so it is a pass-through).
 fn real_errors(stderr: &str) -> String {
 	stderr
 		.lines()
@@ -119,7 +117,7 @@ fn help_prints_the_cpp_usage_text_and_exits_zero() {
 		!real_errors(&stderr).contains("error:"),
 		"stderr: {stderr}"
 	);
-	assert!(stdout.starts_with("oak-cli - headless consumer of the liboakengine C ABI\n"));
+	assert!(stdout.starts_with("oak-cli - headless consumer of the oak editor modules (direct Rust ABI)\n"));
 	assert!(stdout.contains("oak-cli transcode <input_media> <out> [width] [--format ppm|mp4]"));
 	assert!(stdout.contains("Exit codes:"));
 	assert!(stdout.contains("64  usage error"));
@@ -312,9 +310,9 @@ fn transcode_the_image_fixture_to_ppm_frames() {
 }
 
 #[test]
-fn transcode_mp4_reports_the_unwrapped_exporter_family() {
-	// The facade wraps the exporter family (oakengine_export_render),
-	// so the mp4 path renders and writes a real file.
+fn transcode_mp4_writes_a_real_mp4() {
+	// The module export task (crate::engine::export_sequence) drives the
+	// mp4 path end to end and writes a real file.
 	let dir = TempDir::new("transcode_mp4");
 	let image = fixture_image();
 	let out = dir.0.join("out.mp4");

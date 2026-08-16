@@ -29,8 +29,12 @@ path = "src/main.rs"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# No oakengine cargo dependency: the worker links the built liboakengine
-# dylib through build.rs (link-search + rpath) and the
-# `#[link(name = "oakengine", kind = "dylib")]` extern block in
-# src/engine_ipc.rs. Every call into editor functionality goes through the
-# oakengine_* C ABI declared there.
+# POSIX shm_open/ftruncate/mmap/munmap/shm_unlink for the shared-memory
+# frame-slot transport (src/ipc.rs).
+libc = "0.2"
+
+# M14 R2: oak-worker is a PURE module-crate consumer — the worker runtime
+# (src/worker.rs, src/ipc.rs) lives in this binary and calls the oak*
+# rlibs directly (oakrender for the render backend + color config). No
+# liboakengine dylib, no C ABI, no build.rs link step.
+oakrender = { path = "../oakrender" }

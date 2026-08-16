@@ -16,31 +16,27 @@
 
 //! oak-worker: headless render worker process (Rust).
 //!
-//! A thin C-ABI shell over the `liboakengine` facade dylib, mirroring
-//! `worker/workermain.cpp`: all runtime logic — render backend selection
-//! (dynamic -> OpenGL fallback through the oakrender module), the startup
-//! handshake and the NDJSON control loop — lives in the engine
-//! (`oakengine_worker_main`, the port of `engine/src/capi/worker.cpp`,
-//! contract in `engine/include/oakengine/worker.h`). This crate keeps only
-//! the argv forwarding, the `#[link]` declarations ([`engine_ipc`]) and
-//! the in-process session mirror ([`session`], [`transport`]) that its
-//! unit tests exercise against the engine's real shared-memory transport.
+//! The whole runtime lives in this binary (M14 R2): render backend
+//! selection (dynamic -> OpenGL fallback through the oakrender crate's
+//! direct Rust API), the startup handshake and the NDJSON control loop
+//! ([`worker`], the port of `engine/src/capi/worker.cpp`), plus the
+//! shared-memory frame-slot transport ([`ipc`], the port of
+//! `engine/render/ipc/`). No `liboakengine` dylib is linked; the facade
+//! keeps its own copies of both modules for the frozen
+//! `oakengine_worker_*` / `oakengine_ipc_*` C ABI (external consumers).
 //!
 //! See README.md for the full status.
 
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]
 
-mod engine_ipc;
-mod session;
-mod transport;
+mod ipc;
+mod worker;
 
-use std::ffi::{c_char, c_int, CString};
 use std::process::exit;
 
 /// Protocol version announced in the startup handshake
-/// (`k_protocol_version` in worker.cpp). Mirrors the engine worker
-/// module's `PROTOCOL_VERSION`.
+/// (`k_protocol_version` in worker.cpp).
 pub const PROTOCOL_VERSION: i32 = 1;
 
 /// Log a worker-side message to stderr, mirroring worker.cpp `log_error()`
@@ -49,26 +45,26 @@ pub fn log_error(message: &str) {
 	eprintln!("worker: {message}");
 }
 
+/// Scan argv for `--backend <name>` (worker.cpp `oakengine_worker_main`).
+/// The default is `"opengl"`; the value is lowercased; the last flag wins.
+fn parse_backend(args: &[String]) -> String {
+	let mut backend = "opengl".to_string();
+	let mut i = 1usize;
+	while i < args.len() {
+		if args[i] == "--backend" && i + 1 < args.len() {
+			backend = args[i + 1].to_ascii_lowercase();
+			i += 2;
+		} else {
+			i += 1;
+		}
+	}
+	backend
+}
+
 fn main() {
-	// Forward argv verbatim: the engine's oakengine_worker_main() scans
-	// for `--backend` itself (workermain.cpp does the same).
-	let args: Vec<String> = std::env::args_os()
-		.map(|a| a.to_string_lossy().into_owned())
-		.collect();
-	let cstrings: Vec<CString> = args
-		.iter()
-		.map(|a| CString::new(a.as_str()).unwrap_or_else(|_| CString::new("").unwrap()))
-		.collect();
-	let mut argv: Vec<*mut c_char> = cstrings
-		.iter()
-		.map(|c| c.as_ptr() as *mut c_char)
-		.collect();
-	// SAFETY: `argv` is an array of `argc` NUL-terminated C strings, kept
-	// alive for the whole call; the engine only reads them.
-	let code = unsafe {
-		engine_ipc::oakengine_worker_main(argv.len() as c_int, argv.as_mut_ptr())
-	};
-	exit(code);
+	let args: Vec<String> = std::env::args().collect();
+	let backend = parse_backend(&args);
+	exit(worker::worker_main(&backend));
 }
 
 #[cfg(test)]
@@ -78,5 +74,45 @@ mod tests {
 	#[test]
 	fn protocol_version_is_one() {
 		assert_eq!(PROTOCOL_VERSION, 1);
+	}
+
+	#[test]
+	fn backend_parsing_matches_engine_main() {
+		// Default is opengl.
+		assert_eq!(parse_backend(&["oak-worker".to_string()]), "opengl");
+		// Value lowercased.
+		assert_eq!(
+			parse_backend(&[
+				"oak-worker".to_string(),
+				"--backend".to_string(),
+				"Vulkan".to_string()
+			]),
+			"vulkan"
+		);
+		// "none" skips renderer creation.
+		assert_eq!(
+			parse_backend(&[
+				"oak-worker".to_string(),
+				"--backend".to_string(),
+				"none".to_string()
+			]),
+			"none"
+		);
+		// Last flag wins.
+		assert_eq!(
+			parse_backend(&[
+				"oak-worker".to_string(),
+				"--backend".to_string(),
+				"vulkan".to_string(),
+				"--backend".to_string(),
+				"opengl".to_string()
+			]),
+			"opengl"
+		);
+		// Missing value leaves the default.
+		assert_eq!(
+			parse_backend(&["oak-worker".to_string(), "--backend".to_string()]),
+			"opengl"
+		);
 	}
 }
