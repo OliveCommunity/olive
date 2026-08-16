@@ -319,11 +319,12 @@ jobs:
   # ------------------------------------------------------------------
   # Publish: attach every platform package to the v* tag's GitHub release
   # (skipped on workflow_dispatch, which only uploads artifacts). The
-  # windows job is disabled (app does not link on Windows yet).
+  # macOS and Windows jobs are disabled for now (macOS: runner budget;
+  # Windows: app does not link yet) — only the linux packages publish.
   # ------------------------------------------------------------------
   release:
     name: Publish GitHub release
-    needs: [linux, macos]
+    needs: [linux]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
