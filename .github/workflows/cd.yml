@@ -77,13 +77,12 @@ jobs:
           rsvg-convert -w 512 -h 512 Oak_Icon.svg -o icons/icon.png
           file icons/icon.png
 
-      # oakengine is a workspace member but NOT a default member; the
-      # app/CLI/worker link scripts point the linker at the profile dir
-      # (target/<profile>/), so build its cdylib there before the rest.
+      # Build the packaged binaries (default members: the app, oak-cli,
+      # oak-worker). oakengine is a workspace member but NOT a default
+      # member (M14 R4: pure cdylib for plugins/external consumers — no
+      # packaged binary links it), so it is not built here.
       - name: Build (release)
-        run: |
-          cargo build --release --locked -p oakengine
-          cargo build --release --locked
+        run: cargo build --release --locked
 
       - name: Package (deb, AppImage, pacman)
         run: cargo packager --release --formats deb,appimage,pacman
@@ -112,11 +111,10 @@ jobs:
           if-no-files-found: error
 
 #  # ------------------------------------------------------------------
-# macOS: Apple Silicon only. cargo-packager cannot fold liboakengine.dylib
-# into the bundle (no post-packaging hook; the .app is rebuilt on every
-# run), so we package the .app with cargo-packager, embed the dylib next
-# to the binaries with install_name_tool, ad-hoc re-sign, then create the
-# DMG with hdiutil (the same way the old C++ CD did).
+# macOS: Apple Silicon only. The app/CLI/worker no longer link
+# liboakengine (M14 R4: they call the module rlibs directly), so the
+# .app bundle carries no dylib to fold in; package it with
+# cargo-packager and create the DMG with hdiutil.
 # ------------------------------------------------------------------
 macos:
   name: macOS DMG (Apple Silicon)
@@ -175,41 +173,15 @@ macos:
         rsvg-convert -w 512 -h 512 Oak_Icon.svg -o icons/icon.png
         file icons/icon.png
 
-    # oakengine is a workspace member but NOT a default member; the
-    # app/CLI/worker link scripts point the linker at the profile dir
-    # (target/<profile>/), so build its cdylib there before the rest.
+    # Build the packaged binaries (default members: the app, oak-cli,
+    # oak-worker). oakengine is a workspace member but NOT a default
+    # member (M14 R4: pure cdylib for plugins/external consumers — no
+    # packaged binary links it), so it is not built here.
     - name: Build (release)
-      run: |
-        cargo build --release --locked -p oakengine
-        cargo build --release --locked
+      run: cargo build --release --locked
 
     - name: Package .app bundle
       run: cargo packager --release --formats app
-
-    - name: Embed liboakengine.dylib and re-sign
-      run: |
-        set -euo pipefail
-        APP="target/release/Oak.app"
-        MACOS="$APP/Contents/MacOS"
-        # cargo may place the dylib in target/release/deps/ (dependency
-        # build) or target/release/ (workspace-member build); derive it
-        # from the main binary's own load reference so the bundled copy
-        # matches exactly what the binary was linked against.
-        REF="$(otool -L "$MACOS/oak-editor" | awk '/liboakengine\.dylib/ {print $1; exit}')"
-        test -n "$REF" && test -f "$REF"
-        cp "$REF" "$MACOS/liboakengine.dylib"
-        install_name_tool -id "@executable_path/liboakengine.dylib" "$MACOS/liboakengine.dylib"
-        # build.rs links the app against the dylib's absolute build path;
-        # point every binary that references it at the bundled copy.
-        for bin in oak-editor oak-cli oak-worker; do
-          if otool -L "$MACOS/$bin" 2>/dev/null | grep -q "liboakengine.dylib"; then
-            REF="$(otool -L "$MACOS/$bin" | awk '/liboakengine/ {print $1; exit}')"
-            install_name_tool -change "$REF" "@executable_path/liboakengine.dylib" "$MACOS/$bin"
-          fi
-        done
-        # install_name_tool invalidates the packager's ad-hoc signature.
-        codesign --force --deep --sign - "$APP"
-        codesign -dv "$APP" 2>&1 | head -3
 
     - name: Create DMG
       run: |
@@ -235,8 +207,9 @@ macos:
   # `-Wl` flags that the MSVC linker rejects. The NSIS packaging itself is
   # fine (cargo-packager downloads its own makensis, SHA-1 verified); the
   # blocker is the binary link. Re-enable this job once crates link on
-  # Windows; the job below is kept verbatim (with the -p oakengine prebuild)
-  # as the reference.
+  # Windows; the job below is kept verbatim as the reference (the
+  # `-p oakengine` prebuild is obsolete since M14 R4 — no packaged binary
+  # links the cdylib — and should be dropped when re-enabling).
   # ------------------------------------------------------------------
   # windows:
   #   name: Windows installer (NSIS)

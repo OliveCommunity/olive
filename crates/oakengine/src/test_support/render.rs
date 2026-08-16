@@ -19,11 +19,17 @@
 //! tests, so the manager/cacher families exercise the module's STATE
 //! error path and the renderer/color families exercise the NULL/invalid
 //! argument paths (real rendering needs the deferred node family plus an
-//! initialized render manager).
+//! initialized render manager). The empty-sequence repro at the bottom
+//! brings the process-global manager up for its run and shuts it back
+//! down, restoring this invariant for the tests that follow it; the two
+//! manager-touching tests serialize on [`SERIAL`] so the repro never
+//! overlaps `render_manager_not_initialized` (the `it_task`/`it_export`
+//! pattern).
 
 use super::common;
 
 use std::ffi::{c_char, c_double};
+use std::sync::{Mutex, MutexGuard};
 
 use crate::render::{
 	oakengine_color_last_error, oakengine_color_manager_get_config_filename,
@@ -38,10 +44,23 @@ use crate::render::{
 	OakColorTransformPod,
 };
 
+/// Serialize the manager-touching render tests (the pattern in
+/// `it_task`/`it_export`). The empty-sequence repro brings the
+/// process-global render manager up (and back down) inside its run;
+/// without the lock it overlaps `render_manager_not_initialized`, whose
+/// STATE paths then see an initialized manager.
+static SERIAL: Mutex<()> = Mutex::new(());
+
+fn serial() -> MutexGuard<'static, ()> {
+	SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 /// Render manager state without initialization: the module reports its
 /// STATE error, passed through untranslated (-70002).
 #[test]
 fn render_manager_not_initialized() {
+	let _stack = super::it_undo::GLOBAL_STACK_LOCK.lock();
+	let _g = serial();
 	assert_eq!(
 		unsafe { oakengine_render_manager_set_aggressive_garbage_collection(1) },
 		-70002
@@ -62,6 +81,7 @@ fn render_manager_not_initialized() {
 /// Renderer lifecycle: NULL sequence is rejected; mode validation.
 #[test]
 fn renderer_lifecycle() {
+	let _stack = super::it_undo::GLOBAL_STACK_LOCK.lock();
 	// NULL seq → NULL renderer.
 	let r = unsafe {
 		oakengine_renderer_create(
@@ -92,6 +112,7 @@ fn renderer_lifecycle() {
 /// Frame accessors on NULL / empty handles report zero/NULL safely.
 #[test]
 fn frame_accessors_null_safe() {
+	let _stack = super::it_undo::GLOBAL_STACK_LOCK.lock();
 	assert_eq!(unsafe { oakengine_frame_width(std::ptr::null()) }, 0);
 	assert_eq!(unsafe { oakengine_frame_height(std::ptr::null()) }, 0);
 	assert_eq!(
@@ -107,6 +128,7 @@ fn frame_accessors_null_safe() {
 /// NULL; freeing is safe either way.
 #[test]
 fn color_processor_lifecycle() {
+	let _stack = super::it_undo::GLOBAL_STACK_LOCK.lock();
 	// NULL input → NULL.
 	let p = unsafe {
 		oakengine_color_processor_create(std::ptr::null(), std::ptr::null(), std::ptr::null(), 0)
@@ -157,6 +179,7 @@ fn color_processor_lifecycle() {
 /// reports STATE; the last-error string starts empty.
 #[test]
 fn color_manager_and_error() {
+	let _stack = super::it_undo::GLOBAL_STACK_LOCK.lock();
 	let mut buf = [0 as c_char; 64];
 	let rc = unsafe {
 		oakengine_color_manager_get_config_filename(std::ptr::null(), buf.as_mut_ptr(), 64)
@@ -170,6 +193,7 @@ fn color_manager_and_error() {
 /// LUT library stubs report the documented neutral values.
 #[test]
 fn lut_library_stubs() {
+	let _stack = super::it_undo::GLOBAL_STACK_LOCK.lock();
 	assert_eq!(unsafe { oakengine_lut_directory_count() }, 0);
 	assert_eq!(
 		unsafe { oakengine_lut_set_directories(std::ptr::null(), 0) },
@@ -180,6 +204,8 @@ fn lut_library_stubs() {
 // repro: render_audio on an empty sequence (playback tick on an empty timeline).
 #[test]
 fn render_audio_empty_sequence_no_crash() {
+	let _stack = super::it_undo::GLOBAL_STACK_LOCK.lock();
+	let _g = serial();
 	super::common::force_link();
 	unsafe {
 		assert_eq!(crate::render::oakengine_render_manager_init(), 0);
@@ -200,5 +226,10 @@ fn render_audio_empty_sequence_no_crash() {
 		}
 		crate::render::oakengine_renderer_free(r);
 		crate::node::oakengine_project_free(project);
+		// The repro initialized the process-global render manager; tear it
+		// down so the tests after this one keep the module header's
+		// documented "manager not initialized" contract (the STATE paths
+		// asserted by `render_manager_not_initialized`).
+		assert_eq!(crate::render::oakengine_render_manager_shutdown(), 0);
 	}
 }

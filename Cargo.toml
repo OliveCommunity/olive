@@ -33,10 +33,13 @@ exclude = ["gpui"]
 # dependency, so it builds with the app). Build/test it explicitly with
 # `cargo test -p oakstorage`.
 # NOTE: `crates/oakengine` is deliberately NOT a default member (it stays a
-# workspace member, so `cargo test -p oakengine` works): its in-flight
-# integration tests (`tests/it_*族.rs`, an ongoing rewrite) share temp files
-# and process-global facade state, which makes the parallel default-members
-# run flaky. The app builds it as a regular path dependency instead.
+# workspace member, so `cargo test -p oakengine` / `cargo test --workspace`
+# still run its tests): it is the plugin/external-consumer cdylib (M14 R4) —
+# no crate in the workspace links it (app/cli/worker call the module rlibs
+# directly), so default builds skip it. Its in-crate unit tests
+# (src/test_support/, the former tests/*.rs) share temp files and
+# process-global facade state, which makes the parallel default-members run
+# flaky.
 default-members = [".", "crates/oak-cli", "crates/oak-worker"]
 resolver = "2"
 

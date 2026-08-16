@@ -72,7 +72,7 @@ struct SerialGuard {
 	/// The [`SERIAL`] lock.
 	_task: std::sync::MutexGuard<'static, ()>,
 	/// The facade-wide undo-stack lock.
-	_stack: std::sync::MutexGuard<'static, ()>,
+	_stack: parking_lot::ReentrantMutexGuard<'static, ()>,
 }
 
 /// Take the [`SERIAL`] lock AND the global undo-stack lock, recovering
@@ -80,8 +80,7 @@ struct SerialGuard {
 fn serial() -> SerialGuard {
 	let _task = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
 	let _stack = super::it_undo::GLOBAL_STACK_LOCK
-		.lock()
-		.unwrap_or_else(|e| e.into_inner());
+		.lock();
 	SerialGuard { _task, _stack }
 }
 

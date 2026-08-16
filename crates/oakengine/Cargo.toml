@@ -2,9 +2,12 @@
 name = "oakengine"
 version = "0.1.0"
 edition = "2021"
-description = "Oak Video Editor facade: re-exports the frozen oakengine_* C ABI over the module Rust APIs (Rust)"
+description = "Oak Video Editor plugin/external-C-ABI layer: the frozen oakengine_* C ABI as a pure cdylib over the module crates' direct Rust APIs"
 license = "GPL-3.0-or-later"
 
+# Pure cdylib (M14 R4): the only consumers are OFX plugins and external
+# C-ABI embedders. No Rust crate depends on this crate, so no rlib/staticlib
+# artifact is produced and it stays out of the workspace default-members.
 [lib]
 crate-type = ["cdylib"]
 
@@ -52,6 +55,7 @@ oakplugin = { path = "../oakplugin" }
 oakstorage = { path = "../oakstorage" }
 
 [dev-dependencies]
+parking_lot = "0.12"
 # The facade is cdylib-only, so the former tests/*.rs integration tests
 # now run as unit tests inside the crate (src/test_support/, pulled in
 # from src/lib.rs); the module crates are reachable through the normal

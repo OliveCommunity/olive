@@ -16,8 +16,9 @@
 
 //! Build-time link configuration for the `liboakengine` cdylib.
 //!
-//! The dylib carries the module C ABIs itself (oakundo_*, oakcommon_*, ...
-//! — see Cargo.toml). The `oakcore_audioparams_*` accessors the audio
+//! The dylib carries the module crates themselves (their direct-Rust
+//! code, kept in the link by `src/linkage.rs` — see Cargo.toml). The
+//! `oakcore_audioparams_*` accessors the audio
 //! paths read through used to be host-provided C++ liboakcore symbols,
 //! left as runtime lookups via `-undefined,dynamic_lookup`; M12 P5
 //! implemented them inside the dylib (src/stubs.rs, module `audio`), so

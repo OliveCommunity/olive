@@ -3,8 +3,11 @@
 This document describes how to build Oak Video Editor from source on Windows, Linux, and macOS.
 
 > **Note (2026):** Oak is now a Rust workspace; `cargo build` at the
-> repository root produces the app, the CLI, the worker and
-> `liboakengine`. The CMake instructions below are kept for historical
+> repository root produces the app, the CLI and the worker
+> (`liboakengine` — the plugin/external-consumer cdylib — is not a
+> default member, M14 R4; build it explicitly with
+> `cargo build -p oakengine`). The CMake instructions below are kept for
+> historical
 > reference only. Rust dependencies are pulled from crates.io; the only
 > native libraries still needed are FFmpeg (see the next section),
 > OpenColorIO (optional; `ocio-sys` builds a stub without it) and a

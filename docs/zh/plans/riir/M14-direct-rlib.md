@@ -45,7 +45,7 @@
 | R1 | 胶水下沉：oakundo 全局栈+通知、oakstorage 会话管理器、oaktask 任务面补齐、oaknode ops 组合函数 | 各模块自带测试绿；facade 改为转发下沉版（行为不变，全量绿） |
 | R2 | oak-cli + oak-worker 切换（小，先蹚路） | 两 crate 零 oakengine 依赖，测试绿 |
 | R3 | app 切换：src/oakui/ffi.rs、host_syms.rs 删除，real.rs 全量改 Rust 调用；AppEngine trait 不动（Mock 保留） | `cargo test`（根 crate）全绿；真机冒烟（导入/播放/编辑/导出） |
-| R4 | oakengine 转纯 cdylib（workspace default-members 移除 rlib 使用点清零）、根 build.rs 链接逻辑删除、CD 去掉 app 内嵌 dylib | CI 绿；dmg 体积显著缩小（不再嵌 37-56MB dylib） |
+| R4 | oakengine 转纯 cdylib（workspace default-members 移除 rlib 使用点清零）、根 build.rs 链接逻辑删除、CD 去掉 app 内嵌 dylib（**已完成，2026-08**：crate-type 已是 cdylib-only、零 Rust 依赖方、cd.yml 去掉 embed 步骤与 `-p oakengine` 预构建） | CI 绿；dmg 体积显著缩小（不再嵌 37-56MB dylib） |
 | R5 | M13 遗留的 CHandle 内部清除逐模块完成（bridge 已删，剩 handle.rs 与模块内 CHandle 传参） | 模块内部无 CHandle 传参；C ABI 导出层（oakengine）独占 CHandle |
 
 依赖：R1→R2→R3→R4；R5 与 R2-R4 可并行。

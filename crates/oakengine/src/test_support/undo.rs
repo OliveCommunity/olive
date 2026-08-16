@@ -157,8 +157,7 @@ fn undo_stack_lifecycle() {
 	// write-through tests (the facade's stack is process-wide): without it
 	// a concurrent test's pushes break the exact-count assertions below.
 	let _stack = super::it_undo::GLOBAL_STACK_LOCK
-		.lock()
-		.unwrap_or_else(|e| e.into_inner());
+		.lock();
 
 	// Reset to a clean "New/Open Project" base row.
 	assert_eq!(unsafe { oakengine_undo_clear() }, 0);

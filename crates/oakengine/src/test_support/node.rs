@@ -108,6 +108,7 @@ unsafe fn find_node(project: *mut crate::handle::OakEngineProject, id: &str) -> 
 /// process-wide (the same serialization the undo family uses).
 #[test]
 fn project_node_keyframe_lifecycle() {
+	let _stack = super::it_undo::GLOBAL_STACK_LOCK.lock();
 	common::force_link();
 	let _ = force_oakundo_command_link();
 	// The undo commands below would bind the project to the default user
@@ -399,6 +400,7 @@ fn project_node_keyframe_lifecycle() {
 /// NULL handles yield -1 and out-of-range indexes yield -4.
 #[test]
 fn node_failure_paths() {
+	let _stack = super::it_undo::GLOBAL_STACK_LOCK.lock();
 	common::force_link();
 
 	// NULL node → OAKENGINE_E_INVALID (-1).
@@ -437,6 +439,7 @@ fn node_failure_paths() {
 /// Footage probe/import/borrow failure paths (no media required).
 #[test]
 fn footage_failure_paths() {
+	let _stack = super::it_undo::GLOBAL_STACK_LOCK.lock();
 	common::force_link();
 
 	// Probing a nonexistent path → NULL + a non-empty last error.

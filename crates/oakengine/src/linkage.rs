@@ -16,20 +16,22 @@
 
 //! Linkage anchors — force the module crates' rlibs into every link.
 //!
-//! The facade talks to the modules exclusively through `extern "C"`
-//! imports (src/bridge/), so rustc would otherwise consider the module
-//! crates unused and prune their rlibs from the link. This module
-//! references one `#[no_mangle]` export of every module crate (and
-//! `oakcore-rs`) from a `#[used]` static, which (a) marks each crate as
-//! used so its rlib reaches the linker and (b) keeps the anchor alive so
-//! the referenced object files are pulled. For the `liboakengine` cdylib
-//! this is what actually embeds the module C ABIs (oakundo_*,
-//! oakcommon_*, ...) into the dylib next to the facade's own oakengine_*
-//! exports.
+//! The facade calls the module crates' direct Rust APIs (single-lib; the
+//! deleted `src/bridge/` no longer exists), and most modules reach the
+//! linker through those normal references. The anchors below reference one
+//! direct-Rust symbol of every module crate (and `oakcore-rs`) from a
+//! `#[used]` static, which (a) marks each crate as used so its rlib
+//! reaches the linker even when the facade only touches it indirectly and
+//! (b) keeps the anchor alive so the referenced object files are pulled.
+//! For the `liboakengine` cdylib this is what embeds the module crates
+//! next to the facade's own `oakengine_*` exports — including the
+//! oakcommon XML/undo symbols oaknode's serializer resolves at runtime
+//! via dlsym(RTLD_DEFAULT) (see the per-anchor comments in `force_link`).
 //!
 //! The per-crate symbol mirrors the test-force-link in
-//! tests/common/mod.rs (same paths, same `as usize` cast idiom), so the
-//! crate/module paths are proven against the current module layouts.
+//! test_support/common/mod.rs (same paths, same `as usize` cast idiom),
+//! so the crate/module paths are proven against the current module
+//! layouts.
 
 #![allow(dead_code)]
 

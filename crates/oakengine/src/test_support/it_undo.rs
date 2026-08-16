@@ -92,7 +92,8 @@ unsafe fn read_str(buf: *const c_char) -> String {
 /// group cannot be shared, so each of those tests holds this lock for its
 /// whole body. Public so the write-through tests (it_storage.rs), which
 /// push commands on the same global stack, serialize on the SAME lock.
-pub static GLOBAL_STACK_LOCK: Mutex<()> = Mutex::new(());
+pub static GLOBAL_STACK_LOCK: parking_lot::ReentrantMutex<()> =
+	parking_lot::ReentrantMutex::new(());
 
 static LIFECYCLE_REDO: AtomicI32 = AtomicI32::new(0);
 static LIFECYCLE_UNDO: AtomicI32 = AtomicI32::new(0);
@@ -570,7 +571,7 @@ fn free_contracts() {
 /// group begin/end/abort lifecycle.
 #[test]
 fn undo_stack_integration() {
-	let _lock = GLOBAL_STACK_LOCK.lock().unwrap();
+	let _lock = GLOBAL_STACK_LOCK.lock();
 	common::force_link();
 
 	// --- Baseline: clear() resets to the single "New/Open Project" row.
@@ -834,7 +835,7 @@ fn undo_stack_integration() {
 /// label") and the facade docs.
 #[test]
 fn null_name_push_repro() {
-	let _lock = GLOBAL_STACK_LOCK.lock().unwrap();
+	let _lock = GLOBAL_STACK_LOCK.lock();
 	common::force_link();
 	assert_eq!(unsafe { oakengine_undo_clear() }, 0);
 
@@ -866,7 +867,7 @@ fn null_name_push_repro() {
 /// is safe.
 #[test]
 fn null_name_group_repro() {
-	let _lock = GLOBAL_STACK_LOCK.lock().unwrap();
+	let _lock = GLOBAL_STACK_LOCK.lock();
 	common::force_link();
 	assert_eq!(unsafe { oakengine_undo_clear() }, 0);
 
@@ -905,7 +906,7 @@ unsafe extern "C" fn abort_undo_cb(_ud: *mut c_void) {
 /// satisfied by a leftover value from an earlier jump.)
 #[test]
 fn group_abort_undoes_children_repro() {
-	let _lock = GLOBAL_STACK_LOCK.lock().unwrap();
+	let _lock = GLOBAL_STACK_LOCK.lock();
 	common::force_link();
 	assert_eq!(unsafe { oakengine_undo_clear() }, 0);
 

@@ -81,7 +81,7 @@ fn journal_rows(db: &Path, uuid: &str) -> usize {
 /// the storage-config lock for the whole body, then point the library at a
 /// temp SQLite file.
 fn with_library<R>(db: &Path, f: impl FnOnce() -> R) -> R {
-	let _stack = GLOBAL_STACK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+	let _stack = GLOBAL_STACK_LOCK.lock();
 	let _config = common::STORAGE_CONFIG_LOCK
 		.lock()
 		.unwrap_or_else(|e| e.into_inner());
@@ -394,7 +394,7 @@ fn export_then_import_round_trip() {
 /// mutating call fails with E_STATE.
 #[test]
 fn disabled_backend_degrades_gracefully() {
-	let _stack = GLOBAL_STACK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+	let _stack = GLOBAL_STACK_LOCK.lock();
 	let _off = common::storage_off_guard();
 
 	assert_eq!(list_json(), "[]", "no library configured reads as empty");

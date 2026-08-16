@@ -67,7 +67,7 @@ const MATH: &str = "org.olivevideoeditor.Olive.math";
 /// the storage-config lock for the whole body, then point the write-through
 /// backend at a temp library.
 fn with_storage<R>(db: &Path, interval: i32, f: impl FnOnce() -> R) -> R {
-	let _stack = GLOBAL_STACK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+	let _stack = GLOBAL_STACK_LOCK.lock();
 	let _config = common::STORAGE_CONFIG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 	let store = oakcommon::configstore::ConfigStore::instance();
 	store.set(Some("Storage"), "Backend", "sqlite");
@@ -80,7 +80,7 @@ fn with_storage<R>(db: &Path, interval: i32, f: impl FnOnce() -> R) -> R {
 /// "off"`): projects bind to nothing and the undo stack stays untouched by
 /// write-throughs.
 fn with_storage_off<R>(f: impl FnOnce() -> R) -> R {
-	let _stack = GLOBAL_STACK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+	let _stack = GLOBAL_STACK_LOCK.lock();
 	let _config = common::STORAGE_CONFIG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 	oakcommon::configstore::ConfigStore::instance().set(Some("Storage"), "Backend", "off");
 	f()
@@ -624,7 +624,7 @@ fn unwritable_library_records_last_error() {
 #[test]
 fn default_library_path_and_backend() {
 	common::force_link();
-	let _stack = GLOBAL_STACK_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+	let _stack = GLOBAL_STACK_LOCK.lock();
 	let _config = common::STORAGE_CONFIG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
 	// The default path is a plain absolute `…/library.db`.

@@ -20,10 +20,11 @@
 //! Two jobs:
 //!
 //! 1. **Force rustc to link every module crate's rlib** into the test
-//!    binary ([`force_link`]). The facade itself only references the
-//!    modules through `extern "C"` imports (see src/bridge), so rustc
-//!    would otherwise drop the dev-dependency rlibs from the link and
-//!    leave the imports undefined.
+//!    binary ([`force_link`]). The test-support files import the module
+//!    crates directly (single-lib; the deleted `src/bridge` no longer
+//!    exists), and the array doubles as a compile-time proof that the
+//!    anchor paths in `crates/oakengine/src/linkage.rs` match the current
+//!    module layouts.
 //!
 //! 2. **Re-export the folded-in `oakcore_audioparams_*` accessors** for
 //!    the former mock call sites (`common::oakcore_audioparams_*`). The

@@ -14,24 +14,31 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! # oakengine — the `liboakengine` facade (Rust)
+//! # oakengine — the `liboakengine` cdylib (plugin / external C ABI)
 //!
-//! Re-exports the frozen `oakengine_*` C ABI
-//! (`engine/include/oakengine/*.h`) verbatim on top of the module C ABIs
-//! (`include/<mod>/*.h`, implemented by the oakundo/oaknode/oaktimeline/
-//! oakcodec/oakaudio/oakrender/oaktask/oakcommon/oakplugin crates). It is
-//! the M9 §4 assembly layer: every module call crosses the module C ABI as
-//! an `extern "C"` import (see [`bridge`]); the facade itself owns only
-//! cross-cutting state (the process-wide undo stack and the open undo
-//! group, see [`undo`]).
+//! The frozen `oakengine_*` C ABI (`engine/include/oakengine/*.h`) as a
+//! **pure cdylib** (M14 R4). This is the plugin / external-consumer layer:
+//! OFX plugins and third-party embedders link `liboakengine` and call the
+//! C ABI; the app, oak-cli and oak-worker do not use it anymore — they
+//! link the module crates directly as Rust rlibs.
+//!
+//! Downward, every `oakengine_*` export is a direct Rust call into the
+//! module crates (oakundo/oaknode/oaktimeline/oakcodec/oakaudio/oakrender/
+//! oaktask/oakcommon/oakplugin/oakstorage/oakcore-rs) through [`stubs`]
+//! (the rewired replacement for the deleted `bridge/`); the C ABI itself
+//! stays frozen (only additive changes + major version bumps).
+//! Cross-cutting state that used to live here (the process-wide undo stack,
+//! the open undo group) has sunk into the modules (M14 R1:
+//! [`oakundo::global`]); [`undo`] is a thin forward that adds the engine's
+//! box/unbox, buf/size and error-code conventions.
 //!
 //! ## Handle mapping
 //!
 //! The engine headers' opaque pointers (`OakEngineNode*`, `OakEngineTrack*`,
 //! ...) become thin newtype wrappers around module [`handle::CHandle`]
 //! values (see [`handle`]). Each exported function keeps the exact
-//! signature from the engine header; inside, it unboxes the module handle,
-//! calls the module C ABI and boxes the result.
+//! signature from the engine header; inside, it unboxes the module value,
+//! calls the module's direct Rust API and boxes the result.
 //!
 //! ## FFI discipline
 //!
@@ -42,28 +49,19 @@
 //!
 //! ## Testing
 //!
-//! The module crates are real dependencies (see Cargo.toml) and
-//! [`linkage`] anchors them into every link of this crate, so the module
-//! C ABIs are embedded in the `liboakengine` cdylib next to the facade's
-//! own exports. `cargo test` links the same crates' rlibs (plus the
-//! `test-stubs` feature union declared in the dev-dependencies, which
-//! compiles the oakcommon/oakplugin in-crate mocks); `tests/linkage.rs`
-//! additionally references every crate for the integration-test binaries
-//! and `test_link` (below) covers the unit-test binary. Where a wrapped
-//! family needs module behavior the crates do not implement yet, the
-//! engine function is a documented stub and its test carries `#[ignore]`
-//! with a reason (see README.md).
+//! The crate is cdylib-only, so the former `tests/*.rs` integration tests
+//! run as in-crate unit tests under `src/test_support/` (pulled in from
+//! here under `#[cfg(test)]`; they address the crate's modules through
+//! `crate::*`). The module crates are real dependencies (see Cargo.toml),
+//! so the test binary statically links the same rlibs the cdylib embeds;
+//! [`linkage`] anchors every crate into the cdylib link, and the test-only
+//! [`test_link`] module does the same for the unit-test binary. Where a
+//! wrapped family needs module behavior the crates do not implement yet,
+//! the engine function is a documented stub with its reason (see
+//! `deferred.rs` and README.md).
 
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]
-
-// Re-export the node crate so integration tests (and embedders) address
-// the SAME compiled instance the facade uses: under `cargo test
-// --workspace`, oaknode is built twice (oaknode's own dev-dependency
-// enables oakcodec/test-stubs), and a test that mixes `oaknode::` direct
-// imports with `oakengine::` re-exports gets two incompatible type
-// instances (E0308 "multiple different versions of crate oaknode").
-pub use oaknode;
 
 pub mod audio;
 pub mod codec;
@@ -98,7 +96,7 @@ mod test_link {
 	// The lib's own unit-test binary must link the module crates' rlibs to
 	// satisfy the facade's imports that the unit tests compile in — e.g.
 	// the render family's oakrender display renderer (src/render.rs).
-	// The integration tests do the same through tests/common/mod.rs
+	// The in-crate tests do the same through test_support/common/mod.rs
 	// `force_link()`; this covers the `cargo test` unit-test binary.
 	#![allow(dead_code)]
 	fn force_link() -> usize {
