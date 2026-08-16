@@ -14,9 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! The global status bar (状态栏): ready state, cache, proxy and autosave
-//! info on the left; current timecode / duration, frame rate and resolution
-//! on the right.
+//! The global status bar (状态栏): ready state, cache, proxy and the
+//! library write state (M13 D4: the write-through replaces the manual save,
+//! so the old autosave hint becomes "written to the library / library off /
+//! write failed") on the left; current timecode / duration, frame rate and
+//! resolution on the right.
 
 use gpui::colors::DefaultColors;
 use gpui::timeline::Frame;
@@ -66,6 +68,25 @@ impl<E: AppEngine> Render for StatusBar<E> {
 			div().px_2().py_1().text_color(colors.text).child(text)
 		};
 
+		// The write-through state (M13 D4): a bound project with no recorded
+		// error is written through; an error turns the segment red.
+		let (storage_text, storage_color) = if engine.storage_last_error().is_some() {
+			(
+				crate::i18n::tr("status.storage.error"),
+				gpui::rgba(0xcc6666ff),
+			)
+		} else if engine.storage_bound() {
+			(
+				crate::i18n::tr("status.storage.written"),
+				colors.disabled,
+			)
+		} else {
+			(
+				crate::i18n::tr("status.storage.unbound"),
+				colors.disabled,
+			)
+		};
+
 		div()
 			.h_6()
 			.flex()
@@ -77,7 +98,13 @@ impl<E: AppEngine> Render for StatusBar<E> {
 			.child(segment(&colors, crate::i18n::tr("status.ready").into()))
 			.child(segment(&colors, crate::i18n::tr("status.cache").into()))
 			.child(segment(&colors, crate::i18n::tr("status.proxy").into()))
-			.child(segment(&colors, crate::i18n::tr("status.autosave").into()))
+			.child(
+				div()
+					.px_2()
+					.py_1()
+					.text_color(storage_color)
+					.child(storage_text),
+			)
 			.child(div().flex_1())
 			.child(segment(
 				&colors,

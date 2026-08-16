@@ -31,7 +31,7 @@
 //! │ dock: 项目 | 素材查看器 | 序列查看器+节点编辑器 | 检查器+历史记录
 //! │       (vertical split) 时间线 (full width, 31px toolbar on top)
 //! ├─────────────────────────────────────────────────────
-//! └ status bar: 就绪 | 缓存 | 代理 | 自动保存 || 时间码/时长 | 帧率 | 分辨率 | 引擎
+//! └ status bar: 就绪 | 缓存 | 代理 | 库写入状态 || 时间码/时长 | 帧率 | 分辨率 | 引擎
 //! ```
 
 use std::path::PathBuf;
@@ -69,12 +69,13 @@ use crate::panels::timeline::TimelinePanel;
 mod menu_ids {
 	pub const NEW_PROJECT: usize = 101;
 	pub const OPEN_PROJECT: usize = 102;
-	pub const SAVE: usize = 103;
-	pub const SAVE_AS: usize = 104;
+	pub const EXPORT_PROJECT: usize = 103;
 	pub const CLOSE: usize = 105;
 	pub const EXPORT: usize = 106;
 	pub const QUIT: usize = 107;
 	pub const IMPORT_FOOTAGE: usize = 108;
+	pub const PROJECT_MANAGER: usize = 109;
+	pub const OPEN_FROM_LIBRARY: usize = 110;
 
 	pub const UNDO: usize = 201;
 	pub const REDO: usize = 202;
@@ -116,6 +117,9 @@ mod modal_ids {
 	pub const PREFERENCES: usize = 3;
 	pub const EXPORT: usize = 4;
 	pub const EXPORT_PROGRESS: usize = 5;
+	pub const MANAGER: usize = 6;
+	pub const MANAGER_RENAME: usize = 7;
+	pub const MANAGER_DELETE: usize = 8;
 }
 
 /// What a picked platform-dialog path should do.
@@ -123,11 +127,18 @@ mod modal_ids {
 enum FileAction {
 	ImportFootage,
 	Open,
+	/// Export the current project to a file (`.ove` / `.otio` / `.fcpxml`,
+	/// dispatched by extension).
 	SaveAs,
+	/// Import a project file into the library (the manager's 导入).
+	ImportProject,
+	/// Export the selected library project (the manager's 导出; the row's
+	/// uuid is stashed in [`OakApp::pending_export`]).
+	ExportProject,
 }
 
 /// The modal currently layered on top of the shell, if any.
-enum ModalState {
+enum ModalState<E: AppEngine> {
 	None,
 	Preferences {
 		modal: Entity<Modal>,
@@ -141,6 +152,19 @@ enum ModalState {
 		modal: Entity<Modal>,
 		content: Entity<ProgressContent>,
 	},
+	/// The project manager (M13 D4).
+	Manager {
+		modal: Entity<Modal>,
+		content: Entity<crate::manager::ProjectManager<E>>,
+	},
+	/// The manager's rename prompt.
+	ManagerRename {
+		modal: Entity<Modal>,
+		content: Entity<crate::manager::NamePrompt>,
+		uuid: String,
+	},
+	/// The manager's delete confirmation.
+	ManagerDelete { modal: Entity<Modal>, uuid: String },
 }
 
 /// A running export: the session the tick loop drains for progress.
@@ -148,14 +172,17 @@ struct ExportRun {
 	session: ExportSession,
 }
 
-impl ModalState {
+impl<E: AppEngine> ModalState<E> {
 	/// The modal entity currently shown, if any.
 	fn modal_entity(&self) -> Option<Entity<Modal>> {
 		match self {
 			ModalState::None => None,
 			ModalState::Preferences { modal, .. }
 			| ModalState::Export { modal, .. }
-			| ModalState::Progress { modal, .. } => Some(modal.clone()),
+			| ModalState::Progress { modal, .. }
+			| ModalState::Manager { modal, .. }
+			| ModalState::ManagerRename { modal, .. }
+			| ModalState::ManagerDelete { modal, .. } => Some(modal.clone()),
 		}
 	}
 }
@@ -255,9 +282,11 @@ pub struct OakApp<E: AppEngine> {
 	/// Whether the dark theme is active (toggles via 视图 → 主题).
 	dark: bool,
 	/// The modal currently shown on top of the shell, if any.
-	modal: ModalState,
+	modal: ModalState<E>,
 	/// The running export session, if any.
 	export: Option<ExportRun>,
+	/// The library row pending an export save dialog (manager 导出).
+	pending_export: Option<String>,
 }
 
 impl<E: AppEngine> OakApp<E> {
@@ -459,6 +488,7 @@ impl<E: AppEngine> OakApp<E> {
 			dark: true,
 			modal: ModalState::None,
 			export: None,
+			pending_export: None,
 		};
 
 		// Open the CLI-provided project once the shell is up.
@@ -491,11 +521,11 @@ impl<E: AppEngine> OakApp<E> {
 		use menu_ids::*;
 		match item {
 			// --- File ------------------------------------------------------
-			NEW_PROJECT => self.engine.update(cx, |engine, cx| engine.new_project(cx)),
+			NEW_PROJECT => self.new_project(cx),
 			OPEN_PROJECT => self.open_file_dialog(FileAction::Open, cx),
+			OPEN_FROM_LIBRARY | PROJECT_MANAGER => self.show_project_manager(cx),
 			IMPORT_FOOTAGE => self.open_file_dialog(FileAction::ImportFootage, cx),
-			SAVE => self.save_project(None, cx),
-			SAVE_AS => self.open_file_dialog(FileAction::SaveAs, cx),
+			EXPORT_PROJECT => self.open_file_dialog(FileAction::SaveAs, cx),
 			CLOSE => self
 				.engine
 				.update(cx, |engine, cx| engine.close_project(cx)),
@@ -580,13 +610,28 @@ impl<E: AppEngine> OakApp<E> {
 		}
 	}
 
-	/// Saves the project (to its own filename, or the given `path`).
+	/// Exports the project to a file (the 导出工程文件… action's target; the
+	/// format is dispatched by the picked path's extension).
 	fn save_project(&mut self, path: Option<PathBuf>, cx: &mut Context<Self>) {
 		let result = self
 			.engine
 			.update(cx, |engine, cx| engine.save_project(path, cx));
 		if let Err(err) = result {
 			println!("[file] save failed: {err}");
+		}
+	}
+
+	/// 新建项目: creates a blank project in the library and opens it (the
+	/// write-through persists it from the first edit). Falls back to the
+	/// engine's plain new-project path when the library is unavailable.
+	fn new_project(&mut self, cx: &mut Context<Self>) {
+		let name = crate::i18n::tr("manager.new.default_name").to_string();
+		let result = self
+			.engine
+			.update(cx, |engine, cx| engine.library_create_project(&name, cx));
+		if let Err(err) = result {
+			println!("[file] library create failed ({err}); plain new project");
+			self.engine.update(cx, |engine, cx| engine.new_project(cx));
 		}
 	}
 
@@ -661,6 +706,228 @@ impl<E: AppEngine> OakApp<E> {
 	}
 
 	// -----------------------------------------------------------------------
+	// Project manager (M13 D4)
+	// -----------------------------------------------------------------------
+
+	/// Opens the project manager (startup without a project argument, and
+	/// 文件 → 项目管理器 / 从库中打开…). Re-entrant: an already-open
+	/// manager just reloads its list.
+	pub fn show_project_manager(&mut self, cx: &mut Context<Self>) {
+		if let ModalState::Manager { content, .. } = &self.modal {
+			let content = content.clone();
+			content.update(cx, |manager, cx| manager.reload(cx));
+			return;
+		}
+		let engine = self.engine.clone();
+		self.spawn_modal(cx, move |window, app| {
+			let content = app.new(|cx| crate::manager::ProjectManager::new(engine, window, cx));
+			let modal = app.new(|cx| {
+				Modal::new(
+					modal_ids::MANAGER,
+					ModalOptions::new(crate::i18n::tr("manager.title"), px(880.0))
+						.with_button(DialogButton::cancel(crate::i18n::tr("dialog.close"))),
+					window,
+					cx,
+				)
+				.with_content(content.clone())
+			});
+			ModalState::Manager { modal, content }
+		});
+		// The content's requests (open / create / rename / ...) route here.
+		if let ModalState::Manager { content, .. } = &self.modal {
+			let content = content.clone();
+			cx.subscribe(
+				&content,
+				|this, _content, event: &crate::manager::ManagerEvent, cx| {
+					this.on_manager_event(event, cx);
+				},
+			)
+			.detach();
+		}
+	}
+
+	/// Routes a project-manager request through the engine. Open / Create
+	/// close the dialog on success; the mutating actions reload the list;
+	/// failures land in the dialog's status line.
+	fn on_manager_event(&mut self, event: &crate::manager::ManagerEvent, cx: &mut Context<Self>) {
+		use crate::manager::ManagerEvent as E;
+		match event {
+			E::Create => {
+				let name = crate::i18n::tr("manager.new.default_name").to_string();
+				let result = self
+					.engine
+					.update(cx, |engine, cx| engine.library_create_project(&name, cx));
+				match result {
+					Ok(()) => self.close_modal(cx),
+					Err(err) => self.manager_status(err, cx),
+				}
+			}
+			E::Open(uuid) => {
+				let uuid = uuid.clone();
+				let result = self
+					.engine
+					.update(cx, |engine, cx| engine.library_open_project(&uuid, cx));
+				match result {
+					Ok(()) => self.close_modal(cx),
+					Err(err) => self.manager_status(err, cx),
+				}
+			}
+			E::Rename(uuid) => self.open_manager_rename(uuid.clone(), cx),
+			E::Duplicate(uuid) => {
+				let result = self
+					.engine
+					.update(cx, |engine, _cx| engine.library_duplicate_project(uuid));
+				match result {
+					Ok(()) => self.reload_manager(cx),
+					Err(err) => self.manager_status(err, cx),
+				}
+			}
+			E::Delete(uuid) => self.open_manager_delete(uuid.clone(), cx),
+			E::Import => self.open_file_dialog(FileAction::ImportProject, cx),
+			E::Export(uuid) => self.open_manager_export(uuid.clone(), cx),
+		}
+	}
+
+	/// Reloads the open manager's list (after a library mutation).
+	fn reload_manager(&mut self, cx: &mut Context<Self>) {
+		if let ModalState::Manager { content, .. } = &self.modal {
+			let content = content.clone();
+			content.update(cx, |manager, cx| manager.reload(cx));
+		}
+	}
+
+	/// Shows an engine error in the open manager's status line (or logs it
+	/// when the manager is gone).
+	fn manager_status(&mut self, message: String, cx: &mut Context<Self>) {
+		if let ModalState::Manager { content, .. } = &self.modal {
+			let content = content.clone();
+			content.update(cx, |manager, cx| manager.set_status(Some(message), cx));
+		} else {
+			println!("[manager] {message}");
+		}
+	}
+
+	/// The selected row's display name in the open manager (used to seed
+	/// the rename prompt / the delete confirmation / the export filename).
+	fn manager_selected_name(&self, cx: &App) -> Option<String> {
+		match &self.modal {
+			ModalState::Manager { content, .. } => content.read(cx).selected_name(),
+			_ => None,
+		}
+	}
+
+	/// Swaps the manager for the rename prompt of row `uuid`.
+	fn open_manager_rename(&mut self, uuid: String, cx: &mut Context<Self>) {
+		let initial = self.manager_selected_name(cx).unwrap_or_default();
+		self.spawn_modal(cx, move |window, app| {
+			let content = app.new(|cx| crate::manager::NamePrompt::new(&initial, cx));
+			let modal = app.new(|cx| {
+				Modal::new(
+					modal_ids::MANAGER_RENAME,
+					ModalOptions::new(crate::i18n::tr("manager.rename.title"), px(380.0))
+						.with_button(DialogButton::primary(crate::i18n::tr(
+							"manager.rename.title",
+						)))
+						.with_button(DialogButton::cancel(crate::i18n::tr("dialog.cancel"))),
+					window,
+					cx,
+				)
+				.with_content(content.clone())
+			});
+			ModalState::ManagerRename { modal, content, uuid }
+		});
+	}
+
+	/// Swaps the manager for the delete confirmation of row `uuid`.
+	fn open_manager_delete(&mut self, uuid: String, cx: &mut Context<Self>) {
+		let name = self.manager_selected_name(cx).unwrap_or_default();
+		let text = crate::i18n::tr("manager.delete.confirm").replace("{name}", &name);
+		self.spawn_modal(cx, move |window, app| {
+			let content = app.new(|_cx| crate::manager::ConfirmContent::new(text));
+			let modal = app.new(|cx| {
+				Modal::new(
+					modal_ids::MANAGER_DELETE,
+					ModalOptions::new(crate::i18n::tr("manager.delete.title"), px(420.0))
+						.with_button(DialogButton::primary(crate::i18n::tr("manager.delete")))
+						.with_button(DialogButton::cancel(crate::i18n::tr("dialog.cancel"))),
+					window,
+					cx,
+				)
+				.with_content(content.clone())
+			});
+			ModalState::ManagerDelete { modal, uuid }
+		});
+	}
+
+	/// Confirms the rename prompt (button 0).
+	fn confirm_manager_rename(&mut self, cx: &mut Context<Self>) {
+		let ModalState::ManagerRename { content, uuid, .. } = &self.modal else {
+			return;
+		};
+		let name = content.read(cx).value(cx);
+		let uuid = uuid.clone();
+		if name.is_empty() {
+			self.back_to_manager(cx);
+			return;
+		}
+		let result = self
+			.engine
+			.update(cx, |engine, _cx| engine.library_rename_project(&uuid, &name));
+		match result {
+			Ok(()) => self.back_to_manager(cx),
+			Err(err) => {
+				self.back_to_manager(cx);
+				self.manager_status(err, cx);
+			}
+		}
+	}
+
+	/// Confirms the delete confirmation (button 0).
+	fn confirm_manager_delete(&mut self, cx: &mut Context<Self>) {
+		let ModalState::ManagerDelete { uuid, .. } = &self.modal else {
+			return;
+		};
+		let uuid = uuid.clone();
+		let result = self
+			.engine
+			.update(cx, |engine, _cx| engine.library_delete_project(&uuid));
+		match result {
+			Ok(()) => self.back_to_manager(cx),
+			Err(err) => {
+				self.back_to_manager(cx);
+				self.manager_status(err, cx);
+			}
+		}
+	}
+
+	/// Returns from a manager sub-dialog (rename / delete) to the manager.
+	fn back_to_manager(&mut self, cx: &mut Context<Self>) {
+		self.modal = ModalState::None;
+		self.show_project_manager(cx);
+	}
+
+	/// Opens the platform save dialog for exporting the library row `uuid`
+	/// (the suggested name is `<project>.ove`; the format follows the
+	/// extension the user picks).
+	fn open_manager_export(&mut self, uuid: String, cx: &mut Context<Self>) {
+		let name = self
+			.manager_selected_name(cx)
+			.filter(|n| !n.is_empty())
+			.unwrap_or_else(|| "project".to_string());
+		self.pending_export = Some(uuid);
+		let receiver =
+			cx.prompt_for_new_path(&PathBuf::from("."), Some(&format!("{name}.ove")));
+		cx.spawn(async move |this, cx| {
+			if let Ok(Ok(Some(path))) = receiver.await {
+				this.update(cx, |this, cx| {
+					this.on_file_paths(FileAction::ExportProject, vec![path], cx);
+				});
+			}
+		})
+		.detach();
+	}
+
+	// -----------------------------------------------------------------------
 	// Modal dialogs
 	// -----------------------------------------------------------------------
 
@@ -679,10 +946,15 @@ impl<E: AppEngine> OakApp<E> {
 	/// through a weak handle *inside* the window callback would re-enter this
 	/// entity while it is already being updated (the crash seen when opening
 	/// Preferences from a menu action).
+	///
+	/// The caller must NOT be inside a window update itself (e.g.
+	/// `WindowHandle::update`): the nested `update_window` below would fail
+	/// and the modal would silently not open. Drive the root entity instead
+	/// (menu actions and entity updates are fine).
 	fn spawn_modal(
 		&mut self,
 		cx: &mut Context<Self>,
-		build: impl FnOnce(&mut Window, &mut App) -> ModalState,
+		build: impl FnOnce(&mut Window, &mut App) -> ModalState<E>,
 	) {
 		let windows = cx.windows();
 		let Some(handle) = windows.first() else {
@@ -704,14 +976,15 @@ impl<E: AppEngine> OakApp<E> {
 
 	/// Opens the platform file dialog for `action` and routes the picked
 	/// path(s) through the engine. Open / Import use the path picker (import
-	/// allows multiple files); Save As asks for a new path next to the current
-	/// project. The picker resolves asynchronously, so the chosen path is
-	/// applied in a spawned task via [`Self::on_file_paths`].
+	/// footage allows multiple files); Save As and the manager's export ask
+	/// for a new path. The picker resolves asynchronously, so the chosen
+	/// path is applied in a spawned task via [`Self::on_file_paths`].
 	fn open_file_dialog(&mut self, action: FileAction, cx: &mut Context<Self>) {
 		match action {
-			FileAction::Open | FileAction::ImportFootage => {
+			FileAction::Open | FileAction::ImportFootage | FileAction::ImportProject => {
 				let prompt = match action {
 					FileAction::Open => crate::i18n::tr("file.open.title"),
+					FileAction::ImportProject => crate::i18n::tr("manager.import.title"),
 					_ => crate::i18n::tr("file.import_footage.title"),
 				};
 				let receiver = cx.prompt_for_paths(PathPromptOptions {
@@ -757,12 +1030,49 @@ impl<E: AppEngine> OakApp<E> {
 				})
 				.detach();
 			}
+			// The manager's export prompts in `open_manager_export` (it needs
+			// the selection's suggested filename).
+			FileAction::ExportProject => {}
 		}
 	}
 
 	/// Applies paths picked in the platform dialog through the engine, using
-	/// the action's routing (open / import / save-as).
+	/// the action's routing (open / import / export).
 	fn on_file_paths(&mut self, action: FileAction, paths: Vec<PathBuf>, cx: &mut Context<Self>) {
+		// The manager's library import/export refresh the open manager and
+		// report failures in its status line.
+		match action {
+			FileAction::ImportProject => {
+				let Some(path) = paths.first() else {
+					return;
+				};
+				let result = self
+					.engine
+					.update(cx, |engine, _cx| engine.library_import_project(path.clone()));
+				match result {
+					Ok(uuid) => {
+						println!("[manager] imported \"{}\" as {uuid}", path.display());
+						self.reload_manager(cx);
+					}
+					Err(err) => self.manager_status(err, cx),
+				}
+				return;
+			}
+			FileAction::ExportProject => {
+				let (Some(uuid), Some(path)) = (self.pending_export.take(), paths.first()) else {
+					return;
+				};
+				let result = self
+					.engine
+					.update(cx, |engine, _cx| engine.library_export_project(&uuid, path.clone()));
+				match result {
+					Ok(()) => println!("[manager] exported to \"{}\"", path.display()),
+					Err(err) => self.manager_status(err, cx),
+				}
+				return;
+			}
+			_ => {}
+		}
 		let result = self.engine.update(cx, |engine, cx| match action {
 			FileAction::Open => match paths.first() {
 				Some(path) => engine.open_project_path(path.clone(), cx),
@@ -786,6 +1096,8 @@ impl<E: AppEngine> OakApp<E> {
 					None => Ok(()),
 				}
 			}
+			// Handled above (the manager's library import/export).
+			FileAction::ImportProject | FileAction::ExportProject => Ok(()),
 		});
 		if let Err(err) = result {
 			println!("[file] {action:?} failed: {err}");
@@ -963,6 +1275,21 @@ impl<E: AppEngine> OakApp<E> {
 					}
 				}
 				modal_ids::PREFERENCES => self.close_modal(cx),
+				modal_ids::MANAGER => self.close_modal(cx),
+				modal_ids::MANAGER_RENAME => {
+					if *button == 0 {
+						self.confirm_manager_rename(cx);
+					} else {
+						self.back_to_manager(cx);
+					}
+				}
+				modal_ids::MANAGER_DELETE => {
+					if *button == 0 {
+						self.confirm_manager_delete(cx);
+					} else {
+						self.back_to_manager(cx);
+					}
+				}
 				_ => {}
 			},
 			ModalEvent::Dismissed { control } => match *control {
@@ -970,6 +1297,10 @@ impl<E: AppEngine> OakApp<E> {
 					// Escape cancels the running export and closes the dialog.
 					self.cancel_export(cx);
 					self.close_modal(cx);
+				}
+				// Escape from a manager sub-dialog returns to the manager.
+				modal_ids::MANAGER_RENAME | modal_ids::MANAGER_DELETE => {
+					self.back_to_manager(cx);
 				}
 				_ => self.close_modal(cx),
 			},
@@ -1020,11 +1351,12 @@ fn make_menus(dark: bool) -> Vec<MenuBarEntry> {
 			tr("menu.file"),
 			Menu::new(vec![
 				MenuItem::new(NEW_PROJECT, tr("menu.file.new_project")).with_shortcut("⌘N"),
+				MenuItem::new(OPEN_FROM_LIBRARY, tr("menu.file.open_library")),
 				MenuItem::new(OPEN_PROJECT, tr("menu.file.open_project")).with_shortcut("⌘O"),
+				MenuItem::new(PROJECT_MANAGER, tr("menu.file.project_manager")).separated(),
 				MenuItem::new(IMPORT_FOOTAGE, tr("menu.file.import_footage")),
-				MenuItem::new(SAVE, tr("menu.file.save")).with_shortcut("⌘S"),
-				MenuItem::new(SAVE_AS, tr("menu.file.save_as"))
-					.with_shortcut("⇧⌘S")
+				MenuItem::new(EXPORT_PROJECT, tr("menu.file.export_project"))
+					.with_shortcut("⌘S")
 					.separated(),
 				MenuItem::new(CLOSE, tr("menu.file.close")),
 				MenuItem::new(EXPORT, tr("menu.file.export"))
@@ -1174,28 +1506,53 @@ fn run_with<E: AppEngine>(args: AppArgs) {
 		// Restore the persisted UI language (config `Language` key) before the
 		// first window renders.
 		crate::i18n::init();
+		// M13 D4: enable the write-through project library (SQLite at the
+		// default location) unless the user configured the backend
+		// explicitly.
+		crate::oakui::real::configure_storage();
 		cx.init_colors();
 		let bounds = Bounds::centered(None, size(px(1600.0), px(900.0)), cx);
 		let initial = initial.clone();
-		cx.open_window(
-			WindowOptions {
-				window_bounds: Some(WindowBounds::Windowed(bounds)),
-				..Default::default()
-			},
-			|window, cx| {
-				// Compact pro-app text metrics: gpui's default rem is
-				// 16px (desktop-app large); 14px matches the design's
-				// density. All rem-based text scales; px spacing is
-				// unaffected.
-				window.set_rem_size(px(14.0));
-				build_root::<E>(window, initial, cx)
-			},
-		)
-		.expect("failed to open the main window");
+		let show_manager = initial.is_none();
+		let mut root_slot = None;
+		let window = cx
+			.open_window(
+				WindowOptions {
+					window_bounds: Some(WindowBounds::Windowed(bounds)),
+					..Default::default()
+				},
+				|window, cx| {
+					// Compact pro-app text metrics: gpui's default rem is
+					// 16px (desktop-app large); 14px matches the design's
+					// density. All rem-based text scales; px spacing is
+					// unaffected.
+					window.set_rem_size(px(14.0));
+					let root = build_root::<E>(window, initial, cx);
+					root_slot = Some(root.clone());
+					root
+				},
+			)
+			.expect("failed to open the main window");
+		let _ = window;
+
+		// No project on the command line: the DaVinci-style project manager
+		// greets instead of an empty shell. Drives the ROOT ENTITY (not the
+		// window handle): a window update borrows the window, and building a
+		// modal inside it would re-enter it (spawn_modal needs a free
+		// `update_window`).
+		if show_manager {
+			if let Some(root) = &root_slot {
+				root.update(cx, |app, cx| app.show_project_manager(cx));
+			}
+		}
 
 		cx.activate(true);
 		cx.on_window_closed(|cx, _| {
 			if cx.windows().is_empty() {
+				// Exit path (plan M13 §2): drain the write-through backlog
+				// (save + snapshot of every still-bound project) and stop
+				// the facade's snapshot thread before quitting.
+				crate::oakui::real::storage_flush();
 				cx.quit();
 			}
 		})
@@ -1206,6 +1563,7 @@ fn run_with<E: AppEngine>(args: AppArgs) {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::oakui::EngineGateway as _;
 	use gpui::{px, size, TestAppContext};
 
 	/// The 视图/View menu carries a 语言/Language submenu whose items are
@@ -1299,9 +1657,10 @@ mod tests {
 		assert_eq!(dark_item(false).checked, Some(false));
 	}
 
-	/// The File menu exposes the full project lifecycle actions (open /
-	/// save / save-as / close / export) and the Edit menu the undo stack
-	/// plus the delete variants, across both languages.
+	/// The File menu exposes the full project lifecycle actions (new /
+	/// open-from-library / open-file / manager / export-project / close /
+	/// export) and the Edit menu the undo stack plus the delete variants,
+	/// across both languages.
 	#[test]
 	fn file_and_edit_menus_cover_the_project_lifecycle() {
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
@@ -1317,9 +1676,10 @@ mod tests {
 		let file = entry("File(F)");
 		for id in [
 			menu_ids::NEW_PROJECT,
+			menu_ids::OPEN_FROM_LIBRARY,
 			menu_ids::OPEN_PROJECT,
-			menu_ids::SAVE,
-			menu_ids::SAVE_AS,
+			menu_ids::PROJECT_MANAGER,
+			menu_ids::EXPORT_PROJECT,
 			menu_ids::CLOSE,
 			menu_ids::EXPORT,
 			menu_ids::QUIT,
@@ -1349,7 +1709,7 @@ mod tests {
 			.menu
 			.items
 			.iter()
-			.any(|item| item.id == menu_ids::SAVE_AS));
+			.any(|item| item.id == menu_ids::EXPORT_PROJECT));
 	}
 
 	/// Opening 视图 → Preferences… must not crash: the dialog content and the
@@ -1462,5 +1822,245 @@ mod tests {
 		let d = parse(&[], None);
 		assert!(d.project.is_none());
 		assert!(!d.mock);
+	}
+
+	// -------------------------------------------------------------------
+	// Project manager (M13 D4)
+	// -------------------------------------------------------------------
+
+	/// A running app shell on the mock engine (en-US), plus its root. The
+	/// caller holds the language lock (the tests flip the process-global
+	/// language).
+	fn mock_shell(
+		cx: &mut TestAppContext,
+	) -> (
+		gpui::WindowHandle<OakApp<MockEngine>>,
+		Entity<OakApp<MockEngine>>,
+	) {
+		crate::i18n::set_language(crate::i18n::Language::EnUs);
+		cx.update(|cx| cx.init_colors());
+		let window = cx.open_window(size(px(1600.0), px(900.0)), |window, cx| {
+			OakApp::<MockEngine>::new(window, None, cx)
+		});
+		cx.run_until_parked();
+		let root = window.root(cx).expect("app root");
+		(window, root)
+	}
+
+	/// Opens the manager and returns its content entity.
+	fn open_manager(
+		cx: &mut TestAppContext,
+		root: &Entity<OakApp<MockEngine>>,
+	) -> Entity<crate::manager::ProjectManager<MockEngine>> {
+		cx.update(|app| root.update(app, |app, cx| app.show_project_manager(cx)));
+		cx.run_until_parked();
+		let content = cx.read(|app| match &root.read(app).modal {
+			ModalState::Manager { content, .. } => content.clone(),
+			_ => panic!("the manager modal should be open"),
+		});
+		content
+	}
+
+	/// The manager's listed rows.
+	fn manager_rows(
+		cx: &mut TestAppContext,
+		content: &Entity<crate::manager::ProjectManager<MockEngine>>,
+	) -> Vec<crate::oakui::LibraryProject> {
+		cx.read(|app| content.read(app).rows().to_vec())
+	}
+
+	/// The manager lists the mock library; opening a row (the double-click
+	/// / 打开 route) drives the engine's library open and closes the dialog.
+	#[gpui::test]
+	async fn manager_lists_and_opens(cx: &mut TestAppContext) {
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let (_window, root) = mock_shell(cx);
+		let content = open_manager(cx, &root);
+		let rows = manager_rows(cx, &content);
+		assert_eq!(rows.len(), 3, "the mock library seeds three rows");
+		assert_eq!(rows[0].name, "第一稿", "most recently modified first");
+		assert!(rows[0].track_count > 0 && rows[0].footage_count > 0);
+
+		// Select the second row and open it.
+		let uuid = rows[1].uuid.clone();
+		cx.update(|app| content.update(app, |m, cx| m.select(&uuid, cx)));
+		cx.update(|app| {
+			root.update(app, |app, cx| {
+				app.on_manager_event(&crate::manager::ManagerEvent::Open(uuid.clone()), cx)
+			})
+		});
+		cx.run_until_parked();
+
+		let opened = cx.read(|app| root.read(app).engine.read(app).library_opened().to_vec());
+		assert_eq!(opened, vec![uuid], "the engine opened the selected row");
+		let name = cx.read(|app| root.read(app).engine.read(app).project().unwrap().name.clone());
+		assert_eq!(name, "宣传片 v3");
+		let modal_none = cx.read(|app| matches!(root.read(app).modal, ModalState::None));
+		assert!(modal_none, "a successful open closes the manager");
+	}
+
+	/// Create / rename / duplicate / delete round-trip through the manager
+	/// and its sub-dialogs.
+	#[gpui::test]
+	async fn manager_create_rename_duplicate_delete(cx: &mut TestAppContext) {
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let (_window, root) = mock_shell(cx);
+		let content = open_manager(cx, &root);
+
+		// Create: a new row appears and the project opens (dialog closes).
+		cx.update(|app| {
+			root.update(app, |app, cx| {
+				app.on_manager_event(&crate::manager::ManagerEvent::Create, cx)
+			})
+		});
+		cx.run_until_parked();
+		let rows = cx.read(|app| root.read(app).engine.read(app).library_projects().unwrap());
+		assert_eq!(rows.len(), 4);
+		let created = rows
+			.iter()
+			.find(|row| row.name == "Untitled Project")
+			.expect("the created row")
+			.clone();
+		let project_name = cx.read(|app| root.read(app).engine.read(app).project().unwrap().name.clone());
+		assert_eq!(project_name, "Untitled Project", "create opens the new project");
+
+		// Reopen the manager, select the created row, rename it.
+		let content = open_manager(cx, &root);
+		cx.update(|app| content.update(app, |m, cx| m.select(&created.uuid, cx)));
+		cx.update(|app| {
+			root.update(app, |app, cx| {
+				app.on_manager_event(&crate::manager::ManagerEvent::Rename(created.uuid.clone()), cx)
+			})
+		});
+		cx.run_until_parked();
+		let prompt = cx.read(|app| match &root.read(app).modal {
+			ModalState::ManagerRename { content, uuid, .. } => {
+				assert_eq!(uuid, &created.uuid);
+				content.clone()
+			}
+			_ => panic!("the rename prompt should be open"),
+		});
+		cx.update(|app| prompt.update(app, |p, cx| p.set_value("改名为正稿", cx)));
+		cx.update(|app| {
+			root.update(app, |app, cx| {
+				app.on_modal(
+					&ModalEvent::ButtonClicked {
+						control: modal_ids::MANAGER_RENAME,
+						button: 0,
+					},
+					cx,
+				)
+			})
+		});
+		cx.run_until_parked();
+		// The confirmation swaps in a FRESH manager (the captured content is
+		// stale from here on); assert against the engine's library instead.
+		let rows = cx.read(|app| root.read(app).engine.read(app).library_projects().unwrap());
+		let renamed = rows.iter().find(|row| row.uuid == created.uuid).unwrap();
+		assert_eq!(renamed.name, "改名为正稿");
+		let back = cx.read(|app| matches!(root.read(app).modal, ModalState::Manager { .. }));
+		assert!(back, "a confirmed rename returns to the manager");
+
+		// Duplicate the renamed row.
+		cx.update(|app| {
+			root.update(app, |app, cx| {
+				app.on_manager_event(
+					&crate::manager::ManagerEvent::Duplicate(created.uuid.clone()),
+					cx,
+				)
+			})
+		});
+		cx.run_until_parked();
+		let rows = cx.read(|app| root.read(app).engine.read(app).library_projects().unwrap());
+		assert_eq!(rows.len(), 5);
+		assert!(
+			rows.iter().any(|row| row.name == "改名为正稿 (copy)"),
+			"the copy is named '<name> (copy)': {rows:?}"
+		);
+
+		// Delete the original through the confirmation dialog.
+		cx.update(|app| {
+			root.update(app, |app, cx| {
+				app.on_manager_event(&crate::manager::ManagerEvent::Delete(created.uuid.clone()), cx)
+			})
+		});
+		cx.run_until_parked();
+		let confirming = cx.read(|app| matches!(root.read(app).modal, ModalState::ManagerDelete { .. }));
+		assert!(confirming, "the delete confirmation should be open");
+		cx.update(|app| {
+			root.update(app, |app, cx| {
+				app.on_modal(
+					&ModalEvent::ButtonClicked {
+						control: modal_ids::MANAGER_DELETE,
+						button: 0,
+					},
+					cx,
+				)
+			})
+		});
+		cx.run_until_parked();
+		let rows = cx.read(|app| root.read(app).engine.read(app).library_projects().unwrap());
+		assert_eq!(rows.len(), 4);
+		assert!(!rows.iter().any(|row| row.uuid == created.uuid));
+		let back = cx.read(|app| matches!(root.read(app).modal, ModalState::Manager { .. }));
+		assert!(back, "a confirmed delete returns to the manager");
+	}
+
+	/// The manager's 导入 opens the platform path picker and lands the file
+	/// as a new row; 导出 asks for a new path and routes it to the engine.
+	#[gpui::test]
+	async fn manager_import_and_export_route_through_the_platform_dialogs(
+		cx: &mut TestAppContext,
+	) {
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let (_window, root) = mock_shell(cx);
+		let content = open_manager(cx, &root);
+
+		// Import.
+		cx.update(|app| {
+			root.update(app, |app, cx| {
+				app.on_manager_event(&crate::manager::ManagerEvent::Import, cx)
+			})
+		});
+		cx.run_until_parked();
+		assert!(cx.did_prompt_for_paths(), "import shows the path picker");
+		cx.simulate_path_prompt_response(|options| {
+			assert!(!options.multiple, "project import is single-file");
+			Some(vec![PathBuf::from("/library/先导片.ove")])
+		});
+		cx.run_until_parked();
+		let rows = manager_rows(cx, &content);
+		assert_eq!(rows.len(), 4);
+		assert!(
+			rows.iter().any(|row| row.name == "先导片"),
+			"the imported file becomes a row named by its stem: {rows:?}"
+		);
+
+		// Export the imported row.
+		let uuid = rows
+			.iter()
+			.find(|row| row.name == "先导片")
+			.unwrap()
+			.uuid
+			.clone();
+		cx.update(|app| content.update(app, |m, cx| m.select(&uuid, cx)));
+		cx.update(|app| {
+			root.update(app, |app, cx| {
+				app.on_manager_event(&crate::manager::ManagerEvent::Export(uuid.clone()), cx)
+			})
+		});
+		cx.run_until_parked();
+		assert!(
+			cx.did_prompt_for_new_path(),
+			"export shows the save dialog"
+		);
+		cx.simulate_new_path_selection(|_dir| Some(PathBuf::from("/library/先导片.otio")));
+		cx.run_until_parked();
+		let exported = cx.read(|app| root.read(app).engine.read(app).library_exported().to_vec());
+		assert_eq!(
+			exported,
+			vec![(uuid, PathBuf::from("/library/先导片.otio"))],
+			"the picked path routes to the engine's library export"
+		);
 	}
 }

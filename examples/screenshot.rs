@@ -19,9 +19,10 @@
 //! Renders the full [`OakApp`] shell at 1600×900 (2× = 3200×1866 px) in an
 //! offscreen macOS window and writes the PNGs to
 //! `docs/screenshot-window.png` (zh-CN) and `docs/screenshot-window-en.png`
-//! (en-US), using the same [`VisualTestAppContext`] machinery the gpui visual
-//! tests use. The window is created at `(-10000, -10000)` so nothing
-//! flickers on screen.
+//! (en-US), then opens the project manager (M13 D4) on the same shell and
+//! captures it to `docs/screenshot-manager.png` / `-en.png`, using the same
+//! [`VisualTestAppContext`] machinery the gpui visual tests use. The window
+//! is created at `(-10000, -10000)` so nothing flickers on screen.
 //!
 //! Unlike the real app's startup ([`oakapp::app::run`]) the example must
 //! initialize the i18n layer itself, or every menu renders in the en-US
@@ -37,7 +38,7 @@
 //! cargo run --example screenshot -- 1100 900   # any size (same filenames)
 //! ```
 
-use gpui::{px, size, AnyWindowHandle, AppContext, Result, VisualTestAppContext};
+use gpui::{px, size, AnyWindowHandle, AppContext, Entity, Result, VisualTestAppContext};
 use gpui_platform::current_platform;
 use oakapp::app::OakApp;
 use oakapp::i18n::{self, Language};
@@ -47,6 +48,8 @@ const DEFAULT_WIDTH: f32 = 1600.0;
 const DEFAULT_HEIGHT: f32 = 900.0;
 const OUT_ZH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-window.png");
 const OUT_EN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-window-en.png");
+const OUT_MGR_ZH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-manager.png");
+const OUT_MGR_EN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-manager-en.png");
 
 /// Logical y of the timeline toolbar row, which sits at the top of the
 /// bottom dock panel in the default layout: the dock starts at y 27.5 (the
@@ -77,47 +80,62 @@ fn main() -> Result<()> {
 	let original = i18n::language();
 	i18n::set_language(Language::ZhCN);
 	{
-		let handle = open_shell(&mut cx, width, height);
-		let image = cx.capture_screenshot(handle)?;
+		let (handle, root) = open_shell(&mut cx, width, height);
+		let image = cx.capture_screenshot(handle.into())?;
 		std::fs::create_dir_all(std::path::Path::new(OUT_ZH).parent().unwrap())?;
 		image.save(OUT_ZH)?;
 		println!("wrote {OUT_ZH} ({}×{})", image.width(), image.height());
 		assert_toolbar(&image, "zh-CN");
+		capture_manager(&mut cx, handle, &root, OUT_MGR_ZH)?;
 	}
 	i18n::set_language(Language::EnUs);
 	{
-		let handle = open_shell(&mut cx, width, height);
-		let image = cx.capture_screenshot(handle)?;
+		let (handle, root) = open_shell(&mut cx, width, height);
+		let image = cx.capture_screenshot(handle.into())?;
 		std::fs::create_dir_all(std::path::Path::new(OUT_EN).parent().unwrap())?;
 		image.save(OUT_EN)?;
 		println!("wrote {OUT_EN} ({}×{})", image.width(), image.height());
 		assert_toolbar(&image, "en-US");
+		capture_manager(&mut cx, handle, &root, OUT_MGR_EN)?;
 	}
 	i18n::set_language(original);
 
 	Ok(())
 }
 
-/// Opens the app shell offscreen and draws enough frames for the layout to
-/// settle and the async toolbar-icon assets to decode: the node editor fits
-/// its graph once the canvas size is known, the viewers upload their first
-/// CPU frame, and the PNG toolbar icons load through the background executor
-/// on the frame after the asset future resolves.
+/// Opens the app shell offscreen and lets the layout settle (see
+/// [`settle`]). Returns the typed window handle and the root entity so the
+/// caller can still drive the shell (the manager capture) after the plain
+/// screenshot.
 fn open_shell(
 	cx: &mut VisualTestAppContext,
 	width: f32,
 	height: f32,
-) -> AnyWindowHandle {
+) -> (
+	gpui::WindowHandle<OakApp<MockEngine>>,
+	Entity<OakApp<MockEngine>>,
+) {
+	let mut root_slot = None;
 	let window = cx
 		.open_offscreen_window(size(px(width), px(height)), |window, cx| {
 			// Compact pro-app text metrics, matching the real app's startup
 			// (`src/app.rs run_with` sets rem 14px; gpui's default is 16px).
 			window.set_rem_size(px(14.0));
-			cx.new(|cx| OakApp::<MockEngine>::new(window, None, cx))
+			let root = cx.new(|cx| OakApp::<MockEngine>::new(window, None, cx));
+			root_slot = Some(root.clone());
+			root
 		})
 		.expect("offscreen window opens");
-	let handle: AnyWindowHandle = window.into();
+	settle(cx, window.into());
+	(window, root_slot.expect("root entity"))
+}
 
+/// Draws enough frames for the layout to settle and the async toolbar-icon
+/// assets to decode: the node editor fits its graph once the canvas size is
+/// known, the viewers upload their first CPU frame, and the PNG toolbar
+/// icons load through the background executor on the frame after the asset
+/// future resolves.
+fn settle(cx: &mut VisualTestAppContext, handle: AnyWindowHandle) {
 	for _ in 0..16 {
 		cx.run_until_parked();
 		cx.update_window(handle, |_root, window, app| {
@@ -135,7 +153,24 @@ fn open_shell(
 		.expect("window still open");
 	}
 	cx.run_until_parked();
-	handle
+}
+
+/// Opens the project manager on the shell (M13 D4) and captures it: the
+/// modal card lists the mock library with its per-project stats. Drives the
+/// root ENTITY (not the window handle — a window update borrows the window,
+/// and building the modal inside it would re-enter it).
+fn capture_manager(
+	cx: &mut VisualTestAppContext,
+	handle: gpui::WindowHandle<OakApp<MockEngine>>,
+	root: &Entity<OakApp<MockEngine>>,
+	out: &str,
+) -> Result<()> {
+	root.update(cx, |app, cx| app.show_project_manager(cx));
+	settle(cx, handle.into());
+	let image = cx.capture_screenshot(handle.into())?;
+	image.save(out)?;
+	println!("wrote {out} ({}×{})", image.width(), image.height());
+	Ok(())
 }
 
 /// The timeline toolbar's tool icons (16px at 2× = 32px on 48px pitch) must

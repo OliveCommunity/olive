@@ -41,9 +41,9 @@
 //! The library is selected from the `Storage` config group (all defaults
 //! are config-driven, plan §5):
 //!
-//! - `Storage/Backend` — `"sqlite"` (the documented default value) or
-//!   `"database"` enable the write-through; any other value (e.g.
-//!   `"off"`) disables it. When the key is absent, no library is
+//! - `Storage/Backend` — `"sqlite"` (the documented default value),
+//!   `"database"` or `"pg"` enable the write-through; any other value
+//!   (e.g. `"off"`) disables it. When the key is absent, no library is
 //!   configured: projects stay unbound and the undo path runs without
 //!   touching a database (graceful degradation — this is what keeps
 //!   headless consumers and the test suite from writing to the user's
@@ -52,6 +52,12 @@
 //!   storage is enabled) `<system data directory>/library.db` (the same
 //!   location `FileFunctions::get_configuration_location` derives,
 //!   honoring `OAK_CONFIG_DIR` and portable mode).
+//! - `Storage/PgUrl` — the PostgreSQL connection string (plan D3), used
+//!   when `Storage/Backend` is `"pg"`: `user:pass@host:5432/dbname`
+//!   (libpq URL form; an optional `postgres://`/`postgresql://` scheme is
+//!   accepted and stripped). The resolved library URI is
+//!   `oakdb+pg://<PgUrl>`. When `Backend = "pg"` but `PgUrl` is absent
+//!   or empty, no library is configured (same graceful degradation).
 //!
 //! ## Snapshot thread and exit flush
 //!
@@ -101,9 +107,9 @@ struct Binding {
 }
 
 /// The process-wide oakstorage backend (shared by the UI thread's
-/// write-throughs and the snapshot thread; the backend serializes its own
-/// operations).
-fn backend() -> &'static DatabaseBackend {
+/// write-throughs, the snapshot thread and the library manager exports in
+/// [`crate::library`]; the backend serializes its own operations).
+pub(crate) fn backend() -> &'static DatabaseBackend {
 	static BACKEND: OnceLock<DatabaseBackend> = OnceLock::new();
 	BACKEND.get_or_init(DatabaseBackend::new)
 }
@@ -291,18 +297,18 @@ fn record_error(key: usize, message: &str) {
 // ---------------------------------------------------------------------------
 
 /// Whether the write-through backend is enabled (config-driven, plan §5):
-/// `Storage/Backend` set to `"sqlite"` or `"database"` enables it; any
-/// other explicit value (e.g. `"off"`) disables it. When NO `Storage`
-/// configuration is present the backend is NOT enabled — "no library
-/// configured" degrades gracefully to plain unbound projects, which keeps
-/// headless consumers (the CLI) and the test suite from ever writing to
-/// the user's default library. The documented default *values* are
-/// `Backend = "sqlite"` and `SqlitePath = <system data dir>/library.db`
+/// `Storage/Backend` set to `"sqlite"`, `"database"` or `"pg"` enables
+/// it; any other explicit value (e.g. `"off"`) disables it. When NO
+/// `Storage` configuration is present the backend is NOT enabled — "no
+/// library configured" degrades gracefully to plain unbound projects,
+/// which keeps headless consumers (the CLI) and the test suite from ever
+/// writing to the user's default library. The documented default *values*
+/// are `Backend = "sqlite"` and `SqlitePath = <system data dir>/library.db`
 /// (used once storage is enabled without an explicit path).
 pub(crate) fn storage_enabled() -> bool {
 	let store = oakcommon::configstore::ConfigStore::instance();
 	match store.get(Some("Storage"), "Backend") {
-		Ok(b) => b == "sqlite" || b == "database",
+		Ok(b) => b == "sqlite" || b == "database" || b == "pg",
 		Err(_) => false,
 	}
 }
@@ -316,6 +322,29 @@ fn configured_sqlite_path() -> Option<String> {
 	}
 }
 
+/// The configured PostgreSQL connection string (`Storage/PgUrl`; empty
+/// value = not configured).
+fn configured_pg_url() -> Option<String> {
+	let store = oakcommon::configstore::ConfigStore::instance();
+	match store.get(Some("Storage"), "PgUrl") {
+		Ok(u) if !u.trim().is_empty() => Some(u.trim().to_string()),
+		_ => None,
+	}
+}
+
+/// The `oakdb+pg://…` uri of the configured PostgreSQL library (None
+/// when `Storage/PgUrl` is absent). A `postgres://`/`postgresql://`
+/// scheme on the config value is stripped — the oakdb uri body is the
+/// bare connection string (`user:pass@host:5432/dbname`).
+fn pg_library_uri() -> Option<String> {
+	let url = configured_pg_url()?;
+	let body = url
+		.strip_prefix("postgres://")
+		.or_else(|| url.strip_prefix("postgresql://"))
+		.unwrap_or(&url);
+	Some(format!("oakdb+pg://{body}"))
+}
+
 /// The default library file: `<system data directory>/library.db`, where
 /// the data directory is the standard per-user location
 /// (`FileFunctions::get_configuration_location`: macOS Application
@@ -327,9 +356,14 @@ pub(crate) fn default_library_path() -> String {
 	format!("{}/library.db", dir)
 }
 
-/// The `oakdb+sqlite://…` uri of the configured library (None when the
-/// path cannot be made absolute).
-fn library_uri() -> Option<String> {
+/// The `oakdb+…` uri of the configured library (None when the path
+/// cannot be made absolute, or the PG url is missing). Shared with the
+/// library manager exports in [`crate::library`].
+pub(crate) fn library_uri() -> Option<String> {
+	let store = oakcommon::configstore::ConfigStore::instance();
+	if store.get(Some("Storage"), "Backend").ok().as_deref() == Some("pg") {
+		return pg_library_uri();
+	}
 	let path = match configured_sqlite_path() {
 		Some(p) => p,
 		None => default_library_path(),
@@ -579,5 +613,48 @@ mod tests {
 		store.set(Some("Storage"), "Backend", "off");
 		assert!(!storage_enabled());
 		let _ = std::fs::remove_dir_all(&dir);
+	}
+
+	#[test]
+	fn library_uri_resolves_pg_config() {
+		use oakcommon::configstore::ConfigStore;
+		let store = ConfigStore::instance();
+		let _g = crate::tests::common::STORAGE_CONFIG_LOCK
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+
+		// Backend = "pg" yields an oakdb+pg uri from Storage/PgUrl; a
+		// postgres:// scheme on the config value is stripped.
+		store.set(Some("Storage"), "Backend", "pg");
+		store.set(
+			Some("Storage"),
+			"PgUrl",
+			"postgres://user:pass@host:5432/oak",
+		);
+		assert!(storage_enabled());
+		assert_eq!(
+			library_uri().as_deref(),
+			Some("oakdb+pg://user:pass@host:5432/oak")
+		);
+
+		// postgresql:// is accepted too.
+		store.set(
+			Some("Storage"),
+			"PgUrl",
+			"postgresql://u@h/db?sslmode=disable",
+		);
+		assert_eq!(
+			library_uri().as_deref(),
+			Some("oakdb+pg://u@h/db?sslmode=disable")
+		);
+
+		// Backend = "pg" with no PgUrl = no library (graceful
+		// degradation, same as an absent sqlite path).
+		store.set(Some("Storage"), "PgUrl", "");
+		assert_eq!(library_uri(), None);
+
+		// Leave the store in a safe state.
+		store.set(Some("Storage"), "Backend", "off");
+		assert!(!storage_enabled());
 	}
 }

@@ -31,6 +31,8 @@
 //! * [`app`] — the window shell: menu bar, dock layout, status bar, modal
 //!   dialogs (file open/save-as, preferences, export), tick loop.
 //! * [`dialogs`] — the preferences and export dialog content views.
+//! * [`manager`] — the project manager window (M13 D4): the library browser
+//!   with new / open / rename / duplicate / delete / import / export.
 //! * [`panels`] — the dockable panels (viewers, timeline, inspector, ...).
 //! * [`oakui`] — the engine gateway trait, the mock + real implementations,
 //!   and the pure view-state logic (timecode, transport).
@@ -51,6 +53,7 @@
 pub mod app;
 pub mod dialogs;
 pub mod i18n;
+pub mod manager;
 pub mod oakui;
 pub mod panels;
 

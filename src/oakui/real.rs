@@ -101,8 +101,8 @@ use gpui_widgets::project_explorer::{ProjectDataSource, ProjectEntry};
 use gpui_widgets::viewer::PlaybackClock;
 
 use super::engine::{
-	AppEngine, EngineGateway, ExportEvent, ExportSession, Monitor, Project, ScopeData, Sequence,
-	VideoFormat,
+	AppEngine, EngineGateway, ExportEvent, ExportSession, LibraryProject, Monitor, Project,
+	ScopeData, Sequence, VideoFormat,
 };
 use super::ffi::*;
 use super::frames::{f32_rgba_to_bgra_image, synthetic_frame_samples};
@@ -2230,6 +2230,112 @@ impl AppEngine for RealEngine {
 		cx.notify();
 	}
 
+	// --- project library (M13 D4) --------------------------------------
+
+	fn storage_bound(&self) -> bool {
+		self.project_ptr()
+			.map(|p| unsafe { oakengine_storage_is_bound(p) } != 0)
+			.unwrap_or(false)
+	}
+
+	fn storage_last_error(&self) -> Option<String> {
+		let project = self.project_ptr()?;
+		let message = read_string(|buf, size| unsafe {
+			oakengine_storage_last_error(project, buf, size)
+		});
+		if message.is_empty() {
+			None
+		} else {
+			Some(message)
+		}
+	}
+
+	fn library_projects(&self) -> Result<Vec<LibraryProject>, String> {
+		library_list()
+	}
+
+	fn library_create_project(&mut self, name: &str, cx: &mut Context<Self>) -> Result<(), String> {
+		let uuid = library_create(name)?;
+		self.open_library_project(&uuid, cx)
+	}
+
+	fn library_open_project(&mut self, uuid: &str, cx: &mut Context<Self>) -> Result<(), String> {
+		self.open_library_project(uuid, cx)
+	}
+
+	fn library_delete_project(&mut self, uuid: &str) -> Result<(), String> {
+		let uuid_c = CString::new(uuid).map_err(|_| "invalid uuid".to_string())?;
+		let rc = unsafe { oakengine_library_delete(uuid_c.as_ptr()) };
+		if rc != 0 {
+			return Err(format!("failed to delete the project (error {rc})"));
+		}
+		Ok(())
+	}
+
+	fn library_rename_project(&mut self, uuid: &str, name: &str) -> Result<(), String> {
+		let uuid_c = CString::new(uuid).map_err(|_| "invalid uuid".to_string())?;
+		let name_c = CString::new(name).map_err(|_| "invalid name".to_string())?;
+		let rc = unsafe { oakengine_library_rename(uuid_c.as_ptr(), name_c.as_ptr()) };
+		if rc != 0 {
+			return Err(format!("failed to rename the project (error {rc})"));
+		}
+		Ok(())
+	}
+
+	fn library_duplicate_project(&mut self, uuid: &str) -> Result<(), String> {
+		let uuid_c = CString::new(uuid).map_err(|_| "invalid uuid".to_string())?;
+		let mut buf = [0 as c_char; 256];
+		// Single call with a stack buffer: the duplicate has a side effect,
+		// so the two-stage (measure-then-read) pattern must not be used.
+		let rc = unsafe {
+			oakengine_library_duplicate(
+				uuid_c.as_ptr(),
+				std::ptr::null(),
+				buf.as_mut_ptr(),
+				buf.len() as c_int,
+			)
+		};
+		if rc < 0 {
+			return Err(format!("failed to duplicate the project (error {rc})"));
+		}
+		Ok(())
+	}
+
+	fn library_import_project(&mut self, path: PathBuf) -> Result<String, String> {
+		let path_c = cstr_path(&path).ok_or("invalid import path")?;
+		let mut buf = [0 as c_char; 256];
+		// Single call with a stack buffer (side effect; see duplicate).
+		let rc = unsafe {
+			oakengine_library_import(path_c.as_ptr(), buf.as_mut_ptr(), buf.len() as c_int)
+		};
+		if rc < 0 {
+			return Err(format!(
+				"failed to import \"{}\" (error {rc})",
+				path.display()
+			));
+		}
+		let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+		Ok(
+			String::from_utf8_lossy(unsafe {
+				std::slice::from_raw_parts(buf.as_ptr() as *const u8, len)
+			})
+			.into_owned(),
+		)
+	}
+
+	fn library_export_project(&mut self, uuid: &str, path: PathBuf) -> Result<(), String> {
+		let uuid_c = CString::new(uuid).map_err(|_| "invalid uuid".to_string())?;
+		let path_c = cstr_path(&path).ok_or("invalid export path")?;
+		let rc = unsafe { oakengine_library_export(uuid_c.as_ptr(), path_c.as_ptr()) };
+		if rc != 0 {
+			return Err(format!(
+				"failed to export the project to \"{}\" (error {rc})",
+				path.display()
+			));
+		}
+		Ok(())
+	}
+
 	fn start_export(&mut self, format: i32, path: PathBuf) -> Result<ExportSession, String> {
 		let Some(seq) = self.seq_ptr() else {
 			return Err("no sequence open".into());
@@ -2587,6 +2693,121 @@ pub fn config_set_string(key: &str, value: &str) {
 /// order. The first entry is the built-in default.
 pub fn renderer_backends() -> Vec<&'static str> {
 	vec!["opengl", "metal", "vulkan", "none"]
+}
+
+// ---------------------------------------------------------------------------
+// Project library (M13 D4: the write-through database the manager browses)
+// ---------------------------------------------------------------------------
+
+/// The config key selecting the storage backend (see
+/// `crates/oakengine/src/storage.rs`).
+pub const CONFIG_KEY_STORAGE_BACKEND: &str = "Storage/Backend";
+
+/// Enables the SQLite write-through library unless the user configured the
+/// backend explicitly (any existing value — including "off" — wins over the
+/// app's default). The library path defaults facade-side to
+/// `<system data directory>/library.db`.
+pub fn configure_storage() {
+	if config_get_string(CONFIG_KEY_STORAGE_BACKEND).is_empty() {
+		config_set_string(CONFIG_KEY_STORAGE_BACKEND, "sqlite");
+	}
+}
+
+/// Flushes every bound project (write-through + snapshot) and stops the
+/// facade's snapshot thread. The app calls this on exit.
+pub fn storage_flush() {
+	unsafe {
+		oakengine_storage_flush();
+	}
+}
+
+/// The library rows, most recently modified first (the project manager's
+/// data source; JSON over the facade's `oakengine_library_list`).
+pub fn library_list() -> Result<Vec<LibraryProject>, String> {
+	let needed = unsafe { oakengine_library_list(std::ptr::null_mut(), 0) };
+	if needed < 0 {
+		return Err(format!("failed to list the library (error {needed})"));
+	}
+	let mut buf = vec![0 as c_char; needed as usize + 1];
+	unsafe { oakengine_library_list(buf.as_mut_ptr(), needed + 1) };
+	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+	let json =
+		String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, len) })
+			.into_owned();
+	let rows: serde_json::Value =
+		serde_json::from_str(&json).map_err(|e| format!("malformed library list: {e}"))?;
+	let Some(rows) = rows.as_array() else {
+		return Err("malformed library list (not an array)".into());
+	};
+	Ok(rows
+		.iter()
+		.map(|row| {
+			let s = |key: &str| row.get(key).and_then(|v| v.as_str()).unwrap_or_default().to_string();
+			let n = |key: &str| row.get(key).and_then(|v| v.as_i64()).unwrap_or(0);
+			LibraryProject {
+				uuid: s("uuid"),
+				name: s("name"),
+				created_at: n("created_at"),
+				modified_at: n("modified_at"),
+				duration_ms: n("duration_ms"),
+				track_count: n("track_count") as i32,
+				clip_count: n("clip_count") as i32,
+				footage_count: n("footage_count") as i32,
+			}
+		})
+		.collect())
+}
+
+/// Creates a blank project row in the library; returns its uuid. Single
+/// call with a stack buffer: the create has a side effect, so the
+/// two-stage (measure-then-read) pattern must not be used.
+fn library_create(name: &str) -> Result<String, String> {
+	let name_c = CString::new(name).map_err(|_| "invalid name".to_string())?;
+	let mut buf = [0 as c_char; 256];
+	let rc = unsafe { oakengine_library_create(name_c.as_ptr(), buf.as_mut_ptr(), buf.len() as c_int) };
+	if rc < 0 {
+		return Err(format!("failed to create the project (error {rc})"));
+	}
+	let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
+	Ok(
+		String::from_utf8_lossy(unsafe { std::slice::from_raw_parts(buf.as_ptr() as *const u8, len) })
+			.into_owned(),
+	)
+}
+
+impl RealEngine {
+	/// Opens the library row `uuid` through the facade's library-load path
+	/// (which binds the project to the write-through session) and adopts it.
+	fn open_library_project(&mut self, uuid: &str, cx: &mut Context<Self>) -> Result<(), String> {
+		let project = unsafe { oakengine_project_create() };
+		if project.is_null() {
+			return Err("failed to create a project".into());
+		}
+		let uuid_c = CString::new(uuid).map_err(|_| "invalid uuid".to_string())?;
+		let mut err = [0 as c_char; 4096];
+		let rc = unsafe {
+			oakengine_project_load_library(
+				project,
+				uuid_c.as_ptr(),
+				err.as_mut_ptr(),
+				err.len() as c_int,
+			)
+		};
+		if rc != 0 {
+			let message = load_error(&mut err);
+			unsafe { oakengine_project_free(project) };
+			return Err(format!("failed to open the library project: {message}"));
+		}
+		self.adopt_project(project, cx);
+		// The facade's project name is filename-derived ("(untitled)" for a
+		// library row); display the library row name instead.
+		if let Ok(rows) = library_list() {
+			if let Some(row) = rows.iter().find(|row| row.uuid == uuid) {
+				self.project_info.name = row.name.clone();
+			}
+		}
+		Ok(())
+	}
 }
 
 #[cfg(test)]

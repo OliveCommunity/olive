@@ -4744,6 +4744,7 @@ dependencies = [
  "gpui_widgets",
  "image",
  "oakengine",
+ "serde_json",
  "smallvec",
 ]
 

@@ -180,10 +180,11 @@ const EN: &[(&str, &str)] = &[
 	("menu.help", "Help(H)"),
 	// --- File ---
 	("menu.file.new_project", "New Project…"),
-	("menu.file.open_project", "Open Project…"),
+	("menu.file.open_project", "Open Project File…"),
+	("menu.file.open_library", "Open from Library…"),
+	("menu.file.project_manager", "Project Manager…"),
 	("menu.file.import_footage", "Import Footage…"),
-	("menu.file.save", "Save"),
-	("menu.file.save_as", "Save As…"),
+	("menu.file.export_project", "Export Project File…"),
 	("menu.file.close", "Close Project"),
 	("menu.file.export", "Export…"),
 	("menu.file.quit", "Quit"),
@@ -240,9 +241,34 @@ const EN: &[(&str, &str)] = &[
 	("status.ready", "Ready"),
 	("status.cache", "Cache: Enabled"),
 	("status.proxy", "Proxy: Off"),
-	("status.autosave", "Autosave: 3 min ago"),
+	("status.storage.written", "Library: written"),
+	("status.storage.unbound", "Library: off"),
+	("status.storage.error", "Library: write failed"),
 	("status.untitled", "Untitled Project"),
 	("status.backend", "Engine:"),
+	// --- project manager ---
+	("manager.title", "Project Manager"),
+	("manager.new", "New Project"),
+	("manager.new.default_name", "Untitled Project"),
+	("manager.open", "Open"),
+	("manager.rename", "Rename…"),
+	("manager.rename.title", "Rename Project"),
+	("manager.rename.label", "New name"),
+	("manager.duplicate", "Duplicate"),
+	("manager.delete", "Delete"),
+	("manager.delete.title", "Delete Project"),
+	("manager.delete.confirm", "Delete project \"{name}\" from the library? This cannot be undone."),
+	("manager.import", "Import…"),
+	("manager.import.title", "Import Project"),
+	("manager.export", "Export…"),
+	("manager.export.title", "Export Project"),
+	("manager.col.name", "Name"),
+	("manager.col.modified", "Modified"),
+	("manager.col.duration", "Duration"),
+	("manager.col.tracks", "Tracks"),
+	("manager.col.clips", "Clips"),
+	("manager.col.footage", "Footage"),
+	("manager.empty", "No projects in the library yet."),
 	// --- timeline toolbar ---
 	("timeline.tool.select", "Select"),
 	("timeline.tool.razor", "Razor"),
@@ -327,10 +353,11 @@ const ZH: &[(&str, &str)] = &[
 	("menu.help", "帮助(H)"),
 	// --- File ---
 	("menu.file.new_project", "新建项目…"),
-	("menu.file.open_project", "打开项目…"),
+	("menu.file.open_project", "打开工程文件…"),
+	("menu.file.open_library", "从库中打开…"),
+	("menu.file.project_manager", "项目管理器…"),
 	("menu.file.import_footage", "导入素材…"),
-	("menu.file.save", "保存"),
-	("menu.file.save_as", "另存为…"),
+	("menu.file.export_project", "导出工程文件…"),
 	("menu.file.close", "关闭项目"),
 	("menu.file.export", "导出…"),
 	("menu.file.quit", "退出"),
@@ -387,9 +414,37 @@ const ZH: &[(&str, &str)] = &[
 	("status.ready", "就绪"),
 	("status.cache", "缓存:已启用"),
 	("status.proxy", "代理:关"),
-	("status.autosave", "自动保存:3分钟前"),
+	("status.storage.written", "库:已写入"),
+	("status.storage.unbound", "库:未启用"),
+	("status.storage.error", "库:写入失败"),
 	("status.untitled", "未命名项目"),
 	("status.backend", "引擎:"),
+	// --- project manager ---
+	("manager.title", "项目管理器"),
+	("manager.new", "新建项目"),
+	("manager.new.default_name", "未命名项目"),
+	("manager.open", "打开"),
+	("manager.rename", "重命名…"),
+	("manager.rename.title", "重命名工程"),
+	("manager.rename.label", "新名称"),
+	("manager.duplicate", "复制"),
+	("manager.delete", "删除"),
+	("manager.delete.title", "删除工程"),
+	(
+		"manager.delete.confirm",
+		"从库中删除工程“{name}”？此操作不可撤销。",
+	),
+	("manager.import", "导入…"),
+	("manager.import.title", "导入工程"),
+	("manager.export", "导出…"),
+	("manager.export.title", "导出工程"),
+	("manager.col.name", "名称"),
+	("manager.col.modified", "修改时间"),
+	("manager.col.duration", "时长"),
+	("manager.col.tracks", "轨道"),
+	("manager.col.clips", "片段"),
+	("manager.col.footage", "素材"),
+	("manager.empty", "库中还没有工程。"),
 	// --- timeline toolbar ---
 	("timeline.tool.select", "选择"),
 	("timeline.tool.razor", "剃刀"),
@@ -594,11 +649,11 @@ mod tests {
 	fn switching_flips_a_sample_string() {
 		let _guard = lang_lock().lock().unwrap();
 		set_language(Language::EnUs);
-		assert_eq!(tr("menu.file.save"), "Save");
+		assert_eq!(tr("menu.file.export_project"), "Export Project File…");
 		set_language(Language::ZhCN);
-		assert_eq!(tr("menu.file.save"), "保存");
+		assert_eq!(tr("menu.file.export_project"), "导出工程文件…");
 		set_language(Language::EnUs);
-		assert_eq!(tr("menu.file.save"), "Save");
+		assert_eq!(tr("menu.file.export_project"), "Export Project File…");
 	}
 
 	/// `sync_widgets` installs the active language's strings into the widget

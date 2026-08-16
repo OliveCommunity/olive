@@ -62,13 +62,59 @@ use gpui_widgets::project_explorer::{ProjectDataSource, ProjectEntry};
 use gpui_widgets::viewer::PlaybackClock;
 
 use super::engine::{
-	AppEngine, EngineGateway, ExportEvent, ExportSession, Monitor, Project, ScopeData, Sequence,
-	VideoFormat,
+	AppEngine, EngineGateway, ExportEvent, ExportSession, LibraryProject, Monitor, Project,
+	ScopeData, Sequence, VideoFormat,
 };
 use super::transport::TransportState;
 
 /// The demo sequence length: 00:04:18:18 at 25 fps.
 const SEQUENCE_LENGTH: i64 = 6468;
+
+/// The current unix time in seconds (0 on clock failure).
+fn now_unix() -> i64 {
+	std::time::SystemTime::now()
+		.duration_since(std::time::UNIX_EPOCH)
+		.map(|d| d.as_secs() as i64)
+		.unwrap_or(0)
+}
+
+/// The demo library rows the project manager opens with (M13 D4): three
+/// projects with plausible stats, most recently modified first.
+fn demo_library() -> Vec<LibraryProject> {
+	let now = now_unix();
+	vec![
+		LibraryProject {
+			uuid: "mock-1".into(),
+			name: "第一稿".into(),
+			created_at: now - 86400,
+			modified_at: now - 300,
+			duration_ms: SEQUENCE_LENGTH * 1000 / 25,
+			track_count: 4,
+			clip_count: 5,
+			footage_count: 3,
+		},
+		LibraryProject {
+			uuid: "mock-2".into(),
+			name: "宣传片 v3".into(),
+			created_at: now - 3 * 86400,
+			modified_at: now - 86400,
+			duration_ms: 95_000,
+			track_count: 6,
+			clip_count: 14,
+			footage_count: 8,
+		},
+		LibraryProject {
+			uuid: "mock-3".into(),
+			name: "采访粗剪".into(),
+			created_at: now - 9 * 86400,
+			modified_at: now - 7 * 86400,
+			duration_ms: 612_000,
+			track_count: 3,
+			clip_count: 22,
+			footage_count: 5,
+		},
+	]
+}
 
 // ---------------------------------------------------------------------------
 // Clocks
@@ -431,6 +477,19 @@ pub struct MockEngine {
 	/// has no media pipeline, so it just records them (drives app-level tests
 	/// of the import flow).
 	imported_footage: Vec<PathBuf>,
+	/// The fake project library the project manager browses (M13 D4): an
+	/// in-memory row set the library trait methods operate on, so the app
+	/// flow (list / open / create / rename / duplicate / delete / import /
+	/// export) is testable without a database.
+	library: Vec<LibraryProject>,
+	/// Id allocator for library rows created at runtime.
+	next_library_id: u64,
+	/// The uuids handed to [`AppEngine::library_open_project`] (test
+	/// observability).
+	library_opened: Vec<String>,
+	/// (uuid, path) pairs handed to [`AppEngine::library_export_project`]
+	/// (test observability).
+	library_exported: Vec<(String, PathBuf)>,
 }
 
 impl MockEngine {
@@ -674,6 +733,10 @@ impl MockEngine {
 			node_selection: BTreeSet::new(),
 			cpu_frame_cache: Mutex::new(HashMap::new()),
 			imported_footage: Vec::new(),
+			library: demo_library(),
+			next_library_id: 100,
+			library_opened: Vec::new(),
+			library_exported: Vec::new(),
 		};
 		// The demo graph is born connected: derive every port's `connected`
 		// flag from the edge list.
@@ -1274,6 +1337,114 @@ impl AppEngine for MockEngine {
 		cx.notify();
 	}
 
+	// --- project library (M13 D4, in-memory fake) -------------------------
+
+	fn storage_bound(&self) -> bool {
+		// The mock pretends the demo project lives in the library.
+		true
+	}
+
+	fn library_projects(&self) -> Result<Vec<LibraryProject>, String> {
+		let mut rows = self.library.clone();
+		rows.sort_by(|a, b| b.modified_at.cmp(&a.modified_at));
+		Ok(rows)
+	}
+
+	fn library_create_project(&mut self, name: &str, cx: &mut Context<Self>) -> Result<(), String> {
+		let uuid = format!("mock-{}", self.next_library_id);
+		self.next_library_id += 1;
+		let now = now_unix();
+		self.library.push(LibraryProject {
+			uuid,
+			name: name.to_string(),
+			created_at: now,
+			modified_at: now,
+			duration_ms: 0,
+			track_count: 0,
+			clip_count: 0,
+			footage_count: 0,
+		});
+		self.project.name = name.to_string();
+		self.project.path = PathBuf::new();
+		cx.notify();
+		Ok(())
+	}
+
+	fn library_open_project(&mut self, uuid: &str, cx: &mut Context<Self>) -> Result<(), String> {
+		let Some(row) = self.library.iter().find(|row| row.uuid == uuid) else {
+			return Err(format!("library project {uuid} not found"));
+		};
+		self.project.name = row.name.clone();
+		self.project.path = PathBuf::new();
+		self.library_opened.push(uuid.to_string());
+		cx.notify();
+		Ok(())
+	}
+
+	fn library_delete_project(&mut self, uuid: &str) -> Result<(), String> {
+		let before = self.library.len();
+		self.library.retain(|row| row.uuid != uuid);
+		if self.library.len() == before {
+			return Err(format!("library project {uuid} not found"));
+		}
+		Ok(())
+	}
+
+	fn library_rename_project(&mut self, uuid: &str, name: &str) -> Result<(), String> {
+		let Some(row) = self.library.iter_mut().find(|row| row.uuid == uuid) else {
+			return Err(format!("library project {uuid} not found"));
+		};
+		row.name = name.to_string();
+		row.modified_at = now_unix();
+		Ok(())
+	}
+
+	fn library_duplicate_project(&mut self, uuid: &str) -> Result<(), String> {
+		let Some(row) = self.library.iter().find(|row| row.uuid == uuid).cloned() else {
+			return Err(format!("library project {uuid} not found"));
+		};
+		let now = now_unix();
+		self.library.push(LibraryProject {
+			uuid: format!("mock-{}", self.next_library_id),
+			name: format!("{} (copy)", row.name),
+			created_at: now,
+			modified_at: now,
+			..row
+		});
+		self.next_library_id += 1;
+		Ok(())
+	}
+
+	fn library_import_project(&mut self, path: PathBuf) -> Result<String, String> {
+		let name = path
+			.file_stem()
+			.map(|s| s.to_string_lossy().into_owned())
+			.filter(|s| !s.is_empty())
+			.ok_or_else(|| format!("invalid project file \"{}\"", path.display()))?;
+		let uuid = format!("mock-{}", self.next_library_id);
+		self.next_library_id += 1;
+		let now = now_unix();
+		self.library.push(LibraryProject {
+			uuid: uuid.clone(),
+			name,
+			created_at: now,
+			modified_at: now,
+			duration_ms: 0,
+			track_count: 0,
+			clip_count: 0,
+			footage_count: 0,
+		});
+		Ok(uuid)
+	}
+
+	fn library_export_project(&mut self, uuid: &str, path: PathBuf) -> Result<(), String> {
+		if !self.library.iter().any(|row| row.uuid == uuid) {
+			return Err(format!("library project {uuid} not found"));
+		}
+		self.library_exported.push((uuid.to_string(), path));
+		Ok(())
+	}
+
 	fn start_export(&mut self, _format: i32, _path: PathBuf) -> Result<ExportSession, String> {
 		// Mock export: fake progress on a background thread, no file.
 		let (tx, rx) = mpsc::channel::<ExportEvent>();
@@ -1419,6 +1590,18 @@ impl MockEngine {
 	/// the mock has no media pipeline, it just records the request).
 	pub fn imported_footage(&self) -> &[PathBuf] {
 		&self.imported_footage
+	}
+
+	/// The uuids opened via [`AppEngine::library_open_project`] so far
+	/// (mock state; drives app-level tests of the manager's open flow).
+	pub fn library_opened(&self) -> &[String] {
+		&self.library_opened
+	}
+
+	/// The (uuid, path) pairs exported via
+	/// [`AppEngine::library_export_project`] so far (mock state).
+	pub fn library_exported(&self) -> &[(String, PathBuf)] {
+		&self.library_exported
 	}
 
 	/// The selected material-bin entry id (demo state).

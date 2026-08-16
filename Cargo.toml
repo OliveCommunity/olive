@@ -82,6 +82,9 @@ smallvec = "1"
 # Editable-text widget (used by the file / export dialogs' path fields, the
 # same gpui-elements crate gpui_widgets builds on).
 gpui_elements = { path = "gpui/crates/gpui_elements" }
+# The library list crosses the facade C ABI as JSON
+# (`oakengine_library_list`, M13 D4); Value-only parsing, no derive.
+serde_json = "1"
 
 [build-dependencies]
 # The real engine is NOT linked as an rlib: the app binds only the frozen

@@ -18,10 +18,10 @@
 //!
 //! One module per entity: the `DeriveEntityModel` macro generates
 //! `Entity`/`Column`/`Model`/`ActiveModel` in the defining module, so
-//! each table gets its own scope. The same definitions serve SQLite
-//! today and PostgreSQL (D3) — the column types (`i64`, `String`,
-//! `Option<String>`, `NaiveDateTime`) map to BIGINT/TEXT/TIMESTAMP on
-//! both.
+//! each table gets its own scope. The same definitions serve SQLite and
+//! PostgreSQL — the column types (`i64`, `String`, `Option<String>`,
+//! `NaiveDateTime`) map to BIGINT/TEXT/TIMESTAMP on both, so the shared
+//! save/replay logic never branches on the dialect.
 
 pub mod journal;
 pub mod project;

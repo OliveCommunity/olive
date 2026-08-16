@@ -14,16 +14,20 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! The database backend (plan M13 §1/§2), SQLite first.
+//! The database backend (plan M13 §1/§2): SQLite and PostgreSQL share
+//! one code path — the same sea-orm entities, diff/save/replay logic and
+//! migrations, with the dialect differences (BIGSERIAL vs AUTOINCREMENT,
+//! `IF NOT EXISTS` DDL) converged in the connection and migration layer.
 //!
 //! URI forms:
 //! - `oakdb+sqlite:///absolute/path.db[?project=<uuid>]` — local file
 //!   database; the optional `project` query selects the library row to
 //!   load (default: the most recently modified project).
-//! - `oakdb+pg://user:pass@host:5432/db[?project=<uuid>]` — PostgreSQL
-//!   (D3). The target is parsed into [`DbTarget::Pg`] today, but every
-//!   operation rejects it with [`crate::error::Error::NoBackend`] until
-//!   the D3 client lands.
+//! - `oakdb+pg://user:pass@host:5432/db[?project=<uuid>]` — PostgreSQL;
+//!   the body is the libpq connection string without a scheme. A `?…`
+//!   part is the `?project=` selector only when it carries a `project=`
+//!   key — a bare query (e.g. `?sslmode=disable`) belongs to the
+//!   connection string and is passed through untouched.
 //!
 //! The async sea-orm API is driven by a private current-thread tokio
 //! runtime so the public surface stays synchronous (plan §6: "后端内嵌
@@ -104,9 +108,11 @@ pub(crate) enum DbTarget {
 		/// `?project=` uuid; `None` = most recently modified row.
 		project: Option<String>,
 	},
-	/// PostgreSQL (parsed for D3; rejected until then).
+	/// PostgreSQL server.
 	Pg {
-		/// Connection string (`user:pass@host:port/db`).
+		/// Connection string body (`user:pass@host:port/db`, without a
+		/// scheme; may carry its own `?param=…` query when it does not
+		/// contain a `project=` key).
 		conn: String,
 		/// `?project=` uuid; `None` = most recently modified row.
 		project: Option<String>,
@@ -114,20 +120,6 @@ pub(crate) enum DbTarget {
 }
 
 impl DbTarget {
-	/// True for the PostgreSQL variant (all ops return E_NO_BACKEND
-	/// until D3).
-	fn is_pg(&self) -> bool {
-		matches!(self, DbTarget::Pg { .. })
-	}
-
-	/// The SQLite path (`None` for PG).
-	fn sqlite_path(&self) -> Option<&str> {
-		match self {
-			DbTarget::Sqlite { path, .. } => Some(path),
-			DbTarget::Pg { .. } => None,
-		}
-	}
-
 	/// The `?project=` selector.
 	fn project(&self) -> Option<&str> {
 		match self {
@@ -138,12 +130,23 @@ impl DbTarget {
 	}
 }
 
+/// The connection-cache key of a parsed target (the database location —
+/// an absolute SQLite path or a PostgreSQL connection string body).
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+enum DbKey {
+	/// SQLite file database at an absolute path.
+	Sqlite(String),
+	/// PostgreSQL server (connection string body, see [`DbTarget::Pg`]).
+	Pg(String),
+}
+
 /// Parse a storage URI into a [`DbTarget`].
 ///
 /// `oakdb+sqlite://` requires an absolute path (E_INVALID otherwise);
 /// the body may carry `?project=<uuid>` (no percent-decoding — uuid
-/// values contain only hex/braces/hyphens). Unknown `oakdb` variants
-/// are E_NO_BACKEND.
+/// values contain only hex/braces/hyphens). `oakdb+pg://` requires a
+/// non-empty, parseable connection string (E_INVALID otherwise). Unknown
+/// `oakdb` variants are E_NO_BACKEND.
 pub(crate) fn parse_target(uri: &StorageUri) -> Result<DbTarget> {
 	match uri.scheme.as_str() {
 		"oakdb+sqlite" => {
@@ -157,14 +160,35 @@ pub(crate) fn parse_target(uri: &StorageUri) -> Result<DbTarget> {
 			})
 		}
 		"oakdb+pg" => {
-			let (conn, query) = split_query(&uri.body);
-			Ok(DbTarget::Pg {
-				conn: conn.to_string(),
-				project: query_param(query, "project"),
-			})
+			let (base, query) = split_query(&uri.body);
+			// A `?…` part is the `?project=` selector only when it carries
+			// a `project=` key; otherwise (e.g. `?sslmode=disable`) it
+			// belongs to the connection string and the whole body passes
+			// through.
+			let project = match query {
+				Some(q) if query_param(Some(q), "project").is_some() => {
+					query_param(Some(q), "project")
+				}
+				_ => None,
+			};
+			let conn = match &project {
+				Some(_) => base.to_string(),
+				None => uri.body.clone(),
+			};
+			if conn.is_empty() || !valid_pg_conn(&conn) {
+				return Err(Error::Invalid);
+			}
+			Ok(DbTarget::Pg { conn, project })
 		}
 		_ => Err(Error::NoBackend),
 	}
+}
+
+/// Whether `conn` parses as a PostgreSQL connection string (the libpq
+/// URL form, `user:pass@host:port/db[?params]`, with a scheme prepended).
+fn valid_pg_conn(conn: &str) -> bool {
+	use std::str::FromStr;
+	sea_orm::sqlx::postgres::PgConnectOptions::from_str(&format!("postgres://{conn}")).is_ok()
 }
 
 /// Split `body` at the first `?` (the query part, if any).
@@ -310,8 +334,8 @@ pub struct DatabaseBackend {
 	runtime: OnceLock<tokio::runtime::Runtime>,
 	/// Serializes all database operations of this backend.
 	op_lock: Mutex<()>,
-	/// Open connections by database path.
-	connections: Mutex<HashMap<String, DatabaseConnection>>,
+	/// Open connections by database location (path or PG conn string).
+	connections: Mutex<HashMap<DbKey, DatabaseConnection>>,
 }
 
 impl DatabaseBackend {
@@ -332,10 +356,11 @@ impl DatabaseBackend {
 			.expect("tokio current_thread runtime")
 	}
 
-	/// Run `f` against the database at `key` (an absolute SQLite path).
-	/// The op lock is held for the whole call; the connection is opened
-	/// and migrated on first use, then cached.
-	fn run<T, F, Fut>(&self, key: &str, f: F) -> Result<T>
+	/// Run `f` against the database at `key` (an absolute SQLite path or a
+	/// PostgreSQL connection string). The op lock is held for the whole
+	/// call; the connection is opened and migrated on first use, then
+	/// cached.
+	fn run<T, F, Fut>(&self, key: DbKey, f: F) -> Result<T>
 	where
 		F: FnOnce(DatabaseConnection) -> Fut,
 		Fut: Future<Output = Result<T>>,
@@ -343,33 +368,36 @@ impl DatabaseBackend {
 		let _guard = self.op_lock.lock().unwrap_or_else(|e| e.into_inner());
 		let runtime = self.runtime.get_or_init(Self::build_runtime);
 		runtime.block_on(async {
-			let conn = self.connect_cached(key).await?;
+			let conn = self.connect_cached(&key).await?;
 			f(conn).await
 		})
 	}
 
-	/// Open (and migrate) the SQLite database at `path`, caching the
-	/// connection.
+	/// Open (and migrate) the database at `key`, caching the connection.
 	///
-	/// Two writers racing on a fresh file surface SQLite's `database is
+	/// Two writers racing on a fresh SQLite file surface `database is
 	/// locked` (SQLITE_BUSY) — most often when a fresh connection's WAL
 	/// mode switch collides with the other's, which `busy_timeout` cannot
-	/// wait out — so connect+ migrate are retried a few times (plan §6:
-	/// single-writer is the contract; a clean error beats a silent
-	/// failure).
-	async fn connect_cached(&self, path: &str) -> Result<DatabaseConnection> {
+	/// wait out — so the SQLite connect + migrate are retried a few times
+	/// (plan §6: single-writer is the contract; a clean error beats a
+	/// silent failure). PostgreSQL connections are never retried (their
+	/// errors are not retryable by [`retryable`]).
+	async fn connect_cached(&self, key: &DbKey) -> Result<DatabaseConnection> {
 		if let Some(conn) = self
 			.connections
 			.lock()
 			.unwrap_or_else(|e| e.into_inner())
-			.get(path)
+			.get(key)
 		{
 			return Ok(conn.clone());
 		}
 		let mut attempt = 0;
 		let conn = loop {
 			let result = async {
-				let conn = connect_sqlite(path).await?;
+				let conn = match key {
+					DbKey::Sqlite(path) => connect_sqlite(path).await?,
+					DbKey::Pg(conn) => connect_pg(conn).await?,
+				};
 				migration::migrate(&conn).await?;
 				Ok::<_, Error>(conn)
 			}
@@ -386,7 +414,7 @@ impl DatabaseBackend {
 		self.connections
 			.lock()
 			.unwrap_or_else(|e| e.into_inner())
-			.insert(path.to_string(), conn.clone());
+			.insert(key.clone(), conn.clone());
 		Ok(conn)
 	}
 
@@ -396,8 +424,8 @@ impl DatabaseBackend {
 	/// node graph).
 	pub fn list_projects(&self, uri: &StorageUri) -> Result<Vec<ProjectInfo>> {
 		let target = parse_target(uri)?;
-		let path = sqlite_path_of(&target)?;
-		self.run(path, |conn| async move {
+		let key = db_key_of(&target);
+		self.run(key, |conn| async move {
 			let models = project::Entity::find()
 				.order_by_desc(project::Column::ModifiedAt)
 				.all(&conn)
@@ -422,9 +450,9 @@ impl DatabaseBackend {
 	/// the project's data is gone — the manager confirms before calling).
 	pub fn delete_project(&self, uri: &StorageUri, uuid: &str) -> Result<()> {
 		let target = parse_target(uri)?;
-		let path = sqlite_path_of(&target)?;
+		let key = db_key_of(&target);
 		let uuid = uuid.to_string();
-		self.run(path, move |conn| async move {
+		self.run(key, move |conn| async move {
 			let tx = conn.begin().await.map_err(db_err)?;
 			let res = project::Entity::delete_many()
 				.filter(project::Column::Uuid.eq(&uuid))
@@ -449,10 +477,10 @@ impl DatabaseBackend {
 		new_name: Option<&str>,
 	) -> Result<ProjectInfo> {
 		let target = parse_target(uri)?;
-		let path = sqlite_path_of(&target)?;
+		let key = db_key_of(&target);
 		let uuid = uuid.to_string();
 		let new_name = new_name.map(str::to_string);
-		self.run(path, move |conn| async move {
+		self.run(key, move |conn| async move {
 			let tx = conn.begin().await.map_err(db_err)?;
 			let src = project::Entity::find()
 				.filter(project::Column::Uuid.eq(&uuid))
@@ -556,10 +584,10 @@ impl DatabaseBackend {
 	/// in-app project name (`settings["projectname"]`) is untouched.
 	pub fn rename_project(&self, uri: &StorageUri, uuid: &str, new_name: &str) -> Result<()> {
 		let target = parse_target(uri)?;
-		let path = sqlite_path_of(&target)?;
+		let key = db_key_of(&target);
 		let uuid = uuid.to_string();
 		let new_name = new_name.to_string();
-		self.run(path, move |conn| async move {
+		self.run(key, move |conn| async move {
 			let now = chrono::Utc::now().naive_utc();
 			let tx = conn.begin().await.map_err(db_err)?;
 			let res = project::Entity::update_many()
@@ -633,9 +661,9 @@ impl DatabaseBackend {
 	/// the head seq.
 	pub fn snapshot(&self, uri: &StorageUri, uuid: &str) -> Result<()> {
 		let target = parse_target(uri)?;
-		let path = sqlite_path_of(&target)?;
+		let key = db_key_of(&target);
 		let uuid = uuid.to_string();
-		self.run(path, move |conn| async move {
+		self.run(key, move |conn| async move {
 			let model = project::Entity::find()
 				.filter(project::Column::Uuid.eq(&uuid))
 				.one(&conn)
@@ -657,9 +685,9 @@ impl DatabaseBackend {
 	/// the empty project. E_INVALID when `seq` is out of range.
 	pub fn load_at(&self, uri: &StorageUri, uuid: &str, seq: i64) -> Result<CHandle> {
 		let target = parse_target(uri)?;
-		let path = sqlite_path_of(&target)?;
+		let key = db_key_of(&target);
 		let uuid = uuid.to_string();
-		self.run(path, move |conn| async move {
+		self.run(key, move |conn| async move {
 			let model = project::Entity::find()
 				.filter(project::Column::Uuid.eq(&uuid))
 				.one(&conn)
@@ -695,9 +723,9 @@ impl DatabaseBackend {
 	/// handle (the head state).
 	fn load_handle_by_uuid(&self, uri: &StorageUri, uuid: &str) -> Result<CHandle> {
 		let target = parse_target(uri)?;
-		let path = sqlite_path_of(&target)?;
+		let key = db_key_of(&target);
 		let uuid = uuid.to_string();
-		self.run(path, move |conn| async move {
+		self.run(key, move |conn| async move {
 			let model = project::Entity::find()
 				.filter(project::Column::Uuid.eq(&uuid))
 				.one(&conn)
@@ -736,9 +764,9 @@ impl StorageBackend for DatabaseBackend {
 
 	fn load(&self, uri: &StorageUri) -> Result<LoadResult> {
 		let target = parse_target(uri)?;
-		let path = sqlite_path_of(&target)?;
+		let key = db_key_of(&target);
 		let project = target.project().map(str::to_string);
-		self.run(path, move |conn| async move {
+		self.run(key, move |conn| async move {
 			let model = pick_project(&conn, project.as_deref()).await?;
 			let xml = assemble_at(&conn, model.id, &model.uuid, model.command_seq).await?;
 			let handle =
@@ -749,7 +777,7 @@ impl StorageBackend for DatabaseBackend {
 
 	fn save(&self, project: CHandle, uri: &StorageUri, _options: u32) -> Result<()> {
 		let target = parse_target(uri)?;
-		let path = sqlite_path_of(&target)?;
+		let key = db_key_of(&target);
 		// Serialize under the project lock (the same per-node writer the
 		// `.ove` backend uses — one serialization truth).
 		let arc = unsafe { crate::nodeutil::project_arc(&project)? };
@@ -760,21 +788,19 @@ impl StorageBackend for DatabaseBackend {
 			let (nodes, settings_xml, settings_map) = serialize_project_state(&guard)?;
 			(uuid, name, nodes, settings_xml, settings_map)
 		};
-		self.run(path, move |conn| async move {
+		self.run(key, move |conn| async move {
 			save_tx(&conn, &uuid, &name, &nodes, &settings_xml, &settings_map).await
 		})?;
 		Ok(())
 	}
 }
 
-/// The SQLite path of a target, rejecting PG with E_NO_BACKEND (D3).
-fn sqlite_path_of(target: &DbTarget) -> Result<&str> {
-	if target.is_pg() {
-		// D3: `oakdb+pg://` is parsed (see parse_target) but every
-		// operation refuses it until the PostgreSQL client is wired.
-		return Err(Error::NoBackend);
+/// The connection-cache key of a target (SQLite path or PG conn string).
+fn db_key_of(target: &DbTarget) -> DbKey {
+	match target {
+		DbTarget::Sqlite { path, .. } => DbKey::Sqlite(path.clone()),
+		DbTarget::Pg { conn, .. } => DbKey::Pg(conn.clone()),
 	}
-	Ok(target.sqlite_path().expect("pg rejected above"))
 }
 
 /// Display name for a project on first entry: the `projectname` setting
@@ -801,6 +827,34 @@ async fn connect_sqlite(path: &str) -> Result<DatabaseConnection> {
 		.connect_with(options)
 		.await
 		.map_err(|e| Error::Io(format!("cannot open sqlite database '{path}': {e}")))?;
+	Ok(DatabaseConnection::from(pool))
+}
+
+/// Open the PostgreSQL database at `conn` (a connection string body,
+/// e.g. `user:pass@host:5432/db`; a scheme is prepended for sqlx).
+///
+/// The server is first probed with a single, non-retrying connection
+/// attempt: the pool retries refused connections with backoff for the
+/// whole acquire timeout, which would hold a dead server for seconds.
+/// A single `connect()` surfaces the refusal immediately, so a dead /
+/// unreachable host fails fast with a clean E_IO.
+async fn connect_pg(conn: &str) -> Result<DatabaseConnection> {
+	use std::str::FromStr;
+	use sea_orm::sqlx::postgres::{PgConnectOptions, PgPoolOptions};
+	use sea_orm::sqlx::ConnectOptions;
+	let url = format!("postgres://{conn}");
+	let options = PgConnectOptions::from_str(&url)
+		.map_err(|e| Error::Io(format!("invalid postgres connection string: {e}")))?;
+	options
+		.connect()
+		.await
+		.map_err(|e| Error::Io(format!("cannot connect to postgres database: {e}")))?;
+	let pool = PgPoolOptions::new()
+		.max_connections(1)
+		.acquire_timeout(Duration::from_secs(10))
+		.connect_with(options)
+		.await
+		.map_err(|e| Error::Io(format!("cannot connect to postgres database: {e}")))?;
 	Ok(DatabaseConnection::from(pool))
 }
 
@@ -1450,7 +1504,7 @@ mod tests {
 	}
 
 	#[test]
-	fn parse_target_pg_kept_for_d3() {
+	fn parse_target_pg_conn_string() {
 		let t = parse_target(&uri("oakdb+pg://user:pass@host:5432/db")).unwrap();
 		assert_eq!(
 			t,
@@ -1459,6 +1513,47 @@ mod tests {
 				project: None
 			}
 		);
+		// A `?project=` query is the row selector, not a conn param.
+		let t = parse_target(&uri("oakdb+pg://user@host/db?project={abc-123}")).unwrap();
+		assert_eq!(
+			t,
+			DbTarget::Pg {
+				conn: "user@host/db".to_string(),
+				project: Some("{abc-123}".to_string())
+			}
+		);
+		// A query without a `project=` key belongs to the conn string
+		// (e.g. `?sslmode=disable` passes through untouched).
+		let t = parse_target(&uri("oakdb+pg://user@host/db?sslmode=disable")).unwrap();
+		assert_eq!(
+			t,
+			DbTarget::Pg {
+				conn: "user@host/db?sslmode=disable".to_string(),
+				project: None
+			}
+		);
+	}
+
+	#[test]
+	fn parse_target_pg_invalid_rejected() {
+		// Empty / unparseable connection strings are E_INVALID (clean, no
+		// network touched), matching the sqlite relative-path rule.
+		assert!(matches!(
+			parse_target(&uri("oakdb+pg://")),
+			Err(Error::Invalid)
+		));
+		assert!(matches!(
+			parse_target(&uri("oakdb+pg://?project={x}")),
+			Err(Error::Invalid)
+		));
+		assert!(matches!(
+			parse_target(&uri("oakdb+pg://user@")),
+			Err(Error::Invalid)
+		));
+		assert!(matches!(
+			parse_target(&uri("oakdb+pg://not a url")),
+			Err(Error::Invalid)
+		));
 	}
 
 	#[test]

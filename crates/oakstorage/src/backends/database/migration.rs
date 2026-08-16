@@ -60,22 +60,53 @@ const SQLITE_DDL: &[&str] = &[
 	)",
 ];
 
-/// Apply the schema (idempotent; safe to run on every connection open).
-///
-/// PostgreSQL (D3) gets its own `BIGSERIAL` DDL — same shape, currently
-/// unreachable because the backend rejects `oakdb+pg://` before any
-/// connection is opened.
+/// PostgreSQL DDL for the four tables — the same shape with the PG
+/// dialect differences (plan D3: BIGSERIAL for the surrogate key,
+/// BIGINT for the FKs; `TEXT` everywhere, matching the SQLite TEXT
+/// decision — no BYTEA). `CREATE TABLE IF NOT EXISTS` makes it
+/// idempotent, exactly like the SQLite side.
+const POSTGRES_DDL: &[&str] = &[
+	"CREATE TABLE IF NOT EXISTS projects (
+		id          BIGSERIAL PRIMARY KEY,
+		uuid        TEXT NOT NULL UNIQUE,
+		name        TEXT NOT NULL,
+		schema_ver  INTEGER NOT NULL,
+		created_at  TIMESTAMP NOT NULL,
+		modified_at TIMESTAMP NOT NULL,
+		command_seq BIGINT NOT NULL DEFAULT 0
+	)",
+	"CREATE TABLE IF NOT EXISTS settings (
+		project_id  BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+		key         TEXT NOT NULL,
+		value       TEXT NOT NULL,
+		PRIMARY KEY (project_id, key)
+	)",
+	"CREATE TABLE IF NOT EXISTS snapshots (
+		project_id  BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+		command_seq BIGINT NOT NULL,
+		payload     TEXT NOT NULL,
+		written_at  TIMESTAMP NOT NULL,
+		PRIMARY KEY (project_id, command_seq)
+	)",
+	"CREATE TABLE IF NOT EXISTS journal (
+		project_id    BIGINT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+		seq           BIGINT NOT NULL,
+		node_identity BIGINT NOT NULL,
+		kind          TEXT NOT NULL,
+		old_xml       TEXT,
+		new_xml       TEXT,
+		at            TIMESTAMP NOT NULL,
+		PRIMARY KEY (project_id, seq, node_identity)
+	)",
+];
+
+/// Apply the schema for the connection's dialect (idempotent; safe to
+/// run on every connection open).
 pub async fn migrate(db: &impl ConnectionTrait) -> crate::error::Result<()> {
 	let backend = db.get_database_backend();
 	let statements: &[&str] = match backend {
 		DatabaseBackend::Sqlite => SQLITE_DDL,
-		// D3: `BIGSERIAL PRIMARY KEY` for projects.id, `BIGINT` for the
-		// FKs — the rest of the column set is identical.
-		DatabaseBackend::Postgres => {
-			return Err(crate::error::Error::Failed(
-				"oakdb+pg is a D3 milestone; the PostgreSQL schema is not wired yet".to_string(),
-			));
-		}
+		DatabaseBackend::Postgres => POSTGRES_DDL,
 		other => {
 			return Err(crate::error::Error::Failed(format!(
 				"unsupported database backend {other:?}"

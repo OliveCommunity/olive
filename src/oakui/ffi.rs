@@ -281,6 +281,67 @@ unsafe extern "C" {
 	/// `oakengine_config_set_string` — write a string value.
 	pub fn oakengine_config_set_string(key: *const c_char, value: *const c_char) -> c_int;
 
+	// -- oakengine::storage (write-through session state) --
+
+	/// `oakengine_storage_flush` — flush every bound project and stop the
+	/// snapshot thread (the app calls it on exit).
+	pub fn oakengine_storage_flush() -> c_int;
+	/// `oakengine_storage_is_bound` — 1 when the project is bound to a
+	/// library session.
+	pub fn oakengine_storage_is_bound(project: *mut OakEngineProject) -> c_int;
+	/// `oakengine_storage_last_error` — the last write-through / snapshot
+	/// error (buf/size; empty when none or not bound).
+	pub fn oakengine_storage_last_error(
+		project: *mut OakEngineProject,
+		buf: *mut c_char,
+		buf_size: c_int,
+	) -> c_int;
+
+	// -- oakengine::library (project manager, M13 D4) --
+
+	/// `oakengine_library_list` — the library rows as a JSON array
+	/// (buf/size), most recently modified first; `"[]"` with storage off.
+	pub fn oakengine_library_list(buf: *mut c_char, buf_size: c_int) -> c_int;
+	/// `oakengine_library_create` — create a blank project row; reports its
+	/// uuid (buf/size on `out_uuid`; the return value is the uuid length,
+	/// negative on error).
+	pub fn oakengine_library_create(
+		name: *const c_char,
+		out_uuid: *mut c_char,
+		out_size: c_int,
+	) -> c_int;
+	/// `oakengine_library_delete` — delete a row by uuid.
+	pub fn oakengine_library_delete(uuid: *const c_char) -> c_int;
+	/// `oakengine_library_rename` — rename a row.
+	pub fn oakengine_library_rename(uuid: *const c_char, name: *const c_char) -> c_int;
+	/// `oakengine_library_duplicate` — copy a row (history included);
+	/// reports the new uuid like `oakengine_library_create`.
+	pub fn oakengine_library_duplicate(
+		uuid: *const c_char,
+		name: *const c_char,
+		out_uuid: *mut c_char,
+		out_size: c_int,
+	) -> c_int;
+	/// `oakengine_library_import` — import a `.ove`/`.otio`/`.fcpxml` file
+	/// as a new row; reports the new uuid like `oakengine_library_create`.
+	pub fn oakengine_library_import(
+		path: *const c_char,
+		out_uuid: *mut c_char,
+		out_size: c_int,
+	) -> c_int;
+	/// `oakengine_library_export` — export a row to `path` (format by
+	/// extension).
+	pub fn oakengine_library_export(uuid: *const c_char, path: *const c_char) -> c_int;
+	/// `oakengine_project_load_library` — load a library row into a fresh
+	/// project shell (same contract as `oakengine_project_load`); binds the
+	/// project to the library session.
+	pub fn oakengine_project_load_library(
+		self_: *mut OakEngineProject,
+		uuid: *const c_char,
+		err: *mut c_char,
+		err_size: c_int,
+	) -> c_int;
+
 	// -- oakengine::node (project) --
 
 	/// `oakengine_project_create` — owned project box (no content yet).

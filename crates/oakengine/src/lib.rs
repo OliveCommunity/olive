@@ -74,6 +74,7 @@ pub mod handle;
 pub mod ipc;
 #[cfg(not(test))]
 pub mod linkage;
+pub mod library;
 pub mod node;
 pub mod plugin;
 pub mod pods;

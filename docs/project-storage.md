@@ -91,12 +91,39 @@ removed clips.
   or otio backend; nothing is read from or written to the database
   beyond the current state.
 
+## Configuration
+
+Library selection and behavior are driven by the `Storage` config group
+(read by `crates/oakengine/src/storage.rs`):
+
+- `Storage/Backend` — `"sqlite"` (the documented default), `"database"`
+  or `"pg"` enables write-through; any other value (e.g. `"off"`)
+  disables it. When the key is absent no library is configured and
+  projects stay unbound (headless consumers and the test suite never
+  touch the user's real library).
+- `Storage/SqlitePath` — the SQLite library file; default
+  `<system data dir>/library.db` (honoring `OAK_CONFIG_DIR`).
+- `Storage/PgUrl` — the PostgreSQL connection string, used when
+  `Backend = "pg"`: `user:pass@host:5432/dbname` (libpq URL form; an
+  optional `postgres://`/`postgresql://` scheme is stripped). The
+  resolved library URI is `oakdb+pg://<PgUrl>`.
+- `Storage/SnapshotIntervalSec` (default 600) and
+  `Storage/JournalRetentionDays` (default 0 = keep forever) — see above.
+
 ## Multi-writer and platforms
 
 v1 assumes a single writer per database (SQLite `busy_timeout`, PG row
 locks). Multi-writer collaboration is future work (M14). The default
-database is a single user-level SQLite file; PostgreSQL is selected
-with an `oakdb+pg://` URI.
+database is a single user-level SQLite file; PostgreSQL is selected with
+`Storage/Backend = "pg"` + `Storage/PgUrl`, or directly with an
+`oakdb+pg://` URI.
+
+Database tests: `cargo test -p oakstorage` is green without PostgreSQL —
+the SQLite suite always runs; the PG suite (`tests/database_pg_test.rs`)
+connects to a real server when `OAK_TEST_PG_URL` is set (e.g.
+`postgres://user:pass@host:5432/db`) and skips with a note otherwise.
+The URL should point at a dedicated test database: each test resets the
+four tables.
 
 See also: [M10 oakstorage manual](plans/riir/M10-oakstorage.md),
 [M13 write-through plan](plans/riir/M13-storage-live.md),

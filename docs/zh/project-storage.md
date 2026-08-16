@@ -74,11 +74,35 @@ clip 行自带时间线区间（`<range in out/>`）、媒体偏移（`<media_in
 - 导出：内存序列化经 ove-xml 或 otio 后端写出；除当前状态外不读写
   数据库。
 
+## 配置
+
+库的选择与行为全部由 `Storage` 配置组驱动（写穿由
+`crates/oakengine/src/storage.rs` 读取）：
+
+- `Storage/Backend` — `"sqlite"`（默认值）、`"database"` 或 `"pg"`
+  启用写穿；其它值（如 `"off"`）禁用。键缺失 = 无库配置，工程不
+  绑定库（headless 消费者与测试进程永不写用户真实库）。
+- `Storage/SqlitePath` — SQLite 库文件；默认
+  `<系统数据目录>/library.db`（尊重 `OAK_CONFIG_DIR`）。
+- `Storage/PgUrl` — PostgreSQL 连接串，`Backend = "pg"` 时使用：
+  `user:pass@host:5432/dbname`（libpq URL 形式，带
+  `postgres://`/`postgresql://` 前缀也会被剥掉）。解析出的库 URI 为
+  `oakdb+pg://<PgUrl>`。
+- `Storage/SnapshotIntervalSec`（默认 600）、`Storage/JournalRetentionDays`
+  （默认 0 = 全保留）见上。
+
 ## 多写者与平台
 
 v1 假设单写者（SQLite `busy_timeout`，PG 行锁）；多写者协作是后续
-工作（M14）。默认数据库是用户级单一 SQLite 文件；PostgreSQL 用
-`oakdb+pg://` 连接串选择。
+工作（M14）。默认数据库是用户级单一 SQLite 文件；PostgreSQL 通过
+`Storage/Backend = "pg"` + `Storage/PgUrl` 选择，或直接用
+`oakdb+pg://` 连接串 URI。
+
+数据库测试：`cargo test -p oakstorage` 全绿无需 PostgreSQL——SQLite
+套件常驻运行；PG 套件（`tests/database_pg_test.rs`）在设置了
+`OAK_TEST_PG_URL`（如 `postgres://user:pass@host:5432/db`）时连接真实
+PG 全量运行，未设置则跳过并打印说明。该 URL 应指向专用测试库：每个
+测试会重置四张表。
 
 另见：[M10 oakstorage 手册](plans/riir/M10-oakstorage.md)、
 [M13 写穿计划](plans/riir/M13-storage-live.md)、

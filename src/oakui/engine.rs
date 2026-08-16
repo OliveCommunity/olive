@@ -93,6 +93,30 @@ pub struct Project {
 	pub path: PathBuf,
 }
 
+/// A project-library row, as the project manager lists it (M13 D4). The
+/// stats are derived from the row's head state by the backend (they are
+/// never stored in the library).
+#[derive(Debug, Clone, PartialEq)]
+pub struct LibraryProject {
+	/// The library row uuid (the open / rename / duplicate / delete /
+	/// export selector).
+	pub uuid: String,
+	/// The row's display name.
+	pub name: String,
+	/// Row creation time (unix seconds, UTC).
+	pub created_at: i64,
+	/// Last-write time (unix seconds, UTC; the manager sort key).
+	pub modified_at: i64,
+	/// Longest sequence duration in milliseconds.
+	pub duration_ms: i64,
+	/// Total tracks across all sequences.
+	pub track_count: i32,
+	/// Total clip blocks.
+	pub clip_count: i32,
+	/// Total footage nodes.
+	pub footage_count: i32,
+}
+
 /// The sequence currently open in the project.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sequence {
@@ -293,6 +317,73 @@ pub trait AppEngine:
 
 	/// Closes the current project, leaving the app with no sequence.
 	fn close_project(&mut self, cx: &mut Context<Self>);
+
+	// -------------------------------------------------------------------
+	// Project library (M13 D4: the write-through database the manager
+	// window browses). Default: unsupported (empty list / error strings).
+	// -------------------------------------------------------------------
+
+	/// Whether the open project is bound to the library write-through
+	/// session (the status bar's write state).
+	fn storage_bound(&self) -> bool {
+		false
+	}
+
+	/// The last write-through / snapshot error of the open project, if any.
+	fn storage_last_error(&self) -> Option<String> {
+		None
+	}
+
+	/// Lists the project library, most recently modified first (the
+	/// project manager's data source).
+	fn library_projects(&self) -> Result<Vec<LibraryProject>, String> {
+		Err("project library not supported".into())
+	}
+
+	/// Creates a blank project named `name` in the library and opens it.
+	fn library_create_project(&mut self, name: &str, cx: &mut Context<Self>) -> Result<(), String> {
+		let _ = (name, cx);
+		Err("project library not supported".into())
+	}
+
+	/// Opens the library project `uuid` (closing the current project).
+	fn library_open_project(&mut self, uuid: &str, cx: &mut Context<Self>) -> Result<(), String> {
+		let _ = (uuid, cx);
+		Err("project library not supported".into())
+	}
+
+	/// Deletes the library project `uuid` (the manager confirms first).
+	fn library_delete_project(&mut self, uuid: &str) -> Result<(), String> {
+		let _ = uuid;
+		Err("project library not supported".into())
+	}
+
+	/// Renames the library project `uuid` (the manager's list name).
+	fn library_rename_project(&mut self, uuid: &str, name: &str) -> Result<(), String> {
+		let _ = (uuid, name);
+		Err("project library not supported".into())
+	}
+
+	/// Duplicates the library project `uuid` (history included) under a
+	/// fresh uuid.
+	fn library_duplicate_project(&mut self, uuid: &str) -> Result<(), String> {
+		let _ = uuid;
+		Err("project library not supported".into())
+	}
+
+	/// Imports a `.ove` / `.otio` / `.fcpxml` project file into the library
+	/// as a new row; returns the new row's uuid.
+	fn library_import_project(&mut self, path: PathBuf) -> Result<String, String> {
+		let _ = path;
+		Err("project library not supported".into())
+	}
+
+	/// Exports the library project `uuid` to `path`; the format is
+	/// dispatched by extension (`.ove` / `.otio` / `.fcpxml`).
+	fn library_export_project(&mut self, uuid: &str, path: PathBuf) -> Result<(), String> {
+		let _ = (uuid, path);
+		Err("project library not supported".into())
+	}
 	/// The timeline waveform cache (M12 P4); `None` when the backend
 	/// does not provide waveforms.
 	fn waveform_cache(&self) -> Option<std::sync::Arc<crate::oakui::waveform::WaveformCache>> {

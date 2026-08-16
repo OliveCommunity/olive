@@ -109,6 +109,24 @@ facade 的 undo 推送路径挂钩（`oakengine_undo_push` / `undo_group_end`
 > 键缺失 = "无库配置"（工程不绑定、写穿不触发）——这是 §2"无库配置优雅
 > 降级"的默认形态，保证 headless 消费者（oak-cli）与测试进程永远不写
 > 用户的真实库。app 侧（D4/D5）在启动时显式设置该配置即可启用。
+>
+> D3 落地记录（2026-08）：`oakdb+pg://` 全量走通（load/save/load_at/
+> snapshot/list/delete/duplicate/rename/export/import）。方言差异收敛在
+> 连接与 migration 两层：`crates/oakstorage/src/backends/database/
+> migration.rs` 按 `DatabaseBackend` 选 SQLite/PG DDL（PG 仅 `BIGSERIAL`
+> PK + `BIGINT` FK，其余同构；`CREATE TABLE IF NOT EXISTS` 幂等，每次
+> 连接时执行；payload 维持 TEXT，不做 BYTEA）；sea-orm 实体与 save/replay
+> 逻辑两库共用零分支。`connect_pg` 先单次直连探测（pool 对被拒连接会
+> 退避重试到 acquire 超时，死库会挂起数秒），失败映射干净 E_IO。
+> **配置**：`Storage/Backend = "pg"` 启用，`Storage/PgUrl` 给连接串
+> （`user:pass@host:5432/dbname`，容忍 `postgres://` 前缀，oakdb uri
+> 剥掉）；URI 的 `?project=` 选择器只在 query 含 `project=` 键时生效，
+> 否则整段（含 `?sslmode=…`）视为连接串。**测试矩阵**：SQLite 18 个
+> 常驻；PG 13 个变体（round-trip/journal 语义/快照重放/撤销/清理/管理
+> API/导入导出/选择）门控 `OAK_TEST_PG_URL`，未设置则早退打印说明
+> （CI 无 PG 也绿）；非法连接串（E_INVALID，parse 期）+ 连不上（E_IO，
+> 单次探测）为常驻错误路径测试，无需真实 PG。共享 fixture 抽到
+> `tests/common/mod.rs`（建 fixture/保存加载/行检查 sqlite+pg 双探针）。
 
 ## 4. 项目管理器窗口（app）
 
@@ -118,6 +136,30 @@ facade 的 undo 推送路径挂钩（`oakengine_undo_push` / `undo_group_end`
 - 新建 / 重命名 / 复制 / 删除（确认对话框）。
 - 导入 .ove/.otio/.fcpxml 为新库行；选中工程导出为 .ove/.otio/.fcpxml。
 - 数据源走 oakstorage 会话 API（Rust 直调；需要 C ABI 时 facade 只增）。
+
+> D4 落地记录（2026-08）：app 只链接 `liboakengine` dylib，故数据源走
+> 新增 C ABI（`crates/oakengine/src/library.rs`，只增）：
+> `oakengine_library_list`（JSON 行：uuid/name/created/modified + 派生
+> 统计）/ `_create` / `_delete` / `_rename` / `_duplicate` / `_import`
+> / `_export`（按扩展名走 oakstorage registry 分发 ove-xml 或 otio 后端）
+> / `oakengine_project_load_library`（载入并**绑定**写穿会话，与
+> `project_load` 同契约）。有副作用的 create/duplicate/import 返回 uuid
+> 用单次定长缓冲调用（不能两段式 measure-then-read——会在 C 侧执行两次）。
+> app 侧：`src/manager.rs`（`ProjectManager` 内容视图 + `ManagerEvent`
+> 请求枚举 + `NamePrompt`/`ConfirmContent` 子对话框；时间/时长格式化为
+> 无依赖纯函数）。`src/app.rs`：无 `--project` 启动时开管理器（驱动根
+> entity，不能走 `WindowHandle::update`——`spawn_modal` 的
+> `update_window` 会重入失败）；`run_with` 启动时
+> `real::configure_storage()`（仅在 `Storage/Backend` 未配置时设
+> `sqlite`，路径用 facade 默认 `<数据目录>/library.db`），退出前
+> `storage_flush()`。菜单语义（提前并入 D5）：保存/另存为 →
+> 导出工程文件…（⌘S，扩展名分发 ove/otio/fcpxml）；打开 → 从库中打开…
+> （= 管理器）+ 打开工程文件…；新增 项目管理器…。状态栏自动保存段 →
+> 库写入状态（`storage_bound` / `last_error`，失败红色）。MockEngine 带
+> 内存假库（3 行种子 + 全操作），app gpui 测试覆盖建/删/复制/重命名/
+> 导入/导出/打开；facade 侧 `it_library.rs` 5 测试（建/列/打开绑定写穿/
+> 重命名复制删除/导出导入 round-trip/禁用降级）。截图
+> docs/screenshot-manager.png + -en.png。
 
 ## 5. 分期与判据
 

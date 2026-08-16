@@ -454,10 +454,43 @@ mod tests {
 	fn output_callback_consumes_pushed_samples() {
 		// Skip when the audio system cannot actually run a stream: open a
 		// silent stream and require at least one callback within 2 s. A
-		// device existing is not enough — headless sessions report
-		// is_active=true while delivering zero callbacks.
+		// device existing is not enough — headless sessions report the
+		// stream running while delivering zero callbacks.
 		use std::sync::atomic::AtomicI64 as A;
+		use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 		static PROBE: A = A::new(0);
+		PROBE.store(0, Ordering::Relaxed);
+		let can_play = (|| {
+			let host = cpal::default_host();
+			let device = host.default_output_device()?;
+			let config = device.default_output_config().ok()?;
+			let cb = move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+				PROBE.fetch_add(data.len() as i64, Ordering::Relaxed);
+				for s in data.iter_mut() {
+					*s = 0.0;
+				}
+			};
+			let stream = device
+				.build_output_stream(
+					config.config(),
+					cb,
+					|_| {},
+					None,
+				)
+				.ok()?;
+			stream.play().ok()?;
+			let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+			while std::time::Instant::now() < deadline && PROBE.load(Ordering::Relaxed) == 0 {
+				std::thread::sleep(std::time::Duration::from_millis(50));
+			}
+			let got = PROBE.load(Ordering::Relaxed) > 0;
+			drop(stream);
+			Some(got)
+		})();
+		if can_play != Some(true) {
+			eprintln!("audio session cannot deliver callbacks; skipping");
+			return;
+		}
 
 		DESTROYED.store(false, Ordering::SeqCst);
 		let manager = MANAGER.get_or_init(|| Mutex::new(ManagerInner::default()));

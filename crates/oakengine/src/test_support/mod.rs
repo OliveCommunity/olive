@@ -41,6 +41,7 @@ mod it_audio;
 mod it_codec;
 mod it_common;
 mod it_export;
+mod it_library;
 mod it_plugin;
 mod it_storage;
 mod it_task;
