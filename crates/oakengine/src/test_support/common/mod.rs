@@ -76,6 +76,35 @@ pub fn with_manager(f: impl FnOnce()) {
 	f()
 }
 
+/// Serializes every test that reads or writes the `Storage` config group
+/// (the facade's write-through library selection — see src/storage.rs).
+/// The config store is process-global, so the write-through tests and the
+/// tests that disable the backend must take this lock for their whole
+/// body instead of racing on the shared store.
+pub static STORAGE_CONFIG_LOCK: Mutex<()> = Mutex::new(());
+
+/// Run `f` with the write-through storage backend disabled
+/// (`Storage/Backend = "off"`). Tests that push undo commands on real
+/// projects (e.g. `oakengine_project_add_node`) would otherwise bind them
+/// to the default user library and write there; disabling the backend
+/// keeps them side-effect-free. The value intentionally persists — every
+/// storage test sets its own backend explicitly under
+/// [`STORAGE_CONFIG_LOCK`].
+pub fn with_storage_off<R>(f: impl FnOnce() -> R) -> R {
+	let _g = storage_off_guard();
+	f()
+}
+
+/// Take the storage-config lock AND disable the write-through backend,
+/// returning the guard: a test that pushes undo commands throughout its
+/// body holds the guard (and thus the lock) for its whole lifetime, so a
+/// concurrently running storage test cannot flip the backend mid-test.
+pub fn storage_off_guard() -> std::sync::MutexGuard<'static, ()> {
+	let g = STORAGE_CONFIG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+	oakcommon::configstore::ConfigStore::instance().set(Some("Storage"), "Backend", "off");
+	g
+}
+
 // ---------------------------------------------------------------------------
 // oakcore_* stubs (see module docs)
 // ---------------------------------------------------------------------------

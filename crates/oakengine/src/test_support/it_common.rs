@@ -40,7 +40,6 @@ use super::common;
 use std::ffi::{c_char, c_int};
 use std::path::Path;
 use std::sync::atomic::{AtomicI32, Ordering};
-use std::sync::Mutex;
 
 use crate::common::{
 	oakengine_config_get_int, oakengine_config_get_string, oakengine_config_load,
@@ -71,8 +70,11 @@ unsafe fn read_buf(buf: &mut [c_char]) -> String {
 /// redirects `OAK_CONFIG_DIR` to a fresh temp dir for the duration of `f`
 /// (same pattern as the oakcommon crate's own test support). The only
 /// readers of `OAK_CONFIG_DIR` in this binary are these serialized tests.
+/// The serialization uses the SHARED storage-config lock (common), so the
+/// config tests never race the write-through tests on the singleton store
+/// or the env override.
 fn with_temp_config_dir<T>(f: impl FnOnce(&Path) -> T) -> T {
-	let _guard = CONFIG_LOCK.lock().unwrap();
+	let _guard = common::STORAGE_CONFIG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 	let dir =
 		std::env::temp_dir().join(format!("oakengine_it_common_config_{}", std::process::id()));
 	let _ = std::fs::create_dir_all(&dir);
@@ -84,7 +86,7 @@ fn with_temp_config_dir<T>(f: impl FnOnce(&Path) -> T) -> T {
 }
 
 /// The process-wide config store is a singleton; see module doc.
-static CONFIG_LOCK: Mutex<()> = Mutex::new(());
+// (Serialization now uses the shared `common::STORAGE_CONFIG_LOCK`.)
 
 // ---------------------------------------------------------------------------
 // config.h

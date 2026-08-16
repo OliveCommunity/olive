@@ -38,8 +38,19 @@ use crate::common::{
 };
 
 /// Config: load/save, string and int round-trips, missing-key behavior.
+///
+/// Serialized with the write-through tests (the config store is
+/// process-global) and redirected to a temp `OAK_CONFIG_DIR` — without the
+/// redirect, `oakengine_config_save` would write the real `config.ini`.
 #[test]
 fn config_round_trip() {
+	let _config = common::STORAGE_CONFIG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+	let dir = std::env::temp_dir().join(format!(
+		"oakengine_common_smoke_config_{}",
+		std::process::id()
+	));
+	let _ = std::fs::create_dir_all(&dir);
+	std::env::set_var("OAK_CONFIG_DIR", &dir);
 	assert_eq!(unsafe { oakengine_config_load() }, 0);
 
 	// Missing key reads as 0 / empty.
@@ -92,6 +103,10 @@ fn config_round_trip() {
 	);
 
 	assert_eq!(unsafe { oakengine_config_save() }, 0);
+	assert!(dir.join("config.ini").exists());
+
+	std::env::remove_var("OAK_CONFIG_DIR");
+	let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// Config error handler: registered, then invoked via report_error.

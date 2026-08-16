@@ -116,8 +116,10 @@ pub(crate) unsafe fn push_or_run(
 	};
 	let rc = unsafe { undostack_push(stack, cmd, label_ptr) };
 	if rc == 0 {
-		// Stack took a reference; release ours by freeing the box.
+		// Stack took a reference; release ours by freeing the box. The
+		// command's redo already ran (plan M13 D2): persist the project.
 		unsafe { free_box(command_box) };
+		crate::storage::note_command();
 		Ok(())
 	} else {
 		// Push failed (e.g. empty multi): the module deleted the command;
@@ -193,6 +195,9 @@ pub extern "C" fn oakengine_undo_group_end() -> c_int {
 		let mut multi_handle = multi;
 		unsafe { command_free(&mut multi_handle) };
 		if rc == 0 {
+			// The group's children were redo'd eagerly at push time; the
+			// whole group is one command (plan §2: commit at group_end).
+			crate::storage::note_command();
 			Ok(())
 		} else {
 			Err(Error::Module(rc))
@@ -408,10 +413,15 @@ pub extern "C" fn oakengine_undo_command_is_done(row: i64) -> c_int {
 }
 
 /// `oakengine_undo_jump` — undo/redo until the done-command count equals
-/// `index`.
+/// `index`. On success the bound projects are written through (the jump
+/// executed the undo/redo callbacks that mutated them).
 #[no_mangle]
 pub extern "C" fn oakengine_undo_jump(index: i64) -> c_int {
-	guard(|| unsafe { Error::from_module(undostack_jump(*global_stack(), index)) })
+	let rc = guard(|| unsafe { Error::from_module(undostack_jump(*global_stack(), index)) });
+	if rc == crate::error::OAKENGINE_OK {
+		crate::storage::note_command();
+	}
+	rc
 }
 
 /// `oakengine_undo_clear` — delete all commands and push the fresh

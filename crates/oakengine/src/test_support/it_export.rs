@@ -78,9 +78,23 @@ const CODEC_AAC: c_int = 12;
 /// does not cascade into `PoisonError` failures in every later test.
 static SERIAL: Mutex<()> = Mutex::new(());
 
-/// Take the [`SERIAL`] lock, recovering from any poisoning.
-fn serial() -> std::sync::MutexGuard<'static, ()> {
-	SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+/// Both lock guards held by [`serial`].
+struct SerialGuard {
+	/// The [`SERIAL`] lock.
+	_task: std::sync::MutexGuard<'static, ()>,
+	/// The facade-wide undo-stack lock, so the `oakengine_project_new`
+	/// calls in these tests never race the it_undo / it_storage stack tests.
+	_stack: std::sync::MutexGuard<'static, ()>,
+}
+
+/// Take the [`SERIAL`] lock AND the global undo-stack lock, recovering
+/// from any poisoning.
+fn serial() -> SerialGuard {
+	let _task = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+	let _stack = super::it_undo::GLOBAL_STACK_LOCK
+		.lock()
+		.unwrap_or_else(|e| e.into_inner());
+	SerialGuard { _task, _stack }
 }
 
 /// A unique temp path (per-process, so parallel test binaries never
@@ -105,6 +119,10 @@ unsafe fn assemble_test_sequence(
 	frame_count: i64,
 	fps: c_int,
 ) -> (*mut OakEngineProject, *mut OakEngineSequence) {
+	// The undoable import/add-track/add-clip commands below would bind the
+	// project to the default user library; disable the write-through for
+	// the assembly (and keep the config lock held while pushing).
+	let _storage = common::storage_off_guard();
 	let media_c = std::ffi::CString::new(media.to_string_lossy().into_owned()).unwrap();
 	assert_eq!(
 		oakengine_testmedia_write_clip(media_c.as_ptr(), width, height, frame_count as c_int, fps),

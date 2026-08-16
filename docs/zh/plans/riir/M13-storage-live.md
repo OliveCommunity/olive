@@ -97,6 +97,19 @@ facade 的 undo 推送路径挂钩（`oakengine_undo_push` / `undo_group_end`
 新建/导入建立 (project ↔ storage session) 绑定；关闭解绑。状态栏
 脏标记改为"已写入/写入中"。
 
+> D2 落地记录（2026-08）：`crates/oakengine/src/storage.rs` 实现绑定表
+> （project handle ctx → `{db uri, uuid}`）、写穿（每次 undo 路径成功
+> 后对全部绑定工程调 `DatabaseBackend::save`，diff 式，未变工程 no-op）、
+> 快照线程（`Storage/SnapshotIntervalSec`，默认 600s，latest-wins，
+> 退出 `oakengine_storage_flush` 排空）与 `last_error` 降级。
+> **配置默认值**：`Storage/Backend` 的默认值 = `"sqlite"`，`Storage/SqlitePath`
+> 的默认值 = `<系统数据目录>/library.db`（`FileFunctions::get_configuration_location`
+> 的 macOS Application Support / XDG 位置，尊重 `OAK_CONFIG_DIR`）。
+> **启用语义**：`Storage/Backend` 显式为 `"sqlite"`/`"database"` 才启用写穿；
+> 键缺失 = "无库配置"（工程不绑定、写穿不触发）——这是 §2"无库配置优雅
+> 降级"的默认形态，保证 headless 消费者（oak-cli）与测试进程永远不写
+> 用户的真实库。app 侧（D4/D5）在启动时显式设置该配置即可启用。
+
 ## 4. 项目管理器窗口（app）
 
 达芬奇式启动窗 + 菜单 文件→项目管理器：

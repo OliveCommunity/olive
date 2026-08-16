@@ -45,6 +45,10 @@ oaktask = { path = "../oaktask" }
 oaknode = { path = "../oaknode" }
 oakaudio = { path = "../oakaudio" }
 oakplugin = { path = "../oakplugin" }
+# Live write-through to the project library (plan M13 D2): the facade's
+# storage session manager (src/storage.rs) drives the oakstorage database
+# backend (DatabaseBackend::save/snapshot) straight from the undo path.
+oakstorage = { path = "../oakstorage" }
 
 [dev-dependencies]
 # The facade is cdylib-only, so the former tests/*.rs integration tests
@@ -53,3 +57,9 @@ oakplugin = { path = "../oakplugin" }
 # [dependencies] above. oakcommon stays here for the direct dev-only
 # imports in the test support files.
 oakcommon = { path = "../oakcommon" }
+# The write-through tests (src/test_support/it_storage.rs) inspect the
+# journal/snapshot rows of the temp libraries directly; sea-orm + tokio
+# unify with oakstorage's own versions (same features), so the entities
+# and the current-thread runtime pattern match the oakstorage tests.
+sea-orm = { version = "2", features = ["sqlx-postgres", "sqlx-sqlite", "runtime-tokio"] }
+tokio = { version = "1", features = ["rt", "macros"] }

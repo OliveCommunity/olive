@@ -4814,12 +4814,15 @@ dependencies = [
  "oaknode",
  "oakplugin",
  "oakrender",
+ "oakstorage",
  "oaktask",
  "oaktimeline",
  "oakundo",
+ "sea-orm",
  "serde",
  "serde_json",
  "thiserror 2.0.20",
+ "tokio",
 ]
 
 [[package]]

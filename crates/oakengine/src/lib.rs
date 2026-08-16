@@ -79,6 +79,7 @@ pub mod plugin;
 pub mod pods;
 pub mod render;
 pub mod stubs;
+pub mod storage;
 pub mod task;
 pub mod testmedia;
 pub mod timeline;

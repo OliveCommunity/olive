@@ -108,6 +108,10 @@ unsafe fn find_node(project: *mut crate::handle::OakEngineProject, id: &str) -> 
 fn project_node_keyframe_lifecycle() {
 	common::force_link();
 	let _ = force_oakundo_command_link();
+	// The undo commands below would bind the project to the default user
+	// library and write through to it; hold the storage lock and disable
+	// the backend for the whole test.
+	let _storage = common::storage_off_guard();
 
 	// ---- project: create → new → name/filename readback ----------------
 	let project = oakengine_project_create();

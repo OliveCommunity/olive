@@ -895,7 +895,9 @@ pub unsafe extern "C" fn oakengine_task_save_get_project(
 ///
 /// The module's `oaktask_load_take_project` is the load-result getter the
 /// engine facade has no export for (the app's interchange-open path); it is
-/// wrapped here so the app can stay on the `oakengine_*` surface.
+/// wrapped here so the app can stay on the `oakengine_*` surface. A taken
+/// project is bound to the default library (plan M13 D2 — the "task load
+/// 完成" hook).
 #[no_mangle]
 pub unsafe extern "C" fn oakengine_task_load_take_project(
 	task: *mut OakEngineTask,
@@ -906,6 +908,7 @@ pub unsafe extern "C" fn oakengine_task_load_take_project(
 		if project.is_null() {
 			return Ok(std::ptr::null_mut());
 		}
+		crate::storage::bind_project(project);
 		Ok(box_handle::<OakEngineProject>(project))
 	})
 }

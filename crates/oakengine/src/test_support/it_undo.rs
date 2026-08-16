@@ -90,8 +90,9 @@ unsafe fn read_str(buf: *const c_char) -> String {
 /// `null_name_group_repro`, `group_abort_undoes_children_repro`): cargo
 /// runs tests on parallel threads and the global stack / single open undo
 /// group cannot be shared, so each of those tests holds this lock for its
-/// whole body.
-static GLOBAL_STACK_LOCK: Mutex<()> = Mutex::new(());
+/// whole body. Public so the write-through tests (it_storage.rs), which
+/// push commands on the same global stack, serialize on the SAME lock.
+pub static GLOBAL_STACK_LOCK: Mutex<()> = Mutex::new(());
 
 static LIFECYCLE_REDO: AtomicI32 = AtomicI32::new(0);
 static LIFECYCLE_UNDO: AtomicI32 = AtomicI32::new(0);

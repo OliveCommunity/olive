@@ -88,9 +88,25 @@ const OAKTASK_E_NOT_FOUND: c_int = -80004;
 /// does not cascade into `PoisonError` failures in every later test.
 static SERIAL: Mutex<()> = Mutex::new(());
 
-/// Take the [`SERIAL`] lock, recovering from any poisoning.
-pub(crate) fn serial() -> std::sync::MutexGuard<'static, ()> {
-	SERIAL.lock().unwrap_or_else(|e| e.into_inner())
+/// Both lock guards held by [`serial`] (the local task lock plus the
+/// facade-wide undo-stack lock).
+pub(crate) struct SerialGuard {
+	/// The [`SERIAL`] lock.
+	_task: std::sync::MutexGuard<'static, ()>,
+	/// The facade's process-wide undo-stack lock (it_undo's), so the
+	/// `oakengine_project_new` calls in these tests (which clear the stack)
+	/// never race the it_undo / it_storage stack tests.
+	_stack: std::sync::MutexGuard<'static, ()>,
+}
+
+/// Take the [`SERIAL`] lock AND the global undo-stack lock, recovering
+/// from any poisoning.
+pub(crate) fn serial() -> SerialGuard {
+	let _task = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
+	let _stack = super::it_undo::GLOBAL_STACK_LOCK
+		.lock()
+		.unwrap_or_else(|e| e.into_inner());
+	SerialGuard { _task, _stack }
 }
 
 /// The facade's live task-payload counter (the engine-side replacement
@@ -904,6 +920,9 @@ fn export_task_creation() {
 fn export_task_run_real_encoder() {
 	let _g = serial();
 	common::force_link();
+	// The import/add-track/add-clip commands below are undoable; disable
+	// the write-through backend so they never touch a library.
+	let _storage = common::storage_off_guard();
 
 	let media = std::env::temp_dir().join(format!(
 		"oakengine-it-task-export-src-{}.mp4",

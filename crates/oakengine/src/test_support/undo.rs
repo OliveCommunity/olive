@@ -153,6 +153,13 @@ fn multi_command_add_child_count_redo() {
 /// exercised from parallel test threads.
 #[test]
 fn undo_stack_lifecycle() {
+	// Serialized on the SAME lock as the it_undo stack tests and the
+	// write-through tests (the facade's stack is process-wide): without it
+	// a concurrent test's pushes break the exact-count assertions below.
+	let _stack = super::it_undo::GLOBAL_STACK_LOCK
+		.lock()
+		.unwrap_or_else(|e| e.into_inner());
+
 	// Reset to a clean "New/Open Project" base row.
 	assert_eq!(unsafe { oakengine_undo_clear() }, 0);
 	assert_eq!(unsafe { oakengine_undo_count() }, 1);

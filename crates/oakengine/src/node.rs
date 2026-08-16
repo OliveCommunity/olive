@@ -423,8 +423,10 @@ pub unsafe extern "C" fn oakengine_project_free(self_: *mut OakEngineProject) {
 			return;
 		}
 		// The module's project_free releases the handle and clears `ctx`;
-		// the box shell is then deallocated (no double release).
+		// the box shell is then deallocated (no double release). Flush the
+		// write-through binding first (save + snapshot of pending writes).
 		let mut h = (*self_).handle;
+		crate::storage::unbind_project(h);
 		n::oaknode_project_free(&mut h);
 		drop(Box::from_raw(self_));
 	})
@@ -442,6 +444,9 @@ pub unsafe extern "C" fn oakengine_project_new(self_: *mut OakEngineProject) -> 
 		// Clearing the global undo stack mirrors the app's new-project
 		// behavior (see undo.rs `oakengine_undo_clear`).
 		crate::undo::oakengine_undo_clear();
+		// Bind the fresh project to the default library (plan M13 D2): its
+		// first undoable edit lands in the journal as the import command.
+		crate::storage::bind_project(h);
 		Ok(())
 	})
 }
@@ -502,6 +507,10 @@ pub unsafe extern "C" fn oakengine_project_load(
 		// Success: clear the undo stack and the modified flag.
 		crate::undo::oakengine_undo_clear();
 		Error::from_module(n::oaknode_project_set_modified(h, 0))?;
+		// Bind the opened project to the default library (plan M13 D2): the
+		// row is keyed by the loaded uuid — an existing library row
+		// continues its journal, otherwise the first edit imports it.
+		crate::storage::bind_project(h);
 		if !err.is_null() && err_size > 0 {
 			*err = 0;
 		}
