@@ -1012,6 +1012,98 @@ pub fn track_height(p: &ProjectRef, track: NodeId) -> Option<f64> {
 	track_behavior(&g.graph, track).map(|t| t.height)
 }
 
+/// A track's muted flag (`None` when the id is stale). Muted means
+/// "silenced" on audio tracks and "hidden" on video/subtitle tracks
+/// (Olive parity: one flag drives both).
+pub fn track_muted(p: &ProjectRef, track: NodeId) -> Option<bool> {
+	let g = lock(p);
+	track_behavior(&g.graph, track).map(|t| t.muted)
+}
+
+/// A track's locked flag (`None` when the id is stale).
+pub fn track_locked(p: &ProjectRef, track: NodeId) -> Option<bool> {
+	let g = lock(p);
+	track_behavior(&g.graph, track).map(|t| t.locked)
+}
+
+/// An undoable track-flag set (the closures capture the previous value, so
+/// the undo restores it exactly). Shared by the mute/hide and lock toggles.
+fn set_track_flag(
+	p: &ProjectRef,
+	track: NodeId,
+	field: TrackFlag,
+	value: bool,
+	name: &str,
+) -> Result<(), String> {
+	let old = {
+		let g = lock(p);
+		let t = track_behavior(&g.graph, track)
+			.ok_or_else(|| "set track flag: the node is not a track".to_string())?;
+		match field {
+			TrackFlag::Muted => t.muted,
+			TrackFlag::Locked => t.locked,
+		}
+	};
+	if old == value {
+		return Ok(());
+	}
+	let (p1, p2) = (p.clone(), p.clone());
+	push(
+		oakundo::undocommand::UndoCommand::from_closures(
+			move || {
+				let mut g = lock(&p1);
+				if let Some(t) = g
+					.graph
+					.get_mut(track)
+					.and_then(|e| e.behavior.as_any_mut())
+					.and_then(|a| a.downcast_mut::<TrackBehavior>())
+				{
+					match field {
+						TrackFlag::Muted => t.muted = value,
+						TrackFlag::Locked => t.locked = value,
+					}
+				}
+			},
+			move || {
+				let mut g = lock(&p2);
+				if let Some(t) = g
+					.graph
+					.get_mut(track)
+					.and_then(|e| e.behavior.as_any_mut())
+					.and_then(|a| a.downcast_mut::<TrackBehavior>())
+				{
+					match field {
+						TrackFlag::Muted => t.muted = old,
+						TrackFlag::Locked => t.locked = old,
+					}
+				}
+			},
+		),
+		name,
+	)
+}
+
+/// The track flags the undoable setters cover.
+#[derive(Clone, Copy)]
+enum TrackFlag {
+	/// Muted (audio) / hidden (video, subtitle).
+	Muted,
+	/// Locked against clip edits.
+	Locked,
+}
+
+/// Set a track's muted flag (undoable "Set Track Muted"). On video and
+/// subtitle tracks this is the visibility (show/hide) toggle.
+pub fn set_track_muted(p: &ProjectRef, track: NodeId, muted: bool) -> Result<(), String> {
+	set_track_flag(p, track, TrackFlag::Muted, muted, "Set Track Muted")
+}
+
+/// Set a track's locked flag (undoable "Set Track Locked"). Locked tracks
+/// reject clip edits (the app layer refuses trim/move/split/delete).
+pub fn set_track_locked(p: &ProjectRef, track: NodeId, locked: bool) -> Result<(), String> {
+	set_track_flag(p, track, TrackFlag::Locked, locked, "Set Track Locked")
+}
+
 /// Set a track's height in internal units (NOT undoable, mirroring the
 /// facade's `oakengine_track_set_height`).
 pub fn set_track_height(p: &ProjectRef, track: NodeId, height: f64) {
@@ -1453,4 +1545,76 @@ pub fn remove_node(p: &ProjectRef, node: NodeId) -> Result<(), String> {
 pub fn test_lock() -> std::sync::MutexGuard<'static, ()> {
 	static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 	LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// A project with one sequence holding one track of `kind`; returns the
+	/// project, the sequence and the track's node id.
+	fn project_with_track(kind: TrackType) -> (ProjectRef, NodeId, NodeId) {
+		let project = create_project();
+		let seq = create_sequence(&project, "Seq");
+		let index = add_track(&project, seq, kind).expect("add a track");
+		let track = {
+			let g = lock(&project);
+			track_ids(&g.graph, seq, kind)[index]
+		};
+		(project, seq, track)
+	}
+
+	/// The track flag setters flip the flag as ONE undoable entry each;
+	/// undo restores the previous value and redo re-applies.
+	#[test]
+	fn track_flag_setters_toggle_and_undo() {
+		let _g = test_lock();
+		oakundo::global::clear().unwrap();
+		let (project, _seq, track) = project_with_track(TrackType::Video);
+
+		assert_eq!(track_muted(&project, track), Some(false));
+		assert_eq!(track_locked(&project, track), Some(false));
+
+		set_track_muted(&project, track, true).expect("mute the track");
+		assert_eq!(track_muted(&project, track), Some(true));
+		set_track_locked(&project, track, true).expect("lock the track");
+		assert_eq!(track_locked(&project, track), Some(true));
+
+		oakundo::global::undo().unwrap();
+		assert_eq!(track_locked(&project, track), Some(false));
+		oakundo::global::undo().unwrap();
+		assert_eq!(track_muted(&project, track), Some(false));
+		oakundo::global::redo().unwrap();
+		assert_eq!(track_muted(&project, track), Some(true));
+		oakundo::global::clear().unwrap();
+	}
+
+	/// Setting a flag to its current value pushes no undo row.
+	#[test]
+	fn track_flag_setter_noop_when_unchanged() {
+		let _g = test_lock();
+		oakundo::global::clear().unwrap();
+		let (project, _seq, track) = project_with_track(TrackType::Audio);
+		let before = oakundo::global::count().unwrap();
+
+		set_track_muted(&project, track, false).expect("mute already false");
+		set_track_locked(&project, track, false).expect("lock already false");
+		assert_eq!(oakundo::global::count().unwrap(), before);
+		oakundo::global::clear().unwrap();
+	}
+
+	/// A stale (non-track) id is rejected, not silently ignored.
+	#[test]
+	fn track_flag_setters_reject_non_tracks() {
+		let _g = test_lock();
+		oakundo::global::clear().unwrap();
+		let (project, seq, _track) = project_with_track(TrackType::Video);
+		assert!(set_track_muted(&project, seq, true).is_err());
+		assert!(set_track_locked(&project, seq, true).is_err());
+		oakundo::global::clear().unwrap();
+	}
 }

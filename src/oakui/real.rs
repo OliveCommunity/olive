@@ -71,7 +71,7 @@ use gpui::effect_stack::{
 use gpui::node_graph::{NodeGraphDataSource, NodeGraphEvent};
 use gpui::timeline::{
 	ClipData, ClipId, Frame, FrameRange, FrameRate, Marker, TimelineDataSource, TimelineEvent,
-	TrackData, TrackKind, TrimEdge,
+	TrackData, TrackHeaderEvent, TrackKind, TrimEdge,
 };
 use gpui::{prelude::*, px, App, Context, Entity, Hsla, Pixels, RenderImage, SharedString};
 use gpui_widgets::audio_meter::AudioMeterDataSource;
@@ -1134,14 +1134,19 @@ impl RealEngine {
 				})
 			})
 			.collect();
+		// The muted flag doubles as the video/subtitle visibility toggle
+		// (Olive parity: the eye button flips `muted`).
+		let (muted, locked) = graphops::track_behavior(graph, track)
+			.map(|t| (t.muted, t.locked))
+			.unwrap_or((false, false));
 		RealTrack {
 			kind: track_kind_of(kind),
 			name: name.into(),
 			height,
-			locked: false,
-			muted: false,
+			locked,
+			muted,
 			solo: false,
-			visible: true,
+			visible: !muted,
 			clips,
 			track,
 			track_index,
@@ -1195,6 +1200,19 @@ impl RealEngine {
 			.iter()
 			.any(|t| t.clips.iter().any(|c| c.id == id))
 			.then_some(block)
+	}
+
+	/// Whether the track hosting clip `block` is locked (locked tracks
+	/// reject every clip edit: trim, move, split, delete).
+	fn clip_track_locked(&self, block: NodeId) -> bool {
+		let Some(project) = self.project_ref() else {
+			return false;
+		};
+		let guard = graphops::lock(project);
+		graphops::clip_track(&guard.graph, block)
+			.and_then(|track| graphops::track_behavior(&guard.graph, track))
+			.map(|t| t.locked)
+			.unwrap_or(false)
 	}
 
 	/// The selected clip's block node, or `None` when no single clip is
@@ -1750,6 +1768,9 @@ impl AppEngine for RealEngine {
 				let Some(block) = self.clip_block(*clip) else {
 					return;
 				};
+				if self.clip_track_locked(block) {
+					return;
+				}
 				let Some(project) = self.project.clone() else {
 					return;
 				};
@@ -1786,6 +1807,9 @@ impl AppEngine for RealEngine {
 				let Some(block) = self.clip_block(*clip) else {
 					return;
 				};
+				if self.clip_track_locked(block) {
+					return;
+				}
 				let Some(project) = self.project.clone() else {
 					return;
 				};
@@ -1818,6 +1842,30 @@ impl AppEngine for RealEngine {
 			| TimelineEvent::TrackSelected { .. }
 			| TimelineEvent::TransitionChanged { .. }
 			| TimelineEvent::ZoomChanged(_) => {}
+			TimelineEvent::TrackToggleRequested { track, toggle } => {
+				// The header toggles map onto the undoable track flag
+				// setters. The muted flag doubles as the video/subtitle
+				// visibility toggle (Olive parity); the model has no solo
+				// flag yet, so solo requests are inert.
+				let (Some(t), Some(project)) =
+					(self.tracks.get(*track), self.project.clone())
+				else {
+					return;
+				};
+				let result = match toggle {
+					TrackHeaderEvent::ToggleLock => {
+						graphops::set_track_locked(&project, t.track, !t.locked)
+					}
+					TrackHeaderEvent::ToggleMute => {
+						graphops::set_track_muted(&project, t.track, !t.muted)
+					}
+					TrackHeaderEvent::ToggleVisibility => {
+						graphops::set_track_muted(&project, t.track, t.visible)
+					}
+					TrackHeaderEvent::ToggleSolo => Ok(()),
+				};
+				self.apply_edit(result, "toggle track flag", cx);
+			}
 			TimelineEvent::WorkAreaPreview { start, end } => {
 				self.set_workarea_preview(*start, *end, cx);
 			}
@@ -1836,6 +1884,9 @@ impl AppEngine for RealEngine {
 		let (Some(block), Some(project)) = (self.clip_block(clip), self.project.clone()) else {
 			return;
 		};
+		if self.clip_track_locked(block) {
+			return;
+		}
 		let result = graphops::split_clip(&project, block, time.0);
 		self.apply_edit(result, "split clip", cx);
 	}
@@ -1848,6 +1899,7 @@ impl AppEngine for RealEngine {
 		let targets: Vec<NodeId> = self
 			.tracks
 			.iter()
+			.filter(|track| !track.locked)
 			.flat_map(|track| {
 				track.clips.iter().filter_map(|clip| {
 					if clip.range.start.0 < frame.0 && frame.0 < clip.range.end.0 {
@@ -1970,6 +2022,9 @@ impl AppEngine for RealEngine {
 		let (Some(block), Some(project)) = (self.clip_block(clip), self.project.clone()) else {
 			return;
 		};
+		if self.clip_track_locked(block) {
+			return;
+		}
 		let result = if ripple {
 			graphops::ripple_delete_clip(&project, block)
 		} else {
@@ -3026,6 +3081,52 @@ mod tests {
 		cx.update(|app| engine.update(app, |engine, cx| engine.select_item(entry.id, cx)));
 
 		let _ = std::fs::remove_file(&media);
+	}
+
+	/// Track header toggles through the app seam: a `TrackToggleRequested`
+	/// event lands as ONE undoable engine command, the timeline snapshot
+	/// reflects the new flag, and undo restores it. Visibility maps onto the
+	/// track's muted flag (Olive parity).
+	#[gpui::test]
+	async fn real_engine_track_toggles_are_undoable(cx: &mut gpui::TestAppContext) {
+		use gpui::timeline::TrackHeaderEvent;
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.add_track(TrackKind::Video, cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.add_track(TrackKind::Audio, cx)));
+
+		// Display order: video tracks first (index 0), then audio (index 1).
+		assert!(cx.read(|app| engine.read(app).track(0).expect("V1").is_visible()));
+		assert!(!cx.read(|app| engine.read(app).track(1).expect("A1").is_muted()));
+
+		let toggle = |cx: &mut gpui::TestAppContext, track: usize, t: TrackHeaderEvent| {
+			cx.update(|app| {
+				engine.update(app, |engine, cx| {
+					engine.apply_timeline_event(
+						&TimelineEvent::TrackToggleRequested { track, toggle: t },
+						cx,
+					);
+				})
+			});
+		};
+		toggle(cx, 0, TrackHeaderEvent::ToggleVisibility);
+		assert!(
+			!cx.read(|app| engine.read(app).track(0).expect("V1").is_visible()),
+			"the visibility toggle hides the video track"
+		);
+		toggle(cx, 0, TrackHeaderEvent::ToggleLock);
+		assert!(cx.read(|app| engine.read(app).track(0).expect("V1").is_locked()));
+		toggle(cx, 1, TrackHeaderEvent::ToggleMute);
+		assert!(cx.read(|app| engine.read(app).track(1).expect("A1").is_muted()));
+
+		// Three toggle commands, three undos.
+		cx.update(|app| engine.update(app, |engine, cx| engine.undo(cx)));
+		assert!(!cx.read(|app| engine.read(app).track(1).expect("A1").is_muted()));
+		cx.update(|app| engine.update(app, |engine, cx| engine.undo(cx)));
+		assert!(!cx.read(|app| engine.read(app).track(0).expect("V1").is_locked()));
+		cx.update(|app| engine.update(app, |engine, cx| engine.undo(cx)));
+		assert!(cx.read(|app| engine.read(app).track(0).expect("V1").is_visible()));
 	}
 
 	/// M12 P2 acceptance: a real project with a sequence + footage clip

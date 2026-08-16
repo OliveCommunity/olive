@@ -23,6 +23,7 @@
 //! to "the engine", and never mutate engine state directly — every edit is a
 //! widget request event that the panel forwards through the gateway.
 
+pub mod effect_library;
 pub mod history;
 pub mod inspector;
 pub mod node_editor;
@@ -51,6 +52,8 @@ pub mod ids {
 	pub const HISTORY: PanelId = PanelId::new(6);
 	/// The timeline (时间线).
 	pub const TIMELINE: PanelId = PanelId::new(7);
+	/// The effect library (效果库).
+	pub const EFFECT_LIBRARY: PanelId = PanelId::new(8);
 }
 
 /// A small info chip used in viewer headers and the status bar: muted

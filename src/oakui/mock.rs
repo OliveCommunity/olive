@@ -1205,6 +1205,41 @@ impl AppEngine for MockEngine {
 		self.apply_effect_event(event, cx);
 	}
 
+	fn addable_effects(&self) -> Vec<(String, String)> {
+		// The demo list is the real factory's video-effect table, so the
+		// effect library shows the same entries the real engine would.
+		crate::oakui::effectchain::addable_effects()
+	}
+
+	fn add_effect(
+		&mut self,
+		index: usize,
+		type_id: &str,
+		cx: &mut Context<Self>,
+	) -> Result<(), String> {
+		let Some((_, name)) = crate::oakui::effectchain::addable_effects()
+			.into_iter()
+			.find(|(id, _)| id == type_id)
+		else {
+			return Err(format!("unknown effect \"{type_id}\""));
+		};
+		let id = EffectId(self.next_effect_id);
+		self.next_effect_id += 1;
+		let card = MockEffect {
+			id,
+			kind: EffectCardKind::Effect,
+			title: name.into(),
+			subtitle: None,
+			enabled: true,
+			expanded: false,
+			badge: None,
+		};
+		let index = index.min(self.effects.len());
+		self.effects.insert(index, card);
+		cx.notify();
+		Ok(())
+	}
+
 	fn apply_node_graph_event(&mut self, event: &NodeGraphEvent, cx: &mut Context<Self>) {
 		self.apply_node_graph_event(event, cx);
 	}
@@ -1223,6 +1258,9 @@ impl AppEngine for MockEngine {
 				new_frame,
 			} => {
 				if let Some((track, index)) = self.mock_clip_position(*clip) {
+					if self.tracks[track].locked {
+						return;
+					}
 					let clip = &mut self.tracks[track].clips[index];
 					match edge {
 						gpui::timeline::TrimEdge::Start => {
@@ -1245,6 +1283,11 @@ impl AppEngine for MockEngine {
 				let Some((track, index)) = self.mock_clip_position(*clip) else {
 					return;
 				};
+				if self.tracks[track].locked
+					|| self.tracks.get(*new_track).map(|t| t.locked).unwrap_or(true)
+				{
+					return;
+				}
 				let mut clip = self.tracks[track].clips.remove(index);
 				let length = clip.range.end.0 - clip.range.start.0;
 				clip.range = FrameRange::new(*new_start, Frame(new_start.0 + length));
@@ -1263,6 +1306,30 @@ impl AppEngine for MockEngine {
 			| TimelineEvent::TrackSelected { .. }
 			| TimelineEvent::TransitionChanged { .. }
 			| TimelineEvent::ZoomChanged(_) => {}
+			TimelineEvent::TrackToggleRequested { track, toggle } => {
+				// The demo model applies the toggles directly (no undo in
+				// mock mode); the muted flag doubles as video visibility,
+				// mirroring the real engine.
+				let Some(track) = self.tracks.get_mut(*track) else {
+					return;
+				};
+				match toggle {
+					gpui::timeline::TrackHeaderEvent::ToggleLock => {
+						track.locked = !track.locked;
+					}
+					gpui::timeline::TrackHeaderEvent::ToggleMute => {
+						track.muted = !track.muted;
+					}
+					gpui::timeline::TrackHeaderEvent::ToggleSolo => {
+						track.solo = !track.solo;
+					}
+					gpui::timeline::TrackHeaderEvent::ToggleVisibility => {
+						track.visible = !track.visible;
+						track.muted = !track.visible;
+					}
+				}
+				cx.notify();
+			}
 				TimelineEvent::WorkAreaPreview { start, end } => {
 					self.set_workarea_preview(*start, *end, cx);
 				}
@@ -1281,6 +1348,9 @@ impl AppEngine for MockEngine {
 		let Some((track, index)) = self.mock_clip_position(clip) else {
 			return;
 		};
+		if self.tracks[track].locked {
+			return;
+		}
 		self.split_mock_clip(track, index, time);
 		cx.notify();
 	}
@@ -1291,6 +1361,7 @@ impl AppEngine for MockEngine {
 			.tracks
 			.iter()
 			.enumerate()
+			.filter(|(_, track)| !track.locked)
 			.flat_map(|(track_index, track)| {
 				track
 					.clips
@@ -1311,6 +1382,9 @@ impl AppEngine for MockEngine {
 		let Some((track, index)) = self.mock_clip_position(clip) else {
 			return;
 		};
+		if self.tracks[track].locked {
+			return;
+		}
 		let removed = self.tracks[track].clips.remove(index);
 		if ripple {
 			// Shift the following clips on the same track left by the removed
@@ -1994,8 +2068,129 @@ mod tests {
 	}
 
 	#[gpui::test]
-	async fn mock_split_at_playhead_and_ripple_delete(cx: &mut TestAppContext) {
+	async fn track_toggle_requests_flip_the_track_flags(cx: &mut TestAppContext) {
+		use gpui::timeline::TrackHeaderEvent;
 		cx.update(|app| {
+			let engine = demo_engine(app);
+
+			// V1 (display index 1) starts unlocked + visible.
+			let v1 = engine.read(app).track(1).expect("V1");
+			assert!(!v1.is_locked());
+			assert!(v1.is_visible());
+
+			engine.update(app, |engine, cx| {
+				engine.apply_timeline_event(
+					&TimelineEvent::TrackToggleRequested {
+						track: 1,
+						toggle: TrackHeaderEvent::ToggleLock,
+					},
+					cx,
+				);
+			});
+			assert!(engine.read(app).track(1).expect("V1").is_locked());
+
+			engine.update(app, |engine, cx| {
+				engine.apply_timeline_event(
+					&TimelineEvent::TrackToggleRequested {
+						track: 1,
+						toggle: TrackHeaderEvent::ToggleVisibility,
+					},
+					cx,
+				);
+			});
+			let v1 = engine.read(app).track(1).expect("V1");
+			assert!(!v1.is_visible(), "the visibility toggle hides the track");
+
+			// A1 (display index 2) mutes.
+			engine.update(app, |engine, cx| {
+				engine.apply_timeline_event(
+					&TimelineEvent::TrackToggleRequested {
+						track: 2,
+						toggle: TrackHeaderEvent::ToggleMute,
+					},
+					cx,
+				);
+			});
+			assert!(engine.read(app).track(2).expect("A1").is_muted());
+		});
+	}
+
+	#[gpui::test]
+	async fn locked_tracks_reject_clip_edits(cx: &mut TestAppContext) {
+		use gpui::timeline::TrackHeaderEvent;
+		cx.update(|app| {
+			let engine = demo_engine(app);
+
+			// Lock V1 (the B-roll track, display index 1).
+			engine.update(app, |engine, cx| {
+				engine.apply_timeline_event(
+					&TimelineEvent::TrackToggleRequested {
+						track: 1,
+						toggle: TrackHeaderEvent::ToggleLock,
+					},
+					cx,
+				);
+			});
+
+			// Trim, move and delete are all refused.
+			engine.update(app, |engine, cx| {
+				engine.apply_timeline_event(
+					&TimelineEvent::ClipTrimRequested {
+						clip: ClipId(12),
+						edge: TrimEdge::Start,
+						new_frame: Frame(280),
+					},
+					cx,
+				);
+				engine.apply_timeline_event(
+					&TimelineEvent::ClipMoveRequested {
+						clip: ClipId(12),
+						new_track: 0,
+						new_start: Frame(300),
+					},
+					cx,
+				);
+				engine.delete_clip(ClipId(12), false, cx);
+			});
+			let v1 = engine.read(app).track(1).expect("V1");
+			let b_roll = v1
+				.clips()
+				.iter()
+				.find(|c| c.id() == ClipId(12))
+				.expect("B-roll survives the rejected delete");
+			assert_eq!(
+				b_roll.range(),
+				FrameRange::new(Frame(240), Frame(600)),
+				"trim and move were rejected"
+			);
+		});
+	}
+
+	#[gpui::test]
+	async fn add_effect_appends_a_named_card(cx: &mut TestAppContext) {
+		cx.update(|app| {
+			let engine = demo_engine(app);
+			let effects = engine.read(app).addable_effects();
+			assert!(!effects.is_empty(), "the demo list is the factory table");
+			let (type_id, name) = effects[0].clone();
+			let before = engine.read(app).effects().len();
+			engine.update(app, |engine, cx| {
+				engine
+					.add_effect(usize::MAX, &type_id, cx)
+					.expect("add the effect");
+			});
+			let stack = engine.read(app).effects();
+			assert_eq!(stack.len(), before + 1);
+			assert_eq!(
+				stack.last().map(|e| e.title().to_string()).as_deref(),
+				Some(name.as_str()),
+				"the card was appended at the chain end"
+			);
+		});
+	}
+
+	#[gpui::test]
+	async fn mock_split_at_playhead_and_ripple_delete(cx: &mut TestAppContext) {		cx.update(|app| {
 			let engine = demo_engine(app);
 
 			// Park the program playhead inside 开场 (0–240) and split there.

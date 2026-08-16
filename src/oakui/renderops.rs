@@ -74,7 +74,8 @@ fn clip_media(g: &oaknode::graph::Graph, block_id: NodeId) -> Option<String> {
 
 /// The video montage at sequence time `time`: every clip covering `time`
 /// on video tracks, ordered bottom-to-top (track index 0 is topmost, so
-/// it is composited last).
+/// it is composited last). Hidden tracks (the muted flag doubles as the
+/// video visibility toggle, Olive parity) contribute nothing.
 pub fn video_montage(p: &ProjectRef, seq: NodeId, time: Rational) -> Vec<MontageClip> {
 	let g = lock(p);
 	let mut clips = Vec::new();
@@ -92,6 +93,9 @@ pub fn video_montage(p: &ProjectRef, seq: NodeId, time: Rational) -> Vec<Montage
 			let Some(track) = track_behavior(&g.graph, track_id) else {
 				continue;
 			};
+			if track.muted {
+				continue;
+			}
 			for &block_id in &track.blocks {
 				let Some(clip) = clip_behavior(&g.graph, block_id) else {
 					continue;
@@ -120,6 +124,7 @@ pub fn video_montage(p: &ProjectRef, seq: NodeId, time: Rational) -> Vec<Montage
 
 /// The audio montage over `range`: every audio clip overlapping the
 /// range, media times resolved from the clip ranges, audio stream 1.
+/// Muted tracks are silenced (skipped entirely).
 pub fn audio_montage(p: &ProjectRef, seq: NodeId, range: TimeRange) -> Vec<MontageClip> {
 	let g = lock(p);
 	let mut clips = Vec::new();
@@ -137,6 +142,9 @@ pub fn audio_montage(p: &ProjectRef, seq: NodeId, range: TimeRange) -> Vec<Monta
 			let Some(track) = track_behavior(&g.graph, track_id) else {
 				continue;
 			};
+			if track.muted {
+				continue;
+			}
 			for &block_id in &track.blocks {
 				let Some(clip) = clip_behavior(&g.graph, block_id) else {
 					continue;
@@ -529,6 +537,51 @@ mod tests {
 		assert_eq!(overlapping[0].stream_index, 1, "the audio stream is selected");
 		let disjoint = audio_montage(&project, seq, TimeRange::new(at(10), at(20)));
 		assert!(disjoint.is_empty(), "a range past the clip overlaps nothing");
+		oakundo::global::clear().unwrap();
+		let _ = std::fs::remove_file(&media);
+	}
+
+	/// Hidden video tracks and muted audio tracks (both are the track's
+	/// `muted` flag) contribute nothing to the montages; undoing the flag
+	/// set restores them.
+	#[test]
+	fn montages_skip_muted_tracks() {
+		let _media = media_lock();
+		let media = std::env::temp_dir().join(format!("oakapp_montage_m_{}.mp4", std::process::id()));
+		oakcodec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate test media");
+
+		let (project, seq, footage) = project_with_clip(&media);
+		graphops::add_track(&project, seq, TrackType::Audio).expect("add an audio track");
+		graphops::place_footage_clip(&project, seq, footage, TrackType::Audio, 0, 0, 10, 0)
+			.expect("place the audio clip");
+		let (video_track, audio_track, tb) = {
+			let g = lock(&project);
+			(
+				graphops::track_ids(&g.graph, seq, TrackType::Video)[0],
+				graphops::track_ids(&g.graph, seq, TrackType::Audio)[0],
+				graphops::sequence_time_base(&g.graph, seq).unwrap(),
+			)
+		};
+		let at = |frame: i64| graphops::ts_to_rational(frame, tb);
+		let range = TimeRange::new(at(0), at(5));
+		assert_eq!(video_montage(&project, seq, at(0)).len(), 1);
+		assert_eq!(audio_montage(&project, seq, range).len(), 1);
+
+		graphops::set_track_muted(&project, video_track, true).expect("hide the video track");
+		graphops::set_track_muted(&project, audio_track, true).expect("mute the audio track");
+		assert!(
+			video_montage(&project, seq, at(0)).is_empty(),
+			"a hidden video track contributes nothing"
+		);
+		assert!(
+			audio_montage(&project, seq, range).is_empty(),
+			"a muted audio track contributes nothing"
+		);
+
+		oakundo::global::undo().unwrap();
+		oakundo::global::undo().unwrap();
+		assert_eq!(video_montage(&project, seq, at(0)).len(), 1, "undo restores the video clip");
+		assert_eq!(audio_montage(&project, seq, range).len(), 1, "undo restores the audio clip");
 		oakundo::global::clear().unwrap();
 		let _ = std::fs::remove_file(&media);
 	}

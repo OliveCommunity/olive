@@ -57,6 +57,7 @@ use gpui_widgets::viewer::PlaybackClock;
 
 use crate::dialogs::{ExportDialogContent, PreferencesContent};
 use crate::oakui::{AppEngine, ExportSession, MockEngine, Monitor, RealEngine};
+use crate::panels::effect_library::EffectLibraryPanel;
 use crate::panels::history::HistoryPanel;
 use crate::panels::ids::*;
 use crate::panels::inspector::InspectorPanel;
@@ -121,6 +122,7 @@ pub(crate) mod menu_ids {
 	pub const FOCUS_INSPECTOR: usize = 605;
 	pub const FOCUS_HISTORY: usize = 606;
 	pub const FOCUS_TIMELINE: usize = 607;
+	pub const FOCUS_EFFECT_LIBRARY: usize = 608;
 
 	pub const ABOUT: usize = 801;
 }
@@ -219,6 +221,7 @@ impl<E: AppEngine> PanelRegistry for AppPanelRegistry<E> {
 				INSPECTOR => "inspector",
 				HISTORY => "history",
 				TIMELINE => "timeline",
+				EFFECT_LIBRARY => "effect-library",
 				_ => return None,
 			}
 			.to_string(),
@@ -268,6 +271,10 @@ impl<E: AppEngine> PanelRegistry for AppPanelRegistry<E> {
 			)),
 			"history" => Some(PanelHandle::new(
 				cx.new(|cx| HistoryPanel::new(window, cx)),
+				cx,
+			)),
+			"effect-library" => Some(PanelHandle::new(
+				cx.new(|cx| EffectLibraryPanel::new(self.engine.clone(), window, cx)),
 				cx,
 			)),
 			"timeline" => Some(PanelHandle::new(
@@ -360,6 +367,7 @@ impl<E: AppEngine> OakApp<E> {
 		});
 
 		let project = cx.new(|cx| ProjectExplorerPanel::new(engine.clone(), window, cx));
+		let effect_library = cx.new(|cx| EffectLibraryPanel::new(engine.clone(), window, cx));
 		let source_viewer =
 			cx.new(|cx| SourceViewerPanel::new(engine.clone(), source_clock.clone(), window, cx));
 		let program_viewer = cx.new(|cx| {
@@ -382,6 +390,16 @@ impl<E: AppEngine> OakApp<E> {
 		// as tabs, timeline full width at the bottom.
 		dock.update(cx, |dock, cx| {
 			dock.add_panel(PanelHandle::new(project, cx), None, cx);
+			// The effect library tabs behind the project bin, per the
+			// design's left-top tab group (项目 | 效果库).
+			dock.add_panel(
+				PanelHandle::new(effect_library, cx),
+				Some(DropTarget {
+					panel: Some(PROJECT),
+					zone: DropZone::Center,
+				}),
+				cx,
+			);
 			dock.add_panel(
 				PanelHandle::new(source_viewer, cx),
 				Some(DropTarget {
@@ -452,6 +470,11 @@ impl<E: AppEngine> OakApp<E> {
 		layout.resize_split_child(&NodePath(vec![0]), 2, 0.62);
 		if let Some(path) = layout.find_panel(PROGRAM_VIEWER) {
 			layout.set_tabs_active(&path, PROGRAM_VIEWER);
+		}
+		// The project bin is the active tab of its group (the effect library
+		// sits behind it).
+		if let Some(path) = layout.find_panel(PROJECT) {
+			layout.set_tabs_active(&path, PROJECT);
 		}
 		dock.update(cx, |dock, cx| dock.set_layout(layout, cx));
 
@@ -661,6 +684,7 @@ impl<E: AppEngine> OakApp<E> {
 			FOCUS_INSPECTOR => self.focus_panel(INSPECTOR, cx),
 			FOCUS_HISTORY => self.focus_panel(HISTORY, cx),
 			FOCUS_TIMELINE => self.focus_panel(TIMELINE, cx),
+			FOCUS_EFFECT_LIBRARY => self.focus_panel(EFFECT_LIBRARY, cx),
 			other => println!("[menu] placeholder action for item {other}"),
 		}
 	}
@@ -1657,6 +1681,7 @@ fn make_menus(dark: bool) -> Vec<MenuBarEntry> {
 				MenuItem::new(FOCUS_INSPECTOR, tr("menu.window.inspector")),
 				MenuItem::new(FOCUS_HISTORY, tr("menu.window.history")),
 				MenuItem::new(FOCUS_TIMELINE, tr("menu.window.timeline")),
+				MenuItem::new(FOCUS_EFFECT_LIBRARY, tr("menu.window.effect_library")),
 			]),
 		),
 		MenuBarEntry::new(

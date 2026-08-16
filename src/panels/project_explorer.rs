@@ -17,9 +17,11 @@
 //! The material bin panel (项目): the `ProjectExplorer` widget over the
 //! engine's project data.
 
+use gpui::colors::DefaultColors;
 use gpui::dock::{DockPanel, PanelEvent};
 use gpui::{
-	div, prelude::*, AnyElement, App, Context, Entity, EventEmitter, Render, SharedString, Window,
+	div, px, prelude::*, AnyElement, App, Context, Entity, EventEmitter, Render, SharedString,
+	Window,
 };
 use gpui_widgets::project_explorer::{ProjectExplorer, ProjectExplorerEvent};
 
@@ -71,8 +73,35 @@ impl<E: AppEngine> ProjectExplorerPanel<E> {
 }
 
 impl<E: AppEngine> Render for ProjectExplorerPanel<E> {
-	fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-		div().size_full().child(self.explorer.clone())
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let colors = cx.default_colors().clone();
+		div()
+			.size_full()
+			.flex()
+			.flex_col()
+			// The panel title row, per the design's panel headers: the
+			// widget below only shows the bare tree/icon view toggles, so
+			// without this row the panel reads as anonymous.
+			.child(
+				div()
+					.flex()
+					.items_center()
+					.h(px(28.0))
+					.flex_shrink_0()
+					.px_2()
+					.border_b_1()
+					.border_color(colors.border)
+					.bg(colors.container)
+					.text_sm()
+					.text_color(colors.text)
+					.child(crate::i18n::tr("panel.project")),
+			)
+			.child(
+				div()
+					.flex_1()
+					.min_h_0()
+					.child(self.explorer.clone()),
+			)
 	}
 }
 

@@ -234,6 +234,7 @@ const EN: &[(&str, &str)] = &[
 	("menu.window.inspector", "Inspector"),
 	("menu.window.history", "History"),
 	("menu.window.timeline", "Timeline"),
+	("menu.window.effect_library", "Effect Library"),
 	// --- Tools ---
 	("menu.tools.select", "Select"),
 	("menu.tools.razor", "Razor"),
@@ -248,6 +249,9 @@ const EN: &[(&str, &str)] = &[
 	("panel.inspector", "Inspector"),
 	("panel.history", "History"),
 	("panel.timeline", "Timeline"),
+	("panel.effect_library", "Effect Library"),
+	// --- effect library ---
+	("effect_library.hint", "Double-click to add to the selected clip"),
 	// --- status bar ---
 	("status.ready", "Ready"),
 	("status.cache", "Cache: Enabled"),
@@ -438,6 +442,7 @@ const ZH: &[(&str, &str)] = &[
 	("menu.window.inspector", "检查器"),
 	("menu.window.history", "历史记录"),
 	("menu.window.timeline", "时间线"),
+	("menu.window.effect_library", "效果库"),
 	// --- Tools ---
 	("menu.tools.select", "选择"),
 	("menu.tools.razor", "剃刀"),
@@ -452,6 +457,9 @@ const ZH: &[(&str, &str)] = &[
 	("panel.inspector", "检查器"),
 	("panel.history", "历史记录"),
 	("panel.timeline", "时间线"),
+	("panel.effect_library", "效果库"),
+	// --- effect library ---
+	("effect_library.hint", "双击添加到选中片段"),
 	// --- status bar ---
 	("status.ready", "就绪"),
 	("status.cache", "缓存:已启用"),
