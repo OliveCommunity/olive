@@ -127,9 +127,9 @@ mod modal_ids {
 enum FileAction {
 	ImportFootage,
 	Open,
-	/// Export the current project to a file (`.ove` / `.otio` / `.fcpxml`,
-	/// dispatched by extension).
-	SaveAs,
+	/// Export the current project to a file (the 导出工程文件… action's
+	/// target; `.ove` / `.otio` / `.fcpxml`, dispatched by extension).
+	ExportProjectFile,
 	/// Import a project file into the library (the manager's 导入).
 	ImportProject,
 	/// Export the selected library project (the manager's 导出; the row's
@@ -525,7 +525,7 @@ impl<E: AppEngine> OakApp<E> {
 			OPEN_PROJECT => self.open_file_dialog(FileAction::Open, cx),
 			OPEN_FROM_LIBRARY | PROJECT_MANAGER => self.show_project_manager(cx),
 			IMPORT_FOOTAGE => self.open_file_dialog(FileAction::ImportFootage, cx),
-			EXPORT_PROJECT => self.open_file_dialog(FileAction::SaveAs, cx),
+			EXPORT_PROJECT => self.open_file_dialog(FileAction::ExportProjectFile, cx),
 			CLOSE => self
 				.engine
 				.update(cx, |engine, cx| engine.close_project(cx)),
@@ -607,17 +607,6 @@ impl<E: AppEngine> OakApp<E> {
 			FOCUS_HISTORY => self.focus_panel(HISTORY, cx),
 			FOCUS_TIMELINE => self.focus_panel(TIMELINE, cx),
 			other => println!("[menu] placeholder action for item {other}"),
-		}
-	}
-
-	/// Exports the project to a file (the 导出工程文件… action's target; the
-	/// format is dispatched by the picked path's extension).
-	fn save_project(&mut self, path: Option<PathBuf>, cx: &mut Context<Self>) {
-		let result = self
-			.engine
-			.update(cx, |engine, cx| engine.save_project(path, cx));
-		if let Err(err) = result {
-			println!("[file] save failed: {err}");
 		}
 	}
 
@@ -976,9 +965,9 @@ impl<E: AppEngine> OakApp<E> {
 
 	/// Opens the platform file dialog for `action` and routes the picked
 	/// path(s) through the engine. Open / Import use the path picker (import
-	/// footage allows multiple files); Save As and the manager's export ask
-	/// for a new path. The picker resolves asynchronously, so the chosen
-	/// path is applied in a spawned task via [`Self::on_file_paths`].
+	/// footage allows multiple files); the 导出工程文件… and the manager's
+	/// export ask for a new path. The picker resolves asynchronously, so the
+	/// chosen path is applied in a spawned task via [`Self::on_file_paths`].
 	fn open_file_dialog(&mut self, action: FileAction, cx: &mut Context<Self>) {
 		match action {
 			FileAction::Open | FileAction::ImportFootage | FileAction::ImportProject => {
@@ -1002,7 +991,7 @@ impl<E: AppEngine> OakApp<E> {
 				})
 				.detach();
 			}
-			FileAction::SaveAs => {
+			FileAction::ExportProjectFile => {
 				let current = self
 					.engine
 					.read(cx)
@@ -1024,7 +1013,7 @@ impl<E: AppEngine> OakApp<E> {
 				cx.spawn(async move |this, cx| {
 					if let Ok(Ok(Some(path))) = receiver.await {
 						this.update(cx, |this, cx| {
-							this.on_file_paths(FileAction::SaveAs, vec![path], cx);
+							this.on_file_paths(FileAction::ExportProjectFile, vec![path], cx);
 						});
 					}
 				})
@@ -1078,8 +1067,8 @@ impl<E: AppEngine> OakApp<E> {
 				Some(path) => engine.open_project_path(path.clone(), cx),
 				None => Ok(()),
 			},
-			FileAction::SaveAs => match paths.first() {
-				Some(path) => engine.save_project(Some(path.clone()), cx),
+			FileAction::ExportProjectFile => match paths.first() {
+				Some(path) => engine.export_project_path(path.clone(), cx),
 				None => Ok(()),
 			},
 			FileAction::ImportFootage => {

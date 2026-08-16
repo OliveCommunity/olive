@@ -358,11 +358,11 @@ unsafe extern "C" {
 		err: *mut c_char,
 		err_size: c_int,
 	) -> c_int;
-	/// `oakengine_project_save` — save to `path` (or the recorded
-	/// filename when NULL).
+	/// `oakengine_project_save` — write the project to `path` (or the
+	/// recorded filename when NULL). Legacy manual-save ABI, now used only
+	/// as the .ove export path (导出工程文件…); the write-through library is
+	/// the primary persistence.
 	pub fn oakengine_project_save(self_: *mut OakEngineProject, path: *const c_char) -> c_int;
-	/// `oakengine_project_is_modified`.
-	pub fn oakengine_project_is_modified(self_: *const OakEngineProject) -> c_int;
 	/// `oakengine_project_name` (buf/size).
 	pub fn oakengine_project_name(
 		self_: *const OakEngineProject,

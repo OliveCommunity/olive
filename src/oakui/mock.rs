@@ -1302,10 +1302,6 @@ impl AppEngine for MockEngine {
 		cx.notify();
 	}
 
-	fn project_modified(&self) -> bool {
-		false
-	}
-
 	fn new_project(&mut self, cx: &mut Context<Self>) {
 		println!("[mock engine] new project: demo data stays (mock mode)");
 		cx.notify();
@@ -1322,12 +1318,8 @@ impl AppEngine for MockEngine {
 		Ok(())
 	}
 
-	fn save_project(
-		&mut self,
-		_path: Option<PathBuf>,
-		cx: &mut Context<Self>,
-	) -> Result<(), String> {
-		println!("[mock engine] save: no persistence in mock mode");
+	fn export_project_path(&mut self, _path: PathBuf, cx: &mut Context<Self>) -> Result<(), String> {
+		println!("[mock engine] export: no persistence in mock mode");
 		cx.notify();
 		Ok(())
 	}

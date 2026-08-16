@@ -518,8 +518,16 @@ pub unsafe extern "C" fn oakengine_project_load(
 	})
 }
 
-/// `oakengine_project_save` — save the project to `path` (or its own
+/// `oakengine_project_save` — write the project to `path` (or its own
 /// filename when `path` is NULL).
+///
+/// Legacy manual-save ABI (frozen, keep exporting): since M13 D5 the
+/// write-through library is the primary persistence, and this entry is used
+/// only as the .ove export path — the app's 导出工程文件… always passes an
+/// explicit `path`, and `project_load_library` / `storage` cover the rest.
+/// The NULL branch (save to the recorded filename) survives for older
+/// callers. Behavior unchanged: on success the target filename is recorded
+/// and the modified flag cleared.
 #[no_mangle]
 pub unsafe extern "C" fn oakengine_project_save(
 	self_: *mut OakEngineProject,
@@ -564,7 +572,11 @@ pub unsafe extern "C" fn oakengine_project_save(
 	})
 }
 
-/// `oakengine_project_is_modified`.
+/// `oakengine_project_is_modified` — the legacy dirty flag.
+///
+/// Frozen ABI, kept for older callers and the undo/save machinery: the app
+/// (M13 D5) no longer reads it — write-through means a bound project is
+/// always persisted — so nothing on the UI side consults this anymore.
 #[no_mangle]
 pub unsafe extern "C" fn oakengine_project_is_modified(self_: *const OakEngineProject) -> c_int {
 	guard_int(|| unsafe {

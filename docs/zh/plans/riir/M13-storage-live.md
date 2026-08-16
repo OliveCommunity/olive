@@ -169,9 +169,20 @@ facade 的 undo 推送路径挂钩（`oakengine_undo_push` / `undo_group_end`
 | D2 | diff 写穿挂钩（facade undo 路径）+ 快照线程 + 退出 flush | 编辑工程 → kill -9 → 重开恢复到最后一条命令；撤销历史跨会话可用（集成测试） |
 | D3 | PG 后端（同 schema）+ 连接配置 | `OAK_TEST_PG_URL` 存在时 PG 测试全绿，否则自动 ignore |
 | D4 | 项目管理器窗口 + 导入导出 + 启动接线 | app 测试：建/删/复制/重命名/导入/导出；中英截图入 docs |
-| D5 | .ove 手动保存语义退役（菜单改导入/导出，脏标记改写入状态）+ 文档更新 | 全量测试绿 |
+| D5 | ✅ .ove 手动保存语义退役（菜单改导入/导出，脏标记改写入状态）+ 文档更新 | 全量测试绿 |
 
 依赖：D1→D2→D3；D4 可在 D1 后并行；D5 最后。
+
+> D5 落地记录（2026-08）：手动保存残留清空。app 侧 trait
+> `AppEngine::project_modified`/`save_project` 删除（写穿后工程永远"已
+> 写入"，无脏标记可读）；菜单的 导出工程文件… 改走
+> `export_project_path`（扩展名分发 ove/otio/fcpxml，.ove 分支经冻结
+> ABI `oakengine_project_save` 写出，facade 注释标注 legacy/导出路径，
+> 行为不变）；`RealEngine` 的 `modified` 字段及全部更新点移除，
+> `oakengine_project_is_modified` 不再被 app 侧调用（FFI 声明删除，
+> facade 保留）。状态栏写入状态（D4）为唯一落点。文档：本计划 §5 勾
+> 掉 D5、M12 现状盘点更新、project-storage 双语文档无手动保存残留
+> （"没有保存按钮"描述本就准确）。全量测试绿。
 
 ## 6. 风险与对策
 

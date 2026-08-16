@@ -580,8 +580,6 @@ pub struct RealEngine {
 	/// the selection changes or the project is dropped — the renderer binds
 	/// the footage node, so a new selection must bind the new node.
 	source_renderer: Mutex<RendererSlot>,
-	/// Whether the project has unsaved changes (mirrors the facade flag).
-	modified: bool,
 }
 
 impl RealEngine {
@@ -656,7 +654,6 @@ impl RealEngine {
 			cpu_frame_cache: Mutex::new(HashMap::new()),
 			renderer: Mutex::new(RendererSlot::Untried),
 			source_renderer: Mutex::new(RendererSlot::Untried),
-			modified: false,
 		}
 	}
 
@@ -987,7 +984,6 @@ impl RealEngine {
 			},
 			path,
 		};
-		self.modified = unsafe { oakengine_project_is_modified(project) != 0 };
 
 		// The sequence: the project's first, or a blank default.
 		let count = unsafe { oakengine_project_sequence_count(project) };
@@ -1019,7 +1015,6 @@ impl RealEngine {
 		self.tracks.clear();
 
 		self.sequence_info = None;
-		self.modified = false;
 		self.project_info = Project {
 			name: UNTITLED.into(),
 			path: PathBuf::new(),
@@ -1398,7 +1393,6 @@ impl RealEngine {
 		self.rebuild_timeline();
 		// The sequence content changed: cached rendered frames are stale.
 		self.cpu_frame_cache.lock().unwrap().clear();
-		self.modified = true;
 		cx.notify();
 	}
 
@@ -2154,7 +2148,6 @@ impl AppEngine for RealEngine {
 			self.refresh_sequence_info();
 			self.rebuild_timeline();
 			self.cpu_frame_cache.lock().unwrap().clear();
-			self.modified = true;
 			cx.notify();
 		}
 	}
@@ -2167,13 +2160,8 @@ impl AppEngine for RealEngine {
 			self.refresh_sequence_info();
 			self.rebuild_timeline();
 			self.cpu_frame_cache.lock().unwrap().clear();
-			self.modified = true;
 			cx.notify();
 		}
-	}
-
-	fn project_modified(&self) -> bool {
-		self.modified
 	}
 
 	fn new_project(&mut self, cx: &mut Context<Self>) {
@@ -2201,28 +2189,22 @@ impl AppEngine for RealEngine {
 		}
 	}
 
-	fn save_project(
+	fn export_project_path(
 		&mut self,
-		path: Option<PathBuf>,
+		path: PathBuf,
 		cx: &mut Context<Self>,
 	) -> Result<(), String> {
 		if self.project_ptr().is_none() {
 			return Err("no project open".into());
 		}
 		let ext = path
-			.as_ref()
-			.and_then(|p| p.extension())
+			.extension()
 			.and_then(|e| e.to_str())
 			.map(|e| e.to_ascii_lowercase());
-		let result = match ext.as_deref() {
-			Some("otio") | Some("fcpxml") => self.save_interchange(&path.unwrap(), cx),
-			_ => self.save_ove(path.as_deref(), cx),
-		};
-		if result.is_ok() {
-			self.modified = false;
-			cx.notify();
+		match ext.as_deref() {
+			Some("otio") | Some("fcpxml") => self.export_interchange(&path, cx),
+			_ => self.export_ove(&path, cx),
 		}
-		result
 	}
 
 	fn close_project(&mut self, cx: &mut Context<Self>) {
@@ -2586,22 +2568,22 @@ impl RealEngine {
 		}
 	}
 
-	/// Saves to the project's own filename (or `path`) through the OVE
-	/// serializer.
-	fn save_ove(&mut self, path: Option<&Path>, _cx: &mut Context<Self>) -> Result<(), String> {
+	/// Exports the project to `path` through the OVE serializer (the .ove
+	/// branch of 导出工程文件…; the write-through library stays the primary
+	/// persistence, this only writes a file).
+	fn export_ove(&mut self, path: &Path, _cx: &mut Context<Self>) -> Result<(), String> {
 		let Some(project) = self.project_ptr() else {
 			return Err("no project open".into());
 		};
-		let cpath = path.and_then(cstr_path);
-		let ptr = cpath
-			.as_ref()
-			.map(|c| c.as_ptr())
-			.unwrap_or(std::ptr::null());
-		let rc = unsafe { oakengine_project_save(project, ptr) };
+		let Some(cpath) = cstr_path(path) else {
+			return Err("invalid project path".into());
+		};
+		let rc = unsafe { oakengine_project_save(project, cpath.as_ptr()) };
 		if rc != 0 {
-			return Err(format!("failed to save the project (error {rc})"));
+			return Err(format!("failed to export the project (error {rc})"));
 		}
-		// The facade recorded the target filename; refresh the display name.
+		// The facade records the target filename (legacy save side effect);
+		// refresh the display name to match.
 		let name = read_string(|buf, size| unsafe { oakengine_project_name(project, buf, size) });
 		if !name.is_empty() {
 			self.project_info.name = name;
@@ -2614,9 +2596,9 @@ impl RealEngine {
 		Ok(())
 	}
 
-	/// Saves as `.otio` / `.fcpxml` through the oaktask save task (the
+	/// Exports as `.otio` / `.fcpxml` through the oaktask save task (the
 	/// facade derives the output filename from the project's own filename).
-	fn save_interchange(&mut self, path: &PathBuf, _cx: &mut Context<Self>) -> Result<(), String> {
+	fn export_interchange(&mut self, path: &PathBuf, _cx: &mut Context<Self>) -> Result<(), String> {
 		let Some(project) = self.project_ptr() else {
 			return Err("no project open".into());
 		};
@@ -2635,7 +2617,7 @@ impl RealEngine {
 		let error = Self::task_error(task);
 		unsafe { oakengine_task_free(task) };
 		if rc == 0 {
-			return Err(format!("failed to save \"{}\": {error}", path.display()));
+			return Err(format!("failed to export \"{}\": {error}", path.display()));
 		}
 		self.project_info.path = path.clone();
 		Ok(())

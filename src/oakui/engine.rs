@@ -298,9 +298,6 @@ pub trait AppEngine:
 	/// Steps the undo stack forward one entry.
 	fn redo(&mut self, cx: &mut Context<Self>);
 
-	/// Whether the project has unsaved changes.
-	fn project_modified(&self) -> bool;
-
 	/// Starts a new blank project with a single default sequence.
 	fn new_project(&mut self, cx: &mut Context<Self>);
 
@@ -309,10 +306,12 @@ pub trait AppEngine:
 	/// interchange loader.
 	fn open_project_path(&mut self, path: PathBuf, cx: &mut Context<Self>) -> Result<(), String>;
 
-	/// Saves the project to `path` (or its own filename when `None`). The
-	/// format is dispatched by extension like [`open_project_path`]
-	/// (AppEngine::open_project_path).
-	fn save_project(&mut self, path: Option<PathBuf>, cx: &mut Context<Self>)
+	/// Exports the current project to the file `path` (the 导出工程文件…
+	/// action's target). The format is dispatched by extension like
+	/// [`open_project_path`] (AppEngine::open_project_path). Exporting is a
+	/// pure file write — the write-through library already persists every
+	/// edit, so there is no "save" anymore.
+	fn export_project_path(&mut self, path: PathBuf, cx: &mut Context<Self>)
 		-> Result<(), String>;
 
 	/// Closes the current project, leaving the app with no sequence.
