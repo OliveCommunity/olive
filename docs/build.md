@@ -23,9 +23,13 @@ This document describes how to build Oak Video Editor from source on Windows, Li
 > ```sh
 > tooling/install-deps.sh           # Homebrew / MSYS2 UCRT64 / Debian / Fedora / Arch
 > tooling/ffmpeg/build-ffmpeg.sh    # clones release/8.0, installs into .cache/ffmpeg
-> export FFMPEG_DIR="$(pwd)/.cache/ffmpeg"
 > cargo build
 > ```
+>
+> `FFMPEG_DIR` no longer needs exporting: the committed
+> `.cargo/config.toml` sets it relative to the workspace root (the
+> ffmpeg-sys-next build script cannot read `.env` files — this is the
+> only machine-agnostic way).
 >
 > External libraries are probed with `pkg-config` and silently skipped
 > when missing. `FFMPEG_DIR` is mandatory (the `oakffmpeg-link` build

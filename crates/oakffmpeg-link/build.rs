@@ -90,6 +90,14 @@ fn main() {
 		);
 	}
 
+	// System libraries (z, m, bz2, iconv) must come from the OS, not from
+	// a package manager's keg: Homebrew's zlib carries an @rpath install
+	// name, and linking it without an rpath entry breaks the binary at
+	// launch (dyld: Library not loaded: @rpath/libz.1.dylib). Put /usr/lib
+	// first in the search order so -lz resolves to the system copy.
+	#[cfg(target_os = "macos")]
+	println!("cargo:rustc-link-search=native=/usr/lib");
+
 	for token in String::from_utf8_lossy(&output.stdout).split_whitespace() {
 		if let Some(path) = token.strip_prefix("-L") {
 			println!("cargo:rustc-link-search=native={path}");

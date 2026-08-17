@@ -1,4 +1,4 @@
-# M14：前端绕过 facade 直链 rlib（纯 Rust ABI）
+ # M14：前端绕过 facade 直链 rlib（纯 Rust ABI）
 
 > 前置：单库化（single-lib.md）+ 模块 bridge/ffi 清除已完成；
 > liboakengine.dylib 的 C ABI 冻结，专供插件/外部消费者。
