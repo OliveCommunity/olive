@@ -30,8 +30,9 @@
 /// stamped). Covers frame/decoder/encoder/conform/proxy `init`
 /// families.
 ///
-/// Covered in `src/ffi/frame.rs` / `decoder.rs` / `encoder.rs` unit
-/// tests (`handle::alive_count` tracks the boxed-object count).
+/// Covered in the (deleted) `src/ffi/*.rs` unit tests; the C-ABI entry
+/// points now live in the oakengine facade, whose own tests assert the
+/// same contract.
 #[test]
 fn handle_contract_all_exports() {
 	// No-op — see the module doc.

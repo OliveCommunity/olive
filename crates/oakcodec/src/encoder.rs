@@ -29,7 +29,8 @@ use oakcore_rs::{PixelFormat, SampleFormat};
 use crate::encodingparams::EncodingParams;
 use crate::frame::Frame;
 
-/// `olive::Encoder` — encoder trait. Backs the refcounted encoder handle.
+/// `olive::Encoder` — encoder trait. Instances are handed out as
+/// `Arc<dyn Encoder>`.
 pub trait Encoder: Send + Sync {
 	/// Unique encoder id.
 	fn id(&self) -> String;
@@ -129,8 +130,8 @@ pub fn set_test_encoders(list: Vec<Arc<dyn Encoder>>) {
 /// WebM, SRT → FFmpeg; OpenEXR, PNG, TIFF → OIIO; anything else → `None`).
 /// A non-empty test-injected list (see [`set_test_encoders`]) wins over the
 /// built-in mapping. The concrete implementations are dylib stubs whose
-/// `open()` fails with a clear message, so an initialized encoder handle is
-/// always constructible for a recognized format.
+/// `open()` fails with a clear message, so an initialized encoder is always
+/// constructible for a recognized format.
 pub fn create_from_params(params: &EncodingParams) -> Option<Arc<dyn Encoder>> {
 	if let Some(store) = TEST_ENCODERS.get() {
 		let injected = store.lock().unwrap();

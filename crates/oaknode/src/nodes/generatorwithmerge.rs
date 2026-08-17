@@ -90,7 +90,9 @@ impl GeneratorWithMerge {
 	/// The Rust model has no shader-job payload (see
 	/// [`crate::nodes::mathbase`]): the merged case pushes a null
 	/// texture handle marking a renderer-deferred `"mrg"` shader job,
-	/// and the un-merged case pushes `job` itself.
+	/// and the un-merged case pushes `job` itself. `job` is an opaque
+	/// oakrender texture handle (cross-module payload; null in the
+	/// deferred-job model) — see [`crate::value::NodeValue::Texture`].
 	pub fn push_mergable_job(
 		inputs: &crate::value::NodeValueRow,
 		job: crate::handle::CHandle,

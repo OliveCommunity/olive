@@ -53,7 +53,7 @@ Consumers never branch on backend.
 src/
   lib.rs          crate doc + module map
   error.rs        error/info codes (M10 §2.1, -MMCCCC module 10)
-  handle.rs       refcounted-handle scaffolding (shared oakcore CHandle)
+  handle.rs       shared CHandle re-export (boxes live in oaknode's handle.rs)
   uri.rs          URI parsing/classification
   session.rs      StorageProject session (open/take/uri)
   registry.rs     backend registry (register/unregister/arbitrate)

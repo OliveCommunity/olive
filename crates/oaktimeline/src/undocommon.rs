@@ -22,9 +22,8 @@
 //! ([`crate::util::NodeRef`] + the project's graph arena).
 //!
 //! `CHandleCommandWrapper` in C++ subclasses `olive::UndoCommand` to wrap a
-//! raw `OakUndoCommand`; the Rust equivalent holds an
-//! [`oakundo::undocommand::UndoCommand`] and forwards `redo`/`undo` to
-//! `redo_now`/`undo_now`.
+//! raw `OakUndoCommand`; the Rust equivalent is the crate's own commands
+//! boxed through [`box_command`], so the wrapper is gone.
 
 use std::ffi::c_void;
 
@@ -186,42 +185,6 @@ pub(crate) fn box_command<T: Command + 'static>(cmd: T) -> UndoCommand {
 	};
 	// `from_vtable` copies the vtable and takes ownership of `userdata`.
 	UndoCommand::from_vtable(vtable, userdata)
-}
-
-/// `CHandleCommandWrapper` — an oakundo command exposed as a timeline-level
-/// command. `redo`/`undo` forward to `redo_now`/`undo_now`; dropping drops
-/// the wrapped command.
-pub struct CHandleCommandWrapper {
-	/// Wrapped command; `None` mirrors the old empty (null) command handle.
-	command: Option<UndoCommand>,
-}
-
-impl CHandleCommandWrapper {
-	/// Construct over an owned command value.
-	pub fn new(command: UndoCommand) -> Self {
-		Self {
-			command: Some(command),
-		}
-	}
-
-	/// Whether the wrapper holds a command (the old non-null check).
-	pub fn is_valid(&self) -> bool {
-		self.command.is_some()
-	}
-
-	/// `redo`: forward to `UndoCommand::redo_now`.
-	pub fn redo(&mut self) {
-		if let Some(c) = self.command.as_mut() {
-			c.redo_now();
-		}
-	}
-
-	/// `undo`: forward to `UndoCommand::undo_now`.
-	pub fn undo(&mut self) {
-		if let Some(c) = self.command.as_mut() {
-			c.undo_now();
-		}
-	}
 }
 
 /// `MultiUndoCommand` — a command that runs several child commands in order

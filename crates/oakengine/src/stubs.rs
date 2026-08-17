@@ -10622,11 +10622,11 @@ pub mod timeline {
 		}
 		// SAFETY: the caller guarantees a valid NUL-terminated string.
 		let name = unsafe { crate::handle::read_cstr(name) };
-		let list_mut = unsafe { oaktimeline::handle::get_mut::<oaktimeline::marker::TimelineMarkerList>(&list) };
+		let list_mut = unsafe { oaktimeline::handle::get_mut::<std::sync::Arc<std::sync::Mutex<oaktimeline::marker::TimelineMarkerList>>>(&list) };
 		let Some(list_mut) = list_mut else {
 			return oaktimeline::error::OAKTIMELINE_E_INVALID;
 		};
-		list_mut.add_marker(oaktimeline::marker::TimelineMarker::with_time(
+		list_mut.lock().unwrap_or_else(|e| e.into_inner()).add_marker(oaktimeline::marker::TimelineMarker::with_time(
 			color,
 			TimeRange::new(
 				Rational::new(in_num as i64, in_den as i64),
@@ -10643,10 +10643,10 @@ pub mod timeline {
 			return oaktimeline::error::OAKTIMELINE_E_INVALID;
 		}
 		// SAFETY: marker-list handles box TimelineMarkerList.
-		match unsafe { oaktimeline::handle::get::<oaktimeline::marker::TimelineMarkerList>(&list) } {
+		match unsafe { oaktimeline::handle::get::<std::sync::Arc<std::sync::Mutex<oaktimeline::marker::TimelineMarkerList>>>(&list) } {
 			Some(l) => {
 				// SAFETY: valid out pointer.
-				unsafe { *out_count = l.size() as c_int };
+				unsafe { *out_count = l.lock().unwrap_or_else(|e| e.into_inner()).size() as c_int };
 				oaktimeline::error::OAKTIMELINE_OK
 			}
 			None => oaktimeline::error::OAKTIMELINE_E_INVALID,
@@ -10675,10 +10675,11 @@ pub mod timeline {
 			return oaktimeline::error::OAKTIMELINE_E_INVALID;
 		}
 		// SAFETY: marker-list handles box TimelineMarkerList.
-		let l = match unsafe { oaktimeline::handle::get::<oaktimeline::marker::TimelineMarkerList>(&list) } {
+		let l = match unsafe { oaktimeline::handle::get::<std::sync::Arc<std::sync::Mutex<oaktimeline::marker::TimelineMarkerList>>>(&list) } {
 			Some(l) => l,
 			None => return oaktimeline::error::OAKTIMELINE_E_INVALID,
 		};
+		let l = l.lock().unwrap_or_else(|e| e.into_inner());
 		let Some(m) = l.at(index as usize) else {
 			return oaktimeline::error::OAKTIMELINE_E_NOT_FOUND;
 		};
@@ -10852,9 +10853,9 @@ pub mod timeline {
 	/// `oaktimeline_workarea_set_enabled`.
 	pub fn oaktimeline_workarea_set_enabled(w: CHandle, enabled: c_int) -> c_int {
 		// SAFETY: work-area handles box TimelineWorkArea.
-		match unsafe { oaktimeline::handle::get_mut::<oaktimeline::workarea::TimelineWorkArea>(&w) } {
+		match unsafe { oaktimeline::handle::get_mut::<std::sync::Arc<std::sync::Mutex<oaktimeline::workarea::TimelineWorkArea>>>(&w) } {
 			Some(wa) => {
-				wa.set_enabled(enabled != 0);
+				wa.lock().unwrap_or_else(|e| e.into_inner()).set_enabled(enabled != 0);
 				oaktimeline::error::OAKTIMELINE_OK
 			}
 			None => oaktimeline::error::OAKTIMELINE_E_INVALID,
@@ -10871,11 +10872,11 @@ pub mod timeline {
 		enabled: *mut c_int,
 	) -> c_int {
 		// SAFETY: work-area handles box TimelineWorkArea.
-		let wa = match unsafe { oaktimeline::handle::get::<oaktimeline::workarea::TimelineWorkArea>(&w) } {
+		let wa = match unsafe { oaktimeline::handle::get::<std::sync::Arc<std::sync::Mutex<oaktimeline::workarea::TimelineWorkArea>>>(&w) } {
 			Some(wa) => wa,
 			None => return oaktimeline::error::OAKTIMELINE_E_INVALID,
 		};
-		let range = wa.range();
+		let range = *wa.lock().unwrap_or_else(|e| e.into_inner()).range();
 		// Out params may individually be NULL (the header contract); write
 		// each only when the caller supplied a target.
 		unsafe {
@@ -10892,7 +10893,7 @@ pub mod timeline {
 				*out_den = range.out().denominator() as c_int;
 			}
 			if !enabled.is_null() {
-				*enabled = if wa.enabled() { 1 } else { 0 };
+				*enabled = if wa.lock().unwrap_or_else(|e| e.into_inner()).enabled() { 1 } else { 0 };
 			}
 		}
 		oaktimeline::error::OAKTIMELINE_OK
@@ -10910,9 +10911,9 @@ pub mod timeline {
 			return oaktimeline::error::OAKTIMELINE_E_INVALID;
 		}
 		// SAFETY: work-area handles box TimelineWorkArea.
-		match unsafe { oaktimeline::handle::get_mut::<oaktimeline::workarea::TimelineWorkArea>(&w) } {
+		match unsafe { oaktimeline::handle::get_mut::<std::sync::Arc<std::sync::Mutex<oaktimeline::workarea::TimelineWorkArea>>>(&w) } {
 			Some(wa) => {
-				wa.set_range(TimeRange::new(
+				wa.lock().unwrap_or_else(|e| e.into_inner()).set_range(TimeRange::new(
 					Rational::new(in_num as i64, in_den as i64),
 					Rational::new(out_num as i64, out_den as i64),
 				));

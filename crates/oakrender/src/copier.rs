@@ -17,13 +17,44 @@
 //! Render-side project copy client (the C++ ProjectCopier, inverted):
 //! all copying happens inside oaknode. oaknode never implemented the
 //! deep-copy direction (single-lib plan §4.1 — dead direction), so the
-//! copy operations fail explainably and the success-path tests are
-//! `#[ignore]`d.
+//! copy operations fail explainably; the tests assert those failures.
+//!
+//! M14 R5: the module is entirely internal to oakrender (no facade entry
+//! is involved), so the oaknode project handle was reduced to its numeric
+//! identity — a Rust value type instead of a `CHandle`. The live project
+//! object stays with oaknode; the render side stores only identity pairs
+//! (see `COVERAGE.md`, "render 只存 identity 对").
 
 use crate::error::{Error, Result};
 
-/// A project handle (oaknode-owned; the shared canonical handle type).
-pub type ProjectHandle = crate::handle::CHandle;
+/// An opaque identity for an oaknode project (the C++ handle's `ctx`
+/// reduced to its numeric value). oaknode owns the live project and
+/// maintains the identity map; this module never holds the object, so no
+/// lifetime management is required.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ProjectHandle(u64);
+
+impl ProjectHandle {
+	/// New identity; `0` is the empty handle.
+	pub fn new(identity: u64) -> Self {
+		ProjectHandle(identity)
+	}
+
+	/// The empty handle (no project attached).
+	pub fn null() -> Self {
+		ProjectHandle(0)
+	}
+
+	/// True for the empty handle.
+	pub fn is_null(self) -> bool {
+		self.0 == 0
+	}
+
+	/// The raw identity value.
+	pub fn as_u64(self) -> u64 {
+		self.0
+	}
+}
 
 /// One change record (see oaknode `ChangeRecord`).
 #[repr(C)]
@@ -77,15 +108,13 @@ pub fn project_sync_copy(
 	))
 }
 
-/// A handle to a render-side project copy.
+/// A render-side project copy (identity only — the copy's live object
+/// stays with oaknode).
 pub struct ProjectCopy {
 	/// Identity of the source project.
 	pub source: u64,
-	/// Identity of the copied project (oaknode-owned).
+	/// Identity of the copied project (0 = no copy attached).
 	pub copy: u64,
-	/// Owned oaknode handle to the copy (kept alive for the copier's
-	/// lifetime; released on drop).
-	copy_handle: Option<ProjectHandle>,
 	/// Change-generation counter of the last successful sync.
 	pub last_sync_generation: u64,
 	/// True while recorded changes await `sync`.
@@ -98,19 +127,18 @@ impl ProjectCopy {
 		Self {
 			source: 0,
 			copy: 0,
-			copy_handle: None,
 			last_sync_generation: 0,
 			has_pending_updates: false,
 		}
 	}
 
-	/// Create a deep copy of `source` through the oaknode C ABI
-	/// (C++ `ProjectCopier::set_project`).
+	/// Create a deep copy of `source` through oaknode (C++
+	/// `ProjectCopier::set_project`).
 	pub fn set_project(&mut self, source: ProjectHandle) -> Result<()> {
 		if source.is_null() {
 			return Err(Error::Invalid);
 		}
-		// Release any previous copy.
+		// Drop any previous copy.
 		self.release_copy();
 		let copy = crate::copier::project_deep_copy(source);
 		if copy.is_null() {
@@ -118,9 +146,8 @@ impl ProjectCopy {
 				"oaknode_project_deep_copy failed (symbol missing or copy error)".into(),
 			));
 		}
-		self.source = source.ctx as u64;
-		self.copy = copy.ctx as u64;
-		self.copy_handle = Some(copy);
+		self.source = source.as_u64();
+		self.copy = copy.as_u64();
 		self.last_sync_generation = 0;
 		self.has_pending_updates = false;
 		Ok(())
@@ -129,26 +156,26 @@ impl ProjectCopy {
 	/// Push a recorded change set into the copy (C++
 	/// ProjectCopier::process_update_queue).
 	pub fn sync(&mut self, changes: &[ChangeRecord]) -> Result<()> {
-		let source = ProjectHandle {
-			ctx: self.source as *mut std::ffi::c_void,
-			addref: None,
-			release: None,
-			abi_version: crate::handle::OAKRENDER_ABI_VERSION,
-		};
-		let copy = self.copy_handle.unwrap_or_else(ProjectHandle::null);
-		if copy.is_null() {
+		if self.copy == 0 {
 			return Err(Error::State);
 		}
-		crate::copier::project_sync_copy(source, copy, changes)?;
+		crate::copier::project_sync_copy(
+			ProjectHandle::new(self.source),
+			ProjectHandle::new(self.copy),
+			changes,
+		)?;
 		self.last_sync_generation += 1;
 		self.has_pending_updates = false;
 		Ok(())
 	}
 
-	/// The copied project handle (owned by this copier; borrowed for the
-	/// caller).
+	/// The copied project's identity (borrowed for the caller).
 	pub fn copied_project(&self) -> Option<ProjectHandle> {
-		self.copy_handle
+		if self.copy == 0 {
+			None
+		} else {
+			Some(ProjectHandle::new(self.copy))
+		}
 	}
 
 	/// The copied counterpart of an original node — requires the oaknode
@@ -158,19 +185,12 @@ impl ProjectCopy {
 		None
 	}
 
-	/// Drop the copy (releases the oaknode handle).
+	/// Drop the copy (forgets its identity).
 	pub fn destroy(&mut self) {
 		self.release_copy();
 	}
 
 	fn release_copy(&mut self) {
-		if let Some(handle) = self.copy_handle.take() {
-			if let Some(release) = handle.release {
-				// SAFETY: the handle came from oaknode_project_deep_copy;
-				// releasing the last reference destroys the copy.
-				unsafe { release(handle.ctx) };
-			}
-		}
 		self.copy = 0;
 	}
 }
@@ -178,12 +198,6 @@ impl ProjectCopy {
 impl Default for ProjectCopy {
 	fn default() -> Self {
 		Self::new()
-	}
-}
-
-impl Drop for ProjectCopy {
-	fn drop(&mut self) {
-		self.release_copy();
 	}
 }
 
@@ -210,6 +224,19 @@ mod tests {
 	}
 
 	#[test]
+	fn set_project_with_valid_identity_fails() {
+		// oaknode never implemented the deep-copy direction; even a valid
+		// identity cannot be copied, and the copier fails explainably.
+		let mut pc = ProjectCopy::new();
+		assert_eq!(
+			pc.set_project(ProjectHandle::new(1)).unwrap_err().code(),
+			Error::Failed(String::new()).code()
+		);
+		assert_eq!(pc.copy, 0);
+		assert!(pc.copied_project().is_none());
+	}
+
+	#[test]
 	fn sync_without_project_is_state_error() {
 		let mut pc = ProjectCopy::new();
 		let changes = [ChangeRecord {
@@ -224,22 +251,5 @@ mod tests {
 		let mut pc = ProjectCopy::new();
 		pc.destroy();
 		assert_eq!(pc.copy, 0);
-	}
-
-	#[test]
-	#[ignore = "needs oaknode deep-copy (not implemented)"]
-	fn deep_copy_roundtrip_with_real_node() {
-		// oaknode never implemented the deep-copy direction; the copy
-		// always fails explainably, which is what the live path checks.
-		let mut pc = ProjectCopy::new();
-		let src = ProjectHandle {
-			ctx: 1 as *mut std::ffi::c_void,
-			addref: None,
-			release: None,
-			abi_version: crate::handle::OAKRENDER_ABI_VERSION,
-		};
-		pc.set_project(src).unwrap();
-		assert_ne!(pc.copy, 0);
-		assert!(pc.copied_project().is_some());
 	}
 }

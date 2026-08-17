@@ -32,15 +32,20 @@ use oakcore_rs::{Rational, TimeRange};
 use crate::footagedescription::FootageDescription;
 use crate::frame::Frame;
 
-/// `OakRenderTexture` — refcounted GPU texture handle (an oakrender type,
-/// opaque to oakcodec). The codec crate cannot depend on oakrender (the
-/// dependency cycle), so it only ever produces an empty handle — the
-/// shared [`crate::handle::CHandle`] carries that value unchanged.
-pub type OakRenderTexture = crate::handle::CHandle;
+/// `OakRenderTexture` — GPU texture token (an oakrender type, opaque to
+/// oakcodec). The codec crate cannot depend on oakrender (dependency
+/// cycle), so it never constructs a real texture: [`Decoder::retrieve_video`]
+/// only reports whether the decode succeeded and returns this unit token
+/// (the former empty `CHandle`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OakRenderTexture;
 
-/// `OakNodeBlock` — opaque node-block handle owned elsewhere; the codec
-/// only stores and forwards it (borrowed, never dereferenced).
-pub type OakNodeBlock = crate::handle::CHandle;
+/// `OakNodeBlock` — opaque timeline-block token owned elsewhere; the codec
+/// only stores and forwards it (borrowed, never dereferenced). No module
+/// ever constructs one (the former `CHandle` was only ever `None`), so the
+/// type is an empty marker kept for API compatibility.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OakNodeBlock;
 
 /// `oakcodec_video_stream_info` — POD probe output describing one video
 /// stream; see `include/codec/decoder.h`.
@@ -162,8 +167,8 @@ pub enum RetrieveState {
 /// `Decoder::CodecStream` — identifies one (filename, stream) pair plus an
 /// optional associated timeline block.
 ///
-/// The block is an opaque `OakNodeBlock` handle that codec only stores and
-/// compares, never dereferences or retains (borrowed pointer).
+/// The block is an opaque [`OakNodeBlock`] token that codec only stores and
+/// compares, never dereferences or retains (borrowed).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CodecStream {
 	filename: String,
@@ -231,8 +236,7 @@ impl CodecStream {
 ///
 /// Implementations are [`crate::ffmpeg::FFmpegDecoder`] and
 /// [`crate::oiio::OIIODecoder`]. The trait surface mirrors the C++
-/// abstract base; the refcounted handle that backs the public API wraps an
-/// `Arc<dyn Decoder>`.
+/// abstract base; the public API hands out `Arc<dyn Decoder>` values.
 pub trait Decoder: Send + Sync {
 	/// Unique decoder id ("ffmpeg"/"oiio").
 	fn id(&self) -> String;

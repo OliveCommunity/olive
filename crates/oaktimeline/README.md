@@ -33,8 +33,8 @@ internal Rust types.
    exposes `prepare()` / `redo()` / `undo()` (all `todo!()` here) and
    is surfaced to the world through the oakundo C ABI vtable
    (`bridge::undo::oakundo_command_init`, Rust callbacks as `userdata`).
-   Every command struct carries a `to_command() -> CHandle` factory doc
-   comment describing the wiring.
+   Every command struct carries a `to_command()` factory that wraps it
+   into an `oakundo::undocommand::UndoCommand` value for the undo stack.
 
 3. **Value types come from `oakcore-rs`.** Markers and work areas are
    built on `Rational`/`TimeRange`, so the crate depends on
@@ -51,11 +51,13 @@ internal Rust types.
    role is subsumed by vtable commands and by value handles treated as
    opaque.
 
-5. **Handles.** `handle.rs` provides the shared `RefBox`/`CHandle`
-   scaffolding (duplicated per crate, as in oaknode) with
-   `OAKTIMELINE_ABI_VERSION = 1`. Borrowed handles into node-owned
-   objects and owning handles created by `*_create` share one box
-   layout `{ctx, addref, release, abi_version}`.
+5. **Handles.** `handle.rs` keeps the `RefBox`/`CHandle` scaffolding
+   for the oakengine facade boundary (the C ABI export layer is the only
+   place left that talks handles). Every `make_owned` value handle boxes
+   an `Arc<Mutex<T>>` — the same pattern as the oaknode project handles —
+   so the crate's commands hold the shared marker list / work area as a
+   plain Rust `Arc<Mutex<…>>` and the facade entries convert the handle
+   back to the `Arc` at the boundary.
 
 ## Layout
 
@@ -68,7 +70,7 @@ src/
                  WaveformMode, EditToInfo) — timelinecommon.h
   marker.rs      TimelineMarker/MarkerList + 5 marker commands
   workarea.rs    TimelineWorkArea + 2 workarea commands
-  undocommon.rs  node/block remove helpers + CHandleCommandWrapper
+  undocommon.rs  node/block remove helpers + MultiUndoCommand
   undotrack.rs   track ripple/prepend/insert-after/replace commands
   undogeneral.rs resize/media-in/add/remove-track/transition/gap/
                  enable-disable/insert-gaps/default-transition commands

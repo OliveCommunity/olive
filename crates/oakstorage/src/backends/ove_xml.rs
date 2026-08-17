@@ -32,6 +32,7 @@
 
 use crate::backend::LoadResult;
 use crate::error::{Error, OAKSTORAGE_OK, OAKSTORAGE_TOO_NEW, OAKSTORAGE_TOO_OLD, OAKSTORAGE_UNKNOWN_VERSION};
+use crate::nodeutil::ProjectArc;
 use crate::uri::StorageUri;
 use oaknode::serializer::XmlRead;
 
@@ -81,6 +82,29 @@ impl OveXmlBackend {
 	/// Construct.
 	pub fn new() -> Self {
 		OveXmlBackend
+	}
+
+	/// Save a project (already read out of its handle) to the URI. The
+	/// Rust-typed inner path: the facade-facing trait `save` converts the
+	/// project handle and forwards here.
+	pub fn save_project(
+		&self,
+		project: &ProjectArc,
+		uri: &StorageUri,
+		_options: u32,
+	) -> crate::error::Result<()> {
+		let path = uri
+			.local_path()
+			.ok_or(Error::Invalid)?
+			.to_string();
+		let xml = {
+			let guard = project
+				.lock()
+				.map_err(|_| Error::State)?;
+			crate::nodeutil::serializer_save(&guard)?
+		};
+		std::fs::write(&path, xml).map_err(|e| Error::Io(e.to_string()))?;
+		Ok(())
 	}
 }
 
@@ -135,20 +159,11 @@ impl crate::backend::StorageBackend for OveXmlBackend {
 		&self,
 		project: crate::handle::CHandle,
 		uri: &StorageUri,
-		_options: u32,
+		options: u32,
 	) -> crate::error::Result<()> {
-		let path = uri
-			.local_path()
-			.ok_or(Error::Invalid)?
-			.to_string();
+		// Facade boundary: convert the project handle to the boxed
+		// project, then run the Rust-typed save.
 		let arc = unsafe { crate::nodeutil::project_arc(&project)? };
-		let xml = {
-			let guard = arc
-				.lock()
-				.map_err(|_| Error::State)?;
-			crate::nodeutil::serializer_save(&guard)?
-		};
-		std::fs::write(&path, xml).map_err(|e| Error::Io(e.to_string()))?;
-		Ok(())
+		self.save_project(&arc, uri, options)
 	}
 }

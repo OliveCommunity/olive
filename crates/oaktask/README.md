@@ -85,7 +85,7 @@ load/save/import/OTIO tasks). The behavior it reproduces is defined by:
 src/
   lib.rs            crate doc + module declarations
   error.rs          OAKTASK_* codes + Error enum (module number 08)
-  handle.rs         RefBox / CHandle / guard* FFI scaffolding
+  handle.rs         owned-handle box + get/get_mut views (facade task boxes)
   task.rs           Task base class + TaskEvent / EventListener
   manager.rs        TaskManager singleton
   codecbridge.rs    codec task submitter registration

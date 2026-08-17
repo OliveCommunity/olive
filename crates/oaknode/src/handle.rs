@@ -14,17 +14,24 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Refcounted-handle scaffolding. Same pattern as the oakplugin crate
-//! (`src/plugin/rust/src/handle.rs`); intentionally duplicated rather
-//! than shared — each module DLL must run its own addref/release code
-//! (the function pointers in a handle always point into the DLL that
-//! created the object).
+//! Refcounted-handle scaffolding for the oakengine facade boundary.
+//!
+//! Single-lib unification made module-to-module calls plain Rust; the
+//! facade (oakengine) is the only remaining consumer of `CHandle`s in
+//! this crate — it boxes oaknode domain objects (`Project`,
+//! `NodeRef`) and small ABI payloads behind [`CHandle`]s so the frozen
+//! C API keeps working unchanged, and oakstorage reuses the same boxes
+//! for the write-through session. This module is that surface:
+//! [`make_owned`]/[`make_owned_with`] create the boxes, [`get`] borrows
+//! their payloads, [`RefBox`] is the box layout.
+//!
+//! The crate's own object references never travel through handles, and
+//! the panic-catching `guard*` wrappers from the old FFI era were
+//! removed together with the crate's C exports (oakengine has its own
+//! guard layer).
 
 use std::any::Any;
-use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicU32, Ordering};
-
-use crate::error::OAKNODE_E_FAILED;
 
 /// ABI version stamped into every handle.
 pub const OAKNODE_ABI_VERSION: u32 = 1;
@@ -40,41 +47,30 @@ pub struct RefBox<T: ?Sized> {
 /// The shared ABI value-handle type (single-lib unification, see
 /// `docs/zh/plans/riir/single-lib.md`): one canonical
 /// `{ctx, addref, release, abi_version}` type in `oakcore-rs`, re-exported
-/// here so the crate's `ffi.rs` signatures and handle scaffolding stay
-/// source-compatible.
+/// here so the facade's handle scaffolding stays source-compatible.
 pub use oakcore_rs::handle::CHandle;
 
-/// addref 的实现：原子 +1。拥有型与借用型共用——借用型只延长盒子
-/// 的寿命，不延长被借用对象。
+/// addref implementation: atomic +1. Shared by owned and facade boxes —
+/// a borrowed copy only extends the box's lifetime, never the borrowed
+/// object's.
 unsafe extern "C" fn refbox_addref<T: Any + Send>(ctx: *mut std::ffi::c_void) {
 	unsafe {
 		let rb = ctx as *const RefBox<T>;
-		// 调用方保证句柄在借用期内有效（ctx 非空且未被释放）。
+		// Caller guarantees the handle is alive (ctx non-null and not
+		// released) for the duration of the call.
 		(*rb).refs.fetch_add(1, Ordering::Relaxed);
 	}
 }
 
-/// release 的实现（拥有型）：原子 -1，归零时回收盒子并销毁内含对象。
+/// release implementation (owned): atomic -1, frees the box and destroys
+/// the boxed value at zero.
 unsafe extern "C" fn refbox_release_owned<T: Any + Send>(ctx: *mut std::ffi::c_void) {
 	unsafe {
 		let rb = ctx as *mut RefBox<T>;
-		// AcqRel：归零这一侧要能看见最后一次引用前的全部写（含对象
-		// 析构所需的内部状态）。
+		// AcqRel: the zeroing side must observe every write from the last
+		// reference (including state the destructor needs).
 		if (*rb).refs.fetch_sub(1, Ordering::AcqRel) == 1 {
 			drop(Box::from_raw(rb));
-		}
-	}
-}
-
-/// release 的实现（借用型，[`make_borrowed`] 的产物）：归零时只回收
-/// 盒子内存，把内含对象原样忘掉——其所有权仍在借用方手里。
-unsafe extern "C" fn refbox_release_borrowed<T: Any + Send>(ctx: *mut std::ffi::c_void) {
-	unsafe {
-		let rb = ctx as *mut RefBox<T>;
-		if (*rb).refs.fetch_sub(1, Ordering::AcqRel) == 1 {
-			// 部分 move：把 value 移出临时 Box，Box 析构只释放分配；
-			// value 用 forget 放弃析构（double-free 防线）。
-			std::mem::forget((Box::from_raw(rb)).value);
 		}
 	}
 }
@@ -94,7 +90,7 @@ pub fn make_owned<T: Any + Send>(value: T) -> CHandle {
 }
 
 /// Owned handle with count 1 and a caller-provided release routine
-/// (used by the ffi layer's alive-counted node/project boxes, where the
+/// (used by the facade for the alive-counted project boxes, where the
 /// release must also update the debug counter).
 pub fn make_owned_with<T: Any + Send>(
 	value: T,
@@ -112,32 +108,6 @@ pub fn make_owned_with<T: Any + Send>(
 	}
 }
 
-/// Borrowed handle for an object owned elsewhere (release frees only
-/// the box).
-///
-/// Semantics: bitwise copy ("borrowed copy"); the borrowed object's
-/// destructor is entirely the caller's responsibility — the box never
-/// touches it.
-///
-/// # Safety
-/// Caller guarantees `ptr` outlives every derived handle, and that its
-/// value is not moved or destroyed for the borrow's lifetime.
-pub unsafe fn make_borrowed<T: Any + Send>(ptr: *mut T) -> CHandle {
-	if ptr.is_null() {
-		return CHandle::null();
-	}
-	let rb = Box::into_raw(Box::new(RefBox {
-		refs: AtomicU32::new(1),
-		value: unsafe { std::ptr::read(ptr) },
-	}));
-	CHandle {
-		ctx: rb as *mut std::ffi::c_void,
-		addref: Some(refbox_addref::<T>),
-		release: Some(refbox_release_borrowed::<T>),
-		abi_version: OAKNODE_ABI_VERSION,
-	}
-}
-
 /// Typed view into a handle; `None` for empty handles.
 ///
 /// # Safety
@@ -147,28 +117,4 @@ pub unsafe fn get<T: Any>(h: &CHandle) -> Option<&T> {
 		return None;
 	}
 	unsafe { Some(&(*(h.ctx as *const RefBox<T>)).value) }
-}
-
-/// Panic-catching FFI wrapper for i32-returning exports.
-///
-/// Panics map to [`OAKNODE_E_FAILED`].
-pub fn guard<F: FnOnce() -> crate::error::Result<()>>(f: F) -> i32 {
-	match catch_unwind(AssertUnwindSafe(f)) {
-		Ok(Ok(())) => crate::error::OAKNODE_OK,
-		Ok(Err(e)) => e.code(),
-		Err(_) => OAKNODE_E_FAILED,
-	}
-}
-
-/// Panic-catching FFI wrapper for handle-returning exports.
-pub fn guard_handle<F: FnOnce() -> crate::error::Result<CHandle>>(f: F) -> CHandle {
-	match catch_unwind(AssertUnwindSafe(f)) {
-		Ok(Ok(h)) => h,
-		Ok(Err(_)) | Err(_) => CHandle::null(),
-	}
-}
-
-/// Panic-catching FFI wrapper for void exports.
-pub fn guard_void<F: FnOnce()>(f: F) {
-	let _ = catch_unwind(AssertUnwindSafe(f));
 }

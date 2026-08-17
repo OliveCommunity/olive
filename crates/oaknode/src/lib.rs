@@ -20,11 +20,16 @@
 //! (`include/node/*.h`). See README.md for the architectural mapping
 //! (inheritance → arena + trait objects, etc.).
 //!
-//! ## FFI discipline
+//! ## Handle discipline
 //!
-//! Identical to the oakplugin crate: every export goes through
-//! [`handle::guard*`], handles are opaque refcounted boxes, shared
-//! state behind `Mutex`.
+//! Post-single-lib, this crate has no C exports: module-to-module calls
+//! are plain Rust types, and object references never travel through
+//! handles. The remaining `CHandle`s are (a) the facade-facing handle
+//! scaffolding in [`handle`] (oakengine/oakstorage box `Project` /
+//! `NodeRef` behind it) and (b) opaque cross-module payloads the crate
+//! cannot name as Rust types — oakrender textures/frames/caches and
+//! oaktimeline markers/work areas, whose owning crates depend on
+//! oaknode. Shared state lives behind `Mutex`.
 
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]

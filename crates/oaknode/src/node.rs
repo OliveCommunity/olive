@@ -426,6 +426,12 @@ impl NodeCore {
 
 /// The node's oakrender caches (frame/thumbnail/audio/waveform),
 /// owned handles released with the node.
+///
+/// Cross-module payloads: the cache objects live behind opaque
+/// oakrender handles created lazily by the facade (oakengine reads
+/// `caches.video` directly through the C ABI), and oakrender depends on
+/// oaknode, so no Rust type is nameable here — the handle is the
+/// boundary representation.
 #[derive(Clone)]
 pub struct NodeCaches {
 	/// Video frame hash cache.

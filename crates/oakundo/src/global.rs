@@ -24,41 +24,43 @@
 //! lets downstream modules (the oakstorage write-through session manager)
 //! subscribe to "a command was recorded" notifications without a facade
 //! round-trip.
+//!
+//! M14 R5: everything in this module is Rust-typed — the process-wide
+//! stack is a plain `static Mutex<UndoStack>` and the open group holds an
+//! [`UndoCommand`] value. The only remaining `CHandle` is the
+//! [`push_or_run`] facade entry, which converts the incoming module
+//! command handle into an [`UndoCommand`] value at the boundary.
 
 use std::ffi::{c_char, c_int, c_void};
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Mutex, OnceLock};
 
-use crate::error::{Error, Result};
+use crate::error::{Error, OAKUNDO_E_FAILED, Result};
 use crate::handle::CHandle;
 use crate::undocommand::{
-	command_free, command_from_owned, command_init_multi, command_multi_add_child,
-	command_multi_child, command_multi_child_count, command_redo_now, command_undo_now,
-	UndoCommand,
+	command_free, command_from_owned, command_redo_now, command_take, UndoCommand,
 };
-use crate::undostack::{
-	undostack_can_redo, undostack_can_undo, undostack_clear, undostack_command_is_done,
-	undostack_command_text, undostack_count, undostack_index, undostack_init, undostack_jump,
-	undostack_push, undostack_push_pre_executed,
-};
+use crate::undostack::UndoStack;
 
-/// The process-wide undo stack handle (`OakUndoStack`), created lazily
-/// on first use and kept for the process lifetime.
-fn global_stack() -> &'static CHandle {
-	static STACK: OnceLock<CHandle> = OnceLock::new();
-	STACK.get_or_init(|| undostack_init())
+/// The process-wide undo stack, created lazily on first use and kept for
+/// the process lifetime.
+fn global_stack() -> &'static Mutex<UndoStack> {
+	static STACK: OnceLock<Mutex<UndoStack>> = OnceLock::new();
+	STACK.get_or_init(|| Mutex::new(UndoStack::new()))
 }
 
 /// Stable opaque token for the engine's `oakengine_undo_handle` export:
-/// the stack handle's `ctx` pointer (never dereferenced by callers; lives
-/// for the process).
+/// the stack's address (never dereferenced by callers; lives for the
+/// process).
 pub fn stack_token() -> *mut c_void {
-	global_stack().ctx
+	global_stack() as *const Mutex<UndoStack> as *mut c_void
 }
 
-/// Borrowed copy of the process-wide stack handle (for the module-level
-/// queries below).
-fn stack() -> CHandle {
-	*global_stack()
+/// Run `f` on the process-wide stack; a poisoned mutex is recovered (its
+/// inner value is still valid).
+fn with_stack<R>(f: impl FnOnce(&mut UndoStack) -> Result<R>) -> Result<R> {
+	let mut guard = global_stack().lock().unwrap_or_else(|e| e.into_inner());
+	f(&mut guard)
 }
 
 // ---------------------------------------------------------------------------
@@ -99,10 +101,10 @@ fn notify_observers() {
 // Undo group
 // ---------------------------------------------------------------------------
 
-/// The currently open undo group (a multi command handle) plus its name.
+/// The currently open undo group (a multi command value) plus its name.
 struct OpenGroup {
-	/// Multi command handle; owned by this state until end/abort.
-	multi: CHandle,
+	/// Multi command value; owned by this state until end/abort.
+	multi: UndoCommand,
 	/// Group label.
 	#[allow(dead_code)]
 	name: String,
@@ -121,12 +123,8 @@ pub fn group_begin(name: &str) -> Result<()> {
 	if g.is_some() {
 		return Err(Error::State);
 	}
-	let multi = command_init_multi();
-	if multi.is_null() {
-		return Err(Error::NoMem);
-	}
 	*g = Some(OpenGroup {
-		multi,
+		multi: UndoCommand::multi(),
 		name: name.to_string(),
 	});
 	Ok(())
@@ -141,28 +139,16 @@ pub fn group_end() -> Result<()> {
 	let multi = open.multi;
 	let name = open.name;
 	drop(g);
-	// Same NULL-for-empty convention as [`push_or_run`]: the module's
-	// `read_name` treats NULL like an empty label, while an empty String's
-	// dangling `as_ptr()` (0x1) would be strlen'd -> SIGSEGV.
-	let name_ptr = if name.is_empty() {
-		std::ptr::null()
-	} else {
-		name.as_ptr() as *const c_char
-	};
-	// push_pre_executed discards an empty multi command. Either way the
-	// stack took (or destroyed) the command; release our own reference to
-	// the multi handle.
-	let rc = undostack_push_pre_executed(stack(), multi, name_ptr);
-	let mut multi_handle = multi;
-	command_free(&mut multi_handle);
-	if rc == 0 {
-		// The group's children were redo'd eagerly at push time; the whole
-		// group is one command (commit at group_end).
-		notify_observers();
+	// push_pre_executed discards an empty multi command; either way the
+	// stack takes (or destroys) the command value.
+	with_stack(|s| {
+		s.push_pre_executed(multi, &name);
 		Ok(())
-	} else {
-		Err(Error::from_code(rc))
-	}
+	})?;
+	// The group's children were redo'd eagerly at push time; the whole
+	// group is one command (commit at group_end).
+	notify_observers();
+	Ok(())
 }
 
 /// Undo all executed children and discard the group. [`Error::State`] when
@@ -170,40 +156,17 @@ pub fn group_end() -> Result<()> {
 pub fn group_abort() -> Result<()> {
 	let mut g = group_lock();
 	let open = g.take().ok_or(Error::State)?;
+	let mut multi = open.multi;
 	drop(g);
 	// The multi command itself is never marked done (each child was
 	// redo'd eagerly at push time), so `undo_now` on it is a no-op. Undo
 	// the executed children individually instead, in reverse insertion
-	// order (mirroring the multi's reverse-order undo), each through its
-	// own borrowed handle.
-	let mut count: c_int = 0;
-	let rc = command_multi_child_count(open.multi, &mut count);
-	if rc != 0 {
-		let mut multi = open.multi;
-		command_free(&mut multi);
-		return Err(Error::from_code(rc));
-	}
+	// order (mirroring the multi's reverse-order undo).
+	let count = multi.multi_child_count();
 	for i in (0..count).rev() {
-		let mut child = CHandle::null();
-		let rc = command_multi_child(open.multi, i, &mut child);
-		if rc != 0 {
-			let mut multi = open.multi;
-			command_free(&mut multi);
-			return Err(Error::from_code(rc));
-		}
-		let rc = command_undo_now(child);
-		// The child handle is borrowed (owns:false): release only its shell
-		// — the child value lives on in the multi until the multi itself is
-		// freed below.
-		command_free(&mut child);
-		if rc != 0 {
-			let mut multi = open.multi;
-			command_free(&mut multi);
-			return Err(Error::from_code(rc));
-		}
+		multi.multi_child_mut(i)?.undo_now();
 	}
-	let mut multi = open.multi;
-	command_free(&mut multi);
+	// The multi command value drops here, freeing the children.
 	Ok(())
 }
 
@@ -215,37 +178,42 @@ pub fn group_abort() -> Result<()> {
 /// the STACK — a group child joins the group, and the group itself
 /// notifies at [`group_end`].
 pub fn push_or_run(command: CHandle, name: &str) -> c_int {
-	let g = group_lock();
-	if let Some(group) = g.as_ref() {
-		// The module's `command_multi_add_child` consumes the child's
-		// command value (command_take), so the eager redo must happen on the
-		// still-owned handle FIRST — the group takes the already-done
-		// command (C++ semantics: add_child + redo_now, net effect identical
-		// for the group's reverse-order undo).
+	let mut g = group_lock();
+	if let Some(group) = g.as_mut() {
+		// The group takes the command value (command_take), so the eager
+		// redo must happen on the still-owned handle FIRST — the group
+		// receives an already-done command (C++ semantics: add_child +
+		// redo_now, net effect identical for the group's reverse-order
+		// undo).
 		let rc = command_redo_now(command);
 		if rc != 0 {
 			return rc;
 		}
-		let rc = command_multi_add_child(group.multi, command);
-		drop(g);
-		return rc;
+		// SAFETY: `command` is a live module command handle (facade
+		// contract); `command_take` moves the value out of its box and
+		// marks the shell non-owning.
+		return match unsafe { command_take(command.ctx) } {
+			Ok(cmd) => {
+				group.multi.multi_add_child(cmd);
+				0
+			}
+			Err(e) => e.code(),
+		};
 	}
-	let stack = stack();
-	// The module treats a NULL name like an empty label, but an empty Rust
-	// String's `as_ptr()` is a DANGLING non-NULL pointer (0x1): the module's
-	// `read_name` would strlen it and SIGSEGV. Pass a real NULL instead.
-	let label_ptr = if name.is_empty() {
-		std::ptr::null()
-	} else {
-		name.as_ptr() as *const c_char
+	// No group open: take the command value and push it onto the
+	// process-wide stack (redo then record).
+	// SAFETY: as above, `command` is a live module command handle.
+	let cmd = match unsafe { command_take(command.ctx) } {
+		Ok(cmd) => cmd,
+		Err(e) => return e.code(),
 	};
-	let rc = undostack_push(stack, command, label_ptr);
-	if rc == 0 {
-		// The stack took a reference; the command's redo already ran (plan
-		// M13 D2): persist the write-through subscribers.
-		notify_observers();
-	}
-	rc
+	let mut guard = global_stack().lock().unwrap_or_else(|e| e.into_inner());
+	guard.push(cmd, name);
+	drop(guard);
+	// The stack took the command; its redo already ran (plan M13 D2):
+	// persist the write-through subscribers.
+	notify_observers();
+	0
 }
 
 // ---------------------------------------------------------------------------
@@ -309,87 +277,102 @@ pub fn redoable() -> bool {
 
 /// Total number of history rows.
 pub fn count() -> Result<i64> {
-	let mut c: i64 = 0;
-	let rc = undostack_count(stack(), &mut c);
-	if rc == 0 {
-		Ok(c)
-	} else {
-		Err(Error::from_code(rc))
-	}
+	with_stack(|s| Ok(s.command_count()))
 }
 
 /// Current position in the history (done-command count).
 pub fn index() -> Result<i64> {
-	let mut i: i64 = 0;
-	let rc = undostack_index(stack(), &mut i);
-	if rc == 0 {
-		Ok(i)
-	} else {
-		Err(Error::from_code(rc))
-	}
+	with_stack(|s| Ok(s.done_count()))
 }
 
 /// Whether an undo is possible (1/0 via `out_value`; a module error code
 /// otherwise).
 pub fn can_undo(out_value: *mut c_int) -> Result<()> {
-	let rc = undostack_can_undo(stack(), out_value);
-	if rc == 0 {
-		Ok(())
-	} else {
-		Err(Error::from_code(rc))
+	if out_value.is_null() {
+		return Err(Error::Invalid);
 	}
+	let value = with_stack(|s| Ok(if s.can_undo() { 1 } else { 0 }))?;
+	// SAFETY: `out_value` points to at least one writable `c_int`, per the
+	// facade contract.
+	unsafe { *out_value = value };
+	Ok(())
 }
 
 /// Whether a redo is possible (1/0 via `out_value`; a module error code
 /// otherwise).
 pub fn can_redo(out_value: *mut c_int) -> Result<()> {
-	let rc = undostack_can_redo(stack(), out_value);
-	if rc == 0 {
-		Ok(())
-	} else {
-		Err(Error::from_code(rc))
+	if out_value.is_null() {
+		return Err(Error::Invalid);
 	}
+	let value = with_stack(|s| Ok(if s.can_redo() { 1 } else { 0 }))?;
+	// SAFETY: `out_value` points to at least one writable `c_int`, per the
+	// facade contract.
+	unsafe { *out_value = value };
+	Ok(())
 }
 
 /// Undo/redo until the done-command count equals `index`. On success the
 /// bound projects are written through (the jump executed the undo/redo
 /// callbacks that mutated them) via the command observers.
 pub fn jump(index: i64) -> Result<()> {
-	let rc = undostack_jump(stack(), index);
-	if rc == 0 {
-		notify_observers();
+	with_stack(|s| {
+		s.jump(index);
 		Ok(())
-	} else {
-		Err(Error::from_code(rc))
-	}
+	})?;
+	notify_observers();
+	Ok(())
 }
 
 /// Delete all commands and push the fresh "New/Open Project" empty command.
 pub fn clear() -> Result<()> {
-	let rc = undostack_clear(stack());
-	if rc == 0 {
+	with_stack(|s| {
+		s.clear();
 		Ok(())
-	} else {
-		Err(Error::from_code(rc))
-	}
+	})
 }
 
 /// Two-stage label getter for the row at `row` (see
 /// [`crate::undostack::undostack_command_text`]): returns the required
 /// size including the NUL, or a module error code.
 pub fn command_text(row: i64, buf: *mut c_char, buf_size: c_int) -> c_int {
-	undostack_command_text(stack(), row, buf, buf_size)
+	let result = catch_unwind(AssertUnwindSafe(|| -> Result<i32> {
+		with_stack(|s| {
+			if row < 0 || row >= s.command_count() {
+				return Err(Error::NotFound);
+			}
+			let name = s.command_name(row)?;
+			let required = (name.len() + 1) as i32;
+			if !buf.is_null() && buf_size > 0 {
+				let copy_len = name.len().min((buf_size as usize).saturating_sub(1));
+				let bytes = name.as_bytes();
+				// SAFETY: `buf` points to `buf_size` writable bytes and we
+				// write at most `copy_len` (+ one NUL) of them.
+				unsafe {
+					std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, copy_len);
+					*buf.add(copy_len) = 0;
+				}
+			}
+			Ok(required)
+		})
+	}));
+	match result {
+		Ok(Ok(required)) => required,
+		Ok(Err(e)) => e.code(),
+		Err(_) => OAKUNDO_E_FAILED,
+	}
 }
 
 /// Whether the row at `row` is done (1/0 via `out_value`; a module error
 /// code otherwise — `-20004` for an out-of-range row).
 pub fn command_is_done(row: i64, out_value: *mut c_int) -> Result<()> {
-	let rc = undostack_command_is_done(stack(), row, out_value);
-	if rc == 0 {
-		Ok(())
-	} else {
-		Err(Error::from_code(rc))
+	if out_value.is_null() {
+		return Err(Error::Invalid);
 	}
+	let done = with_stack(|s| s.command_is_done(row))?;
+	// SAFETY: `out_value` points to at least one writable `c_int`, per the
+	// facade contract.
+	unsafe { *out_value = if done { 1 } else { 0 } };
+	Ok(())
 }
 
 #[cfg(test)]

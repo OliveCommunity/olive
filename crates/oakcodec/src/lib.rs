@@ -18,13 +18,15 @@
 //!
 //! Reimplements the C++ oakcodec module behind its frozen C ABI
 //! (`include/codec/*.h`). See README.md for the architectural mapping
-//! (inheritance → traits, shared_ptr → refcounted handles, etc.).
+//! (inheritance → traits, shared_ptr → `Arc`, etc.).
 //!
-//! ## FFI discipline
+//! ## Structure
 //!
-//! Identical to the oaknode/oakplugin crates: every export goes through
-//! [`handle::guard*`], handles are opaque refcounted boxes, shared
-//! state behind `Mutex`.
+//! Single-lib unification: the module crates are called directly from
+//! other module crates and the oakengine facade (`crates/oakengine`), so
+//! no C-ABI export layer remains here (the `include/codec/*.h` contracts
+//! are served by the facade). Shared state lives behind `Mutex`, decoder
+//! instances behind `Arc<dyn Decoder>`.
 
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]
@@ -44,7 +46,6 @@ pub mod ffmpeg;
 pub mod footagedescription;
 pub mod frame;
 pub mod framemanager;
-pub mod handle;
 pub mod oiio;
 pub mod oiioframebridge;
 pub mod planarfiledevice;
@@ -57,9 +58,9 @@ pub mod timecodemetadata;
 mod realmedia_tests;
 
 /// Process-wide test lock: serializes every test that reads or mutates
-/// crate-global state (the injected decoder registry, the handle alive
-/// count). One lock for the whole crate — tests race only with each
-/// other, never with production code.
+/// crate-global state (the injected decoder/encoder registries). One lock
+/// for the whole crate — tests race only with each other, never with
+/// production code.
 #[cfg(test)]
 static TEST_LOCK: Mutex<()> = Mutex::new(());
 

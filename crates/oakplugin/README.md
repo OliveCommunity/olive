@@ -12,7 +12,7 @@
 src/
   lib.rs        crate 文档、模块图、FFI 纪律
   error.rs      错误码（与 include/plugin/error.h 一一对应）
-  handle.rs     引用计数句柄脚手架（{ctx,addref,release,abi_version}）
+  handle.rs     RefBox 边界容器（Host::create_instance 返回值类型）
   property.rs   PropertySet：OFX 属性集的存储与类型化读写
   suites/       插件调进来的 C 函数表（unsafe trampoline 层）
     mod.rs      fetchSuite 注册表 + 渲染/GL 上下文 TLS
@@ -163,9 +163,11 @@ src/
 
 ## 实现纪律（实现方必读）
 
-1. 所有 `extern "C"` 函数体必须包 `crate::handle::guard(..)`（
-   catch_unwind + 错误码映射），禁止 panic 越过 FFI。
-2. 句柄全部经 `handle.rs` 的 `RefBox<T>`；`ctx` 永不裸指针外露含义。
+1. panic 不得越过插件 FFI：suite 分发表（`suites/mod.rs`）与宿主侧
+   插件调用点各自 `catch_unwind` 兜底并映射错误码。
+2. 实例以 `Arc<RefBox<Instance>>` 传（`RefBox` 为 facade 边界类型，
+   见 `handle.rs`）；跨 FFI 的裸指针只指向堆上稳定对象（props/
+   tag 打标），永不外露其地址含义。
 3. 共享状态（插件缓存、instance 注册表、线程表）一律 `Mutex`；
    插件可能在其自起线程回调任意 suite（MultiThread suite 存活期）。
 4. OFX 语义以 HostSupport 的行为为参照系；每个协商/时序实现点
@@ -259,8 +261,8 @@ cargo tarpaulin --out stdout --features test-stubs   # 覆盖率门槛
 
 TDD：测试声明与实现声明同步冻结（tests/，函数体 `todo!()`）：
 
-- `handle_test.rs` / `property_test.rs` — 基础设施契约（引用计数、
-  free 容错、Registry、属性集语义、并发）。
+- `handle_test.rs` / `property_test.rs` — 基础设施契约（RefBox
+  容器、属性集语义、并发）。
 - `suites_test.rs` — 八张 suite 的 round-trip（经最小测试插件，
   "插件视角"的 HostSupport 兼容性背书）。
 - `ffi_host_test.rs` / `ffi_instance_test.rs` — C ABI 出口契约

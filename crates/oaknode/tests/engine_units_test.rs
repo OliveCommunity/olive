@@ -21,7 +21,7 @@
 
 use oakcore_rs::{Rational, TimeRange};
 
-use oaknode::error::{Error, OAKNODE_E_FAILED, OAKNODE_E_INVALID};
+use oaknode::error::{Error, OAKNODE_E_INVALID};
 use oaknode::handle::{self, CHandle, RefBox};
 use oaknode::id::NodeId;
 use oaknode::input::{flags, Input, ValueHint};
@@ -851,51 +851,22 @@ fn ops_category_and_copy_inputs() {
 	assert!(ops::copy_inputs(&mut g, src, NodeId::INVALID, false).is_err());
 }
 
-/// handle.rs: null/is_null/guards + refcount discipline.
+/// handle.rs: null/is_null + owned-box refcount discipline (the
+/// facade-facing surface; the guard* wrappers and make_borrowed were
+/// removed with the crate's C exports).
 #[test]
-fn handle_helpers_and_guards() {
-	use oaknode::error::OAKNODE_OK;
-
+fn handle_boxing_discipline() {
 	let null = CHandle::null();
 	assert!(null.is_null());
 	assert!(unsafe { handle::get::<u32>(&null) }.is_none());
 
-	// guard: Ok -> OK; Err -> mapped code; panic -> E_FAILED.
-	assert_eq!(handle::guard(|| Ok(())), OAKNODE_OK);
-	assert_eq!(handle::guard(|| Err(Error::Invalid)), OAKNODE_E_INVALID);
-	assert_eq!(
-		handle::guard(|| -> Result<(), Error> { panic!("boom") }),
-		OAKNODE_E_FAILED
-	);
-
-	// guard_handle: Ok -> handle; Err/panic -> empty.
-	let h = handle::guard_handle(|| Ok(handle::make_owned(5u32)));
-	assert!(!h.ctx.is_null());
-	assert!(
-		handle::guard_handle(|| -> Result<CHandle, Error> { Err(Error::NotFound) })
-			.ctx
-			.is_null()
-	);
-	assert!(
-		handle::guard_handle(|| -> Result<CHandle, Error> { panic!("x") })
-			.ctx
-			.is_null()
-	);
-
-	// guard_void swallows panics.
-	handle::guard_void(|| panic!("swallowed"));
-
-	// make_owned / make_owned_with / make_borrowed round-trip.
+	// make_owned / make_owned_with round-trip.
 	let owned = handle::make_owned(7u32);
 	let rb = owned.ctx as *const RefBox<u32>;
 	unsafe {
 		assert_eq!((*rb).refs.load(std::sync::atomic::Ordering::Relaxed), 1);
 	}
-	let value = 9u32;
-	let borrowed = unsafe { handle::make_borrowed(&value as *const u32 as *mut u32) };
-	assert!(!borrowed.ctx.is_null());
-	assert_eq!(unsafe { handle::get::<u32>(&borrowed) }, Some(&9u32));
-	assert!(unsafe { handle::make_borrowed::<u32>(std::ptr::null_mut()) }.is_null());
+	assert_eq!(unsafe { handle::get::<u32>(&owned) }, Some(&7u32));
 
 	// make_owned_with uses a custom release.
 	unsafe extern "C" fn custom_release(ctx: *mut std::ffi::c_void) {
@@ -913,7 +884,7 @@ fn handle_helpers_and_guards() {
 	);
 
 	// Release everything (single release each).
-	for h in [owned, borrowed, custom] {
+	for h in [owned, custom] {
 		unsafe { (h.release.unwrap())(h.ctx) };
 	}
 }

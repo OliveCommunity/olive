@@ -14,18 +14,25 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Refcounted-handle scaffolding. Same pattern as the oaknode crate
-//! (`src/node/rust/src/handle.rs`); intentionally duplicated rather
-//! than shared — each module DLL must run its own addref/release code
-//! (the function pointers in a handle always point into the DLL that
-//! created the object). Value handles (`OakTimelineMarkerList`,
-//! `OakTimelineWorkArea`) share this box.
+//! Refcounted-handle scaffolding for the oakengine facade boundary.
+//!
+//! After the single-lib unification the crate's internal object
+//! references are plain Rust types: the timeline commands hold
+//! [`Arc<Mutex<…>>`] handles to the shared marker list / work area, and
+//! [`CHandle`] appears only in the facade-facing entries that the
+//! oakengine C ABI export layer (and the first-party frontends) call.
+//!
+//! Every [`make_owned`] value handle boxes an [`Arc<Mutex<T>>`] behind a
+//! [`RefBox`] (the same pattern as the oaknode project handles): the
+//! facade reads the shared object back through
+//! `get::<Arc<Mutex<T>>>`, clones the `Arc`, and the command entries do
+//! the same when they convert a handle into the crate's Rust-typed
+//! command constructors. The box's addref/release functions only manage
+//! the handle shell — the `Arc` keeps the actual value alive.
 
 use std::ffi::c_void;
-use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicU32, Ordering};
-
-use crate::error::{Result, OAKTIMELINE_E_FAILED, OAKTIMELINE_OK};
+use std::sync::{Arc, Mutex};
 
 /// ABI version stamped into every oaktimeline handle.
 pub const OAKTIMELINE_ABI_VERSION: u32 = 1;
@@ -74,36 +81,35 @@ unsafe extern "C" fn release_box<T: 'static>(ptr: *mut c_void) {
 }
 
 /// Owned handle with count 1; empty on allocation failure.
+///
+/// The boxed value is an [`Arc<Mutex<T>>`] (see the module docs): every
+/// handle produced here references the same shared object that the
+/// timeline commands hold directly.
 pub fn make_owned<T: Send + 'static>(value: T) -> CHandle {
+	make_owned_arc(Arc::new(Mutex::new(value)))
+}
+
+/// Owned handle over an already-shared `Arc<Mutex<T>>`; empty on
+/// allocation failure. The `Arc` is moved into the box, so every handle
+/// created from the same `Arc` shares one object.
+pub fn make_owned_arc<T: Send + 'static>(arc: Arc<Mutex<T>>) -> CHandle {
 	let boxed = Box::new(RefBox {
 		refs: AtomicU32::new(1),
-		value,
+		value: arc,
 	});
 	let ptr = Box::into_raw(boxed) as *mut c_void;
 	CHandle {
 		ctx: ptr,
-		addref: Some(addref_box::<T>),
-		release: Some(release_box::<T>),
+		addref: Some(addref_box::<Arc<Mutex<T>>>),
+		release: Some(release_box::<Arc<Mutex<T>>>),
 		abi_version: OAKTIMELINE_ABI_VERSION,
 	}
 }
 
-/// Borrowed handle for an object owned elsewhere (release frees only
-/// the box).
-///
-/// The box holds a detached copy of `*ptr`, so the underlying object is
-/// never touched by the handle's release; `get` returns the copy. The
-/// caller retains ownership of `ptr`.
-///
-/// # Safety
-/// Caller guarantees `ptr` is valid for reading for the duration of the
-/// call.
-pub unsafe fn make_borrowed<T: Send + 'static>(ptr: *mut T) -> CHandle {
-	let value = unsafe { ptr.read() };
-	make_owned(value)
-}
-
 /// Typed view into a handle; `None` for empty handles.
+///
+/// Value handles box an [`Arc<Mutex<T>>`]; read the shared object with
+/// `get::<Arc<Mutex<T>>>(h)` and clone the `Arc` (or lock it in place).
 ///
 /// # Safety
 /// `T` must be the boxed type.
@@ -111,19 +117,14 @@ pub unsafe fn get<T: 'static>(h: &CHandle) -> Option<&T> {
 	if h.ctx.is_null() {
 		return None;
 	}
-	if h.addref.is_some() {
-		// Owned (or borrowed-via-copy) handle: `ctx` points at a `RefBox<T>`.
-		let rb = unsafe { &*(h.ctx as *const RefBox<T>) };
-		Some(&rb.value)
-	} else {
-		// Borrowed handle wrapping a raw object pointer (e.g. test-stub
-		// handles): `ctx` is the object itself, not a `RefBox<T>`.
-		Some(unsafe { &*(h.ctx as *const T) })
-	}
+	let rb = unsafe { &*(h.ctx as *const RefBox<T>) };
+	Some(&rb.value)
 }
 
-/// Mutable typed view into a handle; `None` for empty handles. Used by
-/// undo commands to mutate the boxed value they hold a handle to.
+/// Mutable typed view into a handle; `None` for empty handles. With the
+/// `Arc`-boxed value handles this yields `&mut Arc<Mutex<T>>` — use
+/// [`get::<Arc<Mutex<T>>>`](get) plus `Mutex::lock` to mutate the shared
+/// value instead.
 ///
 /// # Safety
 /// `T` must be the boxed type, and the caller must guarantee exclusive
@@ -133,47 +134,6 @@ pub unsafe fn get_mut<T: 'static>(h: &CHandle) -> Option<&mut T> {
 	if h.ctx.is_null() {
 		return None;
 	}
-	if h.addref.is_some() {
-		// Owned (or borrowed-via-copy) handle: `ctx` points at a `RefBox<T>`.
-		let rb = unsafe { &mut *(h.ctx as *mut RefBox<T>) };
-		Some(&mut rb.value)
-	} else {
-		// Borrowed handle wrapping a raw object pointer (e.g. test-stub
-		// handles): `ctx` is the object itself, not a `RefBox<T>`.
-		Some(unsafe { &mut *(h.ctx as *mut T) })
-	}
-}
-
-/// Panic-catching FFI wrapper for i32-returning exports.
-pub fn guard<F: FnOnce() -> Result<()>>(f: F) -> i32 {
-	match catch_unwind(AssertUnwindSafe(f)) {
-		Ok(Ok(())) => OAKTIMELINE_OK,
-		Ok(Err(e)) => e.code(),
-		Err(_) => OAKTIMELINE_E_FAILED,
-	}
-}
-
-/// Panic-catching FFI wrapper for handle-returning exports.
-pub fn guard_handle<F: FnOnce() -> Result<CHandle>>(f: F) -> CHandle {
-	match catch_unwind(AssertUnwindSafe(f)) {
-		Ok(Ok(h)) => h,
-		_ => CHandle::null(),
-	}
-}
-
-/// Panic-catching FFI wrapper for void exports.
-pub fn guard_void<F: FnOnce()>(f: F) {
-	let _ = catch_unwind(AssertUnwindSafe(f));
-}
-
-/// Panic-catching FFI wrapper for exports returning an `i32` value that is
-/// not an error code (e.g. two-stage string lengths): a successful closure
-/// returns its value verbatim, errors map through `Error::code`, and a
-/// panic becomes `OAKTIMELINE_E_FAILED`.
-pub fn guard_i32<F: FnOnce() -> Result<i32>>(f: F) -> i32 {
-	match catch_unwind(AssertUnwindSafe(f)) {
-		Ok(Ok(v)) => v,
-		Ok(Err(e)) => e.code(),
-		Err(_) => OAKTIMELINE_E_FAILED,
-	}
+	let rb = unsafe { &mut *(h.ctx as *mut RefBox<T>) };
+	Some(&mut rb.value)
 }

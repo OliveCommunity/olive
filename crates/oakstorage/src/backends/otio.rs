@@ -67,6 +67,7 @@ use oaknode::track::{TrackBehavior, TrackListBehavior, TrackType};
 
 use crate::backend::LoadResult;
 use crate::nodeutil as node;
+use crate::nodeutil::ProjectArc;
 use crate::error::{Error, Result};
 use crate::uri::StorageUri;
 
@@ -80,6 +81,46 @@ impl OtioBackend {
 	/// Construct.
 	pub fn new() -> Self {
 		OtioBackend
+	}
+
+	/// Save a project (already read out of its handle) to the URI. The
+	/// Rust-typed inner path: the facade-facing trait `save` converts the
+	/// project handle and forwards here.
+	pub fn save_project(
+		&self,
+		project: &ProjectArc,
+		uri: &StorageUri,
+		_options: u32,
+	) -> Result<()> {
+		let path = uri.local_path().ok_or(Error::Invalid)?.to_string();
+		let ext = uri.extension().ok_or(Error::Invalid)?;
+		let guard = project.lock().map_err(|_| Error::State)?;
+		let timelines = project_to_timelines(&guard);
+
+		match ext.as_str() {
+			"otio" => {
+				let root = if timelines.len() == 1 {
+					Serializable::Timeline(timelines.into_iter().next().unwrap())
+				} else if timelines.is_empty() {
+					// Nothing to export; a single empty timeline is the
+					// friendliest shape for a fresh import.
+					Serializable::Timeline(Timeline::new("Timeline"))
+				} else {
+					let children: Vec<Serializable> = timelines
+						.into_iter()
+						.map(Serializable::Timeline)
+						.collect();
+					Serializable::SerializableCollection(SerializableCollection::new(
+						"oak",
+						children,
+					))
+				};
+				root.to_json_file(&path).map_err(|e| Error::Io(e.to_string()))
+			}
+			"fcpxml" => oakotio::to_fcpxml_file(&timelines, &path)
+				.map_err(|e| Error::Io(e.to_string())),
+			_ => Err(Error::Invalid),
+		}
 	}
 }
 
@@ -149,38 +190,12 @@ impl crate::backend::StorageBackend for OtioBackend {
 		&self,
 		project: crate::handle::CHandle,
 		uri: &StorageUri,
-		_options: u32,
+		options: u32,
 	) -> Result<()> {
-		let path = uri.local_path().ok_or(Error::Invalid)?.to_string();
-		let ext = uri.extension().ok_or(Error::Invalid)?;
+		// Facade boundary: convert the project handle to the boxed
+		// project, then run the Rust-typed save.
 		let arc = unsafe { node::project_arc(&project)? };
-		let guard = arc.lock().map_err(|_| Error::State)?;
-		let timelines = project_to_timelines(&guard);
-
-		match ext.as_str() {
-			"otio" => {
-				let root = if timelines.len() == 1 {
-					Serializable::Timeline(timelines.into_iter().next().unwrap())
-				} else if timelines.is_empty() {
-					// Nothing to export; a single empty timeline is the
-					// friendliest shape for a fresh import.
-					Serializable::Timeline(Timeline::new("Timeline"))
-				} else {
-					let children: Vec<Serializable> = timelines
-						.into_iter()
-						.map(Serializable::Timeline)
-						.collect();
-					Serializable::SerializableCollection(SerializableCollection::new(
-						"oak",
-						children,
-					))
-				};
-				root.to_json_file(&path).map_err(|e| Error::Io(e.to_string()))
-			}
-			"fcpxml" => oakotio::to_fcpxml_file(&timelines, &path)
-				.map_err(|e| Error::Io(e.to_string())),
-			_ => Err(Error::Invalid),
-		}
+		self.save_project(&arc, uri, options)
 	}
 }
 

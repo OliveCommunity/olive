@@ -19,6 +19,12 @@
 //! than shared — each module DLL must run its own addref/release code (the
 //! function pointers in a handle always point into the DLL that created the
 //! object).
+//!
+//! M14 R5: only the parts the oakengine facade needs remain (owned
+//! box/addref/release plus typed `get`/`get_mut` views — the facade boxes
+//! its task payloads through [`make_owned`] and reads them back with
+//! `get`/`get_mut`). The borrowed-handle and panic-guard helpers had no
+//! in-crate callers and were removed.
 
 use std::sync::atomic::AtomicU32;
 
@@ -65,23 +71,6 @@ unsafe extern "C" fn owned_release<T: 'static>(ctx: *mut std::ffi::c_void) {
 	}
 }
 
-/// Release function for borrowed handles: destroys only the box, never the
-/// pointee.
-///
-/// CPP-PARITY: src/task/c_api/taskhandle.h (wrap_borrowed)
-unsafe extern "C" fn borrowed_release<T: 'static>(ctx: *mut std::ffi::c_void) {
-	if ctx.is_null() {
-		return;
-	}
-	let b = ctx as *const RefBox<*mut T>;
-	let last = unsafe { (*b).refs.fetch_sub(1, std::sync::atomic::Ordering::SeqCst) };
-	if last == 1 {
-		unsafe {
-			drop(Box::from_raw(ctx as *mut RefBox<*mut T>));
-		}
-	}
-}
-
 /// Owned handle with count 1; empty on allocation failure.
 pub fn make_owned<T: Send + 'static>(value: T) -> CHandle {
 	let b = Box::new(RefBox {
@@ -92,27 +81,6 @@ pub fn make_owned<T: Send + 'static>(value: T) -> CHandle {
 		ctx: Box::into_raw(b) as *mut std::ffi::c_void,
 		addref: Some(owned_addref::<T>),
 		release: Some(owned_release::<T>),
-		abi_version: OAKTASK_ABI_VERSION,
-	}
-}
-
-/// Borrowed handle for an object owned elsewhere (release frees only the
-/// box).
-///
-/// # Safety
-/// Caller guarantees `ptr` outlives every derived handle.
-pub unsafe fn make_borrowed<T: Send + 'static>(ptr: *mut T) -> CHandle {
-	if ptr.is_null() {
-		return CHandle::null();
-	}
-	let b = Box::new(RefBox {
-		refs: AtomicU32::new(1),
-		value: ptr,
-	});
-	CHandle {
-		ctx: Box::into_raw(b) as *mut std::ffi::c_void,
-		addref: Some(owned_addref::<*mut T>),
-		release: Some(borrowed_release::<T>),
 		abi_version: OAKTASK_ABI_VERSION,
 	}
 }
@@ -138,26 +106,4 @@ pub unsafe fn get_mut<T: 'static>(h: &CHandle) -> Option<&mut T> {
 		return None;
 	}
 	unsafe { Some(&mut (*(h.ctx as *mut RefBox<T>)).value) }
-}
-
-/// Panic-catching FFI wrapper for i32-returning exports.
-pub fn guard<F: FnOnce() -> crate::error::Result<()>>(f: F) -> i32 {
-	match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
-		Ok(Ok(())) => crate::error::OAKTASK_OK,
-		Ok(Err(e)) => e.code(),
-		Err(_) => crate::error::OAKTASK_E_FAILED,
-	}
-}
-
-/// Panic-catching FFI wrapper for handle-returning exports.
-pub fn guard_handle<F: FnOnce() -> crate::error::Result<CHandle>>(f: F) -> CHandle {
-	match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
-		Ok(Ok(h)) => h,
-		Ok(Err(_)) | Err(_) => CHandle::null(),
-	}
-}
-
-/// Panic-catching FFI wrapper for void exports.
-pub fn guard_void<F: FnOnce()>(f: F) {
-	let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
 }

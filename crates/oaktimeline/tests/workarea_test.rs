@@ -19,12 +19,25 @@
 //! `reset_in`/`reset_out` sentinels. The XML load/save contract left
 //! with the deleted C ABI export layer (single-lib unification).
 
+use std::sync::{Arc, Mutex, MutexGuard};
+
 use oakcore_rs::{Rational, TimeRange};
-use oaktimeline::handle::{get, make_owned};
+use oaktimeline::handle::{get, make_owned, CHandle};
 use oaktimeline::undocommon::Command;
 use oaktimeline::workarea::{
 	reset_in, reset_out, TimelineWorkArea, WorkareaSetEnabledCommand, WorkareaSetRangeCommand,
 };
+
+/// Lock the shared work area behind a live handle. Every work-area handle
+/// in these tests comes from `make_owned`, which boxes an
+/// `Arc<Mutex<TimelineWorkArea>>`.
+fn wa_of(h: &CHandle) -> MutexGuard<'_, TimelineWorkArea> {
+	// SAFETY: as above; the handle is live.
+	unsafe { get::<Arc<Mutex<TimelineWorkArea>>>(h) }
+		.expect("live work-area handle")
+		.lock()
+		.unwrap_or_else(|e| e.into_inner())
+}
 
 /// `reset_in` is the null rational (0/1) marking an unset work area
 /// start.
@@ -96,9 +109,9 @@ fn workarea_set_enabled_command_redo_undo() {
 	let wa_h = make_owned(TimelineWorkArea::new());
 	let mut cmd = WorkareaSetEnabledCommand::new(wa_h.clone(), true);
 	cmd.redo();
-	assert!(unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().enabled());
+	assert!(wa_of(&wa_h).enabled());
 	cmd.undo();
-	assert!(!unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().enabled());
+	assert!(!wa_of(&wa_h).enabled());
 }
 
 /// `WorkareaSetRangeCommand` redo stores the new range and undo
@@ -109,20 +122,11 @@ fn workarea_set_range_command_redo_undo() {
 	let new_range = TimeRange::new(Rational::new(10, 1), Rational::new(20, 1));
 	let mut cmd = WorkareaSetRangeCommand::new(wa_h.clone(), new_range);
 	cmd.redo();
-	assert_eq!(
-		*unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().range(),
-		new_range
-	);
+	assert_eq!(*wa_of(&wa_h).range(), new_range);
 	cmd.undo();
 	// Undo restores the range captured at construction (the reset range).
-	assert_eq!(
-		unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().in_(),
-		reset_in()
-	);
-	assert_eq!(
-		unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().out(),
-		reset_out()
-	);
+	assert_eq!(wa_of(&wa_h).in_(), reset_in());
+	assert_eq!(wa_of(&wa_h).out(), reset_out());
 }
 
 /// `to_command` boxes a work area command into an oakundo `UndoCommand`
@@ -133,9 +137,9 @@ fn workarea_commands_box_to_undo_command() {
 	let wa_h = make_owned(TimelineWorkArea::new());
 	let mut enabled_cmd = WorkareaSetEnabledCommand::new(wa_h.clone(), true).to_command();
 	enabled_cmd.redo_now();
-	assert!(unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().enabled());
+	assert!(wa_of(&wa_h).enabled());
 	enabled_cmd.undo_now();
-	assert!(!unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().enabled());
+	assert!(!wa_of(&wa_h).enabled());
 
 	let mut range_cmd = WorkareaSetRangeCommand::new(
 		wa_h.clone(),
@@ -143,15 +147,9 @@ fn workarea_commands_box_to_undo_command() {
 	)
 	.to_command();
 	range_cmd.redo_now();
-	assert_eq!(
-		unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().in_(),
-		Rational::new(1, 1)
-	);
+	assert_eq!(wa_of(&wa_h).in_(), Rational::new(1, 1));
 	range_cmd.undo_now();
-	assert_eq!(
-		unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().in_(),
-		reset_in()
-	);
+	assert_eq!(wa_of(&wa_h).in_(), reset_in());
 }
 
 /// `Command` trait dispatch routes through the same redo/undo bodies as
@@ -162,22 +160,16 @@ fn workarea_commands_trait_dispatch() {
 
 	let mut e = WorkareaSetEnabledCommand::new(wa_h.clone(), true);
 	Command::redo(&mut e);
-	assert!(unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().enabled());
+	assert!(wa_of(&wa_h).enabled());
 	Command::undo(&mut e);
-	assert!(!unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().enabled());
+	assert!(!wa_of(&wa_h).enabled());
 
 	let mut r = WorkareaSetRangeCommand::new(
 		wa_h.clone(),
 		TimeRange::new(Rational::new(3, 1), Rational::new(4, 1)),
 	);
 	Command::redo(&mut r);
-	assert_eq!(
-		unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().in_(),
-		Rational::new(3, 1)
-	);
+	assert_eq!(wa_of(&wa_h).in_(), Rational::new(3, 1));
 	Command::undo(&mut r);
-	assert_eq!(
-		unsafe { get::<TimelineWorkArea>(&wa_h) }.unwrap().in_(),
-		reset_in()
-	);
+	assert_eq!(wa_of(&wa_h).in_(), reset_in());
 }

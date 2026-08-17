@@ -63,7 +63,7 @@ frozen, implemented verbatim by `src/ffi.rs`.
 src/
   lib.rs        crate doc + module map
   error.rs      error codes (mirrors include/render/error.h)
-  handle.rs     refcounted-handle scaffolding + live-object accounting
+  handle.rs     refcounted-handle scaffolding (facade entry points only)
   texture.rs    Texture value type (wraps backend textures / CPU frames)
   frame.rs      VideoParamsPod + Frame helpers
   cache.rs      PlaybackCache / FrameHashCache family + C++-parity disk state
@@ -83,7 +83,9 @@ tests/          contract + golden tests (common/ has shared helpers)
 
 ## Hard rules
 
-1. Every export goes through `handle::guard*`.
+1. `CHandle` only appears at the facade boundary: the crate's internal
+   calls pass Rust types directly; `handle::make_owned`/`get`/`get_mut`
+   are the facade entry points the oakengine stubs call.
 2. No `unsafe` outside `backend.rs` (GPU FFI) and `bridge/`.
 3. F32 + ACEScg pipeline invariants are asserted in tests, not in
    comments (see tests/pipeline_test.rs).

@@ -17,16 +17,16 @@
 //! Contract tests for the refcounted-handle scaffolding
 //! (`src/handle.rs`). The C++ gtest suite (`src/timeline/tests`)
 //! drives the ABI-level refcount behaviour through the exports; these
-//! tests pin the Rust-side primitive semantics that every export
-//! relies on: null sentinel, `make_owned`/`make_borrowed` ownership,
-//! panics escaping through `guard*`, and the ABI version stamp.
+//! tests pin the Rust-side primitive semantics every facade-facing
+//! entry relies on: the null sentinel, `make_owned`'s shared
+//! `Arc<Mutex<T>>` box, and the ABI version stamp. The old
+//! `guard*`/`make_borrowed` helpers left with the deleted C ABI export
+//! layer.
 
-use oaktimeline::error::{
-	Error, OAKTIMELINE_ABI_VERSION, OAKTIMELINE_E_FAILED, OAKTIMELINE_E_INVALID, OAKTIMELINE_OK,
-};
-use oaktimeline::handle::{
-	get, guard, guard_handle, guard_void, make_borrowed, make_owned, CHandle,
-};
+use std::sync::{Arc, Mutex};
+
+use oaktimeline::error::OAKTIMELINE_ABI_VERSION;
+use oaktimeline::handle::{get, make_owned, CHandle};
 
 /// `CHandle::null()` is the all-null sentinel with abi_version 0.
 #[test]
@@ -50,87 +50,45 @@ fn make_owned_starts_at_one_and_releases() {
 
 	// Addref bumps the count so the box is still live afterwards.
 	let addref = h.addref.unwrap();
-	// Safety: `h` is an owned handle whose box is `RefBox<i32>`.
+	// Safety: `h` is an owned handle whose box is `RefBox<Arc<Mutex<i32>>>`.
 	unsafe { addref(h.ctx) };
-	let val = unsafe { get::<i32>(&h) };
-	assert_eq!(val, Some(&42));
+	// SAFETY: `make_owned` boxes an `Arc<Mutex<T>>`.
+	let val = unsafe { get::<Arc<Mutex<i32>>>(&h) };
+	assert_eq!(*val.unwrap().lock().unwrap(), 42);
 }
 
-/// `make_owned` boxes a `Send + 'static` value and `get` returns the
-/// boxed value back out.
+/// `make_owned` boxes a `Send + 'static` value behind a shared
+/// `Arc<Mutex<T>>` and `get` hands the shared `Arc` back out.
 #[test]
 fn make_owned_round_trips_value() {
 	let h = make_owned(7i32);
-	let val = unsafe { get::<i32>(&h) };
-	assert_eq!(val, Some(&7));
+	// SAFETY: `make_owned` boxes an `Arc<Mutex<T>>`.
+	let val = unsafe { get::<Arc<Mutex<i32>>>(&h) };
+	assert_eq!(*val.unwrap().lock().unwrap(), 7);
 }
 
-/// `make_borrowed` wraps a caller-owned pointer without transferring
-/// ownership: releasing the borrowed handle frees only the box, never
-/// the underlying object.
-///
-/// # Safety
-/// The borrowed allocation must outlive the handle; the caller frees
-/// it afterwards.
+/// Every handle produced by `make_owned` shares one object: mutating
+/// through a clone of the boxed `Arc` is visible through any other clone
+/// of the same handle.
 #[test]
-fn make_borrowed_release_does_not_free_owner() {
-	let mut v = 5i32;
-	let h = unsafe { make_borrowed::<i32>(&mut v) };
-	assert!(!h.is_null());
-	// Releasing the borrowed handle destroys only the internal copy.
-	let release = h.release.unwrap();
-	// Safety: `h` is an owned box (see `make_borrowed`), release boxed copy.
-	unsafe { release(h.ctx) };
-	// The caller's object is untouched.
-	assert_eq!(v, 5);
+fn make_owned_shares_one_object() {
+	let h1 = make_owned(0i32);
+	let h2 = h1.clone();
+	// SAFETY: both handles box the same `Arc<Mutex<i32>>` allocation.
+	let a = unsafe { get::<Arc<Mutex<i32>>>(&h1) }.unwrap().clone();
+	let b = unsafe { get::<Arc<Mutex<i32>>>(&h2) }.unwrap().clone();
+	assert!(Arc::ptr_eq(&a, &b));
+	*a.lock().unwrap() = 42;
+	assert_eq!(*b.lock().unwrap(), 42);
 }
 
-/// `guard` maps a successful closure to `OAKTIMELINE_OK`.
+/// `get` on a null handle yields `None` (the null-handle sentinel maps
+/// to "no object" everywhere).
 #[test]
-fn guard_success_returns_ok() {
-	assert_eq!(guard(|| Ok(())), OAKTIMELINE_OK);
-}
-
-/// `guard` maps an `Err(Error::Invalid)` to `OAKTIMELINE_E_INVALID`.
-#[test]
-fn guard_error_maps_code() {
-	assert_eq!(guard(|| Err(Error::Invalid)), OAKTIMELINE_E_INVALID);
-}
-
-/// `guard_handle` returns the inner handle on success.
-#[test]
-fn guard_handle_success_returns_handle() {
-	let inner = make_owned(3i32);
-	let out = guard_handle(|| Ok(inner.clone()));
-	assert!(!out.is_null());
-	assert_eq!(unsafe { get::<i32>(&out) }, Some(&3));
-}
-
-/// `guard_handle` returns a null handle on error so callers never see
-/// a partially-built object.
-#[test]
-fn guard_handle_error_returns_null() {
-	let out = guard_handle(|| Err(Error::Invalid));
-	assert!(out.is_null());
-}
-
-/// A panicking closure does not unwind across the `guard_void` FFI
-/// boundary; it is caught and converted to the failed code.
-#[test]
-fn guard_catches_panic() {
-	// `guard` maps the panic to the failed code.
-	let code = guard(|| -> oaktimeline::error::Result<()> {
-		panic!("boom");
-	});
-	assert_eq!(code, OAKTIMELINE_E_FAILED);
-
-	// `guard_void` swallows the panic without unwinding into the caller.
-	let mut reached = false;
-	guard_void(|| {
-		panic!("no unwind");
-	});
-	reached = true;
-	assert!(reached);
+fn get_null_handle_is_none() {
+	let h = CHandle::null();
+	// SAFETY: null handle -> None without touching any pointer.
+	assert!(unsafe { get::<i32>(&h) }.is_none());
 }
 
 /// Every handle produced through the crate carries
@@ -140,28 +98,4 @@ fn handles_are_stamped_with_abi_version() {
 	let h = make_owned(1u64);
 	assert_eq!(h.abi_version, OAKTIMELINE_ABI_VERSION);
 	assert_ne!(h.abi_version, 0);
-}
-
-/// Null and invalid handles are rejected uniformly: every `guard`
-/// family returns the error code / null handle without touching the
-/// pointer.
-#[test]
-fn guard_rejects_invalid_handles() {
-	let null_h = CHandle::null();
-	// Reading through a null handle yields None, which maps to invalid.
-	let code = guard(|| {
-		if unsafe { get::<i32>(&null_h) }.is_none() {
-			return Err(Error::Invalid);
-		}
-		Ok(())
-	});
-	assert_eq!(code, OAKTIMELINE_E_INVALID);
-
-	let h_out = guard_handle(|| {
-		if unsafe { get::<i32>(&null_h) }.is_none() {
-			return Err(Error::Invalid);
-		}
-		Ok(make_owned(0i32))
-	});
-	assert!(h_out.is_null());
 }

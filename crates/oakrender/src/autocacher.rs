@@ -337,7 +337,10 @@ mod tests {
 
 	#[test]
 	fn single_frame_cancels_previous() {
-		let (mut c, mut pool) = new_cacher();
+		// The race this asserts ("the previous frame is cancelled") is only
+		// deterministic when the first job cannot finish before the
+		// superseding submit lands — produce frames slowly for this test.
+		let (mut c, mut pool) = new_cacher_slow();
 		c.attach(7);
 		let first = c.single_frame(Rational::new(0, 1));
 		let second = c.single_frame(Rational::new(1, 1));
@@ -347,6 +350,25 @@ mod tests {
 		let r = c.arena.result(first).unwrap();
 		assert!(r.is_err());
 		pool.shutdown();
+	}
+
+	/// A cacher whose frames take ~100ms to produce (see
+	/// [`single_frame_cancels_previous`]).
+	fn new_cacher_slow() -> (PreviewAutoCacher, WorkerPool) {
+		let mut pool = WorkerPool::new(2);
+		pool.start();
+		let producer: crate::ticket::Producer = Arc::new(|_, _| {
+			std::thread::sleep(std::time::Duration::from_millis(100));
+			let mut f = Frame::new();
+			let mut p = VideoParamsPod::default();
+			p.width = 4;
+			p.height = 4;
+			f.set_video_params(p);
+			f.allocate();
+			Ok(crate::ticket::TicketPayload::Video(Texture::wrap_frame(f)))
+		});
+		let arena = Arc::new(TicketArena::new(pool.clone(), producer));
+		(PreviewAutoCacher::new(arena), pool)
 	}
 
 	#[test]

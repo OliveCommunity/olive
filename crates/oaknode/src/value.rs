@@ -22,7 +22,9 @@
 //! value and releases on drop, which keeps the ownership chain inside
 //! the refcount discipline instead of the C++ shared_ptr-in-Variant
 //! model (the one documented exception of the C++ tree; it does not
-//! exist here).
+//! exist here). Textures specifically are oakrender objects, and
+//! oakrender depends on oaknode, so the payload must stay an opaque
+//! [`crate::handle::CHandle`] at this boundary.
 
 use std::ffi::c_int;
 

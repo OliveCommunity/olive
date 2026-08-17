@@ -50,7 +50,7 @@
 | `create_remove_command(Node/Block)` | `undocommon::create_remove_command` |
 | `create_and_run_remove_command(Node/Block)` | `undocommon::create_and_run_remove_command` |
 | `free_command_handle` | `undocommon::free_command_handle` |
-| `CHandleCommandWrapper` | `undocommon::CHandleCommandWrapper`（把 oakundo vtable command 当本 crate 命令暴露的封装） |
+| `CHandleCommandWrapper` | 已删除（M14 R5）：wrapper 是旧 C ABI 时代的产物；命令现在直接以 `UndoCommand` 值存在，经 `box_command` 装箱 |
 
 ## 5. Track 命令（timelineundotrack.h）
 
@@ -120,4 +120,4 @@
 |---|---|
 | `oaknode_c_api::to_native` / `oakundo_capi::make_command_handle`（C++ 内部助手） | 不复制；Rust 侧把 handle 当 opaque，命令经 vtable、裸指针经 bridge |
 | `Timeline::PLAYHEAD_COLOR` | UI 取色宏，归 facade/app |
-| 全部 `*_internal` 私有辅助 / `MemoryManager` 语义 | 实现细节，重组于各模块内部；内存所有权由 `CHandle` addref/release 表达 |
+| 全部 `*_internal` 私有辅助 / `MemoryManager` 语义 | 实现细节，重组于各模块内部；共享对象经 `Arc<Mutex<…>>` 表达，`CHandle` 只剩 facade 边界 |

@@ -86,8 +86,9 @@ pub struct RenderScale {
 	pub y: f64,
 }
 
-/// 插件实例。`Arc<RefBox<Instance>>` 管理生命周期；身份注册见
-/// [`crate::handle::Registry`]（param 桥按身份反查）。
+/// 插件实例。`Arc<RefBox<Instance>>` 管理生命周期（`RefBox` 为 facade
+/// 边界类型，见 [`crate::handle`]）；param 桥按 props 地址映射反查
+/// （[`crate::suites::param`]），节点绑定经 [`crate::node`] 身份注册表。
 ///
 /// `#[repr(C)]` + props 在偏移 0（句柄约定，见 [`crate::suites::tag`]；
 /// 实例期 effect/param-set handle 即 `&props`）。
@@ -123,8 +124,9 @@ pub struct Instance {
 	pub render_lock: std::sync::Mutex<()>,
 }
 
-/// 实例销毁路径：先通知 destroyInstance action，再摘除身份登记。
-/// （RefBox 归零时 Drop 触发——action 通知必须在对象析构前发出。）
+/// 实例销毁路径：先通知 destroyInstance action，再摘除 param 回写登记。
+/// （`Arc<RefBox<Instance>>` 归零时 Drop 触发——action 通知必须在
+/// 对象析构前发出。）
 impl Drop for Instance {
 	fn drop(&mut self) {
 		if !self
@@ -134,8 +136,6 @@ impl Drop for Instance {
 			self.notify_destroy();
 		}
 		crate::suites::param::unregister_params_of(&self.props as *const _ as usize);
-		crate::host::instance_registry()
-			.unregister(&self.props as *const crate::property::PropertySet as usize);
 	}
 }
 
@@ -954,8 +954,8 @@ impl Instance {
 		Ok(())
 	}
 
-	/// 销毁（destroyInstance action）。析构由 RefBox 驱动；
-	/// 此处只做 action 通知，幂等（[`Instance::drop`] 的
+	/// 销毁（destroyInstance action）。析构由 `Arc<RefBox<Instance>>`
+	/// 归零驱动；此处只做 action 通知，幂等（[`Instance::drop`] 的
 	/// `destroyed` 门保证只发一次）。
 	pub(crate) fn notify_destroy(&self) {
 		use crate::host::ACTION_DESTROY_INSTANCE;

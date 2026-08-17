@@ -20,12 +20,12 @@
 //! (`include/audio/*.h`). See README.md for the architectural mapping
 //! (singleton manager, stateless sync helpers, local value types).
 //!
-//! ## FFI discipline
+//! ## Structure
 //!
-//! Identical to the oaknode crate: every export goes through
-//! [`handle::guard*`], handles are opaque refcounted boxes (or, for the
-//! singleton `AudioManager`, borrow-only no-ops), shared state behind
-//! `Mutex`.
+//! Single-lib unification: the module crates are called directly from the
+//! oakengine facade (`crates/oakengine`), which owns the C-ABI shims and
+//! boxes the singleton [`manager::ManagerInner`] behind its own `CHandle`.
+//! Shared state lives behind `Mutex`.
 
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]

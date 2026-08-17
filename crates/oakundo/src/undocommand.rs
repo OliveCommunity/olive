@@ -201,6 +201,14 @@ impl UndoCommand {
 		}
 	}
 
+	/// Mutable reference to the child at `index` of a composite command.
+	pub fn multi_child_mut(&mut self, index: usize) -> Result<&mut UndoCommand> {
+		match &mut self.kind {
+			CommandKind::Multi(m) => m.child_mut(index),
+			CommandKind::Vtable { .. } => Err(Error::Invalid),
+		}
+	}
+
 	/// `redo_now` semantics: a no-op if already done.
 	pub fn redo_now(&mut self) {
 		if !self.done {
@@ -385,6 +393,11 @@ impl MultiUndoCommand {
 	/// Child at `index`.
 	pub fn child(&self, index: usize) -> Result<&UndoCommand> {
 		self.children.get(index).ok_or(Error::NotFound)
+	}
+
+	/// Mutable child at `index`.
+	pub fn child_mut(&mut self, index: usize) -> Result<&mut UndoCommand> {
+		self.children.get_mut(index).ok_or(Error::NotFound)
 	}
 
 	/// Redo all children in order.

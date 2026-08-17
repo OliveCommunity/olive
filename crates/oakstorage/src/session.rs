@@ -15,29 +15,31 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //! The project session (M10 §2.2 `OakStorageProject`): wraps a loaded
-//! project plus its source URI. `take` transfers the project handle
-//! out, leaving an empty shell that must still be freed.
+//! project plus its source URI. `take` transfers the project out, leaving
+//! an empty shell that must still be freed.
+//!
+//! M14 R5: the session holds the boxed project directly
+//! ([`crate::nodeutil::ProjectArc`]) instead of a `CHandle` — the handle
+//! form is only produced at the backend `load` boundary
+//! ([`crate::backend::LoadResult`]); `open` converts it before wrapping.
 
-use crate::handle::CHandle;
+use crate::nodeutil::ProjectArc;
 use crate::uri::StorageUri;
 
 /// An open project session.
 pub struct Session {
 	/// Source URI.
 	uri: StorageUri,
-	/// The project handle (None after [`Session::take`]).
-	project: Option<CHandle>,
+	/// The boxed project (None after [`Session::take`]).
+	project: Option<ProjectArc>,
 }
 
 impl Session {
-	/// Wrap a freshly loaded project. A null handle (the version-info
-	/// path: TOO_OLD/TOO_NEW/UNKNOWN_VERSION carries no project) maps to
-	/// `None`, not `Some(null)`.
-	pub fn new(uri: StorageUri, project: CHandle) -> Self {
-		Session {
-			uri,
-			project: (!project.is_null()).then_some(project),
-		}
+	/// Wrap a freshly loaded project. `None` (the version-info path:
+	/// TOO_OLD/TOO_NEW/UNKNOWN_VERSION carries no project) leaves an empty
+	/// session.
+	pub fn new(uri: StorageUri, project: Option<ProjectArc>) -> Self {
+		Session { uri, project }
 	}
 
 	/// Source URI.
@@ -45,27 +47,14 @@ impl Session {
 		&self.uri
 	}
 
-	/// Borrowed project handle (None after take).
-	pub fn project(&self) -> Option<&CHandle> {
+	/// Borrowed project (None after take).
+	pub fn project(&self) -> Option<&ProjectArc> {
 		self.project.as_ref()
 	}
 
-	/// Transfer the project out (C++ take_project semantics); the
-	/// session becomes an empty shell, and the caller owns the returned
-	/// handle (release it with `oaknode_project_free`).
-	pub fn take(&mut self) -> Option<CHandle> {
+	/// Transfer the project out (C++ take_project semantics); the session
+	/// becomes an empty shell, and the caller owns the returned reference.
+	pub fn take(&mut self) -> Option<ProjectArc> {
 		self.project.take()
-	}
-}
-
-impl Drop for Session {
-	fn drop(&mut self) {
-		// Release the still-held project handle (the `take` path already
-		// removed it).
-		if let Some(h) = self.project.take() {
-			if let Some(f) = h.release {
-				unsafe { f(h.ctx) };
-			}
-		}
 	}
 }

@@ -19,8 +19,11 @@
 //!
 //! The ove-xml/otio backends need oaknode's project + serializer
 //! families. Graph (de)serialization stays oaknode's own serializer
-//! (`load`/`save`); these helpers box the resulting `Arc<Mutex<Project>>`
-//! into the canonical handle form the storage session API moves around.
+//! (`load`/`save`); these helpers box the resulting
+//! `Arc<Mutex<Project>>` into the canonical handle form only where a
+//! project crosses the facade boundary (backends' `load` results and
+//! `save` inputs) — inside the crate, projects travel as the plain
+//! [`ProjectArc`] alias.
 
 use std::sync::{Arc, Mutex};
 
@@ -31,34 +34,13 @@ use crate::handle::CHandle;
 pub type ProjectArc = Arc<Mutex<oaknode::project::Project>>;
 
 /// Box an existing project as an owned handle (refcount 1).
+///
+/// This is the facade-boundary conversion: backends hand loaded projects
+/// to the caller (through [`crate::backend::LoadResult`] / the database
+/// backend's `load_at`) as an oaknode project handle; everything inside
+/// the crate works with the boxed [`ProjectArc`] instead.
 pub fn make_project_owned(project: ProjectArc) -> CHandle {
 	oaknode::handle::make_owned(project)
-}
-
-/// Release one owned reference of a project handle produced by
-/// [`make_project_owned`] (or the database backend's load). The handle is
-/// dead afterwards; the write-through binding keeps its own reference, so
-/// releasing the caller's copy never tears a bound project down.
-pub fn release_project(mut h: CHandle) {
-	if let Some(release) = h.release {
-		// SAFETY: `h` is an owned handle from this module; the release runs
-		// the box's own destructor once per owned reference.
-		unsafe { release(h.ctx) };
-	}
-	h.ctx = std::ptr::null_mut();
-}
-
-/// The boxed project of a handle produced by [`make_project_owned`] or the
-/// database backend's load (both box a `ProjectArc`). `None` for an empty
-/// handle.
-///
-/// The handle ABI carries no type tag, so the caller must only pass handles
-/// from those two producers; the unsafe downcast is contained here instead
-/// of spread across every direct-rlib consumer.
-pub fn project_arc_of(h: &CHandle) -> Option<ProjectArc> {
-	// SAFETY: the documented precondition — handles from this module's
-	// producers box a `ProjectArc`.
-	unsafe { oaknode::handle::get::<ProjectArc>(h) }.cloned()
 }
 
 /// Read the boxed project of a project handle.
@@ -70,6 +52,19 @@ pub unsafe fn project_arc(h: &CHandle) -> Result<ProjectArc> {
 	unsafe { oaknode::handle::get::<ProjectArc>(h) }
 		.cloned()
 		.ok_or(crate::error::Error::Invalid)
+}
+
+/// Release a project handle created by [`make_project_owned`] (its box's
+/// release callback drops one reference). NULL is a no-op.
+pub fn release_project(h: CHandle) {
+	if h.is_null() {
+		return;
+	}
+	if let Some(release) = h.release {
+		// SAFETY: `h` was produced by `make_project_owned`; the callback
+		// owns the box and nulls nothing else.
+		unsafe { release(h.ctx) };
+	}
 }
 
 /// Load a project from XML text via the oaknode serializer.

@@ -38,8 +38,8 @@
 //!   path or loop mode).
 //! * [`RetrieveVideoParams`] drops `renderer`, `divider` and
 //!   `maximum_format` (the Rust trait surface), so [`Decoder::retrieve_video`]
-//!   can only produce textures through an empty renderer handle and there
-//!   is no preview-divider scaling.
+//!   only reports decode success — it returns a unit [`OakRenderTexture`]
+//!   token, never a real texture — and there is no preview-divider scaling.
 //! * Probing uses stream parameters (no second decode pass), so `is_still`
 //!   is always false and interlacing always progressive.
 //! * Subtitle streams are counted but not added as subtitle entries.
@@ -325,12 +325,7 @@ impl Decoder for FFmpegDecoder {
 			return Err(fail("decoder is not open on a video stream"));
 		}
 		let _ = state.retrieve_frame(&p.time, p.time == crate::decoder::k_any_timecode(), None)?;
-		Ok(OakRenderTexture {
-			ctx: std::ptr::null_mut(),
-			addref: None,
-			release: None,
-			abi_version: crate::handle::OAKCODEC_ABI_VERSION,
-		})
+		Ok(OakRenderTexture)
 	}
 
 	fn retrieve_audio(

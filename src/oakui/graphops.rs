@@ -561,10 +561,14 @@ pub fn markers_of(list: &CHandle) -> Vec<(Rational, String, i32)> {
 	}
 	// SAFETY: `list` boxes a `TimelineMarkerList` (created by
 	// `marker_list_create`); the read is shared and brief.
-	let Some(l) = (unsafe { oaktimeline::handle::get::<oaktimeline::marker::TimelineMarkerList>(list) })
-	else {
+	let Some(l) = (unsafe {
+		oaktimeline::handle::get::<std::sync::Arc<std::sync::Mutex<oaktimeline::marker::TimelineMarkerList>>>(
+			list,
+		)
+	}) else {
 		return Vec::new();
 	};
+	let l = l.lock().unwrap_or_else(|e| e.into_inner());
 	(0..l.size())
 		.filter_map(|i| l.at(i))
 		.map(|m| (m.time().in_(), m.name().to_string(), m.color()))
@@ -577,7 +581,12 @@ pub fn marker_index_at(list: &CHandle, time: Rational) -> Option<usize> {
 		return None;
 	}
 	// SAFETY: as `markers_of`.
-	let l = unsafe { oaktimeline::handle::get::<oaktimeline::marker::TimelineMarkerList>(list) }?;
+	let l = unsafe {
+		oaktimeline::handle::get::<std::sync::Arc<std::sync::Mutex<oaktimeline::marker::TimelineMarkerList>>>(
+			list,
+		)
+	}?;
+	let l = l.lock().unwrap_or_else(|e| e.into_inner());
 	(0..l.size()).find(|&i| l.at(i).map(|m| m.time().in_()) == Some(time))
 }
 
@@ -588,7 +597,12 @@ pub fn workarea_state(wa: &CHandle) -> Option<(bool, TimeRange)> {
 	}
 	// SAFETY: `wa` boxes a `TimelineWorkArea` (created by
 	// `workarea_create`); the read is shared and brief.
-	let w = unsafe { oaktimeline::handle::get::<oaktimeline::workarea::TimelineWorkArea>(wa) }?;
+	let w = unsafe {
+		oaktimeline::handle::get::<std::sync::Arc<std::sync::Mutex<oaktimeline::workarea::TimelineWorkArea>>>(
+			wa,
+		)
+	}?;
+	let w = w.lock().unwrap_or_else(|e| e.into_inner());
 	Some((w.enabled(), *w.range()))
 }
 
@@ -599,8 +613,12 @@ pub fn workarea_set(wa: &CHandle, enabled: bool, range: TimeRange) {
 	}
 	// SAFETY: `wa` boxes a `TimelineWorkArea`; the engine writes it only
 	// from the UI thread.
-	if let Some(w) = unsafe { oaktimeline::handle::get_mut::<oaktimeline::workarea::TimelineWorkArea>(wa) }
-	{
+	if let Some(w) = unsafe {
+		oaktimeline::handle::get_mut::<std::sync::Arc<std::sync::Mutex<oaktimeline::workarea::TimelineWorkArea>>>(
+			wa,
+		)
+	} {
+		let mut w = w.lock().unwrap_or_else(|e| e.into_inner());
 		w.set_enabled(enabled);
 		w.set_range(range);
 	}
@@ -675,11 +693,9 @@ pub fn library_create(name: &str) -> Result<String, String> {
 			.insert("projectname".to_string(), name.to_string());
 		guard.uuid.clone()
 	};
-	let handle = oakstorage::nodeutil::make_project_owned(project);
 	let result = oakstorage::writethrough::backend()
-		.save(handle, &uri, 0)
+		.save_project(&project, &uri, 0)
 		.map_err(|e| e.to_string());
-	oakstorage::nodeutil::release_project(handle);
 	result?;
 	Ok(uuid)
 }
@@ -758,12 +774,8 @@ pub fn library_open(uuid: &str) -> Result<ProjectRef, String> {
 		));
 	}
 	let handle = result.project;
-	let project = oakstorage::nodeutil::project_arc_of(&handle)
-		.ok_or_else(|| "library load returned a foreign project handle".to_string());
-	// The loaded handle's ownership moves to the caller's Arc; release the
-	// handle shell (the Arc keeps the project alive).
-	oakstorage::nodeutil::release_project(handle);
-	let project = project?;
+	let project = unsafe { oakstorage::nodeutil::project_arc(&handle) }
+		.map_err(|e| e.to_string())?;
 	lock(&project).set_modified(false);
 	Ok(project)
 }

@@ -21,6 +21,7 @@ use super::common;
 
 use std::ffi::{c_char, c_int};
 
+use crate::audio::oakengine_audio_destroy_instance;
 use crate::codec::{
 	oakengine_encoding_codec_is_lossless, oakengine_encoding_codec_is_still_image,
 	oakengine_encoding_codec_name, oakengine_encoding_filename_contains_digit_placeholder,
@@ -299,9 +300,14 @@ fn params_handle_round_trip() {
 /// Audio recording without a running audio manager fails with E_STATE.
 #[test]
 fn start_audio_recording_no_manager() {
-	let p = unsafe { oakengine_encoding_params_create() };
-	assert!(!p.is_null());
-	let rc = unsafe { oakengine_encoding_start_audio_recording(p, std::ptr::null_mut(), 0) };
-	assert_eq!(rc, -2); // OAKENGINE_E_STATE
-	unsafe { oakengine_encoding_params_destroy(p) };
+	// The audio manager is a process-wide singleton shared with it_audio;
+	// serialize and normalize it (no instance) before asserting E_STATE.
+	common::with_manager(|| unsafe {
+		let _ = oakengine_audio_destroy_instance();
+		let p = oakengine_encoding_params_create();
+		assert!(!p.is_null());
+		let rc = oakengine_encoding_start_audio_recording(p, std::ptr::null_mut(), 0);
+		assert_eq!(rc, -2); // OAKENGINE_E_STATE
+		oakengine_encoding_params_destroy(p);
+	});
 }

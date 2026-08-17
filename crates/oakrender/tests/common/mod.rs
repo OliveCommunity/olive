@@ -45,17 +45,6 @@ impl Drop for ManagerGuard {
 	}
 }
 
-/// A non-null fake handle (ctx only — the ABI functions that accept
-/// borrowed handles only check `ctx` in this pass).
-pub fn fake_handle(seed: usize) -> oakrender::handle::CHandle {
-	oakrender::handle::CHandle {
-		ctx: seed as *mut std::ffi::c_void,
-		addref: None,
-		release: None,
-		abi_version: oakrender::handle::OAKRENDER_ABI_VERSION,
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Host-symbol stand-ins (oakcore_* / fb_find_best_pix_fmt_of_list)
 // ---------------------------------------------------------------------------

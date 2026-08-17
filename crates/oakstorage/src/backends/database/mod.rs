@@ -78,6 +78,7 @@ use oaknode::project::Project;
 use crate::backend::{LoadResult, StorageBackend};
 use crate::error::{Error, Result};
 use crate::handle::CHandle;
+use crate::nodeutil::ProjectArc;
 use crate::uri::StorageUri;
 
 /// Journal kind for redo commands (the D1 save path).
@@ -613,15 +614,9 @@ impl DatabaseBackend {
 		if file_uri.scheme != "file" {
 			return Err(Error::Invalid);
 		}
-		let handle = self.load_handle_by_uuid(uri, uuid)?;
+		let project = self.load_project_by_uuid(uri, uuid)?;
 		let backend = crate::backends::ove_xml::OveXmlBackend::new();
-		let result = backend.save(handle, file_uri, 0);
-		// The loaded handle is ours (refcount 1); release it regardless
-		// of the save outcome.
-		if let Some(release) = handle.release {
-			unsafe { release(handle.ctx) };
-		}
-		result
+		backend.save_project(&project, file_uri, 0)
 	}
 
 	/// Import a `.ove`/`.otio`/`.fcpxml` file as a new library row
@@ -634,6 +629,9 @@ impl DatabaseBackend {
 			return Err(Error::Invalid);
 		}
 		let backend = crate::registry::Registry::global().resolve(file_uri)?;
+		// The file backend's `load` returns its project as a handle (the
+		// facade-facing trait form); convert it to the boxed project the
+		// crate uses internally, and release the temporary handle.
 		let result = backend.load(file_uri)?;
 		let handle = result.project;
 		if handle.is_null() {
@@ -643,12 +641,15 @@ impl DatabaseBackend {
 			)));
 		}
 		let uuid = {
-			let arc = unsafe { crate::nodeutil::project_arc(&handle)? };
 			let fresh = new_uuid();
-			arc.lock().map_err(|_| Error::State)?.uuid = fresh.clone();
+			unsafe { crate::nodeutil::project_arc(&handle)? }
+				.lock()
+				.map_err(|_| Error::State)?
+				.uuid = fresh.clone();
 			fresh
 		};
-		let outcome = self.save(handle, uri, 0).map(|()| uuid.clone());
+		let arc = unsafe { crate::nodeutil::project_arc(&handle)? };
+		let outcome = self.save_project(&arc, uri, 0).map(|()| uuid.clone());
 		if let Some(release) = handle.release {
 			unsafe { release(handle.ctx) };
 		}
@@ -683,11 +684,14 @@ impl DatabaseBackend {
 	/// persistent undo history (plan §0): a snapshot at or before `seq`
 	/// is replayed forward with the journal rows up to `seq`. `seq` 0 is
 	/// the empty project. E_INVALID when `seq` is out of range.
+	///
+	/// Returns the project as an owned oaknode handle (the facade-facing
+	/// form — the engine's integration tests consume it this way).
 	pub fn load_at(&self, uri: &StorageUri, uuid: &str, seq: i64) -> Result<CHandle> {
 		let target = parse_target(uri)?;
 		let key = db_key_of(&target);
 		let uuid = uuid.to_string();
-		self.run(key, move |conn| async move {
+		let project = self.run(key, move |conn| async move {
 			let model = project::Entity::find()
 				.filter(project::Column::Uuid.eq(&uuid))
 				.one(&conn)
@@ -698,30 +702,22 @@ impl DatabaseBackend {
 				return Err(Error::Invalid);
 			}
 			let xml = assemble_at(&conn, model.id, &model.uuid, seq).await?;
-			Ok(crate::nodeutil::make_project_owned(
-				crate::nodeutil::serializer_load(&xml)?,
-			))
-		})
+			crate::nodeutil::serializer_load(&xml)
+		})?;
+		Ok(crate::nodeutil::make_project_owned(project))
 	}
 
 	/// The manager stats of a library project (plan §4): the head state
 	/// is replayed and the stats derived from the node graph.
 	pub fn project_stats(&self, uri: &StorageUri, uuid: &str) -> Result<ProjectStats> {
-		let handle = self.load_handle_by_uuid(uri, uuid)?;
-		let stats = (|| -> Result<ProjectStats> {
-			let arc = unsafe { crate::nodeutil::project_arc(&handle)? };
-			let guard = arc.lock().map_err(|_| Error::State)?;
-			Ok(derive_stats(&guard))
-		})();
-		if let Some(release) = handle.release {
-			unsafe { release(handle.ctx) };
-		}
-		stats
+		let project = self.load_project_by_uuid(uri, uuid)?;
+		let guard = project.lock().map_err(|_| Error::State)?;
+		Ok(derive_stats(&guard))
 	}
 
-	/// Load the project payload of the library row `uuid` as an owned
-	/// handle (the head state).
-	fn load_handle_by_uuid(&self, uri: &StorageUri, uuid: &str) -> Result<CHandle> {
+	/// Load the project payload of the library row `uuid` as the boxed
+	/// project (the head state).
+	fn load_project_by_uuid(&self, uri: &StorageUri, uuid: &str) -> Result<ProjectArc> {
 		let target = parse_target(uri)?;
 		let key = db_key_of(&target);
 		let uuid = uuid.to_string();
@@ -733,10 +729,49 @@ impl DatabaseBackend {
 				.map_err(db_err)?
 				.ok_or(Error::NotFound)?;
 			let xml = assemble_at(&conn, model.id, &model.uuid, model.command_seq).await?;
-			Ok(crate::nodeutil::make_project_owned(
-				crate::nodeutil::serializer_load(&xml)?,
-			))
+			crate::nodeutil::serializer_load(&xml)
 		})
+	}
+
+	/// Load the head state of the library's selected project (the
+	/// `?project=` uuid, or the most recently modified row) as the boxed
+	/// project. The Rust-typed inner load: the facade-facing trait `load`
+	/// wraps the result in an owned handle.
+	pub fn load_project(&self, uri: &StorageUri) -> Result<ProjectArc> {
+		let target = parse_target(uri)?;
+		let key = db_key_of(&target);
+		let project = target.project().map(str::to_string);
+		self.run(key, move |conn| async move {
+			let model = pick_project(&conn, project.as_deref()).await?;
+			let xml = assemble_at(&conn, model.id, &model.uuid, model.command_seq).await?;
+			crate::nodeutil::serializer_load(&xml)
+		})
+	}
+
+	/// Save a project (already read out of its handle) to the library,
+	/// journaling the diff. The Rust-typed inner save: the facade-facing
+	/// trait `save` converts the project handle and forwards here.
+	pub fn save_project(
+		&self,
+		project: &ProjectArc,
+		uri: &StorageUri,
+		_options: u32,
+	) -> Result<()> {
+		let target = parse_target(uri)?;
+		let key = db_key_of(&target);
+		// Serialize under the project lock (the same per-node writer the
+		// `.ove` backend uses — one serialization truth).
+		let (uuid, name, nodes, settings_xml, settings_map) = {
+			let guard = project.lock().map_err(|_| Error::State)?;
+			let uuid = guard.uuid.clone();
+			let name = project_display_name(&guard);
+			let (nodes, settings_xml, settings_map) = serialize_project_state(&guard)?;
+			(uuid, name, nodes, settings_xml, settings_map)
+		};
+		self.run(key, move |conn| async move {
+			save_tx(&conn, &uuid, &name, &nodes, &settings_xml, &settings_map).await
+		})?;
+		Ok(())
 	}
 }
 
@@ -763,35 +798,17 @@ impl StorageBackend for DatabaseBackend {
 	}
 
 	fn load(&self, uri: &StorageUri) -> Result<LoadResult> {
-		let target = parse_target(uri)?;
-		let key = db_key_of(&target);
-		let project = target.project().map(str::to_string);
-		self.run(key, move |conn| async move {
-			let model = pick_project(&conn, project.as_deref()).await?;
-			let xml = assemble_at(&conn, model.id, &model.uuid, model.command_seq).await?;
-			let handle =
-				crate::nodeutil::make_project_owned(crate::nodeutil::serializer_load(&xml)?);
-			Ok(LoadResult::success(handle))
-		})
+		// Facade boundary: box the loaded project into an owned handle.
+		Ok(LoadResult::success(crate::nodeutil::make_project_owned(
+			self.load_project(uri)?,
+		)))
 	}
 
-	fn save(&self, project: CHandle, uri: &StorageUri, _options: u32) -> Result<()> {
-		let target = parse_target(uri)?;
-		let key = db_key_of(&target);
-		// Serialize under the project lock (the same per-node writer the
-		// `.ove` backend uses — one serialization truth).
+	fn save(&self, project: CHandle, uri: &StorageUri, options: u32) -> Result<()> {
+		// Facade boundary: convert the project handle to the boxed
+		// project, then run the Rust-typed save.
 		let arc = unsafe { crate::nodeutil::project_arc(&project)? };
-		let (uuid, name, nodes, settings_xml, settings_map) = {
-			let guard = arc.lock().map_err(|_| Error::State)?;
-			let uuid = guard.uuid.clone();
-			let name = project_display_name(&guard);
-			let (nodes, settings_xml, settings_map) = serialize_project_state(&guard)?;
-			(uuid, name, nodes, settings_xml, settings_map)
-		};
-		self.run(key, move |conn| async move {
-			save_tx(&conn, &uuid, &name, &nodes, &settings_xml, &settings_map).await
-		})?;
-		Ok(())
+		self.save_project(&arc, uri, options)
 	}
 }
 

@@ -27,20 +27,22 @@
 //!
 //! ## Binding model
 //!
-//! The map is keyed by the project handle's `ctx` pointer (the module
-//! `RefBox` identity — one per in-memory project instance), so several
-//! projects can be bound at once (multi-project, plan §3) without
-//! confusing their library rows. Every undo-path operation re-saves ALL
-//! bound projects ([`note_command`]): the oakstorage backend diffs each
-//! project against its own library head, so untouched projects are
-//! no-op touches and only the project the command actually changed
-//! advances its journal. (The plan's "current project" phrasing maps to
-//! this — the undo stack is cleared on every project switch, so at most
-//! one project's graph changes per command; a bound-but-untouched
-//! project can gain its import row this way, which reflects its true
-//! state.) Closing a project ([`unbind_project`], hooked from the
-//! facade's `project_free`) flushes its pending writes and drops the
-//! binding.
+//! The map is keyed by the project box's identity (`Arc::as_ptr` — one
+//! per in-memory project instance), so several projects can be bound at
+//! once (multi-project, plan §3) without confusing their library rows.
+//! Every undo-path operation re-saves ALL bound projects
+//! ([`note_command`]): the oakstorage backend diffs each project against
+//! its own library head, so untouched projects are no-op touches and
+//! only the project the command actually changed advances its journal.
+//! (The plan's "current project" phrasing maps to this — the undo stack
+//! is cleared on every project switch, so at most one project's graph
+//! changes per command; a bound-but-untouched project can gain its
+//! import row this way, which reflects its true state.) Closing a
+//! project ([`unbind_project`], hooked from the facade's `project_free`)
+//! flushes its pending writes and drops the binding. The binding holds
+//! the boxed project ([`ProjectArc`]) directly — the `CHandle` facade
+//! entries convert at the boundary — so a bound project outlives the
+//! caller's own handle reference.
 //!
 //! The library is selected from the `Storage` config group (all defaults
 //! are config-driven, plan §5):
@@ -79,27 +81,22 @@
 
 use std::collections::HashMap;
 use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::{Condvar, Mutex, OnceLock};
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::time::Duration;
 
-use oaknode::project::Project;
 use oakundo::global;
 
-use crate::backend::StorageBackend;
 use crate::backends::database::DatabaseBackend;
 use crate::handle::CHandle;
+use crate::nodeutil::ProjectArc;
 use crate::uri::StorageUri;
-
-/// The boxed project payload behind an oaknode project handle (the
-/// engine's `crate::handle::domain::ProjectArc` equivalent).
-type ProjectArc = std::sync::Arc<std::sync::Mutex<Project>>;
 
 /// One bound project: its session (library uri + row uuid) plus the
 /// write state.
 struct Binding {
-	/// The project handle (addref'd at bind, released at unbind; keeps
-	/// the project alive past the caller's own handle).
-	project: CHandle,
+	/// The boxed project (kept alive here past the caller's own handle
+	/// reference).
+	project: ProjectArc,
 	/// Library uri (`oakdb+sqlite:///…`).
 	uri: String,
 	/// Library row uuid.
@@ -123,7 +120,7 @@ pub fn backend() -> &'static DatabaseBackend {
 	BACKEND.get_or_init(DatabaseBackend::new)
 }
 
-/// project identity (handle `ctx` pointer) -> binding.
+/// project identity (boxed project allocation) -> binding.
 fn bindings() -> &'static Mutex<HashMap<usize, Binding>> {
 	static BINDINGS: OnceLock<Mutex<HashMap<usize, Binding>>> = OnceLock::new();
 	BINDINGS.get_or_init(|| Mutex::new(HashMap::new()))
@@ -167,12 +164,20 @@ fn ensure_command_observer() {
 /// backend is disabled by config, the project cannot be addressed (no
 /// uuid), or it is already bound. No database write happens here — the
 /// first undo-path operation creates the library row.
+///
+/// Facade entry: takes the project as a `CHandle` (the engine's project
+/// handle form) and converts it to the boxed project at the boundary;
+/// everything from here on works with the [`ProjectArc`].
 pub fn bind_project(project: CHandle) {
 	let _ = catch_unwind(AssertUnwindSafe(|| {
 		if project.is_null() {
 			return;
 		}
-		let key = project.ctx as usize;
+		// SAFETY: facade project handles box a `ProjectArc`.
+		let Ok(arc) = (unsafe { crate::nodeutil::project_arc(&project) }) else {
+			return;
+		};
+		let key = Arc::as_ptr(&arc) as usize;
 		{
 			let g = bindings().lock().unwrap_or_else(|e| e.into_inner());
 			if g.contains_key(&key) {
@@ -186,20 +191,11 @@ pub fn bind_project(project: CHandle) {
 			return;
 		};
 		let uuid = {
-			let arc = unsafe { oaknode::handle::get::<ProjectArc>(&project) };
-			match arc {
-				Some(a) => a.lock().unwrap_or_else(|e| e.into_inner()).uuid.clone(),
-				None => return,
-			}
+			let guard = arc.lock().unwrap_or_else(|e| e.into_inner());
+			guard.uuid.clone()
 		};
 		if uuid.is_empty() {
 			return;
-		}
-		// Addref the handle so the binding owns a reference independent of
-		// the caller's.
-		let owned = project;
-		if let Some(addref) = owned.addref {
-			unsafe { addref(owned.ctx) };
 		}
 		bindings()
 			.lock()
@@ -207,7 +203,7 @@ pub fn bind_project(project: CHandle) {
 			.insert(
 				key,
 				Binding {
-					project: owned,
+					project: arc,
 					uri,
 					uuid,
 					dirty: false,
@@ -224,14 +220,15 @@ pub fn bind_project(project: CHandle) {
 /// project). No-op when not bound.
 pub fn unbind_project(project: CHandle) {
 	let _ = catch_unwind(AssertUnwindSafe(|| {
-		let key = project.ctx as usize;
+		// SAFETY: facade project handles box a `ProjectArc`.
+		let Ok(arc) = (unsafe { crate::nodeutil::project_arc(&project) }) else {
+			return;
+		};
+		let key = Arc::as_ptr(&arc) as usize;
 		flush_one(key);
 		let mut g = bindings().lock().unwrap_or_else(|e| e.into_inner());
-		if let Some(b) = g.remove(&key) {
-			if let Some(release) = b.project.release {
-				unsafe { release(b.project.ctx) };
-			}
-		}
+		// Dropping the binding releases the project reference.
+		g.remove(&key);
 	}));
 }
 
@@ -240,10 +237,14 @@ pub fn is_bound(project: CHandle) -> bool {
 	if project.is_null() {
 		return false;
 	}
+	// SAFETY: facade project handles box a `ProjectArc`.
+	let Ok(arc) = (unsafe { crate::nodeutil::project_arc(&project) }) else {
+		return false;
+	};
 	bindings()
 		.lock()
 		.unwrap_or_else(|e| e.into_inner())
-		.contains_key(&(project.ctx as usize))
+		.contains_key(&(Arc::as_ptr(&arc) as usize))
 }
 
 /// The last write-through / snapshot error of `project` (empty when none
@@ -252,10 +253,14 @@ pub fn last_error(project: CHandle) -> Option<String> {
 	if project.is_null() {
 		return None;
 	}
+	// SAFETY: facade project handles box a `ProjectArc`.
+	let Ok(arc) = (unsafe { crate::nodeutil::project_arc(&project) }) else {
+		return None;
+	};
 	bindings()
 		.lock()
 		.unwrap_or_else(|e| e.into_inner())
-		.get(&(project.ctx as usize))
+		.get(&(Arc::as_ptr(&arc) as usize))
 		.and_then(|b| b.last_error.clone())
 }
 
@@ -286,7 +291,7 @@ fn write_through(key: usize) {
 	let (project, uri, _uuid) = {
 		let mut g = bindings().lock().unwrap_or_else(|e| e.into_inner());
 		match g.get_mut(&key) {
-			Some(b) => (b.project, b.uri.clone(), b.uuid.clone()),
+			Some(b) => (b.project.clone(), b.uri.clone(), b.uuid.clone()),
 			None => return,
 		}
 	};
@@ -297,7 +302,7 @@ fn write_through(key: usize) {
 			return;
 		}
 	};
-	match backend().save(project, &parsed, 0) {
+	match backend().save_project(&project, &parsed, 0) {
 		Ok(()) => {
 			let mut g = bindings().lock().unwrap_or_else(|e| e.into_inner());
 			if let Some(b) = g.get_mut(&key) {

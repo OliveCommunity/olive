@@ -35,9 +35,11 @@ pub const TRACK_INPUT_FORMAT: &str = "track_in_%1";
 pub struct SequenceBehavior {
 	/// Track list node ids (video then audio, C++ order).
 	pub track_lists: Vec<NodeId>,
-	/// Timeline markers handle (oaktimeline, owned).
+	/// Timeline markers handle (oaktimeline, owned; created lazily by
+	/// the facade through the C ABI).
 	pub markers: crate::handle::CHandle,
-	/// Work area handle (oaktimeline, owned).
+	/// Work area handle (oaktimeline, owned; created lazily by the
+	/// facade through the C ABI).
 	pub workarea: crate::handle::CHandle,
 	/// Length cache (C++ last_length_).
 	pub last_length: oakcore_rs::Rational,

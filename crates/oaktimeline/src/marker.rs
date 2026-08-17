@@ -25,10 +25,12 @@
 //! not re-sort (the De-Qt marker has no parent pointer); callers restore
 //! order via `TimelineMarkerList::resort`/`resort_at`.
 
+use std::sync::{Arc, Mutex};
+
 use oakcore_rs::{Rational, TimeRange};
 use oakundo::undocommand::UndoCommand;
 
-use crate::handle::{get, get_mut};
+use crate::handle::get;
 use crate::undocommon::{box_command, Command};
 
 /// `TimelineMarker` — a named, colored time range on a timeline
@@ -211,6 +213,15 @@ impl TimelineMarkerList {
 		self.markers_.get_mut(i)
 	}
 
+	/// Remove the marker at `index`, returning it; `None` out of range.
+	fn remove_at(&mut self, index: usize) -> Option<TimelineMarker> {
+		if index < self.markers_.len() {
+			Some(self.markers_.remove(index))
+		} else {
+			None
+		}
+	}
+
 	/// Remove the marker at `index` and re-insert it sorted; no-op when
 	/// `index` is out of range. Used by the time-change command after
 	/// mutating a marker in place.
@@ -238,8 +249,10 @@ fn rational_abs(r: Rational) -> Rational {
 
 /// `MarkerAddCommand` (timelinemarker.h).
 pub struct MarkerAddCommand {
-	/// Target list.
-	marker_list: crate::handle::CHandle,
+	/// Target list (the shared marker list behind the facade's value
+	/// handle; `None` for an empty/null handle, which makes the command a
+	/// no-op).
+	marker_list: Option<Arc<Mutex<TimelineMarkerList>>>,
 	/// Marker range.
 	range: TimeRange,
 	/// Marker name.
@@ -258,8 +271,28 @@ impl MarkerAddCommand {
 		name: &str,
 		color: i32,
 	) -> Self {
+		// SAFETY: marker-list handles box an `Arc<Mutex<TimelineMarkerList>>`
+		// (created by `make_owned`); reading it clones the shared `Arc`.
+		let list = unsafe { get::<Arc<Mutex<TimelineMarkerList>>>(&marker_list) }.cloned();
 		Self {
-			marker_list,
+			marker_list: list,
+			range,
+			name: name.to_string(),
+			color,
+			added: false,
+		}
+	}
+
+	/// Construct over an already-shared marker list (the crate's
+	/// Rust-typed entry; the facade-facing [`Self::new`] forwards here).
+	pub fn new_arc(
+		marker_list: Arc<Mutex<TimelineMarkerList>>,
+		range: TimeRange,
+		name: &str,
+		color: i32,
+	) -> Self {
+		Self {
+			marker_list: Some(marker_list),
 			range,
 			name: name.to_string(),
 			color,
@@ -272,11 +305,10 @@ impl MarkerAddCommand {
 		if self.added {
 			return;
 		}
-		let marker = TimelineMarker::with_time(self.color, self.range, &self.name);
-		// SAFETY: the boxed value is a `TimelineMarkerList` created by
-		// `make_owned`, and the command holds exclusive access to it.
-		if let Some(list) = unsafe { get_mut::<TimelineMarkerList>(&self.marker_list) } {
-			list.add_marker(marker);
+		if let Some(list) = &self.marker_list {
+			let marker = TimelineMarker::with_time(self.color, self.range, &self.name);
+			let mut l = list.lock().unwrap_or_else(|e| e.into_inner());
+			l.add_marker(marker);
 			self.added = true;
 		}
 	}
@@ -290,13 +322,12 @@ impl MarkerAddCommand {
 		if !self.added {
 			return;
 		}
-		// SAFETY: as `redo`.
-		if let Some(list) = unsafe { get_mut::<TimelineMarkerList>(&self.marker_list) } {
-			if let Some(m) = list.get_marker_at_time(self.range.in_()) {
-				// SAFETY: `m` borrows from `list`; `remove_marker` uses it
-				// only for identity comparison before detaching.
-				let mptr = m as *const TimelineMarker;
-				let _ = list.remove_marker(unsafe { &*mptr });
+		if let Some(list) = &self.marker_list {
+			let mut l = list.lock().unwrap_or_else(|e| e.into_inner());
+			if let Some(index) = (0..l.size())
+				.find(|&i| l.at(i).is_some_and(|m| m.time().in_() == self.range.in_()))
+			{
+				l.remove_at(index);
 			}
 			self.added = false;
 		}
@@ -322,8 +353,9 @@ impl Command for MarkerAddCommand {
 
 /// `MarkerRemoveCommand` (timelinemarker.h).
 pub struct MarkerRemoveCommand {
-	/// Target list.
-	marker_list: crate::handle::CHandle,
+	/// Target list (shared marker list behind the facade's value handle;
+	/// `None` for an empty/null handle, which makes the command a no-op).
+	marker_list: Option<Arc<Mutex<TimelineMarkerList>>>,
 	/// Index of the marker to remove.
 	index: usize,
 	/// Marker detached on `redo`, re-inserted by `undo`.
@@ -333,8 +365,20 @@ pub struct MarkerRemoveCommand {
 impl MarkerRemoveCommand {
 	/// Construct from list + index of the marker to remove.
 	pub fn new(marker_list: crate::handle::CHandle, index: usize) -> Self {
+		// SAFETY: as `MarkerAddCommand::new`.
+		let list = unsafe { get::<Arc<Mutex<TimelineMarkerList>>>(&marker_list) }.cloned();
 		Self {
-			marker_list,
+			marker_list: list,
+			index,
+			removed: None,
+		}
+	}
+
+	/// Construct over an already-shared marker list (the crate's
+	/// Rust-typed entry; the facade-facing [`Self::new`] forwards here).
+	pub fn new_arc(marker_list: Arc<Mutex<TimelineMarkerList>>, index: usize) -> Self {
+		Self {
+			marker_list: Some(marker_list),
 			index,
 			removed: None,
 		}
@@ -345,26 +389,20 @@ impl MarkerRemoveCommand {
 		if self.removed.is_some() {
 			return;
 		}
-		// SAFETY: the boxed value is a `TimelineMarkerList` created by
-		// `make_owned`, and the command holds exclusive access to it.
-		if let Some(list) = unsafe { get_mut::<TimelineMarkerList>(&self.marker_list) } {
-			if let Some(m) = list.at(self.index) {
-				// SAFETY: `m` borrows from `list`; `remove_marker` uses it
-				// only for identity comparison before detaching.
-				let mptr = m as *const TimelineMarker;
-				if let Some(removed) = list.remove_marker(unsafe { &*mptr }) {
-					self.removed = Some(removed);
-				}
+		if let Some(list) = &self.marker_list {
+			let mut l = list.lock().unwrap_or_else(|e| e.into_inner());
+			if let Some(removed) = l.remove_at(self.index) {
+				self.removed = Some(removed);
 			}
 		}
 	}
 
 	/// `undo`: re-insert the marker, sorted.
 	pub fn undo(&mut self) {
-		// SAFETY: as `redo`.
-		if let Some(list) = unsafe { get_mut::<TimelineMarkerList>(&self.marker_list) } {
+		if let Some(list) = &self.marker_list {
+			let mut l = list.lock().unwrap_or_else(|e| e.into_inner());
 			if let Some(marker) = self.removed.take() {
-				list.add_marker(marker);
+				l.add_marker(marker);
 			}
 		}
 	}
@@ -389,8 +427,9 @@ impl Command for MarkerRemoveCommand {
 
 /// `MarkerChangeColorCommand` (timelinemarker.h).
 pub struct MarkerChangeColorCommand {
-	/// Target list.
-	marker_list: crate::handle::CHandle,
+	/// Target list (shared marker list behind the facade's value handle;
+	/// `None` for an empty/null handle, which makes the command a no-op).
+	marker_list: Option<Arc<Mutex<TimelineMarkerList>>>,
 	/// Index of the marker to change.
 	index: usize,
 	/// Color before the change.
@@ -403,14 +442,38 @@ impl MarkerChangeColorCommand {
 	/// Construct from list + index + new color, capturing the current color
 	/// as old.
 	pub fn new(marker_list: crate::handle::CHandle, index: usize, new_color: i32) -> Self {
-		// SAFETY: the boxed value is a `TimelineMarkerList` created by
-		// `make_owned`; reading it here is the command's own handle.
-		let old_color = unsafe { get::<TimelineMarkerList>(&marker_list) }
-			.and_then(|l| l.at(index))
+		// SAFETY: as `MarkerAddCommand::new`.
+		let list = unsafe { get::<Arc<Mutex<TimelineMarkerList>>>(&marker_list) }.cloned();
+		let old_color = list
+			.as_ref()
+			.and_then(|l| {
+				let l = l.lock().unwrap_or_else(|e| e.into_inner());
+				l.at(index).map(|m| m.color())
+			})
+			.unwrap_or(0);
+		Self {
+			marker_list: list,
+			index,
+			old_color,
+			new_color,
+		}
+	}
+
+	/// Construct over an already-shared marker list (the crate's
+	/// Rust-typed entry; the facade-facing [`Self::new`] forwards here).
+	pub fn new_arc(
+		marker_list: Arc<Mutex<TimelineMarkerList>>,
+		index: usize,
+		new_color: i32,
+	) -> Self {
+		let old_color = marker_list
+			.lock()
+			.unwrap_or_else(|e| e.into_inner())
+			.at(index)
 			.map(|m| m.color())
 			.unwrap_or(0);
 		Self {
-			marker_list,
+			marker_list: Some(marker_list),
 			index,
 			old_color,
 			new_color,
@@ -419,9 +482,9 @@ impl MarkerChangeColorCommand {
 
 	/// `redo`: apply the new color.
 	pub fn redo(&mut self) {
-		// SAFETY: as `new`.
-		if let Some(list) = unsafe { get_mut::<TimelineMarkerList>(&self.marker_list) } {
-			if let Some(m) = list.at_mut(self.index) {
+		if let Some(list) = &self.marker_list {
+			let mut l = list.lock().unwrap_or_else(|e| e.into_inner());
+			if let Some(m) = l.at_mut(self.index) {
 				m.set_color(self.new_color);
 			}
 		}
@@ -429,9 +492,9 @@ impl MarkerChangeColorCommand {
 
 	/// `undo`: restore the old color.
 	pub fn undo(&mut self) {
-		// SAFETY: as `new`.
-		if let Some(list) = unsafe { get_mut::<TimelineMarkerList>(&self.marker_list) } {
-			if let Some(m) = list.at_mut(self.index) {
+		if let Some(list) = &self.marker_list {
+			let mut l = list.lock().unwrap_or_else(|e| e.into_inner());
+			if let Some(m) = l.at_mut(self.index) {
 				m.set_color(self.old_color);
 			}
 		}
@@ -457,8 +520,9 @@ impl Command for MarkerChangeColorCommand {
 
 /// `MarkerChangeNameCommand` (timelinemarker.h).
 pub struct MarkerChangeNameCommand {
-	/// Target list.
-	marker_list: crate::handle::CHandle,
+	/// Target list (shared marker list behind the facade's value handle;
+	/// `None` for an empty/null handle, which makes the command a no-op).
+	marker_list: Option<Arc<Mutex<TimelineMarkerList>>>,
 	/// Index of the marker to change.
 	index: usize,
 	/// Name before the change.
@@ -471,14 +535,34 @@ impl MarkerChangeNameCommand {
 	/// Construct from list + index + new name, capturing the current name as
 	/// old.
 	pub fn new(marker_list: crate::handle::CHandle, index: usize, name: &str) -> Self {
-		// SAFETY: the boxed value is a `TimelineMarkerList` created by
-		// `make_owned`; reading it here is the command's own handle.
-		let old_name = unsafe { get::<TimelineMarkerList>(&marker_list) }
-			.and_then(|l| l.at(index))
+		// SAFETY: as `MarkerAddCommand::new`.
+		let list = unsafe { get::<Arc<Mutex<TimelineMarkerList>>>(&marker_list) }.cloned();
+		let old_name = list
+			.as_ref()
+			.and_then(|l| {
+				let l = l.lock().unwrap_or_else(|e| e.into_inner());
+				l.at(index).map(|m| m.name().to_string())
+			})
+			.unwrap_or_default();
+		Self {
+			marker_list: list,
+			index,
+			old_name,
+			new_name: name.to_string(),
+		}
+	}
+
+	/// Construct over an already-shared marker list (the crate's
+	/// Rust-typed entry; the facade-facing [`Self::new`] forwards here).
+	pub fn new_arc(marker_list: Arc<Mutex<TimelineMarkerList>>, index: usize, name: &str) -> Self {
+		let old_name = marker_list
+			.lock()
+			.unwrap_or_else(|e| e.into_inner())
+			.at(index)
 			.map(|m| m.name().to_string())
 			.unwrap_or_default();
 		Self {
-			marker_list,
+			marker_list: Some(marker_list),
 			index,
 			old_name,
 			new_name: name.to_string(),
@@ -487,9 +571,9 @@ impl MarkerChangeNameCommand {
 
 	/// `redo`: apply the new name.
 	pub fn redo(&mut self) {
-		// SAFETY: as `new`.
-		if let Some(list) = unsafe { get_mut::<TimelineMarkerList>(&self.marker_list) } {
-			if let Some(m) = list.at_mut(self.index) {
+		if let Some(list) = &self.marker_list {
+			let mut l = list.lock().unwrap_or_else(|e| e.into_inner());
+			if let Some(m) = l.at_mut(self.index) {
 				m.set_name(&self.new_name);
 			}
 		}
@@ -497,9 +581,9 @@ impl MarkerChangeNameCommand {
 
 	/// `undo`: restore the old name.
 	pub fn undo(&mut self) {
-		// SAFETY: as `new`.
-		if let Some(list) = unsafe { get_mut::<TimelineMarkerList>(&self.marker_list) } {
-			if let Some(m) = list.at_mut(self.index) {
+		if let Some(list) = &self.marker_list {
+			let mut l = list.lock().unwrap_or_else(|e| e.into_inner());
+			if let Some(m) = l.at_mut(self.index) {
 				m.set_name(&self.old_name);
 			}
 		}
@@ -526,8 +610,9 @@ impl Command for MarkerChangeNameCommand {
 /// `MarkerChangeTimeCommand` (timelinemarker.h). The old range is captured at
 /// construction when not supplied.
 pub struct MarkerChangeTimeCommand {
-	/// Target list.
-	marker_list: crate::handle::CHandle,
+	/// Target list (shared marker list behind the facade's value handle;
+	/// `None` for an empty/null handle, which makes the command a no-op).
+	marker_list: Option<Arc<Mutex<TimelineMarkerList>>>,
 	/// Index of the marker to change.
 	index: usize,
 	/// Time range before the change.
@@ -540,14 +625,38 @@ impl MarkerChangeTimeCommand {
 	/// Construct from list + index + new time, capturing the current range as
 	/// old.
 	pub fn new(marker_list: crate::handle::CHandle, index: usize, time: TimeRange) -> Self {
-		// SAFETY: the boxed value is a `TimelineMarkerList` created by
-		// `make_owned`; reading it here is the command's own handle.
-		let old_time = unsafe { get::<TimelineMarkerList>(&marker_list) }
-			.and_then(|l| l.at(index))
+		// SAFETY: as `MarkerAddCommand::new`.
+		let list = unsafe { get::<Arc<Mutex<TimelineMarkerList>>>(&marker_list) }.cloned();
+		let old_time = list
+			.as_ref()
+			.and_then(|l| {
+				let l = l.lock().unwrap_or_else(|e| e.into_inner());
+				l.at(index).map(|m| *m.time())
+			})
+			.unwrap_or_else(|| TimeRange::new(Rational::new(0, 1), Rational::new(0, 1)));
+		Self {
+			marker_list: list,
+			index,
+			old_time,
+			new_time: time,
+		}
+	}
+
+	/// Construct over an already-shared marker list (the crate's
+	/// Rust-typed entry; the facade-facing [`Self::new`] forwards here).
+	pub fn new_arc(
+		marker_list: Arc<Mutex<TimelineMarkerList>>,
+		index: usize,
+		time: TimeRange,
+	) -> Self {
+		let old_time = marker_list
+			.lock()
+			.unwrap_or_else(|e| e.into_inner())
+			.at(index)
 			.map(|m| *m.time())
 			.unwrap_or_else(|| TimeRange::new(Rational::new(0, 1), Rational::new(0, 1)));
 		Self {
-			marker_list,
+			marker_list: Some(marker_list),
 			index,
 			old_time,
 			new_time: time,
@@ -556,23 +665,23 @@ impl MarkerChangeTimeCommand {
 
 	/// `redo`: apply the new time (resorts).
 	pub fn redo(&mut self) {
-		// SAFETY: as `new`.
-		if let Some(list) = unsafe { get_mut::<TimelineMarkerList>(&self.marker_list) } {
-			if let Some(m) = list.at_mut(self.index) {
+		if let Some(list) = &self.marker_list {
+			let mut l = list.lock().unwrap_or_else(|e| e.into_inner());
+			if let Some(m) = l.at_mut(self.index) {
 				m.set_time(self.new_time);
 			}
-			list.resort_at(self.index);
+			l.resort_at(self.index);
 		}
 	}
 
 	/// `undo`: restore the old time (resorts).
 	pub fn undo(&mut self) {
-		// SAFETY: as `new`.
-		if let Some(list) = unsafe { get_mut::<TimelineMarkerList>(&self.marker_list) } {
-			if let Some(m) = list.at_mut(self.index) {
+		if let Some(list) = &self.marker_list {
+			let mut l = list.lock().unwrap_or_else(|e| e.into_inner());
+			if let Some(m) = l.at_mut(self.index) {
 				m.set_time(self.old_time);
 			}
-			list.resort_at(self.index);
+			l.resort_at(self.index);
 		}
 	}
 

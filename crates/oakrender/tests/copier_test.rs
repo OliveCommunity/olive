@@ -15,13 +15,11 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //! Copier + autocacher contract tests (the former render→node
-//! coupling, now C ABI clients).
+//! coupling, now direct Rust calls).
 //!
-//! The oaknode C ABI (project deep-copy / sync) is a concurrent
-//! dependency; success-path tests are `#[ignore]`d and the error paths
-//! run without liboaknode.
-
-mod common;
+//! The oaknode deep-copy direction is unimplemented (single-lib plan
+//! §4.1 — dead direction), so the success paths fail explainably and the
+//! tests assert those failures.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -53,33 +51,38 @@ fn cacher() -> (oakrender::autocacher::PreviewAutoCacher, WorkerPool) {
 	(oakrender::autocacher::PreviewAutoCacher::new(arena), pool)
 }
 
-/// deep_copy through the C ABI: the render-side copy evaluates
-/// identically to the source project for a fixture graph (comparison
-/// via the oaknode evaluation C ABI).
+/// Deep-copy through oaknode with a valid (non-empty) project identity:
+/// the direction is unimplemented (single-lib plan §4.1 — dead
+/// direction), so the copier fails explainably — the live path every
+/// caller sees today.
 #[test]
-#[ignore = "needs oaknode C ABI (oaknode_project_deep_copy)"]
-fn deep_copy_evaluates_identically() {
+fn deep_copy_with_valid_identity_fails_explainably() {
 	let mut copier = oakrender::copier::ProjectCopy::new();
-	let src = common::fake_handle(7);
-	copier.set_project(src).unwrap();
-	assert_ne!(copier.copy, 0);
-	assert!(copier.copied_project().is_some());
+	let src = oakrender::copier::ProjectHandle::new(7);
+	assert_eq!(
+		copier.set_project(src).unwrap_err().code(),
+		Error::Failed(String::new()).code()
+	);
+	assert_eq!(copier.copy, 0);
+	assert!(copier.copied_project().is_none());
 }
 
-/// sync applies recorded changes; the copy matches a fresh deep_copy
-/// afterwards.
+/// sync requires an established copy; with the deep-copy direction dead,
+/// no copy can ever be attached, so sync always reports the state error.
 #[test]
-#[ignore = "needs oaknode C ABI (oaknode_project_sync_copy)"]
-fn sync_matches_fresh_copy() {
+fn sync_without_established_copy_fails() {
 	let mut copier = oakrender::copier::ProjectCopy::new();
-	let src = common::fake_handle(7);
-	copier.set_project(src).unwrap();
+	let src = oakrender::copier::ProjectHandle::new(7);
+	assert!(copier.set_project(src).is_err());
 	let changes = [oakrender::copier::ChangeRecord {
 		kind: oakrender::copier::change_kind::NODE_ADD,
 		payload: [0u8; 48],
 	}];
-	copier.sync(&changes).unwrap();
-	assert_eq!(copier.last_sync_generation, 1);
+	assert_eq!(
+		copier.sync(&changes).unwrap_err().code(),
+		Error::State.code()
+	);
+	assert_eq!(copier.last_sync_generation, 0);
 }
 
 /// Autocacher attach/detach: requests on the copied project's caches
@@ -153,13 +156,13 @@ fn change_record_marshalling() {
 	}
 }
 
-/// Copier failure paths without liboaknode.
+/// Copier failure paths (the deep-copy direction is dead).
 #[test]
 fn copier_error_paths() {
 	let mut copier = oakrender::copier::ProjectCopy::new();
 	assert_eq!(
 		copier
-			.set_project(oakrender::handle::CHandle::null())
+			.set_project(oakrender::copier::ProjectHandle::null())
 			.unwrap_err()
 			.code(),
 		Error::Invalid.code()

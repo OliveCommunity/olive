@@ -104,7 +104,14 @@ fn open(uri: &str) -> oakstorage::error::Result<(Session, i32)> {
 	let parsed = StorageUri::parse(uri)?;
 	let backend = Registry::global().resolve(&parsed)?;
 	let result = backend.load(&parsed)?;
-	let session = Session::new(parsed, result.project);
+	// The backend hands the project back as a handle (the facade-facing
+	// form); the session stores the boxed project directly.
+	let project = if result.project.is_null() {
+		None
+	} else {
+		Some(unsafe { project_arc(&result.project) }.unwrap())
+	};
+	let session = Session::new(parsed, project);
 	Ok((session, result.version_info))
 }
 
@@ -275,8 +282,7 @@ fn ove_xml_roundtrip_field_by_field() {
 	assert_eq!(rc, OAKSTORAGE_OK);
 	assert_eq!(session.uri().to_uri_string(), uri);
 
-	let proj_handle = session.project().cloned().unwrap();
-	let loaded = unsafe { project_arc(&proj_handle) }.unwrap();
+	let loaded = session.project().cloned().unwrap();
 	{
 		let o = project.lock().unwrap();
 		let l = loaded.lock().unwrap();
@@ -301,8 +307,7 @@ fn ove_xml_compress_flag_still_round_trips() {
 	let (session, rc) = open(&uri).unwrap();
 	assert!(session.project().is_some(), "open failed rc={rc}");
 	assert_eq!(rc, OAKSTORAGE_OK);
-	let proj_handle = session.project().cloned().unwrap();
-	let loaded = unsafe { project_arc(&proj_handle) }.unwrap();
+	let loaded = session.project().cloned().unwrap();
 	{
 		let o = project.lock().unwrap();
 		let l = loaded.lock().unwrap();
@@ -333,8 +338,7 @@ fn ove_xml_timeline_roundtrip() {
 	let (session, rc) = open(&uri).unwrap();
 	assert!(session.project().is_some(), "open failed rc={rc}");
 	assert_eq!(rc, OAKSTORAGE_OK);
-	let proj_handle = session.project().cloned().unwrap();
-	let loaded = unsafe { project_arc(&proj_handle) }.unwrap();
+	let loaded = session.project().cloned().unwrap();
 	{
 		let l = loaded.lock().unwrap();
 		assert_imported_timeline(&l);
@@ -842,8 +846,7 @@ fn assert_interchange_roundtrip(ext: &str) {
 	let (session, rc) = open(&uri).unwrap();
 	assert!(session.project().is_some(), "open failed rc={rc}");
 	assert_eq!(rc, OAKSTORAGE_OK);
-	let proj_handle = session.project().cloned().unwrap();
-	let loaded = unsafe { project_arc(&proj_handle) }.unwrap();
+	let loaded = session.project().cloned().unwrap();
 	{
 		let l = loaded.lock().unwrap();
 		assert_imported_timeline(&l);
@@ -906,9 +909,8 @@ fn null_and_invalid_handles() {
 
 	let (mut session, _) = open(&uri).unwrap();
 	let taken = session.take().expect("take transfers the project");
-	assert!(!taken.ctx.is_null());
 	assert!(session.project().is_none(), "empty shell after take");
-	release(taken);
+	drop(taken);
 }
 
 // ---------------------------------------------------------------------------
@@ -931,15 +933,14 @@ fn session_take_transfers_project() {
 
 	// Take transfers the project; the session shell stays empty.
 	let taken = session.take().unwrap();
-	assert!(!taken.ctx.is_null());
 	assert!(session.project().is_none(), "take empties the shell");
-	release(taken);
+	drop(taken);
 	// Dropping the shell (with the project already taken) is a no-op.
 	drop(session);
 
 	// A second open/take pairing works the same.
 	let (mut session, _) = open(&uri).unwrap();
 	let taken = session.take().unwrap();
-	assert!(!taken.ctx.is_null());
-	release(taken);
+	assert!(session.project().is_none(), "take empties the shell");
+	drop(taken);
 }

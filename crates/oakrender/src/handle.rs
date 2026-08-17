@@ -14,61 +14,40 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Refcounted-handle scaffolding (same per-module pattern as the
-//! oakplugin/oaknode crates; duplicated on purpose — handle function
-//! pointers must run code from the creating DLL).
+//! Refcounted-handle scaffolding for the oakengine facade entry points.
+//!
+//! M14 R5: after the single-lib unification, no object reference passes
+//! as a `CHandle` inside oakrender anymore — the crate's internal calls
+//! use Rust types directly. The remaining surface is only what the
+//! facade's stubs.rs calls at the boundary: [`make_owned`] (box a value
+//! into an owned handle), [`get`]/[`get_mut`] (typed views back out).
 //!
 //! Mirrors `src/render/c_api/internalhandles.h`: every public oakrender
 //! handle is `{ctx, addref, release, abi_version}`; `ctx` points at a
-//! [`RefBox<T>`] on this crate's heap. `owns == false` boxes (borrowed
-//! wrappers) only free the box at zero.
-//!
-//! Live-object accounting mirrors the C++ `alive_inc`/`alive_dec`:
-//! [`make_owned`] counts the handle, the owned release un-counts it, so
-//! `oakrender_debug_alive_count()` stays meaningful for leak assertions.
+//! [`RefBox<T>`] on this crate's heap.
 
 use std::any::Any;
-use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
 
 /// ABI version stamped into every handle.
 pub const OAKRENDER_ABI_VERSION: u32 = 1;
 
 /// Heap box behind a handle's `ctx`.
-pub struct RefBox<T: ?Sized> {
+struct RefBox<T: ?Sized> {
 	/// Atomic reference count.
-	pub refs: AtomicU32,
+	refs: AtomicU32,
 	/// Boxed value.
-	pub value: T,
+	value: T,
 }
 
 /// The shared ABI value-handle type (single-lib unification, see
 /// `docs/zh/plans/riir/single-lib.md`): one canonical
 /// `{ctx, addref, release, abi_version}` type in `oakcore-rs`, re-exported
-/// here so the crate's `ffi.rs` signatures and handle scaffolding stay
-/// source-compatible. `Send + Sync` come from the shared type.
+/// here so the facade's handle scaffolding stays source-compatible.
+/// `Send + Sync` come from the shared type.
 pub use oakcore_rs::handle::CHandle;
 
-/// Global live-object count (owned handles + cancel-atom boxes).
-static ALIVE_COUNT: AtomicUsize = AtomicUsize::new(0);
-
-/// Increment the live-object count (owned handle creation).
-pub fn alive_inc() {
-	ALIVE_COUNT.fetch_add(1, Ordering::Relaxed);
-}
-
-/// Decrement the live-object count (owned handle destruction).
-pub fn alive_dec() {
-	ALIVE_COUNT.fetch_sub(1, Ordering::Relaxed);
-}
-
-/// Current live-object count (`oakrender_debug_alive_count`).
-pub fn alive_count() -> i32 {
-	ALIVE_COUNT.load(Ordering::Relaxed) as i32
-}
-
-/// addref implementation: atomic +1. Shared by owned and borrowed boxes —
-/// borrowing only extends the box's lifetime, not the borrowed object's.
+/// addref implementation: atomic +1 on the box's refcount.
 unsafe extern "C" fn refbox_addref<T: Any + Send>(ctx: *mut std::ffi::c_void) {
 	unsafe {
 		let rb = ctx as *const RefBox<T>;
@@ -77,31 +56,15 @@ unsafe extern "C" fn refbox_addref<T: Any + Send>(ctx: *mut std::ffi::c_void) {
 	}
 }
 
-/// release implementation (owned): atomic -1; at zero, reclaim the box and
-/// destroy the contained object.
+/// release implementation: atomic -1; at zero, reclaim the box and destroy
+/// the contained object.
 unsafe extern "C" fn refbox_release_owned<T: Any + Send>(ctx: *mut std::ffi::c_void) {
 	unsafe {
 		let rb = ctx as *mut RefBox<T>;
 		// AcqRel: the thread that drops the last reference must observe all
 		// prior writes (including internal state the destructor needs).
 		if (*rb).refs.fetch_sub(1, Ordering::AcqRel) == 1 {
-			alive_dec();
 			drop(Box::from_raw(rb));
-		}
-	}
-}
-
-/// release implementation (borrowed, produced by [`make_borrowed`]): at
-/// zero only reclaim the box memory, forgetting the contained object — its
-/// ownership stays with the borrower.
-unsafe extern "C" fn refbox_release_borrowed<T: Any + Send>(ctx: *mut std::ffi::c_void) {
-	unsafe {
-		let rb = ctx as *mut RefBox<T>;
-		if (*rb).refs.fetch_sub(1, Ordering::AcqRel) == 1 {
-			// Partial move: move the value out of the temporary Box so the
-			// Box drop only frees the allocation; forget the value so it is
-			// never dropped (double-free guard).
-			std::mem::forget((Box::from_raw(rb)).value);
 		}
 	}
 }
@@ -112,31 +75,10 @@ pub fn make_owned<T: Any + Send>(value: T) -> CHandle {
 		refs: AtomicU32::new(1),
 		value,
 	}));
-	alive_inc();
 	CHandle {
 		ctx: rb as *mut std::ffi::c_void,
 		addref: Some(refbox_addref::<T>),
 		release: Some(refbox_release_owned::<T>),
-		abi_version: OAKRENDER_ABI_VERSION,
-	}
-}
-
-/// Borrowed handle for an object owned elsewhere.
-///
-/// # Safety
-/// Caller guarantees `ptr` outlives every derived handle.
-pub unsafe fn make_borrowed<T: Any + Send>(ptr: *mut T) -> CHandle {
-	if ptr.is_null() {
-		return CHandle::null();
-	}
-	let rb = Box::into_raw(Box::new(RefBox {
-		refs: AtomicU32::new(1),
-		value: unsafe { std::ptr::read(ptr) },
-	}));
-	CHandle {
-		ctx: rb as *mut std::ffi::c_void,
-		addref: Some(refbox_addref::<T>),
-		release: Some(refbox_release_borrowed::<T>),
 		abi_version: OAKRENDER_ABI_VERSION,
 	}
 }
@@ -165,44 +107,6 @@ pub unsafe fn get_mut<T: Any>(h: &CHandle) -> Option<&mut T> {
 	unsafe { Some(&mut (*(h.ctx as *mut RefBox<T>)).value) }
 }
 
-/// A boxed handle that does **not** participate in the live-object count
-/// (mirrors the C++ borrowed `make_handle(…, owns=false)` boxes): the
-/// release only frees the box and its value, never a foreign object.
-pub fn make_borrowed_owned<T: Any + Send>(value: T) -> CHandle {
-	let rb = Box::into_raw(Box::new(RefBox {
-		refs: AtomicU32::new(1),
-		value,
-	}));
-	CHandle {
-		ctx: rb as *mut std::ffi::c_void,
-		addref: Some(refbox_addref::<T>),
-		release: Some(refbox_release_borrowed::<T>),
-		abi_version: OAKRENDER_ABI_VERSION,
-	}
-}
-
-/// Panic-catching FFI wrapper for i32-returning exports.
-pub fn guard<F: FnOnce() -> crate::error::Result<()>>(f: F) -> i32 {
-	match catch_unwind(AssertUnwindSafe(f)) {
-		Ok(Ok(())) => crate::error::OAKRENDER_OK,
-		Ok(Err(e)) => e.code(),
-		Err(_) => crate::error::OAKRENDER_E_FAILED,
-	}
-}
-
-/// Panic-catching FFI wrapper for handle-returning exports.
-pub fn guard_handle<F: FnOnce() -> crate::error::Result<CHandle>>(f: F) -> CHandle {
-	match catch_unwind(AssertUnwindSafe(f)) {
-		Ok(Ok(h)) => h,
-		Ok(Err(_)) | Err(_) => CHandle::null(),
-	}
-}
-
-/// Panic-catching FFI wrapper for void exports.
-pub fn guard_void<F: FnOnce()>(f: F) {
-	let _ = catch_unwind(AssertUnwindSafe(f));
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -215,12 +119,10 @@ mod tests {
 		let h = make_owned(Obj(7));
 		assert!(!h.is_null());
 		assert_eq!(h.abi_version, OAKRENDER_ABI_VERSION);
-		let before = alive_count();
 		// addref/release through the stored function pointers.
 		unsafe { h.addref.unwrap()(h.ctx) };
 		unsafe { h.release.unwrap()(h.ctx) };
 		unsafe { h.release.unwrap()(h.ctx) };
-		assert_eq!(alive_count(), before - 1);
 	}
 
 	#[test]
@@ -233,47 +135,6 @@ mod tests {
 	}
 
 	#[test]
-	fn borrowed_release_does_not_count() {
-		let mut obj = Obj(5);
-		let before = alive_count();
-		let h = unsafe { make_borrowed(&mut obj) };
-		assert!(!h.is_null());
-		assert_eq!(alive_count(), before, "borrowed boxes are not counted");
-		unsafe { h.release.unwrap()(h.ctx) };
-		assert_eq!(alive_count(), before);
-		// The borrowed value is intact (never dropped).
-		assert_eq!(obj, Obj(5));
-	}
-
-	#[test]
-	fn guard_maps_results() {
-		assert_eq!(guard(|| Ok(())), 0);
-		assert_eq!(guard(|| Err(crate::error::Error::Invalid)), -70001);
-		assert_eq!(guard(|| panic!("boom")), -70003);
-	}
-
-	#[test]
-	fn guard_handle_and_void_panic_safety() {
-		// Panics map to empty handles / are swallowed.
-		let h = guard_handle(|| panic!("boom"));
-		assert!(h.is_null());
-		let h = guard_handle(|| Err(crate::error::Error::State));
-		assert!(h.is_null());
-		let h = guard_handle(|| Ok(make_owned(Obj(1))));
-		assert!(!h.is_null());
-		unsafe { h.release.unwrap()(h.ctx) };
-
-		guard_void(|| panic!("swallowed"));
-		guard_void(|| {});
-	}
-
-	#[test]
-	fn make_borrowed_null_yields_empty() {
-		let h = unsafe { make_borrowed::<Obj>(std::ptr::null_mut()) };
-		assert!(h.is_null());
-	}
-
-	#[test]
 	fn get_mut_mutates_boxed_value() {
 		let h = make_owned(Obj(3));
 		unsafe {
@@ -282,19 +143,5 @@ mod tests {
 			assert_eq!(get::<Obj>(&h).unwrap().0, 9);
 		}
 		unsafe { h.release.unwrap()(h.ctx) };
-	}
-
-	#[test]
-	fn make_borrowed_owned_does_not_count() {
-		let before = alive_count();
-		let h = make_borrowed_owned(Obj(4));
-		assert_eq!(
-			alive_count(),
-			before,
-			"borrowed-owned boxes are not counted"
-		);
-		assert!(!h.is_null());
-		unsafe { h.release.unwrap()(h.ctx) };
-		assert_eq!(alive_count(), before);
 	}
 }

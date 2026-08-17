@@ -47,7 +47,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::descriptor::EffectDescriptor;
-use crate::handle::{RefBox, Registry};
+use crate::handle::RefBox;
 use crate::instance::Instance;
 use crate::property::{PropertySet, Value};
 use crate::suites::status;
@@ -790,14 +790,6 @@ pub struct Host {
 	pub(crate) instances: Mutex<Vec<std::sync::Weak<RefBox<Instance>>>>,
 }
 
-/// 实例身份注册表（param 桥按身份反查；见 [`crate::handle::Registry`]）。
-static INSTANCE_REGISTRY: OnceLock<Registry<Instance>> = OnceLock::new();
-
-/// 实例身份注册表入口。
-pub(crate) fn instance_registry() -> &'static Registry<Instance> {
-	INSTANCE_REGISTRY.get_or_init(Registry::new)
-}
-
 impl Host {
 	/// 进程单例。首次调用构建宿主属性集（能力宣告在此写入）。
 	pub fn global() -> &'static Host {
@@ -919,7 +911,7 @@ impl Host {
 			)));
 		}
 
-		// 登记：实例表 + param→instance 回写表。
+		// 登记活跃实例表（泄漏断言用）+ param→instance 回写表。
 		self.instances
 			.lock()
 			.unwrap_or_else(|e| e.into_inner())
@@ -929,7 +921,6 @@ impl Host {
 			let p_addr = &p.props as *const PropertySet as usize;
 			crate::suites::param::register_param_owner(p_addr, inst_props);
 		}
-		instance_registry().register(&arc);
 
 		Ok(arc)
 	}

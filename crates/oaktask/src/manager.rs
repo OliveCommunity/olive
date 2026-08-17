@@ -33,7 +33,6 @@
 use std::sync::Mutex;
 
 use crate::error::{Error, Result};
-use crate::handle::{make_borrowed, CHandle};
 use crate::task::Task;
 
 /// Process-wide singleton manager. C++ is a lazy singleton; the Rust side
@@ -184,14 +183,6 @@ impl TaskManager {
 	/// Number of live tasks.
 	pub fn get_task_count(&self) -> usize {
 		self.tasks.len()
-	}
-
-	/// Borrowed handle to the task at `index`; `Err(Error::NotFound)` if out
-	/// of range.
-	pub fn get_task_at(&self, index: usize) -> Result<CHandle> {
-		let task = self.tasks.get(index).ok_or(Error::NotFound)?;
-		let ptr = task.task() as *const Task as usize as *mut Task;
-		Ok(unsafe { make_borrowed::<Task>(ptr) })
 	}
 
 	/// Raw pointer to the task at `index` (stable while the manager owns

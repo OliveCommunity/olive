@@ -32,7 +32,8 @@ pub const OAKCODEC_E_NOMEM: i32 = -50005;
 /// The operation was cancelled.
 pub const OAKCODEC_E_CANCELLED: i32 = -50006;
 
-/// Current ABI version stamped into every oakcodec handle.
+/// The frozen C-ABI `abi_version` tag (`include/codec/decoder.h`); kept for
+/// parity with the handle structs, no longer stamped at runtime.
 pub const OAKCODEC_ABI_VERSION: u32 = 1;
 
 /// Crate-internal result type; the FFI layer maps it to the codes.
