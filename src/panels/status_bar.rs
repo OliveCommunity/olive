@@ -87,6 +87,13 @@ impl<E: AppEngine> Render for StatusBar<E> {
 			)
 		};
 
+		// The proxy segment doubles as the in-flight proxy transcode's
+		// progress readout (the C++ status bar shows the running task).
+		let proxy_text = match engine.proxy_task_progress() {
+			Some((label, progress)) => format!("{label} {}%", (progress * 100.0) as i32),
+			None => crate::i18n::tr("status.proxy").into(),
+		};
+
 		div()
 			.h_6()
 			.flex()
@@ -97,7 +104,7 @@ impl<E: AppEngine> Render for StatusBar<E> {
 			.text_xs()
 			.child(segment(&colors, crate::i18n::tr("status.ready").into()))
 			.child(segment(&colors, crate::i18n::tr("status.cache").into()))
-			.child(segment(&colors, crate::i18n::tr("status.proxy").into()))
+			.child(segment(&colors, proxy_text))
 			.child(
 				div()
 					.px_2()

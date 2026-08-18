@@ -458,6 +458,20 @@ impl ClipData for RealClip {
 	}
 }
 
+/// A running proxy transcode the engine drains on the tick loop (the
+/// task thread reports through the event channel; completion applies the
+/// footage's proxy fields and invalidates the rendered frames).
+struct ProxyRun {
+	/// The footage node.
+	footage: NodeId,
+	/// The task's display label (the status bar's proxy segment).
+	label: String,
+	/// Last reported progress (`0.0..=1.0`).
+	progress: f64,
+	/// The task thread's event channel.
+	events: mpsc::Receiver<super::engine::ExportEvent>,
+}
+
 /// One card of the real effect stack: the chain node's identity, its
 /// factory display name, its enabled flag, and the app-owned expansion
 /// state ([`RealEngine::expanded_effects`]). No source/output cards: the
@@ -685,6 +699,7 @@ pub struct RealEngine {
 	thumb_rx: Mutex<mpsc::Receiver<ThumbEvent>>,
 	/// The sending half of `thumb_rx` (cloned into every job).
 	thumb_tx: Mutex<mpsc::Sender<ThumbEvent>>,
+	proxy_runs: Vec<ProxyRun>,
 }
 
 impl RealEngine {
@@ -762,6 +777,7 @@ impl RealEngine {
 			thumb_generation: 0,
 			thumb_rx: Mutex::new(thumb_rx),
 			thumb_tx: Mutex::new(thumb_tx),
+			proxy_runs: Vec::new(),
 		}
 	}
 
@@ -1132,6 +1148,488 @@ impl RealEngine {
 		}
 	}
 
+	/// Invalidates every monitor's rendered frames (the preview media
+	/// changed — proxy toggled, generated or deleted): the CPU cache is
+	/// cleared and the full-res generation bumped so in-flight fills are
+	/// discarded on arrival. No timeline rebuild is needed — the montage
+	/// resolution reads the proxy switch on every pull.
+	fn invalidate_preview_frames(&mut self, cx: &mut Context<Self>) {
+		self.cpu_frame_cache.lock().unwrap().clear();
+		self.full_res_generation = self.full_res_generation.wrapping_add(1);
+		cx.notify();
+	}
+
+	/// The disk cache directory the proxy files live in (the config
+	/// override, else the platform default).
+	fn proxy_cache_path() -> String {
+		let configured = config_get_string(CONFIG_KEY_DISK_CACHE_PATH);
+		if configured.trim().is_empty() {
+			oakcommon::filefunctions::default_disk_cache_path()
+		} else {
+			configured
+		}
+	}
+
+	/// The footage node behind a project-explorer entry id, when it is a
+	/// footage node of the open project.
+	fn footage_of(&self, id: u64) -> Option<NodeId> {
+		let project = self.project.as_ref()?;
+		let node = graphops::id_of(id)?;
+		let guard = graphops::lock(project);
+		graphops::footage_behavior(&guard.graph, node)?;
+		Some(node)
+	}
+
+	/// Drains the in-flight proxy transcodes (called from the tick loop):
+	/// progress events update the status-bar segment, completion applies
+	/// the footage's proxy fields and invalidates the rendered frames.
+	fn drain_proxy_runs(&mut self, cx: &mut Context<Self>) {
+		if self.proxy_runs.is_empty() {
+			return;
+		}
+		let mut finished: Vec<(NodeId, bool)> = Vec::new();
+		let mut changed = false;
+		for run in self.proxy_runs.iter_mut() {
+			while let Ok(event) = run.events.try_recv() {
+				match event {
+					super::engine::ExportEvent::Started => {}
+					super::engine::ExportEvent::Progress(value) => {
+						run.progress = value.clamp(0.0, 1.0);
+						changed = true;
+					}
+					super::engine::ExportEvent::Finished(ok, _) => {
+						finished.push((run.footage, ok));
+					}
+				}
+			}
+		}
+		self.proxy_runs.retain(|run| {
+			!finished.iter().any(|(footage, _)| *footage == run.footage)
+		});
+		if let Some(project) = self.project.clone() {
+			for (footage, ok) in finished {
+				let mut guard = graphops::lock(&project);
+				if let Some(f) = guard
+					.graph
+					.get_mut(footage)
+					.and_then(|e| e.behavior.as_any_mut())
+					.and_then(|a| a.downcast_mut::<oaknode::footage::FootageBehavior>())
+				{
+					if ok {
+						// The transcode wrote the final file: mark the
+						// proxy ready and usable (state 2, enabled).
+						f.proxy_state = 2;
+						f.proxy_enabled = true;
+					} else {
+						f.proxy_state = 3;
+					}
+				}
+				changed = true;
+			}
+		}
+		if changed {
+			self.invalidate_preview_frames(cx);
+		}
+	}
+
+	/// The proxy lifecycle state of one footage row: an in-flight run
+	/// wins, then the disk state of the recorded proxy path, with a
+	/// recorded failure (state 3) preserved while no file is on disk.
+	fn proxy_state_of(
+		&self,
+		f: &oaknode::footage::FootageBehavior,
+		node: NodeId,
+	) -> super::engine::ProxyMediaState {
+		use super::engine::ProxyMediaState;
+		if self.proxy_runs.iter().any(|run| run.footage == node) {
+			return ProxyMediaState::Generating;
+		}
+		if f.proxy.is_empty() {
+			return ProxyMediaState::Missing;
+		}
+		match oakcodec::proxymanager::ProxyManager::get_proxy_state(&f.proxy) {
+			oakcodec::proxymanager::ProxyState::Ready => ProxyMediaState::Ready,
+			oakcodec::proxymanager::ProxyState::Generating => ProxyMediaState::Generating,
+			_ => {
+				if f.proxy_state == 3 {
+					ProxyMediaState::Failed
+				} else {
+					ProxyMediaState::Missing
+				}
+			}
+		}
+	}
+
+	/// Synchronize the selected clips by their footage's source start
+	/// timecode (the C++ `synchronize_selected_clips_by_source_time`):
+	/// the clip whose source head (start time + media in) is earliest is
+	/// the reference, the earliest selected in point is the anchor, and
+	/// every clip is re-placed so its source head lines up with the
+	/// reference's at the anchor (one multi-undo).
+	fn sync_clips_by_source_time_internal(&mut self, clips: &[ClipId]) {
+		use oakaudio::synchronizer::{place_by_source_time, SourceClip};
+
+		let Some(project) = self.project.clone() else {
+			return;
+		};
+
+		struct SourceTarget {
+			node: NodeId,
+			track: NodeId,
+			list: NodeId,
+			track_index: i32,
+			source: SourceClip,
+			source_head: oakcore_rs::Rational,
+			block_in: oakcore_rs::Rational,
+		}
+
+		let mut targets: Vec<SourceTarget> = Vec::new();
+		{
+			let guard = graphops::lock(&project);
+			for clip in clips {
+				let Some(node) = graphops::id_of(clip.0) else {
+					continue;
+				};
+				let Some((block_in, _, media_in)) = graphops::clip_range(&guard.graph, node)
+				else {
+					continue;
+				};
+				let Some(track) = graphops::clip_track(&guard.graph, node) else {
+					continue;
+				};
+				let Some(t) = graphops::track_behavior(&guard.graph, track) else {
+					continue;
+				};
+				let Some(list) = t.track_list else {
+					continue;
+				};
+				let Some(f) = graphops::find_input_footage(&guard.graph, node)
+					.and_then(|f| graphops::footage_behavior(&guard.graph, f))
+				else {
+					continue;
+				};
+				if !f.has_source_start_time {
+					continue;
+				}
+				targets.push(SourceTarget {
+					node,
+					track,
+					list,
+					track_index: t.index,
+					source_head: f.source_start_time + media_in,
+					block_in,
+					source: SourceClip {
+						source_start_time: f.source_start_time,
+						media_in,
+						has_source_start_time: true,
+					},
+				});
+			}
+		}
+		if targets.len() < 2 {
+			return;
+		}
+
+		let mut reference = &targets[0];
+		let mut anchor_in = targets[0].block_in;
+		for target in &targets[1..] {
+			if target.source_head < reference.source_head {
+				reference = target;
+			}
+			if target.block_in < anchor_in {
+				anchor_in = target.block_in;
+			}
+		}
+
+		// (node, track, list, track index, placement) for every valid
+		// placement (the reference itself lands on the anchor).
+		let mut placements: Vec<(NodeId, NodeId, NodeId, i32, oakcore_rs::Rational)> =
+			Vec::new();
+		for target in &targets {
+			let placement = place_by_source_time(&reference.source, &target.source, anchor_in);
+			if placement.valid {
+				placements.push((
+					target.node,
+					target.track,
+					target.list,
+					target.track_index,
+					placement.timeline_in,
+				));
+			}
+		}
+		if placements.len() < 2 {
+			return;
+		}
+
+		let mut children: Vec<oakundo::undocommand::UndoCommand> = Vec::new();
+		for (node, track, _, _, _) in &placements {
+			children.push(
+				oaktimeline::undogeneral::TrackReplaceBlockWithGapCommand::new(
+					graphops::node_ref(&project, *track),
+					graphops::node_ref(&project, *node),
+					false,
+				)
+				.to_command(),
+			);
+		}
+		for (node, _, list, track_index, timeline_in) in &placements {
+			children.push(
+				oaktimeline::undopointer::TrackPlaceBlockCommand::new(
+					graphops::node_ref(&project, *list),
+					*track_index,
+					graphops::node_ref(&project, *node),
+					*timeline_in,
+				)
+				.to_command(),
+			);
+		}
+		let _ = graphops::push_multi_command(children, "Synchronize Clips by Source Time");
+	}
+
+	/// Synchronize the selected clips by waveform correlation (the C++
+	/// `synchronize_selected_clips_by_waveform_internal`): the leftmost
+	/// clip is the reference, every other clip is shifted by the
+	/// estimated envelope offset; with `allow_speed`, an inconclusive
+	/// offset triggers a rate search whose winner also rescales the clip
+	/// speed (one multi-undo).
+	fn sync_clips_by_waveform_internal(&mut self, clips: &[ClipId], allow_speed: bool) {
+		use oakaudio::synchronizer::place_by_waveform_offset;
+		use oakaudio::waveformsync::{estimate_envelope_offset_valid, estimate_stretch_and_offset};
+
+		let Some(cache) = self.waveform_cache() else {
+			return;
+		};
+		let Some(project) = self.project.clone() else {
+			return;
+		};
+
+		struct WaveTarget {
+			node: NodeId,
+			track: NodeId,
+			list: NodeId,
+			track_index: i32,
+			block_in: oakcore_rs::Rational,
+			speed: f64,
+			media_in_s: f64,
+			media_len_s: f64,
+			waveform: Arc<crate::oakui::waveform::ClipWaveform>,
+		}
+
+		let mut targets: Vec<WaveTarget> = Vec::new();
+		{
+			let guard = graphops::lock(&project);
+			for clip in clips {
+				let Some(node) = graphops::id_of(clip.0) else {
+					continue;
+				};
+				let Some((block_in, block_out, media_in)) =
+					graphops::clip_range(&guard.graph, node)
+				else {
+					continue;
+				};
+				let Some(behavior) = graphops::clip_behavior(&guard.graph, node) else {
+					continue;
+				};
+				let Some(track) = graphops::clip_track(&guard.graph, node) else {
+					continue;
+				};
+				let Some(t) = graphops::track_behavior(&guard.graph, track) else {
+					continue;
+				};
+				let Some(list) = t.track_list else {
+					continue;
+				};
+				let Some(waveform) = cache.get(clip.0) else {
+					continue;
+				};
+				// The C++ media range is media_in + timeline length
+				// (speed/reverse ignored there); the Rust cache covers the
+				// whole file from sample 0.
+				let media_len_s = (block_out - block_in).to_f64();
+				if !super::waveformsync::waveform_sync_eligible(&waveform, media_len_s) {
+					continue;
+				}
+				targets.push(WaveTarget {
+					node,
+					track,
+					list,
+					track_index: t.index,
+					block_in,
+					speed: behavior.core.speed,
+					media_in_s: media_in.to_f64(),
+					media_len_s,
+					waveform,
+				});
+			}
+		}
+		if targets.len() < 2 {
+			return;
+		}
+
+		let mut ref_index = 0usize;
+		for (i, target) in targets.iter().enumerate() {
+			if target.block_in < targets[ref_index].block_in {
+				ref_index = i;
+			}
+		}
+		let sample_rate = targets[ref_index].waveform.sample_rate;
+		if sample_rate <= 0 {
+			return;
+		}
+		let window_samples = (sample_rate / 20).max(1) as usize;
+		let max_offset_windows = (i64::from(sample_rate) * 600) / window_samples as i64;
+
+		let reference = &targets[ref_index];
+		let (ref_envelope, ref_valid) = super::waveformsync::extract_cache_envelope(
+			&reference.waveform,
+			reference.media_in_s,
+			reference.media_len_s,
+			window_samples,
+		);
+
+		// (node, track, list, track index, placement, speed, old speed).
+		let mut placements: Vec<(
+			NodeId,
+			NodeId,
+			NodeId,
+			i32,
+			oakcore_rs::Rational,
+			f64,
+			f64,
+		)> = vec![(
+			reference.node,
+			reference.track,
+			reference.list,
+			reference.track_index,
+			reference.block_in,
+			1.0,
+			reference.speed,
+		)];
+
+		for (i, target) in targets.iter().enumerate() {
+			if i == ref_index {
+				continue;
+			}
+			let (cand_envelope, cand_valid) = super::waveformsync::extract_cache_envelope(
+				&target.waveform,
+				target.media_in_s,
+				target.media_len_s,
+				window_samples,
+			);
+			let mut offset = estimate_envelope_offset_valid(
+				&ref_envelope,
+				&cand_envelope,
+				&ref_valid,
+				&cand_valid,
+				window_samples,
+				max_offset_windows,
+			);
+			let mut speed = 1.0;
+			if allow_speed && (!offset.valid || offset.confidence < 0.6) {
+				// Inconclusive: the clips may run at different speeds —
+				// search a rate range with a tighter offset radius.
+				let radius = max_offset_windows.min(
+					(i64::from(sample_rate) * 30) / window_samples as i64,
+				);
+				let stretch = estimate_stretch_and_offset(
+					&ref_envelope,
+					&cand_envelope,
+					&ref_valid,
+					&cand_valid,
+					window_samples,
+					radius,
+					0.75,
+					1.34,
+					0.005,
+				);
+				if stretch.valid
+					&& stretch.confidence > (if offset.valid { offset.confidence } else { 0.0 })
+				{
+					speed = stretch.rate;
+					offset.valid = true;
+					offset.confidence = stretch.confidence;
+					offset.offset_samples = stretch.offset_samples;
+				}
+			}
+			if !offset.valid {
+				continue;
+			}
+			let placement =
+				place_by_waveform_offset(reference.block_in, offset.offset_samples, sample_rate);
+			if placement.valid && placement.timeline_in >= oakcore_rs::Rational::new(0, 1) {
+				placements.push((
+					target.node,
+					target.track,
+					target.list,
+					target.track_index,
+					placement.timeline_in,
+					speed,
+					target.speed,
+				));
+			}
+		}
+		if placements.len() < 2 {
+			return;
+		}
+
+		let mut children: Vec<oakundo::undocommand::UndoCommand> = Vec::new();
+		for (node, track, _, _, _, speed, old_speed) in &placements {
+			children.push(
+				oaktimeline::undogeneral::TrackReplaceBlockWithGapCommand::new(
+					graphops::node_ref(&project, *track),
+					graphops::node_ref(&project, *node),
+					false,
+				)
+				.to_command(),
+			);
+			if (*speed - 1.0).abs() > f64::EPSILON {
+				// The C++ multiplies the clip's current speed by the
+				// estimated rate (`clip_speed * placement.speed`); the
+				// Rust clip keeps its speed on the block core.
+				let new_speed = *old_speed * speed;
+				let old_speed = *old_speed;
+				let node = *node;
+				let (p1, p2) = (project.clone(), project.clone());
+				children.push(oakundo::undocommand::UndoCommand::from_closures(
+					move || {
+						let mut g = graphops::lock(&p1);
+						if let Some(c) = g
+							.graph
+							.get_mut(node)
+							.and_then(|e| e.behavior.as_any_mut())
+							.and_then(|a| a.downcast_mut::<oaknode::block::ClipBlockBehavior>())
+						{
+							c.core.speed = new_speed;
+						}
+					},
+					move || {
+						let mut g = graphops::lock(&p2);
+						if let Some(c) = g
+							.graph
+							.get_mut(node)
+							.and_then(|e| e.behavior.as_any_mut())
+							.and_then(|a| a.downcast_mut::<oaknode::block::ClipBlockBehavior>())
+						{
+							c.core.speed = old_speed;
+						}
+					},
+				));
+			}
+		}
+		for (node, _, list, track_index, timeline_in, _, _) in &placements {
+			children.push(
+				oaktimeline::undopointer::TrackPlaceBlockCommand::new(
+					graphops::node_ref(&project, *list),
+					*track_index,
+					graphops::node_ref(&project, *node),
+					*timeline_in,
+				)
+				.to_command(),
+			);
+		}
+		let _ = graphops::push_multi_command(children, "Synchronize Clips by Waveform");
+	}
+
 	/// Adopts a newly created/loaded project, dropping any previous one,
 	/// and rebuilds every snapshot. The undo stack is cleared (a project
 	/// switch starts a fresh history, mirroring the facade's
@@ -1479,6 +1977,17 @@ impl RealEngine {
 // EngineGateway
 // ---------------------------------------------------------------------------
 
+/// The clip's timeline length in seconds — the media-range length the C++
+/// waveform sync extracts its envelope over (`media_in + length`, speed
+/// and reverse ignored there; parity with
+/// `oakengine_clip_get_media_range_rational`).
+fn clip_media_length_seconds(g: &oaknode::graph::Graph, node: NodeId) -> f64 {
+	match graphops::clip_range(g, node) {
+		Some((in_r, out_r, _)) => (out_r - in_r).to_f64(),
+		None => 0.0,
+	}
+}
+
 impl EngineGateway for RealEngine {
 	fn project(&self) -> Option<&Project> {
 		self.project.as_ref().map(|_| &self.project_info)
@@ -1576,6 +2085,7 @@ impl EngineGateway for RealEngine {
 		// playing monitors, so playback keeps the proxy path).
 		self.drain_full_res();
 		self.drain_thumbnails();
+		self.drain_proxy_runs(cx);
 		self.schedule_full_res(Monitor::Source, cx);
 		self.schedule_full_res(Monitor::Program, cx);
 		cx.notify();
@@ -2565,6 +3075,406 @@ impl AppEngine for RealEngine {
 			.map_err(|e| format!("failed to export the project to \"{}\": {e}", path.display()))
 	}
 
+	fn set_use_proxy_media(&mut self, enabled: bool, cx: &mut Context<Self>) {
+		oakcommon::configstore::ConfigStore::instance().set(
+			None,
+			CONFIG_KEY_USE_PROXY,
+			if enabled { "true" } else { "false" },
+		);
+		// Every footage's preview media may change: drop the rendered
+		// frames so the next pull re-resolves original/proxy.
+		self.invalidate_preview_frames(cx);
+	}
+
+	fn proxy_rows(&self) -> Vec<super::engine::ProxyFootageRow> {
+		let Some(project) = self.project.as_ref() else {
+			return Vec::new();
+		};
+		let guard = graphops::lock(project);
+		graphops::footage_ids(&guard)
+			.into_iter()
+			.filter_map(|node| {
+				let f = graphops::footage_behavior(&guard.graph, node)?;
+				let name = graphops::node_label(&guard.graph, node);
+				Some(super::engine::ProxyFootageRow {
+					id: node.identity(),
+					name,
+					state: self.proxy_state_of(f, node),
+					enabled: f.proxy_enabled,
+					has_custom: f.has_custom_proxy_params(),
+					can_generate: f.valid && f.streams.iter().any(|s| s.is_video),
+					has_proxy: !f.proxy.is_empty(),
+				})
+			})
+			.collect()
+	}
+
+	fn proxy_state(&self, id: u64) -> Option<super::engine::ProxyMediaState> {
+		let project = self.project.as_ref()?;
+		let node = graphops::id_of(id)?;
+		let guard = graphops::lock(project);
+		let f = graphops::footage_behavior(&guard.graph, node)?;
+		Some(self.proxy_state_of(f, node))
+	}
+
+	fn proxy_row(&self, id: u64) -> Option<super::engine::ProxyFootageRow> {
+		self.proxy_rows().into_iter().find(|row| row.id == id)
+	}
+
+	fn proxy_generate(&mut self, id: u64, cx: &mut Context<Self>) -> Result<(), String> {
+		let footage = self.footage_of(id).ok_or("entry is not footage")?;
+		if self.proxy_runs.iter().any(|run| run.footage == footage) {
+			return Err("a proxy is already generating for this footage".into());
+		}
+		let (filename, stream_index, params) = {
+			let project = self.project.as_ref().ok_or("no project open")?;
+			let guard = graphops::lock(project);
+			let f = graphops::footage_behavior(&guard.graph, footage)
+				.ok_or("entry is not footage")?;
+			if f.filename.is_empty() {
+				return Err("the footage has no media file".into());
+			}
+			let stream = f
+				.streams
+				.iter()
+				.find(|s| s.is_video)
+				.map(|s| s.index)
+				.ok_or("the footage has no video stream")?;
+			(f.filename.clone(), stream, f.effective_proxy_params())
+		};
+
+		let proxy_path = oakcodec::proxymanager::ProxyManager::get_proxy_filename(
+			&Self::proxy_cache_path(),
+			&filename,
+			stream_index,
+			&params,
+		)
+		.map_err(|e| format!("failed to build the proxy filename: {e}"))?;
+
+		// Absolute targets only apply in custom-size mode; divider mode
+		// scales from the source (the request mirrors the C++ submission).
+		let (proxy_width, proxy_height) = if params.divider <= 1 {
+			(params.width, params.height)
+		} else {
+			(0, 0)
+		};
+		let request = oakcodec::task::TaskRequest {
+			kind: oakcodec::task::TaskKind::Proxy,
+			input_filename: &filename,
+			output_filename: &proxy_path,
+			stream_index,
+			sample_rate: 0,
+			channel_layout: 0,
+			sample_format: 0,
+			proxy_width,
+			proxy_height,
+		};
+		let task_params = oaktask::proxy::ProxyParams {
+			width: params.width,
+			height: params.height,
+			divider: params.divider,
+			version: params.version,
+			crf: params.crf,
+			include_audio: params.include_audio != 0,
+			extension: {
+				let end = params
+					.extension
+					.iter()
+					.position(|&b| b == 0)
+					.unwrap_or(params.extension.len());
+				String::from_utf8_lossy(&params.extension[..end]).into_owned()
+			},
+			preset: {
+				let end = params
+					.preset
+					.iter()
+					.position(|&b| b == 0)
+					.unwrap_or(params.preset.len());
+				String::from_utf8_lossy(&params.preset[..end]).into_owned()
+			},
+		};
+
+		let label = format!("Generating Proxy {}", filename);
+		let (tx, rx) = mpsc::channel::<super::engine::ExportEvent>();
+		let mut driver = oaktask::task::Task::new(&label, None);
+		{
+			let tx = tx.clone();
+			driver.set_event_listener(Box::new(move |event| {
+				let event = match event {
+					oaktask::task::TaskEvent::Started => super::engine::ExportEvent::Started,
+					oaktask::task::TaskEvent::Progress(value) => {
+						super::engine::ExportEvent::Progress(value)
+					}
+					oaktask::task::TaskEvent::Finished => return,
+				};
+				let _ = tx.send(event);
+			}));
+		}
+		driver.set_behavior(Box::new(oaktask::proxy::ProxyTask::new(
+			&request,
+			task_params,
+		)));
+		std::thread::spawn(move || {
+			let result = driver.start();
+			let error = if result.is_ok() {
+				String::new()
+			} else {
+				driver
+					.error()
+					.map(|s| s.to_string())
+					.unwrap_or_else(|| "proxy generation failed".to_string())
+			};
+			let _ = tx.send(super::engine::ExportEvent::Finished(result.is_ok(), error));
+		});
+
+		// Mark the footage generating immediately (state 1), exactly like
+		// the C++ dialog's set_proxy(..., proxy.state, ...) after
+		// get_or_start; the tick drain finalizes it.
+		if let Some(project) = self.project.as_ref() {
+			let mut guard = graphops::lock(project);
+			if let Some(f) = guard
+				.graph
+				.get_mut(footage)
+				.and_then(|e| e.behavior.as_any_mut())
+				.and_then(|a| a.downcast_mut::<oaknode::footage::FootageBehavior>())
+			{
+				f.set_proxy(&proxy_path, 1, stream_index, params.version, true);
+			}
+		}
+		self.proxy_runs.push(ProxyRun {
+			footage,
+			label,
+			progress: 0.0,
+			events: rx,
+		});
+		cx.notify();
+		Ok(())
+	}
+
+	fn proxy_task_progress(&self) -> Option<(String, f64)> {
+		self.proxy_runs
+			.first()
+			.map(|run| (run.label.clone(), run.progress))
+	}
+
+	fn proxy_delete(&mut self, id: u64, cx: &mut Context<Self>) {
+		let Some(footage) = self.footage_of(id) else {
+			return;
+		};
+		let proxy_path = {
+			let Some(project) = self.project.as_ref() else {
+				return;
+			};
+			let guard = graphops::lock(project);
+			match graphops::footage_behavior(&guard.graph, footage) {
+				Some(f) if !f.proxy.is_empty() => f.proxy.clone(),
+				_ => return,
+			}
+		};
+		let _ = std::fs::remove_file(&proxy_path);
+		if let Ok(working) = oakcodec::proxymanager::ProxyManager::get_working_filename(&proxy_path)
+		{
+			let _ = std::fs::remove_file(&working);
+		}
+		if let Some(project) = self.project.as_ref() {
+			let mut guard = graphops::lock(project);
+			if let Some(f) = guard
+				.graph
+				.get_mut(footage)
+				.and_then(|e| e.behavior.as_any_mut())
+				.and_then(|a| a.downcast_mut::<oaknode::footage::FootageBehavior>())
+			{
+				f.clear_proxy();
+			}
+		}
+		self.invalidate_preview_frames(cx);
+	}
+
+	fn proxy_set_enabled(&mut self, id: u64, enabled: bool, cx: &mut Context<Self>) {
+		let Some(footage) = self.footage_of(id) else {
+			return;
+		};
+		if let Some(project) = self.project.as_ref() {
+			let mut guard = graphops::lock(project);
+			if let Some(f) = guard
+				.graph
+				.get_mut(footage)
+				.and_then(|e| e.behavior.as_any_mut())
+				.and_then(|a| a.downcast_mut::<oaknode::footage::FootageBehavior>())
+			{
+				f.proxy_enabled = enabled;
+			}
+		}
+		self.invalidate_preview_frames(cx);
+	}
+
+	fn proxy_reveal(&self, id: u64) {
+		let Some(footage) = self.footage_of(id) else {
+			return;
+		};
+		let proxy_path = {
+			let Some(project) = self.project.as_ref() else {
+				return;
+			};
+			let guard = graphops::lock(project);
+			match graphops::footage_behavior(&guard.graph, footage) {
+				Some(f) if !f.proxy.is_empty() => f.proxy.clone(),
+				_ => return,
+			}
+		};
+		let path = std::path::Path::new(&proxy_path);
+		if path.exists() {
+			let _ = std::process::Command::new("open")
+				.arg("-R")
+				.arg(path)
+				.spawn();
+		}
+	}
+
+	fn proxy_set_custom_params(
+		&mut self,
+		id: u64,
+		params: super::engine::ProxyParamsUi,
+		cx: &mut Context<Self>,
+	) {
+		let Some(footage) = self.footage_of(id) else {
+			return;
+		};
+		if let Some(project) = self.project.as_ref() {
+			let mut guard = graphops::lock(project);
+			if let Some(f) = guard
+				.graph
+				.get_mut(footage)
+				.and_then(|e| e.behavior.as_any_mut())
+				.and_then(|a| a.downcast_mut::<oaknode::footage::FootageBehavior>())
+			{
+				f.set_custom_proxy_params(params.to_codec());
+			}
+		}
+		cx.notify();
+	}
+
+	fn proxy_clear_custom_params(&mut self, id: u64, cx: &mut Context<Self>) {
+		let Some(footage) = self.footage_of(id) else {
+			return;
+		};
+		if let Some(project) = self.project.as_ref() {
+			let mut guard = graphops::lock(project);
+			if let Some(f) = guard
+				.graph
+				.get_mut(footage)
+				.and_then(|e| e.behavior.as_any_mut())
+				.and_then(|a| a.downcast_mut::<oaknode::footage::FootageBehavior>())
+			{
+				f.clear_custom_proxy_params();
+			}
+		}
+		cx.notify();
+	}
+
+	fn proxy_custom_params(&self, id: u64) -> Option<super::engine::ProxyParamsUi> {
+		let project = self.project.as_ref()?;
+		let node = graphops::id_of(id)?;
+		let guard = graphops::lock(project);
+		let f = graphops::footage_behavior(&guard.graph, node)?;
+		f.custom_proxy_params
+			.as_ref()
+			.map(super::engine::ProxyParamsUi::from_codec)
+	}
+
+	fn proxy_effective_params(&self, id: u64) -> super::engine::ProxyParamsUi {
+		let Some(project) = self.project.as_ref() else {
+			return super::engine::proxy_params_from_config();
+		};
+		let Some(node) = graphops::id_of(id) else {
+			return super::engine::proxy_params_from_config();
+		};
+		let guard = graphops::lock(project);
+		match graphops::footage_behavior(&guard.graph, node) {
+			Some(f) => super::engine::ProxyParamsUi::from_codec(&f.effective_proxy_params()),
+			None => super::engine::proxy_params_from_config(),
+		}
+	}
+
+	fn clip_footage_entries(&self, clips: &[ClipId]) -> Vec<super::engine::ProxyFootageRow> {
+		let Some(project) = self.project.as_ref() else {
+			return Vec::new();
+		};
+		let guard = graphops::lock(project);
+		let mut seen: Vec<NodeId> = Vec::new();
+		let mut rows: Vec<super::engine::ProxyFootageRow> = Vec::new();
+		for clip in clips {
+			let Some(node) = graphops::id_of(clip.0) else {
+				continue;
+			};
+			let Some(footage) = graphops::find_input_footage(&guard.graph, node) else {
+				continue;
+			};
+			if seen.contains(&footage) {
+				continue;
+			}
+			let Some(f) = graphops::footage_behavior(&guard.graph, footage) else {
+				continue;
+			};
+			seen.push(footage);
+			rows.push(super::engine::ProxyFootageRow {
+				id: footage.identity(),
+				name: graphops::node_label(&guard.graph, footage),
+				state: self.proxy_state_of(f, footage),
+				enabled: f.proxy_enabled,
+				has_custom: f.has_custom_proxy_params(),
+				can_generate: f.valid && f.streams.iter().any(|s| s.is_video),
+				has_proxy: !f.proxy.is_empty(),
+			});
+		}
+		rows
+	}
+
+	fn sync_eligibility(&self, clips: &[ClipId]) -> super::engine::SyncEligibility {
+		let mut eligibility = super::engine::SyncEligibility::default();
+		let (Some(project), Some(cache)) = (self.project.as_ref(), self.waveform_cache()) else {
+			return eligibility;
+		};
+		let guard = graphops::lock(project);
+		for clip in clips {
+			let Some(node) = graphops::id_of(clip.0) else {
+				continue;
+			};
+			if graphops::clip_range(&guard.graph, node).is_none() {
+				continue;
+			}
+			if let Some(footage) = graphops::find_input_footage(&guard.graph, node)
+				.and_then(|f| graphops::footage_behavior(&guard.graph, f))
+			{
+				if footage.has_source_start_time {
+					eligibility.source_time += 1;
+				}
+			}
+			if let Some(waveform) = cache.get(clip.0) {
+				let media_len = clip_media_length_seconds(&guard.graph, node);
+				if super::waveformsync::waveform_sync_eligible(&waveform, media_len) {
+					eligibility.waveform += 1;
+				}
+			}
+		}
+		eligibility
+	}
+
+	fn sync_clips_by_source_time(&mut self, clips: Vec<ClipId>, cx: &mut Context<Self>) {
+		self.sync_clips_by_source_time_internal(&clips);
+		cx.notify();
+	}
+
+	fn sync_clips_by_waveform(
+		&mut self,
+		clips: Vec<ClipId>,
+		adjust_speed: bool,
+		cx: &mut Context<Self>,
+	) {
+		self.sync_clips_by_waveform_internal(&clips, adjust_speed);
+		cx.notify();
+	}
+
 	fn start_export(&mut self, format: i32, path: PathBuf) -> Result<ExportSession, String> {
 		let (Some(project), Some(seq)) = (self.project.clone(), self.sequence) else {
 			return Err("no sequence open".into());
@@ -2794,6 +3704,10 @@ pub const CONFIG_KEY_THEME: &str = "Theme";
 pub const CONFIG_KEY_DISK_CACHE_PATH: &str = "DiskCachePath";
 /// The config key toggling proxy media use (`UseProxyMedia`, bool).
 pub const CONFIG_KEY_USE_PROXY: &str = "UseProxyMedia";
+/// The config key holding the explicit ffmpeg executable path the proxy
+/// transcode should use (`FFmpegPath`; empty = auto-detect on PATH and
+/// the common install locations).
+pub const CONFIG_KEY_FFMPEG_PATH: &str = "FFmpegPath";
 /// The config key holding the proxy resolution divider (`ProxyDivider`,
 /// int; 1 = full resolution, 2/4/8/16 = 1/2 … 1/16). oakcodec's
 /// `ProxyManager::proxy_params_from_config` reads it for generation.

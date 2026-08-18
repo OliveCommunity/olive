@@ -57,6 +57,14 @@ pub struct FootageBehavior {
 	pub proxy_video_stream_index: i32,
 	/// Proxy preset version.
 	pub proxy_preset_version: i32,
+	/// Per-footage proxy generation params (C++ `custom_proxy_params_`;
+	/// `None` = use the global config params).
+	pub custom_proxy_params: Option<oakcodec::proxymanager::ProxyParams>,
+	/// Source start time (timecode embedded in the media; C++
+	/// `source_start_time_`).
+	pub source_start_time: oakcore_rs::Rational,
+	/// Whether [`Self::source_start_time`] is set.
+	pub has_source_start_time: bool,
 	/// File last-modified timestamp (ms since epoch).
 	pub timestamp: i64,
 	/// Decoder id recorded at probe time.
@@ -78,6 +86,9 @@ impl FootageBehavior {
 			proxy_state: 0,
 			proxy_video_stream_index: -1,
 			proxy_preset_version: 0,
+			custom_proxy_params: None,
+			source_start_time: oakcore_rs::Rational::new(0, 1),
+			has_source_start_time: false,
 			timestamp: 0,
 			decoder: String::new(),
 			valid: false,
@@ -123,6 +134,12 @@ impl FootageBehavior {
 		self.decoder = desc.decoder().to_string();
 		self.streams = streams;
 		self.timestamp = timestamp;
+		self.has_source_start_time = desc.has_source_start_time();
+		self.source_start_time = if self.has_source_start_time {
+			desc.source_start_time()
+		} else {
+			oakcore_rs::Rational::new(0, 1)
+		};
 		self.valid = true;
 		Ok(())
 	}
@@ -227,6 +244,46 @@ impl FootageBehavior {
 		self.proxy_enabled = false;
 	}
 
+	/// Set the per-footage proxy generation params (C++
+	/// `set_custom_proxy_params`).
+	pub fn set_custom_proxy_params(&mut self, params: oakcodec::proxymanager::ProxyParams) {
+		self.custom_proxy_params = Some(params);
+	}
+
+	/// Drop the per-footage proxy generation params (C++
+	/// `clear_custom_proxy_params`).
+	pub fn clear_custom_proxy_params(&mut self) {
+		self.custom_proxy_params = None;
+	}
+
+	/// Whether per-footage proxy generation params are set (C++
+	/// `has_custom_proxy_params`).
+	pub fn has_custom_proxy_params(&self) -> bool {
+		self.custom_proxy_params.is_some()
+	}
+
+	/// The proxy generation params to use for this footage: the custom
+	/// params when set, otherwise the global config params (C++
+	/// `get_effective_proxy_params`).
+	pub fn effective_proxy_params(&self) -> oakcodec::proxymanager::ProxyParams {
+		self.custom_proxy_params
+			.clone()
+			.unwrap_or_else(oakcodec::proxymanager::ProxyManager::proxy_params_from_config)
+	}
+
+	/// Set the source start time (C++ `set_source_start_time`; the Rust
+	/// probe records it, the serializer persists it).
+	pub fn set_source_start_time(&mut self, time: oakcore_rs::Rational) {
+		self.source_start_time = time;
+		self.has_source_start_time = true;
+	}
+
+	/// Clear the source start time (C++ `clear_source_start_time`).
+	pub fn clear_source_start_time(&mut self) {
+		self.source_start_time = oakcore_rs::Rational::new(0, 1);
+		self.has_source_start_time = false;
+	}
+
 	/// Constructor for the serializer: the C++ `Footage` input surface
 	/// (`file_in` + the viewer parameter stream arrays) with an unprobed
 	/// behavior (`// CPP-PARITY: footage.cpp:83`, `viewer.cpp:84`).
@@ -277,6 +334,9 @@ impl NodeBehavior for FootageBehavior {
 			proxy_state: self.proxy_state,
 			proxy_video_stream_index: self.proxy_video_stream_index,
 			proxy_preset_version: self.proxy_preset_version,
+			custom_proxy_params: self.custom_proxy_params.clone(),
+			source_start_time: self.source_start_time,
+			has_source_start_time: self.has_source_start_time,
 			timestamp: self.timestamp,
 			decoder: self.decoder.clone(),
 			valid: self.valid,
@@ -296,14 +356,41 @@ impl NodeBehavior for FootageBehavior {
 		if self.timestamp != 0 {
 			writer.text_element("timestamp", &self.timestamp.to_string());
 		}
-		if !self.proxy.is_empty() || self.proxy_enabled {
+		if !self.proxy.is_empty() || self.proxy_enabled || self.custom_proxy_params.is_some() {
 			writer.start_element("proxy");
 			writer.attribute("enabled", if self.proxy_enabled { "1" } else { "0" });
-			writer.attribute("state", &self.proxy_state.to_string());
+			// The C++ writes the state name (footage.cpp save_custom); the
+			// reader accepts both the name and the legacy numeric form.
+			let state = oakcodec::proxymanager::ProxyState::try_from(self.proxy_state)
+				.unwrap_or(oakcodec::proxymanager::ProxyState::Missing);
+			writer.attribute(
+				"state",
+				&oakcodec::proxymanager::ProxyManager::proxy_state_to_string(state),
+			);
 			writer.attribute("stream", &self.proxy_video_stream_index.to_string());
 			writer.attribute("preset", &self.proxy_preset_version.to_string());
+			if let Some(custom) = &self.custom_proxy_params {
+				writer.attribute("custom", "1");
+				writer.attribute("pwidth", &custom.width.to_string());
+				writer.attribute("pheight", &custom.height.to_string());
+				writer.attribute("pdivider", &custom.divider.to_string());
+				writer.attribute("pcrf", &custom.crf.to_string());
+				writer.attribute("ppreset", preset_str(custom));
+				writer.attribute("pext", extension_str(custom));
+				writer.attribute("paudio", if custom.include_audio != 0 { "1" } else { "0" });
+			}
 			writer.characters(&self.proxy);
 			writer.end_element(); // proxy
+		}
+		if self.has_source_start_time {
+			writer.start_element("sourcestarttime");
+			writer.attribute("source", "");
+			writer.characters(&format!(
+				"{}/{}",
+				self.source_start_time.numerator(),
+				self.source_start_time.denominator()
+			));
+			writer.end_element(); // sourcestarttime
 		}
 		if !self.streams.is_empty() {
 			writer.start_element("streams");
@@ -335,10 +422,9 @@ impl NodeBehavior for FootageBehavior {
 	}
 
 	/// Custom project load. C++ segments without a Rust counterpart
-	/// (`sourcestarttime`, `viewer` workarea/markers) are skipped. The
-	/// filename falls back to the `file_in` input when the file carries
-	/// no `<filename>` element (the C++ convention; `<filename>` is a
-	/// Rust addition).
+	/// (`viewer` workarea/markers) are skipped. The filename falls back
+	/// to the `file_in` input when the file carries no `<filename>`
+	/// element (the C++ convention; `<filename>` is a Rust addition).
 	fn load_custom(
 		&mut self,
 		core: &mut NodeCore,
@@ -355,9 +441,14 @@ impl NodeBehavior for FootageBehavior {
 						.attribute("enabled")
 						.map(|v| v == "1")
 						.unwrap_or(false);
+					// The C++ writes the state name; the numeric form is the
+					// legacy Rust spelling (both accepted).
 					self.proxy_state = reader
 						.attribute("state")
-						.and_then(|v| v.parse().ok())
+						.map(|v| {
+							oakcodec::proxymanager::ProxyManager::proxy_state_from_string(&v)
+								as i32
+						})
 						.unwrap_or(0);
 					self.proxy_video_stream_index = reader
 						.attribute("stream")
@@ -367,7 +458,57 @@ impl NodeBehavior for FootageBehavior {
 						.attribute("preset")
 						.and_then(|v| v.parse().ok())
 						.unwrap_or(0);
+					if reader.attribute("custom").map(|v| v == "1").unwrap_or(false) {
+						let mut custom = oakcodec::proxymanager::ProxyParams::default();
+						if let Some(v) = reader.attribute("pwidth").and_then(|v| v.parse().ok()) {
+							custom.width = v;
+						}
+						if let Some(v) = reader.attribute("pheight").and_then(|v| v.parse().ok()) {
+							custom.height = v;
+						}
+						if let Some(v) = reader.attribute("pdivider").and_then(|v| v.parse().ok()) {
+							custom.divider = v;
+						}
+						if let Some(v) = reader.attribute("pcrf").and_then(|v| v.parse().ok()) {
+							custom.crf = v;
+						}
+						if let Some(v) = reader.attribute("ppreset") {
+							if !v.is_empty() {
+								let mut a = [0u8; 32];
+								let n = v.as_bytes().len().min(31);
+								a[..n].copy_from_slice(&v.as_bytes()[..n]);
+								custom.preset = a;
+							}
+						}
+						if let Some(v) = reader.attribute("pext") {
+							if !v.is_empty() {
+								let mut a = [0u8; 32];
+								let n = v.as_bytes().len().min(31);
+								a[..n].copy_from_slice(&v.as_bytes()[..n]);
+								custom.extension = a;
+							}
+						}
+						if let Some(v) = reader.attribute("paudio") {
+							custom.include_audio = if v == "1" { 1 } else { 0 };
+						}
+						self.custom_proxy_params = Some(custom);
+					}
 					self.proxy = reader.read_element_text();
+				}
+				"sourcestarttime" => {
+					let _source = reader.attribute("source").unwrap_or_default();
+					let text = reader.read_element_text();
+					let mut parts = text.split('/');
+					let (num, den) = (
+						parts.next().and_then(|v| v.trim().parse::<i64>().ok()),
+						parts.next().and_then(|v| v.trim().parse::<i64>().ok()),
+					);
+					if let (Some(num), Some(den)) = (num, den) {
+						if den != 0 {
+							self.source_start_time = oakcore_rs::Rational::new(num, den);
+							self.has_source_start_time = true;
+						}
+					}
 				}
 				"streams" => {
 					self.streams.clear();
@@ -523,6 +664,26 @@ fn streams_from_description(
 	}
 	streams.sort_by_key(|s| s.index);
 	streams
+}
+
+/// View a proxy param's NUL-terminated preset bytes as a `&str`.
+fn preset_str(params: &oakcodec::proxymanager::ProxyParams) -> &str {
+	let end = params
+		.preset
+		.iter()
+		.position(|&b| b == 0)
+		.unwrap_or(params.preset.len());
+	std::str::from_utf8(&params.preset[..end]).unwrap_or("")
+}
+
+/// View a proxy param's NUL-terminated extension bytes as a `&str`.
+fn extension_str(params: &oakcodec::proxymanager::ProxyParams) -> &str {
+	let end = params
+		.extension
+		.iter()
+		.position(|&b| b == 0)
+		.unwrap_or(params.extension.len());
+	std::str::from_utf8(&params.extension[..end]).unwrap_or("")
 }
 
 /// A stream duration in timebase ticks as rational seconds. `0/1` when

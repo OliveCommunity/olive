@@ -66,10 +66,63 @@ pub fn ensure_render_manager() -> bool {
 // over the module graph)
 // ---------------------------------------------------------------------------
 
-/// The media `(filename, stream_index)` feeding a clip (upstream BFS +
-/// footage behavior); video stream 0.
-fn clip_media(g: &oaknode::graph::Graph, block_id: NodeId) -> Option<String> {
-	super::graphops::clip_media_filename(g, block_id)
+/// Whether preview decoding may substitute proxy media: the global
+/// `UseProxyMedia` config switch (C++ `Tools > Use Proxy Media`; the
+/// export path never consults it — exports always decode the original).
+pub fn use_proxy_media() -> bool {
+	oakcommon::configstore::ConfigStore::instance().get_bool(None, "UseProxyMedia", 1) != 0
+}
+
+/// The preview media of a footage node with the three-level proxy switch
+/// applied (C++ `Footage::value` proxy arms + `FootageJob::should_use_proxy`):
+/// the global switch, the footage's proxy-enabled flag and an on-disk
+/// `Ready` proxy all have to line up, otherwise the original is returned.
+/// Video decodes from the proxy's stream 0 (the proxy's only video
+/// stream); audio from stream 1 when the proxy was generated with audio
+/// (the first source audio stream's rank + 1). A missing proxy file falls
+/// back to the original.
+pub fn preview_footage_media(
+	f: &oaknode::footage::FootageBehavior,
+	is_video: bool,
+) -> (String, i32) {
+	let original_stream = if is_video { 0 } else { 1 };
+	let original = (f.filename.clone(), original_stream);
+	if !use_proxy_media() || !f.proxy_enabled || f.proxy.is_empty() {
+		return original;
+	}
+	if oakcodec::proxymanager::ProxyManager::get_proxy_state(&f.proxy)
+		!= oakcodec::proxymanager::ProxyState::Ready
+	{
+		return original;
+	}
+	if is_video {
+		// The proxy stands in for the footage's first video stream only
+		// (C++ matches proxy_video_stream_index against the stream index).
+		let first_video = f.streams.iter().find(|s| s.is_video);
+		match first_video {
+			Some(stream) if f.proxy_video_stream_index == stream.index => (f.proxy.clone(), 0),
+			_ => original,
+		}
+	} else if oakcodec::proxymanager::ProxyManager::proxy_filename_has_audio(&f.proxy) {
+		(f.proxy.clone(), 1)
+	} else {
+		original
+	}
+}
+
+/// The preview media feeding a clip: the clip's footage with the proxy
+/// switch applied ([`preview_footage_media`]).
+fn clip_preview_media(
+	g: &oaknode::graph::Graph,
+	block_id: NodeId,
+	is_video: bool,
+) -> Option<(String, i32)> {
+	let footage_id = super::graphops::find_input_footage(g, block_id)?;
+	let f = super::graphops::footage_behavior(g, footage_id)?;
+	if f.filename.is_empty() {
+		return None;
+	}
+	Some(preview_footage_media(f, is_video))
 }
 
 /// The video montage at sequence time `time`: every clip covering `time`
@@ -105,12 +158,14 @@ pub fn video_montage(p: &ProjectRef, seq: NodeId, time: Rational) -> Vec<Montage
 				if time < in_ || time >= out {
 					continue;
 				}
-				let Some(filename) = clip_media(&g.graph, block_id) else {
+				let Some((filename, stream_index)) =
+					clip_preview_media(&g.graph, block_id, true)
+				else {
 					continue;
 				};
 				clips.push(MontageClip {
 					filename,
-					stream_index: 0,
+					stream_index,
 					in_time: in_,
 					out_time: out,
 					media_in: clip.core.media_in,
@@ -154,12 +209,14 @@ pub fn audio_montage(p: &ProjectRef, seq: NodeId, range: TimeRange) -> Vec<Monta
 				if out <= range.in_() || in_ >= range.out() {
 					continue;
 				}
-				let Some(filename) = clip_media(&g.graph, block_id) else {
+				let Some((filename, stream_index)) =
+					clip_preview_media(&g.graph, block_id, false)
+				else {
 					continue;
 				};
 				clips.push(MontageClip {
 					filename,
-					stream_index: 1,
+					stream_index,
 					in_time: in_,
 					out_time: out,
 					media_in: clip.core.media_in,
@@ -261,10 +318,10 @@ pub fn render_footage_frame(
 	height: i32,
 ) -> Result<RenderedFrame, String> {
 	validate_geometry(width, height, tb)?;
-	let filename = {
+	let (filename, stream_index) = {
 		let g = lock(p);
 		super::graphops::footage_behavior(&g.graph, footage)
-			.map(|f| f.filename.clone())
+			.map(|f| preview_footage_media(f, true))
 			.ok_or_else(|| "the node is not footage".to_string())?
 	};
 	let time = Rational::new(frame_ts * tb.0, tb.1);
@@ -277,7 +334,7 @@ pub fn render_footage_frame(
 		cache_dir: None,
 		cache_id: None,
 		cache_timebase: None,
-		footage: Some((filename, 0)),
+		footage: Some((filename, stream_index)),
 		montage: Vec::new(),
 	})
 }

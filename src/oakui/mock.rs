@@ -523,6 +523,16 @@ pub struct MockEngine {
 	undo_calls: u64,
 	/// See [`MockEngine::undo_calls`].
 	redo_calls: u64,
+	/// Per-footage proxy lifecycle state (the demo proxy pipeline; ids are
+	/// the explorer entry ids, `Missing` when absent).
+	proxy_states: HashMap<u64, crate::oakui::engine::ProxyMediaState>,
+	/// Per-footage proxy-use flag (the demo's per-footage switch).
+	proxy_enabled: HashMap<u64, bool>,
+	/// Per-footage custom proxy generation params (the proxy dialog's
+	/// custom checkbox path).
+	proxy_custom: HashMap<u64, crate::oakui::engine::ProxyParamsUi>,
+	/// The demo's global "Use Proxy Media" switch.
+	use_proxy: bool,
 }
 
 impl MockEngine {
@@ -777,6 +787,10 @@ impl MockEngine {
 			workarea: None,
 			undo_calls: 0,
 			redo_calls: 0,
+			proxy_states: HashMap::new(),
+			proxy_enabled: HashMap::new(),
+			proxy_custom: HashMap::new(),
+			use_proxy: true,
 		};
 		// The demo graph is born connected: derive every port's `connected`
 		// flag from the edge list.
@@ -1020,6 +1034,35 @@ impl MockEngine {
 					.position(|c| c.id() == clip)
 					.map(|clip_index| (track_index, clip_index))
 			})
+	}
+
+	/// Demo synchronization: moves every selected clip so its in point
+	/// lines up with the earliest selected in point (the real engine's
+	/// source-timecode alignment, approximated on the mock's flat track
+	/// list). Locked tracks are skipped; clips keep their length.
+	fn mock_sync_clips(&mut self, clips: &[ClipId]) {
+		let mut positions: Vec<(usize, usize, i64, i64)> = Vec::new();
+		for clip in clips {
+			if let Some((track, index)) = self.mock_clip_position(*clip) {
+				if self.tracks[track].locked {
+					continue;
+				}
+				let range = self.tracks[track].clips[index].range;
+				positions.push((track, index, range.start.0, range.end.0));
+			}
+		}
+		if positions.len() < 2 {
+			return;
+		}
+		let anchor = positions.iter().map(|p| p.2).min().unwrap_or(0);
+		for (track, index, start, end) in positions {
+			if start == anchor {
+				continue;
+			}
+			let length = end - start;
+			self.tracks[track].clips[index].range =
+				FrameRange::new(Frame(anchor), Frame(anchor + length));
+		}
 	}
 
 	/// A clip id larger than every existing one (for splits).
@@ -1751,6 +1794,162 @@ impl AppEngine for MockEngine {
 			events: rx,
 			cancel: Box::new(|| {}),
 		})
+	}
+
+	fn use_proxy_media(&self) -> bool {
+		self.use_proxy
+	}
+
+	fn set_use_proxy_media(&mut self, enabled: bool, cx: &mut Context<Self>) {
+		self.use_proxy = enabled;
+		// The mock's viewer frames are synthetic; still drop the cache so
+		// the toggle behaves like the real engine.
+		self.cpu_frame_cache.lock().unwrap().clear();
+		cx.notify();
+	}
+
+	fn proxy_rows(&self) -> Vec<crate::oakui::engine::ProxyFootageRow> {
+		// Every explorer footage entry gets a row; audio-only entries keep
+		// `can_generate` off (the proxy pipeline is video-only).
+		let mut rows = Vec::new();
+		for root in self.roots() {
+			for entry in std::iter::once(root.clone()).chain(self.children(root.id)) {
+				if entry.is_dir {
+					continue;
+				}
+				let is_audio = crate::oakui::filename_is_audio(&entry.name.to_string());
+				let state = self
+					.proxy_states
+					.get(&entry.id)
+					.copied()
+					.unwrap_or(crate::oakui::engine::ProxyMediaState::Missing);
+				rows.push(crate::oakui::engine::ProxyFootageRow {
+					id: entry.id,
+					name: entry.name.to_string(),
+					state,
+					enabled: self.proxy_enabled.get(&entry.id).copied().unwrap_or(false),
+					has_custom: self.proxy_custom.contains_key(&entry.id),
+					can_generate: !is_audio,
+					has_proxy: state != crate::oakui::engine::ProxyMediaState::Missing,
+				});
+			}
+		}
+		rows
+	}
+
+	fn proxy_state(&self, id: u64) -> Option<crate::oakui::engine::ProxyMediaState> {
+		self.footage_entry_name(id)?;
+		Some(
+			self.proxy_states
+				.get(&id)
+				.copied()
+				.unwrap_or(crate::oakui::engine::ProxyMediaState::Missing),
+		)
+	}
+
+	fn proxy_row(&self, id: u64) -> Option<crate::oakui::engine::ProxyFootageRow> {
+		self.proxy_rows().into_iter().find(|row| row.id == id)
+	}
+
+	fn proxy_generate(&mut self, id: u64, cx: &mut Context<Self>) -> Result<(), String> {
+		let Some(name) = self.footage_entry_name(id) else {
+			return Err("entry is not footage".into());
+		};
+		if crate::oakui::filename_is_audio(&name) {
+			return Err("the footage has no video stream".into());
+		}
+		// The mock has no ffmpeg pipeline: the proxy is instantly ready.
+		self.proxy_states
+			.insert(id, crate::oakui::engine::ProxyMediaState::Ready);
+		self.proxy_enabled.insert(id, true);
+		self.cpu_frame_cache.lock().unwrap().clear();
+		cx.notify();
+		Ok(())
+	}
+
+	fn proxy_delete(&mut self, id: u64, cx: &mut Context<Self>) {
+		self.proxy_states.remove(&id);
+		self.proxy_enabled.remove(&id);
+		self.cpu_frame_cache.lock().unwrap().clear();
+		cx.notify();
+	}
+
+	fn proxy_set_enabled(&mut self, id: u64, enabled: bool, cx: &mut Context<Self>) {
+		self.proxy_enabled.insert(id, enabled);
+		self.cpu_frame_cache.lock().unwrap().clear();
+		cx.notify();
+	}
+
+	fn proxy_reveal(&self, id: u64) {
+		println!("[mock engine] reveal proxy for entry {id} (no files in mock mode)");
+	}
+
+	fn proxy_set_custom_params(
+		&mut self,
+		id: u64,
+		params: crate::oakui::engine::ProxyParamsUi,
+		cx: &mut Context<Self>,
+	) {
+		self.proxy_custom.insert(id, params);
+		cx.notify();
+	}
+
+	fn proxy_clear_custom_params(&mut self, id: u64, cx: &mut Context<Self>) {
+		self.proxy_custom.remove(&id);
+		cx.notify();
+	}
+
+	fn proxy_custom_params(&self, id: u64) -> Option<crate::oakui::engine::ProxyParamsUi> {
+		self.proxy_custom.get(&id).cloned()
+	}
+
+	fn sync_eligibility(&self, clips: &[ClipId]) -> crate::oakui::engine::SyncEligibility {
+		// Demo semantics: every selected video clip carries a source start
+		// timecode; the mock keeps no waveform cache, so waveform sync stays
+		// unavailable.
+		let mut eligibility = crate::oakui::engine::SyncEligibility::default();
+		for clip in clips {
+			let label = self.tracks.iter().find_map(|track| {
+				track
+					.clips
+					.iter()
+					.find(|c| c.id() == *clip)
+					.map(|c| c.label.clone())
+			});
+			match label {
+				Some(label) if !crate::oakui::filename_is_audio(&label) => {
+					eligibility.source_time += 1;
+				}
+				_ => {}
+			}
+		}
+		eligibility
+	}
+
+	fn sync_clips_by_source_time(&mut self, clips: Vec<ClipId>, cx: &mut Context<Self>) {
+		self.mock_sync_clips(&clips);
+		cx.notify();
+	}
+
+	fn sync_clips_by_waveform(
+		&mut self,
+		clips: Vec<ClipId>,
+		_adjust_speed: bool,
+		cx: &mut Context<Self>,
+	) {
+		// The mock has no waveform data: align by in point like the source
+		// timecode path (demo approximation).
+		self.mock_sync_clips(&clips);
+		cx.notify();
+	}
+
+	fn clip_footage_entries(&self, clips: &[ClipId]) -> Vec<crate::oakui::engine::ProxyFootageRow> {
+		// The demo's clip ids ARE the explorer entry ids.
+		let rows = self.proxy_rows();
+		clips
+			.iter()
+			.filter_map(|clip| rows.iter().find(|row| row.id == clip.0).cloned())
+			.collect()
 	}
 
 	fn backend_name(&self) -> &'static str {

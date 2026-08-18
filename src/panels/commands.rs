@@ -181,6 +181,17 @@ pub trait PanelCommandHandler: Sized {
 		false
 	}
 
+	// --- synchronization (the timeline clip menu's Synchronize group) ------
+	fn sync_by_source_time(&mut self, _cx: &mut Context<Self>) -> bool {
+		false
+	}
+	fn sync_by_waveform(&mut self, _cx: &mut Context<Self>) -> bool {
+		false
+	}
+	fn sync_by_waveform_speed(&mut self, _cx: &mut Context<Self>) -> bool {
+		false
+	}
+
 	// --- view ----------------------------------------------------------------
 	fn zoom_in(&mut self, _cx: &mut Context<Self>) -> bool {
 		false
@@ -253,6 +264,9 @@ pub fn dispatch_to<P: PanelCommandHandler>(
 		ActionId::DeleteInOut => panel.delete_in_to_out(cx),
 		ActionId::RippleDeleteInOut => panel.ripple_delete_in_to_out(cx),
 		ActionId::Marker => panel.set_marker(cx),
+		ActionId::SyncBySourceTime => panel.sync_by_source_time(cx),
+		ActionId::SyncByWaveform => panel.sync_by_waveform(cx),
+		ActionId::SyncByWaveformSpeed => panel.sync_by_waveform_speed(cx),
 		ActionId::ZoomIn => panel.zoom_in(cx),
 		ActionId::ZoomOut => panel.zoom_out(cx),
 		ActionId::IncreaseTrackHeight => panel.increase_track_height(cx),

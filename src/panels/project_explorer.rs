@@ -105,7 +105,8 @@ impl<E: AppEngine> ProjectExplorerPanel<E> {
 			None => blank_menu(),
 			Some(id) => {
 				if self.engine.read(cx).entry_path(id).is_some() {
-					footage_menu(true)
+					let proxy = self.engine.read(cx).proxy_row(id);
+					footage_menu(true, proxy.as_ref())
 				} else {
 					entry_menu()
 				}
@@ -154,7 +155,35 @@ impl<E: AppEngine> ProjectExplorerPanel<E> {
 				println!("[project explorer] menu action {item} (not implemented yet)");
 			}
 			LOCAL_PROXY_GENERATE | LOCAL_PROXY_USE | LOCAL_PROXY_REVEAL | LOCAL_PROXY_DELETE => {
-				println!("[project explorer] proxy action {item} (not implemented yet)");
+				let Some(id) = self.context_entry else {
+					return;
+				};
+				match item {
+					LOCAL_PROXY_GENERATE => {
+						if let Err(err) = self.engine.update(cx, |engine, cx| {
+							engine.proxy_generate(id, cx)
+						}) {
+							println!("[project explorer] proxy generate failed: {err}");
+						}
+					}
+					LOCAL_PROXY_USE => {
+						let enabled = self
+							.engine
+							.read(cx)
+							.proxy_row(id)
+							.is_some_and(|row| row.enabled);
+						self.engine.update(cx, |engine, cx| {
+							engine.proxy_set_enabled(id, !enabled, cx)
+						});
+					}
+					LOCAL_PROXY_REVEAL => {
+						self.engine.read(cx).proxy_reveal(id);
+					}
+					LOCAL_PROXY_DELETE => {
+						self.engine.update(cx, |engine, cx| engine.proxy_delete(id, cx));
+					}
+					_ => {}
+				}
 			}
 			_ => {
 				println!("[project explorer] unhandled local menu item {item}");
@@ -248,18 +277,40 @@ const LOCAL_RENAME: usize = 2209;
 const LOCAL_DELETE: usize = 2210;
 const LOCAL_PROPERTIES: usize = 2211;
 
-/// The proxy submenu (shared shape with the timeline's; the entries stay
-/// disabled until the proxy pipeline lands, the settings entry is the real
-/// registry action).
-fn proxy_submenu() -> Menu {
+/// The proxy submenu (shared shape with the timeline's): enable state
+/// follows the footage's proxy fields (the C++ project explorer gates
+/// Generate on a video stream, Use/Reveal/Delete on the proxy path); the
+/// settings entry is the real registry action. `row` is `None` when the
+/// entry is not footage — every entry but the settings stays disabled.
+fn proxy_submenu(row: Option<&crate::oakui::engine::ProxyFootageRow>) -> Menu {
+	let can_generate = row.is_some_and(|row| row.can_generate);
+	let enabled = row.is_some_and(|row| row.enabled);
+	let has_proxy = row.is_some_and(|row| row.has_proxy);
+	let mut generate =
+		MenuItem::new(LOCAL_PROXY_GENERATE, crate::i18n::tr("timeline.context.generate_proxy"));
+	if !can_generate {
+		generate = generate.disabled();
+	}
+	let mut use_proxy = MenuItem::new(LOCAL_PROXY_USE, crate::i18n::tr("timeline.context.use_proxy"))
+		.with_checked(enabled);
+	if row.is_none() {
+		use_proxy = use_proxy.disabled();
+	}
+	let mut reveal =
+		MenuItem::new(LOCAL_PROXY_REVEAL, crate::i18n::tr("timeline.context.reveal_proxy"));
+	if !has_proxy {
+		reveal = reveal.disabled();
+	}
+	let mut delete =
+		MenuItem::new(LOCAL_PROXY_DELETE, crate::i18n::tr("timeline.context.delete_proxy"));
+	if !has_proxy {
+		delete = delete.disabled();
+	}
 	Menu::new(vec![
-		MenuItem::new(LOCAL_PROXY_GENERATE, crate::i18n::tr("timeline.context.generate_proxy"))
-			.disabled(),
-		MenuItem::new(LOCAL_PROXY_USE, crate::i18n::tr("timeline.context.use_proxy")).disabled(),
-		MenuItem::new(LOCAL_PROXY_REVEAL, crate::i18n::tr("timeline.context.reveal_proxy"))
-			.disabled(),
-		MenuItem::new(LOCAL_PROXY_DELETE, crate::i18n::tr("timeline.context.delete_proxy"))
-			.disabled(),
+		generate,
+		use_proxy,
+		reveal,
+		delete,
 		shared::action_item(ActionId::ProxySettings).separated(),
 	])
 }
@@ -274,8 +325,12 @@ pub(crate) fn blank_menu() -> Menu {
 }
 
 /// A footage entry's context menu: reveal + replace, the proxy submenu,
-/// then rename / delete / properties.
-pub(crate) fn footage_menu(reveal_enabled: bool) -> Menu {
+/// then rename / delete / properties. `proxy` carries the entry's proxy
+/// state so the submenu enables Generate/Use/Reveal/Delete correctly.
+pub(crate) fn footage_menu(
+	reveal_enabled: bool,
+	proxy: Option<&crate::oakui::engine::ProxyFootageRow>,
+) -> Menu {
 	let mut reveal =
 		MenuItem::new(LOCAL_REVEAL_IN_FINDER, crate::i18n::tr("project.context.reveal_in_finder"));
 	if !reveal_enabled {
@@ -285,7 +340,8 @@ pub(crate) fn footage_menu(reveal_enabled: bool) -> Menu {
 		reveal,
 		MenuItem::new(LOCAL_REPLACE_FOOTAGE, crate::i18n::tr("project.context.replace_footage"))
 			.separated(),
-		MenuItem::new(0, crate::i18n::tr("timeline.context.proxy")).with_submenu(proxy_submenu()),
+		MenuItem::new(0, crate::i18n::tr("timeline.context.proxy"))
+			.with_submenu(proxy_submenu(proxy)),
 		MenuItem::new(LOCAL_RENAME, crate::i18n::tr("project.context.rename")).separated(),
 		MenuItem::new(LOCAL_DELETE, crate::i18n::tr("project.context.delete")),
 		MenuItem::new(LOCAL_PROPERTIES, crate::i18n::tr("menu.context.properties")).separated(),
@@ -343,11 +399,12 @@ mod tests {
 	}
 
 	/// The footage menu gates only the reveal entry on `reveal_enabled`;
-	/// every other entry keeps its state.
+	/// without proxy state every proxy entry but the settings action stays
+	/// disabled.
 	#[test]
 	fn footage_menu_gates_the_reveal_entry() {
 		for reveal_enabled in [true, false] {
-			let menu = footage_menu(reveal_enabled);
+			let menu = footage_menu(reveal_enabled, None);
 			let reveal = menu
 				.items
 				.iter()

@@ -211,8 +211,12 @@ impl TaskBehavior for ProxyTask {
 	fn run(&mut self, task: &mut Task) -> Result<()> {
 		// Direct call into oakcodec's proxy manager (single-lib
 		// unification: the old two-stage C ABI getter is gone; an empty
-		// string means "not found").
-		let ffmpeg_path = ProxyManager::find_ffmpeg("");
+		// string means "not found"). The `FFmpegPath` config takes
+		// precedence when set (C++ `OAK_CONFIG("FFmpegPath")`).
+		let configured = oakcommon::configstore::ConfigStore::instance()
+			.get(None, "FFmpegPath")
+			.unwrap_or_default();
+		let ffmpeg_path = ProxyManager::find_ffmpeg(&configured);
 		if ffmpeg_path.is_empty() {
 			task.set_error(
 				"Failed to generate proxy: ffmpeg executable was not found. Set the ffmpeg path in Preferences > Disk > Proxy Settings.",

@@ -54,6 +54,7 @@ pub mod scopes;
 pub mod timecode;
 pub mod transport;
 pub mod waveform;
+pub mod waveformsync;
 
 pub use engine::{
 	AppEngine, EngineClock, EngineGateway, ExportEvent, ExportSession, HistoryEntry,

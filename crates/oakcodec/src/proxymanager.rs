@@ -41,6 +41,20 @@ pub enum ProxyState {
 	Failed = 3,
 }
 
+impl TryFrom<i32> for ProxyState {
+	type Error = ();
+
+	fn try_from(value: i32) -> Result<Self, Self::Error> {
+		match value {
+			0 => Ok(ProxyState::Missing),
+			1 => Ok(ProxyState::Generating),
+			2 => Ok(ProxyState::Ready),
+			3 => Ok(ProxyState::Failed),
+			_ => Err(()),
+		}
+	}
+}
+
 /// `olive::ProxyManager::ProxyParams` — mirror of `oakcodec_proxy_params`.
 #[derive(Clone, Debug)]
 #[repr(C)]
@@ -164,6 +178,27 @@ impl ProxyManager {
 			ProxyState::Ready => "ready".to_string(),
 			ProxyState::Failed => "failed".to_string(),
 		}
+	}
+
+	/// The proxy state a string name stands for (`Missing` for anything
+	/// unrecognized; also accepts the numeric form the Rust serializer used
+	/// before the string form landed).
+	pub fn proxy_state_from_string(name: &str) -> ProxyState {
+		match name.trim() {
+			"generating" | "1" => ProxyState::Generating,
+			"ready" | "2" => ProxyState::Ready,
+			"failed" | "3" => ProxyState::Failed,
+			_ => ProxyState::Missing,
+		}
+	}
+
+	/// Whether a proxy filename was generated with an audio track (the
+	/// generation tags audio-including proxies `.a1.`).
+	pub fn proxy_filename_has_audio(proxy_filename: &str) -> bool {
+		std::path::Path::new(proxy_filename)
+			.file_name()
+			.map(|n| n.to_string_lossy().contains(".a1."))
+			.unwrap_or(false)
 	}
 
 	/// Proxy directory for a project cache path.

@@ -226,6 +226,11 @@ define_actions! {
 	Snapping { cpp: "snapping", i18n: "menu.tools.snapping", keys: ["s"], route: Global, menu_id: 1110 };
 	UseProxyMedia { cpp: "useproxymedia", i18n: "menu.tools.use_proxy", keys: [], route: Global, menu_id: 1111 };
 	ProxySettings { cpp: "proxysettings", i18n: "menu.tools.proxy_settings", keys: [], route: Global, menu_id: 1112 };
+	// The timeline clip context menu's synchronize entries (context-menu
+	// only — they appear in the clip menu, not the menu bar).
+	SyncBySourceTime { cpp: "syncsourcetime", i18n: "timeline.context.sync_source_time", keys: [], route: FocusedPanel, menu_id: 1130 };
+	SyncByWaveform { cpp: "syncwaveform", i18n: "timeline.context.sync_waveform", keys: ["ctrl-shift-w"], route: FocusedPanel, menu_id: 1131 };
+	SyncByWaveformSpeed { cpp: "syncwaveformspeed", i18n: "timeline.context.sync_waveform_speed", keys: [], route: FocusedPanel, menu_id: 1132 };
 	Preferences { cpp: "prefs", i18n: "menu.view.preferences", keys: ["secondary-,"], route: Global, menu_id: 305 };
 
 	// --- Help ---------------------------------------------------------------
@@ -497,6 +502,15 @@ mod tests {
 		for entry in crate::app::make_menus_for_test() {
 			collect(&entry.menu, &mut ids);
 		}
+		// Context-menu-only actions (the timeline clip menu's synchronize
+		// group) appear in the clip menu instead of the menu bar.
+		collect(
+			&crate::panels::timeline::clip_menu(
+				crate::oakui::engine::SyncEligibility::default(),
+				&[],
+			),
+			&mut ids,
+		);
 		for entry in REGISTRY {
 			assert!(
 				ids.contains(&entry.menu_id()),

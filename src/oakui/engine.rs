@@ -645,9 +645,272 @@ pub trait AppEngine:
 	/// [`ExportSession`] carries the event channel and the cancel handle.
 	fn start_export(&mut self, format: i32, path: PathBuf) -> Result<ExportSession, String>;
 
+	// -------------------------------------------------------------------
+	// Proxy media (the C++ Tools > proxy pipeline): global switch, per
+	// footage state and the generate / delete / reveal entries. Defaults
+	// degrade to "no proxy support" so engines without a footage surface
+	// keep compiling.
+	// -------------------------------------------------------------------
+
+	/// The global "Use Proxy Media" switch (the C++ `UseProxyMedia`
+	/// config; preview-only — exports always decode the original media).
+	fn use_proxy_media(&self) -> bool {
+		oakcommon::configstore::ConfigStore::instance()
+			.get_bool(None, "UseProxyMedia", 1)
+			!= 0
+	}
+
+	/// Toggles the global "Use Proxy Media" switch and invalidates every
+	/// footage's rendered frames (the C++ toggles the config and
+	/// re-renders; the preview path reads the switch on every montage).
+	fn set_use_proxy_media(&mut self, enabled: bool, cx: &mut Context<Self>) {
+		oakcommon::configstore::ConfigStore::instance().set(
+			None,
+			"UseProxyMedia",
+			if enabled { "true" } else { "false" },
+		);
+		let _ = cx;
+	}
+
+	/// The footage rows the proxy dialog's footage mode lists (every
+	/// footage node in the open project).
+	fn proxy_rows(&self) -> Vec<ProxyFootageRow> {
+		Vec::new()
+	}
+
+	/// The proxy state of footage `id` (a project-explorer entry id /
+	/// node identity), or `None` when the entry is not footage.
+	fn proxy_state(&self, id: u64) -> Option<ProxyMediaState> {
+		let _ = id;
+		None
+	}
+
+	/// The full proxy row of footage `id` (the project explorer's
+	/// per-entry proxy submenu state), or `None` when the entry is not
+	/// footage.
+	fn proxy_row(&self, id: u64) -> Option<ProxyFootageRow> {
+		let _ = id;
+		None
+	}
+
+	/// Starts generating the proxy of footage `id` (a background ffmpeg
+	/// transcode through `oaktask::ProxyTask`). Progress is reported
+	/// through [`proxy_task_progress`](Self::proxy_task_progress) and
+	/// drained on the engine tick; completion invalidates the footage's
+	/// rendered frames.
+	fn proxy_generate(&mut self, id: u64, cx: &mut Context<Self>) -> Result<(), String> {
+		let _ = (id, cx);
+		Err("proxy generation not supported".into())
+	}
+
+	/// The in-flight proxy task's label and progress (`0.0..=1.0`), when
+	/// one is running (the status bar's proxy segment).
+	fn proxy_task_progress(&self) -> Option<(String, f64)> {
+		None
+	}
+
+	/// Deletes footage `id`'s proxy file and clears its proxy fields.
+	fn proxy_delete(&mut self, id: u64, cx: &mut Context<Self>) {
+		let _ = (id, cx);
+	}
+
+	/// Toggles footage `id`'s per-footage proxy-use flag (the C++
+	/// `Footage::set_proxy_enabled`).
+	fn proxy_set_enabled(&mut self, id: u64, enabled: bool, cx: &mut Context<Self>) {
+		let _ = (id, enabled, cx);
+	}
+
+	/// Reveals footage `id`'s proxy file in the file manager
+	/// (macOS `open -R`); no-op when there is no proxy yet.
+	fn proxy_reveal(&self, id: u64) {
+		let _ = id;
+	}
+
+	/// Sets footage `id`'s custom proxy generation params (the proxy
+	/// dialog's per-footage "custom" checkbox path).
+	fn proxy_set_custom_params(
+		&mut self,
+		id: u64,
+		params: ProxyParamsUi,
+		cx: &mut Context<Self>,
+	) {
+		let _ = (id, params, cx);
+	}
+
+	/// Clears footage `id`'s custom proxy generation params (the footage
+	/// falls back to the global settings).
+	fn proxy_clear_custom_params(&mut self, id: u64, cx: &mut Context<Self>) {
+		let _ = (id, cx);
+	}
+
+	/// The custom proxy params of footage `id` (`None` = global params).
+	fn proxy_custom_params(&self, id: u64) -> Option<ProxyParamsUi> {
+		let _ = id;
+		None
+	}
+
+	/// The proxy generation params that would apply to footage `id`
+	/// (custom when set, otherwise the global config params).
+	fn proxy_effective_params(&self, id: u64) -> ProxyParamsUi {
+		let _ = id;
+		proxy_params_from_config()
+	}
+
+	/// The distinct footage entries feeding `clips`, as proxy rows (the
+	/// timeline clip menu's proxy group targets; duplicates collapse).
+	fn clip_footage_entries(&self, clips: &[ClipId]) -> Vec<ProxyFootageRow> {
+		let _ = clips;
+		Vec::new()
+	}
+
+	// -------------------------------------------------------------------
+	// Audio/video synchronization (the C++ timeline Synchronize menu):
+	// eligibility counts for the context menu plus the two apply paths.
+	// -------------------------------------------------------------------
+
+	/// How many of `clips` can sync by source timecode / by waveform
+	/// (the context menu enables each entry at ≥ 2).
+	fn sync_eligibility(&self, clips: &[ClipId]) -> SyncEligibility {
+		let _ = clips;
+		SyncEligibility::default()
+	}
+
+	/// Synchronizes `clips` by their footage's source start timecode
+	/// (one multi-undo; the C++ `Synchronize Clips by Source Time`).
+	fn sync_clips_by_source_time(&mut self, clips: Vec<ClipId>, cx: &mut Context<Self>) {
+		let _ = (clips, cx);
+	}
+
+	/// Synchronizes `clips` by waveform correlation, optionally adjusting
+	/// speed (one multi-undo; the C++ `Synchronize Clips by Waveform`).
+	fn sync_clips_by_waveform(
+		&mut self,
+		clips: Vec<ClipId>,
+		adjust_speed: bool,
+		cx: &mut Context<Self>,
+	) {
+		let _ = (clips, adjust_speed, cx);
+	}
+
 	/// The display name of the engine backend ("mock" / "real"), shown in
 	/// the status bar.
 	fn backend_name(&self) -> &'static str;
+}
+
+/// The lifecycle state of one footage's proxy (the UI mirror of
+/// `oakcodec::proxymanager::ProxyState`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProxyMediaState {
+	/// No proxy on disk (the menu offers "Generate").
+	Missing,
+	/// A transcode is running (or a stale working file remains).
+	Generating,
+	/// The proxy file is on disk and usable.
+	Ready,
+	/// The last generation attempt failed.
+	Failed,
+}
+
+/// The proxy generation parameters the proxy dialog edits (the app-side
+/// mirror of `oakcodec::proxymanager::ProxyParams`, minus the fixed
+/// version / extension).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProxyParamsUi {
+	/// Absolute target width (ignored when `divider > 1`).
+	pub width: i32,
+	/// Absolute target height (ignored when `divider > 1`).
+	pub height: i32,
+	/// Source resolution divider (1 = absolute width/height, 2/4/8).
+	pub divider: i32,
+	/// x264 crf.
+	pub crf: i32,
+	/// ffmpeg encoder preset name (e.g. "veryfast").
+	pub preset: String,
+	/// Include the audio track.
+	pub include_audio: bool,
+}
+
+/// The proxy generation params from the global config (the dialog's
+/// default values): `ProxyWidth`/`ProxyHeight`/`ProxyDivider`/`ProxyCRF`/
+/// `ProxyPreset`/`ProxyIncludeAudio`.
+pub fn proxy_params_from_config() -> ProxyParamsUi {
+	let codec = oakcodec::proxymanager::ProxyManager::proxy_params_from_config();
+	let end = |a: &[u8; 32]| a.iter().position(|&b| b == 0).unwrap_or(a.len());
+	let preset = std::str::from_utf8(&codec.preset[..end(&codec.preset)])
+		.unwrap_or("")
+		.to_string();
+	ProxyParamsUi {
+		width: codec.width,
+		height: codec.height,
+		divider: codec.divider,
+		crf: codec.crf,
+		preset,
+		include_audio: codec.include_audio != 0,
+	}
+}
+
+impl ProxyParamsUi {
+	/// The codec-side params these UI params stand for.
+	pub fn to_codec(&self) -> oakcodec::proxymanager::ProxyParams {
+		let mut p = oakcodec::proxymanager::ProxyParams::default();
+		p.width = self.width;
+		p.height = self.height;
+		p.divider = self.divider;
+		p.crf = self.crf;
+		p.include_audio = if self.include_audio { 1 } else { 0 };
+		let bytes = self.preset.as_bytes();
+		let n = bytes.len().min(31);
+		p.preset[..n].copy_from_slice(&bytes[..n]);
+		p
+	}
+
+	/// UI params from codec-side params.
+	pub fn from_codec(codec: &oakcodec::proxymanager::ProxyParams) -> ProxyParamsUi {
+		let end = |a: &[u8; 32]| a.iter().position(|&b| b == 0).unwrap_or(a.len());
+		ProxyParamsUi {
+			width: codec.width,
+			height: codec.height,
+			divider: codec.divider,
+			crf: codec.crf,
+			preset: std::str::from_utf8(&codec.preset[..end(&codec.preset)])
+				.unwrap_or("")
+				.to_string(),
+			include_audio: codec.include_audio != 0,
+		}
+	}
+}
+
+/// One footage row of the proxy dialog's footage-mode list.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ProxyFootageRow {
+	/// The footage's project-explorer entry id (its node identity).
+	pub id: u64,
+	/// The footage's display name.
+	pub name: String,
+	/// The proxy's lifecycle state.
+	pub state: ProxyMediaState,
+	/// Whether preview playback uses this footage's proxy (the per
+	/// footage switch).
+	pub enabled: bool,
+	/// Whether the footage carries custom generation params.
+	pub has_custom: bool,
+	/// Whether the footage has a valid video stream (the proxy pipeline
+	/// only applies to video-bearing footage).
+	pub can_generate: bool,
+	/// Whether the footage has a proxy path recorded (the timeline proxy
+	/// menu's Reveal / Delete enable condition; a superset of `state`
+	/// being `Ready`, since a recorded path can outlive its file).
+	pub has_proxy: bool,
+}
+
+/// The number of clips eligible for each synchronization mode (the
+/// context menu enables an entry at ≥ 2, the C++ enable conditions).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SyncEligibility {
+	/// Clips with a footage source start timecode.
+	pub source_time: usize,
+	/// Clips with at least one validated waveform window.
+	pub waveform: usize,
 }
 
 /// A single progress event from a running export task.

@@ -219,7 +219,15 @@ impl<E: AppEngine> TimelinePanel<E> {
 		cx: &mut Context<Self>,
 	) {
 		let menu = match &hit {
-			TimelineHit::Clip(_) => clip_menu(),
+			TimelineHit::Clip(_) => {
+				let ids: Vec<ClipId> =
+					self.timeline.read(cx).selection().iter().copied().collect();
+				let (sync, proxy) = {
+					let engine = self.engine.read(cx);
+					(engine.sync_eligibility(&ids), engine.clip_footage_entries(&ids))
+				};
+				clip_menu(sync, &proxy)
+			}
 			TimelineHit::Empty { .. } => empty_area_menu(),
 			TimelineHit::TrackHead(track) => {
 				self.context_track = Some(*track);
@@ -254,6 +262,48 @@ impl<E: AppEngine> TimelinePanel<E> {
 			}
 			LOCAL_CACHE_ALL | LOCAL_CACHE_IN_OUT | LOCAL_CACHE_DISCARD => {
 				println!("[timeline] cache action {item} (not implemented yet)");
+			}
+			LOCAL_PROXY_GENERATE
+			| LOCAL_PROXY_USE
+			| LOCAL_PROXY_REVEAL
+			| LOCAL_PROXY_DELETE => {
+				let ids: Vec<ClipId> =
+					self.timeline.read(cx).selection().iter().copied().collect();
+				let rows = self.engine.read(cx).clip_footage_entries(&ids);
+				match item {
+					LOCAL_PROXY_GENERATE => {
+						for row in rows.into_iter().filter(|row| row.can_generate) {
+							if let Err(err) = self.engine.update(cx, |engine, cx| {
+								engine.proxy_generate(row.id, cx)
+							}) {
+								println!("[timeline] proxy generate failed: {err}");
+							}
+						}
+					}
+					LOCAL_PROXY_USE => {
+						// The C++ flips the group: every footage enabled
+						// turns the whole selection off, anything less
+						// turns it on.
+						let enable = !rows.iter().all(|row| row.enabled);
+						for row in rows {
+							self.engine.update(cx, |engine, cx| {
+								engine.proxy_set_enabled(row.id, enable, cx)
+							});
+						}
+					}
+					LOCAL_PROXY_REVEAL => {
+						for row in rows.into_iter().filter(|row| row.has_proxy) {
+							self.engine.read(cx).proxy_reveal(row.id);
+						}
+					}
+					_ => {
+						for row in rows.into_iter().filter(|row| row.has_proxy) {
+							self.engine.update(cx, |engine, cx| {
+								engine.proxy_delete(row.id, cx)
+							});
+						}
+					}
+				}
 			}
 			LOCAL_TIMECODE_DROP_FRAME
 			| LOCAL_TIMECODE_NON_DROP_FRAME
@@ -550,6 +600,26 @@ impl<E: AppEngine> PanelCommandHandler for TimelinePanel<E> {
 		true
 	}
 
+	// --- synchronization ---
+	fn sync_by_source_time(&mut self, cx: &mut Context<Self>) -> bool {
+		let ids: Vec<ClipId> = self.timeline.read(cx).selection().iter().copied().collect();
+		self.engine
+			.update(cx, |engine, cx| engine.sync_clips_by_source_time(ids, cx));
+		true
+	}
+	fn sync_by_waveform(&mut self, cx: &mut Context<Self>) -> bool {
+		let ids: Vec<ClipId> = self.timeline.read(cx).selection().iter().copied().collect();
+		self.engine
+			.update(cx, |engine, cx| engine.sync_clips_by_waveform(ids, false, cx));
+		true
+	}
+	fn sync_by_waveform_speed(&mut self, cx: &mut Context<Self>) -> bool {
+		let ids: Vec<ClipId> = self.timeline.read(cx).selection().iter().copied().collect();
+		self.engine
+			.update(cx, |engine, cx| engine.sync_clips_by_waveform(ids, true, cx));
+		true
+	}
+
 	// --- view ---
 	fn zoom_in(&mut self, cx: &mut Context<Self>) -> bool {
 		self.zoom_timeline(1.25, cx);
@@ -803,9 +873,6 @@ const LOCAL_SHOW_WAVEFORMS: usize = 2102;
 const LOCAL_THUMBNAIL_OFF: usize = 2103;
 const LOCAL_THUMBNAIL_IN_OUT: usize = 2104;
 const LOCAL_THUMBNAIL_ON: usize = 2105;
-const LOCAL_SYNC_SOURCE_TIME: usize = 2106;
-const LOCAL_SYNC_WAVEFORM: usize = 2107;
-const LOCAL_SYNC_WAVEFORM_SPEED: usize = 2108;
 const LOCAL_CACHE_AUTO: usize = 2109;
 const LOCAL_CACHE_ALL: usize = 2110;
 const LOCAL_CACHE_IN_OUT: usize = 2111;
@@ -841,8 +908,14 @@ fn properties_item(action: ActionId) -> MenuItem {
 
 /// The clip context menu (`TimelineWidget::show_context_menu` with a
 /// selection): the shared clip-edit section, color labels, the synchronize
-/// / cache / proxy groups, reveal entries and "Properties".
-pub(crate) fn clip_menu() -> Menu {
+/// / cache / proxy groups, reveal entries and "Properties". `sync` and
+/// `proxy` carry the selection-derived enable state (the C++ enables the
+/// synchronize entries at ≥ 2 eligible clips and the proxy entries per
+/// the selected footage's proxy fields).
+pub(crate) fn clip_menu(
+	sync: crate::oakui::engine::SyncEligibility,
+	proxy: &[crate::oakui::engine::ProxyFootageRow],
+) -> Menu {
 	let mut items = shared::edit_section(true);
 	// The C++ puts a separator between the edit section and the color
 	// labels, and another after them.
@@ -850,23 +923,26 @@ pub(crate) fn clip_menu() -> Menu {
 		last.separator_after = true;
 	}
 	items.push(shared::color_label_item(None).separated());
-	// Synchronize group: needs ≥ 2 clips with matching media in the C++;
-	// the engine has no sync surface yet, so the entries stay disabled.
-	items.push(
-		MenuItem::new(LOCAL_SYNC_SOURCE_TIME, i18n::tr("timeline.context.sync_source_time"))
-			.disabled(),
-	);
-	items.push(
-		MenuItem::new(LOCAL_SYNC_WAVEFORM, i18n::tr("timeline.context.sync_waveform")).disabled(),
-	);
-	items.push(
-		MenuItem::new(
-			LOCAL_SYNC_WAVEFORM_SPEED,
-			i18n::tr("timeline.context.sync_waveform_speed"),
-		)
-		.disabled()
-		.separated(),
-	);
+	// Synchronize group (registry actions; enabled at ≥ 2 eligible clips,
+	// the C++ `get_selected_source_sync_clips` / `_waveform_sync_clips`
+	// counts).
+	let sync_enabled = sync.source_time >= 2;
+	let wave_enabled = sync.waveform >= 2;
+	let mut source_time = shared::action_item(ActionId::SyncBySourceTime);
+	if !sync_enabled {
+		source_time = source_time.disabled();
+	}
+	items.push(source_time);
+	let mut waveform = shared::action_item(ActionId::SyncByWaveform);
+	if !wave_enabled {
+		waveform = waveform.disabled();
+	}
+	items.push(waveform);
+	let mut waveform_speed = shared::action_item(ActionId::SyncByWaveformSpeed).separated();
+	if !wave_enabled {
+		waveform_speed = waveform_speed.disabled();
+	}
+	items.push(waveform_speed);
 	// Cache group (placeholders: the engine has no cache surface yet).
 	let cache_menu = Menu::new(vec![
 		MenuItem::new(LOCAL_CACHE_AUTO, i18n::tr("timeline.context.auto_cache"))
@@ -877,14 +953,35 @@ pub(crate) fn clip_menu() -> Menu {
 		MenuItem::new(LOCAL_CACHE_DISCARD, i18n::tr("timeline.context.cache_discard")),
 	]);
 	items.push(MenuItem::new(0, i18n::tr("timeline.context.cache")).with_submenu(cache_menu));
-	// Proxy group: disabled until the proxy pipeline lands; the settings
-	// entry is the real registry action.
+	// Proxy group: the enable state mirrors the C++
+	// `get_selected_proxy_footage` conditions over the selected clips'
+	// footage; the settings entry is the real registry action.
+	let has_footage = !proxy.is_empty();
+	let can_generate = proxy.iter().any(|row| row.can_generate);
+	let any_proxy = proxy.iter().any(|row| row.has_proxy);
+	let all_enabled = has_footage && proxy.iter().all(|row| row.enabled);
+	let mut generate = MenuItem::new(LOCAL_PROXY_GENERATE, i18n::tr("timeline.context.generate_proxy"));
+	if !can_generate {
+		generate = generate.disabled();
+	}
+	let mut use_proxy = MenuItem::new(LOCAL_PROXY_USE, i18n::tr("timeline.context.use_proxy"))
+		.with_checked(all_enabled);
+	if !has_footage {
+		use_proxy = use_proxy.disabled();
+	}
+	let mut reveal = MenuItem::new(LOCAL_PROXY_REVEAL, i18n::tr("timeline.context.reveal_proxy"));
+	if !any_proxy {
+		reveal = reveal.disabled();
+	}
+	let mut delete = MenuItem::new(LOCAL_PROXY_DELETE, i18n::tr("timeline.context.delete_proxy"));
+	if !any_proxy {
+		delete = delete.disabled();
+	}
 	let proxy_menu = Menu::new(vec![
-		MenuItem::new(LOCAL_PROXY_GENERATE, i18n::tr("timeline.context.generate_proxy"))
-			.disabled(),
-		MenuItem::new(LOCAL_PROXY_USE, i18n::tr("timeline.context.use_proxy")).disabled(),
-		MenuItem::new(LOCAL_PROXY_REVEAL, i18n::tr("timeline.context.reveal_proxy")).disabled(),
-		MenuItem::new(LOCAL_PROXY_DELETE, i18n::tr("timeline.context.delete_proxy")).disabled(),
+		generate,
+		use_proxy,
+		reveal,
+		delete,
 		shared::action_item(ActionId::ProxySettings).separated(),
 	]);
 	items.push(MenuItem::new(0, i18n::tr("timeline.context.proxy")).with_submenu(proxy_menu));
@@ -1133,11 +1230,15 @@ mod tests {
 	}
 
 	/// The clip menu keeps the C++ shape: edit section, color labels, the
-	/// three (disabled) synchronize entries, cache and proxy submenus, the
-	/// reveal/multi-cam entries and a registry-backed "Properties".
+	/// three synchronize entries (registry actions; disabled without ≥ 2
+	/// eligible clips), cache and proxy submenus, the reveal/multi-cam
+	/// entries and a registry-backed "Properties".
 	#[test]
 	fn clip_menu_keeps_the_cpp_shape() {
-		let menu = clip_menu();
+		let menu = clip_menu(
+			crate::oakui::engine::SyncEligibility::default(),
+			&[],
+		);
 		// Color label item sits right after the edit section and carries a
 		// submenu of all 16 labels.
 		let color = menu
@@ -1150,10 +1251,21 @@ mod tests {
 			shared::COLOR_LABEL_COUNT
 		);
 
+		// The synchronize entries are the registry actions and stay
+		// disabled while fewer than 2 clips are eligible.
+		for action in [
+			ActionId::SyncBySourceTime,
+			ActionId::SyncByWaveform,
+			ActionId::SyncByWaveformSpeed,
+		] {
+			let id = action.entry().menu_id();
+			let item = menu.items.iter().find(|item| item.id == id).unwrap_or_else(|| {
+				panic!("clip menu missing synchronize entry {id}")
+			});
+			assert!(!item.enabled, "synchronize {id} should be disabled");
+		}
+
 		for id in [
-			LOCAL_SYNC_SOURCE_TIME,
-			LOCAL_SYNC_WAVEFORM,
-			LOCAL_SYNC_WAVEFORM_SPEED,
 			LOCAL_REVEAL_FOOTAGE_VIEWER,
 			LOCAL_REVEAL_PROJECT,
 			LOCAL_MULTICAM,
@@ -1164,8 +1276,8 @@ mod tests {
 			assert!(!item.enabled, "placeholder {id} should be disabled");
 		}
 
-		// Cache and proxy are submenus; every proxy entry but the settings
-		// action is disabled.
+		// Cache and proxy are submenus; with no footage selected every
+		// proxy entry but the settings action is disabled.
 		let cache = menu
 			.items
 			.iter()
@@ -1188,6 +1300,68 @@ mod tests {
 			properties.id,
 			ActionId::SpeedDuration.entry().menu_id()
 		);
+	}
+
+	/// The synchronize / proxy enable state follows the selection (the C++
+	/// `get_selected_*_sync_clips` counts and the proxy-footage flags).
+	#[test]
+	fn clip_menu_enables_sync_and_proxy_from_selection() {
+		use crate::oakui::engine::{ProxyFootageRow, ProxyMediaState, SyncEligibility};
+		let rows = vec![
+			ProxyFootageRow {
+				id: 1,
+				name: "a.mp4".into(),
+				state: ProxyMediaState::Ready,
+				enabled: true,
+				has_custom: false,
+				can_generate: true,
+				has_proxy: true,
+			},
+			ProxyFootageRow {
+				id: 2,
+				name: "b.mp4".into(),
+				state: ProxyMediaState::Missing,
+				enabled: false,
+				has_custom: false,
+				can_generate: true,
+				has_proxy: false,
+			},
+		];
+		let menu = clip_menu(
+			SyncEligibility {
+				source_time: 2,
+				waveform: 1,
+			},
+			&rows,
+		);
+		let find = |id: usize| {
+			menu.items
+				.iter()
+				.find(|item| item.id == id)
+				.unwrap_or_else(|| panic!("missing item {id}"))
+		};
+		assert!(
+			find(ActionId::SyncBySourceTime.entry().menu_id()).enabled,
+			"2 eligible clips enable source-time sync"
+		);
+		assert!(
+			!find(ActionId::SyncByWaveform.entry().menu_id()).enabled,
+			"1 eligible clip keeps waveform sync disabled"
+		);
+		let proxy = menu
+			.items
+			.iter()
+			.find(|item| item.label == i18n::tr("timeline.context.proxy"))
+			.expect("proxy submenu");
+		let proxy_items = &proxy.submenu.as_ref().unwrap().items;
+		assert!(proxy_items[0].enabled, "generate: footage can generate");
+		assert!(proxy_items[1].enabled, "use: footage present");
+		assert!(
+			!proxy_items[1].checked.unwrap_or(false),
+			"use: not every footage has its proxy enabled"
+		);
+		assert!(proxy_items[2].enabled, "reveal: one footage has a proxy");
+		assert!(proxy_items[3].enabled, "delete: one footage has a proxy");
 	}
 
 	/// The empty-area menu exposes the view toggles plus the sequence

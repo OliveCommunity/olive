@@ -106,6 +106,7 @@ mod modal_ids {
 	pub const MANAGER: usize = 6;
 	pub const MANAGER_RENAME: usize = 7;
 	pub const MANAGER_DELETE: usize = 8;
+	pub const PROXY: usize = 9;
 }
 
 /// What a picked platform-dialog path should do.
@@ -151,6 +152,11 @@ enum ModalState<E: AppEngine> {
 	},
 	/// The manager's delete confirmation.
 	ManagerDelete { modal: Entity<Modal>, uuid: String },
+	/// The proxy settings dialog (Tools > Proxy Settings).
+	Proxy {
+		modal: Entity<Modal>,
+		content: Entity<crate::dialogs::ProxyDialogContent<E>>,
+	},
 }
 
 /// A running export: the session the tick loop drains for progress.
@@ -168,7 +174,8 @@ impl<E: AppEngine> ModalState<E> {
 			| ModalState::Progress { modal, .. }
 			| ModalState::Manager { modal, .. }
 			| ModalState::ManagerRename { modal, .. }
-			| ModalState::ManagerDelete { modal, .. } => Some(modal.clone()),
+			| ModalState::ManagerDelete { modal, .. }
+			| ModalState::Proxy { modal, .. } => Some(modal.clone()),
 		}
 	}
 }
@@ -903,6 +910,15 @@ impl<E: AppEngine> OakApp<E> {
 				println!("[tools] selected: {tool:?} (placeholder behavior)");
 				self.rebuild_menu_bar(cx);
 			}
+			// --- Proxy (Tools) ---------------------------------------------
+			A::UseProxyMedia => {
+				let enabled = !self.engine.read(cx).use_proxy_media();
+				self.engine.update(cx, |engine, cx| {
+					engine.set_use_proxy_media(enabled, cx)
+				});
+				self.rebuild_menu_bar(cx);
+			}
+			A::ProxySettings => self.open_proxy_dialog(cx),
 			// --- everything else is a placeholder --------------------------
 			other => println!(
 				"[action] {} not wired yet (placeholder)",
@@ -1140,6 +1156,7 @@ impl<E: AppEngine> OakApp<E> {
 			loop_playback: self.loop_playback,
 			show_all: self.show_all,
 			full_screen: self.full_screen,
+			use_proxy_media: self.engine.read(cx).use_proxy_media(),
 		};
 		let Ok(menu_bar) = cx.update_window(*handle, |_root, window, app| {
 			app.new(|cx| MenuBar::new(1, make_menus(state), window, cx))
@@ -1602,6 +1619,41 @@ impl<E: AppEngine> OakApp<E> {
 		}
 	}
 
+	/// Opens the proxy settings dialog (Tools > Proxy Settings; the C++
+	/// `ProxyDialog`): the global generation settings plus the footage
+	/// proxy list with Generate / Delete buttons.
+	fn open_proxy_dialog(&mut self, cx: &mut Context<Self>) {
+		if !matches!(self.modal, ModalState::None) {
+			return;
+		}
+		let engine = self.engine.clone();
+		self.spawn_modal(cx, move |window, app| {
+			let content =
+				app.new(|cx| crate::dialogs::ProxyDialogContent::new(engine, window, cx));
+			let modal = app.new(|cx| {
+				Modal::new(
+					modal_ids::PROXY,
+					ModalOptions::new(crate::i18n::tr("proxydialog.title"), px(560.0))
+						.with_button(DialogButton::new(
+							crate::i18n::tr("proxydialog.generate"),
+							gpui_widgets::dialog::DialogButtonRole::Secondary,
+						))
+						.with_button(DialogButton::new(
+							crate::i18n::tr("proxydialog.delete"),
+							gpui_widgets::dialog::DialogButtonRole::Secondary,
+						))
+						.with_button(DialogButton::primary(crate::i18n::tr(
+							"proxydialog.close",
+						))),
+					window,
+					cx,
+				)
+				.with_content(content.clone())
+			});
+			ModalState::Proxy { modal, content }
+		});
+	}
+
 	/// Opens the export dialog.
 	fn open_export_dialog(&mut self, cx: &mut Context<Self>) {
 		if self.engine.read(cx).current_sequence().is_none() {
@@ -1773,6 +1825,19 @@ impl<E: AppEngine> OakApp<E> {
 						self.back_to_manager(cx);
 					}
 				}
+				modal_ids::PROXY => {
+					if let ModalState::Proxy { content, .. } = &self.modal {
+						let content = content.clone();
+						match *button {
+							0 => content.update(cx, |dialog, cx| dialog.generate(cx)),
+							1 => content.update(cx, |dialog, cx| dialog.delete(cx)),
+							_ => {
+								content.update(cx, |dialog, cx| dialog.accept(cx));
+								self.close_modal(cx);
+							}
+						}
+					}
+				}
 				_ => {}
 			},
 			ModalEvent::Dismissed { control } => match *control {
@@ -1789,6 +1854,9 @@ impl<E: AppEngine> OakApp<E> {
 					self.commit_preferences(cx);
 					self.close_modal(cx);
 				}
+				// Escape closes the proxy dialog without applying (the
+				// Close button is the apply path, like the C++ accept()).
+				modal_ids::PROXY => self.close_modal(cx),
 				_ => self.close_modal(cx),
 			},
 		}
@@ -1839,6 +1907,7 @@ struct MenuState {
 	loop_playback: bool,
 	show_all: bool,
 	full_screen: bool,
+	use_proxy_media: bool,
 }
 
 impl MenuState {
@@ -1852,6 +1921,9 @@ impl MenuState {
 			loop_playback: false,
 			show_all: false,
 			full_screen: false,
+			use_proxy_media: oakcommon::configstore::ConfigStore::instance()
+				.get_bool(None, "UseProxyMedia", 1)
+				!= 0,
 		}
 	}
 }
@@ -1918,7 +1990,7 @@ fn make_menus(state: MenuState) -> Vec<MenuBarEntry> {
 		tools.push(item);
 	}
 	tools.push(menu_item(A::Snapping).with_checked(state.snapping).separated());
-	tools.push(menu_item(A::UseProxyMedia));
+	tools.push(menu_item(A::UseProxyMedia).with_checked(state.use_proxy_media));
 	tools.push(menu_item(A::ProxySettings));
 
 	vec![
@@ -2410,6 +2482,15 @@ mod tests {
 		for entry in make_menus_for_test() {
 			collect(&entry.menu, &mut ids);
 		}
+		// Context-menu-only actions (the timeline clip menu's synchronize
+		// group) appear in the clip menu instead of the menu bar.
+		collect(
+			&crate::panels::timeline::clip_menu(
+				crate::oakui::engine::SyncEligibility::default(),
+				&[],
+			),
+			&mut ids,
+		);
 		for entry in crate::actions::REGISTRY {
 			if entry.default_keys.is_empty() {
 				continue;
