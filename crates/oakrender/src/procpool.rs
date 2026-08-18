@@ -1199,13 +1199,27 @@ impl ProcessDispatcher {
 			let Some(batch) = inner.scheduler.claim_batch(worker, credit, max_bytes) else {
 				return;
 			};
-			let mut video_tickets = Vec::with_capacity(batch.frames.len());
-			let mut audio_tickets: Vec<AudioTicketSpec> = Vec::new();
-			for req in &batch.frames {
+			// Slot assignment order MUST match the worker's acquisition
+			// order: the batch is delivered as the video message first and
+			// the audio message second, and the worker pops one slot per
+			// ticket in that message order, checking each pop against the
+			// assignment. Assigning in the scheduler's interleaved frame
+			// order scrambles the free ring (every audio ticket in a mixed
+			// batch mismatched, and each mismatch leaked a slot — the
+			// "slot assignment mismatch" flood). Two passes: video first.
+			let (video_reqs, audio_reqs): (Vec<_>, Vec<_>) =
+				batch.frames.iter().partition(|r| {
+					!inner
+						.tickets
+						.get(&r.payload)
+						.is_some_and(|pt| pt.audio.is_some())
+				});
+			let mut video_tickets = Vec::with_capacity(video_reqs.len());
+			let mut audio_tickets: Vec<AudioTicketSpec> = Vec::with_capacity(audio_reqs.len());
+			for req in video_reqs.into_iter().chain(audio_reqs) {
 				let ticket = req.payload;
-				let slot = match inner.workers[worker].free_slots.pop_front() {
-					Some(s) => s,
-					None => break, // credit accounting drifted; stop cleanly
+				let Some(slot) = inner.workers[worker].free_slots.pop_front() else {
+					break; // credit accounting drifted; stop cleanly
 				};
 				inner.workers[worker].outstanding.insert(ticket, slot);
 				let Some(pt) = inner.tickets.get(&ticket) else {

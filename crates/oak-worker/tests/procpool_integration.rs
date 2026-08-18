@@ -418,6 +418,64 @@ fn audio_tickets_roundtrip_through_shm_slots() {
 	dispatcher.shutdown();
 }
 
+/// A claim batch that mixes audio and video tickets must assign slots in
+/// the worker's acquisition order (the video message is processed first,
+/// the audio message second). Interleaved assignment scrambled the
+/// worker's free ring and flooded "slot assignment mismatch" failures
+/// during playback — this is the regression guard.
+#[test]
+fn mixed_audio_video_batch_keeps_slot_assignment_order() {
+	let _guard = lock_test();
+	// One worker, four slots: the first four posts dispatch singly (post
+	// pumps once itself), the remaining posts queue behind the busy
+	// slots. As completions are released below, claims gather up to
+	// `batch_size` queued tickets — mixed audio/video batches.
+	let dispatcher = ProcessDispatcher::new(config(1, 4)).expect("dispatcher config");
+	dispatcher.start().expect("worker starts");
+
+	let results = Arc::new(Mutex::new(Vec::new()));
+	for i in 0..8 {
+		submit(&dispatcher, &results, 1, None);
+		submit_audio(
+			&dispatcher,
+			&results,
+			1,
+			Rational::new(i, 24),
+			Rational::new(1, 24),
+		);
+	}
+	// Drain completions, releasing each slot immediately so the queued
+	// tickets keep flowing into new (mixed) claims.
+	let deadline = Instant::now() + Duration::from_secs(60);
+	let mut total = 0usize;
+	loop {
+		dispatcher.poll();
+		let done: Vec<TicketResult> = results
+			.lock()
+			.unwrap_or_else(|e| e.into_inner())
+			.drain(..)
+			.collect();
+		total += done.len();
+		for result in &done {
+			match result {
+				Ok(TicketPayload::ShmFrame(frame)) => dispatcher.release_frame(frame),
+				Ok(TicketPayload::ShmAudio(audio)) => dispatcher.release_audio_frame(audio),
+				Err(e) => panic!("mixed-batch ticket failed: {e}"),
+				_ => panic!("unexpected payload variant"),
+			}
+		}
+		if total >= 16 {
+			break;
+		}
+		if Instant::now() > deadline {
+			panic!("timeout waiting for the mixed batch ({total}/16)");
+		}
+		std::thread::sleep(Duration::from_millis(2));
+	}
+
+	dispatcher.shutdown();
+}
+
 /// An audio render crashing mid-mix (SIGSEGV hook) must not take down the
 /// main process: the audio ticket is re-queued, the worker restarted and
 /// the samples still arrive.
