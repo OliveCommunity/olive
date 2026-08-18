@@ -147,6 +147,14 @@ pub trait JobDispatch: Send + Sync {
 	/// preview-window invalidation); their completions fire with
 	/// `Error::State`. Default no-op: only the process backend schedules.
 	fn cancel_preview_sequence(&self, _sequence: u64) {}
+
+	/// Slot headroom available to a best-effort pre-render window (total
+	/// pool slots minus one per worker), so interactive and audio tickets
+	/// always keep credit. Default `None`: backends without slots impose
+	/// no constraint.
+	fn preview_window_capacity(&self) -> Option<usize> {
+		None
+	}
 }
 
 /// Thread-free job dispatcher (M15 S2). Executes jobs on the calling

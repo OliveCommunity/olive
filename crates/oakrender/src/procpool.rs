@@ -781,6 +781,20 @@ impl ProcessDispatcher {
 		}
 	}
 
+	/// Slot headroom for best-effort pre-render windows: the pool's total
+	/// slots minus one per worker, so interactive (seek / synchronous
+	/// display) and audio tickets always keep credit to dispatch. A
+	/// pre-render window larger than the pool exhausted every slot, which
+	/// deadlocked the UI's synchronous frame wait (the playback freeze).
+	pub fn preview_window_capacity(&self) -> usize {
+		let inner = lock(&self.inner);
+		let workers = inner.scheduler.workers();
+		workers
+			.saturating_mul(inner.slots as usize)
+			.saturating_sub(workers)
+			.max(1)
+	}
+
 	/// The configured worker count.
 	pub fn worker_count(&self) -> usize {
 		lock(&self.inner).scheduler.workers()
@@ -1575,6 +1589,12 @@ impl JobDispatch for ProcessDispatcher {
 		self.poll();
 	}
 
+	/// The pre-render window's slot headroom (see the inherent
+	/// [`ProcessDispatcher::preview_window_capacity`]).
+	fn preview_window_capacity(&self) -> Option<usize> {
+		Some(self.preview_window_capacity())
+	}
+
 	/// Release a consumed frame's slot (delegates to the inherent
 	/// release — see [`ProcessDispatcher::release_frame`]).
 	fn release_frame(&self, frame: &ShmFrameRef) {
@@ -1783,6 +1803,24 @@ mod tests {
 		// With tiny slots the core policy dominates (>= 1).
 		let n = default_worker_count(1, 64);
 		assert!(n >= 1);
+	}
+
+	#[test]
+	fn preview_window_capacity_reserves_one_slot_per_worker() {
+		// workers=3 × slots=4 → the window may hold 12-3=9 slots; the
+		// reserve keeps interactive/audio tickets dispatchable (the
+		// playback-freeze regression guard).
+		let config = DispatcherConfig {
+			worker_bin: Some(std::path::PathBuf::from("/bin/true")),
+			workers: 3,
+			slots_per_worker: 4,
+			width: 64,
+			height: 64,
+			batch_size: 2,
+			..Default::default()
+		};
+		let dispatcher = ProcessDispatcher::new(config).expect("dispatcher");
+		assert_eq!(dispatcher.preview_window_capacity(), 9);
 	}
 
 	#[test]

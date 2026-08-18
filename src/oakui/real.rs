@@ -1609,6 +1609,15 @@ impl RealEngine {
 
 		let forward = config_get_int(CONFIG_KEY_PREVIEW_WINDOW, DEFAULT_PREVIEW_WINDOW_FORWARD)
 			.clamp(8, 1200);
+		// Cap the window to the pool's slot headroom: a window that can
+		// hold every slot starves interactive (this frame's synchronous
+		// render) and audio tickets of credit, and since the slot-releasing
+		// cleanup runs on this same UI thread, a synchronous wait then
+		// deadlocks playback. Keep one slot per worker in reserve.
+		let forward = match m.dispatch.preview_window_capacity() {
+			Some(capacity) => forward.min(capacity as i64).max(1),
+			None => forward,
+		};
 		let end = length.max(playhead).min(playhead + forward);
 
 		// Reset / rebuild when the node changed or an invalidation bumped the
