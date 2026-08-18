@@ -3,6 +3,7 @@
 > 状态：已批准（用户 2026-08-18 提出，作为独立追加任务，不阻塞 M12 其余阶段）。
 > 前置调研：见会话调研报告（oak-worker/ipc.rs 传输层已完整、TicketArena 投递口收敛、上屏链路 6 处拷贝点）。
 > 进度：S1 完成（2026-08，协议 v2 + ProcessDispatcher + PreviewScheduler + worker 真实渲染，与线程池并存）；S2 完成（默认 Processes、删除 WorkerPool、oaktask/oak-cli/app 接入、上屏零拷贝、播放预渲染窗口）；S3 完成（2026-08-19：音频票走共享内存 + 播放异步预取 + 崩溃隔离覆盖音频、按票槽格式 F32 + 段按需扩容、worker/槽/批自适应策略 + 基准 bench_process）。
+> 上屏拷贝现状（2026-08-19 修正）：预览链路为 **1 次 CPU staging 拷贝 + GPU 上传**——shm 槽 → `RenderImage`（gpui 的精灵图集要求 owned 缓冲与稳定 ImageId，借用型零拷贝需改造 vendored gpui 的 `RenderImage`/atlas 类型，暂记为后续项）→ `write_texture`。gpui_wgpu atlas 的 identity 格式二次拷贝（`swizzle_upload_data` 的 `to_vec()`）已移除：非 swizzle 格式直接用调用方切片上传。真·零拷贝上屏的可行路径是 macOS IOSurface 跨进程共享 + `SurfaceSource` 通道，工作量与平台耦合大，单独立项再议。
 
 ## 1. 目标（用户原文要求）
 

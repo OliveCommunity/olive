@@ -1555,7 +1555,37 @@ impl<E: AppEngine> OakApp<E> {
 	/// `WindowHandle::update`): the nested `update_window` below would fail
 	/// and the modal would silently not open. Drive the root entity instead
 	/// (menu actions and entity updates are fine).
+	/// Builds and installs a modal. When the caller is already inside a
+	/// window update (an action listener / menu dispatch / tick), a nested
+	/// `update_window` would silently fail and drop the dialog — the phase-7
+	/// fix for Preferences / Action Search, applied centrally: probe first,
+	/// and defer the build to the end of the current app update when nested.
+	/// The fast path stays synchronous so callers can rely on `self.modal`
+	/// right after the call.
 	fn spawn_modal(
+		&mut self,
+		cx: &mut Context<Self>,
+		build: impl FnOnce(&mut Window, &mut App) -> ModalState<E> + 'static,
+	) {
+		let handle = cx.windows().first().copied();
+		let nested = match handle {
+			Some(handle) => cx.update_window(handle, |_root, _window, _app| ()).is_err(),
+			None => false,
+		};
+		if nested {
+			let this = cx.weak_entity();
+			cx.defer(move |app| {
+				let _ = this.update(app, |this, cx| this.spawn_modal_now(cx, build));
+			});
+			return;
+		}
+		self.spawn_modal_now(cx, build);
+	}
+
+	/// Builds and installs a modal immediately (the deferred half of
+	/// [`Self::spawn_modal`]; also called directly when the caller already
+	/// runs outside a window update).
+	fn spawn_modal_now(
 		&mut self,
 		cx: &mut Context<Self>,
 		build: impl FnOnce(&mut Window, &mut App) -> ModalState<E>,

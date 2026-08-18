@@ -94,7 +94,15 @@ pub fn preview_footage_media(
 	f: &oaknode::footage::FootageBehavior,
 	is_video: bool,
 ) -> (String, i32) {
-	let original_stream = if is_video { 0 } else { 1 };
+	// The original media decodes from the footage's actual first stream of
+	// the kind (C++ maps per-stream); the 0/1 fallbacks cover footage
+	// whose streams were never probed (legacy project files).
+	let original_stream = f
+		.streams
+		.iter()
+		.find(|s| s.is_video == is_video)
+		.map(|s| s.index)
+		.unwrap_or(if is_video { 0 } else { 1 });
 	let original = (f.filename.clone(), original_stream);
 	if !use_proxy_media() || !f.proxy_enabled || f.proxy.is_empty() {
 		return original;
@@ -884,6 +892,32 @@ mod tests {
 		);
 		oakundo::global::clear().unwrap();
 		let _ = std::fs::remove_file(&media);
+	}
+
+	/// The original media decodes from the footage's actual first stream of
+	/// the kind (not the hardcoded 0/1 of a typical layout): a file whose
+	/// video stream is not stream 0 must still decode its own video when
+	/// the proxy switch is off or the proxy is not ready.
+	#[test]
+	fn preview_media_uses_the_probed_stream_indices() {
+		let stream = |index: i32, is_video: bool| oaknode::footage::StreamInfo {
+			index,
+			is_video,
+			video: None,
+			audio: None,
+			duration: oakcore_rs::Rational::new(0, 1),
+		};
+		// An audio-first container: audio at 0, video at 1… plus a second
+		// audio track at 2. The video must come from stream 1 and the audio
+		// from stream 0, not the legacy 0/1 assumption.
+		let mut f = oaknode::footage::FootageBehavior::new("/tmp/audio-first.mov");
+		f.streams = vec![stream(0, false), stream(1, true), stream(2, false)];
+		assert_eq!(preview_footage_media(&f, true).1, 1);
+		assert_eq!(preview_footage_media(&f, false).1, 0);
+		// Unprobed footage (no stream metadata) keeps the 0/1 fallbacks.
+		let unprobed = oaknode::footage::FootageBehavior::new("/tmp/legacy.mov");
+		assert_eq!(preview_footage_media(&unprobed, true).1, 0);
+		assert_eq!(preview_footage_media(&unprobed, false).1, 1);
 	}
 
 	/// The multicam angle montage ([`single_track_video_montage`]) carries
