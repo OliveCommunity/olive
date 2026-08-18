@@ -565,7 +565,7 @@ pub(crate) unsafe extern "C" fn command_release(ctx: *mut c_void) {
 
 /// Create a vtable-backed command handle (refcount 1); a `NULL` vtable
 /// yields an empty handle (`oakundo_command_init`).
-pub fn command_init(vtable: *const OakUndoCommandVtable, userdata: *mut c_void) -> CHandle {
+pub unsafe fn command_init(vtable: *const OakUndoCommandVtable, userdata: *mut c_void) -> CHandle {
 	guard_handle(|| unsafe {
 		if vtable.is_null() {
 			return Ok(CHandle::null());
@@ -598,7 +598,7 @@ pub fn command_multi_add_child(multi: CHandle, child: CHandle) -> c_int {
 
 /// Number of children of a multi command handle; `E_INVALID` for an
 /// empty handle or a non-multi parent (`oakundo_command_multi_child_count`).
-pub fn command_multi_child_count(multi: CHandle, out_count: *mut c_int) -> c_int {
+pub unsafe fn command_multi_child_count(multi: CHandle, out_count: *mut c_int) -> c_int {
 	guard(|| unsafe {
 		if out_count.is_null() {
 			return Err(Error::Invalid);
@@ -615,7 +615,7 @@ pub fn command_multi_child_count(multi: CHandle, out_count: *mut c_int) -> c_int
 /// Write a borrowed handle to the child at `index` of a multi command
 /// (the returned handle carries its own shell ref); `E_NOT_FOUND` for
 /// an out-of-range index (`oakundo_command_multi_child`).
-pub fn command_multi_child(multi: CHandle, index: c_int, out_child: *mut CHandle) -> c_int {
+pub unsafe fn command_multi_child(multi: CHandle, index: c_int, out_child: *mut CHandle) -> c_int {
 	guard(|| unsafe {
 		if out_child.is_null() {
 			return Err(Error::Invalid);
@@ -657,7 +657,7 @@ pub fn command_undo_now(command: CHandle) -> c_int {
 /// Release a command handle in place: run the release callback, then
 /// clear `ctx`. `NULL` / empty handles are no-ops
 /// (`oakundo_command_free`).
-pub fn command_free(command: *mut CHandle) {
+pub unsafe fn command_free(command: *mut CHandle) {
 	guard_void(|| unsafe {
 		if command.is_null() || (*command).ctx.is_null() {
 			return;

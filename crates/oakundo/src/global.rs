@@ -237,7 +237,7 @@ pub fn push(command: UndoCommand, name: &str) -> Result<()> {
 		return Err(Error::NoMem);
 	}
 	let rc = push_or_run(handle, name);
-	command_free(&mut handle);
+	unsafe{command_free(&mut handle)};
 	if rc == 0 {
 		Ok(())
 	} else {
@@ -262,13 +262,13 @@ pub fn redo() -> Result<()> {
 /// Whether the process-wide stack has an entry to undo.
 pub fn undoable() -> bool {
 	let mut v: c_int = 0;
-	can_undo(&mut v).is_ok() && v != 0
+	unsafe{can_undo(&mut v).is_ok() && v != 0}
 }
 
 /// Whether the process-wide stack has an entry to redo.
 pub fn redoable() -> bool {
 	let mut v: c_int = 0;
-	can_redo(&mut v).is_ok() && v != 0
+	unsafe{can_redo(&mut v).is_ok() && v != 0}
 }
 
 // ---------------------------------------------------------------------------
@@ -287,7 +287,7 @@ pub fn index() -> Result<i64> {
 
 /// Whether an undo is possible (1/0 via `out_value`; a module error code
 /// otherwise).
-pub fn can_undo(out_value: *mut c_int) -> Result<()> {
+pub unsafe fn can_undo(out_value: *mut c_int) -> Result<()> {
 	if out_value.is_null() {
 		return Err(Error::Invalid);
 	}
@@ -300,7 +300,7 @@ pub fn can_undo(out_value: *mut c_int) -> Result<()> {
 
 /// Whether a redo is possible (1/0 via `out_value`; a module error code
 /// otherwise).
-pub fn can_redo(out_value: *mut c_int) -> Result<()> {
+pub unsafe fn can_redo(out_value: *mut c_int) -> Result<()> {
 	if out_value.is_null() {
 		return Err(Error::Invalid);
 	}
@@ -334,7 +334,7 @@ pub fn clear() -> Result<()> {
 /// Two-stage label getter for the row at `row` (see
 /// [`crate::undostack::undostack_command_text`]): returns the required
 /// size including the NUL, or a module error code.
-pub fn command_text(row: i64, buf: *mut c_char, buf_size: c_int) -> c_int {
+pub unsafe fn command_text(row: i64, buf: *mut c_char, buf_size: c_int) -> c_int {
 	let result = catch_unwind(AssertUnwindSafe(|| -> Result<i32> {
 		with_stack(|s| {
 			if row < 0 || row >= s.command_count() {
@@ -364,7 +364,7 @@ pub fn command_text(row: i64, buf: *mut c_char, buf_size: c_int) -> c_int {
 
 /// Whether the row at `row` is done (1/0 via `out_value`; a module error
 /// code otherwise — `-20004` for an out-of-range row).
-pub fn command_is_done(row: i64, out_value: *mut c_int) -> Result<()> {
+pub unsafe fn command_is_done(row: i64, out_value: *mut c_int) -> Result<()> {
 	if out_value.is_null() {
 		return Err(Error::Invalid);
 	}
@@ -411,6 +411,7 @@ mod tests {
 
 	fn vtable_command() -> CHandle {
 		use crate::undocommand::{command_init, OakUndoCommandVtable};
+		unsafe{
 		command_init(
 			&OakUndoCommandVtable {
 				redo: None,
@@ -418,7 +419,7 @@ mod tests {
 				free_fn: None,
 			},
 			std::ptr::null_mut(),
-		)
+		)}
 	}
 
 	#[test]
@@ -431,7 +432,7 @@ mod tests {
 		assert_eq!(count().unwrap(), 1);
 		assert_eq!(index().unwrap(), 1);
 		let mut v: c_int = 1;
-		assert!(can_undo(&mut v).is_ok());
+		assert!(unsafe{can_undo(&mut v).is_ok()});
 		assert_eq!(v, 0);
 
 		// Push fires the observer once.
