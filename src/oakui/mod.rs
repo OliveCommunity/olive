@@ -48,6 +48,7 @@ pub mod icons;
 pub mod mock;
 pub mod multicam;
 pub mod nodegraph;
+pub mod ofx;
 pub mod projectbrowser;
 pub mod real;
 pub mod renderops;
@@ -58,9 +59,9 @@ pub mod waveform;
 pub mod waveformsync;
 
 pub use engine::{
-	AppEngine, EngineClock, EngineGateway, ExportEvent, ExportSession, HistoryEntry,
-	LibraryProject, Monitor, MulticamState, NodeLibraryEntry, Project, ScopeData, Sequence,
-	VideoFormat,
+	AppEngine, EffectEntry, EffectParam, EngineClock, EngineGateway, ExportEvent, ExportSession,
+	HistoryEntry, LibraryProject, Monitor, MulticamState, NodeLibraryEntry, Project, ScopeData,
+	Sequence, VideoFormat,
 };
 pub use mock::{MockClock, MockEngine};
 pub use real::{RealClock, RealEngine};

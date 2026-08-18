@@ -96,6 +96,7 @@ oakcodec = { path = "crates/oakcodec" }
 oakcommon = { path = "crates/oakcommon" }
 oakcore-rs = { path = "crates/oakcore" }
 oaknode = { path = "crates/oaknode" }
+oakplugin = { path = "crates/oakplugin" }
 oakrender = { path = "crates/oakrender" }
 oakstorage = { path = "crates/oakstorage" }
 oaktask = { path = "crates/oaktask" }

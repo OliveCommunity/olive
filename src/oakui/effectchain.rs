@@ -93,28 +93,160 @@ pub fn is_enabled(g: &Graph, node: NodeId) -> bool {
 		.unwrap_or(false)
 }
 
-/// The effect types the user can add to a clip's chain, as
-/// (type id, display name) pairs — the factory entries flagged
-/// `video_effect` and not hidden from the create menu.
-pub fn addable_effects() -> Vec<(String, String)> {
+/// The effect types the user can add to a clip's chain — the built-in
+/// factory entries flagged `video_effect` and not hidden from the create
+/// menu (no group), plus every runtime-registered OpenFX plugin entry
+/// (grouped by its sub-category: Filter / Generator / Transition /
+/// General — the C++ `factorymenu.cpp` OpenFX branch).
+pub fn addable_effects() -> Vec<super::engine::EffectEntry> {
+	use super::engine::EffectEntry;
+	use oaknode::node::flags as node_flags;
 	let mut out = Vec::new();
 	for meta in oaknode::factory::Factory::global().entries() {
 		// A scratch instance per entry just to read its flags (the factory
 		// metadata carries no flag copy).
 		let (core, _behavior) = (meta.create)();
 		let flags = core.flags;
-		if flags & oaknode::node::flags::VIDEO_EFFECT != 0
-			&& flags & oaknode::node::flags::DONT_SHOW_IN_CREATE_MENU == 0
+		if flags & node_flags::VIDEO_EFFECT != 0
+			&& flags & node_flags::DONT_SHOW_IN_CREATE_MENU == 0
 		{
 			let name = if meta.name.is_empty() {
 				meta.type_id.to_string()
 			} else {
 				meta.name.to_string()
 			};
-			out.push((meta.type_id.to_string(), name));
+			out.push(EffectEntry {
+				type_id: meta.type_id.to_string(),
+				name,
+				group: None,
+			});
 		}
 	}
+	for meta in oaknode::factory::Factory::global().dynamic_entries() {
+		// OpenFX plugin entries: grouped by sub-category. The factory
+		// metadata carries no flags; plugin nodes are always video effects.
+		let name = if meta.name.is_empty() {
+			meta.type_id.clone()
+		} else {
+			meta.name
+		};
+		out.push(EffectEntry {
+			type_id: meta.type_id,
+			name,
+			group: Some(meta.sub_category),
+		});
+	}
 	out
+}
+
+// ---------------------------------------------------------------------------
+// OFX parameter data model (stage 6b)
+// ---------------------------------------------------------------------------
+
+/// The OFX plugin instance handle of a plugin node (the oakplugin registry
+/// key), or `None` for built-in nodes. Used by the inspector to read the
+/// persistent-message badge and to trigger push buttons.
+pub fn plugin_instance_handle(g: &Graph, node: NodeId) -> Option<u64> {
+	let behavior = g.get(node)?.behavior.as_any()?;
+	let plugin = behavior.downcast_ref::<oaknode::nodes::plugin::PluginNode>()?;
+	let handle = plugin.instance_handle();
+	(!handle.is_null()).then_some(handle.0)
+}
+
+/// The parameter controls of `effect` for the inspector, or `None` when
+/// the effect exposes no parameter UI (not a plugin node, or no editable
+/// parameters).
+pub fn effect_params(
+	g: &Graph,
+	node: NodeId,
+) -> Option<Vec<super::engine::EffectParam>> {
+	use oaknode::input::flags as input_flags;
+	use oaknode::nodes::plugin::PluginNode;
+	use oaknode::value::ValueType;
+
+	let entry = g.get(node)?;
+	// Only OFX plugin nodes expose the parameter UI (built-in effects keep
+	// the inspector's placeholder).
+	let behavior = entry.behavior.as_any()?;
+	if behavior.downcast_ref::<PluginNode>().is_none() {
+		return None;
+	}
+	let mut out = Vec::new();
+	for input in &entry.core.inputs {
+		// Clip/texture inputs are graph connections, not params; hidden
+		// (secret) inputs never render.
+		if input.value_type == ValueType::Texture {
+			continue;
+		}
+		if input.flags & input_flags::HIDDEN != 0 {
+			continue;
+		}
+		// The standard enabled input is structural, not a parameter.
+		if input.id == oaknode::node::ENABLED_INPUT {
+			continue;
+		}
+		out.push(super::engine::EffectParam {
+			input_id: input.id.clone(),
+			display_name: input.display_name.clone(),
+			value_type: input.value_type,
+			value: entry.core.standard_value(&input.id, -1),
+			flags: input.flags,
+			properties: input.properties.clone(),
+		});
+	}
+	Some(out)
+}
+
+/// The combo option labels of a parameter, collected from the repeated
+/// `("combo_option", Text)` property keys (the OFX translation pass
+/// carries the choice options that way; `str_combo` values ride the
+/// `("combo_value", Text)` keys).
+pub fn combo_options(p: &super::engine::EffectParam) -> Vec<String> {
+	p.properties
+		.iter()
+		.filter(|(k, _)| k == "combo_option")
+		.filter_map(|(_, v)| match v {
+			oaknode::value::NodeValue::Text(s) => Some(s.clone()),
+			_ => None,
+		})
+		.collect()
+}
+
+/// The string-combo values of a parameter (`("combo_value", Text)` keys).
+pub fn combo_values(p: &super::engine::EffectParam) -> Vec<String> {
+	p.properties
+		.iter()
+		.filter(|(k, _)| k == "combo_value")
+		.filter_map(|(_, v)| match v {
+			oaknode::value::NodeValue::Text(s) => Some(s.clone()),
+			_ => None,
+		})
+		.collect()
+}
+
+/// The `ui_group` / `ui_page` property of a parameter, if any (the OFX
+/// group/page headers; the inspector renders them as section titles).
+pub fn ui_section_of(p: &super::engine::EffectParam) -> Option<(String, String)> {
+	let group = p
+		.properties
+		.iter()
+		.find(|(k, _)| k == "ui_group")
+		.and_then(|(_, v)| match v {
+			oaknode::value::NodeValue::Text(s) => Some(s.clone()),
+			_ => None,
+		});
+	let page = p
+		.properties
+		.iter()
+		.find(|(k, _)| k == "ui_page")
+		.and_then(|(_, v)| match v {
+			oaknode::value::NodeValue::Text(s) => Some(s.clone()),
+			_ => None,
+		});
+	match (group, page) {
+		(None, None) => None,
+		(group, page) => Some((group.unwrap_or_default(), page.unwrap_or_default())),
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -218,6 +350,55 @@ pub fn set_enabled(p: &ProjectRef, effect: NodeId, enabled: bool) -> Result<(), 
 	)
 }
 
+/// Undoable set of an effect parameter (a node input's standard value) —
+/// "Set Parameter". `input_id` must exist on the node; the value is
+/// written as the standard value of element -1 (non-keyframed). Used by
+/// the inspector's OFX parameter controls.
+pub fn set_input_value(
+	p: &ProjectRef,
+	effect: NodeId,
+	input_id: &str,
+	value: NodeValue,
+) -> Result<(), String> {
+	let old = {
+		let g = lock(p);
+		let entry = g
+			.graph
+			.get(effect)
+			.ok_or_else(|| "set parameter: node not found".to_string())?;
+		if entry.core.get_input(input_id).is_none() {
+			return Err(format!("set parameter: unknown input \"{input_id}\""));
+		}
+		entry.core.standard_value(input_id, -1)
+	};
+	// NodeValue is not Copy: each closure owns its own clone (the closures
+	// are FnMut and may run more than once across undo/redo cycles).
+	let (p1, p2) = (p.clone(), p.clone());
+	let (input_id, value) = (input_id.to_string(), value);
+	let (redo_input, undo_input) = (input_id.clone(), input_id);
+	let redo_value = value.clone();
+	let undo_old = old.clone();
+	push(
+		UndoCommand::from_closures(
+			move || {
+				let mut g = lock(&p1);
+				if let Some(e) = g.graph.get_mut(effect) {
+					e.core
+						.set_standard_value(&redo_input, -1, redo_value.clone());
+				}
+			},
+			move || {
+				let mut g = lock(&p2);
+				if let Some(e) = g.graph.get_mut(effect) {
+					e.core
+						.set_standard_value(&undo_input, -1, undo_old.clone());
+				}
+			},
+		),
+		"Set Parameter",
+	)
+}
+
 /// The neighbors of chain position `pos` in `chain` (length `len`):
 /// `(upstream, downstream)` — the chain source is `None`, the host closes
 /// the chain.
@@ -250,10 +431,9 @@ pub fn insert(p: &ProjectRef, host: NodeId, index: usize, type_id: &str) -> Resu
 		if effect_input_of(&g.graph, host).is_none() {
 			return Err("node cannot host effects (no effect input)".to_string());
 		}
-		let Some(meta) = oaknode::factory::Factory::global().find(type_id) else {
+		let Some((core, behavior)) = oaknode::factory::Factory::global().create_any(type_id) else {
 			return Err(format!("unknown node type id \"{type_id}\""));
 		};
-		let (core, behavior) = (meta.create)();
 		if core.effect_input.is_empty() {
 			return Err("node type has no effect input; cannot be chained".to_string());
 		}
@@ -482,7 +662,7 @@ mod tests {
 			.into_iter()
 			.next()
 			.expect("the factory registers at least one video effect")
-			.0
+			.type_id
 	}
 
 	#[test]
@@ -564,9 +744,135 @@ mod tests {
 	fn addable_effects_are_video_effects() {
 		let entries = addable_effects();
 		assert!(!entries.is_empty());
-		for (type_id, name) in &entries {
-			assert!(!type_id.is_empty());
-			assert!(!name.is_empty());
+		for entry in &entries {
+			assert!(!entry.type_id.is_empty());
+			assert!(!entry.name.is_empty());
 		}
+	}
+
+	/// The effect-library grouping: every addable effect is either an
+	/// ungrouped built-in or an OpenFX entry with one of the four
+	/// sub-categories.
+	#[test]
+	fn addable_effects_group_openfx_by_sub_category() {
+		for entry in addable_effects() {
+			if let Some(group) = entry.group {
+				assert!(
+					["Filter", "Generator", "Transition", "General"].contains(&group.as_str()),
+					"unexpected OpenFX sub-category {group:?}"
+				);
+			}
+		}
+	}
+
+	/// `set_input_value` writes the standard value undoably and rejects
+	/// unknown input ids.
+	#[test]
+	fn set_input_value_undoes() {
+		let _g = stack_lock();
+		oakundo::global::clear().unwrap();
+		let (project, host) = project_with_clip();
+
+		// Choose a built-in effect whose scratch core exposes a float input
+		// (the value write/undo round-trip needs one).
+		let ty = addable_effects()
+			.into_iter()
+			.find(|entry| {
+				let (core, _behavior) = oaknode::factory::Factory::global()
+					.create_any(&entry.type_id)
+					.expect("the entry resolves");
+				core.inputs.iter().any(|i| {
+					i.value_type == oaknode::value::ValueType::Float
+						&& i.flags & oaknode::input::flags::HIDDEN == 0
+				})
+			})
+			.expect("at least one built-in effect exposes a float input")
+			.type_id;
+		let eff = insert(&project, host, 0, &ty).unwrap();
+
+		// Unknown input: rejected without touching the graph.
+		assert!(set_input_value(&project, eff, "nope", NodeValue::Float(1.0)).is_err());
+
+		// Pick an editable (non-texture, non-hidden) float input of the
+		// inserted effect to exercise the write/undo round-trip.
+		let input_id = {
+			let g = lock(&project);
+			g.graph
+				.get(eff)
+				.and_then(|e| {
+					e.core.inputs.iter().find(|i| {
+						i.value_type == oaknode::value::ValueType::Float
+							&& i.flags & oaknode::input::flags::HIDDEN == 0
+					})
+				})
+				.map(|i| i.id.clone())
+				.expect("the effect exposes a float input")
+		};
+		let before = lock(&project)
+			.graph
+			.get(eff)
+			.unwrap()
+			.core
+			.standard_value(&input_id, -1);
+		set_input_value(&project, eff, &input_id, NodeValue::Float(42.0)).unwrap();
+		assert_eq!(
+			lock(&project).graph.get(eff).unwrap().core.standard_value(&input_id, -1),
+			NodeValue::Float(42.0)
+		);
+		oakundo::global::undo().unwrap();
+		assert_eq!(
+			lock(&project).graph.get(eff).unwrap().core.standard_value(&input_id, -1),
+			before
+		);
+		oakundo::global::clear().unwrap();
+	}
+
+	/// The combo-option collector reads the repeated `("combo_option", _)`
+	/// property keys (and the string-combo values from `("combo_value", _)`).
+	#[test]
+	fn combo_option_collectors_read_repeated_properties() {
+		use crate::oakui::engine::EffectParam;
+		use oaknode::value::{NodeValue, ValueType};
+		let param = EffectParam {
+			input_id: "mode".into(),
+			display_name: "Mode".into(),
+			value_type: ValueType::Combo,
+			value: NodeValue::Combo(0),
+			flags: 0,
+			properties: vec![
+				("combo_option".into(), NodeValue::Text("Fast".into())),
+				("combo_option".into(), NodeValue::Text("High".into())),
+				("combo_value".into(), NodeValue::Text("fast".into())),
+				("combo_value".into(), NodeValue::Text("high".into())),
+			],
+		};
+		assert_eq!(combo_options(&param), vec!["Fast", "High"]);
+		assert_eq!(combo_values(&param), vec!["fast", "high"]);
+	}
+
+	/// ui_group / ui_page surface as a section header (empty halves are
+	/// fine); params without either have no section.
+	#[test]
+	fn ui_section_collects_group_and_page() {
+		use crate::oakui::engine::EffectParam;
+		use oaknode::value::{NodeValue, ValueType};
+		let plain = EffectParam {
+			input_id: "p".into(),
+			display_name: "P".into(),
+			value_type: ValueType::Int,
+			value: NodeValue::Int(0),
+			flags: 0,
+			properties: vec![],
+		};
+		assert!(ui_section_of(&plain).is_none());
+
+		let grouped = EffectParam {
+			properties: vec![
+				("ui_group".into(), NodeValue::Text("Basic".into())),
+				("ui_page".into(), NodeValue::Text("Main".into())),
+			],
+			..plain
+		};
+		assert_eq!(ui_section_of(&grouped), Some(("Basic".into(), "Main".into())));
 	}
 }

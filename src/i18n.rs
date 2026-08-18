@@ -418,6 +418,9 @@ const EN: &[(&str, &str)] = &[
 	("effect_stack.add", "+ Add Effect"),
 	// --- inspector ---
 	("inspector.params", "Parameters (placeholder)"),
+	("inspector.badge.openfx", "OpenFX"),
+	// --- OpenFX progress ---
+	("ofx.progress.title", "OpenFX Plugin Progress"),
 	// --- dialogs ---
 	("dialog.cancel", "Cancel"),
 	("dialog.close", "Close"),
@@ -852,6 +855,9 @@ const ZH: &[(&str, &str)] = &[
 	("effect_stack.add", "+ 添加效果"),
 	// --- inspector ---
 	("inspector.params", "参数（占位）"),
+	("inspector.badge.openfx", "OpenFX"),
+	// --- OpenFX progress ---
+	("ofx.progress.title", "OpenFX 插件进度"),
 	// --- dialogs ---
 	("dialog.cancel", "取消"),
 	("dialog.close", "关闭"),

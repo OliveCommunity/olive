@@ -26,6 +26,7 @@
 //! （include/plugin/host.h）。本模块按头文件契约建模。
 //! （原 C ABI 出口层已随单库化删除；注册点由 facade 直接调用。）
 
+use std::collections::HashMap;
 use std::ffi::{c_char, c_int, c_void, CStr};
 
 use crate::suites::status;
@@ -39,6 +40,40 @@ pub(crate) type MessageHandler =
 /// 避免裸指针破坏 static 的 Send/Sync 推导）。
 static HANDLER: std::sync::Mutex<(Option<MessageHandler>, usize)> =
 	std::sync::Mutex::new((None, 0));
+
+// ---------------------------------------------------------------------------
+// 持久消息计数（检查器效果卡的徽标数据源，阶段 6b）
+// ---------------------------------------------------------------------------
+//
+// C++ 侧 `OlivePluginInstance::persistentErrors_` 按实例累计持久消息，
+// 并 emit `node_->message_count_changed()`。这里以实例 handle（props
+// 地址，见 [`crate::suites::tag`]）为键累计计数；app 检查器经
+// [`crate::node_factory::instance_from_id`] 拿实例后按 props 地址查询。
+
+static PERSISTENT: std::sync::OnceLock<std::sync::Mutex<HashMap<usize, usize>>> =
+	std::sync::OnceLock::new();
+
+fn persistent_slot() -> &'static std::sync::Mutex<HashMap<usize, usize>> {
+	PERSISTENT.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+/// 实例 handle（props 地址）的持久消息数（未登记 → 0）。
+pub fn persistent_message_count(handle: usize) -> usize {
+	persistent_slot()
+		.lock()
+		.unwrap_or_else(|e| e.into_inner())
+		.get(&handle)
+		.copied()
+		.unwrap_or(0)
+}
+
+/// 清空某实例的持久消息（实例释放/宿主关闭路径；未登记的键 no-op）。
+pub fn clear_persistent_messages(handle: usize) {
+	persistent_slot()
+		.lock()
+		.unwrap_or_else(|e| e.into_inner())
+		.remove(&handle);
+}
 
 /// 注册/注销消息出口（facade 调用；公开：测试直接注入捕获器）。
 pub fn set_handler(f: Option<MessageHandler>, userdata: *mut c_void) {
@@ -87,6 +122,14 @@ pub unsafe extern "C" fn oak_ofx_message_impl(
 	std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
 		if type_.is_null() || message.is_null() {
 			return status::FAILED;
+		}
+		// 持久消息：按实例 handle（剥标签后的 props 地址）累计计数
+		// （徽标数据源；C++ persistentErrors_ 的等价物）。
+		if !_handle.is_null() {
+			let key = crate::suites::tag::strip(_handle) as usize;
+			let mut map = persistent_slot().lock().unwrap_or_else(|e| e.into_inner());
+			*map.entry(key).or_insert(0) += 1;
+			drop(map);
 		}
 		let (handler, userdata) = handler();
 		if let Some(h) = handler {
@@ -297,5 +340,37 @@ mod tests {
 			)
 		};
 		assert_eq!(r, status::REPLY_NO);
+	}
+
+	/// 持久消息按实例 handle 累计（徽标数据源）；clear 摘除。
+	#[test]
+	fn persistent_messages_accumulate_per_handle() {
+		let _g = TEST_LOCK.lock().unwrap();
+		set_handler(None, std::ptr::null_mut());
+		let props = crate::property::PropertySet::new();
+		let handle = crate::suites::tag::make(&props, crate::suites::tag::INSTANCE);
+		let key = crate::suites::tag::strip(handle) as usize;
+		clear_persistent_messages(key);
+
+		let type_ = CString::new("OfxMessageError").unwrap();
+		let id = CString::new("id").unwrap();
+		let msg = CString::new("boom").unwrap();
+		unsafe {
+			oak_ofx_message_impl(handle, type_.as_ptr(), id.as_ptr(), msg.as_ptr());
+			oak_ofx_message_impl(handle, type_.as_ptr(), id.as_ptr(), msg.as_ptr());
+		}
+		assert_eq!(persistent_message_count(key), 2);
+		clear_persistent_messages(key);
+		assert_eq!(persistent_message_count(key), 0);
+		// 空 handle 不计数。
+		unsafe {
+			oak_ofx_message_impl(
+				std::ptr::null_mut(),
+				type_.as_ptr(),
+				id.as_ptr(),
+				msg.as_ptr(),
+			);
+		}
+		assert_eq!(persistent_message_count(key), 0);
 	}
 }

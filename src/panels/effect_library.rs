@@ -65,9 +65,27 @@ impl<E: AppEngine> Render for EffectLibraryPanel<E> {
 			.gap_1()
 			.p_2()
 			.overflow_y_scroll();
-		for (type_id, name) in effects {
+
+		// Built-in effects render flat; OpenFX plugin entries are grouped
+		// under their sub-category header (Filter / Generator / Transition /
+		// General — the C++ `factorymenu` OpenFX branch).
+		let mut last_group: Option<String> = None;
+		for entry in &effects {
+			match &entry.group {
+				Some(group) => {
+					if last_group.as_deref() != Some(group.as_str()) {
+						last_group = Some(group.clone());
+						list = list.child(group_header(&colors, group));
+					}
+				}
+				None => {
+					last_group = None;
+				}
+			}
 			let engine = self.engine.clone();
-			let row_id = type_id.clone();
+			let row_id = entry.type_id.clone();
+			let name = entry.name.clone();
+			let type_id = entry.type_id.clone();
 			list = list.child(
 				div()
 					.id(SharedString::from(format!("effect-library-{type_id}")))
@@ -123,6 +141,20 @@ impl<E: AppEngine> Render for EffectLibraryPanel<E> {
 	}
 }
 
+/// The sub-category header row of the OpenFX group (a muted, all-caps
+/// line above the plugin entries).
+fn group_header(colors: &gpui::colors::Colors, group: &str) -> impl IntoElement {
+	div()
+		.id(SharedString::from(format!("effect-library-group-{group}")))
+		.pt_2()
+		.pb_1()
+		.px_2()
+		.text_xs()
+		.font_weight(gpui::FontWeight(600.0))
+		.text_color(colors.disabled)
+		.child(group.to_string())
+}
+
 impl<E: AppEngine> EventEmitter<PanelEvent> for EffectLibraryPanel<E> {}
 
 impl<E: AppEngine> DockPanel for EffectLibraryPanel<E> {
@@ -161,7 +193,8 @@ mod tests {
 
 		let expected = crate::oakui::effectchain::addable_effects();
 		assert!(!expected.is_empty());
-		for (type_id, _) in &expected {
+		for entry in &expected {
+			let type_id = &entry.type_id;
 			// `debug_bounds` takes a &'static selector; the per-row selector is
 			// dynamic, so the test leaks it (process-lifetime, test-only).
 			let selector: &'static str =

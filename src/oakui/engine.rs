@@ -35,7 +35,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use gpui::effect_stack::{EffectStackDataSource, EffectStackEvent};
+use gpui::effect_stack::{EffectId, EffectStackDataSource, EffectStackEvent};
 use gpui::node_graph::{NodeGraphDataSource, NodeGraphEvent};
 use gpui::timeline::{
 	ClipId, Frame, FrameRate, TimelineDataSource, TimelineEvent, TrackData, TrackKind,
@@ -152,6 +152,41 @@ pub struct NodeLibraryEntry {
 	pub name: String,
 	/// The i18n key of the category submenu (`node.category.*`).
 	pub category_key: &'static str,
+}
+
+/// One addable effect entry (the effect library list and the inspector's
+/// add-effect menu).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EffectEntry {
+	/// The factory type id handed to [`AppEngine::add_effect`].
+	pub type_id: String,
+	/// The effect's display name.
+	pub name: String,
+	/// The effect-library group: `Some(sub_category)` for OpenFX plugin
+	/// entries (Filter / Generator / Transition / General — the C++
+	/// `factorymenu` OpenFX branch), `None` for built-in effects (rendered
+	/// without a group header).
+	pub group: Option<String>,
+}
+
+/// A snapshot of one effect parameter (a node input) for the inspector's
+/// parameter view. For OFX plugin nodes each entry maps 1:1 to an OFX
+/// parameter (input id = param name, display name = param label).
+#[derive(Debug, Clone)]
+pub struct EffectParam {
+	/// The input id (the OFX param name for plugin nodes).
+	pub input_id: String,
+	/// The display name (the OFX param label).
+	pub display_name: String,
+	/// The value type.
+	pub value_type: oaknode::value::ValueType,
+	/// The current value.
+	pub value: oaknode::value::NodeValue,
+	/// The input flag bits (`oaknode::input::flags::*`).
+	pub flags: u32,
+	/// The input properties (`combo_option` / `combo_value` / `ui_group` /
+	/// `ui_page` / `min` / `max` / ...).
+	pub properties: Vec<(String, oaknode::value::NodeValue)>,
 }
 
 /// The i18n key of a node category submenu, or `None` for categories that
@@ -292,11 +327,12 @@ pub trait AppEngine:
 	/// selection-driven stack keep their existing behavior).
 	fn set_selected_clips(&mut self, _clips: Vec<ClipId>, _cx: &mut Context<Self>) {}
 
-	/// The effect types the user can add to the selected clip's chain, as
-	/// (type id, display name) pairs — the facade factory entries flagged
-	/// `video_effect` and not hidden from the create menu. The inspector
-	/// panel lists them in its "add effect" menu. Default: empty.
-	fn addable_effects(&self) -> Vec<(String, String)> {
+	/// The effect types the user can add to the selected clip's chain — the
+	/// factory entries flagged `video_effect` and not hidden from the create
+	/// menu, plus every runtime-registered OpenFX plugin entry (grouped by
+	/// its sub-category). The inspector panel lists them in its "add
+	/// effect" menu. Default: empty.
+	fn addable_effects(&self) -> Vec<EffectEntry> {
 		Vec::new()
 	}
 
@@ -313,6 +349,38 @@ pub trait AppEngine:
 	) -> Result<(), String> {
 		let _ = (index, type_id, cx);
 		Err("add effect not supported".into())
+	}
+
+	/// The parameter controls of `effect` for the inspector, or `None`
+	/// when the effect exposes no parameter UI (not a plugin node, or no
+	/// editable parameters). Default: `None` (the inspector renders its
+	/// placeholder).
+	fn effect_params(&self, _effect: EffectId) -> Option<Vec<EffectParam>> {
+		None
+	}
+
+	/// Sets an effect parameter (a node input) undoably. Returns a
+	/// user-facing error on failure. Default: unsupported.
+	fn set_effect_param(
+		&mut self,
+		_effect: EffectId,
+		_input_id: &str,
+		_value: oaknode::value::NodeValue,
+		_cx: &mut Context<Self>,
+	) -> Result<(), String> {
+		Err("effect params not supported".into())
+	}
+
+	/// Triggers a push-button parameter of `effect` (the OFX push-button
+	/// press). Returns a user-facing error on failure. Default:
+	/// unsupported.
+	fn effect_push_button(
+		&mut self,
+		_effect: EffectId,
+		_input_id: &str,
+		_cx: &mut Context<Self>,
+	) -> Result<(), String> {
+		Err("effect push button not supported".into())
 	}
 
 	/// Applies a node-editor edit request to the engine's model.

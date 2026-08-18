@@ -1273,9 +1273,10 @@ impl AppEngine for MockEngine {
 		self.apply_effect_event(event, cx);
 	}
 
-	fn addable_effects(&self) -> Vec<(String, String)> {
-		// The demo list is the real factory's video-effect table, so the
-		// effect library shows the same entries the real engine would.
+	fn addable_effects(&self) -> Vec<crate::oakui::engine::EffectEntry> {
+		// The demo list is the real factory's effect table (built-ins plus
+		// any registered OpenFX plugins), so the effect library shows the
+		// same entries the real engine would.
 		crate::oakui::effectchain::addable_effects()
 	}
 
@@ -1287,7 +1288,8 @@ impl AppEngine for MockEngine {
 	) -> Result<(), String> {
 		let Some((_, name)) = crate::oakui::effectchain::addable_effects()
 			.into_iter()
-			.find(|(id, _)| id == type_id)
+			.find(|entry| entry.type_id == type_id)
+			.map(|entry| (entry.type_id, entry.name))
 		else {
 			return Err(format!("unknown effect \"{type_id}\""));
 		};
@@ -2721,7 +2723,8 @@ mod tests {
 			let engine = demo_engine(app);
 			let effects = engine.read(app).addable_effects();
 			assert!(!effects.is_empty(), "the demo list is the factory table");
-			let (type_id, name) = effects[0].clone();
+			let first = effects[0].clone();
+			let (type_id, name) = (first.type_id, first.name);
 			let before = engine.read(app).effects().len();
 			engine.update(app, |engine, cx| {
 				engine

@@ -35,7 +35,8 @@
 //! ```
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use gpui::dock::{
@@ -108,6 +109,9 @@ mod modal_ids {
 	pub const MANAGER_RENAME: usize = 7;
 	pub const MANAGER_DELETE: usize = 8;
 	pub const PROXY: usize = 9;
+	/// The OFX plugin progress dialog (driven by the plugin-progress
+	/// channel in the tick loop).
+	pub const PLUGIN_PROGRESS: usize = 10;
 }
 
 /// What a picked platform-dialog path should do.
@@ -295,6 +299,15 @@ pub struct OakApp<E: AppEngine> {
 	shell_focus: gpui::FocusHandle,
 	/// The running export session, if any.
 	export: Option<ExportRun>,
+	/// Whether the progress modal currently on screen is the OFX plugin
+	/// progress dialog (as opposed to the export progress). Guards
+	/// [`poll_plugin_progress`] from hijacking the export's bar.
+	plugin_progress_open: bool,
+	/// The receiving half of the OFX plugin-progress channel (the sending
+	/// half is registered into the oakplugin progress suite by
+	/// [`crate::oakui::ofx::set_progress_tx`]). Drained in the tick loop to
+	/// drive the progress dialog.
+	plugin_progress_rx: Mutex<mpsc::Receiver<crate::oakui::ofx::PluginProgressEvent>>,
 	/// The library row pending an export save dialog (manager 导出).
 	pending_export: Option<String>,
 	/// The panel that most recently took focus (the target of
@@ -606,6 +619,12 @@ impl<E: AppEngine> OakApp<E> {
 		// The shell starts focused so the action dispatch layer works before
 		// any panel grabs focus.
 		window.focus(&shell_focus, cx);
+		// OFX plugin-progress channel: the oakplugin progress suite pushes
+		// (label, message, fraction) events here; the tick loop drives the
+		// progress dialog.
+		let (plugin_progress_tx, plugin_progress_rx) =
+			mpsc::channel::<crate::oakui::ofx::PluginProgressEvent>();
+		crate::oakui::ofx::set_progress_tx(plugin_progress_tx);
 		let shell = Self {
 			engine,
 			program_clock,
@@ -619,6 +638,8 @@ impl<E: AppEngine> OakApp<E> {
 			shell_focus,
 			export: None,
 			pending_export: None,
+			plugin_progress_open: false,
+			plugin_progress_rx: Mutex::new(plugin_progress_rx),
 			focused_panel: None,
 			panels,
 			active_tool: Tool::Pointer,
@@ -655,7 +676,56 @@ impl<E: AppEngine> OakApp<E> {
 			.update(cx, |timeline, _| timeline.state.work_area = work_area.map(|(s, e)| FrameRange::new(s, e)));
 		self.meter.update(cx, |meter, cx| meter.update(cx));
 		self.poll_export(cx);
+		self.poll_plugin_progress(cx);
 		cx.notify();
+	}
+
+	/// Drains the OFX plugin-progress channel: the first event of a render
+	/// opens the progress dialog, subsequent events update the bar, and the
+	/// dialog closes when the fraction reaches 1.0 (the plugin's
+	/// progressEnd is not surfaced by the reporter, so completion is
+	/// inferred from the fraction).
+	fn poll_plugin_progress(&mut self, cx: &mut Context<Self>) {
+		let mut events = Vec::new();
+		while let Ok(event) = self.plugin_progress_rx.lock().unwrap().try_recv() {
+			events.push(event);
+		}
+		if events.is_empty() {
+			return;
+		}
+		let last = events.last().cloned().unwrap_or_default();
+		// Ensure the plugin progress dialog is on screen. If another modal
+		// is already up (e.g. export progress), leave it alone.
+		if !self.plugin_progress_open && matches!(self.modal, ModalState::None) {
+			let title = crate::i18n::tr("ofx.progress.title");
+			let label = last.label.clone();
+			let message = last.message.clone();
+			self.spawn_modal(cx, move |window, app| {
+				let (modal, content) = progress_dialog(
+					modal_ids::PLUGIN_PROGRESS,
+					title,
+					format!("{label}\n{message}"),
+					window,
+					app,
+				);
+				ModalState::Progress { modal, content }
+			});
+			self.plugin_progress_open = true;
+		}
+		if self.plugin_progress_open {
+			if let ModalState::Progress { content, .. } = &self.modal {
+				let fraction = last.fraction as f32;
+				content.update(cx, |content, cx| content.set_progress(fraction, cx));
+			}
+			// The reporter answers false after the user cancels, and the
+			// fraction reaches 1.0 when the render completes; either way the
+			// dialog is dismissed.
+			if last.fraction >= 1.0 {
+				self.modal = ModalState::None;
+				self.plugin_progress_open = false;
+				cx.notify();
+			}
+		}
 	}
 
 	/// Routes a menu click: resolves the item id to its registry action and
@@ -1855,6 +1925,16 @@ impl<E: AppEngine> OakApp<E> {
 						self.cancel_export(cx);
 					}
 				}
+				modal_ids::PLUGIN_PROGRESS => {
+					if *button == 1 {
+						// Cancel the plugin render; the reporter then answers
+						// false and the render aborts at the next progress
+						// update (or the dialog closes on the 1.0 fraction).
+						crate::oakui::ofx::cancel_plugin_render();
+						self.plugin_progress_open = false;
+						self.close_modal(cx);
+					}
+				}
 				modal_ids::PREFERENCES => {
 					self.commit_preferences(cx);
 					self.close_modal(cx);
@@ -2273,6 +2353,15 @@ fn run_with<E: AppEngine>(args: AppArgs) {
 		// Bring up the audio manager and apply the persisted device choices
 		// (without an instance, playback pushes fail silently).
 		crate::oakui::real::audio_init_from_config();
+		// Stage 6b: wire the optional OFX plugin host — scan the standard
+		// plugin paths, register every discovered plugin into the node
+		// factory (effect library / add-effect menu), install the render
+		// executor, and register the progress / viewer-time bridges. All
+		// failures degrade to logs; plugins are optional.
+		let plugin_count = crate::oakui::ofx::init();
+		if plugin_count > 0 {
+			println!("[ofx] registered {plugin_count} OFX plugin node type(s)");
+		}
 		cx.init_colors();
 		let bounds = Bounds::centered(None, size(px(1600.0), px(900.0)), cx);
 		let initial = initial.clone();

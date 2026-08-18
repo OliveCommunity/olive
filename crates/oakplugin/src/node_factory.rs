@@ -105,6 +105,34 @@ pub fn registered_instance_count() -> usize {
 	instances().lock().unwrap_or_else(|e| e.into_inner()).len()
 }
 
+/// Triggers a push-button parameter (the Rust counterpart of the C++
+/// `oakengine_plugin_node_push_button_clicked`; called by the
+/// inspector's button widget).
+///
+/// OFX push buttons carry no value: the host's press signal is a single
+/// set on the parameter (the plugin reacts in its own instanceChanged
+/// action). Locates the instance and parameter, type-checks, then
+/// `set_ofx`. Returns false when the instance/parameter is unknown or
+/// the parameter is not a push button.
+///
+/// TODO(instanceChanged): per the OFX contract the press should be
+/// routed to the plugin as kOfxActionInstanceChanged (UserEdited);
+/// oakplugin has no dispatcher for that action yet — for now the value
+/// is only marked, and the plugin-side reaction is future work.
+pub fn push_button_clicked(instance: u64, param_name: &str) -> bool {
+	let Some(inst) = instance_from_id(instance) else {
+		return false;
+	};
+	let Some(p) = inst.value.params.find(param_name) else {
+		return false;
+	};
+	if p.def.ofx_type != ofx::TYPE_PUSHBUTTON {
+		return false;
+	}
+	p.set_ofx(ParamValue::PushButton);
+	true
+}
+
 // ---------------------------------------------------------------------------
 // 项目幅面（normalised 坐标默认值 → canonical 的换算基准）
 // ---------------------------------------------------------------------------
@@ -960,5 +988,74 @@ mod tests {
 		// 注册表对不存在的键返回 None；摘除未登记键 no-op。
 		assert!(instance_from_id(u64::MAX).is_none());
 		unregister_instance(u64::MAX);
+	}
+
+	/// 构造一个只含 push-button 参数的最小实例（直接登记进注册表）。
+	fn instance_with_push_button() -> u64 {
+		use std::ffi::{c_char, c_void};
+		use std::sync::atomic::AtomicU32;
+		use crate::descriptor::EffectDescriptor;
+		use crate::handle::RefBox;
+		use crate::host::Plugin;
+		use crate::param::{ParamDef, ParamInstance, ParamSetInstance};
+
+		unsafe extern "C" fn dummy_entry(
+			_: *const c_char,
+			_: *const c_void,
+			_: *mut c_void,
+			_: *mut c_void,
+		) -> i32 {
+			0
+		}
+		let plugin = Arc::new(Plugin {
+			identifier: "test.plugin".into(),
+			version: (1, 0),
+			bundle_path: std::path::PathBuf::new(),
+			contexts: vec![],
+			descriptor: EffectDescriptor::new(),
+			lib: std::ptr::null_mut(),
+			entry: dummy_entry,
+			ofx_plugin: std::ptr::null_mut(),
+		});
+		let mut params = ParamSetInstance { params: Vec::new() };
+		params.params.push(Box::new(ParamInstance::from_def(ParamDef::new(
+			"button",
+			ofx::TYPE_PUSHBUTTON,
+		))));
+		params.params.push(Box::new(ParamInstance::from_def(ParamDef::new(
+			"gain",
+			ofx::TYPE_DOUBLE,
+		))));
+		let inst = crate::instance::Instance {
+			props: crate::property::PropertySet::new(),
+			plugin,
+			context: "OfxImageEffectContextFilter".into(),
+			params,
+			clips: Vec::new(),
+			node_identity: std::sync::atomic::AtomicUsize::new(0),
+			destroyed: std::sync::atomic::AtomicBool::new(false),
+			sequence_range: std::sync::Mutex::new(None),
+			progress_cb: std::sync::Mutex::new(None),
+			cancel: std::sync::atomic::AtomicBool::new(false),
+			edit: std::sync::Mutex::new(crate::instance::EditTransaction::new()),
+			render_lock: std::sync::Mutex::new(()),
+		};
+		register_instance(Arc::new(RefBox {
+			refs: AtomicU32::new(1),
+			value: inst,
+		}))
+	}
+
+	/// push_button_clicked：实例/参数查无与类型不匹配 → false；命中 →
+	/// true 并触发一次 set。
+	#[test]
+	fn push_button_clicked_requires_a_push_button_param() {
+		let id = instance_with_push_button();
+		assert!(push_button_clicked(id, "button"));
+		// 类型不匹配 / 查无参数 / 查无实例。
+		assert!(!push_button_clicked(id, "gain"));
+		assert!(!push_button_clicked(id, "nope"));
+		assert!(!push_button_clicked(u64::MAX, "button"));
+		unregister_instance(id);
 	}
 }

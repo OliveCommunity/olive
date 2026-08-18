@@ -235,6 +235,19 @@ impl WorkerSession {
 		// executor slot.
 		log_error("runtime: installing oakplugin render executor");
 		oakplugin::node_factory::install_render_executor();
+		// M15 S2: graphs carrying OFX plugin nodes deserialize/evaluate in
+		// the worker too, so the per-process node factory must register the
+		// discovered plugins exactly like the main process. A failed scan is
+		// non-fatal: the worker stays up for plugin-free graphs.
+		log_error("runtime: scanning and registering OFX plugins");
+		if let Err(e) = oakplugin::host::Host::global().cache.scan() {
+			log_error(&format!("runtime: OFX plugin scan failed ({e}); continuing"));
+		}
+		let registered = oakplugin::node_factory::register_plugin_nodes();
+		log_error(&format!(
+			"runtime: registered {} OFX plugin node type(s)",
+			registered.len()
+		));
 		log_error(
 			"runtime: config / frame manager / disk manager / project \
 			 serializer have no Rust backing in the worker binary; skipped",

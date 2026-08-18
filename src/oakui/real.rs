@@ -668,6 +668,11 @@ struct RealEffect {
 	enabled: bool,
 	/// The app-owned expansion state (not undoable).
 	expanded: bool,
+	/// Optional secondary line (the "OpenFX" tag for plugin nodes).
+	subtitle: Option<SharedString>,
+	/// The persistent-message badge count (plugin nodes only; `None`
+	/// otherwise).
+	badge: Option<usize>,
 }
 
 impl EffectData for RealEffect {
@@ -683,12 +688,20 @@ impl EffectData for RealEffect {
 		self.title.clone()
 	}
 
+	fn subtitle(&self) -> Option<SharedString> {
+		self.subtitle.clone()
+	}
+
 	fn is_enabled(&self) -> bool {
 		self.enabled
 	}
 
 	fn is_expanded(&self) -> bool {
 		self.expanded
+	}
+
+	fn badge_count(&self) -> Option<usize> {
+		self.badge
 	}
 }
 
@@ -2334,6 +2347,23 @@ impl RealEngine {
 			},
 			length,
 		});
+		// Stage 6b: keep the OFX normalised-coordinate default conversion in
+		// sync with the current sequence's extent.
+		crate::oakui::ofx::update_project_extent(width as f64, height as f64);
+	}
+
+	/// Stage 6b: refreshes the OFX timeline-suite fallback time snapshot
+	/// from the program monitor's playhead (seconds) and the sequence
+	/// length (the range bounds). Called on seek and on every tick.
+	fn update_ofx_viewer_time(&self, cx: &App) {
+		let fps = self.frame_rate().as_f64();
+		if fps <= 0.0 {
+			return;
+		}
+		let frame = self.clock_frame(Monitor::Program, cx).0;
+		let time = frame as f64 / fps;
+		let length = self.sequence_length().0 as f64 / fps;
+		crate::oakui::ofx::update_viewer_time(time, 0.0, length);
 	}
 
 	/// Rebuilds the timeline snapshot from the graph.
@@ -2528,16 +2558,32 @@ impl RealEngine {
 		for node in super::effectchain::chain(&guard.graph, host) {
 			let identity = node.identity();
 			let type_id = graphops::node_type_id(&guard.graph, node);
+			// `name_of` covers both static (built-in) and dynamic (OpenFX
+			// plugin) factory entries.
 			let title = oaknode::factory::Factory::global()
-				.find(&type_id)
-				.map(|m| m.name.to_string())
+				.name_of(&type_id)
 				.filter(|n| !n.is_empty())
 				.unwrap_or(type_id);
+			let plugin_handle = super::effectchain::plugin_instance_handle(&guard.graph, node);
+			// The OpenFX plugin badge: the persistent-message count (the
+			// simplified 徽标/计数 of stage 6b). Built-in effects show none.
+			let badge = plugin_handle.and_then(|handle| {
+				let count =
+					oakplugin::suites::message::persistent_message_count(handle as usize);
+				(count > 0).then_some(count)
+			});
+			let subtitle = plugin_handle.map(|_| {
+				// A muted secondary line identifying the plugin effect as an
+				// OpenFX entry.
+				crate::i18n::tr("inspector.badge.openfx").to_string()
+			});
 			out.push(Arc::new(RealEffect {
 				id: EffectId(identity),
 				title: title.into(),
+				subtitle: subtitle.map(Into::into),
 				enabled: super::effectchain::is_enabled(&guard.graph, node),
 				expanded: self.expanded_effects.contains(&identity),
+				badge,
 			}) as Arc<dyn EffectData>);
 		}
 		out
@@ -2600,6 +2646,7 @@ impl EngineGateway for RealEngine {
 			cx.notify();
 		});
 		self.mirror_program_playhead(cx);
+		self.update_ofx_viewer_time(cx);
 		cx.notify();
 	}
 
@@ -2660,6 +2707,7 @@ impl EngineGateway for RealEngine {
 			});
 		}
 		self.mirror_program_playhead(cx);
+		self.update_ofx_viewer_time(cx);
 		self.meter_phase = self.meter_phase.wrapping_add(1);
 		// M15 S2: pump the process dispatcher — ticket completions (the
 		// pre-render window, full-res fills, synchronous renders) are
@@ -2955,7 +3003,7 @@ impl AppEngine for RealEngine {
 		cx.notify();
 	}
 
-	fn addable_effects(&self) -> Vec<(String, String)> {
+	fn addable_effects(&self) -> Vec<crate::oakui::engine::EffectEntry> {
 		super::effectchain::addable_effects()
 	}
 
@@ -2974,6 +3022,57 @@ impl AppEngine for RealEngine {
 		let result = super::effectchain::insert(&project, host, index, type_id).map(|_| ());
 		self.apply_edit(result.clone(), "add effect", cx);
 		result
+	}
+
+	fn effect_params(&self, effect: EffectId) -> Option<Vec<crate::oakui::engine::EffectParam>> {
+		let project = self.project_ref()?;
+		let node = graphops::id_of(effect.0)?;
+		let guard = graphops::lock(project);
+		super::effectchain::effect_params(&guard.graph, node)
+	}
+
+	fn set_effect_param(
+		&mut self,
+		effect: EffectId,
+		input_id: &str,
+		value: oaknode::value::NodeValue,
+		cx: &mut Context<Self>,
+	) -> Result<(), String> {
+		let Some(project) = self.project.clone() else {
+			return Err("no project open".into());
+		};
+		let Some(node) = graphops::id_of(effect.0) else {
+			return Err("effect node not found".into());
+		};
+		let result = super::effectchain::set_input_value(&project, node, input_id, value);
+		self.apply_edit(result.clone(), "set parameter", cx);
+		result
+	}
+
+	fn effect_push_button(
+		&mut self,
+		effect: EffectId,
+		input_id: &str,
+		cx: &mut Context<Self>,
+	) -> Result<(), String> {
+		let Some(project) = self.project_ref() else {
+			return Err("no project open".into());
+		};
+		let Some(node) = graphops::id_of(effect.0) else {
+			return Err("effect node not found".into());
+		};
+		let guard = graphops::lock(project);
+		let Some(instance) = super::effectchain::plugin_instance_handle(&guard.graph, node) else {
+			return Err("not a plugin effect".into());
+		};
+		drop(guard);
+		if !oakplugin::node_factory::push_button_clicked(instance, input_id) {
+			return Err(format!("push button \"{input_id}\" not found"));
+		}
+		// A button press can change the plugin's other parameters; refresh
+		// the snapshots and repaint.
+		cx.notify();
+		Ok(())
 	}
 
 	fn apply_effect_event(&mut self, event: &EffectStackEvent, cx: &mut Context<Self>) {

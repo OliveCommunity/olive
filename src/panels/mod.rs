@@ -29,6 +29,7 @@ pub mod history;
 pub mod inspector;
 pub mod multicam;
 pub mod node_editor;
+pub mod ofx_params;
 pub mod program_viewer;
 pub mod project_explorer;
 pub mod source_viewer;

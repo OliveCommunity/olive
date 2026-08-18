@@ -32,6 +32,7 @@ use crate::menus::context::{ContextMenuHandle, ContextMenuTriggered};
 use crate::oakui::AppEngine;
 use crate::panels::commands::PanelCommandHandler;
 use crate::panels::ids::INSPECTOR;
+use crate::panels::ofx_params::OfxParamsView;
 
 /// The inspector / effect stack panel.
 pub struct InspectorPanel<E: AppEngine> {
@@ -53,8 +54,16 @@ impl<E: AppEngine> InspectorPanel<E> {
 	/// Builds the stack over `engine`'s effect model.
 	pub fn new(engine: Entity<E>, window: &mut Window, cx: &mut Context<Self>) -> Self {
 		let stack = cx.new(|cx| {
-			EffectStackView::new(engine.clone(), cx)
-				.params_renderer(|_effect, _window, cx| cx.new(|_cx| ParamPlaceholder).into())
+			let engine_for_params = engine.clone();
+			EffectStackView::new(engine.clone(), cx).params_renderer(
+				move |effect, window, cx| {
+					// The OFX parameter view: auto-generated controls for the
+					// effect's inputs (empty state for effects without a
+					// parameter UI).
+					cx.new(|cx| OfxParamsView::new(*effect, engine_for_params.clone(), window, cx))
+						.into()
+				},
+			)
 		});
 		// The "edits are requests" loop: forward each request to the engine,
 		// which applies it to its model and notifies. `AddRequested` carries
@@ -133,10 +142,10 @@ impl<E: AppEngine> InspectorPanel<E> {
 			.flex_col()
 			.gap_1();
 
-		for (type_id, name) in &effects {
+		for entry in &effects {
 			let engine = self.engine.clone();
-			let type_id = type_id.clone();
-			let name = name.clone();
+			let type_id = entry.type_id.clone();
+			let name = entry.name.clone();
 			let index = index;
 			menu = menu.child(
 				div()
@@ -261,22 +270,6 @@ impl<E: AppEngine> DockPanel for InspectorPanel<E> {
 		div()
 			.child(crate::i18n::tr("panel.inspector"))
 			.into_any_element()
-	}
-}
-
-/// Placeholder parameter view rendered inside expanded effect cards.
-/// A real app builds the effect's controls here and calls
-/// [`EffectStackView::notify_parameter_changed`] after edits.
-struct ParamPlaceholder;
-
-impl Render for ParamPlaceholder {
-	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-		let colors = cx.default_colors().clone();
-		div()
-			.px_3()
-			.py_2()
-			.text_color(colors.disabled)
-			.child(crate::i18n::tr("inspector.params"))
 	}
 }
 
