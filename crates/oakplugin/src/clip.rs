@@ -61,6 +61,35 @@ fn components_from_props(props: &PropertySet) -> Option<crate::image::Components
 	}
 }
 
+/// IEEE 754 半精度 → 单精度（无 half 依赖，手写位转换；非规格数/
+/// Inf/NaN 均按标准展开）。
+fn f16_to_f32(bits: u16) -> f32 {
+	let sign = ((bits >> 15) & 1) as u32;
+	let exp = ((bits >> 10) & 0x1f) as u32;
+	let mant = (bits & 0x3ff) as u32;
+	let f32_bits = if exp == 0 {
+		if mant == 0 {
+			sign << 31
+		} else {
+			// 非规格数：规格化到 f32 指数域。
+			let mut m = mant;
+			let mut e: i32 = 127 - 15;
+			while m & 0x400 == 0 {
+				m <<= 1;
+				e -= 1;
+			}
+			let m = (m & 0x3ff) << 13;
+			(sign << 31) | (((e + 1) as u32) << 23) | m
+		}
+	} else if exp == 0x1f {
+		// Inf/NaN。
+		(sign << 31) | (0xff << 23) | (mant << 13)
+	} else {
+		(sign << 31) | ((exp + 127 - 15) << 23) | (mant << 13)
+	};
+	f32::from_bits(f32_bits)
+}
+
 impl ClipInstance {
 	/// 按描述符实例化（createInstance 路径调用；公开：宿主与测试
 	/// 都需要构造 clip 实例）。实例 props 是描述符 props 的深拷贝
@@ -155,8 +184,10 @@ impl ClipInstance {
 	/// （像素格式按协商结果，全链路 F32）。
 	/// `// [P2]` GL 路径：clipLoadTexture 语义在此扩展。
 	///
-	/// 第 1 期约束：帧必须是 f32 格式（全链路 F32）；`region` 只支持
-	/// None（整帧）——转换（u8→f32 等）与子区域随 renderer 桥落地。
+	/// 输入帧支持 U8/U16/F16/F32：非 F32 归一化转换为 F32（对齐
+	/// oliveclip.cpp setInputTexture 的格式转换路径）；转换中的
+	/// NaN/Inf 清洗为 0（oliveclip.cpp copy_pixels 的 scrub）。
+	/// `region` 只支持 None（整帧）——子区域随 renderer 桥落地。
 	pub fn fetch_image(
 		&self,
 		time: f64,
@@ -183,10 +214,14 @@ impl ClipInstance {
 		// 纹理 → CPU 帧（GPU 纹理后端下载；帧随 drop 释放）。
 		let frame = crate::render::texture_get_frame(&texture)?;
 		let params = frame.video_params();
-		if params.format != PIXEL_FORMAT_F32 {
+		let format = params.format;
+		if format != PIXEL_FORMAT_F32
+			&& format != crate::render::PIXEL_FORMAT_U8
+			&& format != oakcore_rs::PixelFormat::U16 as i32
+			&& format != oakcore_rs::PixelFormat::F16 as i32
+		{
 			return Err(Error::Failed(format!(
-				"输入帧格式 {} 非 F32（第 1 期约束）",
-				params.format
+				"输入帧格式 {format} 不支持（仅 U8/U16/F16/F32）"
 			)));
 		}
 		let (w, h) = (params.width as f64, params.height as f64);
@@ -208,19 +243,71 @@ impl ClipInstance {
 		if src.is_null() {
 			return Err(Error::Failed("帧无数据".into()));
 		}
-		// 行优先拷贝（帧行跨度经 linesize 读取——真实 oakrender 帧可
-		// 有行填充；目标 Image 恒紧凑。M11 §4 修复：phase 1 假设紧凑
-		// 行，对真实 oakrender 的填充帧会写错列）。
+		// 行优先 + 格式转换（帧行跨度经 linesize 读取——真实
+		// oakrender 帧可有行填充；目标 Image 恒紧凑 F32）。
+		// U8/U16/F16 输入归一化到 [0,1] 浮点（对齐 oliveclip.cpp
+		// setInputTexture 的 swscale 转换路径：插件侧永远见到协商位
+		// 深）；F32/转换结果中的 NaN/Inf 清洗为 0（oliveclip.cpp
+		// copy_pixels 的 scrub——CImg 对 NaN 未定义行为）。
 		let channels = components.channel_count();
-		let tight = (w as usize) * channels * 4;
+		let samples_per_row = (w as usize) * channels;
+		let src_bpc = match format {
+			f if f == crate::render::PIXEL_FORMAT_U8 => 1,
+			f if f == oakcore_rs::PixelFormat::U16 as i32 => 2,
+			f if f == oakcore_rs::PixelFormat::F16 as i32 => 2,
+			_ => 4,
+		};
+		let tight_src = samples_per_row * src_bpc;
 		let row = frame.linesize_bytes();
-		let row = if row > 0 { row } else { tight };
+		let row = if row > 0 { row } else { tight_src };
 		let src_bytes = unsafe { std::slice::from_raw_parts(src, row * h as usize) };
 		let dst = image.pixels_mut();
+		let mut scrubbed = false;
 		for y in 0..h as usize {
 			let s = y * row;
-			let d = y * tight;
-			dst[d..d + tight].copy_from_slice(&src_bytes[s..s + tight]);
+			for i in 0..samples_per_row {
+				let v = match format {
+					f if f == crate::render::PIXEL_FORMAT_U8 => {
+						src_bytes[s + i] as f32 / 255.0
+					}
+					f if f == oakcore_rs::PixelFormat::U16 as i32 => {
+						let off = s + i * 2;
+						let bits = u16::from_le_bytes([src_bytes[off], src_bytes[off + 1]]);
+						bits as f32 / 65535.0
+					}
+					f if f == oakcore_rs::PixelFormat::F16 as i32 => {
+						let off = s + i * 2;
+						let bits = u16::from_le_bytes([src_bytes[off], src_bytes[off + 1]]);
+						let v = f16_to_f32(bits);
+						if v.is_nan() || v.is_infinite() {
+							scrubbed = true;
+							0.0
+						} else {
+							v
+						}
+					}
+					_ => {
+						let off = s + i * 4;
+						let v = f32::from_le_bytes([
+							src_bytes[off],
+							src_bytes[off + 1],
+							src_bytes[off + 2],
+							src_bytes[off + 3],
+						]);
+						if v.is_nan() || v.is_infinite() {
+							scrubbed = true;
+							0.0
+						} else {
+							v
+						}
+					}
+				};
+				let d = (y * samples_per_row + i) * 4;
+				dst[d..d + 4].copy_from_slice(&v.to_le_bytes());
+			}
+		}
+		if scrubbed {
+			eprintln!("[PLUGIN] NaN/Inf scrubbed from input frame data during fetch");
 		}
 		Ok(image)
 	}
@@ -301,5 +388,29 @@ impl ClipInstance {
 		Err(crate::error::Error::Failed(
 			"frame_range 待 renderer 桥".into(),
 		))
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn f16_to_f32_covers_special_values() {
+		// 常规值：1.0 = 0x3C00，-2.0 = 0xC000，0.5 = 0x3800。
+		assert_eq!(f16_to_f32(0x3C00), 1.0);
+		assert_eq!(f16_to_f32(0xC000), -2.0);
+		assert_eq!(f16_to_f32(0x3800), 0.5);
+		// 零与负零。
+		assert_eq!(f16_to_f32(0x0000), 0.0);
+		assert_eq!(f16_to_f32(0x8000).to_bits(), (0.0f32).to_bits() | (1 << 31));
+		// 非规格数：最小正规格数 2^-14 ≈ 0.00006104；2^-24 是最小非
+		// 规格数之一。
+		assert!((f16_to_f32(0x0400) - 2f32.powi(-14)).abs() < 1e-12);
+		assert!((f16_to_f32(0x0001) - 2f32.powi(-24)).abs() < 1e-12);
+		// Inf/NaN。
+		assert!(f16_to_f32(0x7C00).is_infinite() && f16_to_f32(0x7C00) > 0.0);
+		assert!(f16_to_f32(0xFC00).is_infinite() && f16_to_f32(0xFC00) < 0.0);
+		assert!(f16_to_f32(0x7E00).is_nan());
 	}
 }

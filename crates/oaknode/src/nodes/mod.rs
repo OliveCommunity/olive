@@ -44,7 +44,7 @@ mod ociogradingtransformlog;
 mod ociolut;
 mod opacity;
 mod pan;
-mod plugin;
+pub mod plugin;
 mod polygon;
 mod rippledistortnode;
 mod shapenode;

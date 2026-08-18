@@ -594,7 +594,8 @@ impl Instance {
 		crate::suites::set_render_ctx(Some(crate::suites::RenderCtx { time, scale, range }));
 		crate::suites::set_current_output(Some(output.clone()));
 
-		// 进度报告器（facade 回调 → Progress suite）。
+		// 进度报告器（facade 回调优先；无回调而 app 注册了 UI 工厂
+		// 时装静默报告器，progressStart 再经工厂现造 UI 报告器）。
 		if let Some((cb, userdata)) = self
 			.progress_cb
 			.lock()
@@ -604,6 +605,10 @@ impl Instance {
 			crate::suites::progress::set_current(Some(unsafe {
 				crate::progress::ProgressReporter::new(cb, userdata as *mut std::ffi::c_void)
 			}));
+		} else if crate::progress::has_reporter_factory() {
+			crate::suites::progress::set_current(Some(
+				crate::progress::ProgressReporter::silent(),
+			));
 		}
 
 		let inst_handle = crate::suites::tag::make(
@@ -689,6 +694,10 @@ impl Instance {
 			crate::suites::progress::set_current(Some(unsafe {
 				crate::progress::ProgressReporter::new(cb, userdata as *mut std::ffi::c_void)
 			}));
+		} else if crate::progress::has_reporter_factory() {
+			crate::suites::progress::set_current(Some(
+				crate::progress::ProgressReporter::silent(),
+			));
 		}
 
 		let inst_handle = crate::suites::tag::make(

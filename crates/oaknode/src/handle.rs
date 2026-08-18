@@ -37,11 +37,30 @@ use std::sync::atomic::{AtomicU32, Ordering};
 pub const OAKNODE_ABI_VERSION: u32 = 1;
 
 /// Heap box behind a handle's `ctx`.
+///
+/// `repr(C)`: the field order is the stable prefix layout
+/// [`RefBoxHeader`] relies on for type discrimination across boxes of
+/// different payloads sharing one handle channel (the render seam
+/// downcasts plugin-job boxes vs texture boxes).
+#[repr(C)]
 pub struct RefBox<T: ?Sized> {
 	/// Atomic reference count.
 	pub refs: AtomicU32,
+	/// Type identity of the boxed value (stamped by [`make_owned`];
+	/// [`get_checked`] compares it before reading [`RefBox::value`]).
+	pub type_id: std::any::TypeId,
 	/// Boxed value.
 	pub value: T,
+}
+
+/// The fixed-size prefix of every [`RefBox`] (layout-stable across
+/// payload types because [`RefBox`] is `repr(C)`).
+#[repr(C)]
+struct RefBoxHeader {
+	/// Mirror of [`RefBox::refs`] (present for the layout prefix;
+	/// never read here).
+	_refs: AtomicU32,
+	type_id: std::any::TypeId,
 }
 
 /// The shared ABI value-handle type (single-lib unification, see
@@ -79,6 +98,7 @@ unsafe extern "C" fn refbox_release_owned<T: Any + Send>(ctx: *mut std::ffi::c_v
 pub fn make_owned<T: Any + Send>(value: T) -> CHandle {
 	let rb = Box::into_raw(Box::new(RefBox {
 		refs: AtomicU32::new(1),
+		type_id: std::any::TypeId::of::<T>(),
 		value,
 	}));
 	CHandle {
@@ -98,6 +118,7 @@ pub fn make_owned_with<T: Any + Send>(
 ) -> CHandle {
 	let rb = Box::into_raw(Box::new(RefBox {
 		refs: AtomicU32::new(1),
+		type_id: std::any::TypeId::of::<T>(),
 		value,
 	}));
 	CHandle {
@@ -114,6 +135,27 @@ pub fn make_owned_with<T: Any + Send>(
 /// `T` must be the boxed type.
 pub unsafe fn get<T: Any>(h: &CHandle) -> Option<&T> {
 	if h.ctx.is_null() {
+		return None;
+	}
+	unsafe { Some(&(*(h.ctx as *const RefBox<T>)).value) }
+}
+
+/// Typed view with type discrimination: `None` when the handle is
+/// empty **or** boxes a different payload type (the render seam probes
+/// texture-channel handles for plugin-job payloads this way without
+/// knowing the producer).
+///
+/// # Safety
+/// `h` must be either empty or a live handle created by
+/// [`make_owned`]/[`make_owned_with`] for the duration of the call.
+pub unsafe fn get_checked<T: Any>(h: &CHandle) -> Option<&T> {
+	if h.ctx.is_null() {
+		return None;
+	}
+	// SAFETY: every live box starts with the repr(C) RefBox prefix;
+	// the caller guarantees the handle is alive.
+	let header = unsafe { &*(h.ctx as *const RefBoxHeader) };
+	if header.type_id != std::any::TypeId::of::<T>() {
 		return None;
 	}
 	unsafe { Some(&(*(h.ctx as *const RefBox<T>)).value) }

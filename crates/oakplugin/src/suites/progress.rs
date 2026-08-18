@@ -84,10 +84,29 @@ pub struct ProgressSuiteV2 {
 	pub end: unsafe extern "C" fn(*mut c_void) -> c_int,
 }
 
-/// progressStart：括号起点，OK（label/message 留作未来 UI 展示，
-/// 第 1 期不建模）。
-unsafe extern "C" fn progress_start_v1(_handle: *mut c_void, _label: *const c_char) -> c_int {
-	caught(|| status::OK)
+/// C 字符串解码（空指针/非法 UTF-8 → 空串）。
+unsafe fn decode<'a>(p: *const c_char) -> &'a str {
+	if p.is_null() {
+		return "";
+	}
+	unsafe { std::ffi::CStr::from_ptr(p) }
+		.to_str()
+		.unwrap_or("")
+}
+
+/// progressStart：括号起点；携 label（v2 另携 message）经
+/// [`crate::progress`] 工厂现造 UI 报告器（无工厂/已有报告器时
+/// no-op），状态恒 OK。
+unsafe extern "C" fn progress_start_v1(_handle: *mut c_void, label: *const c_char) -> c_int {
+	caught(|| {
+		let label = unsafe { decode(label) }.to_string();
+		CURRENT.with(|c| {
+			if let Some(r) = c.borrow().as_ref() {
+				r.install_ui(&label, "");
+			}
+		});
+		status::OK
+	})
 }
 
 unsafe extern "C" fn progress_update_v1(_handle: *mut c_void, progress: c_double) -> c_int {
@@ -100,10 +119,19 @@ unsafe extern "C" fn progress_end_v1(_handle: *mut c_void) -> c_int {
 
 unsafe extern "C" fn progress_start_v2(
 	_handle: *mut c_void,
-	_label: *const c_char,
-	_message: *const c_char,
+	label: *const c_char,
+	message: *const c_char,
 ) -> c_int {
-	caught(|| status::OK)
+	caught(|| {
+		let label = unsafe { decode(label) }.to_string();
+		let message = unsafe { decode(message) }.to_string();
+		CURRENT.with(|c| {
+			if let Some(r) = c.borrow().as_ref() {
+				r.install_ui(&label, &message);
+			}
+		});
+		status::OK
+	})
 }
 
 unsafe extern "C" fn progress_update_v2(_handle: *mut c_void, progress: c_double) -> c_int {

@@ -126,6 +126,8 @@ pub(crate) const V_DOUBLE_TYPE_PLAIN: &str = "OfxParamDoubleTypePlain";
 pub(crate) const P_DEFAULT_COORD_SYS: &str = "OfxParamPropDefaultCoordinateSystem";
 /// kOfxParamCoordinatesCanonical。
 pub(crate) const V_COORD_CANONICAL: &str = "OfxParamCoordinatesCanonical";
+/// kOfxParamCoordinatesNormalised（ofxParam.h:514）。
+pub(crate) const V_COORD_NORMALISED: &str = "OfxParamCoordinatesNormalised";
 /// kOfxParamPropShowTimeMarker。
 pub(crate) const P_SHOW_TIME_MARKER: &str = "OfxParamPropShowTimeMarker";
 /// kOfxParamPropDimensionLabel。
@@ -138,6 +140,14 @@ pub(crate) const V_STRING_SINGLE_LINE: &str = "OfxParamStringIsSingleLine";
 pub(crate) const P_STRING_FILE_EXISTS: &str = "OfxParamPropStringFilePathExists";
 /// kOfxParamPropChoiceOption。
 pub(crate) const P_CHOICE_OPTION: &str = "OfxParamPropChoiceOption";
+/// kOfxParamPropChoiceOrder。
+pub(crate) const P_CHOICE_ORDER: &str = "OfxParamPropChoiceOrder";
+/// kOfxParamPropChoiceEnum。
+pub(crate) const P_CHOICE_ENUM: &str = "OfxParamPropChoiceEnum";
+/// kOfxParamPageSkipRow（page 子项哨兵，ofxParam.h:178）。
+pub(crate) const PAGE_SKIP_ROW: &str = "OfxParamPageSkipRow";
+/// kOfxParamPageSkipColumn（page 子项哨兵，ofxParam.h:186）。
+pub(crate) const PAGE_SKIP_COLUMN: &str = "OfxParamPageSkipColumn";
 /// kOfxParamPropCustomInterpCallbackV1。
 pub(crate) const P_CUSTOM_INTERP: &str = "OfxParamPropCustomCallbackV1";
 /// kOfxParamPropPageChild。

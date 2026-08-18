@@ -627,6 +627,12 @@ impl NodeValueTable {
 	pub fn rows(&self) -> &[(ValueType, NodeValue, Option<String>)] {
 		&self.rows
 	}
+
+	/// Mutable row access (the render seam resolves job payloads into
+	/// finished textures in place).
+	pub fn rows_mut(&mut self) -> &mut Vec<(ValueType, NodeValue, Option<String>)> {
+		&mut self.rows
+	}
 }
 
 /// Structural equality: `Texture` compares by handle address, `Samples`

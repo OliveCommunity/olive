@@ -375,6 +375,18 @@ pub fn command_is_done(row: i64, out_value: *mut c_int) -> Result<()> {
 	Ok(())
 }
 
+/// The user-visible label of the row at `row` (the safe twin of the
+/// two-stage [`command_text`]; the history panel's row query).
+pub fn command_name(row: i64) -> Result<String> {
+	with_stack(|s| s.command_name(row).map(|n| n.to_string()))
+}
+
+/// Whether the row at `row` is done (the safe twin of
+/// [`command_is_done`]; the history panel's gray-row query).
+pub fn command_done(row: i64) -> Result<bool> {
+	with_stack(|s| s.command_is_done(row))
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -494,6 +506,34 @@ mod tests {
 		assert_eq!(state.load(std::sync::atomic::Ordering::SeqCst), 1);
 		assert!(undoable());
 		assert!(!redoable());
+
+		assert!(clear().is_ok());
+	}
+
+	/// The safe row getters answer like the C-ABI twins: labels survive an
+	/// undo (undone rows stay labeled) and `command_done` flips with the
+	/// stack pointer.
+	#[test]
+	fn value_command_name_and_done() {
+		let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+		assert!(clear().is_ok());
+
+		let cmd = UndoCommand::from_closures(|| {}, || {});
+		push(cmd, "alpha").unwrap();
+		assert_eq!(count().unwrap(), 2);
+		assert_eq!(command_name(1).unwrap(), "alpha");
+		assert!(command_done(1).unwrap());
+		assert_eq!(index().unwrap(), 2);
+
+		// Undo keeps the row labeled but marks it undone.
+		undo().unwrap();
+		assert_eq!(command_name(1).unwrap(), "alpha");
+		assert!(!command_done(1).unwrap());
+		assert_eq!(index().unwrap(), 1);
+
+		// Out-of-range rows error, they never panic.
+		assert!(command_name(2).is_err());
+		assert!(command_done(-1).is_err());
 
 		assert!(clear().is_ok());
 	}

@@ -133,13 +133,15 @@ pub fn end_sequence(
 
 /// 渲染一帧（`render_plugin` 的 Rust 移植；逐段行号对照见模块文档）。
 ///
-/// 返回各输入 clip 的 RoI（clip 名 → 矩形；Phase 2 供测试断言，
-/// 宿主不据此裁剪输入——输入由 oakrender 整帧提供，与 C++ 渲染器
-/// 行为一致）。
+/// 返回装配完成的输出纹理与各输入 clip 的 RoI（clip 名 → 矩形；
+/// 值型纹理下输出写入 `job.dst` 的本地副本并随返回值交付——CPU
+/// 纹理的 `to_frame` 是拷贝，就地写不回只读的 `job.dst`）。宿主不
+/// 据 RoI 裁剪输入——输入由 oakrender 整帧提供，与 C++ 渲染器行为
+/// 一致。
 pub fn render_frame(
 	inst: &Instance,
 	job: &RenderJob,
-) -> crate::error::Result<Vec<(String, OfxRectD)>> {
+) -> crate::error::Result<(Texture, Vec<(String, OfxRectD)>)> {
 	use crate::error::Error;
 
 	// 1. 实例锁（pluginrenderer.cpp:1436-1444：OlivePluginInstance 非
@@ -167,8 +169,10 @@ pub fn render_frame(
 		_ => false,
 	};
 
-	// 目标帧与参数（F32 校验；输出装配的依据）。
+	// 目标帧与参数（F32 校验；输出装配的依据）。dst 取本地副本：
+	// 值型纹理下输出装配写回副本，随返回值交付（job.dst 只读）。
 	let (dst_params, w, h) = read_dst(&job.dst)?;
+	let mut dst = job.dst.clone();
 	let par = pixel_aspect(&dst_params);
 	// 规范坐标的 RoI/RoD（pluginrenderer.cpp:1595-1603：x2 = 宽 × PAR）。
 	let region_of_interest = OfxRectD {
@@ -209,7 +213,7 @@ pub fn render_frame(
 		.find(|c| c.name == "Output")
 		.ok_or_else(|| Error::Failed("实例无 Output clip".into()))?;
 	output_clip.set_region_of_definition(region_of_interest, job.time);
-	output_clip.set_output_texture(Some(job.dst.clone()), job.time);
+	output_clip.set_output_texture(Some(dst.clone()), job.time);
 
 	// 6. 输入 clip：RoD 与格式（pluginrenderer.cpp:1627-1665；Phase 2
 	// 全链路 F32 → 格式选择恒等，无转换路径）。
@@ -244,8 +248,8 @@ pub fn render_frame(
 	// 9. isIdentity 短路（ofxRendering "Identity Effects"）：插件声明
 	// 本帧等价于某输入 clip → 直接透传该 clip 在透传时间的帧。
 	if let Some((t, clip_name)) = inst.is_identity(job.time)? {
-		passthrough(inst, &clip_name, t, &job.dst)?;
-		return Ok(zip_rois(inst, &rois));
+		passthrough(inst, &clip_name, t, &mut dst)?;
+		return Ok((dst, zip_rois(inst, &rois)));
 	}
 
 	// 10. 参数覆盖（pluginrenderer.cpp:1729-1731 + 132-290）。
@@ -270,7 +274,7 @@ pub fn render_frame(
 			output.clone(),
 		)?;
 		// 输出装配（pluginrenderer.cpp:1762-1834 的 CPU 路径）。
-		write_output_frame(&job.dst, &output)?;
+		write_output_frame(&mut dst, &output)?;
 	} else {
 		// GL 路径：插件直接画进已附着的输出纹理（
 		// pluginrenderer.cpp:1784-1834 的 GL 分支）；无 CPU 回读。
@@ -279,11 +283,11 @@ pub fn render_frame(
 			RenderScale { x: 1.0, y: 1.0 },
 			render_window,
 			job.renderer.clone().unwrap(),
-			job.dst.clone(),
+			dst.clone(),
 		)?;
 	}
 
-	Ok(zip_rois(inst, &rois))
+	Ok((dst, zip_rois(inst, &rois)))
 }
 
 /// 把输入 clip 名与 RoI 列表配对（与 `clips` 顺序一致）。
@@ -373,7 +377,7 @@ fn passthrough(
 	inst: &Instance,
 	clip_name: &str,
 	t: f64,
-	dst: &Texture,
+	dst: &mut Texture,
 ) -> crate::error::Result<()> {
 	use crate::error::Error;
 	let clip = inst
@@ -395,18 +399,51 @@ fn apply_param_overrides(inst: &Instance, values: &[(String, crate::node::Value)
 		let Some(p) = inst.params.find(key) else {
 			continue;
 		};
-		let Some(pv) = crate::param::param_value_from_node(v, &p.def.ofx_type) else {
+		let Some(mut pv) = crate::param::param_value_from_node(v, &p.def.ofx_type) else {
 			continue;
 		};
+		// Double 标量的 NaN/Inf 清洗 + Min/Max 钳制
+		// （pluginrenderer.cpp:155-177：坏值回退默认并告警，再按
+		// kOfxParamPropMin/Max 钳制；多维 Double 族 C++ 无此检查）。
+		if p.def.ofx_type == crate::param::TYPE_DOUBLE {
+			if let crate::param::ParamValue::Double(d, 1) = &mut pv {
+				if d[0].is_nan() || d[0].is_infinite() {
+					eprintln!(
+						"[PLUGIN] NaN/Inf in double param {key} replacing with default"
+					);
+					d[0] = prop_double(&p.def.props, crate::param::P_DEFAULT, 0);
+				}
+				if let Some(Value::Double(min)) = p.def.props.get(crate::param::P_MIN, 0) {
+					if d[0] < min {
+						d[0] = min;
+					}
+				}
+				if let Some(Value::Double(max)) = p.def.props.get(crate::param::P_MAX, 0) {
+					if d[0] > max {
+						d[0] = max;
+					}
+				}
+			}
+		}
 		p.set_ofx(pv);
+	}
+}
+
+/// 读属性的 Double 值（缺失 0.0；Int 提升）。
+fn prop_double(props: &crate::property::PropertySet, name: &str, index: usize) -> f64 {
+	match props.get(name, index) {
+		Some(Value::Double(v)) => v,
+		Some(Value::Int(v)) => v as f64,
+		_ => 0.0,
 	}
 }
 
 /// 把 CPU 图像写入目标纹理（行优先、行跨度感知；F32 校验）。
 /// Phase 2 输出装配的公共落点（CPU render 路径与 isIdentity 透传
 /// 共用）。GPU 目标纹理经后端 upload 回写（`Texture::Gpu` 分支）。
-pub(crate) fn write_output_frame(dst: &Texture, image: &Image) -> crate::error::Result<()> {
+pub(crate) fn write_output_frame(dst: &mut Texture, image: &Image) -> crate::error::Result<()> {
 	use crate::error::Error;
+	// CPU 纹理就地写入；GPU 纹理经下载帧改写后 upload 回写。
 	let mut frame = render::texture_get_frame(dst)?;
 	let params = frame.video_params();
 	if params.format != render::PIXEL_FORMAT_F32 {
@@ -430,11 +467,16 @@ pub(crate) fn write_output_frame(dst: &Texture, image: &Image) -> crate::error::
 		let s = y * tight;
 		dst_bytes[d..d + tight].copy_from_slice(&pixels[s..s + tight]);
 	}
-	// GPU 目标纹理：拷贝只落在下载帧上，经后端 upload 回写
-	// （CPU 纹理无需上传）。
-	if let Texture::Gpu { token, ctx, .. } = dst {
-		ctx.upload(*token, &frame)
-			.map_err(|e| Error::Failed(format!("输出纹理上传失败：{e}")))?;
+	match dst {
+		// 就地写回（值型 CPU 纹理：to_frame 是拷贝，必须写回本体）。
+		Texture::Cpu(f) => {
+			f.data = frame.data;
+		}
+		// GPU 目标纹理：拷贝只落在下载帧上，经后端 upload 回写。
+		Texture::Gpu { token, ctx, .. } => {
+			ctx.upload(*token, &frame)
+				.map_err(|e| Error::Failed(format!("输出纹理上传失败：{e}")))?;
+		}
 	}
 	Ok(())
 }

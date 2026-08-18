@@ -56,11 +56,13 @@
 pub mod clip;
 pub mod descriptor;
 pub mod error;
+pub mod gl_bridge;
 pub mod handle;
 pub mod host;
 pub mod image;
 pub mod instance;
 pub mod node;
+pub mod node_factory;
 pub mod param;
 pub mod progress;
 pub mod property;

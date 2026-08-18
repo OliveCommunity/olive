@@ -20,10 +20,12 @@
 //! is one hook method.
 //!
 //! This pass implements the CPU-side, graph-free parts of the hooks:
-//! frame generation and color transforms run fully; footage decode,
-//! shader execution, plugin jobs and the disk frame-cache payload I/O
-//! depend on the oakcodec / oaknode / oakplugin C ABIs and fail with
-//! explainable errors (their success-path tests are `#[ignore]`d).
+//! frame generation and color transforms run fully; plugin jobs
+//! dispatch through the executor slot oakplugin installs
+//! ([`set_plugin_executor`]); footage decode, shader execution and the
+//! disk frame-cache payload I/O depend on the oakcodec / oakplugin C
+//! ABIs and fail with explainable errors (their success-path tests are
+//! `#[ignore]`d).
 
 use std::sync::Arc;
 
@@ -33,6 +35,7 @@ use oakcodec::decoder::{
 };
 use oakcodec::ffmpeg::FFmpegDecoder;
 use oakcore_rs::{PixelFormat, Rational, TimeRange};
+use oaknode::value::{NodeValue, NodeValueRow, NodeValueTable};
 
 use crate::error::{Error, Result};
 use crate::frame::VideoParamsPod;
@@ -73,11 +76,22 @@ pub enum JobSpec {
 	},
 	/// Sample generation (C++ SampleJob).
 	Sample,
-	/// OFX plugin job — forwarded to the oakplugin crate C ABI
-	/// (render never sees OFX types).
+	/// OFX plugin job — executed through the registered plugin executor
+	/// ([`set_plugin_executor`]; the oakplugin crate installs its
+	/// render driver there, so oakrender never sees OFX types).
 	Plugin {
-		/// OakPluginInstance identity.
+		/// Plugin instance identity (oakplugin instance registry key).
 		instance: u64,
+		/// Request time in seconds (C++ `PluginJob` time).
+		time: f64,
+		/// Clip name the main source texture arrives on (C++
+		/// `node->get_effect_input_id()`).
+		effect_input_id: Option<String>,
+		/// Clip input textures by clip name (multi-input plugins).
+		inputs: Vec<(String, Texture)>,
+		/// Param overrides: input id -> node value (the tagged values
+		/// captured at evaluation time).
+		values: Vec<(String, NodeValue)>,
 	},
 }
 
@@ -87,6 +101,69 @@ pub struct RenderEvalHooks {
 	pub use_cache: bool,
 	/// Active ticket identity (for cancellation polling).
 	pub ticket: Option<crate::ticket::TicketId>,
+}
+
+// ---------------------------------------------------------------------------
+// Plugin job executor (dependency inversion seam)
+// ---------------------------------------------------------------------------
+//
+// oakrender sits BELOW oakplugin in the dependency graph (oakplugin
+// depends on oakrender for the texture value types), so the plugin job
+// execution cannot be a direct call. The oakplugin crate installs its
+// render driver here at init; `process_plugin_job` dispatches through
+// the slot. Without an executor, plugin jobs fail explainably (the
+// pre-wiring behavior).
+
+/// Plugin job request handed to the registered executor (the C++
+/// `process_plugin_job(texture, destination, node)` inputs flattened).
+pub struct PluginJobRequest<'a> {
+	/// The job spec ([`JobSpec::Plugin`] guaranteed by the caller).
+	pub spec: &'a JobSpec,
+	/// The input texture the job runs against.
+	pub src: Texture,
+}
+
+/// Plugin executor: runs one plugin job and returns the output
+/// texture. Implemented by the oakplugin crate on top of its render
+/// driver.
+pub type PluginExecutor = dyn Fn(&PluginJobRequest<'_>) -> Result<Texture> + Send + Sync;
+
+static PLUGIN_EXECUTOR: std::sync::OnceLock<std::sync::Mutex<Option<Arc<PluginExecutor>>>> =
+	std::sync::OnceLock::new();
+
+fn executor_slot() -> &'static std::sync::Mutex<Option<Arc<PluginExecutor>>> {
+	PLUGIN_EXECUTOR.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+/// Install the plugin job executor (oakplugin registration point;
+/// `None` clears it).
+pub fn set_plugin_executor(executor: Option<Arc<PluginExecutor>>) {
+	*executor_slot().lock().unwrap_or_else(|e| e.into_inner()) = executor;
+}
+
+/// The installed plugin executor, if any.
+pub fn plugin_executor() -> Option<Arc<PluginExecutor>> {
+	executor_slot()
+		.lock()
+		.unwrap_or_else(|e| e.into_inner())
+		.clone()
+}
+
+/// The failure marker frame: solid magenta (1, 0, 1, 1) F32 RGBA —
+/// the C++ plugin renderer paints failed plugin output purple so a
+/// broken plugin is visible instead of silently black.
+fn purple_frame(time: Rational, size: (i32, i32)) -> Texture {
+	let (w, h) = (size.0.max(1), size.1.max(1));
+	let mut frame = match generate_frame(time, (w, h), PixelFormat::F32) {
+		Ok(f) => f,
+		Err(_) => return Texture::dummy(),
+	};
+	for pixel in frame.data.chunks_exact_mut(16) {
+		for (i, v) in [1.0f32, 0.0, 1.0, 1.0].iter().enumerate() {
+			pixel[i * 4..i * 4 + 4].copy_from_slice(&v.to_le_bytes());
+		}
+	}
+	Texture::wrap_frame(frame)
 }
 
 #[allow(dead_code)]
@@ -184,16 +261,33 @@ impl RenderEvalHooks {
 		Ok(())
 	}
 
-	/// C++ process_plugin_job (forwarded to oakplugin C ABI).
-	fn process_plugin_job(&mut self, texture: Texture, spec: &JobSpec) -> Result<Texture> {
-		let JobSpec::Plugin { instance } = spec else {
+	/// C++ process_plugin_job: dispatch through the installed plugin
+	/// executor (the oakplugin render driver; dependency inversion). A
+	/// missing executor or a failed render yields a purple failure frame
+	/// instead of aborting the graph, matching pluginjob.cpp's fallback.
+	fn process_plugin_job(&mut self, src: Texture, spec: &JobSpec) -> Result<Texture> {
+		let JobSpec::Plugin {
+			instance,
+			time,
+			effect_input_id,
+			inputs,
+			values,
+		} = spec
+		else {
 			return Err(Error::Invalid);
 		};
-		let _ = instance;
-		let _ = texture;
-		Err(Error::Failed(
-			"plugin jobs deferred: forwarded to the oakplugin crate C ABI".into(),
-		))
+		let size = src.size();
+		let Some(executor) = plugin_executor() else {
+			return Ok(purple_frame(Rational::from_double(*time), size));
+		};
+		let _ = (instance, effect_input_id, inputs, values);
+		match executor(&PluginJobRequest { spec, src }) {
+			Ok(texture) => Ok(texture),
+			Err(err) => {
+				eprintln!("plugin instance {instance} render at t={time}s failed: {err:#}");
+				Ok(purple_frame(Rational::from_double(*time), size))
+			}
+		}
 	}
 
 	/// C++ process_video_cache_job.
@@ -205,6 +299,102 @@ impl RenderEvalHooks {
 		Err(Error::Failed(
 			"disk frame-cache load deferred: oakcodec EXR/JPEG decode pending".into(),
 		))
+	}
+
+	/// Executes the deferred plugin payloads a [`oaknode::nodes::plugin::PluginNode`]
+	/// pushed into its output table (C++ JobEnginePlugin processing in
+	/// jobmanager.cpp): unwraps each [`oaknode::nodes::plugin::PluginJobPayload`]
+	/// box, splits it into input textures and tagged param values, and
+	/// replaces the box with the rendered texture.
+	fn resolve_plugin_jobs(&mut self, table: &mut NodeValueTable) {
+		for (_, value, _) in table.rows_mut() {
+			let NodeValue::Texture(handle) = value else {
+				continue;
+			};
+			if handle.ctx.is_null() {
+				continue;
+			}
+			let payload = unsafe {
+				oaknode::handle::get_checked::<oaknode::nodes::plugin::PluginJobPayload>(handle)
+			}
+			.cloned();
+			let Some(payload) = payload else {
+				// A genuine texture box (e.g. a source node's frame):
+				// not a plugin job, leave it alone.
+				continue;
+			};
+
+			let mut inputs: Vec<(String, Texture)> = Vec::new();
+			let mut values: Vec<(String, NodeValue)> = Vec::new();
+			for (key, v) in payload.values.iter() {
+				match v {
+					NodeValue::Texture(h) if !h.ctx.is_null() => {
+						match unsafe { oaknode::handle::get_checked::<Texture>(h) }.cloned() {
+							Some(texture) => inputs.push((key.clone(), texture)),
+							None => eprintln!("plugin job input '{key}' is not a texture box"),
+						}
+					}
+					NodeValue::Texture(_) | NodeValue::None => {}
+					other => values.push((key.clone(), other.clone())),
+				}
+			}
+
+			// Fallback order mirrors pluginrenderer.cpp's effect input
+			// resolution: the declared effect input, else the first
+			// available clip texture.
+			let effect_src = if payload.effect_input_id.is_empty() {
+				None
+			} else {
+				inputs
+					.iter()
+					.find(|(key, _)| key == &payload.effect_input_id)
+					.map(|(_, t)| t.clone())
+			};
+			let src = effect_src
+				.or_else(|| inputs.first().map(|(_, t)| t.clone()))
+				.unwrap_or_else(Texture::dummy);
+
+			let spec = JobSpec::Plugin {
+				instance: payload.instance.0,
+				time: payload.time.to_f64(),
+				effect_input_id: if payload.effect_input_id.is_empty() {
+					None
+				} else {
+					Some(payload.effect_input_id.clone())
+				},
+				inputs,
+				values,
+			};
+			match self.process_plugin_job(src, &spec) {
+				Ok(texture) => {
+					*value = NodeValue::Texture(oaknode::handle::make_owned(texture));
+				}
+				Err(err) => {
+					eprintln!("plugin job resolve failed: {err:#}");
+				}
+			}
+		}
+	}
+}
+
+impl oaknode::traverser::RenderHooks for RenderEvalHooks {
+	fn use_cache(&self) -> bool {
+		self.use_cache
+	}
+
+	fn is_cancelled(&self) -> bool {
+		// TODO(phase-6b): poll the ticket's cancellation flag here so
+		// long plugin renders can be interrupted.
+		false
+	}
+
+	fn resolve(
+		&mut self,
+		_node: oaknode::id::NodeId,
+		_row: &NodeValueRow,
+		table: &mut NodeValueTable,
+	) {
+		self.resolve_plugin_jobs(table);
 	}
 }
 
@@ -618,9 +808,6 @@ mod tests {
 			.is_err());
 		assert!(hooks.process_audio_footage(&JobSpec::Sample).is_err());
 		assert!(hooks
-			.process_plugin_job(Texture::dummy(), &JobSpec::Plugin { instance: 1 })
-			.is_err());
-		assert!(hooks
 			.process_color_transform(&mut dest, &JobSpec::ColorTransform { processor: 1 })
 			.is_err());
 		// Wrong spec kinds are invalid, not deferred.
@@ -659,6 +846,152 @@ mod tests {
 		assert!(hooks
 			.process_frame_generation(&mut gpu, Rational::new(1, 1))
 			.is_err());
+	}
+
+	// The plugin executor lives in a process-wide slot; the tests below
+	// mutate it and therefore serialize against each other.
+	static PLUGIN_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+	fn plugin_spec() -> JobSpec {
+		JobSpec::Plugin {
+			instance: 7,
+			time: 0.5,
+			effect_input_id: Some("Source".into()),
+			inputs: Vec::new(),
+			values: Vec::new(),
+		}
+	}
+
+	fn first_pixel(texture: &Texture) -> [f32; 4] {
+		let Texture::Cpu(frame) = texture else {
+			unreachable!()
+		};
+		let mut out = [0f32; 4];
+		for i in 0..4 {
+			out[i] = f32::from_le_bytes(frame.data[i * 4..i * 4 + 4].try_into().unwrap());
+		}
+		out
+	}
+
+	#[test]
+	fn plugin_job_without_executor_yields_purple_frame() {
+		let _guard = PLUGIN_TEST_LOCK.lock().unwrap();
+		set_plugin_executor(None);
+		let mut hooks = RenderEvalHooks::new();
+		let src = Texture::wrap_frame(
+			generate_frame(Rational::new(0, 1), (4, 2), PixelFormat::F32).unwrap(),
+		);
+		let out = hooks.process_plugin_job(src, &plugin_spec()).unwrap();
+		assert_eq!(out.size(), (4, 2));
+		assert_eq!(first_pixel(&out), [1.0, 0.0, 1.0, 1.0]);
+	}
+
+	#[test]
+	fn plugin_job_executor_error_falls_back_to_purple() {
+		let _guard = PLUGIN_TEST_LOCK.lock().unwrap();
+		set_plugin_executor(Some(Arc::new(|_req: &PluginJobRequest<'_>| {
+			Err(Error::Failed("boom".into()))
+		})));
+		let mut hooks = RenderEvalHooks::new();
+		let src = Texture::wrap_frame(
+			generate_frame(Rational::new(0, 1), (2, 2), PixelFormat::F32).unwrap(),
+		);
+		let out = hooks.process_plugin_job(src, &plugin_spec()).unwrap();
+		assert_eq!(first_pixel(&out), [1.0, 0.0, 1.0, 1.0]);
+		set_plugin_executor(None);
+	}
+
+	#[test]
+	fn plugin_job_dispatches_through_installed_executor() {
+		let _guard = PLUGIN_TEST_LOCK.lock().unwrap();
+		set_plugin_executor(Some(Arc::new(|req: &PluginJobRequest<'_>| {
+			// Echo: paint the source size with the instance id.
+			let JobSpec::Plugin { instance, .. } = req.spec else {
+				return Err(Error::Invalid);
+			};
+			let v = (*instance as f32) / 10.0;
+			let mut frame = generate_frame(Rational::new(0, 1), req.src.size(), PixelFormat::F32)?;
+			for pixel in frame.data.chunks_exact_mut(16) {
+				for c in 0..4 {
+					pixel[c * 4..c * 4 + 4].copy_from_slice(&v.to_le_bytes());
+				}
+			}
+			Ok(Texture::wrap_frame(frame))
+		})));
+		let mut hooks = RenderEvalHooks::new();
+		let src = Texture::wrap_frame(
+			generate_frame(Rational::new(0, 1), (2, 2), PixelFormat::F32).unwrap(),
+		);
+		let out = hooks.process_plugin_job(src, &plugin_spec()).unwrap();
+		assert_eq!(first_pixel(&out), [0.7, 0.7, 0.7, 0.7]);
+		set_plugin_executor(None);
+	}
+
+	#[test]
+	fn resolve_executes_payload_box_and_keeps_plain_textures() {
+		use oaknode::nodes::plugin::{PluginInstanceHandle, PluginJobPayload};
+
+		let _guard = PLUGIN_TEST_LOCK.lock().unwrap();
+		set_plugin_executor(Some(Arc::new(|req: &PluginJobRequest<'_>| {
+			let JobSpec::Plugin {
+				instance,
+				values,
+				inputs,
+				effect_input_id,
+				..
+			} = req.spec
+			else {
+				return Err(Error::Invalid);
+			};
+			// The resolve seam must deliver the tagged param values and
+			// the clip texture to the executor.
+			assert_eq!(*instance, 7);
+			assert_eq!(effect_input_id.as_deref(), Some("Source"));
+			assert_eq!(inputs.len(), 1);
+			assert_eq!(inputs[0].0, "Source");
+			assert!(values.iter().any(|(k, v)| {
+				k == "gain" && matches!(v, NodeValue::Float(f) if (*f - 0.25).abs() < 1e-6)
+			}));
+			let mut frame = generate_frame(Rational::new(0, 1), req.src.size(), PixelFormat::F32)?;
+			for pixel in frame.data.chunks_exact_mut(16) {
+				for (i, v) in [0.25f32, 0.5, 0.75, 1.0].iter().enumerate() {
+					pixel[i * 4..i * 4 + 4].copy_from_slice(&v.to_le_bytes());
+				}
+			}
+			Ok(Texture::wrap_frame(frame))
+		})));
+
+		// A real source texture box plus a payload box referencing it.
+		let src_frame = generate_frame(Rational::new(0, 1), (2, 2), PixelFormat::F32).unwrap();
+		let src_box = oaknode::handle::make_owned(Texture::wrap_frame(src_frame));
+		let mut values = NodeValueRow::new();
+		values.insert("Source".into(), NodeValue::Texture(src_box));
+		values.insert("gain".into(), NodeValue::Float(0.25));
+		let payload = PluginJobPayload {
+			instance: PluginInstanceHandle(7),
+			time: Rational::new(1, 2),
+			effect_input_id: "Source".into(),
+			values,
+		};
+
+		let mut table = NodeValueTable::default();
+		table.push(
+			oaknode::value::ValueType::Texture,
+			NodeValue::Texture(oaknode::handle::make_owned(payload)),
+			None,
+		);
+
+		let mut hooks = RenderEvalHooks::new();
+		hooks.resolve_plugin_jobs(&mut table);
+
+		let NodeValue::Texture(handle) = table.get(oaknode::value::ValueType::Texture).unwrap()
+		else {
+			unreachable!()
+		};
+		let rendered = unsafe { oaknode::handle::get_checked::<Texture>(handle) }
+			.expect("payload box must be replaced by the rendered texture");
+		assert_eq!(first_pixel(rendered), [0.25, 0.5, 0.75, 1.0]);
+		set_plugin_executor(None);
 	}
 
 	/// Stand-in context for the "GPU destination" test (never used for

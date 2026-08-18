@@ -14,20 +14,25 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! OpenFX plugin node (C++ `src/node/src/plugins/plugin.{h,cpp}`,
+//! OpenFX plugin node (C++ `engine/node/plugins/plugin.{h,cpp}`,
 //! `olive::plugin::PluginNode`).
 //!
-//! DECLARATION ONLY. This node is a thin wrapper over an OFX plugin
-//! instance that lives behind the `oakplugin` crate's C ABI bridge
-//! (opaque oakrender handles); no OFX types (`OFX::Host::ImageEffect::Instance`,
-//! `kOfxParam*`, ...) are declared here. The plugin instance is
-//! represented as the opaque [`PluginInstanceHandle`] below — the real
-//! definition belongs to the oakplugin bridge module and this draft
-//! stands in for it.
+//! Thin wrapper over an OFX plugin instance that lives in the
+//! `oakplugin` crate; no OFX types (`OFX::Host::ImageEffect::Instance`,
+//! `kOfxParam*`, ...) are declared here because oaknode sits below
+//! oakplugin in the dependency graph. The instance is represented as
+//! the opaque [`PluginInstanceHandle`] — an identity key into the
+//! oakplugin crate's instance registry.
 //!
 //! All per-plugin data (inputs, defaults, properties, labels) is
-//! discovered at runtime from the plugin descriptor through the
-//! bridge, mirroring the C++ constructor.
+//! discovered at runtime from the plugin descriptor by the oakplugin
+//! discovery pass (`oakplugin::node_factory`), which builds the
+//! [`NodeCore`] inputs, constructs [`PluginNode`]s and registers one
+//! factory entry per discovered plugin (the C++
+//! `factory.cpp::register_plugin_nodes` + `PluginNode::PluginNode`
+//! split across the dependency seam).
+
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, NodeBehavior, NodeCore};
@@ -36,8 +41,9 @@ use oakcore_rs::{Rational, TimeRange};
 
 /// Texture input id (C++ `plugin::k_texture_input`). Type: texture;
 /// no default. Only synthesized when the plugin declares clip inputs
-/// but none of them is the simple-source clip (see [`create`]); then
-/// it becomes the node's effect input with display name "Texture".
+/// but none of them is the simple-source clip (see the discovery
+/// pass); then it becomes the node's effect input with display name
+/// "Texture".
 pub const TEXTURE_INPUT: &str = "tex_in";
 
 /// OFX simple-source clip name (C++ `kOfxImageEffectSimpleSourceClipName`):
@@ -45,9 +51,8 @@ pub const TEXTURE_INPUT: &str = "tex_in";
 pub const SOURCE_CLIP: &str = "Source";
 
 /// Opaque handle to an OFX plugin instance owned by the `oakplugin`
-/// crate C ABI bridge (C++ `OFX::Host::ImageEffect::Instance *`,
-/// member `plugin_instance_`). Placeholder type for this draft — the
-/// bridge's real handle type replaces it.
+/// crate (identity key into its instance registry; C++
+/// `OFX::Host::ImageEffect::Instance *`, member `plugin_instance_`).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PluginInstanceHandle(pub u64);
 
@@ -64,6 +69,27 @@ impl PluginInstanceHandle {
 	}
 }
 
+/// Plugin job payload (C++ `plugin::PluginJob`): everything the render
+/// seam needs to run the instance against the input texture. Boxed
+/// into a texture-typed [`NodeValue`] by [`PluginNode::value`] and
+/// resolved by the oakrender evaluation seam (C++
+/// `RenderProcessor::process_plugin_job`), which executes it through
+/// the oakplugin render driver.
+#[derive(Clone, Debug)]
+pub struct PluginJobPayload {
+	/// The instance identity (oakplugin registry key).
+	pub instance: PluginInstanceHandle,
+	/// The request time (C++ `globals.time().in()`).
+	pub time: Rational,
+	/// The effect input id the main source texture arrives on (C++
+	/// `node->get_effect_input_id()`).
+	pub effect_input_id: String,
+	/// Snapshot of the full input row (C++ `PluginJob` holds the
+	/// `NodeValueRow`: the tagged non-texture values become param
+	/// overrides, the texture values feed the clip inputs).
+	pub values: NodeValueRow,
+}
+
 /// OFX plugin node. Wraps one plugin instance; inputs mirror the
 /// plugin's declared params and clips.
 ///
@@ -71,10 +97,10 @@ impl PluginInstanceHandle {
 /// pointer, `sub_category_`. Because `name()`/`id()`/`description()`
 /// read the plugin descriptor at call time in C++ and the Rust trait
 /// returns `&str`, this port caches those strings on the struct
-/// (populated from the bridge at construction).
+/// (populated from the descriptor at construction).
 pub struct PluginNode {
 	/// The wrapped plugin instance (C++ `plugin_instance_`; an
-	/// opaque bridge handle here).
+	/// oakplugin registry identity here).
 	instance: PluginInstanceHandle,
 	/// Sub-category derived from the OFX context (C++
 	/// `sub_category_`): "Filter", "Generator", "Transition", or
@@ -90,7 +116,51 @@ pub struct PluginNode {
 	description: String,
 }
 
+/// The plugin-node duplicator (installed by the oakplugin crate): old
+/// instance identity -> fresh instance identity (the C++
+/// `PluginNode::copy()` creates a fresh instance — filter context
+/// preferred, else the plugin's first declared context). `None` when
+/// instance creation fails.
+type PluginDuplicator = dyn Fn(PluginInstanceHandle) -> Option<PluginInstanceHandle> + Send + Sync;
+
+static DUPLICATOR: OnceLock<Mutex<Option<Arc<PluginDuplicator>>>> = OnceLock::new();
+
+fn duplicator_slot() -> &'static Mutex<Option<Arc<PluginDuplicator>>> {
+	DUPLICATOR.get_or_init(|| Mutex::new(None))
+}
+
+/// Install the plugin-node duplicator (oakplugin discovery path;
+/// `None` clears it). Without it [`PluginNode::duplicate`] returns
+/// `None`.
+pub fn set_plugin_duplicator(dup: Option<Arc<PluginDuplicator>>) {
+	*duplicator_slot().lock().unwrap_or_else(|e| e.into_inner()) = dup;
+}
+
 impl PluginNode {
+	/// Constructor for the oakplugin discovery path (the C++
+	/// `PluginNode::PluginNode(instance)`; the input walk happens in
+	/// the oakplugin translation pass, which owns the OFX types).
+	pub fn new(
+		instance: PluginInstanceHandle,
+		name: String,
+		type_id: String,
+		description: String,
+		sub_category: String,
+	) -> Self {
+		PluginNode {
+			instance,
+			sub_category,
+			name,
+			type_id,
+			description,
+		}
+	}
+
+	/// The wrapped instance identity (oakplugin registry key).
+	pub fn instance_handle(&self) -> PluginInstanceHandle {
+		self.instance
+	}
+
 	/// Forward a push-button param activation to the plugin (C++
 	/// `push_button_clicked()`; currently a no-op upstream).
 	pub fn push_button_clicked(&mut self, core: &mut NodeCore, name: String) {
@@ -133,12 +203,9 @@ impl NodeBehavior for PluginNode {
 	/// the value to the matching OFX param); then resolves the input
 	/// texture — simple-source clip first, then `tex_in`, then the
 	/// first texture-typed input — and, when both texture and plugin
-	/// instance exist, pushes the texture converted to a plugin job
-	/// bound to this node and the request time.
-	///
-	/// The Rust model has no plugin-job payload: the job case pushes a
-	/// null texture handle marking a renderer-deferred plugin job
-	/// (`// CPP-PARITY: plugin.cpp` `value()`).
+	/// instance exist, pushes a [`PluginJobPayload`] boxed into a
+	/// texture-typed value (the C++ `table->push(k_texture,
+	/// tex->to_job(job), this)`; the render seam executes the job).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -146,8 +213,6 @@ impl NodeBehavior for PluginNode {
 		time: Rational,
 		table: &mut NodeValueTable,
 	) {
-		let _ = (core, time);
-
 		// Re-push every non-texture, non-none input value, tagged with
 		// its input id.
 		for (id, v) in inputs.iter() {
@@ -170,11 +235,15 @@ impl NodeBehavior for PluginNode {
 			.or_else(|| inputs.values().find(|v| matches!(v, NodeValue::Texture(_))));
 
 		if tex.is_some() && !self.instance.is_null() {
-			// C++ `table->push(NodeValue::k_texture, tex->to_job(job),
-			// this)` — a deferred plugin job; no job payload here.
+			let payload = PluginJobPayload {
+				instance: self.instance,
+				time,
+				effect_input_id: core.effect_input.clone(),
+				values: inputs.clone(),
+			};
 			table.push(
 				crate::value::ValueType::Texture,
-				NodeValue::Texture(crate::handle::CHandle::null()),
+				NodeValue::Texture(crate::handle::make_owned(payload)),
 				None,
 			);
 		}
@@ -255,16 +324,29 @@ impl NodeBehavior for PluginNode {
 		let _ = (core, frame, time);
 	}
 
-	/// Deep copy (C++ `copy()`): asks the bridge to create a fresh
-	/// plugin instance — filter context when supported, else the
-	/// plugin's first declared context — and wraps it in a new node;
-	/// `None` when there is no instance or instance creation fails.
-	///
-	/// This crate's bridge has no instance-creation call, so a plugin
-	/// node can never be duplicated here and `None` is always returned
-	/// (`// CPP-PARITY: plugin.cpp` `copy()`).
+	/// Deep copy (C++ `copy()`): asks the oakplugin side (through the
+	/// installed [`set_plugin_duplicator`] hook) for a fresh plugin
+	/// instance — filter context when supported, else the plugin's
+	/// first declared context — and wraps it in a new behavior; the
+	/// caller clones the core (inputs included), matching the C++
+	/// `Node::copy` split. `None` when there is no instance or no
+	/// duplicator installed.
 	fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
-		None
+		if self.instance.is_null() {
+			return None;
+		}
+		let dup = duplicator_slot()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner())
+			.clone()?;
+		let new_handle = dup(self.instance)?;
+		Some(Box::new(PluginNode {
+			instance: new_handle,
+			sub_category: self.sub_category.clone(),
+			name: self.name.clone(),
+			type_id: self.type_id.clone(),
+			description: self.description.clone(),
+		}))
 	}
 
 	/// Downcast to [`Self`] (instance/metadata access).
@@ -278,48 +360,12 @@ impl NodeBehavior for PluginNode {
 	}
 }
 
-/// Constructor (C++ `PluginNode::PluginNode(instance)`): stores the
-/// instance handle and derives the sub-category from the OFX context
-/// (filter/generator/transition, else "General"). Then walks the
-/// plugin's params through the bridge:
-///
-/// - group params seed a group-label map; page params seed a
-///   page-label map and a param->page-label map (skipping
-///   skip-row/skip-column sentinels);
-/// - each value param becomes an input: int/choice -> int/combo,
-///   double -> float, boolean -> boolean, string -> text,
-///   RGB/RGBA -> color, 2D/3D double/int -> vec2/vec3,
-///   str-choice -> str-combo, bytes/custom -> binary, push-button ->
-///   push-button; group/page and unknown types are skipped;
-/// - defaults come from a per-plugin-id cache built from the OFX
-///   `kOfxParamPropDefault` properties (normalised-coordinate doubles
-///   are converted to canonical pixels against the project extent);
-///   a non-null default is added as the input default and set as the
-///   standard value (except for push-buttons);
-/// - secret params get the hidden flag; the param label (or name)
-///   becomes the input display name; parent groups set the `ui_group`
-///   property, pages the `ui_page` property;
-/// - color inputs get a `color_semantic` property ("color"/"scalar",
-///   deduced from label/hint/display-range/default/group heuristics),
-///   `min`/`max` from the display range, and a `tooltip` from the
-///   hint;
-/// - combo inputs get combo-box strings from the choice options
-///   (ordered by the choice-order property when present), and
-///   str-combos additionally a `combo_value_str` property.
-///
-/// Finally every non-output clip becomes a texture input named from
-/// its label ("Source"/"From"/"To" for the well-known clips), and the
-/// effect input is set: the simple-source clip if present, else
-/// `tex_in` if present, else a synthesized `tex_in` texture input
-/// (display name "Texture") when the plugin has any clip input at
-/// all.
-///
-/// The plugin-instance bridge is not wired in this crate, so the
-/// descriptor walk cannot run here: a placeholder node with a null
-/// instance and empty cached metadata is returned. Real construction
-/// belongs to the oakplugin bridge's discovery pass, which registers
-/// one `PluginNode` per discovered plugin (`// CPP-PARITY: plugin.cpp`
-/// `PluginNode::PluginNode`).
+/// Constructor (C++ `PluginNode::PluginNode(instance)`): the real
+/// construction (instance creation + the OFX param/clip -> input
+/// translation) belongs to the oakplugin discovery pass
+/// (`oakplugin::node_factory`), which registers one factory entry per
+/// discovered plugin. This placeholder (null instance, empty cached
+/// metadata) stays for the static-registration surface and tests.
 pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	let core = NodeCore::new();
 	let node = PluginNode {
@@ -333,12 +379,12 @@ pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 }
 
 /// Register this node type. NOTE: unlike built-in nodes, plugin nodes
-/// have no static type id — the C++ factory appends one `PluginNode`
-/// per discovered OFX plugin at runtime
-/// (`factory.cpp::add_plugins_to_library`), keyed by plugin
+/// have no static type id — the oakplugin discovery pass appends one
+/// factory entry per discovered OFX plugin at runtime (C++
+/// `factory.cpp::register_plugin_nodes`) through
+/// [`crate::factory::Factory::register_dynamic`], keyed by plugin
 /// identifier, so there is no fixed `NodeMeta` literal to push. This
-/// function is a no-op placeholder; real registration belongs to the
-/// oakplugin bridge's discovery pass.
+/// function is a no-op placeholder kept for the static table.
 pub fn register(meta: &mut Vec<NodeMeta>) {
 	let _ = meta;
 }
@@ -386,7 +432,8 @@ mod tests {
 		row.insert("mode".to_string(), NodeValue::Combo(2));
 		let mut table = NodeValueTable::default();
 		n.value(&core, &row, Rational::new(0, 1), &mut table);
-		// Both values pushed, tagged with their input ids.
+		// Both values pushed, tagged with their input ids, plus the
+		// plugin job texture (no texture input in the row -> no job).
 		let tagged: Vec<(&str, &NodeValue)> = table
 			.rows()
 			.iter()
@@ -405,24 +452,38 @@ mod tests {
 	}
 
 	#[test]
-	fn value_skips_texture_and_none_inputs() {
+	fn value_pushes_job_payload_for_texture_input() {
 		let n = node();
-		let core = NodeCore::new();
+		let mut core = NodeCore::new();
+		core.effect_input = TEXTURE_INPUT.to_string();
 		let mut row = NodeValueRow::default();
 		row.insert(
 			"tex_in".to_string(),
 			NodeValue::Texture(crate::handle::CHandle::null()),
 		);
+		row.insert("gain".to_string(), NodeValue::Float(0.25));
 		row.insert("none_in".to_string(), NodeValue::None);
 		let mut table = NodeValueTable::default();
-		n.value(&core, &row, Rational::new(0, 1), &mut table);
-		// The texture is consumed as the job source; nothing else is pushed
-		// (none values are skipped; the plugin job is the texture push).
-		assert_eq!(table.count(), 1);
-		assert!(matches!(
-			table.get(ValueType::Texture),
-			Some(NodeValue::Texture(h)) if h.is_null()
-		));
+		let time = Rational::new(3, 2);
+		n.value(&core, &row, time, &mut table);
+		// The texture is consumed as the job source: one tagged param
+		// value + the boxed plugin job payload.
+		assert_eq!(table.count(), 2);
+		let Some(NodeValue::Texture(h)) = table.get(ValueType::Texture) else {
+			panic!("expected the plugin job texture");
+		};
+		// SAFETY: the handle was created by value() boxing a
+		// PluginJobPayload.
+		let payload = unsafe { crate::handle::get::<PluginJobPayload>(h) }
+			.expect("texture handle must box a PluginJobPayload");
+		assert_eq!(payload.instance, PluginInstanceHandle(1));
+		assert_eq!(payload.time, time);
+		assert_eq!(payload.effect_input_id, TEXTURE_INPUT);
+		assert_eq!(payload.values.len(), 3);
+		assert_eq!(
+			payload.values.get("gain"),
+			Some(&NodeValue::Float(0.25))
+		);
 	}
 
 	#[test]
@@ -440,10 +501,7 @@ mod tests {
 		);
 		let mut table = NodeValueTable::default();
 		n.value(&core, &row, Rational::new(0, 1), &mut table);
-		assert!(matches!(
-			table.get(ValueType::Texture),
-			Some(NodeValue::Texture(h)) if h.is_null()
-		));
+		assert!(matches!(table.get(ValueType::Texture), Some(NodeValue::Texture(_))));
 	}
 
 	#[test]
@@ -532,9 +590,26 @@ mod tests {
 	}
 
 	#[test]
-	fn duplicate_returns_none() {
+	fn duplicate_uses_installed_duplicator() {
+		// No duplicator installed -> None.
+		set_plugin_duplicator(None);
 		let n = node();
 		assert!(n.duplicate(&NodeCore::new()).is_none());
+
+		// Installed duplicator: fresh handle, metadata copied.
+		set_plugin_duplicator(Some(Arc::new(|h: PluginInstanceHandle| {
+			Some(PluginInstanceHandle(h.0 + 100))
+		})));
+		let dup = n.duplicate(&NodeCore::new()).expect("duplicator installed");
+		let dup = dup.as_any().unwrap().downcast_ref::<PluginNode>().unwrap();
+		assert_eq!(dup.instance_handle(), PluginInstanceHandle(101));
+		assert_eq!(dup.name(), "Test Plugin");
+		assert_eq!(dup.sub_category(), "Filter");
+
+		// Duplicator failure -> None.
+		set_plugin_duplicator(Some(Arc::new(|_: PluginInstanceHandle| None)));
+		assert!(n.duplicate(&NodeCore::new()).is_none());
+		set_plugin_duplicator(None);
 	}
 
 	#[test]

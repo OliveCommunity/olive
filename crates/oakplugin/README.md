@@ -221,6 +221,67 @@ src/
    能力。修复：`init_descriptor_props` 补齐预定义（默认
    "false"/空数组/None）。
 
+## 阶段 6a：OpenFX 引擎接线（oaknode/oakrender/oakplugin 收编）
+
+把 OFX 插件接进 oaknode 节点工厂与 oakrender 评估环的接线层
+（此前插件侧只有宿主/suite/渲染驱动，未进节点图）。全部落在
+crates/，不动 src/（app）与 gpui/。
+
+- **`node_factory.rs`（新增）**：
+  - 实例注册表：`register_instance/instance_from_id/unregister_instance`
+    （u64 键 ↔ `Arc<RefBox<Instance>>`；进程级存活，对齐 C++ 工厂
+    持有；节点经 [`oaknode::nodes::plugin::PluginInstanceHandle`]
+    持键）。
+  - `register_plugin_nodes()`：遍历宿主插件缓存，filter 上下文优先
+    （否则首个），经 `Factory::register_dynamic` 注册动态节点条目
+    （已存在 id 跳过，对齐 C++ existing_ids）。返回新注册 id 列表。
+  - 参数翻译 `build_core`：15 类 OFX 参数 → oaknode 输入（类型表、
+    默认值缓存、颜色语义启发式、combo ChoiceOrder 排序、secret→
+    hidden、ui_group/ui_page、min/max/tooltip、clip→纹理输入、
+    effect_input 选择），逐条对齐 engine/node/plugins/plugin.cpp。
+  - `install_render_executor()`：把 render_driver 装进
+    `oakrender::eval::set_plugin_executor`（依赖反转），duplicator
+    装进 `oaknode::nodes::plugin::set_plugin_duplicator`。
+  - `set_project_extent(w,h)`：normalised 坐标默认值换算基准。
+- **`gl_bridge.rs`（新增，spike 文档）**：`texture_id` 桩的 GL 互
+  操作评估——方案 A（wgpu-hal GL 互操作）在 macOS 不可行（Metal
+  后端无 GL 命名空间）；方案 B（独立离屏 GL 上下文 + 回读 +
+  wgpu upload）技术可行但暂缓（无真实 GL 插件可验证 + 需新 GL 依
+  赖 + 每帧同步回读 stall）。`texture_id` 保持恒 0，GL 插件经 CPU
+  render action 正确出帧。
+- **`progress.rs`**：新增 `UiProgressReporter` trait +
+  `ReporterFactory` + `set_reporter_factory`（app 注入点）。render
+  未装 C 回调时装静默报告器，progressStart 携 (label,message) 经
+  工厂现造 UI 报告器；update 返回 false 即取消。
+- **`suites/timeline.rs`**：新增 `ViewerTimeInfo` +
+  `ActiveViewerProvider` + `set_active_viewer_provider`（app 注入
+  点）。timeline suite 的 getTime/getTimeBounds 在渲染上下文缺失时
+  回退活动 viewer 时间源。
+- **`render_driver.rs`**：`apply_param_overrides` 增 Double 标量
+  NaN/Inf 清洗（回退默认并告警）+ Min/Max 钳制（对齐
+  pluginrenderer.cpp:155-177）。
+- **`clip.rs`**：`fetch_image` 支持 U8/U16/F16 输入帧归一化转 F32
+  （对齐 oliveclip.cpp setInputTexture 的格式转换路径）；转换中的
+  NaN/Inf 清洗为 0（oliveclip.cpp copy_pixels 的 scrub）；新增
+  `f16_to_f32` 手写位转换。
+- **oakrender `eval.rs`**：`JobSpec::Plugin` 扩为携带
+  instance/time/effect_input_id/inputs/values；新增
+  `PluginExecutor` + `set_plugin_executor` 依赖反转槽；
+  `process_plugin_job` 经执行器出帧，失败回退紫帧 (1,0,1,1)；
+  `RenderEvalHooks` 实现 `RenderHooks::resolve` 解
+  `PluginJobPayload` 盒并执行。
+- **oaknode**：`factory.rs` 动态注册面（`register_dynamic`/
+  `dynamic_entries`/`create_any` 等）；`nodes/plugin.rs` 重写为
+  PluginJobPayload 值模型 + duplicator 槽；`traverser.rs` 纹理输入
+  直通；`handle.rs` `get_checked<T>` 按 TypeId 判别盒类型。
+
+app 接线（阶段 6b，不在本 crate 范围）经这些公共入口接入：
+`node_factory::register_plugin_nodes`、
+`progress::set_reporter_factory`、
+`suites::timeline::set_active_viewer_provider`、
+`node_factory::set_project_extent`、
+`oaknode::factory::Factory::global().dynamic_entries/create_any`。
+
 ## 测试
 
 运行（全量，含渲染像素路径的 oakrender 测试桩）：

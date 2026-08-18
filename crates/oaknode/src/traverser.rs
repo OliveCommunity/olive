@@ -126,34 +126,48 @@ impl Traverser {
 				return Err(Error::State);
 			}
 
+			let entry = graph.get(node).ok_or(Error::NotFound)?;
+
 			// Build this node's input row from its upstream outputs. The
 			// C++ picks the last value of the matching type per input;
-			// the Rust model keys rows by input id.
+			// the Rust model keys rows by input id. Inputs declared as
+			// texture take the upstream texture directly (the scalar
+			// chain below would otherwise hand a plugin node's tagged
+			// param passthrough to a downstream clip input).
 			let mut row: NodeValueRow = std::collections::BTreeMap::new();
 			for (from, input_id, element) in graph.input_connections(node) {
 				let _ = element;
 				if let Some(from_table) = tables.get(&from) {
-					let value = from_table
-						.get(ValueType::Float)
-						.or_else(|| from_table.get(ValueType::Int))
-						.or_else(|| from_table.get(ValueType::Color))
-						.or_else(|| from_table.get(ValueType::Vec2))
-						.or_else(|| from_table.get(ValueType::Vec3))
-						.or_else(|| from_table.get(ValueType::Vec4))
-						.or_else(|| from_table.get(ValueType::Boolean))
-						.or_else(|| from_table.get(ValueType::Rational))
-						.or_else(|| from_table.get(ValueType::Text))
-						.or_else(|| from_table.get(ValueType::Combo))
-						.or_else(|| from_table.get(ValueType::StrCombo))
-						.cloned()
-						.unwrap_or(NodeValue::None);
+					let value = if entry.core.input_data_type(&input_id)
+						== Some(ValueType::Texture)
+					{
+						from_table
+							.get(ValueType::Texture)
+							.cloned()
+							.unwrap_or(NodeValue::None)
+					} else {
+						from_table
+							.get(ValueType::Float)
+							.or_else(|| from_table.get(ValueType::Int))
+							.or_else(|| from_table.get(ValueType::Color))
+							.or_else(|| from_table.get(ValueType::Vec2))
+							.or_else(|| from_table.get(ValueType::Vec3))
+							.or_else(|| from_table.get(ValueType::Vec4))
+							.or_else(|| from_table.get(ValueType::Boolean))
+							.or_else(|| from_table.get(ValueType::Rational))
+							.or_else(|| from_table.get(ValueType::Text))
+							.or_else(|| from_table.get(ValueType::Combo))
+							.or_else(|| from_table.get(ValueType::StrCombo))
+							.or_else(|| from_table.get(ValueType::Texture))
+							.cloned()
+							.unwrap_or(NodeValue::None)
+					};
 					row.insert(input_id, value);
 				}
 			}
 
 			// Evaluate the node's behavior into its output table.
 			let mut table = NodeValueTable::default();
-			let entry = graph.get(node).ok_or(Error::NotFound)?;
 			// The behavior writes outputs; the default no-op leaves the
 			// table empty (C++ `Node::value` default).
 			entry

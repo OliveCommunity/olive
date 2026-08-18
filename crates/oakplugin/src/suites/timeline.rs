@@ -18,13 +18,53 @@
 //! （[`crate::suites::RenderCtx`]，frame range 来自 clip 桥）。
 //! 参照 HS: ofxhImageEffect.cpp gTimelineSuite。
 //!
-//! 无渲染上下文（渲染外调用）→ 时间 0 / 时间域 (0,0) 的 headless
-//! 默认；gotoTime 第 1 期无时间线驱动 → OK no-op（渲染时间由驱动
-//! 固定，见 [`crate::suites::set_render_ctx`]）。
+//! 无渲染上下文（渲染外调用）→ 回退 app 注入的活动 viewer 时间源
+//! （[`set_active_viewer_provider`]，阶段 6a 注入点）；也未注入则
+//! 时间 0 / 时间域 (0,0) 的 headless 默认。gotoTime 第 1 期无时间线
+//! 驱动 → OK no-op（渲染时间由驱动固定，见
+//! [`crate::suites::set_render_ctx`]）。
 
 use std::ffi::{c_double, c_int, c_void};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::suites::{render_ctx, status};
+
+// ---------------------------------------------------------------------------
+// app 注入点：活动 viewer 时间源
+// ---------------------------------------------------------------------------
+
+/// 活动 viewer 的时间信息（timeline suite 渲染外回退源的最小集）。
+#[derive(Clone, Copy, Debug)]
+pub struct ViewerTimeInfo {
+	/// viewer 当前时间（秒）。
+	pub time: f64,
+	/// 时间域下界（秒）。
+	pub range_min: f64,
+	/// 时间域上界（秒）。
+	pub range_max: f64,
+}
+
+/// 活动 viewer 提供器：返回 None 表示当前无活动 viewer。
+pub type ActiveViewerProvider = Arc<dyn Fn() -> Option<ViewerTimeInfo> + Send + Sync>;
+
+static ACTIVE_VIEWER: OnceLock<Mutex<Option<ActiveViewerProvider>>> = OnceLock::new();
+
+fn viewer_slot() -> &'static Mutex<Option<ActiveViewerProvider>> {
+	ACTIVE_VIEWER.get_or_init(|| Mutex::new(None))
+}
+
+/// 注册/清除活动 viewer 提供器（app 接线点；覆盖式）。
+pub fn set_active_viewer_provider(provider: Option<ActiveViewerProvider>) {
+	*viewer_slot().lock().unwrap_or_else(|e| e.into_inner()) = provider;
+}
+
+fn active_viewer() -> Option<ViewerTimeInfo> {
+	let provider = viewer_slot()
+		.lock()
+		.unwrap_or_else(|e| e.into_inner())
+		.clone()?;
+	provider()
+}
 
 /// 函数表布局（OfxTimeLineSuiteV1）。
 #[repr(C)]
@@ -54,8 +94,11 @@ unsafe extern "C" fn timeline_get_time(handle: *mut c_void, time: *mut c_double)
 			if time.is_null() {
 				return status::ERR_VALUE;
 			}
-			// 渲染上下文缺省 → 0（headless 默认）。
-			*time = render_ctx().map_or(0.0, |c| c.time);
+			// 渲染上下文 → 活动 viewer → 0（headless 默认）。
+			*time = render_ctx()
+				.map(|c| c.time)
+				.or_else(|| active_viewer().map(|v| v.time))
+				.unwrap_or(0.0);
 			status::OK
 		})
 	}
@@ -77,7 +120,11 @@ unsafe extern "C" fn timeline_get_time_bounds(
 			if min.is_null() || max.is_null() {
 				return status::ERR_VALUE;
 			}
-			let r = render_ctx().map_or((0.0, 0.0), |c| (c.range.min, c.range.max));
+			// 渲染上下文 → 活动 viewer → (0,0)（headless 默认）。
+			let r = render_ctx()
+				.map(|c| (c.range.min, c.range.max))
+				.or_else(|| active_viewer().map(|v| (v.range_min, v.range_max)))
+				.unwrap_or((0.0, 0.0));
 			*min = r.0;
 			*max = r.1;
 			status::OK

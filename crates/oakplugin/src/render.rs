@@ -129,7 +129,8 @@ pub fn texture_create(
 /// Rust 等价物。恒 0（GL suite 的 `OpenGLTextureIndex` 属性与
 /// render 驱动的 use_opengl 决策据此回退 CPU 路径；GPU 上传若落地
 /// 走 `oakrender::backend::GpuContextLike::upload` 的 wgpu token，
-/// 不暴露 GL id）。
+/// 不暴露 GL id）。真实化的评估与方案见 [`crate::gl_bridge`]
+/// （阶段 6a spike：方案 A 不可行，方案 B 暂缓）。
 pub fn texture_id(_texture: &Texture) -> i32 {
 	0
 }
