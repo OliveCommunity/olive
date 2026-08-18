@@ -39,7 +39,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui::dock::{
-	DockArea, DockLayout, DropTarget, DropZone, NodePath, PanelHandle, PanelRegistry,
+	DockArea, DockEvent, DockLayout, DropTarget, DropZone, NodePath, PanelHandle, PanelId,
+	PanelRegistry,
 };
 use gpui::timeline::{
 	ClipData, ClipId, Frame, FrameRange, TimelineEvent, TimelineView, TrackData,
@@ -55,8 +56,10 @@ use gpui_widgets::menu::{Menu, MenuBar, MenuBarEntry, MenuBarEvent, MenuItem};
 use gpui_widgets::theme::{apply_theme, OakTheme};
 use gpui_widgets::viewer::PlaybackClock;
 
+use crate::actions::{ActionId, Tool};
 use crate::dialogs::{ExportDialogContent, PreferencesContent};
 use crate::oakui::{AppEngine, ExportSession, MockEngine, Monitor, RealEngine};
+use crate::panels::commands as panel_commands;
 use crate::panels::effect_library::EffectLibraryPanel;
 use crate::panels::history::HistoryPanel;
 use crate::panels::ids::*;
@@ -68,63 +71,31 @@ use crate::panels::source_viewer::SourceViewerPanel;
 use crate::panels::status_bar::StatusBar;
 use crate::panels::timeline::TimelinePanel;
 
-// Menu item ids (unique per menu).
+// Menu item ids: thin aliases over the action registry's menu ids (the
+// registry is the single source; these keep the test call sites readable).
+#[cfg(test)]
 pub(crate) mod menu_ids {
-	pub const NEW_PROJECT: usize = 101;
-	pub const OPEN_PROJECT: usize = 102;
-	pub const EXPORT_PROJECT: usize = 103;
-	pub const CLOSE: usize = 105;
-	pub const EXPORT: usize = 106;
-	pub const QUIT: usize = 107;
-	pub const IMPORT_FOOTAGE: usize = 108;
-	pub const PROJECT_MANAGER: usize = 109;
-	pub const OPEN_FROM_LIBRARY: usize = 110;
+	use crate::actions::ActionId;
 
-	pub const UNDO: usize = 201;
-	pub const REDO: usize = 202;
-	pub const CUT: usize = 203;
-	pub const COPY: usize = 204;
-	pub const PASTE: usize = 205;
-	pub const DELETE: usize = 206;
-	pub const RIPPLE_DELETE: usize = 207;
-	pub const SELECT_ALL: usize = 208;
+	pub const NEW_PROJECT: usize = ActionId::NewProject.menu_id();
+	pub const OPEN_PROJECT: usize = ActionId::OpenProject.menu_id();
+	pub const EXPORT_PROJECT: usize = ActionId::SaveProject.menu_id();
+	pub const CLOSE: usize = ActionId::CloseProject.menu_id();
+	pub const EXPORT: usize = ActionId::Export.menu_id();
+	pub const QUIT: usize = ActionId::Exit.menu_id();
+	pub const IMPORT_FOOTAGE: usize = ActionId::Import.menu_id();
+	pub const PROJECT_MANAGER: usize = ActionId::ProjectManager.menu_id();
+	pub const OPEN_FROM_LIBRARY: usize = ActionId::OpenFromLibrary.menu_id();
 
-	pub const THEME_DARK: usize = 301;
-	pub const THEME_LIGHT: usize = 302;
-	pub const LANG_ZH: usize = 303;
-	pub const LANG_EN: usize = 304;
-	pub const PREFERENCES: usize = 305;
-	pub const ZOOM_IN: usize = 306;
-	pub const ZOOM_OUT: usize = 307;
+	pub const UNDO: usize = ActionId::Undo.menu_id();
+	pub const REDO: usize = ActionId::Redo.menu_id();
+	pub const DELETE: usize = ActionId::Delete.menu_id();
+	pub const RIPPLE_DELETE: usize = ActionId::RippleDelete.menu_id();
 
-	pub const PLAY_PAUSE: usize = 401;
-	pub const PREV_FRAME: usize = 402;
-	pub const NEXT_FRAME: usize = 403;
-	pub const TO_START: usize = 404;
-	pub const PLAY: usize = 405;
-	pub const PAUSE: usize = 406;
-	pub const SET_IN_POINT: usize = 407;
-	pub const SET_OUT_POINT: usize = 408;
-
-	pub const ADD_VIDEO_TRACK: usize = 501;
-	pub const ADD_AUDIO_TRACK: usize = 502;
-	pub const REMOVE_TRACK: usize = 503;
-	pub const SPLIT_AT_PLAYHEAD: usize = 504;
-	pub const ADD_MARKER: usize = 505;
-	pub const REMOVE_MARKER: usize = 506;
-	pub const SET_WORKAREA: usize = 507;
-	pub const CLEAR_WORKAREA: usize = 508;
-
-	pub const FOCUS_PROJECT: usize = 601;
-	pub const FOCUS_SOURCE_VIEWER: usize = 602;
-	pub const FOCUS_PROGRAM_VIEWER: usize = 603;
-	pub const FOCUS_NODE_EDITOR: usize = 604;
-	pub const FOCUS_INSPECTOR: usize = 605;
-	pub const FOCUS_HISTORY: usize = 606;
-	pub const FOCUS_TIMELINE: usize = 607;
-	pub const FOCUS_EFFECT_LIBRARY: usize = 608;
-
-	pub const ABOUT: usize = 801;
+	pub const THEME_DARK: usize = ActionId::ThemeDark.menu_id();
+	pub const LANG_ZH: usize = ActionId::LangZh.menu_id();
+	pub const LANG_EN: usize = ActionId::LangEn.menu_id();
+	pub const PREFERENCES: usize = ActionId::Preferences.menu_id();
 }
 
 /// Modal-dialog control ids (see [`ModalEvent::control`]).
@@ -270,7 +241,7 @@ impl<E: AppEngine> PanelRegistry for AppPanelRegistry<E> {
 				cx,
 			)),
 			"history" => Some(PanelHandle::new(
-				cx.new(|cx| HistoryPanel::new(window, cx)),
+				cx.new(|cx| HistoryPanel::new(self.engine.clone(), window, cx)),
 				cx,
 			)),
 			"effect-library" => Some(PanelHandle::new(
@@ -304,13 +275,43 @@ pub struct OakApp<E: AppEngine> {
 	/// The modal currently shown on top of the shell, if any.
 	modal: ModalState<E>,
 	/// The shell's own focus handle: the root element tracks it so the
-	/// keyboard shortcut layer (the root's `on_key_down`) sits on the
+	/// action dispatch layer (the root's `on_action` listeners) sits on the
 	/// dispatch path even before any panel takes focus.
 	shell_focus: gpui::FocusHandle,
 	/// The running export session, if any.
 	export: Option<ExportRun>,
 	/// The library row pending an export save dialog (manager 导出).
 	pending_export: Option<String>,
+	/// The panel that most recently took focus (the target of
+	/// [`Route::FocusedPanel`](crate::actions::Route::FocusedPanel)
+	/// commands; `None` before any panel is focused).
+	focused_panel: Option<gpui::dock::PanelId>,
+	/// The eight dock panels, kept so focused-panel commands can be routed
+	/// to the right entity (the dock only hands back type-erased handles).
+	panels: ShellPanels<E>,
+	/// The active timeline tool (the Tools menu's exclusive group; the
+	/// timeline toolbar keeps its own visual selection for now).
+	active_tool: Tool,
+	/// 回放 → 循环播放 is on (the C++ `Loop` config flag; playback looping
+	/// itself is a transport gap, so this only drives the checkmark).
+	loop_playback: bool,
+	/// 视图 → Toggle Show All is on (placeholder state for the checkmark).
+	show_all: bool,
+	/// 视图 → Full Screen is on (placeholder state for the checkmark).
+	full_screen: bool,
+}
+
+/// The dock panels the shell builds up front, kept for focused-panel command
+/// routing (the dock area only exposes type-erased handles).
+struct ShellPanels<E: AppEngine> {
+	project: Entity<ProjectExplorerPanel<E>>,
+	source_viewer: Entity<SourceViewerPanel<E>>,
+	program_viewer: Entity<ProgramViewerPanel<E>>,
+	node_editor: Entity<NodeEditorPanel<E>>,
+	inspector: Entity<InspectorPanel<E>>,
+	history: Entity<HistoryPanel<E>>,
+	timeline: Entity<TimelinePanel<E>>,
+	effect_library: Entity<EffectLibraryPanel<E>>,
 }
 
 impl<E: AppEngine> OakApp<E> {
@@ -346,7 +347,11 @@ impl<E: AppEngine> OakApp<E> {
 		});
 
 		// --- menu bar ------------------------------------------------------
-		let menu_bar = cx.new(|cx| MenuBar::new(1, make_menus(dark), window, cx));
+		// The menus are generated from the action registry; the dynamic
+		// checkmarks (theme, tool, snapping, loop, …) come from this state.
+		let menu_bar = cx.new(|cx| {
+			MenuBar::new(1, make_menus(MenuState::new(dark)), window, cx)
+		});
 		cx.subscribe(
 			&menu_bar,
 			|this, _menu: Entity<MenuBar>, event: &MenuBarEvent, cx| {
@@ -356,6 +361,13 @@ impl<E: AppEngine> OakApp<E> {
 			},
 		)
 		.detach();
+
+		// --- keyboard map ---------------------------------------------------
+		// Register every registry default key as a global binding (context
+		// `None`): the keystrokes dispatch the gpui actions, which bubble to
+		// the shell's `on_action` listeners — the same path the menu clicks
+		// take through `on_menu`.
+		cx.bind_keys(crate::actions::key_bindings());
 
 		// --- dock ----------------------------------------------------------
 		let dock = cx.new(|cx| {
@@ -381,9 +393,35 @@ impl<E: AppEngine> OakApp<E> {
 		});
 		let node_editor = cx.new(|cx| NodeEditorPanel::new(engine.clone(), window, cx));
 		let inspector = cx.new(|cx| InspectorPanel::new(engine.clone(), window, cx));
-		let history = cx.new(|cx| HistoryPanel::new(window, cx));
+		let history = cx.new(|cx| HistoryPanel::new(engine.clone(), window, cx));
 		let timeline_panel =
 			cx.new(|cx| TimelinePanel::new(engine.clone(), timeline.clone(), window, cx));
+
+		// Keep the panel entities for focused-panel command routing (the dock
+		// only hands back type-erased handles).
+		let panels = ShellPanels {
+			project: project.clone(),
+			source_viewer: source_viewer.clone(),
+			program_viewer: program_viewer.clone(),
+			node_editor: node_editor.clone(),
+			inspector: inspector.clone(),
+			history: history.clone(),
+			timeline: timeline_panel.clone(),
+			effect_library: effect_library.clone(),
+		};
+
+		// Wire each panel's right-click menu: registry-backed items come
+		// back through `ContextMenuTriggered` and are dispatched exactly
+		// like menu-bar clicks. A right-click does not emit
+		// `PanelEvent::Focused`, so the subscription points `focused_panel`
+		// at the panel before dispatching (the C++
+		// `PanelManager::currently_focused` target is the clicked panel).
+		Self::wire_panel_context_menu(cx, &panels.project, PROJECT);
+		Self::wire_panel_context_menu(cx, &panels.source_viewer, SOURCE_VIEWER);
+		Self::wire_panel_context_menu(cx, &panels.program_viewer, PROGRAM_VIEWER);
+		Self::wire_panel_context_menu(cx, &panels.node_editor, NODE_EDITOR);
+		Self::wire_panel_context_menu(cx, &panels.inspector, INSPECTOR);
+		Self::wire_panel_context_menu(cx, &panels.timeline, TIMELINE);
 
 		// Arrange the default workspace: the design's 素材查看器 | 序列查看器 |
 		// 检查器 row (project bin docked on the left), node editor + history
@@ -488,6 +526,17 @@ impl<E: AppEngine> OakApp<E> {
 		})
 		.detach();
 
+		// Track the focused panel: the dock re-emits every panel's
+		// `PanelEvent::Focused` as `DockEvent::PanelFocused` (and its own
+		// `focus_panel` calls), so a single subscription keeps the shell's
+		// focused-panel routing target up to date.
+		cx.subscribe(&dock, |this, _dock, event: &DockEvent, _cx| {
+			if let DockEvent::PanelFocused(id) = event {
+				this.focused_panel = Some(*id);
+			}
+		})
+		.detach();
+
 		// --- timeline events -----------------------------------------------
 		// Every timeline widget request (playhead seek, trim, move, track
 		// height) is applied by the engine through its backend's edit
@@ -524,8 +573,8 @@ impl<E: AppEngine> OakApp<E> {
 			.detach();
 
 		let shell_focus = cx.focus_handle();
-		// The shell starts focused so the shortcut layer works before any
-		// panel grabs focus.
+		// The shell starts focused so the action dispatch layer works before
+		// any panel grabs focus.
 		window.focus(&shell_focus, cx);
 		let shell = Self {
 			engine,
@@ -540,6 +589,12 @@ impl<E: AppEngine> OakApp<E> {
 			shell_focus,
 			export: None,
 			pending_export: None,
+			focused_panel: None,
+			panels,
+			active_tool: Tool::Pointer,
+			loop_playback: false,
+			show_all: false,
+			full_screen: false,
 		};
 
 		// Open the CLI-provided project once the shell is up.
@@ -573,46 +628,158 @@ impl<E: AppEngine> OakApp<E> {
 		cx.notify();
 	}
 
-	/// Routes a menu action.
+	/// Routes a menu click: resolves the item id to its registry action and
+	/// dispatches it through the same path the keyboard shortcuts use, so a
+	/// menu click and a key press can never diverge.
 	fn on_menu(&mut self, item: usize, cx: &mut Context<Self>) {
-		use menu_ids::*;
-		match item {
+		let Some(entry) = crate::actions::entry_for_menu_id(item) else {
+			println!("[menu] unknown item {item}");
+			return;
+		};
+		self.dispatch_action_id(entry.action, cx);
+	}
+
+	/// Subscribes the shell to a panel's right-click menu: a triggered
+	/// registry item is dispatched like a menu-bar click, with the panel set
+	/// as the focused panel first (a right-click does not emit
+	/// `PanelEvent::Focused`).
+	fn wire_panel_context_menu<P>(cx: &mut Context<Self>, panel: &Entity<P>, id: PanelId)
+	where
+		P: gpui::EventEmitter<crate::menus::context::ContextMenuTriggered>,
+	{
+		cx.subscribe(
+			panel,
+			move |this, _panel, event: &crate::menus::context::ContextMenuTriggered, cx| {
+				this.focused_panel = Some(id);
+				this.on_menu(event.item, cx);
+			},
+		)
+		.detach();
+	}
+
+	/// The central action dispatch (menu clicks and keyboard shortcuts both
+	/// end up here). [`Route::FocusedPanel`](crate::actions::Route::FocusedPanel)
+	/// actions go to the focused panel first; whatever the panel does not
+	/// implement falls through to the shell's global handler.
+	fn dispatch_action_id(&mut self, action: ActionId, cx: &mut Context<Self>) {
+		let entry = action.entry();
+		if entry.route == crate::actions::Route::FocusedPanel
+			&& self.dispatch_to_focused_panel(action, cx)
+		{
+			return;
+		}
+		self.handle_global_action(action, cx);
+	}
+
+	/// Hands `action` to the focused panel's
+	/// [`PanelCommandHandler`](panel_commands::PanelCommandHandler); whether
+	/// it was handled. No focused panel (or the panel declines) means the
+	/// shell's global handler runs instead.
+	fn dispatch_to_focused_panel(&mut self, action: ActionId, cx: &mut Context<Self>) -> bool {
+		let Some(id) = self.focused_panel else {
+			return false;
+		};
+		match id {
+			PROJECT => self
+				.panels
+				.project
+				.update(cx, |panel, cx| panel_commands::dispatch_to(panel, action, cx)),
+			SOURCE_VIEWER => self.panels.source_viewer.update(cx, |panel, cx| {
+				panel_commands::dispatch_to(panel, action, cx)
+			}),
+			PROGRAM_VIEWER => self.panels.program_viewer.update(cx, |panel, cx| {
+				panel_commands::dispatch_to(panel, action, cx)
+			}),
+			NODE_EDITOR => self.panels.node_editor.update(cx, |panel, cx| {
+				panel_commands::dispatch_to(panel, action, cx)
+			}),
+			INSPECTOR => self
+				.panels
+				.inspector
+				.update(cx, |panel, cx| panel_commands::dispatch_to(panel, action, cx)),
+			HISTORY => self
+				.panels
+				.history
+				.update(cx, |panel, cx| panel_commands::dispatch_to(panel, action, cx)),
+			TIMELINE => self
+				.panels
+				.timeline
+				.update(cx, |panel, cx| panel_commands::dispatch_to(panel, action, cx)),
+			EFFECT_LIBRARY => self.panels.effect_library.update(cx, |panel, cx| {
+				panel_commands::dispatch_to(panel, action, cx)
+			}),
+			_ => false,
+		}
+	}
+
+	/// The shell's global action handler: file dialogs, undo, view
+	/// preferences, tools, transport fallbacks — and the placeholder
+	/// `println!` for the actions not wired yet.
+	fn handle_global_action(&mut self, action: ActionId, cx: &mut Context<Self>) {
+		use crate::actions::ActionId as A;
+		match action {
 			// --- File ------------------------------------------------------
-			NEW_PROJECT => self.new_project(cx),
-			OPEN_PROJECT => self.open_file_dialog(FileAction::Open, cx),
-			OPEN_FROM_LIBRARY | PROJECT_MANAGER => self.show_project_manager(cx),
-			IMPORT_FOOTAGE => self.open_file_dialog(FileAction::ImportFootage, cx),
-			EXPORT_PROJECT => self.open_file_dialog(FileAction::ExportProjectFile, cx),
-			CLOSE => self
+			A::NewProject => self.new_project(cx),
+			A::OpenProject => self.open_file_dialog(FileAction::Open, cx),
+			A::OpenFromLibrary | A::ProjectManager => self.show_project_manager(cx),
+			A::Import => self.open_file_dialog(FileAction::ImportFootage, cx),
+			A::SaveProject | A::SaveProjectAs => {
+				self.open_file_dialog(FileAction::ExportProjectFile, cx)
+			}
+			A::CloseProject => self
 				.engine
 				.update(cx, |engine, cx| engine.close_project(cx)),
-			EXPORT => self.open_export_dialog(cx),
-			QUIT => cx.quit(),
+			A::Export => self.open_export_dialog(cx),
+			A::Exit => cx.quit(),
 			// --- Edit ------------------------------------------------------
-			UNDO => self.engine.update(cx, |engine, cx| engine.undo(cx)),
-			REDO => self.engine.update(cx, |engine, cx| engine.redo(cx)),
-			DELETE => self.delete_timeline_selection(false, cx),
-			RIPPLE_DELETE => self.delete_timeline_selection(true, cx),
-			SELECT_ALL => self.select_all_clips(cx),
-			CUT | COPY | PASTE => {
-				println!("[menu] clipboard action {item} not wired yet");
-			}
+			A::Undo => self.engine.update(cx, |engine, cx| engine.undo(cx)),
+			A::Redo => self.engine.update(cx, |engine, cx| engine.redo(cx)),
+			A::Delete => self.delete_timeline_selection(false, cx),
+			A::RippleDelete => self.delete_timeline_selection(true, cx),
+			A::SelectAll => self.select_all_clips(cx),
+			A::DeselectAll => self.deselect_all_clips(cx),
+			A::SplitAtPlayhead => self
+				.engine
+				.update(cx, |engine, cx| engine.split_at_playhead(cx)),
+			A::SetInPoint => self.set_point_at_playhead(true, cx),
+			A::SetOutPoint => self.set_point_at_playhead(false, cx),
+			A::ClearInOut | A::ClearWorkArea => self
+				.engine
+				.update(cx, |engine, cx| engine.clear_workarea(cx)),
+			A::Marker => self
+				.engine
+				.update(cx, |engine, cx| engine.add_marker_at_playhead(cx)),
 			// --- View ------------------------------------------------------
-			THEME_DARK => {
+			A::ThemeDark => {
 				crate::oakui::real::set_theme_dark(true);
 				self.apply_dark(true, cx);
 			}
-			THEME_LIGHT => {
+			A::ThemeLight => {
 				crate::oakui::real::set_theme_dark(false);
 				self.apply_dark(false, cx);
 			}
-			ZOOM_IN => self.zoom_timeline(1.25, cx),
-			ZOOM_OUT => self.zoom_timeline(0.8, cx),
-			LANG_ZH => self.switch_language(crate::i18n::Language::ZhCN, cx),
-			LANG_EN => self.switch_language(crate::i18n::Language::EnUs, cx),
-			PREFERENCES => self.open_preferences(cx),
-			// --- Playback --------------------------------------------------
-			PLAY_PAUSE => {
+			A::ZoomIn => self.zoom_timeline(1.25, cx),
+			A::ZoomOut => self.zoom_timeline(0.8, cx),
+			A::IncreaseTrackHeight => self.nudge_track_height(8.0, cx),
+			A::DecreaseTrackHeight => self.nudge_track_height(-8.0, cx),
+			A::ToggleShowAll => {
+				self.show_all = !self.show_all;
+				println!(
+					"[view] toggle show all: {} (placeholder)",
+					self.show_all
+				);
+				self.rebuild_menu_bar(cx);
+			}
+			A::FullScreen => {
+				self.full_screen = !self.full_screen;
+				println!("[view] full screen: {} (placeholder)", self.full_screen);
+				self.rebuild_menu_bar(cx);
+			}
+			A::LangZh => self.switch_language(crate::i18n::Language::ZhCN, cx),
+			A::LangEn => self.switch_language(crate::i18n::Language::EnUs, cx),
+			A::Preferences => self.open_preferences(cx),
+			// --- Playback (the program monitor) ----------------------------
+			A::PlayPause => {
 				let playing = self.program_clock.read(cx).is_playing();
 				let monitor = Monitor::Program;
 				self.engine.update(cx, |engine, cx| {
@@ -623,69 +790,124 @@ impl<E: AppEngine> OakApp<E> {
 					}
 				});
 			}
-			PREV_FRAME => {
+			A::PrevFrame => {
 				let monitor = Monitor::Program;
 				self.engine
 					.update(cx, |engine, cx| engine.step(monitor, -1, cx));
 			}
-			NEXT_FRAME => {
+			A::NextFrame => {
 				let monitor = Monitor::Program;
 				self.engine
 					.update(cx, |engine, cx| engine.step(monitor, 1, cx));
 			}
-			PLAY => {
+			A::ShuttleLeft => {
+				// J steps back — true reverse playback is an engine transport
+				// gap (the old shortcut table did the same).
 				let monitor = Monitor::Program;
 				self.engine
-					.update(cx, |engine, cx| engine.play(monitor, cx));
+					.update(cx, |engine, cx| engine.step(monitor, -1, cx));
 			}
-			PAUSE => {
+			A::ShuttleStop => {
 				let monitor = Monitor::Program;
 				self.engine
 					.update(cx, |engine, cx| engine.pause(monitor, cx));
 			}
-			TO_START => {
+			A::ShuttleRight => {
+				let monitor = Monitor::Program;
+				self.engine
+					.update(cx, |engine, cx| engine.play(monitor, cx));
+			}
+			A::GoToStart => {
 				let monitor = Monitor::Program;
 				self.engine.update(cx, |engine, cx| {
 					engine.request_frame(monitor, Frame::ZERO, cx)
 				});
 			}
-			SET_IN_POINT => self.set_point_at_playhead(true, cx),
-			SET_OUT_POINT => self.set_point_at_playhead(false, cx),
+			A::GoToEnd => {
+				let monitor = Monitor::Program;
+				let length = self.engine.read(cx).sequence_length();
+				self.engine.update(cx, |engine, cx| {
+					engine.request_frame(monitor, length, cx)
+				});
+			}
+			A::GoToIn => {
+				if let Some((start, _)) = self.engine.read(cx).workarea() {
+					let monitor = Monitor::Program;
+					self.engine.update(cx, |engine, cx| {
+						engine.request_frame(monitor, start, cx)
+					});
+				}
+			}
+			A::GoToOut => {
+				if let Some((_, end)) = self.engine.read(cx).workarea() {
+					let monitor = Monitor::Program;
+					self.engine.update(cx, |engine, cx| {
+						engine.request_frame(monitor, end, cx)
+					});
+				}
+			}
+			A::PlayInToOut => {
+				// Seek to the work area's start, then play (out-point
+				// stopping is a transport gap).
+				let monitor = Monitor::Program;
+				if let Some((start, _)) = self.engine.read(cx).workarea() {
+					self.engine.update(cx, |engine, cx| {
+						engine.request_frame(monitor, start, cx)
+					});
+				}
+				self.engine.update(cx, |engine, cx| engine.play(monitor, cx));
+			}
+			A::Loop => {
+				self.loop_playback = !self.loop_playback;
+				println!("[playback] loop: {} (placeholder)", self.loop_playback);
+				self.rebuild_menu_bar(cx);
+			}
 			// --- Sequence --------------------------------------------------
-			ADD_VIDEO_TRACK => {
+			A::AddVideoTrack => {
 				let kind = gpui::timeline::TrackKind::Video;
 				self.engine
 					.update(cx, |engine, cx| engine.add_track(kind, cx));
 			}
-			ADD_AUDIO_TRACK => {
+			A::AddAudioTrack => {
 				let kind = gpui::timeline::TrackKind::Audio;
 				self.engine
 					.update(cx, |engine, cx| engine.add_track(kind, cx));
 			}
-			REMOVE_TRACK => self.remove_selected_track(cx),
-			SPLIT_AT_PLAYHEAD => self
-				.engine
-				.update(cx, |engine, cx| engine.split_at_playhead(cx)),
-			ADD_MARKER => self
-				.engine
-				.update(cx, |engine, cx| engine.add_marker_at_playhead(cx)),
-			REMOVE_MARKER => self
+			A::RemoveTrack => self.remove_selected_track(cx),
+			A::RemoveMarker => self
 				.engine
 				.update(cx, |engine, cx| engine.remove_marker_at_playhead(cx)),
-			SET_WORKAREA => self.set_workarea_from_selection(cx),
-			CLEAR_WORKAREA => self
-				.engine
-				.update(cx, |engine, cx| engine.clear_workarea(cx)),
+			A::SetWorkArea => self.set_workarea_from_selection(cx),
 			// --- Window ----------------------------------------------------
-			FOCUS_PROJECT => self.focus_panel(PROJECT, cx),
-			FOCUS_SOURCE_VIEWER => self.focus_panel(SOURCE_VIEWER, cx),
-			FOCUS_PROGRAM_VIEWER => self.focus_panel(PROGRAM_VIEWER, cx),
-			FOCUS_NODE_EDITOR => self.focus_panel(NODE_EDITOR, cx),
-			FOCUS_INSPECTOR => self.focus_panel(INSPECTOR, cx),
-			FOCUS_HISTORY => self.focus_panel(HISTORY, cx),
-			FOCUS_TIMELINE => self.focus_panel(TIMELINE, cx),
-			FOCUS_EFFECT_LIBRARY => self.focus_panel(EFFECT_LIBRARY, cx),
-			other => println!("[menu] placeholder action for item {other}"),
+			A::FocusProject => self.focus_panel(PROJECT, cx),
+			A::FocusSourceViewer => self.focus_panel(SOURCE_VIEWER, cx),
+			A::FocusProgramViewer => self.focus_panel(PROGRAM_VIEWER, cx),
+			A::FocusNodeEditor => self.focus_panel(NODE_EDITOR, cx),
+			A::FocusInspector => self.focus_panel(INSPECTOR, cx),
+			A::FocusHistory => self.focus_panel(HISTORY, cx),
+			A::FocusTimeline => self.focus_panel(TIMELINE, cx),
+			A::FocusEffectLibrary => self.focus_panel(EFFECT_LIBRARY, cx),
+			// --- Tools -----------------------------------------------------
+			A::Snapping => {
+				let enabled = !self.timeline.read(cx).state.snap_enabled;
+				self.timeline.update(cx, |timeline, cx| {
+					timeline.state.snap_enabled = enabled;
+					cx.notify();
+				});
+				println!("[tools] snapping: {enabled}");
+				self.rebuild_menu_bar(cx);
+			}
+			tool_action if Tool::from_action(tool_action).is_some() => {
+				let tool = Tool::from_action(tool_action).unwrap();
+				self.active_tool = tool;
+				println!("[tools] selected: {tool:?} (placeholder behavior)");
+				self.rebuild_menu_bar(cx);
+			}
+			// --- everything else is a placeholder --------------------------
+			other => println!(
+				"[action] {} not wired yet (placeholder)",
+				other.entry().cpp_id
+			),
 		}
 	}
 
@@ -740,6 +962,17 @@ impl<E: AppEngine> OakApp<E> {
 			.update(cx, |engine, cx| engine.set_selected_clips(ids, cx));
 	}
 
+	/// 编辑 → 取消全选: clears the timeline selection and tells the engine
+	/// (the effect stack's target follows).
+	fn deselect_all_clips(&mut self, cx: &mut Context<Self>) {
+		self.timeline.update(cx, |view, cx| {
+			view.state.select_range(std::iter::empty::<ClipId>());
+			cx.notify();
+		});
+		self.engine
+			.update(cx, |engine, cx| engine.set_selected_clips(Vec::new(), cx));
+	}
+
 	/// 视图 → 放大/缩小: scales the timeline zoom around its left edge
 	/// (`TimelineState::set_zoom` clamps to the widget's zoom range).
 	fn zoom_timeline(&mut self, factor: f32, cx: &mut Context<Self>) {
@@ -748,6 +981,20 @@ impl<E: AppEngine> OakApp<E> {
 			view.state.set_zoom(zoom, px(0.));
 			cx.notify();
 		});
+	}
+
+	/// 视图 → 轨道高度 ±: steps every track's height by `delta` pixels,
+	/// clamped to the track-height slider's range (24–160px).
+	fn nudge_track_height(&mut self, delta: f32, cx: &mut Context<Self>) {
+		let current = self
+			.engine
+			.read(cx)
+			.track(0)
+			.map(|track| f32::from(track.height()))
+			.unwrap_or(64.0);
+		let next = (current + delta).clamp(24.0, 160.0);
+		self.engine
+			.update(cx, |engine, cx| engine.set_track_height(px(next), cx));
 	}
 
 	/// 回放 → 设置入点/出点: moves the work area's start (`in_point`) or end
@@ -795,19 +1042,16 @@ impl<E: AppEngine> OakApp<E> {
 		cx.notify();
 	}
 
-	/// The shell's keyboard shortcut entry point: maps the keystroke through
-	/// [`crate::shortcuts`] and dispatches the matched menu action. While a
-	/// modal dialog is open the shell stays keyboard-quiet, so the dialogs'
-	/// text fields never trigger editing actions.
-	fn on_shortcut(&mut self, keystroke: &gpui::Keystroke, cx: &mut Context<Self>) {
+	/// The shell's keyboard entry point: the global key bindings dispatch
+	/// gpui actions, which bubble up to the root's action listeners and land
+	/// here — the same [`Self::dispatch_action_id`] path the menu clicks
+	/// take. While a modal dialog is open the shell stays keyboard-quiet, so
+	/// the dialogs' text fields never trigger editing actions.
+	fn on_action_dispatched(&mut self, action: ActionId, cx: &mut Context<Self>) {
 		if !matches!(self.modal, ModalState::None) {
 			return;
 		}
-		let Some(action) = crate::shortcuts::action_for(keystroke) else {
-			return;
-		};
-		cx.stop_propagation();
-		self.on_menu(action, cx);
+		self.dispatch_action_id(action, cx);
 	}
 
 	/// Removes the first track selected in the timeline header.
@@ -883,15 +1127,22 @@ impl<E: AppEngine> OakApp<E> {
 	}
 
 	/// Replaces the `MenuBar` entity with one built from the current language
-	/// and theme, re-subscribing to its trigger events.
+	/// and the dynamic checkmark state, re-subscribing to its trigger events.
 	fn rebuild_menu_bar(&mut self, cx: &mut Context<Self>) {
 		let windows = cx.windows();
 		let Some(handle) = windows.first() else {
 			return;
 		};
-		let dark = self.dark;
+		let state = MenuState {
+			dark: self.dark,
+			active_tool: self.active_tool,
+			snapping: self.timeline.read(cx).state.snap_enabled,
+			loop_playback: self.loop_playback,
+			show_all: self.show_all,
+			full_screen: self.full_screen,
+		};
 		let Ok(menu_bar) = cx.update_window(*handle, |_root, window, app| {
-			app.new(|cx| MenuBar::new(1, make_menus(dark), window, cx))
+			app.new(|cx| MenuBar::new(1, make_menus(state), window, cx))
 		}) else {
 			return;
 		};
@@ -1550,13 +1801,23 @@ impl<E: AppEngine> Render for OakApp<E> {
 			.size_full()
 			.flex()
 			.flex_col()
-			.track_focus(&self.shell_focus)
-			// The shell's keyboard shortcut layer: keys not consumed by a
-			// focused widget bubble up here and dispatch through the
-			// shortcut table (see `crate::shortcuts`).
-			.on_key_down(cx.listener(|this, event: &gpui::KeyDownEvent, _window, cx| {
-				this.on_shortcut(&event.keystroke, cx);
-			}))
+			.track_focus(&self.shell_focus);
+		// The shell's keyboard dispatch layer: the global key bindings
+		// (registered in `new` from the action registry) dispatch gpui
+		// actions, which bubble up from the focused widget and land here —
+		// one listener per registry action, all routing through the same
+		// `dispatch_action_id` the menu clicks use.
+		for entry in crate::actions::REGISTRY {
+			let action = entry.action;
+			root = root.on_boxed_action(
+				&*(entry.build)(),
+				cx.listener(move |this, _action: &dyn gpui::Action, _window, cx| {
+					cx.stop_propagation();
+					this.on_action_dispatched(action, cx);
+				}),
+			);
+		}
+		let mut root = root
 			.child(self.menu_bar.clone())
 			.child(div().flex_1().min_h_0().child(self.dock.clone()))
 			.child(self.status_bar.clone());
@@ -1567,136 +1828,249 @@ impl<E: AppEngine> Render for OakApp<E> {
 	}
 }
 
-/// Builds the menu bar entries (文件/编辑/视图/回放/序列/窗口/工具/帮助). All
-/// labels come from the [`crate::i18n`] tables, so rebuilding the menu bar
-/// after a language switch repaints it in the new language. `dark` drives the
-/// theme submenu's checkmark.
-fn make_menus(dark: bool) -> Vec<MenuBarEntry> {
-	use crate::i18n::tr;
-	use menu_ids::*;
+/// The dynamic menu-bar state the registry-driven menu tree reads its
+/// checkmarks from (theme, active tool, snapping, loop, show-all,
+/// full-screen).
+#[derive(Clone, Copy)]
+struct MenuState {
+	dark: bool,
+	active_tool: Tool,
+	snapping: bool,
+	loop_playback: bool,
+	show_all: bool,
+	full_screen: bool,
+}
 
-	let current = crate::i18n::language();
+impl MenuState {
+	/// The shell's startup state (the timeline widget defaults to snapping
+	/// on, the pointer tool is active).
+	fn new(dark: bool) -> Self {
+		Self {
+			dark,
+			active_tool: Tool::Pointer,
+			snapping: true,
+			loop_playback: false,
+			show_all: false,
+			full_screen: false,
+		}
+	}
+}
+
+/// One menu item straight from the registry — delegates to
+/// [`menus::shared::action_item`](crate::menus::shared::action_item) so the
+/// menu bar and the context menus build items the same way.
+fn menu_item(action: ActionId) -> MenuItem {
+	crate::menus::shared::action_item(action)
+}
+
+/// Builds the menu bar entries (文件/编辑/视图/回放/序列/窗口/工具/帮助) from
+/// the action registry (`src/actions.rs`): this function decides placement,
+/// grouping and separators, while ids, labels and shortcut annotations all
+/// come from the registry — so a menu click and a key press can never
+/// diverge. All labels come from the [`crate::i18n`] tables, so rebuilding
+/// the menu bar after a language switch repaints it in the new language;
+/// `state` drives the dynamic checkmarks (theme, tool, snapping, loop, …).
+fn make_menus(state: MenuState) -> Vec<MenuBarEntry> {
+	use crate::actions::ActionId as A;
+	use crate::i18n::tr;
 
 	let theme_submenu = Menu::new(vec![
-		MenuItem::new(THEME_DARK, tr("menu.view.theme.dark")).with_checked(dark),
-		MenuItem::new(THEME_LIGHT, tr("menu.view.theme.light")).with_checked(!dark),
+		menu_item(A::ThemeDark).with_checked(state.dark),
+		menu_item(A::ThemeLight).with_checked(!state.dark),
 	]);
 
+	let language = crate::i18n::language();
 	let language_submenu = Menu::new(vec![
-		MenuItem::new(LANG_ZH, tr("menu.view.language.zh"))
-			.with_checked(current == crate::i18n::Language::ZhCN),
-		MenuItem::new(LANG_EN, tr("menu.view.language.en"))
-			.with_checked(current == crate::i18n::Language::EnUs),
+		menu_item(A::LangZh).with_checked(language == crate::i18n::Language::ZhCN),
+		menu_item(A::LangEn).with_checked(language == crate::i18n::Language::EnUs),
 	]);
+
+	// 工具: the mutually exclusive tool group in the registry's order, the
+	// add tool growing its addable-items submenu, then snapping + proxy.
+	let mut tools: Vec<MenuItem> = Vec::new();
+	for tool in [
+		Tool::Pointer,
+		Tool::TrackSelect,
+		Tool::Edit,
+		Tool::Ripple,
+		Tool::Rolling,
+		Tool::Razor,
+		Tool::Slip,
+		Tool::Slide,
+		Tool::Hand,
+		Tool::Zoom,
+		Tool::Transition,
+		Tool::Add,
+		Tool::Record,
+	] {
+		let mut item = menu_item(tool.action()).with_checked(tool == state.active_tool);
+		if tool == Tool::Add {
+			item = item.with_submenu(Menu::new(vec![
+				menu_item(A::AddEmpty),
+				menu_item(A::AddBars),
+				menu_item(A::AddShape),
+				menu_item(A::AddSolid),
+				menu_item(A::AddTitle),
+				menu_item(A::AddTone),
+				menu_item(A::AddSubtitle),
+			]));
+		}
+		tools.push(item);
+	}
+	tools.push(menu_item(A::Snapping).with_checked(state.snapping).separated());
+	tools.push(menu_item(A::UseProxyMedia));
+	tools.push(menu_item(A::ProxySettings));
 
 	vec![
 		MenuBarEntry::new(
 			tr("menu.file"),
 			Menu::new(vec![
-				MenuItem::new(NEW_PROJECT, tr("menu.file.new_project")).with_shortcut("⌘N"),
-				MenuItem::new(OPEN_FROM_LIBRARY, tr("menu.file.open_library")),
-				MenuItem::new(OPEN_PROJECT, tr("menu.file.open_project")).with_shortcut("⌘O"),
-				MenuItem::new(PROJECT_MANAGER, tr("menu.file.project_manager")).separated(),
-				MenuItem::new(IMPORT_FOOTAGE, tr("menu.file.import_footage")),
-				MenuItem::new(EXPORT_PROJECT, tr("menu.file.export_project"))
-					.with_shortcut("⌘S")
-					.separated(),
-				MenuItem::new(CLOSE, tr("menu.file.close")),
-				MenuItem::new(EXPORT, tr("menu.file.export"))
-					.with_shortcut("⌘E")
-					.separated(),
-				MenuItem::new(QUIT, tr("menu.file.quit"))
-					.with_shortcut("⌘Q")
-					.separated(),
+				// 新建 ▸ group: the parent carries the first child's id (the
+				// same shape the theme/language submenus use).
+				MenuItem::new(A::NewProject.menu_id(), tr("menu.file.new")).with_submenu(
+					Menu::new(vec![
+						menu_item(A::NewProject),
+						menu_item(A::NewSequence),
+						menu_item(A::NewFolder),
+					]),
+				),
+				menu_item(A::OpenFromLibrary),
+				menu_item(A::OpenProject),
+				// 最近打开 ▸ (no recent-files backend yet: only the clear item).
+				MenuItem::new(A::ClearOpenRecent.menu_id(), tr("menu.file.open_recent"))
+					.with_submenu(Menu::new(vec![menu_item(A::ClearOpenRecent)])),
+				menu_item(A::ProjectManager).separated(),
+				menu_item(A::Import),
+				menu_item(A::SaveProject),
+				menu_item(A::SaveProjectAs),
+				menu_item(A::Revert),
+				menu_item(A::Export).separated(),
+				menu_item(A::ProjectProperties),
+				menu_item(A::CloseProject).separated(),
+				menu_item(A::Exit),
 			]),
 		),
 		MenuBarEntry::new(
 			tr("menu.edit"),
 			Menu::new(vec![
-				MenuItem::new(UNDO, tr("menu.edit.undo")).with_shortcut("⌘Z"),
-				MenuItem::new(REDO, tr("menu.edit.redo"))
-					.with_shortcut("⇧⌘Z")
-					.separated(),
-				MenuItem::new(CUT, tr("menu.edit.cut")).with_shortcut("⌘X"),
-				MenuItem::new(COPY, tr("menu.edit.copy")).with_shortcut("⌘C"),
-				MenuItem::new(PASTE, tr("menu.edit.paste")).with_shortcut("⌘V"),
-				MenuItem::new(DELETE, tr("menu.edit.delete")).with_shortcut("⌫"),
-				MenuItem::new(RIPPLE_DELETE, tr("menu.edit.ripple_delete"))
-					.with_shortcut("⇧⌫")
-					.separated(),
-				MenuItem::new(SELECT_ALL, tr("menu.edit.select_all")).with_shortcut("A"),
+				menu_item(A::Undo),
+				menu_item(A::Redo).separated(),
+				menu_item(A::Cut),
+				menu_item(A::Copy),
+				menu_item(A::Paste),
+				menu_item(A::PasteInsert),
+				menu_item(A::Duplicate).separated(),
+				menu_item(A::Rename),
+				menu_item(A::Delete),
+				menu_item(A::RippleDelete).separated(),
+				menu_item(A::SplitAtPlayhead),
+				menu_item(A::SpeedDuration),
+				menu_item(A::DefaultTransition),
+				menu_item(A::LinkUnlink),
+				menu_item(A::EnableDisable),
+				menu_item(A::Nest).separated(),
+				menu_item(A::SelectAll),
+				menu_item(A::DeselectAll).separated(),
+				menu_item(A::Insert),
+				menu_item(A::Overwrite).separated(),
+				menu_item(A::RippleToIn),
+				menu_item(A::RippleToOut),
+				menu_item(A::EditToIn),
+				menu_item(A::EditToOut).separated(),
+				menu_item(A::NudgeLeft),
+				menu_item(A::NudgeRight).separated(),
+				menu_item(A::MoveInToPlayhead),
+				menu_item(A::MoveOutToPlayhead).separated(),
+				menu_item(A::SetInPoint),
+				menu_item(A::SetOutPoint),
+				menu_item(A::ResetIn),
+				menu_item(A::ResetOut),
+				menu_item(A::ClearInOut).separated(),
+				menu_item(A::DeleteInOut),
+				menu_item(A::RippleDeleteInOut).separated(),
+				menu_item(A::Marker),
 			]),
 		),
 		MenuBarEntry::new(
 			tr("menu.view"),
 			Menu::new(vec![
-				MenuItem::new(THEME_DARK, tr("menu.view.theme")).with_submenu(theme_submenu),
-				MenuItem::new(LANG_ZH, tr("menu.view.language")).with_submenu(language_submenu),
-				MenuItem::new(ZOOM_IN, tr("menu.view.zoom_in"))
-					.with_shortcut("+")
-					.separated(),
-				MenuItem::new(ZOOM_OUT, tr("menu.view.zoom_out")).with_shortcut("-"),
-				MenuItem::new(PREFERENCES, tr("menu.view.preferences"))
-					.with_shortcut("⌘,")
-					.separated(),
+				menu_item(A::ThemeDark).with_submenu(theme_submenu),
+				menu_item(A::LangZh).with_submenu(language_submenu),
+				menu_item(A::ZoomIn).separated(),
+				menu_item(A::ZoomOut),
+				menu_item(A::IncreaseTrackHeight),
+				menu_item(A::DecreaseTrackHeight).separated(),
+				menu_item(A::ToggleShowAll).with_checked(state.show_all),
+				menu_item(A::FullScreen).with_checked(state.full_screen),
+				menu_item(A::FullScreenViewer).separated(),
+				menu_item(A::Preferences),
 			]),
 		),
 		MenuBarEntry::new(
 			tr("menu.playback"),
 			Menu::new(vec![
-				MenuItem::new(PLAY_PAUSE, tr("menu.playback.play_pause")).with_shortcut("空格"),
-				MenuItem::new(PLAY, tr("menu.playback.play")).with_shortcut("L"),
-				MenuItem::new(PAUSE, tr("menu.playback.pause")).with_shortcut("K"),
-				MenuItem::new(PREV_FRAME, tr("menu.playback.prev_frame")).with_shortcut("←"),
-				MenuItem::new(NEXT_FRAME, tr("menu.playback.next_frame"))
-					.with_shortcut("→")
-					.separated(),
-				MenuItem::new(TO_START, tr("menu.playback.to_start")).with_shortcut("Home"),
-				MenuItem::new(SET_IN_POINT, tr("menu.playback.set_in_point")).with_shortcut("I"),
-				MenuItem::new(SET_OUT_POINT, tr("menu.playback.set_out_point")).with_shortcut("O"),
+				menu_item(A::PlayPause),
+				menu_item(A::PlayInToOut),
+				menu_item(A::Loop).with_checked(state.loop_playback).separated(),
+				menu_item(A::ShuttleLeft),
+				menu_item(A::ShuttleStop),
+				menu_item(A::ShuttleRight).separated(),
+				menu_item(A::PrevFrame),
+				menu_item(A::NextFrame).separated(),
+				menu_item(A::GoToStart),
+				menu_item(A::GoToEnd),
+				menu_item(A::GoToPrevCut),
+				menu_item(A::GoToNextCut).separated(),
+				menu_item(A::GoToIn),
+				menu_item(A::GoToOut),
 			]),
 		),
 		MenuBarEntry::new(
 			tr("menu.sequence"),
 			Menu::new(vec![
-				MenuItem::new(ADD_VIDEO_TRACK, tr("menu.sequence.add_video_track")),
-				MenuItem::new(ADD_AUDIO_TRACK, tr("menu.sequence.add_audio_track")),
-				MenuItem::new(REMOVE_TRACK, tr("menu.sequence.remove_track")).separated(),
-				MenuItem::new(SPLIT_AT_PLAYHEAD, tr("menu.sequence.split_at_playhead"))
-					.with_shortcut("S"),
-				MenuItem::new(ADD_MARKER, tr("menu.sequence.add_marker")).with_shortcut("M"),
-				MenuItem::new(REMOVE_MARKER, tr("menu.sequence.remove_marker")).separated(),
-				MenuItem::new(SET_WORKAREA, tr("menu.sequence.set_workarea")),
-				MenuItem::new(CLEAR_WORKAREA, tr("menu.sequence.clear_workarea")),
-				MenuItem::new(704, tr("menu.sequence.settings")).disabled(),
+				menu_item(A::AddVideoTrack),
+				menu_item(A::AddAudioTrack),
+				menu_item(A::RemoveTrack).separated(),
+				menu_item(A::SetWorkArea),
+				menu_item(A::ClearWorkArea).separated(),
+				menu_item(A::RemoveMarker).separated(),
+				menu_item(A::SeqCache),
+				menu_item(A::SeqCacheInOut),
+				menu_item(A::SeqCacheClear).separated(),
+				menu_item(A::SequenceSettings).disabled(),
 			]),
 		),
 		MenuBarEntry::new(
 			tr("menu.window"),
 			Menu::new(vec![
-				MenuItem::new(FOCUS_PROJECT, tr("menu.window.project")),
-				MenuItem::new(FOCUS_SOURCE_VIEWER, tr("menu.window.source_viewer")),
-				MenuItem::new(FOCUS_PROGRAM_VIEWER, tr("menu.window.program_viewer")),
-				MenuItem::new(FOCUS_NODE_EDITOR, tr("menu.window.node_editor")),
-				MenuItem::new(FOCUS_INSPECTOR, tr("menu.window.inspector")),
-				MenuItem::new(FOCUS_HISTORY, tr("menu.window.history")),
-				MenuItem::new(FOCUS_TIMELINE, tr("menu.window.timeline")),
-				MenuItem::new(FOCUS_EFFECT_LIBRARY, tr("menu.window.effect_library")),
+				menu_item(A::FocusProject),
+				menu_item(A::FocusSourceViewer),
+				menu_item(A::FocusProgramViewer),
+				menu_item(A::FocusNodeEditor),
+				menu_item(A::FocusInspector),
+				menu_item(A::FocusHistory),
+				menu_item(A::FocusTimeline),
+				menu_item(A::FocusEffectLibrary).separated(),
+				menu_item(A::MaximizePanel),
+				menu_item(A::ResetDefaultLayout),
 			]),
 		),
-		MenuBarEntry::new(
-			tr("menu.tools"),
-			Menu::new(vec![
-				MenuItem::new(701, tr("menu.tools.select")),
-				MenuItem::new(702, tr("menu.tools.razor")),
-				MenuItem::new(703, tr("menu.tools.snap")).with_checked(true),
-			]),
-		),
+		MenuBarEntry::new(tr("menu.tools"), Menu::new(tools)),
 		MenuBarEntry::new(
 			tr("menu.help"),
-			Menu::new(vec![MenuItem::new(ABOUT, tr("menu.help.about"))]),
+			Menu::new(vec![
+				menu_item(A::ActionSearch),
+				menu_item(A::Feedback).separated(),
+				menu_item(A::About),
+			]),
 		),
 	]
+}
+
+/// Builds the menu bar with the startup [`MenuState`] (tests).
+#[cfg(test)]
+pub(crate) fn make_menus_for_test() -> Vec<MenuBarEntry> {
+	make_menus(MenuState::new(true))
 }
 
 /// Command-line arguments the app accepts.
@@ -1843,7 +2217,7 @@ mod tests {
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
 
 		let view_entry = |dark: bool| -> MenuBarEntry {
-			make_menus(dark)
+			make_menus(MenuState::new(dark))
 				.into_iter()
 				.find(|entry| entry.title == crate::i18n::tr("menu.view"))
 				.expect("视图/View menu exists")
@@ -1904,7 +2278,7 @@ mod tests {
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
 
 		let dark_item = |dark: bool| -> gpui_widgets::menu::MenuItem {
-			let entries = make_menus(dark);
+			let entries = make_menus(MenuState::new(dark));
 			let view = entries
 				.iter()
 				.find(|entry| entry.title == crate::i18n::tr("menu.view"))
@@ -1935,7 +2309,7 @@ mod tests {
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
 
 		let entry = |title: &str| -> MenuBarEntry {
-			make_menus(true)
+			make_menus_for_test()
 				.into_iter()
 				.find(|entry| entry.title == title)
 				.expect("menu exists")
@@ -2016,8 +2390,9 @@ mod tests {
 	// Keyboard shortcuts (M12 P5c)
 	// -------------------------------------------------------------------
 
-	/// Every shortcut-table action exists as a menu item (recursing into
-	/// submenus), so a key press can never dispatch a dead action.
+	/// Every registry action with a default key exists as a menu item
+	/// (recursing into submenus), so a key press can never dispatch a dead
+	/// action.
 	#[test]
 	fn every_shortcut_maps_to_a_menu_item() {
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
@@ -2032,21 +2407,26 @@ mod tests {
 			}
 		}
 		let mut ids = Vec::new();
-		for entry in make_menus(true) {
+		for entry in make_menus_for_test() {
 			collect(&entry.menu, &mut ids);
 		}
-		for shortcut in crate::shortcuts::SHORTCUTS {
+		for entry in crate::actions::REGISTRY {
+			if entry.default_keys.is_empty() {
+				continue;
+			}
 			assert!(
-				ids.contains(&shortcut.action),
+				ids.contains(&entry.menu_id()),
 				"shortcut {} → action {} has no menu item",
-				shortcut.keystroke,
-				shortcut.action
+				entry.default_keys[0],
+				entry.cpp_id
 			);
 		}
 	}
 
-	/// The menu's shortcut labels mirror the shortcut table's display
-	/// strings (a drift between them would show the user the wrong key).
+	/// The menu's shortcut labels mirror the registry's display strings (a
+	/// drift between them would show the user the wrong key). Both sides
+	/// come from [`crate::actions::display_shortcut`], so this holds on
+	/// every platform.
 	#[test]
 	fn menu_shortcut_labels_match_the_table() {
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
@@ -2062,10 +2442,13 @@ mod tests {
 			}
 			out
 		}
-		for entry in make_menus(true) {
+		for entry in make_menus_for_test() {
 			for (id, label) in walk(&entry.menu) {
 				let Some(label) = label else { continue };
-				let expected = crate::shortcuts::display_for(id)
+				let Some(registry_entry) = crate::actions::entry_for_menu_id(id) else {
+					panic!("menu item {id} shows {label} but is not a registry action");
+				};
+				let expected = crate::actions::display_shortcut(registry_entry.action)
 					.unwrap_or_else(|| panic!("menu item {id} shows {label} but has no shortcut"));
 				assert_eq!(
 					label.as_ref(),
@@ -2103,7 +2486,121 @@ mod tests {
 		assert!(!playing, "space again pauses program playback");
 	}
 
-	/// ⌘Z on the shell dispatches 编辑 → 撤销 to the engine, and "s" splits
+	/// The registry's default keys dispatch their actions end to end:
+	/// shuttle (j/k/l), in/out points (i/o), marker (m), snapping (s),
+	/// timeline zoom (=/-), track height (⌘=) and — with the timeline
+	/// focused — select-all/deselect-all (⌘A/⌘⇧A) plus the fall-through of
+	/// the still-unwired ripple-to-in/out (q/w).
+	#[gpui::test]
+	async fn keymap_defaults_dispatch_their_actions(cx: &mut TestAppContext) {
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let (window, root) = mock_shell(cx);
+
+		let key = |keystroke: &str| gpui::Keystroke::parse(keystroke).unwrap();
+
+		// --- shuttle: l plays, k stops, j steps back ----------------------
+		cx.dispatch_keystroke(window.into(), key("l"));
+		cx.run_until_parked();
+		assert!(
+			cx.read(|app| root.read(app).program_clock.read(app).is_playing()),
+			"l starts playback"
+		);
+		cx.dispatch_keystroke(window.into(), key("k"));
+		cx.run_until_parked();
+		assert!(
+			!cx.read(|app| root.read(app).program_clock.read(app).is_playing()),
+			"k stops playback"
+		);
+		for _ in 0..10 {
+			cx.dispatch_keystroke(window.into(), key("right"));
+		}
+		cx.dispatch_keystroke(window.into(), key("j"));
+		cx.run_until_parked();
+		assert_eq!(
+			cx.read(|app| root.read(app).program_clock.read(app).current_frame()),
+			Frame(9),
+			"j steps one frame back from frame 10"
+		);
+
+		// --- in/out points: i marks the in at 9, o the out at 15 ----------
+		cx.dispatch_keystroke(window.into(), key("i"));
+		for _ in 0..6 {
+			cx.dispatch_keystroke(window.into(), key("right"));
+		}
+		cx.dispatch_keystroke(window.into(), key("o"));
+		cx.run_until_parked();
+		let workarea = cx.read(|app| root.read(app).engine.read(app).workarea());
+		assert_eq!(workarea, Some((Frame(9), Frame(15))), "i/o set the work area");
+
+		// --- marker: m adds one at the playhead ---------------------------
+		cx.dispatch_keystroke(window.into(), key("m"));
+		cx.run_until_parked();
+		let markers = cx.read(|app| root.read(app).engine.read(app).markers());
+		assert!(
+			markers.iter().any(|marker| marker.frame == Frame(15)),
+			"m adds a marker at the playhead"
+		);
+
+		// --- snapping: s toggles the timeline's snap flag ------------------
+		cx.dispatch_keystroke(window.into(), key("s"));
+		cx.run_until_parked();
+		assert!(
+			!cx.read(|app| root.read(app).timeline.read(app).state.snap_enabled),
+			"s toggles snapping off"
+		);
+
+		// --- zoom: = zooms in, - zooms out ---------------------------------
+		let zoom_before = cx.read(|app| root.read(app).timeline.read(app).state.zoom);
+		cx.dispatch_keystroke(window.into(), key("="));
+		cx.run_until_parked();
+		let zoom_in = cx.read(|app| root.read(app).timeline.read(app).state.zoom);
+		assert!(zoom_in > zoom_before, "= zooms the timeline in");
+		cx.dispatch_keystroke(window.into(), key("-"));
+		cx.run_until_parked();
+		let zoom_out = cx.read(|app| root.read(app).timeline.read(app).state.zoom);
+		assert!(zoom_out < zoom_in, "- zooms the timeline out");
+
+		// --- track height: ⌘= grows the tracks by 8px (24–160px clamp) ----
+		let height = |cx: &mut TestAppContext| -> f32 {
+			cx.read(|app| {
+				root.read(app)
+					.engine
+					.read(app)
+					.track(0)
+					.map(|track| f32::from(track.height()))
+					.unwrap_or_default()
+			})
+		};
+		let height_before = height(cx);
+		cx.dispatch_keystroke(window.into(), key("secondary-="));
+		cx.run_until_parked();
+		assert_eq!(height(cx), height_before + 8.0, "⌘= grows the tracks");
+
+		// --- focused-panel routing: ⌘A / ⌘⇧A hit the timeline panel --------
+		cx.update(|app| root.update(app, |app, _cx| app.focused_panel = Some(TIMELINE)));
+		cx.dispatch_keystroke(window.into(), key("secondary-a"));
+		cx.run_until_parked();
+		let selected = cx.read(|app| root.read(app).timeline.read(app).selection().len());
+		assert!(selected > 0, "⌘A selects every clip via the timeline panel");
+		cx.dispatch_keystroke(window.into(), key("secondary-shift-a"));
+		cx.run_until_parked();
+		let selected = cx.read(|app| root.read(app).timeline.read(app).selection().len());
+		assert_eq!(selected, 0, "⌘⇧A deselects via the timeline panel");
+
+		// q/w (ripple-to-in/out) reach the panel but are not wired yet —
+		// they fall through to the shell's placeholder, state untouched.
+		cx.dispatch_keystroke(window.into(), key("q"));
+		cx.dispatch_keystroke(window.into(), key("w"));
+		cx.run_until_parked();
+		let workarea = cx.read(|app| root.read(app).engine.read(app).workarea());
+		assert_eq!(
+			workarea,
+			Some((Frame(9), Frame(15))),
+			"q/w are inert placeholders for now"
+		);
+	}
+
+	/// ⌘Z on the shell dispatches 编辑 → 撤销 to the engine, and ⌘K splits
 	/// at the playhead.
 	#[gpui::test]
 	async fn edit_shortcuts_dispatch_to_the_engine(cx: &mut TestAppContext) {
@@ -2111,7 +2608,7 @@ mod tests {
 		let (window, root) = mock_shell(cx);
 
 		// Move the playhead inside the first clip (the → shortcut steps one
-		// frame), then split with "s": the mock sequence grows by one clip.
+		// frame), then split with ⌘K: the mock sequence grows by one clip.
 		for _ in 0..10 {
 			cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("right").unwrap());
 		}
@@ -2126,7 +2623,10 @@ mod tests {
 				.map(|t| t.clips().len())
 				.sum()
 		});
-		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("s").unwrap());
+		cx.dispatch_keystroke(
+			window.into(),
+			gpui::Keystroke::parse("secondary-k").unwrap(),
+		);
 		cx.run_until_parked();
 		let clips_after: usize = cx.read(|app| {
 			let engine = root.read(app).engine.read(app);
@@ -2164,7 +2664,8 @@ mod tests {
 		cx.update(|app| root.update(app, |app, cx| app.on_menu(menu_ids::PREFERENCES, cx)));
 		cx.run_until_parked();
 
-		// "s" would split at the playhead without the modal guard.
+		// ⌘K would split at the playhead, "s" would toggle snapping and
+		// space would start playback without the modal guard.
 		let clips_before: usize = cx.read(|app| {
 			let engine = root.read(app).engine.read(app);
 			(0..engine.track_count())
@@ -2172,6 +2673,12 @@ mod tests {
 				.map(|t| t.clips().len())
 				.sum()
 		});
+		let snapping_before =
+			cx.read(|app| root.read(app).timeline.read(app).state.snap_enabled);
+		cx.dispatch_keystroke(
+			window.into(),
+			gpui::Keystroke::parse("secondary-k").unwrap(),
+		);
 		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("s").unwrap());
 		cx.dispatch_keystroke(
 			window.into(),
@@ -2179,16 +2686,24 @@ mod tests {
 		);
 		cx.run_until_parked();
 
-		let (clips_after, playing) = cx.read(|app| {
+		let (clips_after, playing, snapping_after) = cx.read(|app| {
 			let root = root.read(app);
 			let clips: usize = (0..root.engine.read(app).track_count())
 				.filter_map(|i| root.engine.read(app).track(i))
 				.map(|t| t.clips().len())
 				.sum();
-			(clips, root.program_clock.read(app).is_playing())
+			(
+				clips,
+				root.program_clock.read(app).is_playing(),
+				root.timeline.read(app).state.snap_enabled,
+			)
 		});
 		assert_eq!(clips_after, clips_before, "no split while the modal is open");
 		assert!(!playing, "no playback toggle while the modal is open");
+		assert_eq!(
+			snapping_after, snapping_before,
+			"no snapping toggle while the modal is open"
+		);
 		assert!(
 			cx.read(|app| matches!(root.read(app).modal, ModalState::Preferences { .. })),
 			"the modal is still open"

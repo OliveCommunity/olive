@@ -20,12 +20,16 @@
 use gpui::colors::DefaultColors;
 use gpui::dock::{DockPanel, PanelEvent};
 use gpui::{
-	div, prelude::*, AnyElement, App, Context, Entity, EventEmitter, Render, SharedString, Window,
+	div, prelude::*, AnyElement, App, Context, Entity, EventEmitter, MouseButton, Render,
+	SharedString, Window,
 };
 use gpui_widgets::viewer::{ViewerEvent, ViewerWidget};
 
+use crate::actions::ActionId;
+use crate::menus::context::{ContextMenuHandle, ContextMenuTriggered};
 use crate::oakui::timecode::{format_fps, format_resolution};
 use crate::oakui::{AppEngine, Monitor};
+use crate::panels::commands::{self as panel_commands, PanelCommandHandler};
 use crate::panels::{chip, viewer_title};
 use crate::panels::ids::SOURCE_VIEWER;
 
@@ -33,9 +37,14 @@ use crate::panels::ids::SOURCE_VIEWER;
 pub struct SourceViewerPanel<E: AppEngine> {
 	viewer: Entity<ViewerWidget<E::Clock>>,
 	engine: Entity<E>,
+	/// The source monitor's clock (also owned by the viewer widget; kept
+	/// here so transport commands can read the playing state).
+	clock: Entity<E::Clock>,
 	/// The last CPU frame handed to the viewer (compared by `Arc` identity so
 	/// a paused playhead does not re-upload the picture every frame).
 	last_cpu_frame: Option<std::sync::Arc<gpui::RenderImage>>,
+	/// The right-click context menu.
+	context_menu: ContextMenuHandle,
 }
 
 impl<E: AppEngine> SourceViewerPanel<E> {
@@ -46,7 +55,7 @@ impl<E: AppEngine> SourceViewerPanel<E> {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Self {
-		let viewer = cx.new(|cx| ViewerWidget::new(2, clock, window, cx));
+		let viewer = cx.new(|cx| ViewerWidget::new(2, clock.clone(), window, cx));
 		// Route every transport request to the engine's source monitor.
 		cx.subscribe(&viewer, |this, _viewer, event: &ViewerEvent, cx| {
 			let monitor = Monitor::Source;
@@ -59,11 +68,30 @@ impl<E: AppEngine> SourceViewerPanel<E> {
 		})
 		.detach();
 
+		let context_menu =
+			ContextMenuHandle::new(Self::on_local_menu_item, window, cx);
+
 		Self {
 			viewer,
 			engine,
+			clock,
 			last_cpu_frame: None,
+			context_menu,
 		}
+	}
+
+	/// Handles the viewer's local (non-registry) context-menu items — all
+	/// placeholders until the viewer widget grows the matching controls.
+	fn on_local_menu_item(&mut self, item: usize, _cx: &mut Context<Self>) {
+		println!("[source viewer] context-menu item {item} (not implemented yet)");
+	}
+
+	/// Routes a transport command to the engine's source monitor through
+	/// the shared viewer transport helper.
+	fn transport(&mut self, action: ActionId, cx: &mut Context<Self>) -> bool {
+		let engine = self.engine.clone();
+		let clock = self.clock.clone();
+		panel_commands::viewer_transport(&engine, &clock, Monitor::Source, action, cx)
 	}
 
 	/// Pushes the engine's synthetic test frame into the viewer, but only when
@@ -102,6 +130,22 @@ impl<E: AppEngine> Render for SourceViewerPanel<E> {
 			.flex()
 			.flex_col()
 			.overflow_hidden()
+			// Any click inside the panel makes it the focused panel (the
+			// dock re-emits this as `DockEvent::PanelFocused`, which the
+			// shell uses to route focused-panel commands).
+			.on_mouse_down(MouseButton::Left, {
+				cx.listener(|_this, _event: &gpui::MouseDownEvent, _window, cx| {
+					cx.emit(PanelEvent::Focused);
+				})
+			})
+			// The viewer widget has no right-click handling of its own, so
+			// the panel opens the shared viewer menu here.
+			.on_mouse_down(MouseButton::Right, {
+				cx.listener(|this, event: &gpui::MouseDownEvent, _window, cx| {
+					this.context_menu
+						.show(event.position, crate::menus::shared::viewer_menu(), cx);
+				})
+			})
 			.child(
 				div()
 					.flex()
@@ -126,10 +170,50 @@ impl<E: AppEngine> Render for SourceViewerPanel<E> {
 					.overflow_hidden()
 					.child(self.viewer.clone()),
 			)
+			// The right-click popup renders anchored above the panel.
+			.child(self.context_menu.widget())
+	}
+}
+
+impl<E: AppEngine> PanelCommandHandler for SourceViewerPanel<E> {
+	fn play_pause(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::PlayPause, cx)
+	}
+	fn prev_frame(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::PrevFrame, cx)
+	}
+	fn next_frame(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::NextFrame, cx)
+	}
+	fn go_to_start(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::GoToStart, cx)
+	}
+	fn go_to_end(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::GoToEnd, cx)
+	}
+	fn play_in_to_out(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::PlayInToOut, cx)
+	}
+	fn go_to_in(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::GoToIn, cx)
+	}
+	fn go_to_out(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::GoToOut, cx)
+	}
+	fn shuttle_left(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::ShuttleLeft, cx)
+	}
+	fn shuttle_stop(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::ShuttleStop, cx)
+	}
+	fn shuttle_right(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::ShuttleRight, cx)
 	}
 }
 
 impl<E: AppEngine> EventEmitter<PanelEvent> for SourceViewerPanel<E> {}
+
+impl<E: AppEngine> EventEmitter<ContextMenuTriggered> for SourceViewerPanel<E> {}
 
 impl<E: AppEngine> DockPanel for SourceViewerPanel<E> {
 	fn panel_id(&self) -> gpui::dock::PanelId {

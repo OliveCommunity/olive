@@ -23,15 +23,18 @@
 use gpui::colors::DefaultColors;
 use gpui::dock::{DockPanel, PanelEvent};
 use gpui::{
-	div, prelude::*, px, AnyElement, App, ClickEvent, Context, Entity, EventEmitter, Render,
-	SharedString, Window,
+	div, prelude::*, px, AnyElement, App, ClickEvent, Context, Entity, EventEmitter, MouseButton,
+	Render, SharedString, Window,
 };
 use gpui_widgets::audio_meter::AudioLevelMeter;
 use gpui_widgets::scopes::{ChromaDataSource, Histogram, LumaDataSource, Vectorscope, Waveform};
 use gpui_widgets::viewer::{ViewerEvent, ViewerWidget};
 
+use crate::actions::ActionId;
+use crate::menus::context::{ContextMenuHandle, ContextMenuTriggered};
 use crate::oakui::timecode::{format_fps, format_resolution};
 use crate::oakui::{AppEngine, Monitor};
+use crate::panels::commands::{self as panel_commands, PanelCommandHandler};
 use crate::panels::ids::PROGRAM_VIEWER;
 use crate::panels::{chip, viewer_title};
 
@@ -74,6 +77,9 @@ pub struct ProgramViewerPanel<E: AppEngine> {
 	viewer: Entity<ViewerWidget<E::Clock>>,
 	meter: Entity<AudioLevelMeter<E>>,
 	engine: Entity<E>,
+	/// The program monitor's clock (also owned by the viewer widget; kept
+	/// here so transport commands can read the playing state).
+	clock: Entity<E::Clock>,
 	/// The last CPU frame handed to the viewer (compared by `Arc` identity so
 	/// a paused playhead does not re-upload the picture every frame).
 	last_cpu_frame: Option<std::sync::Arc<gpui::RenderImage>>,
@@ -87,6 +93,8 @@ pub struct ProgramViewerPanel<E: AppEngine> {
 	waveform: Entity<Waveform<ScopeState>>,
 	/// The vectorscope.
 	vectorscope: Entity<Vectorscope<ScopeState>>,
+	/// The right-click context menu.
+	context_menu: ContextMenuHandle,
 }
 
 impl<E: AppEngine> ProgramViewerPanel<E> {
@@ -99,7 +107,7 @@ impl<E: AppEngine> ProgramViewerPanel<E> {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Self {
-		let viewer = cx.new(|cx| ViewerWidget::new(3, clock, window, cx));
+		let viewer = cx.new(|cx| ViewerWidget::new(3, clock.clone(), window, cx));
 		// Route every transport request to the engine's program monitor.
 		cx.subscribe(&viewer, |this, _viewer, event: &ViewerEvent, cx| {
 			let monitor = Monitor::Program;
@@ -111,6 +119,9 @@ impl<E: AppEngine> ProgramViewerPanel<E> {
 			});
 		})
 		.detach();
+
+		let context_menu =
+			ContextMenuHandle::new(Self::on_local_menu_item, window, cx);
 
 		let scope_state = cx.new(|_cx| ScopeState {
 			luma: Vec::new(),
@@ -124,13 +135,29 @@ impl<E: AppEngine> ProgramViewerPanel<E> {
 			viewer,
 			meter,
 			engine,
+			clock,
 			last_cpu_frame: None,
 			tab: ProgramViewTab::Picture,
 			scope_state,
 			histogram,
 			waveform,
 			vectorscope,
+			context_menu,
 		}
+	}
+
+	/// Handles the viewer's local (non-registry) context-menu items — all
+	/// placeholders until the viewer widget grows the matching controls.
+	fn on_local_menu_item(&mut self, item: usize, _cx: &mut Context<Self>) {
+		println!("[program viewer] context-menu item {item} (not implemented yet)");
+	}
+
+	/// Routes a transport command to the engine's program monitor through
+	/// the shared viewer transport helper.
+	fn transport(&mut self, action: ActionId, cx: &mut Context<Self>) -> bool {
+		let engine = self.engine.clone();
+		let clock = self.clock.clone();
+		panel_commands::viewer_transport(&engine, &clock, Monitor::Program, action, cx)
 	}
 
 	/// Pushes the engine's current frame into the viewer and the scopes, but
@@ -270,6 +297,22 @@ impl<E: AppEngine> Render for ProgramViewerPanel<E> {
 			.flex()
 			.flex_col()
 			.overflow_hidden()
+			// Any click inside the panel makes it the focused panel (the
+			// dock re-emits this as `DockEvent::PanelFocused`, which the
+			// shell uses to route focused-panel commands).
+			.on_mouse_down(MouseButton::Left, {
+				cx.listener(|_this, _event: &gpui::MouseDownEvent, _window, cx| {
+					cx.emit(PanelEvent::Focused);
+				})
+			})
+			// The viewer widget has no right-click handling of its own, so
+			// the panel opens the shared viewer menu here.
+			.on_mouse_down(MouseButton::Right, {
+				cx.listener(|this, event: &gpui::MouseDownEvent, _window, cx| {
+					this.context_menu
+						.show(event.position, crate::menus::shared::viewer_menu(), cx);
+				})
+			})
 			.child(
 				div()
 					.flex()
@@ -301,10 +344,50 @@ impl<E: AppEngine> Render for ProgramViewerPanel<E> {
 					)),
 			)
 			.child(body)
+			// The right-click popup renders anchored above the panel.
+			.child(self.context_menu.widget())
+	}
+}
+
+impl<E: AppEngine> PanelCommandHandler for ProgramViewerPanel<E> {
+	fn play_pause(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::PlayPause, cx)
+	}
+	fn prev_frame(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::PrevFrame, cx)
+	}
+	fn next_frame(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::NextFrame, cx)
+	}
+	fn go_to_start(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::GoToStart, cx)
+	}
+	fn go_to_end(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::GoToEnd, cx)
+	}
+	fn play_in_to_out(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::PlayInToOut, cx)
+	}
+	fn go_to_in(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::GoToIn, cx)
+	}
+	fn go_to_out(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::GoToOut, cx)
+	}
+	fn shuttle_left(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::ShuttleLeft, cx)
+	}
+	fn shuttle_stop(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::ShuttleStop, cx)
+	}
+	fn shuttle_right(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::ShuttleRight, cx)
 	}
 }
 
 impl<E: AppEngine> EventEmitter<PanelEvent> for ProgramViewerPanel<E> {}
+
+impl<E: AppEngine> EventEmitter<ContextMenuTriggered> for ProgramViewerPanel<E> {}
 
 impl<E: AppEngine> DockPanel for ProgramViewerPanel<E> {
 	fn panel_id(&self) -> gpui::dock::PanelId {

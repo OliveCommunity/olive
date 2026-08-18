@@ -42,19 +42,28 @@
 use gpui::colors::DefaultColors;
 use gpui::dock::{DockPanel, PanelEvent};
 use gpui::timeline::{
-	Frame, TimelineView, TrackData, TrackKind, HEADER_WIDTH, MIN_TRACK_HEIGHT, RULER_HEIGHT,
+	ClipData, ClipId, Frame, TimelineEvent, TimelineHit, TimelineView, TrackData, TrackKind,
+	HEADER_WIDTH, MIN_TRACK_HEIGHT, RULER_HEIGHT,
 };
-use gpui::{div, img, prelude::*, px, Context, Entity, Window};
+use gpui::{
+	div, img, prelude::*, px, Context, Entity, MouseButton, Pixels, Point, Window,
+};
 use gpui::{AnyElement, App, ClickEvent, DragMoveEvent, EventEmitter, Render, SharedString};
 use gpui_widgets::checkbox::{CheckBox, CheckBoxEvent, CheckState};
+use gpui_widgets::menu::{Menu, MenuItem};
+use gpui_widgets::viewer::PlaybackClock;
 use gpui_widgets::project_explorer::FootageDrag;
 use gpui_widgets::slider::{Slider, SliderEvent, SliderModel};
 use gpui_widgets::tooltip::tooltip_view;
 use gpui_widgets::value::ValueKind;
 
+use crate::actions::ActionId;
 use crate::i18n;
+use crate::menus::context::{ContextMenuHandle, ContextMenuTriggered};
+use crate::menus::shared;
 use crate::oakui::icons;
-use crate::oakui::AppEngine;
+use crate::oakui::{AppEngine, Monitor};
+use crate::panels::commands::{self as panel_commands, PanelCommandHandler};
 use crate::panels::ids::TIMELINE;
 
 /// Toolbar height, per the design (31px).
@@ -92,6 +101,12 @@ pub struct TimelinePanel<E: AppEngine> {
 	/// the cursor plus the start frame. `None` outside the clip area or while
 	/// no footage drag is active.
 	footage_drop: Option<FootageDropTarget>,
+	/// The right-click context menu (opened from
+	/// [`TimelineEvent::ContextMenuRequested`]).
+	context_menu: ContextMenuHandle,
+	/// The track behind the currently open track-head menu (the "Delete"
+	/// item's target); `None` when a different menu is open.
+	context_track: Option<usize>,
 }
 
 /// A footage drop target resolved from the cursor: the display track under
@@ -165,6 +180,21 @@ impl<E: AppEngine> TimelinePanel<E> {
 		})
 		.detach();
 
+		// The right-click menu: the view reports what was hit
+		// (`ContextMenuRequested`), the panel assembles the matching menu
+		// and opens the popup at the click position.
+		let context_menu =
+			ContextMenuHandle::new(Self::on_local_menu_item, window, cx);
+		cx.subscribe(
+			&timeline,
+			|this, _view, event: &TimelineEvent, cx| {
+				if let TimelineEvent::ContextMenuRequested { position, hit } = event {
+					this.open_context_menu(*position, hit.clone(), cx);
+				}
+			},
+		)
+		.detach();
+
 		Self {
 			timeline,
 			engine,
@@ -173,6 +203,68 @@ impl<E: AppEngine> TimelinePanel<E> {
 			snap,
 			selected_tool: 0,
 			footage_drop: None,
+			context_menu,
+			context_track: None,
+		}
+	}
+
+	/// Opens the context menu matching `hit` at `position` (window
+	/// coordinates). Registry-backed items leave through
+	/// [`ContextMenuTriggered`]; local items are handled by
+	/// [`Self::on_local_menu_item`].
+	fn open_context_menu(
+		&mut self,
+		position: Point<Pixels>,
+		hit: TimelineHit,
+		cx: &mut Context<Self>,
+	) {
+		let menu = match &hit {
+			TimelineHit::Clip(_) => clip_menu(),
+			TimelineHit::Empty { .. } => empty_area_menu(),
+			TimelineHit::TrackHead(track) => {
+				self.context_track = Some(*track);
+				track_head_menu()
+			}
+			TimelineHit::RulerMarker(_) => marker_menu(),
+			TimelineHit::Ruler(_) => ruler_menu(),
+		};
+		if !matches!(hit, TimelineHit::TrackHead(_)) {
+			self.context_track = None;
+		}
+		self.context_menu.show(position, menu, cx);
+	}
+
+	/// Handles the timeline's local (non-registry) context-menu items.
+	fn on_local_menu_item(&mut self, item: usize, cx: &mut Context<Self>) {
+		// Color labels apply to the selected clips; the engine has no
+		// clip-color surface yet, so they log for now (kept visible so the
+		// wiring is testable in the demo).
+		if let Some(color) = shared::color_label_index(item) {
+			println!("[timeline] set clip color label to {color}");
+			return;
+		}
+		match item {
+			LOCAL_DELETE_TRACK => {
+				if let Some(track) = self.context_track {
+					self.engine.update(cx, |engine, cx| engine.remove_track(track, cx));
+				}
+			}
+			LOCAL_DELETE_ALL_EMPTY => {
+				self.engine.update(cx, |engine, cx| engine.delete_empty_tracks(cx));
+			}
+			LOCAL_CACHE_ALL | LOCAL_CACHE_IN_OUT | LOCAL_CACHE_DISCARD => {
+				println!("[timeline] cache action {item} (not implemented yet)");
+			}
+			LOCAL_TIMECODE_DROP_FRAME
+			| LOCAL_TIMECODE_NON_DROP_FRAME
+			| LOCAL_TIMECODE_SECONDS
+			| LOCAL_TIMECODE_FRAMES
+			| LOCAL_TIMECODE_MILLISECONDS => {
+				println!("[timeline] timecode display {item} (not implemented yet)");
+			}
+			_ => {
+				println!("[timeline] unhandled local menu item {item}");
+			}
 		}
 	}
 
@@ -240,6 +332,240 @@ impl<E: AppEngine> TimelinePanel<E> {
 		self.engine.update(cx, |engine, cx| {
 			engine.drop_footage(drag.0, track_kind, track_index, time, cx);
 		});
+	}
+
+	/// Routes a transport command to the engine's program monitor (the
+	/// timeline shuttles the program, like the viewers do when focused).
+	fn transport(&mut self, action: ActionId, cx: &mut Context<Self>) -> bool {
+		let engine = self.engine.clone();
+		let clock = self.engine.read(cx).program_clock().clone();
+		panel_commands::viewer_transport(&engine, &clock, Monitor::Program, action, cx)
+	}
+
+	/// Deletes the selected clips (ripple or gap) through the engine's edit
+	/// commands (the focused-panel counterpart of the shell's Edit menu).
+	fn delete_selection(&mut self, ripple: bool, cx: &mut Context<Self>) {
+		let ids: Vec<ClipId> = self.timeline.read(cx).selection().iter().copied().collect();
+		if ids.is_empty() {
+			println!("[timeline] delete: nothing selected");
+			return;
+		}
+		for id in ids {
+			self.engine
+				.update(cx, |engine, cx| engine.delete_clip(id, ripple, cx));
+		}
+	}
+
+	/// Moves the work area's start (`in_point`) or end to the program
+	/// playhead as ONE undoable entry — the same commit the shell's
+	/// playback-menu in/out points use.
+	fn set_point_at_playhead(&mut self, in_point: bool, cx: &mut Context<Self>) {
+		let clock = self.engine.read(cx).program_clock().clone();
+		let playhead = clock.read(cx).current_frame();
+		let seq_len = self
+			.engine
+			.read(cx)
+			.current_sequence()
+			.map(|s| s.length)
+			.unwrap_or(Frame(playhead.0 + 1));
+		let (old_start, old_end) = self
+			.engine
+			.read(cx)
+			.workarea()
+			.unwrap_or((Frame::ZERO, seq_len));
+		let (start, end) = if in_point {
+			(playhead, old_end.max(Frame(playhead.0 + 1)))
+		} else {
+			(old_start.min(Frame((playhead.0 - 1).max(0))), playhead)
+		};
+		if end.0 <= start.0 {
+			println!("[timeline] set in/out point: empty range, ignored");
+			return;
+		}
+		self.engine.update(cx, |engine, cx| {
+			engine.commit_workarea(old_start, old_end, start, end, cx);
+		});
+	}
+
+	/// Scales the timeline zoom around its left edge (the focused-panel
+	/// counterpart of 视图 → 放大/缩小).
+	fn zoom_timeline(&mut self, factor: f32, cx: &mut Context<Self>) {
+		self.timeline.update(cx, |view, cx| {
+			let zoom = view.state.zoom * factor;
+			view.state.set_zoom(zoom, px(0.));
+			cx.notify();
+		});
+	}
+
+	/// Steps every track's height by `delta` pixels, clamped to the
+	/// track-height slider's range (24–160px).
+	fn nudge_track_height(&mut self, delta: f32, cx: &mut Context<Self>) {
+		let current = self
+			.engine
+			.read(cx)
+			.track(0)
+			.map(|track| f32::from(track.height()))
+			.unwrap_or(64.0);
+		let next = (current + delta).clamp(24.0, 160.0);
+		self.engine
+			.update(cx, |engine, cx| engine.set_track_height(px(next), cx));
+	}
+}
+
+impl<E: AppEngine> PanelCommandHandler for TimelinePanel<E> {
+	// --- transport (the program monitor) ---
+	fn play_pause(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::PlayPause, cx)
+	}
+	fn prev_frame(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::PrevFrame, cx)
+	}
+	fn next_frame(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::NextFrame, cx)
+	}
+	fn go_to_start(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::GoToStart, cx)
+	}
+	fn go_to_end(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::GoToEnd, cx)
+	}
+	fn play_in_to_out(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::PlayInToOut, cx)
+	}
+	fn go_to_in(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::GoToIn, cx)
+	}
+	fn go_to_out(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::GoToOut, cx)
+	}
+	fn shuttle_left(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::ShuttleLeft, cx)
+	}
+	fn shuttle_stop(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::ShuttleStop, cx)
+	}
+	fn shuttle_right(&mut self, cx: &mut Context<Self>) -> bool {
+		self.transport(ActionId::ShuttleRight, cx)
+	}
+
+	// --- in / out points (the work area) ---
+	fn set_in(&mut self, cx: &mut Context<Self>) -> bool {
+		self.set_point_at_playhead(true, cx);
+		true
+	}
+	fn set_out(&mut self, cx: &mut Context<Self>) -> bool {
+		self.set_point_at_playhead(false, cx);
+		true
+	}
+	fn reset_in(&mut self, cx: &mut Context<Self>) -> bool {
+		// Reset the in point to the sequence start, keeping the out point.
+		let seq_len = self
+			.engine
+			.read(cx)
+			.current_sequence()
+			.map(|s| s.length)
+			.unwrap_or(Frame(1));
+		let (_old_start, old_end) = self
+			.engine
+			.read(cx)
+			.workarea()
+			.unwrap_or((Frame::ZERO, seq_len));
+		let end = old_end.max(Frame(1));
+		self.engine.update(cx, |engine, cx| {
+			engine.commit_workarea(_old_start, old_end, Frame::ZERO, end, cx);
+		});
+		true
+	}
+	fn reset_out(&mut self, cx: &mut Context<Self>) -> bool {
+		// Reset the out point to the sequence end, keeping the in point.
+		let seq_len = self
+			.engine
+			.read(cx)
+			.current_sequence()
+			.map(|s| s.length)
+			.unwrap_or(Frame(1));
+		let (old_start, _old_end) = self
+			.engine
+			.read(cx)
+			.workarea()
+			.unwrap_or((Frame::ZERO, seq_len));
+		let end = seq_len.max(Frame(old_start.0 + 1));
+		self.engine.update(cx, |engine, cx| {
+			engine.commit_workarea(old_start, _old_end, old_start, end, cx);
+		});
+		true
+	}
+	fn clear_in_out(&mut self, cx: &mut Context<Self>) -> bool {
+		self.engine.update(cx, |engine, cx| engine.clear_workarea(cx));
+		true
+	}
+
+	// --- selection ---
+	fn select_all(&mut self, cx: &mut Context<Self>) -> bool {
+		let ids: Vec<ClipId> = {
+			let engine = self.engine.read(cx);
+			let mut ids = Vec::new();
+			for index in 0..engine.track_count() {
+				if let Some(track) = engine.track(index) {
+					ids.extend(track.clips().iter().map(|clip| clip.id()));
+				}
+			}
+			ids
+		};
+		self.timeline.update(cx, |view, cx| {
+			view.state.select_range(ids.iter().copied());
+			cx.notify();
+		});
+		self.engine
+			.update(cx, |engine, cx| engine.set_selected_clips(ids, cx));
+		true
+	}
+	fn deselect_all(&mut self, cx: &mut Context<Self>) -> bool {
+		self.timeline.update(cx, |view, cx| {
+			view.state.select_range(std::iter::empty::<ClipId>());
+			cx.notify();
+		});
+		self.engine
+			.update(cx, |engine, cx| engine.set_selected_clips(Vec::new(), cx));
+		true
+	}
+
+	// --- editing ---
+	fn delete_selected(&mut self, cx: &mut Context<Self>) -> bool {
+		self.delete_selection(false, cx);
+		true
+	}
+	fn ripple_delete(&mut self, cx: &mut Context<Self>) -> bool {
+		self.delete_selection(true, cx);
+		true
+	}
+	fn split_at_playhead(&mut self, cx: &mut Context<Self>) -> bool {
+		self.engine
+			.update(cx, |engine, cx| engine.split_at_playhead(cx));
+		true
+	}
+	fn set_marker(&mut self, cx: &mut Context<Self>) -> bool {
+		self.engine
+			.update(cx, |engine, cx| engine.add_marker_at_playhead(cx));
+		true
+	}
+
+	// --- view ---
+	fn zoom_in(&mut self, cx: &mut Context<Self>) -> bool {
+		self.zoom_timeline(1.25, cx);
+		true
+	}
+	fn zoom_out(&mut self, cx: &mut Context<Self>) -> bool {
+		self.zoom_timeline(0.8, cx);
+		true
+	}
+	fn increase_track_height(&mut self, cx: &mut Context<Self>) -> bool {
+		self.nudge_track_height(8.0, cx);
+		true
+	}
+	fn decrease_track_height(&mut self, cx: &mut Context<Self>) -> bool {
+		self.nudge_track_height(-8.0, cx);
+		true
 	}
 }
 
@@ -402,6 +728,14 @@ impl<E: AppEngine> Render for TimelinePanel<E> {
 			.flex()
 			.flex_col()
 			.overflow_hidden()
+			// Any click inside the panel makes it the focused panel (the
+			// dock re-emits this as `DockEvent::PanelFocused`, which the
+			// shell uses to route focused-panel commands).
+			.on_mouse_down(MouseButton::Left, {
+				cx.listener(|_this, _event: &gpui::MouseDownEvent, _window, cx| {
+					cx.emit(PanelEvent::Focused);
+				})
+			})
 			.child(toolbar)
 			.child(
 				div()
@@ -433,10 +767,14 @@ impl<E: AppEngine> Render for TimelinePanel<E> {
 					)
 					.child(right_controls),
 			)
+			// The right-click popup renders anchored above the panel.
+			.child(self.context_menu.widget())
 	}
 }
 
 impl<E: AppEngine> EventEmitter<PanelEvent> for TimelinePanel<E> {}
+
+impl<E: AppEngine> EventEmitter<ContextMenuTriggered> for TimelinePanel<E> {}
 
 impl<E: AppEngine> DockPanel for TimelinePanel<E> {
 	fn panel_id(&self) -> gpui::dock::PanelId {
@@ -450,6 +788,207 @@ impl<E: AppEngine> DockPanel for TimelinePanel<E> {
 	fn tab_content(&self, _cx: &App) -> AnyElement {
 		div().child(i18n::tr("panel.timeline")).into_any_element()
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Context menus — the Rust counterpart of the C++
+// `TimelineWidget::show_context_menu` (clip + empty area), the
+// `TrackViewItem` track-head menu and the `TimeRuler` /
+// `SeekableWidget` ruler menus.
+// ---------------------------------------------------------------------------
+
+/// Local (non-registry) item ids of the timeline's context menus.
+const LOCAL_USE_AUDIO_TIME_UNITS: usize = 2101;
+const LOCAL_SHOW_WAVEFORMS: usize = 2102;
+const LOCAL_THUMBNAIL_OFF: usize = 2103;
+const LOCAL_THUMBNAIL_IN_OUT: usize = 2104;
+const LOCAL_THUMBNAIL_ON: usize = 2105;
+const LOCAL_SYNC_SOURCE_TIME: usize = 2106;
+const LOCAL_SYNC_WAVEFORM: usize = 2107;
+const LOCAL_SYNC_WAVEFORM_SPEED: usize = 2108;
+const LOCAL_CACHE_AUTO: usize = 2109;
+const LOCAL_CACHE_ALL: usize = 2110;
+const LOCAL_CACHE_IN_OUT: usize = 2111;
+const LOCAL_CACHE_DISCARD: usize = 2112;
+const LOCAL_PROXY_GENERATE: usize = 2113;
+const LOCAL_PROXY_USE: usize = 2114;
+const LOCAL_PROXY_REVEAL: usize = 2115;
+const LOCAL_PROXY_DELETE: usize = 2116;
+const LOCAL_REVEAL_FOOTAGE_VIEWER: usize = 2117;
+const LOCAL_REVEAL_PROJECT: usize = 2118;
+const LOCAL_MULTICAM: usize = 2119;
+const LOCAL_DELETE_TRACK: usize = 2120;
+const LOCAL_DELETE_ALL_EMPTY: usize = 2121;
+const LOCAL_MARKER_PROPERTIES: usize = 2122;
+const LOCAL_TIMECODE_DROP_FRAME: usize = 2123;
+const LOCAL_TIMECODE_NON_DROP_FRAME: usize = 2124;
+const LOCAL_TIMECODE_SECONDS: usize = 2125;
+const LOCAL_TIMECODE_FRAMES: usize = 2126;
+const LOCAL_TIMECODE_MILLISECONDS: usize = 2127;
+
+/// A registry-backed item shown under a "Properties" label (the C++ clip
+/// and sequence "Properties" entries open the Speed/Duration and Sequence
+/// dialogs respectively, so the item keeps the registry id — and with it
+/// the shared dispatch path — while wearing the dialog's menu label).
+fn properties_item(action: ActionId) -> MenuItem {
+	let entry = action.entry();
+	let mut item = MenuItem::new(entry.menu_id(), i18n::tr("menu.context.properties"));
+	if let Some(shortcut) = crate::actions::display_shortcut(action) {
+		item = item.with_shortcut(shortcut);
+	}
+	item
+}
+
+/// The clip context menu (`TimelineWidget::show_context_menu` with a
+/// selection): the shared clip-edit section, color labels, the synchronize
+/// / cache / proxy groups, reveal entries and "Properties".
+pub(crate) fn clip_menu() -> Menu {
+	let mut items = shared::edit_section(true);
+	// The C++ puts a separator between the edit section and the color
+	// labels, and another after them.
+	if let Some(last) = items.last_mut() {
+		last.separator_after = true;
+	}
+	items.push(shared::color_label_item(None).separated());
+	// Synchronize group: needs ≥ 2 clips with matching media in the C++;
+	// the engine has no sync surface yet, so the entries stay disabled.
+	items.push(
+		MenuItem::new(LOCAL_SYNC_SOURCE_TIME, i18n::tr("timeline.context.sync_source_time"))
+			.disabled(),
+	);
+	items.push(
+		MenuItem::new(LOCAL_SYNC_WAVEFORM, i18n::tr("timeline.context.sync_waveform")).disabled(),
+	);
+	items.push(
+		MenuItem::new(
+			LOCAL_SYNC_WAVEFORM_SPEED,
+			i18n::tr("timeline.context.sync_waveform_speed"),
+		)
+		.disabled()
+		.separated(),
+	);
+	// Cache group (placeholders: the engine has no cache surface yet).
+	let cache_menu = Menu::new(vec![
+		MenuItem::new(LOCAL_CACHE_AUTO, i18n::tr("timeline.context.auto_cache"))
+			.with_checked(false)
+			.separated(),
+		MenuItem::new(LOCAL_CACHE_ALL, i18n::tr("timeline.context.cache_all")),
+		MenuItem::new(LOCAL_CACHE_IN_OUT, i18n::tr("timeline.context.cache_in_out")),
+		MenuItem::new(LOCAL_CACHE_DISCARD, i18n::tr("timeline.context.cache_discard")),
+	]);
+	items.push(MenuItem::new(0, i18n::tr("timeline.context.cache")).with_submenu(cache_menu));
+	// Proxy group: disabled until the proxy pipeline lands; the settings
+	// entry is the real registry action.
+	let proxy_menu = Menu::new(vec![
+		MenuItem::new(LOCAL_PROXY_GENERATE, i18n::tr("timeline.context.generate_proxy"))
+			.disabled(),
+		MenuItem::new(LOCAL_PROXY_USE, i18n::tr("timeline.context.use_proxy")).disabled(),
+		MenuItem::new(LOCAL_PROXY_REVEAL, i18n::tr("timeline.context.reveal_proxy")).disabled(),
+		MenuItem::new(LOCAL_PROXY_DELETE, i18n::tr("timeline.context.delete_proxy")).disabled(),
+		shared::action_item(ActionId::ProxySettings).separated(),
+	]);
+	items.push(MenuItem::new(0, i18n::tr("timeline.context.proxy")).with_submenu(proxy_menu));
+	// Reveal / multi-cam entries (the C++ shows them only when the clip is
+	// connected to a viewer; the mock keeps them visible but disabled).
+	items.push(
+		MenuItem::new(
+			LOCAL_REVEAL_FOOTAGE_VIEWER,
+			i18n::tr("timeline.context.reveal_in_footage_viewer"),
+		)
+		.disabled(),
+	);
+	items.push(
+		MenuItem::new(LOCAL_REVEAL_PROJECT, i18n::tr("timeline.context.reveal_in_project"))
+			.disabled(),
+	);
+	items.push(
+		MenuItem::new(LOCAL_MULTICAM, i18n::tr("timeline.context.multicam"))
+			.with_checked(false)
+			.disabled()
+			.separated(),
+	);
+	items.push(properties_item(ActionId::SpeedDuration));
+	Menu::new(items)
+}
+
+/// The empty-area context menu (no clips selected): view toggles plus the
+/// sequence "Properties" entry.
+pub(crate) fn empty_area_menu() -> Menu {
+	let thumbnails = Menu::new(vec![
+		MenuItem::new(LOCAL_THUMBNAIL_OFF, i18n::tr("timeline.context.thumbnails_off"))
+			.with_checked(false),
+		MenuItem::new(
+			LOCAL_THUMBNAIL_IN_OUT,
+			i18n::tr("timeline.context.thumbnails_at_in_points"),
+		)
+		.with_checked(false),
+		MenuItem::new(LOCAL_THUMBNAIL_ON, i18n::tr("timeline.context.thumbnails_on"))
+			.with_checked(false),
+	]);
+	Menu::new(vec![
+		MenuItem::new(
+			LOCAL_USE_AUDIO_TIME_UNITS,
+			i18n::tr("timeline.context.use_audio_time_units"),
+		)
+		.with_checked(false),
+		MenuItem::new(0, i18n::tr("timeline.context.show_thumbnails"))
+			.with_submenu(thumbnails),
+		MenuItem::new(LOCAL_SHOW_WAVEFORMS, i18n::tr("timeline.context.show_waveforms"))
+			.with_checked(false)
+			.separated(),
+		properties_item(ActionId::SequenceSettings),
+	])
+}
+
+/// The track-header context menu (`TrackViewItem`): delete this track, or
+/// every empty track.
+pub(crate) fn track_head_menu() -> Menu {
+	Menu::new(vec![
+		MenuItem::new(LOCAL_DELETE_TRACK, i18n::tr("timeline.context.delete_track")),
+		MenuItem::new(LOCAL_DELETE_ALL_EMPTY, i18n::tr("timeline.context.delete_all_empty")),
+	])
+}
+
+/// The marker context menu (`SeekableWidget`): color labels, the plain
+/// edit section and marker properties.
+pub(crate) fn marker_menu() -> Menu {
+	let mut items = vec![shared::color_label_item(None).separated()];
+	let mut edit_items = shared::edit_section(false);
+	// Separator before the trailing "Properties" entry (the C++ layout).
+	if let Some(last) = edit_items.last_mut() {
+		last.separator_after = true;
+	}
+	items.extend(edit_items);
+	items.push(MenuItem::new(
+		LOCAL_MARKER_PROPERTIES,
+		i18n::tr("menu.context.properties"),
+	));
+	Menu::new(items)
+}
+
+/// The ruler context menu (`TimeRuler`): the timecode-display radio group.
+pub(crate) fn ruler_menu() -> Menu {
+	Menu::new(vec![
+		MenuItem::new(
+			LOCAL_TIMECODE_DROP_FRAME,
+			i18n::tr("timeline.context.timecode_drop_frame"),
+		)
+		.with_checked(false),
+		MenuItem::new(
+			LOCAL_TIMECODE_NON_DROP_FRAME,
+			i18n::tr("timeline.context.timecode_non_drop_frame"),
+		)
+		.with_checked(false),
+		MenuItem::new(LOCAL_TIMECODE_SECONDS, i18n::tr("timeline.context.timecode_seconds"))
+			.with_checked(false),
+		MenuItem::new(LOCAL_TIMECODE_FRAMES, i18n::tr("timeline.context.timecode_frames"))
+			.with_checked(false),
+		MenuItem::new(
+			LOCAL_TIMECODE_MILLISECONDS,
+			i18n::tr("timeline.context.timecode_milliseconds"),
+		)
+		.with_checked(false),
+	])
 }
 
 #[cfg(test)]
@@ -561,5 +1100,160 @@ mod tests {
 			.expect("timeline canvas after resize");
 		assert!((f32::from(after.size.width) - RIGHT_CONTROLS_WIDTH).abs() < 0.5);
 		assert!(canvas.right() <= after.left());
+	}
+
+	/// Right-clicking inside the timeline body opens the popup: the view
+	/// emits `ContextMenuRequested`, the panel assembles the matching menu
+	/// and the `ContextMenu` popup renders.
+	#[gpui::test]
+	async fn right_click_opens_the_context_menu(cx: &mut TestAppContext) {
+		let (cx, _panel) = panel_window(cx, 1600.0, 900.0);
+		cx.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(cx.debug_bounds("menu-popup").is_none(), "menu starts hidden");
+
+		let canvas = cx
+			.debug_bounds("timeline-canvas")
+			.expect("timeline canvas rendered");
+		let click = gpui::point(
+			canvas.origin.x + canvas.size.width * 0.5,
+			canvas.origin.y + canvas.size.height * 0.5,
+		);
+		cx.simulate_mouse_down(click, gpui::MouseButton::Right, gpui::Modifiers::none());
+		cx.run_until_parked();
+		cx.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+
+		let popup = cx
+			.debug_bounds("menu-popup")
+			.expect("context menu opened on right-click");
+		assert!(popup.size.height > px(20.0), "popup lists the items");
+	}
+
+	/// The clip menu keeps the C++ shape: edit section, color labels, the
+	/// three (disabled) synchronize entries, cache and proxy submenus, the
+	/// reveal/multi-cam entries and a registry-backed "Properties".
+	#[test]
+	fn clip_menu_keeps_the_cpp_shape() {
+		let menu = clip_menu();
+		// Color label item sits right after the edit section and carries a
+		// submenu of all 16 labels.
+		let color = menu
+			.items
+			.iter()
+			.find(|item| item.submenu.is_some() && item.label == i18n::tr("menu.color.label"))
+			.expect("color label item");
+		assert_eq!(
+			color.submenu.as_ref().unwrap().items.len(),
+			shared::COLOR_LABEL_COUNT
+		);
+
+		for id in [
+			LOCAL_SYNC_SOURCE_TIME,
+			LOCAL_SYNC_WAVEFORM,
+			LOCAL_SYNC_WAVEFORM_SPEED,
+			LOCAL_REVEAL_FOOTAGE_VIEWER,
+			LOCAL_REVEAL_PROJECT,
+			LOCAL_MULTICAM,
+		] {
+			let item = menu.items.iter().find(|item| item.id == id).unwrap_or_else(|| {
+				panic!("clip menu missing disabled placeholder id {id}")
+			});
+			assert!(!item.enabled, "placeholder {id} should be disabled");
+		}
+
+		// Cache and proxy are submenus; every proxy entry but the settings
+		// action is disabled.
+		let cache = menu
+			.items
+			.iter()
+			.find(|item| item.label == i18n::tr("timeline.context.cache"))
+			.expect("cache submenu");
+		assert_eq!(cache.submenu.as_ref().unwrap().items.len(), 4);
+		let proxy = menu
+			.items
+			.iter()
+			.find(|item| item.label == i18n::tr("timeline.context.proxy"))
+			.expect("proxy submenu");
+		let proxy_items = &proxy.submenu.as_ref().unwrap().items;
+		assert_eq!(proxy_items.len(), 5);
+		assert!(proxy_items[..4].iter().all(|item| !item.enabled));
+		assert!(proxy_items[4].enabled);
+
+		// "Properties" dispatches through the speed/duration registry entry.
+		let properties = menu.items.last().expect("properties is the clip menu tail");
+		assert_eq!(
+			properties.id,
+			ActionId::SpeedDuration.entry().menu_id()
+		);
+	}
+
+	/// The empty-area menu exposes the view toggles plus the sequence
+	/// settings "Properties" entry.
+	#[test]
+	fn empty_area_menu_toggles_and_properties() {
+		let menu = empty_area_menu();
+		let thumbnails = menu
+			.items
+			.iter()
+			.find(|item| item.label == i18n::tr("timeline.context.show_thumbnails"))
+			.expect("thumbnails submenu");
+		let sub = &thumbnails.submenu.as_ref().unwrap().items;
+		let ids: Vec<usize> = sub.iter().map(|item| item.id).collect();
+		assert_eq!(
+			ids,
+			vec![LOCAL_THUMBNAIL_OFF, LOCAL_THUMBNAIL_IN_OUT, LOCAL_THUMBNAIL_ON]
+		);
+		assert!(sub.iter().all(|item| item.checked == Some(false)));
+
+		let properties = menu.items.last().expect("properties tail");
+		assert_eq!(
+			properties.id,
+			ActionId::SequenceSettings.entry().menu_id()
+		);
+	}
+
+	/// The track-header menu is exactly the two delete entries.
+	#[test]
+	fn track_head_menu_is_the_two_delete_entries() {
+		let ids: Vec<usize> = track_head_menu()
+			.items
+			.iter()
+			.map(|item| item.id)
+			.collect();
+		assert_eq!(ids, vec![LOCAL_DELETE_TRACK, LOCAL_DELETE_ALL_EMPTY]);
+	}
+
+	/// The marker menu pairs the color labels with the plain edit section
+	/// and a local marker-properties entry.
+	#[test]
+	fn marker_menu_pairs_color_labels_with_edit_section() {
+		let menu = marker_menu();
+		assert!(menu.items[0].label == i18n::tr("menu.color.label"));
+		assert!(menu.items[0].separator_after);
+		let last = menu.items.last().expect("marker properties tail");
+		assert_eq!(last.id, LOCAL_MARKER_PROPERTIES);
+		assert_eq!(last.label, i18n::tr("menu.context.properties"));
+	}
+
+	/// The ruler menu is the timecode-display radio group, all unchecked by
+	/// default.
+	#[test]
+	fn ruler_menu_is_the_timecode_radio_group() {
+		let menu = ruler_menu();
+		let ids: Vec<usize> = menu.items.iter().map(|item| item.id).collect();
+		assert_eq!(
+			ids,
+			vec![
+				LOCAL_TIMECODE_DROP_FRAME,
+				LOCAL_TIMECODE_NON_DROP_FRAME,
+				LOCAL_TIMECODE_SECONDS,
+				LOCAL_TIMECODE_FRAMES,
+				LOCAL_TIMECODE_MILLISECONDS,
+			]
+		);
+		assert!(menu.items.iter().all(|item| item.checked == Some(false)));
 	}
 }

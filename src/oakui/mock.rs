@@ -479,6 +479,10 @@ pub struct MockEngine {
 	edges: Vec<MockEdge>,
 	/// Id allocator for edges added at runtime.
 	next_edge_id: u64,
+	/// Id allocator for nodes added at runtime (the node editor's Add menu).
+	next_node_id: u64,
+	/// Id allocator for the ports of nodes added at runtime.
+	next_port_id: u64,
 	/// The node selection, kept in sync with the node editor (and, later, the
 	/// effect stack) so both views share one selection.
 	node_selection: BTreeSet<NodeId>,
@@ -759,6 +763,8 @@ impl MockEngine {
 			nodes,
 			edges,
 			next_edge_id: 6,
+			next_node_id: 100,
+			next_port_id: 1000,
 			node_selection: BTreeSet::new(),
 			cpu_frame_cache: Mutex::new(HashMap::new()),
 			imported_footage: Vec::new(),
@@ -848,7 +854,9 @@ impl MockEngine {
 	/// requests" loop: the view emits, the engine applies and notifies).
 	pub fn apply_node_graph_event(&mut self, event: &NodeGraphEvent, cx: &mut Context<Self>) {
 		match event {
-			NodeGraphEvent::NodeMovePreview { .. } | NodeGraphEvent::ViewChanged { .. } => {}
+			NodeGraphEvent::NodeMovePreview { .. }
+			| NodeGraphEvent::ViewChanged { .. }
+			| NodeGraphEvent::NodeContextMenuRequested { .. } => {}
 			NodeGraphEvent::NodeMoveRequested { nodes, delta } => {
 				for id in nodes {
 					if let Some(node) = self.nodes.iter_mut().find(|n| n.id() == *id) {
@@ -1240,6 +1248,50 @@ impl AppEngine for MockEngine {
 		Ok(())
 	}
 
+	fn add_node_at(
+		&mut self,
+		type_id: &str,
+		position: Point<Pixels>,
+		cx: &mut Context<Self>,
+	) -> Result<(), String> {
+		// The demo graph is display-only; a created node gets one video
+		// input and one video output, titled after the factory entry.
+		let library = self.node_library();
+		let Some(entry) = library.iter().find(|entry| entry.type_id == type_id) else {
+			return Err(format!("unknown node type \"{type_id}\""));
+		};
+		let video_type = PortDataType::new("video", hsla(0.55, 0.75, 0.6, 1.0));
+		let in_id = PortId(self.next_port_id);
+		let out_id = PortId(self.next_port_id + 1);
+		self.next_port_id += 2;
+		let node = MockNode {
+			id: NodeId(self.next_node_id),
+			title: entry.name.clone().into(),
+			position,
+			inputs: vec![MockPort {
+				id: in_id,
+				kind: PortKind::Input,
+				label: "in".into(),
+				data_type: video_type.clone(),
+				connected: false,
+			}],
+			outputs: vec![MockPort {
+				id: out_id,
+				kind: PortKind::Output,
+				label: "out".into(),
+				data_type: video_type,
+				connected: false,
+			}],
+			header_color: None,
+			enabled: true,
+			collapsed: false,
+		};
+		self.next_node_id += 1;
+		self.nodes.push(node);
+		cx.notify();
+		Ok(())
+	}
+
 	fn apply_node_graph_event(&mut self, event: &NodeGraphEvent, cx: &mut Context<Self>) {
 		self.apply_node_graph_event(event, cx);
 	}
@@ -1305,6 +1357,7 @@ impl AppEngine for MockEngine {
 			TimelineEvent::SelectionChanged
 			| TimelineEvent::TrackSelected { .. }
 			| TimelineEvent::TransitionChanged { .. }
+			| TimelineEvent::ContextMenuRequested { .. }
 			| TimelineEvent::ZoomChanged(_) => {}
 			TimelineEvent::TrackToggleRequested { track, toggle } => {
 				// The demo model applies the toggles directly (no undo in

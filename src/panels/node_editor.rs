@@ -31,11 +31,15 @@ use gpui::node_graph::{
 	NodeData, NodeElement, NodeGraphEvent, NodeGraphView, NodeVisualState, MAX_ZOOM, MIN_ZOOM,
 };
 use gpui::{
-	div, point, prelude::*, px, AnyElement, App, Bounds, ClickEvent, Context, Entity, EventEmitter,
-	Pixels, Render, SharedString, Window,
+	div, point, prelude::*, px, AnyElement, App, Bounds, ClickEvent, Context, Entity,
+	EventEmitter, MouseButton, Pixels, Point, Render, SharedString, Window,
 };
+use gpui_widgets::menu::{Menu, MenuItem};
 
-use crate::oakui::AppEngine;
+use crate::menus::context::{ContextMenuHandle, ContextMenuTriggered};
+use crate::menus::shared;
+use crate::oakui::{AppEngine, NodeLibraryEntry};
+use crate::panels::commands::PanelCommandHandler;
 use crate::panels::ids::NODE_EDITOR;
 
 /// The node editor panel.
@@ -46,6 +50,19 @@ pub struct NodeEditorPanel<E: AppEngine> {
 	/// Whether the initial fit-to-window has been applied (the canvas size is
 	/// only known after the first layout).
 	fitted: bool,
+	/// The right-click context menu.
+	context_menu: ContextMenuHandle,
+	/// Window position of the last right-click: `BackgroundClicked` only
+	/// carries a graph-space position, so the background menu is placed at
+	/// the recorded pointer position (the right-click bubbles up to the
+	/// panel).
+	last_right_click: Option<Point<Pixels>>,
+	/// The graph-space position of the last background click — the spot a
+	/// node added through the Add menu lands on.
+	add_node_position: Option<Point<Pixels>>,
+	/// The Add-menu item ids currently on offer, mapped to their factory
+	/// type ids (rebuilt whenever the menu opens).
+	add_menu_ids: Vec<(usize, String)>,
 }
 
 impl<E: AppEngine> NodeEditorPanel<E> {
@@ -60,12 +77,64 @@ impl<E: AppEngine> NodeEditorPanel<E> {
 				.update(cx, |engine, cx| engine.apply_node_graph_event(event, cx));
 		})
 		.detach();
+		// The panel-side half of the graph events: the context menus.
+		cx.subscribe(
+			&graph,
+			|this, _graph, event: &NodeGraphEvent, cx| match event {
+				NodeGraphEvent::BackgroundClicked { position } => {
+					this.add_node_position = Some(*position);
+					if let Some(window_position) = this.last_right_click {
+						let menu = background_menu(
+							this.engine.read(cx).node_library(),
+							&mut this.add_menu_ids,
+						);
+						this.context_menu.show(window_position, menu, cx);
+					}
+				}
+				NodeGraphEvent::NodeContextMenuRequested { position, .. } => {
+					this.context_menu.show(*position, node_menu(), cx);
+				}
+				_ => {}
+			},
+		)
+		.detach();
+
+		let context_menu = ContextMenuHandle::new(Self::on_local_menu_item, window, cx);
 
 		Self {
 			graph,
 			engine,
 			fitted: false,
+			context_menu,
+			last_right_click: None,
+			add_node_position: None,
+			add_menu_ids: Vec::new(),
 		}
+	}
+
+	/// Handles the node editor's local (non-registry) context-menu items.
+	fn on_local_menu_item(&mut self, item: usize, cx: &mut Context<Self>) {
+		if let Some(color) = shared::color_label_index(item) {
+			println!("[node editor] set node color label to {color}");
+			return;
+		}
+		if item >= LOCAL_ADD_NODE_BASE {
+			let type_id = self
+				.add_menu_ids
+				.iter()
+				.find(|entry| entry.0 == item)
+				.map(|entry| entry.1.clone());
+			if let Some(type_id) = type_id {
+				let position = self.add_node_position.unwrap_or_default();
+				if let Err(err) = self.engine.update(cx, |engine, cx| {
+					engine.add_node_at(&type_id, position, cx)
+				}) {
+					println!("[node editor] add node failed: {err}");
+				}
+			}
+			return;
+		}
+		println!("[node editor] context-menu item {item} (not implemented yet)");
 	}
 
 	/// The union of every node's bounds in graph space, if the graph is
@@ -130,6 +199,10 @@ impl<E: AppEngine> NodeEditorPanel<E> {
 	}
 }
 
+/// The node editor implements no focused-panel commands: everything falls
+/// through to the shell's global handler.
+impl<E: AppEngine> PanelCommandHandler for NodeEditorPanel<E> {}
+
 impl<E: AppEngine> Render for NodeEditorPanel<E> {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		// Fit the graph once the canvas size is known (first layout). Before
@@ -148,6 +221,22 @@ impl<E: AppEngine> Render for NodeEditorPanel<E> {
 			.size_full()
 			.flex()
 			.flex_col()
+			// Any click inside the panel makes it the focused panel (the
+			// dock re-emits this as `DockEvent::PanelFocused`, which the
+			// shell uses to route focused-panel commands).
+			.on_mouse_down(MouseButton::Left, {
+				cx.listener(|_this, _event: &gpui::MouseDownEvent, _window, cx| {
+					cx.emit(PanelEvent::Focused);
+				})
+			})
+			// The graph's `BackgroundClicked` only carries a graph-space
+			// position; record the pointer here (right-clicks bubble up) so
+			// the background menu can open at the window position.
+			.on_mouse_down(MouseButton::Right, {
+				cx.listener(|this, event: &gpui::MouseDownEvent, _window, _cx| {
+					this.last_right_click = Some(event.position);
+				})
+			})
 			.child(
 				div()
 					.flex()
@@ -200,6 +289,8 @@ impl<E: AppEngine> Render for NodeEditorPanel<E> {
 					.min_h_0()
 					.child(self.graph.clone()),
 			)
+			// The right-click popup renders anchored above the panel.
+			.child(self.context_menu.widget())
 	}
 }
 
@@ -245,6 +336,8 @@ fn zoom_button<E: AppEngine>(
 
 impl<E: AppEngine> EventEmitter<PanelEvent> for NodeEditorPanel<E> {}
 
+impl<E: AppEngine> EventEmitter<ContextMenuTriggered> for NodeEditorPanel<E> {}
+
 impl<E: AppEngine> DockPanel for NodeEditorPanel<E> {
 	fn panel_id(&self) -> gpui::dock::PanelId {
 		NODE_EDITOR
@@ -259,6 +352,101 @@ impl<E: AppEngine> DockPanel for NodeEditorPanel<E> {
 			.child(crate::i18n::tr("panel.node_editor"))
 			.into_any_element()
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Context menus — the Rust counterpart of the C++ `NodeView::
+// show_context_menu` (`app/widget/nodeview/nodeview.cpp`).
+// ---------------------------------------------------------------------------
+
+/// Local (non-registry) item ids of the node editor's context menus.
+const LOCAL_SMOOTH_EDGES: usize = 2401;
+const LOCAL_DIR_TOP_BOTTOM: usize = 2402;
+const LOCAL_DIR_BOTTOM_TOP: usize = 2403;
+const LOCAL_DIR_LEFT_RIGHT: usize = 2404;
+const LOCAL_DIR_RIGHT_LEFT: usize = 2405;
+const LOCAL_GROUP: usize = 2406;
+const LOCAL_UNGROUP: usize = 2407;
+const LOCAL_OPEN_IN_VIEWER: usize = 2408;
+const LOCAL_SHOW_IN_PARAM_EDITOR: usize = 2409;
+const LOCAL_NODE_PROPERTIES: usize = 2410;
+/// The Add-menu items occupy `LOCAL_ADD_NODE_BASE..` (one id per library
+/// entry; the panel maps them back to factory type ids).
+const LOCAL_ADD_NODE_BASE: usize = 2420;
+
+/// The node context menu: the shared edit section, grouping, color labels,
+/// viewer/parameter-editor reveals and properties (the C++ node branch).
+pub(crate) fn node_menu() -> Menu {
+	use crate::i18n::tr;
+	let mut items = shared::edit_section(false);
+	if let Some(last) = items.last_mut() {
+		last.separator_after = true;
+	}
+	items.push(MenuItem::new(LOCAL_GROUP, tr("node.context.group")));
+	items.push(MenuItem::new(LOCAL_UNGROUP, tr("node.context.ungroup")));
+	items.push(shared::color_label_item(None).separated());
+	items.push(MenuItem::new(LOCAL_OPEN_IN_VIEWER, tr("node.context.open_in_viewer")));
+	items.push(MenuItem::new(
+		LOCAL_SHOW_IN_PARAM_EDITOR,
+		tr("node.context.show_in_param_editor"),
+	));
+	items.push(MenuItem::new(LOCAL_NODE_PROPERTIES, tr("menu.context.properties")));
+	Menu::new(items)
+}
+
+/// The background context menu: edge smoothing, flow direction and the Add
+/// submenu built from the engine's node library (grouped by category,
+/// alphabetical inside each group — the C++ `create_add_menu` order).
+/// `add_menu_ids` is rewritten to map the fresh item ids to type ids.
+pub(crate) fn background_menu(
+	library: Vec<NodeLibraryEntry>,
+	add_menu_ids: &mut Vec<(usize, String)>,
+) -> Menu {
+	use crate::i18n::tr;
+	add_menu_ids.clear();
+
+	// Group the library by category key (BTreeMap = alphabetical category
+	// order), then sort each group's entries by name.
+	let mut groups: std::collections::BTreeMap<&'static str, Vec<NodeLibraryEntry>> =
+		std::collections::BTreeMap::new();
+	for entry in library {
+		groups.entry(entry.category_key).or_default().push(entry);
+	}
+	let mut add_items: Vec<MenuItem> = Vec::new();
+	let mut next_id = LOCAL_ADD_NODE_BASE;
+	for (category_key, mut entries) in groups {
+		entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+		let mut submenu = Vec::with_capacity(entries.len());
+		for entry in entries {
+			submenu.push(MenuItem::new(next_id, entry.name.clone()));
+			add_menu_ids.push((next_id, entry.type_id));
+			next_id += 1;
+		}
+		add_items.push(
+			MenuItem::new(0, tr(category_key)).with_submenu(Menu::new(submenu)),
+		);
+	}
+
+	let direction_menu = Menu::new(vec![
+		MenuItem::new(LOCAL_DIR_TOP_BOTTOM, tr("node.context.dir_top_bottom"))
+			.with_checked(true),
+		MenuItem::new(LOCAL_DIR_BOTTOM_TOP, tr("node.context.dir_bottom_top"))
+			.with_checked(false),
+		MenuItem::new(LOCAL_DIR_LEFT_RIGHT, tr("node.context.dir_left_right"))
+			.with_checked(false),
+		MenuItem::new(LOCAL_DIR_RIGHT_LEFT, tr("node.context.dir_right_left"))
+			.with_checked(false),
+	]);
+
+	Menu::new(vec![
+		MenuItem::new(LOCAL_SMOOTH_EDGES, tr("node.context.smooth_edges"))
+			.with_checked(false)
+			.separated(),
+		MenuItem::new(0, tr("node.context.direction"))
+			.with_submenu(direction_menu)
+			.separated(),
+		MenuItem::new(0, tr("node.context.add")).with_submenu(Menu::new(add_items)),
+	])
 }
 
 #[cfg(test)]
@@ -315,5 +503,94 @@ mod tests {
 			gpui::node_graph::GraphViewState::new().offset()
 		);
 		assert!(state.zoom() > 0.0);
+	}
+
+	/// The node menu wraps the plain edit section with grouping, color
+	/// labels, the reveal entries and properties.
+	#[test]
+	fn node_menu_carries_grouping_and_reveals() {
+		let menu = node_menu();
+		let ids: Vec<usize> = menu.items.iter().map(|item| item.id).collect();
+		assert!(ids.contains(&LOCAL_GROUP));
+		assert!(ids.contains(&LOCAL_UNGROUP));
+		assert!(ids.contains(&LOCAL_OPEN_IN_VIEWER));
+		assert!(ids.contains(&LOCAL_SHOW_IN_PARAM_EDITOR));
+		assert!(ids.contains(&LOCAL_NODE_PROPERTIES));
+
+		let color = menu
+			.items
+			.iter()
+			.find(|item| item.label == crate::i18n::tr("menu.color.label"))
+			.expect("color label item");
+		assert!(color.separator_after);
+	}
+
+	fn entry(type_id: &str, name: &str, category_key: &'static str) -> NodeLibraryEntry {
+		NodeLibraryEntry {
+			type_id: type_id.to_string(),
+			name: name.to_string(),
+			category_key,
+		}
+	}
+
+	/// The background menu groups the library alphabetically by category,
+	/// sorts entries inside each group, and records the id → type-id map
+	/// starting at `LOCAL_ADD_NODE_BASE`.
+	#[test]
+	fn background_menu_groups_the_library() {
+		let library = vec![
+			entry("video.solid", "Solid", "node.category.generator"),
+			entry("math.add", "Add", "node.category.math"),
+			entry("video.bars", "Color Bars", "node.category.generator"),
+			entry("math.multiply", "Multiply", "node.category.math"),
+		];
+		let mut add_menu_ids = Vec::new();
+		let menu = background_menu(library, &mut add_menu_ids);
+
+		// Top level: smooth edges, direction, add.
+		assert_eq!(menu.items.len(), 3);
+		assert_eq!(menu.items[0].id, LOCAL_SMOOTH_EDGES);
+		let add = &menu.items[2];
+		assert_eq!(add.label, crate::i18n::tr("node.context.add"));
+
+		// Categories sort alphabetically: generator before math, entries
+		// sorted case-insensitively inside each group.
+		let categories = add.submenu.as_ref().unwrap();
+		let labels: Vec<_> = categories
+			.items
+			.iter()
+			.map(|item| item.label.clone())
+			.collect();
+		assert_eq!(
+			labels,
+			vec![
+				crate::i18n::tr("node.category.generator"),
+				crate::i18n::tr("node.category.math"),
+			]
+		);
+		let generator = &categories.items[0].submenu.as_ref().unwrap().items;
+		let names: Vec<_> = generator.iter().map(|item| item.label.clone()).collect();
+		assert_eq!(names, vec!["Color Bars", "Solid"]);
+
+		// The id map starts at the base and matches submenu order.
+		assert_eq!(add_menu_ids[0].0, LOCAL_ADD_NODE_BASE);
+		let mapped: std::collections::HashMap<usize, String> =
+			add_menu_ids.iter().cloned().collect();
+		assert_eq!(
+			mapped.get(&generator[0].id),
+			Some(&"video.bars".to_string())
+		);
+		assert_eq!(mapped.len(), 4);
+	}
+
+	/// An empty library still yields the smoothing/direction entries, with
+	/// an empty Add submenu.
+	#[test]
+	fn background_menu_survives_an_empty_library() {
+		let mut add_menu_ids = Vec::new();
+		let menu = background_menu(Vec::new(), &mut add_menu_ids);
+		assert_eq!(menu.items.len(), 3);
+		assert!(add_menu_ids.is_empty());
+		assert!(menu.items[2].submenu.as_ref().unwrap().items.is_empty());
 	}
 }

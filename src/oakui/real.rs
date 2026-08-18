@@ -1283,6 +1283,17 @@ impl RealEngine {
 		}
 	}
 
+	/// The shared refresh after any undo-stack change (undo / redo /
+	/// history jump): the sequence info, the timeline snapshot and the
+	/// frame caches all follow the reverted or re-applied state.
+	fn apply_stack_change(&mut self, cx: &mut Context<Self>) {
+		self.refresh_sequence_info();
+		self.rebuild_timeline();
+		self.cpu_frame_cache.lock().unwrap().clear();
+		self.full_res_generation = self.full_res_generation.wrapping_add(1);
+		cx.notify();
+	}
+
 	/// Snapshots one track (with its clips) from the graph.
 	fn snapshot_track(
 		graph: &oaknode::graph::Graph,
@@ -1924,7 +1935,10 @@ impl AppEngine for RealEngine {
 			NodeGraphEvent::NodeMovePreview { .. }
 			| NodeGraphEvent::ViewChanged { .. }
 			| NodeGraphEvent::BackgroundClicked { .. }
-			| NodeGraphEvent::SelectionChanged { .. } => {}
+			| NodeGraphEvent::SelectionChanged { .. }
+			// The node editor panel answers the right-click itself (it owns
+			// the popup); the engine has nothing to apply.
+			| NodeGraphEvent::NodeContextMenuRequested { .. } => {}
 			_ => {
 				if let (Some(project), Some(seq)) = (self.project.clone(), self.sequence) {
 					let result = crate::oakui::nodegraph::apply_edit(&project, seq, event);
@@ -2022,10 +2036,12 @@ impl AppEngine for RealEngine {
 				}
 				cx.notify();
 			}
-			// Selection / zoom / transition / track-selected: not editable.
+			// Selection / zoom / transition / track-selected / context-menu:
+			// not editable (the right-click is answered by the panel's popup).
 			TimelineEvent::SelectionChanged
 			| TimelineEvent::TrackSelected { .. }
 			| TimelineEvent::TransitionChanged { .. }
+			| TimelineEvent::ContextMenuRequested { .. }
 			| TimelineEvent::ZoomChanged(_) => {}
 			TimelineEvent::TrackToggleRequested { track, toggle } => {
 				// The header toggles map onto the undoable track flag
@@ -2237,22 +2253,45 @@ impl AppEngine for RealEngine {
 	fn undo(&mut self, cx: &mut Context<Self>) {
 		if self.project.is_some() {
 			oakundo::global::undo().ok();
-			self.refresh_sequence_info();
-			self.rebuild_timeline();
-			self.cpu_frame_cache.lock().unwrap().clear();
-			self.full_res_generation = self.full_res_generation.wrapping_add(1);
-			cx.notify();
+			self.apply_stack_change(cx);
 		}
 	}
 
 	fn redo(&mut self, cx: &mut Context<Self>) {
 		if self.project.is_some() {
 			oakundo::global::redo().ok();
-			self.refresh_sequence_info();
-			self.rebuild_timeline();
-			self.cpu_frame_cache.lock().unwrap().clear();
-			self.full_res_generation = self.full_res_generation.wrapping_add(1);
-			cx.notify();
+			self.apply_stack_change(cx);
+		}
+	}
+
+	fn history_entries(&self) -> Vec<super::HistoryEntry> {
+		if self.project.is_none() {
+			return Vec::new();
+		}
+		// The C++ `HistoryModel` lists every row of the engine stack (done
+		// first, then the redoable tail); labels are read through the same
+		// two-stage contract the C++ `oakengine_undo_command_text` uses.
+		let count = oakundo::global::count().unwrap_or(0);
+		(0..count)
+			.map(|row| super::HistoryEntry {
+				name: oakundo::global::command_name(row).unwrap_or_default(),
+				done: oakundo::global::command_done(row).unwrap_or(false),
+			})
+			.collect()
+	}
+
+	fn history_index(&self) -> i64 {
+		if self.project.is_some() {
+			oakundo::global::index().unwrap_or(0)
+		} else {
+			0
+		}
+	}
+
+	fn jump_history(&mut self, index: i64, cx: &mut Context<Self>) {
+		if self.project.is_some() {
+			oakundo::global::jump(index).ok();
+			self.apply_stack_change(cx);
 		}
 	}
 
@@ -2302,6 +2341,59 @@ impl AppEngine for RealEngine {
 		graphops::import_footage(&project, &path)?;
 		// The material bin reads the folder tree live from the graph, so a
 		// notify is enough for the explorer to list the new entry.
+		cx.notify();
+		Ok(())
+	}
+
+	fn entry_path(&self, id: u64) -> Option<PathBuf> {
+		let project = self.project.clone()?;
+		let footage = graphops::id_of(id)?;
+		let guard = graphops::lock(&project);
+		if !guard.graph.is_valid(footage) {
+			return None;
+		}
+		let behavior = graphops::footage_behavior(&guard.graph, footage)?;
+		if behavior.filename.is_empty() {
+			return None;
+		}
+		Some(PathBuf::from(&behavior.filename))
+	}
+
+	fn replace_footage(
+		&mut self,
+		id: u64,
+		path: PathBuf,
+		cx: &mut Context<Self>,
+	) -> Result<(), String> {
+		if !path.is_file() {
+			return Err(format!("file does not exist: {}", path.display()));
+		}
+		let Some(project) = self.project.clone() else {
+			return Err("no project open".into());
+		};
+		let Some(footage) = graphops::id_of(id) else {
+			return Err("unknown project entry".into());
+		};
+		{
+			let mut guard = graphops::lock(&project);
+			if !guard.graph.is_valid(footage) {
+				return Err("unknown project entry".into());
+			}
+			let Some(f) = guard
+				.graph
+				.get_mut(footage)
+				.and_then(|e| e.behavior.as_any_mut())
+				.and_then(|a| a.downcast_mut::<oaknode::footage::FootageBehavior>())
+			else {
+				return Err("entry is not footage".into());
+			};
+			f.filename = path.to_string_lossy().into_owned();
+			// Re-probe in place; a failed probe leaves the footage invalid,
+			// matching the import-time rejection behavior. (Not undoable
+			// yet — the C++ replace is a single command.)
+			f.probe()
+				.map_err(|e| format!("failed to probe \"{}\": {e}", path.display()))?;
+		}
 		cx.notify();
 		Ok(())
 	}
@@ -3354,6 +3446,60 @@ mod tests {
 		assert!(!cx.read(|app| engine.read(app).track(0).expect("V1").is_locked()));
 		cx.update(|app| engine.update(app, |engine, cx| engine.undo(cx)));
 		assert!(cx.read(|app| engine.read(app).track(0).expect("V1").is_visible()));
+	}
+
+	/// The history panel's engine surface mirrors the C++ `HistoryWidget`
+	/// over the real stack: rows track every pushed command, `done` flags
+	/// gray the redoable tail, and `jump_history` walks the stack both
+	/// ways (a row click's `row + 1` target).
+	#[gpui::test]
+	async fn real_engine_history_tracks_the_undo_stack(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		// A fresh project leaves the bottom "New/Open Project" command on
+		// the stack: one row, the pointer at 1.
+		let base = cx.read(|app| engine.read(app).history_entries().len());
+		assert!(base >= 1, "the stack always lists the bottom command");
+		assert_eq!(cx.read(|app| engine.read(app).history_index()), base as i64);
+
+		// Two undoable edits add two labeled done rows.
+		cx.update(|app| engine.update(app, |engine, cx| engine.add_track(TrackKind::Video, cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.add_track(TrackKind::Audio, cx)));
+		let entries = cx.read(|app| engine.read(app).history_entries());
+		assert_eq!(entries.len(), base + 2);
+		assert!(entries.iter().all(|e| e.done), "fresh rows are done");
+		assert!(
+			entries[base].name.is_empty() == false && entries[base + 1].name.is_empty() == false,
+			"edit rows carry their command labels"
+		);
+		assert_eq!(cx.read(|app| engine.read(app).history_index()), (base + 2) as i64);
+
+		// Undo grays the newest row (it joins the redoable tail).
+		cx.update(|app| engine.update(app, |engine, cx| engine.undo(cx)));
+		let entries = cx.read(|app| engine.read(app).history_entries());
+		assert!(!entries.last().unwrap().done, "undone row stays listed");
+		assert_eq!(cx.read(|app| engine.read(app).history_index()), (base + 1) as i64);
+
+		// A jump to the bottom undoes everything below the base command;
+		// the rows stay listed (gray), matching the C++ jump semantics.
+		cx.update(|app| engine.update(app, |engine, cx| engine.jump_history(base as i64, cx)));
+		assert_eq!(cx.read(|app| engine.read(app).history_index()), base as i64);
+		assert!(
+			cx.read(|app| !engine.read(app).can_undo()),
+			"nothing to undo at the bottom command"
+		);
+
+		// Jumping forward redoes both edits in order.
+		cx.update(|app| {
+			engine.update(app, |engine, cx| engine.jump_history((base + 2) as i64, cx))
+		});
+		assert_eq!(cx.read(|app| engine.read(app).history_index()), (base + 2) as i64);
+		let entries = cx.read(|app| engine.read(app).history_entries());
+		assert!(entries.iter().all(|e| e.done), "the redo restored every row");
+
+		oakundo::global::clear().unwrap();
 	}
 
 	/// M12 P2 acceptance: a real project with a sequence + footage clip

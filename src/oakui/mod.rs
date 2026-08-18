@@ -56,8 +56,8 @@ pub mod transport;
 pub mod waveform;
 
 pub use engine::{
-	AppEngine, EngineClock, EngineGateway, ExportEvent, ExportSession, LibraryProject, Monitor,
-	Project, ScopeData, Sequence, VideoFormat,
+	AppEngine, EngineClock, EngineGateway, ExportEvent, ExportSession, HistoryEntry,
+	LibraryProject, Monitor, NodeLibraryEntry, Project, ScopeData, Sequence, VideoFormat,
 };
 pub use mock::{MockClock, MockEngine};
 pub use real::{RealClock, RealEngine};

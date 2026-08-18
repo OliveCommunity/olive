@@ -1,0 +1,411 @@
+// Oak Video Editor - Non-Linear Video Editor
+// Copyright (C) 2026 Oak Team
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+//! The shared context-menu segments: the Rust counterpart of the C++
+//! `MenuShared` item groups (`add_items_for_edit_menu`,
+//! `add_items_for_clip_edit_menu`, `add_items_for_in_out_menu`,
+//! `add_items_for_new_menu` and the `ColorLabelMenu`,
+//! `app/widget/menu/menushared.cpp` + `app/widget/colorlabelmenu/`).
+//!
+//! Registry-backed items are built from [`crate::actions`] exactly like the
+//! menu bar, so ids, labels and shortcut annotations can never diverge.
+//! Local (non-registry) items — the 16 color labels today — live at
+//! [`LOCAL_ID_BASE`] and above; [`crate::actions::entry_for_menu_id`] is
+//! what splits the two worlds at dispatch time.
+
+use gpui_widgets::menu::{Menu, MenuItem};
+
+use crate::actions::ActionId;
+
+/// The first id reserved for local (non-registry) context-menu items. Every
+/// registry action's menu id sits below this; the panels' panel-specific
+/// items and the color labels sit at or above it.
+pub const LOCAL_ID_BASE: usize = 2001;
+
+/// The first of the 16 color-label items:
+/// `COLOR_LABEL_BASE..COLOR_LABEL_BASE + COLOR_LABEL_COUNT`.
+pub const COLOR_LABEL_BASE: usize = LOCAL_ID_BASE;
+
+/// The number of standard color labels (the C++ `ColorCoding` enum: red …
+/// gray).
+pub const COLOR_LABEL_COUNT: usize = 16;
+
+/// One menu item straight from the registry: id and label come from the
+/// entry, the shortcut annotation from
+/// [`display_shortcut`](crate::actions::display_shortcut) — the same recipe
+/// the menu bar uses.
+pub fn action_item(action: ActionId) -> MenuItem {
+	let entry = action.entry();
+	let mut item = MenuItem::new(entry.menu_id(), crate::i18n::tr(entry.i18n_key));
+	if let Some(shortcut) = crate::actions::display_shortcut(action) {
+		item = item.with_shortcut(shortcut);
+	}
+	item
+}
+
+/// The shared "edit" segment (`add_items_for_edit_menu`): undo/redo, the
+/// clipboard group and delete; with `for_clips` the clip-only tail follows
+/// (ripple delete, split, speed/duration, then the clip-edit group).
+pub fn edit_section(for_clips: bool) -> Vec<MenuItem> {
+	use ActionId as A;
+	let mut items = vec![
+		action_item(A::Undo),
+		action_item(A::Redo).separated(),
+		action_item(A::Cut),
+		action_item(A::Copy),
+		action_item(A::Paste),
+		action_item(A::PasteInsert),
+		action_item(A::Duplicate),
+		action_item(A::Rename),
+		action_item(A::Delete),
+	];
+	if for_clips {
+		items.push(action_item(A::RippleDelete));
+		items.push(action_item(A::SplitAtPlayhead));
+		items.push(action_item(A::SpeedDuration).separated());
+		items.extend(clip_edit_section());
+	}
+	items
+}
+
+/// The shared "clip edit" segment (`add_items_for_clip_edit_menu`): default
+/// transition, link/unlink, enable/disable, nest.
+pub fn clip_edit_section() -> Vec<MenuItem> {
+	use ActionId as A;
+	vec![
+		action_item(A::DefaultTransition),
+		action_item(A::LinkUnlink),
+		action_item(A::EnableDisable),
+		action_item(A::Nest),
+	]
+}
+
+/// The shared "in/out" segment (`add_items_for_in_out_menu`).
+pub fn in_out_section() -> Vec<MenuItem> {
+	use ActionId as A;
+	vec![
+		action_item(A::SetInPoint),
+		action_item(A::SetOutPoint).separated(),
+		action_item(A::ResetIn),
+		action_item(A::ResetOut),
+		action_item(A::ClearInOut),
+	]
+}
+
+/// The shared "new" segment (`add_items_for_new_menu`).
+pub fn new_section() -> Vec<MenuItem> {
+	use ActionId as A;
+	vec![
+		action_item(A::NewProject).separated(),
+		action_item(A::NewSequence),
+		action_item(A::NewFolder),
+	]
+}
+
+/// The 16 color labels as a "Color" submenu (the C++ `ColorLabelMenu`),
+/// with `selected` checked when it is the item's index
+/// (`0..COLOR_LABEL_COUNT`).
+pub fn color_label_menu(selected: Option<usize>) -> Menu {
+	const KEYS: [&str; COLOR_LABEL_COUNT] = [
+		"menu.color.red",
+		"menu.color.maroon",
+		"menu.color.orange",
+		"menu.color.brown",
+		"menu.color.yellow",
+		"menu.color.oak",
+		"menu.color.lime",
+		"menu.color.green",
+		"menu.color.cyan",
+		"menu.color.teal",
+		"menu.color.blue",
+		"menu.color.navy",
+		"menu.color.pink",
+		"menu.color.purple",
+		"menu.color.silver",
+		"menu.color.gray",
+	];
+	let items = KEYS
+		.iter()
+		.enumerate()
+		.map(|(index, key)| {
+			let mut item = MenuItem::new(COLOR_LABEL_BASE + index, crate::i18n::tr(key));
+			if selected == Some(index) {
+				item = item.with_checked(true);
+			}
+			item
+		})
+		.collect();
+	Menu::new(items)
+}
+
+/// The "Color" submenu header item (label localized, submenu attached).
+pub fn color_label_item(selected: Option<usize>) -> MenuItem {
+	MenuItem::new(0, crate::i18n::tr("menu.color.label")).with_submenu(color_label_menu(selected))
+}
+
+/// The color index (`0..COLOR_LABEL_COUNT`) behind a triggered menu item id,
+/// when `item` is one of the color-label items.
+pub fn color_label_index(item: usize) -> Option<usize> {
+	(item >= COLOR_LABEL_BASE && item < COLOR_LABEL_BASE + COLOR_LABEL_COUNT)
+		.then(|| item - COLOR_LABEL_BASE)
+}
+
+// ---------------------------------------------------------------------------
+// Viewer context menu (shared by the source and program monitors)
+// ---------------------------------------------------------------------------
+
+/// Local (non-registry) item ids of the viewer context menu.
+pub const LOCAL_VIEWER_ZOOM_FIT: usize = 2301;
+/// The zoom-level items occupy `LOCAL_VIEWER_ZOOM_LEVELS_BASE + i`, aligned
+/// with [`VIEWER_ZOOM_LEVELS`].
+pub const LOCAL_VIEWER_ZOOM_LEVELS_BASE: usize = 2302;
+pub const LOCAL_VIEWER_FULL_SCREEN: usize = 2320;
+pub const LOCAL_VIEWER_RES_FULL: usize = 2321;
+pub const LOCAL_VIEWER_RES_HALF: usize = 2322;
+pub const LOCAL_VIEWER_RES_QUARTER: usize = 2323;
+pub const LOCAL_VIEWER_RES_EIGHTH: usize = 2324;
+pub const LOCAL_VIEWER_SAFE_OFF: usize = 2325;
+pub const LOCAL_VIEWER_SAFE_ON: usize = 2326;
+pub const LOCAL_VIEWER_SAFE_CUSTOM: usize = 2327;
+pub const LOCAL_VIEWER_STOP_ON_LAST: usize = 2328;
+pub const LOCAL_VIEWER_WF_AUTOMATIC: usize = 2329;
+pub const LOCAL_VIEWER_WF_ONLY: usize = 2330;
+pub const LOCAL_VIEWER_WF_BOTH: usize = 2331;
+pub const LOCAL_VIEWER_SHOW_FPS: usize = 2332;
+pub const LOCAL_VIEWER_SAVE_FRAME: usize = 2333;
+
+/// The zoom levels the viewer's Zoom submenu offers (the C++
+/// `ViewerSizer::k_zoom_levels`).
+pub const VIEWER_ZOOM_LEVELS: [f32; 10] =
+	[0.05, 0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 4.0, 8.0];
+
+/// The zoom submenu item id for `level` (one of [`VIEWER_ZOOM_LEVELS`]).
+pub fn viewer_zoom_level_id(index: usize) -> usize {
+	LOCAL_VIEWER_ZOOM_LEVELS_BASE + index
+}
+
+/// The context menu both viewer monitors show (the C++
+/// `ViewerWidget::show_context_menu`, minus the OCIO color menus and the
+/// subtitle block the engine does not surface yet). Zoom / playback
+/// resolution / safe margins / waveform / FPS are placeholders until the
+/// viewer widget grows those controls.
+pub fn viewer_menu() -> Menu {
+	use crate::i18n::tr;
+	// Zoom: Fit + one entry per zoom level.
+	let mut zoom_items = vec![MenuItem::new(LOCAL_VIEWER_ZOOM_FIT, tr("viewer.context.zoom_fit"))];
+	for (index, level) in VIEWER_ZOOM_LEVELS.iter().enumerate() {
+		zoom_items.push(MenuItem::new(
+			viewer_zoom_level_id(index),
+			format!("{:.0}%", level * 100.0),
+		));
+	}
+	// Playback resolution radio group.
+	let resolution_menu = Menu::new(vec![
+		MenuItem::new(LOCAL_VIEWER_RES_FULL, tr("viewer.context.res_full")).with_checked(true),
+		MenuItem::new(LOCAL_VIEWER_RES_HALF, tr("viewer.context.res_half")).with_checked(false),
+		MenuItem::new(LOCAL_VIEWER_RES_QUARTER, tr("viewer.context.res_quarter"))
+			.with_checked(false),
+		MenuItem::new(LOCAL_VIEWER_RES_EIGHTH, tr("viewer.context.res_eighth")).with_checked(false),
+	]);
+	// Safe margins radio group.
+	let safe_menu = Menu::new(vec![
+		MenuItem::new(LOCAL_VIEWER_SAFE_OFF, tr("viewer.context.safe_off")).with_checked(true),
+		MenuItem::new(LOCAL_VIEWER_SAFE_ON, tr("viewer.context.safe_on")).with_checked(false),
+		MenuItem::new(LOCAL_VIEWER_SAFE_CUSTOM, tr("viewer.context.safe_custom"))
+			.with_checked(false),
+	]);
+	// Audio waveform radio group.
+	let waveform_menu = Menu::new(vec![
+		MenuItem::new(LOCAL_VIEWER_WF_AUTOMATIC, tr("viewer.context.wf_automatic"))
+			.with_checked(true),
+		MenuItem::new(LOCAL_VIEWER_WF_ONLY, tr("viewer.context.wf_only")).with_checked(false),
+		MenuItem::new(LOCAL_VIEWER_WF_BOTH, tr("viewer.context.wf_both")).with_checked(false),
+	]);
+
+	Menu::new(vec![
+		MenuItem::new(0, tr("viewer.context.zoom")).with_submenu(Menu::new(zoom_items)),
+		MenuItem::new(LOCAL_VIEWER_FULL_SCREEN, tr("viewer.context.full_screen")),
+		MenuItem::new(0, tr("viewer.context.playback_resolution"))
+			.with_submenu(resolution_menu),
+		MenuItem::new(0, tr("viewer.context.safe_margins")).with_submenu(safe_menu).separated(),
+		MenuItem::new(LOCAL_VIEWER_STOP_ON_LAST, tr("viewer.context.stop_on_last"))
+			.with_checked(false)
+			.separated(),
+		MenuItem::new(0, tr("viewer.context.audio_waveform")).with_submenu(waveform_menu),
+		MenuItem::new(LOCAL_VIEWER_SHOW_FPS, tr("viewer.context.show_fps")).with_checked(false),
+		MenuItem::new(LOCAL_VIEWER_SAVE_FRAME, tr("viewer.context.save_frame")).separated(),
+	])
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// The color-label ids occupy the first local-id block.
+	#[test]
+	fn color_label_ids_are_the_first_local_ids() {
+		assert_eq!(COLOR_LABEL_BASE, LOCAL_ID_BASE);
+		for index in 0..COLOR_LABEL_COUNT {
+			assert_eq!(color_label_index(COLOR_LABEL_BASE + index), Some(index));
+		}
+		assert_eq!(color_label_index(LOCAL_ID_BASE - 1), None);
+		assert_eq!(color_label_index(LOCAL_ID_BASE + COLOR_LABEL_COUNT), None);
+	}
+
+	/// The color submenu carries all 16 labels with registry-free ids and
+	/// checks only the selected one.
+	#[test]
+	fn color_label_menu_marks_the_selection() {
+		let menu = color_label_menu(Some(5));
+		assert_eq!(menu.items.len(), COLOR_LABEL_COUNT);
+		for (index, item) in menu.items.iter().enumerate() {
+			assert_eq!(item.id, COLOR_LABEL_BASE + index);
+			assert!(crate::actions::entry_for_menu_id(item.id).is_none());
+			assert_eq!(item.checked, (index == 5).then_some(true));
+		}
+	}
+
+	/// The edit segment mirrors `add_items_for_edit_menu`: the plain form
+	/// ends at delete, the clip form appends the clip-only tail.
+	#[test]
+	fn edit_section_matches_the_cpp_layout() {
+		use ActionId as A;
+		let plain = edit_section(false);
+		let ids: Vec<usize> = plain.iter().map(|item| item.id).collect();
+		assert_eq!(
+			ids,
+			vec![
+				A::Undo.menu_id(),
+				A::Redo.menu_id(),
+				A::Cut.menu_id(),
+				A::Copy.menu_id(),
+				A::Paste.menu_id(),
+				A::PasteInsert.menu_id(),
+				A::Duplicate.menu_id(),
+				A::Rename.menu_id(),
+				A::Delete.menu_id(),
+			]
+		);
+		// The separator sits after redo.
+		assert!(plain[1].separator_after);
+
+		let clips = edit_section(true);
+		let tail: Vec<usize> = clips.iter().skip(9).map(|item| item.id).collect();
+		assert_eq!(
+			tail,
+			vec![
+				A::RippleDelete.menu_id(),
+				A::SplitAtPlayhead.menu_id(),
+				A::SpeedDuration.menu_id(),
+				A::DefaultTransition.menu_id(),
+				A::LinkUnlink.menu_id(),
+				A::EnableDisable.menu_id(),
+				A::Nest.menu_id(),
+			]
+		);
+		// The separator between the clip-only editing and clip-edit groups
+		// sits after speed/duration.
+		assert!(clips[11].separator_after);
+	}
+
+	/// The in/out and new segments keep the C++ separator placement.
+	#[test]
+	fn in_out_and_new_sections_match_the_cpp_layout() {
+		use ActionId as A;
+		let in_out = in_out_section();
+		assert_eq!(
+			in_out.iter().map(|item| item.id).collect::<Vec<_>>(),
+			vec![
+				A::SetInPoint.menu_id(),
+				A::SetOutPoint.menu_id(),
+				A::ResetIn.menu_id(),
+				A::ResetOut.menu_id(),
+				A::ClearInOut.menu_id(),
+			]
+		);
+		assert!(in_out[1].separator_after);
+
+		let new_menu = new_section();
+		assert_eq!(
+			new_menu.iter().map(|item| item.id).collect::<Vec<_>>(),
+			vec![
+				A::NewProject.menu_id(),
+				A::NewSequence.menu_id(),
+				A::NewFolder.menu_id(),
+			]
+		);
+		assert!(new_menu[0].separator_after);
+	}
+
+	/// Every registry item the segments build resolves back to its action.
+	#[test]
+	fn segment_items_resolve_to_registry_entries() {
+		for item in edit_section(true)
+			.into_iter()
+			.chain(in_out_section())
+			.chain(new_section())
+		{
+			assert!(
+				crate::actions::entry_for_menu_id(item.id).is_some(),
+				"segment item {} is not a registry id",
+				item.id
+			);
+		}
+	}
+
+	/// The viewer menu carries the zoom levels with percentage labels and
+	/// defaults each radio group to its first entry.
+	#[test]
+	fn viewer_menu_offers_every_zoom_level() {
+		let menu = viewer_menu();
+		let zoom = menu
+			.items
+			.iter()
+			.find(|item| item.label == crate::i18n::tr("viewer.context.zoom"))
+			.expect("zoom submenu");
+		let zoom_items = &zoom.submenu.as_ref().unwrap().items;
+		assert_eq!(zoom_items.len(), 1 + VIEWER_ZOOM_LEVELS.len());
+		assert_eq!(zoom_items[0].id, LOCAL_VIEWER_ZOOM_FIT);
+		for (index, level) in VIEWER_ZOOM_LEVELS.iter().enumerate() {
+			assert_eq!(zoom_items[index + 1].id, viewer_zoom_level_id(index));
+			assert_eq!(zoom_items[index + 1].label, format!("{:.0}%", level * 100.0));
+		}
+	}
+
+	/// The resolution / safe-margin / waveform submenus check their first
+	/// (default) entry only.
+	#[test]
+	fn viewer_menu_radio_groups_default_to_the_first_entry() {
+		let menu = viewer_menu();
+		for label_key in [
+			"viewer.context.playback_resolution",
+			"viewer.context.safe_margins",
+			"viewer.context.audio_waveform",
+		] {
+			let item = menu
+				.items
+				.iter()
+				.find(|item| item.label == crate::i18n::tr(label_key))
+				.unwrap_or_else(|| panic!("viewer menu missing {label_key}"));
+			let sub = item.submenu.as_ref().unwrap();
+			assert_eq!(sub.items[0].checked, Some(true), "{label_key} default");
+			assert!(
+				sub.items[1..].iter().all(|item| item.checked == Some(false)),
+				"{label_key} non-defaults unchecked"
+			);
+		}
+	}
+}

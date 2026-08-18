@@ -37,8 +37,10 @@ use std::sync::Arc;
 
 use gpui::effect_stack::{EffectStackDataSource, EffectStackEvent};
 use gpui::node_graph::{NodeGraphDataSource, NodeGraphEvent};
-use gpui::timeline::{ClipId, Frame, FrameRate, TimelineDataSource, TimelineEvent, TrackKind};
-use gpui::{App, Context, Entity, Pixels, RenderImage};
+use gpui::timeline::{
+	ClipId, Frame, FrameRate, TimelineDataSource, TimelineEvent, TrackData, TrackKind,
+};
+use gpui::{App, Context, Entity, Pixels, Point, RenderImage};
 use gpui_widgets::audio_meter::AudioMeterDataSource;
 use gpui_widgets::project_explorer::ProjectDataSource;
 use gpui_widgets::viewer::PlaybackClock;
@@ -122,6 +124,56 @@ pub struct Sequence {
 	pub format: VideoFormat,
 	/// The sequence length in frames.
 	pub length: Frame,
+}
+
+/// One row of the undo history (the C++ `HistoryModel` row): a command
+/// label plus whether the command is currently done (undone rows render
+/// gray in the history panel).
+#[derive(Debug, Clone, PartialEq)]
+pub struct HistoryEntry {
+	/// The command's user-visible label (may be empty; the panel falls
+	/// back to a generic "Command" like the C++ widget).
+	pub name: String,
+	/// Whether the command is currently done (`false` = the redoable
+	/// tail).
+	pub done: bool,
+}
+
+/// One creatable node type the node editor's "Add" submenu lists — the
+/// Rust counterpart of a C++ `NodeFactory` menu entry. `category_key` is
+/// the i18n key of the category submenu the entry belongs to (the first
+/// of the factory entry's categories; entries whose only category never
+/// appears in the create menu are skipped).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NodeLibraryEntry {
+	/// The factory type id handed to [`AppEngine::add_node_at`].
+	pub type_id: String,
+	/// The node's display name.
+	pub name: String,
+	/// The i18n key of the category submenu (`node.category.*`).
+	pub category_key: &'static str,
+}
+
+/// The i18n key of a node category submenu, or `None` for categories that
+/// never appear in the node editor's Add menu (timeline-structural nodes).
+pub fn node_category_key(category: oaknode::node::Category) -> Option<&'static str> {
+	use oaknode::node::Category as C;
+	Some(match category {
+		C::Output => "node.category.output",
+		C::Effect => "node.category.effect",
+		C::Generator => "node.category.generator",
+		C::Input => "node.category.input",
+		C::Math => "node.category.math",
+		C::Color => "node.category.color",
+		C::Distort => "node.category.distort",
+		C::Filter => "node.category.filter",
+		C::Keying => "node.category.keying",
+		C::OpenFx => "node.category.openfx",
+		C::Group => "node.category.group",
+		// Tracks/blocks are timeline-structural; the user never creates
+		// them from the node editor.
+		C::Timeline => return None,
+	})
 }
 
 /// The engine gateway.
@@ -279,6 +331,106 @@ pub trait AppEngine:
 	fn split_at_playhead(&mut self, cx: &mut Context<Self>);
 
 	// -------------------------------------------------------------------
+	// Right-click menu support: the node editor's Add menu, the track-head
+	// "delete all empty tracks" action, and the project explorer's footage
+	// operations. Defaults degrade to "unsupported" / "unknown".
+	// -------------------------------------------------------------------
+
+	/// The creatable node types the node editor's Add submenu lists (the
+	/// C++ `NodeFactory` menu listing): the global factory's entries minus
+	/// the ones flagged `dont_show_in_create_menu`, each tagged with its
+	/// first category's i18n key. Runtime-registered (plugin) entries are
+	/// included.
+	fn node_library(&self) -> Vec<NodeLibraryEntry> {
+		let mut out = Vec::new();
+		let factory = oaknode::factory::Factory::global();
+		for meta in factory.entries() {
+			// A scratch instance per entry just to read its flags (the
+			// factory metadata carries no flag copy).
+			let (core, _behavior) = (meta.create)();
+			if core.flags & oaknode::node::flags::DONT_SHOW_IN_CREATE_MENU != 0 {
+				continue;
+			}
+			let Some(category_key) = meta.categories.first().copied().and_then(node_category_key)
+			else {
+				continue;
+			};
+			let name = if meta.name.is_empty() {
+				meta.type_id.to_string()
+			} else {
+				meta.name.to_string()
+			};
+			out.push(NodeLibraryEntry {
+				type_id: meta.type_id.to_string(),
+				name,
+				category_key,
+			});
+		}
+		for meta in factory.dynamic_entries() {
+			let Some(category_key) = meta.categories.first().copied().and_then(node_category_key)
+			else {
+				continue;
+			};
+			out.push(NodeLibraryEntry {
+				type_id: meta.type_id,
+				name: meta.name,
+				category_key,
+			});
+		}
+		out
+	}
+
+	/// Creates a node of type `type_id` at `position` (graph space) in the
+	/// current sequence's node graph — the node editor's Add menu action.
+	/// Default: unsupported.
+	fn add_node_at(
+		&mut self,
+		type_id: &str,
+		position: Point<Pixels>,
+		cx: &mut Context<Self>,
+	) -> Result<(), String> {
+		let _ = (type_id, position, cx);
+		Err("add node not supported".into())
+	}
+
+	/// Removes every clip-less track through
+	/// [`remove_track`](Self::remove_track), so each removal keeps the
+	/// backend's undo packaging (the C++ asks for confirmation first; this
+	/// port does not — a known deviation).
+	fn delete_empty_tracks(&mut self, cx: &mut Context<Self>) {
+		let budget = self.track_count();
+		for _ in 0..budget {
+			let Some(index) = (0..self.track_count())
+				.find(|index| self.track(*index).is_some_and(|track| track.clips().is_empty()))
+			else {
+				break;
+			};
+			self.remove_track(index, cx);
+		}
+	}
+
+	/// The on-disk path of the footage behind project-explorer entry `id`
+	/// (enables "Reveal in Finder" / drives "Replace Footage"), if the
+	/// backend knows it. Default: unknown.
+	fn entry_path(&self, id: u64) -> Option<PathBuf> {
+		let _ = id;
+		None
+	}
+
+	/// Replaces the footage of project-explorer entry `id` with the media
+	/// file at `path` (the C++ `ReplaceFootage` flow). Default:
+	/// unsupported.
+	fn replace_footage(
+		&mut self,
+		id: u64,
+		path: PathBuf,
+		cx: &mut Context<Self>,
+	) -> Result<(), String> {
+		let _ = (id, path, cx);
+		Err("replace footage not supported".into())
+	}
+
+	// -------------------------------------------------------------------
 	// Sequence markers & work area (M12 P4): the facade surfaces are
 	// undoable, mirroring Olive (MarkerAdd/MarkerRemove/WorkareaSet*).
 	// Defaults: no-op / none, so mock-less engines degrade gracefully.
@@ -339,6 +491,27 @@ pub trait AppEngine:
 
 	/// Steps the undo stack forward one entry.
 	fn redo(&mut self, cx: &mut Context<Self>);
+
+	/// The undo-stack rows the history panel lists (every command, done
+	/// first then the redoable tail; the C++ `HistoryModel` order).
+	/// Default: no history (the mock keeps no undo stack).
+	fn history_entries(&self) -> Vec<HistoryEntry> {
+		Vec::new()
+	}
+
+	/// The current stack position (done-command count); the history panel
+	/// selects row `index - 1` and grays rows at/after `index`.
+	/// Default: 0.
+	fn history_index(&self) -> i64 {
+		0
+	}
+
+	/// Undo/redo until the done-command count equals `index` (a history
+	/// panel row click jumps to `row + 1`, the C++ `HistoryWidget`
+	/// behavior). Default: no-op.
+	fn jump_history(&mut self, index: i64, cx: &mut Context<Self>) {
+		let _ = (index, cx);
+	}
 
 	/// Starts a new blank project with a single default sequence.
 	fn new_project(&mut self, cx: &mut Context<Self>);

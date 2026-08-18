@@ -21,12 +21,16 @@
 
 use gpui::colors::DefaultColors;
 use gpui::dock::{DockPanel, PanelEvent};
-use gpui::effect_stack::{EffectStackEvent, EffectStackView};
+use gpui::effect_stack::{EffectCardKind, EffectId, EffectStackEvent, EffectStackView};
 use gpui::{
-	div, prelude::*, AnyElement, App, Context, Entity, EventEmitter, Render, SharedString, Window,
+	div, prelude::*, AnyElement, App, Context, Entity, EventEmitter, MouseButton, Render,
+	SharedString, Window,
 };
+use gpui_widgets::menu::{Menu, MenuItem};
 
+use crate::menus::context::{ContextMenuHandle, ContextMenuTriggered};
 use crate::oakui::AppEngine;
+use crate::panels::commands::PanelCommandHandler;
 use crate::panels::ids::INSPECTOR;
 
 /// The inspector / effect stack panel.
@@ -38,11 +42,16 @@ pub struct InspectorPanel<E: AppEngine> {
 	/// engine has a stack target), the panel renders a small menu of the
 	/// engine's addable effects instead of forwarding the bare request.
 	pending_add: Option<usize>,
+	/// The right-click context menu.
+	context_menu: ContextMenuHandle,
+	/// The effect card the open context menu targets (id, enabled state,
+	/// removable flag), when one is on the stack.
+	context_effect: Option<(EffectId, bool, bool)>,
 }
 
 impl<E: AppEngine> InspectorPanel<E> {
 	/// Builds the stack over `engine`'s effect model.
-	pub fn new(engine: Entity<E>, _window: &mut Window, cx: &mut Context<Self>) -> Self {
+	pub fn new(engine: Entity<E>, window: &mut Window, cx: &mut Context<Self>) -> Self {
 		let stack = cx.new(|cx| {
 			EffectStackView::new(engine.clone(), cx)
 				.params_renderer(|_effect, _window, cx| cx.new(|_cx| ParamPlaceholder).into())
@@ -61,10 +70,46 @@ impl<E: AppEngine> InspectorPanel<E> {
 		})
 		.detach();
 
+		let context_menu = ContextMenuHandle::new(Self::on_local_menu_item, window, cx);
+
 		Self {
 			stack,
 			engine,
 			pending_add: None,
+			context_menu,
+			context_effect: None,
+		}
+	}
+
+	/// Handles the inspector's local (non-registry) context-menu items:
+	/// they drive the same [`EffectStackEvent`]s the card widgets emit.
+	fn on_local_menu_item(&mut self, item: usize, cx: &mut Context<Self>) {
+		let Some((effect, enabled, _)) = self.context_effect else {
+			return;
+		};
+		match item {
+			LOCAL_ENABLE => {
+				self.engine.update(cx, |engine, cx| {
+					engine.apply_effect_event(
+						&EffectStackEvent::EnableToggled {
+							effect,
+							enabled: !enabled,
+						},
+						cx,
+					)
+				});
+			}
+			LOCAL_REMOVE => {
+				self.engine.update(cx, |engine, cx| {
+					engine.apply_effect_event(&EffectStackEvent::RemoveRequested(effect), cx)
+				});
+			}
+			LOCAL_RENAME | LOCAL_PROPERTIES => {
+				println!("[inspector] context-menu item {item} (not implemented yet)");
+			}
+			_ => {
+				println!("[inspector] unhandled local menu item {item}");
+			}
 		}
 	}
 
@@ -141,10 +186,48 @@ impl<E: AppEngine> InspectorPanel<E> {
 	}
 }
 
+/// The inspector implements no focused-panel commands: everything falls
+/// through to the shell's global handler.
+impl<E: AppEngine> PanelCommandHandler for InspectorPanel<E> {}
+
 impl<E: AppEngine> Render for InspectorPanel<E> {
 	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let colors = cx.default_colors().clone();
-		let mut root = div().id("inspector-panel").size_full().flex().flex_col();
+		let mut root = div()
+			.id("inspector-panel")
+			.size_full()
+			.flex()
+			.flex_col()
+			// Any click inside the panel makes it the focused panel (the
+			// dock re-emits this as `DockEvent::PanelFocused`, which the
+			// shell uses to route focused-panel commands).
+			.on_mouse_down(MouseButton::Left, {
+				cx.listener(|_this, _event: &gpui::MouseDownEvent, _window, cx| {
+					cx.emit(PanelEvent::Focused);
+				})
+			})
+			// The stack widget has no right-click handling of its own; the
+			// panel opens a menu targeting the first effect card (the stack
+			// has no per-card pointer context yet).
+			.on_mouse_down(MouseButton::Right, {
+				cx.listener(|this, event: &gpui::MouseDownEvent, _window, cx| {
+					let target = this
+						.engine
+						.read(cx)
+						.effects()
+						.into_iter()
+						.find(|effect| effect.kind() == EffectCardKind::Effect)
+						.map(|effect| (effect.id(), effect.is_enabled(), effect.is_removable()));
+					this.context_effect = target;
+					if let Some((_, enabled, removable)) = target {
+						this.context_menu.show(
+							event.position,
+							stack_card_menu(enabled, removable),
+							cx,
+						);
+					}
+				})
+			});
 		root = root.child(self.stack.clone());
 		// The add-effect menu sits below the stack while an add is
 		// pending. It only makes sense while the engine has a stack
@@ -156,11 +239,14 @@ impl<E: AppEngine> Render for InspectorPanel<E> {
 				self.pending_add = None;
 			}
 		}
-		root
+		// The right-click popup renders anchored above the panel.
+		root.child(self.context_menu.widget())
 	}
 }
 
 impl<E: AppEngine> EventEmitter<PanelEvent> for InspectorPanel<E> {}
+
+impl<E: AppEngine> EventEmitter<ContextMenuTriggered> for InspectorPanel<E> {}
 
 impl<E: AppEngine> DockPanel for InspectorPanel<E> {
 	fn panel_id(&self) -> gpui::dock::PanelId {
@@ -191,5 +277,71 @@ impl Render for ParamPlaceholder {
 			.py_2()
 			.text_color(colors.disabled)
 			.child(crate::i18n::tr("inspector.params"))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Context menu — an effect card's right-click menu: enable/disable and
+// remove drive the same `EffectStackEvent`s the card widgets emit; rename
+// and properties are placeholders until the dialogs land.
+// ---------------------------------------------------------------------------
+
+/// Local (non-registry) item ids of the inspector's context menu.
+const LOCAL_ENABLE: usize = 2501;
+const LOCAL_REMOVE: usize = 2502;
+const LOCAL_RENAME: usize = 2503;
+const LOCAL_PROPERTIES: usize = 2504;
+
+/// The effect-card context menu. `enabled` picks the Enable/Disable label;
+/// `removable` gates the Remove entry.
+pub(crate) fn stack_card_menu(enabled: bool, removable: bool) -> Menu {
+	use crate::i18n::tr;
+	let enable_label = if enabled {
+		tr("inspector.context.disable")
+	} else {
+		tr("inspector.context.enable")
+	};
+	let mut remove = MenuItem::new(LOCAL_REMOVE, tr("inspector.context.remove"));
+	if !removable {
+		remove = remove.disabled();
+	}
+	Menu::new(vec![
+		MenuItem::new(LOCAL_ENABLE, enable_label),
+		remove.separated(),
+		MenuItem::new(LOCAL_RENAME, tr("inspector.context.rename")),
+		MenuItem::new(LOCAL_PROPERTIES, tr("menu.context.properties")),
+	])
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// The enable entry flips its label with the card state, and `removable`
+	/// gates only the remove entry.
+	#[test]
+	fn stack_card_menu_flips_label_and_gates_remove() {
+		for enabled in [true, false] {
+			for removable in [true, false] {
+				let menu = stack_card_menu(enabled, removable);
+				assert_eq!(menu.items.len(), 4);
+
+				let enable = &menu.items[0];
+				assert_eq!(enable.id, LOCAL_ENABLE);
+				let expected = if enabled {
+					crate::i18n::tr("inspector.context.disable")
+				} else {
+					crate::i18n::tr("inspector.context.enable")
+				};
+				assert_eq!(enable.label, expected);
+
+				let remove = &menu.items[1];
+				assert_eq!(remove.id, LOCAL_REMOVE);
+				assert_eq!(remove.enabled, removable);
+
+				assert_eq!(menu.items[2].id, LOCAL_RENAME);
+				assert_eq!(menu.items[3].id, LOCAL_PROPERTIES);
+			}
+		}
 	}
 }

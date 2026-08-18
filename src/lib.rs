@@ -33,9 +33,12 @@
 //! * [`app`] — the window shell: menu bar, dock layout, status bar, modal
 //!   dialogs (file open/save-as, preferences, export), tick loop.
 //! * [`dialogs`] — the preferences and export dialog content views.
-//! * [`shortcuts`] — the keyboard shortcut table (keystroke → menu action).
+//! * [`actions`] — the action registry: gpui actions, stable ids, default
+//!   keys and routing (the single source behind the menus and shortcuts).
 //! * [`manager`] — the project manager window (M13 D4): the library browser
 //!   with new / open / rename / duplicate / delete / import / export.
+//! * [`menus`] — the right-click menu layer: shared segments built from the
+//!   action registry and the per-panel context-menu plumbing.
 //! * [`panels`] — the dockable panels (viewers, timeline, inspector, ...).
 //! * [`oakui`] — the engine gateway trait, the mock + real implementations,
 //!   and the pure view-state logic (timecode, transport).
@@ -53,13 +56,14 @@
 //! the mock with the `--mock` flag, `OAK_ENGINE=mock`, or the
 //! `mock-engine` cargo feature.
 
+pub mod actions;
 pub mod app;
 pub mod dialogs;
 pub mod i18n;
 pub mod manager;
+pub mod menus;
 pub mod oakui;
 pub mod panels;
-pub mod shortcuts;
 
 /// The application entry point (called from `main.rs`).
 pub fn run() {

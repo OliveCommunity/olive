@@ -23,6 +23,7 @@
 //! to "the engine", and never mutate engine state directly — every edit is a
 //! widget request event that the panel forwards through the gateway.
 
+pub mod commands;
 pub mod effect_library;
 pub mod history;
 pub mod inspector;

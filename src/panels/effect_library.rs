@@ -23,12 +23,13 @@
 use gpui::colors::DefaultColors;
 use gpui::dock::{DockPanel, PanelEvent};
 use gpui::{
-	div, prelude::*, AnyElement, App, ClickEvent, Context, Entity, EventEmitter, Render,
-	SharedString, Window,
+	div, prelude::*, AnyElement, App, ClickEvent, Context, Entity, EventEmitter, MouseButton,
+	Render, SharedString, Window,
 };
 
 use crate::i18n;
 use crate::oakui::AppEngine;
+use crate::panels::commands::PanelCommandHandler;
 use crate::panels::ids::EFFECT_LIBRARY;
 
 /// The effect library panel.
@@ -45,6 +46,10 @@ impl<E: AppEngine> EffectLibraryPanel<E> {
 		Self { engine }
 	}
 }
+
+/// The effect library implements no focused-panel commands: everything
+/// falls through to the shell's global handler.
+impl<E: AppEngine> PanelCommandHandler for EffectLibraryPanel<E> {}
 
 impl<E: AppEngine> Render for EffectLibraryPanel<E> {
 	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
@@ -95,6 +100,14 @@ impl<E: AppEngine> Render for EffectLibraryPanel<E> {
 			.size_full()
 			.flex()
 			.flex_col()
+			// Any click inside the panel makes it the focused panel (the
+			// dock re-emits this as `DockEvent::PanelFocused`, which the
+			// shell uses to route focused-panel commands).
+			.on_mouse_down(MouseButton::Left, {
+				cx.listener(|_this, _event: &gpui::MouseDownEvent, _window, cx| {
+					cx.emit(PanelEvent::Focused);
+				})
+			})
 			.child(list)
 			.child(
 				div()
