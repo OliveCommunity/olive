@@ -481,9 +481,61 @@ pub fn footage_duration_seconds(g: &Graph, id: NodeId) -> Option<f64> {
 	(seconds > 0.0).then_some(seconds)
 }
 
+/// Reprobe footage whose stream metadata is missing: projects saved
+/// before the probe recorded streams (C++ files have no `<streams>`
+/// segment at all) load with an empty inventory, which leaves the
+/// footage duration unknown. Relative filenames resolve against the
+/// project file's directory (the C++ project-dir convention) and are
+/// made absolute on the node. Best effort per node: an unreadable or
+/// missing file stays unprobed.
+pub fn reprobe_unprobed_footage(project: &ProjectRef) {
+	let dir = {
+		let guard = lock(project);
+		std::path::Path::new(guard.filename())
+			.parent()
+			.map(|p| p.to_path_buf())
+	};
+	let targets: Vec<(NodeId, std::path::PathBuf)> = {
+		let guard = lock(project);
+		footage_ids(&guard)
+			.into_iter()
+			.filter_map(|id| {
+				let f = footage_behavior(&guard.graph, id)?;
+				if !f.streams.is_empty() || f.filename.is_empty() {
+					return None;
+				}
+				let path = std::path::Path::new(&f.filename);
+				let resolved = if path.is_absolute() {
+					path.to_path_buf()
+				} else {
+					dir.as_ref()?.join(path)
+				};
+				resolved.is_file().then_some((id, resolved))
+			})
+			.collect()
+	};
+	for (id, resolved) in targets {
+		let mut guard = lock(project);
+		if let Some(f) = guard
+			.graph
+			.get_mut(id)
+			.and_then(|e| e.behavior.as_any_mut())
+			.and_then(|a| a.downcast_mut::<FootageBehavior>())
+		{
+			f.filename = resolved.to_string_lossy().into_owned();
+			// Best effort: a failed probe leaves the footage unprobed
+			// (valid stays false), exactly like a failed import probe.
+			let _ = f.probe();
+		}
+	}
+}
+
 /// Import a media file into the project's root folder (the facade's
 /// `oakengine_project_import_footage`: the node is created in the graph
 /// and one undoable "Import Footage" entry adds it to the root folder).
+/// Media that fails the probe (missing, corrupt, or undecodable) is
+/// rejected before it ever enters the graph — the facade's validity
+/// rejection, which the C API skips.
 pub fn import_footage(project: &ProjectRef, path: &Path) -> Result<NodeId, String> {
 	if !path.exists() {
 		return Err(format!("file does not exist: {}", path.display()));
@@ -494,18 +546,20 @@ pub fn import_footage(project: &ProjectRef, path: &Path) -> Result<NodeId, Strin
 		if !guard.root.valid() {
 			return Err("the project has no root folder".to_string());
 		}
-		let (mut core, behavior) = FootageBehavior::create();
+		let (mut core, mut behavior) = FootageBehavior::create();
 		core.set_standard_value("file_in", -1, oaknode::value::NodeValue::Text(filename.clone()));
-		let id = guard.graph.add_node(core, behavior);
-		if let Some(f) = guard
-			.graph
-			.get_mut(id)
-			.and_then(|e| e.behavior.as_any_mut())
+		let Some(f) = behavior
+			.as_any_mut()
 			.and_then(|a| a.downcast_mut::<FootageBehavior>())
-		{
-			f.filename = filename.clone();
-			let _ = f.probe();
-		}
+		else {
+			return Err("internal error: footage node created without footage behavior".to_string());
+		};
+		f.filename = filename.clone();
+		// Probe before the node enters the graph so a failed probe leaves
+		// no orphan behind (and nothing lands on the undo stack).
+		f.probe()
+			.map_err(|e| format!("failed to probe \"{}\": {e}", filename))?;
+		let id = guard.graph.add_node(core, behavior);
 		let label = path
 			.file_name()
 			.map(|f| f.to_string_lossy().into_owned())

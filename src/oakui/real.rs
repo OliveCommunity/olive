@@ -59,7 +59,7 @@
 //! worker holds the project's `Arc`, so a project drop mid-render is a
 //! non-event (the drained frame is discarded by the generation check).
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -267,6 +267,56 @@ struct FullResEvent {
 	generation: u64,
 	/// The rendered viewer image.
 	image: Arc<RenderImage>,
+}
+
+// ---------------------------------------------------------------------------
+// Material-bin thumbnails
+// ---------------------------------------------------------------------------
+//
+// The icon view shows a PNG of each footage's first frame. The PNGs are
+// generated lazily on background threads (the render is a ticket wait and
+// must not block the UI thread) into a shared directory keyed by the media
+// filename; completions are drained on the app tick like full-res frames.
+
+/// The thumbnail render size (twice the icon view's 72x48 slot).
+const THUMBNAIL_WIDTH: i32 = 144;
+/// The thumbnail render height (see [`THUMBNAIL_WIDTH`]).
+const THUMBNAIL_HEIGHT: i32 = 96;
+
+/// A completed thumbnail, delivered through the completion channel.
+struct ThumbEvent {
+	/// The footage node's stable identity (the bin entry's id).
+	identity: u64,
+	/// The job's generation (stale jobs are discarded by the drain).
+	generation: u64,
+	/// The PNG file on disk.
+	path: PathBuf,
+}
+
+/// The thumbnail cache: finished PNG paths keyed by footage identity, plus
+/// the identities with a generation job in flight (never re-scheduled).
+#[derive(Default)]
+struct ThumbnailState {
+	/// Finished thumbnails.
+	done: HashMap<u64, PathBuf>,
+	/// Identities with a job in flight (or already attempted).
+	pending: HashSet<u64>,
+}
+
+/// The shared directory holding generated footage thumbnails.
+fn thumbnail_dir() -> PathBuf {
+	std::env::temp_dir().join("oak-thumbnails")
+}
+
+/// The PNG path of a footage's thumbnail: an FNV-1a hash of the media
+/// filename, so the same file always hits the same cached PNG.
+fn thumbnail_path(filename: &str) -> PathBuf {
+	let mut h: u64 = 0xcbf29ce484222325;
+	for b in filename.as_bytes() {
+		h ^= u64::from(*b);
+		h = h.wrapping_mul(0x100000001b3);
+	}
+	thumbnail_dir().join(format!("{h:016x}.png"))
 }
 
 // ---------------------------------------------------------------------------
@@ -625,6 +675,16 @@ pub struct RealEngine {
 	/// dropped — the render binds the footage node, so a new selection
 	/// must re-render the new node.
 	source_renderer: Mutex<RendererSlot>,
+	/// Material-bin thumbnail cache (finished PNGs + in-flight jobs).
+	thumbnails: Mutex<ThumbnailState>,
+	/// Generation counter invalidating in-flight thumbnail jobs on project
+	/// drop (same semantics as `full_res_generation`).
+	thumb_generation: u64,
+	/// The channel background thumbnail jobs report finished PNGs through;
+	/// drained on the app tick. The mutex keeps the engine `Sync`.
+	thumb_rx: Mutex<mpsc::Receiver<ThumbEvent>>,
+	/// The sending half of `thumb_rx` (cloned into every job).
+	thumb_tx: Mutex<mpsc::Sender<ThumbEvent>>,
 }
 
 impl RealEngine {
@@ -671,6 +731,7 @@ impl RealEngine {
 	pub fn new(cx: &mut Context<Self>) -> Self {
 		let rate = VideoFormat::hd_1080p25().rate;
 		let (full_res_tx, full_res_rx) = mpsc::channel::<FullResEvent>();
+		let (thumb_tx, thumb_rx) = mpsc::channel::<ThumbEvent>();
 		Self {
 			project: None,
 			sequence: None,
@@ -697,6 +758,10 @@ impl RealEngine {
 			full_res_tx: Mutex::new(full_res_tx),
 			renderer: Mutex::new(RendererSlot::Untried),
 			source_renderer: Mutex::new(RendererSlot::Untried),
+			thumbnails: Mutex::new(ThumbnailState::default()),
+			thumb_generation: 0,
+			thumb_rx: Mutex::new(thumb_rx),
+			thumb_tx: Mutex::new(thumb_tx),
 		}
 	}
 
@@ -959,6 +1024,114 @@ impl RealEngine {
 		}
 	}
 
+	/// Attaches cached thumbnails to the bin entries, spawning a background
+	/// generation job for every footage that has none yet. Entries without a
+	/// renderable frame keep the widget's placeholder.
+	fn attach_thumbnails(&self, entries: Vec<ProjectEntry>) -> Vec<ProjectEntry> {
+		let Some(project) = self.project.clone() else {
+			return entries;
+		};
+		entries
+			.into_iter()
+			.map(|entry| {
+				if entry.is_dir {
+					return entry;
+				}
+				let mut thumbs = self.thumbnails.lock().unwrap();
+				if let Some(path) = thumbs.done.get(&entry.id) {
+					return entry.with_thumbnail(path.to_string_lossy().into_owned());
+				}
+				if thumbs.pending.insert(entry.id) {
+					let tx = self.thumb_tx.lock().unwrap().clone();
+					let project = project.clone();
+					let identity = entry.id;
+					let generation = self.thumb_generation;
+					std::thread::spawn(move || {
+						Self::thumbnail_worker(project, identity, generation, tx)
+					});
+				}
+				entry
+			})
+			.collect()
+	}
+
+	/// Renders one footage's first frame to a PNG on a background thread
+	/// and reports the file through `tx`. The request owns a project `Arc`,
+	/// so the render stays valid when the engine drops the project mid-flight
+	/// (the drain discards the stale completion).
+	fn thumbnail_worker(
+		project: ProjectRef,
+		identity: u64,
+		generation: u64,
+		tx: mpsc::Sender<ThumbEvent>,
+	) {
+		let Some(path) = Self::render_thumbnail(&project, identity) else {
+			return;
+		};
+		let _ = tx.send(ThumbEvent {
+			identity,
+			generation,
+			path,
+		});
+	}
+
+	/// Renders `identity`'s footage first frame into the shared thumbnail
+	/// directory and returns the PNG path (`None` when the entry is not a
+	/// renderable footage or the render fails).
+	fn render_thumbnail(project: &ProjectRef, identity: u64) -> Option<PathBuf> {
+		let node = graphops::id_of(identity)?;
+		let filename = {
+			let guard = graphops::lock(project);
+			graphops::footage_behavior(&guard.graph, node)
+				.map(|f| f.filename.clone())
+				.filter(|f| !f.is_empty())?
+		};
+		let path = thumbnail_path(&filename);
+		if path.exists() {
+			return Some(path);
+		}
+		if !super::renderops::ensure_render_manager() {
+			return None;
+		}
+		// Frame zero: the timebase only scales the timestamp, so any valid
+		// pair produces time 0.
+		let rendered = super::renderops::render_footage_frame(
+			project,
+			node,
+			0,
+			(1, 1000),
+			THUMBNAIL_WIDTH,
+			THUMBNAIL_HEIGHT,
+		)
+		.ok()?;
+		let (width, height, samples) = read_f32_frame(&rendered)?;
+		let bytes: Vec<u8> = samples
+			.iter()
+			.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8)
+			.collect();
+		let image = image::RgbaImage::from_raw(width, height, bytes)?;
+		std::fs::create_dir_all(path.parent()?).ok()?;
+		// Write aside then rename so readers never see a partial file.
+		let tmp = path.with_extension("part");
+		image.save(&tmp).ok()?;
+		std::fs::rename(&tmp, &path).ok()?;
+		Some(path)
+	}
+
+	/// Installs completed thumbnails, discarding stale completions from a
+	/// dropped project's generation.
+	fn drain_thumbnails(&mut self) {
+		let rx = self.thumb_rx.lock().unwrap();
+		let mut thumbs = self.thumbnails.lock().unwrap();
+		while let Ok(event) = rx.try_recv() {
+			if event.generation != self.thumb_generation {
+				continue;
+			}
+			thumbs.pending.remove(&event.identity);
+			thumbs.done.insert(event.identity, event.path);
+		}
+	}
+
 	/// Adopts a newly created/loaded project, dropping any previous one,
 	/// and rebuilds every snapshot. The undo stack is cleared (a project
 	/// switch starts a fresh history, mirroring the facade's
@@ -987,6 +1160,13 @@ impl RealEngine {
 		};
 		self.project = Some(project.clone());
 		self.storage = Some(AuxHandle(graphops::storage_bind(&project)));
+
+		// Footage loaded from a file may lack stream metadata (C++ projects
+		// have no `<streams>` segment; older Rust saves predate the probe
+		// recording them): reprobe so durations, drop track kinds and the
+		// source monitor's playback length come back (the facade's load
+		// probe cascade).
+		graphops::reprobe_unprobed_footage(&project);
 
 		// The sequence: the project's first, or a blank default.
 		let seq = first_sequence
@@ -1023,6 +1203,10 @@ impl RealEngine {
 		// gone (the job holds its own project `Arc`, so it stays valid, but
 		// its frame belongs to the dropped project): mark it stale.
 		self.full_res_generation = self.full_res_generation.wrapping_add(1);
+		// Same for in-flight thumbnail jobs; the cache is per-project too
+		// (identities are only unique within one graph).
+		self.thumb_generation = self.thumb_generation.wrapping_add(1);
+		*self.thumbnails.lock().unwrap() = ThumbnailState::default();
 		self.tracks.clear();
 
 		self.sequence_info = None;
@@ -1380,6 +1564,7 @@ impl EngineGateway for RealEngine {
 		// the next fills for the resting playheads (the schedule skips
 		// playing monitors, so playback keeps the proxy path).
 		self.drain_full_res();
+		self.drain_thumbnails();
 		self.schedule_full_res(Monitor::Source, cx);
 		self.schedule_full_res(Monitor::Program, cx);
 		cx.notify();
@@ -1478,14 +1663,14 @@ impl ProjectDataSource for RealEngine {
 		let Some(project) = self.project_ref() else {
 			return Vec::new();
 		};
-		crate::oakui::projectbrowser::roots(project)
+		self.attach_thumbnails(crate::oakui::projectbrowser::roots(project))
 	}
 
 	fn children(&self, parent_id: u64) -> Vec<ProjectEntry> {
 		let Some(project) = self.project_ref() else {
 			return Vec::new();
 		};
-		crate::oakui::projectbrowser::children(project, parent_id)
+		self.attach_thumbnails(crate::oakui::projectbrowser::children(project, parent_id))
 	}
 }
 
@@ -2138,19 +2323,29 @@ impl AppEngine for RealEngine {
 			println!("[real engine] drop footage: entry {id} is not a footage node");
 			return;
 		};
-		let filename = {
+		let (filename, video_streams, total_streams, seconds) = {
 			let guard = graphops::lock(&project);
-			match graphops::footage_behavior(&guard.graph, footage) {
-				Some(f) => f.filename.clone(),
-				None => {
-					println!("[real engine] drop footage: entry {id} is not a footage node");
-					return;
-				}
-			}
+			let Some(f) = graphops::footage_behavior(&guard.graph, footage) else {
+				println!("[real engine] drop footage: entry {id} is not a footage node");
+				return;
+			};
+			(
+				f.filename.clone(),
+				f.video_stream_count(),
+				f.total_stream_count(),
+				graphops::footage_duration_seconds(&guard.graph, footage),
+			)
 		};
-		// Media type by extension: the module's footage is not reliably
-		// probed, so the drop's track matching falls back to the extension.
-		let footage_kind = if crate::oakui::filename_is_audio(&filename) {
+		// Media type from the probed stream list (the probe is real since
+		// the import fills it); fall back to the extension only when no
+		// streams were recorded (legacy projects loaded without a probe).
+		let footage_kind = if total_streams > 0 {
+			if video_streams > 0 {
+				TrackKind::Video
+			} else {
+				TrackKind::Audio
+			}
+		} else if crate::oakui::filename_is_audio(&filename) {
 			TrackKind::Audio
 		} else {
 			TrackKind::Video
@@ -2205,10 +2400,6 @@ impl AppEngine for RealEngine {
 		// otherwise a 10-second default.
 		let fps = self.frame_rate();
 		let fps_f = fps.num as f64 / fps.den.max(1) as f64;
-		let seconds = {
-			let guard = graphops::lock(&project);
-			graphops::footage_duration_seconds(&guard.graph, footage)
-		};
 		let length = match seconds {
 			Some(s) => (s * fps_f).round().max(1.0) as i64,
 			None => (10.0 * fps_f).round().max(1.0) as i64,
@@ -2881,10 +3072,7 @@ mod tests {
 
 	/// End-to-end through the module crates: a project the engine itself
 	/// writes (save → load round-trip) keeps its identity, and the
-	/// in-memory sequence the app drives carries real tracks. The
-	/// repository's `tests/project_with_footage.ove` is a legacy
-	/// `<olive>`-rooted document the oaknode serializer cannot parse, so
-	/// the round-trip uses the engine's own current-format writer.
+	/// in-memory sequence the app drives carries real tracks.
 	///
 	/// NOTE: the direct-rlib app keeps the sequence IN the project's graph
 	/// (the facade kept it in a scratch project), so the saved file now
@@ -2925,6 +3113,45 @@ mod tests {
 		assert_eq!((video, audio), (1, 1), "the tracks survive the round-trip");
 
 		let _ = std::fs::remove_file(&save_path);
+	}
+
+	/// Legacy-project regression: the C++ fixture
+	/// `tests/project_with_footage.ove` has no `<streams>` segment and no
+	/// `<filename>` element (the media path lives only in the footage's
+	/// `file_in` input, relative to the project directory). Loading it
+	/// used to leave the footage unprobed, so `source_length()` was 0 and
+	/// the source monitor pinned its playhead at frame 0 (the
+	/// `RealClock::tick` `length=0` report): the `load_custom` file_in
+	/// fallback plus `reprobe_unprobed_footage` (the adopt_project probe
+	/// cascade) restore the stream inventory and the duration.
+	#[test]
+	fn legacy_footage_is_reprobed_after_load() {
+		let _media = media_lock();
+		let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+			.join("tests/project_with_footage.ove");
+		let project = graphops::load_ove(&fixture).expect("the C++ fixture loads");
+
+		let ids = graphops::footage_ids(&graphops::lock(&project));
+		assert!(!ids.is_empty(), "the fixture carries footage");
+		{
+			let guard = graphops::lock(&project);
+			for &id in &ids {
+				assert_eq!(
+					graphops::footage_duration_seconds(&guard.graph, id),
+					None,
+					"legacy footage loads without a probed duration"
+				);
+			}
+		}
+
+		graphops::reprobe_unprobed_footage(&project);
+
+		let guard = graphops::lock(&project);
+		for &id in &ids {
+			let secs = graphops::footage_duration_seconds(&guard.graph, id)
+				.expect("the reprobe restores a duration");
+			assert!(secs > 0.5, "the fixture's demo.mp4 has a real duration: {secs}");
+		}
 	}
 
 	/// End-to-end CPU render through the same path
