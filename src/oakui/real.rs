@@ -3069,6 +3069,22 @@ impl AppEngine for RealEngine {
 			});
 			return image;
 		}
+		// During playback a cache miss must NOT block the UI thread on a
+		// synchronous render: the wait starves the tick loop that feeds
+		// the pre-render window, and the seek-priority ticket steals
+		// worker capacity from it, so the window never catches up (every
+		// painted frame blocked in `TicketArena::wait` — the choppy
+		// playback regression). Show the last displayed frame while the
+		// window warms up; the workers catch up within a few frames and
+		// the window then serves every playhead frame.
+		if self.clock(monitor).read(cx).transport.is_playing() {
+			if let Some(image) = cache
+				.get(&monitor)
+				.and_then(|e| e.proxy.as_ref().map(|p| p.image.clone()))
+			{
+				return image;
+			}
+		}
 		// Both monitors render through the oakrender ticket arena (falling
 		// back to the synthetic pattern when rendering is unavailable): the
 		// program monitor renders the current sequence, the source monitor
@@ -6006,6 +6022,80 @@ mod tests {
 			);
 			std::thread::sleep(Duration::from_millis(10));
 		}
+	}
+
+	/// Playback pre-render window (M15 S2): during playback the playhead
+	/// frame must come from the worker-rendered shm slot cache, NOT the
+	/// synchronous render path (the main thread blocking in
+	/// `TicketArena::wait` on every painted frame is the "playback is
+	/// unusably choppy" regression — the UI must never sync-wait during
+	/// playback once the window has warmed up).
+	#[gpui::test]
+	async fn playback_window_supplies_playhead_frames(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let _worker = WorkerBinGuard::set();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		let media = std::env::temp_dir().join(format!(
+			"oakapp_playback_window_{}.mp4",
+			std::process::id()
+		));
+		oakcodec::testmedia::write_test_clip(&media, 64, 64, 250, 25)
+			.expect("generate playback test media");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.import_footage(media.clone(), cx).expect("import")
+			})
+		});
+		let name = media.file_name().unwrap().to_string_lossy().into_owned();
+		let entry = cx.read(|app| {
+			engine
+				.read(app)
+				.roots()
+				.into_iter()
+				.find(|e| e.name.as_ref() == name)
+		})
+		.expect("imported footage is listed");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(0), cx)
+			})
+		});
+
+		// Start playback and drive the tick loop: the window must fill.
+		cx.update(|app| engine.update(app, |engine, cx| engine.play(Monitor::Program, cx)));
+		let deadline = std::time::Instant::now() + Duration::from_secs(30);
+		let mut filled = 0usize;
+		let mut hit = false;
+		loop {
+			cx.update(|app| engine.update(app, |engine, cx| engine.tick(cx)));
+			let (slots, submitted) = cx.read(|app| {
+				let engine = engine.read(app);
+				let windows = engine.preview_windows.lock().unwrap();
+				let window = windows.get(&Monitor::Program);
+				(
+					window.map(|w| w.slots.len()).unwrap_or(0),
+					window.map(|w| w.submitted.len()).unwrap_or(0),
+				)
+			});
+			filled = filled.max(slots);
+			let playhead = cx.read(|app| engine.read(app).clock_frame(Monitor::Program, app));
+			hit = hit
+				|| cx
+					.update(|app| engine.update(app, |engine, _cx| engine.preview_slot_frame(Monitor::Program, playhead)))
+					.is_some();
+			if hit {
+				break;
+			}
+			assert!(
+				std::time::Instant::now() < deadline,
+				"the playback window must supply playhead frames (peak cached {filled}, submitted {submitted})"
+			);
+			std::thread::sleep(Duration::from_millis(10));
+		}
+		assert!(filled > 0, "the window cached worker frames");
+		let _ = std::fs::remove_file(&media);
 	}
 
 	// ---- M15 S3 audio prefetch ------------------------------------------
