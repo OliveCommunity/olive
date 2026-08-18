@@ -21,8 +21,6 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use oakcodec::decoder::Decoder as _;
-
 use crate::input::Input;
 use crate::node::{Category, NodeBehavior, NodeCore};
 use crate::value::{AudioParams, NodeValue, ValueType, VideoParams};
@@ -38,7 +36,8 @@ pub struct StreamInfo {
 	pub video: Option<VideoParams>,
 	/// Audio parameters (when not video).
 	pub audio: Option<AudioParams>,
-	/// Duration in stream timebase.
+	/// Duration in rational seconds (the longest stream wins; see
+	/// [`FootageBehavior::duration`]).
 	pub duration: oakcore_rs::Rational,
 }
 
@@ -87,7 +86,8 @@ impl FootageBehavior {
 	}
 
 	/// Probe the file through oakcodec's decoder registry, recording the
-	/// recognized decoder id. Error on unreadable/corrupt media; the
+	/// recognized decoder id, the probed stream inventory and the file's
+	/// last-modified timestamp. Error on unreadable/corrupt media; the
 	/// prior `streams`/`valid` state is preserved on failure (no partial
 	/// state).
 	pub fn probe(&mut self) -> crate::error::Result<()> {
@@ -109,10 +109,20 @@ impl FootageBehavior {
 				Some(desc)
 			})
 			.ok_or_else(|| Error::Failed("oakcodec probe returned no streams".to_string()))?;
+		let streams = streams_from_description(&desc);
+		// File last-modified timestamp (ms since epoch; the C++ probe
+		// records it for the proxy/reprobe freshness check). Best effort:
+		// an unreadable stat never fails the probe.
+		let timestamp = std::fs::metadata(&self.filename)
+			.and_then(|m| m.modified())
+			.ok()
+			.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+			.map(|d| d.as_millis() as i64)
+			.unwrap_or(0);
+		// Commit only on full success (no partial state on failure).
 		self.decoder = desc.decoder().to_string();
-		// Reading stream entries into `streams` is a follow-up (the
-		// stream-access surface is pinned when the codec module is
-		// finalized); the probe result itself is dropped here.
+		self.streams = streams;
+		self.timestamp = timestamp;
 		self.valid = true;
 		Ok(())
 	}
@@ -185,6 +195,11 @@ impl FootageBehavior {
 			.filter(|s| !s.is_video)
 			.nth(index)
 			.and_then(|s| s.audio)
+	}
+
+	/// The stream at container order `index` (params plus duration).
+	pub fn stream_at(&self, index: usize) -> Option<&StreamInfo> {
+		self.streams.get(index)
 	}
 
 	/// Set all proxy fields at once (C++ `set_proxy`).
@@ -320,10 +335,13 @@ impl NodeBehavior for FootageBehavior {
 	}
 
 	/// Custom project load. C++ segments without a Rust counterpart
-	/// (`sourcestarttime`, `viewer` workarea/markers) are skipped.
+	/// (`sourcestarttime`, `viewer` workarea/markers) are skipped. The
+	/// filename falls back to the `file_in` input when the file carries
+	/// no `<filename>` element (the C++ convention; `<filename>` is a
+	/// Rust addition).
 	fn load_custom(
 		&mut self,
-		_core: &mut NodeCore,
+		core: &mut NodeCore,
 		reader: &mut dyn crate::serializer::XmlRead,
 	) -> bool {
 		while reader.next_start_element() {
@@ -435,6 +453,12 @@ impl NodeBehavior for FootageBehavior {
 				_ => reader.skip_current_element(),
 			}
 		}
+		if self.filename.is_empty() {
+			let value = core.standard_value("file_in", -1);
+			if let NodeValue::Text(text) = &value {
+				self.filename = text.clone();
+			}
+		}
 		true
 	}
 
@@ -444,5 +468,162 @@ impl NodeBehavior for FootageBehavior {
 
 	fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
 		Some(self)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Probe-result conversion
+// ---------------------------------------------------------------------------
+
+/// The codec-side stream inventory as node-side [`StreamInfo`] rows.
+///
+/// Video and audio streams are converted field-by-field (their durations
+/// become rational seconds); subtitle streams have no [`StreamInfo`]
+/// representation and are skipped (the ffmpeg probe counts but never adds
+/// them anyway). The rows are sorted by container index, restoring the
+/// probe order the per-kind ordinal loops group away.
+fn streams_from_description(
+	desc: &oakcodec::footagedescription::FootageDescription,
+) -> Vec<StreamInfo> {
+	let mut streams = Vec::new();
+	for i in 0..desc.video_stream_count() {
+		let Some(vp) = desc.get_video_stream(i) else {
+			continue;
+		};
+		let (num, den) = vp.frame_rate();
+		streams.push(StreamInfo {
+			index: vp.stream_index(),
+			is_video: true,
+			video: Some(VideoParams {
+				width: vp.width(),
+				height: vp.height(),
+				frame_rate: oakcore_rs::Rational::new(num as i64, den as i64),
+				pixel_format: vp.format().code(),
+				channels: vp.channel_count(),
+			}),
+			audio: None,
+			duration: stream_duration_seconds(vp.duration(), vp.time_base()),
+		});
+	}
+	for i in 0..desc.audio_stream_count() {
+		let Some(ap) = desc.get_audio_stream(i) else {
+			continue;
+		};
+		streams.push(StreamInfo {
+			index: ap.stream_index,
+			is_video: false,
+			video: None,
+			audio: Some(AudioParams {
+				sample_rate: ap.sample_rate,
+				channel_layout: ap.channel_layout,
+				format: ap.format,
+			}),
+			duration: stream_duration_seconds(ap.duration, ap.time_base),
+		});
+	}
+	streams.sort_by_key(|s| s.index);
+	streams
+}
+
+/// A stream duration in timebase ticks as rational seconds. `0/1` when
+/// the duration or the timebase is unusable (FFmpeg reports
+/// `AV_NOPTS_VALUE` for streams without a duration).
+fn stream_duration_seconds(duration: i64, time_base: (i32, i32)) -> oakcore_rs::Rational {
+	if duration <= 0 || time_base.0 <= 0 || time_base.1 <= 0 {
+		return oakcore_rs::Rational::new(0, 1);
+	}
+	oakcore_rs::Rational::new(
+		duration.saturating_mul(time_base.0 as i64),
+		time_base.1 as i64,
+	)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use oakcodec::footagedescription::{FootageDescription, StreamEntry};
+
+	fn video_entry(stream_index: i32, duration: i64) -> StreamEntry {
+		let mut vp = oakcommon::videoparams::VideoParams::new_basic(
+			1920,
+			1080,
+			oakcommon::ocioutils::PixelFormat::F32,
+			4,
+			1,
+			1,
+			0,
+			1,
+		);
+		vp.set_stream_index(stream_index);
+		vp.set_frame_rate(30000, 1001);
+		vp.set_time_base(1, 30000);
+		vp.set_duration(duration);
+		StreamEntry::Video(vp)
+	}
+
+	fn audio_entry(stream_index: i32, duration: i64) -> StreamEntry {
+		StreamEntry::Audio(oakcodec::audioparams::AudioParams {
+			sample_rate: 48000,
+			channel_layout: 0x3,
+			format: 0,
+			stream_index,
+			duration,
+			time_base: (1, 48000),
+		})
+	}
+
+	#[test]
+	fn conversion_maps_fields_and_restores_probe_order() {
+		let mut desc = FootageDescription::new("ffmpeg");
+		// Interleaved container order: audio first, then video.
+		desc.push_stream(audio_entry(0, 480_000));
+		desc.push_stream(video_entry(1, 300_000));
+
+		let streams = streams_from_description(&desc);
+		assert_eq!(streams.len(), 2);
+
+		// Sorted back into container order.
+		let audio = &streams[0];
+		let video = &streams[1];
+		assert!(!audio.is_video);
+		assert!(video.is_video);
+
+		let a = audio.audio.expect("audio params");
+		assert_eq!(a.sample_rate, 48000);
+		assert_eq!(a.channel_layout, 0x3);
+		// 480000 ticks at 1/48000 = 10 seconds.
+		assert_eq!(audio.duration, oakcore_rs::Rational::new(10, 1));
+
+		let v = video.video.expect("video params");
+		assert_eq!(v.width, 1920);
+		assert_eq!(v.height, 1080);
+		assert_eq!(v.frame_rate, oakcore_rs::Rational::new(30000, 1001));
+		assert_eq!(v.pixel_format, oakcommon::ocioutils::PixelFormat::F32.code());
+		// 300000 ticks at 1/30000 = 10 seconds.
+		assert_eq!(video.duration, oakcore_rs::Rational::new(10, 1));
+	}
+
+	#[test]
+	fn conversion_skips_subtitles_and_unusable_durations() {
+		let mut desc = FootageDescription::new("ffmpeg");
+		desc.push_stream(video_entry(0, i64::MIN)); // AV_NOPTS_VALUE
+		desc.push_stream(StreamEntry::Subtitle(oakcommon::subtitleparams::SubtitleParams::new()));
+
+		let streams = streams_from_description(&desc);
+		assert_eq!(streams.len(), 1, "the subtitle stream is skipped");
+		assert_eq!(
+			streams[0].duration,
+			oakcore_rs::Rational::new(0, 1),
+			"an unusable duration clamps to zero"
+		);
+	}
+
+	#[test]
+	fn failed_probe_keeps_prior_state() {
+		let mut f = FootageBehavior::new("/nonexistent/file.mov");
+		assert!(f.probe().is_err());
+		assert!(!f.valid);
+		assert!(f.streams.is_empty());
+		assert_eq!(f.timestamp, 0);
 	}
 }

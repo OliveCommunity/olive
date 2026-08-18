@@ -189,12 +189,15 @@ fn probe_on_the_media_fixture_prints_streams() {
 	let (code, stdout, stderr) = run(&["probe", media.to_str().unwrap()]);
 	assert_eq!(code, 0, "stderr: {stderr}");
 	// tests/demo.mp4 through the engine: the probe records the ffmpeg
-	// decoder; the stream descriptions are dropped by the module today,
-	// so the counts/duration report 0 — the pinned engine contract.
+	// decoder and the full stream inventory (1920x1080 @ 25 fps video,
+	// 48 kHz stereo audio, 17 s each).
 	assert!(stdout.contains("Decoder: ffmpeg"), "{stdout}");
-	assert!(stdout.contains("Duration: 0.000000 s"), "{stdout}");
-	assert!(stdout.contains("Video streams: 0"), "{stdout}");
-	assert!(stdout.contains("Audio streams: 0"), "{stdout}");
+	assert!(stdout.contains("Duration: 17.000000 s"), "{stdout}");
+	assert!(stdout.contains("Video streams: 1"), "{stdout}");
+	assert!(stdout.contains("1920x1080"), "{stdout}");
+	assert!(stdout.contains("25/1 fps"), "{stdout}");
+	assert!(stdout.contains("Audio streams: 1"), "{stdout}");
+	assert!(stdout.contains("48000 Hz, 2 channels"), "{stdout}");
 	assert!(stdout.contains("Subtitle streams: 0"), "{stdout}");
 }
 

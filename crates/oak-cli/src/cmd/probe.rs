@@ -20,13 +20,10 @@
 //!
 //! Runs entirely through the module crates (M14 R2): an
 //! [`oaknode::footage::FootageBehavior`] probes the file through the
-//! oakcodec decoder registry and the CLI prints what the module records.
-//! The module currently records the decoder id but drops the codec's
-//! stream descriptions, so `duration` reports 0 and the stream counts
-//! report 0 for media the module has not loaded stream metadata for — the
-//! CLI prints exactly what the module answers, unchanged from the facade
-//! contract. A missing file prints `error: probe: file does not exist:
-//! <path>` on stderr and exits 1.
+//! oakcodec decoder registry and the CLI prints what the module records:
+//! the decoder id, the footage duration and the probed stream inventory
+//! (per-stream duration in rational seconds). A missing file prints
+//! `error: probe: file does not exist: <path>` on stderr and exits 1.
 
 use oaknode::footage::FootageBehavior;
 
@@ -45,76 +42,82 @@ fn run_probe(mediafile: &str) -> i32 {
 		return EXIT_ERROR;
 	}
 
-	// The module probe records the decoder id (best effort; a failed probe
-	// leaves the node usable with empty streams, exactly like the facade's
-	// footage create).
+	// The module probe records the decoder id and the stream inventory
+	// (best effort; a failed probe leaves the footage unprobed with empty
+	// streams, exactly like the facade's footage create).
 	let mut footage = FootageBehavior::new(mediafile);
 	let _ = footage.probe();
 
 	println!("{}", fmt::decoder_line(&footage.decoder));
 
 	let duration = footage.duration();
-	let duration_secs = if duration.denominator() != 0 {
-		duration.numerator() as f64 / duration.denominator() as f64
-	} else {
-		0.0
-	};
-	println!("{}", fmt::duration_line(duration_secs));
+	println!("{}", fmt::duration_line(rational_secs(duration)));
 
-	let video = footage.video_stream_count();
-	println!("{}", fmt::video_streams_line(video as i64));
-	for index in 0..video {
-		if let Some(params) = footage.video_params(index) {
+	let total = footage.total_stream_count();
+	let mut video_index = 0i64;
+	let mut audio_index = 0i64;
+	println!("{}", fmt::video_streams_line(footage.video_stream_count() as i64));
+	for i in 0..total {
+		let Some(stream) = footage.stream_at(i) else { continue };
+		if !stream.is_video {
+			continue;
+		}
+		if let Some(params) = stream.video {
 			let fr = params.frame_rate;
-			let secs = if fr.denominator() != 0 {
-				fr.numerator() as f64 / fr.denominator() as f64
-			} else {
-				0.0
-			};
 			println!(
 				"{}",
 				fmt::video_stream(
-					index as i64,
-					index as i64,
+					video_index,
+					stream.index as i64,
 					params.width as i64,
 					params.height as i64,
 					fr.numerator(),
 					fr.denominator(),
-					0,
-					fr.denominator(),
-					secs,
+					stream.duration.numerator(),
+					stream.duration.denominator(),
+					rational_secs(stream.duration),
 					0,
 					0,
 					false,
 				)
 			);
+			video_index += 1;
 		}
 	}
 
-	let audio = footage.audio_stream_count();
-	println!("{}", fmt::audio_streams_line(audio as i64));
-	for index in 0..audio {
-		// The module's audio stream descriptions are not reachable yet
-		// (the stream entries are dropped by the probe); streams the module
-		// cannot describe are counted only.
-		if let Some(params) = footage.audio_params(index) {
+	println!("{}", fmt::audio_streams_line(footage.audio_stream_count() as i64));
+	for i in 0..total {
+		let Some(stream) = footage.stream_at(i) else { continue };
+		if stream.is_video {
+			continue;
+		}
+		if let Some(params) = stream.audio {
 			println!(
 				"{}",
 				fmt::audio_stream(
-					index as i64,
-					index as i64,
+					audio_index,
+					stream.index as i64,
 					params.sample_rate as i64,
 					params.channel_layout.count_ones() as i64,
-					0,
-					1,
-					0.0,
+					stream.duration.numerator(),
+					stream.duration.denominator(),
+					rational_secs(stream.duration),
 				)
 			);
+			audio_index += 1;
 		}
 	}
 
-	let subtitle = footage.subtitle_stream_count();
-	println!("{}", fmt::subtitle_streams_line(subtitle as i64));
+	println!("{}", fmt::subtitle_streams_line(footage.subtitle_stream_count() as i64));
 
 	EXIT_OK
+}
+
+/// A rational as floating-point seconds (0 on a zero denominator).
+fn rational_secs(r: oakcore_rs::Rational) -> f64 {
+	if r.denominator() != 0 {
+		r.numerator() as f64 / r.denominator() as f64
+	} else {
+		0.0
+	}
 }
