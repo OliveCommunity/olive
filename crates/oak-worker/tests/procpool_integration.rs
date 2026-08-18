@@ -36,7 +36,7 @@ use oakrender::procpool::{
 	main_heap_frame_copies, reset_main_heap_frame_copies, DispatcherConfig, ProcessDispatcher,
 };
 use oakrender::ticket::{TicketPayload, TicketResult, VideoTicketParams};
-use oakrender::worker::{Job, JobDispatch};
+use oakrender::worker::{Job, JobDispatch, JobSchedule};
 
 /// Serialize every test in this file (shared process environment +
 /// real child processes).
@@ -104,6 +104,7 @@ fn submit(
 			done: Box::new(move |result| {
 				results.lock().unwrap_or_else(|e| e.into_inner()).push(result);
 			}),
+			schedule: JobSchedule::seek(),
 		};
 		assert!(dispatcher.post(job), "post accepted while alive");
 	}

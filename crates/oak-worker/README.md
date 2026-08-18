@@ -134,3 +134,13 @@ binary against a created segment to see the real attach path:
 ```sh
 target/release/oak-worker --backend cpu <<< '{"type":"shutdown"}'
 ```
+
+## M15 S2 status
+
+The process-isolated backend is now the **default** `RenderManager`
+backend; the in-process render thread pool was deleted (the app drives the
+dispatcher from its UI tick and from blocking ticket waits, and the
+pre-render window feeds the scheduler ahead of the playhead). The worker
+binary is located at `target/debug/oak-worker` next to the main executable
+during development (or via `OAK_WORKER_BIN` / `DispatcherConfig::worker_bin`),
+and bundled alongside the main binaries by the packager (root `Cargo.toml`).

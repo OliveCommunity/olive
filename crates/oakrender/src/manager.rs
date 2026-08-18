@@ -14,8 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! The render manager: process-wide singleton owning the worker pool,
-//! the ticket arena, the auto-cacher, and backend selection
+//! The render manager: process-wide singleton owning the process
+//! dispatcher, the ticket arena, the auto-cacher, and backend selection
 //! (C++ `RenderManager`).
 //!
 //! The singleton lives behind a `Mutex<Option<Arc<…>>>` so `init` /
@@ -31,9 +31,9 @@ use crate::autocacher::PreviewAutoCacher;
 use crate::backend::BackendKind;
 use crate::error::{Error, Result};
 use crate::eval;
-use crate::procpool::{DispatcherConfig, ProcessDispatcher};
+use crate::procpool::{DispatcherConfig, ProcessDispatcher, ShmFrameRef};
 use crate::ticket::{TicketArena, TicketId};
-use crate::worker::{JobDispatch, WorkerPool};
+use crate::worker::{InlineDispatcher, JobDispatch};
 
 static MANAGER: Mutex<Option<Arc<RenderManager>>> = Mutex::new(None);
 
@@ -41,23 +41,26 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 	m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// The render backend the manager initializes (M15 S1: the thread pool
-/// and the process-isolated dispatcher coexist; S2 makes Processes the
-/// default and removes the pool).
+/// The render backend the manager initializes (M15 S2).
 pub enum RenderBackendChoice {
-	/// In-process thread pool (the default; C++ parity).
+	/// In-process thread-free dispatch (**test-only** after M15 S2: the
+	/// internal render thread pool was deleted by mandate; this backend
+	/// runs jobs synchronously on the calling thread). Kept so manager /
+	/// integration tests do not spawn oak-worker children.
 	Threads,
 	/// Process-isolated oak-worker pool (crash isolation + shm frames).
+	/// The M15 S2 default.
 	Processes(DispatcherConfig),
 }
 
 /// The manager. Created by `oakrender_manager_init` (C ABI), accessed
 /// internally through [`RenderManager::global`].
 pub struct RenderManager {
-	/// Video job dispatch (thread pool or process dispatcher, M15).
+	/// Video job dispatch (the process dispatcher, M15).
 	pub dispatch: Arc<dyn JobDispatch>,
-	/// Audio job dispatch — kept on main-process threads until S3
-	/// (design §3.7: crash risk is dominated by video plugins).
+	/// Audio job dispatch — kept on main-process inline execution until S3
+	/// (design §3.7: crash risk is dominated by video plugins, which live
+	/// in oak-worker).
 	pub audio_dispatch: Arc<dyn JobDispatch>,
 	/// Ticket arena.
 	pub tickets: Arc<TicketArena>,
@@ -73,16 +76,16 @@ pub struct RenderManager {
 }
 
 impl RenderManager {
-	/// Initialize the process-wide manager with the default backend
-	/// (in-process threads; idempotent; C++ instance() semantics — only
-	/// the main GUI process does this).
+	/// Initialize the process-wide manager with the default backend — the
+	/// process-isolated oak-worker pool (M15 S2 mandate; idempotent; C++
+	/// instance() semantics — only the main GUI process does this).
 	pub fn init() -> Result<()> {
-		Self::init_with_backend(RenderBackendChoice::Threads)
+		Self::init_with_backend(RenderBackendChoice::Processes(DispatcherConfig::default()))
 	}
 
-	/// Initialize the process-wide manager with an explicit backend
-	/// (M15 S1: `Threads` keeps the C++ parity path, `Processes` spawns
-	/// the oak-worker pool).
+	/// Initialize the process-wide manager with an explicit backend.
+	/// `Threads` is the test-only inline backend (no worker threads, no
+	/// child processes); `Processes` spawns the oak-worker pool.
 	pub fn init_with_backend(choice: RenderBackendChoice) -> Result<()> {
 		let mut guard = lock(&MANAGER);
 		if guard.is_some() {
@@ -96,18 +99,19 @@ impl RenderManager {
 		let (dispatch, audio_dispatch): (Arc<dyn JobDispatch>, Arc<dyn JobDispatch>) =
 			match choice {
 				RenderBackendChoice::Threads => {
-					let mut pool = WorkerPool::new(0);
-					pool.start();
-					let pool = Arc::new(pool);
-					(pool.clone(), pool)
+					// Test-only inline backend: synchronous execution on the
+					// calling thread, shared by video and audio.
+					let inline = InlineDispatcher::sync();
+					(inline.clone(), inline)
 				}
 				RenderBackendChoice::Processes(config) => {
 					let dispatcher = ProcessDispatcher::new(config)?;
 					dispatcher.start()?;
-					// Audio stays on main-process threads (design §3.7).
-					let mut audio = WorkerPool::new(2);
-					audio.start();
-					(dispatcher, Arc::new(audio))
+					// Audio stays on main-process inline execution until S3
+					// (design §3.7): render_audio_samples runs synchronously
+					// on the posting thread.
+					let audio = InlineDispatcher::sync();
+					(dispatcher, audio)
 				}
 			};
 		let tickets = Arc::new(TicketArena::new_with_audio(
@@ -147,12 +151,33 @@ impl RenderManager {
 		if let Some(manager) = manager {
 			manager.tickets.cancel_all();
 			// Drain after the cancels so queued completions fire. Both
-			// dispatches are idempotent (the Threads backend shares one
-			// Arc for video + audio).
+			// dispatches are idempotent.
 			manager.dispatch.shutdown();
 			manager.audio_dispatch.shutdown();
 			drop(manager);
 		}
+	}
+
+	/// Pump the video backend's control plane (M15 S2): the process
+	/// dispatcher delivers ticket completions from its poll loop, so the
+	/// UI tick and any blocking wait must call this regularly. No-op on
+	/// backends that deliver inline.
+	pub fn poll(&self) {
+		self.dispatch.poll();
+	}
+
+	/// Release a consumed shm frame's slot back to its worker (M15 S2
+	/// zero-copy onscreen path: slot release = cache eviction). No-op on
+	/// backends that hold no slots.
+	pub fn release_frame(&self, frame: &ShmFrameRef) {
+		self.dispatch.release_frame(frame);
+	}
+
+	/// Cancel every pending AND claimed frame of `sequence` (M15 S2
+	/// preview-window invalidation); their completions fire with
+	/// `Error::State`. No-op on backends that schedule no window.
+	pub fn cancel_preview_sequence(&self, sequence: u64) {
+		self.dispatch.cancel_preview_sequence(sequence);
 	}
 
 	/// Aggressive-GC toggle (C++ `SetAggressiveGarbageCollection`).
@@ -243,19 +268,22 @@ mod tests {
 	#[test]
 	fn init_shutdown_roundtrip() {
 		let _lock = manager_lock();
-		// Ensure a clean slate.
+		// Ensure a clean slate. The manager tests use the test-only inline
+		// backend (the process backend spawns real oak-worker children).
 		RenderManager::shutdown();
-		RenderManager::init().unwrap();
+		RenderManager::init_with_backend(RenderBackendChoice::Threads).unwrap();
 		assert!(RenderManager::global().is_some());
 		// Idempotence: second init is a state error.
 		assert_eq!(
-			RenderManager::init().unwrap_err().code(),
+			RenderManager::init_with_backend(RenderBackendChoice::Threads)
+				.unwrap_err()
+				.code(),
 			Error::State.code()
 		);
 		RenderManager::shutdown();
 		assert!(RenderManager::global().is_none());
 		// Re-init works after shutdown (C++ destroy_instance semantics).
-		RenderManager::init().unwrap();
+		RenderManager::init_with_backend(RenderBackendChoice::Threads).unwrap();
 		RenderManager::shutdown();
 	}
 
@@ -263,7 +291,7 @@ mod tests {
 	fn aggressive_gc_toggle() {
 		let _lock = manager_lock();
 		RenderManager::shutdown();
-		RenderManager::init().unwrap();
+		RenderManager::init_with_backend(RenderBackendChoice::Threads).unwrap();
 		let m = RenderManager::global().unwrap();
 		assert!(!m.aggressive_gc());
 		m.set_aggressive_gc(true);
@@ -275,7 +303,7 @@ mod tests {
 	fn cacher_is_lazily_created() {
 		let _lock = manager_lock();
 		RenderManager::shutdown();
-		RenderManager::init().unwrap();
+		RenderManager::init_with_backend(RenderBackendChoice::Threads).unwrap();
 		let m = RenderManager::global().unwrap();
 		{
 			let g = m.get_cacher();

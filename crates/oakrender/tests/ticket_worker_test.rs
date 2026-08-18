@@ -14,7 +14,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Ticket / worker-pool contract tests.
+//! Ticket / job-dispatch contract tests (M15 S2: the in-process thread
+//! pool is gone; the tests drive the thread-free inline dispatcher, which
+//! makes the arena's exactly-once / cancel / shutdown semantics
+//! deterministic without any worker threads).
 
 mod common;
 
@@ -28,6 +31,7 @@ use oakrender::error::Error;
 use oakrender::frame::VideoParamsPod;
 use oakrender::texture::{Frame, Texture};
 use oakrender::ticket::{TicketArena, TicketId, VideoTicketParams};
+use oakrender::worker::{GraphSnapshotStore, InlineDispatcher, JobDispatch};
 
 /// Unwrap a video ticket payload for assertions.
 fn res_video(res: &oakrender::ticket::TicketPayload) -> &oakrender::texture::Texture {
@@ -36,7 +40,6 @@ fn res_video(res: &oakrender::ticket::TicketPayload) -> &oakrender::texture::Tex
 		_ => panic!("expected a video payload"),
 	}
 }
-use oakrender::worker::{GraphSnapshotStore, WorkerPool};
 
 fn small_frame() -> Frame {
 	let mut f = Frame::new();
@@ -67,23 +70,19 @@ fn params(time: Rational) -> VideoTicketParams {
 	}
 }
 
-/// Opens a worker gate on drop (also on panic), so a failing assertion
-/// can never leave workers spinning while the manager shuts down.
-struct GateRelease(Arc<AtomicBool>);
-
-impl Drop for GateRelease {
-	fn drop(&mut self) {
-		self.0.store(true, Ordering::Release);
-	}
+/// An arena on a queued inline dispatcher: jobs run only when the test
+/// drains it with `InlineDispatcher::run` / `shutdown`.
+fn test_arena(producer: oakrender::ticket::Producer) -> (TicketArena, Arc<InlineDispatcher>) {
+	let d = InlineDispatcher::queued();
+	let arena = TicketArena::new(d.clone(), producer);
+	(arena, d)
 }
 
 /// Completion fires exactly once on success; the payload texture has
 /// the requested size/format.
 #[test]
 fn ticket_completion_once_success() {
-	let mut pool = WorkerPool::new(2);
-	pool.start();
-	let arena = TicketArena::new(Arc::new(pool.clone()), ok_producer());
+	let (arena, d) = test_arena(ok_producer());
 
 	let (tx, rx) = mpsc::channel();
 	let id = arena.submit_video(
@@ -92,6 +91,7 @@ fn ticket_completion_once_success() {
 			let _ = tx.send(r.is_ok());
 		}),
 	);
+	d.run();
 	arena.wait(id).unwrap();
 	assert!(rx.recv_timeout(Duration::from_secs(5)).unwrap());
 	assert!(
@@ -103,24 +103,16 @@ fn ticket_completion_once_success() {
 	assert_eq!(res_video(&res).size(), (8, 4));
 	assert_eq!(res_video(&res).format(), oakcore_rs::PixelFormat::F32);
 	assert!(arena.is_finished(id));
-	pool.shutdown();
+	d.shutdown();
 }
 
 /// Completion fires exactly once on cancel (Error::State), even when
-/// cancel races the running job.
+/// cancel races the running job. On the queued inline dispatcher the
+/// "running" state is the queued-but-not-yet-drained job: a cancel before
+/// `run` delivers State deterministically.
 #[test]
 fn ticket_completion_once_on_cancel() {
-	let mut pool = WorkerPool::new(1);
-	pool.start();
-	let release = Arc::new(AtomicBool::new(false));
-	let release2 = release.clone();
-	let blocking: oakrender::ticket::Producer = Arc::new(move |_, _| {
-		while !release2.load(Ordering::Acquire) {
-			std::thread::sleep(Duration::from_millis(1));
-		}
-		Ok(oakrender::ticket::TicketPayload::Video(Texture::wrap_frame(small_frame())))
-	});
-	let arena = TicketArena::new(Arc::new(pool.clone()), blocking);
+	let (arena, d) = test_arena(ok_producer());
 
 	let (tx, rx) = mpsc::channel();
 	let id = arena.submit_video(
@@ -130,7 +122,7 @@ fn ticket_completion_once_on_cancel() {
 		}),
 	);
 	arena.cancel(id);
-	release.store(true, Ordering::Release);
+	d.run();
 	arena.wait(id).unwrap();
 	let res = rx.recv_timeout(Duration::from_secs(5)).unwrap();
 	assert_eq!(res.unwrap_err().code(), Error::State.code());
@@ -138,28 +130,14 @@ fn ticket_completion_once_on_cancel() {
 		rx.recv_timeout(Duration::from_millis(50)).is_err(),
 		"exactly once"
 	);
-	pool.shutdown();
+	d.shutdown();
 }
 
 /// cancel_all during shutdown delivers cancellation to every pending
 /// ticket; no completion fires after shutdown returns.
 #[test]
 fn shutdown_drains_completions() {
-	let mut pool = WorkerPool::new(1);
-	pool.start();
-	// The producer blocks until released so no job can finish before the
-	// shutdown (otherwise the timing of which jobs ran is nondeterministic).
-	let gate = Arc::new(AtomicBool::new(false));
-	let blocking: oakrender::ticket::Producer = {
-		let gate = gate.clone();
-		Arc::new(move |_, _| {
-			while !gate.load(Ordering::Acquire) {
-				std::thread::sleep(Duration::from_millis(1));
-			}
-			Ok(oakrender::ticket::TicketPayload::Video(Texture::wrap_frame(small_frame())))
-		})
-	};
-	let arena = TicketArena::new(Arc::new(pool.clone()), blocking);
+	let (arena, d) = test_arena(ok_producer());
 
 	let (tx, rx) = mpsc::channel();
 	let mut ids = Vec::new();
@@ -175,8 +153,7 @@ fn shutdown_drains_completions() {
 	}
 	drop(tx);
 	arena.cancel_all();
-	gate.store(true, Ordering::Release);
-	pool.shutdown();
+	d.shutdown();
 
 	let mut completions = Vec::new();
 	while let Ok(err) = rx.recv_timeout(Duration::from_secs(5)) {
@@ -191,13 +168,11 @@ fn shutdown_drains_completions() {
 	assert!(ids.iter().all(|id| arena.is_finished(*id)));
 }
 
-/// Pool saturation: 4 workers × 64 jobs all complete; no job runs
-/// twice (arena ids unique).
+/// Saturation: 64 jobs all complete on the queued dispatcher after one
+/// drain; no job runs twice (arena ids unique).
 #[test]
 fn pool_saturation() {
-	let mut pool = WorkerPool::new(4);
-	pool.start();
-	let arena = TicketArena::new(Arc::new(pool.clone()), ok_producer());
+	let (arena, d) = test_arena(ok_producer());
 	let (tx, rx) = mpsc::channel();
 	let mut ids = Vec::new();
 	for i in 0..64u64 {
@@ -211,6 +186,7 @@ fn pool_saturation() {
 		ids.push(id);
 	}
 	drop(tx);
+	d.run();
 	let mut ok = 0;
 	while let Ok(true) = rx.recv_timeout(Duration::from_secs(10)) {
 		ok += 1;
@@ -219,55 +195,19 @@ fn pool_saturation() {
 	ids.sort_by_key(|i| i.0);
 	let unique: std::collections::HashSet<_> = ids.iter().collect();
 	assert_eq!(unique.len(), 64, "unique arena ids");
-	pool.shutdown();
+	d.shutdown();
 }
 
 /// Ticket arena ids are monotonic and never reused within a manager
 /// lifetime.
 #[test]
 fn ticket_id_monotonic() {
-	let mut pool = WorkerPool::new(1);
-	pool.start();
-	let arena = TicketArena::new(Arc::new(pool.clone()), ok_producer());
+	let (arena, d) = test_arena(ok_producer());
 	let a = arena.submit_video(params(Rational::new(0, 1)), Box::new(|_| {}));
 	let b = arena.submit_video(params(Rational::new(1, 1)), Box::new(|_| {}));
 	let c = arena.submit_video(params(Rational::new(2, 1)), Box::new(|_| {}));
 	assert!(a.0 < b.0 && b.0 < c.0);
-	pool.shutdown();
-}
-
-/// Process pool: documented stub until the oakengine_ipc worker binary
-/// is wired (see worker.rs).
-#[test]
-#[ignore = "needs oakengine_ipc worker-process binary"]
-fn process_pool_roundtrip() {
-	let mut pp = oakrender::worker::ProcessPool::new(2);
-	pp.start().unwrap();
-	let (tx, rx) = mpsc::channel();
-	let produce: oakrender::ticket::Producer =
-		Arc::new(|_, _| Ok(oakrender::ticket::TicketPayload::Video(Texture::wrap_frame(small_frame()))));
-	let job = oakrender::worker::Job {
-		node_identity: 1,
-		time: Rational::new(0, 1),
-		params: Arc::new(params(Rational::new(0, 1))),
-		produce,
-		done: Box::new(move |r| {
-			let _ = tx.send(r.is_ok());
-		}),
-	};
-	pp.post(job).unwrap();
-	assert!(rx.recv_timeout(Duration::from_secs(5)).unwrap());
-	pp.shutdown();
-}
-
-/// Crash isolation: a child killed mid-job fails that ticket with
-/// Error::Failed and the pool stays usable.
-#[test]
-#[ignore = "needs oakengine_ipc worker-process binary"]
-fn process_crash_isolation() {
-	let mut pp = oakrender::worker::ProcessPool::new(1);
-	pp.start().unwrap();
-	pp.shutdown();
+	d.shutdown();
 }
 
 /// GraphSnapshotStore: acquire twice shares one file; release to zero

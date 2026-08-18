@@ -17,7 +17,7 @@
 |---|---|
 | `create_instance` / `destroy_instance` / `instance` | `manager::RenderManager::init/shutdown/global` |
 | `render_frame` / `render_audio`（RenderVideoParams/RenderAudioParams） | `manager` + `ticket::TicketArena::submit_video/submit_audio`（params 结构在 ticket.rs  marshalling） |
-| `RenderThread`（start/add_ticket/remove_ticket/quit/wait/run） | `worker::WorkerPool`（scoped 线程 + channel；quit/wait → shutdown） |
+| `RenderThread`（start/add_ticket/remove_ticket/quit/wait/run） | 已删除（M15 S2 删线程池）；视频经 `procpool::ProcessDispatcher`，单测/音频经 `worker::InlineDispatcher` |
 | `backend()` / `requested_backend` / `backend_from_string` / `backend_to_string` | `backend::BackendKind` + 字符串互转 |
 | `get_cacher` | `manager.autocacher` |
 | `set_project` | `manager`（持有项目身份，不持指针） |
@@ -37,11 +37,11 @@
 
 | C++ | Rust 落点 |
 |---|---|
-| `start` / `submit_frame` / `remove_ticket` / `shutdown` / `worker_loop` / `process_job(_attempt)` | `worker::WorkerPool`（线程池路径） |
-| `PooledWorker` / `acquire_worker` / `return_worker` / `shutdown_worker` / `clear_graph_cache` | `worker::ProcessPool`（子进程池；复用现有 oakengine_ipc C ABI，Rust 只做客户端） |
+| `start` / `submit_frame` / `remove_ticket` / `shutdown` / `worker_loop` / `process_job(_attempt)` | `procpool::ProcessDispatcher`（oak-worker 子进程，M15 默认后端；`worker::WorkerPool` 已删除） |
+| `PooledWorker` / `acquire_worker` / `return_worker` / `shutdown_worker` / `clear_graph_cache` | `procpool::ProcessDispatcher` + `WorkerHandle`（spawn/handshake/崩溃重启；pre-M15 `worker::ProcessPool` 桩已删除） |
 | `write_graph_snapshot` / `cleanup_graph_file` / `add/release_graph_path_ref(_locked)` / `set_graph_path_cached(_locked)` | `worker::GraphSnapshotStore`（图快照文件的引用计数缓存） |
 | `is_supported` / `prepare_job` / `finish_with_frame` / `cancel_active_process` / `set/clear_active_worker` | `worker` 内部 |
-| **决策注记**：进程隔离 worker 保留（崩溃隔离是线上特性）。线程池与进程池并存于 `worker.rs`：`enum WorkerBackend { Threads(WorkerPool), Processes(ProcessPool) }`，选择策略同 C++（config 键）。 | |
+| **决策注记**：进程隔离 worker 是唯一视频后端（M15 S2 用户要求删线程池）。`manager::RenderBackendChoice::{Threads,Processes}`：`Threads` = 测试专用同步 inline；`Processes` = 默认。`worker::InlineDispatcher`（sync=音频/测试，queued=测试确定性）。 | |
 
 ## 4. Renderer 抽象（renderer.h，后端接口）
 

@@ -77,6 +77,34 @@ pub(crate) fn analyze_f32_rgba(width: u32, height: u32, samples: &[f32]) -> Scop
 	}
 }
 
+/// Analyzes one BGRA8 frame (the process backend's slot format, M15 S2)
+/// into its [`ScopeData`]. The worker converts its F32 pipeline output to
+/// BGRA8 at the end of the render, so the scopes read exactly the
+/// displayed values with the viewer's 8-bit quantization — precision loss
+/// vs the F32 analysis is bounded by 1/255 per channel (acceptable for
+/// the scopes; the F32 path stays for the in-process test backend).
+/// `bytes` must hold at least `width * height * 4` values.
+pub(crate) fn analyze_bgra8(width: u32, height: u32, bytes: &[u8]) -> ScopeData {
+	let pixels = (width * height) as usize;
+	let mut luma = Vec::with_capacity(pixels);
+	let mut chroma = Vec::with_capacity(pixels);
+	let src = bytes.get(..pixels * 4).unwrap_or_default();
+	for px in src.chunks_exact(4) {
+		let b = f32::from(px[0]) / 255.0;
+		let g = f32::from(px[1]) / 255.0;
+		let r = f32::from(px[2]) / 255.0;
+		let y = KR * r + KG * g + KB * b;
+		let cb = 0.5 + (b - y) / (2.0 * (1.0 - KB));
+		let cr = 0.5 + (r - y) / (2.0 * (1.0 - KR));
+		luma.push(y);
+		chroma.push((cb.clamp(0.0, 1.0), cr.clamp(0.0, 1.0)));
+	}
+	ScopeData {
+		luma: Arc::new(luma),
+		chroma: Arc::new(chroma),
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

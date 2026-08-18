@@ -117,16 +117,22 @@ tests/          contract + golden tests (common/ has shared helpers)
   in float. `oakrender_color_processor_create_transform` resolves the
   destination transform against the default config's reference role
   until the oakcommon color-transform bridge lands.
-- **Worker process isolation** — landed in M15 S1: `procpool.rs`
+- **Worker process isolation** — landed in M15: `procpool.rs`
   (`ProcessDispatcher`) + `scheduler.rs` + `ipc.rs` drive real
   oak-worker processes (spawn, handshake, batched renders into
   main-assigned shm slots, crash restart, zero-copy completions); the
   end-to-end and crash-isolation tests live in
-  `crates/oak-worker/tests/procpool_integration.rs`. The frozen pre-M15
-  `worker::ProcessPool` facade stub remains for the C ABI.
-- **Audio rendering** — audio tickets complete with `Error::Failed`
-  (the audio graph path is not implemented); `oakrender_ticket_get_samples`
-  fails explainably.
+  `crates/oak-worker/tests/procpool_integration.rs`. M15 S2 made the
+  process backend the `RenderManager` default, removed the in-process
+  thread pool (`worker::WorkerPool`) and the frozen pre-M15
+  `worker::ProcessPool` facade stub, and wired the app's onscreen path
+  to read the shm slots zero-copy (`worker::InlineDispatcher` supplies
+  the thread-free audio/test backends).
+- **Audio rendering** — audio tickets run on main-process inline
+  execution (`worker::InlineDispatcher::sync`; design §3.7 — the crash
+  risk is dominated by video plugins, which live in oak-worker) through
+  `eval::render_audio_samples`; the S3 work is migrating them to the
+  shared-memory transport.
 - **Borrowed caches** — `oakrender_cache_wrap_borrowed` boxes an
   opaque marker; queries on borrowed caches return `OAKRENDER_E_INVALID`
   until the C++ interop layer lands.

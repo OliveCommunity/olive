@@ -33,7 +33,7 @@ use oakcore_rs::{Rational, TimeRange};
 use crate::error::{Error, Result};
 use crate::eval;
 use crate::texture::Texture;
-use crate::worker::JobDispatch;
+use crate::worker::{JobDispatch, JobSchedule};
 
 /// One clip of a sequence montage (M12 P0): the facade resolves the
 /// timeline into an ordered list of clips; the producer decodes each and
@@ -194,11 +194,21 @@ struct TicketSlot {
 	delivered: AtomicBool,
 	completion: Mutex<Option<Completion>>,
 	result: Mutex<Option<Arc<TicketResult>>>,
+	/// The dispatch the ticket posted through (M15 S2: a cancelled ticket
+	/// whose render completed must recycle its shm slot — the consumer
+	/// never sees the `ShmFrame` payload).
+	dispatch: Arc<dyn JobDispatch>,
 }
 
 impl TicketSlot {
 	fn finish(&self, mut result: TicketResult) {
 		if self.cancel.load(Ordering::Acquire) {
+			// A cancelled ticket still holds its shm slot when the render
+			// completed: recycle it now, before the payload is replaced by
+			// `Error::State` and the consumer loses it.
+			if let Ok(TicketPayload::ShmFrame(frame)) = &result {
+				self.dispatch.release_frame(frame);
+			}
 			result = Err(Error::State);
 		}
 		// Publish the result before flipping the state flag: `wait()` only
@@ -296,12 +306,27 @@ impl TicketArena {
 
 	/// Submit a video ticket with a caller-reserved id (allocated by
 	/// [`TicketArena::next_id`]); completion fires exactly once, including
-	/// on cancellation (with `Error::State`).
+	/// on cancellation (with `Error::State`). The job posts as a Seek
+	/// single-frame request (M15 S2; see
+	/// [`TicketArena::submit_playback`] for the pre-render window).
 	pub fn submit_video_with_id(
 		&self,
 		id: TicketId,
 		params: VideoTicketParams,
 		done: Completion,
+	) -> TicketId {
+		self.submit_video_impl(id, params, done, JobSchedule::seek())
+	}
+
+	/// The shared video-ticket submit path: register the slot, post the
+	/// job with `schedule` (M15 S2), and deliver `Error::State`
+	/// immediately when the backend is gone.
+	fn submit_video_impl(
+		&self,
+		id: TicketId,
+		params: VideoTicketParams,
+		done: Completion,
+		schedule: JobSchedule,
 	) -> TicketId {
 		let meta = TicketMeta {
 			kind: Some(ticket_kind::VIDEO),
@@ -322,6 +347,7 @@ impl TicketArena {
 			delivered: AtomicBool::new(false),
 			completion: Mutex::new(Some(done)),
 			result: Mutex::new(None),
+			dispatch: self.dispatch.clone(),
 		});
 		self.allocate(slot.clone());
 
@@ -334,12 +360,58 @@ impl TicketArena {
 			params,
 			produce: producer,
 			done: Box::new(move |result| slot_done.finish(result)),
+			schedule,
 		};
 		if !self.dispatch.post(job) {
 			// Backend is gone (shutdown raced the submit): deliver now.
 			slot.finish(Err(Error::State));
 		}
 		id
+	}
+
+	/// Submit a playback-window frame (M15 S2 pre-render window): the
+	/// frame joins the scheduler at Playback priority, ordered by
+	/// `distance` from the playhead and keyed under `version`. `frame` is
+	/// the sequence frame number (the scheduler key / interleaved shard).
+	/// The completion fires (from the dispatcher's poll) with
+	/// `TicketPayload::ShmFrame`.
+	pub fn submit_playback(
+		&self,
+		params: VideoTicketParams,
+		frame: i64,
+		distance: i64,
+		version: u64,
+		done: Completion,
+	) -> TicketId {
+		let id = self.next_id();
+		self.submit_video_impl(
+			id,
+			params,
+			done,
+			JobSchedule::playback(frame, distance, version),
+		)
+	}
+
+	/// Submit a Background-priority frame (M15 S2 exports/precache): the
+	/// scheduler renders it whenever no Seek/Playback work is pending.
+	pub fn submit_video_background(
+		&self,
+		params: VideoTicketParams,
+		done: Completion,
+	) -> TicketId {
+		let id = self.next_id();
+		self.submit_video_background_with_id(id, params, done)
+	}
+
+	/// [`TicketArena::submit_video_background`] with a caller-reserved id
+	/// (the export loop pre-allocates ids through [`TicketArena::next_id`]).
+	pub fn submit_video_background_with_id(
+		&self,
+		id: TicketId,
+		params: VideoTicketParams,
+		done: Completion,
+	) -> TicketId {
+		self.submit_video_impl(id, params, done, JobSchedule::background())
 	}
 
 	/// Submit a video ticket; completion fires exactly once, including
@@ -376,6 +448,7 @@ impl TicketArena {
 			delivered: AtomicBool::new(false),
 			completion: Mutex::new(Some(done)),
 			result: Mutex::new(None),
+			dispatch: self.audio_dispatch.clone(),
 		});
 		self.allocate(slot.clone());
 
@@ -403,6 +476,7 @@ impl TicketArena {
 			}),
 			produce: producer,
 			done: Box::new(move |result| slot_done.finish(result)),
+			schedule: JobSchedule::seek(),
 		};
 		if !self.audio_dispatch.post(job) {
 			slot.finish(Err(Error::State));
@@ -425,12 +499,28 @@ impl TicketArena {
 		}
 	}
 
-	/// Blocking wait for completion (C++ wait_for_finished).
+	/// Blocking wait for completion (C++ wait_for_finished). M15 S2: the
+	/// process dispatcher delivers completions from its poll loop, so a
+	/// blocking wait pumps it (the UI tick may be blocked right here).
 	pub fn wait(&self, id: TicketId) -> Result<()> {
 		let slot = lock(&self.slots).get(&id).cloned().ok_or(Error::NotFound)?;
 		let mut state = lock(&slot.state);
 		while !matches!(*state, SlotState::Finished) {
-			state = slot.cv.wait(state).unwrap_or_else(|e| e.into_inner());
+			// Pump the backend before blocking again. The slot lock is
+			// dropped first: poll() delivers completions that finish this
+			// very slot (finish() takes the same lock).
+			drop(state);
+			self.dispatch.poll();
+			state = lock(&slot.state);
+			if matches!(*state, SlotState::Finished) {
+				break;
+			}
+			let timeout = std::time::Duration::from_millis(5);
+			let (g, _) = slot
+				.cv
+				.wait_timeout(state, timeout)
+				.unwrap_or_else(|e| e.into_inner());
+			state = g;
 		}
 		Ok(())
 	}
@@ -470,8 +560,8 @@ impl TicketArena {
 	}
 
 	/// Cancel all pending tickets (manager shutdown path). Delivery happens
-	/// when the pool drains the queued jobs (or the running jobs finish);
-	/// call [`WorkerPool::shutdown`] afterwards to guarantee all
+	/// when the backend drains the queued jobs (or the running jobs
+	/// finish); call the backend's `shutdown` afterwards to guarantee all
 	/// completions have fired.
 	pub fn cancel_all(&self) {
 		self.shutting_down.store(true, Ordering::Release);
@@ -494,7 +584,7 @@ mod tests {
 
 	use crate::frame::VideoParamsPod;
 	use crate::texture::Frame;
-	use crate::worker::WorkerPool;
+	use crate::worker::{InlineDispatcher, JobDispatch};
 
 	fn small_frame() -> Frame {
 		let mut f = Frame::new();
@@ -510,12 +600,19 @@ mod tests {
 		Arc::new(|_, _| Ok(TicketPayload::Video(Texture::wrap_frame(small_frame()))))
 	}
 
+	/// A queued inline dispatcher for video (deterministic cancel-race and
+	/// shutdown semantics) plus a sync inline dispatcher for audio (the
+	/// production audio mode). `run` drains the video queue.
+	fn test_arena(producer: Producer) -> (TicketArena, Arc<InlineDispatcher>) {
+		let video = InlineDispatcher::queued();
+		let audio = InlineDispatcher::sync();
+		let arena = TicketArena::new_with_audio(video.clone(), audio, producer);
+		(arena, video)
+	}
+
 	#[test]
 	fn completion_fires_exactly_once_on_success() {
-		let pool = WorkerPool::new(2);
-		let mut pool = pool;
-		pool.start();
-		let arena = TicketArena::new(Arc::new(pool.clone()), ok_producer());
+		let (arena, video) = test_arena(ok_producer());
 
 		let (tx, rx) = mpsc::channel();
 		let id = arena.submit_video(
@@ -536,6 +633,7 @@ mod tests {
 			}),
 		);
 
+		video.run();
 		arena.wait(id).unwrap();
 		let ok = rx.recv_timeout(Duration::from_secs(5)).unwrap();
 		assert!(ok, "completion fired with success");
@@ -553,24 +651,16 @@ mod tests {
 			(4, 4)
 		);
 		assert!(arena.is_finished(id));
-		pool.shutdown();
+		video.shutdown();
 	}
 
 	#[test]
 	fn completion_fires_exactly_once_on_cancel() {
-		let pool = WorkerPool::new(1);
-		let mut pool = pool;
-		pool.start();
-		// Producer blocks until cancelled: exercises the cancel race.
-		let release = Arc::new(std::sync::atomic::AtomicBool::new(false));
-		let release2 = release.clone();
-		let producer: Producer = Arc::new(move |_, _| {
-			while !release2.load(Ordering::Acquire) {
-				std::thread::sleep(Duration::from_millis(1));
-			}
-			Ok(TicketPayload::Video(Texture::wrap_frame(small_frame())))
-		});
-		let arena = TicketArena::new(Arc::new(pool.clone()), producer);
+		// Queued mode: the job is posted but not run yet, so a cancel
+		// before `run` must deliver State exactly once (the old worker-pool
+		// test used a blocking producer; the inline queue makes the same
+		// cancel-before-completion race deterministic without threads).
+		let (arena, video) = test_arena(ok_producer());
 
 		let (tx, rx) = mpsc::channel();
 		let id = arena.submit_video(
@@ -591,9 +681,9 @@ mod tests {
 			}),
 		);
 
-		// Cancel while the job is running, then release the job.
+		// Cancel before the job runs.
 		arena.cancel(id);
-		release.store(true, Ordering::Release);
+		video.run();
 		arena.wait(id).unwrap();
 
 		let res = rx.recv_timeout(Duration::from_secs(5)).unwrap();
@@ -602,39 +692,32 @@ mod tests {
 			rx.recv_timeout(Duration::from_millis(50)).is_err(),
 			"exactly once"
 		);
-		pool.shutdown();
+		video.shutdown();
 	}
 
 	#[test]
 	fn cancel_of_unknown_id_is_ignored() {
-		let pool = WorkerPool::new(1);
-		let mut pool = pool;
-		pool.start();
-		let arena = TicketArena::new(Arc::new(pool.clone()), ok_producer());
+		let (arena, video) = test_arena(ok_producer());
 		arena.cancel(TicketId(12345));
 		assert!(!arena.is_finished(TicketId(12345)));
-		pool.shutdown();
+		video.shutdown();
 	}
 
 	#[test]
 	fn wait_unknown_id_errors() {
-		let pool = WorkerPool::new(1);
-		let mut pool = pool;
-		pool.start();
-		let arena = TicketArena::new(Arc::new(pool.clone()), ok_producer());
+		let (arena, video) = test_arena(ok_producer());
 		assert_eq!(
 			arena.wait(TicketId(999)).unwrap_err().code(),
 			Error::NotFound.code()
 		);
-		pool.shutdown();
+		video.shutdown();
 	}
 
 	#[test]
 	fn audio_ticket_meta_and_kind() {
-		let pool = WorkerPool::new(1);
-		let mut pool = pool;
-		pool.start();
-		let arena = TicketArena::new(Arc::new(pool.clone()), ok_producer());
+		// Audio runs on the sync inline backend (the production audio
+		// mode), so the completion fires during the submit.
+		let (arena, video) = test_arena(ok_producer());
 
 		let (tx, rx) = mpsc::channel();
 		let range = TimeRange::new(Rational::new(0, 1), Rational::new(10, 1));
@@ -659,15 +742,12 @@ mod tests {
 		assert!(!rx.recv_timeout(Duration::from_secs(5)).unwrap());
 		// get_time equivalent: audio tickets report range.in.
 		assert_eq!(arena.time(id), Some(range.in_()));
-		pool.shutdown();
+		video.shutdown();
 	}
 
 	#[test]
 	fn ticket_ids_are_monotonic() {
-		let pool = WorkerPool::new(1);
-		let mut pool = pool;
-		pool.start();
-		let arena = TicketArena::new(Arc::new(pool.clone()), ok_producer());
+		let (arena, video) = test_arena(ok_producer());
 		let a = arena.submit_video(
 			VideoTicketParams {
 				viewer: 1,
@@ -700,6 +780,6 @@ mod tests {
 		);
 		assert!(b.0 > a.0);
 		assert_ne!(a, b);
-		pool.shutdown();
+		video.shutdown();
 	}
 }

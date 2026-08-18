@@ -30,7 +30,7 @@ use oakrender::error::Error;
 use oakrender::frame::VideoParamsPod;
 use oakrender::texture::{Frame, Texture};
 use oakrender::ticket::TicketArena;
-use oakrender::worker::WorkerPool;
+use oakrender::worker::{InlineDispatcher, JobDispatch};
 
 fn frame_producer() -> oakrender::ticket::Producer {
 	Arc::new(|_, _| {
@@ -44,14 +44,10 @@ fn frame_producer() -> oakrender::ticket::Producer {
 })
 }
 
-fn cacher() -> (oakrender::autocacher::PreviewAutoCacher, WorkerPool) {
-	let mut pool = WorkerPool::new(2);
-	pool.start();
-	let arena = Arc::new(TicketArena::new(
-		Arc::new(pool.clone()),
-		frame_producer(),
-	));
-	(oakrender::autocacher::PreviewAutoCacher::new(arena), pool)
+fn cacher() -> (oakrender::autocacher::PreviewAutoCacher, Arc<InlineDispatcher>) {
+	let d = InlineDispatcher::queued();
+	let arena = Arc::new(TicketArena::new(d.clone(), frame_producer()));
+	(oakrender::autocacher::PreviewAutoCacher::new(arena), d)
 }
 
 /// Deep-copy through oaknode with a valid (non-empty) project identity:
@@ -111,24 +107,26 @@ fn autocacher_attach_detach() {
 }
 
 /// cancel_video_tasks(wait=false) returns immediately with jobs
-/// cancelled; wait=true blocks until workers are idle.
+/// cancelled; wait=true blocks until the dispatcher is idle.
 #[test]
 fn cancel_video_tasks_semantics() {
-	let (mut c, mut pool) = cacher();
+	let (mut c, d) = cacher();
 	c.attach(1);
 	c.force_range(TimeRange::new(Rational::new(0, 1), Rational::new(5, 1)));
 	assert_eq!(c.live_jobs().len(), 1);
 
 	// wait=false: returns immediately; the ticket may still be draining.
 	c.cancel_video_tasks(false);
-	// wait=true: blocks until every job finished.
+	// wait=true: drain the queued jobs first (the inline dispatcher has no
+	// background threads), then blocks until every job finished.
 	c.force_range(TimeRange::new(Rational::new(5, 1), Rational::new(10, 1)));
+	d.run();
 	c.cancel_video_tasks(true);
 	assert!(
 		!c.is_rendering_custom_range(),
 		"all custom-range jobs finished after wait"
 	);
-	pool.shutdown();
+	d.shutdown();
 }
 
 /// Change-record marshalling: every ChangeRecord kind survives the

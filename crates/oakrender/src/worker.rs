@@ -14,27 +14,40 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! The worker layer (C++ RenderWorkerPool + RenderThread +
-//! workerprocess/workerjson): thread pool AND process-isolated pool
-//! behind one dispatch seam.
+//! The job-dispatch seam (M15 S2): what a render ticket posts through.
 //!
-//! This pass ships the in-process [`WorkerPool`] fully. The
-//! process-isolated backend landed in M15 S1 as
-//! [`crate::procpool::ProcessDispatcher`] (spawn/handshake/crash-restart
-//! of oak-worker binaries over NDJSON + shared memory); both backends
-//! implement the [`JobDispatch`] seam the ticket arena posts through.
-//! [`ProcessPool`] below is the frozen pre-M15 facade stub kept for C
-//! ABI parity.
+//! The in-process thread pool was **removed** in M15 S2 (user mandate:
+//! "delete the internal render thread pool"); the only video backend is
+//! the process-isolated [`crate::procpool::ProcessDispatcher`]
+//! (oak-worker children over NDJSON + shared memory). This module keeps
+//! the ticket-facing surface:
+//!
+//! - [`Job`] — one unit of render work plus its scheduler hints.
+//! - [`JobDispatch`] — the backend seam the arena posts through, with
+//!   default no-ops for the process-backend extras (poll / release /
+//!   preview-window cancellation).
+//! - [`InlineDispatcher`] — a thread-free dispatcher that executes jobs
+//!   on the calling thread. Used as the **audio** backend (audio stays on
+//!   main-process inline execution until S3 — design §3.7) and by the
+//!   manager's test-only `Threads` backend and by unit tests.
+//! - [`GraphSnapshotStore`] — the graph-snapshot file refcounting cache
+//!   shared with worker processes.
 
 use std::collections::{HashMap, VecDeque};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Condvar, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use oakcore_rs::Rational;
 
 use crate::error::{Error, Result};
+use crate::procpool::ShmFrameRef;
+use crate::scheduler::FramePriority;
 use crate::ticket::{Completion, Producer, VideoTicketParams};
+
+fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+	m.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 /// A unit of render work (produced by the ticket arena).
 pub struct Job {
@@ -44,21 +57,63 @@ pub struct Job {
 	pub time: Rational,
 	/// Ticket parameters (size/format overrides).
 	pub params: Arc<VideoTicketParams>,
-	/// Frame producer (arena-installed).
+	/// Frame producer (arena-installed; the process backend never invokes
+	/// it — workers render from the wire spec).
 	pub produce: Producer,
 	/// Completion delivery.
 	pub done: Completion,
+	/// Scheduler hints (M15 S2). Defaults to a Seek single-frame request.
+	pub schedule: JobSchedule,
 }
 
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-	m.lock().unwrap_or_else(|e| e.into_inner())
+/// Scheduler hints a posted job carries (M15 S2). The process dispatcher
+/// maps these onto [`crate::scheduler::FrameKey`] / priority; the inline
+/// dispatcher ignores them.
+#[derive(Clone, Debug, Default)]
+pub struct JobSchedule {
+	/// Priority class. Default [`FramePriority::Seek`] (single-frame).
+	pub priority: FramePriority,
+	/// Scheduler key frame number. `None` = the ticket id (the Seek
+	/// single-frame convention).
+	pub frame: Option<i64>,
+	/// Playhead distance (orders the Playback class).
+	pub distance: i64,
+	/// Parameter version (graph/proxy/resolution/color); bumping it
+	/// invalidates stale requests for the same sequence+frame.
+	pub version: u64,
+}
+
+impl JobSchedule {
+	/// A Seek single-frame request (the default for every ticket).
+	pub fn seek() -> Self {
+		Self::default()
+	}
+
+	/// A Background request (exports / precache): rendered whenever the
+	/// workers have no Seek/Playback work.
+	pub fn background() -> Self {
+		Self {
+			priority: FramePriority::Background,
+			..Default::default()
+		}
+	}
+
+	/// A Playback-window request at `frame`, ordered by `distance` from
+	/// the playhead and keyed under `version`.
+	pub fn playback(frame: i64, distance: i64, version: u64) -> Self {
+		Self {
+			priority: FramePriority::Playback,
+			frame: Some(frame),
+			distance,
+			version,
+		}
+	}
 }
 
 /// The job-dispatch seam (M15 S1): the ticket arena posts [`Job`]s
-/// through this interface without knowing the backend. Implemented by
-/// the in-process [`WorkerPool`] (threads) and the process-isolated
-/// [`crate::procpool::ProcessDispatcher`] (oak-worker children); S2
-/// removes the thread pool and this seam becomes process-only.
+/// through this interface without knowing the backend. Implemented by the
+/// process-isolated [`crate::procpool::ProcessDispatcher`] (oak-worker
+/// children) and the thread-free [`InlineDispatcher`] (audio / tests).
 pub trait JobDispatch: Send + Sync {
 	/// Enqueue a job; false when the backend is gone (the arena then
 	/// delivers the completion itself with `Error::State`).
@@ -67,195 +122,125 @@ pub trait JobDispatch: Send + Sync {
 	/// Stop accepting work, deliver the queued completions (cancelled)
 	/// and release the backend. Idempotent.
 	fn shutdown(&self);
+
+	/// Pump backend completions (the process dispatcher's poll loop).
+	/// Default no-op: backends that deliver inline have nothing to pump.
+	/// The UI tick and blocking ticket waits call this so the process
+	/// backend's completions are delivered without a dedicated thread.
+	fn poll(&self) {}
+
+	/// Release a consumed shm frame's slot back to its worker (slot
+	/// release = cache eviction, design §3.1). Default no-op: only the
+	/// process backend holds slots.
+	fn release_frame(&self, _frame: &ShmFrameRef) {}
+
+	/// Cancel every pending AND claimed request of `sequence` (M15 S2
+	/// preview-window invalidation); their completions fire with
+	/// `Error::State`. Default no-op: only the process backend schedules.
+	fn cancel_preview_sequence(&self, _sequence: u64) {}
 }
 
-/// Thread-pool backend (C++ RenderThread model). Cheap to clone (all
-/// state is behind an `Arc`); the manager and the ticket arena share one
-/// pool.
-#[derive(Clone)]
-pub struct WorkerPool {
-	inner: Arc<PoolInner>,
+/// Thread-free job dispatcher (M15 S2). Executes jobs on the calling
+/// thread — there are deliberately **no worker threads**:
+///
+///   - **Sync mode** ([`InlineDispatcher::sync`]): every `post` runs its
+///     job immediately on the caller's thread. This is the production
+///     **audio** backend (audio stays on main-process inline execution
+///     until S3 — design §3.7: the crash risk is dominated by video
+///     plugins, which already live in oak-worker) and the manager's
+///     test-only `Threads` backend.
+///   - **Queued mode** ([`InlineDispatcher::queued`]): `post` queues the
+///     job; the test drains it with [`InlineDispatcher::run`]. This keeps
+///     the arena's cancel-race and shutdown semantics deterministic
+///     without any threads.
+pub struct InlineDispatcher {
+	inner: Arc<InlineInner>,
 }
 
-struct PoolInner {
-	workers: usize,
+struct InlineInner {
 	queue: Mutex<VecDeque<Job>>,
-	cv: Condvar,
+	sync: bool,
 	stopping: AtomicBool,
-	threads: Mutex<Vec<std::thread::JoinHandle<()>>>,
 }
 
-impl WorkerPool {
-	/// Pool with `workers` threads (0 = hardware concurrency).
-	pub fn new(workers: usize) -> Self {
-		let workers = if workers == 0 {
-			std::thread::available_parallelism()
-				.map(|n| n.get())
-				.unwrap_or(1)
-		} else {
-			workers
-		};
-		Self {
-			inner: Arc::new(PoolInner {
-				workers,
+impl InlineDispatcher {
+	/// A sync-mode dispatcher: jobs run immediately on the posting thread.
+	pub fn sync() -> Arc<Self> {
+		Arc::new(Self {
+			inner: Arc::new(InlineInner {
 				queue: Mutex::new(VecDeque::new()),
-				cv: Condvar::new(),
+				sync: true,
 				stopping: AtomicBool::new(false),
-				threads: Mutex::new(Vec::new()),
 			}),
-		}
+		})
 	}
 
-	/// The number of worker threads.
-	pub fn worker_count(&self) -> usize {
-		self.inner.workers
+	/// A queued-mode dispatcher: jobs wait for [`InlineDispatcher::run`].
+	pub fn queued() -> Arc<Self> {
+		Arc::new(Self {
+			inner: Arc::new(InlineInner {
+				queue: Mutex::new(VecDeque::new()),
+				sync: false,
+				stopping: AtomicBool::new(false),
+			}),
+		})
 	}
 
-	/// Start threads (idempotent).
-	pub fn start(&mut self) {
-		let mut threads = lock(&self.inner.threads);
-		if !threads.is_empty() {
+	/// Run every queued job synchronously on the calling thread (queued
+	/// mode). Jobs posted after `shutdown` are refused by `post`.
+	pub fn run(&self) {
+		if self.inner.stopping.load(Ordering::Acquire) {
 			return;
 		}
-		for _ in 0..self.inner.workers {
-			let inner = self.inner.clone();
-			let handle = std::thread::spawn(move || worker_loop(inner));
-			threads.push(handle);
+		loop {
+			let job = lock(&self.inner.queue).pop_front();
+			let Some(job) = job else { break };
+			execute_job(job);
 		}
 	}
 
-	/// True when threads are running.
-	pub fn is_running(&self) -> bool {
-		!lock(&self.inner.threads).is_empty()
+	/// The number of queued (not yet run) jobs.
+	pub fn queued_count(&self) -> usize {
+		lock(&self.inner.queue).len()
 	}
+}
 
-	/// Enqueue a job. Returns false when the pool is shut down.
-	pub fn post(&self, job: Job) -> bool {
-		// The stopping check and the push share one queue lock: a shutdown
-		// racing the check would otherwise leave the job queued after every
-		// worker exited (and after the defensive drain), so its completion
-		// could never fire.
+fn execute_job(job: Job) {
+	let result = catch_unwind(AssertUnwindSafe(|| (job.produce)(job.time, &job.params)))
+		.unwrap_or_else(|_| Err(Error::Failed("frame producer panicked".into())));
+	(job.done)(result);
+}
+
+impl JobDispatch for InlineDispatcher {
+	fn post(&self, job: Job) -> bool {
+		if self.inner.sync {
+			// Sync mode: run now (refusing only when shutting down).
+			if self.inner.stopping.load(Ordering::Acquire) {
+				return false;
+			}
+			execute_job(job);
+			return true;
+		}
 		let mut queue = lock(&self.inner.queue);
 		if self.inner.stopping.load(Ordering::Acquire) {
 			return false;
 		}
 		queue.push_back(job);
-		self.inner.cv.notify_one();
 		true
 	}
 
-	/// Stop accepting, drain, join all workers. In-flight job completions
-	/// fire with cancellation (queued jobs are delivered `Error::State`
-	/// without running); running jobs are joined so no completion fires
-	/// after shutdown returns.
-	pub fn shutdown(&mut self) {
-		self.shutdown_ref();
-	}
-
-	/// [`Self::shutdown`] on a shared reference (the [`JobDispatch`]
-	/// seam; all state is interior-mutable). Idempotent.
-	pub fn shutdown_ref(&self) {
-		// Set the flag and wake the workers while holding the queue lock.
-		// Workers decide whether to block in `cv.wait` while holding that
-		// lock, so a flag set outside it could land between a worker's
-		// predicate check and its wait: the wakeup is lost, the worker
-		// sleeps forever, and the join below hangs. Serializing store +
-		// notify with the waiters' lock closes that window.
-		{
-			let _guard = lock(&self.inner.queue);
-			self.inner.stopping.store(true, Ordering::Release);
-			self.inner.cv.notify_all();
-		}
-
-		let threads = std::mem::take(&mut *lock(&self.inner.threads));
-		for handle in threads {
-			let _ = handle.join();
-		}
-
-		// Defensive drain: any job that landed between `stopping` and the
-		// workers' exit (post() refuses them, so this is normally empty).
-		let mut queue = lock(&self.inner.queue);
-		while let Some(job) = queue.pop_front() {
-			deliver_cancelled(job);
-		}
-	}
-}
-
-impl JobDispatch for WorkerPool {
-	fn post(&self, job: Job) -> bool {
-		WorkerPool::post(self, job)
-	}
-
 	fn shutdown(&self) {
-		self.shutdown_ref();
-	}
-}
-
-fn worker_loop(inner: Arc<PoolInner>) {
-	loop {
-		let job = {
-			let mut queue = lock(&inner.queue);
-			while !inner.stopping.load(Ordering::Acquire) && queue.is_empty() {
-				queue = inner.cv.wait(queue).unwrap_or_else(|e| e.into_inner());
-			}
-			queue.pop_front()
+		// Stop accepting and drain the queue with cancellation (queued
+		// jobs never run after shutdown).
+		let jobs: Vec<Job> = {
+			let mut queue = lock(&self.inner.queue);
+			self.inner.stopping.store(true, Ordering::Release);
+			queue.drain(..).collect()
 		};
-		let Some(job) = job else {
-			return; // stopping and queue drained
-		};
-		if inner.stopping.load(Ordering::Acquire) {
-			// Shutdown raced this pop: deliver cancellation.
-			deliver_cancelled(job);
-			continue;
+		for job in jobs {
+			(job.done)(Err(Error::State));
 		}
-		let result = catch_unwind(AssertUnwindSafe(|| (job.produce)(job.time, &job.params)))
-			.unwrap_or_else(|_| Err(Error::Failed("frame producer panicked".into())));
-		(job.done)(result);
 	}
-}
-
-fn deliver_cancelled(job: Job) {
-	(job.done)(Err(Error::State));
-}
-
-/// Process-isolated worker backend (C++ RenderWorkerPool +
-/// PooledWorker). Child processes talk the oakengine_ipc C ABI; this side
-/// is only a client (spawn, dispatch, reap). Not wired in this pass.
-pub struct ProcessPool {
-	workers: usize,
-}
-
-impl ProcessPool {
-	/// Pool of `workers` child processes.
-	pub fn new(workers: usize) -> Self {
-		Self { workers }
-	}
-
-	/// The configured child count.
-	pub fn worker_count(&self) -> usize {
-		self.workers
-	}
-
-	/// Spawn children and handshake.
-	pub fn start(&mut self) -> Result<()> {
-		Err(Error::Failed(
-			"oakengine_ipc worker-process bridge not implemented in this pass".into(),
-		))
-	}
-
-	/// Dispatch a job to a free child.
-	pub fn post(&self, _job: Job) -> Result<()> {
-		Err(Error::Failed(
-			"oakengine_ipc worker-process bridge not implemented in this pass".into(),
-		))
-	}
-
-	/// Cancel the job running in a child (C++ cancel_active_process).
-	pub fn cancel_active(&self, _process_slot: usize) {}
-
-	/// Terminate and reap all children; pending jobs complete with
-	/// cancellation.
-	pub fn shutdown(&mut self) {}
 }
 
 /// Graph snapshot files shared with worker processes (C++
@@ -355,27 +340,20 @@ impl Default for GraphSnapshotStore {
 	}
 }
 
-/// The pool the manager runs (config-selected, C++ parity).
-pub enum WorkerBackend {
-	/// In-process threads.
-	Threads(WorkerPool),
-	/// Child processes (crash isolation).
-	Processes(ProcessPool),
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use std::sync::atomic::AtomicUsize;
 	use std::sync::mpsc;
 	use std::time::Duration;
 
 	use crate::texture::Texture;
 
-	fn job(tag: u64, tx: mpsc::Sender<u64>, gate: Option<Arc<AtomicUsize>>) -> Job {
+	fn job(tag: u64, tx: mpsc::Sender<u64>, gate: Option<Arc<AtomicBool>>) -> Job {
 		let produce: Producer = Arc::new(move |_, _| {
 			if let Some(g) = &gate {
-				g.fetch_add(1, Ordering::SeqCst);
+				if g.load(Ordering::Acquire) {
+					return Err(Error::Failed("gated producer".into()));
+				}
 			}
 			Ok(crate::ticket::TicketPayload::Video(Texture::dummy()))
 		});
@@ -399,56 +377,58 @@ mod tests {
 				assert!(r.is_ok(), "producer must succeed here");
 				let _ = tx.send(tag);
 			}),
+			schedule: JobSchedule::seek(),
 		}
 	}
 
 	#[test]
-	fn pool_saturation_all_jobs_complete() {
-		let mut pool = WorkerPool::new(4);
-		pool.start();
+	fn sync_dispatcher_runs_every_job_immediately() {
+		let d = InlineDispatcher::sync();
 		let (tx, rx) = mpsc::channel();
-		for i in 0..64u64 {
-			assert!(pool.post(job(i, tx.clone(), None)));
+		for i in 0..8u64 {
+			assert!(d.post(job(i, tx.clone(), None)));
 		}
 		drop(tx);
 		let mut seen = Vec::new();
-		while let Ok(tag) = rx.recv_timeout(Duration::from_secs(10)) {
+		while let Ok(tag) = rx.recv_timeout(Duration::from_secs(5)) {
 			seen.push(tag);
 		}
-		assert_eq!(seen.len(), 64);
-		seen.sort_unstable();
-		for (i, tag) in seen.iter().enumerate() {
-			assert_eq!(*tag, i as u64, "every job runs exactly once");
-		}
-		pool.shutdown();
+		assert_eq!(seen.len(), 8, "every job ran on the posting thread");
+		d.shutdown();
+		// Post after shutdown is refused.
+		let (tx2, _rx2) = mpsc::channel();
+		assert!(!d.post(job(9, tx2, None)), "post after shutdown is refused");
 	}
 
 	#[test]
-	fn shutdown_delivers_cancellation_to_queued_jobs() {
-		// 1 worker + a gate that blocks: jobs 2..N stay queued and must be
-		// delivered Err(State) at shutdown.
-		let gate = Arc::new(AtomicUsize::new(0));
-		let mut pool = WorkerPool::new(1);
-		pool.start();
+	fn queued_dispatcher_runs_on_demand() {
+		let d = InlineDispatcher::queued();
 		let (tx, rx) = mpsc::channel();
 		for i in 0..8u64 {
+			assert!(d.post(job(i, tx.clone(), None)));
+		}
+		assert_eq!(d.queued_count(), 8, "nothing ran yet");
+		d.run();
+		assert_eq!(d.queued_count(), 0);
+		drop(tx);
+		let mut seen = Vec::new();
+		while let Ok(tag) = rx.recv_timeout(Duration::from_secs(5)) {
+			seen.push(tag);
+		}
+		assert_eq!(seen.len(), 8);
+		d.shutdown();
+	}
+
+	#[test]
+	fn queued_dispatcher_shutdown_delivers_cancellation() {
+		let d = InlineDispatcher::queued();
+		let (tx, rx) = mpsc::channel();
+		for _ in 0..4 {
 			let tx = tx.clone();
-			let gate = gate.clone();
-			let produce: Producer = Arc::new(move |_, _| {
-				if i == 0 {
-					// First job blocks until shutdown begins.
-					let start = std::time::Instant::now();
-					while gate.load(Ordering::Acquire) == 0
-						&& start.elapsed() < Duration::from_secs(5)
-					{
-						std::thread::sleep(Duration::from_millis(1));
-					}
-				}
-				Ok(crate::ticket::TicketPayload::Video(Texture::dummy()))
-			});
-			let job = Job {
-				node_identity: i,
-				time: Rational::new(i as i64, 1),
+			let p: Producer = Arc::new(|_, _| Ok(crate::ticket::TicketPayload::Video(Texture::dummy())));
+			d.post(Job {
+				node_identity: 1,
+				time: Rational::new(0, 1),
 				params: Arc::new(VideoTicketParams {
 					viewer: 0,
 					time: Rational::new(0, 1),
@@ -461,44 +441,28 @@ mod tests {
 					footage: None,
 					montage: Vec::new(),
 				}),
-				produce,
+				produce: p,
 				done: Box::new(move |r| {
 					let _ = tx.send(r.is_err());
 				}),
-			};
-			pool.post(job);
+				schedule: JobSchedule::seek(),
+			});
 		}
 		drop(tx);
-		gate.store(1, Ordering::Release);
-		pool.shutdown();
-
+		d.shutdown();
 		let mut delivered = Vec::new();
-		while let Ok(is_err) = rx.recv_timeout(Duration::from_secs(5)) {
-			delivered.push(is_err);
+		while let Ok(err) = rx.recv_timeout(Duration::from_secs(5)) {
+			delivered.push(err);
 		}
-		assert_eq!(delivered.len(), 8, "all 8 completions fire");
-		assert!(
-			delivered.iter().filter(|&&e| e).count() >= 7,
-			"queued jobs complete with cancellation"
-		);
+		assert_eq!(delivered.len(), 4, "all queued completions fire");
+		assert!(delivered.iter().all(|&e| e), "queued jobs cancel at shutdown");
 	}
 
 	#[test]
-	fn post_after_shutdown_is_refused() {
-		let mut pool = WorkerPool::new(1);
-		pool.start();
-		pool.shutdown();
-		let (tx, _rx) = mpsc::channel();
-		assert!(!pool.post(job(1, tx, None)));
-	}
-
-	#[test]
-	fn producer_panic_does_not_kill_worker() {
-		let mut pool = WorkerPool::new(1);
-		pool.start();
+	fn producer_panic_does_not_kill_the_dispatcher() {
+		let d = InlineDispatcher::sync();
 		let (tx, rx) = mpsc::channel();
 		let tx1 = tx.clone();
-		let tx2 = tx.clone();
 		let boom: Producer = Arc::new(|_, _| panic!("boom"));
 		let ok: Producer = Arc::new(|_, _| Ok(crate::ticket::TicketPayload::Video(Texture::dummy())));
 		let params = Arc::new(VideoTicketParams {
@@ -513,7 +477,7 @@ mod tests {
 			footage: None,
 			montage: Vec::new(),
 		});
-		pool.post(Job {
+		d.post(Job {
 			node_identity: 0,
 			time: Rational::new(0, 1),
 			params: params.clone(),
@@ -522,34 +486,25 @@ mod tests {
 				assert!(r.is_err());
 				let _ = tx1.send(1u64);
 			}),
+			schedule: JobSchedule::seek(),
 		});
-		pool.post(Job {
+		d.post(Job {
 			node_identity: 1,
 			time: Rational::new(1, 1),
 			params,
 			produce: ok,
 			done: Box::new(move |r| {
 				assert!(r.is_ok());
-				let _ = tx2.send(2u64);
+				let _ = tx.send(2u64);
 			}),
+			schedule: JobSchedule::seek(),
 		});
 		let mut got = Vec::new();
 		while let Ok(v) = rx.recv_timeout(Duration::from_secs(5)) {
 			got.push(v);
 		}
-		assert_eq!(got.len(), 2, "worker survives a panicking producer");
-		pool.shutdown();
-	}
-
-	#[test]
-	fn process_pool_is_documented_stub() {
-		let mut pp = ProcessPool::new(2);
-		assert_eq!(pp.worker_count(), 2);
-		assert!(pp.start().is_err(), "oakengine_ipc bridge pending");
-		let (tx, _rx) = mpsc::channel();
-		assert!(pp.post(job(1, tx, None)).is_err());
-		pp.cancel_active(0); // no-op
-		pp.shutdown(); // no-op
+		assert_eq!(got.len(), 2, "the dispatcher survives a panicking producer");
+		d.shutdown();
 	}
 
 	#[test]

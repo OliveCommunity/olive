@@ -25,7 +25,8 @@
 //! - `cache` — PlaybackCache/FrameHashCache family + disk state
 //! - `color` — ColorProcessor over `ocio-rs` + LUT library
 //! - `ticket` — ticket arena with exactly-once completion
-//! - `worker` — worker pool + graph snapshot store
+//! - `worker` — the JobDispatch seam + thread-free inline dispatcher +
+//!   graph snapshot store (the in-process thread pool was deleted in M15 S2)
 //! - `manager` — RenderManager singleton + disk cache
 //! - `autocacher` — PreviewAutoCacher
 //! - `eval` — the evaluation seam (RenderHooks)

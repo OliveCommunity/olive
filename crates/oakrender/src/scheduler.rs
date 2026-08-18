@@ -62,9 +62,10 @@ pub struct FrameKey {
 }
 
 /// Frame request priority class (lower value = more urgent).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub enum FramePriority {
 	/// Seek / current playhead frame (single-frame insert, top priority).
+	#[default]
 	Seek,
 	/// Playback window frames (ordered by [`FrameRequest::distance`]).
 	Playback,
@@ -112,6 +113,19 @@ struct PendingEntry<P> {
 	any_worker: bool,
 }
 
+/// The outcome of [`PreviewScheduler::submit`].
+#[derive(Debug)]
+pub enum SubmitOutcome<P> {
+	/// A new request was accepted (nothing was pending under its key).
+	Accepted,
+	/// An existing pending request under the same key was replaced; the
+	/// superseded request is returned so the dispatcher can cancel its
+	/// ticket completion (M15 S2).
+	Replaced(FrameRequest<P>),
+	/// The key is already claimed (in flight); the request was rejected.
+	InFlight,
+}
+
 /// The scheduler state machine (single-threaded by contract).
 pub struct PreviewScheduler<P> {
 	workers: usize,
@@ -155,21 +169,25 @@ impl<P: Clone> PreviewScheduler<P> {
 
 	/// Submit a frame request. An already-pending request with the same
 	/// key is replaced; a key already claimed (in flight) is rejected —
-	/// the dispatcher must cancel/re-version it first. Returns true when
-	/// the request was accepted.
-	pub fn submit(&mut self, request: FrameRequest<P>) -> bool {
+	/// the dispatcher must cancel/re-version it first.
+	pub fn submit(&mut self, request: FrameRequest<P>) -> SubmitOutcome<P> {
 		if self.claimed.contains_key(&request.key) {
-			return false;
+			return SubmitOutcome::InFlight;
 		}
 		if let Some(entry) = self.pending.iter_mut().find(|e| e.request.key == request.key) {
-			entry.request = request;
-			return true;
+			let old = std::mem::replace(&mut entry.request, request);
+			return SubmitOutcome::Replaced(old);
 		}
 		self.pending.push(PendingEntry {
 			request,
 			any_worker: false,
 		});
-		true
+		SubmitOutcome::Accepted
+	}
+
+	/// Whether `key` is currently claimed (in flight).
+	pub fn is_claimed(&self, key: &FrameKey) -> bool {
+		self.claimed.contains_key(key)
 	}
 
 	/// Claim the next batch for `worker`: the worker's interleaved shard
@@ -300,14 +318,27 @@ impl<P: Clone> PreviewScheduler<P> {
 
 	/// Cancel every pending AND claimed frame of `sequence` (frame-key
 	/// invalidation; the `cancel` wire message covers the worker side).
-	/// Returns the number of dropped requests.
-	pub fn cancel_sequence(&mut self, sequence: u64) -> usize {
-		let before_pending = self.pending.len();
-		self.pending.retain(|e| e.request.key.sequence != sequence);
-		let dropped_pending = before_pending - self.pending.len();
-		let before_claimed = self.claimed.len();
-		self.claimed.retain(|_, c| c.request.key.sequence != sequence);
-		dropped_pending + (before_claimed - self.claimed.len())
+	/// Returns the dropped requests so the dispatcher can fire their
+	/// completions with `Error::State`.
+	pub fn cancel_sequence(&mut self, sequence: u64) -> Vec<FrameRequest<P>> {
+		let mut dropped = Vec::new();
+		self.pending.retain(|e| {
+			if e.request.key.sequence == sequence {
+				dropped.push(e.request.clone());
+				false
+			} else {
+				true
+			}
+		});
+		self.claimed.retain(|_, c| {
+			if c.request.key.sequence == sequence {
+				dropped.push(c.request.clone());
+				false
+			} else {
+				true
+			}
+		});
+		dropped
 	}
 
 	/// Pending (unclaimed) request count.
@@ -373,7 +404,7 @@ mod tests {
 	fn no_stealing_every_frame_claimed_exactly_once() {
 		let mut s: PreviewScheduler<u64> = PreviewScheduler::new(3, 4);
 		for f in 0..40 {
-			assert!(s.submit(req(1, f, FramePriority::Playback)));
+			assert!(matches!(s.submit(req(1, f, FramePriority::Playback)), SubmitOutcome::Accepted));
 		}
 		let claims = claim_all(&mut s);
 		assert_eq!(claims.len(), 40, "every frame claimed");
@@ -527,14 +558,42 @@ mod tests {
 		let mut s: PreviewScheduler<u64> = PreviewScheduler::new(1, 4);
 		let r = req(1, 5, FramePriority::Playback);
 		let key = r.key;
-		s.submit(r);
+		assert!(matches!(s.submit(r), SubmitOutcome::Accepted));
 		let _ = s.claim_batch(0, 4).unwrap();
 		// In flight: rejected.
-		assert!(!s.submit(req(1, 5, FramePriority::Seek)));
+		assert!(matches!(
+			s.submit(req(1, 5, FramePriority::Seek)),
+			SubmitOutcome::InFlight
+		));
 		s.frame_done(&key);
 		// After completion the same key may be requested again (new
 		// version in practice).
-		assert!(s.submit(req(1, 5, FramePriority::Seek)));
+		assert!(matches!(
+			s.submit(req(1, 5, FramePriority::Seek)),
+			SubmitOutcome::Accepted
+		));
+	}
+
+	#[test]
+	fn resubmit_replaces_pending_and_returns_the_old_request() {
+		let mut s: PreviewScheduler<u64> = PreviewScheduler::new(1, 4);
+		let first = req(1, 5, FramePriority::Playback);
+		let key = first.key;
+		assert!(matches!(s.submit(first), SubmitOutcome::Accepted));
+		// A second submission under the same key replaces the pending entry
+		// and hands the superseded request back (the dispatcher cancels its
+		// ticket completion with Error::State).
+		let second = req(1, 5, FramePriority::Seek);
+		let second_key = second.key;
+		match s.submit(second) {
+			SubmitOutcome::Replaced(old) => {
+				assert_eq!(old.key, key);
+				assert_eq!(old.priority, FramePriority::Playback);
+			}
+			other => panic!("expected Replaced, got {other:?}"),
+		}
+		let _ = s.claim_batch(0, 4).unwrap();
+		assert_eq!(s.claimed_worker(&second_key), Some(0));
 	}
 
 	#[test]
@@ -545,7 +604,8 @@ mod tests {
 		}
 		let _ = s.claim_batch(0, 4).unwrap(); // claims 4 of sequence 7
 		s.submit(req(8, 0, FramePriority::Playback)); // other sequence
-		assert_eq!(s.cancel_sequence(7), 6);
+		let dropped = s.cancel_sequence(7);
+		assert_eq!(dropped.len(), 6, "all 6 sequence-7 requests dropped");
 		assert_eq!(s.pending_count(), 1, "sequence 8 untouched");
 		assert_eq!(s.claimed_count(), 0);
 	}

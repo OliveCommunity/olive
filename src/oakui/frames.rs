@@ -113,6 +113,28 @@ pub(crate) fn f32_rgba_to_bgra_image(width: u32, height: u32, samples: &[f32]) -
 	RenderImage::new(smallvec::SmallVec::from_elem(image::Frame::new(buffer), 1))
 }
 
+/// Wraps a BGRA8 pixel block into the viewers' display image (M15 S2
+/// zero-copy onscreen path). The bytes come straight from a worker's
+/// shared-memory slot (already in display order) — this is the
+/// GPU-upload staging buffer, the single permitted main-process copy on
+/// the preview path (design §3.5). Returns `None` when `bytes` is
+/// shorter than `width * height * 4`.
+pub(crate) fn bgra_bytes_to_render_image(
+	width: u32,
+	height: u32,
+	bytes: &[u8],
+) -> Option<RenderImage> {
+	let need = (width * height * 4) as usize;
+	if bytes.len() < need {
+		return None;
+	}
+	let buffer = image::RgbaImage::from_raw(width, height, bytes[..need].to_vec())?;
+	Some(RenderImage::new(smallvec::SmallVec::from_elem(
+		image::Frame::new(buffer),
+		1,
+	)))
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

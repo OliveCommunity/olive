@@ -297,7 +297,7 @@ mod tests {
 
 	use crate::frame::VideoParamsPod;
 	use crate::texture::{Frame, Texture};
-	use crate::worker::WorkerPool;
+	use crate::worker::{InlineDispatcher, JobDispatch};
 
 	fn frame_producer() -> crate::ticket::Producer {
 		Arc::new(|_, _| {
@@ -311,16 +311,18 @@ mod tests {
 		})
 	}
 
-	fn new_cacher() -> (PreviewAutoCacher, WorkerPool) {
-		let mut pool = WorkerPool::new(2);
-		pool.start();
-		let arena = Arc::new(TicketArena::new(Arc::new(pool.clone()), frame_producer()));
-		(PreviewAutoCacher::new(arena), pool)
+	/// A cacher on a queued inline dispatcher: jobs run only when the test
+	/// drains it with `InlineDispatcher::run` (deterministic ordering, no
+	/// worker threads).
+	fn new_cacher() -> (PreviewAutoCacher, Arc<InlineDispatcher>) {
+		let d = InlineDispatcher::queued();
+		let arena = Arc::new(TicketArena::new(d.clone(), frame_producer()));
+		(PreviewAutoCacher::new(arena), d)
 	}
 
 	#[test]
 	fn attach_detach_lifecycle() {
-		let (mut c, mut pool) = new_cacher();
+		let (mut c, d) = new_cacher();
 		assert!(c.attach(0).is_err(), "zero identity rejected");
 		c.attach(42).unwrap();
 		assert_eq!(c.copied_project, 42);
@@ -332,31 +334,32 @@ mod tests {
 		c.detach();
 		assert_eq!(c.copied_project, 0);
 		assert!(c.live_jobs().is_empty());
-		pool.shutdown();
+		d.shutdown();
 	}
 
 	#[test]
 	fn single_frame_cancels_previous() {
-		// The race this asserts ("the previous frame is cancelled") is only
-		// deterministic when the first job cannot finish before the
-		// superseding submit lands — produce frames slowly for this test.
-		let (mut c, mut pool) = new_cacher_slow();
+		// The race this asserts ("the previous frame is cancelled") is
+		// deterministic on the queued inline dispatcher: the first job stays
+		// queued until `run`, so the superseding submit's cancel lands first.
+		let (mut c, d) = new_cacher_slow();
 		c.attach(7);
 		let first = c.single_frame(Rational::new(0, 1));
 		let second = c.single_frame(Rational::new(1, 1));
 		assert_ne!(first, second);
 		// The first ticket is cancelled: its completion fired with State.
+		d.run();
 		c.arena.wait(first).unwrap();
 		let r = c.arena.result(first).unwrap();
 		assert!(r.is_err());
-		pool.shutdown();
+		d.shutdown();
 	}
 
 	/// A cacher whose frames take ~100ms to produce (see
-	/// [`single_frame_cancels_previous`]).
-	fn new_cacher_slow() -> (PreviewAutoCacher, WorkerPool) {
-		let mut pool = WorkerPool::new(2);
-		pool.start();
+	/// [`single_frame_cancels_previous`] — the sleep is irrelevant on the
+	/// queued dispatcher, kept for the original async-backend semantics).
+	fn new_cacher_slow() -> (PreviewAutoCacher, Arc<InlineDispatcher>) {
+		let d = InlineDispatcher::queued();
 		let producer: crate::ticket::Producer = Arc::new(|_, _| {
 			std::thread::sleep(std::time::Duration::from_millis(100));
 			let mut f = Frame::new();
@@ -367,41 +370,43 @@ mod tests {
 			f.allocate();
 			Ok(crate::ticket::TicketPayload::Video(Texture::wrap_frame(f)))
 		});
-		let arena = Arc::new(TicketArena::new(Arc::new(pool.clone()), producer));
-		(PreviewAutoCacher::new(arena), pool)
+		let arena = Arc::new(TicketArena::new(d.clone(), producer));
+		(PreviewAutoCacher::new(arena), d)
 	}
 
 	#[test]
 	fn ignore_requests_suppresses_jobs() {
-		let (mut c, mut pool) = new_cacher();
+		let (mut c, d) = new_cacher();
 		c.attach(7);
 		c.ignore_requests = true;
 		c.on_cache_request(7, TimeRange::new(Rational::new(0, 1), Rational::new(5, 1)));
 		assert!(c.live_jobs().is_empty());
-		pool.shutdown();
+		d.shutdown();
 	}
 
 	#[test]
 	fn renders_paused_queues_but_does_not_start() {
-		let (mut c, mut pool) = new_cacher();
+		let (mut c, d) = new_cacher();
 		c.attach(7);
 		c.renders_paused = true;
 		c.on_cache_request(7, TimeRange::new(Rational::new(0, 1), Rational::new(5, 1)));
 		assert!(c.live_jobs().is_empty(), "paused: no jobs started");
 		assert_eq!(c.pending_requests().len(), 1);
-		pool.shutdown();
+		d.shutdown();
 	}
 
 	#[test]
 	fn cancel_video_tasks_wait_blocks_until_idle() {
-		let (mut c, mut pool) = new_cacher();
+		let (mut c, d) = new_cacher();
 		c.attach(7);
 		c.force_range(TimeRange::new(Rational::new(0, 1), Rational::new(1, 1)));
 		assert!(c.is_rendering_custom_range() || c.live_jobs().len() == 1);
+		// Drain so the wait below observes every job finished.
+		d.run();
 		c.cancel_video_tasks(true);
 		assert!(c.live_jobs().iter().all(|id| c.arena.is_finished(*id)));
 		assert!(!c.is_rendering_custom_range());
-		pool.shutdown();
+		d.shutdown();
 	}
 
 	struct Probe {
@@ -421,7 +426,7 @@ mod tests {
 
 	#[test]
 	fn events_deliver_progress() {
-		let (mut c, mut pool) = new_cacher();
+		let (mut c, d) = new_cacher();
 		let probe = Arc::new(Probe {
 			progress: AtomicU32::new(0),
 			stop: AtomicU32::new(0),
@@ -432,7 +437,7 @@ mod tests {
 		c.request_stop_proxy_tasks();
 		assert_eq!(probe.progress.load(Ordering::Relaxed), 1);
 		assert_eq!(probe.stop.load(Ordering::Relaxed), 1);
-		pool.shutdown();
+		d.shutdown();
 	}
 
 	struct ProbeEvents {
@@ -450,25 +455,23 @@ mod tests {
 
 	#[test]
 	fn clear_finished_single_frames_removes_done() {
-		let (mut c, mut pool) = new_cacher();
+		let (mut c, d) = new_cacher();
 		c.attach(7);
 		let id = c.single_frame(Rational::new(0, 1));
+		d.run();
 		c.arena.wait(id).unwrap();
 		assert_eq!(c.live_jobs().len(), 1, "finished job still tracked");
 		c.clear_finished_single_frames();
 		assert!(c.live_jobs().is_empty());
-		pool.shutdown();
+		d.shutdown();
 	}
 
 	#[test]
 	fn noop_events_sink_never_panics() {
 		let mut c = {
-			let mut pool = WorkerPool::new(1);
-			pool.start();
-			let arena = Arc::new(TicketArena::new(Arc::new(pool.clone()), frame_producer()));
-			let c = PreviewAutoCacher::new(arena);
-			pool.shutdown();
-			c
+			let d = InlineDispatcher::sync();
+			let arena = Arc::new(TicketArena::new(d, frame_producer()));
+			PreviewAutoCacher::new(arena)
 		};
 		c.set_events(Box::new(NoopEvents));
 		c.report_progress(1.0);

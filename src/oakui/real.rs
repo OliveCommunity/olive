@@ -59,7 +59,7 @@
 //! worker holds the project's `Arc`, so a project drop mid-render is a
 //! non-event (the drained frame is discarded by the generation check).
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -80,15 +80,17 @@ use gpui_widgets::viewer::PlaybackClock;
 
 use oaknode::id::NodeId;
 use oaknode::track::TrackType;
+use oakrender::manager::RenderManager;
+use oakrender::procpool::{bgra8_to_rgba8, ShmFrameRef};
 use oaktimeline::handle::CHandle;
 
 use super::engine::{
 	AppEngine, EngineGateway, ExportSession, LibraryProject, Monitor, Project, ScopeData, Sequence,
 	VideoFormat,
 };
-use super::frames::{f32_rgba_to_bgra_image, synthetic_frame_samples};
+use super::frames::{bgra_bytes_to_render_image, f32_rgba_to_bgra_image, synthetic_frame_samples};
 use super::graphops::{self, ProjectRef};
-use super::scopes::analyze_f32_rgba;
+use super::scopes::{analyze_bgra8, analyze_f32_rgba};
 use super::transport::TransportState;
 
 /// The project name of a blank project before it is saved.
@@ -235,6 +237,42 @@ enum FullResTarget {
 	Footage(NodeId),
 }
 
+// ---------------------------------------------------------------------------
+// Playback pre-render window (M15 S2)
+// ---------------------------------------------------------------------------
+//
+// During playback the engine feeds the forward window (default 120 frames,
+// config `PlaybackPreRenderFrames`) to the `PreviewScheduler` through the
+// process dispatcher: the scheduler interleaves the frames across the
+// workers, so by the time the playhead reaches a frame its pixels are
+// already sitting in a shm slot. `cpu_frame` hits this slot cache first
+// (zero copy — build the display image from the slot bytes, then release
+// the slot); the synchronous render path is the miss fallback. Frames
+// that fall out of the window (or whose params were invalidated) release
+// their slots back to the workers.
+
+/// The default forward pre-render window (frames).
+const DEFAULT_PREVIEW_WINDOW_FORWARD: i64 = 120;
+/// Config key for the forward pre-render window size (frames).
+const CONFIG_KEY_PREVIEW_WINDOW: &str = "PlaybackPreRenderFrames";
+
+/// One monitor's playback pre-render state (UI-thread-owned; the completions
+/// delivered by the dispatcher's poll run on the UI thread too).
+#[derive(Default)]
+struct PreviewWindow {
+	/// The node identity the window renders (sequence / footage).
+	sequence: u64,
+	/// The render-params generation the window was built for (bumped on
+	/// invalidation; a mismatch cancels the old requests and rebuilds).
+	generation: u64,
+	/// Frames already submitted to the scheduler (pending or in flight).
+	submitted: BTreeSet<i64>,
+	/// Rendered frames held in shm slots, keyed by frame number. A frame
+	/// is consumed by `cpu_frame` (slot released after the display image
+	/// is built) or released when it falls out of the window.
+	slots: BTreeMap<i64, ShmFrameRef>,
+}
+
 /// One background full-resolution render request (built on the UI thread
 /// at schedule time; the worker thread owns it from there).
 struct FullResRequest {
@@ -323,28 +361,70 @@ fn thumbnail_path(filename: &str) -> PathBuf {
 // Frame conversion
 // ---------------------------------------------------------------------------
 
-/// Repack one F32 RGBA rendered frame (rows padded to linesize) into
-/// tightly packed samples. Returns `(width, height, samples)` when the
-/// frame is well-formed (positive geometry, the pipeline's F32 format).
+/// Repack one in-process F32 RGBA rendered frame (rows padded to
+/// linesize) into tightly packed samples. Returns `(width, height,
+/// samples)` when the frame is the in-process F32 variant (the shm
+/// variant is BGRA8 and is read as bytes instead).
 fn read_f32_frame(frame: &super::renderops::RenderedFrame) -> Option<(u32, u32, Vec<f32>)> {
-	let (width, height, linesize) = (frame.width, frame.height, frame.linesize);
-	if width <= 0 || height <= 0 || frame.format != super::renderops::PIXEL_FORMAT_F32 {
+	let super::renderops::RenderedFrame::CpuF32 {
+		width,
+		height,
+		linesize,
+		data,
+	} = frame
+	else {
+		return None;
+	};
+	if *width <= 0 || *height <= 0 {
 		return None;
 	}
-	let row_bytes = (width * 4 * 4) as usize;
-	let linesize = (linesize as usize).max(row_bytes);
-	if frame.data.len() < linesize * height as usize {
+	let row_bytes = (*width * 4 * 4) as usize;
+	let linesize = (*linesize as usize).max(row_bytes);
+	if data.len() < linesize * *height as usize {
 		return None;
 	}
-	let mut samples = vec![0.0f32; (width * height * 4) as usize];
-	for y in 0..height as usize {
-		let row = &frame.data[y * linesize..y * linesize + row_bytes];
+	let mut samples = vec![0.0f32; (*width * *height * 4) as usize];
+	for y in 0..*height as usize {
+		let row = &data[y * linesize..y * linesize + row_bytes];
 		for (i, px) in row.chunks_exact(4).enumerate() {
 			let v = f32::from_ne_bytes([px[0], px[1], px[2], px[3]]);
-			samples[y * (width as usize) * 4 + i] = v;
+			samples[y * (*width as usize) * 4 + i] = v;
 		}
 	}
-	Some((width as u32, height as u32, samples))
+	Some((*width as u32, *height as u32, samples))
+}
+
+/// Release the shm slot a rendered frame holds, if any (M15 S2: the
+/// zero-copy onscreen path builds the display image from the slot bytes,
+/// then returns the slot to its worker — slot release = cache eviction).
+/// No-op for in-process frames and when the manager is down.
+fn release_rendered_frame(rendered: &super::renderops::RenderedFrame) {
+	if let super::renderops::RenderedFrame::Shm(frame) = rendered {
+		if let Some(m) = RenderManager::global() {
+			m.release_frame(frame);
+		}
+	}
+}
+
+/// Build an owned viewer image from a rendered frame for a long-lived
+/// cache (full-res fills, thumbnails). The shm variant copies the slot
+/// bytes out once (`slot_to_vec` — the counted copy path, necessary
+/// because the image must outlive the slot), then the caller releases the
+/// slot; the in-process variant converts F32→BGRA8.
+fn rendered_to_owned_image(rendered: &super::renderops::RenderedFrame) -> Option<Arc<RenderImage>> {
+	match rendered {
+		super::renderops::RenderedFrame::Shm(f) => {
+			let meta = &f.meta;
+			let (w, h) = (meta.width.max(0) as u32, meta.height.max(0) as u32);
+			let pixels = f.shm.slot_to_vec(f.slot);
+			let data = pixels.get(..meta.data_size.max(0) as usize)?;
+			bgra_bytes_to_render_image(w, h, data).map(Arc::new)
+		}
+		super::renderops::RenderedFrame::CpuF32 { .. } => {
+			let (w, h, samples) = read_f32_frame(rendered)?;
+			Some(Arc::new(f32_rgba_to_bgra_image(w, h, &samples)))
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -675,6 +755,15 @@ pub struct RealEngine {
 	/// project drop); completions tagged with a stale generation are
 	/// discarded by the drain.
 	full_res_generation: u64,
+	/// M15 S2 playback pre-render state, keyed by monitor (see
+	/// [`PreviewWindow`]). An `Arc` so the ticket completions (which fire
+	/// from the dispatcher's poll on the UI thread) can reach the cache;
+	/// the mutex keeps the engine `Sync`.
+	preview_windows: Arc<Mutex<HashMap<Monitor, PreviewWindow>>>,
+	/// Bumped whenever the preview content can change (edit / proxy
+	/// toggle / selection / project drop); the pre-render window rebuilds
+	/// against the new generation.
+	preview_generation: u64,
 	/// The channel background full-res jobs report finished frames through;
 	/// drained on the app tick. The mutex keeps the engine `Sync` (the
 	/// channel is only ever touched on the UI thread).
@@ -769,6 +858,8 @@ impl RealEngine {
 			meter_phase: 0,
 			cpu_frame_cache: Mutex::new(HashMap::new()),
 			full_res_generation: 0,
+			preview_windows: Arc::new(Mutex::new(HashMap::new())),
+			preview_generation: 0,
 			full_res_rx: Mutex::new(full_res_rx),
 			full_res_tx: Mutex::new(full_res_tx),
 			renderer: Mutex::new(RendererSlot::Untried),
@@ -858,10 +949,13 @@ impl RealEngine {
 
 	/// Renders one program-monitor frame through the oakrender ticket
 	/// arena: builds the sequence's montage at `frame`, renders at the
-	/// proxy geometry, analyzes the scope samples from the F32 RGBA
-	/// result, and downconverts to BGRA8. Returns `None` (the caller falls
-	/// back to the synthetic pattern) when no sequence is open, the render
-	/// manager is unavailable, or the render itself fails.
+	/// proxy geometry, and produces the viewer display image plus the
+	/// scope samples (M15 S2: the process backend delivers a BGRA8 shm
+	/// slot; the display image is built straight from the slot bytes —
+	/// the GPU-upload staging copy — and the slot released). Returns
+	/// `None` (the caller falls back to the synthetic pattern) when no
+	/// sequence is open, the render manager is unavailable, or the render
+	/// itself fails.
 	fn render_program_frame(&self, frame: Frame) -> Option<(RenderImage, ScopeData)> {
 		let project = self.project_ref()?.clone();
 		let seq = self.sequence?;
@@ -877,9 +971,9 @@ impl RealEngine {
 		match super::renderops::render_sequence_frame(&project, seq, frame.0, tb, width, height) {
 			Ok(rendered) => {
 				*slot = RendererSlot::Ready;
-				let (width, height, samples) = read_f32_frame(&rendered)?;
-				let scope = analyze_f32_rgba(width, height, &samples);
-				Some((f32_rgba_to_bgra_image(width, height, &samples), scope))
+				let out = rendered.to_display();
+				release_rendered_frame(&rendered);
+				out
 			}
 			Err(error) => {
 				println!("[real engine] render_frame failed: {error}");
@@ -902,9 +996,10 @@ impl RealEngine {
 
 	/// Renders one source-monitor frame through the ticket arena: the
 	/// currently selected footage node decoded at the proxy geometry (same
-	/// pipeline as the program monitor). Returns `None` (the caller falls
-	/// back to the synthetic pattern) when no footage is selected, the
-	/// render manager is unavailable, or the render itself fails.
+	/// pipeline as the program monitor, M15 S2 shm slot + release).
+	/// Returns `None` (the caller falls back to the synthetic pattern)
+	/// when no footage is selected, the render manager is unavailable, or
+	/// the render itself fails.
 	fn render_source_frame(&self, frame: Frame) -> Option<(RenderImage, ScopeData)> {
 		let project = self.project_ref()?.clone();
 		let node = self.selected_footage_node()?;
@@ -920,9 +1015,9 @@ impl RealEngine {
 		match super::renderops::render_footage_frame(&project, node, frame.0, tb, width, height) {
 			Ok(rendered) => {
 				*slot = RendererSlot::Ready;
-				let (width, height, samples) = read_f32_frame(&rendered)?;
-				let scope = analyze_f32_rgba(width, height, &samples);
-				Some((f32_rgba_to_bgra_image(width, height, &samples), scope))
+				let out = rendered.to_display();
+				release_rendered_frame(&rendered);
+				out
 			}
 			Err(error) => {
 				println!("[real engine] source render_frame failed: {error}");
@@ -981,12 +1076,17 @@ impl RealEngine {
 				}
 			};
 			if let Ok(rendered) = rendered {
-				if let Some((width, height, samples)) = read_f32_frame(&rendered) {
+				// M15 S2: the process backend delivers a shm slot — copy the
+				// pixels out once (counted, long-lived cache) and release the
+				// slot.
+				let image = rendered_to_owned_image(&rendered);
+				release_rendered_frame(&rendered);
+				if let Some(image) = image {
 					event = Some(FullResEvent {
 						monitor,
 						frame,
 						generation,
-						image: Arc::new(f32_rgba_to_bgra_image(width, height, &samples)),
+						image,
 					});
 				}
 			}
@@ -1038,6 +1138,216 @@ impl RealEngine {
 				.or_default()
 				.install_full_res(event.frame, event.generation, event.image);
 		}
+	}
+
+	// -----------------------------------------------------------------------
+	// M15 S2: playback pre-render window
+	// -----------------------------------------------------------------------
+
+	/// Feeds the playback pre-render window for `monitor` into the
+	/// scheduler (M15 S2): while playing, the forward window's frames are
+	/// submitted at Playback priority (ordered by playhead distance), so
+	/// workers render them ahead of the playhead into shm slots. The
+	/// window rebuilds when the node or the render-params generation
+	/// changed; slots that fell behind the playhead are released (credit
+	/// returns to the workers).
+	fn update_preview_window(&mut self, monitor: Monitor, cx: &mut Context<Self>) {
+		// Only during playback: a paused viewer uses the synchronous miss
+		// path (and the resting full-res fill).
+		let playing = self.clock(monitor).read(cx).transport.is_playing();
+		if !playing {
+			return;
+		}
+		let Some(project) = self.project.clone() else { return };
+		let Some(tb) = self.time_base() else { return };
+		let Some((width, height)) = self.proxy_render_size() else { return };
+		let Some(node) = (match monitor {
+			Monitor::Program => self.sequence,
+			Monitor::Source => self.selected_footage_node(),
+		}) else {
+			return;
+		};
+		let node_id = node.identity();
+		let playhead = self.clock_frame(monitor, cx).0;
+		if playhead < 0 {
+			return;
+		}
+		let length = match monitor {
+			Monitor::Program => self.sequence_length().0,
+			Monitor::Source => self.source_length().0,
+		};
+		let Some(m) = RenderManager::global() else { return };
+
+		let forward = config_get_int(CONFIG_KEY_PREVIEW_WINDOW, DEFAULT_PREVIEW_WINDOW_FORWARD)
+			.clamp(8, 1200);
+		let end = length.max(playhead).min(playhead + forward);
+
+		// Reset / rebuild when the node changed or an invalidation bumped the
+		// generation (the old pending/claimed requests are cancelled).
+		let mut windows = self.preview_windows.lock().unwrap_or_else(|e| e.into_inner());
+		let window = windows.entry(monitor).or_default();
+		if window.sequence != node_id || window.generation != self.preview_generation {
+			m.cancel_preview_sequence(window.sequence);
+			for slot in window.slots.values() {
+				m.release_frame(slot);
+			}
+			window.slots.clear();
+			window.submitted.clear();
+			window.sequence = node_id;
+			window.generation = self.preview_generation;
+		}
+		// Release slots that fell behind the playhead (frames passed without
+		// being displayed); the just-displayed frame was already consumed by
+		// `cpu_frame`. Prune the submitted set the same way.
+		let keep_from = (playhead - 2).max(0);
+		let stale: Vec<i64> = window
+			.slots
+			.keys()
+			.copied()
+			.filter(|f| *f < keep_from)
+			.collect();
+		for f in stale {
+			if let Some(slot) = window.slots.remove(&f) {
+				m.release_frame(&slot);
+			}
+		}
+		window
+			.submitted
+			.retain(|f| *f >= keep_from || (*f >= playhead && *f < end));
+		let new_frames: Vec<i64> = (playhead.max(0)..end)
+			.filter(|f| !window.submitted.contains(f))
+			.collect();
+		drop(windows);
+
+		for frame in new_frames {
+			let params = match monitor {
+				Monitor::Program => super::renderops::sequence_frame_params(
+					&project,
+					node,
+					frame,
+					tb,
+					width,
+					height,
+				),
+				Monitor::Source => {
+					super::renderops::footage_frame_params(&project, node, frame, tb, width, height)
+				}
+			};
+			let Ok(params) = params else { continue };
+			let distance = frame.saturating_sub(playhead).abs();
+			let version = self.preview_generation;
+			let preview_windows = self.preview_windows.clone();
+			let done: oakrender::ticket::Completion = Box::new(move |result| {
+				let mut windows =
+					preview_windows.lock().unwrap_or_else(|e| e.into_inner());
+				let window = windows.entry(monitor).or_default();
+				match result {
+					Ok(oakrender::ticket::TicketPayload::ShmFrame(slot)) => {
+						// The rendered frame is cached in its shm slot until
+						// the playhead reaches it (cpu_frame) or it falls out
+						// of the window.
+						window.slots.insert(frame, slot);
+					}
+					_ => {
+						// Render failed / cancelled: allow a re-request.
+						window.submitted.remove(&frame);
+					}
+				}
+			});
+			m.tickets.submit_playback(params, frame, distance, version, done);
+			self.preview_windows
+				.lock()
+				.unwrap_or_else(|e| e.into_inner())
+				.entry(monitor)
+				.or_default()
+				.submitted
+				.insert(frame);
+		}
+	}
+
+	/// Looks a frame up in the pre-rendered playback window's shm slot
+	/// cache (M15 S2): builds the viewer display image + scope samples
+	/// straight from the slot bytes (the GPU-upload staging copy) and
+	/// releases the slot. Returns `None` when the frame is not cached.
+	fn preview_slot_frame(
+		&self,
+		monitor: Monitor,
+		frame: Frame,
+	) -> Option<(Arc<RenderImage>, ScopeData)> {
+		let node = match monitor {
+			Monitor::Program => self.sequence?,
+			Monitor::Source => self.selected_footage_node()?,
+		};
+		let node_id = node.identity();
+		let mut windows = self.preview_windows.lock().unwrap_or_else(|e| e.into_inner());
+		let window = windows.get_mut(&monitor)?;
+		if window.sequence != node_id || window.generation != self.preview_generation {
+			return None;
+		}
+		let slot = window.slots.remove(&frame.0)?;
+		let out = {
+			let meta = &slot.meta;
+			let (w, h) = (meta.width.max(0) as u32, meta.height.max(0) as u32);
+			let data = slot
+				.shm
+				.slot_bytes(slot.slot)
+				.get(..meta.data_size.max(0) as usize)?;
+			let image = bgra_bytes_to_render_image(w, h, data)?;
+			let scope = analyze_bgra8(w, h, data);
+			(Arc::new(image), scope)
+		};
+		if let Some(m) = RenderManager::global() {
+			m.release_frame(&slot);
+		}
+		Some(out)
+	}
+
+	/// Cancels every monitor's pre-render window and releases its held
+	/// slots (edit / selection change / project drop / preview-media
+	/// invalidation).
+	fn cancel_preview_windows(&mut self) {
+		let mut windows = self.preview_windows.lock().unwrap_or_else(|e| e.into_inner());
+		let m = RenderManager::global();
+		for window in windows.values_mut() {
+			if let Some(m) = &m {
+				m.cancel_preview_sequence(window.sequence);
+				for slot in window.slots.values() {
+					m.release_frame(slot);
+				}
+			}
+			window.slots.clear();
+			window.submitted.clear();
+		}
+	}
+
+	/// Cancels one monitor's pre-render window (source selection change:
+	/// the old footage's window is stale even though the program window is
+	/// untouched).
+	fn cancel_preview_window(&mut self, monitor: Monitor) {
+		let mut windows = self.preview_windows.lock().unwrap_or_else(|e| e.into_inner());
+		let Some(window) = windows.get_mut(&monitor) else {
+			return;
+		};
+		if let Some(m) = RenderManager::global() {
+			m.cancel_preview_sequence(window.sequence);
+			for slot in window.slots.values() {
+				m.release_frame(slot);
+			}
+		}
+		window.slots.clear();
+		window.submitted.clear();
+	}
+
+	/// Invalidates every cached/rendered preview frame: the CPU cache is
+	/// cleared, the full-res and pre-render-window generations bumped, and
+	/// the pre-render windows cancelled (pending/claimed requests and held
+	/// slots released). Shared by edits, undo-stack changes, project drops
+	/// and preview-media invalidation.
+	fn invalidate_rendered_frames(&mut self) {
+		self.cpu_frame_cache.lock().unwrap().clear();
+		self.full_res_generation = self.full_res_generation.wrapping_add(1);
+		self.preview_generation = self.preview_generation.wrapping_add(1);
+		self.cancel_preview_windows();
 	}
 
 	/// Attaches cached thumbnails to the bin entries, spawning a background
@@ -1110,7 +1420,9 @@ impl RealEngine {
 			return None;
 		}
 		// Frame zero: the timebase only scales the timestamp, so any valid
-		// pair produces time 0.
+		// pair produces time 0. M15 S2: the process backend delivers a shm
+		// slot — copy the pixels out once (counted, the PNG must outlive the
+		// slot), convert BGRA→RGBA, release the slot.
 		let rendered = super::renderops::render_footage_frame(
 			project,
 			node,
@@ -1120,11 +1432,24 @@ impl RealEngine {
 			THUMBNAIL_HEIGHT,
 		)
 		.ok()?;
-		let (width, height, samples) = read_f32_frame(&rendered)?;
-		let bytes: Vec<u8> = samples
-			.iter()
-			.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8)
-			.collect();
+		let (width, height, bytes) = match &rendered {
+			super::renderops::RenderedFrame::Shm(f) => {
+				let meta = &f.meta;
+				let (w, h) = (meta.width.max(0) as u32, meta.height.max(0) as u32);
+				let pixels = f.shm.slot_to_vec(f.slot);
+				let data = pixels.get(..meta.data_size.max(0) as usize)?;
+				(w, h, bgra8_to_rgba8(data))
+			}
+			super::renderops::RenderedFrame::CpuF32 { .. } => {
+				let (w, h, samples) = read_f32_frame(&rendered)?;
+				let bytes: Vec<u8> = samples
+					.iter()
+					.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8)
+					.collect();
+				(w, h, bytes)
+			}
+		};
+		release_rendered_frame(&rendered);
 		let image = image::RgbaImage::from_raw(width, height, bytes)?;
 		std::fs::create_dir_all(path.parent()?).ok()?;
 		// Write aside then rename so readers never see a partial file.
@@ -1149,13 +1474,11 @@ impl RealEngine {
 	}
 
 	/// Invalidates every monitor's rendered frames (the preview media
-	/// changed — proxy toggled, generated or deleted): the CPU cache is
-	/// cleared and the full-res generation bumped so in-flight fills are
-	/// discarded on arrival. No timeline rebuild is needed — the montage
-	/// resolution reads the proxy switch on every pull.
+	/// changed — proxy toggled, generated or deleted). No timeline rebuild
+	/// is needed — the montage resolution reads the proxy switch on every
+	/// pull.
 	fn invalidate_preview_frames(&mut self, cx: &mut Context<Self>) {
-		self.cpu_frame_cache.lock().unwrap().clear();
-		self.full_res_generation = self.full_res_generation.wrapping_add(1);
+		self.invalidate_rendered_frames();
 		cx.notify();
 	}
 
@@ -1696,11 +2019,10 @@ impl RealEngine {
 		}
 		self.project = None;
 		self.sequence = None;
-		self.cpu_frame_cache.lock().unwrap().clear();
 		// The sequence an in-flight full-res job may still be rendering is
 		// gone (the job holds its own project `Arc`, so it stays valid, but
 		// its frame belongs to the dropped project): mark it stale.
-		self.full_res_generation = self.full_res_generation.wrapping_add(1);
+		self.invalidate_rendered_frames();
 		// Same for in-flight thumbnail jobs; the cache is per-project too
 		// (identities are only unique within one graph).
 		self.thumb_generation = self.thumb_generation.wrapping_add(1);
@@ -1787,8 +2109,7 @@ impl RealEngine {
 	fn apply_stack_change(&mut self, cx: &mut Context<Self>) {
 		self.refresh_sequence_info();
 		self.rebuild_timeline();
-		self.cpu_frame_cache.lock().unwrap().clear();
-		self.full_res_generation = self.full_res_generation.wrapping_add(1);
+		self.invalidate_rendered_frames();
 		cx.notify();
 	}
 
@@ -1966,9 +2287,9 @@ impl RealEngine {
 		self.refresh_sequence_info();
 		self.rebuild_timeline();
 		// The sequence content changed: cached rendered frames are stale,
-		// and so are any in-flight full-res renders (M12 P5a).
-		self.cpu_frame_cache.lock().unwrap().clear();
-		self.full_res_generation = self.full_res_generation.wrapping_add(1);
+		// and so are any in-flight full-res renders and pre-render windows
+		// (M12 P5a / M15 S2).
+		self.invalidate_rendered_frames();
 		cx.notify();
 	}
 }
@@ -2075,6 +2396,16 @@ impl EngineGateway for RealEngine {
 		}
 		self.mirror_program_playhead(cx);
 		self.meter_phase = self.meter_phase.wrapping_add(1);
+		// M15 S2: pump the process dispatcher — ticket completions (the
+		// pre-render window, full-res fills, synchronous renders) are
+		// delivered from its poll loop, which must run on the UI tick.
+		// Then feed the playback pre-render windows before draining the
+		// completion channels.
+		if let Some(m) = RenderManager::global() {
+			m.poll();
+		}
+		self.update_preview_window(Monitor::Source, cx);
+		self.update_preview_window(Monitor::Program, cx);
 		// M12 P1: while the program plays, pull the audio for the
 		// current playhead window and queue it for the output device.
 		if self.program_playing {
@@ -2246,6 +2577,17 @@ impl AppEngine for RealEngine {
 		if let Some(image) = cache.entry(monitor).or_default().image_for(frame.0) {
 			return image.clone();
 		}
+		// M15 S2: try the pre-rendered playback window first — the frame's
+		// pixels are already in a worker shm slot (zero copy: build the
+		// display image from the slot bytes, then release the slot).
+		if let Some((image, scope)) = self.preview_slot_frame(monitor, frame) {
+			cache.entry(monitor).or_default().proxy = Some(ProxyEntry {
+				frame: frame.0,
+				image: image.clone(),
+				scope,
+			});
+			return image;
+		}
 		// Both monitors render through the oakrender ticket arena (falling
 		// back to the synthetic pattern when rendering is unavailable): the
 		// program monitor renders the current sequence, the source monitor
@@ -2329,10 +2671,12 @@ impl AppEngine for RealEngine {
 			// The source monitor renders the selected footage node: a new
 			// selection must drop the stale cached frame (the cache key only
 			// tracks the playhead frame), and any in-flight full-res job for
-			// the old selection is stale.
+			// the old selection is stale. The source pre-render window (M15
+			// S2) rebuilds against the new footage.
 			*self.source_renderer.lock().unwrap() = RendererSlot::Untried;
 			self.cpu_frame_cache.lock().unwrap().remove(&Monitor::Source);
 			self.full_res_generation = self.full_res_generation.wrapping_add(1);
+			self.cancel_preview_window(Monitor::Source);
 		}
 		cx.notify();
 	}
@@ -3930,6 +4274,35 @@ mod tests {
 		crate::oakui::graphops::test_lock()
 	}
 
+	/// Points the render manager's worker resolution at the built
+	/// oak-worker binary (dev layout `target/debug/oak-worker`) for tests
+	/// that render through the process backend. The default resolver looks
+	/// next to the *test* binary (`target/debug/deps`), which holds no
+	/// oak-worker. Restored on drop; only used inside [`media_lock`]
+	/// sections so the process env stays serialized.
+	struct WorkerBinGuard {
+		prev: Option<String>,
+	}
+	impl WorkerBinGuard {
+		fn set() -> Self {
+			let prev = std::env::var("OAK_WORKER_BIN").ok();
+			let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+				.join("target")
+				.join("debug")
+				.join("oak-worker");
+			std::env::set_var("OAK_WORKER_BIN", path);
+			Self { prev }
+		}
+	}
+	impl Drop for WorkerBinGuard {
+		fn drop(&mut self) {
+			match &self.prev {
+				Some(p) => std::env::set_var("OAK_WORKER_BIN", p),
+				None => std::env::remove_var("OAK_WORKER_BIN"),
+			}
+		}
+	}
+
 	#[test]
 	fn project_format_dispatches_by_extension() {
 		assert_eq!(
@@ -4162,14 +4535,17 @@ mod tests {
 
 	/// End-to-end CPU render through the same path
 	/// [`RealEngine::render_program_frame`] uses: with the render manager
-	/// up, rendering an in-memory sequence produces a real F32 frame at the
-	/// requested proxy geometry, and the samples are well-formed (finite, in
-	/// range). The sequence starts empty, so the picture is black; with a
-	/// clip of real media on the video track the same render produces the
-	/// decoded footage (known content, non-black).
+	/// up (the default M15 S2 process backend), rendering an in-memory
+	/// sequence produces a real BGRA8 frame in a shared-memory slot at the
+	/// requested proxy geometry, the display image builds straight from
+	/// the slot bytes (zero copy), and the picture is well-formed. The
+	/// sequence starts empty, so the picture is black; with a clip of real
+	/// media on the video track the same render produces the decoded
+	/// footage (known content, non-black).
 	#[test]
 	fn real_render_frame_e2e() {
 		let _media = media_lock();
+		let _worker = WorkerBinGuard::set();
 		if !crate::oakui::renderops::ensure_render_manager() {
 			panic!("the render manager failed to start");
 		}
@@ -4180,21 +4556,23 @@ mod tests {
 			.expect("the sequence has a frame rate");
 
 		// The app's proxy size: sequence aspect (default 1920x1080) scaled
-		// to a 480px long edge, F32 at the sequence's rate.
+		// to a 480px long edge.
 		let frame = crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 480, 270)
 			.expect("render_frame must produce a frame");
-		assert_eq!((frame.width, frame.height), (480, 270));
-		assert_eq!(frame.format, crate::oakui::renderops::PIXEL_FORMAT_F32);
-		assert!(frame.linesize >= 480 * 4 * 4, "linesize covers a full row");
-		let (_, _, samples) = read_f32_frame(&frame).expect("well-formed F32 frame");
+		assert_eq!((frame.width(), frame.height()), (480, 270));
 		assert!(
-			samples.iter().all(|v| v.is_finite() && (0.0..=1.0).contains(v)),
-			"samples in range"
+			frame.is_shm(),
+			"the default process backend delivers shm slots (got format {})",
+			frame.format()
 		);
+		let (image, _scope) = frame.to_display().expect("display image from the slot");
+		let bytes = image.as_bytes(0).expect("one frame");
+		assert_eq!(bytes.len(), 480 * 270 * 4, "BGRA8 proxy geometry");
 		assert!(
-			samples.iter().all(|&v| v == 0.0),
+			bytes.iter().all(|&b| b == 0),
 			"an empty sequence renders transparent black"
 		);
+		release_rendered_frame(&frame);
 
 		// M12 P0: with a clip of real media on the video track, the same
 		// render must produce the decoded footage (known content, non
@@ -4212,20 +4590,22 @@ mod tests {
 			.expect("clip placement");
 		let frame = crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 480, 270)
 			.expect("render_frame with a clip must produce a frame");
-		let (_, _, samples) = read_f32_frame(&frame).expect("well-formed F32 frame");
-		let nonzero = samples.iter().filter(|&&v| v != 0.0).count();
+		let (image, _scope) = frame.to_display().expect("display image from the slot");
+		let bytes = image.as_bytes(0).expect("one frame");
+		let nonzero = bytes.chunks(4).filter(|px| px[..3].iter().any(|&c| c != 0)).count();
 		assert!(
 			nonzero > 0,
 			"the sequence with a footage clip must render non-black pixels"
 		);
 		// Known content: the test clip's left half is red on frame 0 —
-		// the center-left pixel must be red-dominant.
-		let px = |x: usize, y: usize| &samples[(y * 480 + x) * 4..][..4];
+		// the center-left pixel must be red-dominant (BGRA bytes: R at 2).
+		let px = |x: usize, y: usize| &bytes[(y * 480 + x) * 4..][..4];
 		let center_left = px(120, 135);
 		assert!(
-			center_left[0] > 0.5 && center_left[1] < 0.4 && center_left[2] < 0.4,
+			center_left[2] > 127 && center_left[0] < 102 && center_left[1] < 102,
 			"center-left pixel stays red from the decoded clip: {center_left:?}"
 		);
+		release_rendered_frame(&frame);
 
 		// A second frame at a later timestamp renders too.
 		assert!(crate::oakui::renderops::render_sequence_frame(&project, seq, 30, tb, 480, 270).is_ok());
@@ -4235,6 +4615,74 @@ mod tests {
 
 		oakundo::global::clear().unwrap();
 		let _ = std::fs::remove_file(&media);
+	}
+
+	/// M15 S2 acceptance: the app's onscreen path reads the process
+	/// backend's shm slots without the counted main-process copy. The
+	/// preview path (`RenderedFrame::to_display`) wraps the slot bytes
+	/// into the display buffer — the GPU-upload staging copy — and must
+	/// leave `main_heap_frame_copies == 0`; the long-lived full-res path
+	/// (`rendered_to_owned_image`) is the one counted copy
+	/// (`slot_to_vec`), released right after.
+	#[test]
+	fn process_backend_preview_path_is_zero_copy() {
+		let _media = media_lock();
+		let _worker = WorkerBinGuard::set();
+		use oakrender::manager::{RenderBackendChoice, RenderManager};
+		use oakrender::procpool::{
+			main_heap_frame_copies, reset_main_heap_frame_copies, DispatcherConfig,
+		};
+		RenderManager::shutdown();
+		let config = DispatcherConfig {
+			worker_bin: Some(
+				std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+					.join("target/debug/oak-worker"),
+			),
+			workers: 1,
+			slots_per_worker: 2,
+			width: 64,
+			height: 64,
+			batch_size: 2,
+			..Default::default()
+		};
+		RenderManager::init_with_backend(RenderBackendChoice::Processes(config))
+			.expect("process backend init");
+
+		let project = graphops::create_project();
+		let seq = graphops::create_sequence(&project, "Zero Copy");
+		let tb = graphops::sequence_time_base(&graphops::lock(&project).graph, seq).unwrap();
+
+		reset_main_heap_frame_copies();
+		let frame = crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 64, 64)
+			.expect("render_frame must produce a frame");
+		let crate::oakui::renderops::RenderedFrame::Shm(slot) = &frame else {
+			panic!("the process backend must deliver a shm slot");
+		};
+		assert_eq!(slot.meta.format, crate::oakui::renderops::SLOT_FORMAT_BGRA8);
+		let (image, _scope) = frame.to_display().expect("display image from the slot");
+		assert_eq!(image.as_bytes(0).expect("one frame").len(), 64 * 64 * 4);
+		assert_eq!(
+			main_heap_frame_copies(),
+			0,
+			"the preview path must not copy through slot_to_vec"
+		);
+		release_rendered_frame(&frame);
+		assert_eq!(main_heap_frame_copies(), 0);
+
+		// The long-lived full-res path is the one counted copy.
+		let frame = crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 64, 64)
+			.expect("render_frame must produce a frame");
+		let image = rendered_to_owned_image(&frame).expect("owned full-res image");
+		assert_eq!(image.as_bytes(0).expect("one frame").len(), 64 * 64 * 4);
+		assert_eq!(
+			main_heap_frame_copies(),
+			1,
+			"the long-lived cache path is the counted copy"
+		);
+		release_rendered_frame(&frame);
+
+		RenderManager::shutdown();
+		oakundo::global::clear().unwrap();
 	}
 
 	/// M12 P3 acceptance: importing a media file makes it appear in the
@@ -4489,6 +4937,7 @@ mod tests {
 	#[test]
 	fn full_res_worker_outlives_a_dropped_project() {
 		let _media = media_lock();
+		let _worker = WorkerBinGuard::set();
 		if !crate::oakui::renderops::ensure_render_manager() {
 			panic!("the render manager failed to start");
 		}
@@ -4660,6 +5109,7 @@ mod tests {
 	#[test]
 	fn full_res_worker_renders_real_frame() {
 		let _media = media_lock();
+		let _worker = WorkerBinGuard::set();
 		if !crate::oakui::renderops::ensure_render_manager() {
 			panic!("the render manager failed to start");
 		}
@@ -4721,6 +5171,7 @@ mod tests {
 	#[gpui::test]
 	async fn real_engine_fills_full_res_behind_the_proxy(cx: &mut gpui::TestAppContext) {
 		let _media = media_lock();
+		let _worker = WorkerBinGuard::set();
 		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
 		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
 

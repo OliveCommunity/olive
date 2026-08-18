@@ -49,9 +49,12 @@
 //!     worker dead: its claimed frames are re-queued to the scheduler
 //!     (any healthy worker may claim them), the child is reaped, the
 //!     segment recreated and the process respawned (bounded restarts).
-//!   - **Coexistence.** S1 keeps the in-process [`crate::worker::WorkerPool`]
-//!     alive; [`crate::manager::RenderManager`] picks the backend at
-//!     init. S2 deletes the thread pool.
+//!   - **S2 model.** The in-process [`crate::worker::WorkerPool`] is
+//!     gone (M15 S2 mandate); [`crate::manager::RenderManager`] defaults
+//!     to this backend. The ticket arena also routes **playback-window**
+//!     frames here via [`JobSchedule::playback`], and the app pumps the
+//!     control plane from the UI tick ([`ProcessDispatcher::poll`]) and
+//!     from blocking ticket waits.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io::Write as _;
@@ -71,7 +74,7 @@ use crate::ipc::{
 	WireMontageClip, SLOT_FORMAT_BGRA8, TYPE_BATCH_ACCEPTED, TYPE_ERROR, TYPE_FRAME_FAILED,
 	TYPE_FRAME_READY, TYPE_HANDSHAKE, TYPE_HELLO_CAPS,
 };
-use crate::scheduler::{FrameKey, FramePriority, FrameRequest, PreviewScheduler};
+use crate::scheduler::{FrameKey, FrameRequest, PreviewScheduler, SubmitOutcome};
 use crate::ticket::{Completion, TicketPayload, TicketResult, VideoTicketParams};
 use crate::worker::{Job, JobDispatch};
 
@@ -259,6 +262,45 @@ impl std::fmt::Debug for ShmFrameRef {
 			.field("meta", &self.meta)
 			.finish()
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Slot pixel conversions (M15 S2)
+// ---------------------------------------------------------------------------
+//
+// The process backend writes BGRA8 into slots (the viewer preview format).
+// Long-lived consumers that need the bytes in a different order/format
+// convert once after copying out of the slot.
+
+/// Convert a BGRA8 block into an RGBA8 block (swapping R and B). Used by
+/// PNG writers (footage thumbnails) and PPM/CLI output, which require
+/// RGB-order buffers. `src.len()` must be a multiple of 4.
+pub fn bgra8_to_rgba8(src: &[u8]) -> Vec<u8> {
+	let mut out = Vec::with_capacity(src.len());
+	for px in src.chunks_exact(4) {
+		out.push(px[2]); // R
+		out.push(px[1]); // G
+		out.push(px[0]); // B
+		out.push(px[3]); // A
+	}
+	out
+}
+
+/// Convert a BGRA8 block into tightly-packed F32 RGBA samples (`0..=1`).
+/// Used by the export/encoder path, which declares F32 input: the worker
+/// converts its F32 pipeline output to BGRA8 for the slot (design §3.1),
+/// and the export converts back — a necessary conversion at the encoder
+/// boundary with 8-bit quantization (S2; per-ticket slot formats are S3
+/// work).
+pub fn bgra8_to_f32_rgba(src: &[u8]) -> Vec<f32> {
+	let mut out = Vec::with_capacity(src.len() / 4 * 4);
+	for px in src.chunks_exact(4) {
+		out.push(f32::from(px[2]) / 255.0); // R
+		out.push(f32::from(px[1]) / 255.0); // G
+		out.push(f32::from(px[0]) / 255.0); // B
+		out.push(f32::from(px[3]) / 255.0); // A
+	}
+	out
 }
 
 // ---------------------------------------------------------------------------
@@ -1128,10 +1170,15 @@ impl ProcessDispatcher {
 
 impl JobDispatch for ProcessDispatcher {
 	/// Submit one frame job (the ticket-arena seam). The job joins the
-	/// scheduler as a Seek-priority request and is dispatched on the
-	/// next pump; the completion fires with
+	/// scheduler under its [`JobSchedule`] (Seek single-frame by default,
+	/// Playback for the pre-render window, Background for exports) and is
+	/// dispatched on the next pump; the completion fires with
 	/// `TicketPayload::ShmFrame(ShmFrameRef)` — never a pixel buffer.
+	/// Re-submitting a key that is still pending replaces the old request
+	/// and cancels its ticket; a key already in flight is left running
+	/// (its result is still valid for the same params).
 	fn post(&self, job: Job) -> bool {
+		let mut fired: Vec<(Completion, TicketResult)> = Vec::new();
 		{
 			let mut inner = lock(&self.inner);
 			if inner.shutting_down {
@@ -1139,10 +1186,11 @@ impl JobDispatch for ProcessDispatcher {
 			}
 			let id = inner.next_ticket;
 			inner.next_ticket += 1;
+			let frame = job.schedule.frame.unwrap_or(id);
 			let key = FrameKey {
 				sequence: job.node_identity,
-				frame: id,
-				version: 0,
+				frame,
+				version: job.schedule.version,
 			};
 			inner.tickets.insert(
 				id,
@@ -1152,16 +1200,71 @@ impl JobDispatch for ProcessDispatcher {
 					done: Some(job.done),
 				},
 			);
-			inner.scheduler.submit(FrameRequest {
+			let request = FrameRequest {
 				key,
-				priority: FramePriority::Seek,
-				distance: 0,
+				priority: job.schedule.priority,
+				distance: job.schedule.distance,
 				payload: id,
-			});
+			};
+			match inner.scheduler.submit(request) {
+				SubmitOutcome::Accepted => {}
+				SubmitOutcome::Replaced(old) => {
+					// A newer request for the same key superseded the old
+					// pending one: cancel the old ticket's completion.
+					if let Some(pt) = inner.tickets.get_mut(&old.payload) {
+						if let Some(done) = pt.done.take() {
+							fired.push((done, Err(Error::State)));
+						}
+					}
+				}
+				SubmitOutcome::InFlight => {
+					// Already claimed by a worker; the rendered frame is
+					// still valid for the same params (playback window
+					// slides re-request frames that are in flight).
+				}
+			}
+		}
+		for (done, result) in fired {
+			done(result);
 		}
 		// Pump once so a live worker picks the frame up immediately.
 		self.poll();
 		true
+	}
+
+	/// Cancel every pending AND claimed request of `sequence` (M15 S2
+	/// preview-window invalidation — graph/proxy/resolution/color bump or
+	/// a sequence switch). Dropped completions fire `Error::State`;
+	/// frames already dispatched recycle their slots when the late
+	/// `frame_ready` arrives.
+	fn cancel_preview_sequence(&self, sequence: u64) {
+		let mut fired: Vec<(Completion, TicketResult)> = Vec::new();
+		{
+			let mut inner = lock(&self.inner);
+			let dropped = inner.scheduler.cancel_sequence(sequence);
+			for request in dropped {
+				if let Some(pt) = inner.tickets.get_mut(&request.payload) {
+					if let Some(done) = pt.done.take() {
+						fired.push((done, Err(Error::State)));
+					}
+				}
+			}
+		}
+		for (done, result) in fired {
+			done(result);
+		}
+	}
+
+	/// Pump the control plane (delegates to the inherent poll — the UI
+	/// tick and blocking ticket waits call this through the trait seam).
+	fn poll(&self) {
+		self.poll();
+	}
+
+	/// Release a consumed frame's slot (delegates to the inherent
+	/// release — see [`ProcessDispatcher::release_frame`]).
+	fn release_frame(&self, frame: &ShmFrameRef) {
+		self.release_frame(frame);
 	}
 
 	/// Graceful shutdown: `shutdown` messages, a short drain pumping

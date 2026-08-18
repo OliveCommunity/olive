@@ -29,8 +29,8 @@
 //! clip montage (`VideoTicketParams::montage`) resolved from the
 //! sequence's track lists. Tickets run on the process-wide
 //! `oakrender::manager::RenderManager` arena when the manager is
-//! initialized, otherwise on a private worker pool + arena owned by this
-//! render run.
+//! initialized, otherwise on a private process dispatcher + arena owned
+//! by this render run (M15 S2: the in-process thread pool is gone).
 //!
 //! ## Concurrent render loop
 //!
@@ -57,11 +57,12 @@ use oakcommon::videoparams::VideoParams;
 use oaknode::footage::FootageBehavior;
 use oaknode::sequence::SequenceBehavior;
 use oaknode::track::{TrackBehavior, TrackListBehavior, TrackType};
+use oakrender::procpool::{bgra8_to_f32_rgba, DispatcherConfig, ProcessDispatcher, ShmFrameRef};
 use oakrender::ticket::{
 	ticket_kind, AudioTicketParams, MontageClip, TicketArena, TicketId, TicketPayload,
 	TicketResult, VideoTicketParams,
 };
-use oakrender::worker::WorkerPool;
+use oakrender::worker::JobDispatch;
 
 use crate::error::{Error, Result};
 use crate::nodeops::{
@@ -477,7 +478,10 @@ impl RenderTask {
 
 	/// Submit one video frame ticket at `time` (mirrors the C++
 	/// `start_video_ticket`). `dispatch` is the shared completion channel
-	/// handed to the ticket's finished callback.
+	/// handed to the ticket's finished callback. M15 S2: export/precache
+	/// tickets post at Background priority (the scheduler serves them when
+	/// no Seek/Playback work is pending; credit flow control caps how many
+	/// are in flight).
 	fn submit_video_ticket(
 		&self,
 		arena: &TicketArena,
@@ -487,7 +491,7 @@ impl RenderTask {
 		let params = self.build_video_ticket(time)?;
 		let id = arena.next_id();
 		let dispatch_ptr = DispatchPtr(dispatch);
-		arena.submit_video_with_id(id, params, Box::new(move |result| {
+		arena.submit_video_background_with_id(id, params, Box::new(move |result| {
 			push_finished(id, result, dispatch_ptr);
 		}));
 		Ok(id)
@@ -649,19 +653,33 @@ impl RenderTask {
 		let total_slots = slots.len();
 
 		// The ticket arena: the process-wide manager arena when the
-		// manager is initialized, otherwise a private worker pool + arena
-		// owned by this run (keeps headless/test runs self-contained).
-		let (arena, mut private_pool) = match oakrender::manager::RenderManager::global() {
+		// manager is initialized, otherwise a private process dispatcher +
+		// arena owned by this run (keeps headless/test runs
+		// self-contained; M15 S2 — the in-process thread pool is gone).
+		let (arena, mut private_dispatch) = match oakrender::manager::RenderManager::global() {
 			Some(manager) => (manager.tickets.clone(), None),
 			None => {
-				let mut pool = WorkerPool::new(0);
-				pool.start();
+				let dispatcher = ProcessDispatcher::new(DispatcherConfig::default())
+					.map_err(|e| Error::Failed(format!("render worker pool: {e}")))?;
+				dispatcher
+					.start()
+					.map_err(|e| Error::Failed(format!("render worker pool start: {e}")))?;
 				let producer: oakrender::ticket::Producer = Arc::new(|time, params| {
 					oakrender::eval::render_produced_frame(time, params)
 						.map(TicketPayload::Video)
 				});
-				let arena = Arc::new(TicketArena::new(Arc::new(pool.clone()), producer));
-				(arena, Some(pool))
+				let arena = Arc::new(TicketArena::new(dispatcher.clone(), producer));
+				(arena, Some(dispatcher))
+			}
+		};
+		// M15 S2: the process dispatcher delivers completions from its poll
+		// loop; the render thread must pump it while it waits (there is no
+		// UI tick on the export thread).
+		let pump = || {
+			if let Some(m) = oakrender::manager::RenderManager::global() {
+				m.poll();
+			} else if let Some(d) = &private_dispatch {
+				d.poll();
 			}
 		};
 
@@ -769,6 +787,27 @@ impl RenderTask {
 								task.emit_progress(progress_counter / total_length);
 							}
 						}
+						Ok(TicketPayload::ShmFrame(frame)) => {
+							// M15 S2 process backend: the frame lives in a
+							// worker shm slot. Copy it out once into a
+							// texture the encoder consumes (necessary copy —
+							// the encoder needs an owned F32 buffer), then
+							// release the slot.
+							let texture = shm_frame_to_texture(&frame);
+							if let Err(e) = behavior.frame_downloaded(task, &texture) {
+								result = Err(e);
+								break;
+							}
+							if let Some(m) = oakrender::manager::RenderManager::global() {
+								m.release_frame(&frame);
+							} else if let Some(d) = &private_dispatch {
+								d.release_frame(&frame);
+							}
+							if self.native_progress_signalling {
+								progress_counter += 1.0;
+								task.emit_progress(progress_counter / total_length);
+							}
+						}
 						Ok(_) => {
 							result = Err(Error::Failed(
 								"Video render ticket delivered a non-video payload".to_string(),
@@ -813,20 +852,28 @@ impl RenderTask {
 
 			// Wait for the next completion (a cancellation or a hook error
 			// aborts the wait; in-flight tickets then finish, waking us).
-			let mut guard = dispatch_ref
-				.finished
-				.lock()
-				.unwrap_or_else(|e| e.into_inner());
-			while guard.is_empty()
-				&& dispatch_ref.running.load(Ordering::SeqCst) > 0
-				&& !task.is_cancelled()
-			{
-				guard = dispatch_ref
-					.cv
-					.wait(guard)
+			// The process dispatcher is pumped so its poll loop delivers the
+			// completions — never while holding the finished-queue lock
+			// (pump()'s delivered completions lock the same queue).
+			loop {
+				pump();
+				let mut guard = dispatch_ref
+					.finished
+					.lock()
 					.unwrap_or_else(|e| e.into_inner());
+				let done = !guard.is_empty()
+					|| dispatch_ref.running.load(Ordering::SeqCst) == 0
+					|| task.is_cancelled();
+				if done {
+					break;
+				}
+				let (g, _) = dispatch_ref
+					.cv
+					.wait_timeout(guard, std::time::Duration::from_millis(5))
+					.unwrap_or_else(|e| e.into_inner());
+				guard = g;
+				drop(guard); // release before the next pump
 			}
-			drop(guard);
 			if dispatch_ref
 				.finished
 				.lock()
@@ -850,19 +897,23 @@ impl RenderTask {
 		// Tear down. On cancellation or error, cancel and wait every ticket
 		// still in flight (the C++ abort path), so their completions still
 		// fire exactly once. Then wait until every callback has returned
-		// and free the completion channel; a private pool is shut down.
+		// and free the completion channel; a private dispatcher is shut
+		// down (M15 S2: the process dispatcher, not a thread pool).
 		if result.is_err() || task.is_cancelled() {
 			for &id in &in_flight {
 				arena.cancel(id);
 				let _ = arena.wait(id);
 			}
 		}
-		dispatch_ref.wait_idle();
+		dispatch_ref.wait_idle(&pump);
 		unsafe {
 			drop(Box::from_raw(dispatch));
 		}
-		if let Some(mut pool) = private_pool.take() {
-			pool.shutdown();
+		// The pump closure borrows `private_dispatch`; drop it before the
+		// take below.
+		drop(pump);
+		if let Some(d) = private_dispatch.take() {
+			d.shutdown();
 		}
 
 		result
@@ -928,10 +979,22 @@ impl RenderDispatch {
 
 	/// Block until every submitted ticket has fired its callback. Called
 	/// before freeing `self`, so no callback can touch the state afterwards.
-	fn wait_idle(&self) {
-		let mut guard = self.finished.lock().unwrap_or_else(|e| e.into_inner());
-		while self.running.load(Ordering::SeqCst) > 0 {
-			guard = self.cv.wait(guard).unwrap_or_else(|e| e.into_inner());
+	/// `pump` drives the process dispatcher's poll loop (M15 S2) — never
+	/// while holding the finished-queue lock (pump's delivered completions
+	/// lock the same queue).
+	fn wait_idle(&self, pump: &dyn Fn()) {
+		loop {
+			pump();
+			let mut guard = self.finished.lock().unwrap_or_else(|e| e.into_inner());
+			if self.running.load(Ordering::SeqCst) == 0 {
+				break;
+			}
+			let (g, _) = self
+				.cv
+				.wait_timeout(guard, std::time::Duration::from_millis(5))
+				.unwrap_or_else(|e| e.into_inner());
+			guard = g;
+			drop(guard); // release before the next pump
 		}
 	}
 }
@@ -964,4 +1027,36 @@ fn push_finished(id: TicketId, result: TicketResult, dispatch: DispatchPtr) {
 	queue.push_back((id, result));
 	dispatch.running.fetch_sub(1, Ordering::SeqCst);
 	dispatch.cv.notify_all();
+}
+
+/// Copy a process-backend shm frame (BGRA8 slot) out into an F32 CPU
+/// texture the encoder consumes (M15 S2). The worker converted its F32
+/// pipeline output to BGRA8 for the slot (design §3.1); the encoder
+/// declares F32 input, so the export converts back — a necessary
+/// conversion at the encoder boundary with 8-bit quantization (S2).
+fn shm_frame_to_texture(frame: &ShmFrameRef) -> oakrender::texture::Texture {
+	let meta = &frame.meta;
+	let pixels = frame
+		.shm
+		.slot_bytes(frame.slot)
+		.get(..meta.data_size.max(0) as usize)
+		.unwrap_or_default();
+	let samples = bgra8_to_f32_rgba(pixels);
+	let mut f = oakrender::texture::Frame::new();
+	f.width = meta.width;
+	f.height = meta.height;
+	f.format = oakcore_rs::PixelFormat::F32;
+	f.channels = 4;
+	f.timestamp = oakcore_rs::Rational::new(meta.time_num, meta.time_den);
+	f.data = samples
+		.chunks_exact(4)
+		.flat_map(|px| {
+			let mut bytes = [0u8; 16];
+			for (i, v) in px.iter().enumerate() {
+				bytes[i * 4..i * 4 + 4].copy_from_slice(&v.to_le_bytes());
+			}
+			bytes
+		})
+		.collect();
+	oakrender::texture::Texture::wrap_frame(f)
 }

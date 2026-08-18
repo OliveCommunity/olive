@@ -28,21 +28,30 @@
 
 use std::sync::mpsc;
 
+use gpui::RenderImage;
 use oakcore_rs::{Rational, TimeRange};
 use oaknode::id::NodeId;
 use oaknode::track::TrackType;
 use oakrender::manager::RenderManager;
+use oakrender::procpool::ShmFrameRef;
 use oakrender::texture::Texture;
 use oakrender::ticket::{AudioTicketParams, MontageClip, TicketPayload, VideoTicketParams};
 
 use super::engine::{ExportEvent, ExportSession};
+use super::frames::{bgra_bytes_to_render_image, f32_rgba_to_bgra_image};
 use super::graphops::{
 	clip_behavior, lock, sequence_behavior, track_behavior, track_list_behavior, ProjectRef,
 };
+use super::scopes::{analyze_bgra8, analyze_f32_rgba, ScopeData};
 
 /// The pixel format the viewers render in (`oakcore_rs::PixelFormat::F32`,
 /// the pipeline's internal format; the app downconverts to BGRA itself).
 pub const PIXEL_FORMAT_F32: i32 = 4;
+
+/// The BGRA8 slot wire format the process backend renders into (M15 S2):
+/// the worker converts its F32 pipeline output to BGRA8 at the end of the
+/// render, so the main process reads display-ready bytes from the slot.
+pub const SLOT_FORMAT_BGRA8: i32 = oakrender::ipc::SLOT_FORMAT_BGRA8;
 
 // ---------------------------------------------------------------------------
 // Render manager
@@ -232,19 +241,113 @@ pub fn audio_montage(p: &ProjectRef, seq: NodeId, range: TimeRange) -> Vec<Monta
 // Ticket rendering
 // ---------------------------------------------------------------------------
 
-/// A rendered frame's pixel payload (the module frame a video ticket
-/// produces).
-pub struct RenderedFrame {
+/// A rendered frame's pixel payload (M15 S2): a process-backend shm slot
+/// (BGRA8, zero-copy read) or an in-process F32 CPU frame (the test-only
+/// inline backend).
+pub enum RenderedFrame {
+	/// Process backend: a BGRA8 frame in a worker's shared-memory slot.
+	/// Read with `shm.slot_bytes(slot)` (no counted copy on the preview
+	/// path), build the display image, then release the slot through the
+	/// render manager.
+	Shm(ShmFrameRef),
+	/// In-process (test) backend: an F32 RGBA CPU frame.
+	CpuF32 {
+		/// Width in pixels.
+		width: i32,
+		/// Height in pixels.
+		height: i32,
+		/// Bytes per scanline (stride).
+		linesize: i32,
+		/// Pixel data (at least `linesize * height` bytes).
+		data: Vec<u8>,
+	},
+}
+
+impl RenderedFrame {
 	/// Width in pixels.
-	pub width: i32,
+	pub fn width(&self) -> i32 {
+		match self {
+			RenderedFrame::Shm(f) => f.meta.width,
+			RenderedFrame::CpuF32 { width, .. } => *width,
+		}
+	}
+
 	/// Height in pixels.
-	pub height: i32,
-	/// Pixel format (`oakcore_rs::PixelFormat` as int).
-	pub format: i32,
-	/// Bytes per scanline (stride).
-	pub linesize: i32,
-	/// Pixel data (at least `linesize * height` bytes).
-	pub data: Vec<u8>,
+	pub fn height(&self) -> i32 {
+		match self {
+			RenderedFrame::Shm(f) => f.meta.height,
+			RenderedFrame::CpuF32 { height, .. } => *height,
+		}
+	}
+
+	/// The pixel format: the BGRA8 slot wire format for the shm variant,
+	/// `PIXEL_FORMAT_F32` for the in-process variant.
+	pub fn format(&self) -> i32 {
+		match self {
+			RenderedFrame::Shm(_) => SLOT_FORMAT_BGRA8,
+			RenderedFrame::CpuF32 { .. } => PIXEL_FORMAT_F32,
+		}
+	}
+
+	/// True for the process-backend shm variant.
+	pub fn is_shm(&self) -> bool {
+		matches!(self, RenderedFrame::Shm(_))
+	}
+
+	/// Build the viewer display image plus the scope samples (M15 S2
+	/// zero-copy onscreen path). For the shm variant the slot's BGRA8
+	/// bytes are wrapped into the display buffer — the GPU-upload staging
+	/// copy, the single permitted main-process copy on the preview path
+	/// (design §3.5). The caller releases the slot afterwards.
+	pub fn to_display(&self) -> Option<(RenderImage, ScopeData)> {
+		match self {
+			RenderedFrame::Shm(f) => {
+				let meta = &f.meta;
+				let (w, h) = (meta.width.max(0) as u32, meta.height.max(0) as u32);
+				let pixels = f.shm.slot_bytes(f.slot);
+				let data = pixels.get(..meta.data_size.max(0) as usize)?;
+				let image = bgra_bytes_to_render_image(w, h, data)?;
+				let scope = analyze_bgra8(w, h, data);
+				Some((image, scope))
+			}
+			RenderedFrame::CpuF32 {
+				width,
+				height,
+				linesize,
+				data,
+			} => {
+				let (w, h) = ((*width).max(0) as u32, (*height).max(0) as u32);
+				let samples = repack_f32_rows(*width, *height, *linesize, data)?;
+				Some((
+					f32_rgba_to_bgra_image(w, h, &samples),
+					analyze_f32_rgba(w, h, &samples),
+				))
+			}
+		}
+	}
+}
+
+/// Repack one F32 RGBA rendered frame (rows padded to `linesize`) into
+/// tightly packed samples. Returns `(width, height, samples)`-style
+/// samples only; geometry is validated by the caller.
+fn repack_f32_rows(width: i32, height: i32, linesize: i32, data: &[u8]) -> Option<Vec<f32>> {
+	if width <= 0 || height <= 0 {
+		return None;
+	}
+	let row_bytes = (width * 4 * 4) as usize;
+	let linesize = (linesize as usize).max(row_bytes);
+	if data.len() < linesize * height as usize {
+		return None;
+	}
+	let mut samples = vec![0.0f32; (width * height * 4) as usize];
+	for y in 0..height as usize {
+		let row = &data[y * linesize..y * linesize + row_bytes];
+		for (i, px) in row.chunks_exact(4).enumerate() {
+			let v = f32::from_ne_bytes([px[0], px[1], px[2], px[3]]);
+			samples[y * (width as usize) * 4 + i] = v;
+		}
+	}
+	Some(samples)
 }
 
 /// The renderer geometry / format validation (the facade's
@@ -256,7 +359,9 @@ fn validate_geometry(width: i32, height: i32, tb: (i64, i64)) -> Result<(), Stri
 	Ok(())
 }
 
-/// Drive one video ticket synchronously.
+/// Drive one video ticket synchronously (M15 S2: returns the payload
+/// variant without copying frame bytes — the shm slot is read zero-copy
+/// by the caller and released after building the display image).
 fn render_video(params: VideoTicketParams) -> Result<RenderedFrame, String> {
 	let m = RenderManager::global().ok_or_else(|| "render manager is not initialized".to_string())?;
 	let id = m.tickets.next_id();
@@ -267,33 +372,31 @@ fn render_video(params: VideoTicketParams) -> Result<RenderedFrame, String> {
 		.result(id)
 		.ok_or_else(|| "render ticket produced no result".to_string())?;
 	match &result {
-		Ok(TicketPayload::Video(Texture::Cpu(frame))) => Ok(RenderedFrame {
+		Ok(TicketPayload::Video(Texture::Cpu(frame))) => Ok(RenderedFrame::CpuF32 {
 			width: frame.width,
 			height: frame.height,
-			format: frame.format as i32,
 			linesize: frame.linesize_bytes() as i32,
 			data: frame.data.clone(),
 		}),
+		Ok(TicketPayload::ShmFrame(frame)) => Ok(RenderedFrame::Shm(frame.clone())),
 		Ok(TicketPayload::Video(_)) => Err("render produced a non-CPU frame".to_string()),
 		_ => Err("render produced no video frame".to_string()),
 	}
 }
 
-/// Render one frame of the sequence's montage at `frame_ts` (a timestamp
-/// in the `(tb.1 / tb.0)`-per-frame timebase) into a `(width, height)`
-/// F32 frame.
-pub fn render_sequence_frame(
+/// Build the video ticket params for one sequence-montage frame (M15 S2:
+/// shared by the synchronous render and the playback pre-render window).
+pub fn sequence_frame_params(
 	p: &ProjectRef,
 	seq: NodeId,
 	frame_ts: i64,
 	tb: (i64, i64),
 	width: i32,
 	height: i32,
-) -> Result<RenderedFrame, String> {
+) -> Result<VideoTicketParams, String> {
 	validate_geometry(width, height, tb)?;
 	let time = Rational::new(frame_ts * tb.0, tb.1);
-	let montage = video_montage(p, seq, time);
-	render_video(VideoTicketParams {
+	Ok(VideoTicketParams {
 		viewer: seq.identity(),
 		time,
 		force_size: Some((width, height)),
@@ -303,7 +406,54 @@ pub fn render_sequence_frame(
 		cache_id: None,
 		cache_timebase: None,
 		footage: None,
-		montage,
+		montage: video_montage(p, seq, time),
+	})
+}
+
+/// Render one frame of the sequence's montage at `frame_ts` (a timestamp
+/// in the `(tb.1 / tb.0)`-per-frame timebase) into a `(width, height)`
+/// frame.
+pub fn render_sequence_frame(
+	p: &ProjectRef,
+	seq: NodeId,
+	frame_ts: i64,
+	tb: (i64, i64),
+	width: i32,
+	height: i32,
+) -> Result<RenderedFrame, String> {
+	render_video(sequence_frame_params(p, seq, frame_ts, tb, width, height)?)
+}
+
+/// Build the video ticket params for one single-footage frame (M15 S2:
+/// shared by the synchronous render and the source-monitor pre-render
+/// window).
+pub fn footage_frame_params(
+	p: &ProjectRef,
+	footage: NodeId,
+	frame_ts: i64,
+	tb: (i64, i64),
+	width: i32,
+	height: i32,
+) -> Result<VideoTicketParams, String> {
+	validate_geometry(width, height, tb)?;
+	let (filename, stream_index) = {
+		let g = lock(p);
+		super::graphops::footage_behavior(&g.graph, footage)
+			.map(|f| preview_footage_media(f, true))
+			.ok_or_else(|| "the node is not footage".to_string())?
+	};
+	let time = Rational::new(frame_ts * tb.0, tb.1);
+	Ok(VideoTicketParams {
+		viewer: footage.identity(),
+		time,
+		force_size: Some((width, height)),
+		force_format: None,
+		cache: None,
+		cache_dir: None,
+		cache_id: None,
+		cache_timebase: None,
+		footage: Some((filename, stream_index)),
+		montage: Vec::new(),
 	})
 }
 
@@ -317,26 +467,7 @@ pub fn render_footage_frame(
 	width: i32,
 	height: i32,
 ) -> Result<RenderedFrame, String> {
-	validate_geometry(width, height, tb)?;
-	let (filename, stream_index) = {
-		let g = lock(p);
-		super::graphops::footage_behavior(&g.graph, footage)
-			.map(|f| preview_footage_media(f, true))
-			.ok_or_else(|| "the node is not footage".to_string())?
-	};
-	let time = Rational::new(frame_ts * tb.0, tb.1);
-	render_video(VideoTicketParams {
-		viewer: footage.identity(),
-		time,
-		force_size: Some((width, height)),
-		force_format: None,
-		cache: None,
-		cache_dir: None,
-		cache_id: None,
-		cache_timebase: None,
-		footage: Some((filename, stream_index)),
-		montage: Vec::new(),
-	})
+	render_video(footage_frame_params(p, footage, frame_ts, tb, width, height)?)
 }
 
 /// Rendered interleaved f32 audio (the module audio ticket payload).

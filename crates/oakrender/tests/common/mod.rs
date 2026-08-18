@@ -30,11 +30,15 @@ pub struct ManagerGuard {
 }
 
 impl ManagerGuard {
-	/// Initialize the manager and hold the serialization lock.
+	/// Initialize the manager and hold the serialization lock. Uses the
+	/// test-only inline backend so no oak-worker children are spawned.
 	pub fn init() -> Self {
 		let guard = MANAGER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 		oakrender::manager::RenderManager::shutdown();
-		oakrender::manager::RenderManager::init().expect("manager init");
+		oakrender::manager::RenderManager::init_with_backend(
+			oakrender::manager::RenderBackendChoice::Threads,
+		)
+		.expect("manager init");
 		Self { _guard: guard }
 	}
 }

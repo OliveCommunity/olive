@@ -12672,6 +12672,31 @@ pub mod render {
 				}
 				Err(e) => e.code(),
 			},
+			Some(Ok(TicketPayload::ShmFrame(frame))) => {
+				// M15 S2 process backend: the frame lives in a worker shm
+				// slot. Copy it out once as an RGBA8 u8 frame (necessary
+				// copy — the C ABI consumer owns its buffer), release the
+				// slot, and hand the frame back.
+				let meta = &frame.meta;
+				let pixels = frame
+					.shm
+					.slot_bytes(frame.slot)
+					.get(..meta.data_size.max(0) as usize)
+					.unwrap_or_default();
+				let mut f = oakrender::texture::Frame::new();
+				f.width = meta.width;
+				f.height = meta.height;
+				f.format = oakcore_rs::PixelFormat::U8;
+				f.channels = 4;
+				f.timestamp = oakcore_rs::Rational::new(meta.time_num, meta.time_den);
+				f.data = oakrender::procpool::bgra8_to_rgba8(pixels);
+				if let Some(m) = oakrender::manager::RenderManager::global() {
+					m.release_frame(&frame);
+				}
+				// SAFETY: valid out pointer.
+				unsafe { *out = oakrender::handle::make_owned(f) };
+				0
+			}
 			Some(Err(e)) => e.code(),
 			_ => {
 				// SAFETY: valid out pointer.

@@ -2,6 +2,7 @@
 
 > 状态：已批准（用户 2026-08-18 提出，作为独立追加任务，不阻塞 M12 其余阶段）。
 > 前置调研：见会话调研报告（oak-worker/ipc.rs 传输层已完整、TicketArena 投递口收敛、上屏链路 6 处拷贝点）。
+> 进度：S1 完成（2026-08，协议 v2 + ProcessDispatcher + PreviewScheduler + worker 真实渲染，与线程池并存）；S2 完成（默认 Processes、删除 WorkerPool、oaktask/oak-cli/app 接入、上屏零拷贝、播放预渲染窗口）。S3 待做。
 
 ## 1. 目标（用户原文要求）
 
@@ -68,10 +69,14 @@
 
 唯一投递口 `TicketArena.pool.post`（ticket.rs:321,390）。消费者 4 个（app renderops、oak-cli、oaktask 导出、oakengine facade）API 不变。`WorkerBackend::{Threads,Processes}` 枚举已预留。oaktask 导出自建私有池改为自建私有 ProcessDispatcher（max_inflight 语义由调度器接管）。**WorkerPool 及其线程在 S2 彻底删除**（用户明确要求；单测需要的同步执行语义由 dispatcher 的 `run_inline` 测试模式提供，不保留生产线程池）。
 
+> **S2 落地**：`worker::WorkerPool`/`ProcessPool`/`WorkerBackend` 已删除；`worker.rs` 保留 `Job`/`JobDispatch`/`GraphSnapshotStore` 并新增线程无关的 `InlineDispatcher`（`sync` 模式 = 生产音频后端，`queued` 模式 = 测试确定性执行）。`RenderManager::init()` 默认 `Processes`；`init_with_backend(Threads)` 仅供测试（同步 inline）。oaktask 导出/CLI 走 manager 进程后端；`TicketArena::wait` 与 oaktask 渲染循环在等待时泵 `poll()`（进程后端无独立泵线程，全部非阻塞）。
+
 ### 3.5 上屏零拷贝改造（S2，src/ 侧）
 
 现状拷贝点（调研报告）：ticket result `frame.data.clone()` → linesize 重排 → F32→BGRA8 → 缓存 → atlas write_texture。
 改后：ticket 完成返回 `ShmFrameRef{worker, slot, meta}`；viewer 预览帧（BGRA8 槽）直接切片喂 `write_texture`；scopes 分析改为读 BGRA8（精度足够）或另请 F32 票；长期缓存（静止全分辨率单帧槽、缩略图）从 shm 拷出一次（必要拷贝，槽需回收）。断言手段：`renderops` 加拷贝字节计数器，测试断言播放路径帧字节拷贝 = 0（GPU upload 除外）。
+
+> **S2 落地**：`renderops::RenderedFrame` 变为 `Shm(ShmFrameRef)` / `CpuF32{..}` 枚举；`to_display()` 用槽 BGRA8 字节构造显示图（GPU 上传 staging 拷贝，走 `slot_bytes` 不计入 `main_heap_frame_copies`）；scopes 读 BGRA8（`analyze_bgra8`，8-bit 量化精度损失已在注释说明）；全分辨率/缩略图走 `slot_to_vec`（唯一计数拷贝）后立即 `release_frame`。`real_render_frame_e2e`/`process_backend_preview_path_is_zero_copy` 断言播放路径计数 = 0。
 
 ### 3.6 OFX 崩溃隔离
 
@@ -86,7 +91,7 @@
 | 期 | 范围 | 验收 |
 |---|---|---|
 | S1（crates only） | shm spike（macOS 段上限）；协议 v2；ProcessDispatcher + WorkerHandle + 崩溃重启；worker 侧真实渲染（图快照反序列化 + montage/解码/合成 + 插件执行器）；PreviewScheduler（交织批量认领）；与线程池**并存**（配置切换）。单测 + 集成测试（崩溃隔离/无窃取/均匀性/零拷贝计数）。 | `cargo test -p oakrender -p oak-worker` 全绿；集成测试演示 4 worker 渲 480 帧无重分配、相邻帧完成时间差有界 |
-| S2 | RenderManager 默认 Processes；**删除 WorkerPool**；oaktask/oak-cli 接入；src/ 上屏零拷贝（real.rs/renderops.rs/frames.rs）；app 播放前向窗口接入调度器 | `cargo test` 全绿；`cargo run` 播放流畅；拷贝计数=0；kill -SEGV worker 后播放继续 |
+| S2（默认切进程 + 删线程池 + 接入） | **完成**：RenderManager 默认 Processes；删除 WorkerPool（`InlineDispatcher` 替代单测同步执行，音频走 sync inline）；oaktask/oak-cli/facade 接入（ShmFrame 消费 + 等待时泵 poll）；UI tick 泵；上屏零拷贝（renderops/real/frames/scopes，scopes 读 BGRA8）；播放前向窗口（120 帧可配）喂 PreviewScheduler，cpu_frame 先命中 shm 槽缓存 | `cargo test` 全绿；`cargo run` 播放流畅；拷贝计数=0（`main_heap_frame_copies`）；kill -SEGV worker 后播放继续（S1 集成测试覆盖） |
 | S3 | 音频迁移；压测调优（B、槽数、worker 数自适应）；README/docs 收尾 | 性能报告；文档 |
 
 ## 5. 风险

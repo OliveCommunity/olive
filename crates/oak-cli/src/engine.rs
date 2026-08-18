@@ -47,6 +47,7 @@ use oaktimeline::undogeneral::TimelineAddTrackCommand;
 use oaktimeline::undopointer::TrackPlaceBlockCommand;
 use oaktimeline::util::NodeRef;
 use oakrender::manager::RenderManager;
+use oakrender::procpool::bgra8_to_rgba8;
 use oakrender::ticket::{
 	AudioTicketParams, MontageClip, TicketPayload, VideoTicketParams,
 };
@@ -628,7 +629,9 @@ pub struct RenderedFrame {
 }
 
 /// Render one frame of the sequence's montage at `time` (seconds
-/// rational) into a `(width, height)` F32 frame.
+/// rational) into a `(width, height)` F32 frame. M15 S2: the process
+/// backend renders a BGRA8 shm slot; the frame is copied out once as
+/// RGBA8 u8 (the PPM writer's format 0) and the slot released.
 pub fn render_frame(
 	seq_id: NodeId,
 	time: Rational,
@@ -663,8 +666,32 @@ pub fn render_frame(
 				data: frame.data.clone(),
 			})
 		}
+		Ok(TicketPayload::ShmFrame(frame)) => {
+			let out = shm_to_rendered_frame(frame);
+			m.release_frame(frame);
+			Ok(out)
+		}
 		Ok(TicketPayload::Video(_)) => Err("render produced a non-CPU frame".to_string()),
 		_ => Err("render produced no video frame".to_string()),
+	}
+}
+
+/// Copy a process-backend shm frame (BGRA8 slot) out into the CLI's
+/// RGBA8 u8 frame layout (format 0, 4 channels — the PPM writer's RGB
+/// order). Necessary copy: the CLI owns the pixels it writes to disk.
+fn shm_to_rendered_frame(frame: &oakrender::procpool::ShmFrameRef) -> RenderedFrame {
+	let meta = &frame.meta;
+	let pixels = frame
+		.shm
+		.slot_bytes(frame.slot)
+		.get(..meta.data_size.max(0) as usize)
+		.unwrap_or_default();
+	RenderedFrame {
+		width: meta.width,
+		height: meta.height,
+		format: 0,
+		linesize: meta.width.max(0) * 4,
+		data: bgra8_to_rgba8(pixels),
 	}
 }
 
