@@ -792,9 +792,93 @@ pub trait AppEngine:
 		let _ = (clips, adjust_speed, cx);
 	}
 
+	// -------------------------------------------------------------------
+	// Multi-camera (the C++ MulticamWidget / timeline Multi-Cam menu):
+	// detection state for the panel, angle-frame rendering, the timeline
+	// menu's enable/disable and the source switch. Defaults degrade to "no
+	// multicam", so engines without a multicam surface keep compiling.
+	// -------------------------------------------------------------------
+
+	/// The currently detected multicam state (the panel's grid), or `None`
+	/// when there is nothing to display. The backend performs the
+	/// detection on demand (selected clip → `find_multicam`, falling back
+	/// to the clip at the program playhead), so the panel always reads a
+	/// fresh answer.
+	fn multicam_state(&self) -> Option<MulticamState> {
+		None
+	}
+
+	/// The rendered frame of one multicam angle, when a frame for the
+	/// current playhead is cached. The panel calls this for every source it
+	/// draws; `None` means the frame is not ready (the engine schedules a
+	/// background render and notifies when it lands). The backend caches
+	/// per (multicam node, source) with an LRU cap, so a paused panel never
+	/// re-renders a cell.
+	fn multicam_angle_frame(&mut self, source: i32, cx: &mut Context<Self>) -> Option<Arc<RenderImage>> {
+		let _ = (source, cx);
+		None
+	}
+
+	/// Whether any of `clips` can host multicam — the timeline clip menu's
+	/// enable condition (the C++ `connected_viewer()` of the clip is a
+	/// sequence).
+	fn multicam_eligible(&self, clips: &[ClipId]) -> bool {
+		let _ = clips;
+		false
+	}
+
+	/// Whether the selected clips are currently multicam-enabled — the
+	/// timeline menu's checked state.
+	fn multicam_enabled_on_selection(&self, clips: &[ClipId]) -> bool {
+		let _ = clips;
+		false
+	}
+
+	/// Enables / disables multicam on `clips` (the timeline menu's checkable
+	/// item), as ONE undo entry (`Multi-Cam Enabled On %1 Clip(s)` /
+	/// `Multi-Cam Disabled On %1 Clip(s)`). Clips whose connected viewer is
+	/// not a sequence are skipped.
+	fn multicam_enable_selected(
+		&mut self,
+		clips: Vec<ClipId>,
+		enabled: bool,
+		cx: &mut Context<Self>,
+	) {
+		let _ = (clips, enabled, cx);
+	}
+
+	/// Switches the currently detected multicam to `source` (the digit
+	/// keys and grid clicks), as ONE undo entry (`Switched Multi-Camera
+	/// Source`). `split_clip` = the change applies from the playhead
+	/// forward (the clip is split first).
+	fn multicam_switch_to(&mut self, source: i32, split_clip: bool, cx: &mut Context<Self>) {
+		let _ = (source, split_clip, cx);
+	}
+
 	/// The display name of the engine backend ("mock" / "real"), shown in
 	/// the status bar.
 	fn backend_name(&self) -> &'static str;
+}
+
+/// The detected multicam state the Multicam panel displays (the C++
+/// `MulticamWidget`'s `node_` / `clip_` plus the resolved source count /
+/// current source). `None` in the engine means there is no multicam to
+/// show — the panel falls back to its empty state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct MulticamState {
+	/// The source sequence node identity (the multicam's `sequence_in` edge
+	/// target; its track list supplies the angles).
+	pub sequence_id: u64,
+	/// The multicam node identity.
+	pub node_id: u64,
+	/// The timeline clip node identity whose texture input the multicam
+	/// feeds.
+	pub clip_id: u64,
+	/// The number of angle sources (the source sequence's track count of
+	/// the multicam's `sequence_type_in` kind).
+	pub source_count: i32,
+	/// The currently selected source index (`current_in`).
+	pub current_source: i32,
 }
 
 /// The lifecycle state of one footage's proxy (the UI mirror of

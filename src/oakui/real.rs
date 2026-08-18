@@ -83,10 +83,11 @@ use oaknode::track::TrackType;
 use oakrender::manager::RenderManager;
 use oakrender::procpool::{bgra8_to_rgba8, ShmFrameRef};
 use oaktimeline::handle::CHandle;
+use oaktimeline::util::NodeRef;
 
 use super::engine::{
-	AppEngine, EngineGateway, ExportSession, LibraryProject, Monitor, Project, ScopeData, Sequence,
-	VideoFormat,
+	AppEngine, EngineGateway, ExportSession, LibraryProject, Monitor, MulticamState, Project,
+	ScopeData, Sequence, VideoFormat,
 };
 use super::frames::{bgra_bytes_to_render_image, f32_rgba_to_bgra_image, synthetic_frame_samples};
 use super::graphops::{self, ProjectRef};
@@ -355,6 +356,105 @@ fn thumbnail_path(filename: &str) -> PathBuf {
 		h = h.wrapping_mul(0x100000001b3);
 	}
 	thumbnail_dir().join(format!("{h:016x}.png"))
+}
+
+// ---------------------------------------------------------------------------
+// Multicam angle frames (M15 S2)
+// ---------------------------------------------------------------------------
+//
+// The Multicam panel draws one cell per angle (= the source sequence's
+// track `i` at the playhead). The engine renders those frames on background
+// threads — the same ticket path as the viewers, one single-track montage
+// per angle — and caches them keyed by (multicam node, source) with an LRU
+// cap, so a paused panel never re-renders a cell and playback refreshes
+// cells round-robin (the panel throttles its requests; the engine only ever
+// has one in-flight render per source).
+
+/// The grid cell render size: the sequence's aspect scaled to a 320px long
+/// edge (the panel grid cells are roughly this size; keeping the tickets
+/// small bounds the 9-angle burst cost).
+const MULTICAM_ANGLE_LONG_EDGE: u32 = 320;
+
+/// A completed multicam angle frame, delivered through the completion
+/// channel (drained on the app tick, like full-res frames). `None` image =
+/// the render failed; the drain still clears the in-flight marker so the
+/// cell can be retried on the next invalidation.
+struct MulticamAngleEvent {
+	/// The multicam node identity the frame belongs to.
+	node_id: u64,
+	/// The source index rendered.
+	source: i32,
+	/// The playhead frame the frame was rendered for.
+	playhead: i64,
+	/// The rendered display image (`None` when the render failed).
+	image: Option<Arc<RenderImage>>,
+}
+
+/// One background multicam angle render request (UI-thread-built; the
+/// worker thread owns it from there).
+struct MulticamAngleRequest {
+	/// The multicam node identity (the cache key's node half).
+	node_id: u64,
+	/// The source index.
+	source: i32,
+	/// The playhead frame to render.
+	playhead: i64,
+	/// The project (keeps the graph alive while the worker renders).
+	project: ProjectRef,
+	/// The source sequence node.
+	seq: NodeId,
+	/// The track whose clip makes up this angle.
+	track: NodeId,
+	/// Output width.
+	width: i32,
+	/// Output height.
+	height: i32,
+	/// The sequence's timebase.
+	tb: (i64, i64),
+}
+
+/// The multicam angle-frame cache: rendered frames keyed by
+/// `(multicam node, source)` with the playhead they were rendered for,
+/// LRU-capped, plus the in-flight sources per node.
+#[derive(Default)]
+struct MulticamFrameCache {
+	/// `(node_id, source) -> (rendered playhead, image)`, insertion-ordered
+	/// (the LRU eviction drops the head).
+	frames: Vec<((u64, i32), (i64, Arc<RenderImage>))>,
+	/// `(node_id, source)` renders currently in flight (never re-scheduled).
+	pending: HashSet<(u64, i32)>,
+}
+
+impl MulticamFrameCache {
+	/// The cached image for `(node, source)` rendered at exactly `playhead`
+	/// (a playhead change makes the frame stale).
+	fn lookup(&self, node: u64, source: i32, playhead: i64) -> Option<Arc<RenderImage>> {
+		self.frames
+			.iter()
+			.find(|(k, v)| k == &(node, source) && v.0 == playhead)
+			.map(|(_, (_, img))| img.clone())
+	}
+
+	/// The most recent image for `(node, source)` regardless of playhead
+	/// (the panel's stale-OK fallback during playback).
+	fn last(&self, node: u64, source: i32) -> Option<Arc<RenderImage>> {
+		self.frames
+			.iter()
+			.rev()
+			.find(|(k, _)| k == &(node, source))
+			.map(|(_, (_, img))| img.clone())
+	}
+
+	/// Store a freshly rendered frame, evicting the LRU head past the cap.
+	fn insert(&mut self, node: u64, source: i32, playhead: i64, image: Arc<RenderImage>) {
+		self.frames.retain(|(k, _)| k != &(node, source));
+		self.frames.push(((node, source), (playhead, image)));
+		const CAP: usize = 24;
+		if self.frames.len() > CAP {
+			let excess = self.frames.len() - CAP;
+			self.frames.drain(0..excess);
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -789,6 +889,16 @@ pub struct RealEngine {
 	/// The sending half of `thumb_rx` (cloned into every job).
 	thumb_tx: Mutex<mpsc::Sender<ThumbEvent>>,
 	proxy_runs: Vec<ProxyRun>,
+	/// The multicam angle-frame cache (rendered grid cells keyed by
+	/// (multicam node, source), LRU-capped). An `Arc` so the background
+	/// angle workers' completions can reach it; the mutex keeps the engine
+	/// `Sync`.
+	multicam_frames: Arc<Mutex<MulticamFrameCache>>,
+	/// The channel background multicam angle workers report finished frames
+	/// through; drained on the app tick.
+	multicam_rx: Mutex<mpsc::Receiver<MulticamAngleEvent>>,
+	/// The sending half of `multicam_rx` (cloned into every worker).
+	multicam_tx: Mutex<mpsc::Sender<MulticamAngleEvent>>,
 }
 
 impl RealEngine {
@@ -836,6 +946,7 @@ impl RealEngine {
 		let rate = VideoFormat::hd_1080p25().rate;
 		let (full_res_tx, full_res_rx) = mpsc::channel::<FullResEvent>();
 		let (thumb_tx, thumb_rx) = mpsc::channel::<ThumbEvent>();
+		let (multicam_tx, multicam_rx) = mpsc::channel::<MulticamAngleEvent>();
 		Self {
 			project: None,
 			sequence: None,
@@ -869,6 +980,9 @@ impl RealEngine {
 			thumb_rx: Mutex::new(thumb_rx),
 			thumb_tx: Mutex::new(thumb_tx),
 			proxy_runs: Vec::new(),
+			multicam_frames: Arc::new(Mutex::new(MulticamFrameCache::default())),
+			multicam_rx: Mutex::new(multicam_rx),
+			multicam_tx: Mutex::new(multicam_tx),
 		}
 	}
 
@@ -1141,6 +1255,156 @@ impl RealEngine {
 	}
 
 	// -----------------------------------------------------------------------
+	// Multi-camera (the Multicam panel grid + the timeline Multi-Cam menu)
+	// -----------------------------------------------------------------------
+
+	/// The program playhead as a sequence-frame timestamp (the angle render
+	/// time; 0 without a sequence). The sequence's stored playhead is
+	/// mirrored from the program clock on every seek/tick.
+	fn program_playhead_ts(&self) -> i64 {
+		let Some(project) = self.project_ref() else { return 0 };
+		let Some(seq) = self.sequence else { return 0 };
+		let Some(tb) = self.time_base() else { return 0 };
+		let time = graphops::sequence_playhead(&graphops::lock(project).graph, seq);
+		graphops::rational_to_ts(time, tb)
+	}
+
+	/// The multicam state the panel displays (the C++ viewer's
+	/// `detect_multicam_node`): the selected clip's multicam, falling back
+	/// to the clip under the program playhead on the video tracks. The
+	/// detection runs on demand, so the panel always reads a fresh answer;
+	/// the node-graph-selection level of the C++ is not ported (the Rust
+	/// node editor has no multicam selection).
+	fn multicam_state_internal(&self) -> Option<MulticamState> {
+		let project = self.project_ref()?;
+		let seq = self.sequence?;
+		if let Some(clip) = self.selected_clip_node() {
+			if let Some(state) = super::multicam::multicam_state_for_clip(project, clip) {
+				return Some(state);
+			}
+		}
+		let time = graphops::sequence_playhead(&graphops::lock(project).graph, seq);
+		let clip = super::multicam::clip_at_playhead_with_multicam(project, seq, time)?;
+		super::multicam::multicam_state_for_clip(project, clip)
+	}
+
+	/// Renders one multicam angle on a background thread (the same ticket
+	/// path as the viewers, one single-track montage per angle) and reports
+	/// the finished frame through `tx`.
+	fn multicam_angle_worker(request: MulticamAngleRequest, tx: mpsc::Sender<MulticamAngleEvent>) {
+		let MulticamAngleRequest {
+			node_id,
+			source,
+			playhead,
+			project,
+			seq,
+			track,
+			width,
+			height,
+			tb,
+		} = request;
+		let mut image = None;
+		if super::renderops::ensure_render_manager() {
+			if let Ok(rendered) = super::renderops::render_multicam_angle_frame(
+				&project, seq, track, playhead, tb, width, height,
+			) {
+				image = rendered_to_owned_image(&rendered);
+				release_rendered_frame(&rendered);
+			}
+		}
+		// Always report (also on failure) so the in-flight marker clears.
+		let _ = tx.send(MulticamAngleEvent {
+			node_id,
+			source,
+			playhead,
+			image,
+		});
+	}
+
+	/// The engine's [`AppEngine::multicam_angle_frame`]: returns the cached
+	/// angle frame for the current playhead when present, otherwise
+	/// schedules a background render (deduplicated per source) and returns
+	/// `None`. The panel shows its last image until the frame lands.
+	fn multicam_angle_frame_internal(&mut self, source: i32) -> Option<Arc<RenderImage>> {
+		let Some(state) = self.multicam_state_internal() else {
+			return None;
+		};
+		if source < 0 || source >= state.source_count {
+			return None;
+		}
+		let Some(project) = self.project.clone() else { return None };
+		let Some(seq) = self.sequence else { return None };
+		let Some(tb) = self.time_base() else { return None };
+		let playhead = self.program_playhead_ts();
+		// Exact-playhead cache hit.
+		if let Some(img) = self
+			.multicam_frames
+			.lock()
+			.unwrap()
+			.lookup(state.node_id, source, playhead)
+		{
+			return Some(img);
+		}
+		let Some(mc) = graphops::id_of(state.node_id) else {
+			return None;
+		};
+		let Some(track) = super::multicam::multicam_source_track(&project, mc, source) else {
+			return None;
+		};
+		// The panel may outlive a stale node (a multicam removed under it):
+		// treat a node mismatch as a fresh cache.
+		let mut cache = self.multicam_frames.lock().unwrap();
+		if cache.pending.contains(&(state.node_id, source)) {
+			return cache.last(state.node_id, source);
+		}
+		let (width, height) = {
+			let info = self.sequence_info.as_ref()?;
+			let (w, h) = (info.format.width.max(1), info.format.height.max(1));
+			let scale = MULTICAM_ANGLE_LONG_EDGE as f64 / w.max(h) as f64;
+			(((w as f64 * scale).round() as u32).max(2) as i32, ((h as f64 * scale).round() as u32).max(2) as i32)
+		};
+		cache.pending.insert((state.node_id, source));
+		let request = MulticamAngleRequest {
+			node_id: state.node_id,
+			source,
+			playhead,
+			project,
+			seq,
+			track,
+			width,
+			height,
+			tb,
+		};
+		let tx = self.multicam_tx.lock().unwrap().clone();
+		std::thread::spawn(move || Self::multicam_angle_worker(request, tx));
+		cache.last(state.node_id, source)
+	}
+
+	/// Installs completed multicam angle frames into the cache and repaints
+	/// (the panel re-reads the fresh cell images on the next render).
+	fn drain_multicam_frames(&mut self, cx: &mut Context<Self>) {
+		let rx = self.multicam_rx.lock().unwrap();
+		let mut any = false;
+		while let Ok(event) = rx.try_recv() {
+			any = true;
+			let mut cache = self.multicam_frames.lock().unwrap();
+			cache.pending.remove(&(event.node_id, event.source));
+			if let Some(image) = event.image {
+				cache.insert(event.node_id, event.source, event.playhead, image);
+			}
+		}
+		if any {
+			cx.notify();
+		}
+	}
+
+	/// Clears the multicam angle cache (project drop / edit invalidation).
+	fn clear_multicam_frames(&mut self) {
+		self.multicam_frames.lock().unwrap().frames.clear();
+		self.multicam_frames.lock().unwrap().pending.clear();
+	}
+
+	// -----------------------------------------------------------------------
 	// M15 S2: playback pre-render window
 	// -----------------------------------------------------------------------
 
@@ -1348,6 +1612,7 @@ impl RealEngine {
 		self.full_res_generation = self.full_res_generation.wrapping_add(1);
 		self.preview_generation = self.preview_generation.wrapping_add(1);
 		self.cancel_preview_windows();
+		self.clear_multicam_frames();
 	}
 
 	/// Attaches cached thumbnails to the bin entries, spawning a background
@@ -2417,6 +2682,7 @@ impl EngineGateway for RealEngine {
 		self.drain_full_res();
 		self.drain_thumbnails();
 		self.drain_proxy_runs(cx);
+		self.drain_multicam_frames(cx);
 		self.schedule_full_res(Monitor::Source, cx);
 		self.schedule_full_res(Monitor::Program, cx);
 		cx.notify();
@@ -3834,6 +4100,142 @@ impl AppEngine for RealEngine {
 		)?;
 		Ok(super::renderops::spawn_export(&project, seq, params))
 	}
+
+	fn multicam_state(&self) -> Option<MulticamState> {
+		self.multicam_state_internal()
+	}
+
+	fn multicam_angle_frame(&mut self, source: i32, _cx: &mut Context<Self>) -> Option<Arc<RenderImage>> {
+		self.multicam_angle_frame_internal(source)
+	}
+
+	fn multicam_eligible(&self, clips: &[ClipId]) -> bool {
+		let Some(project) = self.project_ref() else {
+			return false;
+		};
+		let g = graphops::lock(project);
+		for id in clips {
+			let Some(block) = graphops::id_of(id.0) else {
+				continue;
+			};
+			if graphops::clip_behavior(&g.graph, block).is_none() {
+				continue;
+			}
+			if super::multicam::clip_connected_sequence(&g.graph, block).is_some() {
+				return true;
+			}
+		}
+		false
+	}
+
+	fn multicam_enabled_on_selection(&self, clips: &[ClipId]) -> bool {
+		let Some(project) = self.project_ref() else {
+			return false;
+		};
+		for id in clips {
+			let Some(block) = graphops::id_of(id.0) else {
+				continue;
+			};
+			if graphops::clip_behavior(&graphops::lock(project).graph, block).is_none() {
+				continue;
+			}
+			let clip_ref = NodeRef::new(project.clone(), block);
+			if oaktimeline::multicam::clip_find_multicam(&clip_ref).is_some() {
+				return true;
+			}
+		}
+		false
+	}
+
+	fn multicam_enable_selected(&mut self, clips: Vec<ClipId>, enabled: bool, cx: &mut Context<Self>) {
+		let Some(project) = self.project.clone() else {
+			return;
+		};
+		// Resolve the selected clips' block nodes. Enable additionally needs
+		// each clip's connected sequence (the clip's source must be a
+		// sequence — the C++ `connected_viewer()` check); disable just walks
+		// every selected clip (`multicam_disable` skips clips without a
+		// multicam itself).
+		let mut all_clips: Vec<NodeId> = Vec::new();
+		let mut eligible: Vec<(NodeId, NodeId)> = Vec::new();
+		{
+			let g = graphops::lock(&project);
+			for id in &clips {
+				let Some(block) = graphops::id_of(id.0) else {
+					continue;
+				};
+				if graphops::clip_behavior(&g.graph, block).is_none() {
+					continue;
+				}
+				all_clips.push(block);
+				if let Some(seq) = super::multicam::clip_connected_sequence(&g.graph, block) {
+					eligible.push((block, seq));
+				}
+			}
+		}
+		let result = if enabled {
+			if eligible.is_empty() {
+				return;
+			}
+			// Group the clips by their connected sequence (one enable
+			// command per sequence; the common case is a single sequence).
+			let mut by_seq: HashMap<NodeId, Vec<NodeRef>> = HashMap::new();
+			for (block, seq) in &eligible {
+				by_seq
+					.entry(*seq)
+					.or_default()
+					.push(NodeRef::new(project.clone(), *block));
+			}
+			let children: Vec<_> = by_seq
+				.into_iter()
+				.map(|(seq, clips)| {
+					oaktimeline::multicam::multicam_enable(
+						clips,
+						NodeRef::new(project.clone(), seq),
+					)
+				})
+				.collect();
+			let label = oaktimeline::multicam::enable_label(eligible.len());
+			graphops::push_multi_command(children, &label)
+		} else {
+			let clip_refs: Vec<NodeRef> = all_clips
+				.iter()
+				.map(|block| NodeRef::new(project.clone(), *block))
+				.collect();
+			let label = oaktimeline::multicam::disable_label(all_clips.len());
+			graphops::push_command(oaktimeline::multicam::multicam_disable(clip_refs), &label)
+		};
+		self.apply_edit(result, "multicam enable/disable", cx);
+	}
+
+	fn multicam_switch_to(&mut self, source: i32, split_clip: bool, cx: &mut Context<Self>) {
+		let Some(project) = self.project.clone() else {
+			return;
+		};
+		let Some(seq) = self.sequence else {
+			return;
+		};
+		let Some(state) = self.multicam_state_internal() else {
+			return;
+		};
+		if source < 0 || source >= state.source_count {
+			return;
+		}
+		let Some(clip) = graphops::id_of(state.clip_id) else {
+			return;
+		};
+		let playhead = graphops::sequence_playhead(&graphops::lock(&project).graph, seq);
+		let cmd = oaktimeline::multicam::multicam_switch(
+			NodeRef::new(project.clone(), clip),
+			source,
+			split_clip,
+			playhead,
+		);
+		let result =
+			graphops::push_command(cmd, oaktimeline::multicam::SWITCH_LABEL);
+		self.apply_edit(result, "multicam switch", cx);
+	}
+
 	fn backend_name(&self) -> &'static str {
 		"real"
 	}
@@ -4860,6 +5262,125 @@ mod tests {
 		assert_eq!(cx.read(|app| engine.read(app).history_index()), (base + 2) as i64);
 		let entries = cx.read(|app| engine.read(app).history_entries());
 		assert!(entries.iter().all(|e| e.done), "the redo restored every row");
+
+		oakundo::global::clear().unwrap();
+	}
+
+	/// The multicam switch through the UI path (`multicam_switch_to`): it
+	/// lands on the global undo stack as ONE entry and the engine's
+	/// undo/redo round-trip it — the digit keys, the `⌘` variants and the
+	/// grid clicks all run this exact path. Also covers the timeline menu's
+	/// eligibility/checked state and the enable/disable detection.
+	#[gpui::test]
+	async fn real_engine_multicam_switch_round_trips_through_undo(
+		cx: &mut gpui::TestAppContext,
+	) {
+		use oaknode::block::clip_input::TEXTURE_INPUT;
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+
+		// A project whose clip is fed by a sequence (the multicam host).
+		let clip_id = cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				let project = graphops::create_project();
+				let seq = graphops::create_sequence(&project, "Multicam Test");
+				graphops::add_track(&project, seq, TrackType::Video).unwrap();
+				graphops::add_track(&project, seq, TrackType::Video).unwrap();
+				let clip = oaktimeline::util::block_clip_create(&project);
+				{
+					let mut g = graphops::lock(&project);
+					let c = g
+						.graph
+						.get_mut(clip.id)
+						.unwrap()
+						.behavior
+						.as_any_mut()
+						.unwrap()
+						.downcast_mut::<oaknode::block::ClipBlockBehavior>()
+						.unwrap();
+					c.core.range = oakcore_rs::TimeRange::new(
+						oakcore_rs::Rational::new(0, 1),
+						oakcore_rs::Rational::new(100, 1),
+					);
+					c.core.media_in = oakcore_rs::Rational::new(0, 1);
+				}
+				let track0 = {
+					let g = graphops::lock(&project);
+					graphops::track_ids(&g.graph, seq, TrackType::Video)[0]
+				};
+				oaktimeline::util::track_append_block(
+					&oaktimeline::util::NodeRef::new(project.clone(), track0),
+					&clip,
+				);
+				{
+					let mut g = graphops::lock(&project);
+					g.graph.connect(seq, clip.id, TEXTURE_INPUT, -1).unwrap();
+				}
+				let clip_id = ClipId(clip.id.identity());
+				engine.adopt_project(project, cx);
+				clip_id
+			})
+		});
+
+		// Select the clip and enable multicam through the UI path.
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.set_selected_clips(vec![clip_id], cx)
+			})
+		});
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.multicam_enable_selected(vec![clip_id], true, cx)
+			})
+		});
+
+		// The timeline menu's enable + checked state reflect the clip.
+		assert!(cx.read(|app| engine.read(app).multicam_eligible(&[clip_id])));
+		assert!(cx.read(|app| engine.read(app).multicam_enabled_on_selection(&[clip_id])));
+
+		// The detection (selection → clip → find_multicam) resolves the
+		// source count from the source sequence's video tracks.
+		let state = cx
+			.read(|app| engine.read(app).multicam_state())
+			.expect("a selected multicam clip is detected");
+		assert_eq!(state.source_count, 2, "two video tracks = two angles");
+		assert_eq!(state.current_source, 0);
+
+		// Switch through the UI path (no split: the playhead sits at the
+		// clip's in point, so the switch is a plain current_in write).
+		cx.update(|app| {
+			engine.update(app, |engine, cx| engine.multicam_switch_to(1, false, cx))
+		});
+		let state = cx
+			.read(|app| engine.read(app).multicam_state())
+			.expect("still detected after the switch");
+		assert_eq!(state.current_source, 1);
+
+		// ONE undo entry restores the previous source; redo re-applies it.
+		cx.update(|app| engine.update(app, |engine, cx| engine.undo(cx)));
+		assert_eq!(
+			cx.read(|app| engine.read(app).multicam_state()).unwrap().current_source,
+			0,
+			"undo restores the pre-switch source"
+		);
+		cx.update(|app| engine.update(app, |engine, cx| engine.redo(cx)));
+		assert_eq!(
+			cx.read(|app| engine.read(app).multicam_state()).unwrap().current_source,
+			1,
+			"redo re-applies the switched source"
+		);
+
+		// Disabling through the UI path clears the detection (the panel
+		// falls back to its empty state).
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.multicam_enable_selected(vec![clip_id], false, cx)
+			})
+		});
+		assert!(
+			cx.read(|app| engine.read(app).multicam_state()).is_none(),
+			"disabling multicam clears the detection"
+		);
 
 		oakundo::global::clear().unwrap();
 	}

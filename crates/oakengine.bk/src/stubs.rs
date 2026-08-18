@@ -49,7 +49,6 @@ pub mod common {
 
 	use oakcommon::colortransform::ColorTransform;
 	use oakcommon::configstore::ConfigStore;
-	use oakcommon::handle::{get, get_mut, make_owned};
 	use oakcommon::ocioutils::PixelFormat;
 	use oakcommon::videoparams::{ColorRange, Interlacing, VideoParams, VideoType};
 	use oakcommon::error::{OAKCOMMON_E_INVALID, OAKCOMMON_OK};

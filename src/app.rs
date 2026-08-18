@@ -64,6 +64,7 @@ use crate::panels::effect_library::EffectLibraryPanel;
 use crate::panels::history::HistoryPanel;
 use crate::panels::ids::*;
 use crate::panels::inspector::InspectorPanel;
+use crate::panels::multicam::MulticamPanel;
 use crate::panels::node_editor::NodeEditorPanel;
 use crate::panels::program_viewer::ProgramViewerPanel;
 use crate::panels::project_explorer::ProjectExplorerPanel;
@@ -200,6 +201,7 @@ impl<E: AppEngine> PanelRegistry for AppPanelRegistry<E> {
 				HISTORY => "history",
 				TIMELINE => "timeline",
 				EFFECT_LIBRARY => "effect-library",
+				MULTICAM => "multicam",
 				_ => return None,
 			}
 			.to_string(),
@@ -263,6 +265,12 @@ impl<E: AppEngine> PanelRegistry for AppPanelRegistry<E> {
 				}),
 				cx,
 			)),
+			"multicam" => Some(PanelHandle::new(
+				cx.new(|cx| {
+					MulticamPanel::new(self.engine.clone(), self.program_clock.clone(), window, cx)
+				}),
+				cx,
+			)),
 			_ => None,
 		}
 	}
@@ -319,6 +327,7 @@ struct ShellPanels<E: AppEngine> {
 	history: Entity<HistoryPanel<E>>,
 	timeline: Entity<TimelinePanel<E>>,
 	effect_library: Entity<EffectLibraryPanel<E>>,
+	multicam: Entity<MulticamPanel<E>>,
 }
 
 impl<E: AppEngine> OakApp<E> {
@@ -403,6 +412,8 @@ impl<E: AppEngine> OakApp<E> {
 		let history = cx.new(|cx| HistoryPanel::new(engine.clone(), window, cx));
 		let timeline_panel =
 			cx.new(|cx| TimelinePanel::new(engine.clone(), timeline.clone(), window, cx));
+		let multicam_panel =
+			cx.new(|cx| MulticamPanel::new(engine.clone(), program_clock.clone(), window, cx));
 
 		// Keep the panel entities for focused-panel command routing (the dock
 		// only hands back type-erased handles).
@@ -415,6 +426,7 @@ impl<E: AppEngine> OakApp<E> {
 			history: history.clone(),
 			timeline: timeline_panel.clone(),
 			effect_library: effect_library.clone(),
+			multicam: multicam_panel.clone(),
 		};
 
 		// Wire each panel's right-click menu: registry-backed items come
@@ -490,6 +502,17 @@ impl<E: AppEngine> OakApp<E> {
 				Some(DropTarget {
 					panel: None,
 					zone: DropZone::Bottom,
+				}),
+				cx,
+			);
+			// The multicam panel tabs behind the program viewer (the C++
+			// default is hidden; the 窗口 menu's Focus Multicam brings it
+			// forward). The program viewer stays the group's active tab.
+			dock.add_panel(
+				PanelHandle::new(multicam_panel, cx),
+				Some(DropTarget {
+					panel: Some(PROGRAM_VIEWER),
+					zone: DropZone::Center,
 				}),
 				cx,
 			);
@@ -715,6 +738,10 @@ impl<E: AppEngine> OakApp<E> {
 			EFFECT_LIBRARY => self.panels.effect_library.update(cx, |panel, cx| {
 				panel_commands::dispatch_to(panel, action, cx)
 			}),
+			MULTICAM => self
+				.panels
+				.multicam
+				.update(cx, |panel, cx| panel_commands::dispatch_to(panel, action, cx)),
 			_ => false,
 		}
 	}
@@ -894,6 +921,7 @@ impl<E: AppEngine> OakApp<E> {
 			A::FocusHistory => self.focus_panel(HISTORY, cx),
 			A::FocusTimeline => self.focus_panel(TIMELINE, cx),
 			A::FocusEffectLibrary => self.focus_panel(EFFECT_LIBRARY, cx),
+			A::FocusMulticam => self.focus_panel(MULTICAM, cx),
 			// --- Tools -----------------------------------------------------
 			A::Snapping => {
 				let enabled = !self.timeline.read(cx).state.snap_enabled;
@@ -919,6 +947,27 @@ impl<E: AppEngine> OakApp<E> {
 				self.rebuild_menu_bar(cx);
 			}
 			A::ProxySettings => self.open_proxy_dialog(cx),
+			// The multicam source-switch hotkeys are scoped to the Multicam
+			// panel (the focused-panel route handles them there); a fall-through
+			// from any other focused panel is a silent no-op.
+			A::MulticamSwitch1
+			| A::MulticamSwitch2
+			| A::MulticamSwitch3
+			| A::MulticamSwitch4
+			| A::MulticamSwitch5
+			| A::MulticamSwitch6
+			| A::MulticamSwitch7
+			| A::MulticamSwitch8
+			| A::MulticamSwitch9
+			| A::MulticamSwitchNoSplit1
+			| A::MulticamSwitchNoSplit2
+			| A::MulticamSwitchNoSplit3
+			| A::MulticamSwitchNoSplit4
+			| A::MulticamSwitchNoSplit5
+			| A::MulticamSwitchNoSplit6
+			| A::MulticamSwitchNoSplit7
+			| A::MulticamSwitchNoSplit8
+			| A::MulticamSwitchNoSplit9 => {}
 			// --- everything else is a placeholder --------------------------
 			other => println!(
 				"[action] {} not wired yet (placeholder)",
@@ -2122,7 +2171,8 @@ fn make_menus(state: MenuState) -> Vec<MenuBarEntry> {
 				menu_item(A::FocusInspector),
 				menu_item(A::FocusHistory),
 				menu_item(A::FocusTimeline),
-				menu_item(A::FocusEffectLibrary).separated(),
+				menu_item(A::FocusEffectLibrary),
+				menu_item(A::FocusMulticam).separated(),
 				menu_item(A::MaximizePanel),
 				menu_item(A::ResetDefaultLayout),
 			]),
@@ -2488,6 +2538,7 @@ mod tests {
 			&crate::panels::timeline::clip_menu(
 				crate::oakui::engine::SyncEligibility::default(),
 				&[],
+				None,
 			),
 			&mut ids,
 		);

@@ -27,6 +27,7 @@ pub mod commands;
 pub mod effect_library;
 pub mod history;
 pub mod inspector;
+pub mod multicam;
 pub mod node_editor;
 pub mod program_viewer;
 pub mod project_explorer;
@@ -55,6 +56,8 @@ pub mod ids {
 	pub const TIMELINE: PanelId = PanelId::new(7);
 	/// The effect library (效果库).
 	pub const EFFECT_LIBRARY: PanelId = PanelId::new(8);
+	/// The multicam panel (多机位).
+	pub const MULTICAM: PanelId = PanelId::new(9);
 }
 
 /// A small info chip used in viewer headers and the status bar: muted

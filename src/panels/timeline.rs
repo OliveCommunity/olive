@@ -222,11 +222,18 @@ impl<E: AppEngine> TimelinePanel<E> {
 			TimelineHit::Clip(_) => {
 				let ids: Vec<ClipId> =
 					self.timeline.read(cx).selection().iter().copied().collect();
-				let (sync, proxy) = {
+				let (sync, proxy, multicam) = {
 					let engine = self.engine.read(cx);
-					(engine.sync_eligibility(&ids), engine.clip_footage_entries(&ids))
+					(
+						engine.sync_eligibility(&ids),
+						engine.clip_footage_entries(&ids),
+						MulticamMenuState {
+							eligible: engine.multicam_eligible(&ids),
+							enabled: engine.multicam_enabled_on_selection(&ids),
+						},
+					)
 				};
-				clip_menu(sync, &proxy)
+				clip_menu(sync, &proxy, Some(multicam))
 			}
 			TimelineHit::Empty { .. } => empty_area_menu(),
 			TimelineHit::TrackHead(track) => {
@@ -311,6 +318,16 @@ impl<E: AppEngine> TimelinePanel<E> {
 			| LOCAL_TIMECODE_FRAMES
 			| LOCAL_TIMECODE_MILLISECONDS => {
 				println!("[timeline] timecode display {item} (not implemented yet)");
+			}
+			LOCAL_MULTICAM => {
+				// The C++ `multicam_enabled_triggered` flip: checked clips
+				// disable, unchecked ones enable.
+				let ids: Vec<ClipId> =
+					self.timeline.read(cx).selection().iter().copied().collect();
+				let enable = !self.engine.read(cx).multicam_enabled_on_selection(&ids);
+				self.engine.update(cx, |engine, cx| {
+					engine.multicam_enable_selected(ids, enable, cx)
+				});
 			}
 			_ => {
 				println!("[timeline] unhandled local menu item {item}");
@@ -906,15 +923,30 @@ fn properties_item(action: ActionId) -> MenuItem {
 	item
 }
 
+/// The multicam menu state of the selected clips (the C++ conditions in
+/// `timelinewidget.cpp::show_context_menu`: the Multi-Cam item enables when
+/// any selected clip's connected viewer is a sequence, and is checked when
+/// that clip's texture chain contains a multicam node).
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct MulticamMenuState {
+	/// Whether any selected clip can host multicam (its connected viewer is
+	/// a sequence).
+	pub eligible: bool,
+	/// Whether the selected clips are currently multicam-enabled.
+	pub enabled: bool,
+}
+
 /// The clip context menu (`TimelineWidget::show_context_menu` with a
 /// selection): the shared clip-edit section, color labels, the synchronize
 /// / cache / proxy groups, reveal entries and "Properties". `sync` and
 /// `proxy` carry the selection-derived enable state (the C++ enables the
 /// synchronize entries at ≥ 2 eligible clips and the proxy entries per
-/// the selected footage's proxy fields).
+/// the selected footage's proxy fields); `multicam` carries the Multi-Cam
+/// item's enable/checked state.
 pub(crate) fn clip_menu(
 	sync: crate::oakui::engine::SyncEligibility,
 	proxy: &[crate::oakui::engine::ProxyFootageRow],
+	multicam: Option<MulticamMenuState>,
 ) -> Menu {
 	let mut items = shared::edit_section(true);
 	// The C++ puts a separator between the edit section and the color
@@ -986,7 +1018,8 @@ pub(crate) fn clip_menu(
 	]);
 	items.push(MenuItem::new(0, i18n::tr("timeline.context.proxy")).with_submenu(proxy_menu));
 	// Reveal / multi-cam entries (the C++ shows them only when the clip is
-	// connected to a viewer; the mock keeps them visible but disabled).
+	// connected to a viewer; the reveal entries stay disabled — the Rust
+	// app has no footage-reveal surface yet).
 	items.push(
 		MenuItem::new(
 			LOCAL_REVEAL_FOOTAGE_VIEWER,
@@ -998,12 +1031,16 @@ pub(crate) fn clip_menu(
 		MenuItem::new(LOCAL_REVEAL_PROJECT, i18n::tr("timeline.context.reveal_in_project"))
 			.disabled(),
 	);
-	items.push(
-		MenuItem::new(LOCAL_MULTICAM, i18n::tr("timeline.context.multicam"))
-			.with_checked(false)
-			.disabled()
-			.separated(),
-	);
+	// Multi-Cam (checkable): enabled when any selected clip's connected
+	// viewer is a sequence, checked when that clip already has a multicam —
+	// the C++ `connected_viewer()` + `find_ways_node_arrives_here` checks.
+	let multicam = multicam.unwrap_or_default();
+	let mut multicam_item = MenuItem::new(LOCAL_MULTICAM, i18n::tr("timeline.context.multicam"))
+		.with_checked(multicam.enabled);
+	if !multicam.eligible {
+		multicam_item = multicam_item.disabled();
+	}
+	items.push(multicam_item.separated());
 	items.push(properties_item(ActionId::SpeedDuration));
 	Menu::new(items)
 }
@@ -1238,6 +1275,7 @@ mod tests {
 		let menu = clip_menu(
 			crate::oakui::engine::SyncEligibility::default(),
 			&[],
+			None,
 		);
 		// Color label item sits right after the edit section and carries a
 		// submenu of all 16 labels.
@@ -1333,6 +1371,7 @@ mod tests {
 				waveform: 1,
 			},
 			&rows,
+			None,
 		);
 		let find = |id: usize| {
 			menu.items
@@ -1362,6 +1401,63 @@ mod tests {
 		);
 		assert!(proxy_items[2].enabled, "reveal: one footage has a proxy");
 		assert!(proxy_items[3].enabled, "delete: one footage has a proxy");
+	}
+
+	/// The Multi-Cam item follows the selection's multicam state: it enables
+	/// when a selected clip's connected viewer is a sequence and is checked
+	/// when that clip already has a multicam (the C++ conditions).
+	#[test]
+	fn clip_menu_multicam_item_follows_the_state() {
+		// No eligible clip: disabled and unchecked.
+		let menu = clip_menu(
+			crate::oakui::engine::SyncEligibility::default(),
+			&[],
+			Some(MulticamMenuState {
+				eligible: false,
+				enabled: false,
+			}),
+		);
+		let item = menu
+			.items
+			.iter()
+			.find(|item| item.id == LOCAL_MULTICAM)
+			.expect("multi-cam item");
+		assert!(!item.enabled, "ineligible clips keep Multi-Cam disabled");
+		assert!(!item.checked.unwrap_or(false));
+
+		// Eligible + enabled: enabled and checked.
+		let menu = clip_menu(
+			crate::oakui::engine::SyncEligibility::default(),
+			&[],
+			Some(MulticamMenuState {
+				eligible: true,
+				enabled: true,
+			}),
+		);
+		let item = menu
+			.items
+			.iter()
+			.find(|item| item.id == LOCAL_MULTICAM)
+			.expect("multi-cam item");
+		assert!(item.enabled, "a sequence-fed clip enables Multi-Cam");
+		assert!(item.checked.unwrap_or(false), "checked when multicam present");
+
+		// Eligible but not enabled: enabled, unchecked.
+		let menu = clip_menu(
+			crate::oakui::engine::SyncEligibility::default(),
+			&[],
+			Some(MulticamMenuState {
+				eligible: true,
+				enabled: false,
+			}),
+		);
+		let item = menu
+			.items
+			.iter()
+			.find(|item| item.id == LOCAL_MULTICAM)
+			.expect("multi-cam item");
+		assert!(item.enabled);
+		assert!(!item.checked.unwrap_or(false));
 	}
 
 	/// The empty-area menu exposes the view toggles plus the sequence

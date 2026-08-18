@@ -199,6 +199,7 @@ define_actions! {
 	FocusHistory { cpp: "focushistory", i18n: "menu.window.history", keys: [], route: Global, menu_id: 606 };
 	FocusTimeline { cpp: "focustimeline", i18n: "menu.window.timeline", keys: [], route: Global, menu_id: 607 };
 	FocusEffectLibrary { cpp: "focuseffectlibrary", i18n: "menu.window.effect_library", keys: [], route: Global, menu_id: 608 };
+	FocusMulticam { cpp: "focusmulticam", i18n: "menu.window.multicam", keys: [], route: Global, menu_id: 609 };
 	MaximizePanel { cpp: "maximizepanel", i18n: "menu.window.maximize_panel", keys: ["`"], route: Global, menu_id: 1070 };
 	ResetDefaultLayout { cpp: "resetdefaultlayout", i18n: "menu.window.reset_layout", keys: [], route: Global, menu_id: 1071 };
 
@@ -231,6 +232,32 @@ define_actions! {
 	SyncBySourceTime { cpp: "syncsourcetime", i18n: "timeline.context.sync_source_time", keys: [], route: FocusedPanel, menu_id: 1130 };
 	SyncByWaveform { cpp: "syncwaveform", i18n: "timeline.context.sync_waveform", keys: ["ctrl-shift-w"], route: FocusedPanel, menu_id: 1131 };
 	SyncByWaveformSpeed { cpp: "syncwaveformspeed", i18n: "timeline.context.sync_waveform_speed", keys: [], route: FocusedPanel, menu_id: 1132 };
+	// The multicam source-switch hotkeys. Like the C++ `QShortcut`s attached
+	// directly to the `MulticamWidget`, they are panel-context hotkeys, not
+	// menu items: `menu_id` is [`HIDDEN_MENU_ID`] and the menus never list
+	// them. They route to the focused panel (the multicam panel handles
+	// them; any other focused panel falls through to the no-op global
+	// handler). The digit keys switch and split the clip (the C++ plain
+	// `1`..`9`); the `secondary-` variants switch without splitting
+	// (`Ctrl+1`..`Ctrl+9`).
+	MulticamSwitch1 { cpp: "multicamswitch1", i18n: "multicam.switch_1", keys: ["1"], route: FocusedPanel, menu_id: 0 };
+	MulticamSwitch2 { cpp: "multicamswitch2", i18n: "multicam.switch_2", keys: ["2"], route: FocusedPanel, menu_id: 0 };
+	MulticamSwitch3 { cpp: "multicamswitch3", i18n: "multicam.switch_3", keys: ["3"], route: FocusedPanel, menu_id: 0 };
+	MulticamSwitch4 { cpp: "multicamswitch4", i18n: "multicam.switch_4", keys: ["4"], route: FocusedPanel, menu_id: 0 };
+	MulticamSwitch5 { cpp: "multicamswitch5", i18n: "multicam.switch_5", keys: ["5"], route: FocusedPanel, menu_id: 0 };
+	MulticamSwitch6 { cpp: "multicamswitch6", i18n: "multicam.switch_6", keys: ["6"], route: FocusedPanel, menu_id: 0 };
+	MulticamSwitch7 { cpp: "multicamswitch7", i18n: "multicam.switch_7", keys: ["7"], route: FocusedPanel, menu_id: 0 };
+	MulticamSwitch8 { cpp: "multicamswitch8", i18n: "multicam.switch_8", keys: ["8"], route: FocusedPanel, menu_id: 0 };
+	MulticamSwitch9 { cpp: "multicamswitch9", i18n: "multicam.switch_9", keys: ["9"], route: FocusedPanel, menu_id: 0 };
+	MulticamSwitchNoSplit1 { cpp: "multicamswitch1nosplit", i18n: "multicam.switch_1", keys: ["secondary-1"], route: FocusedPanel, menu_id: 0 };
+	MulticamSwitchNoSplit2 { cpp: "multicamswitch2nosplit", i18n: "multicam.switch_2", keys: ["secondary-2"], route: FocusedPanel, menu_id: 0 };
+	MulticamSwitchNoSplit3 { cpp: "multicamswitch3nosplit", i18n: "multicam.switch_3", keys: ["secondary-3"], route: FocusedPanel, menu_id: 0 };
+	MulticamSwitchNoSplit4 { cpp: "multicamswitch4nosplit", i18n: "multicam.switch_4", keys: ["secondary-4"], route: FocusedPanel, menu_id: 0 };
+	MulticamSwitchNoSplit5 { cpp: "multicamswitch5nosplit", i18n: "multicam.switch_5", keys: ["secondary-5"], route: FocusedPanel, menu_id: 0 };
+	MulticamSwitchNoSplit6 { cpp: "multicamswitch6nosplit", i18n: "multicam.switch_6", keys: ["secondary-6"], route: FocusedPanel, menu_id: 0 };
+	MulticamSwitchNoSplit7 { cpp: "multicamswitch7nosplit", i18n: "multicam.switch_7", keys: ["secondary-7"], route: FocusedPanel, menu_id: 0 };
+	MulticamSwitchNoSplit8 { cpp: "multicamswitch8nosplit", i18n: "multicam.switch_8", keys: ["secondary-8"], route: FocusedPanel, menu_id: 0 };
+	MulticamSwitchNoSplit9 { cpp: "multicamswitch9nosplit", i18n: "multicam.switch_9", keys: ["secondary-9"], route: FocusedPanel, menu_id: 0 };
 	Preferences { cpp: "prefs", i18n: "menu.view.preferences", keys: ["secondary-,"], route: Global, menu_id: 305 };
 
 	// --- Help ---------------------------------------------------------------
@@ -276,8 +303,20 @@ impl ActionEntry {
 	}
 }
 
-/// The registry entry bound to a menu item id, if any.
+/// The menu id of the panel-context hotkeys that have no menu item (the
+/// multicam source-switch keys). [`ActionId::menu_id`] returns it for those
+/// actions; the menus never build an item with this id, and
+/// [`entry_for_menu_id`] refuses it so a stray menu dispatch can never hit
+/// a hidden action.
+pub const HIDDEN_MENU_ID: usize = 0;
+
+/// The registry entry bound to a menu item id, if any. Menu ids
+/// [`HIDDEN_MENU_ID`] (the panel-context hotkeys' placeholder) resolve to
+/// `None`.
 pub fn entry_for_menu_id(id: usize) -> Option<&'static ActionEntry> {
+	if id == HIDDEN_MENU_ID {
+		return None;
+	}
 	REGISTRY.iter().find(|entry| entry.action.menu_id() == id)
 }
 
@@ -432,11 +471,15 @@ mod tests {
 	}
 
 	/// Every menu id is unique (the menu bar reports plain ids; a duplicate
-	/// would make two items dispatch the same action).
+	/// would make two items dispatch the same action). Panel-context
+	/// hotkeys share [`HIDDEN_MENU_ID`] (no menu item) and are skipped.
 	#[test]
 	fn registry_menu_ids_are_unique() {
 		let mut seen = std::collections::HashSet::new();
 		for entry in REGISTRY {
+			if entry.menu_id() == HIDDEN_MENU_ID {
+				continue;
+			}
 			assert!(
 				seen.insert(entry.menu_id()),
 				"duplicate menu id {} ({})",
@@ -508,10 +551,17 @@ mod tests {
 			&crate::panels::timeline::clip_menu(
 				crate::oakui::engine::SyncEligibility::default(),
 				&[],
+				None,
 			),
 			&mut ids,
 		);
 		for entry in REGISTRY {
+			// The panel-context hotkeys (multicam source switches) are bound
+			// to the focused panel, not to any menu — the C++ attaches them
+			// straight to the MulticamWidget.
+			if entry.menu_id() == HIDDEN_MENU_ID {
+				continue;
+			}
 			assert!(
 				ids.contains(&entry.menu_id()),
 				"action {} (menu id {}) has no menu item",

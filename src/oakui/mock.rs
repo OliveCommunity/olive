@@ -61,10 +61,16 @@ use gpui_widgets::audio_meter::AudioMeterDataSource;
 use gpui_widgets::project_explorer::{ProjectDataSource, ProjectEntry};
 use gpui_widgets::viewer::PlaybackClock;
 
+use oakcore_rs::Rational;
+use oaknode::block::clip_input;
+use oaknode::track::TrackType;
+use oaktimeline::util::{block_clip_create, track_append_block};
+
 use super::engine::{
-	AppEngine, EngineGateway, ExportEvent, ExportSession, LibraryProject, Monitor, Project,
-	ScopeData, Sequence, VideoFormat,
+	AppEngine, EngineGateway, ExportEvent, ExportSession, LibraryProject, Monitor, MulticamState,
+	Project, ScopeData, Sequence, VideoFormat,
 };
+use super::graphops;
 use super::transport::TransportState;
 
 /// The demo sequence length: 00:04:18:18 at 25 fps.
@@ -533,6 +539,15 @@ pub struct MockEngine {
 	proxy_custom: HashMap<u64, crate::oakui::engine::ProxyParamsUi>,
 	/// The demo's global "Use Proxy Media" switch.
 	use_proxy: bool,
+	/// The demo multicam graph: a real oaknode project whose source
+	/// sequence's video tracks are the angles. Created lazily so the demo
+	/// panel shows a genuine graph behind its synthetic frames — and the
+	/// switch / enable / disable commands run on the real command path
+	/// (`oaktimeline::multicam` + the global undo stack).
+	multicam_graph: Mutex<Option<DemoMulticamGraph>>,
+	/// The demo multicam angle-frame cache: source → (playhead, image), so
+	/// a paused cell never regenerates its picture.
+	multicam_frames: Mutex<HashMap<i32, (i64, Arc<RenderImage>)>>,
 }
 
 impl MockEngine {
@@ -791,6 +806,8 @@ impl MockEngine {
 			proxy_enabled: HashMap::new(),
 			proxy_custom: HashMap::new(),
 			use_proxy: true,
+			multicam_graph: Mutex::new(None),
+			multicam_frames: Mutex::new(HashMap::new()),
 		};
 		// The demo graph is born connected: derive every port's `connected`
 		// flag from the edge list.
@@ -1952,6 +1969,86 @@ impl AppEngine for MockEngine {
 			.collect()
 	}
 
+	fn multicam_state(&self) -> Option<MulticamState> {
+		self.mock_multicam_state()
+	}
+
+	fn multicam_angle_frame(&mut self, source: i32, cx: &mut Context<Self>) -> Option<Arc<RenderImage>> {
+		let playhead = self.clock_frame(Monitor::Program, cx).0;
+		self.mock_multicam_angle_frame(source, playhead)
+	}
+
+	fn multicam_eligible(&self, _clips: &[ClipId]) -> bool {
+		// The demo always exposes a multicam setup, so the timeline menu
+		// item is enabled (the mock has no clip→viewer wiring to judge).
+		self.mock_multicam_state().is_some()
+	}
+
+	fn multicam_enabled_on_selection(&self, _clips: &[ClipId]) -> bool {
+		self.mock_multicam_state().is_some()
+	}
+
+	fn multicam_enable_selected(&mut self, _clips: Vec<ClipId>, enabled: bool, cx: &mut Context<Self>) {
+		// Run the real enable/disable commands on the demo graph (one undo
+		// entry each, like the real engine).
+		let mut guard = self.ensure_demo_multicam();
+		let Some(demo) = guard.as_mut() else {
+			return;
+		};
+		let clip = demo.clip.clone();
+		if enabled {
+			if demo.multicam.is_some() {
+				return; // The demo starts enabled; enabling again is a no-op.
+			}
+			let sequence = demo.sequence.clone();
+			let cmd = oaktimeline::multicam::multicam_enable(vec![clip], sequence);
+			let label = oaktimeline::multicam::enable_label(1);
+			if let Err(e) = super::graphops::push_command(cmd, &label) {
+				println!("[mock] multicam enable failed: {e}");
+			}
+		} else {
+			let cmd = oaktimeline::multicam::multicam_disable(vec![clip]);
+			let label = oaktimeline::multicam::disable_label(1);
+			if let Err(e) = super::graphops::push_command(cmd, &label) {
+				println!("[mock] multicam disable failed: {e}");
+			}
+		}
+		// Re-resolve the multicam node after the command.
+		demo.multicam = oaktimeline::multicam::clip_find_multicam(&demo.clip);
+		self.multicam_frames.lock().unwrap().clear();
+		cx.notify();
+	}
+
+	fn multicam_switch_to(&mut self, source: i32, split_clip: bool, cx: &mut Context<Self>) {
+		let guard = self.ensure_demo_multicam();
+		let Some(demo) = guard.as_ref() else {
+			return;
+		};
+		let Some(state) = crate::oakui::multicam::multicam_state_for_clip(&demo.project, demo.clip.id)
+		else {
+			return;
+		};
+		if source < 0 || source >= state.source_count {
+			return;
+		}
+		let playhead_frame = self.clock_frame(Monitor::Program, cx).0;
+		let playhead = Rational::new(playhead_frame.max(0), 25);
+		let cmd = oaktimeline::multicam::multicam_switch(
+			demo.clip.clone(),
+			source,
+			split_clip,
+			playhead,
+		);
+		if let Err(e) =
+			super::graphops::push_command(cmd, oaktimeline::multicam::SWITCH_LABEL)
+		{
+			println!("[mock] multicam switch failed: {e}");
+		}
+		drop(guard);
+		self.multicam_frames.lock().unwrap().clear();
+		cx.notify();
+	}
+
 	fn backend_name(&self) -> &'static str {
 		"mock"
 	}
@@ -2075,6 +2172,206 @@ impl ProjectDataSource for MockEngine {
 impl AudioMeterDataSource for MockEngine {
 	fn levels(&self) -> Vec<f32> {
 		self.meter_levels()
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Demo multicam (the mock's multicam panel grid)
+// ---------------------------------------------------------------------------
+
+/// The mock's demo multicam: a real oaknode graph whose source sequence's
+/// video tracks are the angles. The panel's frames are synthetic colored
+/// cells, but the switch / enable / disable commands run on the REAL command
+/// path (`oaktimeline::multicam` + the global undo stack), so the demo
+/// exercises the same machinery the real engine uses.
+struct DemoMulticamGraph {
+	/// The project holding the graph.
+	project: graphops::ProjectRef,
+	/// The clip whose texture input the multicam feeds.
+	clip: oaktimeline::util::NodeRef,
+	/// The source sequence (its video tracks are the angles).
+	sequence: oaktimeline::util::NodeRef,
+	/// The multicam node (present while enabled).
+	multicam: Option<oaktimeline::util::NodeRef>,
+}
+
+impl DemoMulticamGraph {
+	/// Builds the demo graph: a sequence with four video tracks, one clip on
+	/// the top track fed by the sequence, multicam already enabled. The
+	/// tracks are built directly in the graph (no `Add Track` undo entries —
+	/// the demo's initial state is not a user edit).
+	fn build() -> Self {
+		use oaknode::node::NodeCore;
+		use oaknode::sequence::SequenceBehavior;
+		use oaknode::track::{TrackBehavior, TrackListBehavior};
+
+		let project = graphops::create_project();
+		let sequence = graphops::create_sequence(&project, "Multicam Demo");
+		// A video track list with four tracks, wired into the sequence.
+		{
+			let mut g = graphops::lock(&project);
+			let (core, behavior) = TrackListBehavior::create();
+			let mut behavior = behavior;
+			let list = behavior
+				.as_any_mut()
+				.unwrap()
+				.downcast_mut::<TrackListBehavior>()
+				.unwrap();
+			list.kind = TrackType::Video;
+			list.sequence = Some(sequence);
+			let list_id = g.graph.add_node(core, behavior);
+			for _ in 0..4 {
+				let (core, behavior) =
+					(NodeCore::new(), Box::new(TrackBehavior::new(TrackType::Video)));
+				let track_id = g.graph.add_node(core, behavior);
+				let t = g
+					.graph
+					.get_mut(track_id)
+					.unwrap()
+					.behavior
+					.as_any_mut()
+					.unwrap()
+					.downcast_mut::<TrackBehavior>()
+					.unwrap();
+				t.kind = TrackType::Video;
+				t.track_list = Some(list_id);
+				let l = g
+					.graph
+					.get_mut(list_id)
+					.unwrap()
+					.behavior
+					.as_any_mut()
+					.unwrap()
+					.downcast_mut::<TrackListBehavior>()
+					.unwrap();
+				l.tracks.push(track_id);
+			}
+			let s = g
+				.graph
+				.get_mut(sequence)
+				.unwrap()
+				.behavior
+				.as_any_mut()
+				.unwrap()
+				.downcast_mut::<SequenceBehavior>()
+				.unwrap();
+			s.track_lists.push(list_id);
+		}
+		let clip = block_clip_create(&project);
+		{
+			let mut g = graphops::lock(&project);
+			let c = g
+				.graph
+				.get_mut(clip.id)
+				.unwrap()
+				.behavior
+				.as_any_mut()
+				.unwrap()
+				.downcast_mut::<oaknode::block::ClipBlockBehavior>()
+				.unwrap();
+			c.core.range = oakcore_rs::TimeRange::new(Rational::new(0, 1), Rational::new(200, 1));
+			c.core.media_in = Rational::new(0, 1);
+		}
+		let track0 = {
+			let g = graphops::lock(&project);
+			graphops::track_ids(&g.graph, sequence, TrackType::Video)[0]
+		};
+		let track0 = oaktimeline::util::NodeRef::new(project.clone(), track0);
+		track_append_block(&track0, &clip);
+		{
+			let mut g = graphops::lock(&project);
+			g.graph
+				.connect(sequence, clip.id, clip_input::TEXTURE_INPUT, -1)
+				.unwrap();
+		}
+		// Enable multicam through the real command (kept out of the undo
+		// stack — it is the demo's initial state, not a user edit).
+		let mut enable = oaktimeline::multicam::MultiCamEnableCommand::new(
+			vec![clip.clone()],
+			oaktimeline::util::NodeRef::new(project.clone(), sequence),
+		);
+		enable.redo();
+		let multicam = oaktimeline::multicam::clip_find_multicam(&clip);
+		let sequence = oaktimeline::util::NodeRef::new(project.clone(), sequence);
+		DemoMulticamGraph {
+			project,
+			clip,
+			sequence,
+			multicam,
+		}
+	}
+}
+
+impl MockEngine {
+	/// The demo multicam graph, built on first access.
+	fn ensure_demo_multicam(&self) -> std::sync::MutexGuard<'_, Option<DemoMulticamGraph>> {
+		let mut guard = self.multicam_graph.lock().unwrap();
+		if guard.is_none() {
+			*guard = Some(DemoMulticamGraph::build());
+		}
+		guard
+	}
+
+	/// The demo multicam state (the panel's grid): source count = the demo
+	/// sequence's video track count, current source read from the multicam
+	/// node.
+	fn mock_multicam_state(&self) -> Option<MulticamState> {
+		let guard = self.ensure_demo_multicam();
+		let demo = guard.as_ref()?;
+		let state = crate::oakui::multicam::multicam_state_for_clip(&demo.project, demo.clip.id)?;
+		Some(state)
+	}
+
+	/// The demo angle frame: a solid colored cell per source with a moving
+	/// white stripe (the mock cannot decode media; the cells are synthetic
+	/// but the grid geometry and the switch commands are real).
+	fn demo_angle_image(source: i32, playhead: i64) -> Option<Arc<RenderImage>> {
+		const W: u32 = 160;
+		const H: u32 = 90;
+		let palette: [(u8, u8, u8); 9] = [
+			(255, 0, 0),
+			(0, 255, 0),
+			(0, 0, 255),
+			(255, 255, 0),
+			(255, 0, 255),
+			(0, 255, 255),
+			(255, 128, 0),
+			(128, 0, 255),
+			(0, 128, 255),
+		];
+		let (pr, pg, pb) = palette[source.rem_euclid(9) as usize];
+		let stripe = (playhead * 6) % W as i64;
+		let mut bytes = Vec::with_capacity((W * H * 4) as usize);
+		for y in 0..H {
+			for x in 0..W {
+				let (r, g, b) = if (x as i64 - stripe).abs() < 6 {
+					(255, 255, 255)
+				} else if (y as i64) < 18 {
+					(pr, pg, pb)
+				} else {
+					// Darken below the "label" band so the cells read as
+					// distinct angles.
+					(pr / 2, pg / 2, pb / 2)
+				};
+				// BGRA8 display order.
+				bytes.extend_from_slice(&[b, g, r, 255]);
+			}
+		}
+		crate::oakui::frames::bgra_bytes_to_render_image(W, H, &bytes).map(Arc::new)
+	}
+
+	/// The demo angle frame for `source` at the current program playhead,
+	/// cached per (source, playhead) so a paused cell never regenerates.
+	fn mock_multicam_angle_frame(&self, source: i32, playhead: i64) -> Option<Arc<RenderImage>> {
+		let mut cache = self.multicam_frames.lock().unwrap();
+		if let Some((cached_playhead, image)) = cache.get(&source) {
+			if *cached_playhead == playhead {
+				return Some(image.clone());
+			}
+		}
+		let image = Self::demo_angle_image(source, playhead)?;
+		cache.insert(source, (playhead, image.clone()));
+		Some(image)
 	}
 }
 

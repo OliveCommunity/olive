@@ -186,6 +186,103 @@ pub fn video_montage(p: &ProjectRef, seq: NodeId, time: Rational) -> Vec<Montage
 	clips
 }
 
+/// The video montage at sequence time `time` containing ONLY the clip on
+/// `track` (a track of the sequence's video track list), if any covers
+/// `time`. This is the multicam angle render: each angle is the source
+/// sequence's track `i` at the playhead, so the montage carries just that
+/// track's clip instead of the whole stack.
+pub fn single_track_video_montage(
+	p: &ProjectRef,
+	seq: NodeId,
+	track: NodeId,
+	time: Rational,
+) -> Vec<MontageClip> {
+	let g = lock(p);
+	let mut clips = Vec::new();
+	let Some(s) = sequence_behavior(&g.graph, seq) else {
+		return clips;
+	};
+	// The track must belong to the sequence's video track list.
+	let in_list = s.track_lists.iter().any(|&list_id| {
+		track_list_behavior(&g.graph, list_id)
+			.map(|l| l.kind == TrackType::Video && l.tracks.contains(&track))
+			.unwrap_or(false)
+	});
+	if !in_list {
+		return clips;
+	}
+	let Some(track) = track_behavior(&g.graph, track) else {
+		return clips;
+	};
+	if track.muted {
+		return clips;
+	}
+	for &block_id in &track.blocks {
+		let Some(clip) = clip_behavior(&g.graph, block_id) else {
+			continue;
+		};
+		let in_ = clip.core.in_();
+		let out = clip.core.out();
+		if time < in_ || time >= out {
+			continue;
+		}
+		let Some((filename, stream_index)) = clip_preview_media(&g.graph, block_id, true) else {
+			continue;
+		};
+		clips.push(MontageClip {
+			filename,
+			stream_index,
+			in_time: in_,
+			out_time: out,
+			media_in: clip.core.media_in,
+			gain: 1.0,
+		});
+	}
+	clips
+}
+
+/// Build the video ticket params for one multicam angle: the clip on
+/// `track` (a video track of `seq`, the multicam's source sequence) at the
+/// playhead timestamp `frame_ts`.
+pub fn multicam_angle_frame_params(
+	p: &ProjectRef,
+	seq: NodeId,
+	track: NodeId,
+	frame_ts: i64,
+	tb: (i64, i64),
+	width: i32,
+	height: i32,
+) -> Result<VideoTicketParams, String> {
+	validate_geometry(width, height, tb)?;
+	let time = Rational::new(frame_ts * tb.0, tb.1);
+	Ok(VideoTicketParams {
+		viewer: seq.identity(),
+		time,
+		force_size: Some((width, height)),
+		force_format: None,
+		cache: None,
+		cache_dir: None,
+		cache_id: None,
+		cache_timebase: None,
+		footage: None,
+		montage: single_track_video_montage(p, seq, track, time),
+	})
+}
+
+/// Render one multicam angle frame (the clip on `track` of the source
+/// sequence at `frame_ts`) into a `(width, height)` frame.
+pub fn render_multicam_angle_frame(
+	p: &ProjectRef,
+	seq: NodeId,
+	track: NodeId,
+	frame_ts: i64,
+	tb: (i64, i64),
+	width: i32,
+	height: i32,
+) -> Result<RenderedFrame, String> {
+	render_video(multicam_angle_frame_params(p, seq, track, frame_ts, tb, width, height)?)
+}
+
 /// The audio montage over `range`: every audio clip overlapping the
 /// range, media times resolved from the clip ranges, audio stream 1.
 /// Muted tracks are silenced (skipped entirely).
@@ -703,6 +800,56 @@ mod tests {
 			video_montage(&project, seq, at(-1)).is_empty(),
 			"a negative time covers nothing"
 		);
+		oakundo::global::clear().unwrap();
+		let _ = std::fs::remove_file(&media);
+	}
+
+	/// The multicam angle montage ([`single_track_video_montage`]) carries
+	/// ONLY the clip on the requested track — the whole-stack `video_montage`
+	/// is the parity reference. This is the montage the angle-frame ticket
+	/// renders for each grid cell.
+	#[test]
+	fn single_track_montage_isolates_its_track() {
+		let _media = media_lock();
+		let media =
+			std::env::temp_dir().join(format!("oakapp_montage_ang_{}.mp4", std::process::id()));
+		oakcodec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate test media");
+
+		let (project, seq, footage) = project_with_clip(&media);
+		graphops::add_track(&project, seq, TrackType::Video).expect("add a second video track");
+		// A second clip on track 1 overlapping the same time.
+		graphops::place_footage_clip(&project, seq, footage, TrackType::Video, 1, 0, 10, 0)
+			.expect("place the second clip");
+		let tb = graphops::sequence_time_base(&lock(&project).graph, seq).unwrap();
+		let at = |frame: i64| graphops::ts_to_rational(frame, tb);
+		let tracks = {
+			let g = lock(&project);
+			graphops::track_ids(&g.graph, seq, TrackType::Video)
+		};
+		assert_eq!(tracks.len(), 2, "two video tracks");
+
+		// The whole stack sees both clips; the single-track montage sees only
+		// its own track's clip.
+		assert_eq!(video_montage(&project, seq, at(0)).len(), 2);
+		let track0_only = single_track_video_montage(&project, seq, tracks[0], at(0));
+		assert_eq!(track0_only.len(), 1, "track 0 contributes its own clip");
+		assert_eq!(track0_only[0].filename, media.to_string_lossy());
+		let track1_only = single_track_video_montage(&project, seq, tracks[1], at(0));
+		assert_eq!(track1_only.len(), 1, "track 1 contributes its own clip");
+
+		// A hidden video track contributes nothing (the angle's track is
+		// skipped, matching the full montage's muted-track rule).
+		graphops::set_track_muted(&project, tracks[0], true).expect("hide track 0");
+		assert!(
+			single_track_video_montage(&project, seq, tracks[0], at(0)).is_empty(),
+			"a hidden angle track renders nothing"
+		);
+		assert_eq!(
+			single_track_video_montage(&project, seq, tracks[1], at(0)).len(),
+			1,
+			"the other track is unaffected"
+		);
+
 		oakundo::global::clear().unwrap();
 		let _ = std::fs::remove_file(&media);
 	}

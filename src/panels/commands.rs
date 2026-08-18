@@ -192,6 +192,16 @@ pub trait PanelCommandHandler: Sized {
 		false
 	}
 
+	// --- multi-camera (the Multicam panel's source-switch hotkeys) ---------
+	/// Switches the panel's multicam to source index `source`. `split_clip`
+	/// = the change applies from the playhead forward (the clip is split
+	/// first). The Multicam panel handles it; every other panel falls
+	/// through to the shell's no-op handler.
+	fn multicam_switch(&mut self, source: i32, split_clip: bool, cx: &mut Context<Self>) -> bool {
+		let _ = (source, split_clip, cx);
+		false
+	}
+
 	// --- view ----------------------------------------------------------------
 	fn zoom_in(&mut self, _cx: &mut Context<Self>) -> bool {
 		false
@@ -267,6 +277,24 @@ pub fn dispatch_to<P: PanelCommandHandler>(
 		ActionId::SyncBySourceTime => panel.sync_by_source_time(cx),
 		ActionId::SyncByWaveform => panel.sync_by_waveform(cx),
 		ActionId::SyncByWaveformSpeed => panel.sync_by_waveform_speed(cx),
+		ActionId::MulticamSwitch1 => panel.multicam_switch(0, true, cx),
+		ActionId::MulticamSwitch2 => panel.multicam_switch(1, true, cx),
+		ActionId::MulticamSwitch3 => panel.multicam_switch(2, true, cx),
+		ActionId::MulticamSwitch4 => panel.multicam_switch(3, true, cx),
+		ActionId::MulticamSwitch5 => panel.multicam_switch(4, true, cx),
+		ActionId::MulticamSwitch6 => panel.multicam_switch(5, true, cx),
+		ActionId::MulticamSwitch7 => panel.multicam_switch(6, true, cx),
+		ActionId::MulticamSwitch8 => panel.multicam_switch(7, true, cx),
+		ActionId::MulticamSwitch9 => panel.multicam_switch(8, true, cx),
+		ActionId::MulticamSwitchNoSplit1 => panel.multicam_switch(0, false, cx),
+		ActionId::MulticamSwitchNoSplit2 => panel.multicam_switch(1, false, cx),
+		ActionId::MulticamSwitchNoSplit3 => panel.multicam_switch(2, false, cx),
+		ActionId::MulticamSwitchNoSplit4 => panel.multicam_switch(3, false, cx),
+		ActionId::MulticamSwitchNoSplit5 => panel.multicam_switch(4, false, cx),
+		ActionId::MulticamSwitchNoSplit6 => panel.multicam_switch(5, false, cx),
+		ActionId::MulticamSwitchNoSplit7 => panel.multicam_switch(6, false, cx),
+		ActionId::MulticamSwitchNoSplit8 => panel.multicam_switch(7, false, cx),
+		ActionId::MulticamSwitchNoSplit9 => panel.multicam_switch(8, false, cx),
 		ActionId::ZoomIn => panel.zoom_in(cx),
 		ActionId::ZoomOut => panel.zoom_out(cx),
 		ActionId::IncreaseTrackHeight => panel.increase_track_height(cx),

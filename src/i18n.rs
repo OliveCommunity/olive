@@ -283,6 +283,7 @@ const EN: &[(&str, &str)] = &[
 	("menu.window.history", "History"),
 	("menu.window.timeline", "Timeline"),
 	("menu.window.effect_library", "Effect Library"),
+	("menu.window.multicam", "Multi-Cam"),
 	("menu.window.maximize_panel", "Maximize Panel"),
 	("menu.window.reset_layout", "Reset Layout"),
 	// --- Tools ---
@@ -324,6 +325,18 @@ const EN: &[(&str, &str)] = &[
 	("panel.history", "History"),
 	("panel.timeline", "Timeline"),
 	("panel.effect_library", "Effect Library"),
+	("panel.multicam", "Multi-Cam"),
+	// --- multicam panel ---
+	("multicam.no_multicam", "No multi-camera clip detected"),
+	("multicam.switch_1", "Switch to Camera 1"),
+	("multicam.switch_2", "Switch to Camera 2"),
+	("multicam.switch_3", "Switch to Camera 3"),
+	("multicam.switch_4", "Switch to Camera 4"),
+	("multicam.switch_5", "Switch to Camera 5"),
+	("multicam.switch_6", "Switch to Camera 6"),
+	("multicam.switch_7", "Switch to Camera 7"),
+	("multicam.switch_8", "Switch to Camera 8"),
+	("multicam.switch_9", "Switch to Camera 9"),
 	// --- effect library ---
 	("effect_library.hint", "Double-click to add to the selected clip"),
 	// --- status bar ---
@@ -701,6 +714,7 @@ const ZH: &[(&str, &str)] = &[
 	("menu.window.history", "历史记录"),
 	("menu.window.timeline", "时间线"),
 	("menu.window.effect_library", "效果库"),
+	("menu.window.multicam", "多机位"),
 	("menu.window.maximize_panel", "最大化面板"),
 	("menu.window.reset_layout", "重置布局"),
 	// --- Tools ---
@@ -742,6 +756,18 @@ const ZH: &[(&str, &str)] = &[
 	("panel.history", "历史记录"),
 	("panel.timeline", "时间线"),
 	("panel.effect_library", "效果库"),
+	("panel.multicam", "多机位"),
+	// --- multicam panel ---
+	("multicam.no_multicam", "未检测到多机位片段"),
+	("multicam.switch_1", "切换到机位 1"),
+	("multicam.switch_2", "切换到机位 2"),
+	("multicam.switch_3", "切换到机位 3"),
+	("multicam.switch_4", "切换到机位 4"),
+	("multicam.switch_5", "切换到机位 5"),
+	("multicam.switch_6", "切换到机位 6"),
+	("multicam.switch_7", "切换到机位 7"),
+	("multicam.switch_8", "切换到机位 8"),
+	("multicam.switch_9", "切换到机位 9"),
 	// --- effect library ---
 	("effect_library.hint", "双击添加到选中片段"),
 	// --- status bar ---
