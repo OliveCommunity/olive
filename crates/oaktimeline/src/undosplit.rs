@@ -31,12 +31,13 @@
 
 use oakcore_rs::Rational;
 use oaknode::graph::NodeEntry;
+use oaknode::id::NodeId;
 use oakundo::undocommand::UndoCommand;
 
 use crate::util::{
-	block_add_to_graph, block_in, block_length, block_out, block_remove_from_graph,
-	block_set_length_and_media_in, block_set_length_and_media_out, block_track,
-	track_insert_block_after, track_ripple_remove_block, GraphBlockRange, NodeRef,
+	block_in, block_length, block_out, block_set_length_and_media_in,
+	block_set_length_and_media_out, block_track, track_insert_block_after,
+	track_ripple_remove_block, GraphBlockRange, NodeRef,
 };
 
 /// `BlockSplitCommand` — split one block at a point
@@ -46,6 +47,15 @@ use crate::util::{
 /// the first half `[in, point)`) and anchors the cloned `new_block` at its
 /// out-point (it becomes the second half `[point, out)`), inserted right
 /// after the original so the track order mirrors the timeline order.
+///
+/// The second half is a copy of the original block's whole dependency
+/// graph (C++ `BlockSplitCommand::prepare` calls `Node::copy_node_in_graph`
+/// — `// CPP-PARITY: timelineundosplit.cpp:34-39`): the block's upstream
+/// nodes (effects, the MultiCamNode, ...) are cloned too, so the two halves
+/// own independent copies. Bin items (footage, sequences — `IS_ITEM`) are
+/// shared, exactly as `Graph::copy_node_and_dependency_graph_minus_items`
+/// defines. `undo` detaches the whole copied subgraph (not just the second
+/// block) and the next `redo` re-attaches it identity-preserving.
 pub struct BlockSplitCommand {
 	/// Block to split.
 	block: NodeRef,
@@ -53,9 +63,17 @@ pub struct BlockSplitCommand {
 	point: Rational,
 	/// Second block created by the split (valid after `redo`).
 	new_block: Option<NodeRef>,
-	/// Arena entry of the second block while it is detached from the
-	/// graph (between `undo` and the next `redo`).
-	new_block_entry: Option<NodeEntry>,
+	/// Copy of `block`'s dependency graph created at `prepare`: the node
+	/// ids of every node the copy introduced (the second block first,
+	/// then its copied upstream nodes), in copy order.
+	copied: Vec<NodeId>,
+	/// Input edges of the copied nodes captured at `prepare`
+	/// `(from, to, input, element)` — the endpoints are copied ids or
+	/// shared item ids. Recreated after a re-attach.
+	copied_edges: Vec<(NodeId, NodeId, String, i32)>,
+	/// Detached arena entries for [`Self::copied`] (index-parallel), owned
+	/// by this command between `undo` and the next `redo`.
+	detached: Vec<Option<NodeEntry>>,
 	/// Length of `block` before the split, restored on `undo`.
 	old_length: Rational,
 }
@@ -69,34 +87,90 @@ impl BlockSplitCommand {
 			block,
 			point,
 			new_block: None,
-			new_block_entry: None,
+			copied: Vec::new(),
+			copied_edges: Vec::new(),
+			detached: Vec::new(),
 			old_length: Rational::new(0, 1),
 		}
 	}
 
-	/// `prepare`: create the second half by cloning the original block in
-	/// the project graph (the Rust equivalent of the C++
-	/// `oaknode_node_copy_in_graph`; the clone happens through the
-	/// behavior's `duplicate`, which copies the block core too).
+	/// `prepare`: create the second half by copying the original block's
+	/// dependency graph in the project graph (the Rust equivalent of the
+	/// C++ `Node::copy_node_in_graph` +
+	/// `copy_node_and_dependency_graph_minus_items` — see the module doc).
 	pub fn prepare(&mut self) {
 		if self.new_block.is_some() {
 			return;
 		}
-		let id = {
-			let project = self.block.project.clone();
+		let project = self.block.project.clone();
+		let (id, map) = {
 			let mut p = project.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-			let entry = match p.graph.get(self.block.id) {
-				Some(e) => e,
+			match p.graph.copy_node_and_dependency_graph_minus_items(self.block.id) {
+				Some(r) => r,
 				None => return,
-			};
-			let new_core = entry.core.clone();
-			let new_behavior = match entry.behavior.duplicate(&entry.core) {
-				Some(b) => b,
-				None => return,
-			};
-			p.graph.add_node(new_core, new_behavior)
+			}
 		};
-		self.new_block = Some(NodeRef::new(self.block.project.clone(), id));
+		// The copied nodes: the new block plus every fresh copy in the
+		// map (items map to themselves and are shared, not copied).
+		let mut copied = vec![id];
+		for (old, new) in &map {
+			if old != new && *new != id {
+				copied.push(*new);
+			}
+		}
+		// Capture the copied nodes' input edges (endpoints are copies or
+		// shared items) so a re-attach after undo can rewire them.
+		let copied_edges = {
+			let p = project.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+			let mut edges = Vec::new();
+			for &node_id in &copied {
+				for (from, input, element) in p.graph.input_connections(node_id) {
+					edges.push((from, node_id, input, element));
+				}
+			}
+			edges
+		};
+		self.new_block = Some(NodeRef::new(project, id));
+		self.copied = copied;
+		self.copied_edges = copied_edges;
+		self.detached = (0..self.copied.len()).map(|_| None).collect();
+	}
+
+	/// Re-insert the copied subgraph detached by a previous `undo` and
+	/// rewire its edges. No-op on the first `redo` (the copies are still in
+	/// the graph from `prepare`).
+	fn re_attach_subgraph(&mut self) {
+		if self.detached.iter().all(Option::is_none) {
+			return;
+		}
+		let mut p = self
+			.block
+			.project
+			.lock()
+			.unwrap_or_else(|poisoned| poisoned.into_inner());
+		for (i, id) in self.copied.iter().enumerate() {
+			if let Some(entry) = self.detached[i].take() {
+				p.graph.add_entry(entry, *id);
+			}
+		}
+		for (from, to, input, element) in &self.copied_edges {
+			p.graph.connect(*from, *to, input, *element).ok();
+		}
+	}
+
+	/// Detach the whole copied subgraph (the second block and every node
+	/// the copy introduced), preserving the entries for the next `redo`.
+	fn detach_subgraph(&mut self) {
+		let mut p = self
+			.block
+			.project
+			.lock()
+			.unwrap_or_else(|poisoned| poisoned.into_inner());
+		for (i, id) in self.copied.iter().enumerate() {
+			if self.detached[i].is_none() {
+				self.detached[i] = p.graph.take_node(*id);
+			}
+		}
 	}
 
 	/// `redo`: shrink `block` to the first half, grow `new_block` to the
@@ -111,6 +185,8 @@ impl BlockSplitCommand {
 		// Create the second half if redo is invoked without a preceding
 		// prepare() (the vtable command path may call redo directly).
 		self.prepare();
+		// Re-attach the copied subgraph if a previous undo detached it.
+		self.re_attach_subgraph();
 
 		// The C++ asserts `point_` lies strictly inside the block; that
 		// would panic across the FFI boundary, so it is intentionally not
@@ -125,10 +201,6 @@ impl BlockSplitCommand {
 		let second_half_length = block_out - self.point;
 
 		if let Some(new_block) = &self.new_block {
-			// Re-attach the second half if a previous undo detached it.
-			if self.new_block_entry.is_some() {
-				block_add_to_graph(new_block, self.new_block_entry.take());
-			}
 			// In-anchored length for the first half keeps the original's in
 			// point (the C++ `set_length_and_media_in`); the out-anchored
 			// length for the second half keeps the copy's out point (the
@@ -147,7 +219,8 @@ impl BlockSplitCommand {
 		// has no transition edges, so both are omitted here.
 	}
 
-	/// `undo`: restore `block`'s original length and remove the second half.
+	/// `undo`: restore `block`'s original length, remove the second half
+	/// and detach the whole copied subgraph from the project graph.
 	pub fn undo(&mut self) {
 		if let Some(track) = block_track(&self.block) {
 			// The redo shrank the original from its in point (it became the
@@ -158,14 +231,12 @@ impl BlockSplitCommand {
 			block_set_length_and_media_in(&self.block, self.old_length);
 			if let Some(new_block) = &self.new_block {
 				track_ripple_remove_block(&track, new_block);
-				// Detach the second half from the graph (the C++ re-parents
-				// it to the scratch memory manager); the entry is owned by
-				// this command until the next redo.
-				if self.new_block_entry.is_none() {
-					self.new_block_entry = block_remove_from_graph(new_block);
-				}
 			}
 		}
+		// Detach the copied subgraph (the C++ re-parents it to the scratch
+		// memory manager); the entries are owned by this command until the
+		// next redo.
+		self.detach_subgraph();
 
 		// The C++ first moves a previously-moved out transition back onto
 		// `block` and runs `reconnect_tree_command_`'s undo; the Rust block

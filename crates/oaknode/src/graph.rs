@@ -617,6 +617,73 @@ impl Graph {
 		map
 	}
 
+	/// Copy `root` and its upstream dependency graph into fresh nodes (C++
+	/// `Node::copy_node_and_dependency_graph_minus_items`,
+	/// `// CPP-PARITY: node.cpp:1141-1229`). "Minus items": nodes carrying
+	/// [`crate::node::flags::IS_ITEM`] (folders, footage, sequences) are
+	/// shared, not cloned — copied nodes connect straight to them. Each
+	/// copy inherits the original's core data and behavior state but NO
+	/// links (the C++ `Node::copy()` leaves `links_` empty; the split/link
+	/// commands re-link explicitly), and context positions whose context is
+	/// itself copied are remapped to the copy. Returns the copy of `root`
+	/// plus the old -> new id map (items map to themselves), or `None`
+	/// when `root` is stale or a behavior refuses to duplicate.
+	pub fn copy_node_and_dependency_graph_minus_items(
+		&mut self,
+		root: NodeId,
+	) -> Option<(NodeId, HashMap<NodeId, NodeId>)> {
+		let mut created: HashMap<NodeId, NodeId> = HashMap::new();
+		let copy = self.copy_dependency_graph_internal(root, &mut created)?;
+		Some((copy, created))
+	}
+
+	/// Recursive worker of
+	/// [`Graph::copy_node_and_dependency_graph_minus_items`].
+	fn copy_dependency_graph_internal(
+		&mut self,
+		node: NodeId,
+		created: &mut HashMap<NodeId, NodeId>,
+	) -> Option<NodeId> {
+		if let Some(&existing) = created.get(&node) {
+			return Some(existing);
+		}
+		// Clone core + behavior up front (the recursive adds below would
+		// invalidate any borrow of the entry).
+		let (mut core, behavior, is_item) = {
+			let entry = self.get(node)?;
+			(
+				entry.core.clone(),
+				entry.behavior.duplicate(&entry.core)?,
+				entry.core.flags & crate::node::flags::IS_ITEM != 0,
+			)
+		};
+		if is_item {
+			// Items are shared: upstream edges connect to the original.
+			created.insert(node, node);
+			return Some(node);
+		}
+		// The C++ copy carries no links (`Node::copy()` leaves `links_`
+		// empty).
+		core.links.clear();
+		// Context positions: a context that is itself copied points at the
+		// copy (the C++ maps context children through the created table).
+		for (context, _, _) in core.context_positions.iter_mut() {
+			if let Some(&mapped) = created.get(context) {
+				*context = mapped;
+			}
+		}
+		let copy = self.add_node(core, behavior);
+		created.insert(node, copy);
+		// Copy the upstream edges, recursing into each source.
+		for (from, input, element) in self.input_connections(node) {
+			let from_copy = self.copy_dependency_graph_internal(from, created)?;
+			// The C++ asserts every reconnect succeeds; a rejected edge
+			// (duplicate input, cycle) is skipped here.
+			self.connect(from_copy, copy, &input, element).ok();
+		}
+		Some(copy)
+	}
+
 	/// Drop every edge touching `id` (C++ `disconnect_all`).
 	fn drop_edges_touching(&mut self, id: NodeId) {
 		let doomed: Vec<Edge> = self

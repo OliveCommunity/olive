@@ -163,6 +163,8 @@ impl NodeBehavior for FolderBehavior {
 /// `enabled_in` (`// CPP-PARITY: folder.cpp:26`).
 pub fn create(name: &str) -> (NodeCore, Box<dyn NodeBehavior>) {
 	let mut core = NodeCore::empty();
+	// Bin item (C++ `folder.cpp:38` `set_flag(k_is_item)`).
+	core.flags |= crate::node::flags::IS_ITEM;
 	let mut child = crate::input::Input::new(
 		"child_in",
 		crate::value::ValueType::None,

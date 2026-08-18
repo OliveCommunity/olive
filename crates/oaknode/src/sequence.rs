@@ -77,6 +77,9 @@ impl SequenceBehavior {
 	/// from a file — the track lists arrive as separate nodes.
 	pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		let mut core = NodeCore::new();
+		// Bin item (C++ `sequence.cpp:37` `set_flag(k_is_item)`): nested
+		// sequences are shared, never cloned, by dependency-graph copies.
+		core.flags |= crate::node::flags::IS_ITEM;
 		// Viewer parameter streams (C++ ViewerOutput::kVideoParamsInput /
 		// kAudioParamsInput / kSubtitleParamsInput arrays).
 		for (id, ty) in [

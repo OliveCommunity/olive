@@ -120,6 +120,10 @@ pub mod flags {
 	pub const AUDIO_EFFECT: u64 = 0x4;
 	/// `k_dont_show_in_create_menu`.
 	pub const DONT_SHOW_IN_CREATE_MENU: u64 = 0x8;
+	/// `k_is_item` (C++ `node.h:119`): bin items (folders, footage,
+	/// sequences) — dependency-graph copies share these instead of
+	/// cloning them (`// CPP-PARITY: node.cpp:1159,1199`).
+	pub const IS_ITEM: u64 = 0x10;
 }
 
 impl NodeCore {

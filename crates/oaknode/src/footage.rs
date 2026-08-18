@@ -289,6 +289,9 @@ impl FootageBehavior {
 	/// behavior (`// CPP-PARITY: footage.cpp:83`, `viewer.cpp:84`).
 	pub fn create() -> (NodeCore, Box<dyn NodeBehavior>) {
 		let mut core = NodeCore::new();
+		// Bin item (C++ `footage.cpp:61` `set_flag(k_is_item)`): shared,
+		// never cloned, by dependency-graph copies.
+		core.flags |= crate::node::flags::IS_ITEM;
 		let mut file = Input::new(
 			"file_in",
 			ValueType::Text,

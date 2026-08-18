@@ -37,6 +37,7 @@ pub mod common;
 pub mod error;
 pub mod handle;
 pub mod marker;
+pub mod multicam;
 pub mod undocommon;
 pub mod undogeneral;
 pub mod undopointer;

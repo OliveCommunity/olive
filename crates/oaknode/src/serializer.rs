@@ -624,10 +624,11 @@ fn load_node(
 ) -> crate::error::Result<NodeId> {
 	use crate::error::Error;
 	let type_id = reader.attribute("id").unwrap_or_default();
-	let ptr = reader
-		.attribute("ptr")
-		.and_then(|p| p.parse::<u64>().ok())
-		.unwrap_or(0);
+	// The packed identity the file assigns this node (`ptr`). `None` when
+	// the attribute is absent (foreign/old files); only present `ptr`s are
+	// registered so an explicit identity of `0` (the first-created node)
+	// still resolves its outgoing connections.
+	let ptr = reader.attribute("ptr").and_then(|p| p.parse::<u64>().ok());
 
 	// Instantiate the node type; timeline structural types (which are
 	// not in the factory menu) are reconstructed directly, unknown
@@ -648,7 +649,7 @@ fn load_node(
 	// The node enters the graph before its body is parsed so deferred
 	// connections/links can reference it by id.
 	let id = graph.add_node(core, behavior);
-	if ptr != 0 {
+	if let Some(ptr) = ptr {
 		id_map.insert(ptr, id);
 	}
 
@@ -982,6 +983,31 @@ fn resolve_timeline_refs(graph: &mut Graph, id_map: &std::collections::HashMap<u
 				.and_then(|a| a.downcast_mut::<crate::track::TrackBehavior>())
 			{
 				t.kind = kind;
+			}
+		}
+	}
+
+	// MultiCamNode: rebuild the cached sequence reference (C++
+	// `sequence_`) from the restored `sequence_in` edge — the graph arena
+	// fires no connect events at load, so the behavior state is synced
+	// here (also re-applies the `sequence_type_in` unhide of the C++
+	// `InputConnectedEvent`).
+	for id in graph.node_ids() {
+		let seq = graph.connected_output(
+			id,
+			crate::nodes::multicamnode::SEQUENCE_INPUT,
+			-1,
+		);
+		if seq.is_none() {
+			continue;
+		}
+		if let Some(entry) = graph.get_mut(id) {
+			if let Some(mc) = entry
+				.behavior
+				.as_any_mut()
+				.and_then(|a| a.downcast_mut::<crate::nodes::multicamnode::MultiCamNode>())
+			{
+				mc.set_sequence(&mut entry.core, seq);
 			}
 		}
 	}

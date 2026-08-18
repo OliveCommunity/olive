@@ -69,6 +69,28 @@ impl MultiCamNode {
 		core.standard_value(CURRENT_INPUT, -1).to_double() as i32
 	}
 
+	/// The connected sequence node (C++ `sequence_`).
+	pub fn sequence(&self) -> Option<NodeId> {
+		self.sequence
+	}
+
+	/// Set/clear the connected-sequence state (the effects of the C++
+	/// `InputConnectedEvent`/`InputDisconnectedEvent` on `sequence_in`:
+	/// store the sequence and toggle the `sequence_type_in` hidden flag).
+	/// The graph arena does not dispatch behavior events on edge edits, so
+	/// the commands that edit the `sequence_in` edge call this to keep the
+	/// behavior state in sync with the graph.
+	pub fn set_sequence(&mut self, core: &mut NodeCore, sequence: Option<NodeId>) {
+		if let Some(slot) = core.get_input_mut(SEQUENCE_TYPE_INPUT) {
+			if sequence.is_some() {
+				slot.flags &= !crate::input::flags::HIDDEN;
+			} else {
+				slot.flags |= crate::input::flags::HIDDEN;
+			}
+		}
+		self.sequence = sequence;
+	}
+
 	/// Number of available sources (C++ `get_source_count()`): the
 	/// connected sequence's track count when a sequence is set,
 	/// otherwise the `sources_in` array size.

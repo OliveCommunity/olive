@@ -869,3 +869,205 @@ fn roundtrip_full_timeline() {
 	};
 	assert_eq!(xml, xml2, "re-save is idempotent");
 }
+
+/// Standalone `MultiCamNode` round-trip: the `current_in` standard value
+/// and the node's type survive save/load (C++
+/// `ProjectSerializer::FileRoundTripPreservesMultiCamNode`).
+#[test]
+fn multicam_node_round_trip_preserves_current_in() {
+	use oaknode::nodes::multicamnode::{create, CURRENT_INPUT};
+	use oaknode::project::Project;
+	use oaknode::value::NodeValue;
+
+	let project = Project::new();
+	let mc_id = {
+		let mut p = project.lock().unwrap();
+		let (core, behavior) = create();
+		let id = p.graph.add_node(core, behavior);
+		p.graph.get_mut(id).unwrap().core.set_standard_value(
+			CURRENT_INPUT,
+			-1,
+			NodeValue::Combo(2),
+		);
+		id
+	};
+	let _ = mc_id;
+
+	let xml = {
+		let p = project.lock().unwrap();
+		oaknode::serializer::save(&p).unwrap()
+	};
+	let loaded = oaknode::serializer::load(&xml).unwrap();
+	let l = loaded.lock().unwrap();
+
+	let loaded_mc = l
+		.graph
+		.node_ids()
+		.into_iter()
+		.find(|id| {
+			l.graph.get(*id).map(|e| e.behavior.type_id())
+				== Some("org.olivevideoeditor.Olive.multicam")
+		})
+		.expect("loaded project has a MultiCamNode");
+	// The combo's numeric value survives the round-trip (the value codec
+	// serializes combo indices as Int — `string_to_value` maps
+	// `ValueType::Combo` to `NodeValue::Int`).
+	assert_eq!(
+		l.graph.get(loaded_mc).unwrap().core.standard_value(CURRENT_INPUT, -1),
+		NodeValue::Int(2),
+		"current_in survives the round-trip"
+	);
+}
+
+/// A clip with multicam enabled round-trips: the `current_in` value, the
+/// `sequence_in` edge, and the `sequence_type_in` selector all survive.
+#[test]
+fn multicam_clip_round_trip_preserves_wiring() {
+	use oakcore_rs::Rational;
+	use oaknode::block::{clip_create, ClipBlockBehavior};
+	use oaknode::node::NodeCore;
+	use oaknode::nodes::multicamnode::{
+		create, CURRENT_INPUT, SEQUENCE_INPUT, SEQUENCE_TYPE_INPUT,
+	};
+	use oaknode::project::Project;
+	use oaknode::sequence::SequenceBehavior;
+	use oaknode::track::{TrackBehavior, TrackListBehavior, TrackType};
+	use oaknode::value::NodeValue;
+
+	let project = Project::new();
+	let (seq_id, clip_id, mc_id) = {
+		let mut p = project.lock().unwrap();
+		let (core, behavior) = SequenceBehavior::create();
+		let seq_id = p.graph.add_node(core, behavior);
+		let (core, behavior) = TrackListBehavior::create();
+		let list_id = p.graph.add_node(core, behavior);
+		let (core, behavior) = (NodeCore::new(), Box::new(TrackBehavior::new(TrackType::Video)));
+		let track_id = p.graph.add_node(core, behavior);
+		{
+			let seq = p.graph.get_mut(seq_id).unwrap();
+			let s = seq
+				.behavior
+				.as_any_mut()
+				.unwrap()
+				.downcast_mut::<SequenceBehavior>()
+				.unwrap();
+			s.track_lists.push(list_id);
+		}
+		let list = p.graph.get_mut(list_id).unwrap();
+		let l = list
+			.behavior
+			.as_any_mut()
+			.unwrap()
+			.downcast_mut::<TrackListBehavior>()
+			.unwrap();
+		l.sequence = Some(seq_id);
+		l.tracks.push(track_id);
+		let track = p.graph.get_mut(track_id).unwrap();
+		let t = track
+			.behavior
+			.as_any_mut()
+			.unwrap()
+			.downcast_mut::<TrackBehavior>()
+			.unwrap();
+		t.kind = TrackType::Video;
+		t.track_list = Some(list_id);
+
+		// A clip on the track.
+		let (core, behavior) = clip_create();
+		let clip_id = p.graph.add_node(core, behavior);
+		let clip = p.graph.get_mut(clip_id).unwrap();
+		let c = clip
+			.behavior
+			.as_any_mut()
+			.unwrap()
+			.downcast_mut::<ClipBlockBehavior>()
+			.unwrap();
+		c.core.range = oakcore_rs::TimeRange::new(Rational::new(0, 1), Rational::new(100, 1));
+		c.core.track = Some(track_id);
+		let track = p.graph.get_mut(track_id).unwrap();
+		let t = track
+			.behavior
+			.as_any_mut()
+			.unwrap()
+			.downcast_mut::<TrackBehavior>()
+			.unwrap();
+		t.blocks.push(clip_id);
+
+		// The multicam node routed between the sequence and the clip.
+		let (core, behavior) = create();
+		let mc_id = p.graph.add_node(core, behavior);
+		p.graph
+			.connect(mc_id, clip_id, "tex_in", -1)
+			.unwrap();
+		p.graph.connect(seq_id, mc_id, SEQUENCE_INPUT, -1).unwrap();
+		let mc = p.graph.get_mut(mc_id).unwrap();
+		mc.core
+			.set_standard_value(CURRENT_INPUT, -1, NodeValue::Combo(2));
+		mc.core.set_standard_value(
+			SEQUENCE_TYPE_INPUT,
+			-1,
+			NodeValue::Combo(0),
+		);
+		(seq_id, clip_id, mc_id)
+	};
+	let _ = (seq_id, clip_id, mc_id);
+
+	let xml = {
+		let p = project.lock().unwrap();
+		oaknode::serializer::save(&p).unwrap()
+	};
+	let loaded = oaknode::serializer::load(&xml).unwrap();
+	let l = loaded.lock().unwrap();
+	// The multicam node round-tripped with its current_in and type selector.
+	let loaded_mc = l
+		.graph
+		.node_ids()
+		.into_iter()
+		.find(|id| {
+			l.graph.get(*id).map(|e| e.behavior.type_id())
+				== Some("org.olivevideoeditor.Olive.multicam")
+		})
+		.expect("loaded project has a MultiCamNode");
+	assert_eq!(
+		l.graph.get(loaded_mc).unwrap().core.standard_value(CURRENT_INPUT, -1),
+		NodeValue::Int(2),
+		"current_in survives"
+	);
+	assert_eq!(
+		l.graph.get(loaded_mc).unwrap().core.standard_value(SEQUENCE_TYPE_INPUT, -1),
+		NodeValue::Int(0),
+		"sequence_type_in survives"
+	);
+
+	// The wiring survives: a sequence feeds the multicam's sequence_in and
+	// the multicam feeds a clip's tex_in.
+	let seq_src = l
+		.graph
+		.connected_output(loaded_mc, SEQUENCE_INPUT, -1)
+		.expect("sequence_in edge restored");
+	assert_eq!(
+		l.graph.get(seq_src).unwrap().behavior.type_id(),
+		"org.olivevideoeditor.Olive.sequence"
+	);
+	let clip_dst = l
+		.graph
+		.output_connections(loaded_mc)
+		.into_iter()
+		.find(|(_, input, _)| input == "tex_in")
+		.map(|(to, _, _)| to)
+		.expect("multicam still feeds a clip's tex_in");
+	assert_eq!(
+		l.graph.get(clip_dst).unwrap().behavior.type_id(),
+		"org.olivevideoeditor.Olive.clipblock"
+	);
+
+	// The multicam behavior's cached sequence reference was rebuilt from
+	// the restored edge.
+	let behavior = l.graph.get(loaded_mc).unwrap();
+	let mc_node = behavior
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<oaknode::nodes::multicamnode::MultiCamNode>())
+		.expect("loaded node is a MultiCamNode");
+	assert_eq!(mc_node.sequence(), Some(seq_src));
+}

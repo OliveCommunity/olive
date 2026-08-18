@@ -36,7 +36,7 @@ mod mathbase;
 mod matrix;
 mod merge;
 mod mosaicfilternode;
-mod multicamnode;
+pub mod multicamnode;
 mod noise;
 mod ociobase;
 mod ociogradingtransformlinear;
