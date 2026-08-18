@@ -26,20 +26,17 @@
 # workspace root, exactly as before the monorepo workspace existed.
 [workspace]
 members = ["crates/*"]
-exclude = ["gpui"]
+exclude = ["gpui", "crates/oakengine.bk"]
 # NOTE: oakstorage (crates/oakstorage) is a workspace member but NOT a
 # default member (it stays out of the default-members test matrix to keep
 # `cargo test` at the root fast; the app links it as a normal path
 # dependency, so it builds with the app). Build/test it explicitly with
 # `cargo test -p oakstorage`.
-# NOTE: `crates/oakengine` is deliberately NOT a default member (it stays a
-# workspace member, so `cargo test -p oakengine` / `cargo test --workspace`
-# still run its tests): it is the plugin/external-consumer cdylib (M14 R4) —
-# no crate in the workspace links it (app/cli/worker call the module rlibs
-# directly), so default builds skip it. Its in-crate unit tests
-# (src/test_support/, the former tests/*.rs) share temp files and
-# process-global facade state, which makes the parallel default-members run
-# flaky.
+# NOTE: `crates/oakengine` (the frozen C-ABI facade cdylib) is retired:
+# every consumer (app/cli/worker/plugins) links the module rlibs
+# directly, so nothing in the workspace referenced it. The sources are
+# kept at crates/oakengine.bk (excluded from the workspace) as a
+# reference snapshot; git history is the authoritative backup.
 default-members = [".", "crates/oak-cli", "crates/oak-worker"]
 resolver = "2"
 

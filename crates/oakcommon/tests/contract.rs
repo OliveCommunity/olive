@@ -27,7 +27,6 @@ use oakcommon::error::{
 	OAKCOMMON_E_STATE, OAKCOMMON_OK,
 };
 use oakcommon::ffmpegutils::{RGBA_CHANNEL_COUNT, RGB_CHANNEL_COUNT};
-use oakcommon::handle::{CHandle, OAKCOMMON_ABI_VERSION};
 use oakcommon::miscutils::{DropWorkflowBehavior, LoopMode, DECIBEL_MINIMUM};
 use oakcommon::ocioutils::PixelFormat;
 use oakcommon::videoparams::{ColorRange, Interlacing, VideoType};
@@ -44,21 +43,9 @@ fn error_codes_match_header() {
 }
 
 /// Handle ABI version must match `include/common/handle.h`.
-#[test]
-fn handle_abi_version() {
-	assert_eq!(OAKCOMMON_ABI_VERSION, 1);
-}
 
 /// The handle struct must be a plain `{ctx, addref, release, abi_version}`
 /// `#[repr(C)]` record: 3 pointers + a u32, padded to pointer alignment.
-#[test]
-fn handle_layout() {
-	let ptr = size_of::<*const ()>();
-	let align = align_of::<*const ()>();
-	let expected = (3 * ptr + size_of::<u32>()).div_ceil(align) * align;
-	assert_eq!(size_of::<CHandle>(), expected);
-	assert_eq!(align_of::<CHandle>(), align);
-}
 
 /// Pixel-format codes must match `olive::core::PixelFormat`.
 #[test]
@@ -123,29 +110,4 @@ fn video_type_discriminants() {
 fn color_range_discriminants() {
 	assert_eq!(ColorRange::Limited as i32, 0);
 	assert_eq!(ColorRange::Full as i32, 1);
-}
-
-/// The public type names must exist and be usable at their intended ABI
-/// shape (compile-time contract).
-#[test]
-fn public_types_exist() {
-	// Enums are plain C-like int enums.
-	let _ = PixelFormat::U8;
-	let _ = Interlacing::TopFirst;
-	let _ = VideoType::Still;
-	let _ = ColorRange::Full;
-	let _ = LoopMode::Loop;
-	let _ = DropWorkflowBehavior::Ask;
-
-	// The handle is a plain struct constructible without a panic.
-	let h = CHandle {
-		ctx: std::ptr::null_mut(),
-		addref: None,
-		release: None,
-		abi_version: 0,
-	};
-	assert!(h.ctx.is_null());
-	assert!(h.addref.is_none());
-	assert!(h.release.is_none());
-	assert_eq!(h.abi_version, 0);
 }

@@ -29,7 +29,6 @@ pub mod debug;
 pub mod error;
 pub mod ffmpegutils;
 pub mod filefunctions;
-pub mod handle;
 pub mod miscutils;
 pub mod ocioutils;
 pub mod oiioutils;

@@ -4824,30 +4824,6 @@ name = "oakcore-rs"
 version = "0.1.0"
 
 [[package]]
-name = "oakengine"
-version = "0.1.0"
-dependencies = [
- "libc",
- "oakaudio",
- "oakcodec",
- "oakcommon",
- "oakcore-rs",
- "oaknode",
- "oakplugin",
- "oakrender",
- "oakstorage",
- "oaktask",
- "oaktimeline",
- "oakundo",
- "parking_lot",
- "sea-orm",
- "serde",
- "serde_json",
- "thiserror 2.0.20",
- "tokio",
-]
-
-[[package]]
 name = "oakffmpeg-link"
 version = "0.1.0"
 
