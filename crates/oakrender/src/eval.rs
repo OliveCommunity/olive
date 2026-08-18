@@ -683,28 +683,58 @@ fn render_montage_frame(
 ) -> Result<Texture> {
 	let mut acc = generate_frame(time, size, format)?;
 	let stride = acc.linesize_bytes();
+	let acc_data = &mut acc.data;
+	render_montage_frame_into(time, params, size, acc_data, stride as i32)?;
+	Ok(Texture::wrap_frame(acc))
+}
+
+/// Composite the montage at `time` directly into `dst` (F32 RGBA rows of
+/// `dst_stride` bytes) — the M15 worker seam: the render worker passes a
+/// shared-memory slot slice as `dst`, so the composited frame lands in
+/// the slot with no staging copy. `dst` is zeroed first (transparent
+/// black base).
+pub fn render_montage_frame_into(
+	time: Rational,
+	params: &crate::ticket::VideoTicketParams,
+	size: (i32, i32),
+	dst: &mut [u8],
+	dst_stride: i32,
+) -> Result<()> {
 	let (w, h) = size;
-	let mut acc32 = acc.data; // decode from bottom clip first
+	let need = (h as usize).saturating_mul(dst_stride as usize);
+	if w <= 0 || h <= 0 || dst.len() < need {
+		return Err(Error::Invalid);
+	}
+	// Transparent-black base.
+	dst[..need].fill(0);
+	// Decode from the bottom clip first, composite topmost-last.
 	for clip in &params.montage {
 		if time < clip.in_time || time >= clip.out_time {
 			continue;
 		}
 		let media_time = clip.media_in + (time - clip.in_time);
-		let decoded = render_footage_frame(&clip.filename, clip.stream_index, media_time, (w, h), format)?;
+		let decoded = render_footage_frame(
+			&clip.filename,
+			clip.stream_index,
+			media_time,
+			(w, h),
+			PixelFormat::F32,
+		)?;
 		let (src_data, src_stride) = match &decoded {
 			Texture::Cpu(src) => (&src.data, src.linesize_bytes() as i32),
 			_ => continue,
 		};
-		composite_over(&mut acc32, stride as i32, w, h, src_data, src_stride, clip.gain);
+		composite_over(dst, dst_stride, w, h, src_data, src_stride, clip.gain);
 	}
-	acc.data = acc32;
-	Ok(Texture::wrap_frame(acc))
+	Ok(())
 }
 
 /// `src` over `dst` (premultiplied-ish alpha compositing; F32 RGBA).
 /// `gain` scales the source RGB (audio-style volume applied to video
-/// transparency is ignored here; gain scales color).
-fn composite_over(
+/// transparency is ignored here; gain scales color). Exposed for the M15
+/// render worker, which composites montage frames directly into
+/// shared-memory slots.
+pub fn composite_over(
 	dst: &mut [u8],
 	dst_stride: i32,
 	w: i32,

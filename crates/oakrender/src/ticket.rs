@@ -33,7 +33,7 @@ use oakcore_rs::{Rational, TimeRange};
 use crate::error::{Error, Result};
 use crate::eval;
 use crate::texture::Texture;
-use crate::worker::WorkerPool;
+use crate::worker::JobDispatch;
 
 /// One clip of a sequence montage (M12 P0): the facade resolves the
 /// timeline into an ordered list of clips; the producer decodes each and
@@ -128,6 +128,10 @@ pub enum TicketPayload {
 	Video(Texture),
 	/// Rendered interleaved audio.
 	Audio(AudioSamples),
+	/// A rendered frame living in a worker's shared-memory slot (M15
+	/// process backend): zero copy — the consumer reads the pixels from
+	/// the mapping and releases the slot through the dispatcher.
+	ShmFrame(crate::procpool::ShmFrameRef),
 }
 
 /// Completion payload: the rendered texture/samples or the failure
@@ -239,18 +243,31 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 /// The ticket arena (owned by the manager).
 pub struct TicketArena {
 	next: AtomicU64,
-	pool: WorkerPool,
+	dispatch: Arc<dyn JobDispatch>,
+	audio_dispatch: Arc<dyn JobDispatch>,
 	slots: Mutex<HashMap<TicketId, Arc<TicketSlot>>>,
 	shutting_down: AtomicBool,
 	producer: Producer,
 }
 
 impl TicketArena {
-	/// Arena dispatching through `pool`; `producer` renders frames.
-	pub fn new(pool: WorkerPool, producer: Producer) -> Self {
+	/// Arena dispatching video and audio through the same backend.
+	pub fn new(dispatch: Arc<dyn JobDispatch>, producer: Producer) -> Self {
+		Self::new_with_audio(dispatch.clone(), dispatch, producer)
+	}
+
+	/// Arena with separate video/audio backends (M15: video may run on
+	/// the process dispatcher while audio stays on the main-process
+	/// thread dispatch until S3 — design §3.7).
+	pub fn new_with_audio(
+		video: Arc<dyn JobDispatch>,
+		audio: Arc<dyn JobDispatch>,
+		producer: Producer,
+	) -> Self {
 		Self {
 			next: AtomicU64::new(1),
-			pool,
+			dispatch: video,
+			audio_dispatch: audio,
 			slots: Mutex::new(HashMap::new()),
 			shutting_down: AtomicBool::new(false),
 			producer,
@@ -318,8 +335,8 @@ impl TicketArena {
 			produce: producer,
 			done: Box::new(move |result| slot_done.finish(result)),
 		};
-		if !self.pool.post(job) {
-			// Pool is gone (shutdown raced the submit): deliver now.
+		if !self.dispatch.post(job) {
+			// Backend is gone (shutdown raced the submit): deliver now.
 			slot.finish(Err(Error::State));
 		}
 		id
@@ -387,7 +404,7 @@ impl TicketArena {
 			produce: producer,
 			done: Box::new(move |result| slot_done.finish(result)),
 		};
-		if !self.pool.post(job) {
+		if !self.audio_dispatch.post(job) {
 			slot.finish(Err(Error::State));
 		}
 		id
@@ -477,6 +494,7 @@ mod tests {
 
 	use crate::frame::VideoParamsPod;
 	use crate::texture::Frame;
+	use crate::worker::WorkerPool;
 
 	fn small_frame() -> Frame {
 		let mut f = Frame::new();
@@ -497,7 +515,7 @@ mod tests {
 		let pool = WorkerPool::new(2);
 		let mut pool = pool;
 		pool.start();
-		let arena = TicketArena::new(pool.clone(), ok_producer());
+		let arena = TicketArena::new(Arc::new(pool.clone()), ok_producer());
 
 		let (tx, rx) = mpsc::channel();
 		let id = arena.submit_video(
@@ -552,7 +570,7 @@ mod tests {
 			}
 			Ok(TicketPayload::Video(Texture::wrap_frame(small_frame())))
 		});
-		let arena = TicketArena::new(pool.clone(), producer);
+		let arena = TicketArena::new(Arc::new(pool.clone()), producer);
 
 		let (tx, rx) = mpsc::channel();
 		let id = arena.submit_video(
@@ -592,7 +610,7 @@ mod tests {
 		let pool = WorkerPool::new(1);
 		let mut pool = pool;
 		pool.start();
-		let arena = TicketArena::new(pool.clone(), ok_producer());
+		let arena = TicketArena::new(Arc::new(pool.clone()), ok_producer());
 		arena.cancel(TicketId(12345));
 		assert!(!arena.is_finished(TicketId(12345)));
 		pool.shutdown();
@@ -603,7 +621,7 @@ mod tests {
 		let pool = WorkerPool::new(1);
 		let mut pool = pool;
 		pool.start();
-		let arena = TicketArena::new(pool.clone(), ok_producer());
+		let arena = TicketArena::new(Arc::new(pool.clone()), ok_producer());
 		assert_eq!(
 			arena.wait(TicketId(999)).unwrap_err().code(),
 			Error::NotFound.code()
@@ -616,7 +634,7 @@ mod tests {
 		let pool = WorkerPool::new(1);
 		let mut pool = pool;
 		pool.start();
-		let arena = TicketArena::new(pool.clone(), ok_producer());
+		let arena = TicketArena::new(Arc::new(pool.clone()), ok_producer());
 
 		let (tx, rx) = mpsc::channel();
 		let range = TimeRange::new(Rational::new(0, 1), Rational::new(10, 1));
@@ -649,7 +667,7 @@ mod tests {
 		let pool = WorkerPool::new(1);
 		let mut pool = pool;
 		pool.start();
-		let arena = TicketArena::new(pool.clone(), ok_producer());
+		let arena = TicketArena::new(Arc::new(pool.clone()), ok_producer());
 		let a = arena.submit_video(
 			VideoTicketParams {
 				viewer: 1,

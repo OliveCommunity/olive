@@ -70,7 +70,16 @@ src/
   color.rs      ColorProcessor over ocio-rs + default config + LUT library
   manager.rs    RenderManager singleton + lifecycle + disk cache
   ticket.rs     Ticket arena, params, exactly-once completion delivery
-  worker.rs     Worker pool + process pool (stub) + graph snapshot store
+  worker.rs     Worker pool + frozen pre-M15 ProcessPool facade stub +
+                graph snapshot store
+  scheduler.rs  M15 PreviewScheduler: interleaved shard claiming,
+                priority lanes (seek/playback/background), crash reclaim
+  ipc.rs        M15 render-worker IPC (moved from oak-worker): NDJSON
+                control protocol (v1 + v2 messages) + the POSIX
+                shared-memory frame-slot transport both pipe ends link
+  procpool.rs   M15 ProcessDispatcher: spawn/handshake oak-worker
+                processes, main-assigned slot batches, crash detection +
+                restart, zero-copy ShmFrameRef completions
   autocacher.rs PreviewAutoCacher
   eval.rs       RenderHooks impl: the CPU evaluation seam
   backend.rs    wgpu device/queue/texture management + DisplayRenderer
@@ -86,7 +95,9 @@ tests/          contract + golden tests (common/ has shared helpers)
 1. `CHandle` only appears at the facade boundary: the crate's internal
    calls pass Rust types directly; `handle::make_owned`/`get`/`get_mut`
    are the facade entry points the oakengine stubs call.
-2. No `unsafe` outside `backend.rs` (GPU FFI) and `bridge/`.
+2. No `unsafe` outside `backend.rs` (GPU FFI), `bridge/`, and the M15
+   process-isolation transport (`ipc.rs` / `procpool.rs`: POSIX shm +
+   SPSC rings; every block carries its own SAFETY comment).
 3. F32 + ACEScg pipeline invariants are asserted in tests, not in
    comments (see tests/pipeline_test.rs).
 
@@ -106,9 +117,13 @@ tests/          contract + golden tests (common/ has shared helpers)
   in float. `oakrender_color_processor_create_transform` resolves the
   destination transform against the default config's reference role
   until the oakcommon color-transform bridge lands.
-- **Worker process isolation** — `ProcessPool` (oakengine_ipc worker
-  binary) is a stub; `start/post` fail explainably; the crash-isolation
-  tests are `#[ignore]`.
+- **Worker process isolation** — landed in M15 S1: `procpool.rs`
+  (`ProcessDispatcher`) + `scheduler.rs` + `ipc.rs` drive real
+  oak-worker processes (spawn, handshake, batched renders into
+  main-assigned shm slots, crash restart, zero-copy completions); the
+  end-to-end and crash-isolation tests live in
+  `crates/oak-worker/tests/procpool_integration.rs`. The frozen pre-M15
+  `worker::ProcessPool` facade stub remains for the C ABI.
 - **Audio rendering** — audio tickets complete with `Error::Failed`
   (the audio graph path is not implemented); `oakrender_ticket_get_samples`
   fails explainably.

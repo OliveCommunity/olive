@@ -23,43 +23,59 @@
 //!     backend through the oakrender crate's direct Rust API
 //!     ([`oakrender::backend::DisplayRenderer`]), falling back to the
 //!     direct OpenGL renderer exactly like the C++ `create_renderer()`
-//!     chain.
+//!     chain. The headless `"cpu"` backend (M15 S1) skips the renderer
+//!     entirely — the render path is CPU evaluation + decode, driven
+//!     through `render_batch`.
 //!   - **The session.** [`WorkerSession`] holds the renderer, the
-//!     shared-memory frame-slot pools ([`crate::ipc::FrameSlotPool`]) and
-//!     the shutdown flag, and answers one NDJSON control message at a time.
+//!     loaded node graph, the shared-memory frame-slot pools
+//!     ([`crate::ipc::FrameSlotPool`]) and the shutdown flag, and answers
+//!     one NDJSON control message at a time.
 //!   - **The main loop.** [`worker_main`] creates the session, loads the
-//!     runtime config, writes the startup handshake, and serves the
-//!     stdin/stdout NDJSON loop until a `shutdown` message or EOF.
+//!     runtime config (including the oakplugin render executor), writes
+//!     the startup handshake, and serves the stdin/stdout NDJSON loop
+//!     until a `shutdown` message or EOF.
 //!
-//! The control-plane protocol is the same NDJSON the C++ worker speaks
-//! (`engine/render/ipc/ipcmessage.cpp`): one compact JSON object per line,
-//! `"type"`-dispatched ([`crate::ipc`]), with `handshake` carrying the
-//! shared-memory geometry the worker attaches to via the real
-//! [`crate::ipc`] transport. `load_graph`/`render_frame` reproduce the
-//! C++ validation and then answer with the documented "not yet available"
-//! errors (the oaknode graph crate is still a skeleton).
+//! Real rendering landed in M15 S1: `load_graph` deserializes the graph
+//! snapshot file (oaknode project XML, with the minimal
+//! `{"project_copy":N}` payload fallback); `render_frame` and
+//! `render_batch` render through [`oakrender::eval`] (generated frames,
+//! footage decode, montage compositing) directly into the main-assigned
+//! shm slots and publish `frame_ready` / `frame_failed` (protocol v2).
 
 use std::io::{self, BufRead, Write};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-use serde_json::Value;
+use serde_json::{json, Value};
 
+use oakcore_rs::{PixelFormat, Rational};
 use oakrender::backend::{BackendKind, DisplayRenderer};
+use oakrender::eval;
+use oakrender::ticket::{MontageClip, VideoTicketParams};
 
 use crate::ipc::{
-	error_message, write_message, FrameSlotPool, HandshakeMsg, LoadGraphMsg, RenderFrameMsg,
-	SharedMemoryRegion, ShmMode, TYPE_CANCEL, TYPE_HANDSHAKE, TYPE_LOAD_GRAPH, TYPE_RENDER_FRAME,
-	TYPE_SHUTDOWN,
+	error_message, write_message, BatchTicketSpec, FrameSlotPool, FrameSlotMeta, HandshakeMsg,
+	LoadGraphMsg, RenderBatchMsg, RenderFrameMsg, SharedMemoryRegion, ShmMode, TYPE_CANCEL,
+	TYPE_HANDSHAKE, TYPE_LOAD_GRAPH, TYPE_RENDER_BATCH, TYPE_RENDER_FRAME, TYPE_SHUTDOWN,
+	SLOT_FORMAT_BGRA8,
 };
 use crate::{log_error, PROTOCOL_VERSION};
 
-/// Why `load_graph` answers "not yet available" (after the real file checks).
-const GRAPH_STUB: &str = "load_graph: node-graph deserialization is not yet available in the \
-     Rust worker (the oaknode crate is a todo!() skeleton; see worker/rust/README.md)";
-
-/// Why `render_frame` answers "not yet available".
-const RENDER_STUB: &str = "render_frame: frame rendering is not yet available in the Rust \
-     worker (no node-graph or render-pipeline backing; the shm frame-slot transport is \
-     attached but there is no graph to render; see worker/rust/README.md)";
+/// A loaded graph snapshot (M15 S1): the snapshot file path plus what it
+/// deserialized into — a full oaknode project, or only the copied-project
+/// identity (the minimal `{"project_copy":N}` payload the
+/// [`oakrender::worker::GraphSnapshotStore`] writes before the app wires
+/// full graph uploads in S2).
+struct LoadedGraph {
+	/// Snapshot file path (S2: graph_update diffing is path-based).
+	#[allow(dead_code)]
+	path: String,
+	/// The deserialized project (S2: node-graph render path; today only
+	/// montage/footage/generate tickets use the loaded context).
+	#[allow(dead_code)]
+	project: Option<Arc<Mutex<oaknode::project::Project>>>,
+	project_copy: u64,
+}
 
 // ---------------------------------------------------------------------------
 // Renderer (backend selection)
@@ -69,6 +85,13 @@ const RENDER_STUB: &str = "render_frame: frame rendering is not yet available in
 /// `backend_requests_no_renderer()`: NULL, "" and "none").
 pub fn is_no_backend(backend: &str) -> bool {
 	backend.is_empty() || backend.eq_ignore_ascii_case("none")
+}
+
+/// Whether `backend` is the M15 headless CPU render mode: like "none"
+/// (no GPU renderer) but the session stays fully operational — frames
+/// render through the CPU evaluation path ([`oakrender::eval`]).
+pub fn is_cpu_backend(backend: &str) -> bool {
+	backend.eq_ignore_ascii_case("cpu")
 }
 
 /// A live, initialized oakrender display renderer (destroyed on drop).
@@ -148,6 +171,10 @@ pub struct WorkerSession {
 	output_pool: Option<FrameSlotPool>,
 	input_region: Option<SharedMemoryRegion>,
 	input_pool: Option<FrameSlotPool>,
+	graph: Option<LoadedGraph>,
+	/// Reusable F32 staging buffer (BGRA8 slot conversion; the F32
+	/// pipeline renders there before the end-of-pipe format convert).
+	f32_scratch: Vec<u8>,
 }
 
 impl WorkerSession {
@@ -155,8 +182,10 @@ impl WorkerSession {
 	/// `oakengine_worker_session_create()`: "none"/"" skips renderer
 	/// creation, anything else initializes the render backend through the
 	/// oakrender crate's direct Rust API (dynamic -> OpenGL fallback).
+	/// The M15 `"cpu"` backend is the headless render mode: no renderer,
+	/// CPU evaluation + decode via [`oakrender::eval`].
 	pub fn create(backend: &str) -> Result<WorkerSession, String> {
-		let renderer = if is_no_backend(backend) {
+		let renderer = if is_no_backend(backend) || is_cpu_backend(backend) {
 			None
 		} else {
 			Some(Renderer::create(backend)?)
@@ -169,6 +198,8 @@ impl WorkerSession {
 			output_pool: None,
 			input_region: None,
 			input_pool: None,
+			graph: None,
+			f32_scratch: Vec::new(),
 		})
 	}
 
@@ -198,8 +229,14 @@ impl WorkerSession {
 				"runtime: color-manager default config failed ({e}); continuing"
 			));
 		}
+		// M15 S1: the plugin execution stack lives in the worker process
+		// (OFX crashes take down this process, not the editor — design
+		// §3.6). oakplugin installs its render driver into the oakrender
+		// executor slot.
+		log_error("runtime: installing oakplugin render executor");
+		oakplugin::node_factory::install_render_executor();
 		log_error(
-			"runtime: config / node factory / frame manager / disk manager / project \
+			"runtime: config / frame manager / disk manager / project \
 			 serializer have no Rust backing in the worker binary; skipped",
 		);
 		self.runtime_initialized = true;
@@ -335,12 +372,23 @@ impl WorkerSession {
 			self.input_pool = Some(input_pool);
 		}
 
-		// Success: no response (worker.cpp leaves `response` untouched).
-		None
+		// Success: protocol v2 answers the geometry handshake with the
+		// capability announcement (worker.cpp left the response empty;
+		// main now waits for hello_caps to mark the worker alive).
+		Some(json!({
+			"type": crate::ipc::TYPE_HELLO_CAPS,
+			"protocol_version": PROTOCOL_VERSION,
+			"formats": [PixelFormat::F32 as i32, SLOT_FORMAT_BGRA8],
+			"max_slot_bytes": hs.slot_data_bytes,
+		}))
 	}
 
-	/// `load_graph`: the file checks are real (mirror worker.cpp
-	/// `load_graph()`); the deserialization is the documented stub.
+	/// `load_graph` (M15 S1): the file checks mirror worker.cpp; the
+	/// payload is deserialized for real — an oaknode project XML
+	/// ([`oaknode::serializer::load`]) or the minimal
+	/// `{"project_copy":N}` identity payload written by the snapshot
+	/// store before full graph uploads land in S2. Success answers
+	/// nothing (v1 semantics); failures answer an `error` message.
 	fn handle_load_graph(&mut self, msg: &Value) -> Option<Value> {
 		let load: LoadGraphMsg = match serde_json::from_value(msg.clone()) {
 			Ok(l) => l,
@@ -361,19 +409,466 @@ impl WorkerSession {
 					load.path,
 					md.len()
 				));
-				Some(error_message(GRAPH_STUB, None))
+				let content = match std::fs::read_to_string(&load.path) {
+					Ok(c) => c,
+					Err(e) => {
+						return Some(error_message(
+							&format!("graph file unreadable: {e}"),
+							None,
+						))
+					}
+				};
+				match oaknode::serializer::load(&content) {
+					Ok(project) => {
+						self.graph = Some(LoadedGraph {
+							path: load.path.clone(),
+							project: Some(project),
+							project_copy: 0,
+						});
+						log_error("LoadGraph: oaknode project deserialized");
+						None
+					}
+					Err(graph_err) => {
+						// Fallback: the snapshot store's minimal payload
+						// `{"project_copy":N}` (identity-only graph context).
+						if let Ok(v) = serde_json::from_str::<Value>(&content) {
+							if let Some(pc) = v.get("project_copy").and_then(Value::as_u64) {
+								self.graph = Some(LoadedGraph {
+									path: load.path.clone(),
+									project: None,
+									project_copy: pc,
+								});
+								log_error(&format!(
+									"LoadGraph: identity-only snapshot (project_copy {pc})"
+								));
+								return None;
+							}
+						}
+						Some(error_message(
+							&format!("graph deserialization failed: {graph_err}"),
+							None,
+						))
+					}
+				}
 			}
 		}
 	}
 
-	/// `render_frame`: the graph/render pipeline has no Rust backing, so a
-	/// render request is answered with a clear error carrying the ticket.
+	/// `render_frame` (v1 single-frame path, M15 S1 real): generate the
+	/// frame through [`oakrender::eval`], write it into an acquired shm
+	/// slot and answer `frame_ready`. The v1 message carries no montage
+	/// or footage fields, so this path renders the pipeline's generated
+	/// frame; montage/footage tickets arrive via `render_batch`.
 	fn handle_render_frame(&mut self, msg: &Value) -> Option<Value> {
 		let render: RenderFrameMsg = match serde_json::from_value(msg.clone()) {
 			Ok(r) => r,
 			Err(_) => return Some(error_message("invalid render_frame message", None)),
 		};
-		Some(error_message(RENDER_STUB, Some(render.ticket)))
+		let pool = match self.output_pool.as_ref() {
+			Some(p) if p.is_valid() => p,
+			_ => {
+				return Some(error_message(
+					"render_frame: no shared-memory pool attached",
+					Some(render.ticket),
+				))
+			}
+		};
+		let (w, h) = if render.width > 0 && render.height > 0 {
+			(render.width, render.height)
+		} else {
+			(
+				oakrender::frame::VideoParamsPod::DEFAULT_WIDTH,
+				oakrender::frame::VideoParamsPod::DEFAULT_HEIGHT,
+			)
+		};
+		let format = if render.format < 0 {
+			PixelFormat::F32
+		} else {
+			match render.format {
+				f if f == PixelFormat::U8 as i32 => PixelFormat::U8,
+				f if f == PixelFormat::U10 as i32 => PixelFormat::U10,
+				f if f == PixelFormat::U16 as i32 => PixelFormat::U16,
+				f if f == PixelFormat::F16 as i32 => PixelFormat::F16,
+				f if f == PixelFormat::F32 as i32 => PixelFormat::F32,
+				other => {
+					return Some(error_message(
+						&format!("render_frame: unsupported format {other}"),
+						Some(render.ticket),
+					))
+				}
+			}
+		};
+		let time = Rational::new(render.time_num, render.time_den);
+		let frame = match eval::generate_frame(time, (w, h), format) {
+			Ok(f) => f,
+			Err(e) => {
+				return Some(error_message(
+					&format!("render_frame: generation failed: {e}"),
+					Some(render.ticket),
+				))
+			}
+		};
+
+		let slot = match self.acquire_slot(pool) {
+			Some(s) => s,
+			None => {
+				return Some(error_message(
+					"render_frame: no free shm slot",
+					Some(render.ticket),
+				))
+			}
+		};
+		// Write meta + pixels into the slot, then publish.
+		let data_size = frame.data.len();
+		if data_size > pool.slot_data_bytes() {
+			return Some(error_message(
+				"render_frame: frame larger than the shm slot",
+				Some(render.ticket),
+			));
+		}
+		// SAFETY: `slot` was acquired; the slot block and meta are live
+		// shared memory of the attached pool.
+		unsafe {
+			std::ptr::copy_nonoverlapping(frame.data.as_ptr(), pool.slot_data(slot), data_size);
+			let meta = &mut *pool.meta(slot);
+			*meta = FrameSlotMeta::default();
+			meta.id = render.ticket;
+			meta.time_num = render.time_num;
+			meta.time_den = render.time_den;
+			meta.width = w;
+			meta.height = h;
+			meta.format = format as i32;
+			meta.channel_count = 4;
+			meta.linesize = frame.linesize_bytes() as i32;
+			meta.data_size = data_size as i32;
+			if !pool.publish(slot) {
+				return Some(error_message(
+					"render_frame: ready ring full",
+					Some(render.ticket),
+				));
+			}
+		}
+		Some(json!({
+			"type": crate::ipc::TYPE_FRAME_READY,
+			"ticket": render.ticket,
+			"slot": slot,
+		}))
+	}
+
+	/// `render_batch` (protocol v2; M15 S1): claim confirmation followed
+	/// by in-order rendering of every ticket into its main-assigned shm
+	/// slot. Responses stream to `out`: one `batch_accepted`, then one
+	/// `frame_ready` or `frame_failed` per ticket. Crashes the process
+	/// deliberately when the crash-mode environment asks for it (the
+	/// crash-isolation test hook).
+	fn handle_render_batch_stream(
+		&mut self,
+		line: &str,
+		out: &mut impl Write,
+	) -> io::Result<()> {
+		let batch: RenderBatchMsg = match serde_json::from_str(line) {
+			Ok(b) => b,
+			Err(_) => {
+				return write_message(out, &error_message("invalid render_batch message", None))
+			}
+		};
+
+		// Explicit claim confirmation (design §3.3): these tickets are
+		// owned by this worker now — no work stealing. The `type` tag is
+		// built by hand because [`BatchAcceptedMsg`] only carries the
+		// payload fields.
+		let accepted = json!({
+			"type": crate::ipc::TYPE_BATCH_ACCEPTED,
+			"batch_id": batch.batch_id,
+			"tickets": batch.tickets.iter().map(|t| t.ticket).collect::<Vec<_>>(),
+		});
+		write_message(out, &accepted)?;
+		out.flush()?;
+
+		for spec in &batch.tickets {
+			// Crash-isolation test hook: OAK_WORKER_CRASH_ON_TICKET=<n>
+			// segfaults while rendering ticket n. A marker file (env
+			// OAK_WORKER_CRASH_MARKER) makes the crash one-shot so the
+			// restarted worker renders the frame for real.
+			self.maybe_crash_for_testing(spec.ticket);
+
+			let response = match self.render_ticket_to_slot(spec) {
+				Ok(slot) => json!({
+					"type": crate::ipc::TYPE_FRAME_READY,
+					"ticket": spec.ticket,
+					"slot": slot,
+				}),
+				Err(e) => {
+					log_error(&format!(
+						"render_batch: ticket {} failed: {e}",
+						spec.ticket
+					));
+					json!({
+						"type": crate::ipc::TYPE_FRAME_FAILED,
+						"ticket": spec.ticket,
+						"error": e,
+					})
+				}
+			};
+			write_message(out, &response)?;
+			out.flush()?;
+		}
+		Ok(())
+	}
+
+	/// The crash-mode test hook (see [`Self::handle_render_batch_stream`]).
+	fn maybe_crash_for_testing(&self, ticket: i64) {
+		let Ok(want) = std::env::var("OAK_WORKER_CRASH_ON_TICKET") else {
+			return;
+		};
+		let Ok(crash_on) = want.parse::<i64>() else {
+			return;
+		};
+		if crash_on != ticket {
+			return;
+		}
+		let marker = std::env::var("OAK_WORKER_CRASH_MARKER").ok();
+		let should_crash = match &marker {
+			Some(path) => !std::path::Path::new(path).exists(),
+			None => true,
+		};
+		if !should_crash {
+			return;
+		}
+		if let Some(path) = &marker {
+			let _ = std::fs::write(path, b"crashed");
+		}
+		log_error(&format!("crash mode: dying on ticket {ticket}"));
+		// Raise SIGSEGV like a real plugin crash; abort as the fallback.
+		unsafe { libc::raise(libc::SIGSEGV) };
+		std::process::abort();
+	}
+
+	/// Acquire a free output slot, polling until one appears (the free
+	/// ring is the only filler-side entry point; flow control). `None`
+	/// on shutdown or after the 30 s safety deadline.
+	fn acquire_slot(&self, pool: &FrameSlotPool) -> Option<u32> {
+		let deadline = Instant::now() + Duration::from_secs(30);
+		let mut slot = 0u32;
+		loop {
+			if self.shutdown_requested {
+				return None;
+			}
+			// SAFETY: valid attached pool; the worker is the filler, so
+			// popping the free ring is its SPSC role.
+			if unsafe { pool.acquire(&mut slot) } {
+				return Some(slot);
+			}
+			if Instant::now() > deadline {
+				return None;
+			}
+			std::thread::sleep(Duration::from_millis(1));
+		}
+	}
+
+	/// Render one batch ticket into its main-assigned slot (acquire,
+	/// render, publish). Returns the published slot index.
+	fn render_ticket_to_slot(&mut self, spec: &BatchTicketSpec) -> Result<u32, String> {
+		// Clone the pool view (a cheap mapping-shared copy) so the render
+		// path below can borrow `self` mutably (scratch buffer).
+		let pool = match self.output_pool.clone() {
+			Some(p) if p.is_valid() => p,
+			_ => return Err("no shared-memory pool attached".to_string()),
+		};
+
+		// Flow control: acquire through the free ring. Main seeds and
+		// releases slots in assignment order, so the pop yields exactly
+		// the assigned slot — anything else is a protocol violation.
+		let acquired = self
+			.acquire_slot(&pool)
+			.ok_or_else(|| "no free shm slot (shutdown or timeout)".to_string())?;
+		if acquired != spec.slot as u32 {
+			return Err(format!(
+				"slot assignment mismatch: acquired {acquired}, assigned {}",
+				spec.slot
+			));
+		}
+		let slot = acquired;
+
+		let result = self.render_spec_pixels(spec, &pool);
+		match result {
+			Ok(()) => {
+				// SAFETY: `slot` was acquired above and rendered into.
+				let published = unsafe { pool.publish(slot) };
+				if !published {
+					Err("ready ring full".to_string())
+				} else {
+					Ok(slot)
+				}
+			}
+			// The slot was acquired but never published; main recycles it
+			// when it sees frame_failed (the worker cannot push back to
+			// the free ring — that is the drainer's SPSC role).
+			Err(e) => Err(e),
+		}
+	}
+
+	/// Render `spec` into the slot's data block and fill the slot meta.
+	fn render_spec_pixels(&mut self, spec: &BatchTicketSpec, pool: &FrameSlotPool) -> Result<(), String> {
+		let w = spec.width;
+		let h = spec.height;
+		if w <= 0 || h <= 0 {
+			return Err(format!("bad render size {w}x{h}"));
+		}
+		let time = Rational::new(spec.time_num, spec.time_den);
+		let params = self.ticket_params(spec, time);
+
+		let bgra8 = spec.format == SLOT_FORMAT_BGRA8;
+		let (dst_bpp, dst_linesize) = if bgra8 { (4, w * 4) } else { (16, w * 16) };
+		let dst_need = (h as usize) * (dst_linesize as usize);
+		if dst_need > pool.slot_data_bytes() {
+			return Err(format!(
+				"frame {}x{} needs {dst_need} bytes, slot holds {}",
+				w,
+				h,
+				pool.slot_data_bytes()
+			));
+		}
+		let _ = dst_bpp;
+
+		// SAFETY: `spec.slot` was acquired by render_ticket_to_slot; the
+		// block is live shared memory of the attached pool.
+		let dst = unsafe {
+			std::slice::from_raw_parts_mut(pool.slot_data(spec.slot as u32), pool.slot_data_bytes())
+		};
+
+		if !bgra8 {
+			// F32 RGBA: render straight into the slot (no staging copy).
+			render_f32_into(spec, &params, time, (w, h), &mut dst[..dst_need])?;
+		} else {
+			// BGRA8: render the F32 pipeline frame into the session
+			// scratch, then convert into the slot (the end-of-pipe format
+			// convert is not an extra frame copy, design §3.1).
+			let f32_need = (w as usize) * (h as usize) * 16;
+			if self.f32_scratch.len() < f32_need {
+				self.f32_scratch.resize(f32_need, 0);
+			}
+			render_f32_into(spec, &params, time, (w, h), &mut self.f32_scratch[..f32_need])?;
+			convert_f32_rgba_to_bgra8(&self.f32_scratch[..f32_need], &mut dst[..dst_need]);
+		}
+
+		// Slot meta (fresh each publish).
+		// SAFETY: slot in range of the attached pool.
+		unsafe {
+			let meta = &mut *pool.meta(spec.slot as u32);
+			*meta = FrameSlotMeta::default();
+			meta.id = spec.ticket;
+			meta.time_num = spec.time_num;
+			meta.time_den = spec.time_den;
+			meta.width = w;
+			meta.height = h;
+			meta.format = spec.format;
+			meta.channel_count = spec.channels.max(4);
+			meta.linesize = dst_linesize;
+			meta.data_size = dst_need as i32;
+		}
+		Ok(())
+	}
+
+	/// Map a wire ticket spec to the eval producer's ticket params.
+	fn ticket_params(&self, spec: &BatchTicketSpec, time: Rational) -> VideoTicketParams {
+		let footage = if spec.footage_file.is_empty() {
+			None
+		} else {
+			Some((spec.footage_file.clone(), spec.footage_stream))
+		};
+		let montage: Vec<MontageClip> = spec
+			.montage
+			.iter()
+			.map(|c| MontageClip {
+				filename: c.filename.clone(),
+				stream_index: c.stream_index,
+				in_time: Rational::new(c.in_num, c.in_den),
+				out_time: Rational::new(c.out_num, c.out_den),
+				media_in: Rational::new(c.media_in_num, c.media_in_den),
+				gain: c.gain,
+			})
+			.collect();
+		VideoTicketParams {
+			viewer: self
+				.graph
+				.as_ref()
+				.map(|g| g.project_copy)
+				.unwrap_or(0),
+			time,
+			force_size: Some((spec.width, spec.height)),
+			force_format: Some(PixelFormat::F32),
+			cache: None,
+			cache_dir: None,
+			cache_id: None,
+			cache_timebase: None,
+			footage,
+			montage,
+		}
+	}
+}
+
+/// Render the F32 RGBA pipeline frame for `spec` into `dst`
+/// (`(w*h*16)` bytes): generated transparent black, footage decode,
+/// or montage composite — through [`oakrender::eval`].
+fn render_f32_into(
+	spec: &BatchTicketSpec,
+	params: &VideoTicketParams,
+	time: Rational,
+	size: (i32, i32),
+	dst: &mut [u8],
+) -> Result<(), String> {
+	let (w, h) = size;
+	let stride = w * 16;
+	if !params.montage.is_empty() {
+		return eval::render_montage_frame_into(time, params, (w, h), dst, stride)
+			.map_err(|e| format!("montage render: {e}"));
+	}
+	if !spec.footage_file.is_empty() {
+		let decoded = eval::render_footage_frame(
+			&spec.footage_file,
+			spec.footage_stream,
+			time,
+			(w, h),
+			PixelFormat::F32,
+		)
+		.map_err(|e| format!("footage decode: {e}"))?;
+		let oakrender::texture::Texture::Cpu(frame) = &decoded else {
+			return Err("decode produced a GPU texture".to_string());
+		};
+		let src_stride = frame.linesize_bytes() as usize;
+		let row_bytes = (w as usize) * 16;
+		if frame.data.len() < src_stride * (h as usize) || dst.len() < row_bytes * (h as usize) {
+			return Err("decoded frame geometry mismatch".to_string());
+		}
+		for y in 0..h as usize {
+			dst[y * row_bytes..(y + 1) * row_bytes]
+				.copy_from_slice(&frame.data[y * src_stride..y * src_stride + row_bytes]);
+		}
+		return Ok(());
+	}
+	// Generated frame: transparent black.
+	dst[..(h as usize) * (stride as usize)].fill(0);
+	Ok(())
+}
+
+/// Convert F32 RGBA (`src`, 16 bytes/px) to 8-bit BGRA (`dst`, 4
+/// bytes/px) with clamping — the worker-side end-of-pipe convert for
+/// BGRA8 preview slots.
+fn convert_f32_rgba_to_bgra8(src: &[u8], dst: &mut [u8]) {
+	let to_u8 = |v: f32| -> u8 { (v.clamp(0.0, 1.0) * 255.0 + 0.5) as u8 };
+	let pixels = dst.len() / 4;
+	for i in 0..pixels {
+		let s = &src[i * 16..i * 16 + 16];
+		let r = f32::from_le_bytes(s[0..4].try_into().unwrap());
+		let g = f32::from_le_bytes(s[4..8].try_into().unwrap());
+		let b = f32::from_le_bytes(s[8..12].try_into().unwrap());
+		let a = f32::from_le_bytes(s[12..16].try_into().unwrap());
+		let d = &mut dst[i * 4..i * 4 + 4];
+		d[0] = to_u8(b);
+		d[1] = to_u8(g);
+		d[2] = to_u8(r);
+		d[3] = to_u8(a);
 	}
 }
 
@@ -391,7 +886,9 @@ impl WorkerSession {
 pub fn worker_main(backend: &str) -> i32 {
 	// 1. Session creation initializes the render backend through the
 	//    oakrender crate's direct Rust API
-	//    (oakengine_worker_session_create()).
+	//    (oakengine_worker_session_create()). The M15 "cpu" backend is
+	//    headless: no renderer, CPU evaluation + decode only.
+	let cpu_mode = is_cpu_backend(backend);
 	let mut session = match WorkerSession::create(backend) {
 		Ok(s) => s,
 		Err(msg) => {
@@ -399,14 +896,14 @@ pub fn worker_main(backend: &str) -> i32 {
 			return 1;
 		}
 	};
-	if !session.has_renderer() {
+	if !session.has_renderer() && !cpu_mode {
 		// Mirrors oakengine_worker_main(): without a renderer the worker
 		// cannot do anything, so it exits 1. ("--backend none" lands here.)
 		log_error("no renderer initialized");
 		return 1;
 	}
 
-	// 2. Runtime services (config load etc.).
+	// 2. Runtime services (config load, plugin executor install).
 	if !session.initialize_runtime() {
 		return 1;
 	}
@@ -441,6 +938,21 @@ pub fn worker_main(backend: &str) -> i32 {
 		}
 		if line.trim().is_empty() {
 			// Blank lines are skipped silently (read_message() semantics).
+			continue;
+		}
+		// Protocol v2: render_batch streams its responses (one
+		// batch_accepted + one frame_ready/frame_failed per ticket).
+		if serde_json::from_str::<Value>(&line)
+			.ok()
+			.and_then(|v| v.get("type").and_then(Value::as_str).map(str::to_string))
+			.as_deref()
+			== Some(TYPE_RENDER_BATCH)
+		{
+			if let Err(e) = session.handle_render_batch_stream(&line, &mut out) {
+				log_error(&format!("failed to serve render_batch: {e}"));
+				exit_code = 1;
+				break;
+			}
 			continue;
 		}
 		if let Some(response) = session.handle_line(&line) {
@@ -607,8 +1119,20 @@ mod tests {
 	fn handshake_attaches_real_output_pool() {
 		let mut s = WorkerSession::create("none").unwrap();
 		let (hs, out_region, _in) = parent_side(4, 4096, false);
-		let resp = s.handle_line(&hs.to_string());
-		assert!(resp.is_none(), "unexpected error: {resp:?}");
+		let resp = s.handle_line(&hs.to_string()).expect("hello_caps response");
+		// Protocol v2: a successful attach answers the geometry handshake
+		// with the capability announcement.
+		assert_eq!(resp["type"], crate::ipc::TYPE_HELLO_CAPS);
+		assert_eq!(resp["protocol_version"], PROTOCOL_VERSION);
+		let formats: Vec<i64> = resp["formats"]
+			.as_array()
+			.unwrap()
+			.iter()
+			.map(|v| v.as_i64().unwrap())
+			.collect();
+		assert!(formats.contains(&(PixelFormat::F32 as i64)));
+		assert!(formats.contains(&(SLOT_FORMAT_BGRA8 as i64)));
+		assert_eq!(resp["max_slot_bytes"], 4096);
 		// The session now holds a real attached pool with the parent's
 		// geometry.
 		let out_pool = s.output_pool.as_ref().unwrap();
@@ -648,8 +1172,8 @@ mod tests {
 	fn handshake_attaches_input_pool_too() {
 		let mut s = WorkerSession::create("none").unwrap();
 		let (hs, _out, _in) = parent_side(2, 256, true);
-		let resp = s.handle_line(&hs.to_string());
-		assert!(resp.is_none(), "unexpected error: {resp:?}");
+		let resp = s.handle_line(&hs.to_string()).expect("hello_caps response");
+		assert_eq!(resp["type"], crate::ipc::TYPE_HELLO_CAPS);
 		assert!(s.input_pool.is_some());
 		let in_pool = s.input_pool.as_ref().unwrap();
 		assert_eq!(in_pool.slot_count(), 2);
@@ -722,7 +1246,7 @@ mod tests {
 	}
 
 	#[test]
-	fn load_graph_checks_are_real_then_stub() {
+	fn load_graph_file_checks_then_real_deserialization() {
 		let mut s = WorkerSession::create("none").unwrap();
 
 		let missing = "/definitely/not/a/real/graph.ove";
@@ -747,32 +1271,150 @@ mod tests {
 		);
 		let _ = std::fs::remove_file(&empty);
 
+		// A real oaknode project round-trips through the serializer.
+		let project = oaknode::project::Project::new();
+		let xml = oaknode::serializer::save(&project.lock().unwrap_or_else(|e| e.into_inner()))
+			.expect("serialize empty project");
 		let real = std::env::temp_dir().join("oak_worker_main_test_graph.ove");
-		std::fs::write(&real, b"<root/>").unwrap();
+		std::fs::write(&real, &xml).unwrap();
+		let resp = s.handle_line(
+			&json!({ "type": "load_graph", "path": real.display().to_string() }).to_string(),
+		);
+		assert!(resp.is_none(), "unexpected error: {resp:?}");
+		let graph = s.graph.as_ref().expect("graph loaded");
+		assert!(graph.project.is_some(), "full project deserialized");
+		let _ = std::fs::remove_file(&real);
+
+		// The minimal identity-only payload (`{"project_copy":N}`) loads as
+		// a copied-project context.
+		let ident = std::env::temp_dir().join("oak_worker_main_test_identity.ove");
+		std::fs::write(&ident, r#"{"project_copy":7}"#).unwrap();
+		let resp = s.handle_line(
+			&json!({ "type": "load_graph", "path": ident.display().to_string() }).to_string(),
+		);
+		assert!(resp.is_none(), "unexpected error: {resp:?}");
+		let graph = s.graph.as_ref().expect("graph loaded");
+		assert!(graph.project.is_none());
+		assert_eq!(graph.project_copy, 7);
+		let _ = std::fs::remove_file(&ident);
+
+		// Garbage that is neither project XML nor identity JSON fails
+		// explainably.
+		let bad = std::env::temp_dir().join("oak_worker_main_test_bad.ove");
+		std::fs::write(&bad, b"definitely not a graph").unwrap();
 		let resp = s
 			.handle_line(
-				&json!({ "type": "load_graph", "path": real.display().to_string() }).to_string(),
+				&json!({ "type": "load_graph", "path": bad.display().to_string() }).to_string(),
 			)
 			.unwrap();
 		assert!(resp["message"]
 			.as_str()
 			.unwrap()
-			.contains("node-graph deserialization is not yet available"));
-		let _ = std::fs::remove_file(&real);
+			.starts_with("graph deserialization failed: "));
+		let _ = std::fs::remove_file(&bad);
 	}
 
 	#[test]
-	fn render_frame_reports_stub_with_ticket() {
+	fn render_frame_without_pool_reports_error_with_ticket() {
 		let mut s = WorkerSession::create("none").unwrap();
 		let resp = s
 			.handle_line(r#"{"type":"render_frame","ticket":123,"node":"abc"}"#)
 			.unwrap();
 		assert_eq!(resp["type"], "error");
 		assert_eq!(resp["ticket"], 123);
-		assert!(resp["message"]
-			.as_str()
+		assert_eq!(
+			resp["message"],
+			"render_frame: no shared-memory pool attached"
+		);
+	}
+
+	#[test]
+	fn render_frame_v1_renders_generated_frame_into_slot() {
+		let mut s = WorkerSession::create("none").unwrap();
+		let (hs, out_region, _in) = parent_side(4, 4 * 4 * 16, false);
+		let resp = s.handle_line(&hs.to_string()).expect("hello_caps response");
+		assert_eq!(resp["type"], crate::ipc::TYPE_HELLO_CAPS);
+
+		// The v1 single-frame path renders the pipeline's generated frame
+		// (transparent black F32; format -1 = pipeline default) into an
+		// acquired slot and reports it.
+		let resp = s
+			.handle_line(
+				r#"{"type":"render_frame","ticket":123,"time_num":1,"time_den":2,"width":4,"height":4,"format":-1}"#,
+			)
+			.unwrap();
+		assert_eq!(resp["type"], "frame_ready", "unexpected: {resp}");
+		assert_eq!(resp["ticket"], 123);
+		let slot = resp["slot"].as_i64().unwrap() as u32;
+
+		// The parent (drainer) consumes the published slot and sees the
+		// meta the worker wrote.
+		let parent_pool = unsafe { FrameSlotPool::attach(out_region.data()) };
+		let mut consumed = 0;
+		assert!(unsafe { parent_pool.consume(&mut consumed) });
+		assert_eq!(consumed, slot);
+		let meta = unsafe { &*parent_pool.meta_const(consumed) };
+		assert_eq!(meta.id, 123);
+		assert_eq!(meta.width, 4);
+		assert_eq!(meta.height, 4);
+		assert_eq!(meta.format, PixelFormat::F32 as i32);
+		assert_eq!(meta.data_size, 4 * 4 * 16);
+		// Generated frame: transparent black.
+		let data = unsafe { std::slice::from_raw_parts(parent_pool.slot_data_const(consumed), 4 * 4 * 16) };
+		assert!(data.iter().all(|&b| b == 0));
+		unsafe { parent_pool.release(consumed) };
+	}
+
+	#[test]
+	fn render_batch_stream_renders_generated_frames_and_reports_failures() {
+		let mut s = WorkerSession::create("none").unwrap();
+		// Slots sized for 8x8 BGRA8.
+		let (hs, out_region, _in) = parent_side(4, 8 * 8 * 4, false);
+		let resp = s.handle_line(&hs.to_string()).expect("hello_caps response");
+		assert_eq!(resp["type"], crate::ipc::TYPE_HELLO_CAPS);
+
+		let batch = json!({
+			"type": "render_batch",
+			"batch_id": 9,
+			"tickets": [
+				{ "ticket": 1, "slot": 0, "time_num": 0, "time_den": 1, "width": 8, "height": 8, "format": SLOT_FORMAT_BGRA8, "channels": 4 },
+				{ "ticket": 2, "slot": 1, "time_num": 0, "time_den": 1, "width": 0, "height": 8, "format": SLOT_FORMAT_BGRA8, "channels": 4 },
+			],
+		});
+		let mut out: Vec<u8> = Vec::new();
+		s.handle_render_batch_stream(&batch.to_string(), &mut out)
+			.unwrap();
+		let lines: Vec<Value> = String::from_utf8(out)
 			.unwrap()
-			.contains("frame rendering is not yet available"));
+			.lines()
+			.map(|l| serde_json::from_str(l).unwrap())
+			.collect();
+		assert_eq!(lines.len(), 3, "accepted + one reply per ticket");
+		assert_eq!(lines[0]["type"], "batch_accepted");
+		assert_eq!(lines[0]["batch_id"], 9);
+		assert_eq!(lines[1]["type"], "frame_ready");
+		assert_eq!(lines[1]["ticket"], 1);
+		assert_eq!(lines[1]["slot"], 0);
+		assert_eq!(lines[2]["type"], "frame_failed");
+		assert_eq!(lines[2]["ticket"], 2);
+
+		// The rendered slot holds opaque black BGRA8 (generated transparent
+		// black F32 converted: alpha 0).
+		let parent_pool = unsafe { FrameSlotPool::attach(out_region.data()) };
+		let mut consumed = 0;
+		assert!(unsafe { parent_pool.consume(&mut consumed) });
+		assert_eq!(consumed, 0);
+		let meta = unsafe { &*parent_pool.meta_const(consumed) };
+		assert_eq!(meta.id, 1);
+		assert_eq!(meta.format, SLOT_FORMAT_BGRA8);
+		assert_eq!(meta.linesize, 8 * 4);
+		assert_eq!(meta.data_size, 8 * 8 * 4);
+		unsafe { parent_pool.release(consumed) };
+
+		// The failed ticket acquired slot 1 but never published it, so it
+		// is still owned by the filler side (not in the ready ring) — the
+		// ready ring is empty now.
+		assert!(!unsafe { parent_pool.consume(&mut consumed) });
 	}
 
 	// ---- oak-worker's in-process session tests (M14 R2: folded from the

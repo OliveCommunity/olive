@@ -32,6 +32,9 @@
 //! - `backend` — wgpu GPU context + display renderer
 //! - `copier` — render-side project-copy client (oaknode C ABI)
 //! - `cancelatom` — the cancellation primitive
+//! - `ipc` — render-worker NDJSON protocol + shm frame-slot transport
+//! - `scheduler` — preview frame scheduler (interleaved batch claims)
+//! - `procpool` — process-isolated render backend (M15)
 //! - `bridge` — direct-call C ABI bridges (oakcommon/oaknode/oakcodec)
 //! - `ffi` — the `include/render/*.h` export layer
 
@@ -49,7 +52,10 @@ pub mod error;
 pub mod eval;
 pub mod frame;
 pub mod handle;
+pub mod ipc;
 pub mod manager;
+pub mod procpool;
+pub mod scheduler;
 pub mod texture;
 pub mod ticket;
 pub mod worker;

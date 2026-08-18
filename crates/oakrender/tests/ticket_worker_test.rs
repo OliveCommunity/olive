@@ -83,7 +83,7 @@ impl Drop for GateRelease {
 fn ticket_completion_once_success() {
 	let mut pool = WorkerPool::new(2);
 	pool.start();
-	let arena = TicketArena::new(pool.clone(), ok_producer());
+	let arena = TicketArena::new(Arc::new(pool.clone()), ok_producer());
 
 	let (tx, rx) = mpsc::channel();
 	let id = arena.submit_video(
@@ -120,7 +120,7 @@ fn ticket_completion_once_on_cancel() {
 		}
 		Ok(oakrender::ticket::TicketPayload::Video(Texture::wrap_frame(small_frame())))
 	});
-	let arena = TicketArena::new(pool.clone(), blocking);
+	let arena = TicketArena::new(Arc::new(pool.clone()), blocking);
 
 	let (tx, rx) = mpsc::channel();
 	let id = arena.submit_video(
@@ -159,7 +159,7 @@ fn shutdown_drains_completions() {
 			Ok(oakrender::ticket::TicketPayload::Video(Texture::wrap_frame(small_frame())))
 		})
 	};
-	let arena = TicketArena::new(pool.clone(), blocking);
+	let arena = TicketArena::new(Arc::new(pool.clone()), blocking);
 
 	let (tx, rx) = mpsc::channel();
 	let mut ids = Vec::new();
@@ -197,7 +197,7 @@ fn shutdown_drains_completions() {
 fn pool_saturation() {
 	let mut pool = WorkerPool::new(4);
 	pool.start();
-	let arena = TicketArena::new(pool.clone(), ok_producer());
+	let arena = TicketArena::new(Arc::new(pool.clone()), ok_producer());
 	let (tx, rx) = mpsc::channel();
 	let mut ids = Vec::new();
 	for i in 0..64u64 {
@@ -228,7 +228,7 @@ fn pool_saturation() {
 fn ticket_id_monotonic() {
 	let mut pool = WorkerPool::new(1);
 	pool.start();
-	let arena = TicketArena::new(pool.clone(), ok_producer());
+	let arena = TicketArena::new(Arc::new(pool.clone()), ok_producer());
 	let a = arena.submit_video(params(Rational::new(0, 1)), Box::new(|_| {}));
 	let b = arena.submit_video(params(Rational::new(1, 1)), Box::new(|_| {}));
 	let c = arena.submit_video(params(Rational::new(2, 1)), Box::new(|_| {}));

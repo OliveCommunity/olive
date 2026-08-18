@@ -314,7 +314,7 @@ mod tests {
 	fn new_cacher() -> (PreviewAutoCacher, WorkerPool) {
 		let mut pool = WorkerPool::new(2);
 		pool.start();
-		let arena = Arc::new(TicketArena::new(pool.clone(), frame_producer()));
+		let arena = Arc::new(TicketArena::new(Arc::new(pool.clone()), frame_producer()));
 		(PreviewAutoCacher::new(arena), pool)
 	}
 
@@ -367,7 +367,7 @@ mod tests {
 			f.allocate();
 			Ok(crate::ticket::TicketPayload::Video(Texture::wrap_frame(f)))
 		});
-		let arena = Arc::new(TicketArena::new(pool.clone(), producer));
+		let arena = Arc::new(TicketArena::new(Arc::new(pool.clone()), producer));
 		(PreviewAutoCacher::new(arena), pool)
 	}
 
@@ -465,7 +465,7 @@ mod tests {
 		let mut c = {
 			let mut pool = WorkerPool::new(1);
 			pool.start();
-			let arena = Arc::new(TicketArena::new(pool.clone(), frame_producer()));
+			let arena = Arc::new(TicketArena::new(Arc::new(pool.clone()), frame_producer()));
 			let c = PreviewAutoCacher::new(arena);
 			pool.shutdown();
 			c

@@ -4775,6 +4775,9 @@ name = "oak-worker"
 version = "0.1.0"
 dependencies = [
  "libc",
+ "oakcore-rs",
+ "oaknode",
+ "oakplugin",
  "oakrender",
  "serde",
  "serde_json",
@@ -4886,11 +4889,14 @@ dependencies = [
 name = "oakrender"
 version = "0.1.0"
 dependencies = [
+ "libc",
  "oakcodec",
  "oakcommon",
  "oakcore-rs",
  "oaknode",
  "ocio-rs",
+ "serde",
+ "serde_json",
  "thiserror 2.0.20",
  "wgpu 25.0.2",
 ]

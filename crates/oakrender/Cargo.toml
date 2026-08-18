@@ -27,6 +27,14 @@ wgpu = "25"
 ocio-rs = { version = "0.2", features = ["bundled"] }
 # `std::error::Error` impls for the crate-internal error enum.
 thiserror = "2"
+# M15 S1: physical-memory query for the process-pool worker-count policy
+# (sysctlbyname on macOS / sysconf on Linux) in src/procpool.rs.
+libc = "0.2"
+# M15 S1: the render-worker NDJSON control protocol (src/ipc.rs moved here
+# from oak-worker so both ends of the pipe link one copy; src/procpool.rs
+# is the main-process side).
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [dev-dependencies]
 # oakcodec is also a plain dependency above; the dev-dependency re-entry

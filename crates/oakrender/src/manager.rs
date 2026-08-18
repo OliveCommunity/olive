@@ -31,8 +31,9 @@ use crate::autocacher::PreviewAutoCacher;
 use crate::backend::BackendKind;
 use crate::error::{Error, Result};
 use crate::eval;
+use crate::procpool::{DispatcherConfig, ProcessDispatcher};
 use crate::ticket::{TicketArena, TicketId};
-use crate::worker::WorkerPool;
+use crate::worker::{JobDispatch, WorkerPool};
 
 static MANAGER: Mutex<Option<Arc<RenderManager>>> = Mutex::new(None);
 
@@ -40,11 +41,24 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 	m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
+/// The render backend the manager initializes (M15 S1: the thread pool
+/// and the process-isolated dispatcher coexist; S2 makes Processes the
+/// default and removes the pool).
+pub enum RenderBackendChoice {
+	/// In-process thread pool (the default; C++ parity).
+	Threads,
+	/// Process-isolated oak-worker pool (crash isolation + shm frames).
+	Processes(DispatcherConfig),
+}
+
 /// The manager. Created by `oakrender_manager_init` (C ABI), accessed
 /// internally through [`RenderManager::global`].
 pub struct RenderManager {
-	/// Worker pool.
-	pub pool: WorkerPool,
+	/// Video job dispatch (thread pool or process dispatcher, M15).
+	pub dispatch: Arc<dyn JobDispatch>,
+	/// Audio job dispatch — kept on main-process threads until S3
+	/// (design §3.7: crash risk is dominated by video plugins).
+	pub audio_dispatch: Arc<dyn JobDispatch>,
 	/// Ticket arena.
 	pub tickets: Arc<TicketArena>,
 	/// Active GPU backend.
@@ -59,23 +73,51 @@ pub struct RenderManager {
 }
 
 impl RenderManager {
-	/// Initialize the process-wide manager (idempotent; C++ instance()
-	/// semantics — only the main GUI process does this).
+	/// Initialize the process-wide manager with the default backend
+	/// (in-process threads; idempotent; C++ instance() semantics — only
+	/// the main GUI process does this).
 	pub fn init() -> Result<()> {
+		Self::init_with_backend(RenderBackendChoice::Threads)
+	}
+
+	/// Initialize the process-wide manager with an explicit backend
+	/// (M15 S1: `Threads` keeps the C++ parity path, `Processes` spawns
+	/// the oak-worker pool).
+	pub fn init_with_backend(choice: RenderBackendChoice) -> Result<()> {
 		let mut guard = lock(&MANAGER);
 		if guard.is_some() {
 			return Err(Error::State);
 		}
 		let backend = BackendKind::from_user_config();
-		let mut pool = WorkerPool::new(0);
-		pool.start();
 		let producer: crate::ticket::Producer = Arc::new(|time, params| {
 			eval::render_produced_frame(time, params)
 				.map(crate::ticket::TicketPayload::Video)
 		});
-		let tickets = Arc::new(TicketArena::new(pool.clone(), producer));
+		let (dispatch, audio_dispatch): (Arc<dyn JobDispatch>, Arc<dyn JobDispatch>) =
+			match choice {
+				RenderBackendChoice::Threads => {
+					let mut pool = WorkerPool::new(0);
+					pool.start();
+					let pool = Arc::new(pool);
+					(pool.clone(), pool)
+				}
+				RenderBackendChoice::Processes(config) => {
+					let dispatcher = ProcessDispatcher::new(config)?;
+					dispatcher.start()?;
+					// Audio stays on main-process threads (design §3.7).
+					let mut audio = WorkerPool::new(2);
+					audio.start();
+					(dispatcher, Arc::new(audio))
+				}
+			};
+		let tickets = Arc::new(TicketArena::new_with_audio(
+			dispatch.clone(),
+			audio_dispatch.clone(),
+			producer,
+		));
 		*guard = Some(Arc::new(RenderManager {
-			pool,
+			dispatch,
+			audio_dispatch,
 			tickets,
 			backend,
 			requested_backend: backend,
@@ -99,15 +141,16 @@ impl RenderManager {
 		guard
 	}
 
-	/// Shut down: cancel tickets, drain pool, release backend.
+	/// Shut down: cancel tickets, drain both dispatch backends.
 	pub fn shutdown() {
 		let manager = lock(&MANAGER).take();
 		if let Some(manager) = manager {
 			manager.tickets.cancel_all();
-			// Drop the manager (releases the pool clone) after the pool is
-			// drained; the drain delivers queued completions.
-			let mut pool = manager.pool.clone();
-			pool.shutdown();
+			// Drain after the cancels so queued completions fire. Both
+			// dispatches are idempotent (the Threads backend shares one
+			// Arc for video + audio).
+			manager.dispatch.shutdown();
+			manager.audio_dispatch.shutdown();
 			drop(manager);
 		}
 	}

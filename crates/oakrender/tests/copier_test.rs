@@ -47,7 +47,10 @@ fn frame_producer() -> oakrender::ticket::Producer {
 fn cacher() -> (oakrender::autocacher::PreviewAutoCacher, WorkerPool) {
 	let mut pool = WorkerPool::new(2);
 	pool.start();
-	let arena = Arc::new(TicketArena::new(pool.clone(), frame_producer()));
+	let arena = Arc::new(TicketArena::new(
+		Arc::new(pool.clone()),
+		frame_producer(),
+	));
 	(oakrender::autocacher::PreviewAutoCacher::new(arena), pool)
 }
 

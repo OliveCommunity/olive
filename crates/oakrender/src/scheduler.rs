@@ -1,0 +1,568 @@
+// Oak Video Editor - Non-Linear Video Editor
+// Copyright (C) 2026 Oak Team
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+//! The preview scheduler (M15 S1; design doc §3.2): frame-request
+//! ordering, interleaved batch claims, crash re-dispatch and flow
+//! control, as pure single-threaded logic.
+//!
+//! The scheduler knows nothing about processes or shared memory — it
+//! turns a stream of [`FrameRequest`]s into [`ClaimedBatch`]es for the
+//! [`crate::procpool::ProcessDispatcher`] to hand to workers:
+//!
+//!   - **Interleaved batch claims.** With `W` workers, the pending frame
+//!     stream is sharded round-robin: worker `i` claims frames whose
+//!     frame number is `≡ i (mod W)`, in batches of `B ≈ 120 / W`
+//!     (configurable). Adjacent frame numbers therefore land on
+//!     different workers and finish at nearly the same time; every
+//!     frame belongs to exactly one worker (no work stealing).
+//!   - **Priorities.** Seek/current frame > playback window (nearer the
+//!     playhead first) > background (export/thumbnails). Within one
+//!     priority class batches keep ascending frame order.
+//!   - **Crash recovery.** A crashed worker's claimed frames (its whole
+//!     un-started batches plus the un-finished frames of started ones)
+//!     are re-queued and may be claimed by ANY healthy worker — crash
+//!     re-dispatch is failure recovery, not stealing.
+//!   - **Flow control.** [`PreviewScheduler::claim_batch`] never claims
+//!     more frames than the caller's `credit` (the worker's free shm
+//!     slot count): slots are the credit.
+//!   - **Cancellation.** Frame keys carry a parameter `version`;
+//!     submitting a newer version of a key invalidates the older one,
+//!     and [`PreviewScheduler::cancel_sequence`] drops a whole sequence.
+//!
+//! All methods are non-blocking; the dispatcher drives them from its
+//! poll loop (UI tick).
+
+use std::collections::HashMap;
+
+/// A frame request key: `(sequence, frame number, parameter version)`.
+/// The version covers graph/proxy/resolution/color-parameter changes —
+/// bumping it invalidates outstanding requests for the same frame.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct FrameKey {
+	/// Sequence identity.
+	pub sequence: u64,
+	/// Frame number within the sequence.
+	pub frame: i64,
+	/// Parameter version (graph version / proxy tier / resolution tier /
+	/// color).
+	pub version: u64,
+}
+
+/// Frame request priority class (lower value = more urgent).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum FramePriority {
+	/// Seek / current playhead frame (single-frame insert, top priority).
+	Seek,
+	/// Playback window frames (ordered by [`FrameRequest::distance`]).
+	Playback,
+	/// Background work (export, thumbnails, full-res stills).
+	Background,
+}
+
+/// One pending frame request. `payload` is opaque to the scheduler (the
+/// dispatcher uses it to find the ticket's params + completion).
+#[derive(Clone, Debug)]
+pub struct FrameRequest<P> {
+	/// The request key.
+	pub key: FrameKey,
+	/// Priority class.
+	pub priority: FramePriority,
+	/// Distance from the playhead in frames (orders the Playback class;
+	/// unused by Seek/Background).
+	pub distance: i64,
+	/// Caller payload.
+	pub payload: P,
+}
+
+/// A batch of frames one worker claimed.
+#[derive(Clone, Debug)]
+pub struct ClaimedBatch<P> {
+	/// Batch identity (unique per scheduler).
+	pub batch_id: u64,
+	/// The claiming worker index.
+	pub worker: usize,
+	/// The claimed frames in render order (priority class first, then
+	/// ascending frame number).
+	pub frames: Vec<FrameRequest<P>>,
+}
+
+struct Claim<P> {
+	worker: usize,
+	batch_id: u64,
+	request: FrameRequest<P>,
+}
+
+struct PendingEntry<P> {
+	request: FrameRequest<P>,
+	/// True when any worker may claim this frame (crash re-dispatch);
+	/// false when the interleaved shard rule applies.
+	any_worker: bool,
+}
+
+/// The scheduler state machine (single-threaded by contract).
+pub struct PreviewScheduler<P> {
+	workers: usize,
+	batch_size: usize,
+	pending: Vec<PendingEntry<P>>,
+	claimed: HashMap<FrameKey, Claim<P>>,
+	next_batch_id: u64,
+	/// Total frames re-queued by worker crashes (tests/metrics).
+	crash_requeued: u64,
+}
+
+impl<P: Clone> PreviewScheduler<P> {
+	/// Scheduler for `workers` workers (at least 1). `batch_size` 0 picks
+	/// the design default `max(1, 120 / workers)`.
+	pub fn new(workers: usize, batch_size: usize) -> Self {
+		let workers = workers.max(1);
+		let batch_size = if batch_size == 0 {
+			(120 / workers).max(1)
+		} else {
+			batch_size
+		};
+		Self {
+			workers,
+			batch_size,
+			pending: Vec::new(),
+			claimed: HashMap::new(),
+			next_batch_id: 1,
+			crash_requeued: 0,
+		}
+	}
+
+	/// The configured worker count.
+	pub fn workers(&self) -> usize {
+		self.workers
+	}
+
+	/// The configured batch size.
+	pub fn batch_size(&self) -> usize {
+		self.batch_size
+	}
+
+	/// Submit a frame request. An already-pending request with the same
+	/// key is replaced; a key already claimed (in flight) is rejected —
+	/// the dispatcher must cancel/re-version it first. Returns true when
+	/// the request was accepted.
+	pub fn submit(&mut self, request: FrameRequest<P>) -> bool {
+		if self.claimed.contains_key(&request.key) {
+			return false;
+		}
+		if let Some(entry) = self.pending.iter_mut().find(|e| e.request.key == request.key) {
+			entry.request = request;
+			return true;
+		}
+		self.pending.push(PendingEntry {
+			request,
+			any_worker: false,
+		});
+		true
+	}
+
+	/// Claim the next batch for `worker`: the worker's interleaved shard
+	/// (frame number `≡ worker (mod W)`, plus any crash-requeued frames),
+	/// ordered by priority class / playhead distance / ascending frame,
+	/// capped at `min(batch_size, credit)`. Returns `None` when nothing
+	/// is claimable (`credit == 0`, unknown worker, empty shard).
+	///
+	/// Claimed frames never go to another worker while in flight (no
+	/// stealing).
+	pub fn claim_batch(&mut self, worker: usize, credit: usize) -> Option<ClaimedBatch<P>> {
+		if worker >= self.workers || credit == 0 {
+			return None;
+		}
+		let workers = self.workers;
+		let mut indexes: Vec<usize> = self
+			.pending
+			.iter()
+			.enumerate()
+			.filter(|(_, e)| {
+				e.any_worker || e.request.key.frame.rem_euclid(workers as i64) == worker as i64
+			})
+			.map(|(i, _)| i)
+			.collect();
+		if indexes.is_empty() {
+			return None;
+		}
+		indexes.sort_by(|&a, &b| {
+			let ra = &self.pending[a].request;
+			let rb = &self.pending[b].request;
+			ra.priority
+				.cmp(&rb.priority)
+				.then(ra.distance.cmp(&rb.distance))
+				.then(ra.key.frame.cmp(&rb.key.frame))
+				.then(ra.key.sequence.cmp(&rb.key.sequence))
+		});
+		indexes.truncate(self.batch_size.min(credit));
+
+		let batch_id = self.next_batch_id;
+		self.next_batch_id += 1;
+
+		// Collect claimed frames (removal order does not matter; the batch
+		// keeps the sorted order).
+		let mut frames: Vec<FrameRequest<P>> = Vec::with_capacity(indexes.len());
+		let mut marked: Vec<bool> = vec![false; self.pending.len()];
+		for &i in &indexes {
+			marked[i] = true;
+		}
+		let mut kept: Vec<PendingEntry<P>> = Vec::with_capacity(self.pending.len() - indexes.len());
+		for (i, entry) in self.pending.drain(..).enumerate() {
+			if marked[i] {
+				self.claimed.insert(
+					entry.request.key,
+					Claim {
+						worker,
+						batch_id,
+						request: entry.request.clone(),
+					},
+				);
+				frames.push(entry.request);
+			} else {
+				kept.push(entry);
+			}
+		}
+		self.pending = kept;
+		frames.sort_by(|a, b| {
+			a.priority
+				.cmp(&b.priority)
+				.then(a.distance.cmp(&b.distance))
+				.then(a.key.frame.cmp(&b.key.frame))
+		});
+		Some(ClaimedBatch {
+			batch_id,
+			worker,
+			frames,
+		})
+	}
+
+	/// Report a claimed frame as rendered (frame_ready). Returns the
+	/// request when the key was in flight.
+	pub fn frame_done(&mut self, key: &FrameKey) -> Option<FrameRequest<P>> {
+		self.claimed.remove(key).map(|c| c.request)
+	}
+
+	/// Report a claimed frame as permanently failed (frame_failed; the
+	/// main process paints the fallback). The claim is dropped WITHOUT
+	/// re-dispatch — a render error is not a crash. Returns the request
+	/// when the key was in flight.
+	pub fn frame_failed(&mut self, key: &FrameKey) -> Option<FrameRequest<P>> {
+		self.claimed.remove(key).map(|c| c.request)
+	}
+
+	/// Re-queue every frame claimed by `worker` (crash recovery): its
+	/// un-started batches and the un-finished frames of started batches
+	/// all come back as pending, claimable by ANY healthy worker.
+	/// Returns the re-queued requests.
+	pub fn worker_crashed(&mut self, worker: usize) -> Vec<FrameRequest<P>> {
+		let mut reclaimed = Vec::new();
+		self.claimed.retain(|_, claim| {
+			if claim.worker == worker {
+				reclaimed.push(claim.request.clone());
+				false
+			} else {
+				true
+			}
+		});
+		for request in reclaimed.iter().cloned() {
+			self.pending.push(PendingEntry {
+				request,
+				any_worker: true,
+			});
+		}
+		self.crash_requeued += reclaimed.len() as u64;
+		reclaimed
+	}
+
+	/// Cancel one key, pending OR claimed (single-frame cancellation;
+	/// the dispatcher delivers the ticket's `Error::State` itself).
+	/// Returns true when the key was known.
+	pub fn cancel_key(&mut self, key: &FrameKey) -> bool {
+		let before = self.pending.len();
+		self.pending.retain(|e| &e.request.key != key);
+		if self.pending.len() != before {
+			return true;
+		}
+		self.claimed.remove(key).is_some()
+	}
+
+	/// Cancel every pending AND claimed frame of `sequence` (frame-key
+	/// invalidation; the `cancel` wire message covers the worker side).
+	/// Returns the number of dropped requests.
+	pub fn cancel_sequence(&mut self, sequence: u64) -> usize {
+		let before_pending = self.pending.len();
+		self.pending.retain(|e| e.request.key.sequence != sequence);
+		let dropped_pending = before_pending - self.pending.len();
+		let before_claimed = self.claimed.len();
+		self.claimed.retain(|_, c| c.request.key.sequence != sequence);
+		dropped_pending + (before_claimed - self.claimed.len())
+	}
+
+	/// Pending (unclaimed) request count.
+	pub fn pending_count(&self) -> usize {
+		self.pending.len()
+	}
+
+	/// Claimed (in-flight) request count.
+	pub fn claimed_count(&self) -> usize {
+		self.claimed.len()
+	}
+
+	/// The worker currently holding `key` (None when not claimed).
+	pub fn claimed_worker(&self, key: &FrameKey) -> Option<usize> {
+		self.claimed.get(key).map(|c| c.worker)
+	}
+
+	/// Total frames re-queued by crashes so far (tests/metrics).
+	pub fn crash_requeued(&self) -> u64 {
+		self.crash_requeued
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	fn req(seq: u64, frame: i64, prio: FramePriority) -> FrameRequest<u64> {
+		FrameRequest {
+			key: FrameKey {
+				sequence: seq,
+				frame,
+				version: 0,
+			},
+			priority: prio,
+			distance: frame,
+			payload: frame as u64,
+		}
+	}
+
+	/// Claim until nothing is claimable by any worker; returns
+	/// (worker, frame) pairs in claim order.
+	fn claim_all(s: &mut PreviewScheduler<u64>) -> Vec<(usize, i64)> {
+		let mut out = Vec::new();
+		loop {
+			let mut progress = false;
+			for w in 0..s.workers() {
+				while let Some(batch) = s.claim_batch(w, 1024) {
+					for f in &batch.frames {
+						out.push((w, f.key.frame));
+					}
+					progress = true;
+				}
+			}
+			if !progress {
+				break;
+			}
+		}
+		out
+	}
+
+	#[test]
+	fn no_stealing_every_frame_claimed_exactly_once() {
+		let mut s: PreviewScheduler<u64> = PreviewScheduler::new(3, 4);
+		for f in 0..40 {
+			assert!(s.submit(req(1, f, FramePriority::Playback)));
+		}
+		let claims = claim_all(&mut s);
+		assert_eq!(claims.len(), 40, "every frame claimed");
+		let mut frames: Vec<i64> = claims.iter().map(|(_, f)| *f).collect();
+		frames.sort_unstable();
+		frames.dedup();
+		assert_eq!(frames.len(), 40, "no frame claimed twice (no stealing)");
+		assert_eq!(s.pending_count(), 0);
+		assert_eq!(s.claimed_count(), 40, "all claimed, none completed yet");
+	}
+
+	#[test]
+	fn interleave_adjacent_frames_on_different_workers() {
+		let mut s: PreviewScheduler<u64> = PreviewScheduler::new(4, 2);
+		for f in 0..16 {
+			s.submit(req(1, f, FramePriority::Playback));
+		}
+		let claims = claim_all(&mut s);
+		for (worker, frame) in &claims {
+			assert_eq!(
+				frame.rem_euclid(4),
+				*worker as i64,
+				"frame {frame} must be claimed by worker {}",
+				frame.rem_euclid(4)
+			);
+		}
+		// Adjacent frames are on different workers.
+		let worker_of: HashMap<i64, usize> = claims
+			.iter()
+			.map(|(w, f)| (*f, *w))
+			.collect();
+		for f in 0..15 {
+			assert_ne!(worker_of[&f], worker_of[&(f + 1)]);
+		}
+	}
+
+	#[test]
+	fn crash_requeues_to_any_healthy_worker() {
+		let mut s: PreviewScheduler<u64> = PreviewScheduler::new(2, 8);
+		for f in 0..8 {
+			s.submit(req(1, f, FramePriority::Playback));
+		}
+		// Both workers claim their shards first.
+		let batch0 = s.claim_batch(0, 8).unwrap();
+		assert_eq!(batch0.frames.len(), 4); // frames 0,2,4,6
+		let batch1 = s.claim_batch(1, 8).unwrap();
+		assert_eq!(batch1.frames.len(), 4); // frames 1,3,5,7
+
+		// Worker 0 crashes: its frames come back...
+		let reclaimed = s.worker_crashed(0);
+		assert_eq!(reclaimed.len(), 4);
+		assert_eq!(s.claimed_count(), 4, "worker 1 keeps its own batch");
+		assert_eq!(s.pending_count(), 4);
+		assert_eq!(s.crash_requeued(), 4);
+
+		// ...and worker 1 (NOT their shard) can claim them all.
+		let batch = s.claim_batch(1, 8).unwrap();
+		assert_eq!(batch.frames.len(), 4);
+		let mut frames: Vec<i64> = batch.frames.iter().map(|f| f.key.frame).collect();
+		frames.sort_unstable();
+		assert_eq!(frames, vec![0, 2, 4, 6]);
+	}
+
+	#[test]
+	fn priority_seek_beats_playback_beats_background() {
+		let mut s: PreviewScheduler<u64> = PreviewScheduler::new(1, 100);
+		// All frames on worker 0's shard (W=1): background first, then a
+		// playback window, then a seek frame submitted last.
+		for f in 0..5 {
+			s.submit(req(1, f, FramePriority::Background));
+		}
+		for f in 10..15 {
+			let mut r = req(1, f, FramePriority::Playback);
+			r.distance = (f - 12).abs();
+			s.submit(r);
+		}
+		s.submit(req(1, 100, FramePriority::Seek));
+
+		let batch = s.claim_batch(0, 100).unwrap();
+		let order: Vec<(FramePriority, i64)> = batch
+			.frames
+			.iter()
+			.map(|f| (f.priority, f.key.frame))
+			.collect();
+		// Seek first...
+		assert_eq!(order[0], (FramePriority::Seek, 100));
+		// ...then playback by playhead distance (12 nearest first)...
+		assert_eq!(
+			order[1..6]
+				.iter()
+				.map(|(_, f)| *f)
+				.collect::<Vec<_>>(),
+			vec![12, 11, 13, 10, 14]
+		);
+		// ...then background ascending.
+		assert_eq!(
+			order[6..]
+				.iter()
+				.map(|(_, f)| *f)
+				.collect::<Vec<_>>(),
+			vec![0, 1, 2, 3, 4]
+		);
+	}
+
+	#[test]
+	fn flow_control_credit_limits_batch() {
+		let mut s: PreviewScheduler<u64> = PreviewScheduler::new(1, 100);
+		for f in 0..10 {
+			s.submit(req(1, f, FramePriority::Playback));
+		}
+		// Zero credit claims nothing.
+		assert!(s.claim_batch(0, 0).is_none());
+		// Credit 3 claims exactly 3 (free slots are the credit).
+		let batch = s.claim_batch(0, 3).unwrap();
+		assert_eq!(batch.frames.len(), 3);
+		assert_eq!(s.pending_count(), 7);
+	}
+
+	#[test]
+	fn batch_size_caps_the_claim() {
+		let mut s: PreviewScheduler<u64> = PreviewScheduler::new(1, 4);
+		for f in 0..10 {
+			s.submit(req(1, f, FramePriority::Playback));
+		}
+		let batch = s.claim_batch(0, 100).unwrap();
+		assert_eq!(batch.frames.len(), 4, "batch size B caps the claim");
+		// Ascending frame order inside the batch.
+		let frames: Vec<i64> = batch.frames.iter().map(|f| f.key.frame).collect();
+		assert_eq!(frames, vec![0, 1, 2, 3]);
+	}
+
+	#[test]
+	fn done_and_failed_drop_the_claim() {
+		let mut s: PreviewScheduler<u64> = PreviewScheduler::new(1, 4);
+		s.submit(req(1, 0, FramePriority::Playback));
+		s.submit(req(1, 1, FramePriority::Playback));
+		let batch = s.claim_batch(0, 4).unwrap();
+		assert_eq!(batch.frames.len(), 2);
+		let k0 = batch.frames[0].key;
+		let k1 = batch.frames[1].key;
+		assert!(s.frame_done(&k0).is_some());
+		assert!(s.frame_failed(&k1).is_some());
+		assert_eq!(s.claimed_count(), 0);
+		assert_eq!(s.pending_count(), 0, "frame_failed is terminal (purple frame fallback)");
+		// Unknown keys are no-ops.
+		assert!(s.frame_done(&k0).is_none());
+	}
+
+	#[test]
+	fn resubmit_of_claimed_key_is_rejected_until_done() {
+		let mut s: PreviewScheduler<u64> = PreviewScheduler::new(1, 4);
+		let r = req(1, 5, FramePriority::Playback);
+		let key = r.key;
+		s.submit(r);
+		let _ = s.claim_batch(0, 4).unwrap();
+		// In flight: rejected.
+		assert!(!s.submit(req(1, 5, FramePriority::Seek)));
+		s.frame_done(&key);
+		// After completion the same key may be requested again (new
+		// version in practice).
+		assert!(s.submit(req(1, 5, FramePriority::Seek)));
+	}
+
+	#[test]
+	fn cancel_sequence_drops_pending_and_claimed() {
+		let mut s: PreviewScheduler<u64> = PreviewScheduler::new(1, 4);
+		for f in 0..6 {
+			s.submit(req(7, f, FramePriority::Playback));
+		}
+		let _ = s.claim_batch(0, 4).unwrap(); // claims 4 of sequence 7
+		s.submit(req(8, 0, FramePriority::Playback)); // other sequence
+		assert_eq!(s.cancel_sequence(7), 6);
+		assert_eq!(s.pending_count(), 1, "sequence 8 untouched");
+		assert_eq!(s.claimed_count(), 0);
+	}
+
+	#[test]
+	fn default_batch_size_is_120_over_workers() {
+		let s: PreviewScheduler<u64> = PreviewScheduler::new(4, 0);
+		assert_eq!(s.batch_size(), 30);
+		let s: PreviewScheduler<u64> = PreviewScheduler::new(0, 0);
+		assert_eq!(s.workers(), 1);
+		assert_eq!(s.batch_size(), 120);
+	}
+
+	#[test]
+	fn unknown_worker_claims_nothing() {
+		let mut s: PreviewScheduler<u64> = PreviewScheduler::new(2, 4);
+		s.submit(req(1, 0, FramePriority::Playback));
+		assert!(s.claim_batch(2, 4).is_none());
+	}
+}

@@ -16,13 +16,15 @@
 
 //! The worker layer (C++ RenderWorkerPool + RenderThread +
 //! workerprocess/workerjson): thread pool AND process-isolated pool
-//! behind one enum.
+//! behind one dispatch seam.
 //!
 //! This pass ships the in-process [`WorkerPool`] fully. The
-//! [`ProcessPool`] (crash isolation via oakengine_ipc worker processes)
-//! is a documented stub: the oakengine_ipc C ABI worker binary is not
-//! wired into the Rust world yet, so `start`/`post` fail with
-//! `Error::Failed` and the crash-isolation tests are `#[ignore]`d.
+//! process-isolated backend landed in M15 S1 as
+//! [`crate::procpool::ProcessDispatcher`] (spawn/handshake/crash-restart
+//! of oak-worker binaries over NDJSON + shared memory); both backends
+//! implement the [`JobDispatch`] seam the ticket arena posts through.
+//! [`ProcessPool`] below is the frozen pre-M15 facade stub kept for C
+//! ABI parity.
 
 use std::collections::{HashMap, VecDeque};
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -50,6 +52,21 @@ pub struct Job {
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 	m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// The job-dispatch seam (M15 S1): the ticket arena posts [`Job`]s
+/// through this interface without knowing the backend. Implemented by
+/// the in-process [`WorkerPool`] (threads) and the process-isolated
+/// [`crate::procpool::ProcessDispatcher`] (oak-worker children); S2
+/// removes the thread pool and this seam becomes process-only.
+pub trait JobDispatch: Send + Sync {
+	/// Enqueue a job; false when the backend is gone (the arena then
+	/// delivers the completion itself with `Error::State`).
+	fn post(&self, job: Job) -> bool;
+
+	/// Stop accepting work, deliver the queued completions (cancelled)
+	/// and release the backend. Idempotent.
+	fn shutdown(&self);
 }
 
 /// Thread-pool backend (C++ RenderThread model). Cheap to clone (all
@@ -132,6 +149,12 @@ impl WorkerPool {
 	/// without running); running jobs are joined so no completion fires
 	/// after shutdown returns.
 	pub fn shutdown(&mut self) {
+		self.shutdown_ref();
+	}
+
+	/// [`Self::shutdown`] on a shared reference (the [`JobDispatch`]
+	/// seam; all state is interior-mutable). Idempotent.
+	pub fn shutdown_ref(&self) {
 		// Set the flag and wake the workers while holding the queue lock.
 		// Workers decide whether to block in `cv.wait` while holding that
 		// lock, so a flag set outside it could land between a worker's
@@ -155,6 +178,16 @@ impl WorkerPool {
 		while let Some(job) = queue.pop_front() {
 			deliver_cancelled(job);
 		}
+	}
+}
+
+impl JobDispatch for WorkerPool {
+	fn post(&self, job: Job) -> bool {
+		WorkerPool::post(self, job)
+	}
+
+	fn shutdown(&self) {
+		self.shutdown_ref();
 	}
 }
 

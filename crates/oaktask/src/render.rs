@@ -660,7 +660,7 @@ impl RenderTask {
 					oakrender::eval::render_produced_frame(time, params)
 						.map(TicketPayload::Video)
 				});
-				let arena = Arc::new(TicketArena::new(pool.clone(), producer));
+				let arena = Arc::new(TicketArena::new(Arc::new(pool.clone()), producer));
 				(arena, Some(pool))
 			}
 		};
