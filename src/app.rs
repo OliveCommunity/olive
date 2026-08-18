@@ -58,7 +58,7 @@ use gpui_widgets::theme::{apply_theme, OakTheme};
 use gpui_widgets::viewer::PlaybackClock;
 
 use crate::actions::{ActionId, Tool};
-use crate::dialogs::{ExportDialogContent, PreferencesContent};
+use crate::dialogs::{ExportDialogContent, PreferencesDialogContent};
 use crate::oakui::{AppEngine, ExportSession, MockEngine, Monitor, RealEngine};
 use crate::panels::commands as panel_commands;
 use crate::panels::effect_library::EffectLibraryPanel;
@@ -112,6 +112,8 @@ mod modal_ids {
 	/// The OFX plugin progress dialog (driven by the plugin-progress
 	/// channel in the tick loop).
 	pub const PLUGIN_PROGRESS: usize = 10;
+	/// The action search dialog (Help > Search Actions…, the `/` key).
+	pub const ACTION_SEARCH: usize = 11;
 }
 
 /// What a picked platform-dialog path should do.
@@ -134,7 +136,7 @@ enum ModalState<E: AppEngine> {
 	None,
 	Preferences {
 		modal: Entity<Modal>,
-		content: Entity<PreferencesContent>,
+		content: Entity<PreferencesDialogContent>,
 	},
 	Export {
 		modal: Entity<Modal>,
@@ -162,6 +164,11 @@ enum ModalState<E: AppEngine> {
 		modal: Entity<Modal>,
 		content: Entity<crate::dialogs::ProxyDialogContent<E>>,
 	},
+	/// The action search dialog (Help > Search Actions…, the `/` key).
+	ActionSearch {
+		modal: Entity<Modal>,
+		content: Entity<crate::dialogs::ActionSearchContent>,
+	},
 }
 
 /// A running export: the session the tick loop drains for progress.
@@ -180,7 +187,8 @@ impl<E: AppEngine> ModalState<E> {
 			| ModalState::Manager { modal, .. }
 			| ModalState::ManagerRename { modal, .. }
 			| ModalState::ManagerDelete { modal, .. }
-			| ModalState::Proxy { modal, .. } => Some(modal.clone()),
+			| ModalState::Proxy { modal, .. }
+			| ModalState::ActionSearch { modal, .. } => Some(modal.clone()),
 		}
 	}
 }
@@ -392,7 +400,11 @@ impl<E: AppEngine> OakApp<E> {
 		.detach();
 
 		// --- keyboard map ---------------------------------------------------
-		// Register every registry default key as a global binding (context
+		// Load the persisted custom shortcut overrides (`<config>/shortcuts`)
+		// *before* binding, so a user's shortcuts file wins over the registry
+		// defaults. The bindings below are built from the effective keys.
+		crate::actions::load_custom_shortcuts();
+		// Register every action's effective key as a global binding (context
 		// `None`): the keystrokes dispatch the gpui actions, which bubble to
 		// the shell's `on_action` listeners — the same path the menu clicks
 		// take through `on_menu`.
@@ -1038,6 +1050,8 @@ impl<E: AppEngine> OakApp<E> {
 			| A::MulticamSwitchNoSplit7
 			| A::MulticamSwitchNoSplit8
 			| A::MulticamSwitchNoSplit9 => {}
+			// --- Help --------------------------------------------------------
+			A::ActionSearch => self.open_action_search(cx),
 			// --- everything else is a placeholder --------------------------
 			other => println!(
 				"[action] {} not wired yet (placeholder)",
@@ -1694,16 +1708,35 @@ impl<E: AppEngine> OakApp<E> {
 		}
 	}
 
-	/// Opens the preferences dialog. Theme/language selections emit
-	/// [`crate::dialogs::PreferencesEvent`]s, applied to the shell chrome
-	/// immediately; the typed cache directory commits when the dialog closes.
+	/// Opens the preferences dialog (General + Keyboard tabs). Theme/language
+	/// selections emit [`crate::dialogs::PreferencesEvent`]s, applied to the
+	/// shell chrome immediately; the typed cache directory commits when the
+	/// dialog closes; a shortcut change re-binds the key map and rebuilds the
+	/// menu bar, so the new keys are live without a restart.
+	///
+	/// The build is deferred to the end of the current app update (like
+	/// [`Self::open_action_search`]): the dialog is usually opened from a
+	/// shortcut or a menu click, both of which dispatch inside a window
+	/// update where `spawn_modal`'s nested `update_window` would silently
+	/// fail.
 	pub fn open_preferences(&mut self, cx: &mut Context<Self>) {
+		let weak = cx.weak_entity();
+		cx.defer(move |app| {
+			if let Some(this) = weak.upgrade() {
+				this.update(app, |this, cx| this.open_preferences_now(cx));
+			}
+		});
+	}
+
+	/// The deferred half of [`Self::open_preferences`]: builds the tabbed
+	/// dialog and subscribes to its [`crate::dialogs::PreferencesEvent`]s.
+	fn open_preferences_now(&mut self, cx: &mut Context<Self>) {
 		self.spawn_modal(cx, |window, app| {
-			let content = app.new(|cx| PreferencesContent::new(window, cx));
+			let content = app.new(|cx| PreferencesDialogContent::new(window, cx));
 			let modal = app.new(|cx| {
 				Modal::new(
 					modal_ids::PREFERENCES,
-					ModalOptions::new(crate::i18n::tr("preferences.title"), px(480.0))
+					ModalOptions::new(crate::i18n::tr("preferences.title"), px(720.0))
 						.with_button(DialogButton::primary(crate::i18n::tr("dialog.close"))),
 					window,
 					cx,
@@ -1724,6 +1757,9 @@ impl<E: AppEngine> OakApp<E> {
 						this.rebuild_menu_bar(cx);
 						cx.notify();
 					}
+					crate::dialogs::PreferencesEvent::ShortcutsChanged => {
+						this.rebind_keys(cx);
+					}
 				},
 			)
 			.detach();
@@ -1735,6 +1771,83 @@ impl<E: AppEngine> OakApp<E> {
 	fn commit_preferences(&mut self, cx: &mut Context<Self>) {
 		if let ModalState::Preferences { content, .. } = &self.modal {
 			content.update(cx, |content, cx| content.commit_cache_dir(cx));
+		}
+	}
+
+	/// Re-applies the global key bindings and rebuilds the menu bar after a
+	/// shortcut override change. The gpui key map is replaced wholesale (its
+	/// `bind_keys` only appends) and the menu labels re-read the effective
+	/// keys, so the change is live immediately — no restart.
+	fn rebind_keys(&mut self, cx: &mut Context<Self>) {
+		cx.clear_key_bindings();
+		cx.bind_keys(crate::actions::key_bindings());
+		self.rebuild_menu_bar(cx);
+		cx.notify();
+	}
+
+	/// Opens the action search dialog (Help > Search Actions…, the `/` key).
+	/// Enter / double-click in the dialog executes the action through the same
+	/// [`Self::dispatch_action_id`] path the menu clicks take, so the behavior
+	/// can never diverge from a menu click.
+	///
+	/// The actual modal build is deferred to the end of the current app update:
+	/// keyboard shortcuts and menu clicks dispatch *inside* a window update,
+	/// and `spawn_modal`'s nested `update_window` would fail (and silently
+	/// drop the dialog) there. `defer` runs after the window is back in the
+	/// app's map, so the modal opens one tick later.
+	pub fn open_action_search(&mut self, cx: &mut Context<Self>) {
+		if !matches!(self.modal, ModalState::None) {
+			return;
+		}
+		let weak = cx.weak_entity();
+		cx.defer(move |app| {
+			if let Some(this) = weak.upgrade() {
+				this.update(app, |this, cx| this.open_action_search_now(cx));
+			}
+		});
+	}
+
+	/// The deferred half of [`Self::open_action_search`]: builds the modal on
+	/// the main window, subscribes to its execute events and focuses the search
+	/// field.
+	fn open_action_search_now(&mut self, cx: &mut Context<Self>) {
+		self.spawn_modal(cx, |window, app| {
+			let content = app.new(|cx| crate::dialogs::ActionSearchContent::new(window, cx));
+			let modal = app.new(|cx| {
+				Modal::new(
+					modal_ids::ACTION_SEARCH,
+					ModalOptions::new(
+						crate::i18n::tr("menu.help.action_search"),
+						px(640.0),
+					),
+					window,
+					cx,
+				)
+				.with_content(content.clone())
+			});
+			ModalState::ActionSearch { modal, content }
+		});
+		if let ModalState::ActionSearch { content, .. } = &self.modal {
+			let content = content.clone();
+			cx.subscribe(
+				&content,
+				|this, _content, event: &crate::dialogs::ActionSearchEvent, cx| {
+					let crate::dialogs::ActionSearchEvent::Execute(action) = event;
+					this.close_modal(cx);
+					this.dispatch_action_id(*action, cx);
+				},
+			)
+			.detach();
+			// Keyboard-first: focus the search field as soon as the dialog is
+			// up (the shell's action dispatch already suppresses the global
+			// key map while the modal is open).
+			if let Some(handle) = cx.windows().first() {
+				let content = content.clone();
+				let _ = cx.update_window(*handle, |_root, window, app| {
+					let focus = content.read(app).search_focus(app);
+					window.focus(&focus, app);
+				});
+			}
 		}
 	}
 
@@ -2275,6 +2388,35 @@ pub(crate) fn make_menus_for_test() -> Vec<MenuBarEntry> {
 	make_menus(MenuState::new(true))
 }
 
+/// The menu-bar *leaf* actions in hierarchy order, each with its localized
+/// "Menu > Submenu > …" path. The Keyboard preferences tab and the action
+/// search dialog both enumerate the menu bar like the C++ does
+/// (`PreferencesKeyboardTab::setup_kbd_shortcuts` /
+/// `ActionSearch::search_update`), so the two share one walk. Panel-context
+/// hotkeys (the [`HIDDEN_MENU_ID`](crate::actions::HIDDEN_MENU_ID) multicam
+/// switches) are excluded by construction — they have no menu item.
+pub(crate) fn menu_action_paths() -> Vec<(ActionId, String)> {
+	let mut out = Vec::new();
+	for entry in make_menus(MenuState::new(true)) {
+		let top = entry.title.to_string();
+		walk_menu_for_actions(&entry.menu, &top, &mut out);
+	}
+	out
+}
+
+/// Recurses a menu, emitting leaf items (submenu headers extend the path and
+/// are not emitted themselves — their id is the first child's id).
+fn walk_menu_for_actions(menu: &Menu, path: &str, out: &mut Vec<(ActionId, String)>) {
+	for item in &menu.items {
+		if let Some(submenu) = &item.submenu {
+			let label = item.label.to_string();
+			walk_menu_for_actions(submenu, &format!("{path} > {label}"), out);
+		} else if let Some(entry) = crate::actions::entry_for_menu_id(item.id) {
+			out.push((entry.action, path.to_string()));
+		}
+	}
+}
+
 /// Command-line arguments the app accepts.
 #[derive(Debug, Clone, Default)]
 struct AppArgs {
@@ -2425,6 +2567,8 @@ mod tests {
 	/// language — and the whole menu bar flips language with `i18n`.
 	#[test]
 	fn language_menu_tracks_the_active_language() {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
 
 		let view_entry = |dark: bool| -> MenuBarEntry {
@@ -2486,6 +2630,8 @@ mod tests {
 	/// The theme submenu's checkmark follows the `dark` flag.
 	#[test]
 	fn theme_menu_checkmark_follows_dark_flag() {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
 
 		let dark_item = |dark: bool| -> gpui_widgets::menu::MenuItem {
@@ -2517,6 +2663,8 @@ mod tests {
 	/// across both languages.
 	#[test]
 	fn file_and_edit_menus_cover_the_project_lifecycle() {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
 
 		let entry = |title: &str| -> MenuBarEntry {
@@ -2571,6 +2719,8 @@ mod tests {
 	/// entity's weak handle (regression test for the Preferences crash).
 	#[gpui::test]
 	async fn preferences_dialog_opens_without_crashing(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
 		crate::i18n::set_language(crate::i18n::Language::EnUs);
 
@@ -2606,6 +2756,8 @@ mod tests {
 	/// action.
 	#[test]
 	fn every_shortcut_maps_to_a_menu_item() {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
 		crate::i18n::set_language(crate::i18n::Language::EnUs);
 
@@ -2650,6 +2802,8 @@ mod tests {
 	/// every platform.
 	#[test]
 	fn menu_shortcut_labels_match_the_table() {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
 		crate::i18n::set_language(crate::i18n::Language::EnUs);
 
@@ -2684,6 +2838,8 @@ mod tests {
 	/// bubbles to the shell's key listener and dispatches 回放 → 播放/暂停).
 	#[gpui::test]
 	async fn space_toggles_program_playback(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
 		let (window, root) = mock_shell(cx);
 
@@ -2714,6 +2870,8 @@ mod tests {
 	/// the still-unwired ripple-to-in/out (q/w).
 	#[gpui::test]
 	async fn keymap_defaults_dispatch_their_actions(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
 		let (window, root) = mock_shell(cx);
 
@@ -2825,6 +2983,8 @@ mod tests {
 	/// at the playhead.
 	#[gpui::test]
 	async fn edit_shortcuts_dispatch_to_the_engine(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
 		let (window, root) = mock_shell(cx);
 
@@ -2879,6 +3039,8 @@ mod tests {
 	/// dialog's text fields must never trigger editing actions).
 	#[gpui::test]
 	async fn shortcuts_are_suppressed_while_a_modal_is_open(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
 		let (window, root) = mock_shell(cx);
 
@@ -2931,6 +3093,252 @@ mod tests {
 		);
 	}
 
+	// -------------------------------------------------------------------
+	// Action search + custom shortcuts (stage 7)
+	// -------------------------------------------------------------------
+
+
+
+	/// The `/` key opens the action search dialog (the registry's ActionSearch
+	/// default key), and Escape dismisses it.
+	#[gpui::test]
+	async fn action_search_opens_from_the_slash_key(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _lang = crate::i18n::lang_test_lock().lock().unwrap();
+		let (window, root) = mock_shell(cx);
+		// A leftover real shortcuts file must not shadow the default `/`
+		// binding under test.
+		crate::actions::reset_all_custom_shortcuts();
+		cx.update(|app| root.update(app, |app, cx| app.rebind_keys(cx)));
+		cx.run_until_parked();
+
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("/").unwrap());
+		cx.run_until_parked();
+		cx.update_window(window.into(), |_root, window, cx| {
+			window.draw(cx).clear();
+		})
+		.expect("window is still open");
+		assert!(
+			cx.read(|app| matches!(
+				root.read(app).modal,
+				ModalState::ActionSearch { .. }
+			)),
+			"the / key should open the action search dialog"
+		);
+
+		// Escape closes it again (the modal's own handler).
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("escape").unwrap());
+		cx.run_until_parked();
+		assert!(
+			cx.read(|app| matches!(root.read(app).modal, ModalState::None)),
+			"escape closes the action search dialog"
+		);
+	}
+
+	/// Arrow keys move the search selection and Enter runs the selected action
+	/// through the same dispatch path the menu clicks take (here the dialog
+	/// closes because the action dispatched successfully).
+	#[gpui::test]
+	async fn action_search_arrows_and_enter_dispatch_the_selection(
+		cx: &mut TestAppContext,
+	) {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _lang = crate::i18n::lang_test_lock().lock().unwrap();
+		let (window, root) = mock_shell(cx);
+		crate::actions::reset_all_custom_shortcuts();
+		cx.update(|app| root.update(app, |app, cx| app.rebind_keys(cx)));
+		cx.run_until_parked();
+
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("/").unwrap());
+		cx.run_until_parked();
+		assert!(
+			cx.read(|app| matches!(
+				root.read(app).modal,
+				ModalState::ActionSearch { .. }
+			)),
+			"the search dialog is open"
+		);
+
+		// Down selects the first listed action, Enter runs it. The empty query
+		// lists every menu-bar action, so the first one is New Project.
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("down").unwrap());
+		cx.run_until_parked();
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("enter").unwrap());
+		cx.run_until_parked();
+
+		assert!(
+			cx.read(|app| matches!(root.read(app).modal, ModalState::None)),
+			"executing the selected action closes the dialog"
+		);
+	}
+
+	/// The preferences dialog opens from its keyboard shortcut too (⌘,), and
+	/// its Keyboard tab enumerates the menu-bar actions — the deferred-modal
+	/// fix matters here: a shortcut dispatches inside a window update where
+	/// `spawn_modal` would otherwise silently fail.
+	#[gpui::test]
+	async fn preferences_opens_from_its_shortcut_with_the_keyboard_tab(
+		cx: &mut TestAppContext,
+	) {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _lang = crate::i18n::lang_test_lock().lock().unwrap();
+		let (window, root) = mock_shell(cx);
+		crate::actions::reset_all_custom_shortcuts();
+		cx.update(|app| root.update(app, |app, cx| app.rebind_keys(cx)));
+		cx.run_until_parked();
+
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("secondary-,").unwrap());
+		cx.run_until_parked();
+		cx.update_window(window.into(), |_root, window, cx| {
+			window.draw(cx).clear();
+		})
+		.expect("window is still open");
+		assert!(
+			cx.read(|app| matches!(root.read(app).modal, ModalState::Preferences { .. })),
+			"⌘, opens the preferences dialog"
+		);
+
+		// The tabbed content carries the Keyboard tab with a non-empty action
+		// list (the general tab stays the default active tab).
+		let rows = cx.read(|app| match &root.read(app).modal {
+			ModalState::Preferences { content, .. } => content
+				.read(app)
+				.keyboard_tab_row_count(app),
+			_ => 0,
+		});
+		assert!(rows > 0, "the keyboard tab lists the menu-bar actions");
+	}
+
+	/// End to end through the Keyboard tab: switching to it, clicking the first
+	/// action's capture field and pressing a key assigns the new binding (the
+	/// override layer + interceptor + save path in one flow).
+	#[gpui::test]
+	async fn keyboard_tab_capture_assigns_a_shortcut(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _lang = crate::i18n::lang_test_lock().lock().unwrap();
+		let (window, root) = mock_shell(cx);
+		crate::actions::reset_all_custom_shortcuts();
+		cx.update(|app| root.update(app, |app, cx| app.on_menu(menu_ids::PREFERENCES, cx)));
+		cx.run_until_parked();
+		cx.update_window(window.into(), |_root, window, cx| {
+			window.draw(cx).clear();
+		})
+		.expect("window is still open");
+		cx.run_until_parked();
+
+		let mut cx = VisualTestContext::from_window(window.into(), cx).into_mut();
+		// Switch to the Keyboard tab.
+		let tab = cx
+			.debug_bounds("prefs-tab-keyboard")
+			.expect("keyboard tab button rendered");
+		cx.simulate_click(tab.center(), gpui::Modifiers::none());
+		cx.run_until_parked();
+		// Enter capture on the first row (New Project).
+		let field = cx
+			.debug_bounds("keyboard-capture-0")
+			.expect("first capture field rendered");
+		cx.simulate_click(field.center(), gpui::Modifiers::none());
+		cx.run_until_parked();
+		// Press a key → it becomes the new binding.
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("secondary-x").unwrap());
+		cx.run_until_parked();
+		drop(cx);
+
+		let expected = gpui::Keystroke::parse("secondary-x").unwrap().unparse();
+		assert_eq!(
+			crate::actions::effective_keys(ActionId::NewProject.entry()),
+			vec![expected],
+			"capture assigns the pressed key to the row's action"
+		);
+		// The change is live: the shortcut display (used by the menus and the
+		// row label) follows the override.
+		assert_ne!(
+			crate::actions::display_shortcut(ActionId::NewProject),
+			Some("⌘N".to_string()),
+			"the label no longer shows the default key"
+		);
+		assert!(
+			crate::actions::display_shortcut(ActionId::NewProject).is_some(),
+			"the assigned key still shows a label"
+		);
+	}
+
+	/// Escape during a capture cancels the capture but keeps the dialog open
+	/// (the interceptor stops the key before it can bubble to the modal's own
+	/// Escape handler).
+	#[gpui::test]
+	async fn keyboard_tab_capture_escape_cancels_without_closing(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _lang = crate::i18n::lang_test_lock().lock().unwrap();
+		let (window, root) = mock_shell(cx);
+		crate::actions::reset_all_custom_shortcuts();
+		cx.update(|app| root.update(app, |app, cx| app.on_menu(menu_ids::PREFERENCES, cx)));
+		cx.run_until_parked();
+		cx.update_window(window.into(), |_root, window, cx| {
+			window.draw(cx).clear();
+		})
+		.expect("window is still open");
+		cx.run_until_parked();
+
+		let mut cx = VisualTestContext::from_window(window.into(), cx).into_mut();
+		let tab = cx
+			.debug_bounds("prefs-tab-keyboard")
+			.expect("keyboard tab button rendered");
+		cx.simulate_click(tab.center(), gpui::Modifiers::none());
+		cx.run_until_parked();
+		let field = cx
+			.debug_bounds("keyboard-capture-0")
+			.expect("first capture field rendered");
+		cx.simulate_click(field.center(), gpui::Modifiers::none());
+		cx.run_until_parked();
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("escape").unwrap());
+		cx.run_until_parked();
+
+		let modal_still_open =
+			cx.read(|app| matches!(root.read(app).modal, ModalState::Preferences { .. }));
+		let override_keys = crate::actions::effective_keys(ActionId::NewProject.entry());
+		drop(cx);
+		assert!(modal_still_open, "escape cancels the capture, not the dialog");
+		assert_eq!(
+			override_keys,
+			vec!["secondary-n".to_string()],
+			"no override was written by the cancelled capture"
+		);
+	}
+
+	/// A shortcut override re-binds the global key map immediately: the new
+	/// key drives the action, the displaced default key no longer does.
+	#[gpui::test]
+	async fn custom_shortcut_overrides_are_live_after_rebind(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _lang = crate::i18n::lang_test_lock().lock().unwrap();
+		let (window, root) = mock_shell(cx);
+		crate::actions::reset_all_custom_shortcuts();
+
+		// Move Snapping from its default `s` to `f5` and apply the new map.
+		crate::actions::set_custom_shortcut("snapping", vec!["f5".to_string()]);
+		cx.update(|app| root.update(app, |app, cx| app.rebind_keys(cx)));
+		cx.run_until_parked();
+
+		let snap = |cx: &TestAppContext| {
+			cx.read(|app| root.read(app).timeline.read(app).state.snap_enabled)
+		};
+		let before = snap(cx);
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("f5").unwrap());
+		cx.run_until_parked();
+		let after = snap(cx);
+		assert_ne!(before, after, "f5 toggles snapping after the override");
+
+		// The displaced default key is inert now.
+		let steady = snap(cx);
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("s").unwrap());
+		cx.run_until_parked();
+		assert_eq!(
+			snap(cx),
+			steady,
+			"the displaced default s no longer toggles snapping"
+		);
+	}
 
 	/// 文件 → 导入素材… opens the *platform* path picker (not the in-window
 	/// file dialog) and routes the picked path to the engine's import; the

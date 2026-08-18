@@ -37,6 +37,9 @@
 //! reports the item id, the keymap dispatches the gpui action, and both end
 //! up in `OakApp::dispatch_action_id`.
 
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
 use gpui::{Action, KeyBinding};
 
 // One macro call generates all three views of the registry, so they can
@@ -320,22 +323,23 @@ pub fn entry_for_menu_id(id: usize) -> Option<&'static ActionEntry> {
 	REGISTRY.iter().find(|entry| entry.action.menu_id() == id)
 }
 
-/// The global key bindings for every registry default key (context `None`:
-/// the shell dispatches them wherever the focus is, and the modal guard in
-/// the shell's action listeners suppresses them while a dialog is open).
+/// The global key bindings for every action's *effective* key (context
+/// `None`: the shell dispatches them wherever the focus is, and the modal
+/// guard in the shell's action listeners suppresses them while a dialog is
+/// open). An unbound action contributes nothing.
 pub fn key_bindings() -> Vec<KeyBinding> {
 	let mut bindings = Vec::new();
 	for entry in REGISTRY {
-		for key in entry.default_keys {
+		for key in effective_keys(entry) {
 			let binding = KeyBinding::load(
-				key,
+				&key,
 				(entry.build)(),
 				None,
 				false,
 				None,
 				&gpui::DummyKeyboardMapper,
 			)
-			.unwrap_or_else(|_| panic!("invalid default key {key:?} for {}", entry.cpp_id));
+			.unwrap_or_else(|_| panic!("invalid effective key {key:?} for {}", entry.cpp_id));
 			bindings.push(binding);
 		}
 	}
@@ -347,8 +351,10 @@ pub fn key_bindings() -> Vec<KeyBinding> {
 /// other platforms the same keys render as `Ctrl+Shift+Z`). The space key
 /// name is localized through i18n (`shortcut.space`).
 pub fn display_shortcut(action: ActionId) -> Option<String> {
-	let key = action.entry().default_keys.first()?;
-	let keystroke = gpui::Keystroke::parse(key).expect("registry keys parse (tests enforce it)");
+	let keys = effective_keys(action.entry());
+	let key = keys.first()?;
+	let keystroke =
+		gpui::Keystroke::parse(key).expect("effective keys parse (tests enforce it)");
 
 	// `secondary-` parses to `platform` on macOS and `control` elsewhere;
 	// the modifier renderers below follow the same split.
@@ -395,6 +401,290 @@ pub fn display_shortcut(action: ActionId) -> Option<String> {
 		}
 	}
 	Some(label)
+}
+
+// ---------------------------------------------------------------------------
+// Custom shortcut overrides (the `<config>/shortcuts` file)
+// ---------------------------------------------------------------------------
+//
+// The C++ `MainWindow` keeps a `<config>/shortcuts` text file of
+// `id<TAB>keys` lines (mainwindow.cpp:768-863): each line overrides one
+// action's key(s), the file is read at startup and written back only with the
+// entries that differ from the defaults (an empty diff removes the file).
+// This port keeps the same line shape but stores the key sequence in **gpui
+// keystroke syntax** (`secondary-s`, `alt-shift-z`, `delete`, …) instead of
+// Qt's `QKeySequence::toString` (`Ctrl+S`):
+//
+// * `id\tkey` — bind that single key;
+// * `id\t` (empty value) — unbind the action entirely;
+// * absent line — the registry defaults.
+//
+// That is a deliberate deviation from the C++ file (a C++ `Ctrl+S` line
+// would not parse as a gpui keystroke and vice versa): the C++ *format* is
+// kept, not the byte-level values. The key strings themselves are
+// platform-independent — `cmd-`, `super-` and `win-` all parse to gpui's
+// "platform" modifier on every OS, so a file written on macOS loads on
+// Linux (and the canonical form used for comparisons normalizes the
+// `secondary-` spelling used by the registry defaults).
+//
+// The override table is a process-global behind a mutex (like the config
+// store): the menu bar, `key_bindings` and `display_shortcut` all read the
+// effective keys on demand, so a change is visible the moment it is made and
+// the shell's `rebind_keys` + `rebuild_menu_bar` turn it live.
+
+/// One action's override:
+/// * absent from the map — the registry defaults apply;
+/// * [`ShortcutOverride::Unbound`] — explicitly unbound (no keys at all);
+/// * [`ShortcutOverride::Keys`] — the custom key(s).
+enum ShortcutOverride {
+	Unbound,
+	Keys(Vec<String>),
+}
+
+/// The process-global override table, keyed by the stable cpp id.
+static OVERRIDES: OnceLock<Mutex<HashMap<String, ShortcutOverride>>> = OnceLock::new();
+
+/// The global override table.
+fn overrides() -> &'static Mutex<HashMap<String, ShortcutOverride>> {
+	OVERRIDES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// Serializes tests that touch the process-global override table (the same
+/// pattern the i18n tests use for the language global).
+#[cfg(test)]
+pub(crate) fn shortcuts_test_lock() -> &'static Mutex<()> {
+	static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+	LOCK.get_or_init(|| Mutex::new(()))
+}
+
+/// The path of the custom-shortcuts file: `<config>/shortcuts`, exactly like
+/// the C++ `MainWindow::get_custom_shortcuts_file`.
+pub fn custom_shortcuts_path() -> String {
+	let dir = oakcommon::filefunctions::FileFunctions::new()
+		.get_configuration_location()
+		.unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned());
+	format!("{}/shortcuts", dir.trim_end_matches('/'))
+}
+
+/// Parses one `id\tkey` line. `None` for blank lines, missing ids and keys
+/// that are not valid gpui keystrokes. An empty key value means "unbound".
+///
+/// The tab is split *before* trimming (a bare trailing `\t` would otherwise
+/// be trimmed away and the unbound marker lost); only the id and the key
+/// value are trimmed.
+fn parse_shortcut_line(line: &str) -> Option<(String, Vec<String>)> {
+	// `str::lines` strips `\n` but keeps the `\r` of CRLF files.
+	let line = line.strip_suffix('\r').unwrap_or(line);
+	if line.trim().is_empty() {
+		return None;
+	}
+	let (id, value) = line.split_once('\t')?; // a line without a tab is malformed
+	let id = id.trim();
+	if REGISTRY.iter().all(|entry| entry.cpp_id != id) {
+		return None;
+	}
+	let value = value.trim();
+	let keys = if value.is_empty() {
+		Vec::new()
+	} else {
+		if gpui::Keystroke::parse(value).is_err() {
+			return None;
+		}
+		vec![value.to_string()]
+	};
+	Some((id.to_string(), keys))
+}
+
+/// Parses a whole shortcuts file body (`id\tkey` lines; blank lines and
+/// malformed lines are skipped).
+pub fn parse_shortcut_file(contents: &str) -> Vec<(String, Vec<String>)> {
+	contents.lines().filter_map(parse_shortcut_line).collect()
+}
+
+/// Serializes override lines back to `id\tkey` (empty key = unbound).
+pub fn serialize_shortcut_file(entries: &[(String, Vec<String>)]) -> String {
+	let mut out = String::new();
+	for (index, (id, keys)) in entries.iter().enumerate() {
+		if index > 0 {
+			out.push('\n');
+		}
+		out.push_str(id);
+		out.push('\t');
+		if let Some(key) = keys.first() {
+			out.push_str(key);
+		}
+	}
+	out
+}
+
+/// Replaces the whole override table with `entries` (startup load and the
+/// Keyboard tab's Import button — anything not listed falls back to default).
+pub fn apply_shortcut_overrides(entries: Vec<(String, Vec<String>)>) {
+	let mut map = HashMap::new();
+	for (id, keys) in entries {
+		map.insert(
+			id,
+			if keys.is_empty() {
+				ShortcutOverride::Unbound
+			} else {
+				ShortcutOverride::Keys(keys)
+			},
+		);
+	}
+	*overrides().lock().unwrap() = map;
+}
+
+/// Removes every override (the Keyboard tab's Reset All).
+pub fn reset_all_custom_shortcuts() {
+	overrides().lock().unwrap().clear();
+}
+
+/// Removes the override of one action (back to the registry defaults).
+pub fn reset_custom_shortcut(cpp_id: &str) {
+	overrides().lock().unwrap().remove(cpp_id);
+}
+
+/// Sets the custom keys of one action; an empty list unbinds it.
+pub fn set_custom_shortcut(cpp_id: &str, keys: Vec<String>) {
+	overrides().lock().unwrap().insert(
+		cpp_id.to_string(),
+		if keys.is_empty() {
+			ShortcutOverride::Unbound
+		} else {
+			ShortcutOverride::Keys(keys)
+		},
+	);
+}
+
+/// Whether any override is currently set (tests / file presence checks).
+pub fn has_custom_shortcuts() -> bool {
+	!overrides().lock().unwrap().is_empty()
+}
+
+/// The canonical (parse → unparse) form of a keystroke string, used to
+/// compare keys regardless of the `secondary-` vs `cmd-`/`super-`/`win-`
+/// spelling (the parser maps all of them to the same modifier bits).
+fn canonical_key(key: &str) -> Option<String> {
+	gpui::Keystroke::parse(key).ok().map(|keystroke| keystroke.unparse())
+}
+
+/// The canonical form of a key list (accepts both `&str` and `String`
+/// slices, so the `&'static [&str]` registry defaults and the `Vec<String>`
+/// overrides share one code path).
+fn canonical_keys<K: AsRef<str>>(keys: &[K]) -> Vec<String> {
+	keys.iter().filter_map(|key| canonical_key(key.as_ref())).collect()
+}
+
+/// The action's effective key list: the override when one is set, else the
+/// registry defaults (empty = unbound).
+pub fn effective_keys(entry: &ActionEntry) -> Vec<String> {
+	match overrides().lock().unwrap().get(entry.cpp_id) {
+		Some(ShortcutOverride::Unbound) => Vec::new(),
+		Some(ShortcutOverride::Keys(keys)) => keys.clone(),
+		None => entry.default_keys.iter().map(|key| key.to_string()).collect(),
+	}
+}
+
+/// The registry defaults in canonical form (the save-diff baseline).
+fn default_canonical(entry: &ActionEntry) -> Vec<String> {
+	canonical_keys(entry.default_keys)
+}
+
+/// Loads `<config>/shortcuts` and applies it (startup). A missing file is a
+/// no-op (everything stays at the defaults).
+pub fn load_custom_shortcuts() {
+	let path = custom_shortcuts_path();
+	if let Ok(contents) = std::fs::read_to_string(&path) {
+		apply_shortcut_overrides(parse_shortcut_file(&contents));
+	}
+}
+
+/// Loads overrides from an explicit file path (the Keyboard tab's Import).
+/// Returns the number of lines applied.
+pub fn load_custom_shortcuts_from(path: &str) -> Result<usize, String> {
+	let contents = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+	let entries = parse_shortcut_file(&contents);
+	let count = entries.len();
+	apply_shortcut_overrides(entries);
+	Ok(count)
+}
+
+/// Writes the overrides that differ from the registry defaults to `path`
+/// (canonical comparison, so an override spelling `cmd-s` for a default
+/// `secondary-s` counts as unchanged). An all-default state removes the
+/// file, exactly like the C++. Returns the number of lines written.
+pub fn save_custom_shortcuts_to(path: &str) -> Result<usize, String> {
+	let mut lines: Vec<(String, Vec<String>)> = Vec::new();
+	{
+		let map = overrides().lock().unwrap();
+		for entry in REGISTRY {
+			let Some(override_) = map.get(entry.cpp_id) else {
+				continue;
+			};
+			let effective = match override_ {
+				ShortcutOverride::Unbound => Vec::new(),
+				ShortcutOverride::Keys(keys) => keys.clone(),
+			};
+			if canonical_keys(&effective) != default_canonical(entry) {
+				lines.push((entry.cpp_id.to_string(), effective));
+			}
+		}
+	}
+	if lines.is_empty() {
+		match std::fs::remove_file(path) {
+			Ok(()) => {}
+			Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+			Err(e) => return Err(e.to_string()),
+		}
+		return Ok(0);
+	}
+	std::fs::write(path, serialize_shortcut_file(&lines)).map_err(|e| e.to_string())?;
+	Ok(lines.len())
+}
+
+/// Saves the diff to the configured location (every key-capture commit
+/// calls this so the change survives restarts).
+pub fn save_custom_shortcuts() -> Result<usize, String> {
+	save_custom_shortcuts_to(&custom_shortcuts_path())
+}
+
+/// The first registry action whose *effective* keys contain the canonical
+/// `canon`, if any (the current owner of a key, for conflict detection).
+pub fn owner_of_shortcut(canon: &str) -> Option<ActionId> {
+	REGISTRY
+		.iter()
+		.find(|entry| {
+			effective_keys(entry)
+				.iter()
+				.any(|key| canonical_key(key).as_deref() == Some(canon))
+		})
+		.map(|entry| entry.action)
+}
+
+/// Moves the canonical key `canon` away from every *other* action that
+/// currently binds it, shrinking their override by one key (or unbinding
+/// them). Returns the action the key was first taken from, if any — the
+/// conflict policy: the new assignment wins and the displaced action falls
+/// back to its remaining keys / to none. Simple and explicit (the alternative
+/// — refusing the assignment — leaves the user stuck when the default keys
+/// collide with a popular choice).
+pub fn steal_shortcut_for(entry: &ActionEntry, canon: &str) -> Option<ActionId> {
+	let mut stolen = None;
+	for other in REGISTRY {
+		if other.action == entry.action {
+			continue;
+		}
+		let has = effective_keys(other)
+			.iter()
+			.any(|key| canonical_key(key).as_deref() == Some(canon));
+		if has {
+			let mut keys = effective_keys(other);
+			keys.retain(|key| canonical_key(key).as_deref() != Some(canon));
+			set_custom_shortcut(other.cpp_id, keys);
+			stolen.get_or_insert(other.action);
+		}
+	}
+	stolen
 }
 
 /// The timeline's editing tools (the C++ `Tool` enum's pointer tools): the
@@ -597,6 +887,7 @@ mod tests {
 	#[test]
 	#[cfg(target_os = "macos")]
 	fn display_shortcut_formats_labels() {
+		let _guard = shortcuts_test_lock().lock().unwrap();
 		assert_eq!(
 			display_shortcut(ActionId::Redo).as_deref(),
 			Some("⇧⌘Z")
@@ -618,5 +909,168 @@ mod tests {
 			Some(",")
 		);
 		assert!(display_shortcut(ActionId::About).is_none());
+	}
+
+	// -------------------------------------------------------------------
+	// Custom shortcut overrides (stage 7)
+	// -------------------------------------------------------------------
+
+	/// A unique temporary directory for one test (the `shortcuts` file
+	/// round-trip), so parallel tests never collide on the same path.
+	fn temp_dir(label: &str) -> String {
+		static COUNTER: std::sync::atomic::AtomicUsize =
+			std::sync::atomic::AtomicUsize::new(0);
+		let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+		let path = std::env::temp_dir().join(format!(
+			"oak-shortcuts-test-{label}-{}-{n}",
+			std::process::id()
+		));
+		let _ = std::fs::remove_dir_all(&path);
+		std::fs::create_dir_all(&path).unwrap();
+		path.to_string_lossy().into_owned()
+	}
+
+	/// Parsing skips blank lines, unknown ids and unparseable keystrokes; an
+	/// empty value after the tab means "unbound".
+	#[test]
+	fn parse_shortcut_file_skips_malformed_lines() {
+		let entries = parse_shortcut_file(
+			"newproj\tsecondary-n\n\nbogusaction\tsecondary-x\nundo\t\nsaveproj\tnot-a-key\ncut\tsecondary-c\n",
+		);
+		assert_eq!(
+			entries,
+			vec![
+				("newproj".to_string(), vec!["secondary-n".to_string()]),
+				("undo".to_string(), vec![]), // unbound
+				("cut".to_string(), vec!["secondary-c".to_string()]),
+			]
+		);
+	}
+
+	/// Write → clear → reload round-trips the effective keys, and the file
+	/// only carries the entries that differ from the registry defaults.
+	#[test]
+	fn shortcuts_file_round_trips_through_the_override_table() {
+		let _guard = shortcuts_test_lock().lock().unwrap();
+		reset_all_custom_shortcuts();
+		let dir = temp_dir("roundtrip");
+		let path = format!("{dir}/shortcuts");
+
+		// `newproj` = its own default (spelled in registry syntax) → not a
+		// diff; the other two differ (`undo` gets unbound).
+		set_custom_shortcut("newproj", vec!["secondary-n".to_string()]);
+		set_custom_shortcut("saveproj", vec!["cmd-alt-s".to_string()]);
+		set_custom_shortcut("undo", Vec::new()); // unbound
+		assert_eq!(save_custom_shortcuts_to(&path).unwrap(), 2);
+
+		let contents = std::fs::read_to_string(&path).unwrap();
+		assert!(contents.contains("saveproj\t"), "file: {contents}");
+		assert!(contents.contains("undo\t"), "file: {contents}");
+		assert!(!contents.contains("newproj"), "file: {contents}");
+
+		// Reload into a fresh table.
+		reset_all_custom_shortcuts();
+		assert!(!has_custom_shortcuts());
+		assert_eq!(load_custom_shortcuts_from(&path).unwrap(), 2);
+		assert_eq!(
+			effective_keys(ActionId::SaveProject.entry()),
+			vec!["cmd-alt-s".to_string()]
+		);
+		assert_eq!(
+			effective_keys(ActionId::Undo.entry()),
+			Vec::<String>::new()
+		);
+		// The un-overridden action keeps its registry default.
+		assert_eq!(
+			effective_keys(ActionId::NewProject.entry()),
+			vec!["secondary-n".to_string()]
+		);
+	}
+
+	/// A default-equal override is dropped on save (canonical comparison), and
+	/// an all-default table removes the file entirely (the C++ behavior).
+	#[test]
+	fn save_writes_only_entries_that_differ_from_default() {
+		let _guard = shortcuts_test_lock().lock().unwrap();
+		let dir = temp_dir("diff");
+		let path = format!("{dir}/shortcuts");
+
+		set_custom_shortcut("newproj", vec!["secondary-n".to_string()]);
+		set_custom_shortcut("undo", vec!["cmd-alt-z".to_string()]);
+		assert_eq!(save_custom_shortcuts_to(&path).unwrap(), 1);
+		let contents = std::fs::read_to_string(&path).unwrap();
+		assert!(contents.contains("undo\tcmd-alt-z"), "file: {contents}");
+		assert!(!contents.contains("newproj"), "file: {contents}");
+
+		// All-default → the file disappears.
+		reset_all_custom_shortcuts();
+		set_custom_shortcut("newproj", vec!["secondary-n".to_string()]);
+		assert_eq!(save_custom_shortcuts_to(&path).unwrap(), 0);
+		assert!(!std::path::Path::new(&path).exists());
+	}
+
+	/// Effective keys fall back to the registry defaults and the multi-key
+	/// defaults stay intact until overridden.
+	#[test]
+	fn effective_keys_fall_back_to_defaults() {
+		let _guard = shortcuts_test_lock().lock().unwrap();
+		reset_all_custom_shortcuts();
+		// Delete defaults to ["delete", "backspace"].
+		assert_eq!(
+			effective_keys(ActionId::Delete.entry()),
+			vec!["delete".to_string(), "backspace".to_string()]
+		);
+		set_custom_shortcut("delete", vec!["secondary-x".to_string()]);
+		assert_eq!(
+			effective_keys(ActionId::Delete.entry()),
+			vec!["secondary-x".to_string()]
+		);
+		reset_custom_shortcut("delete");
+		assert_eq!(
+			effective_keys(ActionId::Delete.entry()),
+			vec!["delete".to_string(), "backspace".to_string()]
+		);
+	}
+
+	/// Conflict resolution: taking a key away from another action moves the
+	/// binding (the displaced action falls back to its remaining keys, or to
+	/// none).
+	#[test]
+	fn stealing_a_key_moves_the_binding_away() {
+		let _guard = shortcuts_test_lock().lock().unwrap();
+		reset_all_custom_shortcuts();
+		let canon = canonical_key("secondary-c").expect("copy's key parses");
+		assert_eq!(owner_of_shortcut(&canon), Some(ActionId::Copy));
+
+		// The capture flow: steal the key away from its current owner, then
+		// assign it to the target.
+		let stolen = steal_shortcut_for(ActionId::Paste.entry(), &canon);
+		assert_eq!(stolen, Some(ActionId::Copy));
+		set_custom_shortcut(ActionId::Paste.entry().cpp_id, vec![canon.clone()]);
+		assert_eq!(owner_of_shortcut(&canon), Some(ActionId::Paste));
+		assert!(
+			effective_keys(ActionId::Copy.entry()).is_empty(),
+			"the displaced Copy must be unbound"
+		);
+
+		// A key nobody owns steals nothing.
+		reset_all_custom_shortcuts();
+		assert_eq!(steal_shortcut_for(ActionId::Paste.entry(), "f24"), None);
+	}
+
+	/// Overriding a default with the same key keeps `display_shortcut` stable
+	/// (the canonical comparison treats `secondary-` and `cmd-` as equal).
+	#[test]
+	#[cfg(target_os = "macos")]
+	fn display_shortcut_uses_the_effective_key() {
+		let _guard = shortcuts_test_lock().lock().unwrap();
+		set_custom_shortcut("saveproj", vec!["cmd-alt-s".to_string()]);
+		assert_eq!(
+			display_shortcut(ActionId::SaveProject).as_deref(),
+			Some("⌥⌘S")
+		);
+		set_custom_shortcut("saveproj", Vec::new()); // unbound → no label
+		assert!(display_shortcut(ActionId::SaveProject).is_none());
+		reset_all_custom_shortcuts();
 	}
 }

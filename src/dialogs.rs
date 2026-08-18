@@ -27,14 +27,18 @@
 
 use gpui::colors::DefaultColors;
 use gpui::prelude::*;
-use gpui::{div, px, App, Context, Entity, Render, SharedString, Window};
-use gpui_elements::editable_text::{text_input, EditableTextState, StringStorage};
+use gpui::{
+	div, px, App, Context, ElementId, Entity, EventEmitter, Focusable, FocusHandle, Keystroke,
+	PathPromptOptions, Render, SharedString, Window,
+};
+use gpui_elements::editable_text::{text_input, EditableTextState, StringStorage, TextChanged};
 use gpui_widgets::checkbox::{CheckBox, CheckBoxEvent, CheckState};
 use gpui_widgets::combo_box::{ComboBox, ComboBoxEvent, ComboBoxOption};
 use gpui_widgets::slider::SliderModel;
 use gpui_widgets::spinbox::{SpinBox, SpinBoxEvent};
-use gpui_widgets::value::{SliderValue, ValueKind};
+use gpui_widgets::value::ValueKind;
 
+use crate::actions::ActionId;
 use crate::i18n;
 use crate::oakui::real::{
 	audio_input_device, audio_input_devices, audio_output_device, audio_output_devices,
@@ -53,13 +57,17 @@ use crate::oakui::real::{
 
 /// A request the preferences dialog emits for the host shell (the settings
 /// themselves are written into the config store directly; these need
-/// shell chrome — the menu bar / theme — to re-render).
+/// shell chrome — the menu bar / theme / key map — to re-render).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PreferencesEvent {
 	/// The theme dropdown changed (the payload is the new dark flag).
 	ThemeChanged(bool),
 	/// The language dropdown changed (already applied to the i18n global).
 	LanguageChanged,
+	/// The custom shortcut overrides changed (the Keyboard tab); the host
+	/// must re-bind the global key map and rebuild the menu bar so the new
+	/// keys take effect immediately.
+	ShortcutsChanged,
 }
 
 impl gpui::EventEmitter<PreferencesEvent> for PreferencesContent {}
@@ -1117,5 +1125,1080 @@ impl<E: crate::oakui::engine::AppEngine> Render for ProxyDialogContent<E> {
 			.w_full()
 			.child(footage_group)
 			.child(settings_group)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Preferences: the tabbed host (General + Keyboard)
+// ---------------------------------------------------------------------------
+
+/// The preferences dialog tabs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PreferencesTab {
+	/// The grouped settings (language / theme / backend / cache / …).
+	General,
+	/// The custom-shortcuts editor.
+	Keyboard,
+}
+
+/// A fully transparent color (for un-selected rows / tabs).
+fn transparent() -> gpui::Rgba {
+	gpui::Rgba {
+		r: 0.0,
+		g: 0.0,
+		b: 0.0,
+		a: 0.0,
+	}
+}
+
+/// The tabbed preferences dialog content: the existing grouped settings plus
+/// the Keyboard tab — the Rust counterpart of the C++ `PreferencesDialog`
+/// hosting the `PreferencesKeyboardTab` (`preferenceskeyboardtab.cpp`).
+///
+/// The host re-emits the general tab's [`PreferencesEvent`]s (theme /
+/// language) and turns the keyboard tab's [`KeyboardEvent::Changed`] into
+/// [`PreferencesEvent::ShortcutsChanged`], so the app shell only subscribes to
+/// this one content entity.
+pub struct PreferencesDialogContent {
+	active: PreferencesTab,
+	general: Entity<PreferencesContent>,
+	keyboard: Entity<KeyboardTabContent>,
+}
+
+impl EventEmitter<PreferencesEvent> for PreferencesDialogContent {}
+
+impl PreferencesDialogContent {
+	/// Builds both tabs (the general tab keeps its existing behavior; the
+	/// keyboard tab lists the current menu-bar actions).
+	pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+		let general = cx.new(|cx| PreferencesContent::new(window, cx));
+		let keyboard = cx.new(|cx| KeyboardTabContent::new(window, cx));
+		cx.subscribe(&general, |_this, _general, event: &PreferencesEvent, cx| match event {
+			PreferencesEvent::ThemeChanged(dark) => {
+				cx.emit(PreferencesEvent::ThemeChanged(*dark));
+			}
+			PreferencesEvent::LanguageChanged => cx.emit(PreferencesEvent::LanguageChanged),
+			PreferencesEvent::ShortcutsChanged => {}
+		})
+		.detach();
+		cx.subscribe(&keyboard, |_this, _keyboard, event: &KeyboardEvent, cx| {
+			if matches!(event, KeyboardEvent::Changed) {
+				cx.emit(PreferencesEvent::ShortcutsChanged);
+			}
+		})
+		.detach();
+		Self {
+			active: PreferencesTab::General,
+			general,
+			keyboard,
+		}
+	}
+
+	/// Commits the general tab's free-text fields (the cache directory), for
+	/// the host when the dialog closes.
+	pub fn commit_cache_dir(&self, cx: &App) {
+		self.general.read(cx).commit_cache_dir(cx);
+	}
+
+	/// The keyboard tab's action-row count (tests).
+	pub fn keyboard_tab_row_count(&self, cx: &App) -> usize {
+		self.keyboard.read(cx).row_count()
+	}
+}
+
+impl Render for PreferencesDialogContent {
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let colors = cx.default_colors().clone();
+		let content = match self.active {
+			PreferencesTab::General => self.general.clone().into_any_element(),
+			PreferencesTab::Keyboard => self.keyboard.clone().into_any_element(),
+		};
+		div()
+			.flex()
+			.flex_col()
+			.gap_3()
+			.w_full()
+			.child(
+				div()
+					.flex()
+					.gap_1()
+					.child(
+						tab_button(PreferencesTab::General, self.active, &colors, cx),
+					)
+					.child(tab_button(PreferencesTab::Keyboard, self.active, &colors, cx)),
+			)
+			.child(content)
+	}
+}
+
+/// One tab switcher button of the preferences dialog.
+fn tab_button(
+	tab: PreferencesTab,
+	active: PreferencesTab,
+	colors: &gpui::colors::Colors,
+	cx: &mut Context<PreferencesDialogContent>,
+) -> gpui::Stateful<gpui::Div> {
+	let selected = tab == active;
+	let label = match tab {
+		PreferencesTab::General => i18n::tr("preferences.tab.general"),
+		PreferencesTab::Keyboard => i18n::tr("preferences.tab.keyboard"),
+	};
+	div()
+		.id(match tab {
+			PreferencesTab::General => "prefs-tab-general",
+			PreferencesTab::Keyboard => "prefs-tab-keyboard",
+		})
+		.debug_selector(move || match tab {
+			PreferencesTab::General => "prefs-tab-general".into(),
+			PreferencesTab::Keyboard => "prefs-tab-keyboard".into(),
+		})
+		.px_3()
+		.py_1()
+		.rounded_md()
+		.cursor_pointer()
+		.bg(if selected { colors.selected } else { transparent() })
+		.text_color(if selected { colors.selected_text } else { colors.text })
+		.on_click(cx.listener(move |this, _event, _window, cx| {
+			this.active = tab;
+			cx.notify();
+		}))
+		.child(label)
+}
+
+/// A small pill-shaped text button (the keyboard tab's footer buttons). The
+/// caller chains the click handler on the returned element.
+fn pill_button(
+	id: &'static str,
+	label: impl Into<SharedString>,
+	bg: gpui::Rgba,
+	fg: gpui::Rgba,
+) -> gpui::Stateful<gpui::Div> {
+	let label: SharedString = label.into();
+	div()
+		.id(id)
+		.px_3()
+		.py_1()
+		.rounded_md()
+		.cursor_pointer()
+		.bg(bg)
+		.text_color(fg)
+		.child(label)
+}
+
+// ---------------------------------------------------------------------------
+// Preferences → Keyboard tab
+// ---------------------------------------------------------------------------
+
+/// A request the keyboard tab emits; the tabbed host re-emits it as
+/// [`PreferencesEvent::ShortcutsChanged`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum KeyboardEvent {
+	/// The shortcut overrides changed (a key was assigned / cleared / reset /
+	/// imported). The host must re-bind the key map and rebuild the menu bar.
+	Changed,
+}
+
+impl EventEmitter<KeyboardEvent> for KeyboardTabContent {}
+
+/// One row of the keyboard tab: a menu-bar action with its hierarchy.
+struct KeyboardRow {
+	action: ActionId,
+	/// The top-level menu title (the section header), localized.
+	section: String,
+	/// The full "Menu > Submenu > …" path, localized.
+	path: String,
+	/// The capture field's focus handle.
+	focus: FocusHandle,
+}
+
+/// The Preferences → Keyboard tab: a searchable, section-grouped list of every
+/// menu-bar action with a click-to-capture shortcut editor, plus Reset
+/// Selected / Reset All and Import / Export — the Rust counterpart of the C++
+/// `PreferencesKeyboardTab`.
+///
+/// # Capture
+///
+/// Clicking a row's shortcut field enters capture mode: a process-wide
+/// [`gpui::App::intercept_keystrokes`] subscription suppresses the global key
+/// map for as long as the capture is active, so the field's `on_key_down`
+/// sees *every* key — including the letters, digits and arrows that the
+/// registry binds (the shell's action listeners would otherwise swallow them
+/// before the widget-level handlers run, the same problem Qt solves with
+/// `QKeySequenceEdit`'s `ShortcutOverride`). The capture field then decides:
+///
+/// * any real key (plus modifiers) becomes the action's new binding;
+/// * Backspace / Delete unbind the action (back to "None");
+/// * Escape cancels the capture.
+///
+/// Every commit writes the override diff to `<config>/shortcuts` and emits
+/// [`KeyboardEvent::Changed`], so the change is live immediately (no restart).
+///
+/// # Conflicts
+///
+/// Assigning a key that another action already binds *moves* the binding: the
+/// displaced action loses the key (falling back to its remaining keys, or to
+/// none) and the status line says so. Simple and explicit — the alternative
+/// (refusing the assignment) would leave the user stuck when two popular
+/// defaults collide.
+pub struct KeyboardTabContent {
+	query: Entity<EditableTextState>,
+	rows: Vec<KeyboardRow>,
+	filter: String,
+	capturing: Option<usize>,
+	selected: Option<usize>,
+	confirm_reset_all: bool,
+	status: Option<String>,
+	/// The keystroke interceptor that routes every key to the capture logic
+	/// while a row is capturing (see the capture notes above); it lives for
+	/// the tab's whole lifetime and only acts while `capturing` is set.
+	#[allow(dead_code)] // kept alive: dropping it unregisters the keystroke interceptor
+	interceptor: Option<gpui::Subscription>,
+}
+
+impl KeyboardTabContent {
+	/// Builds the tab, seeding one row per menu-bar action (the C++
+	/// `setup_kbd_shortcuts` enumeration).
+	pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+		let query = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
+		cx.subscribe(&query, |this, _query, _event: &TextChanged, cx| {
+			this.filter = this.query.read(cx).as_str().to_string();
+			this.selected = None;
+			cx.notify();
+		})
+		.detach();
+		let rows = crate::app::menu_action_paths()
+			.into_iter()
+			.map(|(action, path)| {
+				let section = path.split(" > ").next().unwrap_or_default().to_string();
+				KeyboardRow {
+					action,
+					section,
+					path,
+					focus: cx.focus_handle(),
+				}
+			})
+			.collect();
+		let weak = cx.weak_entity();
+		let interceptor = cx.intercept_keystrokes(move |event, _window, app| {
+			// While any row is capturing, handle the key here — before the
+			// shell's global key bindings (which would otherwise swallow it) —
+			// and stop the event so it can neither reach an app action nor
+			// bubble to the modal (Escape must cancel the capture, not close
+			// the dialog).
+			let Some(this) = weak.upgrade() else {
+				return;
+			};
+			if this.read(app).capturing.is_some() {
+				this.update(app, |this, cx| {
+					this.handle_capture_key(&event.keystroke, cx);
+				});
+			}
+		});
+		Self {
+			query,
+			rows,
+			filter: String::new(),
+			capturing: None,
+			selected: None,
+			confirm_reset_all: false,
+			status: None,
+			interceptor: Some(interceptor),
+		}
+	}
+
+	/// The number of menu-bar actions listed (tests).
+	pub fn row_count(&self) -> usize {
+		self.rows.len()
+	}
+
+	/// Enters capture mode for `index`: remembers the row and highlights it.
+	/// The keystroke interceptor installed at construction does the rest — it
+	/// sees every key before the shell's global bindings do, so the capture
+	/// works regardless of which element currently has focus.
+	fn begin_capture(&mut self, index: usize, cx: &mut Context<Self>) {
+		self.capturing = Some(index);
+		self.selected = Some(index);
+		self.confirm_reset_all = false;
+		cx.notify();
+	}
+
+	/// Leaves capture mode.
+	fn end_capture(&mut self, cx: &mut Context<Self>) {
+		self.capturing = None;
+		cx.notify();
+	}
+
+	/// Handles one captured key (called from the keystroke interceptor, so it
+	/// runs for every key while a row is capturing).
+	fn handle_capture_key(&mut self, keystroke: &Keystroke, cx: &mut Context<Self>) {
+		let Some(index) = self.capturing else {
+			return;
+		};
+		match capture_decision(keystroke) {
+			CaptureDecision::Ignore => cx.stop_propagation(),
+			CaptureDecision::Cancel => {
+				self.end_capture(cx);
+				cx.stop_propagation();
+			}
+			CaptureDecision::Clear => {
+				let action = self.rows[index].action;
+				crate::actions::set_custom_shortcut(action.entry().cpp_id, Vec::new());
+				let _ = crate::actions::save_custom_shortcuts();
+				self.status = Some(i18n::tr("preferences.keyboard.cleared").to_string());
+				self.end_capture(cx);
+				cx.emit(KeyboardEvent::Changed);
+				cx.stop_propagation();
+			}
+			CaptureDecision::Assign(canon) => {
+				let action = self.rows[index].action;
+				let stolen = crate::actions::steal_shortcut_for(action.entry(), &canon);
+				crate::actions::set_custom_shortcut(action.entry().cpp_id, vec![canon]);
+				let _ = crate::actions::save_custom_shortcuts();
+				self.status = stolen.map(|previous| {
+					i18n::tr("preferences.keyboard.conflict")
+						.replace("{action}", i18n::tr(previous.entry().i18n_key))
+				});
+				self.end_capture(cx);
+				cx.emit(KeyboardEvent::Changed);
+				cx.stop_propagation();
+			}
+		}
+	}
+
+	/// Reset Selected: the selected row's action falls back to its registry
+	/// default keys.
+	fn reset_selected(&mut self, cx: &mut Context<Self>) {
+		let Some(index) = self.selected else {
+			return;
+		};
+		let action = self.rows[index].action;
+		crate::actions::reset_custom_shortcut(action.entry().cpp_id);
+		let _ = crate::actions::save_custom_shortcuts();
+		self.status = Some(i18n::tr("preferences.keyboard.reset").to_string());
+		cx.emit(KeyboardEvent::Changed);
+		cx.notify();
+	}
+
+	/// Reset All: the first click arms an inline confirmation (the C++
+	/// `QMessageBox` equivalent, kept inside the tab so the host modal
+	/// machinery stays untouched); the second applies it.
+	fn reset_all(&mut self, cx: &mut Context<Self>) {
+		if !self.confirm_reset_all {
+			self.confirm_reset_all = true;
+			self.capturing = None;
+			cx.notify();
+			return;
+		}
+		crate::actions::reset_all_custom_shortcuts();
+		let _ = crate::actions::save_custom_shortcuts();
+		self.confirm_reset_all = false;
+		self.status = Some(i18n::tr("preferences.keyboard.reset_all_done").to_string());
+		cx.emit(KeyboardEvent::Changed);
+		cx.notify();
+	}
+
+	/// Import: pick a `shortcuts` file, replace the overrides with its
+	/// contents (anything unlisted falls back to default, like the C++ field
+	/// walk), then save the effective state back to the configured location.
+	fn import_shortcuts(&mut self, cx: &mut Context<Self>) {
+		let receiver = cx.prompt_for_paths(PathPromptOptions {
+			files: true,
+			directories: false,
+			multiple: false,
+			prompt: Some(i18n::tr("preferences.keyboard.import").into()),
+		});
+		cx.spawn(async move |this, cx| {
+			let Ok(Ok(Some(paths))) = receiver.await else {
+				return;
+			};
+			let Some(path) = paths.first() else {
+				return;
+			};
+			let result = crate::actions::load_custom_shortcuts_from(&path.to_string_lossy());
+			this.update(cx, |this, cx| {
+				match result {
+					Ok(_) => {
+						this.status =
+							Some(i18n::tr("preferences.keyboard.imported").to_string());
+						let _ = crate::actions::save_custom_shortcuts();
+					}
+					Err(_) => {
+						this.status =
+							Some(i18n::tr("preferences.keyboard.import_failed").to_string())
+					}
+				}
+				this.capturing = None;
+				this.confirm_reset_all = false;
+				cx.emit(KeyboardEvent::Changed);
+				cx.notify();
+			});
+		})
+		.detach();
+	}
+
+	/// Export: write the current override diff to a picked file.
+	fn export_shortcuts(&mut self, cx: &mut Context<Self>) {
+		let receiver = cx.prompt_for_new_path(
+			&std::path::PathBuf::from("."),
+			Some("shortcuts"),
+		);
+		cx.spawn(async move |this, cx| {
+			let Ok(Ok(Some(path))) = receiver.await else {
+				return;
+			};
+			let result = crate::actions::save_custom_shortcuts_to(&path.to_string_lossy());
+			this.update(cx, |this, cx| {
+				this.status = Some(match result {
+					Ok(_) => i18n::tr("preferences.keyboard.exported").to_string(),
+					Err(_) => i18n::tr("preferences.keyboard.export_failed").to_string(),
+				});
+				cx.notify();
+			});
+		})
+		.detach();
+	}
+}
+
+impl Render for KeyboardTabContent {
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let colors = cx.default_colors().clone();
+		let weak = self.query.downgrade();
+		let capturing = self.capturing;
+		let selected = self.selected;
+
+		// The search box.
+		let search = div()
+			.rounded_md()
+			.border_1()
+			.border_color(colors.border)
+			.bg(colors.background)
+			.px_2()
+			.py_1()
+			.child(text_input("keyboard-search-input").state(weak).accepts_input(true));
+
+		// The grouped, filtered action list.
+		let mut list = div()
+			.id("keyboard-shortcut-list")
+			.flex()
+			.flex_col()
+			.max_h(px(340.0))
+			.overflow_y_scroll();
+		let mut shown_section: Option<String> = None;
+		for (index, row) in self.rows.iter().enumerate() {
+			let label = i18n::tr(row.action.entry().i18n_key);
+			let shortcut = crate::actions::display_shortcut(row.action);
+			if !keyboard_filter_matches(label, &row.path, shortcut.as_deref(), &self.filter) {
+				continue;
+			}
+			if shown_section.as_deref() != Some(row.section.as_str()) {
+				list = list.child(section_header(&colors, row.section.clone().into()));
+				shown_section = Some(row.section.clone());
+			}
+			let row_selected = selected == Some(index);
+			let is_capturing = capturing == Some(index);
+			let field_label: SharedString = if is_capturing {
+				i18n::tr("preferences.keyboard.capturing").into()
+			} else {
+				shortcut
+					.map(SharedString::from)
+					.unwrap_or_else(|| i18n::tr("preferences.keyboard.unbound").into())
+			};
+			let row_path = row.path.clone();
+			let focus = row.focus.clone();
+			list = list.child(
+				div()
+					.id(ElementId::named_usize("keyboard-shortcut-row", index))
+					.flex()
+					.items_center()
+					.gap_2()
+					.px_1()
+					.py_0p5()
+					.rounded_md()
+					.bg(if row_selected { colors.selected } else { transparent() })
+					.on_click(cx.listener(move |this, _event, _window, cx| {
+						this.selected = Some(index);
+						cx.notify();
+					}))
+					.child(
+						div()
+							.flex_1()
+							.flex_col()
+							.child(div().text_color(colors.text).child(label))
+							.child(
+								div()
+									.text_color(colors.disabled)
+									.text_xs()
+									.child(row_path),
+							),
+					)
+					.child(
+						div()
+							.id(ElementId::named_usize("keyboard-shortcut-capture", index))
+							.debug_selector(move || format!("keyboard-capture-{index}").into())
+							.min_w(px(150.0))
+							.px_2()
+							.py_0p5()
+							.rounded_md()
+							.border_1()
+							.border_color(if is_capturing {
+								colors.selected
+							} else {
+								colors.border
+							})
+							.bg(colors.background)
+							.text_color(colors.text)
+							.cursor_pointer()
+							.track_focus(&focus)
+							.on_click(cx.listener(
+								move |this, _event, _window, cx| {
+									if this.capturing != Some(index) {
+										this.begin_capture(index, cx);
+									}
+									cx.stop_propagation();
+								},
+							))
+							.child(field_label),
+					),
+			);
+		}
+
+		// The footer: Import/Export on the left, Reset Selected/All on the
+		// right (the inline Reset-All confirmation replaces them when armed).
+		let footer = if self.confirm_reset_all {
+			div()
+				.flex()
+				.items_center()
+				.gap_2()
+				.child(
+					div()
+						.flex_1()
+						.text_color(colors.text)
+						.child(i18n::tr("preferences.keyboard.reset_all.confirm")),
+				)
+				.child(
+					pill_button(
+						"prefs-keyboard-confirm-reset",
+						i18n::tr("preferences.keyboard.reset_all"),
+						colors.selected,
+						colors.selected_text,
+					)
+					.on_click(cx.listener(|this, _event, _window, cx| this.reset_all(cx))),
+				)
+				.child(
+					pill_button(
+						"prefs-keyboard-cancel-reset",
+						i18n::tr("dialog.cancel"),
+						colors.background,
+						colors.text,
+					)
+					.on_click(cx.listener(|this, _event, _window, cx| {
+						this.confirm_reset_all = false;
+						cx.notify();
+					})),
+				)
+		} else {
+			div()
+				.flex()
+				.items_center()
+				.gap_2()
+				.child(
+					pill_button(
+						"prefs-keyboard-import",
+						i18n::tr("preferences.keyboard.import"),
+						colors.background,
+						colors.text,
+					)
+					.on_click(cx.listener(|this, _event, _window, cx| {
+						this.import_shortcuts(cx)
+					})),
+				)
+				.child(
+					pill_button(
+						"prefs-keyboard-export",
+						i18n::tr("preferences.keyboard.export"),
+						colors.background,
+						colors.text,
+					)
+					.on_click(cx.listener(|this, _event, _window, cx| {
+						this.export_shortcuts(cx)
+					})),
+				)
+				.child(div().flex_1())
+				.child(
+					pill_button(
+						"prefs-keyboard-reset-selected",
+						i18n::tr("preferences.keyboard.reset_selected"),
+						colors.background,
+						colors.text,
+					)
+					.on_click(cx.listener(|this, _event, _window, cx| {
+						this.reset_selected(cx)
+					})),
+				)
+				.child(
+					pill_button(
+						"prefs-keyboard-reset-all",
+						i18n::tr("preferences.keyboard.reset_all"),
+						colors.background,
+						colors.text,
+					)
+					.on_click(cx.listener(|this, _event, _window, cx| {
+						this.reset_all(cx)
+					})),
+				)
+		};
+
+		div()
+			.flex()
+			.flex_col()
+			.gap_3()
+			.w_full()
+			.child(search)
+			.child(
+				div()
+					.flex()
+					.text_color(colors.disabled)
+					.text_xs()
+					.child(i18n::tr("preferences.keyboard.action"))
+					.child(div().flex_1())
+					.child(i18n::tr("preferences.keyboard.shortcut")),
+			)
+			.child(list)
+			.child(footer)
+			.child(
+				if let Some(status) = &self.status {
+					div()
+						.text_color(colors.disabled)
+						.text_xs()
+						.child(status.clone())
+				} else {
+					div()
+				},
+			)
+	}
+}
+
+/// The outcome of one captured keystroke.
+#[derive(Debug)]
+enum CaptureDecision {
+	/// A modifier-only key — keep capturing, ignore it.
+	Ignore,
+	/// Escape — cancel the capture without changing anything.
+	Cancel,
+	/// Backspace / Delete — clear the binding (unbind).
+	Clear,
+	/// A real key — the new binding, in canonical gpui keystroke form.
+	Assign(String),
+}
+
+/// Decides what a capture field should do with a keystroke. Modifier-only
+/// keys (a bare Shift / Ctrl / …) never bind; Backspace and Delete clear;
+/// Escape cancels; anything else (with or without modifiers) becomes the new
+/// binding.
+fn capture_decision(keystroke: &Keystroke) -> CaptureDecision {
+	match keystroke.key.as_str() {
+		"escape" => CaptureDecision::Cancel,
+		"backspace" | "delete" => CaptureDecision::Clear,
+		// Modifier-only key presses (the parser represents a bare modifier as
+		// the modifier's own key name).
+		"shift" | "control" | "alt" | "cmd" | "super" | "win" | "fn" | "function"
+		| "secondary" | "platform" => CaptureDecision::Ignore,
+		"" => CaptureDecision::Ignore,
+		_ => CaptureDecision::Assign(keystroke.unparse()),
+	}
+}
+
+/// Whether an action row survives the keyboard tab's search query:
+/// case-insensitive match against the action label, the localized menu path,
+/// or the effective shortcut label.
+fn keyboard_filter_matches(label: &str, path: &str, shortcut: Option<&str>, query: &str) -> bool {
+	let query = query.trim();
+	if query.is_empty() {
+		return true;
+	}
+	let query = query.to_lowercase();
+	let label_lower = label.to_lowercase();
+	let full_path = format!("{path} > {label}").to_lowercase();
+	label_lower.contains(&query)
+		|| full_path.contains(&query)
+		|| shortcut.is_some_and(|s| s.to_lowercase().contains(&query))
+}
+
+// ---------------------------------------------------------------------------
+// Action search (Help > Search Actions…, the `/` key)
+// ---------------------------------------------------------------------------
+
+/// One item of the action search list.
+struct ActionSearchItem {
+	action: ActionId,
+	/// The localized "Menu > Submenu > …" path.
+	path: String,
+}
+
+/// The action search dialog content (the C++ `ActionSearch`): a search field
+/// over every menu-bar action, live filtering, arrow-key selection and
+/// Enter / double-click execution through the same dispatch path the menu
+/// clicks take. Panel-context hotkeys (the `HIDDEN_MENU_ID` items) never
+/// appear — they have no menu item, exactly like the C++ "only the menu bar"
+/// enumeration.
+pub struct ActionSearchContent {
+	query: Entity<EditableTextState>,
+	items: Vec<ActionSearchItem>,
+	filter: String,
+	selection: Option<usize>,
+	/// The keystroke interceptor that routes Up/Down/Enter to the list while
+	/// the dialog is open (see [`ActionSearchContent::new`]).
+	#[allow(dead_code)] // kept alive: dropping it unregisters the keystroke interceptor
+	interceptor: Option<gpui::Subscription>,
+}
+
+/// A request the action search dialog emits.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ActionSearchEvent {
+	/// The user activated `action`; the host dispatches it (the same path the
+	/// menu clicks take) and closes the dialog.
+	Execute(ActionId),
+}
+
+impl EventEmitter<ActionSearchEvent> for ActionSearchContent {}
+
+impl ActionSearchContent {
+	/// Builds the dialog with every menu-bar action, subscribes to the search
+	/// field so filtering re-runs on every keystroke, and installs a keystroke
+	/// interceptor that routes Up / Down / Enter to the list.
+	///
+	/// The interceptor is needed because the shell's global key bindings run
+	/// *before* the widget-level key handlers and would swallow Up/Down (they
+	/// are the GoToPrevCut/GoToNextCut keys) and Enter — the same reason the
+	/// Keyboard tab captures its keys through an interceptor. The dialog is
+	/// modal, so the only text input alive while the interceptor is active is
+	/// the search field; every other keystroke passes through untouched (in
+	/// the real app the IME delivers text to the focused input independently
+	/// of the key map, so typing keeps working).
+	pub fn new(_window: &mut Window, cx: &mut Context<Self>) -> Self {
+		let query = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
+		cx.subscribe(&query, |this, _query, _event: &TextChanged, cx| {
+			this.filter = this.query.read(cx).as_str().to_string();
+			let visible: Vec<usize> = this
+				.items
+				.iter()
+				.enumerate()
+				.filter(|(_, item)| search_filter_matches(item.action, &item.path, &this.filter))
+				.map(|(index, _)| index)
+				.collect();
+			this.selection = selection_step(&visible, None, 1);
+			cx.notify();
+		})
+		.detach();
+		let items = crate::app::menu_action_paths()
+			.into_iter()
+			.map(|(action, path)| ActionSearchItem { action, path })
+			.collect();
+		let weak = cx.weak_entity();
+		let interceptor = cx.intercept_keystrokes(move |event, _window, app| {
+			// Only act on the keys the dialog owns; everything else (text
+			// for the search field, Escape for the modal, …) passes through.
+			if !matches!(event.keystroke.key.as_str(), "up" | "down" | "enter") {
+				return;
+			}
+			let Some(this) = weak.upgrade() else {
+				return;
+			};
+			let mut stop = false;
+			this.update(app, |this, cx| match event.keystroke.key.as_str() {
+				"up" => {
+					this.move_selection(-1, cx);
+					stop = true;
+				}
+				"down" => {
+					this.move_selection(1, cx);
+					stop = true;
+				}
+				"enter" => {
+					this.execute(cx);
+					stop = true;
+				}
+				// Escape deliberately falls through to the modal's own handler
+				// (which closes the dialog); every other key passes to the
+				// search field.
+				_ => {}
+			});
+			if stop {
+				app.stop_propagation();
+			}
+		});
+		Self {
+			query,
+			items,
+			filter: String::new(),
+			selection: None,
+			interceptor: Some(interceptor),
+		}
+	}
+
+	/// The search field's focus handle (the host focuses it when the dialog
+	/// opens, so the search is keyboard-first from the start).
+	pub fn search_focus(&self, cx: &App) -> FocusHandle {
+		self.query.read(cx).focus_handle(cx)
+	}
+
+	fn move_selection(&mut self, delta: i32, cx: &mut Context<Self>) {
+		let visible: Vec<usize> = self
+			.items
+			.iter()
+			.enumerate()
+			.filter(|(_, item)| search_filter_matches(item.action, &item.path, &self.filter))
+			.map(|(index, _)| index)
+			.collect();
+		self.selection = selection_step(&visible, self.selection, delta);
+		cx.notify();
+	}
+
+	/// The currently selected action (tests).
+	pub fn selected_action(&self) -> Option<ActionId> {
+		self.selection.and_then(|index| self.items.get(index)).map(|item| item.action)
+	}
+
+	/// The current search filter (tests).
+	pub fn filter(&self) -> &str {
+		&self.filter
+	}
+
+	fn execute(&mut self, cx: &mut Context<Self>) {
+		if let Some(index) = self.selection {
+			if let Some(item) = self.items.get(index) {
+				cx.emit(ActionSearchEvent::Execute(item.action));
+			}
+		}
+	}
+}
+
+impl Render for ActionSearchContent {
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let colors = cx.default_colors().clone();
+		let weak = self.query.downgrade();
+		let selection = self.selection;
+		let visible: Vec<usize> = self
+			.items
+			.iter()
+			.enumerate()
+			.filter(|(_, item)| search_filter_matches(item.action, &item.path, &self.filter))
+			.map(|(index, _)| index)
+			.collect();
+
+		let list = if visible.is_empty() {
+			div()
+				.id("action-search-list")
+				.flex()
+				.flex_col()
+				.max_h(px(360.0))
+				.overflow_y_scroll()
+				.child(
+					div()
+						.text_color(colors.disabled)
+						.text_xs()
+						.child(if self.items.is_empty() {
+							i18n::tr("actionsearch.no_actions")
+						} else {
+							i18n::tr("actionsearch.empty")
+						}),
+				)
+		} else {
+			div()
+				.id("action-search-list")
+				.flex()
+				.flex_col()
+				.max_h(px(360.0))
+				.overflow_y_scroll()
+				.children(visible.iter().map(|&index| {
+					let item = &self.items[index];
+					let label = i18n::tr(item.action.entry().i18n_key);
+					let path = item.path.clone();
+					let row_selected = selection == Some(index);
+					div()
+						.id(ElementId::named_usize("action-search-item", index))
+						.flex()
+						.items_center()
+						.gap_2()
+						.px_2()
+						.py_0p5()
+						.rounded_md()
+						.bg(if row_selected { colors.selected } else { transparent() })
+						.text_color(if row_selected {
+							colors.selected_text
+						} else {
+							colors.text
+						})
+						.cursor_pointer()
+						.on_click(cx.listener(move |this, _event, _window, cx| {
+							this.selection = Some(index);
+							cx.notify();
+						}))
+						.on_mouse_down(
+							gpui::MouseButton::Left,
+							cx.listener(
+								move |this, event: &gpui::MouseDownEvent, _window, cx| {
+									// Double-click executes.
+									if event.click_count >= 2 {
+										this.selection = Some(index);
+										this.execute(cx);
+									}
+								},
+							),
+						)
+						.child(
+							div()
+								.flex_1()
+								.flex_col()
+								.child(div().child(label))
+								.child(
+									div()
+										.text_xs()
+										.text_color(colors.disabled)
+										.child(format!("({path})")),
+								),
+						)
+				}))
+		};
+
+		div()
+			.id("action-search-root")
+			.flex()
+			.flex_col()
+			.gap_2()
+			.w_full()
+			.child(
+				div()
+					.rounded_md()
+					.border_1()
+					.border_color(colors.border)
+					.bg(colors.background)
+					.px_2()
+					.py_1()
+					.child(text_input("action-search-input").state(weak).accepts_input(true)),
+			)
+			.child(list)
+	}
+}
+
+/// Whether an action-search item survives the query: case-insensitive match
+/// against the action label or the full "Menu > Submenu > action" path.
+fn search_filter_matches(action: ActionId, path: &str, query: &str) -> bool {
+	let query = query.trim();
+	if query.is_empty() {
+		return true;
+	}
+	let query = query.to_lowercase();
+	let label = i18n::tr(action.entry().i18n_key);
+	label.to_lowercase().contains(&query)
+		|| format!("{path} > {label}").to_lowercase().contains(&query)
+}
+
+/// The next selected index when moving `delta` (±1) through `visible` (the
+/// indices of the currently visible rows), wrapping around. `None` returns
+/// the first (for a downward move) / last (for an upward move).
+fn selection_step(visible: &[usize], current: Option<usize>, delta: i32) -> Option<usize> {
+	if visible.is_empty() {
+		return None;
+	}
+	let position = current.and_then(|c| visible.iter().position(|&v| v == c));
+	let next = match position {
+		Some(pos) => (pos as i64 + delta as i64).rem_euclid(visible.len() as i64) as usize,
+		None if delta > 0 => 0,
+		None => visible.len() - 1,
+	};
+	Some(visible[next])
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	fn keystroke(key: &str) -> Keystroke {
+		gpui::Keystroke::parse(key).unwrap()
+	}
+
+	#[test]
+	fn capture_decision_handles_all_shapes() {
+		assert!(matches!(capture_decision(&keystroke("escape")), CaptureDecision::Cancel));
+		assert!(matches!(
+			capture_decision(&keystroke("backspace")),
+			CaptureDecision::Clear
+		));
+		assert!(matches!(
+			capture_decision(&keystroke("delete")),
+			CaptureDecision::Clear
+		));
+		// Bare modifiers never bind.
+		assert!(matches!(
+			capture_decision(&keystroke("shift")),
+			CaptureDecision::Ignore
+		));
+		assert!(matches!(
+			capture_decision(&keystroke("control")),
+			CaptureDecision::Ignore
+		));
+		assert!(matches!(
+			capture_decision(&keystroke("alt")),
+			CaptureDecision::Ignore
+		));
+		// A real key (with or without modifiers) becomes the canonical binding.
+		match capture_decision(&keystroke("secondary-s")) {
+			CaptureDecision::Assign(canon) => {
+				assert_eq!(
+					canon,
+					gpui::Keystroke::parse("secondary-s").unwrap().unparse()
+				);
+			}
+			other => panic!("expected assign, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn keyboard_filter_matches_name_path_and_shortcut() {
+		assert!(keyboard_filter_matches("Save Project", "File", Some("⌘S"), "save"));
+		assert!(keyboard_filter_matches("Save Project", "File", Some("⌘S"), "file > save"));
+		// Shortcut matching is case-insensitive.
+		assert!(keyboard_filter_matches("Save Project", "File", Some("⌘S"), "⌘s"));
+		assert!(!keyboard_filter_matches("Save Project", "File", Some("⌘S"), "undo"));
+		// Empty query matches everything; rows without a shortcut match only
+		// by name/path.
+		assert!(keyboard_filter_matches("About Oak…", "Help", None, ""));
+		assert!(keyboard_filter_matches("About Oak…", "Help", None, "help"));
+		assert!(!keyboard_filter_matches("About Oak…", "Help", None, "⌘"));
+	}
+
+	#[test]
+	fn search_filter_matches_label_or_path() {
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		crate::i18n::set_language(crate::i18n::Language::EnUs);
+		assert!(search_filter_matches(ActionId::NewProject, "File", "new"));
+		assert!(search_filter_matches(ActionId::NewProject, "File", "file > new"));
+		assert!(!search_filter_matches(ActionId::NewProject, "File", "undo"));
+		assert!(search_filter_matches(ActionId::NewProject, "File", ""));
+	}
+
+	#[test]
+	fn selection_step_wraps_and_respects_visibility() {
+		assert_eq!(selection_step(&[2, 5, 7], None, 1), Some(2));
+		assert_eq!(selection_step(&[2, 5, 7], None, -1), Some(7));
+		assert_eq!(selection_step(&[2, 5, 7], Some(2), 1), Some(5));
+		assert_eq!(selection_step(&[2, 5, 7], Some(7), 1), Some(2));
+		assert_eq!(selection_step(&[2, 5, 7], Some(2), -1), Some(7));
+		assert_eq!(selection_step(&[], None, 1), None);
+	}
+
+	#[test]
+	fn keyboard_rows_cover_the_menu_bar() {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _lang = crate::i18n::lang_test_lock().lock().unwrap();
+		crate::i18n::set_language(crate::i18n::Language::EnUs);
+		let rows = crate::app::menu_action_paths();
+		assert!(!rows.is_empty());
+		// Every listed action resolves to a registry entry with a menu item.
+		for (action, path) in &rows {
+			assert_ne!(action.menu_id(), crate::actions::HIDDEN_MENU_ID);
+			assert!(!path.is_empty(), "action {action:?} has an empty path");
+		}
 	}
 }
