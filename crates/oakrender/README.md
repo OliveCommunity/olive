@@ -70,16 +70,18 @@ src/
   color.rs      ColorProcessor over ocio-rs + default config + LUT library
   manager.rs    RenderManager singleton + lifecycle + disk cache
   ticket.rs     Ticket arena, params, exactly-once completion delivery
-  worker.rs     Worker pool + frozen pre-M15 ProcessPool facade stub +
-                graph snapshot store
+  worker.rs     JobDispatch seam + thread-free InlineDispatcher (audio
+                fallback / test backend) + graph snapshot store
   scheduler.rs  M15 PreviewScheduler: interleaved shard claiming,
-                priority lanes (seek/playback/background), crash reclaim
+                priority lanes (seek/playback/background), crash reclaim,
+                per-request slot-bytes capacity filtering (S3)
   ipc.rs        M15 render-worker IPC (moved from oak-worker): NDJSON
                 control protocol (v1 + v2 messages) + the POSIX
                 shared-memory frame-slot transport both pipe ends link
   procpool.rs   M15 ProcessDispatcher: spawn/handshake oak-worker
                 processes, main-assigned slot batches, crash detection +
-                restart, zero-copy ShmFrameRef completions
+                restart, zero-copy ShmFrameRef / ShmAudioRef completions,
+                grow-on-demand segment geometry (S3)
   autocacher.rs PreviewAutoCacher
   eval.rs       RenderHooks impl: the CPU evaluation seam
   backend.rs    wgpu device/queue/texture management + DisplayRenderer
@@ -126,13 +128,24 @@ tests/          contract + golden tests (common/ has shared helpers)
   process backend the `RenderManager` default, removed the in-process
   thread pool (`worker::WorkerPool`) and the frozen pre-M15
   `worker::ProcessPool` facade stub, and wired the app's onscreen path
-  to read the shm slots zero-copy (`worker::InlineDispatcher` supplies
-  the thread-free audio/test backends).
-- **Audio rendering** — audio tickets run on main-process inline
-  execution (`worker::InlineDispatcher::sync`; design §3.7 — the crash
-  risk is dominated by video plugins, which live in oak-worker) through
-  `eval::render_audio_samples`; the S3 work is migrating them to the
-  shared-memory transport.
+  to read the shm slots zero-copy. M15 S3 added **audio over shm**
+  (`render_audio_batch` → `TicketPayload::ShmAudio`, with the
+  main-process inline `InlineDispatcher` as the fallback when the
+  process dispatcher is unavailable), **per-ticket slot formats**
+  (forced-F32 tickets get F32 slots; the export path reads them
+  directly, eliminating the BGRA8→F32 round trip; segments grow on
+  demand), and **adaptive pool tuning** (`default_slots_per_worker` /
+  `default_batch_size` / `default_worker_count` policies plus the
+  `bench_process` example that reports 1080p throughput and
+  adjacent-frame completion deltas).
+- **Audio rendering** — M15 S3 migrated audio tickets onto the process
+  dispatcher (`render_audio_batch`; the worker mixes via
+  `eval::render_audio_samples_into` into `SLOT_FORMAT_AUDIO_F32` slots;
+  the main process reads `ShmAudioRef` and releases). The app's
+  real-time pull (`pull_audio_tick`) renders chunks **ahead**
+  asynchronously (prefetch depth 4 ≈ 66 ms) so it never blocks on a
+  busy worker; `worker::InlineDispatcher::sync` remains the fallback
+  (design §3.7).
 - **Borrowed caches** — `oakrender_cache_wrap_borrowed` boxes an
   opaque marker; queries on borrowed caches return `OAKRENDER_E_INVALID`
   until the C++ interop layer lands.

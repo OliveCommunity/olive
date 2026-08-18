@@ -57,7 +57,9 @@ use oakcommon::videoparams::VideoParams;
 use oaknode::footage::FootageBehavior;
 use oaknode::sequence::SequenceBehavior;
 use oaknode::track::{TrackBehavior, TrackListBehavior, TrackType};
-use oakrender::procpool::{bgra8_to_f32_rgba, DispatcherConfig, ProcessDispatcher, ShmFrameRef};
+use oakrender::procpool::{
+	bgra8_to_f32_rgba, DispatcherConfig, ProcessDispatcher, ShmAudioRef, ShmFrameRef,
+};
 use oakrender::ticket::{
 	ticket_kind, AudioTicketParams, MontageClip, TicketArena, TicketId, TicketPayload,
 	TicketResult, VideoTicketParams,
@@ -668,7 +670,17 @@ impl RenderTask {
 					oakrender::eval::render_produced_frame(time, params)
 						.map(TicketPayload::Video)
 				});
-				let arena = Arc::new(TicketArena::new(dispatcher.clone(), producer));
+				// M15 S3: the private dispatcher routes audio through the
+				// worker pool too; the inline dispatcher is the fallback
+				// when the dispatcher refuses a job (oversized audio ranges
+				// / teardown).
+				let inline = oakrender::worker::InlineDispatcher::sync();
+				let arena = Arc::new(TicketArena::new_with_audio_fallback(
+					dispatcher.clone(),
+					dispatcher.clone(),
+					Some(inline),
+					producer,
+				));
 				(arena, Some(dispatcher))
 			}
 		};
@@ -760,6 +772,22 @@ impl RenderTask {
 							if let Err(e) = behavior.audio_downloaded(task, &samples) {
 								result = Err(e);
 								break;
+							}
+						}
+						Ok(TicketPayload::ShmAudio(audio)) => {
+							// M15 S3 process backend: the audio lives in a
+							// worker shm slot. Copy the samples out (the
+							// encoder needs an owned f32 buffer), hand them
+							// to the behavior, then release the slot.
+							let samples = audio.to_audio_samples();
+							if let Err(e) = behavior.audio_downloaded(task, &samples) {
+								result = Err(e);
+								break;
+							}
+							if let Some(m) = oakrender::manager::RenderManager::global() {
+								m.release_audio_frame(&audio);
+							} else if let Some(d) = &private_dispatch {
+								d.release_audio_frame(&audio);
 							}
 						}
 						Ok(_) => {
@@ -1029,11 +1057,11 @@ fn push_finished(id: TicketId, result: TicketResult, dispatch: DispatchPtr) {
 	dispatch.cv.notify_all();
 }
 
-/// Copy a process-backend shm frame (BGRA8 slot) out into an F32 CPU
-/// texture the encoder consumes (M15 S2). The worker converted its F32
-/// pipeline output to BGRA8 for the slot (design §3.1); the encoder
-/// declares F32 input, so the export converts back — a necessary
-/// conversion at the encoder boundary with 8-bit quantization (S2).
+/// Copy a process-backend shm frame out into an F32 CPU texture the
+/// encoder consumes (M15 S2/S3). F32 slots (a forced F32 export ticket)
+/// are read straight out — their bytes are already f32 RGBA little-endian,
+/// no conversion; BGRA8 slots (the default preview path) convert once with
+/// [`bgra8_to_f32_rgba`].
 fn shm_frame_to_texture(frame: &ShmFrameRef) -> oakrender::texture::Texture {
 	let meta = &frame.meta;
 	let pixels = frame
@@ -1041,6 +1069,17 @@ fn shm_frame_to_texture(frame: &ShmFrameRef) -> oakrender::texture::Texture {
 		.slot_bytes(frame.slot)
 		.get(..meta.data_size.max(0) as usize)
 		.unwrap_or_default();
+	if meta.format == oakcore_rs::PixelFormat::F32 as i32 {
+		// F32 slot: the encoder gets the pipeline samples with no round trip.
+		let mut f = oakrender::texture::Frame::new();
+		f.width = meta.width;
+		f.height = meta.height;
+		f.format = oakcore_rs::PixelFormat::F32;
+		f.channels = 4;
+		f.timestamp = oakcore_rs::Rational::new(meta.time_num, meta.time_den);
+		f.data = pixels.to_vec();
+		return oakrender::texture::Texture::wrap_frame(f);
+	}
 	let samples = bgra8_to_f32_rgba(pixels);
 	let mut f = oakrender::texture::Frame::new();
 	f.width = meta.width;

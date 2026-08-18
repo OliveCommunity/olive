@@ -620,8 +620,90 @@ pub fn render_audio_range(
 			sample_rate: samples.sample_rate,
 			channel_count: samples.channel_count,
 		}),
+		// M15 S3 process backend: the audio sits in a worker shm slot; copy
+		// the samples out and release the slot (the bytes must outlive it).
+		Ok(TicketPayload::ShmAudio(audio)) => {
+			let samples = audio.to_audio_samples();
+			if let Some(m) = RenderManager::global() {
+				m.release_audio_frame(&audio);
+			}
+			Ok(RenderedAudio {
+				data: samples.samples,
+				sample_rate: samples.sample_rate,
+				channel_count: samples.channel_count,
+			})
+		}
 		_ => Err("audio render produced no samples".to_string()),
 	}
+}
+
+/// Submit one audio-chunk render for the async playback prefetch (M15
+/// S3): the chunk `[start_ts, start_ts + len_ts)` is rendered through the
+/// process dispatcher; the completion copies the samples out of the shm
+/// slot, releases it and sends `(start_ts, samples)` on `tx`. Render
+/// errors send silence of the expected length so the playback buffer stays
+/// aligned (the real-time path must never stall the UI thread on a worker).
+pub fn submit_audio_chunk(
+	p: &ProjectRef,
+	seq: NodeId,
+	start_ts: i64,
+	len_ts: i64,
+	tb: (i64, i64),
+	tx: mpsc::Sender<(i64, RenderedAudio)>,
+) -> Result<(), String> {
+	let range = TimeRange::new(
+		Rational::new(start_ts * tb.0, tb.1),
+		Rational::new((start_ts + len_ts) * tb.0, tb.1),
+	);
+	let montage = audio_montage(p, seq, range);
+	let sample_rate = 48000;
+	let channel_layout = 0x3u64;
+	let channels = channel_layout.count_ones().max(1) as i32;
+	let m = RenderManager::global().ok_or_else(|| "render manager is not initialized".to_string())?;
+	let id = m.tickets.next_id();
+	m.tickets.submit_audio_with_id(
+		id,
+		AudioTicketParams {
+			viewer: seq.identity(),
+			range,
+			sample_rate,
+			channel_layout,
+			montage,
+		},
+		Box::new(move |result| {
+			let data = match result {
+				Ok(TicketPayload::Audio(samples)) => RenderedAudio {
+					data: samples.samples,
+					sample_rate: samples.sample_rate,
+					channel_count: samples.channel_count,
+				},
+				Ok(TicketPayload::ShmAudio(audio)) => {
+					let samples = audio.to_audio_samples();
+					if let Some(m) = RenderManager::global() {
+						m.release_audio_frame(&audio);
+					}
+					RenderedAudio {
+						data: samples.samples,
+						sample_rate: samples.sample_rate,
+						channel_count: samples.channel_count,
+					}
+				}
+				_ => {
+					// Silence of the expected length keeps the output buffer
+					// aligned (an underrun here just plays zeros).
+					let seconds = len_ts as f64 * tb.0 as f64 / tb.1 as f64;
+					let frames = (seconds * sample_rate as f64).round() as usize;
+					RenderedAudio {
+						data: vec![0.0; frames * channels as usize],
+						sample_rate,
+						channel_count: channels,
+					}
+				}
+			};
+			let _ = tx.send((start_ts, data));
+		}),
+	);
+	Ok(())
 }
 
 // ---------------------------------------------------------------------------

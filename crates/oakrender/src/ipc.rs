@@ -116,6 +116,9 @@ pub const TYPE_RENDER_BATCH: &str = "render_batch";
 pub const TYPE_BATCH_ACCEPTED: &str = "batch_accepted";
 /// `"frame_failed"` (protocol v2).
 pub const TYPE_FRAME_FAILED: &str = "frame_failed";
+/// `"render_audio_batch"` (protocol v2, M15 S3): a batch of audio range
+/// pulls rendered into the same shm slot transport as video frames.
+pub const TYPE_RENDER_AUDIO_BATCH: &str = "render_audio_batch";
 
 /// Wire-format slot format for 8-bit BGRA frames (M15 S1). The viewer
 /// preview path requests BGRA8 so the worker converts its F32 pipeline
@@ -124,6 +127,15 @@ pub const TYPE_FRAME_FAILED: &str = "frame_failed";
 /// value lives outside the `PixelFormat` enum range on purpose: it is a
 /// slot wire format, not a pipeline format.
 pub const SLOT_FORMAT_BGRA8: i32 = 100;
+
+/// Wire-format slot format for interleaved f32 audio samples (M15 S3).
+/// An audio slot reuses [`FrameSlotMeta`]: `format` is this marker,
+/// `channel_count` is the channel count, `linesize` is
+/// `channels * 4` (bytes per sample frame), `data_size` is the total
+/// sample bytes and `width` carries the output sample rate (Hz). The
+/// value lives outside the `PixelFormat` enum range like
+/// [`SLOT_FORMAT_BGRA8`].
+pub const SLOT_FORMAT_AUDIO_F32: i32 = 101;
 
 /// `handshake` — field-for-field equivalent of `oak_ipc_handshake`
 /// (ipc.h). Wire field names match the C++ serializer.
@@ -321,6 +333,49 @@ pub struct BatchAcceptedMsg {
 	pub batch_id: i64,
 	/// The ticket ids accepted (same order as the batch).
 	pub tickets: Vec<i64>,
+}
+
+/// One audio range pull inside a [`RenderAudioBatchMsg`] (M15 S3) — the
+/// audio counterpart of [`BatchTicketSpec`]: the main process assigns the
+/// destination `slot`, the worker mixes the montage over `[time,
+/// time + duration)` at `sample_rate`/`channel_layout` into interleaved
+/// f32 and writes it into the slot (wire format
+/// [`SLOT_FORMAT_AUDIO_F32`]).
+#[derive(Serialize, Deserialize, Default, Debug, Clone, PartialEq)]
+#[serde(default)]
+pub struct AudioTicketSpec {
+	/// Ticket id (correlates with frame_ready / frame_failed).
+	pub ticket: i64,
+	/// Destination slot index in the worker->main output pool.
+	pub slot: i32,
+	/// Range start numerator.
+	pub time_num: i64,
+	/// Range start denominator.
+	pub time_den: i64,
+	/// Range length numerator.
+	pub duration_num: i64,
+	/// Range length denominator.
+	pub duration_den: i64,
+	/// Output sample rate (Hz).
+	pub sample_rate: i32,
+	/// Output channel layout mask.
+	pub channel_layout: u64,
+	/// Channel count (derived from the layout; written into the slot meta).
+	pub channels: i32,
+	/// Sequence montage (ordered topmost-last; empty = silence).
+	pub montage: Vec<WireMontageClip>,
+}
+
+/// `render_audio_batch` (main->worker, M15 S3) — a batch of audio range
+/// pulls rendered in order, sharing the claim/credit/frame_ready flow of
+/// [`RenderBatchMsg`].
+#[derive(Serialize, Deserialize, Default, Debug, Clone, PartialEq)]
+#[serde(default)]
+pub struct RenderAudioBatchMsg {
+	/// Batch id (correlates with batch_accepted).
+	pub batch_id: i64,
+	/// The audio tickets, rendered in order.
+	pub tickets: Vec<AudioTicketSpec>,
 }
 
 /// `frame_failed` (worker->main) — one ticket failed to render; the main
@@ -1339,14 +1394,65 @@ mod tests {
 	}
 
 	#[test]
+	fn render_audio_batch_wire_roundtrip() {
+		// M15 S3: the audio batch message reuses the claim/credit flow of
+		// render_batch with a dedicated ticket spec.
+		let batch = RenderAudioBatchMsg {
+			batch_id: 5,
+			tickets: vec![AudioTicketSpec {
+				ticket: 41,
+				slot: 0,
+				time_num: 0,
+				time_den: 48000,
+				duration_num: 1600,
+				duration_den: 48000,
+				sample_rate: 48000,
+				channel_layout: 0x3,
+				channels: 2,
+				montage: vec![WireMontageClip {
+					filename: "a.mp4".into(),
+					stream_index: 0,
+					in_num: 0,
+					in_den: 24,
+					out_num: 48,
+					out_den: 24,
+					media_in_num: 10,
+					media_in_den: 24,
+					gain: 0.5,
+				}],
+			}],
+		};
+		let value = serde_json::to_value(&batch).unwrap();
+		assert_eq!(value["batch_id"], 5);
+		assert_eq!(value["tickets"][0]["ticket"], 41);
+		assert_eq!(value["tickets"][0]["slot"], 0);
+		assert_eq!(value["tickets"][0]["sample_rate"], 48000);
+		assert_eq!(value["tickets"][0]["channel_layout"], 3);
+		assert_eq!(value["tickets"][0]["channels"], 2);
+		assert_eq!(value["tickets"][0]["duration_num"], 1600);
+		assert_eq!(value["tickets"][0]["montage"][0]["filename"], "a.mp4");
+		let round: RenderAudioBatchMsg = serde_json::from_value(value).unwrap();
+		assert_eq!(round, batch);
+		// Defaults: a bare audio ticket parses (missing fields default).
+		let bare: AudioTicketSpec = serde_json::from_str(r#"{"ticket":1,"slot":2}"#).unwrap();
+		assert_eq!(bare.ticket, 1);
+		assert_eq!(bare.slot, 2);
+		assert_eq!(bare.sample_rate, 0);
+		assert!(bare.montage.is_empty());
+	}
+
+	#[test]
 	fn v2_type_constants_are_stable_wire_names() {
 		assert_eq!(TYPE_HELLO_CAPS, "hello_caps");
 		assert_eq!(TYPE_RENDER_BATCH, "render_batch");
 		assert_eq!(TYPE_BATCH_ACCEPTED, "batch_accepted");
 		assert_eq!(TYPE_FRAME_FAILED, "frame_failed");
+		assert_eq!(TYPE_RENDER_AUDIO_BATCH, "render_audio_batch");
 		assert_eq!(TYPE_SHUTDOWN, "shutdown");
-		// BGRA8 slot format stays outside the PixelFormat enum range.
+		// BGRA8 slot format stays outside the PixelFormat enum range; the
+		// audio slot format follows it (M15 S3).
 		assert_eq!(SLOT_FORMAT_BGRA8, 100);
+		assert_eq!(SLOT_FORMAT_AUDIO_F32, 101);
 	}
 
 	// ---- Shared-memory transport -----------------------------------------

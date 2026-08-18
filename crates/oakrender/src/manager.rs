@@ -31,7 +31,7 @@ use crate::autocacher::PreviewAutoCacher;
 use crate::backend::BackendKind;
 use crate::error::{Error, Result};
 use crate::eval;
-use crate::procpool::{DispatcherConfig, ProcessDispatcher, ShmFrameRef};
+use crate::procpool::{DispatcherConfig, ProcessDispatcher, ShmAudioRef, ShmFrameRef};
 use crate::ticket::{TicketArena, TicketId};
 use crate::worker::{InlineDispatcher, JobDispatch};
 
@@ -58,9 +58,9 @@ pub enum RenderBackendChoice {
 pub struct RenderManager {
 	/// Video job dispatch (the process dispatcher, M15).
 	pub dispatch: Arc<dyn JobDispatch>,
-	/// Audio job dispatch — kept on main-process inline execution until S3
-	/// (design §3.7: crash risk is dominated by video plugins, which live
-	/// in oak-worker).
+	/// Audio job dispatch (M15 S3: the process dispatcher, like video —
+	/// audio renders in oak-worker so plugin crashes are isolated; the
+	/// inline fallback lives in the arena, design §3.7).
 	pub audio_dispatch: Arc<dyn JobDispatch>,
 	/// Ticket arena.
 	pub tickets: Arc<TicketArena>,
@@ -96,27 +96,33 @@ impl RenderManager {
 			eval::render_produced_frame(time, params)
 				.map(crate::ticket::TicketPayload::Video)
 		});
-		let (dispatch, audio_dispatch): (Arc<dyn JobDispatch>, Arc<dyn JobDispatch>) =
-			match choice {
-				RenderBackendChoice::Threads => {
-					// Test-only inline backend: synchronous execution on the
-					// calling thread, shared by video and audio.
-					let inline = InlineDispatcher::sync();
-					(inline.clone(), inline)
-				}
-				RenderBackendChoice::Processes(config) => {
-					let dispatcher = ProcessDispatcher::new(config)?;
-					dispatcher.start()?;
-					// Audio stays on main-process inline execution until S3
-					// (design §3.7): render_audio_samples runs synchronously
-					// on the posting thread.
-					let audio = InlineDispatcher::sync();
-					(dispatcher, audio)
-				}
-			};
-		let tickets = Arc::new(TicketArena::new_with_audio(
+		let (dispatch, audio_dispatch, audio_fallback): (
+			Arc<dyn JobDispatch>,
+			Arc<dyn JobDispatch>,
+			Option<Arc<dyn JobDispatch>>,
+		) = match choice {
+			RenderBackendChoice::Threads => {
+				// Test-only inline backend: synchronous execution on the
+				// calling thread, shared by video and audio.
+				let inline = InlineDispatcher::sync();
+				(inline.clone(), inline, None)
+			}
+			RenderBackendChoice::Processes(config) => {
+				let dispatcher = ProcessDispatcher::new(config)?;
+				dispatcher.start()?;
+				// M15 S3: audio rendering runs in the worker pool too (a
+				// plugin crash during an audio render must not take down
+				// the main process — design §3.7). The inline dispatcher
+				// stays as the fallback when the process dispatcher is
+				// unavailable (teardown).
+				let fallback = InlineDispatcher::sync();
+				(dispatcher.clone(), dispatcher, Some(fallback))
+			}
+		};
+		let tickets = Arc::new(TicketArena::new_with_audio_fallback(
 			dispatch.clone(),
 			audio_dispatch.clone(),
+			audio_fallback,
 			producer,
 		));
 		*guard = Some(Arc::new(RenderManager {
@@ -171,6 +177,12 @@ impl RenderManager {
 	/// backends that hold no slots.
 	pub fn release_frame(&self, frame: &ShmFrameRef) {
 		self.dispatch.release_frame(frame);
+	}
+
+	/// Release a consumed shm audio frame's slot (M15 S3; see
+	/// [`RenderManager::release_frame`]).
+	pub fn release_audio_frame(&self, frame: &ShmAudioRef) {
+		self.dispatch.release_audio_frame(frame);
 	}
 
 	/// Cancel every pending AND claimed frame of `sequence` (M15 S2

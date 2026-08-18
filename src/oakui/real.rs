@@ -59,7 +59,7 @@
 //! worker holds the project's `Arc`, so a project drop mid-render is a
 //! non-event (the drained frame is discarded by the generation check).
 
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
@@ -272,6 +272,108 @@ struct PreviewWindow {
 	/// is consumed by `cpu_frame` (slot released after the display image
 	/// is built) or released when it falls out of the window.
 	slots: BTreeMap<i64, ShmFrameRef>,
+}
+
+// ---------------------------------------------------------------------------
+// Playback audio prefetch (M15 S3)
+// ---------------------------------------------------------------------------
+//
+// Real-time audio is pulled by the UI tick; rendering it through the worker
+// pool adds one IPC round trip and can wait behind a busy render worker. To
+// avoid dropouts the chunks are rendered AHEAD asynchronously (tickets
+// complete on the dispatcher's poll) and buffered here; the pull never
+// blocks on a worker. `AUDIO_PREFETCH_CHUNKS` ahead ≈ 64 ms of audio at
+// 60 fps — enough to cover the delivery latency while keeping at most a
+// handful of audio slots in flight (the dispatcher's credit flow control
+// caps them per worker).
+
+/// How many audio chunks are kept rendered ahead of the playhead (M15 S3).
+/// Each chunk is one sequence frame of audio; 4 frames ahead ≈ 66 ms at
+/// 60 fps and ≈ 160 ms at 25 fps — enough to cover the delivery latency
+/// while keeping at most a handful of audio slots in flight (the
+/// dispatcher's credit flow control caps them per worker).
+const AUDIO_PREFETCH_CHUNKS: i64 = 4;
+
+/// The playback-audio prefetch buffer: rendered chunks ordered by start
+/// timestamp, plus the submission cursor. UI-thread-only (guarded by the
+/// engine's `audio_prefetch` mutex so the engine stays `Sync`).
+struct AudioPrefetch {
+	/// Sequence frame of the first buffered chunk (or `next_submit` when
+	/// the buffer is empty).
+	front_ts: i64,
+	/// Sequence frame of the next chunk to submit.
+	next_submit: i64,
+	/// Chunk length (sequence frames per tick) the buffer is built with.
+	chunk: i64,
+	/// Rendered chunks in start-ts order.
+	buffered: VecDeque<(i64, super::renderops::RenderedAudio)>,
+}
+
+impl AudioPrefetch {
+	/// An empty, uninitialized prefetch.
+	fn new() -> Self {
+		Self {
+			front_ts: i64::MIN,
+			next_submit: i64::MIN,
+			chunk: 1,
+			buffered: VecDeque::new(),
+		}
+	}
+
+	/// True when `frame` lies inside the submitted window
+	/// `[front_ts, next_submit)` — the playhead is being served.
+	fn covers(&self, frame: i64) -> bool {
+		self.front_ts != i64::MIN && self.front_ts <= frame && frame < self.next_submit
+	}
+
+	/// Reset for a (re)start at `frame`: drop every buffered chunk and
+	/// restart the submission cursor there (a seek or a new project).
+	fn reset(&mut self, frame: i64, chunk: i64) {
+		self.front_ts = frame;
+		self.next_submit = frame;
+		self.chunk = chunk.max(1);
+		self.buffered.clear();
+	}
+
+	/// Insert a rendered chunk; stale arrivals (outside the submitted
+	/// window — a seek raced the render) are dropped.
+	fn insert(&mut self, ts: i64, data: super::renderops::RenderedAudio) {
+		if ts < self.front_ts || ts >= self.next_submit {
+			return;
+		}
+		if self.buffered.iter().any(|(t, _)| *t == ts) {
+			return;
+		}
+		let pos = self
+			.buffered
+			.iter()
+			.position(|(t, _)| *t > ts)
+			.unwrap_or(self.buffered.len());
+		self.buffered.insert(pos, (ts, data));
+	}
+
+	/// Pop the chunk at `frame` (dropping any stale leading chunks).
+	/// Returns `None` when the chunk has not been rendered yet.
+	fn pop_at(&mut self, frame: i64) -> Option<super::renderops::RenderedAudio> {
+		while let Some((ts, _)) = self.buffered.front() {
+			if *ts < frame {
+				let ts = self.buffered.pop_front().unwrap().0;
+				self.front_ts = ts + self.chunk;
+			} else {
+				break;
+			}
+		}
+		let (ts, data) = self.buffered.pop_front()?;
+		if ts == frame {
+			self.front_ts = ts + self.chunk;
+			Some(data)
+		} else {
+			// Gap: the chunk at `frame` is still rendering. Re-insert and
+			// report nothing (the output device zero-fills this tick).
+			self.buffered.push_front((ts, data));
+			None
+		}
+	}
 }
 
 /// One background full-resolution render request (built on the UI thread
@@ -912,12 +1014,26 @@ pub struct RealEngine {
 	multicam_rx: Mutex<mpsc::Receiver<MulticamAngleEvent>>,
 	/// The sending half of `multicam_rx` (cloned into every worker).
 	multicam_tx: Mutex<mpsc::Sender<MulticamAngleEvent>>,
+	/// M15 S3: async playback-audio prefetch — the process dispatcher
+	/// renders audio chunks ahead (completions arrive on the UI tick's
+	/// poll); the channel delivers `(start_ts, samples)` and the prefetch
+	/// state reorders them for the real-time pull.
+	audio_rx: Mutex<mpsc::Receiver<(i64, super::renderops::RenderedAudio)>>,
+	/// The sending half of `audio_rx` (cloned into every audio ticket).
+	audio_tx: Mutex<mpsc::Sender<(i64, super::renderops::RenderedAudio)>>,
+	/// The audio prefetch buffer (see [`AudioPrefetch`]).
+	audio_prefetch: Mutex<AudioPrefetch>,
 }
 
 impl RealEngine {
 	/// Render one tick's worth of audio at the program playhead and queue
-	/// it for playback (M12 P1). Failures are silent: playback continues
-	/// video-only.
+	/// it for playback (M12 P1; M15 S3: async worker-pool prefetch). The
+	/// audio chunks are rendered AHEAD in oak-worker (tickets posted
+	/// through the process dispatcher; completions arrive on the UI tick's
+	/// poll) and buffered by [`AudioPrefetch`], so the real-time pull never
+	/// blocks the UI thread on a busy render worker. Failures degrade to
+	/// silence; when the manager is down the channel stays empty and
+	/// playback continues video-only.
 	fn pull_audio_tick(&mut self, cx: &mut Context<Self>) {
 		let (Some(project), Some(seq)) = (self.project.clone(), self.sequence) else {
 			return;
@@ -925,14 +1041,46 @@ impl RealEngine {
 		let Some(tb) = self.time_base() else {
 			return;
 		};
-		let fps = self.frame_rate();
 		let frame = self.clock_frame(Monitor::Program, cx).0;
 		if frame < 0 {
 			return;
 		}
-		// ~1/60 s of sequence per tick.
-		let chunk = ((fps.num as f64 / fps.den as f64) / 60.0).max(0.001) as i64;
-		let Ok(buf) = super::renderops::render_audio_range(&project, seq, frame, chunk, tb) else {
+		// One sequence frame of audio per chunk, keyed by the playhead
+		// frame. A per-tick wall-clock heuristic (~1/60 s) truncates to zero
+		// frames for sub-60 fps sequences, so render exactly one frame per
+		// playhead frame instead — the output device consumes one frame's
+		// audio per frame advance regardless of the rate.
+		let chunk: i64 = 1;
+
+		let mut st = self.audio_prefetch.lock().unwrap_or_else(|e| e.into_inner());
+		// Reset on seek / (re)start: the playhead must lie inside the
+		// submitted window [front_ts, next_submit).
+		if !st.covers(frame) {
+			st.reset(frame, chunk);
+		}
+		// Submit chunks to cover [next_submit, frame + PREFETCH ahead). In
+		// steady state the window moves by one chunk per tick, so exactly
+		// one new ticket is posted; the rest are already buffered.
+		let tx = self.audio_tx.lock().unwrap_or_else(|e| e.into_inner()).clone();
+		let target = frame + chunk * AUDIO_PREFETCH_CHUNKS;
+		while st.next_submit < target {
+			let ts = st.next_submit;
+			let p = project.clone();
+			if super::renderops::submit_audio_chunk(&p, seq, ts, chunk, tb, tx.clone()).is_err() {
+				break;
+			}
+			st.next_submit += chunk;
+		}
+		// Drain completed chunks. For the inline fallback backend the
+		// submit above already ran them synchronously into the channel; for
+		// the process backend they arrived on this tick's earlier poll.
+		let rx = self.audio_rx.lock().unwrap_or_else(|e| e.into_inner());
+		while let Ok((ts, data)) = rx.try_recv() {
+			st.insert(ts, data);
+		}
+		drop(rx);
+		// Push the chunk at the current playhead to the output device.
+		let Some(buf) = st.pop_at(frame) else {
 			return;
 		};
 		if buf.sample_rate <= 0 || buf.channel_count <= 0 || buf.data.is_empty() {
@@ -960,6 +1108,7 @@ impl RealEngine {
 		let (full_res_tx, full_res_rx) = mpsc::channel::<FullResEvent>();
 		let (thumb_tx, thumb_rx) = mpsc::channel::<ThumbEvent>();
 		let (multicam_tx, multicam_rx) = mpsc::channel::<MulticamAngleEvent>();
+		let (audio_tx, audio_rx) = mpsc::channel::<(i64, super::renderops::RenderedAudio)>();
 		Self {
 			project: None,
 			sequence: None,
@@ -996,6 +1145,9 @@ impl RealEngine {
 			multicam_frames: Arc::new(Mutex::new(MulticamFrameCache::default())),
 			multicam_rx: Mutex::new(multicam_rx),
 			multicam_tx: Mutex::new(multicam_tx),
+			audio_rx: Mutex::new(audio_rx),
+			audio_tx: Mutex::new(audio_tx),
+			audio_prefetch: Mutex::new(AudioPrefetch::new()),
 		}
 	}
 
@@ -2297,6 +2449,12 @@ impl RealEngine {
 		}
 		self.project = None;
 		self.sequence = None;
+		// The audio prefetch belongs to the dropped project's sequence time:
+		// invalidate it so the next playback restarts the submission cursor.
+		self.audio_prefetch
+			.lock()
+			.unwrap_or_else(|e| e.into_inner())
+			.reset(0, 1);
 		// The sequence an in-flight full-res job may still be rendering is
 		// gone (the job holds its own project `Arc`, so it stays valid, but
 		// its frame belongs to the dropped project): mark it stale.
@@ -5839,5 +5997,81 @@ mod tests {
 			);
 			std::thread::sleep(Duration::from_millis(10));
 		}
+	}
+
+	// ---- M15 S3 audio prefetch ------------------------------------------
+
+	/// A lightweight `RenderedAudio` stand-in (the prefetch logic only
+	/// reads the fields, never renders).
+	fn audio_chunk(start: i64) -> (i64, crate::oakui::renderops::RenderedAudio) {
+		(
+			start,
+			crate::oakui::renderops::RenderedAudio {
+				data: vec![0.0; 800],
+				sample_rate: 48000,
+				channel_count: 2,
+			},
+		)
+	}
+
+	#[test]
+	fn audio_prefetch_orders_and_serves_chunks() {
+		let mut st = AudioPrefetch::new();
+		assert!(!st.covers(0), "uninitialized prefetch covers nothing");
+		st.reset(0, 10);
+		assert!(!st.covers(0), "nothing submitted yet");
+		st.next_submit = 40; // pretend 4 chunks were submitted (0..40)
+
+		// Out-of-order arrivals (different workers) are reordered.
+		st.insert(20, audio_chunk(20).1);
+		st.insert(0, audio_chunk(0).1);
+		st.insert(30, audio_chunk(30).1);
+		assert_eq!(
+			st.buffered.iter().map(|(t, _)| *t).collect::<Vec<_>>(),
+			vec![0, 20, 30],
+			"sorted by start ts"
+		);
+		// The chunk at the playhead is served.
+		let got = st.pop_at(0).expect("chunk 0 buffered");
+		assert_eq!(got.sample_rate, 48000);
+		assert_eq!(st.buffered.len(), 2);
+		// A not-yet-rendered chunk reports nothing.
+		assert!(st.pop_at(10).is_none());
+		// Stale arrivals (a seek raced the render) are dropped.
+		st.insert(-10, audio_chunk(-10).1);
+		st.insert(100, audio_chunk(100).1);
+		assert_eq!(st.buffered.len(), 2, "stale chunks dropped");
+	}
+
+	#[test]
+	fn audio_prefetch_resets_on_seek() {
+		let mut st = AudioPrefetch::new();
+		st.reset(0, 10);
+		st.next_submit = 40;
+		st.insert(10, audio_chunk(10).1);
+		// A seek far ahead: the playhead is outside [front_ts, next_submit).
+		assert!(!st.covers(200));
+		st.reset(200, 10);
+		assert_eq!(st.buffered.len(), 0, "old chunks dropped");
+		assert!(st.pop_at(200).is_none());
+		// A backward seek (the playhead behind the buffer front after it
+		// advanced) is a reset too.
+		st.reset(0, 10);
+		st.next_submit = 40;
+		st.insert(10, audio_chunk(10).1);
+		let _ = st.pop_at(10); // front_ts now 20
+		assert!(!st.covers(5), "chunk 5 is behind the front");
+		st.reset(5, 10);
+		assert_eq!(st.buffered.len(), 0);
+	}
+
+	#[test]
+	fn audio_prefetch_drops_duplicate_arrivals() {
+		let mut st = AudioPrefetch::new();
+		st.reset(0, 10);
+		st.next_submit = 30;
+		st.insert(10, audio_chunk(10).1);
+		st.insert(10, audio_chunk(10).1);
+		assert_eq!(st.buffered.len(), 1, "duplicates dropped");
 	}
 }

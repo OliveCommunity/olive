@@ -553,6 +553,20 @@ pub fn render_footage_frame(
 pub fn render_audio_samples(
 	params: &crate::ticket::AudioTicketParams,
 ) -> Result<crate::ticket::TicketPayload> {
+	let (rate, layout, channels, total_frames) = audio_layout(params)?;
+	let mut acc = vec![0.0f32; total_frames.saturating_mul(channels as usize)];
+	mix_audio_montage(params, rate, channels, total_frames, &mut acc)?;
+	Ok(crate::ticket::TicketPayload::Audio(crate::ticket::AudioSamples {
+		samples: acc,
+		sample_rate: rate,
+		channel_layout: layout,
+		channel_count: channels,
+	}))
+}
+
+/// The output layout an audio render produces: `(sample_rate,
+/// channel_layout, channel_count, total_sample_frames)`.
+fn audio_layout(params: &crate::ticket::AudioTicketParams) -> Result<(i32, u64, i32, usize)> {
 	let rate = params.sample_rate.max(1);
 	let channels = params.channel_layout.count_ones().max(1) as i32;
 	let duration = params.range.out() - params.range.in_();
@@ -565,8 +579,30 @@ pub fn render_audio_samples(
 		return Err(Error::Invalid);
 	}
 	let total_frames = (seconds * rate as f64).round() as usize;
-	let mut acc = vec![0.0f32; total_frames.saturating_mul(channels as usize)];
+	Ok((rate, params.channel_layout, channels, total_frames))
+}
 
+/// The byte length (interleaved f32, little-endian) an audio render of
+/// `params` writes into a shm slot — the worker's slot-geometry check
+/// (M15 S3). Mirrors [`render_audio_samples_into`]'s layout math.
+pub fn audio_samples_byte_len(params: &crate::ticket::AudioTicketParams) -> Result<usize> {
+	let (_rate, _layout, channels, total_frames) = audio_layout(params)?;
+	Ok(total_frames
+		.saturating_mul(channels as usize)
+		.saturating_mul(4))
+}
+
+/// Mix the audio montage into `acc` (`total_frames * channels` samples,
+/// zero-initialized by the caller). Shared by the heap
+/// [`render_audio_samples`] and the shm-slot [`render_audio_samples_into`]
+/// paths so the decode/mix logic exists once.
+fn mix_audio_montage(
+	params: &crate::ticket::AudioTicketParams,
+	rate: i32,
+	channels: i32,
+	total_frames: usize,
+	acc: &mut [f32],
+) -> Result<()> {
 	for clip in &params.montage {
 		// Overlap of the clip with the requested range.
 		let in_time = params.range.in_().max(clip.in_time);
@@ -603,13 +639,32 @@ pub fn render_audio_samples(
 			acc[start_frame * channels as usize + i] += buf[i] * clip.gain;
 		}
 	}
+	Ok(())
+}
 
-	Ok(crate::ticket::TicketPayload::Audio(crate::ticket::AudioSamples {
-		samples: acc,
-		sample_rate: rate,
-		channel_layout: params.channel_layout,
-		channel_count: channels,
-	}))
+/// Render the audio montage over `params.range` directly into `dst` as
+/// little-endian f32 bytes (M15 S3 worker seam): the render worker passes
+/// a shared-memory slot slice as `dst`, so the samples land in the slot
+/// with no staging allocation. `dst.len()` must hold
+/// `frame_count * channels * 4` bytes.
+pub fn render_audio_samples_into(
+	params: &crate::ticket::AudioTicketParams,
+	dst: &mut [u8],
+) -> Result<()> {
+	let (rate, _layout, channels, total_frames) = audio_layout(params)?;
+	let need = total_frames
+		.saturating_mul(channels as usize)
+		.saturating_mul(4);
+	if dst.len() < need {
+		return Err(Error::NoMem);
+	}
+	let mut acc = vec![0.0f32; total_frames.saturating_mul(channels as usize)];
+	mix_audio_montage(params, rate, channels, total_frames, &mut acc)?;
+	// Interleaved f32 -> little-endian bytes in the slot.
+	for (out, sample) in dst[..need].chunks_exact_mut(4).zip(&acc) {
+		out.copy_from_slice(&sample.to_le_bytes());
+	}
+	Ok(())
 }
 
 /// Bilinear scale an F32-RGBA image (row-major with per-row strides).
@@ -1048,4 +1103,66 @@ mod tests {
 		}
 	}
 	use std::sync::Arc;
+
+	// ---- Audio (M12 P1 / M15 S3) -----------------------------------------
+
+	fn audio_params(range: TimeRange) -> crate::ticket::AudioTicketParams {
+		crate::ticket::AudioTicketParams {
+			viewer: 1,
+			range,
+			sample_rate: 48000,
+			channel_layout: 0x3,
+			montage: Vec::new(),
+		}
+	}
+
+	#[test]
+	fn render_audio_samples_produces_silence_for_empty_montage() {
+		// M12 P1: an empty montage renders total silence at the requested
+		// layout.
+		let params = audio_params(TimeRange::new(Rational::new(0, 1), Rational::new(1, 24)));
+		match render_audio_samples(&params).unwrap() {
+			crate::ticket::TicketPayload::Audio(samples) => {
+				// 1/24 s at 48 kHz = 2000 sample frames, stereo.
+				assert_eq!(samples.sample_rate, 48000);
+				assert_eq!(samples.channel_count, 2);
+				assert_eq!(samples.samples.len(), 2000 * 2);
+				assert!(samples.samples.iter().all(|&v| v == 0.0), "silence");
+			}
+			other => panic!("expected Audio payload, got {other:?}"),
+		}
+	}
+
+	#[test]
+	fn render_audio_samples_into_matches_heap_path_byte_for_byte() {
+		// M15 S3: the shm-slot writer must produce exactly the same
+		// little-endian f32 bytes as the heap path, so a worker's slot and
+		// the in-process fallback agree for the same montage.
+		let params = audio_params(TimeRange::new(Rational::new(0, 1), Rational::new(1, 48)));
+		let heap = match render_audio_samples(&params).unwrap() {
+			crate::ticket::TicketPayload::Audio(samples) => samples,
+			other => panic!("expected Audio payload, got {other:?}"),
+		};
+		let mut dst = vec![0u8; heap.samples.len() * 4];
+		render_audio_samples_into(&params, &mut dst).unwrap();
+		let expected: Vec<u8> = heap
+			.samples
+			.iter()
+			.flat_map(|v| v.to_le_bytes())
+			.collect();
+		assert_eq!(dst, expected);
+		// And the into-path output parses back into the same samples.
+		let parsed: Vec<f32> = dst
+			.chunks_exact(4)
+			.map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+			.collect();
+		assert_eq!(parsed, heap.samples);
+	}
+
+	#[test]
+	fn render_audio_samples_into_rejects_small_buffer() {
+		let params = audio_params(TimeRange::new(Rational::new(0, 1), Rational::new(1, 24)));
+		let mut dst = [0u8; 8]; // far too small for 2000x2 f32 samples
+		assert!(render_audio_samples_into(&params, &mut dst).is_err());
+	}
 }

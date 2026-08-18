@@ -69,13 +69,16 @@ use serde_json::{json, Value};
 
 use crate::error::{Error, Result};
 use crate::ipc::{
-	write_message, BatchAcceptedMsg, FrameFailedMsg, FrameReadyMsg, FrameSlotMeta, FrameSlotPool,
-	HandshakeMsg, HelloCapsMsg, RenderBatchMsg, BatchTicketSpec, SharedMemoryRegion, ShmMode,
-	WireMontageClip, SLOT_FORMAT_BGRA8, TYPE_BATCH_ACCEPTED, TYPE_ERROR, TYPE_FRAME_FAILED,
-	TYPE_FRAME_READY, TYPE_HANDSHAKE, TYPE_HELLO_CAPS,
+	write_message, AudioTicketSpec, BatchAcceptedMsg, BatchTicketSpec, FrameFailedMsg, FrameReadyMsg,
+	FrameSlotMeta, FrameSlotPool, HandshakeMsg, HelloCapsMsg, RenderAudioBatchMsg, RenderBatchMsg,
+	SharedMemoryRegion, ShmMode, WireMontageClip, SLOT_FORMAT_BGRA8, TYPE_BATCH_ACCEPTED,
+	TYPE_ERROR, TYPE_FRAME_FAILED, TYPE_FRAME_READY, TYPE_HANDSHAKE, TYPE_HELLO_CAPS,
+	TYPE_RENDER_AUDIO_BATCH,
 };
 use crate::scheduler::{FrameKey, FrameRequest, PreviewScheduler, SubmitOutcome};
-use crate::ticket::{Completion, TicketPayload, TicketResult, VideoTicketParams};
+use crate::ticket::{
+	AudioSamples, AudioTicketParams, Completion, TicketPayload, TicketResult, VideoTicketParams,
+};
 use crate::worker::{Job, JobDispatch};
 
 /// Protocol version spoken by the dispatcher (v1 base; v2 messages are
@@ -85,7 +88,17 @@ pub const DISPATCH_PROTOCOL_VERSION: i32 = 1;
 /// Restart attempts per worker before its tickets fail permanently.
 const MAX_RESTARTS: u32 = 5;
 
-/// Default slots per worker segment (design §3.1: 8 slots starting).
+/// Maximum audio bytes a process-backend audio ticket may occupy in a shm
+/// slot (M15 S3). Larger ranges (long exports) are refused by `post` so
+/// the arena falls back to main-process inline rendering — a several-
+/// minute export audio buffer does not need (and should not force) a
+/// giant shared-memory segment. ~64 MB ≈ 2.9 min of 48 kHz stereo.
+const MAX_AUDIO_SLOT_BYTES: usize = 64 * 1024 * 1024;
+
+/// Legacy fixed default slots per worker (design §3.1 "8 slots starting").
+/// The M15 S3 adaptive [`default_slots_per_worker`] policy supersedes it
+/// for auto-configured dispatchers; kept as the documented starting point
+/// and the cap for small frames.
 pub const DEFAULT_SLOTS_PER_WORKER: u32 = 8;
 
 /// Frame bytes copied into main-process heap buffers. The playback path
@@ -264,6 +277,81 @@ impl std::fmt::Debug for ShmFrameRef {
 	}
 }
 
+/// Zero-copy handle to rendered audio in a worker segment (M15 S3): what
+/// an audio ticket completion carries on the process backend. The samples
+/// live in the shm slot as little-endian interleaved f32 (wire format
+/// [`crate::ipc::SLOT_FORMAT_AUDIO_F32`]); the consumer reads them with
+/// [`ShmAudioRef::samples`] and releases the slot through
+/// [`ProcessDispatcher::release_audio_frame`] when done. `sample_rate` /
+/// `channel_layout` are carried from the ticket params (they are not part
+/// of the slot meta POD).
+#[derive(Clone)]
+pub struct ShmAudioRef {
+	/// Worker index owning the segment.
+	pub worker: u32,
+	/// Slot index in that segment.
+	pub slot: u32,
+	/// Slot metadata (format = `SLOT_FORMAT_AUDIO_F32`).
+	pub meta: ShmFrameMeta,
+	/// The segment view (keeps the mapping alive).
+	pub shm: Arc<ShmRegionView>,
+	/// Output sample rate (Hz; from the ticket params).
+	pub sample_rate: i32,
+	/// Output channel layout mask (from the ticket params).
+	pub channel_layout: u64,
+	/// Channel count (also in the slot meta).
+	pub channel_count: i32,
+}
+
+impl ShmAudioRef {
+	/// View the same slot as a generic [`ShmFrameRef`] (slot release paths
+	/// that are shared with video frames).
+	pub fn frame_ref(&self) -> ShmFrameRef {
+		ShmFrameRef {
+			worker: self.worker,
+			slot: self.slot,
+			meta: self.meta.clone(),
+			shm: self.shm.clone(),
+		}
+	}
+
+	/// Copy the interleaved f32 samples out of the slot (the counted
+	/// copy path — audio bytes must outlive the slot to reach the output
+	/// device / encoder).
+	pub fn samples(&self) -> Vec<f32> {
+		let bytes = self.shm.slot_bytes(self.slot);
+		let valid = bytes
+			.get(..self.meta.data_size.max(0) as usize)
+			.unwrap_or(&[]);
+		valid
+			.chunks_exact(4)
+			.map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+			.collect()
+	}
+
+	/// The decoded [`AudioSamples`] (sample rate / layout from the ticket
+	/// params, not the slot).
+	pub fn to_audio_samples(&self) -> AudioSamples {
+		AudioSamples {
+			samples: self.samples(),
+			sample_rate: self.sample_rate,
+			channel_layout: self.channel_layout,
+			channel_count: self.channel_count,
+		}
+	}
+}
+
+impl std::fmt::Debug for ShmAudioRef {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("ShmAudioRef")
+			.field("worker", &self.worker)
+			.field("slot", &self.slot)
+			.field("sample_rate", &self.sample_rate)
+			.field("channel_count", &self.channel_count)
+			.finish()
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Slot pixel conversions (M15 S2)
 // ---------------------------------------------------------------------------
@@ -342,6 +430,41 @@ pub fn default_worker_count(slots_per_worker: u32, slot_bytes: usize) -> usize {
 	by_cores.min(by_mem).max(1)
 }
 
+/// Slot-count policy when a segment grows (M15 S3 grow-on-demand): cap
+/// the per-worker segment memory at `GROWN_SEGMENT_BUDGET`, never drop
+/// below 2 slots (enough to keep a worker flowing), never exceed the
+/// current count.
+pub fn default_slots_for_bytes(slot_bytes: usize, current_slots: u32) -> u32 {
+	/// Per-worker segment budget for a grown segment (256 MiB).
+	const GROWN_SEGMENT_BUDGET: usize = 256 * 1024 * 1024;
+	let by_mem = (GROWN_SEGMENT_BUDGET / slot_bytes.max(1)).max(2) as u32;
+	by_mem.min(current_slots).max(2)
+}
+
+/// Default slots per worker segment (M15 S3 adaptive policy): the
+/// segment is sized so per-worker shared memory stays within
+/// `DEFAULT_SEGMENT_BUDGET` (128 MiB), bounded to `[2, 8]`. Small preview
+/// frames (BGRA8 1080p ≈ 8.3 MB) get the full 8 slots (~66 MB); F32 1080p
+/// (≈ 33 MB) drops to 3; F32 4K (≈ 132 MB) to 2. The worker-count policy
+/// then bounds the whole pool against RAM/4.
+pub fn default_slots_per_worker(slot_bytes: usize) -> u32 {
+	const DEFAULT_SEGMENT_BUDGET: usize = 128 * 1024 * 1024;
+	const MIN_SLOTS: u32 = 2;
+	const MAX_SLOTS: u32 = 8;
+	((DEFAULT_SEGMENT_BUDGET / slot_bytes.max(1)).max(MIN_SLOTS as usize) as u32)
+		.clamp(MIN_SLOTS, MAX_SLOTS)
+}
+
+/// Default batch size B (M15 S3 adaptive policy): the design figure
+/// `120 / workers` (a full playback pre-render window split across the
+/// pool), capped at the per-worker slot count — credit caps a batch at
+/// the free slots anyway, so a B larger than the slots just wastes a
+/// claim round trip.
+pub fn default_batch_size(workers: usize, slots: u32) -> usize {
+	let design = (120 / workers.max(1)).max(1);
+	design.min(slots.max(1) as usize)
+}
+
 /// Physical memory in bytes (macOS `hw.memsize`, Linux `sysconf`).
 fn physical_memory_bytes() -> Option<u64> {
 	#[cfg(target_os = "macos")]
@@ -390,7 +513,8 @@ pub struct DispatcherConfig {
 	pub worker_bin: Option<PathBuf>,
 	/// Worker process count. `0` = the [`default_worker_count`] policy.
 	pub workers: usize,
-	/// Output slots per worker segment. `0` = 8.
+	/// Output slots per worker segment. `0` = the
+	/// [`default_slots_per_worker`] policy (adaptive to the frame size).
 	pub slots_per_worker: u32,
 	/// Frame width of the segment geometry. `0` = 1920.
 	pub width: i32,
@@ -399,7 +523,8 @@ pub struct DispatcherConfig {
 	/// Slot wire format: an `oakcore_rs::PixelFormat` int or
 	/// [`SLOT_FORMAT_BGRA8`]. Default BGRA8 (the viewer preview path).
 	pub slot_format: i32,
-	/// Batch size `B`. `0` = `max(1, 120 / workers)`.
+	/// Batch size `B`. `0` = the [`default_batch_size`] policy (adaptive
+	/// to workers and slots).
 	pub batch_size: usize,
 	/// Graph snapshot path sent to every worker via `load_graph` after
 	/// the handshake (`None` = no graph).
@@ -426,12 +551,10 @@ impl Default for DispatcherConfig {
 
 impl DispatcherConfig {
 	fn normalize(&self) -> DispatcherConfig {
+		// Only the geometry defaults are resolved here; the adaptive
+		// policies (workers / slots / batch size) are resolved in
+		// `ProcessDispatcher::new` where slot_bytes is known.
 		let mut c = self.clone();
-		c.slots_per_worker = if c.slots_per_worker == 0 {
-			DEFAULT_SLOTS_PER_WORKER
-		} else {
-			c.slots_per_worker
-		};
 		c.width = if c.width == 0 { 1920 } else { c.width };
 		c.height = if c.height == 0 { 1080 } else { c.height };
 		c
@@ -476,6 +599,9 @@ struct WorkerHandle {
 	child: Option<Child>,
 	stdin: Option<std::process::ChildStdin>,
 	shm: Arc<ShmRegionView>,
+	/// Current per-slot data capacity (grows on demand, M15 S3: a ticket
+	/// requesting F32 or a larger frame rebuilds the segment first).
+	slot_bytes: usize,
 	/// FIFO mirror of the shm free ring's contents (the credit).
 	free_slots: VecDeque<u32>,
 	/// Dispatched ticket -> assigned slot (awaiting frame_ready).
@@ -488,10 +614,20 @@ struct WorkerHandle {
 	restarts: u32,
 	spawned_at: Instant,
 	accepted_batches: u64,
+	/// True between a segment grow (M15 S3) and the worker's hello_caps
+	/// re-attach: the dispatcher must not send new batches while the worker
+	/// is still attached to the old pool.
+	reconfiguring: bool,
 }
 
 impl WorkerHandle {
-	fn shell(index: usize, generation: u64, shm: Arc<ShmRegionView>, slots: u32) -> WorkerHandle {
+	fn shell(
+		index: usize,
+		generation: u64,
+		shm: Arc<ShmRegionView>,
+		slots: u32,
+		slot_bytes: usize,
+	) -> WorkerHandle {
 		WorkerHandle {
 			index,
 			generation,
@@ -499,6 +635,7 @@ impl WorkerHandle {
 			child: None,
 			stdin: None,
 			shm,
+			slot_bytes,
 			free_slots: (0..slots).collect(),
 			outstanding: HashMap::new(),
 			held: HashSet::new(),
@@ -508,6 +645,7 @@ impl WorkerHandle {
 			restarts: 0,
 			spawned_at: Instant::now(),
 			accepted_batches: 0,
+			reconfiguring: false,
 		}
 	}
 }
@@ -519,6 +657,9 @@ impl WorkerHandle {
 struct PendingTicket {
 	key: FrameKey,
 	params: Arc<VideoTicketParams>,
+	/// Audio ticket params when this ticket is an audio range pull (M15
+	/// S3); `None` for video tickets.
+	audio: Option<Arc<AudioTicketParams>>,
 	done: Option<Completion>,
 }
 
@@ -533,6 +674,10 @@ struct Inner {
 	next_ticket: i64,
 	events_rx: mpsc::Receiver<WorkerEvent>,
 	events_tx: mpsc::Sender<WorkerEvent>,
+	/// Segment rebuild generation (M15 S3 grow-on-demand geometry): bumped
+	/// on every per-worker segment resize so re-created segments never
+	/// reuse the name of a live mapping.
+	seg_generation: u64,
 	started: bool,
 	shutting_down: bool,
 }
@@ -550,18 +695,28 @@ pub struct ProcessDispatcher {
 
 impl ProcessDispatcher {
 	/// Build a dispatcher from `config` (does not spawn; call
-	/// [`ProcessDispatcher::start`]).
+	/// [`ProcessDispatcher::start`]). The adaptive policies resolve here
+	/// (M15 S3): slots scale with the frame's slot bytes, workers with
+	/// cores/RAM, batch size with workers and slots.
 	pub fn new(config: DispatcherConfig) -> Result<Arc<ProcessDispatcher>> {
 		let config = config.normalize();
-		let slots = config.slots_per_worker;
 		let slot_bytes = slot_bytes_for(config.width, config.height, config.slot_format);
+		let slots = if config.slots_per_worker == 0 {
+			default_slots_per_worker(slot_bytes)
+		} else {
+			config.slots_per_worker
+		};
 		let workers = if config.workers == 0 {
 			default_worker_count(slots, slot_bytes)
 		} else {
 			config.workers
 		};
+		let batch_size = if config.batch_size == 0 {
+			default_batch_size(workers, slots)
+		} else {
+			config.batch_size
+		};
 		let bin = resolve_worker_bin(&config)?;
-		let batch_size = config.batch_size;
 		let (events_tx, events_rx) = mpsc::channel();
 		Ok(Arc::new(ProcessDispatcher {
 			inner: Mutex::new(Inner {
@@ -575,6 +730,7 @@ impl ProcessDispatcher {
 				next_ticket: 1,
 				events_rx,
 				events_tx,
+				seg_generation: 0,
 				started: false,
 				shutting_down: false,
 			}),
@@ -697,6 +853,12 @@ impl ProcessDispatcher {
 		unsafe { handle.shm.pool().release(frame.slot) };
 	}
 
+	/// Release a consumed audio frame's slot (M15 S3) — the audio
+	/// counterpart of [`ProcessDispatcher::release_frame`].
+	pub fn release_audio_frame(&self, frame: &ShmAudioRef) {
+		self.release_frame(&frame.frame_ref());
+	}
+
 	/// Cancel one frame request (pending or in flight). The completion
 	/// fires with `Error::State` exactly once; a late frame_ready for an
 	/// in-flight cancel recycles the slot silently.
@@ -780,7 +942,9 @@ impl ProcessDispatcher {
 
 		// 3. Interleaved batch claims + dispatch (free slots = credit).
 		for i in 0..inner.workers.len() {
-			if matches!(inner.workers[i].state, WorkerState::Alive) {
+			if matches!(inner.workers[i].state, WorkerState::Alive)
+				&& !inner.workers[i].reconfiguring
+			{
 				self.dispatch_to(inner, i);
 			}
 		}
@@ -805,18 +969,10 @@ impl ProcessDispatcher {
 		match typ {
 			TYPE_HANDSHAKE => {
 				// The worker's startup handshake: answer with the shm
-				// geometry (protocol v1 flow).
+				// geometry (protocol v1 flow). A mid-session handshake is a
+				// segment grow (M15 S3): the worker re-attaches the new pool.
 				handle.startup_seen = true;
-				let hs = HandshakeMsg {
-					protocol_version: DISPATCH_PROTOCOL_VERSION,
-					shm_key: handle.shm.key().to_string(),
-					input_shm_key: String::new(),
-					input_slots: 0,
-					output_slots: handle.shm.slot_count() as i32,
-					slot_data_bytes: handle.shm.slot_data_bytes() as i64,
-					input_slot_data_bytes: 0,
-				};
-				if self.send_json(handle, &hs.to_json()).is_err() {
+				if self.send_json(handle, &handshake_for(handle)).is_err() {
 					handle.state = WorkerState::Dead;
 				}
 			}
@@ -824,6 +980,9 @@ impl ProcessDispatcher {
 				if let Ok(caps) = serde_json::from_value::<HelloCapsMsg>(msg) {
 					handle.caps = Some(caps);
 					handle.state = WorkerState::Alive;
+					// A re-attach after a segment grow is complete: the
+					// dispatcher may send batches again.
+					handle.reconfiguring = false;
 					// One load_graph right after the first handshake.
 					if !handle.graph_sent {
 						if let Some(path) = inner.config.graph_snapshot.clone() {
@@ -913,15 +1072,34 @@ impl ProcessDispatcher {
 				let key = pt.key;
 				inner.scheduler.frame_done(&key);
 				if let Some(done) = pt.done.take() {
-					fired.push((
-						done,
-						Ok(TicketPayload::ShmFrame(ShmFrameRef {
-							worker: worker as u32,
-							slot: slot as u32,
-							meta,
-							shm,
-						})),
-					));
+					// M15 S3: audio tickets complete with the shm audio
+					// payload (the consumer reads the slot and releases it);
+					// video tickets keep the ShmFrame payload.
+					if let Some(audio) = &pt.audio {
+						let params = audio.clone();
+						fired.push((
+							done,
+							Ok(TicketPayload::ShmAudio(ShmAudioRef {
+								worker: worker as u32,
+								slot: slot as u32,
+								meta,
+								shm,
+								sample_rate: params.sample_rate,
+								channel_layout: params.channel_layout,
+								channel_count: params.channel_layout.count_ones().max(1) as i32,
+							})),
+						));
+					} else {
+						fired.push((
+							done,
+							Ok(TicketPayload::ShmFrame(ShmFrameRef {
+								worker: worker as u32,
+								slot: slot as u32,
+								meta,
+								shm,
+							})),
+						));
+					}
 				} else {
 					// Cancelled while in flight: recycle the slot now.
 					self.recycle_slot(inner, worker, slot as u32);
@@ -977,10 +1155,38 @@ impl ProcessDispatcher {
 			if credit == 0 {
 				return;
 			}
-			let Some(batch) = inner.scheduler.claim_batch(worker, credit) else {
+			// Grow-on-demand (M15 S3): if a pending request for this worker
+			// needs a bigger slot than the segment provides, and the worker
+			// has no in-flight frames, rebuild its segment first (the worker
+			// re-attaches on a fresh handshake). While the worker is busy the
+			// oversized request simply stays pending — claim_batch filters it
+			// by max_bytes, so it is served after the drain.
+			let grow = {
+				let handle = &inner.workers[worker];
+				if handle.outstanding.is_empty() {
+					inner
+						.scheduler
+						.max_pending_bytes_for_worker(worker, handle.slot_bytes)
+				} else {
+					None
+				}
+			};
+			if let Some(need) = grow {
+				if let Err(e) = self.rebuild_segment(inner, worker, need) {
+					eprintln!("procpool: worker {worker} segment grow to {need} B failed: {e}");
+				}
+				// Stop here: the worker is re-attaching to the new segment
+				// (hello_caps pending). Dispatch resumes on the next pump
+				// once `reconfiguring` clears — sending a batch now would
+				// race the pool swap.
+				return;
+			}
+			let max_bytes = inner.workers[worker].slot_bytes;
+			let Some(batch) = inner.scheduler.claim_batch(worker, credit, max_bytes) else {
 				return;
 			};
-			let mut wire_tickets = Vec::with_capacity(batch.frames.len());
+			let mut video_tickets = Vec::with_capacity(batch.frames.len());
+			let mut audio_tickets: Vec<AudioTicketSpec> = Vec::new();
 			for req in &batch.frames {
 				let ticket = req.payload;
 				let slot = match inner.workers[worker].free_slots.pop_front() {
@@ -991,32 +1197,61 @@ impl ProcessDispatcher {
 				let Some(pt) = inner.tickets.get(&ticket) else {
 					continue;
 				};
-				wire_tickets.push(build_ticket_spec(
-					ticket,
-					slot,
-					&pt.params,
-					inner.config.slot_format,
-				));
+				if let Some(audio) = &pt.audio {
+					audio_tickets.push(build_audio_ticket_spec(ticket, slot, audio));
+				} else {
+					video_tickets.push(build_ticket_spec(
+						ticket,
+						slot,
+						&pt.params,
+						inner.config.slot_format,
+					));
+				}
 			}
-			let msg = RenderBatchMsg {
-				batch_id: batch.batch_id as i64,
-				tickets: wire_tickets,
-			};
-			// The `type` tag is added by hand: [`RenderBatchMsg`] only
-			// carries the payload fields (it is the parse-side struct).
-			let mut value = match serde_json::to_value(&msg) {
-				Ok(v) => v,
-				Err(_) => return,
-			};
-			if let Some(obj) = value.as_object_mut() {
-				obj.insert(
-					"type".to_string(),
-					Value::String(crate::ipc::TYPE_RENDER_BATCH.to_string()),
-				);
+			// A single claim may mix audio and video (different scheduler
+			// keys in one batch); they are delivered as two messages under
+			// the same batch id, claimed by the worker in order.
+			if !video_tickets.is_empty() {
+				let msg = RenderBatchMsg {
+					batch_id: batch.batch_id as i64,
+					tickets: video_tickets,
+				};
+				// The `type` tag is added by hand: the parse-side structs only
+				// carry the payload fields.
+				let mut value = match serde_json::to_value(&msg) {
+					Ok(v) => v,
+					Err(_) => return,
+				};
+				if let Some(obj) = value.as_object_mut() {
+					obj.insert(
+						"type".to_string(),
+						Value::String(crate::ipc::TYPE_RENDER_BATCH.to_string()),
+					);
+				}
+				if self.send_json(&mut inner.workers[worker], &value).is_err() {
+					inner.workers[worker].state = WorkerState::Dead;
+					return;
+				}
 			}
-			if self.send_json(&mut inner.workers[worker], &value).is_err() {
-				inner.workers[worker].state = WorkerState::Dead;
-				return;
+			if !audio_tickets.is_empty() {
+				let msg = RenderAudioBatchMsg {
+					batch_id: batch.batch_id as i64,
+					tickets: audio_tickets,
+				};
+				let mut value = match serde_json::to_value(&msg) {
+					Ok(v) => v,
+					Err(_) => return,
+				};
+				if let Some(obj) = value.as_object_mut() {
+					obj.insert(
+						"type".to_string(),
+						Value::String(TYPE_RENDER_AUDIO_BATCH.to_string()),
+					);
+				}
+				if self.send_json(&mut inner.workers[worker], &value).is_err() {
+					inner.workers[worker].state = WorkerState::Dead;
+					return;
+				}
 			}
 		}
 	}
@@ -1098,7 +1333,7 @@ impl ProcessDispatcher {
 			})
 			.map_err(|e| Error::Failed(format!("spawn reader thread: {e}")))?;
 
-		let mut handle = WorkerHandle::shell(index, generation, shm, inner.slots);
+		let mut handle = WorkerHandle::shell(index, generation, shm, inner.slots, inner.slot_bytes);
 		handle.child = Some(child);
 		handle.stdin = stdin;
 		handle.spawned_at = Instant::now();
@@ -1166,6 +1401,59 @@ impl ProcessDispatcher {
 			inner.workers[worker].state = WorkerState::Dead;
 		}
 	}
+
+	/// Grow a worker's segment to `need_bytes` per slot (M15 S3 grow-on-
+	/// demand geometry, design §3.1 "段按需扩容或重建"): create a fresh
+	/// segment under a new key (the old mapping stays alive for consumers
+	/// still holding [`ShmFrameRef`]s into it — they release as stale
+	/// refs), re-point the handle, reseed the free slots and have the
+	/// worker re-attach through a fresh handshake. The caller guarantees
+	/// `outstanding` is empty (no frame is mid-render in the old pool).
+	/// The worker's hello_caps clears `reconfiguring`, unblocking dispatch.
+	fn rebuild_segment(&self, inner: &mut Inner, worker: usize, need_bytes: usize) -> Result<()> {
+		let current_slots = inner.workers[worker].shm.slot_count();
+		let slots = default_slots_for_bytes(need_bytes, current_slots);
+		let generation = inner.seg_generation;
+		inner.seg_generation += 1;
+		let base = SharedMemoryRegion::make_key(std::process::id() as i64, worker as i32);
+		let key = format!(
+			"{base}-g{}-s{generation}",
+			inner.workers[worker].generation
+		);
+		let shm = ShmRegionView::create(&key, slots, need_bytes)?;
+		{
+			let handle = &mut inner.workers[worker];
+			handle.shm = shm;
+			handle.slot_bytes = need_bytes;
+			handle.free_slots = (0..slots).collect();
+			handle.held.clear();
+			// No new batches until the worker re-attaches the new pool.
+			handle.reconfiguring = true;
+		}
+		let hs = {
+			let handle = &inner.workers[worker];
+			handshake_for(handle)
+		};
+		if self.send_json(&mut inner.workers[worker], &hs).is_err() {
+			inner.workers[worker].state = WorkerState::Dead;
+		}
+		Ok(())
+	}
+}
+
+/// The handshake reply the dispatcher sends a worker (startup and M15 S3
+/// segment-grow re-attach): the worker's current shm geometry.
+fn handshake_for(handle: &WorkerHandle) -> Value {
+	HandshakeMsg {
+		protocol_version: DISPATCH_PROTOCOL_VERSION,
+		shm_key: handle.shm.key().to_string(),
+		input_shm_key: String::new(),
+		input_slots: 0,
+		output_slots: handle.shm.slot_count() as i32,
+		slot_data_bytes: handle.shm.slot_data_bytes() as i64,
+		input_slot_data_bytes: 0,
+	}
+	.to_json()
 }
 
 impl JobDispatch for ProcessDispatcher {
@@ -1184,6 +1472,20 @@ impl JobDispatch for ProcessDispatcher {
 			if inner.shutting_down {
 				return false;
 			}
+			// M15 S3: audio ranges larger than a practical shm slot (export
+			// of many minutes of audio) are refused here so the arena falls
+			// back to main-process inline rendering (design §3.7) — the
+			// process backend stays for the real-time chunks and short
+			// ranges that fit a segment.
+			if let Some(audio) = &job.audio {
+				let too_large = match crate::eval::audio_samples_byte_len(audio) {
+					Ok(bytes) => bytes > MAX_AUDIO_SLOT_BYTES,
+					Err(_) => true, // invalid range: let the inline path report it
+				};
+				if too_large {
+					return false;
+				}
+			}
 			let id = inner.next_ticket;
 			inner.next_ticket += 1;
 			let frame = job.schedule.frame.unwrap_or(id);
@@ -1192,11 +1494,22 @@ impl JobDispatch for ProcessDispatcher {
 				frame,
 				version: job.schedule.version,
 			};
+			// M15 S3: per-request slot geometry. Audio tickets need the
+			// sample bytes of their range; video tickets need the frame
+			// size x the ticket's wire format (force_format honored).
+			let slot_bytes = match &job.audio {
+				Some(audio) => crate::eval::audio_samples_byte_len(audio).unwrap_or(0),
+				None => {
+					let (w, h) = job.params.render_size();
+					slot_bytes_for(w, h, ticket_wire_format(&job.params, inner.config.slot_format))
+				}
+			};
 			inner.tickets.insert(
 				id,
 				PendingTicket {
 					key,
 					params: job.params,
+					audio: job.audio,
 					done: Some(job.done),
 				},
 			);
@@ -1205,6 +1518,7 @@ impl JobDispatch for ProcessDispatcher {
 				priority: job.schedule.priority,
 				distance: job.schedule.distance,
 				payload: id,
+				slot_bytes,
 			};
 			match inner.scheduler.submit(request) {
 				SubmitOutcome::Accepted => {}
@@ -1265,6 +1579,12 @@ impl JobDispatch for ProcessDispatcher {
 	/// release — see [`ProcessDispatcher::release_frame`]).
 	fn release_frame(&self, frame: &ShmFrameRef) {
 		self.release_frame(frame);
+	}
+
+	/// Release a consumed audio frame's slot (M15 S3; delegates to the
+	/// inherent release).
+	fn release_audio_frame(&self, frame: &ShmAudioRef) {
+		self.release_audio_frame(frame);
 	}
 
 	/// Graceful shutdown: `shutdown` messages, a short drain pumping
@@ -1357,6 +1677,15 @@ fn resolve_worker_bin(config: &DispatcherConfig) -> Result<PathBuf> {
 	)))
 }
 
+/// The wire slot format a video ticket requests: the ticket's forced
+/// PixelFormat when set (F32 for exports / full-resolution / scopes, M15
+/// S3 — the worker then writes F32 straight into the slot and the export
+/// reads it back with no BGRA8 round trip), else the dispatcher's default
+/// slot format (BGRA8 for the viewer preview path).
+fn ticket_wire_format(params: &VideoTicketParams, config_format: i32) -> i32 {
+	params.force_format.map(|f| f as i32).unwrap_or(config_format)
+}
+
 /// Map ticket params to the wire ticket spec (main assigns `slot`).
 fn build_ticket_spec(
 	ticket: i64,
@@ -1391,10 +1720,43 @@ fn build_ticket_spec(
 		time_den: params.time.denominator(),
 		width,
 		height,
-		format: slot_format,
+		format: ticket_wire_format(params, slot_format),
 		channels: 4,
 		footage_file,
 		footage_stream,
+		montage,
+	}
+}
+
+/// Map audio ticket params to the wire audio ticket spec (M15 S3; main
+/// assigns `slot`).
+fn build_audio_ticket_spec(ticket: i64, slot: u32, params: &AudioTicketParams) -> AudioTicketSpec {
+	let duration = params.range.out() - params.range.in_();
+	let montage = params
+		.montage
+		.iter()
+		.map(|c| WireMontageClip {
+			filename: c.filename.clone(),
+			stream_index: c.stream_index,
+			in_num: c.in_time.numerator(),
+			in_den: c.in_time.denominator(),
+			out_num: c.out_time.numerator(),
+			out_den: c.out_time.denominator(),
+			media_in_num: c.media_in.numerator(),
+			media_in_den: c.media_in.denominator(),
+			gain: c.gain,
+		})
+		.collect();
+	AudioTicketSpec {
+		ticket,
+		slot: slot as i32,
+		time_num: params.range.in_().numerator(),
+		time_den: params.range.in_().denominator(),
+		duration_num: duration.numerator(),
+		duration_den: duration.denominator(),
+		sample_rate: params.sample_rate,
+		channel_layout: params.channel_layout,
+		channels: params.channel_layout.count_ones().max(1) as i32,
 		montage,
 	}
 }
@@ -1426,10 +1788,51 @@ mod tests {
 	#[test]
 	fn config_normalization_defaults() {
 		let c = DispatcherConfig::default().normalize();
-		assert_eq!(c.slots_per_worker, DEFAULT_SLOTS_PER_WORKER);
+		// Geometry defaults resolve here; the adaptive counts stay 0 (auto)
+		// and resolve in `ProcessDispatcher::new` where slot_bytes is known.
 		assert_eq!(c.width, 1920);
 		assert_eq!(c.height, 1080);
 		assert_eq!(c.slot_format, SLOT_FORMAT_BGRA8);
+		assert_eq!(c.slots_per_worker, 0);
+		assert_eq!(c.workers, 0);
+		assert_eq!(c.batch_size, 0);
+	}
+
+	#[test]
+	fn slots_policy_adapts_to_slot_size() {
+		// BGRA8 1080p: the full 8 slots (~66 MB per worker segment).
+		let bgra8_1080p = slot_bytes_for(1920, 1080, SLOT_FORMAT_BGRA8);
+		assert_eq!(default_slots_per_worker(bgra8_1080p), 8);
+		// F32 1080p: drops to 4 (~133 MB per worker segment).
+		let f32_1080p = slot_bytes_for(1920, 1080, 4);
+		assert_eq!(default_slots_per_worker(f32_1080p), 4);
+		// F32 4K: 2 slots (the floor).
+		let f32_4k = slot_bytes_for(3840, 2160, 4);
+		assert_eq!(default_slots_per_worker(f32_4k), 2);
+		// Tiny slots: the cap at 8.
+		assert_eq!(default_slots_per_worker(16), 8);
+	}
+
+	#[test]
+	fn batch_size_policy_scales_with_workers_and_slots() {
+		// 4 workers x 8 slots: the design 120/4 = 30 caps at the 8 slots.
+		assert_eq!(default_batch_size(4, 8), 8);
+		// 1 worker x 8 slots: 120/1 = 120 caps at 8.
+		assert_eq!(default_batch_size(1, 8), 8);
+		// 2 workers x 4 slots: 120/2 = 60 caps at 4.
+		assert_eq!(default_batch_size(2, 4), 4);
+		// 8 workers x 8 slots: 120/8 = 15 caps at 8.
+		assert_eq!(default_batch_size(8, 8), 8);
+	}
+
+	#[test]
+	fn grown_segment_slots_stay_bounded() {
+		// Growing a segment keeps a sane slot count: 8.3 MB slots keep 8;
+		// 33 MB slots keep 8 (still within the 256 MiB grown budget);
+		// absurd sizes clamp at 2.
+		assert_eq!(default_slots_for_bytes(8_300_000, 8), 8);
+		assert_eq!(default_slots_for_bytes(33_000_000, 8), 8);
+		assert_eq!(default_slots_for_bytes(1 << 30, 8), 2);
 	}
 
 	#[test]

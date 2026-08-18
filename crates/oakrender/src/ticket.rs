@@ -132,6 +132,11 @@ pub enum TicketPayload {
 	/// process backend): zero copy — the consumer reads the pixels from
 	/// the mapping and releases the slot through the dispatcher.
 	ShmFrame(crate::procpool::ShmFrameRef),
+	/// Rendered audio living in a worker's shared-memory slot (M15 S3):
+	/// interleaved f32 in `SLOT_FORMAT_AUDIO_F32` slots, consumed with
+	/// [`crate::procpool::ShmAudioRef::samples`] and released through the
+	/// dispatcher — the audio counterpart of `ShmFrame`.
+	ShmAudio(crate::procpool::ShmAudioRef),
 }
 
 /// Completion payload: the rendered texture/samples or the failure
@@ -209,6 +214,9 @@ impl TicketSlot {
 			if let Ok(TicketPayload::ShmFrame(frame)) = &result {
 				self.dispatch.release_frame(frame);
 			}
+			if let Ok(TicketPayload::ShmAudio(audio)) = &result {
+				self.dispatch.release_audio_frame(audio);
+			}
 			result = Err(Error::State);
 		}
 		// Publish the result before flipping the state flag: `wait()` only
@@ -255,6 +263,11 @@ pub struct TicketArena {
 	next: AtomicU64,
 	dispatch: Arc<dyn JobDispatch>,
 	audio_dispatch: Arc<dyn JobDispatch>,
+	/// M15 S3: main-process inline audio fallback, used when the process
+	/// dispatcher is unavailable (shutting down) — design §3.7. Audio
+	/// rendering normally runs in oak-worker; the inline fallback keeps
+	/// playback alive during teardown.
+	audio_fallback: Option<Arc<dyn JobDispatch>>,
 	slots: Mutex<HashMap<TicketId, Arc<TicketSlot>>>,
 	shutting_down: AtomicBool,
 	producer: Producer,
@@ -274,10 +287,25 @@ impl TicketArena {
 		audio: Arc<dyn JobDispatch>,
 		producer: Producer,
 	) -> Self {
+		Self::new_with_audio_fallback(video, audio, None, producer)
+	}
+
+	/// Arena with separate video/audio backends plus a main-process inline
+	/// audio fallback (M15 S3): when `audio` (the process dispatcher)
+	/// refuses a job, it is re-posted to `audio_fallback` (an
+	/// [`crate::worker::InlineDispatcher::sync`]); both gone, the ticket
+	/// cancels.
+	pub fn new_with_audio_fallback(
+		video: Arc<dyn JobDispatch>,
+		audio: Arc<dyn JobDispatch>,
+		audio_fallback: Option<Arc<dyn JobDispatch>>,
+		producer: Producer,
+	) -> Self {
 		Self {
 			next: AtomicU64::new(1),
 			dispatch: video,
 			audio_dispatch: audio,
+			audio_fallback,
 			slots: Mutex::new(HashMap::new()),
 			shutting_down: AtomicBool::new(false),
 			producer,
@@ -358,6 +386,7 @@ impl TicketArena {
 			node_identity: params.viewer,
 			time: params.time,
 			params,
+			audio: None,
 			produce: producer,
 			done: Box::new(move |result| slot_done.finish(result)),
 			schedule,
@@ -454,32 +483,49 @@ impl TicketArena {
 
 		// The audio producer captures the montage + output params; the
 		// video-params field of the job is a dummy (unused by the audio
-		// path).
+		// path). M15 S3: `audio` carries the params to the process
+		// dispatcher, which renders the range in oak-worker via
+		// render_audio_batch; the producer is the inline-fallback path.
 		let ap = Arc::new(params);
 		let viewer = ap.viewer;
-		let producer: Producer = Arc::new(move |_, _| eval::render_audio_samples(&ap));
-		let slot_done = slot.clone();
-		let job = crate::worker::Job {
-			node_identity: viewer,
-			time: range.in_(),
-			params: Arc::new(VideoTicketParams {
-				viewer,
+		let make_job = |slot_done: Arc<TicketSlot>| {
+			let ap_job = ap.clone();
+			let ap_prod = ap.clone();
+			let producer: Producer = Arc::new(move |_, _| eval::render_audio_samples(&ap_prod));
+			crate::worker::Job {
+				node_identity: viewer,
 				time: range.in_(),
-				force_size: None,
-				force_format: None,
-				cache: None,
-				cache_dir: None,
-				cache_id: None,
-				cache_timebase: None,
-				footage: None,
-				montage: Vec::new(),
-			}),
-			produce: producer,
-			done: Box::new(move |result| slot_done.finish(result)),
-			schedule: JobSchedule::seek(),
+				params: Arc::new(VideoTicketParams {
+					viewer,
+					time: range.in_(),
+					force_size: None,
+					force_format: None,
+					cache: None,
+					cache_dir: None,
+					cache_id: None,
+					cache_timebase: None,
+					footage: None,
+					montage: Vec::new(),
+				}),
+				audio: Some(ap_job),
+				produce: producer,
+				done: Box::new(move |result| slot_done.finish(result)),
+				schedule: JobSchedule::seek(),
+			}
 		};
+		let job = make_job(slot.clone());
 		if !self.audio_dispatch.post(job) {
-			slot.finish(Err(Error::State));
+			// The process dispatcher is unavailable (shutting down): fall
+			// back to main-process inline audio rendering (design §3.7) so
+			// playback/export audio keeps flowing during teardown.
+			if let Some(fallback) = &self.audio_fallback {
+				let job = make_job(slot.clone());
+				if !fallback.post(job) {
+					slot.finish(Err(Error::State));
+				}
+			} else {
+				slot.finish(Err(Error::State));
+			}
 		}
 		id
 	}

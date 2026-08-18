@@ -43,7 +43,7 @@ use oakcore_rs::Rational;
 use crate::error::{Error, Result};
 use crate::procpool::ShmFrameRef;
 use crate::scheduler::FramePriority;
-use crate::ticket::{Completion, Producer, VideoTicketParams};
+use crate::ticket::{AudioTicketParams, Completion, Producer, VideoTicketParams};
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 	m.lock().unwrap_or_else(|e| e.into_inner())
@@ -57,6 +57,11 @@ pub struct Job {
 	pub time: Rational,
 	/// Ticket parameters (size/format overrides).
 	pub params: Arc<VideoTicketParams>,
+	/// Audio ticket parameters when this is an audio range pull (M15 S3):
+	/// the process dispatcher renders it through the worker's
+	/// `render_audio_batch` path into a shm slot; the in-process inline
+	/// fallback executes the producer instead. `None` for video jobs.
+	pub audio: Option<Arc<AudioTicketParams>>,
 	/// Frame producer (arena-installed; the process backend never invokes
 	/// it — workers render from the wire spec).
 	pub produce: Producer,
@@ -133,6 +138,10 @@ pub trait JobDispatch: Send + Sync {
 	/// release = cache eviction, design §3.1). Default no-op: only the
 	/// process backend holds slots.
 	fn release_frame(&self, _frame: &ShmFrameRef) {}
+
+	/// Release a consumed shm audio frame's slot (M15 S3). Default no-op:
+	/// only the process backend holds slots.
+	fn release_audio_frame(&self, _frame: &crate::procpool::ShmAudioRef) {}
 
 	/// Cancel every pending AND claimed request of `sequence` (M15 S2
 	/// preview-window invalidation); their completions fire with
@@ -372,6 +381,7 @@ mod tests {
 				footage: None,
 				montage: Vec::new(),
 			}),
+			audio: None,
 			produce,
 			done: Box::new(move |r| {
 				assert!(r.is_ok(), "producer must succeed here");
@@ -441,6 +451,7 @@ mod tests {
 					footage: None,
 					montage: Vec::new(),
 				}),
+				audio: None,
 				produce: p,
 				done: Box::new(move |r| {
 					let _ = tx.send(r.is_err());
@@ -481,6 +492,7 @@ mod tests {
 			node_identity: 0,
 			time: Rational::new(0, 1),
 			params: params.clone(),
+			audio: None,
 			produce: boom,
 			done: Box::new(move |r| {
 				assert!(r.is_err());
@@ -492,6 +504,7 @@ mod tests {
 			node_identity: 1,
 			time: Rational::new(1, 1),
 			params,
+			audio: None,
 			produce: ok,
 			done: Box::new(move |r| {
 				assert!(r.is_ok());

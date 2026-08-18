@@ -733,6 +733,19 @@ pub fn render_audio(
 			sample_rate: samples.sample_rate,
 			channel_count: samples.channel_count,
 		}),
+		// M15 S3 process backend: the audio sits in a worker shm slot; copy
+		// it out and release the slot (the bytes must outlive the slot).
+		Ok(TicketPayload::ShmAudio(audio)) => {
+			let samples = audio.to_audio_samples();
+			if let Some(m) = RenderManager::global() {
+				m.release_audio_frame(&audio);
+			}
+			Ok(RenderedAudio {
+				data: samples.samples,
+				sample_rate: samples.sample_rate,
+				channel_count: samples.channel_count,
+			})
+		}
 		_ => Err("audio render produced no samples".to_string()),
 	}
 }

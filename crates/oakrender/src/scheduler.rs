@@ -86,6 +86,11 @@ pub struct FrameRequest<P> {
 	pub distance: i64,
 	/// Caller payload.
 	pub payload: P,
+	/// Slot bytes this request needs (frame size x wire format; M15 S3).
+	/// `claim_batch` skips requests whose bytes exceed the worker's current
+	/// slot capacity, so the dispatcher can grow the segment first (grow-
+	/// on-demand geometry, design §3.1).
+	pub slot_bytes: usize,
 }
 
 /// A batch of frames one worker claimed.
@@ -193,12 +198,20 @@ impl<P: Clone> PreviewScheduler<P> {
 	/// Claim the next batch for `worker`: the worker's interleaved shard
 	/// (frame number `≡ worker (mod W)`, plus any crash-requeued frames),
 	/// ordered by priority class / playhead distance / ascending frame,
-	/// capped at `min(batch_size, credit)`. Returns `None` when nothing
-	/// is claimable (`credit == 0`, unknown worker, empty shard).
+	/// capped at `min(batch_size, credit)`. Requests needing more than
+	/// `max_bytes` of slot space are skipped (they stay pending until the
+	/// dispatcher grows the segment). Returns `None` when nothing
+	/// claimable (`credit == 0`, unknown worker, empty shard, all
+	/// oversized).
 	///
 	/// Claimed frames never go to another worker while in flight (no
 	/// stealing).
-	pub fn claim_batch(&mut self, worker: usize, credit: usize) -> Option<ClaimedBatch<P>> {
+	pub fn claim_batch(
+		&mut self,
+		worker: usize,
+		credit: usize,
+		max_bytes: usize,
+	) -> Option<ClaimedBatch<P>> {
 		if worker >= self.workers || credit == 0 {
 			return None;
 		}
@@ -208,7 +221,8 @@ impl<P: Clone> PreviewScheduler<P> {
 			.iter()
 			.enumerate()
 			.filter(|(_, e)| {
-				e.any_worker || e.request.key.frame.rem_euclid(workers as i64) == worker as i64
+				e.request.slot_bytes <= max_bytes
+					&& (e.any_worker || e.request.key.frame.rem_euclid(workers as i64) == worker as i64)
 			})
 			.map(|(i, _)| i)
 			.collect();
@@ -346,6 +360,25 @@ impl<P: Clone> PreviewScheduler<P> {
 		self.pending.len()
 	}
 
+	/// The largest `slot_bytes` among pending requests claimable by
+	/// `worker` (its shard plus crash-requeued frames) that exceeds
+	/// `current`, if any. The dispatcher uses this to grow a worker's
+	/// segment before the next claim (M15 S3 grow-on-demand geometry).
+	pub fn max_pending_bytes_for_worker(&self, worker: usize, current: usize) -> Option<usize> {
+		if worker >= self.workers {
+			return None;
+		}
+		let workers = self.workers;
+		self.pending
+			.iter()
+			.filter(|e| {
+				e.any_worker || e.request.key.frame.rem_euclid(workers as i64) == worker as i64
+			})
+			.map(|e| e.request.slot_bytes)
+			.max()
+			.filter(|&m| m > current)
+	}
+
 	/// Claimed (in-flight) request count.
 	pub fn claimed_count(&self) -> usize {
 		self.claimed.len()
@@ -376,6 +409,7 @@ mod tests {
 			priority: prio,
 			distance: frame,
 			payload: frame as u64,
+			slot_bytes: 0,
 		}
 	}
 
@@ -386,7 +420,7 @@ mod tests {
 		loop {
 			let mut progress = false;
 			for w in 0..s.workers() {
-				while let Some(batch) = s.claim_batch(w, 1024) {
+				while let Some(batch) = s.claim_batch(w, 1024, usize::MAX) {
 					for f in &batch.frames {
 						out.push((w, f.key.frame));
 					}
@@ -448,9 +482,9 @@ mod tests {
 			s.submit(req(1, f, FramePriority::Playback));
 		}
 		// Both workers claim their shards first.
-		let batch0 = s.claim_batch(0, 8).unwrap();
+		let batch0 = s.claim_batch(0, 8, 1024).unwrap();
 		assert_eq!(batch0.frames.len(), 4); // frames 0,2,4,6
-		let batch1 = s.claim_batch(1, 8).unwrap();
+		let batch1 = s.claim_batch(1, 8, 1024).unwrap();
 		assert_eq!(batch1.frames.len(), 4); // frames 1,3,5,7
 
 		// Worker 0 crashes: its frames come back...
@@ -461,7 +495,7 @@ mod tests {
 		assert_eq!(s.crash_requeued(), 4);
 
 		// ...and worker 1 (NOT their shard) can claim them all.
-		let batch = s.claim_batch(1, 8).unwrap();
+		let batch = s.claim_batch(1, 8, 1024).unwrap();
 		assert_eq!(batch.frames.len(), 4);
 		let mut frames: Vec<i64> = batch.frames.iter().map(|f| f.key.frame).collect();
 		frames.sort_unstable();
@@ -483,7 +517,7 @@ mod tests {
 		}
 		s.submit(req(1, 100, FramePriority::Seek));
 
-		let batch = s.claim_batch(0, 100).unwrap();
+		let batch = s.claim_batch(0, 100, 1024).unwrap();
 		let order: Vec<(FramePriority, i64)> = batch
 			.frames
 			.iter()
@@ -516,9 +550,9 @@ mod tests {
 			s.submit(req(1, f, FramePriority::Playback));
 		}
 		// Zero credit claims nothing.
-		assert!(s.claim_batch(0, 0).is_none());
+		assert!(s.claim_batch(0, 0, 1024).is_none());
 		// Credit 3 claims exactly 3 (free slots are the credit).
-		let batch = s.claim_batch(0, 3).unwrap();
+		let batch = s.claim_batch(0, 3, 1024).unwrap();
 		assert_eq!(batch.frames.len(), 3);
 		assert_eq!(s.pending_count(), 7);
 	}
@@ -529,7 +563,7 @@ mod tests {
 		for f in 0..10 {
 			s.submit(req(1, f, FramePriority::Playback));
 		}
-		let batch = s.claim_batch(0, 100).unwrap();
+		let batch = s.claim_batch(0, 100, 1024).unwrap();
 		assert_eq!(batch.frames.len(), 4, "batch size B caps the claim");
 		// Ascending frame order inside the batch.
 		let frames: Vec<i64> = batch.frames.iter().map(|f| f.key.frame).collect();
@@ -537,11 +571,39 @@ mod tests {
 	}
 
 	#[test]
+	fn claim_batch_skips_requests_exceeding_slot_capacity() {
+		// M15 S3 grow-on-demand: a request needing more bytes than the
+		// worker's current slot capacity stays pending (the dispatcher can
+		// grow the segment and claim it later); smaller requests still flow.
+		let mut s: PreviewScheduler<u64> = PreviewScheduler::new(1, 100);
+		for f in 0..4 {
+			let mut r = req(1, f, FramePriority::Playback);
+			r.slot_bytes = if f == 1 { 33_000_000 } else { 8_300_000 };
+			s.submit(r);
+		}
+		// max_bytes 8_300_000: frame 1 (33 MB) is skipped.
+		let batch = s.claim_batch(0, 100, 8_300_000).unwrap();
+		let frames: Vec<i64> = batch.frames.iter().map(|f| f.key.frame).collect();
+		assert_eq!(frames, vec![0, 2, 3]);
+		assert_eq!(s.pending_count(), 1, "the oversized frame stays pending");
+		assert_eq!(
+			s.max_pending_bytes_for_worker(0, 8_300_000),
+			Some(33_000_000),
+			"the dispatcher sees the growth need"
+		);
+		// After the segment grows, the oversized frame is claimable.
+		let batch = s.claim_batch(0, 100, 33_000_000).unwrap();
+		assert_eq!(batch.frames.len(), 1);
+		assert_eq!(batch.frames[0].key.frame, 1);
+		assert_eq!(s.pending_count(), 0);
+	}
+
+	#[test]
 	fn done_and_failed_drop_the_claim() {
 		let mut s: PreviewScheduler<u64> = PreviewScheduler::new(1, 4);
 		s.submit(req(1, 0, FramePriority::Playback));
 		s.submit(req(1, 1, FramePriority::Playback));
-		let batch = s.claim_batch(0, 4).unwrap();
+		let batch = s.claim_batch(0, 4, 1024).unwrap();
 		assert_eq!(batch.frames.len(), 2);
 		let k0 = batch.frames[0].key;
 		let k1 = batch.frames[1].key;
@@ -559,7 +621,7 @@ mod tests {
 		let r = req(1, 5, FramePriority::Playback);
 		let key = r.key;
 		assert!(matches!(s.submit(r), SubmitOutcome::Accepted));
-		let _ = s.claim_batch(0, 4).unwrap();
+		let _ = s.claim_batch(0, 4, 1024).unwrap();
 		// In flight: rejected.
 		assert!(matches!(
 			s.submit(req(1, 5, FramePriority::Seek)),
@@ -592,7 +654,7 @@ mod tests {
 			}
 			other => panic!("expected Replaced, got {other:?}"),
 		}
-		let _ = s.claim_batch(0, 4).unwrap();
+		let _ = s.claim_batch(0, 4, 1024).unwrap();
 		assert_eq!(s.claimed_worker(&second_key), Some(0));
 	}
 
@@ -602,7 +664,7 @@ mod tests {
 		for f in 0..6 {
 			s.submit(req(7, f, FramePriority::Playback));
 		}
-		let _ = s.claim_batch(0, 4).unwrap(); // claims 4 of sequence 7
+		let _ = s.claim_batch(0, 4, 1024).unwrap(); // claims 4 of sequence 7
 		s.submit(req(8, 0, FramePriority::Playback)); // other sequence
 		let dropped = s.cancel_sequence(7);
 		assert_eq!(dropped.len(), 6, "all 6 sequence-7 requests dropped");
@@ -623,6 +685,6 @@ mod tests {
 	fn unknown_worker_claims_nothing() {
 		let mut s: PreviewScheduler<u64> = PreviewScheduler::new(2, 4);
 		s.submit(req(1, 0, FramePriority::Playback));
-		assert!(s.claim_batch(2, 4).is_none());
+		assert!(s.claim_batch(2, 4, 1024).is_none());
 	}
 }

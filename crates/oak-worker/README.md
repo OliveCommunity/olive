@@ -23,7 +23,10 @@ dylib is needed at build or run time.
   snapshot through `oaknode::serializer`, and `render_frame` /
   `render_batch` render through `oakrender::eval` (generated frames,
   footage decode via oakcodec/ffmpeg, montage compositing) directly into
-  the main-assigned shared-memory slots.
+  the main-assigned shared-memory slots. M15 S3 adds `render_audio_batch`
+  (audio range pulls mixed by `oakrender::eval::render_audio_samples_into`
+  into `SLOT_FORMAT_AUDIO_F32` slots — interleaved f32 — so audio plugin
+  crashes take down this process, not the editor).
 - `src/ipc.rs` is a shim re-exporting `oakrender::ipc` (M15 S1): the
   NDJSON protocol and the shared-memory frame-slot transport moved to the
   oakrender crate so both ends of the pipe link one copy (the

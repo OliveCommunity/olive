@@ -51,13 +51,13 @@ use serde_json::{json, Value};
 use oakcore_rs::{PixelFormat, Rational};
 use oakrender::backend::{BackendKind, DisplayRenderer};
 use oakrender::eval;
-use oakrender::ticket::{MontageClip, VideoTicketParams};
+use oakrender::ticket::{AudioTicketParams, MontageClip, VideoTicketParams};
 
 use crate::ipc::{
-	error_message, write_message, BatchTicketSpec, FrameSlotPool, FrameSlotMeta, HandshakeMsg,
-	LoadGraphMsg, RenderBatchMsg, RenderFrameMsg, SharedMemoryRegion, ShmMode, TYPE_CANCEL,
-	TYPE_HANDSHAKE, TYPE_LOAD_GRAPH, TYPE_RENDER_BATCH, TYPE_RENDER_FRAME, TYPE_SHUTDOWN,
-	SLOT_FORMAT_BGRA8,
+	error_message, write_message, AudioTicketSpec, BatchTicketSpec, FrameSlotPool, FrameSlotMeta,
+	HandshakeMsg, LoadGraphMsg, RenderAudioBatchMsg, RenderBatchMsg, RenderFrameMsg,
+	SharedMemoryRegion, ShmMode, TYPE_CANCEL, TYPE_HANDSHAKE, TYPE_LOAD_GRAPH, TYPE_RENDER_AUDIO_BATCH,
+	TYPE_RENDER_BATCH, TYPE_RENDER_FRAME, TYPE_SHUTDOWN, SLOT_FORMAT_AUDIO_F32, SLOT_FORMAT_BGRA8,
 };
 use crate::{log_error, PROTOCOL_VERSION};
 
@@ -391,7 +391,7 @@ impl WorkerSession {
 		Some(json!({
 			"type": crate::ipc::TYPE_HELLO_CAPS,
 			"protocol_version": PROTOCOL_VERSION,
-			"formats": [PixelFormat::F32 as i32, SLOT_FORMAT_BGRA8],
+			"formats": [PixelFormat::F32 as i32, SLOT_FORMAT_BGRA8, SLOT_FORMAT_AUDIO_F32],
 			"max_slot_bytes": hs.slot_data_bytes,
 		}))
 	}
@@ -721,6 +721,164 @@ impl WorkerSession {
 		}
 	}
 
+	/// `render_audio_batch` (protocol v2, M15 S3): claim confirmation
+	/// followed by in-order mixing of every audio range pull into its
+	/// main-assigned shm slot (interleaved f32, wire format
+	/// [`SLOT_FORMAT_AUDIO_F32`]). Responses stream to `out`: one
+	/// `batch_accepted`, then one `frame_ready` or `frame_failed` per
+	/// ticket — the same claim/credit/frame_ready flow as
+	/// [`Self::handle_render_batch_stream`]. Crashes the process
+	/// deliberately when the crash-mode environment asks for it (the
+	/// audio crash-isolation test hook; the audio slot geometry check is
+	/// below the video one in `handle_line`).
+	fn handle_render_audio_batch_stream(
+		&mut self,
+		line: &str,
+		out: &mut impl Write,
+	) -> io::Result<()> {
+		let batch: RenderAudioBatchMsg = match serde_json::from_str(line) {
+			Ok(b) => b,
+			Err(_) => {
+				return write_message(out, &error_message("invalid render_audio_batch message", None))
+			}
+		};
+
+		let accepted = json!({
+			"type": crate::ipc::TYPE_BATCH_ACCEPTED,
+			"batch_id": batch.batch_id,
+			"tickets": batch.tickets.iter().map(|t| t.ticket).collect::<Vec<_>>(),
+		});
+		write_message(out, &accepted)?;
+		out.flush()?;
+
+		for spec in &batch.tickets {
+			self.maybe_crash_for_testing(spec.ticket);
+
+			let response = match self.render_audio_ticket_to_slot(spec) {
+				Ok(slot) => json!({
+					"type": crate::ipc::TYPE_FRAME_READY,
+					"ticket": spec.ticket,
+					"slot": slot,
+				}),
+				Err(e) => {
+					log_error(&format!(
+						"render_audio_batch: ticket {} failed: {e}",
+						spec.ticket
+					));
+					json!({
+						"type": crate::ipc::TYPE_FRAME_FAILED,
+						"ticket": spec.ticket,
+						"error": e,
+					})
+				}
+			};
+			write_message(out, &response)?;
+			out.flush()?;
+		}
+		Ok(())
+	}
+
+	/// Mix one audio range pull into its main-assigned slot (acquire,
+	/// mix, publish). Returns the published slot index.
+	fn render_audio_ticket_to_slot(&mut self, spec: &AudioTicketSpec) -> Result<u32, String> {
+		let pool = match self.output_pool.clone() {
+			Some(p) if p.is_valid() => p,
+			_ => return Err("no shared-memory pool attached".to_string()),
+		};
+
+		let acquired = self
+			.acquire_slot(&pool)
+			.ok_or_else(|| "no free shm slot (shutdown or timeout)".to_string())?;
+		if acquired != spec.slot as u32 {
+			return Err(format!(
+				"slot assignment mismatch: acquired {acquired}, assigned {}",
+				spec.slot
+			));
+		}
+		let slot = acquired;
+
+		let params = self.audio_ticket_params(spec)?;
+		let need = eval::audio_samples_byte_len(&params).map_err(|e| e.to_string())?;
+		if need > pool.slot_data_bytes() {
+			// The slot was acquired but never published; main recycles it on
+			// frame_failed (see render_ticket_to_slot).
+			return Err(format!(
+				"audio range needs {need} bytes, slot holds {}",
+				pool.slot_data_bytes()
+			));
+		}
+
+		// SAFETY: `slot` was acquired above; the block is live shared memory
+		// of the attached pool.
+		let dst = unsafe {
+			std::slice::from_raw_parts_mut(
+				pool.slot_data(spec.slot as u32),
+				pool.slot_data_bytes(),
+			)
+		};
+		eval::render_audio_samples_into(&params, &mut dst[..need]).map_err(|e| e.to_string())?;
+
+		// SAFETY: slot in range of the attached pool.
+		unsafe {
+			let meta = &mut *pool.meta(spec.slot as u32);
+			*meta = FrameSlotMeta::default();
+			meta.id = spec.ticket;
+			meta.time_num = spec.time_num;
+			meta.time_den = spec.time_den;
+			// Audio slots reuse the video meta fields: `width` carries the
+			// sample rate, `channel_count`/`linesize` describe the interleaved
+			// layout, `data_size` is the sample bytes (SLOT_FORMAT_AUDIO_F32).
+			meta.width = params.sample_rate;
+			meta.height = 0;
+			meta.format = SLOT_FORMAT_AUDIO_F32;
+			meta.channel_count = params.channel_layout.count_ones().max(1) as i32;
+			meta.linesize = meta.channel_count * 4;
+			meta.data_size = need as i32;
+		}
+
+		let published = unsafe { pool.publish(slot) };
+		if !published {
+			Err("ready ring full".to_string())
+		} else {
+			Ok(slot)
+		}
+	}
+
+	/// Map a wire audio ticket spec to the eval producer's audio params.
+	fn audio_ticket_params(&self, spec: &AudioTicketSpec) -> Result<AudioTicketParams, String> {
+		if spec.time_den <= 0 || spec.duration_den <= 0 || spec.sample_rate <= 0 {
+			return Err(format!(
+				"bad audio geometry: {}x{}, rate {}",
+				spec.time_den, spec.duration_den, spec.sample_rate
+			));
+		}
+		let start = Rational::new(spec.time_num, spec.time_den);
+		let duration = Rational::new(spec.duration_num, spec.duration_den);
+		let montage: Vec<MontageClip> = spec
+			.montage
+			.iter()
+			.map(|c| MontageClip {
+				filename: c.filename.clone(),
+				stream_index: c.stream_index,
+				in_time: Rational::new(c.in_num, c.in_den),
+				out_time: Rational::new(c.out_num, c.out_den),
+				media_in: Rational::new(c.media_in_num, c.media_in_den),
+				gain: c.gain,
+			})
+			.collect();
+		Ok(AudioTicketParams {
+			viewer: self
+				.graph
+				.as_ref()
+				.map(|g| g.project_copy)
+				.unwrap_or(0),
+			range: oakcore_rs::TimeRange::new(start, start + duration),
+			sample_rate: spec.sample_rate,
+			channel_layout: spec.channel_layout,
+			montage,
+		})
+	}
+
 	/// Render `spec` into the slot's data block and fill the slot meta.
 	fn render_spec_pixels(&mut self, spec: &BatchTicketSpec, pool: &FrameSlotPool) -> Result<(), String> {
 		let w = spec.width;
@@ -955,18 +1113,29 @@ pub fn worker_main(backend: &str) -> i32 {
 		}
 		// Protocol v2: render_batch streams its responses (one
 		// batch_accepted + one frame_ready/frame_failed per ticket).
-		if serde_json::from_str::<Value>(&line)
+		let typ = serde_json::from_str::<Value>(&line)
 			.ok()
-			.and_then(|v| v.get("type").and_then(Value::as_str).map(str::to_string))
-			.as_deref()
-			== Some(TYPE_RENDER_BATCH)
-		{
-			if let Err(e) = session.handle_render_batch_stream(&line, &mut out) {
-				log_error(&format!("failed to serve render_batch: {e}"));
-				exit_code = 1;
-				break;
+			.and_then(|v| v.get("type").and_then(Value::as_str).map(str::to_string));
+		match typ.as_deref() {
+			Some(TYPE_RENDER_BATCH) => {
+				if let Err(e) = session.handle_render_batch_stream(&line, &mut out) {
+					log_error(&format!("failed to serve render_batch: {e}"));
+					exit_code = 1;
+					break;
+				}
+				continue;
 			}
-			continue;
+			// M15 S3: render_audio_batch streams the same way (audio range
+			// pulls into shm slots, interleaved f32).
+			Some(TYPE_RENDER_AUDIO_BATCH) => {
+				if let Err(e) = session.handle_render_audio_batch_stream(&line, &mut out) {
+					log_error(&format!("failed to serve render_audio_batch: {e}"));
+					exit_code = 1;
+					break;
+				}
+				continue;
+			}
+			_ => {}
 		}
 		if let Some(response) = session.handle_line(&line) {
 			if let Err(e) = write_message(&mut out, &response) {
@@ -1427,6 +1596,145 @@ mod tests {
 		// The failed ticket acquired slot 1 but never published it, so it
 		// is still owned by the filler side (not in the ready ring) — the
 		// ready ring is empty now.
+		assert!(!unsafe { parent_pool.consume(&mut consumed) });
+	}
+
+	#[test]
+	fn render_audio_batch_stream_mixes_silence_into_slot() {
+		// M15 S3: an empty-montage audio range pull (1/24 s at 48 kHz
+		// stereo = 2000 frames x 2 ch = 16000 bytes) renders total silence
+		// into the assigned slot and reports frame_ready with the audio
+		// slot meta.
+		let mut s = WorkerSession::create("none").unwrap();
+		let slot_bytes = 2000 * 2 * 4;
+		let (hs, out_region, _in) = parent_side(4, slot_bytes as i64, false);
+		let resp = s.handle_line(&hs.to_string()).expect("hello_caps response");
+		assert_eq!(resp["type"], crate::ipc::TYPE_HELLO_CAPS);
+
+		let batch = json!({
+			"type": "render_audio_batch",
+			"batch_id": 3,
+			"tickets": [
+				{
+					"ticket": 11,
+					"slot": 0,
+					"time_num": 0,
+					"time_den": 1,
+					"duration_num": 1,
+					"duration_den": 24,
+					"sample_rate": 48000,
+					"channel_layout": 0x3,
+					"channels": 2,
+				},
+				{
+					"ticket": 12,
+					"slot": 1,
+					"time_num": 0,
+					"time_den": 1,
+					"duration_num": 1,
+					"duration_den": 24,
+					"sample_rate": 0,
+					"channel_layout": 0x3,
+					"channels": 2,
+				},
+			],
+		});
+		let mut out: Vec<u8> = Vec::new();
+		s.handle_render_audio_batch_stream(&batch.to_string(), &mut out)
+			.unwrap();
+		let lines: Vec<Value> = String::from_utf8(out)
+			.unwrap()
+			.lines()
+			.map(|l| serde_json::from_str(l).unwrap())
+			.collect();
+		assert_eq!(lines.len(), 3, "accepted + one reply per ticket");
+		assert_eq!(lines[0]["type"], "batch_accepted");
+		assert_eq!(lines[0]["batch_id"], 3);
+		assert_eq!(lines[1]["type"], "frame_ready");
+		assert_eq!(lines[1]["ticket"], 11);
+		assert_eq!(lines[1]["slot"], 0);
+		assert_eq!(lines[2]["type"], "frame_failed");
+		assert_eq!(lines[2]["ticket"], 12);
+
+		// The rendered slot holds the audio meta + silent samples.
+		let parent_pool = unsafe { FrameSlotPool::attach(out_region.data()) };
+		let mut consumed = 0;
+		assert!(unsafe { parent_pool.consume(&mut consumed) });
+		assert_eq!(consumed, 0);
+		let meta = unsafe { &*parent_pool.meta_const(consumed) };
+		assert_eq!(meta.id, 11);
+		assert_eq!(meta.format, SLOT_FORMAT_AUDIO_F32);
+		assert_eq!(meta.width, 48000, "width carries the sample rate");
+		assert_eq!(meta.height, 0);
+		assert_eq!(meta.channel_count, 2);
+		assert_eq!(meta.linesize, 2 * 4);
+		assert_eq!(meta.data_size, slot_bytes as i32);
+		let data =
+			unsafe { std::slice::from_raw_parts(parent_pool.slot_data_const(consumed), slot_bytes) };
+		assert!(data.iter().all(|&b| b == 0), "empty montage is silence");
+		// The samples parse back as 2000 stereo frames.
+		let parsed: Vec<f32> = data
+			.chunks_exact(4)
+			.map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+			.collect();
+		assert_eq!(parsed.len(), 2000 * 2);
+		assert!(parsed.iter().all(|&v| v == 0.0));
+		unsafe { parent_pool.release(consumed) };
+
+		// The failed ticket (bad sample rate) acquired slot 1 but never
+		// published it.
+		assert!(!unsafe { parent_pool.consume(&mut consumed) });
+	}
+
+	#[test]
+	fn render_audio_batch_rejects_oversized_range() {
+		// A range longer than the slot can hold must fail with frame_failed
+		// (never a buffer overflow into the next slot).
+		let mut s = WorkerSession::create("none").unwrap();
+		// Slot sized for 1/48 s of stereo audio (2000 bytes).
+		let (hs, out_region, _in) = parent_side(4, 2000, false);
+		let resp = s.handle_line(&hs.to_string()).expect("hello_caps response");
+		assert_eq!(resp["type"], crate::ipc::TYPE_HELLO_CAPS);
+
+		let batch = json!({
+			"type": "render_audio_batch",
+			"batch_id": 4,
+			"tickets": [
+				{
+					"ticket": 21,
+					"slot": 0,
+					"time_num": 0,
+					"time_den": 1,
+					"duration_num": 1,
+					"duration_den": 24,
+					"sample_rate": 48000,
+					"channel_layout": 0x3,
+					"channels": 2,
+				},
+			],
+		});
+		let mut out: Vec<u8> = Vec::new();
+		s.handle_render_audio_batch_stream(&batch.to_string(), &mut out)
+			.unwrap();
+		let lines: Vec<Value> = String::from_utf8(out)
+			.unwrap()
+			.lines()
+			.map(|l| serde_json::from_str(l).unwrap())
+			.collect();
+		assert_eq!(lines[0]["type"], "batch_accepted");
+		assert_eq!(lines[1]["type"], "frame_failed");
+		assert_eq!(lines[1]["ticket"], 21);
+		assert!(
+			lines[1]["error"]
+				.as_str()
+				.unwrap()
+				.contains("needs 16000 bytes"),
+			"oversized range reported: {}",
+			lines[1]["error"]
+		);
+		// Slot 0 acquired but never published.
+		let parent_pool = unsafe { FrameSlotPool::attach(out_region.data()) };
+		let mut consumed = 0;
 		assert!(!unsafe { parent_pool.consume(&mut consumed) });
 	}
 

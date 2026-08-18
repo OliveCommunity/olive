@@ -2,7 +2,7 @@
 
 > 状态：已批准（用户 2026-08-18 提出，作为独立追加任务，不阻塞 M12 其余阶段）。
 > 前置调研：见会话调研报告（oak-worker/ipc.rs 传输层已完整、TicketArena 投递口收敛、上屏链路 6 处拷贝点）。
-> 进度：S1 完成（2026-08，协议 v2 + ProcessDispatcher + PreviewScheduler + worker 真实渲染，与线程池并存）；S2 完成（默认 Processes、删除 WorkerPool、oaktask/oak-cli/app 接入、上屏零拷贝、播放预渲染窗口）。S3 待做。
+> 进度：S1 完成（2026-08，协议 v2 + ProcessDispatcher + PreviewScheduler + worker 真实渲染，与线程池并存）；S2 完成（默认 Processes、删除 WorkerPool、oaktask/oak-cli/app 接入、上屏零拷贝、播放预渲染窗口）；S3 完成（2026-08-19：音频票走共享内存 + 播放异步预取 + 崩溃隔离覆盖音频、按票槽格式 F32 + 段按需扩容、worker/槽/批自适应策略 + 基准 bench_process）。
 
 ## 1. 目标（用户原文要求）
 
@@ -37,6 +37,7 @@
 - **每 worker 一个 shm 段**（主进程 create、worker attach，复用 `SharedMemoryRegion` 双模式与 `FrameSlotPool`，key 规范沿用 `olive-rw-<pid>-<index>`）。
 - **槽由主进程统一编址**：render 指令携带目标 slot id，worker 无权自行选槽 → 主进程可以把"预览缓存"直接建在槽上：预渲染帧的槽即缓存，上屏读槽即零拷贝；槽释放 = 缓存淘汰。当前帧（播放头）上屏路径：**shm 槽切片 → `queue.write_texture`**（GPU 上传是用户许可的唯一拷贝）。
 - **槽格式**：viewer 预览票请求 **BGRA8**（新 force_format；worker 在渲染管线末端 F32→BGRA8 转换后写入槽——格式转换不是拷贝）；导出/全分辨率/scopes 票请求 **F32 RGBA**。槽大小 = 该段服务过的最大帧（64 对齐），段按需 ftruncate 扩容或重建。
+  - **S3 落地**：槽格式按**票**指定（`force_format` 为 F32 的票得 F32 槽，worker 直写 F32；默认票保持 BGRA8）。段几何**按需增长**：调度器按请求所需 `slot_bytes` 过滤认领（`claim_batch(max_bytes)`），dispatcher 在 worker 空闲（无在飞帧）时重建更大段并通过新 handshake 让 worker 重挂（`reconfiguring` 门控），旧段随 `ShmFrameRef` 引用自然存活。导出票（encoder 请求 F32）直接读 F32 槽，消除 BGRA8→F32 回转。
 - **槽数**：每 worker 8 槽起步（决定单 worker 在飞帧数；内存 = N × 8 × 8.3MB(BGRA8 1080p)）。
 - ⚠️ **Spike 必验**：macOS POSIX `shm_open` 单段大小上限（目标 ≥ 512MB）。不达标则回退"临时文件 + `mmap(MAP_SHARED)`"（接口封装在 `SharedMemoryRegion` 内，加 backend 枚举，协议不变）。Linux 用 POSIX shm 即可。
 
@@ -86,13 +87,21 @@
 
 音频票同协议走 shm（AudioSamples 入槽）。S1/S2 可先保持主进程音频路径（崩溃风险主要来自视频插件），S3 迁移。
 
+> **S3 落地**：音频票走同一进程池。新增 `render_audio_batch` 消息（v2 增量）与 `AudioTicketSpec`；worker 侧经 `oakrender::eval::render_audio_samples_into` 直接混音入槽（`SLOT_FORMAT_AUDIO_F32 = 101`，复用 `FrameSlotMeta`：`width` 带采样率、`channel_count`/`linesize` 描述交错布局、`data_size` 为采样字节）。主进程经 `TicketPayload::ShmAudio(ShmAudioRef)` 读槽后 `release`。播放路径（`real.rs pull_audio_tick`）改为**异步预取**（`AUDIO_PREFETCH_CHUNKS = 4` 块 ≈ 66ms 提前量；ticket 完成经 poll 回调进通道，按 start_ts 排序入缓冲，实时拉取永不阻塞 UI 线程）；`submit_audio_chunk` 渲染失败补静音保持对齐。超过 `MAX_AUDIO_SLOT_BYTES`（64MB，约 3 分钟 48kHz 立体声）的音频范围（如长导出）由 dispatcher `post` 拒绝，arena 回退主进程内联渲染。dispatcher 不可用时同样回退内联（arena 的 `audio_fallback`，`InlineDispatcher::sync`），详见注释。
+
 ## 4. 分期
 
 | 期 | 范围 | 验收 |
 |---|---|---|
 | S1（crates only） | shm spike（macOS 段上限）；协议 v2；ProcessDispatcher + WorkerHandle + 崩溃重启；worker 侧真实渲染（图快照反序列化 + montage/解码/合成 + 插件执行器）；PreviewScheduler（交织批量认领）；与线程池**并存**（配置切换）。单测 + 集成测试（崩溃隔离/无窃取/均匀性/零拷贝计数）。 | `cargo test -p oakrender -p oak-worker` 全绿；集成测试演示 4 worker 渲 480 帧无重分配、相邻帧完成时间差有界 |
 | S2（默认切进程 + 删线程池 + 接入） | **完成**：RenderManager 默认 Processes；删除 WorkerPool（`InlineDispatcher` 替代单测同步执行，音频走 sync inline）；oaktask/oak-cli/facade 接入（ShmFrame 消费 + 等待时泵 poll）；UI tick 泵；上屏零拷贝（renderops/real/frames/scopes，scopes 读 BGRA8）；播放前向窗口（120 帧可配）喂 PreviewScheduler，cpu_frame 先命中 shm 槽缓存 | `cargo test` 全绿；`cargo run` 播放流畅；拷贝计数=0（`main_heap_frame_copies`）；kill -SEGV worker 后播放继续（S1 集成测试覆盖） |
-| S3 | 音频迁移；压测调优（B、槽数、worker 数自适应）；README/docs 收尾 | 性能报告；文档 |
+| S3 | 音频迁移；压测调优（B、槽数、worker 数自适应）；README/docs 收尾 | 性能报告；文档 | 
+> **S3 验收（2026-08-19 完成）**：
+> - 音频：`render_audio_batch` 协议 + worker 混音入槽 + 主进程 `ShmAudioRef` 读槽释放；播放异步预取（66ms 提前量、不阻塞 UI）；dispatcher 不可用时内联回退。集成测试覆盖 shm round-trip（4 块静音逐字节校验）与音频崩溃隔离（SIGSEGV 钩子，重启后仍出结果）。
+> - 按票槽格式：F32 票得 F32 槽（导出路径消除 BGRA8→F32 回转，`shm_frame_to_texture` 直读 F32）；段按需重建（`default_slots_for_bytes` 控制新段槽数，256MB/worker 预算）。
+> - 自适应策略：`default_slots_per_worker`（128MB/worker 段预算，BGRA8 1080p→8 槽、F32 1080p→4、F32 4K→2）、`default_batch_size`（`min(120/W, slots)`）、`default_worker_count`（核数/RAM/槽容量）。
+> - 基准：`cargo run --release -p oakrender --example bench_process [frames] [workers]` 量 1080p BGRA8 生成帧吞吐与相邻帧完成时间差（见下）。
+> - `cargo test` 全绿；`cargo check --workspace` 通过。
 
 ## 5. 风险
 

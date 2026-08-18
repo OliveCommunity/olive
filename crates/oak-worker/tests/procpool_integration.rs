@@ -30,12 +30,14 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use oakcore_rs::{PixelFormat, Rational};
+use oakcore_rs::{PixelFormat, Rational, TimeRange};
 use oakrender::ipc::SLOT_FORMAT_BGRA8;
 use oakrender::procpool::{
 	main_heap_frame_copies, reset_main_heap_frame_copies, DispatcherConfig, ProcessDispatcher,
 };
-use oakrender::ticket::{TicketPayload, TicketResult, VideoTicketParams};
+use oakrender::ticket::{
+	AudioTicketParams, TicketPayload, TicketResult, VideoTicketParams,
+};
 use oakrender::worker::{Job, JobDispatch, JobSchedule};
 
 /// Serialize every test in this file (shared process environment +
@@ -69,7 +71,10 @@ fn params(time: Rational, footage: Option<(String, i32)>) -> Arc<VideoTicketPara
 		viewer: 1,
 		time,
 		force_size: Some((64, 64)),
-		force_format: Some(PixelFormat::F32),
+		// No forced format: the dispatcher's default slot format (BGRA8)
+		// applies — the preview path these tests exercise (M15 S3: an F32
+		// force would now request an F32 slot instead).
+		force_format: None,
 		cache: None,
 		cache_dir: None,
 		cache_id: None,
@@ -94,6 +99,7 @@ fn submit(
 			node_identity: 1,
 			time: Rational::new(i as i64, 25),
 			params: params(Rational::new(i as i64, 25), footage),
+			audio: None,
 			// Never invoked on the process backend (workers render from
 			// the wire spec); must still be a valid producer.
 			produce: Arc::new(|_, _| {
@@ -311,6 +317,302 @@ fn worker_decodes_real_footage_into_slot() {
 		);
 		dispatcher.release_frame(&frame);
 	}
+
+	dispatcher.shutdown();
+}
+
+/// Submit an empty-montage audio range pull through the dispatcher
+/// (M15 S3): the worker mixes silence into a shm slot and the main
+/// process reads it back as [`TicketPayload::ShmAudio`].
+fn submit_audio(
+	dispatcher: &ProcessDispatcher,
+	results: &Arc<Mutex<Vec<TicketResult>>>,
+	viewer: u64,
+	start: Rational,
+	duration: Rational,
+) {
+	let range = TimeRange::new(start, start + duration);
+	let audio = Arc::new(AudioTicketParams {
+		viewer,
+		range,
+		sample_rate: 48000,
+		channel_layout: 0x3,
+		montage: Vec::new(),
+	});
+	let results = results.clone();
+	let job = Job {
+		node_identity: viewer,
+		time: start,
+		params: Arc::new(VideoTicketParams {
+			viewer,
+			time: start,
+			force_size: None,
+			force_format: None,
+			cache: None,
+			cache_dir: None,
+			cache_id: None,
+			cache_timebase: None,
+			footage: None,
+			montage: Vec::new(),
+		}),
+		audio: Some(audio),
+		// Never invoked on the process backend (the worker renders audio
+		// from the wire spec); must still be a valid producer.
+		produce: Arc::new(|_, _| {
+			Err(oakrender::error::Error::Failed(
+				"process backend does not use the in-process producer".into(),
+			))
+		}),
+		done: Box::new(move |result| {
+			results.lock().unwrap_or_else(|e| e.into_inner()).push(result);
+		}),
+		schedule: JobSchedule::seek(),
+	};
+	assert!(dispatcher.post(job), "post accepted while alive");
+}
+
+/// Audio tickets flow through the worker pool into shm slots (M15 S3):
+/// empty-montage ranges render as interleaved f32 silence, the main
+/// process reads them back with `ShmAudioRef::samples()` (zero copy —
+/// the copy counter stays 0) and releases the slots.
+#[test]
+fn audio_tickets_roundtrip_through_shm_slots() {
+	let _guard = lock_test();
+	let dispatcher = ProcessDispatcher::new(config(2, 4)).expect("dispatcher config");
+	dispatcher.start().expect("workers start");
+
+	reset_main_heap_frame_copies();
+
+	let results = Arc::new(Mutex::new(Vec::new()));
+	// 1/24 s at 48 kHz stereo = 2000 sample frames x 2 ch = 16000 bytes —
+	// fits the 64x64 BGRA8 slot (16384 bytes).
+	for i in 0..4 {
+		submit_audio(&dispatcher, &results, 1, Rational::new(i, 24), Rational::new(1, 24));
+	}
+	pump_until(&dispatcher, &results, 4);
+
+	let mut seen_worker = [false; 2];
+	for result in results.lock().unwrap().drain(..) {
+		let payload = result.expect("audio rendered");
+		let TicketPayload::ShmAudio(audio) = payload else {
+			panic!("audio tickets must deliver ShmAudio payloads");
+		};
+		assert_eq!(audio.sample_rate, 48000);
+		assert_eq!(audio.channel_count, 2);
+		assert_eq!(audio.meta.format, oakrender::ipc::SLOT_FORMAT_AUDIO_F32);
+		assert_eq!(audio.meta.channel_count, 2);
+		assert_eq!(audio.meta.linesize, 2 * 4);
+		assert_eq!(audio.meta.data_size, 2000 * 2 * 4);
+		// Empty montage: total silence, parsed back as f32.
+		let samples = audio.samples();
+		assert_eq!(samples.len(), 2000 * 2);
+		assert!(samples.iter().all(|&v| v == 0.0), "empty montage is silence");
+		seen_worker[audio.worker as usize] = true;
+		dispatcher.release_audio_frame(&audio);
+	}
+	assert!(seen_worker[0] && seen_worker[1], "both workers rendered audio");
+	// Samples are read via the slot mapping and parsed into a Vec — never
+	// through the counted `slot_to_vec` copy path.
+	assert_eq!(main_heap_frame_copies(), 0);
+
+	dispatcher.shutdown();
+}
+
+/// An audio render crashing mid-mix (SIGSEGV hook) must not take down the
+/// main process: the audio ticket is re-queued, the worker restarted and
+/// the samples still arrive.
+#[test]
+fn audio_crash_isolation_restarts_worker_and_audio_still_renders() {
+	let _guard = lock_test();
+
+	let marker = std::env::temp_dir().join(format!(
+		"oak-procpool-audio-crash-marker-{}",
+		std::process::id()
+	));
+	let _ = std::fs::remove_file(&marker);
+	std::env::set_var("OAK_WORKER_CRASH_ON_TICKET", "1");
+	std::env::set_var("OAK_WORKER_CRASH_MARKER", &marker);
+	struct EnvGuard;
+	impl Drop for EnvGuard {
+		fn drop(&mut self) {
+			std::env::remove_var("OAK_WORKER_CRASH_ON_TICKET");
+			std::env::remove_var("OAK_WORKER_CRASH_MARKER");
+		}
+	}
+	let _env_guard = EnvGuard;
+
+	let dispatcher = ProcessDispatcher::new(config(1, 4)).expect("dispatcher config");
+	dispatcher.start().expect("worker starts");
+
+	let results = Arc::new(Mutex::new(Vec::new()));
+	// The dispatcher's first ticket id is 1 — exactly the crash ticket
+	// (an audio ticket this time).
+	for i in 0..4 {
+		submit_audio(&dispatcher, &results, 1, Rational::new(i, 24), Rational::new(1, 24));
+	}
+	pump_until(&dispatcher, &results, 4);
+
+	assert!(
+		dispatcher.restarts_of(0) >= 1,
+		"crashed audio worker must be restarted (restarts={})",
+		dispatcher.restarts_of(0)
+	);
+	let mut crashed_ticket_seen = false;
+	for result in results.lock().unwrap().drain(..) {
+		let payload = result.expect("audio rendered despite the worker crash");
+		let TicketPayload::ShmAudio(audio) = payload else {
+			panic!("ShmAudio payload");
+		};
+		if audio.meta.id == 1 {
+			crashed_ticket_seen = true;
+			assert_eq!(audio.sample_rate, 48000);
+			assert_eq!(audio.meta.data_size, 2000 * 2 * 4);
+		}
+		dispatcher.release_audio_frame(&audio);
+	}
+	assert!(crashed_ticket_seen, "ticket 1 delivered after the restart");
+	assert!(marker.exists(), "the crash hook fired exactly once");
+	let _ = std::fs::remove_file(&marker);
+
+	dispatcher.shutdown();
+}
+
+/// An audio range too large for a practical shm slot (> 64 MB, i.e. a
+/// multi-minute export) is refused by the dispatcher's `post`, so the
+/// arena can fall back to main-process inline rendering (design §3.7)
+/// instead of forcing a giant shared-memory segment.
+#[test]
+fn oversized_audio_ticket_is_refused_by_process_backend() {
+	let _guard = lock_test();
+	let dispatcher = ProcessDispatcher::new(config(1, 4)).expect("dispatcher config");
+	dispatcher.start().expect("worker starts");
+
+	// ~3 min of 48 kHz stereo > 64 MB: post refuses it (false).
+	let duration = Rational::new(175, 1); // 175 s
+	let results = Arc::new(Mutex::new(Vec::new()));
+	let results2 = results.clone();
+	let audio = Arc::new(AudioTicketParams {
+		viewer: 1,
+		range: TimeRange::new(Rational::new(0, 1), duration),
+		sample_rate: 48000,
+		channel_layout: 0x3,
+		montage: Vec::new(),
+	});
+	let job = Job {
+		node_identity: 1,
+		time: Rational::new(0, 1),
+		params: Arc::new(VideoTicketParams {
+			viewer: 1,
+			time: Rational::new(0, 1),
+			force_size: None,
+			force_format: None,
+			cache: None,
+			cache_dir: None,
+			cache_id: None,
+			cache_timebase: None,
+			footage: None,
+			montage: Vec::new(),
+		}),
+		audio: Some(audio),
+		produce: Arc::new(|_, _| {
+			Err(oakrender::error::Error::Failed(
+				"process backend does not use the in-process producer".into(),
+			))
+		}),
+		done: Box::new(move |_| {
+			results2.lock().unwrap_or_else(|e| e.into_inner()).push(());
+		}),
+		schedule: JobSchedule::seek(),
+	};
+	assert!(
+		!dispatcher.post(job),
+		"oversized audio must be refused so the arena falls back inline"
+	);
+	assert_eq!(results.lock().unwrap().len(), 0, "no completion fires");
+
+	dispatcher.shutdown();
+}
+/// Per-ticket slot formats (M15 S3): a forced-F32 ticket gets an F32 slot
+/// (the segment grows on demand) while the default BGRA8 tickets keep
+/// BGRA8 slots — the export path's F32 request no longer round-trips
+/// through BGRA8.
+#[test]
+fn f32_ticket_gets_f32_slot_and_bgra8_stays_bgra8() {
+	let _guard = lock_test();
+	let dispatcher = ProcessDispatcher::new(config(1, 4)).expect("dispatcher config");
+	dispatcher.start().expect("worker starts");
+
+	// 1. Default BGRA8 preview ticket first.
+	let results = Arc::new(Mutex::new(Vec::new()));
+	submit(&dispatcher, &results, 1, None);
+	pump_until(&dispatcher, &results, 1);
+	let bg = results.lock().unwrap().pop().unwrap().expect("frame rendered");
+	let TicketPayload::ShmFrame(frame) = bg else {
+		panic!("ShmFrame payload");
+	};
+	assert_eq!(frame.meta.format, SLOT_FORMAT_BGRA8);
+	assert_eq!(frame.meta.data_size, 64 * 64 * 4);
+	dispatcher.release_frame(&frame);
+
+	// 2. Forced-F32 ticket: the segment grows on demand and the slot holds
+	//    F32 RGBA (16 bytes per pixel).
+	let results2 = Arc::new(Mutex::new(Vec::new()));
+	{
+		let results2 = results2.clone();
+		let job = Job {
+			node_identity: 1,
+			time: Rational::new(0, 1),
+			params: Arc::new(VideoTicketParams {
+				viewer: 1,
+				time: Rational::new(0, 1),
+				force_size: Some((64, 64)),
+				force_format: Some(PixelFormat::F32),
+				cache: None,
+				cache_dir: None,
+				cache_id: None,
+				cache_timebase: None,
+				footage: None,
+				montage: Vec::new(),
+			}),
+			audio: None,
+			produce: Arc::new(|_, _| {
+				Err(oakrender::error::Error::Failed(
+					"process backend does not use the in-process producer".into(),
+				))
+			}),
+			done: Box::new(move |result| {
+				results2.lock().unwrap_or_else(|e| e.into_inner()).push(result);
+			}),
+			schedule: JobSchedule::seek(),
+		};
+		assert!(dispatcher.post(job), "f32 post accepted");
+	}
+	pump_until(&dispatcher, &results2, 1);
+	let f32res = results2.lock().unwrap().pop().unwrap().expect("f32 frame rendered");
+	let TicketPayload::ShmFrame(frame) = f32res else {
+		panic!("ShmFrame payload");
+	};
+	assert_eq!(frame.meta.format, PixelFormat::F32 as i32);
+	assert_eq!(frame.meta.data_size, 64 * 64 * 16);
+	// The F32 bytes are zero (transparent black pipeline output).
+	let pixels = frame.shm.slot_bytes(frame.slot);
+	assert!(
+		pixels[..frame.meta.data_size as usize].iter().all(|&b| b == 0),
+		"generated F32 frame is transparent black"
+	);
+	dispatcher.release_frame(&frame);
+
+	// 3. A later default BGRA8 ticket still lands as BGRA8 in the grown
+	//    segment (the wire format is per ticket).
+	submit(&dispatcher, &results, 1, None);
+	pump_until(&dispatcher, &results, 1);
+	let bg2 = results.lock().unwrap().pop().unwrap().expect("frame rendered");
+	let TicketPayload::ShmFrame(frame) = bg2 else {
+		panic!("ShmFrame payload");
+	};
+	assert_eq!(frame.meta.format, SLOT_FORMAT_BGRA8);
+	assert_eq!(frame.meta.data_size, 64 * 64 * 4);
+	dispatcher.release_frame(&frame);
 
 	dispatcher.shutdown();
 }
