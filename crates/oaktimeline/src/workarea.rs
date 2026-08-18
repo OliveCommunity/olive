@@ -150,7 +150,7 @@ impl WorkareaSetEnabledCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command handle.
+	/// Wrap as an oakundo command handle.
 	pub fn to_command(self) -> UndoCommand {
 		crate::undocommon::box_command(self)
 	}
@@ -256,7 +256,7 @@ impl WorkareaSetRangeCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command handle.
+	/// Wrap as an oakundo command handle.
 	pub fn to_command(self) -> UndoCommand {
 		crate::undocommon::box_command(self)
 	}

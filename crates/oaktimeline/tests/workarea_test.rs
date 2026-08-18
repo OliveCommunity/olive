@@ -153,7 +153,7 @@ fn workarea_commands_box_to_undo_command() {
 }
 
 /// `Command` trait dispatch routes through the same redo/undo bodies as
-/// the inherent methods (used by the undo stack vtable).
+/// the inherent methods (used by the undo stack command values).
 #[test]
 fn workarea_commands_trait_dispatch() {
 	let wa_h = make_owned(TimelineWorkArea::new());

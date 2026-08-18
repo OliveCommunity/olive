@@ -17,10 +17,8 @@
 //! Free functions replacing the C++ `Node` static methods
 //! (COVERAGE.md §6/§9).
 
-use std::ffi::c_void;
-
 use oakcore_rs::TimeRange;
-use oakundo::undocommand::{OakUndoCommandVtable, UndoCommand};
+use oakundo::undocommand::UndoCommand;
 
 use crate::graph::Graph;
 use crate::id::NodeId;
@@ -150,39 +148,6 @@ fn lock_any<T>(m: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 	m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Userdata payload behind a closure-backed undo command: the boxed
-/// redo/undo closures.
-struct ClosureCommand {
-	/// The redo closure.
-	redo: Box<dyn FnMut() + Send>,
-	/// The undo closure.
-	undo: Box<dyn FnMut() + Send>,
-}
-
-/// `OakUndoCommandVtable` redo thunk for [`ClosureCommand`] userdata.
-unsafe extern "C" fn closure_redo(ud: *mut c_void) {
-	// SAFETY: `ud` is the `ClosureCommand` box created by
-	// `command_from_closures` and still owned by the command.
-	let c = unsafe { &mut *(ud as *mut ClosureCommand) };
-	(c.redo)();
-}
-
-/// `OakUndoCommandVtable` undo thunk for [`ClosureCommand`] userdata.
-unsafe extern "C" fn closure_undo(ud: *mut c_void) {
-	// SAFETY: see `closure_redo`.
-	let c = unsafe { &mut *(ud as *mut ClosureCommand) };
-	(c.undo)();
-}
-
-/// `OakUndoCommandVtable` free thunk for [`ClosureCommand`] userdata.
-unsafe extern "C" fn closure_free(ud: *mut c_void) {
-	if !ud.is_null() {
-		// SAFETY: the box is destroyed exactly once, by the command that
-		// owns it.
-		unsafe { drop(Box::from_raw(ud as *mut ClosureCommand)) };
-	}
-}
-
 /// Build an un-executed [`UndoCommand`] from redo/undo closures (the
 /// direct-Rust replacement of the former oakundo bridge
 /// `command_from_closures`).
@@ -190,18 +155,7 @@ fn command_from_closures(
 	redo: impl FnMut() + Send + 'static,
 	undo: impl FnMut() + Send + 'static,
 ) -> UndoCommand {
-	let ud = Box::into_raw(Box::new(ClosureCommand {
-		redo: Box::new(redo),
-		undo: Box::new(undo),
-	}));
-	UndoCommand::from_vtable(
-		OakUndoCommandVtable {
-			redo: Some(closure_redo),
-			undo: Some(closure_undo),
-			free_fn: Some(closure_free),
-		},
-		ud as *mut c_void,
-	)
+	UndoCommand::from_closures(redo, undo)
 }
 
 /// Set a keyframed/standard value at a time, returning an un-executed

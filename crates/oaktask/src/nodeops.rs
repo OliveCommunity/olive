@@ -24,8 +24,8 @@
 //! an `oaknode::id::NodeId` in that project's `oaknode::graph::Graph`.
 //!
 //! Undo commands follow the oaktimeline `undocommon` pattern: a command
-//! struct is boxed into an `oakundo::undocommand::UndoCommand` vtable
-//! command ([`box_command`]); `redo_now`/`undo_now` dispatch to it.
+//! struct is boxed into an `oakundo::undocommand::UndoCommand` value
+//! ([`box_command`]); `redo_now`/`undo_now` dispatch to it.
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -40,7 +40,7 @@ use oaknode::node::{NodeBehavior, NodeCore};
 use oaknode::project::Project;
 use oaknode::sequence::SequenceBehavior;
 use oaknode::track::{BlockRange, TrackBehavior, TrackListBehavior, TrackRange, TrackType};
-use oakundo::undocommand::{OakUndoCommandVtable, UndoCommand};
+use oakundo::undocommand::UndoCommand;
 
 /// A project, shared like the C++ `olive::Project` smart pointer.
 pub type ProjectRef = Arc<Mutex<Project>>;
@@ -905,62 +905,13 @@ pub fn pixel_format_from_code(code: i32) -> oakcore_rs::PixelFormat {
 // Undo commands
 // ---------------------------------------------------------------------------
 
-/// Command trait for the task-local undo commands (mirrors the
-/// oaktimeline `undocommon::Command` pattern).
-trait TaskCommand {
-	/// Apply the change.
-	fn redo(&mut self);
-	/// Revert the change.
-	fn undo(&mut self);
-}
+/// Command trait for the task-local undo commands (the oakundo command
+/// trait; mirrors the oaktimeline `undocommon::Command` pattern).
+pub use oakundo::undocommand::Command as TaskCommand;
 
-/// Generic `redo` callback forwarding to [`TaskCommand::redo`].
-///
-/// # Safety
-/// `userdata` must be the `Box<T>` produced by [`box_command`].
-unsafe extern "C" fn redo_cb<T: TaskCommand>(userdata: *mut std::ffi::c_void) {
-	if userdata.is_null() {
-		return;
-	}
-	// SAFETY: box_command allocated a `Box<T>`; the command still owns it.
-	(unsafe { &mut *(userdata as *mut T) }).redo();
-}
-
-/// Generic `undo` callback forwarding to [`TaskCommand::undo`].
-///
-/// # Safety
-/// As `redo_cb`.
-unsafe extern "C" fn undo_cb<T: TaskCommand>(userdata: *mut std::ffi::c_void) {
-	if userdata.is_null() {
-		return;
-	}
-	// SAFETY: as `redo_cb`.
-	(unsafe { &mut *(userdata as *mut T) }).undo();
-}
-
-/// Generic `free` callback dropping the boxed command.
-///
-/// # Safety
-/// `userdata` must be the `Box<T>` produced by [`box_command`].
-unsafe extern "C" fn free_cb<T: TaskCommand>(userdata: *mut std::ffi::c_void) {
-	if userdata.is_null() {
-		return;
-	}
-	// SAFETY: the command owns this box; dropping it frees the command.
-	unsafe {
-		drop(Box::from_raw(userdata as *mut T));
-	}
-}
-
-/// Box a task command into an oakundo vtable command value.
+/// Box a task command into an oakundo command value.
 fn box_command<T: TaskCommand + 'static>(cmd: T) -> UndoCommand {
-	let userdata = Box::into_raw(Box::new(cmd)) as *mut std::ffi::c_void;
-	let vtable = OakUndoCommandVtable {
-		redo: Some(redo_cb::<T>),
-		undo: Some(undo_cb::<T>),
-		free_fn: Some(free_cb::<T>),
-	};
-	UndoCommand::from_vtable(vtable, userdata)
+	UndoCommand::new(cmd)
 }
 
 /// `FolderAddChildCommand` — add an item to a bin folder

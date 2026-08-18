@@ -266,7 +266,7 @@ fn marker_remove_command_double_redo() {
 }
 
 /// Every marker command dispatches through the `Command` trait, which is
-/// how the undo stack's vtable invokes them.
+/// how the undo stack invokes them.
 #[test]
 fn marker_commands_trait_dispatch() {
 	let list_h = make_owned(TimelineMarkerList::new());

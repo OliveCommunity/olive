@@ -183,7 +183,7 @@ impl BlockSplitCommand {
 	/// original span, so the out point is preserved exactly).
 	pub fn redo(&mut self) {
 		// Create the second half if redo is invoked without a preceding
-		// prepare() (the vtable command path may call redo directly).
+		// prepare() (the oakundo command path may call redo directly).
 		self.prepare();
 		// Re-attach the copied subgraph if a previous undo detached it.
 		self.re_attach_subgraph();
@@ -250,7 +250,7 @@ impl BlockSplitCommand {
 		self.new_block.clone()
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		crate::undocommon::box_command(self)
 	}
@@ -343,7 +343,7 @@ impl BlockSplitPreservingLinksCommand {
 
 	/// `redo`: redo every child command in order.
 	///
-	/// The vtable command path never invokes `prepare()` (the oakundo
+	/// The oakundo command path never invokes `prepare()` (the oakundo
 	/// wrapper only dispatches `redo`/`undo`), so the children are built
 	/// on first redo; `prepare` itself redoes each child as it builds it,
 	/// so the first redo has nothing left to run. Later redos (after an
@@ -385,7 +385,7 @@ impl BlockSplitPreservingLinksCommand {
 		None
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		crate::undocommon::box_command(self)
 	}
@@ -466,7 +466,7 @@ impl TrackSplitAtTimeCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		crate::undocommon::box_command(self)
 	}

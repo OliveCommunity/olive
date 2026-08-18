@@ -62,7 +62,7 @@ impl TrackRippleRemoveBlockCommand {
 		track_insert_block_after(&self.track, &self.block, self.before.as_ref());
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -107,7 +107,7 @@ impl TrackPrependBlockCommand {
 		track_ripple_remove_block(&self.track, &self.block);
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -159,7 +159,7 @@ impl TrackInsertBlockAfterCommand {
 		track_ripple_remove_block(&self.track, &self.block);
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -210,7 +210,7 @@ impl TrackReplaceBlockCommand {
 		track_replace_block(&self.track, &self.replace, &self.old);
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}

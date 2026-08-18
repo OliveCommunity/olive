@@ -357,50 +357,19 @@ fn serializer_value_codecs() {
 	);
 }
 
-/// oakundo `UndoCommand`: vtable commands + multi commands (direct Rust
+/// oakundo `UndoCommand`: closure commands + multi commands (direct Rust
 /// calls, single-lib unification).
 #[test]
 fn undo_command_roundtrip() {
-	use std::ffi::c_void;
 	use std::sync::atomic::{AtomicI32, Ordering};
 	use std::sync::Arc;
-	use oakundo::undocommand::{OakUndoCommandVtable, UndoCommand};
-
-	struct Closures {
-		redo: Box<dyn FnMut() + Send>,
-		undo: Box<dyn FnMut() + Send>,
-	}
-
-	unsafe extern "C" fn redo_thunk(ud: *mut c_void) {
-		let c = unsafe { &mut *(ud as *mut Closures) };
-		(c.redo)();
-	}
-	unsafe extern "C" fn undo_thunk(ud: *mut c_void) {
-		let c = unsafe { &mut *(ud as *mut Closures) };
-		(c.undo)();
-	}
-	unsafe extern "C" fn free_thunk(ud: *mut c_void) {
-		if !ud.is_null() {
-			unsafe { drop(Box::from_raw(ud as *mut Closures)) };
-		}
-	}
+	use oakundo::undocommand::UndoCommand;
 
 	fn from_closures(
 		redo: impl FnMut() + Send + 'static,
 		undo: impl FnMut() + Send + 'static,
 	) -> UndoCommand {
-		let ud = Box::into_raw(Box::new(Closures {
-			redo: Box::new(redo),
-			undo: Box::new(undo),
-		}));
-		UndoCommand::from_vtable(
-			OakUndoCommandVtable {
-				redo: Some(redo_thunk),
-				undo: Some(undo_thunk),
-				free_fn: Some(free_thunk),
-			},
-			ud as *mut c_void,
-		)
+		UndoCommand::from_closures(redo, undo)
 	}
 
 	let value = Arc::new(AtomicI32::new(0));

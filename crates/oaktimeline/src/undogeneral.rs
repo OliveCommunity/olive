@@ -81,7 +81,7 @@ impl BlockResizeCommand {
 		block_set_length_and_media_out(&self.block, self.old_length);
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -134,7 +134,7 @@ impl BlockResizeWithMediaInCommand {
 		block_set_length_and_media_in(&self.block, self.old_length);
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -186,7 +186,7 @@ impl BlockSetMediaInCommand {
 		clip_set_media_in(&self.block, self.old_media_in);
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -325,7 +325,7 @@ impl TimelineAddTrackCommand {
 		c.track()
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -517,7 +517,7 @@ impl TimelineRemoveTrackCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -608,7 +608,7 @@ impl TransitionRemoveCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -833,7 +833,7 @@ impl TrackReplaceBlockWithGapCommand {
 			.push(TransitionRemoveCommand::new(relevant, true));
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -885,7 +885,7 @@ impl BlockEnableDisableCommand {
 		block_set_enabled(&self.block, self.old_enabled);
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -1073,7 +1073,7 @@ impl TrackListInsertGaps {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -1195,7 +1195,7 @@ impl TimelineAddDefaultTransitionCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}

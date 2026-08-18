@@ -16,22 +16,28 @@
 
 //! # oakundo — the undo/redo history module (Rust)
 //!
-//! Reimplements the C++ oakundo module behind its frozen C ABI
-//! (`include/undo/*.h`). See README.md for the architectural mapping —
-//! most notably the **vtable-command pattern**: C++ subclassing of
-//! `olive::UndoCommand` becomes a callback table + `userdata` pointer.
+//! Reimplements the C++ oakundo module. See README.md for the
+//! architectural mapping — most notably the **trait-object command
+//! pattern**: C++ subclassing of `olive::UndoCommand` becomes a boxed
+//! [`undocommand::Command`] (closure-backed or a
+//! [`undocommand::MultiUndoCommand`] composite) behind a plain owned
+//! [`undocommand::UndoCommand`] value.
 //!
-//! ## FFI discipline
+//! ## Consumers
 //!
-//! Identical to the oaknode/oakcodec crates: every export goes through
-//! [`handle::guard*`], handles are opaque refcounted boxes, shared
-//! state behind `Mutex`.
+//! Every consumer is in-process Rust: the app's edit layer
+//! (`oakui::graphops` / `oakui::real`) drives the process-wide stack
+//! through [`global`], `oaktimeline`/`oaktask`/`oaknode`/`oakplugin`
+//! build commands as [`undocommand::UndoCommand`] values, and
+//! `oakstorage` subscribes to the command-success observers in
+//! [`global`]. The former frozen C ABI (`include/undo/*.h`), the
+//! refcounted [`CHandle`] layer and the callback-table vtable commands
+//! were deleted with the engine facade — the crate is pure owned-value
+//! Rust with no `unsafe`.
 
-#![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]
 
 pub mod error;
 pub mod global;
-pub mod handle;
 pub mod undocommand;
 pub mod undostack;

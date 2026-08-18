@@ -17,66 +17,52 @@
 //! Safe-layer behavior matrix for `UndoCommand` / `UndoStack`
 //! (mirrors `src/undo/src/undostack.cpp` / `undocommand.cpp`).
 
-use std::cell::RefCell;
-use std::ffi::c_void;
+use std::sync::{Arc, Mutex};
 
 use oakundo::error::Error;
-use oakundo::undocommand::{OakUndoCommandVtable, UndoCommand};
+use oakundo::undocommand::UndoCommand;
 use oakundo::undostack::{EmptyCommand, UndoStack, K_MAX_UNDO_COMMANDS};
 
-/// Shared event recorder driven through vtable callbacks.
-struct Trace {
-	events: RefCell<Vec<String>>,
+/// Shared event recorder; commands record `redo:<name>` / `undo:<name>`
+/// through their closures.
+type Trace = Arc<Mutex<Vec<String>>>;
+
+fn new_trace() -> Trace {
+	Arc::new(Mutex::new(Vec::new()))
 }
 
-/// Per-command callback payload: a name and a shared trace.
-struct Probe {
-	name: &'static str,
-	trace: *const Trace,
-}
-
-unsafe extern "C" fn probe_redo(u: *mut c_void) {
-	let p = unsafe { &mut *(u as *mut Probe) };
-	let trace = unsafe { &*p.trace };
-	trace.events.borrow_mut().push(format!("redo:{}", p.name));
-}
-
-unsafe extern "C" fn probe_undo(u: *mut c_void) {
-	let p = unsafe { &mut *(u as *mut Probe) };
-	let trace = unsafe { &*p.trace };
-	trace.events.borrow_mut().push(format!("undo:{}", p.name));
-}
-
-/// A vtable-backed command whose callbacks record into `probe`.
-fn trace_cmd(probe: &mut Probe) -> UndoCommand {
-	let vtable = OakUndoCommandVtable {
-		redo: Some(probe_redo),
-		undo: Some(probe_undo),
-		free_fn: None,
-	};
-	UndoCommand::from_vtable(vtable, probe as *mut Probe as *mut c_void)
+/// A closure-backed command whose redo/undo record into `trace`.
+fn trace_cmd(name: &'static str, trace: &Trace) -> UndoCommand {
+	let (t_redo, t_undo) = (trace.clone(), trace.clone());
+	let (name_redo, name_undo) = (name.to_string(), name.to_string());
+	UndoCommand::from_closures(
+		move || t_redo.lock().unwrap().push(format!("redo:{name_redo}")),
+		move || t_undo.lock().unwrap().push(format!("undo:{name_undo}")),
+	)
 }
 
 fn events(trace: &Trace) -> Vec<String> {
-	trace.events.borrow().clone()
+	trace.lock().unwrap().clone()
 }
 
-fn setup() -> (Box<Trace>, Vec<Probe>) {
-	let trace = Box::new(Trace {
-		events: RefCell::new(Vec::new()),
-	});
-	let ptr = &*trace as *const Trace;
-	let mut probes = Vec::new();
-	for name in ["a", "b", "c"] {
-		probes.push(Probe { name, trace: ptr });
+/// A `Drop` guard that records `free:<name>` exactly once — the new-API
+/// analogue of the C-ABI `free_fn` callback (dropping a command drops its
+/// boxed closures, which drop their captures).
+struct FreeProbe {
+	name: &'static str,
+	trace: Trace,
+}
+
+impl Drop for FreeProbe {
+	fn drop(&mut self) {
+		self.trace.lock().unwrap().push(format!("free:{}", self.name));
 	}
-	(trace, probes)
 }
 
 #[test]
 fn command_redo_undo_lifecycle() {
-	let (trace, mut probes) = setup();
-	let mut cmd = trace_cmd(&mut probes[0]);
+	let trace = new_trace();
+	let mut cmd = trace_cmd("a", &trace);
 
 	assert!(!cmd.is_done());
 	assert!(cmd.has_prepared());
@@ -104,15 +90,30 @@ fn command_redo_undo_lifecycle() {
 	assert_eq!(events(&trace), vec!["redo:a", "undo:a", "redo:a", "undo:a"]);
 
 	// set_done marks executed without running anything.
-	let mut probe = Probe {
-		name: "x",
-		trace: probes[0].trace,
-	};
-	let mut cmd2 = trace_cmd(&mut probe);
+	let mut cmd2 = trace_cmd("x", &trace);
 	cmd2.set_done(true);
 	assert!(cmd2.is_done());
 	cmd2.redo_now(); // no-op (already done)
 	assert_eq!(events(&trace), vec!["redo:a", "undo:a", "redo:a", "undo:a"]);
+}
+
+/// Dropping a command runs its destruction exactly once (the C-ABI
+/// `free_fn` exactly-once contract, now via `Drop`).
+#[test]
+fn command_drop_frees_exactly_once() {
+	let trace = new_trace();
+	let probe = FreeProbe {
+		name: "a",
+		trace: trace.clone(),
+	};
+	let cmd = UndoCommand::from_closures(move || {}, move || drop(&probe));
+
+	drop(cmd);
+	assert_eq!(events(&trace), vec!["free:a"]);
+
+	// Re-dropping an already-dropped value is impossible by construction;
+	// a second drop of a clone of the event log stays empty.
+	assert_eq!(events(&trace), vec!["free:a"]);
 }
 
 #[test]
@@ -128,11 +129,11 @@ fn empty_command_is_noop() {
 
 #[test]
 fn multi_redo_undo_ordering() {
-	let (trace, mut probes) = setup();
+	let trace = new_trace();
 	let mut multi = UndoCommand::multi();
-	multi.multi_add_child(trace_cmd(&mut probes[0]));
-	multi.multi_add_child(trace_cmd(&mut probes[1]));
-	multi.multi_add_child(trace_cmd(&mut probes[2]));
+	multi.multi_add_child(trace_cmd("a", &trace));
+	multi.multi_add_child(trace_cmd("b", &trace));
+	multi.multi_add_child(trace_cmd("c", &trace));
 
 	assert_eq!(multi.multi_child_count(), 3);
 	// Children are reachable and named.
@@ -154,18 +155,19 @@ fn multi_redo_undo_ordering() {
 
 #[test]
 #[should_panic]
-fn multi_add_child_on_vtable_panics() {
-	let (_trace, mut probes) = setup();
-	let mut vtable_cmd = trace_cmd(&mut probes[0]);
-	vtable_cmd.multi_add_child(trace_cmd(&mut probes[1]));
+fn multi_add_child_on_plain_command_panics() {
+	let trace = new_trace();
+	let mut cmd = trace_cmd("a", &trace);
+	cmd.multi_add_child(trace_cmd("b", &trace));
 }
 
 #[test]
-fn multi_child_helpers_on_non_multi() {
-	let (_trace, mut probes) = setup();
-	let mut vtable_cmd = trace_cmd(&mut probes[0]);
-	assert_eq!(vtable_cmd.multi_child_count(), 0);
-	assert!(matches!(vtable_cmd.multi_child(0), Err(Error::Invalid)));
+fn multi_child_helpers_on_plain_command() {
+	let trace = new_trace();
+	let mut cmd = trace_cmd("a", &trace);
+	assert_eq!(cmd.multi_child_count(), 0);
+	assert!(matches!(cmd.multi_child(0), Err(Error::Invalid)));
+	assert!(matches!(cmd.multi_child_mut(0), Err(Error::Invalid)));
 }
 
 #[test]
@@ -181,11 +183,11 @@ fn stack_new_has_empty_bottom() {
 
 #[test]
 fn stack_push_undo_redo_branch() {
-	let (trace, mut probes) = setup();
+	let trace = new_trace();
 	let mut s = UndoStack::new();
 
-	s.push(trace_cmd(&mut probes[0]), "A");
-	s.push(trace_cmd(&mut probes[1]), "B");
+	s.push(trace_cmd("a", &trace), "A");
+	s.push(trace_cmd("b", &trace), "B");
 	assert_eq!(s.command_count(), 3);
 	assert!(s.can_undo());
 	assert!(!s.can_redo());
@@ -207,7 +209,7 @@ fn stack_push_undo_redo_branch() {
 	// Undo then push drops the redoable tail.
 	s.undo().unwrap();
 	assert!(s.can_redo());
-	s.push(trace_cmd(&mut probes[2]), "C");
+	s.push(trace_cmd("c", &trace), "C");
 	assert!(!s.can_redo(), "pushing drops redoable tail");
 	assert_eq!(s.command_count(), 3);
 	assert_eq!(s.command_name(2).unwrap(), "C");
@@ -226,11 +228,11 @@ fn stack_undo_redo_noop_when_invalid() {
 
 #[test]
 fn stack_jump_clamps_and_lands() {
-	let (trace, mut probes) = setup();
+	let trace = new_trace();
 	let mut s = UndoStack::new();
-	s.push(trace_cmd(&mut probes[0]), "A");
-	s.push(trace_cmd(&mut probes[1]), "B");
-	s.push(trace_cmd(&mut probes[2]), "C");
+	s.push(trace_cmd("a", &trace), "A");
+	s.push(trace_cmd("b", &trace), "B");
+	s.push(trace_cmd("c", &trace), "C");
 	assert_eq!(s.done_count(), 4); // empty + A + B + C
 
 	// Jump back to just the empty command (clamps negative to 0).
@@ -274,9 +276,9 @@ fn stack_discards_empty_multi() {
 
 #[test]
 fn stack_push_pre_executed_skips_redo() {
-	let (trace, mut probes) = setup();
+	let trace = new_trace();
 	let mut s = UndoStack::new();
-	s.push_pre_executed(trace_cmd(&mut probes[0]), "A");
+	s.push_pre_executed(trace_cmd("a", &trace), "A");
 	assert_eq!(
 		events(&trace),
 		Vec::<String>::new(),
@@ -293,9 +295,9 @@ fn stack_push_pre_executed_skips_redo() {
 
 #[test]
 fn stack_clear_resets_to_bottom() {
-	let (trace, mut probes) = setup();
+	let trace = new_trace();
 	let mut s = UndoStack::new();
-	s.push(trace_cmd(&mut probes[0]), "A");
+	s.push(trace_cmd("a", &trace), "A");
 	s.undo().unwrap();
 	assert_eq!(s.command_count(), 2);
 
@@ -308,15 +310,10 @@ fn stack_clear_resets_to_bottom() {
 
 #[test]
 fn stack_caps_at_k_max() {
-	let (_trace, mut probes) = setup();
+	let trace = new_trace();
 	let mut s = UndoStack::new();
 	for i in 0..(K_MAX_UNDO_COMMANDS + 20) {
-		let mut probe = Probe {
-			name: "x",
-			trace: probes[0].trace,
-		};
-		let _ = &mut probe;
-		s.push(trace_cmd(&mut probes[i % 3]), &format!("cmd{i}"));
+		s.push(trace_cmd("x", &trace), &format!("cmd{i}"));
 	}
 	assert_eq!(s.command_count() as usize, K_MAX_UNDO_COMMANDS);
 }

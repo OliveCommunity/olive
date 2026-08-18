@@ -43,7 +43,7 @@
 //! ## undoable 回写
 //!
 //! [`set_input_undoable`]/[`set_input_string_undoable`] 按
-//! `oaknode::ops::set_value_at_time_command` 的同一 closure-vtable
+//! `oaknode::ops::set_value_at_time_command` 的同一 closure
 //! 模式（`command_from_closures`）构造未执行的
 //! `oakundo::undocommand::UndoCommand`：redo 闭包锁 project、
 //! `graph.get_mut(id)`、`NodeCore::set_standard_value` 写标准值；
@@ -54,7 +54,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, OnceLock, Weak};
 
-use oakundo::undocommand::{OakUndoCommandVtable, UndoCommand};
+use oakundo::undocommand::UndoCommand;
 
 /// oaknode 节点引用（single-lib）：旧 C ABI 句柄盒
 /// `(Arc<Mutex<Project>>, NodeId)` 的值型复刻。
@@ -331,57 +331,13 @@ fn lock_any<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 	m.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Userdata payload behind a closure-backed undo command: the boxed
-/// redo/undo closures（与 `oaknode::ops.rs` 的 `ClosureCommand` 同构；
-/// 该类型的构造器是 oaknode 私有，桥内自备一份）。
-struct ClosureCommand {
-	/// The redo closure.
-	redo: Box<dyn FnMut() + Send>,
-	/// The undo closure.
-	undo: Box<dyn FnMut() + Send>,
-}
-
-/// `OakUndoCommandVtable` redo thunk for [`ClosureCommand`] userdata.
-unsafe extern "C" fn closure_redo(ud: *mut std::ffi::c_void) {
-	// SAFETY: `ud` 是 `command_from_closures` 创建的 ClosureCommand
-	// 盒，命令持有其所有权直至 free_fn。
-	let c = unsafe { &mut *(ud as *mut ClosureCommand) };
-	(c.redo)();
-}
-
-/// `OakUndoCommandVtable` undo thunk for [`ClosureCommand`] userdata.
-unsafe extern "C" fn closure_undo(ud: *mut std::ffi::c_void) {
-	// SAFETY: 见 closure_redo。
-	let c = unsafe { &mut *(ud as *mut ClosureCommand) };
-	(c.undo)();
-}
-
-/// `OakUndoCommandVtable` free thunk for [`ClosureCommand`] userdata.
-unsafe extern "C" fn closure_free(ud: *mut std::ffi::c_void) {
-	if !ud.is_null() {
-		// SAFETY: 盒恰被命令析构一次。
-		unsafe { drop(Box::from_raw(ud as *mut ClosureCommand)) };
-	}
-}
-
-/// 从 redo/undo 闭包构造未执行的 [`UndoCommand`]（closure-vtable
-/// 模式，与 `oaknode::ops::command_from_closures` 同构）。
+/// 从 redo/undo 闭包构造未执行的 [`UndoCommand`]（closure 模式，与
+/// `oaknode::ops::command_from_closures` 同构）。
 fn command_from_closures(
 	redo: impl FnMut() + Send + 'static,
 	undo: impl FnMut() + Send + 'static,
 ) -> UndoCommand {
-	let ud = Box::into_raw(Box::new(ClosureCommand {
-		redo: Box::new(redo),
-		undo: Box::new(undo),
-	}));
-	UndoCommand::from_vtable(
-		OakUndoCommandVtable {
-			redo: Some(closure_redo),
-			undo: Some(closure_undo),
-			free_fn: Some(closure_free),
-		},
-		ud as *mut std::ffi::c_void,
-	)
+	UndoCommand::from_closures(redo, undo)
 }
 
 /// 以 undoable 方式设置节点的标准输入值（POD 路径；数值族输入）。

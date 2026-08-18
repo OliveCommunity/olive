@@ -399,7 +399,7 @@ impl MultiCamEnableCommand {
         }
     }
 
-    /// Wrap as an oakundo vtable command value.
+    /// Wrap as an oakundo command value.
     pub fn to_command(self) -> UndoCommand {
         crate::undocommon::box_command(self)
     }
@@ -550,7 +550,7 @@ impl MultiCamDisableCommand {
         }
     }
 
-    /// Wrap as an oakundo vtable command value.
+    /// Wrap as an oakundo command value.
     pub fn to_command(self) -> UndoCommand {
         crate::undocommon::box_command(self)
     }
@@ -685,7 +685,7 @@ impl MultiCamSwitchCommand {
         }
     }
 
-    /// Wrap as an oakundo vtable command value.
+    /// Wrap as an oakundo command value.
     pub fn to_command(self) -> UndoCommand {
         crate::undocommon::box_command(self)
     }

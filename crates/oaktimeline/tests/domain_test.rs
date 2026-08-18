@@ -388,7 +388,7 @@ fn move_block_round_trip() {
 	assert_eq!(span_of(&tail), Some((Rational::new(50, 1), Rational::new(100, 1))));
 }
 
-/// The `Command` trait dispatch (used by the oakundo vtable wrappers)
+/// The `Command` trait dispatch (used by the oakundo command values)
 /// routes through the same redo/undo bodies as the inherent methods.
 #[test]
 fn commands_trait_dispatch() {

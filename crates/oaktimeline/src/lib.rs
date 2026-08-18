@@ -16,19 +16,20 @@
 
 //! # oaktimeline — the timeline edit module (Rust)
 //!
-//! Reimplements the C++ oaktimeline module (`src/timeline/src`) behind
-//! its frozen C ABI (`include/timeline/*.h`). See README.md for the
-//! architectural mapping (per-header domain modules, no UndoCommand
-//! inheritance → vtable commands).
+//! Reimplements the C++ oaktimeline module (`src/timeline/src`). See
+//! README.md for the architectural mapping (per-header domain modules, no
+//! UndoCommand inheritance → boxed `oakundo` command values).
 //!
 //! ## Single-lib unification
 //!
 //! The C ABI export layer (`ffi.rs`) and the oaknode/oakundo/oakcommon
 //! bridge (`bridge/`) were deleted in the single-lib unification: undo
-//! commands are now `oakundo::undocommand::UndoCommand` values and every
-//! node/block/track reference is a [`util::NodeRef`] — an
-//! `Arc<Mutex<oaknode::project::Project>>` + `oaknode::id::NodeId` pair
-//! that the commands manipulate through the oaknode Rust domain directly.
+//! commands are now `oakundo::undocommand::UndoCommand` values (the
+//! crate's command structs implement `undocommon::Command` and are boxed
+//! as trait objects) and every node/block/track reference is a
+//! [`util::NodeRef`] — an `Arc<Mutex<oaknode::project::Project>>` +
+//! `oaknode::id::NodeId` pair that the commands manipulate through the
+//! oaknode Rust domain directly.
 
 #![deny(unsafe_op_in_unsafe_fn)]
 #![warn(missing_docs)]

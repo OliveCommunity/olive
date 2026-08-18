@@ -277,7 +277,7 @@ impl BlockTrimCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -517,7 +517,7 @@ impl TrackSlideCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -672,7 +672,7 @@ impl TrackPlaceBlockCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -740,7 +740,7 @@ impl TrackMoveBlockCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}

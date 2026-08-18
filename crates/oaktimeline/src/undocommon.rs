@@ -23,27 +23,13 @@
 //!
 //! `CHandleCommandWrapper` in C++ subclasses `olive::UndoCommand` to wrap a
 //! raw `OakUndoCommand`; the Rust equivalent is the crate's own commands
-//! boxed through [`box_command`], so the wrapper is gone.
-
-use std::ffi::c_void;
+//! boxed as trait objects through [`box_command`] (they implement
+//! [`Command`] = `oakundo::undocommand::Command`), so the wrapper is gone.
 
 use oaknode::graph::NodeEntry;
-use oakundo::undocommand::{OakUndoCommandVtable, UndoCommand};
+use oakundo::undocommand::UndoCommand;
 
 use crate::util::{block_add_to_graph, block_remove_from_graph, NodeRef};
-
-/// An empty (all callbacks absent) command — the failure-path result of
-/// the deleted oaknode remove-command factory (an empty command handle).
-pub(crate) fn empty_command() -> UndoCommand {
-	UndoCommand::from_vtable(
-		OakUndoCommandVtable {
-			redo: None,
-			undo: None,
-			free_fn: None,
-		},
-		std::ptr::null_mut(),
-	)
-}
 
 /// `oaknode_command_create_remove_node` — a command that detaches a node
 /// from the project graph on `redo` (the detached entry is owned by this
@@ -114,83 +100,23 @@ pub fn create_and_run_block_remove_command(block: &NodeRef) -> UndoCommand {
 	create_and_run_remove_command(block)
 }
 
-/// `free_command_handle`: release and null a command; NULL no-op. With the
-/// `UndoCommand` value type, "freeing" is overwriting the pointee with an
-/// empty command (the old value drops, running its `free_fn`).
-pub fn free_command_handle(command: *mut UndoCommand) {
-	if command.is_null() {
-		return;
-	}
-	// SAFETY: the caller passes a valid pointer; overwriting drops the old
-	// value and installs the no-op command.
-	unsafe { *command = empty_command() };
-}
+/// Trait implemented by every timeline undo command (re-export of the
+/// oakundo command trait). The crate's commands are boxed into an
+/// [`UndoCommand`] via [`box_command`]; the command's
+/// `redo_now`/`undo_now` dispatch to these callbacks.
+pub use oakundo::undocommand::Command;
 
-/// Trait implemented by every timeline undo command. The crate's commands
-/// are boxed into an oakundo vtable command via [`box_command`]; the
-/// command's `redo_now`/`undo_now` dispatch to these callbacks.
-pub trait Command {
-	/// Apply the change.
-	fn redo(&mut self);
-	/// Revert the change.
-	fn undo(&mut self);
-}
-
-/// Generic `redo` callback forwarding to [`Command::redo`].
-///
-/// # Safety
-/// `userdata` must be the `Box<T>` produced by [`box_command`].
-unsafe extern "C" fn redo_cb<T: Command>(userdata: *mut c_void) {
-	if userdata.is_null() {
-		return;
-	}
-	// SAFETY: box_command allocated a `Box<T>`; still alive because the
-	// command owns it.
-	(unsafe { &mut *(userdata as *mut T) }).redo();
-}
-
-/// Generic `undo` callback forwarding to [`Command::undo`].
-///
-/// # Safety
-/// `userdata` must be the `Box<T>` produced by [`box_command`].
-unsafe extern "C" fn undo_cb<T: Command>(userdata: *mut c_void) {
-	if userdata.is_null() {
-		return;
-	}
-	// SAFETY: as `redo_cb`.
-	(unsafe { &mut *(userdata as *mut T) }).undo();
-}
-
-/// Generic `free` callback dropping the boxed command.
-///
-/// # Safety
-/// `userdata` must be the `Box<T>` produced by [`box_command`].
-unsafe extern "C" fn free_cb<T: Command>(userdata: *mut c_void) {
-	if userdata.is_null() {
-		return;
-	}
-	// SAFETY: the command owns this box; dropping it frees the command.
-	unsafe { drop(Box::from_raw(userdata as *mut T)) };
-}
-
-/// Box a command into an oakundo vtable command value. The command owns
-/// the boxed `T`; `redo_now`/`undo_now` dispatch to `T::redo`/`T::undo`,
-/// and dropping the command drops `T`.
+/// Box a command into an oakundo command value. The command owns the
+/// boxed `T`; `redo_now`/`undo_now` dispatch to `T::redo`/`T::undo`, and
+/// dropping the command drops `T`.
 pub(crate) fn box_command<T: Command + 'static>(cmd: T) -> UndoCommand {
-	let userdata = Box::into_raw(Box::new(cmd)) as *mut c_void;
-	let vtable = OakUndoCommandVtable {
-		redo: Some(redo_cb::<T>),
-		undo: Some(undo_cb::<T>),
-		free_fn: Some(free_cb::<T>),
-	};
-	// `from_vtable` copies the vtable and takes ownership of `userdata`.
-	UndoCommand::from_vtable(vtable, userdata)
+	UndoCommand::new(cmd)
 }
 
 /// `MultiUndoCommand` — a command that runs several child commands in order
 /// on `redo` and in reverse on `undo` (timelineundocommon.h
 /// `MultiUndoCommand`). Children are boxed `Command`s; the whole group wraps
-/// into a single oakundo vtable command via [`box_command`].
+/// into a single oakundo command via [`box_command`].
 pub struct MultiUndoCommand {
 	/// Child commands, run in order on `redo`.
 	commands: Vec<Box<dyn Command>>,
@@ -214,7 +140,7 @@ impl MultiUndoCommand {
 		self.commands.is_empty()
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}

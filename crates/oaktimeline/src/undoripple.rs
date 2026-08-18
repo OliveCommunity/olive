@@ -129,7 +129,7 @@ pub struct TrackRippleRemoveAreaCommand {
 	track: NodeRef,
 	/// Area to clear.
 	range: TimeRange,
-	/// Whether `prepare` has run (the vtable command path never calls
+	/// Whether `prepare` has run (the oakundo command path never calls
 	/// `prepare()` itself, so `redo` derives the operations on first use).
 	prepared: bool,
 	/// Out-point trim on the first block (`timelineundoripple.h` `trim_out_`).
@@ -215,7 +215,7 @@ impl TrackRippleRemoveAreaCommand {
 	///
 	/// Mirrors the C++ algorithm (`oaknode_track_get_nearest_block_before_or_at`
 	/// is a direct oaknode-domain query; `redo` invokes this on first use
-	/// because the vtable command path never calls `prepare` itself).
+	/// because the oakundo command path never calls `prepare` itself).
 	pub fn prepare(&mut self) {
 		// Idempotent: recompute from the current track state, discarding any
 		// previously derived operations.
@@ -324,7 +324,7 @@ impl TrackRippleRemoveAreaCommand {
 
 	/// `redo`: apply the ripple removal.
 	pub fn redo(&mut self) {
-		// The vtable command path never invokes `prepare()` (the oakundo
+		// The oakundo command path never invokes `prepare()` (the oakundo
 		// wrapper only dispatches redo/undo), so derive the operations
 		// on first use.
 		if !self.prepared {
@@ -408,7 +408,7 @@ impl TrackRippleRemoveAreaCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -489,7 +489,7 @@ impl TrackListRippleRemoveAreaCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -555,7 +555,7 @@ impl TimelineRippleRemoveAreaCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -763,7 +763,7 @@ impl TrackListRippleToolCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -854,7 +854,7 @@ impl TimelineRippleDeleteGapsAtRegionsCommand {
 	///
 	/// The gap-kind, nearest-block, sequence-track and locked-flag queries
 	/// all go through the oaknode domain via `crate::util`; `redo` invokes
-	/// this on first use because the oakundo vtable wrapper only dispatches
+	/// this on first use because the oakundo command wrapper only dispatches
 	/// `redo`/`undo`.
 	pub fn prepare(&mut self) {
 		self.commands_.clear();
@@ -1025,7 +1025,7 @@ impl TimelineRippleDeleteGapsAtRegionsCommand {
 
 	/// `redo`: apply the gap deletions.
 	///
-	/// The vtable command path never invokes `prepare()` (the oakundo vtable
+	/// The oakundo command path never invokes `prepare()` (the oakundo
 	/// wrapper only dispatches `redo`/`undo`), so the sub-commands are built
 	/// on first use; later redos re-apply the stored commands.
 	pub fn redo(&mut self) {
@@ -1044,7 +1044,7 @@ impl TimelineRippleDeleteGapsAtRegionsCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command value.
+	/// Wrap as an oakundo command value.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}

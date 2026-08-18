@@ -6,8 +6,7 @@ description = "Oak Video Editor undo/redo history module (Rust)"
 license = "GPL-3.0-or-later"
 
 [lib]
-crate-type = ["staticlib", "rlib"]
+crate-type = ["rlib"]
 
 [dependencies]
-oakcore-rs = { path = "../oakcore" }
 thiserror = "2"

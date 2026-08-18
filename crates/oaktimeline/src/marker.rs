@@ -244,7 +244,7 @@ fn rational_abs(r: Rational) -> Rational {
 
 // ---------------------------------------------------------------------------
 // Marker undo commands. Each struct exposes prepare()/redo()/undo(); the
-// undo stack wraps it through undocommon's vtable (to_command()).
+// undo stack wraps it through undocommon's box_command (to_command()).
 // ---------------------------------------------------------------------------
 
 /// `MarkerAddCommand` (timelinemarker.h).
@@ -333,7 +333,7 @@ impl MarkerAddCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command handle.
+	/// Wrap as an oakundo command handle.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -407,7 +407,7 @@ impl MarkerRemoveCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command handle.
+	/// Wrap as an oakundo command handle.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -500,7 +500,7 @@ impl MarkerChangeColorCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command handle.
+	/// Wrap as an oakundo command handle.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -589,7 +589,7 @@ impl MarkerChangeNameCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command handle.
+	/// Wrap as an oakundo command handle.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}
@@ -685,7 +685,7 @@ impl MarkerChangeTimeCommand {
 		}
 	}
 
-	/// Wrap as an oakundo vtable command handle.
+	/// Wrap as an oakundo command handle.
 	pub fn to_command(self) -> UndoCommand {
 		box_command(self)
 	}

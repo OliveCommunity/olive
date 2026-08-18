@@ -15,31 +15,27 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //! The process-wide undo stack, undo groups and the command-success
-//! observer hook (M14 R1: sunk from the engine facade's `undo.rs`).
+//! observer hook.
 //!
-//! The facade used to own the process-wide stack (the module-00 analogue
-//! of `EngineCore::undo_stack()`), the open undo group and the
-//! write-through notification as facade state; all of it is process state,
-//! so this module holds it and the facade forwards. The observer registry
+//! The retired engine facade used to own the process-wide stack (the
+//! module-00 analogue of `EngineCore::undo_stack()`), the open undo group
+//! and the write-through notification as facade state; all of it is
+//! process state, so this module holds it directly. The observer registry
 //! lets downstream modules (the oakstorage write-through session manager)
-//! subscribe to "a command was recorded" notifications without a facade
-//! round-trip.
+//! subscribe to "a command was recorded" notifications.
 //!
-//! M14 R5: everything in this module is Rust-typed — the process-wide
-//! stack is a plain `static Mutex<UndoStack>` and the open group holds an
-//! [`UndoCommand`] value. The only remaining `CHandle` is the
-//! [`push_or_run`] facade entry, which converts the incoming module
-//! command handle into an [`UndoCommand`] value at the boundary.
+//! Everything here is Rust-typed: the process-wide stack is a plain
+//! `static Mutex<UndoStack>` and the open group holds an
+//! [`UndoCommand`] value. The former `CHandle`-marshalling entry point
+//! (`push_or_run`) and the raw-pointer out-parameter queries
+//! (`can_undo(out)` / `command_text(buf, size)` / `command_is_done(out)`)
+//! were deleted with the C ABI — the same operations are exposed as
+//! value-typed functions below.
 
-use std::ffi::{c_char, c_int, c_void};
-use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::{Mutex, OnceLock};
 
-use crate::error::{Error, OAKUNDO_E_FAILED, Result};
-use crate::handle::CHandle;
-use crate::undocommand::{
-	command_free, command_from_owned, command_redo_now, command_take, UndoCommand,
-};
+use crate::error::Result;
+use crate::undocommand::UndoCommand;
 use crate::undostack::UndoStack;
 
 /// The process-wide undo stack, created lazily on first use and kept for
@@ -47,13 +43,6 @@ use crate::undostack::UndoStack;
 fn global_stack() -> &'static Mutex<UndoStack> {
 	static STACK: OnceLock<Mutex<UndoStack>> = OnceLock::new();
 	STACK.get_or_init(|| Mutex::new(UndoStack::new()))
-}
-
-/// Stable opaque token for the engine's `oakengine_undo_handle` export:
-/// the stack's address (never dereferenced by callers; lives for the
-/// process).
-pub fn stack_token() -> *mut c_void {
-	global_stack() as *const Mutex<UndoStack> as *mut c_void
 }
 
 /// Run `f` on the process-wide stack; a poisoned mutex is recovered (its
@@ -121,7 +110,7 @@ fn group_lock() -> std::sync::MutexGuard<'static, Option<OpenGroup>> {
 pub fn group_begin(name: &str) -> Result<()> {
 	let mut g = group_lock();
 	if g.is_some() {
-		return Err(Error::State);
+		return Err(crate::error::Error::State);
 	}
 	*g = Some(OpenGroup {
 		multi: UndoCommand::multi(),
@@ -135,7 +124,7 @@ pub fn group_begin(name: &str) -> Result<()> {
 /// when no group is open.
 pub fn group_end() -> Result<()> {
 	let mut g = group_lock();
-	let open = g.take().ok_or(Error::State)?;
+	let open = g.take().ok_or(crate::error::Error::State)?;
 	let multi = open.multi;
 	let name = open.name;
 	drop(g);
@@ -155,7 +144,7 @@ pub fn group_end() -> Result<()> {
 /// no group is open. No observers fire (nothing was recorded).
 pub fn group_abort() -> Result<()> {
 	let mut g = group_lock();
-	let open = g.take().ok_or(Error::State)?;
+	let open = g.take().ok_or(crate::error::Error::State)?;
 	let mut multi = open.multi;
 	drop(g);
 	// The multi command itself is never marked done (each child was
@@ -170,79 +159,29 @@ pub fn group_abort() -> Result<()> {
 	Ok(())
 }
 
-/// Push `command` onto the stack and execute its redo (or add it to the
-/// open group). `command` is consumed: the stack/multi takes the command
-/// value, leaving the caller's handle as a non-owning shell that still
-/// needs its own release. Returns 0 on success, a module error code
-/// otherwise. Command observers fire only when the command was recorded on
-/// the STACK — a group child joins the group, and the group itself
-/// notifies at [`group_end`].
-pub fn push_or_run(command: CHandle, name: &str) -> c_int {
+/// Push `command` onto the process-wide stack (redo then record), or into
+/// the open group as an already-done child. On a stack record the command
+/// observers fire (the oakstorage write-through persists the edit).
+pub fn push(command: UndoCommand, name: &str) -> Result<()> {
 	let mut g = group_lock();
 	if let Some(group) = g.as_mut() {
-		// The group takes the command value (command_take), so the eager
-		// redo must happen on the still-owned handle FIRST — the group
-		// receives an already-done command (C++ semantics: add_child +
-		// redo_now, net effect identical for the group's reverse-order
-		// undo).
-		let rc = command_redo_now(command);
-		if rc != 0 {
-			return rc;
-		}
-		// SAFETY: `command` is a live module command handle (facade
-		// contract); `command_take` moves the value out of its box and
-		// marks the shell non-owning.
-		return match unsafe { command_take(command.ctx) } {
-			Ok(cmd) => {
-				group.multi.multi_add_child(cmd);
-				0
-			}
-			Err(e) => e.code(),
-		};
+		// The group takes the command as an already-done child: the eager
+		// redo must run BEFORE the child joins the group (C++ semantics:
+		// add_child + redo_now, net effect identical for the group's
+		// reverse-order undo).
+		let mut command = command;
+		command.redo_now();
+		group.multi.multi_add_child(command);
+		return Ok(());
 	}
-	// No group open: take the command value and push it onto the
-	// process-wide stack (redo then record).
-	// SAFETY: as above, `command` is a live module command handle.
-	let cmd = match unsafe { command_take(command.ctx) } {
-		Ok(cmd) => cmd,
-		Err(e) => return e.code(),
-	};
+	drop(g);
 	let mut guard = global_stack().lock().unwrap_or_else(|e| e.into_inner());
-	guard.push(cmd, name);
+	guard.push(command, name);
 	drop(guard);
-	// The stack took the command; its redo already ran (plan M13 D2):
-	// persist the write-through subscribers.
+	// The stack took the command; its redo already ran: persist the
+	// write-through subscribers.
 	notify_observers();
-	0
-}
-
-// ---------------------------------------------------------------------------
-// Safe value-typed surface (M14 R3)
-//
-// The direct-rlib frontends (the app) hold module [`UndoCommand`] values,
-// not CHandles. The functions below are the safe twins of the handle-based
-// API above; the handle marshalling they perform stays inside this crate.
-// ---------------------------------------------------------------------------
-
-/// Push `command` onto the process-wide stack (redo then record), or into
-/// the open group. On a stack record the command observers fire (the
-/// oakstorage write-through persists the edit).
-pub fn push(command: UndoCommand, name: &str) -> Result<()> {
-	// SAFETY: `command_from_owned` boxes the value; `push_or_run` takes the
-	// value out of the handle (stack push or group child), and
-	// `command_free` releases the remaining non-owning shell (dropping the
-	// command itself when nobody took it).
-	let mut handle = unsafe { command_from_owned(command) };
-	if handle.is_null() {
-		return Err(Error::NoMem);
-	}
-	let rc = push_or_run(handle, name);
-	unsafe{command_free(&mut handle)};
-	if rc == 0 {
-		Ok(())
-	} else {
-		Err(Error::from_code(rc))
-	}
+	Ok(())
 }
 
 /// Step the process-wide stack back one entry (no-op at the bottom). On
@@ -261,14 +200,12 @@ pub fn redo() -> Result<()> {
 
 /// Whether the process-wide stack has an entry to undo.
 pub fn undoable() -> bool {
-	let mut v: c_int = 0;
-	unsafe{can_undo(&mut v).is_ok() && v != 0}
+	can_undo()
 }
 
 /// Whether the process-wide stack has an entry to redo.
 pub fn redoable() -> bool {
-	let mut v: c_int = 0;
-	unsafe{can_redo(&mut v).is_ok() && v != 0}
+	can_redo()
 }
 
 // ---------------------------------------------------------------------------
@@ -285,30 +222,14 @@ pub fn index() -> Result<i64> {
 	with_stack(|s| Ok(s.done_count()))
 }
 
-/// Whether an undo is possible (1/0 via `out_value`; a module error code
-/// otherwise).
-pub unsafe fn can_undo(out_value: *mut c_int) -> Result<()> {
-	if out_value.is_null() {
-		return Err(Error::Invalid);
-	}
-	let value = with_stack(|s| Ok(if s.can_undo() { 1 } else { 0 }))?;
-	// SAFETY: `out_value` points to at least one writable `c_int`, per the
-	// facade contract.
-	unsafe { *out_value = value };
-	Ok(())
+/// Whether an undo is possible.
+pub fn can_undo() -> bool {
+	with_stack(|s| Ok(s.can_undo())).unwrap_or(false)
 }
 
-/// Whether a redo is possible (1/0 via `out_value`; a module error code
-/// otherwise).
-pub unsafe fn can_redo(out_value: *mut c_int) -> Result<()> {
-	if out_value.is_null() {
-		return Err(Error::Invalid);
-	}
-	let value = with_stack(|s| Ok(if s.can_redo() { 1 } else { 0 }))?;
-	// SAFETY: `out_value` points to at least one writable `c_int`, per the
-	// facade contract.
-	unsafe { *out_value = value };
-	Ok(())
+/// Whether a redo is possible.
+pub fn can_redo() -> bool {
+	with_stack(|s| Ok(s.can_redo())).unwrap_or(false)
 }
 
 /// Undo/redo until the done-command count equals `index`. On success the
@@ -331,58 +252,15 @@ pub fn clear() -> Result<()> {
 	})
 }
 
-/// Two-stage label getter for the row at `row` (see
-/// [`crate::undostack::undostack_command_text`]): returns the required
-/// size including the NUL, or a module error code.
-pub unsafe fn command_text(row: i64, buf: *mut c_char, buf_size: c_int) -> c_int {
-	let result = catch_unwind(AssertUnwindSafe(|| -> Result<i32> {
-		with_stack(|s| {
-			if row < 0 || row >= s.command_count() {
-				return Err(Error::NotFound);
-			}
-			let name = s.command_name(row)?;
-			let required = (name.len() + 1) as i32;
-			if !buf.is_null() && buf_size > 0 {
-				let copy_len = name.len().min((buf_size as usize).saturating_sub(1));
-				let bytes = name.as_bytes();
-				// SAFETY: `buf` points to `buf_size` writable bytes and we
-				// write at most `copy_len` (+ one NUL) of them.
-				unsafe {
-					std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, copy_len);
-					*buf.add(copy_len) = 0;
-				}
-			}
-			Ok(required)
-		})
-	}));
-	match result {
-		Ok(Ok(required)) => required,
-		Ok(Err(e)) => e.code(),
-		Err(_) => OAKUNDO_E_FAILED,
-	}
-}
-
-/// Whether the row at `row` is done (1/0 via `out_value`; a module error
-/// code otherwise — `-20004` for an out-of-range row).
-pub unsafe fn command_is_done(row: i64, out_value: *mut c_int) -> Result<()> {
-	if out_value.is_null() {
-		return Err(Error::Invalid);
-	}
-	let done = with_stack(|s| s.command_is_done(row))?;
-	// SAFETY: `out_value` points to at least one writable `c_int`, per the
-	// facade contract.
-	unsafe { *out_value = if done { 1 } else { 0 } };
-	Ok(())
-}
-
-/// The user-visible label of the row at `row` (the safe twin of the
-/// two-stage [`command_text`]; the history panel's row query).
+/// The user-visible label of the row at `row` (the safe replacement for
+/// the C-ABI two-stage `command_text(buf, size)`; the history panel's row
+/// query). `NotFound` for an out-of-range row.
 pub fn command_name(row: i64) -> Result<String> {
 	with_stack(|s| s.command_name(row).map(|n| n.to_string()))
 }
 
-/// Whether the row at `row` is done (the safe twin of
-/// [`command_is_done`]; the history panel's gray-row query).
+/// Whether the row at `row` is done (the safe replacement for the C-ABI
+/// `command_is_done(out)`; the history panel's gray-row query).
 pub fn command_done(row: i64) -> Result<bool> {
 	with_stack(|s| s.command_is_done(row))
 }
@@ -405,21 +283,12 @@ mod tests {
 	}
 
 	/// The stack/group/observer state is process-wide: every test here runs
-	/// serially under this lock, mirroring the facade's GLOBAL_STACK_LOCK
-	/// pattern.
+	/// serially under this lock.
 	static LOCK: Mutex<()> = Mutex::new(());
 
-	fn vtable_command() -> CHandle {
-		use crate::undocommand::{command_init, OakUndoCommandVtable};
-		unsafe{
-		command_init(
-			&OakUndoCommandVtable {
-				redo: None,
-				undo: None,
-				free_fn: None,
-			},
-			std::ptr::null_mut(),
-		)}
+	/// A no-op command value.
+	fn noop_command() -> UndoCommand {
+		UndoCommand::from_closures(|| {}, || {})
 	}
 
 	#[test]
@@ -431,23 +300,18 @@ mod tests {
 		assert!(clear().is_ok());
 		assert_eq!(count().unwrap(), 1);
 		assert_eq!(index().unwrap(), 1);
-		let mut v: c_int = 1;
-		assert!(unsafe{can_undo(&mut v).is_ok()});
-		assert_eq!(v, 0);
+		assert!(!can_undo());
 
 		// Push fires the observer once.
-		let cmd = vtable_command();
-		assert_eq!(push_or_run(cmd, "alpha"), 0);
+		push(noop_command(), "alpha").unwrap();
 		assert_eq!(count().unwrap(), 2);
 		assert_eq!(COUNT.load(std::sync::atomic::Ordering::SeqCst), 1);
 
 		// Group begin/end fires the observer once at end.
 		assert!(group_begin("grouped").is_ok());
 		assert!(group_begin("again").is_err()); // State
-		let c1 = vtable_command();
-		let c2 = vtable_command();
-		assert_eq!(push_or_run(c1, "c1"), 0);
-		assert_eq!(push_or_run(c2, "c2"), 0);
+		push(noop_command(), "c1").unwrap();
+		push(noop_command(), "c2").unwrap();
 		// Children joined the group: no observer fire yet.
 		assert_eq!(COUNT.load(std::sync::atomic::Ordering::SeqCst), 1);
 		assert_eq!(count().unwrap(), 2);
@@ -457,8 +321,7 @@ mod tests {
 
 		// Abort fires nothing.
 		assert!(group_begin("abort").is_ok());
-		let c3 = vtable_command();
-		assert_eq!(push_or_run(c3, "c3"), 0);
+		push(noop_command(), "c3").unwrap();
 		assert!(group_abort().is_ok());
 		assert_eq!(count().unwrap(), 3);
 		assert_eq!(COUNT.load(std::sync::atomic::Ordering::SeqCst), 2);
@@ -470,9 +333,9 @@ mod tests {
 		assert!(clear().is_ok());
 	}
 
-	/// The safe value-typed surface (M14 R3): `push` redoes and records a
-	/// closure command, `undo`/`redo` step the stack, and the observers
-	/// fire on every recorded mutation.
+	/// The value-typed surface: `push` redoes and records a closure
+	/// command, `undo`/`redo` step the stack, and the observers fire on
+	/// every recorded mutation.
 	#[test]
 	fn value_push_and_undo_redo() {
 		let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -511,9 +374,9 @@ mod tests {
 		assert!(clear().is_ok());
 	}
 
-	/// The safe row getters answer like the C-ABI twins: labels survive an
-	/// undo (undone rows stay labeled) and `command_done` flips with the
-	/// stack pointer.
+	/// The row getters answer like the C-ABI twins: labels survive an undo
+	/// (undone rows stay labeled) and `command_done` flips with the stack
+	/// pointer.
 	#[test]
 	fn value_command_name_and_done() {
 		let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
