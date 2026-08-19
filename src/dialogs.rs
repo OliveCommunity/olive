@@ -95,6 +95,7 @@ pub struct PreferencesContent {
 	theme: Entity<ComboBox>,
 	cache_dir: Entity<PathField>,
 	use_proxy: Entity<CheckBox>,
+	hw_decode: Entity<CheckBox>,
 	proxy_divider: Entity<ComboBox>,
 	snapshot_interval: Entity<SpinBox>,
 	transition_length: Entity<SpinBox>,
@@ -251,6 +252,30 @@ impl PreferencesContent {
 			combo.set_selected(Some(divider_selected), cx)
 		});
 
+		// --- 渲染 Rendering: hardware decoding switch -------------------
+		// Default ON (user mandate); off forces software decoding.
+		let hw_decode = cx.new(|cx| {
+			CheckBox::new(
+				9,
+				if config_get_bool("HardwareDecoding", true) {
+					CheckState::Checked
+				} else {
+					CheckState::Unchecked
+				},
+				window,
+				cx,
+			)
+			.with_label(i18n::tr("preferences.hwdecode.enable"))
+		});
+		cx.subscribe(&hw_decode, |_this, check, event: &CheckBoxEvent, cx| {
+			if let CheckBoxEvent::Toggled { state, .. } = event {
+				let enabled = *state == CheckState::Checked;
+				config_set_bool("HardwareDecoding", enabled);
+				check.update(cx, |check, cx| check.set_state(*state, cx));
+			}
+		})
+		.detach();
+
 		// --- 项目 Project: snapshot interval + default transition ----------
 		let snapshot_interval = cx.new(|cx| {
 			let current =
@@ -342,6 +367,7 @@ impl PreferencesContent {
 			theme,
 			cache_dir,
 			use_proxy,
+			hw_decode,
 			proxy_divider,
 			snapshot_interval,
 			transition_length,
@@ -499,6 +525,7 @@ impl Render for PreferencesContent {
 				i18n::tr("preferences.backend").into(),
 				self.backend.clone(),
 			))
+			.child(self.hw_decode.clone())
 			// 缓存 Cache
 			.child(section_header(&colors, i18n::tr("preferences.section.cache").into()))
 			.child(form_row(

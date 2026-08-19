@@ -219,6 +219,20 @@ impl FFmpegDecoder {
 			state: Mutex::new(None),
 		}
 	}
+
+	/// The hardware device driving this session (`None` = software
+	/// decoding), as a display name (`videotoolbox` / `vaapi` /
+	/// `cuda/nvdec` / `d3d11va`). An observability hook for the
+	/// hardware-decode config and the first-frame fallback — tests
+	/// assert on it to prove the hardware path is really taken (and
+	/// really abandoned on fallback).
+	pub fn hw_decoder_name(&self) -> Option<String> {
+		let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+		state
+			.as_ref()
+			.and_then(|s| s.hw_device.map(crate::hwdecode::device_type_name))
+			.map(|name| name.to_string())
+	}
 }
 
 impl Default for FFmpegDecoder {
@@ -305,8 +319,17 @@ impl Decoder for FFmpegDecoder {
 		// the requested timestamp.
 		// Note: the Rust `RetrieveVideoParams` carries no cancellation atom
 		// (dropped from the C++ struct), so decoding is not cancellable here.
-		let f = state
-			.retrieve_frame(&p.time, p.time == crate::decoder::k_any_timecode(), None)?
+		let mut decoded = state.retrieve_frame(&p.time, p.time == crate::decoder::k_any_timecode(), None);
+		if decoded.is_err() && state.hw_device.is_some() {
+			// First-frame hardware fallback: the hardware decoder opened
+			// but cannot actually decode this stream (unsupported profile
+			// / driver issue at decode time). Reopen as software and retry
+			// once — this is the automatic fallback path; the config
+			// switch is the manual one.
+			state.reopen_software()?;
+			decoded = state.retrieve_frame(&p.time, p.time == crate::decoder::k_any_timecode(), None);
+		}
+		let f = decoded?
 			.ok_or_else(|| fail("no video frame available at the requested time"))?;
 
 		let (w, h, bytes) = state.scale_video_to_f32(f, p.force_range)?;
@@ -410,8 +433,14 @@ enum PacketFeed {
 /// One opened (filename, stream) decode session.
 struct DecoderState {
 	input: ffmpeg::format::context::Input,
+	/// The media file (kept for the hardware-decode fallback reopen).
+	filename: String,
 	stream_index: usize,
 	inner: DecoderInner,
+	/// The hardware device in use (`None` = software decoding). Kept so
+	/// a hardware surface can be detected and the first-frame fallback
+	/// can reopen the session as software.
+	hw_device: Option<sys::AVHWDeviceType>,
 	stream_time_base: FfRational,
 	stream_start_time: i64,
 	/// Format start time in microseconds (`AV_TIME_BASE`).
@@ -475,6 +504,12 @@ struct AudioResampler {
 impl DecoderState {
 	/// Open `(filename, stream_index)` for decoding.
 	fn open(stream: &CodecStream) -> crate::error::Result<DecoderState> {
+		Self::open_impl(stream, true)
+	}
+
+	/// Open with the hardware-decode preference explicitly on/off (the
+	/// off path is the hardware fallback's software reopen).
+	fn open_impl(stream: &CodecStream, allow_hw: bool) -> crate::error::Result<DecoderState> {
 		let mut dict = Dictionary::new();
 		dict.set("analyzeduration", "5000000");
 		dict.set("probesize", "20000000");
@@ -488,8 +523,32 @@ impl DecoderState {
 		let params = fstream.parameters();
 		let medium = params.medium();
 		let codec_id = params.id();
-		let codec = ffmpeg::decoder::find(codec_id)
-			.ok_or_else(|| fail(format!("no decoder for codec {codec_id:?}")))?;
+
+		// Hardware decode is the mandated default: on video streams open
+		// the regular decoder with the platform's hardware device
+		// attached (the FFmpeg 8 hwaccel model: VideoToolbox / VA-API /
+		// NVDEC / D3D11VA, config-gated); pure software is the fallback
+		// when no hardware device is available.
+		let mut hw_device: Option<sys::AVHWDeviceType> = None;
+		let hw_opened = if allow_hw
+			&& matches!(medium, MediaType::Video)
+			&& crate::hwdecode::hardware_decoding_enabled()
+		{
+			ffmpeg::decoder::find(codec_id).and_then(|codec| {
+				crate::hwdecode::device_type_candidates()
+					.iter()
+					.find_map(|device_type| {
+						crate::hwdecode::open_hw_accel(&params, codec, *device_type).map(
+							|(opened, device_type)| {
+								hw_device = Some(device_type);
+								opened
+							},
+						)
+					})
+			})
+		} else {
+			None
+		};
 
 		// Per-medium stream parameters (mirroring the bridge stream info);
 		// read before `params` is moved into the codec context below.
@@ -503,13 +562,20 @@ impl DecoderState {
 			input_channel_layout_mask = unsafe { ChannelLayout::from((*raw).ch_layout) }.bits();
 		}
 
-		let mut open_opts = Dictionary::new();
-		open_opts.set("threads", "auto");
-		let opened = ffmpeg::codec::Context::from_parameters(params)
-			.map_err(ffmpeg_err)?
-			.decoder()
-			.open_as_with(codec, open_opts)
-			.map_err(ffmpeg_err)?;
+		let opened = match hw_opened {
+			Some(opened) => opened,
+			None => {
+				let codec = ffmpeg::decoder::find(codec_id)
+					.ok_or_else(|| fail(format!("no decoder for codec {codec_id:?}")))?;
+				let mut open_opts = Dictionary::new();
+				open_opts.set("threads", "auto");
+				ffmpeg::codec::Context::from_parameters(params)
+					.map_err(ffmpeg_err)?
+					.decoder()
+					.open_as_with(codec, open_opts)
+					.map_err(ffmpeg_err)?
+			}
+		};
 
 		let inner = match medium {
 			MediaType::Video => DecoderInner::Video(ffmpeg::codec::decoder::Video(opened)),
@@ -548,8 +614,10 @@ impl DecoderState {
 
 		Ok(DecoderState {
 			input,
+			filename: stream.filename().to_string(),
 			stream_index,
 			inner,
+			hw_device,
 			stream_time_base,
 			stream_start_time,
 			format_start_time,
@@ -560,6 +628,16 @@ impl DecoderState {
 			video,
 			audio,
 		})
+	}
+
+	/// Reopen the session as a pure software decode (the hardware decoder
+	/// opened but cannot decode this stream). Swaps the state in place;
+	/// the retry re-seeks to the requested frame on the fresh session.
+	fn reopen_software(&mut self) -> crate::error::Result<()> {
+		let stream = CodecStream::with_block(self.filename.clone(), self.stream_index as i32, None);
+		let mut fresh = Self::open_impl(&stream, false)?;
+		std::mem::swap(self, &mut fresh);
+		Ok(())
 	}
 
 	fn send_packet(&mut self, packet: &ffmpeg::packet::Packet) -> crate::error::Result<()> {
@@ -738,7 +816,22 @@ impl DecoderState {
 			}
 
 			let frame = match self.pull()? {
-				Pull::Frame(DecodedFrame::Video(f)) => f,
+				Pull::Frame(DecodedFrame::Video(f)) => {
+					// A hardware decoder yields hardware surfaces
+					// (AV_PIX_FMT_VIDEOTOOLBOX/VAAPI/CUDA/D3D11*):
+					// transfer to system memory so the cache and swscale
+					// only ever see CPU frames.
+					// SAFETY: plain read of the frame's format field.
+					let raw_format = unsafe { (*f.as_ptr()).format };
+					if self.hw_device.is_some()
+						&& crate::hwdecode::is_hw_format(unsafe {
+							std::mem::transmute::<i32, sys::AVPixelFormat>(raw_format)
+						}) {
+						crate::hwdecode::transfer_to_cpu(&f)?
+					} else {
+						f
+					}
+				}
 				Pull::Frame(_) => unreachable!("video session yields only video frames"),
 				Pull::Eof => {
 					// Handle an "expected" EOF by using the last cached frame

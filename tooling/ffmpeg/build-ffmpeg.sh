@@ -182,10 +182,10 @@ case "$OS" in
 esac
 # NVIDIA (ffnvcodec headers are distribution-free; enable when present).
 if [ -d /usr/local/cuda ] || pkg-config --exists ffnvcodec 2>/dev/null; then
-	FLAGS+=(--enable-nvenc --enable-cuda-llvm)
-	echo "  + nvenc/cuda"
+	FLAGS+=(--enable-nvdec --enable-nvenc --enable-cuda-llvm)
+	echo "  + nvdec/nvenc/cuda"
 else
-	echo "  - nvenc/cuda (no ffnvcodec headers)"
+	echo "  - nvdec/nvenc/cuda (no ffnvcodec headers)"
 fi
 
 # --- Build ------------------------------------------------------------------

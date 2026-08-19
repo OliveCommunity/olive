@@ -36,6 +36,7 @@ use crate::encoder::create_from_params;
 use crate::ffmpeg::FFmpegDecoder;
 use crate::frame::Frame;
 use oakcore_rs::{PixelFormat, Rational, TimeRange};
+use std::sync::Arc;
 
 /// `tests/demo.mp4` at the repository root.
 fn demo_path() -> std::path::PathBuf {
@@ -285,4 +286,79 @@ fn testmedia_audio_track_encodes() {
 	let desc = d.probe(&out.to_string_lossy(), None).expect("probe");
 	assert!(desc.audio_stream_count() >= 1, "audio stream present");
 	let _ = std::fs::remove_file(&out);
+}
+
+/// Serialize the config-toggling hardware-decode test (the config store
+/// is process-global; decode tests must not observe each other's flag).
+static HW_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Hardware decoding (the mandated default): with the switch ON the
+/// session must open the platform's hardware decoder (on macOS,
+/// `h264_videotoolbox` for the H.264 demo); with the switch OFF it must
+/// be pure software. Both paths must decode the same frame to matching
+/// pixels (small tolerance for decoder rounding).
+#[test]
+fn hardware_decode_matches_software_decode() {
+	let _guard = HW_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+	let config = oakcommon::configstore::ConfigStore::instance();
+	let key = crate::hwdecode::CONFIG_KEY_HARDWARE_DECODING;
+
+	let decode_at = |time: i64| -> (Option<String>, Arc<Frame>) {
+		let d = FFmpegDecoder::new();
+		let s = CodecStream::with_block(demo_path().to_string_lossy().into_owned(), 0, None);
+		d.open(&s).expect("open video stream");
+		let hw = d.hw_decoder_name();
+		let f = d
+			.retrieve_video_frame(&video_params(s, Rational::new(time, 1)))
+			.expect("decode frame");
+		(hw, f)
+	};
+
+	// Hardware path.
+	config.set(None, key, "true");
+	let (hw_name, hw_frame) = decode_at(5);
+	#[cfg(target_os = "macos")]
+	{
+		assert_eq!(
+			hw_name.as_deref(),
+			Some("videotoolbox"),
+			"macOS must decode H.264 through VideoToolbox by default"
+		);
+		assert!(
+			crate::hwdecode::HW_TRANSFERS.load(std::sync::atomic::Ordering::Relaxed) > 0,
+			"the VideoToolbox hwaccel must really engage (a hardware surface was transferred)"
+		);
+	}
+	#[cfg(not(target_os = "macos"))]
+	assert!(
+		hw_name.is_none()
+			|| hw_name.as_deref().unwrap().contains("vaapi")
+			|| hw_name.as_deref().unwrap().contains("nvdec")
+			|| hw_name.as_deref().unwrap().contains("d3d11va"),
+		"unexpected decoder {hw_name:?}"
+	);
+
+	// Software path (the switch off).
+	config.set(None, key, "false");
+	let (sw_name, sw_frame) = decode_at(5);
+	assert!(sw_name.is_none(), "switch off must force software decoding");
+	config.set(None, key, "true");
+
+	// Same geometry, same pixels (within decoder rounding).
+	assert_eq!(
+		(hw_frame.width(), hw_frame.height()),
+		(sw_frame.width(), sw_frame.height())
+	);
+	let (hw_data, sw_data) = (hw_frame.data().unwrap(), sw_frame.data().unwrap());
+	assert_eq!(hw_data.len(), sw_data.len());
+	let mut max_diff = 0.0f32;
+	for (a, b) in hw_data.chunks_exact(4).zip(sw_data.chunks_exact(4)) {
+		let fa = f32::from_le_bytes(a.try_into().unwrap());
+		let fb = f32::from_le_bytes(b.try_into().unwrap());
+		max_diff = max_diff.max((fa - fb).abs());
+	}
+	assert!(
+		max_diff < 0.05,
+		"hardware and software decodes diverge (max channel diff {max_diff})"
+	);
 }
