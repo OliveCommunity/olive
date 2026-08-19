@@ -668,7 +668,11 @@ impl RealClock {
 	}
 
 	/// Advances the playhead from the wall clock while playing, looping at
-	/// `length`. No-op when stopped.
+	/// `length`. No-op when stopped. The advance is clamped per tick: a
+	/// long stall (the first render after pressing play, a disk stall)
+	/// must not teleport the playhead past the pre-render window — the
+	/// dropped time is re-anchored away instead (NLEs drop frames during
+	/// stalls; they never jump the playhead over rendered content).
 	pub fn tick(&mut self, length: Frame) {
 		let Some((started, anchored)) = self.started else {
 			return;
@@ -679,6 +683,14 @@ impl RealClock {
 				(elapsed.as_secs_f64() * self.rate.num as f64 / self.rate.den as f64).round()
 					as i64,
 			);
+		// At 60 Hz ticks this allows up to 120 fps of advance — normal
+		// playback rates are unaffected; only stall teleporting is clamped.
+		const MAX_ADVANCE_PER_TICK: i64 = 2;
+		let current = self.transport.frame();
+		if frame.0 > current.0 + MAX_ADVANCE_PER_TICK {
+			frame = Frame(current.0 + MAX_ADVANCE_PER_TICK);
+			self.started = Some((Instant::now(), frame));
+		}
 		if length.0 > 0 && frame.0 >= length.0 {
 			frame = Frame(frame.0 % length.0);
 		}
@@ -1652,6 +1664,23 @@ impl RealEngine {
 		window
 			.submitted
 			.retain(|f| *f >= keep_from || (*f >= playhead && *f < end));
+		// Cancel in-flight/pending frames the playhead has already passed:
+		// when they complete they can never be displayed, but they still
+		// occupy worker time. Dropping them keeps the workers on frames
+		// around the playhead, so a stall-deferred window converges back
+		// instead of grinding through ancient history forever (the
+		// "picture frozen while the playhead moves" regression).
+		let stale_pending: Vec<i64> = window
+			.submitted
+			.iter()
+			.copied()
+			.filter(|f| *f < keep_from && !window.slots.contains_key(f))
+			.collect();
+		for f in stale_pending {
+			m.dispatch
+				.cancel_preview_frame(window.sequence, f, window.generation);
+			window.submitted.remove(&f);
+		}
 		let new_frames: Vec<i64> = (playhead.max(0)..end)
 			.filter(|f| !window.submitted.contains(f))
 			.collect();
@@ -6096,6 +6125,80 @@ mod tests {
 		}
 		assert!(filled > 0, "the window cached worker frames");
 		let _ = std::fs::remove_file(&media);
+	}
+
+	/// The production scenario: real 1080p media on the timeline, driving
+	/// the actual `cpu_frame` display path the viewer paints with (not
+	/// just the window internals). The displayed frame must track the
+	/// playhead during playback — a permanently frozen picture means the
+	/// window never serves the display path.
+	#[gpui::test]
+	async fn playback_display_tracks_the_playhead(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let _worker = WorkerBinGuard::set();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		let media = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/demo.mp4");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.import_footage(media.clone(), cx).expect("import")
+			})
+		});
+		let name = media.file_name().unwrap().to_string_lossy().into_owned();
+		let entry = cx.read(|app| {
+			engine
+				.read(app)
+				.roots()
+				.into_iter()
+				.find(|e| e.name.as_ref() == name)
+		})
+		.expect("imported footage is listed");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(0), cx)
+			})
+		});
+
+		cx.update(|app| engine.update(app, |engine, cx| engine.play(Monitor::Program, cx)));
+		let deadline = std::time::Instant::now() + Duration::from_secs(30);
+		let mut last_displayed = -1i64;
+		loop {
+			cx.update(|app| engine.update(app, |engine, cx| engine.tick(cx)));
+			let (playhead, displayed, slots) = cx.read(|app| {
+				let engine = engine.read(app);
+				let playhead = engine.clock_frame(Monitor::Program, app).0;
+				let displayed = engine
+					.cpu_frame_cache
+					.lock()
+					.unwrap()
+					.get(&Monitor::Program)
+					.and_then(|e| e.proxy.as_ref().map(|p| p.frame))
+					.unwrap_or(-1);
+				let slots = engine
+					.preview_windows
+					.lock()
+					.unwrap()
+					.get(&Monitor::Program)
+					.map(|w| w.slots.len())
+					.unwrap_or(0);
+				(playhead, displayed, slots)
+			});
+			last_displayed = last_displayed.max(displayed);
+			if displayed >= 3 && playhead - displayed < 4 {
+				break;
+			}
+			assert!(
+				std::time::Instant::now() < deadline,
+				"the displayed frame must track the playhead (playhead {playhead}, displayed {displayed}, peak displayed {last_displayed}, window slots {slots})"
+			);
+			// The viewer paints at ~60 Hz.
+			std::thread::sleep(Duration::from_millis(16));
+			cx.update(|app| {
+				engine.read(app).cpu_frame(Monitor::Program, app);
+			});
+		}
+		assert!(last_displayed >= 3);
 	}
 
 	// ---- M15 S3 audio prefetch ------------------------------------------

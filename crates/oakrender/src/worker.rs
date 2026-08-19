@@ -155,6 +155,11 @@ pub trait JobDispatch: Send + Sync {
 	fn preview_window_capacity(&self) -> Option<usize> {
 		None
 	}
+
+	/// Cancel one pre-render window frame by scheduler key (pending or in
+	/// flight; the completion fires `Error::State`). Default no-op: only
+	/// the process backend schedules.
+	fn cancel_preview_frame(&self, _sequence: u64, _frame: i64, _version: u64) {}
 }
 
 /// Thread-free job dispatcher (M15 S2). Executes jobs on the calling

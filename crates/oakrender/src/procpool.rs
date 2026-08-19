@@ -1609,6 +1609,16 @@ impl JobDispatch for ProcessDispatcher {
 		Some(self.preview_window_capacity())
 	}
 
+	/// Cancel one pre-render window frame (delegates to the inherent
+	/// [`ProcessDispatcher::cancel_frame`]).
+	fn cancel_preview_frame(&self, sequence: u64, frame: i64, version: u64) {
+		self.cancel_frame(&FrameKey {
+			sequence,
+			frame,
+			version,
+		});
+	}
+
 	/// Release a consumed frame's slot (delegates to the inherent
 	/// release — see [`ProcessDispatcher::release_frame`]).
 	fn release_frame(&self, frame: &ShmFrameRef) {
