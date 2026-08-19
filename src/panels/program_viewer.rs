@@ -146,9 +146,21 @@ impl<E: AppEngine> ProgramViewerPanel<E> {
 		}
 	}
 
-	/// Handles the viewer's local (non-registry) context-menu items — all
-	/// placeholders until the viewer widget grows the matching controls.
-	fn on_local_menu_item(&mut self, item: usize, _cx: &mut Context<Self>) {
+	/// Handles the viewer's local (non-registry) context-menu items.
+	fn on_local_menu_item(&mut self, item: usize, cx: &mut Context<Self>) {
+		use crate::menus::shared as shared_menu;
+		let divider = match item {
+			shared_menu::LOCAL_VIEWER_RES_FULL => Some(1),
+			shared_menu::LOCAL_VIEWER_RES_HALF => Some(2),
+			shared_menu::LOCAL_VIEWER_RES_QUARTER => Some(4),
+			shared_menu::LOCAL_VIEWER_RES_EIGHTH => Some(8),
+			_ => None,
+		};
+		if let Some(divider) = divider {
+			let engine = self.engine.clone();
+			engine.update(cx, |engine, cx| engine.set_playback_divider(divider, cx));
+			return;
+		}
 		println!("[program viewer] context-menu item {item} (not implemented yet)");
 	}
 
@@ -309,8 +321,12 @@ impl<E: AppEngine> Render for ProgramViewerPanel<E> {
 			// the panel opens the shared viewer menu here.
 			.on_mouse_down(MouseButton::Right, {
 				cx.listener(|this, event: &gpui::MouseDownEvent, _window, cx| {
-					this.context_menu
-						.show(event.position, crate::menus::shared::viewer_menu(), cx);
+					let divider = this.engine.read(cx).playback_divider();
+					this.context_menu.show(
+						event.position,
+						crate::menus::shared::viewer_menu(divider),
+						cx,
+					);
 				})
 			})
 			.child(

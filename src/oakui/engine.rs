@@ -740,6 +740,27 @@ pub trait AppEngine:
 		let _ = cx;
 	}
 
+	/// The playback resolution divider (the C++ viewer `Playback
+	/// Resolution ▸` menu / `PlaybackDivider` config): 1 = full preview
+	/// size, 2/4/8 = progressively smaller preview renders for machines
+	/// that cannot keep up. Preview-only; exports always render native.
+	fn playback_divider(&self) -> i64 {
+		oakcommon::configstore::ConfigStore::instance()
+			.get_int(None, "PlaybackDivider", 1)
+			.clamp(1, 8) as i64
+	}
+
+	/// Sets the playback resolution divider and invalidates the rendered
+	/// frames so the next pull re-renders at the new geometry.
+	fn set_playback_divider(&mut self, divider: i64, cx: &mut Context<Self>) {
+		oakcommon::configstore::ConfigStore::instance().set(
+			None,
+			"PlaybackDivider",
+			&divider.clamp(1, 8).to_string(),
+		);
+		let _ = cx;
+	}
+
 	/// The footage rows the proxy dialog's footage mode lists (every
 	/// footage node in the open project).
 	fn proxy_rows(&self) -> Vec<ProxyFootageRow> {

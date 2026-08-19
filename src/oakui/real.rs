@@ -1231,8 +1231,12 @@ impl RealEngine {
 	fn proxy_render_size(&self) -> Option<(i32, i32)> {
 		let info = self.sequence_info.as_ref()?;
 		let (w, h) = (info.format.width.max(1), info.format.height.max(1));
-		const MAX_LONG_EDGE: u32 = 480;
-		let scale = MAX_LONG_EDGE as f64 / w.max(h) as f64;
+		// The playback resolution divider (the C++ viewer `Playback
+		// Resolution ▸` menu): render the preview at 480/divider long edge
+		// so slower machines (or debug builds) can still play in real time.
+		let divider = self.playback_divider().max(1) as u32;
+		let max_long_edge = 480 / divider;
+		let scale = max_long_edge as f64 / w.max(h) as f64;
 		let width = ((w as f64 * scale).round() as u32).max(2);
 		let height = ((h as f64 * scale).round() as u32).max(2);
 		Some((width as i32, height as i32))
@@ -4004,6 +4008,18 @@ impl AppEngine for RealEngine {
 		);
 		// Every footage's preview media may change: drop the rendered
 		// frames so the next pull re-resolves original/proxy.
+		self.invalidate_preview_frames(cx);
+	}
+
+	/// Sets the playback resolution divider (the viewer `Playback
+	/// Resolution ▸` menu): the preview geometry changes, so every cached
+	/// and in-flight preview frame is stale.
+	fn set_playback_divider(&mut self, divider: i64, cx: &mut Context<Self>) {
+		oakcommon::configstore::ConfigStore::instance().set(
+			None,
+			"PlaybackDivider",
+			&divider.clamp(1, 8).to_string(),
+		);
 		self.invalidate_preview_frames(cx);
 	}
 

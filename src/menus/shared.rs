@@ -202,7 +202,7 @@ pub fn viewer_zoom_level_id(index: usize) -> usize {
 /// subtitle block the engine does not surface yet). Zoom / playback
 /// resolution / safe margins / waveform / FPS are placeholders until the
 /// viewer widget grows those controls.
-pub fn viewer_menu() -> Menu {
+pub fn viewer_menu(playback_divider: i64) -> Menu {
 	use crate::i18n::tr;
 	// Zoom: Fit + one entry per zoom level.
 	let mut zoom_items = vec![MenuItem::new(LOCAL_VIEWER_ZOOM_FIT, tr("viewer.context.zoom_fit"))];
@@ -213,12 +213,17 @@ pub fn viewer_menu() -> Menu {
 		));
 	}
 	// Playback resolution radio group.
+	// Playback Resolution radio group (the C++ `PlaybackDivider` config):
+	// the checked entry reflects the current divider.
 	let resolution_menu = Menu::new(vec![
-		MenuItem::new(LOCAL_VIEWER_RES_FULL, tr("viewer.context.res_full")).with_checked(true),
-		MenuItem::new(LOCAL_VIEWER_RES_HALF, tr("viewer.context.res_half")).with_checked(false),
+		MenuItem::new(LOCAL_VIEWER_RES_FULL, tr("viewer.context.res_full"))
+			.with_checked(playback_divider <= 1),
+		MenuItem::new(LOCAL_VIEWER_RES_HALF, tr("viewer.context.res_half"))
+			.with_checked(playback_divider == 2),
 		MenuItem::new(LOCAL_VIEWER_RES_QUARTER, tr("viewer.context.res_quarter"))
-			.with_checked(false),
-		MenuItem::new(LOCAL_VIEWER_RES_EIGHTH, tr("viewer.context.res_eighth")).with_checked(false),
+			.with_checked(playback_divider == 4),
+		MenuItem::new(LOCAL_VIEWER_RES_EIGHTH, tr("viewer.context.res_eighth"))
+			.with_checked(playback_divider >= 8),
 	]);
 	// Safe margins radio group.
 	let safe_menu = Menu::new(vec![
@@ -370,7 +375,7 @@ mod tests {
 	/// defaults each radio group to its first entry.
 	#[test]
 	fn viewer_menu_offers_every_zoom_level() {
-		let menu = viewer_menu();
+		let menu = viewer_menu(1);
 		let zoom = menu
 			.items
 			.iter()
@@ -389,7 +394,7 @@ mod tests {
 	/// (default) entry only.
 	#[test]
 	fn viewer_menu_radio_groups_default_to_the_first_entry() {
-		let menu = viewer_menu();
+		let menu = viewer_menu(1);
 		for label_key in [
 			"viewer.context.playback_resolution",
 			"viewer.context.safe_margins",
@@ -407,5 +412,21 @@ mod tests {
 				"{label_key} non-defaults unchecked"
 			);
 		}
+	}
+
+	/// The resolution radio follows the current playback divider.
+	#[test]
+	fn viewer_menu_resolution_radio_follows_the_divider() {
+		let menu = viewer_menu(4);
+		let item = menu
+			.items
+			.iter()
+			.find(|item| item.label == crate::i18n::tr("viewer.context.playback_resolution"))
+			.expect("resolution submenu");
+		let sub = &item.submenu.as_ref().unwrap().items;
+		assert_eq!(sub[0].checked, Some(false), "full unchecked at /4");
+		assert_eq!(sub[1].checked, Some(false), "half unchecked at /4");
+		assert_eq!(sub[2].checked, Some(true), "quarter checked at /4");
+		assert_eq!(sub[3].checked, Some(false), "eighth unchecked at /4");
 	}
 }
