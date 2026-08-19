@@ -259,6 +259,12 @@ impl<E: AppEngine> TimelinePanel<E> {
 			return;
 		}
 		match item {
+			LOCAL_ADD_VIDEO_TRACK => {
+				self.engine.update(cx, |engine, cx| engine.add_track(TrackKind::Video, cx));
+			}
+			LOCAL_ADD_AUDIO_TRACK => {
+				self.engine.update(cx, |engine, cx| engine.add_track(TrackKind::Audio, cx));
+			}
 			LOCAL_DELETE_TRACK => {
 				if let Some(track) = self.context_track {
 					self.engine.update(cx, |engine, cx| engine.remove_track(track, cx));
@@ -709,6 +715,45 @@ impl<E: AppEngine> Render for TimelinePanel<E> {
 			toolbar = toolbar.child(tool_button(index, icon_name, tool_key, cx));
 		}
 
+		// Add-track buttons (the convenient way to create tracks; the track
+		// header context menu offers the same two entries).
+		let add_track_btn = |id: &'static str,
+		                     key: &'static str,
+		                     kind: TrackKind,
+		                     cx: &mut Context<Self>| {
+			let label = i18n::tr(key);
+			let hover_bg = colors.selected;
+			div()
+				.id(id)
+				.h(px(24.0))
+				.px_2()
+				.flex()
+				.items_center()
+				.rounded_sm()
+				.cursor_pointer()
+				.text_color(colors.text)
+				.text_xs()
+				.hover(move |style| style.bg(hover_bg))
+				.tooltip(move |window, cx| tooltip_view(label.into(), window, cx))
+				.on_click(cx.listener(move |this, _event: &ClickEvent, _window, cx| {
+					this.engine.update(cx, |engine, cx| engine.add_track(kind, cx));
+				}))
+				.child(label)
+		};
+		toolbar = toolbar
+			.child(add_track_btn(
+				"toolbar-add-video-track",
+				"timeline.add_video_track",
+				TrackKind::Video,
+				cx,
+			))
+			.child(add_track_btn(
+				"toolbar-add-audio-track",
+				"timeline.add_audio_track",
+				TrackKind::Audio,
+				cx,
+			));
+
 		// A plain icon button (no selection state), e.g. zoom in/out.
 		let icon_btn = |id: &'static str,
 		                icon_name: &'static str,
@@ -909,6 +954,8 @@ const LOCAL_TIMECODE_NON_DROP_FRAME: usize = 2124;
 const LOCAL_TIMECODE_SECONDS: usize = 2125;
 const LOCAL_TIMECODE_FRAMES: usize = 2126;
 const LOCAL_TIMECODE_MILLISECONDS: usize = 2127;
+const LOCAL_ADD_VIDEO_TRACK: usize = 2130;
+const LOCAL_ADD_AUDIO_TRACK: usize = 2131;
 
 /// A registry-backed item shown under a "Properties" label (the C++ clip
 /// and sequence "Properties" entries open the Speed/Duration and Sequence
@@ -1078,7 +1125,9 @@ pub(crate) fn empty_area_menu() -> Menu {
 /// every empty track.
 pub(crate) fn track_head_menu() -> Menu {
 	Menu::new(vec![
-		MenuItem::new(LOCAL_DELETE_TRACK, i18n::tr("timeline.context.delete_track")),
+		MenuItem::new(LOCAL_ADD_VIDEO_TRACK, i18n::tr("timeline.context.add_video_track")),
+		MenuItem::new(LOCAL_ADD_AUDIO_TRACK, i18n::tr("timeline.context.add_audio_track")),
+		MenuItem::new(LOCAL_DELETE_TRACK, i18n::tr("timeline.context.delete_track")).separated(),
 		MenuItem::new(LOCAL_DELETE_ALL_EMPTY, i18n::tr("timeline.context.delete_all_empty")),
 	])
 }
@@ -1487,13 +1536,21 @@ mod tests {
 
 	/// The track-header menu is exactly the two delete entries.
 	#[test]
-	fn track_head_menu_is_the_two_delete_entries() {
+	fn track_head_menu_offers_add_then_delete_entries() {
 		let ids: Vec<usize> = track_head_menu()
 			.items
 			.iter()
 			.map(|item| item.id)
 			.collect();
-		assert_eq!(ids, vec![LOCAL_DELETE_TRACK, LOCAL_DELETE_ALL_EMPTY]);
+		assert_eq!(
+			ids,
+			vec![
+				LOCAL_ADD_VIDEO_TRACK,
+				LOCAL_ADD_AUDIO_TRACK,
+				LOCAL_DELETE_TRACK,
+				LOCAL_DELETE_ALL_EMPTY
+			]
+		);
 	}
 
 	/// The marker menu pairs the color labels with the plain edit section

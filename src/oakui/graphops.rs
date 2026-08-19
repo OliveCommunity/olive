@@ -206,7 +206,20 @@ pub fn create_sequence(project: &ProjectRef, name: &str) -> NodeId {
 	let mut guard = lock(project);
 	let (mut core, behavior) = SequenceBehavior::create();
 	core.label = name.to_string();
-	guard.graph.add_node(core, behavior)
+	let seq = guard.graph.add_node(core, behavior);
+	drop(guard);
+	// A new sequence starts with the default 2 video + 2 audio track
+	// layout (user-mandated NLE default: V1, V2 on top, A1, A2 below).
+	// Driven directly through the add-track commands' redo — NOT pushed
+	// to the undo stack, a sequence's default layout is part of its
+	// creation, not an undoable edit.
+	for kind in [TrackType::Video, TrackType::Video, TrackType::Audio, TrackType::Audio] {
+		let Some(list) = find_or_create_track_list(project, seq, kind) else {
+			continue;
+		};
+		oaktimeline::undogeneral::TimelineAddTrackCommand::new(node_ref(project, list)).redo();
+	}
+	seq
 }
 
 /// The label of a node (`NodeCore::label`).
@@ -1270,6 +1283,110 @@ pub fn place_footage_clip(
 	let edge = connect_command(p, footage, clip, oaknode::block::clip_input::TEXTURE_INPUT)?;
 	push_multi(vec![place, edge], "Add Clip")?;
 	Ok(clip)
+}
+
+/// Place linked clips of one footage on several tracks in ONE undoable
+/// "Add Clip" entry (the NLE A/V-drop: a video-with-audio file lands as
+/// a video clip plus a linked audio clip). `placements` lists the
+/// `(track kind, track index)` targets in order; every clip shares the
+/// same timeline range and media-in, and all clips are linked both ways
+/// (C++ `block_links_` semantics: grouped edits like split/ripple apply
+/// to the whole group).
+pub fn place_footage_clips_linked(
+	p: &ProjectRef,
+	seq: NodeId,
+	footage: NodeId,
+	placements: &[(TrackType, usize)],
+	in_ts: i64,
+	out_ts: i64,
+	media_in_ts: i64,
+) -> Result<Vec<NodeId>, String> {
+	if placements.len() < 2 {
+		return Err("linked placement needs at least two tracks".to_string());
+	}
+	let tb = {
+		let g = lock(p);
+		if footage_behavior(&g.graph, footage).is_none() {
+			return Err("the footage node is not in the project".to_string());
+		}
+		sequence_time_base(&g.graph, seq)
+			.ok_or_else(|| "sequence has no valid frame rate".to_string())?
+	};
+	let in_r = ts_to_rational(in_ts, tb);
+	let out_r = ts_to_rational(out_ts, tb);
+	let media_r = ts_to_rational(media_in_ts, tb);
+	let length = out_r - in_r;
+
+	// Create all clips first (graph writes are not undoable; the placement
+	// commands below are).
+	let mut clips = Vec::with_capacity(placements.len());
+	for _ in placements {
+		let mut g = lock(p);
+		let (core, behavior) = oaknode::block::clip_create();
+		let id = g.graph.add_node(core, behavior);
+		if let Some(c) = g
+			.graph
+			.get_mut(id)
+			.and_then(|e| e.behavior.as_any_mut())
+			.and_then(|a| a.downcast_mut::<ClipBlockBehavior>())
+		{
+			c.core.media_in = media_r;
+			c.core.set_length_and_media_in(length);
+		}
+		clips.push(id);
+	}
+
+	let mut commands = Vec::new();
+	for (&(kind, track_index), &clip) in placements.iter().zip(&clips) {
+		let list = {
+			let g = lock(p);
+			track_list_of(&g.graph, seq, kind)
+				.ok_or_else(|| "sequence has no track list for this type".to_string())?
+		};
+		commands.push(
+			oaktimeline::undopointer::TrackPlaceBlockCommand::new(
+				node_ref(p, list),
+				track_index as i32,
+				node_ref(p, clip),
+				in_r,
+			)
+			.to_command(),
+		);
+		commands.push(connect_command(p, footage, clip, oaknode::block::clip_input::TEXTURE_INPUT)?);
+	}
+	// Link the group both ways (closure commands capture the current
+	// links for undo).
+	for (i, &a) in clips.iter().enumerate() {
+		for (j, &b) in clips.iter().enumerate() {
+			if i == j {
+				continue;
+			}
+			let old: Vec<NodeId> = {
+				let g = lock(p);
+				g.graph.links_of(a)
+			};
+			let (p1, p2) = (p.clone(), p.clone());
+			commands.push(oakundo::undocommand::UndoCommand::from_closures(
+				move || {
+					let mut g = lock(&p1);
+					if let Some(entry) = g.graph.get_mut(a) {
+						let links = &mut entry.core.links;
+						if !links.contains(&b) {
+							links.push(b);
+						}
+					}
+				},
+				move || {
+					let mut g = lock(&p2);
+					if let Some(entry) = g.graph.get_mut(a) {
+						entry.core.links = old.clone();
+					}
+				},
+			));
+		}
+	}
+	push_multi(commands, "Add Clip")?;
+	Ok(clips)
 }
 
 /// Split `clip` at `time_ts` (a frame timestamp strictly inside the

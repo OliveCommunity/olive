@@ -3866,63 +3866,85 @@ impl AppEngine for RealEngine {
 		// Media type from the probed stream list (the probe is real since
 		// the import fills it); fall back to the extension only when no
 		// streams were recorded (legacy projects loaded without a probe).
-		let footage_kind = if total_streams > 0 {
-			if video_streams > 0 {
-				TrackKind::Video
-			} else {
-				TrackKind::Audio
-			}
+		let (has_video, has_audio) = if total_streams > 0 {
+			(video_streams > 0, total_streams > video_streams)
 		} else if crate::oakui::filename_is_audio(&filename) {
-			TrackKind::Audio
+			(false, true)
 		} else {
-			TrackKind::Video
+			(true, false)
 		};
 		// Track policy (see the `AppEngine::drop_footage` docs): use the
 		// pointed display track when its kind matches, otherwise auto-select
 		// the topmost track of the footage's kind; reject when there is none.
-		let target = if let Some(track) = self.tracks.get(track_index) {
-			if track.kind == footage_kind {
-				track_index
-			} else {
-				match self.tracks.iter().position(|t| t.kind == footage_kind) {
-					Some(index) => index,
-					None => {
-						// No track of the media's kind: create one (the NLE
-						// convention — Premiere auto-creates on drop).
-						self.add_track(footage_kind, cx);
-						match self.tracks.iter().position(|t| t.kind == footage_kind) {
-							Some(index) => index,
-							None => {
-								println!(
-									"[real engine] drop footage: could not add a {:?} track for \"{}\"",
-									footage_kind, filename
-								);
-								return;
-							}
-						}
-					}
+		// A video-with-audio file needs BOTH a video and an audio track —
+		// missing kinds are created (the NLE convention — Premiere
+		// auto-creates on drop).
+		let mut ensure_track = |this: &mut Self, kind: TrackKind, cx: &mut Context<Self>| {
+			if let Some(track) = this.tracks.get(track_index) {
+				if track.kind == kind {
+					return Some(track_index);
 				}
 			}
-		} else if self.tracks.is_empty() {
-			// An empty timeline (a fresh sequence has no tracks yet): create
-			// the media's track and drop onto it.
-			self.add_track(footage_kind, cx);
-			match self.tracks.iter().position(|t| t.kind == footage_kind) {
-				Some(index) => index,
+			if let Some(index) = this.tracks.iter().position(|t| t.kind == kind) {
+				return Some(index);
+			}
+			this.add_track(kind, cx);
+			match this.tracks.iter().position(|t| t.kind == kind) {
+				Some(index) => Some(index),
 				None => {
 					println!(
-						"[real engine] drop footage: could not add a {:?} track",
-						footage_kind
+						"[real engine] drop footage: could not add a {:?} track for \"{}\"",
+						kind, filename
 					);
-					return;
+					None
 				}
 			}
-		} else {
-			println!("[real engine] drop footage: display track {track_index} does not exist");
-			return;
 		};
-		let track = &self.tracks[target];
-		let (kind, track_index_facade) = (track_type_of(track.kind), track.track_index);
+		let (kind, track_index_facade) = if has_video && has_audio {
+			let Some(video_target) = ensure_track(self, TrackKind::Video, cx) else {
+				return;
+			};
+			let Some(audio_target) = ensure_track(self, TrackKind::Audio, cx) else {
+				return;
+			};
+			let (video_index, audio_index) = (
+				self.tracks[video_target].track_index,
+				self.tracks[audio_target].track_index,
+			);
+			// Clip length: the footage's probed duration when available;
+			// otherwise a 10-second default.
+			let fps = self.frame_rate();
+			let fps_f = fps.num as f64 / fps.den.max(1) as f64;
+			let length = match seconds {
+				Some(s) => (s * fps_f).round().max(1.0) as i64,
+				None => (10.0 * fps_f).round().max(1.0) as i64,
+			};
+			let in_ts = time.0.max(0);
+			// One undoable "Add Clip" entry: the video clip plus its linked
+			// audio clip at the same range (the NLE A/V drop).
+			let result = graphops::place_footage_clips_linked(
+				&project,
+				seq,
+				footage,
+				&[
+					(TrackType::Video, video_index as usize),
+					(TrackType::Audio, audio_index as usize),
+				],
+				in_ts,
+				in_ts + length,
+				0,
+			)
+			.map(|_| ());
+			self.apply_edit(result, "drop footage", cx);
+			return;
+		} else {
+			let footage_kind = if has_video { TrackKind::Video } else { TrackKind::Audio };
+			let Some(target) = ensure_track(self, footage_kind, cx) else {
+				return;
+			};
+			let track = &self.tracks[target];
+			(track_type_of(track.kind), track.track_index)
+		};
 		// Clip length: the footage's probed duration when available;
 		// otherwise a 10-second default.
 		let fps = self.frame_rate();
@@ -5192,7 +5214,9 @@ mod tests {
 		let seq = graphops::create_sequence(&project, "Round Trip");
 		let v = graphops::add_track(&project, seq, TrackType::Video).expect("add a video track");
 		let a = graphops::add_track(&project, seq, TrackType::Audio).expect("add an audio track");
-		assert_eq!((v, a), (0, 0), "in-memory tracks");
+		// add_track returns the NEW track's index: with the default 2V+2A
+		// layout those are the third video and third audio track.
+		assert_eq!((v, a), (2, 2), "in-memory tracks");
 		oakundo::global::clear().unwrap();
 
 		// Save as uncompressed `.ovexml` (the module serializer reads plain
@@ -5218,7 +5242,11 @@ mod tests {
 				graphops::track_ids(&guard.graph, sequences[0], TrackType::Audio).len(),
 			)
 		};
-		assert_eq!((video, audio), (1, 1), "the tracks survive the round-trip");
+		assert_eq!(
+			(video, audio),
+			(3, 3),
+			"the default 2V+2A layout plus the two added tracks survive the round-trip"
+		);
 
 		let _ = std::fs::remove_file(&save_path);
 	}
@@ -5666,11 +5694,12 @@ mod tests {
 		assert!(cx.read(|app| engine.read(app).multicam_enabled_on_selection(&[clip_id])));
 
 		// The detection (selection → clip → find_multicam) resolves the
-		// source count from the source sequence's video tracks.
+		// source count from the source sequence's video tracks (the two
+		// default video tracks plus the two added for this test).
 		let state = cx
 			.read(|app| engine.read(app).multicam_state())
 			.expect("a selected multicam clip is detected");
-		assert_eq!(state.source_count, 2, "two video tracks = two angles");
+		assert_eq!(state.source_count, 4, "default 2 video tracks + 2 added = four angles");
 		assert_eq!(state.current_source, 0);
 
 		// Switch through the UI path (no split: the playhead sits at the
@@ -6067,6 +6096,115 @@ mod tests {
 			);
 			std::thread::sleep(Duration::from_millis(10));
 		}
+	}
+
+	/// A fresh sequence starts with the default 2 video + 2 audio track
+	/// layout (user-mandated: V1, V2 on top, A1, A2 below) — and the
+	/// default layout is NOT an undoable edit (the undo stack stays
+	//  empty for the sequence's birth).
+	#[gpui::test]
+	async fn new_sequence_has_default_two_video_two_audio_tracks(cx: &mut gpui::TestAppContext) {
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+		let kinds: Vec<TrackKind> =
+			cx.read(|app| engine.read(app).tracks.iter().map(|t| t.kind).collect());
+		assert_eq!(
+			kinds,
+			vec![
+				TrackKind::Video,
+				TrackKind::Video,
+				TrackKind::Audio,
+				TrackKind::Audio
+			],
+			"a new sequence starts with 2 video + 2 audio tracks"
+		);
+	}
+
+	/// Dropping a video-with-audio footage places BOTH a video clip and a
+	/// linked audio clip at the same range in ONE undoable entry (the NLE
+	/// A/V drop): one undo removes both, and the clips are linked.
+	#[gpui::test]
+	async fn drop_av_footage_places_linked_video_and_audio_clips(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		// demo.mp4: 1080p H.264 video + AAC audio (+ timecode stream).
+		let media = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/demo.mp4");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.import_footage(media.clone(), cx).expect("import")
+			})
+		});
+		let name = media.file_name().unwrap().to_string_lossy().into_owned();
+		let entry = cx.read(|app| {
+			engine
+				.read(app)
+				.roots()
+				.into_iter()
+				.find(|e| e.name.as_ref() == name)
+		})
+		.expect("imported footage is listed");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(0), cx)
+			})
+		});
+
+		let clip_count = |engine: &RealEngine, kind: TrackKind| -> usize {
+			engine
+				.tracks
+				.iter()
+				.filter(|t| t.kind == kind)
+				.map(|t| t.clips.len())
+				.sum()
+		};
+		let (video_clips, audio_clips) = cx.read(|app| {
+			let engine = engine.read(app);
+			(clip_count(engine, TrackKind::Video), clip_count(engine, TrackKind::Audio))
+		});
+		assert_eq!((video_clips, audio_clips), (1, 1), "one video clip + one audio clip");
+
+		// The two clips are linked (grouped edits apply to both).
+		let (video_block, audio_block) = cx.read(|app| {
+			let engine = engine.read(app);
+			let v = engine
+				.tracks
+				.iter()
+				.find(|t| t.kind == TrackKind::Video && !t.clips.is_empty())
+				.map(|t| t.clips[0].block);
+			let a = engine
+				.tracks
+				.iter()
+				.find(|t| t.kind == TrackKind::Audio && !t.clips.is_empty())
+				.map(|t| t.clips[0].block);
+			(v.expect("video clip"), a.expect("audio clip"))
+		});
+		let project = cx.read(|app| engine.read(app).project.clone().expect("project"));
+		let guard = graphops::lock(&project);
+		assert!(
+			guard.graph.links_of(video_block).contains(&audio_block),
+			"the video clip links to its audio clip"
+		);
+		assert!(
+			guard.graph.links_of(audio_block).contains(&video_block),
+			"the audio clip links back to its video clip"
+		);
+		drop(guard);
+
+		// ONE undo removes both clips (a single "Add Clip" entry).
+		cx.update(|app| engine.update(app, |engine, cx| engine.undo(cx)));
+		let (video_clips, audio_clips) = cx.read(|app| {
+			let engine = engine.read(app);
+			(clip_count(engine, TrackKind::Video), clip_count(engine, TrackKind::Audio))
+		});
+		assert_eq!((video_clips, audio_clips), (0, 0), "one undo removes both clips");
+		cx.update(|app| engine.update(app, |engine, cx| engine.redo(cx)));
+		let (video_clips, audio_clips) = cx.read(|app| {
+			let engine = engine.read(app);
+			(clip_count(engine, TrackKind::Video), clip_count(engine, TrackKind::Audio))
+		});
+		assert_eq!((video_clips, audio_clips), (1, 1), "one redo restores both clips");
 	}
 
 	/// Playback pre-render window (M15 S2): during playback the playhead

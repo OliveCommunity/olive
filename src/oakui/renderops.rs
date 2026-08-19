@@ -942,7 +942,8 @@ mod tests {
 			let g = lock(&project);
 			graphops::track_ids(&g.graph, seq, TrackType::Video)
 		};
-		assert_eq!(tracks.len(), 2, "two video tracks");
+		// The two default video tracks plus the two added here.
+		assert_eq!(tracks.len(), 4, "default 2 video tracks + 2 added");
 
 		// The whole stack sees both clips; the single-track montage sees only
 		// its own track's clip.
