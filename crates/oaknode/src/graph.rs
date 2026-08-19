@@ -111,7 +111,12 @@ impl Graph {
 	pub fn add_entry(&mut self, entry: NodeEntry, id: NodeId) -> NodeId {
 		let index = id.index();
 		if (index as usize) < self.entries.len() && self.entries[index as usize].vacant {
-			// Original slot free: reuse (index, generation) unchanged.
+			// Original slot free: reuse (index, generation) unchanged. The
+			// slot was pushed to the free list by `take_node` — reclaim it,
+			// or `node_count` keeps undercounting and, worse, the next
+			// `add_node` hands the same slot out again and silently
+			// clobbers the restored node (the undo/redo divergence).
+			self.free_list.retain(|&i| i != index);
 			let generation = entry.generation;
 			self.entries[index as usize] = entry;
 			return NodeId::new(index, generation);

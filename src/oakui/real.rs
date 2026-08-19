@@ -959,6 +959,9 @@ pub struct RealEngine {
 	/// (`None` for an empty or multi-clip selection, or before any
 	/// selection event).
 	selected_clip: Option<ClipId>,
+	/// The engine clipboard for Cut/Copy/Paste (graphops::ClipboardClip
+	/// entries in timeline order).
+	clipboard: Vec<graphops::ClipboardClip>,
 	/// Node identities whose effect cards are expanded (view state; kept
 	/// here because `EffectData` is a pure read and expansion is not
 	/// undoable).
@@ -1138,6 +1141,7 @@ impl RealEngine {
 			waveforms: Mutex::new(None),
 			selected_item: None,
 			selected_clip: None,
+			clipboard: Vec::new(),
 			expanded_effects: BTreeSet::new(),
 			program_playing: false,
 			meter_phase: 0,
@@ -3675,6 +3679,45 @@ impl AppEngine for RealEngine {
 			},
 			cx,
 		);
+	}
+
+	/// Copy the selected clips to the engine clipboard (C++ Copy): the
+	/// clipboard holds footage/range/speed/track-kind per clip, in
+	/// timeline order.
+	fn clipboard_copy(&mut self, clips: Vec<ClipId>, _cx: &mut Context<Self>) {
+		let Some(project) = self.project.clone() else {
+			return;
+		};
+		let blocks: Vec<NodeId> = clips
+			.iter()
+			.filter_map(|id| graphops::id_of(id.0))
+			.collect();
+		self.clipboard = graphops::copy_clips(&project, &blocks);
+	}
+
+	/// Copy then gap-delete the selected clips (C++ Cut: copy + Delete,
+	/// leaving gaps — ripple deletion is the separate Ripple Delete
+	/// action).
+	fn clipboard_cut(&mut self, clips: Vec<ClipId>, cx: &mut Context<Self>) {
+		self.clipboard_copy(clips.clone(), cx);
+		for id in clips {
+			self.delete_clip(id, false, cx);
+		}
+	}
+
+	/// Paste the clipboard at the program playhead (C++ Paste): one
+	/// undoable entry, clips keep their relative offsets and links.
+	fn clipboard_paste(&mut self, cx: &mut Context<Self>) {
+		let (Some(project), Some(seq)) = (self.project.clone(), self.sequence) else {
+			return;
+		};
+		if self.clipboard.is_empty() {
+			return;
+		}
+		let playhead = self.clock_frame(Monitor::Program, cx).0.max(0);
+		let items = self.clipboard.clone();
+		let result = graphops::paste_clips(&project, seq, &items, playhead).map(|_| ());
+		self.apply_edit(result, "paste", cx);
 	}
 
 	fn can_undo(&self) -> bool {

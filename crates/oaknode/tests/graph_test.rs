@@ -222,3 +222,35 @@ fn adjacency_queries() {
 	assert_eq!(g.downstream(a), vec![b, c]);
 	assert_eq!(g.downstream(d), Vec::<NodeId>::new());
 }
+
+/// take_node + add_entry must restore the node count AND reclaim the
+/// slot: before the fix, add_entry reused the slot without removing it
+/// from the free list, so node_count kept undercounting and the next
+/// add_node silently overwrote the restored node (the undo/redo
+/// divergence the user hit: repeated undo/redo changed the result).
+#[test]
+fn add_entry_reclaims_the_free_slot() {
+	let (mut g, ids) = build(3);
+	let victim = ids[1];
+	let count_before = g.node_count();
+
+	// Detach and re-attach: the count must round-trip.
+	let entry = g.take_node(victim).expect("take the node");
+	assert_eq!(g.node_count(), count_before - 1, "detach drops the count");
+	let readded = g.add_entry(entry, victim);
+	assert_eq!(readded, victim, "identity is preserved");
+	assert_eq!(g.node_count(), count_before, "re-attach restores the count");
+
+	// A fresh add_node must NOT clobber the restored node (it must get a
+	// different slot).
+	let mut core = NodeCore::new();
+	core.label = "fresh".to_string();
+	let fresh = g.add_node(core, Box::new(TestNode { id: "fresh" }));
+	assert_ne!(fresh, victim, "the fresh node takes a different slot");
+	assert!(g.is_valid(victim), "the restored node survives add_node");
+	assert_eq!(
+		g.get(victim).map(|e| e.core.label.as_str()),
+		g.get(victim).map(|e| e.core.label.as_str()),
+	);
+	assert_eq!(g.node_count(), count_before + 1);
+}

@@ -548,6 +548,13 @@ pub trait AppEngine:
 	/// `ripple` is set.
 	fn delete_clip(&mut self, clip: ClipId, ripple: bool, cx: &mut Context<Self>);
 
+	/// Copy the selected clips to the engine clipboard (C++ Copy).
+	fn clipboard_copy(&mut self, _clips: Vec<ClipId>, _cx: &mut Context<Self>) {}
+	/// Copy then gap-delete the selected clips (C++ Cut).
+	fn clipboard_cut(&mut self, _clips: Vec<ClipId>, _cx: &mut Context<Self>) {}
+	/// Paste the clipboard at the playhead (C++ Paste), one undoable entry.
+	fn clipboard_paste(&mut self, _cx: &mut Context<Self>) {}
+
 	/// Whether the undo stack has an entry to undo.
 	fn can_undo(&self) -> bool;
 

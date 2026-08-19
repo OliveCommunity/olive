@@ -140,7 +140,7 @@ image = "0.25"
 # ---------------------------------------------------------------------------
 [package.metadata.packager]
 name = "oak"
-productName = "Oak"
+productName = "Oak Video Editor"
 identifier = "org.oakvideoeditor.Oak"
 description = "Oak Video Editor"
 longDescription = "Oak Video Editor: a free, open-source non-linear video editor written in Rust."
@@ -154,3 +154,9 @@ binaries = [
     { path = "oak-cli", main = false },
     { path = "oak-worker", main = false },
 ]
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.dev]
+opt-level = 1

@@ -1392,8 +1392,7 @@ pub fn place_footage_clips_linked(
 /// Split `clip` at `time_ts` (a frame timestamp strictly inside the
 /// clip's range), undoable "Split Clip" (the module's
 /// `BlockSplitCommand`).
-pub fn split_clip(p: &ProjectRef, clip: NodeId, time_ts: i64) -> Result<(), String> {
-	let (tb, in_r, out_r) = {
+pub fn split_clip(p: &ProjectRef, clip: NodeId, time_ts: i64) -> Result<(), String> {	let (tb, in_r, out_r) = {
 		let g = lock(p);
 		let tb = clip_track(&g.graph, clip)
 			.and_then(|t| track_behavior(&g.graph, t))
@@ -1731,6 +1730,212 @@ pub fn test_lock() -> std::sync::MutexGuard<'static, ()> {
 }
 
 // ---------------------------------------------------------------------------
+// Clipboard (Cut / Copy / Paste)
+// ---------------------------------------------------------------------------
+
+/// One clip captured in the clipboard (Cut/Copy). Everything needed to
+/// re-place it on a timeline is here; effects/multicam contexts are not
+/// modeled yet (footage clips carry their block core only).
+#[derive(Clone, Debug)]
+pub struct ClipboardClip {
+	/// The footage node the clip decodes.
+	pub footage: NodeId,
+	/// Track type the clip was on.
+	pub kind: TrackType,
+	/// Per-type index of the track it was on (re-used on paste when the
+	/// track still exists).
+	pub track_index: usize,
+	/// Media in-point in frame timestamps.
+	pub media_in_ts: i64,
+	/// Timeline in-point in frame timestamps.
+	pub start_ts: i64,
+	/// Duration in frame timestamps.
+	pub length_ts: i64,
+	/// Playback speed.
+	pub speed: f64,
+}
+
+/// Capture the selected clips into clipboard form (`Copy`; `Cut` copies
+/// then deletes). Clips without a footage upstream are skipped.
+pub fn copy_clips(p: &ProjectRef, clips: &[NodeId]) -> Vec<ClipboardClip> {
+	let g = lock(p);
+	let mut out = Vec::new();
+	for &clip in clips {
+		let Some(footage) = find_input_footage(&g.graph, clip) else {
+			continue;
+		};
+		let Some((in_r, out_r, media_in)) = clip_range(&g.graph, clip) else {
+			continue;
+		};
+		let Some(track) = clip_track(&g.graph, clip) else {
+			continue;
+		};
+		let Some(t) = track_behavior(&g.graph, track) else {
+			continue;
+		};
+		let Some(list) = t.track_list.and_then(|l| track_list_behavior(&g.graph, l)) else {
+			continue;
+		};
+		let (tb_num, tb_den) = {
+			// Frame timestamps are stored rationally; the clipboard keeps
+			// the sequence timebase for exactness.
+			let seq = list.sequence.and_then(|s| sequence_time_base(&g.graph, s));
+			seq.unwrap_or((1, 25))
+		};
+		let to_ts = |r: Rational| {
+			(r.numerator() * tb_den).checked_div(r.denominator() * tb_num).unwrap_or(0)
+		};
+		let speed = clip_behavior(&g.graph, clip)
+			.map(|c| c.core.speed)
+			.unwrap_or(1.0);
+		out.push(ClipboardClip {
+			footage,
+			kind: list.kind,
+			track_index: t.index.max(0) as usize,
+			media_in_ts: to_ts(media_in),
+			start_ts: to_ts(in_r),
+			length_ts: to_ts(out_r - in_r),
+			speed,
+		});
+	}
+	out.sort_by_key(|c| c.start_ts);
+	out
+}
+
+/// Paste clipboard clips at `playhead_ts` (frame timestamps), undoable
+/// "Paste". The first clip's in-point moves to the playhead; the others
+/// keep their relative offsets. Tracks are reused by kind+index (falling
+/// back to the last track of the kind). Clips that were linked stay
+/// linked inside the pasted group.
+pub fn paste_clips(
+	p: &ProjectRef,
+	seq: NodeId,
+	items: &[ClipboardClip],
+	playhead_ts: i64,
+) -> Result<Vec<NodeId>, String> {
+	if items.is_empty() {
+		return Err("the clipboard is empty".to_string());
+	}
+	let anchor = items[0].start_ts;
+	let mut clips = Vec::with_capacity(items.len());
+	for item in items {
+		let start = playhead_ts + (item.start_ts - anchor);
+		let out = start + item.length_ts;
+		// Re-use the placement machinery one clip at a time, collecting
+		// the commands so everything lands in ONE undo entry.
+		clips.push((item, start, out));
+	}
+
+	let tb = {
+		let g = lock(p);
+		sequence_time_base(&g.graph, seq)
+			.ok_or_else(|| "sequence has no valid frame rate".to_string())?
+	};
+	let track_count_of = |kind: TrackType| -> usize {
+		let g = lock(p);
+		track_list_of(&g.graph, seq, kind)
+			.and_then(|l| track_list_behavior(&g.graph, l))
+			.map(|l| l.tracks.len())
+			.unwrap_or(0)
+	};
+
+	let mut new_ids = Vec::with_capacity(items.len());
+	let mut commands = Vec::new();
+	for (item, start, out) in clips {
+		let list = {
+			let g = lock(p);
+			track_list_of(&g.graph, seq, item.kind)
+				.ok_or_else(|| "sequence has no track list for this type".to_string())?
+		};
+		let count = track_count_of(item.kind);
+		if count == 0 {
+			return Err("no track of the clip's kind to paste onto".to_string());
+		}
+		let track_index = item.track_index.min(count - 1);
+		let in_r = ts_to_rational(start, tb);
+		let media_r = ts_to_rational(item.media_in_ts, tb);
+		let length_r = ts_to_rational(out, tb) - in_r;
+
+		let clip = {
+			let mut g = lock(p);
+			let (core, behavior) = oaknode::block::clip_create();
+			let id = g.graph.add_node(core, behavior);
+			if let Some(c) = g
+				.graph
+				.get_mut(id)
+				.and_then(|e| e.behavior.as_any_mut())
+				.and_then(|a| a.downcast_mut::<ClipBlockBehavior>())
+			{
+				c.core.media_in = media_r;
+				c.core.speed = item.speed;
+				c.core.set_length_and_media_in(length_r);
+			}
+			id
+		};
+		new_ids.push(clip);
+		commands.push(
+			oaktimeline::undopointer::TrackPlaceBlockCommand::new(
+				node_ref(p, list),
+				track_index as i32,
+				node_ref(p, clip),
+				in_r,
+			)
+			.to_command(),
+		);
+		commands.push(connect_command(
+			p,
+			item.footage,
+			clip,
+			oaknode::block::clip_input::TEXTURE_INPUT,
+		)?);
+	}
+	// Link the pasted group both ways (the C++ pastes linked selections as
+	// a linked group).
+	if new_ids.len() > 1 {
+		let first = new_ids[0];
+		for &other in &new_ids[1..] {
+			let (p1, p2) = (p.clone(), p.clone());
+			commands.push(oakundo::undocommand::UndoCommand::from_closures(
+				move || {
+					let mut g = lock(&p1);
+					for (a, b) in [(first, other), (other, first)] {
+						if let Some(entry) = g.graph.get_mut(a) {
+							let links = &mut entry
+								.behavior
+								.as_any_mut()
+								.and_then(|any| any.downcast_mut::<ClipBlockBehavior>())
+								.expect("clip behavior")
+								.core
+								.links;
+							if !links.contains(&b) {
+								links.push(b);
+							}
+						}
+					}
+				},
+				move || {
+					let mut g = lock(&p2);
+					for (a, b) in [(first, other), (other, first)] {
+						if let Some(entry) = g.graph.get_mut(a) {
+							let links = &mut entry
+								.behavior
+								.as_any_mut()
+								.and_then(|any| any.downcast_mut::<ClipBlockBehavior>())
+								.expect("clip behavior")
+								.core
+								.links;
+							links.retain(|&l| l != b);
+						}
+					}
+				},
+			));
+		}
+	}
+	push_multi(commands, "Paste")?;
+	Ok(new_ids)
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -1790,6 +1995,64 @@ mod tests {
 		oakundo::global::clear().unwrap();
 	}
 
+	/// Undo/redo stability: undo → redo → undo → redo must converge to the
+	/// SAME graph state every cycle (the user's "撤销再前进再撤销再前进，
+	/// 结果居然变了" regression). Snapshot the sequence's track blocks and
+	/// the graph node count around two full cycles.
+	#[test]
+	fn undo_redo_cycles_converge_to_the_same_state() {
+		let _g = test_lock();
+		oakundo::global::clear().unwrap();
+		let project = create_project();
+		let seq = create_sequence(&project, "Undo Cycles");
+		let media = std::env::temp_dir().join(format!("oak_undo_cycle_{}.mp4", std::process::id()));
+		oakcodec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate test media");
+		let footage = import_footage(&project, &media).expect("import");
+		place_footage_clips_linked(
+			&project,
+			seq,
+			footage,
+			&[(TrackType::Video, 0), (TrackType::Audio, 0)],
+			0,
+			10,
+			0,
+		)
+		.expect("linked placement");
+
+		let snapshot = |p: &ProjectRef| -> (usize, Vec<(TrackType, Vec<usize>)>) {
+			let g = lock(p);
+			let node_count = g.graph.node_count();
+			let mut tracks = Vec::new();
+			for kind in [TrackType::Video, TrackType::Audio] {
+				let blocks: Vec<usize> = track_ids(&g.graph, seq, kind)
+					.iter()
+					.map(|t| track_behavior(&g.graph, *t).map(|t| t.blocks.len()).unwrap_or(0))
+					.collect();
+				tracks.push((kind, blocks));
+			}
+			(node_count, tracks)
+		};
+
+		let before = snapshot(&project);
+		// Two full undo/redo cycles; the state must be identical after
+		// every redo and match the pre-undo state after every undo.
+		for cycle in 0..2 {
+			oakundo::global::undo().expect("undo");
+			let g = lock(&project);
+			let video_blocks: usize = track_ids(&g.graph, seq, TrackType::Video)
+				.iter()
+				.map(|t| track_behavior(&g.graph, *t).map(|t| t.blocks.len()).unwrap_or(0))
+				.sum();
+			assert_eq!(video_blocks, 0, "cycle {cycle}: undo removes the clips");
+			drop(g);
+			oakundo::global::redo().expect("redo");
+			let state = snapshot(&project);
+			assert_eq!(state, before, "cycle {cycle}: redo must restore the exact state");
+		}
+		oakundo::global::clear().unwrap();
+		let _ = std::fs::remove_file(&media);
+	}
+
 	/// A stale (non-track) id is rejected, not silently ignored.
 	#[test]
 	fn track_flag_setters_reject_non_tracks() {
@@ -1799,5 +2062,179 @@ mod tests {
 		assert!(set_track_muted(&project, seq, true).is_err());
 		assert!(set_track_locked(&project, seq, true).is_err());
 		oakundo::global::clear().unwrap();
+	}
+}
+
+#[cfg(test)]
+mod undo_cycle_track_tests {
+	use super::*;
+
+	/// add_track undo/redo cycles must converge (the track count AND the
+	/// created track's identity stay stable; the C++ remove-last undo must
+	/// not eat a default track).
+	#[test]
+	fn add_track_undo_redo_cycles_converge() {
+		let _g = test_lock();
+		oakundo::global::clear().unwrap();
+		let project = create_project();
+		let seq = create_sequence(&project, "Add Track Cycles");
+		let count_of = |p: &ProjectRef, kind: TrackType| {
+			let g = lock(p);
+			track_ids(&g.graph, seq, kind).len()
+		};
+		assert_eq!(count_of(&project, TrackType::Video), 2, "default 2 video tracks");
+
+		let index = add_track(&project, seq, TrackType::Video).expect("add a track");
+		assert_eq!(index, 2, "the new track is the third video track");
+		let track_id = {
+			let g = lock(&project);
+			track_ids(&g.graph, seq, TrackType::Video)[index]
+		};
+
+		for cycle in 0..3 {
+			oakundo::global::undo().expect("undo");
+			assert_eq!(
+				count_of(&project, TrackType::Video),
+				2,
+				"cycle {cycle}: undo removes only the added track"
+			);
+			oakundo::global::redo().expect("redo");
+			assert_eq!(
+				count_of(&project, TrackType::Video),
+				3,
+				"cycle {cycle}: redo restores the added track"
+			);
+			let g = lock(&project);
+			assert!(
+				g.graph.is_valid(track_id),
+				"cycle {cycle}: the same track node is back in the graph"
+			);
+			assert_eq!(
+				track_ids(&g.graph, seq, TrackType::Video)[index],
+				track_id,
+				"cycle {cycle}: the track keeps its identity and position"
+			);
+			drop(g);
+		}
+		oakundo::global::clear().unwrap();
+	}
+}
+
+#[cfg(test)]
+mod undo_cycle_ops_tests {
+	use super::*;
+
+	/// Full-graph snapshot for convergence checks: node count plus, for
+	/// every track, the ordered block ids and each block's range.
+	fn snapshot(p: &ProjectRef, seq: NodeId) -> (usize, Vec<(NodeId, Vec<(NodeId, i128, i128)>)>) {
+		let g = lock(p);
+		let mut tracks = Vec::new();
+		for kind in [TrackType::Video, TrackType::Audio] {
+			for t in track_ids(&g.graph, seq, kind) {
+				let blocks: Vec<(NodeId, i128, i128)> = track_behavior(&g.graph, t)
+					.map(|t| {
+						t.blocks
+							.iter()
+							.map(|&b| {
+								let (in_r, out_r, _) = clip_range(&g.graph, b).unwrap_or_default();
+								(
+									b,
+									in_r.numerator() as i128 * 1_000_000 / in_r.denominator().max(1) as i128,
+									out_r.numerator() as i128 * 1_000_000 / out_r.denominator().max(1) as i128,
+								)
+							})
+							.collect()
+					})
+					.unwrap_or_default();
+				tracks.push((t, blocks));
+			}
+		}
+		(g.graph.node_count(), tracks)
+	}
+
+	fn cycle_assert(p: &ProjectRef, seq: NodeId, post: &(usize, Vec<(NodeId, Vec<(NodeId, i128, i128)>)>), what: &str) {
+		for cycle in 0..3 {
+			oakundo::global::undo().unwrap_or_else(|e| panic!("{what}: undo failed: {e:?}"));
+			oakundo::global::redo().unwrap_or_else(|e| panic!("{what}: redo failed: {e:?}"));
+			let state = snapshot(p, seq);
+			assert_eq!(&state, post, "{what}: cycle {cycle} diverged");
+		}
+	}
+
+	fn project_with_two_clips(media: &std::path::Path) -> (ProjectRef, NodeId, NodeId) {
+		let project = create_project();
+		let seq = create_sequence(&project, "Cycle Ops");
+		let footage = import_footage(&project, media).expect("import");
+		place_footage_clips_linked(
+			&project,
+			seq,
+			footage,
+			&[(TrackType::Video, 0), (TrackType::Audio, 0)],
+			0,
+			10,
+			0,
+		)
+		.expect("linked placement")
+		.into_iter()
+		.next()
+		.map(|_| (project.clone(), seq, footage))
+		.expect("one clip")
+	}
+
+	/// Move / trim / delete / split undo-redo cycles must all converge.
+	#[test]
+	fn move_trim_delete_split_cycles_converge() {
+		let _g = test_lock();
+		oakundo::global::clear().unwrap();
+		let media = std::env::temp_dir().join(format!("oak_cycle_ops_{}.mp4", std::process::id()));
+		oakcodec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate");
+
+		// --- move ---
+		let (project, seq, _footage) = project_with_two_clips(&media);
+		let clip = {
+			let g = lock(&project);
+			track_ids(&g.graph, seq, TrackType::Video)
+				.iter()
+				.find_map(|t| track_behavior(&g.graph, *t).and_then(|t| t.blocks.first().copied()))
+				.expect("a clip")
+		};
+		move_clip(&project, clip, 20).expect("move");
+		let post = snapshot(&project, seq);
+		cycle_assert(&project, seq, &post, "move");
+		oakundo::global::clear().unwrap();
+
+		// --- trim ---
+		trim_clip(&project, clip, 22, 28).expect("trim");
+		let post = snapshot(&project, seq);
+		cycle_assert(&project, seq, &post, "trim");
+		oakundo::global::clear().unwrap();
+
+		// --- split ---
+		split_clip(&project, clip, 25).expect("split");
+		let post = snapshot(&project, seq);
+		cycle_assert(&project, seq, &post, "split");
+		oakundo::global::clear().unwrap();
+
+		// --- delete ---
+		delete_clip(&project, clip).expect("delete");
+		let post = snapshot(&project, seq);
+		cycle_assert(&project, seq, &post, "delete");
+		oakundo::global::clear().unwrap();
+
+		// --- ripple delete (on a fresh project, then check) ---
+		let (project, seq, _footage) = project_with_two_clips(&media);
+		let clip = {
+			let g = lock(&project);
+			track_ids(&g.graph, seq, TrackType::Video)
+				.iter()
+				.find_map(|t| track_behavior(&g.graph, *t).and_then(|t| t.blocks.first().copied()))
+				.expect("a clip")
+		};
+		ripple_delete_clip(&project, clip).expect("ripple delete");
+		let post = snapshot(&project, seq);
+		cycle_assert(&project, seq, &post, "ripple delete");
+		oakundo::global::clear().unwrap();
+
+		let _ = std::fs::remove_file(&media);
 	}
 }

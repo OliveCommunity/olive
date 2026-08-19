@@ -219,7 +219,20 @@ impl<E: AppEngine> TimelinePanel<E> {
 		cx: &mut Context<Self>,
 	) {
 		let menu = match &hit {
-			TimelineHit::Clip(_) => {
+			TimelineHit::Clip(clip) => {
+				// C++ parity: right-clicking an unselected clip selects it
+				// first — the context menu acts on the clicked clip, never
+				// on a stale or empty selection (this is what made
+				// Cut/Delete appear to do nothing).
+				if !self.timeline.read(cx).selection().contains(clip) {
+					let clip = *clip;
+					self.timeline.update(cx, |view, cx| {
+						view.state.selection.clear();
+						view.state.selection.insert(clip);
+						cx.emit(TimelineEvent::SelectionChanged);
+						cx.notify();
+					});
+				}
 				let ids: Vec<ClipId> =
 					self.timeline.read(cx).selection().iter().copied().collect();
 				let (sync, proxy, multicam) = {
@@ -604,6 +617,20 @@ impl<E: AppEngine> PanelCommandHandler for TimelinePanel<E> {
 	}
 
 	// --- editing ---
+	fn cut_selected(&mut self, cx: &mut Context<Self>) -> bool {
+		let ids: Vec<ClipId> = self.timeline.read(cx).selection().iter().copied().collect();
+		self.engine.update(cx, |engine, cx| engine.clipboard_cut(ids, cx));
+		true
+	}
+	fn copy_selected(&mut self, cx: &mut Context<Self>) -> bool {
+		let ids: Vec<ClipId> = self.timeline.read(cx).selection().iter().copied().collect();
+		self.engine.update(cx, |engine, cx| engine.clipboard_copy(ids, cx));
+		true
+	}
+	fn paste(&mut self, cx: &mut Context<Self>) -> bool {
+		self.engine.update(cx, |engine, cx| engine.clipboard_paste(cx));
+		true
+	}
 	fn delete_selected(&mut self, cx: &mut Context<Self>) -> bool {
 		self.delete_selection(false, cx);
 		true
