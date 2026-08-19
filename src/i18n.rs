@@ -423,6 +423,11 @@ const EN: &[(&str, &str)] = &[
 	("inspector.badge.openfx", "OpenFX"),
 	// --- OpenFX progress ---
 	("ofx.progress.title", "OpenFX Plugin Progress"),
+	// --- OpenFX color picker ---
+	("ofx.color.hex", "Hex"),
+	("ofx.color.ok", "OK"),
+	("ofx.color.cancel", "Cancel"),
+	("ofx.color.invalid", "Invalid hex color"),
 	// --- dialogs ---
 	("dialog.cancel", "Cancel"),
 	("dialog.close", "Close"),
@@ -893,6 +898,11 @@ const ZH: &[(&str, &str)] = &[
 	("inspector.badge.openfx", "OpenFX"),
 	// --- OpenFX progress ---
 	("ofx.progress.title", "OpenFX 插件进度"),
+	// --- OpenFX 取色器 ---
+	("ofx.color.hex", "十六进制"),
+	("ofx.color.ok", "确定"),
+	("ofx.color.cancel", "取消"),
+	("ofx.color.invalid", "无效的十六进制颜色"),
 	// --- dialogs ---
 	("dialog.cancel", "取消"),
 	("dialog.close", "关闭"),

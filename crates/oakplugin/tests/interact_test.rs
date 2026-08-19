@@ -318,8 +318,10 @@ fn interact_draw_renders_plugin_colours() {
 		);
 
 		// 像素断言：矩形区域 (10..30)² 的 GL 像素 → 翻转后 frame y 33..53。
+		// F32 RGBA 每像素 16 字节（紧凑行）。
+		let stride = (w as usize) * 16;
 		let px = |x: usize, y: usize| -> [f32; 4] {
-			let p = &img.pixels()[y * (w as usize) * 4 + x * 4..y * (w as usize) * 4 + x * 4 + 4];
+			let p = &img.pixels()[y * stride + x * 16..y * stride + x * 16 + 16];
 			[
 				f32::from_ne_bytes(p[0..4].try_into().unwrap()),
 				f32::from_ne_bytes(p[4..8].try_into().unwrap()),

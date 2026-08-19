@@ -37,4 +37,45 @@ fn main() {
 		// at the real system library.
 		println!("cargo:rustc-link-arg=-Wl,-rpath,/usr/lib");
 	}
+	// --- OFX interact end-to-end test plugin ---------------------------------
+	// The app-side interact tests (src/oakui/ofx.rs) drive the *real*
+	// minimal test plugin (crates/oakplugin/cbits/oak_test_plugin.c) through
+	// the app's interact wiring. oakplugin compiles the same C file into its
+	// own OUT_DIR, but build-script env vars do not cross crates, so compile
+	// it here too — the test assembles a plugin bundle from the app's
+	// OUT_DIR.
+	println!("cargo:rerun-if-changed=crates/oakplugin/cbits/oak_test_plugin.c");
+	build_test_plugin(&os);
+}
+
+/// Compiles the minimal OFX test plugin as a shared library into
+/// `$OUT_DIR/oak_test_plugin.{dylib,so}` (same recipe as oakplugin's
+/// build.rs). Only the interact branch of the plugin is exercised by the
+/// app-side tests; the GL parts are macOS-gated inside the C source.
+fn build_test_plugin(os: &str) {
+	use std::process::Command;
+	let out = std::env::var("OUT_DIR").expect("OUT_DIR");
+	let cc = std::env::var("CC").unwrap_or_else(|_| "cc".into());
+	let (link_flag, ext) = if os == "macos" {
+		("-dynamiclib", "dylib")
+	} else {
+		("-shared", "so")
+	};
+	let mut args = vec![
+		"-fPIC".to_string(),
+		"-Icrates/oakplugin/ofx".to_string(),
+		"crates/oakplugin/cbits/oak_test_plugin.c".to_string(),
+		link_flag.to_string(),
+		"-o".to_string(),
+		format!("{out}/oak_test_plugin.{ext}"),
+	];
+	if os == "macos" {
+		args.push("-framework".into());
+		args.push("OpenGL".into());
+	}
+	let status = Command::new(&cc)
+		.args(&args)
+		.status()
+		.expect("compile OFX test plugin failed");
+	assert!(status.success(), "OFX test plugin compile failed");
 }

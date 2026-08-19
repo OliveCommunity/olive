@@ -3295,6 +3295,26 @@ impl AppEngine for RealEngine {
 		Ok(())
 	}
 
+	fn ofx_interact_target(&self, _cx: &App) -> Option<u64> {
+		let Some(project) = self.project_ref() else {
+			return None;
+		};
+		let Some(host) = self.selected_clip_node() else {
+			return None;
+		};
+		let guard = graphops::lock(project);
+		for node in super::effectchain::chain(&guard.graph, host) {
+			// The inspector's current selection: the first *expanded*
+			// OFX plugin card (its parameter UI is on screen, so its
+			// custom interact drives the viewer overlay).
+			if !self.expanded_effects.contains(&node.identity()) {
+				continue;
+			}
+			return super::effectchain::plugin_instance_handle(&guard.graph, node);
+		}
+		None
+	}
+
 	fn apply_effect_event(&mut self, event: &EffectStackEvent, cx: &mut Context<Self>) {
 		match event {
 			EffectStackEvent::EnableToggled { effect, enabled } => {

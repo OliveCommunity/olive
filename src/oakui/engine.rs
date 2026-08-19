@@ -383,6 +383,17 @@ pub trait AppEngine:
 		Err("effect push button not supported".into())
 	}
 
+	/// The plugin instance handle (the oakplugin registry key) of the OFX
+	/// effect the program viewer's interact should target — the inspector's
+	/// current selection, i.e. the first expanded OFX plugin card in the
+	/// selected clip's chain. `None` when there is no candidate (no
+	/// project, no selected clip, no expanded plugin card). The program
+	/// viewer feeds this to `oakui::ofx::sync_active_interact`; the default
+	/// keeps engines without a plugin selection inert.
+	fn ofx_interact_target(&self, _cx: &App) -> Option<u64> {
+		None
+	}
+
 	/// Applies a node-editor edit request to the engine's model.
 	fn apply_node_graph_event(&mut self, event: &NodeGraphEvent, cx: &mut Context<Self>);
 

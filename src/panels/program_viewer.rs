@@ -23,15 +23,16 @@
 use gpui::colors::DefaultColors;
 use gpui::dock::{DockPanel, PanelEvent};
 use gpui::{
-	div, prelude::*, px, AnyElement, App, ClickEvent, Context, Entity, EventEmitter, MouseButton,
-	Render, SharedString, Window,
+	div, prelude::*, px, size, AnyElement, App, ClickEvent, Context, Entity, EventEmitter,
+	MouseButton, Point, Render, SharedString, Window,
 };
 use gpui_widgets::audio_meter::AudioLevelMeter;
 use gpui_widgets::scopes::{ChromaDataSource, Histogram, LumaDataSource, Vectorscope, Waveform};
-use gpui_widgets::viewer::{ViewerEvent, ViewerWidget};
+use gpui_widgets::viewer::{InteractPointerKind, PlaybackClock, ViewerEvent, ViewerWidget};
 
 use crate::actions::ActionId;
 use crate::menus::context::{ContextMenuHandle, ContextMenuTriggered};
+use crate::oakui::ofx::InteractViewport;
 use crate::oakui::timecode::{format_fps, format_resolution};
 use crate::oakui::{AppEngine, Monitor};
 use crate::panels::commands::{self as panel_commands, PanelCommandHandler};
@@ -72,6 +73,22 @@ impl ChromaDataSource for ScopeState {
 	}
 }
 
+/// The cached overlay composite the viewer displays while an OFX interact
+/// is active (redrawn only when the frame/time/viewport changed or the
+/// plugin requested a repaint).
+struct OverlayComposite {
+	/// The base frame the composite was built from (Arc identity compare).
+	frame: std::sync::Arc<gpui::RenderImage>,
+	/// The plugin instance the overlay came from.
+	instance: u64,
+	/// The viewport the overlay was drawn at.
+	viewport: InteractViewport,
+	/// The playhead seconds used for the draw.
+	time: f64,
+	/// The composited image shown in the viewer.
+	image: std::sync::Arc<gpui::RenderImage>,
+}
+
 /// The program viewer panel.
 pub struct ProgramViewerPanel<E: AppEngine> {
 	viewer: Entity<ViewerWidget<E::Clock>>,
@@ -83,6 +100,12 @@ pub struct ProgramViewerPanel<E: AppEngine> {
 	/// The last CPU frame handed to the viewer (compared by `Arc` identity so
 	/// a paused playhead does not re-upload the picture every frame).
 	last_cpu_frame: Option<std::sync::Arc<gpui::RenderImage>>,
+	/// The last base frame the scope samples were analyzed from (the scopes
+	/// follow the raw frame, not the overlay composite).
+	scope_frame: Option<std::sync::Arc<gpui::RenderImage>>,
+	/// The cached overlay composite (active OFX interact only); `None` when
+	/// the viewer shows the raw engine frame.
+	overlay: Option<OverlayComposite>,
 	/// The active body tab.
 	tab: ProgramViewTab,
 	/// The scope samples backing the three scope widgets.
@@ -108,17 +131,50 @@ impl<E: AppEngine> ProgramViewerPanel<E> {
 		cx: &mut Context<Self>,
 	) -> Self {
 		let viewer = cx.new(|cx| ViewerWidget::new(3, clock.clone(), window, cx));
-		// Route every transport request to the engine's program monitor.
-		cx.subscribe(&viewer, |this, _viewer, event: &ViewerEvent, cx| {
-			let monitor = Monitor::Program;
-			this.engine.update(cx, |engine, cx| match event {
-				ViewerEvent::PlayRequested { .. } => engine.play(monitor, cx),
-				ViewerEvent::PauseRequested { .. } => engine.pause(monitor, cx),
-				ViewerEvent::StepRequested { delta, .. } => engine.step(monitor, *delta, cx),
-				other => println!("[program viewer] request: {other:?}"),
-			});
+		// Route every transport request to the engine's program monitor, and
+		// forward the picture's pointer/key events to the active OFX interact
+		// (no-op when none is live).
+		cx.subscribe(&viewer, |this, _viewer, event: &ViewerEvent, cx| match event {
+			ViewerEvent::InteractPointer {
+				kind,
+				position,
+				button,
+				pressed,
+			} => this.forward_interact_pointer(*kind, *position, *button, *pressed, cx),
+			ViewerEvent::InteractKey { down, keystroke } => {
+				this.forward_interact_key(*down, keystroke, cx)
+			}
+			event => {
+				let monitor = Monitor::Program;
+				this.engine.update(cx, |engine, cx| match event {
+					ViewerEvent::PlayRequested { .. } => engine.play(monitor, cx),
+					ViewerEvent::PauseRequested { .. } => engine.pause(monitor, cx),
+					ViewerEvent::StepRequested { delta, .. } => engine.step(monitor, *delta, cx),
+					other => println!("[program viewer] request: {other:?}"),
+				});
+			}
 		})
 		.detach();
+
+		// A throttled idle pump for the OFX interact: the plugin's UI work
+		// loop is served on the viewer's own timer (the app tick is
+		// shell-owned), so an active interact's `idle` action runs without
+		// coupling to the shell.
+		let this = cx.weak_entity();
+		window
+			.spawn(cx, async move |cx: &mut gpui::AsyncWindowContext| loop {
+				cx.background_executor()
+					.timer(std::time::Duration::from_millis(50))
+					.await;
+				let _ = cx.update(|_window, app| {
+					if let Some(this) = this.upgrade() {
+						this.update(app, |_this, _cx| {
+							crate::oakui::ofx::pump_interact_idle();
+						});
+					}
+				});
+			})
+			.detach();
 
 		let context_menu =
 			ContextMenuHandle::new(Self::on_local_menu_item, window, cx);
@@ -137,6 +193,8 @@ impl<E: AppEngine> ProgramViewerPanel<E> {
 			engine,
 			clock,
 			last_cpu_frame: None,
+			scope_frame: None,
+			overlay: None,
 			tab: ProgramViewTab::Picture,
 			scope_state,
 			histogram,
@@ -175,23 +233,191 @@ impl<E: AppEngine> ProgramViewerPanel<E> {
 	/// Pushes the engine's current frame into the viewer and the scopes, but
 	/// only when it actually changed (the engine caches one image per
 	/// playhead frame, with the scope samples analyzed in the same pass).
+	///
+	/// When an OFX interact is live, the displayed picture is the engine
+	/// frame with the interact's GL-drawn overlay composited over it; the
+	/// composite is cached and only redrawn when the frame / playhead /
+	/// viewport changed or the plugin requested a repaint (so a paused
+	/// viewer stays inert).
 	fn sync_frame(&mut self, cx: &mut Context<Self>) {
+		// Keep the main-process interact in sync with the inspector's
+		// current selection (creates/destroys the interact as the target
+		// moves; a no-op while it is unchanged).
+		let target = self.engine.read(cx).ofx_interact_target(cx);
+		crate::oakui::ofx::sync_active_interact(target);
+
 		let frame = self.engine.read(cx).cpu_frame(Monitor::Program, cx);
+
+		// The scopes follow the *base* frame (the overlay is not part of the
+		// analysed picture).
 		if self
-			.last_cpu_frame
+			.scope_frame
 			.as_ref()
 			.is_none_or(|last| !std::sync::Arc::ptr_eq(last, &frame))
 		{
-			self.last_cpu_frame = Some(frame.clone());
+			self.scope_frame = Some(frame.clone());
 			let scope = self.engine.read(cx).scope_data(Monitor::Program, cx);
 			self.scope_state.update(cx, |state, cx| {
 				state.luma = (*scope.luma).clone();
 				state.chroma = (*scope.chroma).clone();
 				cx.notify();
 			});
-			let frame = frame.clone();
+		}
+
+		// The picture actually shown: the raw frame, or the overlay
+		// composite while an interact is live.
+		let displayed = self.displayed_frame(&frame, cx);
+
+		if self
+			.last_cpu_frame
+			.as_ref()
+			.is_none_or(|last| !std::sync::Arc::ptr_eq(last, &displayed))
+		{
+			self.last_cpu_frame = Some(displayed.clone());
+			let displayed = displayed.clone();
 			self.viewer
-				.update(cx, |viewer, cx| viewer.set_cpu_frame(Some(frame), cx));
+				.update(cx, |viewer, cx| viewer.set_cpu_frame(Some(displayed), cx));
+		}
+	}
+
+	/// The picture for the current engine `frame`: the frame itself, or —
+	/// when an interact is live — the cached overlay composite, redrawing it
+	/// when any redraw condition changed.
+	fn displayed_frame(
+		&mut self,
+		frame: &std::sync::Arc<gpui::RenderImage>,
+		cx: &mut Context<Self>,
+	) -> std::sync::Arc<gpui::RenderImage> {
+		use std::sync::atomic::Ordering;
+
+		let Some((instance, interact, _)) = crate::oakui::ofx::active_interact() else {
+			self.overlay = None;
+			return frame.clone();
+		};
+		let frame_size = frame.size(0);
+		let viewport = InteractViewport::at_frame_size(
+			frame_size.width.0 as u32,
+			frame_size.height.0 as u32,
+		);
+		let time = self.playhead_seconds(cx);
+
+		// Redraw when the base frame, the target instance, the playhead, or
+		// the viewport changed, or when the plugin asked for a repaint via
+		// interactRedraw / interactSwapBuffers (polled and cleared here —
+		// outside the cache predicate so a redraw request during a cache-miss
+		// frame is not replayed).
+		let plugin_redraw = interact.redraw_requested.swap(false, Ordering::Relaxed)
+			|| interact.swap_requested.swap(false, Ordering::Relaxed);
+		let stale = plugin_redraw
+			|| self.overlay.as_ref().is_none_or(|o| {
+				!std::sync::Arc::ptr_eq(&o.frame, frame)
+					|| o.instance != instance
+					|| o.time != time
+					|| o.viewport != viewport
+			});
+		if stale {
+			if let Some(image) = crate::oakui::ofx::draw_interact_composite(
+				instance,
+				&interact,
+				&viewport,
+				time,
+				frame,
+			) {
+				self.overlay = Some(OverlayComposite {
+					frame: frame.clone(),
+					instance,
+					viewport,
+					time,
+					image: image.clone(),
+				});
+				return image;
+			}
+			// The interact is inert (no GL / the plugin failed to draw):
+			// show the base frame. The next frame re-probes (cheap when GL
+			// is unavailable).
+			self.overlay = None;
+			return frame.clone();
+		}
+		self.overlay.as_ref().unwrap().image.clone()
+	}
+
+	/// The program monitor's playhead in seconds (the interact's draw/pen
+	/// `time`).
+	fn playhead_seconds(&self, cx: &App) -> f64 {
+		let clock = self.clock.read(cx);
+		gpui::timeline::frame_to_seconds(clock.current_frame(), clock.frame_rate())
+	}
+
+	/// Forwards a picture pointer event to the active OFX interact, mapping
+	/// the picture-local position into the interact's viewport pixels (the
+	/// frame's pixel grid). Only the primary (left) button drives
+	/// pen_down/pen_up (the OFX pen is a two-state device); moves forward
+	/// pen_motion with the pen-down state reflecting whether a button is
+	/// held. No-op without an active interact or outside the frame rect.
+	fn forward_interact_pointer(
+		&mut self,
+		kind: InteractPointerKind,
+		position: Point<f32>,
+		button: Option<MouseButton>,
+		pressed: bool,
+		cx: &mut Context<Self>,
+	) {
+		let Some((_, interact, _)) = crate::oakui::ofx::active_interact() else {
+			return;
+		};
+		let Some(bounds) = self.viewer.read(cx).picture_bounds() else {
+			return;
+		};
+		let area = size(f32::from(bounds.size.width), f32::from(bounds.size.height));
+		let frame_size = self
+			.engine
+			.read(cx)
+			.cpu_frame(Monitor::Program, cx)
+			.size(0);
+		let frame = size(frame_size.width.0 as f32, frame_size.height.0 as f32);
+		let Some((px, py)) = crate::oakui::ofx::viewport_pixel_to_pen(position, area, frame)
+		else {
+			// The pointer is in the letterbox (outside the frame rect).
+			return;
+		};
+		let time = self.playhead_seconds(cx);
+		match kind {
+			InteractPointerKind::Move => {
+				let _ = interact.pen_motion((px, py), pressed, time);
+			}
+			InteractPointerKind::Down if button == Some(MouseButton::Left) => {
+				let _ = interact.pen_down((px, py), time);
+			}
+			InteractPointerKind::Up if button == Some(MouseButton::Left) => {
+				let _ = interact.pen_up((px, py), time);
+			}
+			_ => {}
+		}
+	}
+
+	/// Forwards a key event to the active OFX interact. No-op without an
+	/// active interact.
+	///
+	/// # Consumption semantics
+	///
+	/// gpui dispatches the global keybindings *before* the focused element's
+	/// key handlers, so a key consumed by the app's action system (space =
+	/// play/pause, J/K/L = shuttle, …) never reaches the picture's key
+	/// handler and therefore never reaches the interact — the existing
+	/// shortcut system keeps priority. A key that reaches here was not
+	/// consumed by any binding. The plugin's return status is deliberately
+	/// not acted on: the app does not steal key repeat or other listeners,
+	/// so the interact is a passive consumer of otherwise-unused keys.
+	fn forward_interact_key(&mut self, down: bool, keystroke: &gpui::Keystroke, cx: &mut Context<Self>) {
+		let Some((_, interact, _)) = crate::oakui::ofx::active_interact() else {
+			return;
+		};
+		let (sym, key_string) = crate::oakui::ofx::key_symbol(keystroke);
+		let time = self.playhead_seconds(cx);
+		if down {
+			let _ = interact.key_down(sym, &key_string, time);
+		} else {
+			let _ = interact.key_up(sym, &key_string, time);
 		}
 	}
 

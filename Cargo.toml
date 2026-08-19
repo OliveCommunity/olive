@@ -62,6 +62,7 @@ path = "src/lib.rs"
 # Doctests are disabled: the app links the oak* module crates (which carry
 # media/codec dependencies); the doc examples' assertions are covered by
 # unit tests instead (see `oakui/timecode`).
+doctest = false
 
 [[bin]]
 name = "oak-editor"

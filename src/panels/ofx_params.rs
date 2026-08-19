@@ -27,7 +27,9 @@
 //! - combo → [`ComboBox`] fed from the repeated `("combo_option", _)`
 //!   properties; string-combo values come from `("combo_value", _)`
 //! - text → [`EditableTextState`]
-//! - vec2 / vec3 / color → one [`SpinBox`] per component
+//! - vec2 / vec3 → one [`SpinBox`] per component
+//! - color → a swatch + deferred popup picker ([`OfxColorPicker`]:
+//!   R/G/B/A sliders, live preview, hex input, Cancel/OK)
 //! - push button → a clickable button (`AppEngine::effect_push_button`)
 //!
 //! Secret (HIDDEN) inputs never reach the snapshot, so they render
@@ -38,15 +40,22 @@
 //! created fresh per expanded-card render), so it carries no state of its
 //! own; values are re-synced from the engine each frame.
 
+use std::sync::Arc;
+
 use gpui::effect_stack::EffectId;
 use gpui::colors::DefaultColors;
 use gpui::{
-	div, prelude::*, px, ClickEvent, Context, Entity, Render, SharedString, Window,
+	div, prelude::*, px, rgb, size, point, ClickEvent, Context, Entity, EventEmitter, Render,
+	SharedString, Window,
+};
+use gpui::{
+	Anchor, App, Bounds, ElementId, Hsla, KeyDownEvent, MouseButton, MouseDownEvent, MouseUpEvent,
+	Point, Pixels, Rgba, anchored, canvas, deferred, fill,
 };
 use gpui_elements::editable_text::{text_input, EditableTextState, StringStorage};
 use gpui_widgets::checkbox::{CheckBox, CheckBoxEvent, CheckState};
 use gpui_widgets::combo_box::{ComboBox, ComboBoxEvent, ComboBoxOption};
-use gpui_widgets::slider::{Slider, SliderModel};
+use gpui_widgets::slider::{Slider, SliderEvent, SliderModel};
 use gpui_widgets::spinbox::{SpinBox, SpinBoxEvent};
 use gpui_widgets::value::{SliderValue, ValueKind};
 
@@ -74,9 +83,11 @@ enum ControlKind {
 	CheckBox(Entity<CheckBox>),
 	/// A combo box (combo / string combo).
 	Combo(Entity<ComboBox>),
-	/// One spinbox per component (vec2 / vec3 / color); the usize is the
+	/// One spinbox per component (vec2 / vec3); the usize is the
 	/// component index within the value.
 	Spin(Vec<(Entity<SpinBox>, usize)>),
+	/// A colour swatch + popup picker (color).
+	Color(Entity<OfxColorPicker>),
 	/// A text field (string).
 	Text(Entity<EditableTextState>),
 	/// A push button (rendered inline, no entity).
@@ -153,6 +164,18 @@ impl<E: AppEngine> OfxParamsView<E> {
 							let sv = SliderValue::Float(*value);
 							spin.update(cx, |spin, cx| spin.set_value(sv, cx));
 						}
+					}
+				}
+				ControlKind::Color(picker) => {
+					if let NodeValue::Color(v) = param.value {
+						let color = Rgba {
+							r: v[0] as f32,
+							g: v[1] as f32,
+							b: v[2] as f32,
+							a: v[3] as f32,
+						};
+						let picker = picker.clone();
+						picker.update(cx, |picker, cx| picker.set_committed(color, cx));
 					}
 				}
 				ControlKind::Text(editor) => {
@@ -330,21 +353,14 @@ fn build_control<E: AppEngine>(
 			*next_id += 1;
 			ControlKind::Text(editor)
 		}
-		ValueType::Vec2 | ValueType::Vec3 | ValueType::Color => {
+		ValueType::Vec2 | ValueType::Vec3 => {
 			let components = value_components(&param.value);
 			let count = if param.value_type == ValueType::Vec2 {
 				2
-			} else if param.value_type == ValueType::Vec3 {
+			} else {
 				3
-			} else {
-				4
 			};
-			let (min, max) = if param.value_type == ValueType::Color {
-				// Colour channels live in 0..1 (or the attached min/max).
-				(0.0f64, 1.0f64)
-			} else {
-				default_range(param.value_type)
-			};
+			let (min, max) = default_range(param.value_type);
 			let mut spins = Vec::new();
 			for channel in 0..count {
 				let value = components.get(channel).copied().unwrap_or(0.0).clamp(min, max);
@@ -354,6 +370,20 @@ fn build_control<E: AppEngine>(
 				spins.push((spin, channel));
 			}
 			ControlKind::Spin(spins)
+		}
+		ValueType::Color => {
+			// Colour params get the swatch + popup picker (channels are
+			// always 0..1 regardless of any attached min/max).
+			let components = value_components(&param.value);
+			let color = Rgba {
+				r: components.get(0).copied().unwrap_or(0.0) as f32,
+				g: components.get(1).copied().unwrap_or(0.0) as f32,
+				b: components.get(2).copied().unwrap_or(0.0) as f32,
+				a: components.get(3).copied().unwrap_or(1.0) as f32,
+			};
+			let picker = cx.new(|cx| OfxColorPicker::new(*next_id, color, window, cx));
+			*next_id += 1;
+			ControlKind::Color(picker)
 		}
 		ValueType::PushButton => ControlKind::PushButton,
 		// Custom / binary and anything without an editable control: a
@@ -466,6 +496,25 @@ fn wire_controls<E: AppEngine>(view: &OfxParamsView<E>, cx: &mut Context<OfxPara
 					.detach();
 				}
 			}
+			ControlKind::Color(picker) => {
+				let picker = picker.clone();
+				cx.subscribe(&picker, move |_, _, event: &OfxColorEvent, cx| {
+					// Only OK commits; slider drags update the draft inside
+					// the picker, so a drag session is one undo row.
+					if let OfxColorEvent::Committed(color) = event {
+						let nv = NodeValue::Color([
+							color.r as f64,
+							color.g as f64,
+							color.b as f64,
+							color.a as f64,
+						]);
+						engine.update(cx, |engine, cx| {
+							let _ = engine.set_effect_param(effect, &input_id, nv, cx);
+						});
+					}
+				})
+				.detach();
+			}
 			ControlKind::Text(_editor) => {
 				// The text field commits explicitly (the commit button in the
 				// row). No event subscription here: the params view is rebuilt
@@ -565,6 +614,9 @@ impl<E: AppEngine> Render for OfxParamsView<E> {
 						}
 						row.into_any_element()
 					}
+					ControlKind::Color(picker) => {
+						div().flex_1().child(picker.clone()).into_any_element()
+					}
 					ControlKind::Text(editor) => {
 						let weak = editor.downgrade();
 						let engine = self.engine.clone();
@@ -640,5 +692,597 @@ impl<E: AppEngine> Render for OfxParamsView<E> {
 			);
 		}
 		body
+	}
+}
+
+// ---------------------------------------------------------------------------
+// OfxColorPicker — colour swatch + deferred popup picker
+// ---------------------------------------------------------------------------
+
+/// A request emitted by an [`OfxColorPicker`].
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum OfxColorEvent {
+	/// The popup was opened (draft reset to the committed colour).
+	Opened,
+	/// The popup was dismissed without committing.
+	Cancelled,
+	/// OK pressed: the caller should commit this colour (undoable).
+	Committed(Rgba),
+}
+
+/// A colour swatch with a deferred popup picker, used for OFX colour
+/// parameters (the replacement for the old per-channel spinboxes).
+///
+/// - The swatch shows the **committed** colour (the engine value) over a
+///   two-tone checkerboard so alpha is visible.
+/// - Clicking opens a deferred popup with four 0..1 channel sliders, a
+///   live preview swatch, a hex field (`#RRGGBB` / `#RRGGBBAA`, validated)
+///   and Cancel / OK buttons.
+/// - Slider drags only mutate the **draft**; only OK emits
+///   [`OfxColorEvent::Committed`], which the params view routes through
+///   [`AppEngine::set_effect_param`] (undoable). A drag session is
+///   therefore a single undo row. Cancel / Escape / outside click discard
+///   the draft.
+///
+/// The picker is a child entity of the params view and carries its own
+/// state across frames; [`OfxColorPicker::set_committed`] re-syncs it from
+/// the engine each frame (undo / redo / external edits land on the swatch).
+struct OfxColorPicker {
+	/// Stable control id (element ids / slider ids).
+	control: usize,
+	/// Whether the popup is open.
+	open: bool,
+	/// Popup anchor position (window space, set when opening).
+	position: Point<Pixels>,
+	/// The committed colour (what the swatch shows).
+	committed: Rgba,
+	/// The draft colour while the popup is open (what OK commits).
+	draft: Rgba,
+	/// Whether the last hex parse failed (error hint in the popup).
+	hex_error: bool,
+	/// Whether the popup was open when the swatch was pressed (a second
+	/// click closes it).
+	was_open_at_down: bool,
+	/// Channel sliders, R/G/B/A in 0..1.
+	r: Entity<Slider>,
+	g: Entity<Slider>,
+	b: Entity<Slider>,
+	a: Entity<Slider>,
+	/// The hex editor (`#RRGGBB` / `#RRGGBBAA`).
+	hex: Entity<EditableTextState>,
+}
+
+impl OfxColorPicker {
+	/// Create a picker for `control` showing `color`.
+	pub(crate) fn new(
+		control: usize,
+		color: Rgba,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> Self {
+		let mut picker = Self {
+			control,
+			open: false,
+			position: Point::default(),
+			committed: color,
+			draft: color,
+			hex_error: false,
+			was_open_at_down: false,
+			r: Self::channel_slider(cx, window, 0, color.r as f64),
+			g: Self::channel_slider(cx, window, 1, color.g as f64),
+			b: Self::channel_slider(cx, window, 2, color.b as f64),
+			a: Self::channel_slider(cx, window, 3, color.a as f64),
+			hex: cx.new(|cx| EditableTextState::new(StringStorage::default(), cx)),
+		};
+		let hex_text = format_hex(color);
+		picker.hex.update(cx, |hex, cx| hex.emplace(&hex_text, cx));
+		picker
+	}
+
+	/// Build a 0..1 float slider for one channel and subscribe its edits to
+	/// [`Self::on_slider`].
+	fn channel_slider(
+		cx: &mut Context<Self>,
+		window: &mut Window,
+		channel: usize,
+		value: f64,
+	) -> Entity<Slider> {
+		let model = SliderModel::new(ValueKind::Float, 0.0, 1.0, 0.01, value.clamp(0.0, 1.0));
+		let slider = cx.new(|cx| Slider::new(channel * 1000 + 100, model, window, cx));
+		cx.subscribe(
+			&slider,
+			move |this: &mut Self, _: Entity<Slider>, event: &SliderEvent, cx| {
+				this.on_slider(channel, event, cx);
+			},
+		)
+		.detach();
+		slider
+	}
+
+	/// A slider changed: update the draft channel and re-format the hex
+	/// field (no commit — the value only lands on OK).
+	fn on_slider(&mut self, channel: usize, event: &SliderEvent, cx: &mut Context<Self>) {
+		if let SliderEvent::ValueChanged { value, .. } = event {
+			let v = value.to_f64().clamp(0.0, 1.0) as f32;
+			match channel {
+				0 => self.draft.r = v,
+				1 => self.draft.g = v,
+				2 => self.draft.b = v,
+				3 => self.draft.a = v,
+				_ => return,
+			}
+			self.hex_error = false;
+			let hex_entity = self.hex.clone();
+			let hex_text = format_hex(self.draft);
+			hex_entity.update(cx, |hex, cx| {
+				if hex.as_str() != hex_text {
+					hex.emplace(&hex_text, cx);
+				}
+			});
+			cx.notify();
+		}
+	}
+
+	/// Re-sync the sliders and the hex field from the current draft (no
+	/// events emitted; used when the draft is reset or committed).
+	fn sync_from_draft(&self, cx: &mut Context<Self>) {
+		let values = [
+			self.draft.r as f64,
+			self.draft.g as f64,
+			self.draft.b as f64,
+			self.draft.a as f64,
+		];
+		let sliders = [&self.r, &self.g, &self.b, &self.a];
+		for (slider, value) in sliders.iter().zip(values.iter()) {
+			let slider = slider.clone();
+			slider.update(cx, |slider, _| {
+				slider.set_value(SliderValue::Float(*value));
+			});
+		}
+		let hex_entity = self.hex.clone();
+		let hex_text = format_hex(self.draft);
+		hex_entity.update(cx, |hex, cx| {
+			if hex.as_str() != hex_text {
+				hex.emplace(&hex_text, cx);
+			}
+		});
+	}
+
+	/// Apply a committed colour from the engine (called every frame from
+	/// the params view's value sync). While the popup is open the draft is
+	/// left alone so an in-progress edit is not clobbered by re-syncs.
+	pub(crate) fn set_committed(&mut self, color: Rgba, cx: &mut Context<Self>) {
+		if self.committed == color {
+			return;
+		}
+		self.committed = color;
+		if !self.open {
+			self.draft = color;
+			self.sync_from_draft(cx);
+		}
+		cx.notify();
+	}
+
+	fn open_menu(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+		if !self.open {
+			self.open = true;
+			self.position = position;
+			// Start from the committed colour.
+			self.draft = self.committed;
+			self.hex_error = false;
+			self.sync_from_draft(cx);
+			cx.emit(OfxColorEvent::Opened);
+			cx.notify();
+		}
+	}
+
+	/// Cancel: discard the draft, keep the committed colour.
+	fn close_menu(&mut self, cx: &mut Context<Self>) {
+		if self.open {
+			self.open = false;
+			self.hex_error = false;
+			self.sync_from_draft(cx);
+			cx.emit(OfxColorEvent::Cancelled);
+			cx.notify();
+		}
+	}
+
+	/// OK: validate a hand-typed hex edit, then commit the draft.
+	fn commit(&mut self, cx: &mut Context<Self>) {
+		let text = self.hex.read(cx).as_str().trim().to_string();
+		if !text.is_empty() {
+			match parse_hex(&text) {
+				Some(color) => self.draft = color,
+				None => {
+					self.hex_error = true;
+					cx.notify();
+					return;
+				}
+			}
+		}
+		self.hex_error = false;
+		let color = self.draft;
+		self.open = false;
+		self.committed = color;
+		self.sync_from_draft(cx);
+		cx.emit(OfxColorEvent::Committed(color));
+		cx.notify();
+	}
+
+	/// The popup's anchored subtree (deferred, above the card).
+	fn popup_anchored(
+		&self,
+		cx: &mut Context<Self>,
+		colors: &Arc<gpui::colors::Colors>,
+	) -> gpui::Deferred {
+		let control = self.control;
+		let draft = self.draft;
+		let hex_weak = self.hex.downgrade();
+		let hex_error = self.hex_error;
+
+		// Four labelled 0..1 channel sliders.
+		let mut slider_rows = div().flex().flex_col().gap_1();
+		for (label, slider) in [
+			("R", &self.r),
+			("G", &self.g),
+			("B", &self.b),
+			("A", &self.a),
+		] {
+			slider_rows = slider_rows.child(
+				div()
+					.flex()
+					.items_center()
+					.gap_1()
+					.child(
+						div()
+							.w(px(12.0))
+							.text_sm()
+							.text_color(colors.text)
+							.child(label),
+					)
+					.child(div().flex_1().child(slider.clone())),
+			);
+		}
+
+		// Live preview swatch (checkerboard + draft) next to the hex field.
+		let preview_canvas = canvas(
+			|bounds, _window, _cx| bounds,
+			move |bounds, _content, window, cx| {
+				paint_checker_swatch(bounds, draft, window, cx);
+			},
+		);
+		let preview = div()
+			.w(px(36.0))
+			.h(px(24.0))
+			.rounded_sm()
+			.border_1()
+			.border_color(colors.border)
+			.overflow_hidden()
+			.child(preview_canvas);
+		let hex_row = div()
+			.flex()
+			.items_center()
+			.gap_1()
+			.child(preview)
+			.child(
+				div()
+					.flex_1()
+					.rounded_md()
+					.border_1()
+					.border_color(colors.border)
+					.bg(colors.background)
+					.px_2()
+					.py_1()
+					.child(
+						text_input(format!("ofx-color-hex-{control}"))
+							.state(hex_weak)
+							.accepts_input(true),
+					),
+			);
+
+		// Hex parse error hint.
+		let error_hint = if hex_error {
+			div()
+				.text_xs()
+				.text_color(gpui::rgba(0xff5555))
+				.child(crate::i18n::tr("ofx.color.invalid"))
+				.into_any_element()
+		} else {
+			div().into_any_element()
+		};
+
+		// Cancel / OK.
+		let cancel = div()
+			.id(SharedString::from(format!("ofx-color-cancel-{control}")))
+			.cursor_pointer()
+			.rounded_sm()
+			.border_1()
+			.border_color(colors.border)
+			.bg(colors.background)
+			.text_sm()
+			.text_color(colors.text)
+			.px_2()
+			.py_1()
+			.child(crate::i18n::tr("ofx.color.cancel"))
+			.on_click(cx.listener(|this, _event: &ClickEvent, _window, cx| {
+				this.close_menu(cx);
+			}));
+		let ok = div()
+			.id(SharedString::from(format!("ofx-color-ok-{control}")))
+			.cursor_pointer()
+			.rounded_sm()
+			.border_1()
+			.border_color(colors.border)
+			.bg(colors.selected)
+			.text_sm()
+			.text_color(colors.text)
+			.px_2()
+			.py_1()
+			.child(crate::i18n::tr("ofx.color.ok"))
+			.on_click(cx.listener(|this, _event: &ClickEvent, _window, cx| {
+				this.commit(cx);
+			}));
+		let buttons = div().flex().justify_between().gap_1().child(cancel).child(ok);
+
+		deferred(
+			anchored()
+				.position(self.position)
+				.anchor(Anchor::TopLeft)
+				.offset(point(px(0.0), px(36.0)))
+				.snap_to_window_with_margin(px(8.0))
+				.child(
+				div()
+					.w(px(240.0))
+					.p_2()
+					.rounded_lg()
+					.border_1()
+					.border_color(colors.border)
+					.bg(colors.container)
+					.flex()
+					.flex_col()
+					.gap_1()
+					.debug_selector(|| "ofx-color-popup".into())
+					.on_mouse_up_out(
+						MouseButton::Left,
+						cx.listener(|this, _event: &MouseUpEvent, _window, cx| {
+							this.close_menu(cx);
+						}),
+					)
+					.on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
+						if event.keystroke.key == "escape" {
+							this.close_menu(cx);
+						}
+					}))
+					.child(slider_rows)
+					.child(hex_row)
+					.child(error_hint)
+					.child(buttons),
+				),
+			)
+			.with_priority(1)
+	}
+}
+
+impl EventEmitter<OfxColorEvent> for OfxColorPicker {}
+
+impl Render for OfxColorPicker {
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let colors = cx.default_colors().clone();
+		let control = self.control;
+		let committed = self.committed;
+
+		let swatch = div()
+			.id(ElementId::named_usize("ofx-color-swatch", control))
+			.w(px(28.0))
+			.h(px(28.0))
+			.rounded_md()
+			.border_1()
+			.border_color(if self.open {
+				colors.selected
+			} else {
+				colors.border
+			})
+			.cursor_pointer()
+			.overflow_hidden()
+			.debug_selector(|| "ofx-color-swatch".into())
+			.on_mouse_down(
+				MouseButton::Left,
+				cx.listener(|this, _event: &MouseDownEvent, _window, _cx| {
+					this.was_open_at_down = this.open;
+				}),
+			)
+			.on_click(cx.listener(|this, event: &ClickEvent, _window, cx| {
+				if this.was_open_at_down {
+					this.close_menu(cx);
+				} else {
+					this.open_menu(event.position(), cx);
+				}
+				cx.stop_propagation();
+			}))
+			.child(canvas(
+				|bounds, _window, _cx| bounds,
+				move |bounds, _content, window, cx| {
+					paint_checker_swatch(bounds, committed, window, cx);
+				},
+			));
+
+		let popup = if self.open {
+			self.popup_anchored(cx, &colors)
+		} else {
+			deferred(div())
+		};
+
+		div().relative().child(swatch).child(popup)
+	}
+}
+
+/// Parse `#RRGGBB` or `#RRGGBBAA` into an [`Rgba`] (0..1 components).
+/// Rejects a missing `#`, wrong lengths and non-hex digits.
+fn parse_hex(input: &str) -> Option<Rgba> {
+	let s = input.trim();
+	let s = s.strip_prefix('#')?;
+	if s.len() != 6 && s.len() != 8 {
+		return None;
+	}
+	let mut bytes = [0u8; 4];
+	for i in 0..s.len() / 2 {
+		bytes[i] = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()?;
+	}
+	let (r, g, b, a) = if s.len() == 8 {
+		(bytes[0], bytes[1], bytes[2], bytes[3])
+	} else {
+		(bytes[0], bytes[1], bytes[2], 255)
+	};
+	Some(Rgba {
+		r: r as f32 / 255.0,
+		g: g as f32 / 255.0,
+		b: b as f32 / 255.0,
+		a: a as f32 / 255.0,
+	})
+}
+
+/// Format an [`Rgba`] as `#RRGGBB` (opaque alpha) or `#RRGGBBAA`.
+fn format_hex(color: Rgba) -> String {
+	let to = |v: f32| (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+	let (r, g, b, a) = (to(color.r), to(color.g), to(color.b), to(color.a));
+	if a == 255 {
+		format!("#{r:02X}{g:02X}{b:02X}")
+	} else {
+		format!("#{r:02X}{g:02X}{b:02X}{a:02X}")
+	}
+}
+
+/// Paint a two-tone checkerboard (8 px cells) with `color` over it — the
+/// alpha channel reads through the checkerboard.
+fn paint_checker_swatch(
+	bounds: Bounds<Pixels>,
+	color: Rgba,
+	window: &mut Window,
+	_cx: &mut App,
+) {
+	const CELL: f32 = 8.0;
+	let width = f32::from(bounds.size.width);
+	let height = f32::from(bounds.size.height);
+	let cols = (width / CELL).ceil() as i32;
+	let rows = (height / CELL).ceil() as i32;
+	let light = Hsla::from(rgb(0xe8e8e8));
+	let dark = Hsla::from(rgb(0xc0c0c0));
+	for y in 0..rows {
+		for x in 0..cols {
+			let cell = Bounds::new(
+				point(
+					bounds.left() + px(x as f32 * CELL),
+					bounds.top() + px(y as f32 * CELL),
+				),
+				size(px(CELL), px(CELL)),
+			);
+			let shade = if (x + y) % 2 == 0 { light } else { dark };
+			window.paint_quad(fill(cell, shade));
+		}
+	}
+	// The colour on top; a transparent alpha blends over the checkerboard.
+	window.paint_quad(fill(bounds, Hsla::from(color)));
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use gpui::TestAppContext;
+
+	#[test]
+	fn hex_parsing_and_formatting() {
+		// #RRGGBB parses with opaque alpha; #RRGGBBAA keeps the alpha.
+		let c = parse_hex("#1A80E6").expect("6-digit hex parses");
+		assert!((c.r - 0x1A as f32 / 255.0).abs() < 1e-6);
+		assert!((c.g - 0x80 as f32 / 255.0).abs() < 1e-6);
+		assert!((c.b - 0xE6 as f32 / 255.0).abs() < 1e-6);
+		assert!((c.a - 1.0).abs() < 1e-6);
+		let c = parse_hex("#1A80E6FF").expect("8-digit opaque hex parses");
+		assert!((c.a - 1.0).abs() < 1e-6);
+		let c = parse_hex("#1A80E67F").expect("8-digit alpha hex parses");
+		assert!((c.a - 0x7F as f32 / 255.0).abs() < 1e-6);
+
+		// format -> parse round-trips exactly (both sides are 8-bit).
+		for hex in ["#102030", "#0A0B0C", "#11223344", "#FF000080"] {
+			let parsed = parse_hex(hex).expect("round-trip source parses");
+			assert_eq!(format_hex(parsed), hex.to_ascii_uppercase());
+		}
+
+		// Opaque colours format to 6 digits, translucent to 8.
+		assert_eq!(
+			format_hex(Rgba {
+				r: 0.0,
+				g: 0.0,
+				b: 0.0,
+				a: 1.0,
+			}),
+			"#000000"
+		);
+		assert_eq!(
+			format_hex(Rgba {
+				r: 1.0,
+				g: 1.0,
+				b: 1.0,
+				a: 0.5,
+			}),
+			"#FFFFFF80"
+		);
+	}
+
+	#[test]
+	fn hex_parse_rejects_malformed() {
+		for bad in [
+			"",            // empty
+			"102030",      // missing '#'
+			"#12345",      // too short
+			"#1234567",    // 7 digits
+			"#GGHHII",     // non-hex digits
+			"#123456789",  // too long
+			"# 123456",    // whitespace inside
+		] {
+			assert!(parse_hex(bad).is_none(), "expected {bad:?} to be rejected");
+		}
+	}
+
+	/// The colour picker (and its four sliders + hex editor) constructs
+	/// without panicking and paints a swatch.
+	#[gpui::test]
+	async fn color_picker_constructs_without_panicking(cx: &mut TestAppContext) {
+		struct Host {
+			picker: Entity<OfxColorPicker>,
+		}
+		impl Render for Host {
+			fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+				div().size_full().child(self.picker.clone())
+			}
+		}
+
+		cx.update(|cx| cx.init_colors());
+		let window = cx.open_window(size(px(320.0), px(200.0)), |window, cx| {
+			let picker = cx.new(|cx| {
+				OfxColorPicker::new(
+					1,
+					Rgba {
+						r: 0.4,
+						g: 0.2,
+						b: 0.8,
+						a: 0.5,
+					},
+					window,
+					cx,
+				)
+			});
+			Host { picker }
+		});
+		cx.run_until_parked();
+
+		let mut visual = gpui::VisualTestContext::from_window(window.into(), cx).into_mut();
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+		assert!(
+			visual.debug_bounds("ofx-color-swatch").is_some(),
+			"the colour swatch should be painted"
+		);
 	}
 }

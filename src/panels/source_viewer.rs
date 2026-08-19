@@ -63,6 +63,10 @@ impl<E: AppEngine> SourceViewerPanel<E> {
 				ViewerEvent::PlayRequested { .. } => engine.play(monitor, cx),
 				ViewerEvent::PauseRequested { .. } => engine.pause(monitor, cx),
 				ViewerEvent::StepRequested { delta, .. } => engine.step(monitor, *delta, cx),
+				// The source monitor hosts no OFX interact: the picture's
+				// pointer/key events are not forwarded here (the program
+				// viewer's panel forwards them when an interact is live).
+				ViewerEvent::InteractPointer { .. } | ViewerEvent::InteractKey { .. } => {}
 				other => println!("[source viewer] request: {other:?}"),
 			});
 		})
