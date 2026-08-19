@@ -119,6 +119,15 @@ pub const TYPE_FRAME_FAILED: &str = "frame_failed";
 /// `"render_audio_batch"` (protocol v2, M15 S3): a batch of audio range
 /// pulls rendered into the same shm slot transport as video frames.
 pub const TYPE_RENDER_AUDIO_BATCH: &str = "render_audio_batch";
+/// `"plugin_progress"` (protocol v2): worker->main — one OFX plugin
+/// progress event (progressStart/Update/End forwarded over the control
+/// plane). The main process drains it into the plugin-progress dialog.
+pub const TYPE_PLUGIN_PROGRESS: &str = "plugin_progress";
+/// `"plugin_cancel"` (protocol v2): main->worker — the user cancelled the
+/// plugin render. The worker sets its sticky cancel flag; every live
+/// progress reporter then answers false (the plugin aborts at its next
+/// progressUpdate).
+pub const TYPE_PLUGIN_CANCEL: &str = "plugin_cancel";
 
 /// Wire-format slot format for 8-bit BGRA frames (M15 S1). The viewer
 /// preview path requests BGRA8 so the worker converts its F32 pipeline
@@ -387,6 +396,46 @@ pub struct FrameFailedMsg {
 	pub ticket: i64,
 	/// Human-readable failure reason.
 	pub error: String,
+}
+
+/// `plugin_progress` (worker->main) — one OFX plugin progress event
+/// forwarded over the control plane.
+///
+/// The oakplugin progress suite runs in the worker process (plugin
+/// rendering is process-isolated); the worker installs a progress reporter
+/// factory whose reporters push these messages to stdout. Wire shape is
+/// intentionally the same as the main-process `PluginProgressEvent`:
+/// progressStart arrives with fraction 0 and label/message set,
+/// progressUpdate with the fraction, progressEnd with fraction 1.0 (the
+/// app closes the dialog on >= 1.0, mirroring the main-process reporter —
+/// the `UiProgressReporter` trait has no end hook, so completion is
+/// inferred from the fraction there too).
+#[derive(Serialize, Deserialize, Default, Debug, Clone, PartialEq)]
+#[serde(default)]
+pub struct PluginProgressMsg {
+	/// The plugin's progressStart label.
+	pub label: String,
+	/// The plugin's progressStart message.
+	pub message: String,
+	/// Progress fraction in 0.0..=1.0.
+	pub fraction: f64,
+}
+
+impl PluginProgressMsg {
+	/// Build the wire `plugin_progress` value.
+	pub fn to_json(&self) -> Value {
+		json!({
+			"type": TYPE_PLUGIN_PROGRESS,
+			"label": self.label,
+			"message": self.message,
+			"fraction": self.fraction,
+		})
+	}
+}
+
+/// The wire `plugin_cancel` message (main->worker; no payload).
+pub fn plugin_cancel_json() -> Value {
+	json!({ "type": TYPE_PLUGIN_CANCEL })
 }
 
 /// Build a worker-side error report, mirroring `error_message()` in
@@ -1225,6 +1274,43 @@ mod tests {
 		let round: serde_json::Value =
 			serde_json::from_str(&serde_json::to_string(&value).unwrap()).unwrap();
 		assert_eq!(round, value);
+	}
+
+	#[test]
+	fn plugin_progress_message_round_trips() {
+		let msg = PluginProgressMsg {
+			label: "render".into(),
+			message: "pass 1".into(),
+			fraction: 0.5,
+		};
+		let value = msg.to_json();
+		assert_eq!(value["type"], TYPE_PLUGIN_PROGRESS);
+		assert_eq!(value["label"], "render");
+		assert_eq!(value["message"], "pass 1");
+		assert_eq!(value["fraction"], 0.5);
+
+		// The NDJSON line parses back to the same payload (the wire
+		// contract the worker writes and the dispatcher reads).
+		let line = serde_json::to_string(&value).unwrap();
+		let parsed: PluginProgressMsg = serde_json::from_str(&line).unwrap();
+		assert_eq!(parsed, msg);
+	}
+
+	#[test]
+	fn plugin_progress_defaults_on_missing_fields() {
+		// A minimal message (e.g. progressEnd forwarded as fraction 1.0
+		// without touching label/message) deserializes cleanly.
+		let m: PluginProgressMsg =
+			serde_json::from_str(r#"{"type":"plugin_progress","fraction":1.0}"#).unwrap();
+		assert_eq!(m.fraction, 1.0);
+		assert!(m.label.is_empty());
+		assert!(m.message.is_empty());
+	}
+
+	#[test]
+	fn plugin_cancel_wire_shape() {
+		let value = plugin_cancel_json();
+		assert_eq!(value["type"], TYPE_PLUGIN_CANCEL);
 	}
 
 	#[test]

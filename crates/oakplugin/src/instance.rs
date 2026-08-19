@@ -122,6 +122,9 @@ pub struct Instance {
 	/// pluginrenderer.cpp:1436-1444 的 instance_lock——渲染路径非
 	/// 线程安全，并发 render 必须互斥）。
 	pub render_lock: std::sync::Mutex<()>,
+	/// 关联的 interact（`new_interact` 创建；与实例同生命周期，
+	/// notify_destroy 时连带销毁）。
+	pub interact: std::sync::Mutex<Option<std::sync::Arc<crate::suites::interact::Interact>>>,
 }
 
 /// 实例销毁路径：先通知 destroyInstance action，再摘除 param 回写登记。
@@ -641,12 +644,16 @@ impl Instance {
 	/// 要求上下文 current——本实现的约定是 oakrender 的 PluginJob
 	/// 路径在进入前做好），且 `output_texture` 已附着为渲染器输出
 	/// 目标（等价 C++ `PluginRenderer::attach_output_texture`）。
+	/// `output_gl_texture` 为宿主为输出帧建的真实 GL 纹理名（GL 模式
+	/// 下 clipLoadTexture(Output) 的 OpenGLTextureIndex 以它为准）；
+	/// None = CPU 回退语义。
 	///
 	/// action 序列：kOfxActionOpenGLContextAttached → render（in args
 	/// 带 kOfxImageEffectPropOpenGLEnabled=1）→
 	/// kOfxActionOpenGLContextDetached（ofxGPURender.h:345-371；
 	/// attach/detach 必须配对）。渲染结果留在 GL 输出纹理上（插件
-	/// 直接画进附着目标），宿主不做 CPU 回读；GL 模式下
+	/// 直接画进附着目标），宿主经 glReadPixels 回读（render 驱动
+	/// 负责，见 [`crate::gl_bridge`]）；GL 模式下
 	/// clipGetImage(Output) 不可用（插件按规范走 OpenGL suite——
 	/// ofxGPURender.h "the effect SHOULD access all its images through
 	/// the OpenGL suite"）。render 返回前对未释放的输入 GL 纹理做
@@ -658,6 +665,7 @@ impl Instance {
 		window: OfxRectD,
 		renderer: crate::render::Renderer,
 		output_texture: crate::render::Texture,
+		output_gl_texture: Option<i32>,
 	) -> crate::error::Result<()> {
 		use crate::host::ACTION_RENDER;
 
@@ -682,6 +690,7 @@ impl Instance {
 			renderer,
 			output_texture,
 			gl_pixel_depth,
+			output_gl_texture,
 		}));
 		// GL 模式无 CPU 输出图像（current_output 保持 None）。
 
@@ -963,6 +972,143 @@ impl Instance {
 		Ok(())
 	}
 
+	/// kOfxActionInstanceChanged 的宿主侧分发（ofxCore.h:405-435 的
+	/// inArgs 契约）：
+	///
+	/// - kOfxPropType = kOfxTypeParameter（参数值变更）
+	/// - kOfxPropName = 变更的参数名
+	/// - kOfxPropChangeReason = kOfxChange*（UserEdited / PluginEdited /
+	///   Time）
+	/// - kOfxPropTime = 变更发生时的效果时间（Image Effect 插件专属）
+	/// - kOfxImageEffectPropRenderScale = 当前渲染比例
+	///
+	/// 宿主按下 push button 后以 UserEdited 调用它（push button 无值，
+	/// 插件的反应全在 instanceChanged 里；真实插件如 CImg 依赖此动作
+	/// 刷新内部状态）。返回非 OK/ReplyDefault 状态码时为 Err。
+	pub fn instance_changed(
+		&self,
+		param_name: &str,
+		reason: crate::param::ChangeReason,
+		time: f64,
+		scale: RenderScale,
+	) -> crate::error::Result<()> {
+		use crate::host::{
+			ACTION_INSTANCE_CHANGED, CHANGE_PLUGIN_EDITED, CHANGE_TIME, CHANGE_USER_EDITED,
+			PROP_CHANGE_REASON, PROP_RENDER_SCALE, PROP_TIME,
+		};
+		use crate::property::Value;
+
+		let in_args = PropertySet::new();
+		in_args.set_one(
+			crate::param::PROP_TYPE,
+			Value::String(CString::new(crate::param::TYPE_PARAMETER).unwrap()),
+		);
+		in_args.set_one(
+			crate::param::PROP_NAME,
+			Value::String(CString::new(param_name).unwrap()),
+		);
+		let reason_str = match reason {
+			crate::param::ChangeReason::UserEdited => CHANGE_USER_EDITED,
+			crate::param::ChangeReason::PluginEdited => CHANGE_PLUGIN_EDITED,
+			crate::param::ChangeReason::TimeChanged => CHANGE_TIME,
+		};
+		in_args.set_one(
+			PROP_CHANGE_REASON,
+			Value::String(CString::new(reason_str).unwrap()),
+		);
+		in_args.set_one(PROP_TIME, Value::Double(time));
+		in_args.define(
+			PROP_RENDER_SCALE,
+			vec![Value::Double(scale.x), Value::Double(scale.y)],
+		);
+
+		let inst_handle = crate::suites::tag::make(
+			&self.props as *const PropertySet,
+			crate::suites::tag::INSTANCE,
+		);
+		let out = PropertySet::new();
+		let stat = unsafe {
+			self.plugin
+				.call_action(ACTION_INSTANCE_CHANGED, inst_handle, &in_args, &out)
+		};
+		if stat != crate::suites::status::OK && stat != crate::suites::status::REPLY_DEFAULT {
+			return Err(crate::error::Error::Failed(format!(
+				"instanceChanged 失败：{stat}"
+			)));
+		}
+		Ok(())
+	}
+
+	/// 创建关联的 interact（主进程 UI 事件宿主；任务契约的
+	/// `new_interact(instance)`）。与 worker 进程里的渲染实例并存——
+	/// OFX 允许同一插件多实例，interact 是独立对象（独立 handle），
+	/// 经 [`crate::suites::interact::Interact::handle`] 与效果实例区分。
+	///
+	/// 流程：插件声明的 overlay interact 入口（V2 优先、V1 次之；
+	/// ofxImageEffect.h:825/812）作为 interact 的入口——未声明则用插件
+	/// main entry（任务契约）→ 建 [`Interact`]（属性表 + tagged handle）
+	/// → 向入口发 `kOfxActionNewInteract`。
+	///
+	/// 返回值：
+	/// - `Some(interact)`：创建成功（NewInteract 返回 OK；或插件未实现
+	///   NewInteract 但声明了 overlay interact——真实 overlay 插件不认
+	///   NewInteract，走 describe/create 序列）。
+	/// - `None`：插件无 interact（NewInteract 返回 kOfxStatReplyDefault
+	///   且未声明 overlay 入口）或返回错误状态。
+	///
+	/// 创建后调用方继续 [`Interact::describe`] → [`Interact::create_instance`]
+	/// 完成实例化；销毁随实例自动连带（[`Instance::notify_destroy`]）。
+	pub fn new_interact(&self) -> Option<std::sync::Arc<crate::suites::interact::Interact>> {
+		use crate::host::overlay_interact_entry;
+		use crate::suites::interact::Interact;
+
+		let overlay = overlay_interact_entry(&self.plugin.descriptor.props);
+		let entry = overlay.unwrap_or(self.plugin.entry);
+		let has_overlay = overlay.is_some();
+
+		let effect_handle = crate::suites::tag::make(
+			&self.props as *const PropertySet,
+			crate::suites::tag::INSTANCE,
+		);
+		let interact = Interact::new(self.plugin.clone(), entry, effect_handle);
+
+		let empty = PropertySet::new();
+		let st = interact.call(crate::host::ACTION_NEW_INTERACT, &empty, &empty);
+		let accepted = match st {
+			crate::suites::status::OK => true,
+			// 插件未实现 NewInteract 但声明了 overlay interact → 仍创建
+			//（走 describe/create 的官方序列）。
+			crate::suites::status::REPLY_DEFAULT if has_overlay => true,
+			_ => false,
+		};
+		if !accepted {
+			return None;
+		}
+		*self
+			.interact
+			.lock()
+			.unwrap_or_else(|e| e.into_inner()) = Some(interact.clone());
+		Some(interact)
+	}
+
+	/// 已创建的 interact（None = 未创建）。
+	pub fn interact(&self) -> Option<std::sync::Arc<crate::suites::interact::Interact>> {
+		self.interact
+			.lock()
+			.unwrap_or_else(|e| e.into_inner())
+			.clone()
+	}
+
+	/// describe_interact（任务契约）：对已创建的 interact 发
+	/// `kOfxActionDescribe`（kOfxActionDescribeInteract）。未创建 →
+	/// kOfxStatErrBadHandle。
+	pub fn describe_interact(&self) -> i32 {
+		match self.interact() {
+			Some(i) => i.describe(),
+			None => crate::suites::status::ERR_BAD_HANDLE,
+		}
+	}
+
 	/// 销毁（destroyInstance action）。析构由 `Arc<RefBox<Instance>>`
 	/// 归零驱动；此处只做 action 通知，幂等（[`Instance::drop`] 的
 	/// `destroyed` 门保证只发一次）。
@@ -973,6 +1119,17 @@ impl Instance {
 			crate::suites::tag::INSTANCE,
 		);
 		let empty = PropertySet::new();
+		// interact 与实例同生命周期：实例销毁前先销毁 interact
+		//（ofxInteract.h kOfxActionDestroyInstanceInteract 的 \pre 要求
+		// 实例成员尚未销毁）。
+		if let Some(i) = self
+			.interact
+			.lock()
+			.unwrap_or_else(|e| e.into_inner())
+			.take()
+		{
+			i.destroy();
+		}
 		// 通知失败只记日志（销毁路径不可回滚）。
 		let stat = unsafe {
 			self.plugin

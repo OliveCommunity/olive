@@ -62,7 +62,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock, Weak};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
@@ -70,10 +70,11 @@ use serde_json::{json, Value};
 use crate::error::{Error, Result};
 use crate::ipc::{
 	write_message, AudioTicketSpec, BatchAcceptedMsg, BatchTicketSpec, FrameFailedMsg, FrameReadyMsg,
-	FrameSlotMeta, FrameSlotPool, HandshakeMsg, HelloCapsMsg, RenderAudioBatchMsg, RenderBatchMsg,
-	SharedMemoryRegion, ShmMode, WireMontageClip, SLOT_FORMAT_BGRA8, TYPE_BATCH_ACCEPTED,
-	TYPE_ERROR, TYPE_FRAME_FAILED, TYPE_FRAME_READY, TYPE_HANDSHAKE, TYPE_HELLO_CAPS,
-	TYPE_RENDER_AUDIO_BATCH,
+	FrameSlotMeta, FrameSlotPool, HandshakeMsg, HelloCapsMsg, PluginProgressMsg, RenderAudioBatchMsg,
+	RenderBatchMsg, SharedMemoryRegion, ShmMode, WireMontageClip, SLOT_FORMAT_BGRA8,
+	TYPE_BATCH_ACCEPTED, TYPE_ERROR, TYPE_FRAME_FAILED, TYPE_FRAME_READY, TYPE_HANDSHAKE,
+	TYPE_HELLO_CAPS, TYPE_PLUGIN_CANCEL, TYPE_PLUGIN_PROGRESS, TYPE_RENDER_AUDIO_BATCH,
+	plugin_cancel_json,
 };
 use crate::scheduler::{FrameKey, FrameRequest, PreviewScheduler, SubmitOutcome};
 use crate::ticket::{
@@ -116,6 +117,59 @@ pub fn main_heap_frame_copies() -> u64 {
 /// Reset the copy counter (tests).
 pub fn reset_main_heap_frame_copies() {
 	MAIN_FRAME_COPIES.store(0, Ordering::Relaxed);
+}
+
+// ---------------------------------------------------------------------------
+// Plugin-progress forwarding (worker -> main) and cancel broadcast
+// ---------------------------------------------------------------------------
+
+/// The app-facing plugin-progress callback: invoked by the dispatcher (on
+/// the UI tick's poll) for every worker-forwarded `plugin_progress` line
+/// (label, message, fraction). The app's [`crate::oakui::ofx`] wiring
+/// forwards these into its `PluginProgressEvent` channel. `Arc` so the
+/// registry can hand out cheap clones (the callback is `Fn`, not `Clone`).
+pub type PluginProgressCb = Arc<dyn Fn(String, String, f64) + Send + Sync>;
+
+static PLUGIN_PROGRESS_CB: OnceLock<Mutex<Option<PluginProgressCb>>> = OnceLock::new();
+
+/// Register (or clear) the plugin-progress forwarding callback.
+pub fn set_plugin_progress_cb(cb: Option<PluginProgressCb>) {
+	*PLUGIN_PROGRESS_CB
+		.get_or_init(|| Mutex::new(None))
+		.lock()
+		.unwrap_or_else(|e| e.into_inner()) = cb;
+}
+
+fn plugin_progress_cb() -> Option<PluginProgressCb> {
+	PLUGIN_PROGRESS_CB
+		.get_or_init(|| Mutex::new(None))
+		.lock()
+		.unwrap_or_else(|e| e.into_inner())
+		.clone()
+}
+
+/// Weak handle to the live dispatcher, registered by
+/// [`ProcessDispatcher::new`] so the cancel broadcast can reach the
+/// workers without threading a handle through the app.
+static DISPATCHER: OnceLock<Mutex<Weak<ProcessDispatcher>>> = OnceLock::new();
+
+fn dispatcher_slot() -> &'static Mutex<Weak<ProcessDispatcher>> {
+	DISPATCHER.get_or_init(|| Mutex::new(Weak::new()))
+}
+
+/// Broadcast a `plugin_cancel` message to every alive worker: the user
+/// cancelled the plugin render; the workers set their sticky cancel flag
+/// and their live progress reporters answer false from then on (the
+/// plugin aborts at its next progressUpdate). Falls back to a no-op when
+/// no dispatcher is live (inline/test backends).
+pub fn request_plugin_cancel_all() {
+	let dispatcher = dispatcher_slot()
+		.lock()
+		.unwrap_or_else(|e| e.into_inner())
+		.upgrade();
+	if let Some(dispatcher) = dispatcher {
+		dispatcher.broadcast_plugin_cancel();
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -718,7 +772,7 @@ impl ProcessDispatcher {
 		};
 		let bin = resolve_worker_bin(&config)?;
 		let (events_tx, events_rx) = mpsc::channel();
-		Ok(Arc::new(ProcessDispatcher {
+		let dispatcher = Arc::new(ProcessDispatcher {
 			inner: Mutex::new(Inner {
 				config,
 				bin,
@@ -734,7 +788,12 @@ impl ProcessDispatcher {
 				started: false,
 				shutting_down: false,
 			}),
-		}))
+		});
+		// Register the weak handle for the plugin-cancel broadcast.
+		*dispatcher_slot()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner()) = Arc::downgrade(&dispatcher);
+		Ok(dispatcher)
 	}
 
 	/// Spawn all workers and wait for the handshakes (bounded by
@@ -902,6 +961,22 @@ impl ProcessDispatcher {
 		}
 	}
 
+	/// Broadcast the plugin-cancel signal to every alive worker (the user
+	/// cancelled the plugin render from the progress dialog). The message
+	/// is a fire-and-forget control line; the worker sets its sticky cancel
+	/// flag and the next reporter update answers false. A send failure
+	/// recycles that worker (it will restart on the next pump).
+	pub fn broadcast_plugin_cancel(&self) {
+		let mut inner = lock(&self.inner);
+		for handle in inner.workers.iter_mut() {
+			if matches!(handle.state, WorkerState::Alive | WorkerState::Starting) {
+				if self.send_json(handle, &plugin_cancel_json()).is_err() {
+					handle.state = WorkerState::Dead;
+				}
+			}
+		}
+	}
+
 	// ---- internals ------------------------------------------------------
 
 	fn pump(&self, inner: &mut Inner, fired: &mut Vec<(Completion, TicketResult)>) {
@@ -1043,6 +1118,16 @@ impl ProcessDispatcher {
 						if matches!(handle.state, WorkerState::Starting) {
 							handle.state = WorkerState::Dead;
 						}
+					}
+				}
+			}
+			TYPE_PLUGIN_PROGRESS => {
+				// A worker forwarded an OFX plugin progress event; hand it
+				// to the app's registered callback (which drives the
+				// plugin-progress dialog).
+				if let Ok(progress) = serde_json::from_value::<PluginProgressMsg>(msg) {
+					if let Some(cb) = plugin_progress_cb() {
+						cb(progress.label, progress.message, progress.fraction);
 					}
 				}
 			}
@@ -1901,5 +1986,56 @@ mod tests {
 	fn copy_counter_counts_only_slot_to_vec() {
 		reset_main_heap_frame_copies();
 		assert_eq!(main_heap_frame_copies(), 0);
+	}
+
+	/// A worker's `plugin_progress` NDJSON line is forwarded to the
+	/// registered app callback as (label, message, fraction) — the seam
+	/// that drives the main-process plugin-progress dialog.
+	#[test]
+	fn plugin_progress_line_forwards_to_callback() {
+		let config = DispatcherConfig {
+			worker_bin: Some(std::path::PathBuf::from("/bin/true")),
+			workers: 1,
+			slots_per_worker: 2,
+			width: 16,
+			height: 16,
+			batch_size: 1,
+			..Default::default()
+		};
+		let dispatcher = ProcessDispatcher::new(config).expect("dispatcher");
+		// `new` registered the weak handle (the cancel broadcast seam).
+		assert!(dispatcher_slot().lock().unwrap().upgrade().is_some());
+
+		let received: Arc<Mutex<Vec<(String, String, f64)>>> = Arc::new(Mutex::new(Vec::new()));
+		set_plugin_progress_cb(Some(Arc::new({
+			let received = received.clone();
+			move |label, message, fraction| {
+				received.lock().unwrap().push((label, message, fraction));
+			}
+		})));
+
+		// A fake worker handle so on_line has a target (no spawn needed).
+		{
+			let mut inner = dispatcher.inner.lock().unwrap_or_else(|e| e.into_inner());
+			let key = SharedMemoryRegion::make_key(std::process::id() as i64, 999);
+			let shm = ShmRegionView::create(&key, 2, 256).expect("shm");
+			inner.workers.push(WorkerHandle::shell(0, 0, shm, 2, 256));
+		}
+
+		let mut fired = Vec::new();
+		{
+			let mut inner = dispatcher.inner.lock().unwrap_or_else(|e| e.into_inner());
+			dispatcher.on_line(
+				&mut inner,
+				0,
+				r#"{"type":"plugin_progress","label":"render","message":"pass 1","fraction":0.5}"#,
+				&mut fired,
+			);
+		}
+		set_plugin_progress_cb(None);
+
+		let events = received.lock().unwrap().clone();
+		assert_eq!(events.len(), 1);
+		assert_eq!(events[0], ("render".to_string(), "pass 1".to_string(), 0.5));
 	}
 }

@@ -43,6 +43,7 @@
 //! shm slots and publish `frame_ready` / `frame_failed` (protocol v2).
 
 use std::io::{self, BufRead, Write};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -55,9 +56,10 @@ use oakrender::ticket::{AudioTicketParams, MontageClip, VideoTicketParams};
 
 use crate::ipc::{
 	error_message, write_message, AudioTicketSpec, BatchTicketSpec, FrameSlotPool, FrameSlotMeta,
-	HandshakeMsg, LoadGraphMsg, RenderAudioBatchMsg, RenderBatchMsg, RenderFrameMsg,
-	SharedMemoryRegion, ShmMode, TYPE_CANCEL, TYPE_HANDSHAKE, TYPE_LOAD_GRAPH, TYPE_RENDER_AUDIO_BATCH,
-	TYPE_RENDER_BATCH, TYPE_RENDER_FRAME, TYPE_SHUTDOWN, SLOT_FORMAT_AUDIO_F32, SLOT_FORMAT_BGRA8,
+	HandshakeMsg, LoadGraphMsg, PluginProgressMsg, RenderAudioBatchMsg, RenderBatchMsg,
+	RenderFrameMsg, SharedMemoryRegion, ShmMode, TYPE_CANCEL, TYPE_HANDSHAKE, TYPE_LOAD_GRAPH,
+	TYPE_PLUGIN_CANCEL, TYPE_RENDER_AUDIO_BATCH, TYPE_RENDER_BATCH, TYPE_RENDER_FRAME,
+	TYPE_SHUTDOWN, SLOT_FORMAT_AUDIO_F32, SLOT_FORMAT_BGRA8,
 };
 use crate::{log_error, PROTOCOL_VERSION};
 
@@ -75,6 +77,101 @@ struct LoadedGraph {
 	#[allow(dead_code)]
 	project: Option<Arc<Mutex<oaknode::project::Project>>>,
 	project_copy: u64,
+}
+
+// ---------------------------------------------------------------------------
+// Worker-side plugin-progress forwarding
+// ---------------------------------------------------------------------------
+//
+// OFX plugin rendering happens in this process (crash isolation), so the
+// main process's inline progress reporter is not in effect here. The
+// worker installs its own progress reporter factory (see
+// [`install_worker_progress_factory`]) whose reporters push `plugin_progress`
+// NDJSON events into [`WORKER_PROGRESS_EVENTS`]; the main loop drains the
+// buffer after each control message ([`flush_worker_progress`]). Plugin
+// renders are synchronous on the loop thread, so the buffer only ever
+// mutates there — a plain `Mutex` suffices.
+//
+// Cancel: the main process broadcasts `plugin_cancel` (the progress
+// dialog's Cancel button); the worker sets [`WORKER_PLUGIN_CANCEL`] and
+// every live reporter answers false (the plugin aborts at its next
+// progressUpdate). Mirrors the main-process reporter factory: a fresh
+// render (progressStart) resets the sticky flag. Because the worker
+// processes control messages between batches, an in-flight frame
+// completes before the cancel is observed (batch granularity); the main
+// process stops the render loop separately (export cancel atom / preview
+// window invalidation).
+
+/// The worker's sticky plugin-cancel flag (set by the `plugin_cancel`
+/// control message, read by every live progress reporter).
+static WORKER_PLUGIN_CANCEL: AtomicBool = AtomicBool::new(false);
+
+/// Buffered `plugin_progress` events awaiting the next flush.
+static WORKER_PROGRESS_EVENTS: Mutex<Vec<Value>> = Mutex::new(Vec::new());
+
+/// Queue one `plugin_progress` NDJSON event for the main loop to flush.
+fn push_worker_progress(fraction: f64, label: &str, message: &str) {
+	let event = PluginProgressMsg {
+		label: label.to_string(),
+		message: message.to_string(),
+		fraction,
+	}
+	.to_json();
+	WORKER_PROGRESS_EVENTS
+		.lock()
+		.unwrap_or_else(|e| e.into_inner())
+		.push(event);
+}
+
+/// Write every buffered progress event to `out` (called by the main loop
+/// after each control message; `out` is the NDJSON stdout writer).
+fn flush_worker_progress(out: &mut impl Write) {
+	let events = std::mem::take(
+		&mut *WORKER_PROGRESS_EVENTS
+			.lock()
+			.unwrap_or_else(|e| e.into_inner()),
+	);
+	for event in events {
+		if write_message(out, &event).is_err() {
+			break;
+		}
+	}
+	let _ = out.flush();
+}
+
+/// The worker-side `UiProgressReporter`: forwards (label, message,
+/// fraction) to the main process and honours the sticky cancel flag.
+struct WorkerProgressReporter {
+	label: String,
+	message: String,
+}
+
+impl oakplugin::progress::UiProgressReporter for WorkerProgressReporter {
+	fn update(&mut self, progress: f64) -> bool {
+		push_worker_progress(progress, &self.label, &self.message);
+		!WORKER_PLUGIN_CANCEL.load(Ordering::Relaxed)
+	}
+
+	fn end(&mut self) {
+		// progressEnd: forward completion (fraction 1.0) so the app closes
+		// the progress dialog without waiting for a 1.0 update.
+		push_worker_progress(1.0, &self.label, &self.message);
+	}
+}
+
+/// Install the worker-side progress reporter factory. Called from
+/// [`WorkerSession::initialize_runtime`]; mirrors the main-process factory
+/// (a fresh progressStart resets the sticky cancel flag).
+fn install_worker_progress_factory() {
+	oakplugin::progress::set_reporter_factory(Some(Arc::new(|label, message| {
+		// A fresh render begins: reset the sticky cancel flag.
+		WORKER_PLUGIN_CANCEL.store(false, Ordering::Relaxed);
+		push_worker_progress(0.0, label, message);
+		Box::new(WorkerProgressReporter {
+			label: label.to_string(),
+			message: message.to_string(),
+		})
+	})));
 }
 
 // ---------------------------------------------------------------------------
@@ -248,6 +345,11 @@ impl WorkerSession {
 			"runtime: registered {} OFX plugin node type(s)",
 			registered.len()
 		));
+		// Worker-side plugin progress forwarding (see the module docs): the
+		// plugin progress suite runs in this process, so progress events
+		// must cross the IPC boundary to reach the app's progress dialog.
+		log_error("runtime: installing worker plugin-progress reporter factory");
+		install_worker_progress_factory();
 		log_error(
 			"runtime: config / frame manager / disk manager / project \
 			 serializer have no Rust backing in the worker binary; skipped",
@@ -292,6 +394,13 @@ impl WorkerSession {
 			// cancel: the worker does synchronous single-frame work
 			// (nothing in flight), so a cancel produces no response.
 			TYPE_CANCEL => None,
+			// plugin_cancel: the user cancelled the plugin render; sticky
+			// until the next progressStart resets it (main-process
+			// semantics).
+			TYPE_PLUGIN_CANCEL => {
+				WORKER_PLUGIN_CANCEL.store(true, Ordering::Relaxed);
+				None
+			}
 			TYPE_SHUTDOWN => {
 				self.shutdown_requested = true;
 				None
@@ -1123,6 +1232,8 @@ pub fn worker_main(backend: &str) -> i32 {
 					exit_code = 1;
 					break;
 				}
+				// Plugin progress events buffered during the batch go out now.
+				flush_worker_progress(&mut out);
 				continue;
 			}
 			// M15 S3: render_audio_batch streams the same way (audio range
@@ -1133,6 +1244,7 @@ pub fn worker_main(backend: &str) -> i32 {
 					exit_code = 1;
 					break;
 				}
+				flush_worker_progress(&mut out);
 				continue;
 			}
 			_ => {}
@@ -1149,6 +1261,8 @@ pub fn worker_main(backend: &str) -> i32 {
 				break;
 			}
 		}
+		// Progress events buffered while serving the control message.
+		flush_worker_progress(&mut out);
 	}
 	exit_code
 }

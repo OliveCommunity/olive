@@ -19,6 +19,8 @@ src/
     property.rs memory.rs image_effect.rs param.rs
     message.rs  progress.rs timeline.rs multithread.rs
     gl_render.rs OfxImageEffectOpenGLRenderSuiteV1（M11 §4 新增）
+    draw.rs     OfxDrawSuiteV1（OFX 1.5，interact 绘制；真实 GL 渲染）
+    interact.rs OfxInteractSuiteV1 + Interact 宿主对象（interact 宿主）
   host.rs       Host 单例：bundle 扫描、插件缓存、action 分发
   descriptor.rs EffectDescriptor/ClipDescriptor（describe 的产物）
   instance.rs   Instance：action 调用面（render/协商/RoD/RoI/isIdentity/
@@ -92,22 +94,40 @@ src/
   OpenGLTextureTarget/PixelDepth/Components/PreMultiplication/
   RenderScale/PixelAspectRatio/Bounds/ROD/RowBytes/Field/
   UniqueIdentifier）；存活表持有 Box<PropertySet>（句柄地址稳定）。
-  Output clip 的渲染目标绑定由调用方契约保证（等价 C++
-  `attach_output_texture`）；clipFreeTexture 对 Output 不删纹理。
+  **OpenGLTextureIndex 是真实 GL 纹理名**（GL 模式；0 = CPU 回退）。
+  Output clip 的渲染目标绑定由宿主完成（等价 C++
+  `attach_output_texture`）；clipFreeTexture 对 Output 不删纹理（宿主
+  回读后删除）。
 - GL render action：`Instance::render_gl`（与 CPU `render` 并存）——
   action 序列 kOfxActionOpenGLContextAttached → render（in args 带
   kOfxImageEffectPropOpenGLEnabled=1）→ OpenGLContextDetached；
-  GL 模式无 CPU 输出回读，渲染结果留在附着纹理上。
+  渲染结果留在 FBO 附着的输出 GL 纹理上，render 返回后宿主
+  **glReadPixels 回读**装帧（方案 B，见下）。
 - **GL 上下文规则**（ofxGPURender.h "OpenGL Current Context"）：宿主
   只在 Render/Begin/EndSequenceRender/Attach/Detach 期间要求上下文
-  current——本实现的约定是调用方（oakrender PluginJob 路径）在
-  进入 render_job 前把渲染器上下文置为 current 并附着输出纹理
-  （文档见 include/plugin/instance.h 的新增声明）。
+  current——本实现的约定是 render 驱动一次 `gl_bridge::acquire` 整个
+  GL render action（上下文 current 到 guard drop），suite 回调期间
+  恒 current。
 - 格式协商：插件描述符声明 kOfxImageEffectPropOpenGLRenderSupported
   （"false"/"true"/"needed"）与 kOfxOpenGLPropPixelDepth（可选位深
   列表）；宿主 `pick_gl_pixel_depth` 按管线 F32 约束选型（声明列表
   不含 Float → GL 模式不可行，回退 CPU）。use_opengl 决策在
-  render_driver。
+  render_driver（插件 GL 声明 + 深度协商 + 桥可用）。
+
+### GL 互操作桥（方案 B 落地，`gl_bridge.rs`）
+
+- **macOS 真实实现**（Core OpenGL / CGL，`OpenGL.framework` 直链，
+  无新 crate）：进程级共享离屏上下文（3.2 core profile、offline
+  renderer 允许），`acquire()` 全局串行 + 置当前线程 current。为每次
+  GL 渲染建输出 GL 纹理（尺寸 = 目标帧；F32 → RGBA32F、U8 → RGBA8）
+  + FBO 挂载；插件直接画进 FBO；render 返回后 `glReadPixels` 回读
+  （垂直翻转、U8 归一化 F32），与 CPU 路径输出格式一致。
+- 输入 clip 在 GL 模式经桥上传为真实 GL 纹理（clipFreeTexture 删除）。
+- GL 失败回退 CPU（对齐现有失败语义）。Linux（EGL）/Windows（WGL）
+  预留 cfg stub。
+- 验证：`gl_bridge.rs` 单元测试（clear 已知颜色 → 回读逐像素断言，
+  `OAK_GPU_TESTS` 门）+ `tests/gl_render_test.rs` 端到端（GL 测试插件
+  真实走 GL 路径、输出已知颜色）。
 
 ### ofxColour（OFX 1.4）
 
@@ -149,6 +169,63 @@ src/
   单一调用；`oakplugin_job_value`（参数覆盖）/`oakplugin_job_texture`
   （输入 clip 纹理）两个 POD 随附。GL 契约（上下文 current + 输出
   附着）见头文件文档注释。
+
+## OFX Interact 宿主（interact + Draw suite，M11 §5）
+
+插件自定义 UI 的宿主侧：Interact 实例在主进程创建（UI 事件宿主），与
+worker 进程里的渲染实例并存（OFX 允许同一插件多实例）。
+
+- **`suites/interact.rs`**：
+  - `Instance::new_interact`（任务契约）：取插件声明的 overlay interact
+    入口（kOfxImageEffectPluginPropOverlayInteractV2 优先、V1 次之；未
+    声明则插件 main entry）→ 建 `Interact`（属性表 + tagged INTERACT
+    handle）→ 发 `kOfxActionNewInteract`。插件返回 OK → Some；返回
+    ReplyDefault 且未声明 overlay 入口（无 interact）→ None；错误 → None。
+  - 生命周期：`describe`（kOfxActionDescribe == kOfxActionDescribeInteract）
+    → `create_instance`（kOfxActionCreateInstance）→ 事件 → `destroy`
+    （kOfxActionDestroyInstance）；**与效果实例同生命周期**——实例销毁
+    （`Instance::notify_destroy`）时先连带销毁 interact。
+  - 调用面（宿主→插件，返回值如实透传）：`draw(viewport, pixel_scale,
+    time, background)`、`pen_motion(pen_pos, pen_down)`、`pen_down`、
+    `pen_up`、`key_down(key_sym, key_string)`、`key_up`、`idle`（任务契约
+    的 kOfxInteractActionIdle，属宿主扩展）、`gain_focus`/`lose_focus`。
+    pen 坐标为视口像素，inArgs 另带 canonical 位置（viewport/像素比）、
+    viewport 位置、压力（两态笔映射 0/1）；key 带 kOfxPropKeySym
+    （ofxKeySyms.h 关键码）+ kOfxPropKeyString。返回 kOfxStatOK = 插件
+    已处理（宿主不再把事件给其他对象），ReplyDefault = 未处理。
+  - `OfxInteractSuiteV1`（ofxInteract.h:534）：interactSwapBuffers /
+    interactRedraw 把请求记入 `swap_requested`/`redraw_requested`
+    （app 侧轮询面）；interactGetPropertySet 返回 interact 属性集句柄。
+  - interact 属性集走现有 property suite：PixelScale / ViewportSize /
+    BackgroundImage / SuggestedColour / SlaveToParam / BackgroundColour /
+    BitDepth / HasAlpha（ofxInteract.h 的 PropertiesInteract；ViewportSize
+    取 OFX 1.3 名 "OfxInteractPropViewport"、BackgroundImage 与 Idle 为
+    任务契约扩展）。
+- **`suites/draw.rs`**（`OfxDrawSuiteV1`，OFX 1.5，vendored ofxDrawSuite.h）：
+  getColour / setColour / setLineWidth / setLineStipple / draw / drawText。
+  状态（colour/lineWidth/stipple）保存在 `DrawContext`（每次 draw action
+  创建、经存活表注册，draw 返回摘除——draw 外调用 → kOfxStatFailed）。
+  GL 绘制是**真实渲染**：gl_bridge 的 CGL 上下文是 3.2 core（无固定管
+  线），draw 用最小着色器 + VAO/VBO 按正交投影画线/矩形/多边形/椭圆，
+  非不透明色按 "over" 合成。drawText 无字体光栅化器 → 如实返回
+  kOfxStatErrUnsupported。非 macOS 无 GL 桥 → kOfxStatFailed。
+- **GL 上下文模型**：宿主在调 draw 前经 `gl_bridge::acquire` 保持
+  current 整个 action（与 WG1 渲染路径同模型）；`acquire` 支持同线程
+  可重入（测试"一次 acquire 覆盖 FBO 装配 → draw → 回读"）。
+- vendored 头新增：`ofxDrawSuite.h`、`ofxKeySyms.h`（kOfxPropKeySym/
+  kOfxPropKeyString + kOfxKey_*）、`ofxPixels.h`（OfxRGBAColourF）——
+  官方 openfx（BSD-3-Clause），与既有 vendored 头同源。
+- 验证：`tests/interact_test.rs`（生命周期 + 事件参数逐条断言插件侧
+  marker 记录；Escape key_down 的 ReplyDefault 透传；实例销毁连带
+  destroy）+ GL draw 端到端（`OAK_GPU_TESTS` 门：插件 glClear 暗背景 +
+  Draw suite setColour(0.9,0.1,0.2,1) + draw(Rectangle) → 回读断言矩形
+  颜色与背景）。
+
+app 接线（WG3b）公共 API：`Instance::new_interact` / `Instance::interact` /
+`Instance::describe_interact`、`Interact::{describe, create_instance, draw,
+pen_motion, pen_down, pen_up, key_down, key_up, idle, gain_focus, lose_focus,
+destroy, props, swap_requested, redraw_requested}`、`host::KEY_*` 关键码、
+`fetch_suite("OfxInteractSuite"/"OfxDrawSuite", 1)`。
 
 ## 与 M11 §3.5 验收的对照（第 1+2 期现状）
 
@@ -243,12 +320,15 @@ crates/，不动 src/（app）与 gpui/。
     `oakrender::eval::set_plugin_executor`（依赖反转），duplicator
     装进 `oaknode::nodes::plugin::set_plugin_duplicator`。
   - `set_project_extent(w,h)`：normalised 坐标默认值换算基准。
-- **`gl_bridge.rs`（新增，spike 文档）**：`texture_id` 桩的 GL 互
-  操作评估——方案 A（wgpu-hal GL 互操作）在 macOS 不可行（Metal
-  后端无 GL 命名空间）；方案 B（独立离屏 GL 上下文 + 回读 +
-  wgpu upload）技术可行但暂缓（无真实 GL 插件可验证 + 需新 GL 依
-  赖 + 每帧同步回读 stall）。`texture_id` 保持恒 0，GL 插件经 CPU
-  render action 正确出帧。
+- **`gl_bridge.rs`（方案 B 落地）**：`texture_id` 桩的 GL 互操作评估
+  结论——方案 A（wgpu-hal GL 互操作）在 macOS 不可行（Metal 后端无
+  GL 命名空间）；**方案 B（独立离屏 GL 上下文 + 回读）已落地**：
+  macOS CGL 离屏上下文（进程级共享、`acquire()` 串行 + current）、
+  输出 GL 纹理/FBO 挂载、glReadPixels 回读装帧（垂直翻转、格式转
+  换）、输入 clip 真实 GL 纹理上传。use_opengl 决策与 GL suite 的
+  OpenGLTextureIndex 接通真实 GL 名。Linux（EGL）/Windows（WGL）
+  预留 cfg stub。验证：单元测试（clear → 回读断言）+ 端到端
+  （GL 测试插件真实渲染）经 `OAK_GPU_TESTS` 门。
 - **`progress.rs`**：新增 `UiProgressReporter` trait +
   `ReporterFactory` + `set_reporter_factory`（app 注入点）。render
   未装 C 回调时装静默报告器，progressStart 携 (label,message) 经
@@ -297,9 +377,10 @@ cargo tarpaulin --out stdout --features test-stubs   # 覆盖率门槛
   （`bridge::*::stub`），ffi/clip/param 的桥调用（含像素读写、
   节点回写、undo 打包）全链路可跑——**覆盖率以该模式为准**
   （M11 第 1 期实测 82.93% 行覆盖；第 2 期门槛 ≥80%，见 COVERAGE）；
-- 最小测试插件（cbits/oak_test_plugin.c，三个入口：
-  org.oak.test-plugin / org.oak.test-plugin.gl / 
-  org.oak.test-plugin.identity）由 build.rs 编译为共享库，
+- 最小测试插件（cbits/oak_test_plugin.c，四个入口：
+  org.oak.test-plugin / org.oak.test-plugin.gl /
+  org.oak.test-plugin.identity / org.oak.test-plugin.interact）由
+  build.rs 编译为共享库，
   `common::test_plugin_dir` 运行时装配成 bundle；不可用时相关用例
   skip；
 - 宿主单例无锁：触碰宿主面的用例经 `common::with_host` 串行化。
@@ -336,6 +417,9 @@ TDD：测试声明与实现声明同步冻结（tests/，函数体 `todo!()`）�
   （偏好采纳、交叉引用解析、输出写回；ACEScg 工作空间）。
 - `gl_render_test.rs` — GL suite 往返/错误路径/像素深度协商矩阵 +
   GL render 路径端到端（无 GPU 优雅跳过策略见上）。
+- `interact_test.rs` — Interact 宿主：生命周期 + 事件调用面（插件侧
+  marker 逐条断言）、Escape 状态透传、实例销毁连带、draw 真实 GL 渲染
+  断言（`OAK_GPU_TESTS` 门）。
 - `render_driver_test.rs` — render_job CPU 路径（序列括号、多输入、
   参数覆盖、isIdentity 透传像素断言、无桩降级）。
 - `bridge_test.rs` — node/render/undo 三桥（`--features test-stubs`

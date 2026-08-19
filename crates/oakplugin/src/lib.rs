@@ -33,9 +33,11 @@
 //! 删除：oaknode/oakrender/oakundo 均以 path 依赖直接链接。桥以
 //! 直接 Rust 类型重建（[`node`] 的身份注册表与
 //! `set_input_*_undoable`；[`render`] 的 `Texture`/`Frame`/`Renderer`
-//! 值类型），仅 GPU 相关且 wgpu 模型无等价物的调用面保留标注桩
-//! （[`render::texture_id`]——GL 命名空间不存在，见 `// STUB`
-//! 标记）。
+//! 值类型）。GL 纹理名（旧 `oakrender_texture_id` 的 GL 命名空间）
+//! 由 [`gl_bridge`]（方案 B：离屏 CGL 上下文 + 回读）提供；
+//! [`render::texture_id`] 对 oakrender 纹理保持恒 0（wgpu/Metal 无
+//! GL 命名空间），use_opengl 决策与 GL suite 的 OpenGLTextureIndex
+//! 改从 [`gl_bridge`] 取真实名。
 //!
 //! ## 句柄纪律（全 crate 最高优先级约定）
 //!

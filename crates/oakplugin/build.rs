@@ -46,15 +46,22 @@ fn build_test_plugin() {
 	} else {
 		("-shared", "so")
 	};
+	let mut args = vec![
+		"-fPIC".to_string(),
+		"-Iofx".to_string(),
+		"cbits/oak_test_plugin.c".to_string(),
+		link_flag.to_string(),
+		"-o".to_string(),
+		format!("{out}/oak_test_plugin.{ext}"),
+	];
+	// GL 端到端测试：插件 GL 变体在 macOS 上真实绘制（glClear），需要
+	// OpenGL.framework。
+	if cfg!(target_os = "macos") {
+		args.push("-framework".into());
+		args.push("OpenGL".into());
+	}
 	let status = Command::new(&cc)
-		.args([
-			"-fPIC",
-			"-Iofx",
-			"cbits/oak_test_plugin.c",
-			link_flag,
-			"-o",
-			&format!("{out}/oak_test_plugin.{ext}"),
-		])
+		.args(&args)
 		.status()
 		.expect("编译测试插件失败");
 	assert!(status.success(), "测试插件编译失败");

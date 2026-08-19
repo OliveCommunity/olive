@@ -39,6 +39,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 pub trait UiProgressReporter: Send {
 	/// 上报进度（0.0..=1.0）；false = 取消。
 	fn update(&mut self, progress: f64) -> bool;
+	/// progressEnd 通知（默认 no-op；app 可据此关闭进度 UI / 把完成
+	/// 事件转发过 IPC——worker 侧的进度回传依赖它）。
+	fn end(&mut self) {}
 }
 
 /// 报告器工厂：progressStart 携 (label, message) 调用，现造一个
@@ -159,5 +162,13 @@ impl ProgressReporter {
 	/// 本次渲染是否已被取消（image effect suite 的 abort 透传）。
 	pub(crate) fn is_cancelled(&self) -> bool {
 		self.cancelled.load(Ordering::Relaxed)
+	}
+
+	/// progressEnd 钩子：转发给 UI 报告器（无报告器时 no-op）。
+	pub(crate) fn end_ui(&self) {
+		let mut slot = self.ui.lock().unwrap_or_else(|e| e.into_inner());
+		if let Some(ui) = slot.as_mut() {
+			ui.end();
+		}
 	}
 }

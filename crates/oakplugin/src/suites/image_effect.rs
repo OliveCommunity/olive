@@ -579,6 +579,7 @@ mod tests {
 			cancel: std::sync::atomic::AtomicBool::new(false),
 			edit: std::sync::Mutex::new(crate::instance::EditTransaction::new()),
 			render_lock: std::sync::Mutex::new(()),
+			interact: std::sync::Mutex::new(None),
 		});
 		let ih = tag::make(&inst.props as *const PropertySet, tag::INSTANCE);
 		unsafe {

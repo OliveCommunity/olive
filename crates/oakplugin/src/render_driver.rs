@@ -47,8 +47,10 @@
 //! 10. 参数覆盖（pluginrenderer.cpp:132-290 apply_param_overrides）；
 //! 11. render action：CPU 路径经 [`crate::instance::Instance::render`]
 //!     （输出装配：图像 → 目标纹理帧，行跨度感知）；GL 路径经
-//!     [`crate::instance::Instance::render_gl`]（插件直接画进已附着
-//!     的输出纹理，无 CPU 回读）。
+//!     [`crate::instance::Instance::render_gl`] + [`crate::gl_bridge`]
+//!     （方案 B：宿主建离屏上下文，插件画进 FBO 附着的输出 GL 纹理，
+//!     render 返回后 glReadPixels 回读装配——输出格式与 CPU 路径一致；
+//!     GL 失败回退 CPU）。
 //!
 //! ## begin/end 序列括号
 //!
@@ -112,6 +114,10 @@ pub fn begin_sequence(
 	gl: Option<Renderer>,
 ) -> crate::error::Result<()> {
 	if gl.is_some() {
+		// GL 模式：ofxGPURender.h "OpenGL Current Context" 要求
+		// BeginSequenceRender 期间上下文 current（插件可能在此分配 GL
+		// 资源）。acquire 覆盖整个 action；返回即清 current。
+		let _guard = crate::gl_bridge::acquire()?;
 		inst.begin_sequence_render_gl(range)
 	} else {
 		inst.begin_sequence_render(range)
@@ -125,6 +131,7 @@ pub fn end_sequence(
 	gl: Option<Renderer>,
 ) -> crate::error::Result<()> {
 	if gl.is_some() {
+		let _guard = crate::gl_bridge::acquire()?;
 		inst.end_sequence_render_gl(range)
 	} else {
 		inst.end_sequence_render(range)
@@ -153,18 +160,18 @@ pub fn render_frame(
 	}
 
 	// 2. use_opengl（pluginrenderer.cpp:1446-1457）：插件声明 GL 支持
-	// 且渲染器是 OpenGL 且目标纹理有 GL id 且像素深度协商可行
-	// （管线 F32 满足插件 kOfxOpenGLPropPixelDepth 声明）。
-	// `texture_id` 为桩恒 0（wgpu 无 GL 命名空间）→ 本决策恒回退
-	// CPU 路径，GL 分支保留给 GL 后端落地。
+	// 且渲染器是 OpenGL 且像素深度协商可行（管线 F32 满足插件
+	// kOfxOpenGLPropPixelDepth 声明）且目标纹理有有效 GL 名（= 桥能为
+	// 目标帧建出真实 GL 纹理 ⟺ 离屏上下文可用，[`crate::gl_bridge`]）。
+	// 任一不满足 → 回退 CPU 路径（GL 分支在下方真正渲染）。
 	let use_opengl = match job.renderer.as_ref() {
 		Some(r) if render::renderer_is_open_gl(r) => {
 			let plugin_gl = plugin_supports_opengl(inst);
 			let depth_ok =
 				crate::suites::gl_render::pick_gl_pixel_depth(&inst.plugin.descriptor.props)
 					.is_some();
-			let dst_id = render::texture_id(&job.dst);
-			plugin_gl && depth_ok && dst_id != 0
+			let gl_name_ok = crate::gl_bridge::gl_available();
+			plugin_gl && depth_ok && gl_name_ok
 		}
 		_ => false,
 	};
@@ -276,18 +283,101 @@ pub fn render_frame(
 		// 输出装配（pluginrenderer.cpp:1762-1834 的 CPU 路径）。
 		write_output_frame(&mut dst, &output)?;
 	} else {
-		// GL 路径：插件直接画进已附着的输出纹理（
-		// pluginrenderer.cpp:1784-1834 的 GL 分支）；无 CPU 回读。
-		inst.render_gl(
-			job.time,
+		// GL 路径（方案 B，见 [`crate::gl_bridge`]）：宿主自建离屏
+		// 上下文，为输出帧建 GL 纹理 + FBO（插件直接画进附着的输出
+		// 纹理，等价 C++ attach_output_texture），render 返回后
+		// glReadPixels 回读装帧（pluginrenderer.cpp:1784-1834 的 GL
+		// 分支 + 本实现的回读装配）。GL 失败回退 CPU（对齐现有失败
+		// 语义；最终失败仍上抛）。
+		match render_gl_frame(
+			inst,
+			job,
 			RenderScale { x: 1.0, y: 1.0 },
 			render_window,
-			job.renderer.clone().unwrap(),
-			dst.clone(),
-		)?;
+			w,
+			h,
+			&dst_params,
+		) {
+			Ok(image) => write_output_frame(&mut dst, &image)?,
+			Err(gl_err) => {
+				eprintln!("[PLUGIN] GL 渲染失败，回退 CPU：{gl_err}");
+				let output = std::sync::Arc::new(Image::allocate(
+					crate::image::BitDepth::Float,
+					components,
+					OfxRectD {
+						x1: 0.0,
+						y1: 0.0,
+						x2: w,
+						y2: h,
+					},
+				));
+				inst.render(
+					job.time,
+					RenderScale { x: 1.0, y: 1.0 },
+					render_window,
+					output.clone(),
+				)?;
+				write_output_frame(&mut dst, &output)?;
+			}
+		}
 	}
 
 	Ok((dst, zip_rois(inst, &rois)))
+}
+
+/// GL 渲染一帧（render_frame 的 GL 分支主体；返回回读装配完成的
+/// F32 RGBA 图像）。
+///
+/// 流程：acquire 离屏上下文（本线程 current，全局串行）→ 建输出 GL
+/// 纹理（尺寸 = 目标帧，格式按 `dst_params`）→ FBO 挂载并绑定 →
+/// 视口 → [`Instance::render_gl`]（插件画进附着纹理；真实纹理名经
+/// GlCtx 注入，clipLoadTexture(Output) 返回它）→ glReadPixels 回读
+/// 装配（垂直翻转 + 格式转换）→ 清理 FBO/纹理。任何一步失败返回
+/// Err，调用方回退 CPU。
+fn render_gl_frame(
+	inst: &Instance,
+	job: &RenderJob,
+	scale: RenderScale,
+	window: OfxRectD,
+	w: f64,
+	h: f64,
+	dst_params: &render::VideoParams,
+) -> crate::error::Result<std::sync::Arc<Image>> {
+	use crate::error::Error;
+
+	// 离屏上下文（进程级共享；本线程 current 直到 guard drop）。
+	let _guard = crate::gl_bridge::acquire()?;
+	let (wpx, hpx) = (w as i32, h as i32);
+	// 输出 GL 纹理 + FBO 挂载（GL_RGBA32F/GL_RGBA8 按目标帧格式）。
+	let gl_tex = crate::gl_bridge::create_output_texture(wpx, hpx, dst_params)?;
+	let fbo = crate::gl_bridge::create_fbo(gl_tex, wpx, hpx)?;
+	crate::gl_bridge::bind_fbo(fbo);
+	crate::gl_bridge::set_viewport(wpx, hpx);
+
+	// render action（OpenGLEnabled=1；输出纹理真实名经 GlCtx 注入）。
+	let render_res = inst.render_gl(
+		job.time,
+		scale,
+		window,
+		job.renderer.clone().unwrap(),
+		job.dst.clone(),
+		Some(gl_tex),
+	);
+
+	// 回读前防御性重绑 FBO + 视口（规范下插件不解除输出绑定，但个别
+	// 插件可能改绑/改视口——重绑保证 glReadPixels 读的是输出纹理）。
+	crate::gl_bridge::bind_fbo(fbo);
+	crate::gl_bridge::set_viewport(wpx, hpx);
+
+	// 回读（FBO 仍绑定、输出 GL 纹理仍存活）。
+	let readback = crate::gl_bridge::read_pixels_to_image(wpx, hpx, dst_params);
+
+	// 清理（guard drop 时清 current 并放锁）。
+	crate::gl_bridge::delete_fbo(fbo);
+	crate::gl_bridge::delete_gl_texture(gl_tex);
+
+	render_res?;
+	readback.map_err(|e| Error::Failed(format!("GL 回读失败：{e}")))
 }
 
 /// 把输入 clip 名与 RoI 列表配对（与 `clips` 顺序一致）。

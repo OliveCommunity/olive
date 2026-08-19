@@ -110,15 +110,14 @@ pub fn registered_instance_count() -> usize {
 /// inspector's button widget).
 ///
 /// OFX push buttons carry no value: the host's press signal is a single
-/// set on the parameter (the plugin reacts in its own instanceChanged
-/// action). Locates the instance and parameter, type-checks, then
-/// `set_ofx`. Returns false when the instance/parameter is unknown or
-/// the parameter is not a push button.
-///
-/// TODO(instanceChanged): per the OFX contract the press should be
-/// routed to the plugin as kOfxActionInstanceChanged (UserEdited);
-/// oakplugin has no dispatcher for that action yet — for now the value
-/// is only marked, and the plugin-side reaction is future work.
+/// set on the parameter, then the press is routed to the plugin as
+/// `kOfxActionInstanceChanged` (UserEdited) so the plugin reacts in its
+/// own instanceChanged action (the OFX contract, ofxCore.h:405-435;
+/// real plugins such as CImg depend on that action). Locates the
+/// instance and parameter, type-checks, marks the value, then dispatches
+/// the action. Returns false when the instance/parameter is unknown or
+/// the parameter is not a push button; an instanceChanged failure is
+/// logged and still reported as a successful press (the value was set).
 pub fn push_button_clicked(instance: u64, param_name: &str) -> bool {
 	let Some(inst) = instance_from_id(instance) else {
 		return false;
@@ -130,6 +129,19 @@ pub fn push_button_clicked(instance: u64, param_name: &str) -> bool {
 		return false;
 	}
 	p.set_ofx(ParamValue::PushButton);
+	// The current render context supplies the time / render scale when the
+	// press happens during a render; outside one, time 0 and scale 1:1.
+	let (time, scale) = crate::suites::render_ctx()
+		.map(|ctx| (ctx.time, ctx.scale))
+		.unwrap_or((0.0, crate::instance::RenderScale { x: 1.0, y: 1.0 }));
+	if let Err(e) = inst.value.instance_changed(
+		param_name,
+		crate::param::ChangeReason::UserEdited,
+		time,
+		scale,
+	) {
+		eprintln!("push_button_clicked: instanceChanged failed for \"{param_name}\": {e}");
+	}
 	true
 }
 
@@ -853,6 +865,10 @@ pub fn install_render_executor() {
 mod tests {
 	use super::*;
 
+	/// Records what the mock plugin entry saw, so the push-button test can
+	/// assert the kOfxActionInstanceChanged routing and its inArgs.
+	static PUSH_ENTRY_CALLS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
 	#[test]
 	fn input_type_table_covers_all_ofx_kinds() {
 		assert_eq!(
@@ -1000,11 +1016,31 @@ mod tests {
 		use crate::param::{ParamDef, ParamInstance, ParamSetInstance};
 
 		unsafe extern "C" fn dummy_entry(
-			_: *const c_char,
+			action: *const c_char,
 			_: *const c_void,
-			_: *mut c_void,
+			in_args: *mut c_void,
 			_: *mut c_void,
 		) -> i32 {
+			if !action.is_null() {
+				let action = unsafe {
+					std::ffi::CStr::from_ptr(action).to_string_lossy().into_owned()
+				};
+				if action == crate::host::ACTION_INSTANCE_CHANGED {
+					let mut calls = PUSH_ENTRY_CALLS.lock().unwrap_or_else(|e| e.into_inner());
+					calls.push(action);
+					// The instanceChanged inArgs contract (ofxCore.h:405-435):
+					// kOfxPropChangeReason = kOfxChangeUserEdited.
+					let props = unsafe { &*(in_args as *const crate::property::PropertySet) };
+					let reason = props.get(crate::host::PROP_CHANGE_REASON, 0);
+					let reason = match reason {
+						Some(crate::property::Value::String(s)) => {
+							s.to_string_lossy().into_owned()
+						}
+						_ => String::new(),
+					};
+					calls.push(reason);
+				}
+			}
 			0
 		}
 		let plugin = Arc::new(Plugin {
@@ -1039,6 +1075,7 @@ mod tests {
 			cancel: std::sync::atomic::AtomicBool::new(false),
 			edit: std::sync::Mutex::new(crate::instance::EditTransaction::new()),
 			render_lock: std::sync::Mutex::new(()),
+			interact: std::sync::Mutex::new(None),
 		};
 		register_instance(Arc::new(RefBox {
 			refs: AtomicU32::new(1),
@@ -1047,15 +1084,21 @@ mod tests {
 	}
 
 	/// push_button_clicked：实例/参数查无与类型不匹配 → false；命中 →
-	/// true 并触发一次 set。
+	/// true、置 PushButton 值并把按下路由为 kOfxActionInstanceChanged
+	/// （UserEdited，inArgs 带 change reason / name / type / time /
+	/// render scale）。
 	#[test]
-	fn push_button_clicked_requires_a_push_button_param() {
+	fn push_button_clicked_routes_instance_changed() {
+		*PUSH_ENTRY_CALLS.lock().unwrap_or_else(|e| e.into_inner()) = Vec::new();
 		let id = instance_with_push_button();
 		assert!(push_button_clicked(id, "button"));
-		// 类型不匹配 / 查无参数 / 查无实例。
+		// 类型不匹配 / 查无参数 / 查无实例：不触发 entry。
 		assert!(!push_button_clicked(id, "gain"));
 		assert!(!push_button_clicked(id, "nope"));
 		assert!(!push_button_clicked(u64::MAX, "button"));
+		// 只 "button" 那次按下进了插件 entry，且 reason 是 UserEdited。
+		let calls = PUSH_ENTRY_CALLS.lock().unwrap_or_else(|e| e.into_inner()).clone();
+		assert_eq!(calls, vec!["OfxActionInstanceChanged", "OfxChangeUserEdited"]);
 		unregister_instance(id);
 	}
 }

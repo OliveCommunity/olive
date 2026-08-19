@@ -124,6 +124,7 @@ fn make_instance() -> (std::sync::Arc<Instance>, *mut c_void) {
 		cancel: std::sync::atomic::AtomicBool::new(false),
 		edit: std::sync::Mutex::new(oakplugin::instance::EditTransaction::new()),
 		render_lock: std::sync::Mutex::new(()),
+		interact: std::sync::Mutex::new(None),
 	});
 	let h = tag::make(&inst.props as *const PropertySet, tag::INSTANCE);
 	(inst, h)
@@ -309,6 +310,7 @@ fn image_effect_clip_image_pairing() {
 		cancel: std::sync::atomic::AtomicBool::new(false),
 		edit: std::sync::Mutex::new(oakplugin::instance::EditTransaction::new()),
 		render_lock: std::sync::Mutex::new(()),
+		interact: std::sync::Mutex::new(None),
 	});
 	let ih = tag::make(&inst.props as *const PropertySet, tag::INSTANCE);
 	let mut clip_h: *mut c_void = std::ptr::null_mut();

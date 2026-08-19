@@ -181,9 +181,155 @@ pub(crate) const ACTION_GL_CONTEXT_ATTACHED: &str = "OfxActionOpenGLContextAttac
 pub(crate) const ACTION_GL_CONTEXT_DETACHED: &str = "kOfxActionOpenGLContextDetached";
 /// kOfxImageEffectActionGetOutputColourspace（ofxColour.h:283）。
 pub(crate) const ACTION_GET_OUTPUT_COLOURSPACE: &str = "OfxImageEffectActionGetOutputColourspace";
+/// kOfxActionInstanceChanged（ofxCore.h:449）：宿主侧参数/时间变更
+/// 通知。按下 push button 后宿主须以 kOfxChangeUserEdited 的原因调用
+/// 它（ofxCore.h:405-435 的 inArgs 契约）。
+pub(crate) const ACTION_INSTANCE_CHANGED: &str = "OfxActionInstanceChanged";
+// ---- Interact（OFX 自定义交互；ofxInteract.h / ofxDrawSuite.h / ofxKeySyms.h）----
+
+/// kOfxActionNewInteract：宿主创建 interact 时发给 interact 入口的
+/// 首个 action。vendored ofxInteract.h 未定义该宏（官方头文件无此
+/// action；任务契约按 "向插件 main entry 发 kOfxActionNewInteract"
+/// 命名）——取值 "OfxActionNewInteract"，与 OFX action 命名惯例一致。
+/// 插件不实现该 action 时返回 kOfxStatReplyDefault（宿主视为"无
+/// interact"或"不参与 NewInteract 协议"，见 [`crate::instance::Instance::new_interact`]）。
+pub(crate) const ACTION_NEW_INTERACT: &str = "OfxActionNewInteract";
+/// kOfxInteractActionIdle：宿主空闲泵（任务契约；vendored ofxInteract.h
+/// 未收录——OFX 官方规范无 Idle action，属本宿主扩展，取值
+/// "OfxInteractActionIdle"）。插件实现与否自愿；未处理返回
+/// kOfxStatReplyDefault。
+pub(crate) const ACTION_INTERACT_IDLE: &str = "OfxInteractActionIdle";
+/// kOfxInteractActionDraw（ofxInteract.h:265）。
+pub(crate) const ACTION_INTERACT_DRAW: &str = "OfxInteractActionDraw";
+/// kOfxInteractActionPenMotion（ofxInteract.h:302）。
+pub(crate) const ACTION_INTERACT_PEN_MOTION: &str = "OfxInteractActionPenMotion";
+/// kOfxInteractActionPenDown（ofxInteract.h:340）。
+pub(crate) const ACTION_INTERACT_PEN_DOWN: &str = "OfxInteractActionPenDown";
+/// kOfxInteractActionPenUp（ofxInteract.h:376）。
+pub(crate) const ACTION_INTERACT_PEN_UP: &str = "OfxInteractActionPenUp";
+/// kOfxInteractActionKeyDown（ofxInteract.h:410）。
+pub(crate) const ACTION_INTERACT_KEY_DOWN: &str = "OfxInteractActionKeyDown";
+/// kOfxInteractActionKeyUp（ofxInteract.h:443）。
+pub(crate) const ACTION_INTERACT_KEY_UP: &str = "OfxInteractActionKeyUp";
+/// kOfxInteractActionGainFocus（ofxInteract.h:501）。
+pub(crate) const ACTION_INTERACT_GAIN_FOCUS: &str = "OfxInteractActionGainFocus";
+/// kOfxInteractActionLoseFocus（ofxInteract.h:526）。
+pub(crate) const ACTION_INTERACT_LOSE_FOCUS: &str = "OfxInteractActionLoseFocus";
+
+/// kOfxInteractPropPixelScale（ofxInteract.h:58）：canonical→屏幕像素
+/// 换算比例（Double×2）。
+pub(crate) const PROP_INTERACT_PIXEL_SCALE: &str = "OfxInteractPropPixelScale";
+/// kOfxInteractPropViewportSize（OFX 1.3 命名 "OfxInteractPropViewport"；
+/// vendored 1.5 头文件已删，任务契约要求 draw inArgs 携带视口尺寸）。
+pub(crate) const PROP_INTERACT_VIEWPORT_SIZE: &str = "OfxInteractPropViewport";
+/// kOfxInteractPropBackgroundImage：任务契约的 draw inArgs 背景图像
+/// 句柄（Pointer；无背景时为空——本宿主 Phase 1 无合成背景，恒空）。
+/// 非官方 OFX 属性（官方只有 BackgroundColour），属本宿主扩展。
+pub(crate) const PROP_INTERACT_BACKGROUND_IMAGE: &str = "OfxInteractPropBackgroundImage";
+/// kOfxInteractPropBackgroundColour（ofxInteract.h:71）：宿主视口背景色
+/// （Double×3）。
+pub(crate) const PROP_INTERACT_BACKGROUND_COLOUR: &str = "OfxInteractPropBackgroundColour";
+/// kOfxInteractPropSuggestedColour（ofxInteract.h:86）：宿主建议的 overlay
+/// 颜色（Double×3；宿主不支持颜色选择时返回 ReplyDefault）。
+pub(crate) const PROP_INTERACT_SUGGESTED_COLOUR: &str = "OfxInteractPropSuggestedColour";
+/// kOfxInteractPropSlaveToParam（ofxInteract.h:50）：值变化触发 interact
+/// 重绘的参数名（String×N）。
+pub(crate) const PROP_INTERACT_SLAVE_TO_PARAM: &str = "OfxInteractPropSlaveToParam";
+/// kOfxInteractPropPenPosition（ofxInteract.h:95）：笔的 canonical 位置
+/// （Double×2，只读 inArgs）。
+pub(crate) const PROP_INTERACT_PEN_POSITION: &str = "OfxInteractPropPenPosition";
+/// kOfxInteractPropPenViewportPosition（ofxInteract.h:104）：笔的视口像素
+/// 位置（Int×2，只读 inArgs）。
+pub(crate) const PROP_INTERACT_PEN_VIEWPORT_POSITION: &str = "OfxInteractPropPenViewportPosition";
+/// kOfxInteractPropPenPressure（ofxInteract.h:114）：笔压（Double×1，
+/// 0..1；两态笔映射 0/1）。
+pub(crate) const PROP_INTERACT_PEN_PRESSURE: &str = "OfxInteractPropPenPressure";
+/// kOfxInteractPropBitDepth（ofxInteract.h:122）：interact 帧缓冲位深
+/// （Int×1，只读）。
+pub(crate) const PROP_INTERACT_BIT_DEPTH: &str = "OfxInteractPropBitDepth";
+/// kOfxInteractPropHasAlpha（ofxInteract.h:132）：interact 帧缓冲是否含
+/// alpha（Int×1，只读）。
+pub(crate) const PROP_INTERACT_HAS_ALPHA: &str = "OfxInteractPropHasAlpha";
+/// kOfxInteractPropDrawContext（ofxDrawSuite.h:34）：Draw suite 上下文句柄
+/// （Pointer；draw inArgs 携带，插件取来传给 Draw suite 函数）。
+pub(crate) const PROP_INTERACT_DRAW_CONTEXT: &str = "OfxInteractPropDrawContext";
+/// kOfxPropKeySym（ofxKeySyms.h:30）：键盘事件的关键码（Int×1）。
+pub(crate) const PROP_KEY_SYM: &str = "kOfxPropKeySym";
+/// kOfxPropKeyString（ofxKeySyms.h:49）：键盘事件的 UTF-8 字符（String×1）。
+pub(crate) const PROP_KEY_STRING: &str = "kOfxPropKeyString";
+/// kOfxImageEffectPluginPropOverlayInteractV2（ofxImageEffect.h:825）：
+/// 插件声明的 overlay interact 入口（Pointer→OfxPluginEntryPoint；V2
+/// 要求 Draw suite 绘制）。
+pub(crate) const PROP_OVERLAY_INTERACT_V2: &str = "OfxImageEffectPluginPropOverlayInteractV2";
+/// kOfxImageEffectPluginPropOverlayInteractV1（ofxImageEffect.h:812）。
+pub(crate) const PROP_OVERLAY_INTERACT_V1: &str = "OfxImageEffectPluginPropOverlayInteractV1";
+/// kOfxImageEffectPropSupportsOverlays（ofxImageEffect.h:801）：宿主是否
+/// 允许插件在输出图像上绘制 overlay（能力宣告）。
+pub(crate) const PROP_SUPPORTS_OVERLAYS: &str = "OfxImageEffectPropSupportsOverlays";
+
+// ---- OFX 关键码（ofxKeySyms.h；X11 keysym 值，测试/宿主常用子集）----
+//
+// 公共：app 侧（WG3b）经 [`crate::suites::interact::Interact::key_down`]/
+// `key_up` 传关键码。
+
+/// kOfxKey_Unknown（ofxKeySyms.h:121）。
+pub const KEY_UNKNOWN: i32 = 0x0;
+/// kOfxKey_BackSpace（ofxKeySyms.h:128）。
+pub const KEY_BACKSPACE: i32 = 0xFF08;
+/// kOfxKey_Tab（ofxKeySyms.h:129）。
+pub const KEY_TAB: i32 = 0xFF09;
+/// kOfxKey_Return（ofxKeySyms.h:132）。
+pub const KEY_RETURN: i32 = 0xFF0D;
+/// kOfxKey_Escape（ofxKeySyms.h:136）。
+pub const KEY_ESCAPE: i32 = 0xFF1B;
+/// kOfxKey_Delete（ofxKeySyms.h:137）。
+pub const KEY_DELETE: i32 = 0xFFFF;
+/// kOfxKey_Home（ofxKeySyms.h:172）。
+pub const KEY_HOME: i32 = 0xFF50;
+/// kOfxKey_Left（ofxKeySyms.h:173）。
+pub const KEY_LEFT: i32 = 0xFF51;
+/// kOfxKey_Up（ofxKeySyms.h:174）。
+pub const KEY_UP: i32 = 0xFF52;
+/// kOfxKey_Right（ofxKeySyms.h:175）。
+pub const KEY_RIGHT: i32 = 0xFF53;
+/// kOfxKey_Down（ofxKeySyms.h:176）。
+pub const KEY_DOWN: i32 = 0xFF54;
+/// kOfxKey_Page_Up（ofxKeySyms.h:178）。
+pub const KEY_PAGE_UP: i32 = 0xFF55;
+/// kOfxKey_Page_Down（ofxKeySyms.h:180）。
+pub const KEY_PAGE_DOWN: i32 = 0xFF56;
+/// kOfxKey_End（ofxKeySyms.h:181）。
+pub const KEY_END: i32 = 0xFF57;
+/// kOfxKey_F1（ofxKeySyms.h:252）。
+pub const KEY_F1: i32 = 0xFFBE;
+/// kOfxKey_Shift_L（ofxKeySyms.h:315）。
+pub const KEY_SHIFT_L: i32 = 0xFFE1;
+/// kOfxKey_Control_L（ofxKeySyms.h:317）。
+pub const KEY_CONTROL_L: i32 = 0xFFE3;
+/// kOfxKey_Alt_L（ofxKeySyms.h:323）。
+pub const KEY_ALT_L: i32 = 0xFFE9;
+/// kOfxKey_space（ofxKeySyms.h:331）。
+pub const KEY_SPACE: i32 = 0x020;
+/// kOfxKey_a（ofxKeySyms.h:398）。
+pub const KEY_A: i32 = 0x061;
+/// kOfxKey_z（ofxKeySyms.h:423）。
+pub const KEY_Z: i32 = 0x07a;
+
+/// kOfxPropChangeReason（ofxCore.h:763）：instanceChanged 的 inArgs 里
+/// 说明变更来源（UserEdited / PluginEdited / Time）。
+pub(crate) const PROP_CHANGE_REASON: &str = "OfxPropChangeReason";
+/// kOfxChangeUserEdited（ofxCore.h:792）。
+pub(crate) const CHANGE_USER_EDITED: &str = "OfxChangeUserEdited";
+/// kOfxChangePluginEdited（ofxCore.h:795）。
+pub(crate) const CHANGE_PLUGIN_EDITED: &str = "OfxChangePluginEdited";
+/// kOfxChangeTime（ofxCore.h:798）。
+pub(crate) const CHANGE_TIME: &str = "OfxChangeTime";
 
 /// kOfxPropTime（ofxCore.h:613）。
 pub(crate) const PROP_TIME: &str = "OfxPropTime";
+/// kOfxPropEffectInstance（ofxCore.h:776）：interact/渲染 inArgs 里指向
+/// 效果实例句柄的指针属性。
+pub(crate) const PROP_EFFECT_INSTANCE: &str = "OfxPropEffectInstance";
 /// kOfxImageEffectPropRenderScale。
 pub(crate) const PROP_RENDER_SCALE: &str = "OfxImageEffectPropRenderScale";
 /// kOfxImageEffectPropRenderWindow。
@@ -341,6 +487,30 @@ pub struct Plugin {
 unsafe impl Send for Plugin {}
 unsafe impl Sync for Plugin {}
 
+/// 插件入口函数类型（`OfxPluginEntryPoint`，ofxCore.h:84）。
+pub(crate) type EntryPoint = unsafe extern "C" fn(
+	action: *const c_char,
+	handle: *const c_void,
+	in_args: *mut c_void,
+	out_args: *mut c_void,
+) -> i32;
+
+/// 插件声明的 overlay interact 入口（ofxImageEffect.h:825/812）：
+/// V2 优先、V1 次之；两者都未声明返回 None。属性值是
+/// `Pointer→OfxPluginEntryPoint`（宿主预定义，插件 describe 期写入）。
+pub(crate) fn overlay_interact_entry(props: &PropertySet) -> Option<EntryPoint> {
+	for name in [PROP_OVERLAY_INTERACT_V2, PROP_OVERLAY_INTERACT_V1] {
+		if let Some(Value::Pointer(p)) = props.get(name, 0) {
+			if !p.is_null() {
+				// 属性值是函数指针（void* 存放）；转换与 dlsym_fn 同款
+				// （调用方保证类型正确）。
+				return Some(unsafe { std::mem::transmute_copy(&p) });
+			}
+		}
+	}
+	None
+}
+
 impl Plugin {
 	/// 调插件的 action。`handle` 视 action 而定（describe 时为
 	/// descriptor，render 时为 instance）。`in_args`/`out_args` 按
@@ -363,6 +533,27 @@ impl Plugin {
 		let out_ptr = out_args as *const PropertySet as *mut c_void;
 		let action = cs(action);
 		unsafe { (self.entry)(action.as_ptr(), handle as *const c_void, in_ptr, out_ptr) }
+	}
+
+	/// 按指定入口函数调用（interact 的 overlay 入口与 main entry 可
+	/// 不同——插件经 kOfxImageEffectPluginPropOverlayInteractV2 声明）。
+	/// 语义同 [`Plugin::call_action`]。
+	///
+	/// # Safety
+	/// `entry` 必须是插件导出的合法 OfxPluginEntryPoint；`handle`/参数
+	/// 集与 action 匹配。
+	pub(crate) unsafe fn call_entry(
+		&self,
+		entry: EntryPoint,
+		action: &str,
+		handle: *mut c_void,
+		in_args: &PropertySet,
+		out_args: &PropertySet,
+	) -> i32 {
+		let in_ptr = in_args as *const PropertySet as *mut c_void;
+		let out_ptr = out_args as *const PropertySet as *mut c_void;
+		let action = cs(action);
+		unsafe { (entry)(action.as_ptr(), handle as *const c_void, in_ptr, out_ptr) }
 	}
 }
 
@@ -730,6 +921,11 @@ fn init_descriptor_props(props: &PropertySet, bundle: &Path) {
 		"OfxImageEffectPluginPropOverlayInteractV1",
 		Value::Pointer(std::ptr::null_mut()),
 	);
+	// overlay interact V2（ofxImageEffect.h:825）：插件 describe 期声明
+	// 自定义交互入口（Pointer→OfxPluginEntryPoint；V2 要求 Draw suite
+	// 绘制）；宿主预定义空指针默认（propSet 不创建属性，宿主预定义
+	// 属性宇宙，与 V1 同款）。
+	props.set_one(PROP_OVERLAY_INTERACT_V2, Value::Pointer(std::ptr::null_mut()));
 	props.set_one("OfxImageEffectPropSupportsMultiResolution", Value::Int(1));
 	props.set_one(PROP_SUPPORTS_TILES, Value::Int(1));
 	props.set_one("OfxImageEffectPropTemporalClipAccess", Value::Int(0));
@@ -886,6 +1082,7 @@ impl Host {
 			cancel: std::sync::atomic::AtomicBool::new(false),
 			edit: std::sync::Mutex::new(crate::instance::EditTransaction::new()),
 			render_lock: std::sync::Mutex::new(()),
+			interact: std::sync::Mutex::new(None),
 		};
 		init_instance_props(&instance.props, &instance);
 
@@ -989,6 +1186,9 @@ fn init_host_props(props: &PropertySet) {
 	// GL 能力宣告（M11 §4；ofxGPURender.h "OpenGL House Keeping"：
 	// 宿主在描述符置 "true"）。
 	props.set_one(PROP_GL_RENDER_SUPPORTED, Value::String(cs("true")));
+	// overlay 能力宣告（ofxImageEffect.h:801）：宿主允许插件在输出
+	// 图像上绘制 overlay（interact draw 的前置）。
+	props.set_one(PROP_SUPPORTS_OVERLAYS, Value::Int(1));
 	// ofxColour 能力宣告（M11 §4）：OCIO 模式 + native 配置列表。
 	props.set_one(PROP_COLOUR_STYLE, Value::String(cs(COLOUR_STYLE_OCIO)));
 	props.define(

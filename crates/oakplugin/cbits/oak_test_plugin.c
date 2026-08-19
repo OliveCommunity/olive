@@ -32,16 +32,27 @@
  */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 
 #include "ofxCore.h"
 #include "ofxColour.h"
+#include "ofxDrawSuite.h"
 #include "ofxGPURender.h"
 #include "ofxImageEffect.h"
+#include "ofxInteract.h"
+#include "ofxKeySyms.h"
 #include "ofxMessage.h"
 #include "ofxParam.h"
 #include "ofxProgress.h"
 #include "ofxProperty.h"
+
+/* GL 端到端测试的真实绘制需要 GL 命令（仅 macOS 有真实 CGL 桥；
+ * Linux/Windows 的 GL 桥是 stub，绘制代码随 __APPLE__ 排除）。 */
+#ifdef __APPLE__
+#include <OpenGL/gl.h>
+#endif
 
 /* kOfxImageEffectGLFormatRGBA 在 vendored ofxOpenGLRender.h 是 stub
  * 未收录（OpenFX 1.4 规范名），按规范定义。kOfxImageEffectPropIsIdentity
@@ -56,8 +67,47 @@ static const OfxParameterSuiteV1 *g_paramSuite = NULL;
 static const OfxMessageSuiteV1 *g_messageSuite = NULL;
 static const OfxProgressSuiteV1 *g_progressSuite = NULL;
 static const OfxImageEffectOpenGLRenderSuiteV1 *g_glSuite = NULL;
+static const OfxDrawSuiteV1 *g_drawSuite = NULL;
+static const OfxInteractSuiteV1 *g_interactSuite = NULL;
+
+/* 宿主扩展（任务契约；vendored ofxInteract.h 未收录的 action 名与属性
+ * 名）。kOfxInteractPropViewportSize 取 OFX 1.3 的规范名
+ * "OfxInteractPropViewport"（vendored 1.5 头已删）；BackgroundImage 与
+ * NewInteract/Idle 是本宿主扩展。 */
+#ifndef kOfxActionNewInteract
+#define kOfxActionNewInteract "OfxActionNewInteract"
+#endif
+#ifndef kOfxInteractActionIdle
+#define kOfxInteractActionIdle "OfxInteractActionIdle"
+#endif
+#ifndef kOfxInteractPropViewportSize
+#define kOfxInteractPropViewportSize "OfxInteractPropViewport"
+#endif
+#ifndef kOfxInteractPropBackgroundImage
+#define kOfxInteractPropBackgroundImage "OfxInteractPropBackgroundImage"
+#endif
+
+/* push button 的 instanceChanged 调用计数（宿主按下按钮后应路由
+ * kOfxActionInstanceChanged/UserEdited 到这里）。 */
+static int g_button_instance_changed = 0;
 
 /* ---------- suite 便捷封装 ---------- */
+
+/* 记录一次 push button 的 instanceChanged：计数自增，并在
+ * OAK_TEST_PLUGIN_INSTANCECHANGED_MARKER 指向的文件追加一行（宿主
+ * 测试断言用；未设环境变量时静默）。 */
+static void record_button_instance_changed(void)
+{
+    g_button_instance_changed++;
+    const char *marker = getenv("OAK_TEST_PLUGIN_INSTANCECHANGED_MARKER");
+    if (!marker)
+        return;
+    FILE *f = fopen(marker, "a");
+    if (!f)
+        return;
+    fprintf(f, "button instanceChanged count=%d\n", g_button_instance_changed);
+    fclose(f);
+}
 
 static OfxStatus propSetString(OfxPropertySetHandle h, const char *name, int index, const char *v)
 {
@@ -67,6 +117,11 @@ static OfxStatus propSetString(OfxPropertySetHandle h, const char *name, int ind
 static OfxStatus propSetStringN(OfxPropertySetHandle h, const char *name, int count, const char **v)
 {
     return g_propSuite->propSetStringN(h, name, count, v);
+}
+
+static OfxStatus propSetPointer(OfxPropertySetHandle h, const char *name, int index, void *v)
+{
+    return g_propSuite->propSetPointer(h, name, index, v);
 }
 
 static OfxStatus propSetDoubleN(OfxPropertySetHandle h, const char *name, int count, const double *v)
@@ -117,6 +172,8 @@ static void setHost(OfxHost *host)
     g_progressSuite = (const OfxProgressSuiteV1 *)host->fetchSuite(host->host, kOfxProgressSuite, 1);
     g_glSuite = (const OfxImageEffectOpenGLRenderSuiteV1 *)host->fetchSuite(
         host->host, kOfxOpenGLRenderSuite, 1);
+    g_drawSuite = (const OfxDrawSuiteV1 *)host->fetchSuite(host->host, kOfxDrawSuite, 1);
+    g_interactSuite = (const OfxInteractSuiteV1 *)host->fetchSuite(host->host, kOfxInteractSuite, 1);
 }
 
 /* ---------- action 实现 ---------- */
@@ -178,6 +235,13 @@ static OfxStatus actionDescribe(const void *handle, int is_gl)
     if (st != kOfxStatOK)
         return st;
     propSetString(paramProps, kOfxPropLabel, 0, "Label");
+
+    /* push button：无值，按下经 instanceChanged (UserEdited) 通知
+     * 插件（ofxCore.h kOfxActionInstanceChanged）。 */
+    st = g_paramSuite->paramDefine((OfxParamSetHandle)handle, kOfxParamTypePushButton, "button", &paramProps);
+    if (st != kOfxStatOK)
+        return st;
+    propSetString(paramProps, kOfxPropLabel, 0, "Button");
 
     /* clip：Source + Output。 */
     OfxPropertySetHandle clipProps = NULL;
@@ -341,6 +405,17 @@ static OfxStatus actionGLDetached(OfxImageEffectHandle handle)
 
 /* GL render：经 OpenGL suite 取 Source 与 Output 纹理并上报索引
  * （宿主侧测试经 message 捕获断言）。GL 未使能时回退 CPU render。 */
+static void draw_gl_test_pattern(void)
+{
+#ifdef __APPLE__
+    /* 把当前绑定帧缓冲（宿主为输出帧挂的 FBO）清成已知颜色。 */
+    glClearColor(0.1f, 0.2f, 0.3f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+#else
+    (void)0;
+#endif
+}
+
 static OfxStatus actionRenderGL(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs)
 {
     int gl_enabled = 0;
@@ -391,6 +466,11 @@ static OfxStatus actionRenderGL(OfxImageEffectHandle inst, OfxPropertySetHandle 
     if (st != kOfxStatOK)
         return st;
 
+    /* 真实绘制：把宿主已绑定的输出 FBO 清成已知颜色
+     * (0.1, 0.2, 0.3, 1.0)——宿主 glReadPixels 回读后应得到该颜色，
+     * 这是"插件真实走 GL 路径且输出正确"的端到端证据。 */
+    draw_gl_test_pattern();
+
     return kOfxStatOK;
 }
 
@@ -431,6 +511,17 @@ static OfxStatus mainEntry(const char *action, const void *handle, OfxPropertySe
     }
     if (strcmp(action, kOfxImageEffectActionRender) == 0) {
         return actionRender((OfxImageEffectHandle)handle, inArgs);
+    }
+    if (strcmp(action, kOfxActionInstanceChanged) == 0) {
+        /* 宿主按下 push button：kOfxPropName == "button"、
+         * kOfxPropChangeReason == kOfxChangeUserEdited。只对 button
+         * 计数（其余参数变更静默）。 */
+        char *name = NULL;
+        g_propSuite->propGetString(inArgs, kOfxPropName, 0, &name);
+        if (name && strcmp(name, "button") == 0) {
+            record_button_instance_changed();
+        }
+        return kOfxStatOK;
     }
     return kOfxStatReplyDefault;
 }
@@ -496,6 +587,184 @@ static OfxStatus mainEntryID(const char *action, const void *handle,
     return mainEntry(action, handle, inArgs, outArgs);
 }
 
+/* ---------- interact 变体（M11 §5）：自定义 UI 宿主验证 ---------- */
+
+/* interact 调用记录：追加到 OAK_TEST_PLUGIN_INTERACT_MARKER 指向的文件
+ * （宿主测试断言用；未设环境变量时静默）。 */
+static void interact_record(const char *fmt, ...)
+{
+    const char *marker = getenv("OAK_TEST_PLUGIN_INTERACT_MARKER");
+    if (!marker)
+        return;
+    FILE *f = fopen(marker, "a");
+    if (!f)
+        return;
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(f, fmt, ap);
+    va_end(ap);
+    fclose(f);
+}
+
+/* 记录 pen 事件的真实参数（inArgs 的 canonical/视口/压力属性）。 */
+static void record_pen(const char *action, OfxPropertySetHandle inArgs)
+{
+    int vp[2] = { 0, 0 };
+    double canon[2] = { 0.0, 0.0 };
+    double pressure = 0.0;
+    g_propSuite->propGetIntN(inArgs, kOfxInteractPropPenViewportPosition, 2, vp);
+    g_propSuite->propGetDoubleN(inArgs, kOfxInteractPropPenPosition, 2, canon);
+    g_propSuite->propGetDouble(inArgs, kOfxInteractPropPenPressure, 0, &pressure);
+    interact_record("%s vp=%d,%d canon=%g,%g pressure=%g\n", action, vp[0], vp[1], canon[0],
+                    canon[1], pressure);
+}
+
+/* 记录 key 事件的真实参数（keySym/keyString）。 */
+static void record_key(const char *action, OfxPropertySetHandle inArgs)
+{
+    int sym = 0;
+    char *s = NULL;
+    g_propSuite->propGetInt(inArgs, kOfxPropKeySym, 0, &sym);
+    g_propSuite->propGetString(inArgs, kOfxPropKeyString, 0, &s);
+    interact_record("%s sym=%d str=%s\n", action, sym, s ? s : "");
+}
+
+/* kOfxInteractActionDraw：读 inArgs（viewport/pixelScale/time/
+ * backgroundImage/drawContext），经 Draw suite setColour + 原生 GL 画
+ * 已知色块（矩形 10..30 canonical）。macOS 上真实绘制；非 macOS 跳过
+ * GL。返回 OK。 */
+static OfxStatus actionInteractDraw(OfxPropertySetHandle inArgs)
+{
+    double vp[2] = { 0.0, 0.0 };
+    double scale[2] = { 1.0, 1.0 };
+    double t = 0.0;
+    void *bg = NULL;
+    void *drawCtx = NULL;
+    g_propSuite->propGetDoubleN(inArgs, kOfxInteractPropViewportSize, 2, vp);
+    g_propSuite->propGetDoubleN(inArgs, kOfxInteractPropPixelScale, 2, scale);
+    g_propSuite->propGetDouble(inArgs, kOfxPropTime, 0, &t);
+    g_propSuite->propGetPointer(inArgs, kOfxInteractPropBackgroundImage, 0, &bg);
+    g_propSuite->propGetPointer(inArgs, kOfxInteractPropDrawContext, 0, &drawCtx);
+
+    /* Draw suite 状态真实读写：setColour 写、getColour 读（宿主色板）。 */
+    double setcol[4] = { 0.0, 0.0, 0.0, 0.0 };
+    double getcol[4] = { 0.0, 0.0, 0.0, 0.0 };
+    int setcol_st = kOfxStatFailed, getcol_st = kOfxStatFailed;
+    if (g_drawSuite && drawCtx) {
+        OfxRGBAColourF col = { 0.9f, 0.1f, 0.2f, 1.0f };
+        setcol_st = g_drawSuite->setColour(drawCtx, &col);
+        setcol[0] = col.r;
+        setcol[1] = col.g;
+        setcol[2] = col.b;
+        setcol[3] = col.a;
+        OfxRGBAColourF bgc = { 0.0f, 0.0f, 0.0f, 0.0f };
+        getcol_st = g_drawSuite->getColour(drawCtx, kOfxStandardColourOverlayBackground, &bgc);
+        getcol[0] = bgc.r;
+        getcol[1] = bgc.g;
+        getcol[2] = bgc.b;
+        getcol[3] = bgc.a;
+    }
+
+    int draw_st = kOfxStatFailed;
+#ifdef __APPLE__
+    /* 清成暗背景 + Draw suite 画实心矩形（canonical 坐标；宿主经正交
+     * 投影映射到视口）。 */
+    glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    if (g_drawSuite && drawCtx) {
+        OfxPointD pts[2] = { { 10.0, 10.0 }, { 30.0, 30.0 } };
+        draw_st = g_drawSuite->draw(drawCtx, kOfxDrawPrimitiveRectangle, pts, 2);
+    }
+#else
+    (void)0;
+#endif
+
+    interact_record("draw vp=%gx%g scale=%gx%g t=%g bg=%p setcol_st=%d setcol=%g,%g,%g,%g "
+                    "getcol_st=%d getcol=%g,%g,%g,%g draw_st=%d\n",
+                    vp[0], vp[1], scale[0], scale[1], t, bg, setcol_st, setcol[0], setcol[1],
+                    setcol[2], setcol[3], getcol_st, getcol[0], getcol[1], getcol[2], getcol[3],
+                    draw_st);
+    return kOfxStatOK;
+}
+
+/* interact 入口（经 kOfxImageEffectPluginPropOverlayInteractV2 声明）：
+ * 只处理 interact 的 action；效果侧 action 一律 ReplyDefault（不会被
+ * 宿主以效果 handle 调到这里）。 */
+static OfxStatus mainEntryInteract(const char *action, const void *handle,
+                                   OfxPropertySetHandle inArgs, OfxPropertySetHandle outArgs)
+{
+    (void)handle;
+    (void)outArgs;
+    if (strcmp(action, kOfxActionNewInteract) == 0) {
+        interact_record("new_interact\n");
+        return kOfxStatOK;
+    }
+    if (strcmp(action, kOfxActionDescribe) == 0) {
+        interact_record("describe\n");
+        return kOfxStatOK;
+    }
+    if (strcmp(action, kOfxActionCreateInstance) == 0) {
+        interact_record("create\n");
+        return kOfxStatOK;
+    }
+    if (strcmp(action, kOfxActionDestroyInstance) == 0) {
+        interact_record("destroy\n");
+        return kOfxStatOK;
+    }
+    if (strcmp(action, kOfxInteractActionDraw) == 0) {
+        return actionInteractDraw(inArgs);
+    }
+    if (strcmp(action, kOfxInteractActionPenMotion) == 0) {
+        record_pen("pen_motion", inArgs);
+        return kOfxStatOK;
+    }
+    if (strcmp(action, kOfxInteractActionPenDown) == 0) {
+        record_pen("pen_down", inArgs);
+        return kOfxStatOK;
+    }
+    if (strcmp(action, kOfxInteractActionPenUp) == 0) {
+        record_pen("pen_up", inArgs);
+        return kOfxStatOK;
+    }
+    if (strcmp(action, kOfxInteractActionKeyDown) == 0) {
+        int sym = 0;
+        g_propSuite->propGetInt(inArgs, kOfxPropKeySym, 0, &sym);
+        record_key("key_down", inArgs);
+        /* Escape → ReplyDefault（宿主应透传该状态：插件未处理，事件
+         * 可交视图中的其他对象）。 */
+        if (sym == kOfxKey_Escape)
+            return kOfxStatReplyDefault;
+        return kOfxStatOK;
+    }
+    if (strcmp(action, kOfxInteractActionKeyUp) == 0) {
+        record_key("key_up", inArgs);
+        return kOfxStatOK;
+    }
+    if (strcmp(action, kOfxInteractActionIdle) == 0) {
+        interact_record("idle\n");
+        return kOfxStatOK;
+    }
+    /* GainFocus/LoseFocus 等：默认（ReplyDefault = 未处理，宿主可继续）。 */
+    return kOfxStatReplyDefault;
+}
+
+/* interact 变体的效果侧 main entry：describe 建参数/clip 并声明 overlay
+ * interact V2 入口（指向 mainEntryInteract）；其余效果 action 委托 base
+ * mainEntry。 */
+static OfxStatus mainEntryInteractEffect(const char *action, const void *handle,
+                                         OfxPropertySetHandle inArgs, OfxPropertySetHandle outArgs)
+{
+    if (strcmp(action, kOfxActionDescribe) == 0 ||
+        strcmp(action, kOfxImageEffectActionDescribeInContext) == 0) {
+        OfxStatus st = actionDescribe(handle, 0);
+        if (st != kOfxStatOK)
+            return st;
+        return propSetPointer(handle, kOfxImageEffectPluginPropOverlayInteractV2, 0,
+                              (void *)mainEntryInteract);
+    }
+    return mainEntry(action, handle, inArgs, outArgs);
+}
+
 /* ---------- 导出 ---------- */
 
 static const OfxPlugin test_plugin = {
@@ -528,9 +797,19 @@ static const OfxPlugin test_plugin_id = {
     /* mainEntry */ mainEntryID,
 };
 
+static const OfxPlugin test_plugin_interact = {
+    /* pluginApi */ kOfxImageEffectPluginApi,
+    /* apiVersion */ kOfxImageEffectPluginApiVersion,
+    /* pluginIdentifier */ "org.oak.test-plugin.interact",
+    /* pluginVersionMajor */ 1,
+    /* pluginVersionMinor */ 0,
+    /* setHost */ setHost,
+    /* mainEntry */ mainEntryInteractEffect,
+};
+
 OfxExport int OfxGetNumberOfPlugins(void)
 {
-    return 3;
+    return 4;
 }
 
 OfxExport OfxPlugin *OfxGetPlugin(int nth)
@@ -541,5 +820,7 @@ OfxExport OfxPlugin *OfxGetPlugin(int nth)
         return (OfxPlugin *)&test_plugin_gl;
     if (nth == 2)
         return (OfxPlugin *)&test_plugin_id;
+    if (nth == 3)
+        return (OfxPlugin *)&test_plugin_interact;
     return NULL;
 }

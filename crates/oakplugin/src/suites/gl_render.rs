@@ -27,29 +27,36 @@
 //!   RenderScale/PixelAspectRatio/Bounds/RegionOfDefinition/RowBytes/
 //!   Field/UniqueIdentifier）；宿主侧存强引用（[`LIVE_TEXTURES`]），
 //!   clipFreeTexture 摘除即释放（对应 HS 的 get/release 配对）。
+//!   **OpenGLTextureIndex 是真实 GL 纹理名**（GL 模式，见
+//!   [`crate::gl_bridge`] 方案 B）：Output clip 是宿主为输出帧建的
+//!   GL 纹理（经 GlCtx 注入，render 驱动负责建/FBO 挂载/回读/删除）；
+//!   输入 clip 是本 suite 在 GL 渲染期经桥上传图像得到的 GL 纹理
+//!   （clipFreeTexture 删除）。0 = CPU 回退（无 GL 名，插件按规范回退）。
 //! - Output clip：`format` 忽略，宿主返回已附着的输出纹理句柄——
 //!   绑定渲染目标的动作（ofxGPURender.h "the host must bind the
 //!   resulting texture as the current color buffer"）由调用方约定：
-//!   GL render 驱动的 C ABI 契约要求 oakrender 在进入 render_job 前
-//!   已把输出纹理附着为渲染器输出目标（等价 C++ 的
-//!   `PluginRenderer::attach_output_texture`）。clipFreeTexture 对
-//!   Output 只释放句柄、不删纹理（宿主还要读它）。
-//! - 输入纹理经 [`crate::render`] 在渲染器上创建（CPU 帧 →
-//!   GL 上传）。纹理格式：全链路 F32 约束下，像素深度按 clip 协商
-//!   结果（恒 F32）；`format` 参数（kOfxImageEffectGLFormat*）若
-//!   请求的分量与协商分量不符，Phase 2 不做转换 → Failed（规范要求
-//!   "host ensures it gives the requested format"——宁可显式失败也
-//!   不静默给错格式）。ofxGPURender.h 注明"宿主无需按 Clip
-//!   Preferences 把图像重映射到插件请求的位深"，插件以纹理句柄的
-//!   PixelDepth/Components 为准。
+//!   GL render 驱动在进入 render_gl 前已把输出 GL 纹理挂进 FBO 并
+//!   绑定（等价 C++ 的 `PluginRenderer::attach_output_texture`）。
+//!   clipFreeTexture 对 Output 只释放句柄、不删纹理（宿主还要回读它，
+//!   回读后由 render 驱动删除）。
+//! - 输入纹理在 GL 模式经 [`crate::gl_bridge::create_input_texture`]
+//!   上传（CPU 帧 → GL 纹理）；CPU 模式（无 GL 上下文）维持
+//!   [`crate::render`] 的 CPU 纹理。纹理格式：全链路 F32 约束下，
+//!   像素深度按 clip 协商结果（恒 F32）；`format` 参数
+//!   （kOfxImageEffectGLFormat*）若请求的分量与协商分量不符，Phase 2
+//!   不做转换 → Failed（规范要求 "host ensures it gives the requested
+//!   format"——宁可显式失败也不静默给错格式）。ofxGPURender.h 注明
+//!   "宿主无需按 Clip Preferences 把图像重映射到插件请求的位深"，
+//!   插件以纹理句柄的 PixelDepth/Components 为准。
 //! - `flushResources`：宿主在 render 之间不缓存 GPU 资源（纹理随
 //!   clipFreeTexture 立即释放）→ 无可释放 → kOfxStatReplyDefault
 //!   （规范："nothing the host could do"）。
 //! - GL 上下文规则（ofxGPURender.h "OpenGL Current Context"）：宿主
 //!   只在 Render/BeginSequenceRender/EndSequenceRender/Attach/Detach
-//!   期间要求上下文 current；本实现的约定是调用方（oakrender
-//!   PluginJob 路径）在调用前置好上下文，本 suite 经
-//!   [`crate::suites::gl_ctx`] TLS 取渲染器句柄。
+//!   期间要求上下文 current；本实现的约定是 render 驱动一次 acquire
+//!   整个 GL render action（[`crate::gl_bridge::acquire`]），本 suite
+//!   回调期间上下文恒 current，经 [`crate::suites::gl_ctx`] TLS 取
+//!   渲染器句柄。
 
 use std::collections::HashMap;
 use std::ffi::{c_char, c_double, c_int, c_void, CStr, CString};
@@ -164,37 +171,64 @@ mod tests {
 // ---- 存活纹理表 -----------------------------------------------------------
 
 /// 存活 GL 纹理表：clipLoadTexture 产出（props 地址 → 属性集 +
-/// 纹理值 + 是否输出 clip）；clipFreeTexture 摘除即释放——对应
-/// HS 的 get/release 配对（HS: ofxhImageEffect.cpp:2336-2351）。
-/// 纹理是 oakrender 值（drop 自动释放后端 token；原
-/// `texture_free` 调用面随值模型删除）。
+/// 纹理值 + 是否输出 clip + 真实 GL 纹理名[可选]）；clipFreeTexture
+/// 摘除即释放——对应 HS 的 get/release 配对
+/// （HS: ofxhImageEffect.cpp:2336-2351）。纹理是 oakrender 值（drop
+/// 自动释放后端 token；原 `texture_free` 调用面随值模型删除）。
+///
+/// `gl_texture`：GL 模式下输入 clip 经 [`crate::gl_bridge`] 建的真实
+/// GL 纹理名（输出 clip 恒 None——宿主自建并负责生命周期，见
+/// [`crate::gl_bridge`] 模块文档）；摘除时经
+/// [`delete_gl_texture_if_gl`] 删除。
 ///
 /// 属性集必须**装箱**（Box 稳定堆地址）：纹理句柄指向它，函数返回后
 /// 必须仍存活；栈上临时变量会悬垂（phase-2 实现初版的 bug）。
 static LIVE_TEXTURES: std::sync::LazyLock<
-	Mutex<HashMap<usize, (Box<PropertySet>, crate::render::Texture, bool)>>,
+	Mutex<HashMap<usize, (Box<PropertySet>, crate::render::Texture, bool, Option<i32>)>>,
 > = std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// 登记纹理（clipLoadTexture 内部；`props` 装箱后取地址为句柄基址）。
+/// `gl_texture`：真实 GL 纹理名（输入 clip GL 模式；无则 None）。
 fn register(
 	props: Box<PropertySet>,
 	texture: crate::render::Texture,
 	is_output: bool,
+	gl_texture: Option<i32>,
 ) -> usize {
 	let addr = &*props as *const PropertySet as usize;
 	LIVE_TEXTURES
 		.lock()
 		.unwrap_or_else(|e| e.into_inner())
-		.insert(addr, (props, texture, is_output));
+		.insert(addr, (props, texture, is_output, gl_texture));
 	addr
+}
+
+/// 删除 GL 纹理（上下文 current 时；否则留给下次 GL 渲染前的兜底——
+/// 正常路径 clipFreeTexture/purge 都在 GL render 期，上下文必 current）。
+fn delete_gl_texture_if_gl(name: i32) {
+	if crate::suites::gl_ctx().is_some() {
+		crate::gl_bridge::delete_gl_texture(name);
+	}
 }
 
 /// 释放全部残留输入纹理（GL render action 返回后的安全网：规范要求
 /// 插件在 action 返回前 clipFreeTexture 全部句柄；遗漏的输入纹理在
-/// 此释放，输出纹理保留——宿主还要读它）。
+/// 此释放，输出纹理保留——宿主还要读它）。GL 输入纹理同步删除
+/// （上下文 current；render_gl 在清 GlCtx TLS 前调用本函数）。
 pub(crate) fn purge_leftovers() {
 	let mut live = LIVE_TEXTURES.lock().unwrap_or_else(|e| e.into_inner());
-	live.retain(|_, (_, _, is_output)| *is_output);
+	let dropped: Vec<Option<i32>> = live
+		.iter()
+		.filter(|(_, (_, _, is_output, _))| !*is_output)
+		.map(|(_, (_, _, _, gl))| *gl)
+		.collect();
+	live.retain(|_, (_, _, is_output, _)| *is_output);
+	drop(live);
+	for gl in dropped {
+		if let Some(gl) = gl {
+			delete_gl_texture_if_gl(gl);
+		}
+	}
 }
 
 /// 公共入口模板：panic 兜底。
@@ -240,12 +274,11 @@ fn clip_string(clip: &ClipInstance, name: &str, default: &str) -> String {
 }
 
 /// 构造纹理属性集（ofxGPURender.h 规定的属性；输入与输出共用，
-/// 只是数据来源不同）。`OpenGLTextureIndex` 经
-/// [`crate::render::texture_id`]（桩恒 0——wgpu 后端无 GL 命名空间；
-/// CPU 回退下插件按规范回退，纹理内容仍可经 clipGetImage 取用）。
+/// 只是数据来源不同）。`OpenGLTextureIndex` 为真实 GL 纹理名
+/// （`texture_index`；0 = 无 GL 名——CPU 回退下插件按规范回退，纹理
+/// 内容仍可经 clipGetImage 取用）。
 #[allow(clippy::too_many_arguments)]
 fn make_texture_props(
-	texture: &crate::render::Texture,
 	width: f64,
 	height: f64,
 	components: crate::image::Components,
@@ -254,12 +287,10 @@ fn make_texture_props(
 	par: f64,
 	scale: crate::instance::RenderScale,
 	row_bytes: i32,
+	texture_index: i32,
 ) -> PropertySet {
 	let props = PropertySet::new();
-	props.set_one(
-		GL_TEXTURE_INDEX,
-		Value::Int(crate::render::texture_id(texture)),
-	);
+	props.set_one(GL_TEXTURE_INDEX, Value::Int(texture_index));
 	props.set_one(GL_TEXTURE_TARGET, Value::Int(GL_TEXTURE_2D));
 	props.set_one(
 		crate::image::K_IMAGE_EFFECT_PROP_PIXEL_DEPTH,
@@ -343,8 +374,10 @@ unsafe extern "C" fn clip_load_texture(
 			if w <= 0.0 || h <= 0.0 {
 				return Err(status::ERR_BAD_HANDLE);
 			}
+			// OpenGLTextureIndex = 宿主为输出帧建的真实 GL 纹理名
+			// （render 驱动 GL 分支经 GlCtx 注入；0 = CPU 回退）。
+			let index = gl.output_gl_texture.unwrap_or(0);
 			let props = make_texture_props(
-				&tex,
 				w,
 				h,
 				crate::image::Components::Rgba,
@@ -353,8 +386,9 @@ unsafe extern "C" fn clip_load_texture(
 				clip_par(c),
 				scale,
 				(w as i32) * 4 * 4,
+				index,
 			);
-			let addr = register(Box::new(props), tex, true);
+			let addr = register(Box::new(props), tex, true, None);
 			unsafe { *out = tag::make(addr as *const PropertySet, tag::PROPERTY_SET) };
 			return Ok(());
 		}
@@ -386,6 +420,17 @@ unsafe extern "C" fn clip_load_texture(
 		if w <= 0.0 || h <= 0.0 {
 			return Err(status::FAILED);
 		}
+		// GL 模式：把输入图像上传成真实 GL 纹理（RGBA32F；上下文
+		// current——render 驱动已 acquire），OpenGLTextureIndex 返回
+		// 真实名；GL 上传失败 → 显式 Failed（插件按规范继续）。非 GL
+		// 上下文（本函数仅在 GL 渲染期可达，此分支是 CPU 纹理兜底）：
+		// 仍建 CPU 纹理、索引 0。
+		let gl_tex = crate::gl_bridge::create_input_texture(
+			w as i32,
+			h as i32,
+			image.pixels(),
+		)
+		.ok();
 		let params = crate::render::VideoParams {
 			width: w as i32,
 			height: h as i32,
@@ -395,7 +440,6 @@ unsafe extern "C" fn clip_load_texture(
 		let tex = crate::render::texture_create(&params, image.pixels(), image.row_bytes() as i32)
 			.map_err(|_| status::ERR_MEMORY)?;
 		let props = make_texture_props(
-			&tex,
 			w,
 			h,
 			components,
@@ -404,8 +448,9 @@ unsafe extern "C" fn clip_load_texture(
 			clip_par(c),
 			scale,
 			image.row_bytes() as i32,
+			gl_tex.unwrap_or(0),
 		);
-		let addr = register(Box::new(props), tex, false);
+		let addr = register(Box::new(props), tex, false, gl_tex);
 		unsafe { *out = tag::make(addr as *const PropertySet, tag::PROPERTY_SET) };
 		Ok(())
 	})
@@ -440,9 +485,9 @@ fn clip_par(c: &ClipInstance) -> f64 {
 		.unwrap_or(1.0)
 }
 
-/// clipFreeTexture：释放纹理（输入 clip 删除纹理值；Output 只释放
-/// 句柄不删纹理——宿主还要读它）。纹理是值：摘除表条目即 drop
-/// （原 `texture_free` 调用面随值模型删除）。
+/// clipFreeTexture：释放纹理（输入 clip 删除纹理值并释放真实 GL
+/// 纹理；Output 只释放句柄不删纹理——宿主还要读它）。纹理是值：
+/// 摘除表条目即 drop（原 `texture_free` 调用面随值模型删除）。
 unsafe extern "C" fn clip_free_texture(texture_handle: *mut c_void) -> c_int {
 	caught(|| {
 		if texture_handle.is_null() {
@@ -454,7 +499,13 @@ unsafe extern "C" fn clip_free_texture(texture_handle: *mut c_void) -> c_int {
 			live.remove(&addr)
 		};
 		match entry {
-			Some((_props, _texture, _is_output)) => Ok(()),
+			Some((_props, _texture, _is_output, gl_tex)) => {
+				// 输入 clip 的真实 GL 纹理随释放删除（上下文 current）。
+				if let Some(gl) = gl_tex {
+					delete_gl_texture_if_gl(gl);
+				}
+				Ok(())
+			}
 			None => Err(status::ERR_BAD_HANDLE),
 		}
 	})

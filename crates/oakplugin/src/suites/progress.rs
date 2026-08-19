@@ -114,7 +114,14 @@ unsafe extern "C" fn progress_update_v1(_handle: *mut c_void, progress: c_double
 }
 
 unsafe extern "C" fn progress_end_v1(_handle: *mut c_void) -> c_int {
-	caught(|| status::OK)
+	caught(|| {
+		CURRENT.with(|c| {
+			if let Some(r) = c.borrow().as_ref() {
+				r.end_ui();
+			}
+		});
+		status::OK
+	})
 }
 
 unsafe extern "C" fn progress_start_v2(

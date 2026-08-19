@@ -33,10 +33,11 @@
 //! - 像素格式常量直接别名 [`oakcore_rs::PixelFormat`]。
 //!
 //! 保留桩（GPU 相关、wgpu 模型无直接 Rust 等价物）：
-//! [`texture_id`]——wgpu 后端没有 OpenGL 纹理名（旧 C ABI 的
-//! `oakrender_texture_id` 语义是 GL 命名空间），恒 0；GL suite 的
-//! `OpenGLTextureIndex` 属性与 render 驱动的 use_opengl 决策据此
-//! 回退 CPU 路径。
+//! [`texture_id`]——oakrender 纹理（wgpu/CPU）没有 OpenGL 纹理名，
+//! 恒 0。**GL 模式的真实 GL 纹理名来自 [`crate::gl_bridge`]**（方案 B
+//! 已落地）：render 驱动为输出帧建 GL 纹理 + FBO，GL suite 的
+//! `OpenGLTextureIndex` 属性据此返回真实名；use_opengl 决策改用
+//! [`crate::gl_bridge::gl_available`] 作"目标纹理有有效 GL 名"的门。
 
 /// `oakrender_video_params` POD — single-lib unification: aliases the
 /// oakrender crate's struct (identical layout;
@@ -124,13 +125,15 @@ pub fn texture_create(
 	Ok(Texture::wrap_frame(frame))
 }
 
-/// STUB: oakrender C ABI deleted (single-lib)，且 wgpu 后端没有
-/// OpenGL 纹理名——旧 `oakrender_texture_id` 的 GL 命名空间语义无
-/// Rust 等价物。恒 0（GL suite 的 `OpenGLTextureIndex` 属性与
-/// render 驱动的 use_opengl 决策据此回退 CPU 路径；GPU 上传若落地
-/// 走 `oakrender::backend::GpuContextLike::upload` 的 wgpu token，
-/// 不暴露 GL id）。真实化的评估与方案见 [`crate::gl_bridge`]
-/// （阶段 6a spike：方案 A 不可行，方案 B 暂缓）。
+/// oakrender 纹理在 GL 命名空间中的纹理名。oakrender 纹理（wgpu
+/// Metal / CPU 帧）没有 OpenGL 纹理名，恒 0。
+///
+/// **GL 模式的真实纹理名不由本函数提供**：宿主自建的离屏 GL 纹理
+/// （输出帧 + FBO 挂载、输入 clip 上传）由 [`crate::gl_bridge`] 产生，
+/// 经 GL suite 的 `OpenGLTextureIndex` 属性直接写出；use_opengl 决策
+/// 用 [`crate::gl_bridge::gl_available`] 当"目标纹理有有效 GL 名"的
+/// 门（桥能为目标帧建出真实 GL 纹理 ⟺ 可用）。评估历史见
+/// [`crate::gl_bridge`] 模块文档。
 pub fn texture_id(_texture: &Texture) -> i32 {
 	0
 }

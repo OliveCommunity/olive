@@ -26,8 +26,10 @@
 //!
 //! 参照：HS: ofxhImageEffect.cpp:2776（fetchSuite 分发表与版本协商）。
 
+pub mod draw;
 pub mod gl_render;
 pub mod image_effect;
+pub mod interact;
 pub mod memory;
 pub mod message;
 pub mod multithread;
@@ -103,6 +105,9 @@ pub mod tag {
 	pub const CLIP: usize = 5;
 	/// [`crate::image::Image`]（clipGetImage 的产物）。
 	pub const IMAGE: usize = 6;
+	/// [`crate::suites::interact::Interact`]（interact 实例 handle；
+	/// 实例期 effect/param-set 之外的独立交互对象）。
+	pub const INTERACT: usize = 7;
 
 	/// 打标签（宿主创建对象句柄用；公开供宿主/测试构造句柄）。
 	pub fn make(props: *const crate::property::PropertySet, t: usize) -> *mut std::ffi::c_void {
@@ -183,6 +188,11 @@ pub struct GlCtx {
 	/// 全链路 F32，由 render_gl 按插件 kOfxOpenGLPropPixelDepth 协商
 	/// 后填入——纹理句柄的 kOfxImageEffectPropPixelDepth 以它为准）。
 	pub gl_pixel_depth: &'static str,
+	/// 已附着的**真实 GL 输出纹理名**（GL 模式下宿主为输出帧建的
+	/// GL 纹理 + FBO 颜色附件；clipLoadTexture(Output) 的
+	/// OpenGLTextureIndex 以它为准——ofxGPURender.h 要求宿主把输出
+	/// 纹理绑定为当前颜色缓冲）。None = 无真实 GL 名（CPU 回退）。
+	pub output_gl_texture: Option<i32>,
 }
 
 thread_local! {
@@ -213,6 +223,7 @@ pub(crate) const OFX_API_VERSION: i32 = 105;
 /// OfxMultiThreadSuite v1。
 /// 第 2 期追加：OfxImageEffectOpenGLRenderSuite v1（GL 路径）；
 /// ofxColour 无 suite 表（纯属性 + GetOutputColourspace action）。
+/// 第 3 期追加：OfxInteractSuite v1、OfxDrawSuite v1（interact 宿主）。
 pub fn fetch_suite(name: &str, version: i32) -> Option<*const std::ffi::c_void> {
 	let suite: *const std::ffi::c_void = match (name, version) {
 		("OfxPropertySuite", 1) => ptr(property::suite_v1()),
@@ -226,6 +237,8 @@ pub fn fetch_suite(name: &str, version: i32) -> Option<*const std::ffi::c_void> 
 		("OfxTimeLineSuite", 1) => ptr(timeline::suite_v1()),
 		("OfxMultiThreadSuite", 1) => ptr(multithread::suite_v1()),
 		("OfxImageEffectOpenGLRenderSuite", 1) => ptr(gl_render::suite_v1()),
+		("OfxInteractSuite", 1) => ptr(interact::suite_v1()),
+		("OfxDrawSuite", 1) => ptr(draw::suite_v1()),
 		_ => return None,
 	};
 	Some(suite)
@@ -240,7 +253,7 @@ fn ptr<T>(p: &'static T) -> *const std::ffi::c_void {
 mod tests {
 	use super::*;
 
-	/// 八张 suite 的分发表：版本精确匹配、未知版本/名字 → None。
+	/// 十张 suite 的分发表：版本精确匹配、未知版本/名字 → None。
 	#[test]
 	fn fetch_suite_dispatch() {
 		assert!(fetch_suite("OfxPropertySuite", 1).is_some());
@@ -254,10 +267,14 @@ mod tests {
 		assert!(fetch_suite("OfxTimeLineSuite", 1).is_some());
 		assert!(fetch_suite("OfxMultiThreadSuite", 1).is_some());
 		assert!(fetch_suite("OfxImageEffectOpenGLRenderSuite", 1).is_some());
+		assert!(fetch_suite("OfxInteractSuite", 1).is_some());
+		assert!(fetch_suite("OfxDrawSuite", 1).is_some());
 
 		assert!(fetch_suite("OfxPropertySuite", 2).is_none());
 		assert!(fetch_suite("OfxMessageSuite", 3).is_none());
 		assert!(fetch_suite("OfxImageEffectOpenGLRenderSuite", 2).is_none());
+		assert!(fetch_suite("OfxInteractSuite", 2).is_none());
+		assert!(fetch_suite("OfxDrawSuite", 2).is_none());
 		assert!(fetch_suite("OfxBogusSuite", 1).is_none());
 		assert!(fetch_suite("", 1).is_none());
 	}
@@ -276,6 +293,7 @@ mod tests {
 			tag::PARAM_INSTANCE,
 			tag::CLIP,
 			tag::IMAGE,
+			tag::INTERACT,
 		] {
 			let h = tag::make(props, t);
 			assert_eq!(tag::kind(h), t);
@@ -340,6 +358,7 @@ mod tests {
 			renderer,
 			output_texture: tex.clone(),
 			gl_pixel_depth: "OfxBitDepthFloat",
+			output_gl_texture: Some(42),
 		}));
 		let got = gl_ctx().unwrap();
 		assert_eq!(
@@ -348,6 +367,7 @@ mod tests {
 		);
 		assert!(got.output_texture.is_dummy());
 		assert_eq!(got.gl_pixel_depth, "OfxBitDepthFloat");
+		assert_eq!(got.output_gl_texture, Some(42));
 		set_gl_ctx(None);
 		assert!(gl_ctx().is_none());
 	}
