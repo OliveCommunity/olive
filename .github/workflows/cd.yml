@@ -39,7 +39,7 @@ jobs:
           # Oak_Icon.svg).
           sudo apt-get install -y \
             cmake \
-            libpipewire-0.3-dev libspa-0.2-dev \
+            libpipewire-0.3-dev libspa-0.2-dev libjack-jackd2-dev \
             librsvg2-bin \
             libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
             libvulkan-dev libxkbcommon-dev
