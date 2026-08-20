@@ -206,7 +206,7 @@ pub fn value_to_string(declared: ValueType, value: &NodeValue, key_track: bool) 
 			}
 		}
 		ValueType::Float => format!("{}", value.to_double()),
-		ValueType::Text | ValueType::StrCombo => match value {
+		ValueType::Text | ValueType::StrCombo | ValueType::Parametric => match value {
 			NodeValue::Text(s) => s.clone(),
 			NodeValue::StrCombo(s) => s.clone(),
 			_ => String::new(),
@@ -249,6 +249,7 @@ pub fn string_to_value(declared: ValueType, text: &str) -> NodeValue {
 		ValueType::Float => NodeValue::Float(text.trim().parse().unwrap_or(0.0)),
 		ValueType::Text => NodeValue::Text(text.to_string()),
 		ValueType::StrCombo => NodeValue::StrCombo(text.to_string()),
+		ValueType::Parametric => NodeValue::Text(text.to_string()),
 		_ => NodeValue::None,
 	}
 }
@@ -1081,4 +1082,43 @@ fn resolve_folder_children(
 /// Lock a project mutex (poison-tolerant).
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 	m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// Value codec 对 Parametric 输入的往返（save_immediate /
+	/// load_immediate 对 standard 值走的纯函数路径：split →
+	/// value_to_string → string_to_value → combine；XML 桥由
+	/// tests/serializer_test.rs 覆盖）。
+	#[test]
+	fn parametric_input_value_codec_roundtrip() {
+		let declared = ValueType::Parametric;
+		let json = r#"{"curves":[[{"key":0,"value":0,"slope":1},{"key":0.5,"value":0.6,"slope":1}]]}"#;
+		let value = NodeValue::Text(json.to_string());
+
+		// save 侧：standard 值按声明类型拆轨（Text → 单轨整值）。
+		let tracks = value.split_into_tracks(declared);
+		assert_eq!(tracks.len(), 1);
+		let text = value_to_string(declared, &tracks[0], true);
+		assert_eq!(text, json);
+
+		// load 侧：track 文本还原 + 合并回整值。
+		let restored = string_to_value(declared, &text);
+		assert_eq!(restored, value);
+		let combined = NodeValue::combine_tracks(&[restored], declared);
+		assert_eq!(combined, value);
+
+		// key_track=false 形态（整值轨道）同样往返。
+		assert_eq!(value_to_string(declared, &value, false), json);
+
+		// 载荷不是 Text（防御）→ 空串；声明类型 Parametric 无键帧
+		// 插值、无 C++ 判别值。
+		assert_eq!(value_to_string(declared, &NodeValue::None, true), "");
+		assert!(!declared.can_interpolate());
+		assert_eq!(declared.to_cpp_discriminant(), 0);
+		assert!(declared.is_string());
+		assert_eq!(declared.to_oak(), crate::value::oak::STRING);
+	}
 }

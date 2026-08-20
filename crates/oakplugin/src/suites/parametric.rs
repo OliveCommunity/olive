@@ -163,8 +163,9 @@ fn curves_of(r: &ParamRef) -> Result<Vec<Curve>, c_int> {
 
 /// 写回曲线：Def → 默认值；Instance → 当前值 + instanceChanged 通知
 /// （复用 param suite 的 [`crate::suites::param::notify_changed`]——
-/// 曲线无标量节点值，节点回写是 no-op，但走既有通知路径保持宿主侧
-/// 变更感知的纪律一致）。
+/// 曲线经 [`crate::param::notify_instance_changed`] 序列化为 JSON
+/// 文本写回节点输入（undoable，同标量路径），保持宿主侧变更感知的
+/// 纪律一致）。
 fn write_curves(r: &mut ParamRef, curves: Vec<Curve>) {
 	match r {
 		ParamRef::Def(d) => d.default = ParamValue::Parametric(curves),

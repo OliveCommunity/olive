@@ -399,12 +399,13 @@ pub fn set_input_undoable(
 }
 
 /// 以 undoable 方式设置节点的标准输入值（字符串族输入：Text /
-/// StrCombo——POD 不携带字符串数据）。
+/// StrCombo / Parametric——POD 不携带字符串数据）。
 ///
 /// 按输入的声明类型（[`oaknode::value::ValueType`]）选存储变体：
-/// `StrCombo` → [`oaknode::value::NodeValue::StrCombo`]，其余
-/// 字符串族（Text）→ [`oaknode::value::NodeValue::Text`]。声明类型
-/// 不是字符串族 → [`NodeBridgeError::NotStringInput`]。命令语义与
+/// `StrCombo` → [`oaknode::value::NodeValue::StrCombo`]，
+/// `Text` / `Parametric`（值 = 曲线 JSON 文本）→
+/// [`oaknode::value::NodeValue::Text`]。声明类型不是字符串族 →
+/// [`NodeBridgeError::NotStringInput`]。命令语义与
 /// [`set_input_undoable`] 相同。
 pub fn set_input_string_undoable(
 	node: &NodeRef,
@@ -425,7 +426,9 @@ pub fn set_input_string_undoable(
 	};
 	let nv = match declared {
 		oaknode::value::ValueType::StrCombo => oaknode::value::NodeValue::StrCombo(value.to_string()),
-		oaknode::value::ValueType::Text => oaknode::value::NodeValue::Text(value.to_string()),
+		oaknode::value::ValueType::Text | oaknode::value::ValueType::Parametric => {
+			oaknode::value::NodeValue::Text(value.to_string())
+		}
 		_ => return Err(NodeBridgeError::NotStringInput(input.to_string())),
 	};
 

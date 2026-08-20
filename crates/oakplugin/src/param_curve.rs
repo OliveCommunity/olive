@@ -212,6 +212,256 @@ impl Curve {
 	}
 }
 
+// ---- 曲线集 ↔ JSON（节点输入 / 工程序列化的值载荷）--------------------
+//
+// 格式（确定性、紧凑，无空白）：
+//   {"curves":[[{"key":0.0,"value":0.0,"slope":1.0},...],...]}
+// 外层按 dimension 顺序一维一条曲线；每维一个控制点对象，字段序固定
+// key/value/slope。数值用 Rust 最短往返格式化（`{}`）。非有限值 JSON
+// 无标准写法，取对称 token：NaN → `null`，+Inf → `"inf"`，
+// -Inf → `"-inf"`（字符串字面量；解析器对称处理，有限值恒为裸数字）。
+// 解析器容忍空白与字段乱序；结构不符 → None（调用方按字符串族静默
+// 路径处理）。手写实现，不引入 serde（crate 无该依赖）。
+
+/// 曲线集 → JSON（节点输入默认值 / 插件回写节点输入的载荷）。
+pub fn curves_to_json(curves: &[Curve]) -> String {
+	let mut out =
+		String::with_capacity(8 + 12 * curves.iter().map(|c| c.len()).sum::<usize>());
+	out.push_str("{\"curves\":[");
+	for (ci, c) in curves.iter().enumerate() {
+		if ci > 0 {
+			out.push(',');
+		}
+		out.push('[');
+		for (pi, p) in c.points.iter().enumerate() {
+			if pi > 0 {
+				out.push(',');
+			}
+			out.push_str("{\"key\":");
+			push_num(&mut out, p.key);
+			out.push_str(",\"value\":");
+			push_num(&mut out, p.value);
+			out.push_str(",\"slope\":");
+			push_num(&mut out, p.slope);
+			out.push('}');
+		}
+		out.push(']');
+	}
+	out.push_str("]}");
+	out
+}
+
+/// JSON → 曲线集（格式见 [`curves_to_json`]；结构不符 → None）。
+pub fn curves_from_json(text: &str) -> Option<Vec<Curve>> {
+	let mut p = JsonParser {
+		bytes: text.as_bytes(),
+		pos: 0,
+	};
+	p.skip_ws();
+	if !p.eat(b'{') {
+		return None;
+	}
+	p.skip_ws();
+	if p.parse_string()?.as_str() != "curves" {
+		return None;
+	}
+	p.skip_ws();
+	if !p.eat(b':') {
+		return None;
+	}
+	p.skip_ws();
+	let mut curves = Vec::new();
+	if p.eat(b'[') {
+		loop {
+			p.skip_ws();
+			if p.eat(b']') {
+				break;
+			}
+			curves.push(p.parse_curve()?);
+			p.skip_ws();
+			if p.eat(b',') {
+				continue;
+			}
+			if p.eat(b']') {
+				break;
+			}
+			return None;
+		}
+	} else {
+		return None;
+	}
+	p.skip_ws();
+	if !p.eat(b'}') {
+		return None;
+	}
+	p.skip_ws();
+	if p.pos != p.bytes.len() {
+		return None;
+	}
+	Some(curves)
+}
+
+/// 单个数值 → JSON token（有限值裸数字；NaN/±Inf 见模块文档）。
+fn push_num(out: &mut String, v: f64) {
+	if v.is_nan() {
+		out.push_str("null");
+	} else if v == f64::INFINITY {
+		out.push_str("\"inf\"");
+	} else if v == f64::NEG_INFINITY {
+		out.push_str("\"-inf\"");
+	} else {
+		out.push_str(&format!("{v}"));
+	}
+}
+
+/// 手写 JSON 解析器（仅本格式的子集；字段名无转义引号，控制点字段
+/// 均为固定标识符）。
+struct JsonParser<'a> {
+	bytes: &'a [u8],
+	pos: usize,
+}
+
+impl<'a> JsonParser<'a> {
+	fn skip_ws(&mut self) {
+		while self.pos < self.bytes.len() && self.bytes[self.pos].is_ascii_whitespace() {
+			self.pos += 1;
+		}
+	}
+
+	fn eat(&mut self, byte: u8) -> bool {
+		if self.bytes.get(self.pos) == Some(&byte) {
+			self.pos += 1;
+			true
+		} else {
+			false
+		}
+	}
+
+	/// 原样匹配一段字节（字段名；不做字符串语义）。
+	fn eat_str(&mut self, want: &[u8]) -> bool {
+		if self.bytes[self.pos..].starts_with(want) {
+			self.pos += want.len();
+			true
+		} else {
+			false
+		}
+	}
+
+	/// 引号字符串（无转义；字段名/`"inf"` token 用）。
+	fn parse_string(&mut self) -> Option<String> {
+		if !self.eat(b'"') {
+			return None;
+		}
+		let start = self.pos;
+		while self.pos < self.bytes.len() && self.bytes[self.pos] != b'"' {
+			self.pos += 1;
+		}
+		let s = std::str::from_utf8(&self.bytes[start..self.pos]).ok()?.to_string();
+		if !self.eat(b'"') {
+			return None;
+		}
+		Some(s)
+	}
+
+	/// 数值 token：`null` → NaN；`"inf"`/`"-inf"` → ±∞；否则裸数字
+	/// （`f64::from_str`，上溢 → ±∞，与 `{}` 最短往返格式对称）。
+	fn parse_num(&mut self) -> Option<f64> {
+		if self.eat_str(b"null") {
+			return Some(f64::NAN);
+		}
+		if self.bytes.get(self.pos) == Some(&b'"') {
+			return match self.parse_string()?.as_str() {
+				"inf" => Some(f64::INFINITY),
+				"-inf" => Some(f64::NEG_INFINITY),
+				_ => None,
+			};
+		}
+		let start = self.pos;
+		while self.pos < self.bytes.len()
+			&& matches!(
+				self.bytes[self.pos],
+				b'-' | b'+' | b'.' | b'0'..=b'9' | b'e' | b'E'
+			)
+		{
+			self.pos += 1;
+		}
+		if self.pos == start {
+			return None;
+		}
+		std::str::from_utf8(&self.bytes[start..self.pos])
+			.ok()?
+			.parse()
+			.ok()
+	}
+
+	/// 一条曲线：`[` 控制点* `]`（控制点按 key 升序存储，解析按原序）。
+	fn parse_curve(&mut self) -> Option<Curve> {
+		if !self.eat(b'[') {
+			return None;
+		}
+		let mut points = Vec::new();
+		loop {
+			self.skip_ws();
+			if self.eat(b']') {
+				break;
+			}
+			points.push(self.parse_point()?);
+			self.skip_ws();
+			if self.eat(b',') {
+				continue;
+			}
+			if self.eat(b']') {
+				break;
+			}
+			return None;
+		}
+		Some(Curve { points })
+	}
+
+	/// 一个控制点：`{` ("name" `:` 数值)* `}`（字段乱序可；未知字段
+	/// 拒绝）。
+	fn parse_point(&mut self) -> Option<ControlPoint> {
+		if !self.eat(b'{') {
+			return None;
+		}
+		let mut key = None;
+		let mut value = None;
+		let mut slope = None;
+		loop {
+			self.skip_ws();
+			if self.eat(b'}') {
+				break;
+			}
+			let name = self.parse_string()?;
+			self.skip_ws();
+			if !self.eat(b':') {
+				return None;
+			}
+			self.skip_ws();
+			let v = self.parse_num()?;
+			match name.as_str() {
+				"key" => key = Some(v),
+				"value" => value = Some(v),
+				"slope" => slope = Some(v),
+				_ => return None,
+			}
+			self.skip_ws();
+			if self.eat(b',') {
+				continue;
+			}
+			if self.eat(b'}') {
+				break;
+			}
+			return None;
+		}
+		Some(ControlPoint {
+			key: key?,
+			value: value?,
+			slope: slope.unwrap_or(0.0),
+		})
+	}
+}
+
 /// 第 `i` 点处的差分斜率（不重算，供 [`Curve::recompute_slopes`]）。
 /// 内部点：中心差分 (y_{i+1} - y_{i-1}) / (x_{i+1} - x_{i-1})；
 /// 端点：单侧差分；单点/空曲线：0。防御重复 key 时除零 → 0。
@@ -389,5 +639,96 @@ mod tests {
 		c.clear();
 		assert!(c.is_empty());
 		assert_eq!(c.evaluate(0.5), 0.5);
+	}
+
+	/// JSON 往返：恒等曲线（默认值）序列化形状逐字 + 解析回等值模型。
+	#[test]
+	fn json_roundtrip_identity() {
+		let curves = vec![Curve::identity(0.0, 1.0)];
+		let json = curves_to_json(&curves);
+		assert_eq!(
+			json,
+			r#"{"curves":[[{"key":0,"value":0,"slope":1},{"key":1,"value":1,"slope":1}]]}"#
+		);
+		let back = curves_from_json(&json).expect("应可解析");
+		assert_eq!(back, curves);
+	}
+
+	/// JSON 往返：多维 + 非平凡形状 + 显式编辑 slope（slope 也是载荷
+	/// 的一部分，逐位保留）。
+	#[test]
+	fn json_roundtrip_multidim_and_slope() {
+		let mut c = Curve::from_pairs(&[(0.0, 0.0), (0.5, 0.25), (1.0, 1.0)]);
+		c.points[1].slope = 0.0; // 显式编辑（字段公开即契约）
+		let curves = vec![c.clone(), Curve::identity(0.0, 255.0)];
+		let json = curves_to_json(&curves);
+		let back = curves_from_json(&json).expect("应可解析");
+		assert_eq!(back.len(), 2);
+		assert_eq!(back, curves);
+		assert_eq!(back[0].points[1].slope, 0.0);
+		assert_eq!(back[1].points[1].key, 255.0);
+		// 求值不受序列化影响。
+		assert_eq!(back[0].evaluate(0.5), 0.25);
+	}
+
+	/// JSON 往返：特殊值（NaN/±Inf，slope 与值均可）与空曲线/空集。
+	#[test]
+	fn json_roundtrip_special_and_empty() {
+		let curves = vec![Curve {
+			points: vec![
+				ControlPoint {
+					key: 0.0,
+					value: f64::NAN,
+					slope: 0.0,
+				},
+				ControlPoint {
+					key: 1.0,
+					value: f64::INFINITY,
+					slope: f64::NEG_INFINITY,
+				},
+			],
+		}];
+		let json = curves_to_json(&curves);
+		assert_eq!(
+			json,
+			r#"{"curves":[[{"key":0,"value":null,"slope":0},{"key":1,"value":"inf","slope":"-inf"}]]}"#
+		);
+		let back = curves_from_json(&json).expect("应可解析");
+		assert!(back[0].points[0].value.is_nan());
+		assert_eq!(back[0].points[1].value, f64::INFINITY);
+		assert_eq!(back[0].points[1].slope, f64::NEG_INFINITY);
+
+		// 空曲线（DeleteAll 后）与空集。
+		let curves = vec![Curve::empty(), Curve::empty()];
+		let json = curves_to_json(&curves);
+		assert_eq!(json, r#"{"curves":[[],[]]}"#);
+		assert_eq!(curves_from_json(&json).unwrap(), curves);
+		assert_eq!(curves_from_json(r#"{"curves":[]}"#).unwrap(), Vec::<Curve>::new());
+	}
+
+	/// JSON 解析：容忍空白与字段乱序；结构不符 → None（静默路径）。
+	#[test]
+	fn json_parser_tolerances() {
+		let curves = vec![Curve::from_pairs(&[(0.0, 0.0), (1.0, 1.0)])];
+		// 空白 + 字段乱序。
+		let spaced = r#"{ "curves" : [ [ { "slope" : 1 , "key" : 0 , "value" : 0 } , { "key" : 1 , "value" : 1 , "slope" : 1 } ] ] }"#;
+		assert_eq!(curves_from_json(spaced).unwrap(), curves);
+		// 结构不符 → None。
+		for bad in [
+			"",
+			"{}",
+			r#"{"curves"}"#,
+			r#"{"curve":[]}"#,
+			r#"{"curves":[{"key":0}]}"#,
+			r#"{"curves":[[{"key":"x"}]]}"#,
+			r#"{"curves":[[{"key":0}]]"#,
+			r#"{"curves":[[{"key":0,"value":0,"slope":0}]]}junk"#,
+		] {
+			assert!(curves_from_json(bad).is_none(), "应拒绝：{bad}");
+		}
+		// 缺 slope 字段 → 0（宽容）。
+		let no_slope = r#"{"curves":[[{"key":0,"value":0}]]}"#;
+		let back = curves_from_json(no_slope).unwrap();
+		assert_eq!(back[0].points[0].slope, 0.0);
 	}
 }

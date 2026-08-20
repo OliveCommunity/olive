@@ -281,7 +281,18 @@ fn default_value_for_param(def: &ParamDef) -> Option<NodeValue> {
 			}
 		}
 		ofx::TYPE_BYTES => Some(NodeValue::Binary(Vec::new())),
-		// PushButton/Group/Page/Parametric/未知 → invalid（C++ 末尾
+		// parametric：值 = 默认曲线的确定性 JSON（节点输入无曲线模型，
+		// 经 Text 承载；撤销/工程序列化随标准值免费获得）。默认曲线
+		// 来自 def.default（describe 期插件经 parametric suite 改过
+		// 的默认），不是 P_DEFAULT 属性（parametric 无标量默认）。
+		ofx::TYPE_PARAMETRIC => match &def.default {
+			ParamValue::Parametric(curves) => {
+				Some(NodeValue::Text(crate::param_curve::curves_to_json(curves)))
+			}
+			// 防御：type_default 恒产出 Parametric，此处只兜底。
+			_ => None,
+		},
+		// PushButton/Group/Page/未知 → invalid（C++ 末尾
 		// return QVariant()）。
 		_ => None,
 	}
@@ -450,6 +461,9 @@ fn input_type_for(ofx_type: &str) -> Option<ValueType> {
 		ofx::TYPE_STRCHOICE => ValueType::StrCombo,
 		ofx::TYPE_BYTES | ofx::TYPE_CUSTOM => ValueType::Binary,
 		ofx::TYPE_PUSHBUTTON => ValueType::PushButton,
+		// parametric：值 = 默认曲线的 JSON 文本（见
+		// [`crate::param_curve::curves_to_json`]）。
+		ofx::TYPE_PARAMETRIC => ValueType::Parametric,
 		_ => return None,
 	})
 }
@@ -531,6 +545,44 @@ fn build_core(inst: &Instance) -> NodeCore {
 			input
 				.properties
 				.push(("ui_page".to_string(), NodeValue::Text(page.clone())));
+		}
+
+		// parametric 专属属性（消费方 = 检查器曲线编辑器；值从
+		// OfxParametricParameterSuite 的属性表搬运）：
+		// - "parametric_dimension"：int，维度数；
+		// - "parametric_range"：Vec2，定义域 (lo, hi)；
+		// - "parametric_ui_colour"：每维一条（重复键，对齐 combo_option
+		//   惯例），Color([r,g,b,1])，取自 double×3N 属性，未配置不携带。
+		// 无参数动画（第 1 期）→ 不可键帧。
+		if matches!(value_type, ValueType::Parametric) {
+			input.flags |= input_flags::NOT_KEYFRAMABLE;
+			let dim = prop_int(&def.props, ofx::P_PARAMETRIC_DIMENSION, 0).max(1);
+			input.properties.push((
+				"parametric_dimension".to_string(),
+				NodeValue::Int(dim as i64),
+			));
+			input.properties.push((
+				"parametric_range".to_string(),
+				NodeValue::Vec2([
+					prop_double(&def.props, ofx::P_PARAMETRIC_RANGE, 0),
+					prop_double(&def.props, ofx::P_PARAMETRIC_RANGE, 1),
+				]),
+			));
+			let colour_dim = def.props.dimension(ofx::P_PARAMETRIC_UI_COLOUR);
+			for i in 0..dim as usize {
+				if i * 3 + 2 >= colour_dim {
+					break;
+				}
+				input.properties.push((
+					"parametric_ui_colour".to_string(),
+					NodeValue::Color([
+						prop_double(&def.props, ofx::P_PARAMETRIC_UI_COLOUR, i * 3),
+						prop_double(&def.props, ofx::P_PARAMETRIC_UI_COLOUR, i * 3 + 1),
+						prop_double(&def.props, ofx::P_PARAMETRIC_UI_COLOUR, i * 3 + 2),
+						1.0,
+					]),
+				));
+			}
 		}
 
 		if matches!(value_type, ValueType::Color) {
@@ -757,23 +809,38 @@ pub fn register_plugin_nodes() -> Vec<String> {
 // 渲染执行器 + duplicator（依赖反转的 oakplugin 侧半环）
 // ---------------------------------------------------------------------------
 
-/// 字符串族参数注入（POD 无字符串表达；直接 set_ofx）。
-fn set_string_param(inst: &Instance, key: &str, expected_type: &str, value: &str) {
+/// 文本族参数注入（POD 无字符串表达；直接 set_ofx）。按参数的 OFX
+/// 类型分发：String → String、StrChoice → StrChoice；Parametric →
+/// 解析 JSON 曲线集（[`crate::param_curve::curves_from_json`]，宿主侧
+/// [`crate::param_curve::curves_to_json`] 的格式）写回
+/// `ParamValue::Parametric`——即"节点输入值变化 → 写回实例"的
+/// parametric 路径（渲染期参数覆盖的分支，见
+/// [`execute_plugin_job`]）。JSON 解析失败 / 类型不符 → 忽略（与
+/// 字符串族类型不匹配静默一致）。
+fn set_text_param(inst: &Instance, key: &str, text: &str) {
 	let Some(p) = inst.params.find(key) else {
 		return;
 	};
-	if p.def.ofx_type != expected_type {
-		return;
+	match p.def.ofx_type.as_str() {
+		ofx::TYPE_STRING => {
+			let Ok(cs) = CString::new(text) else {
+				return;
+			};
+			p.set_ofx(ParamValue::String(cs));
+		}
+		ofx::TYPE_STRCHOICE => {
+			let Ok(cs) = CString::new(text) else {
+				return;
+			};
+			p.set_ofx(ParamValue::StrChoice(cs));
+		}
+		ofx::TYPE_PARAMETRIC => {
+			if let Some(curves) = crate::param_curve::curves_from_json(text) {
+				p.set_ofx(ParamValue::Parametric(curves));
+			}
+		}
+		_ => {}
 	}
-	let Ok(cs) = CString::new(value) else {
-		return;
-	};
-	let pv = if expected_type == ofx::TYPE_STRING {
-		ParamValue::String(cs)
-	} else {
-		ParamValue::StrChoice(cs)
-	};
-	p.set_ofx(pv);
 }
 
 /// executor 槽实现：JobSpec::Plugin → render_driver::render_frame。
@@ -801,14 +868,15 @@ fn execute_plugin_job(
 		return Err(Error::Failed("plugin job 无可用输入纹理".into()));
 	}
 
-	// 参数注入：数值族走 render_driver 的 POD 覆盖；字符串族 POD 无
-	// 表达，这里直接 set_ofx（对齐 pluginrenderer.cpp 的
-	// StringInstance::set 分支）。
+	// 参数注入：数值族走 render_driver 的 POD 覆盖；字符串/曲线族
+	// POD 无表达，这里直接 set_ofx（对齐 pluginrenderer.cpp 的
+	// StringInstance::set 分支 + parametric 的 JSON 写回）。
 	let mut pod_values = Vec::new();
 	for (key, nv) in values {
 		match nv {
-			NodeValue::Text(s) => set_string_param(&inst.value, key, ofx::TYPE_STRING, s),
-			NodeValue::StrCombo(s) => set_string_param(&inst.value, key, ofx::TYPE_STRCHOICE, s),
+			NodeValue::Text(s) | NodeValue::StrCombo(s) => {
+				set_text_param(&inst.value, key, s)
+			}
 			NodeValue::PushButton | NodeValue::None => {}
 			other => {
 				if let Some(v) = crate::node::Value::from_node_value(other) {
@@ -940,7 +1008,12 @@ mod tests {
 		// 容器与未知类型：跳过。
 		assert_eq!(input_type_for(ofx::TYPE_GROUP), None);
 		assert_eq!(input_type_for(ofx::TYPE_PAGE), None);
-		assert_eq!(input_type_for("OfxParamTypeParametric"), None);
+		assert_eq!(input_type_for("OfxParamTypeBogus"), None);
+		// parametric → Parametric（值 = 曲线 JSON 文本）。
+		assert_eq!(
+			input_type_for(ofx::TYPE_PARAMETRIC),
+			Some(ValueType::Parametric)
+		);
 	}
 
 	#[test]
@@ -1105,6 +1178,165 @@ mod tests {
 		// 只 "button" 那次按下进了插件 entry，且 reason 是 UserEdited。
 		let calls = PUSH_ENTRY_CALLS.lock().unwrap_or_else(|e| e.into_inner()).clone();
 		assert_eq!(calls, vec!["OfxActionInstanceChanged", "OfxChangeUserEdited"]);
+		unregister_instance(id);
+	}
+
+	/// 构造一个带 parametric 参数（维度 2、自定义 range、双维 UI 颜色
+	/// 已配置）与一个 String 参数的实例（直接登记进注册表）。
+	fn instance_with_parametric() -> u64 {
+		use std::ffi::{c_char, c_void};
+		use std::sync::atomic::AtomicU32;
+		use crate::descriptor::EffectDescriptor;
+		use crate::handle::RefBox;
+		use crate::host::Plugin;
+		use crate::param::{ParamDef, ParamInstance, ParamSetInstance};
+
+		unsafe extern "C" fn dummy_entry(
+			_: *const c_char,
+			_: *const c_void,
+			_: *mut c_void,
+			_: *mut c_void,
+		) -> i32 {
+			0
+		}
+		let mut def = ParamDef::new("curve", ofx::TYPE_PARAMETRIC);
+		def.props
+			.set_one(ofx::PROP_LABEL, PropValue::String(CString::new("Curve").unwrap()));
+		def.props
+			.set_one(ofx::P_PARAMETRIC_DIMENSION, PropValue::Int(2));
+		def.props.define(
+			ofx::P_PARAMETRIC_RANGE,
+			vec![PropValue::Double(0.0), PropValue::Double(1.0)],
+		);
+		def.props.define(
+			ofx::P_PARAMETRIC_UI_COLOUR,
+			vec![
+				PropValue::Double(1.0),
+				PropValue::Double(0.0),
+				PropValue::Double(0.0),
+				PropValue::Double(0.0),
+				PropValue::Double(1.0),
+				PropValue::Double(0.0),
+			],
+		);
+		let mut params = ParamSetInstance { params: Vec::new() };
+		params
+			.params
+			.push(Box::new(ParamInstance::from_def(def)));
+		params.params.push(Box::new(ParamInstance::from_def(
+			ParamDef::new("title", ofx::TYPE_STRING),
+		)));
+		let plugin = Arc::new(Plugin {
+			identifier: "test.parametric".into(),
+			version: (1, 0),
+			bundle_path: std::path::PathBuf::new(),
+			contexts: vec![],
+			descriptor: EffectDescriptor::new(),
+			lib: std::ptr::null_mut(),
+			entry: dummy_entry,
+			ofx_plugin: std::ptr::null_mut(),
+		});
+		let inst = crate::instance::Instance {
+			props: crate::property::PropertySet::new(),
+			plugin,
+			context: "OfxImageEffectContextFilter".into(),
+			params,
+			clips: Vec::new(),
+			node_identity: std::sync::atomic::AtomicUsize::new(0),
+			destroyed: std::sync::atomic::AtomicBool::new(false),
+			sequence_range: std::sync::Mutex::new(None),
+			progress_cb: std::sync::Mutex::new(None),
+			cancel: std::sync::atomic::AtomicBool::new(false),
+			edit: std::sync::Mutex::new(crate::instance::EditTransaction::new()),
+			render_lock: std::sync::Mutex::new(()),
+			interact: std::sync::Mutex::new(None),
+		};
+		register_instance(Arc::new(RefBox {
+			refs: AtomicU32::new(1),
+			value: inst,
+		}))
+	}
+
+	/// 翻译 pass 产出 Parametric 输入：value_type、默认值（= 默认曲线
+	/// 的 JSON）、display_name（= label）、不可键帧 + 专属属性
+	/// （dimension / range / 每维一条 UI 颜色）。
+	#[test]
+	fn build_core_produces_parametric_input() {
+		let id = instance_with_parametric();
+		let inst = instance_from_id(id).expect("已登记");
+		let core = build_core(&inst.value);
+
+		let input = core.get_input("curve").expect("parametric 输入应存在");
+		assert_eq!(input.value_type, ValueType::Parametric);
+		assert_eq!(input.display_name, "Curve");
+		assert_ne!(input.flags & input_flags::NOT_KEYFRAMABLE, 0);
+
+		// 默认值 = def.default 曲线集的 JSON（type_default 产出 1 条
+		// 恒等曲线；dimension 属性只做索引门控，未配置曲线按恒等读，
+		// 不扩充默认值）。
+		let expected = crate::param_curve::curves_to_json(&[crate::param_curve::Curve::identity(
+			0.0, 1.0,
+		)]);
+		match &input.default {
+			NodeValue::Text(s) => assert_eq!(s, &expected, "默认值应为曲线 JSON"),
+			other => panic!("预期 Text(JSON)，实际 {other:?}"),
+		}
+		// 标准值 = 默认（工程序列化从这里走）。
+		assert_eq!(core.standard_value("curve", -1), input.default);
+
+		// 专属属性。
+		let props = |name: &str| {
+			input
+				.properties
+				.iter()
+				.filter(|(k, _)| k == name)
+				.map(|(_, v)| v.clone())
+				.collect::<Vec<_>>()
+		};
+		assert_eq!(props("parametric_dimension"), vec![NodeValue::Int(2)]);
+		assert_eq!(
+			props("parametric_range"),
+			vec![NodeValue::Vec2([0.0, 1.0])]
+		);
+		// 双维 → 两条颜色（重复键）。
+		assert_eq!(
+			props("parametric_ui_colour"),
+			vec![
+				NodeValue::Color([1.0, 0.0, 0.0, 1.0]),
+				NodeValue::Color([0.0, 1.0, 0.0, 1.0]),
+			]
+		);
+		unregister_instance(id);
+	}
+
+	/// parametric 输入（Text JSON）→ 实例写回：有效 JSON 解析并
+	/// `set_ofx(Parametric)`；坏 JSON / 类型不符 → 静默忽略（保持现值）。
+	#[test]
+	fn parametric_input_writes_back_to_instance() {
+		let id = instance_with_parametric();
+		let inst = instance_from_id(id).expect("已登记");
+
+		// 有效 JSON（双维，第二维单点）→ 曲线写回，求值即实例曲线。
+		let json = r#"{"curves":[[{"key":0,"value":0,"slope":1},{"key":0.5,"value":0.7,"slope":1}],[{"key":0,"value":0,"slope":1}]]}"#;
+		set_text_param(&inst.value, "curve", json);
+		let curves = match inst.value.params.find("curve").unwrap().get() {
+			ParamValue::Parametric(c) => c,
+			other => panic!("应写回 Parametric，实际 {other:?}"),
+		};
+		assert_eq!(curves[0].evaluate(0.5), 0.7);
+		assert_eq!(curves[1].len(), 1);
+
+		// 坏 JSON → 不改值（与字符串族类型不匹配静默一致）。
+		let before = inst.value.params.find("curve").unwrap().get();
+		set_text_param(&inst.value, "curve", "{broken");
+		assert_eq!(inst.value.params.find("curve").unwrap().get(), before);
+
+		// 非 parametric 参数（String）遇任意文本 → 字符串值路径。
+		set_text_param(&inst.value, "title", "hello");
+		assert!(matches!(
+			inst.value.params.find("title").unwrap().get(),
+			ParamValue::String(_)
+		));
 		unregister_instance(id);
 	}
 }

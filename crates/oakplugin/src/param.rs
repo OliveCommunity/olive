@@ -585,7 +585,10 @@ impl ParamInstance {
 	/// COLOR→RGB/RGBA、VEC2/VEC3→Double(2D/3D)/Integer(2D/3D)。
 	/// 维度不齐按 OFX 语义截断/补零（缺失元素按 0）。字符串族
 	/// （OAKNODE_VALUE_STRING）的 POD 不携带数据——此路径不改值
-	/// （走 facade 的字符串 API，见 `include/plugin/instance.h`）。
+	/// （走 facade 的字符串 API，见 `include/plugin/instance.h`）；
+	/// parametric 同理（曲线 JSON 文本经渲染期注入
+	/// [`crate::node_factory`] 的 set_text_param 写回，见
+	/// `crate::node_factory::execute_plugin_job`）。
 	/// 类型不匹配 → 忽略（保持现值；C++ `node_get` 失败时参数不回写）。
 	pub fn set_from_node(&self, node_value: &crate::node::Value) {
 		if let Some(pv) = param_value_from_node(node_value, &self.def.ofx_type) {
@@ -726,7 +729,10 @@ impl ParamSetInstance {
 ///   TimeChanged 是宿主侧变更，值已由 [`ParamInstance::set_from_node`]
 ///   同步，不重复写回；
 /// - 字符串族经 [`crate::node::set_input_string_undoable`]
-///   （POD 不携带字符串数据）；
+///   （POD 不携带字符串数据）；parametric 曲线同样经该字符串 setter
+///   以 JSON 文本写回输入（[`crate::param_curve::curves_to_json`]，
+///   与标量回写同一 undo 语义——插件在实例上改曲线 → 节点输入更新，
+///   工程序列化随标准值保留）；
 /// - 无值类（PushButton/Group/Page）与 Bytes 无节点对应 → no-op；
 /// - 编辑事务内（[`crate::instance::Instance::in_edit`]）并入 multi
 ///   命令，否则单命令立即 redo 生效（C++ `submit_undo_command`）。
@@ -767,6 +773,14 @@ pub(crate) fn notify_instance_changed(
 					return;
 				};
 				if let Ok(cmd) = node::set_input_string_undoable(&node_ref, param_name, s) {
+					instance.submit_undo_command(cmd, &label);
+				}
+			}
+			// parametric：曲线序列化为 JSON 文本写回输入（节点输入是
+			// Parametric 声明类型的 Text 值；经字符串 setter 存储）。
+			ParamValue::Parametric(curves) => {
+				let json = crate::param_curve::curves_to_json(curves);
+				if let Ok(cmd) = node::set_input_string_undoable(&node_ref, param_name, &json) {
 					instance.submit_undo_command(cmd, &label);
 				}
 			}

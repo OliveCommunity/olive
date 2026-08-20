@@ -103,6 +103,11 @@ pub enum ValueType {
 	NodeRef,
 	/// Push button (no payload).
 	PushButton,
+	/// Parametric curve (OpenFX parametric param; the value payload is a
+	/// [`NodeValue::Text`] JSON document, see
+	/// `oakplugin::param_curve::curves_to_json` — string-carried like
+	/// [`ValueType::Text`]).
+	Parametric,
 }
 
 /// A node value. `Texture` stores an oakrender handle; dropping the
@@ -310,8 +315,9 @@ impl ValueType {
 			ValueType::Vec3 => oak::VEC3,
 			ValueType::Vec4 => oak::VEC4,
 			ValueType::Combo => oak::COMBO,
-			// String-carried types (k_file/k_text/k_font/k_str_combo).
-			ValueType::Text | ValueType::StrCombo => oak::STRING,
+			// String-carried types (k_file/k_text/k_font/k_str_combo;
+			// parametric carries a JSON text).
+			ValueType::Text | ValueType::StrCombo | ValueType::Parametric => oak::STRING,
 			_ => oak::NONE,
 		}
 	}
@@ -320,7 +326,10 @@ impl ValueType {
 	/// the dedicated string getters/setters, `// CPP-PARITY: valueconvert.h`
 	/// `value_type_is_string`).
 	pub fn is_string(self) -> bool {
-		matches!(self, ValueType::Text | ValueType::StrCombo)
+		matches!(
+			self,
+			ValueType::Text | ValueType::StrCombo | ValueType::Parametric
+		)
 	}
 
 	/// Number of keyframe tracks the type splits into (C++
@@ -363,8 +372,9 @@ impl ValueType {
 			// k_subtitle_params = 20 has no Rust type counterpart.
 			ValueType::Binary => 21,
 			ValueType::PushButton => 22,
-			// No C++ counterpart (k_none).
-			ValueType::NodeRef => 0,
+			// No C++ counterpart (k_none); the parametric curve payload
+			// lives in the JSON text (k_bezier = 15 is a different model).
+			ValueType::NodeRef | ValueType::Parametric => 0,
 		}
 	}
 
