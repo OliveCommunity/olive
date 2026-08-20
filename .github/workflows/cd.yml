@@ -40,6 +40,7 @@ jobs:
           sudo apt-get install -y \
             cmake \
             libpipewire-0.3-dev libspa-0.2-dev libjack-jackd2-dev \
+            libasound2-dev libpulse-dev libsndfile1-dev \
             librsvg2-bin \
             libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
             libvulkan-dev libxkbcommon-dev
@@ -49,6 +50,7 @@ jobs:
           # No OCIO_INSTALL_DIR on purpose: the vendored OpenColorIO is
           # built from source (see ci.yml).
           echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
+          echo "OCIO_RS_LINK=static" >> "$GITHUB_ENV"
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
@@ -138,6 +140,7 @@ jobs:
             # OCIO comes from the ocio-sys vendored source build (same on
             # every platform); no OCIO_INSTALL_DIR override.
             echo "OCIO_RS_ENABLE_REAL=1"
+            echo "OCIO_RS_LINK=static"
             echo "CFLAGS=-I/opt/homebrew/include"
             echo "LDFLAGS=-L/opt/homebrew/lib"
             echo "PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig/openjpeg"
@@ -241,7 +244,11 @@ jobs:
         run: |
           # OCIO comes from the ocio-sys vendored source build (same on
           # every platform); no OCIO_INSTALL_DIR override.
+          # `-include cstdint`: the vendored yaml-cpp predates GCC 13's
+          # transitive-include cleanup (uint32_t without <cstdint>).
           echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
+          echo "OCIO_RS_LINK=static" >> "$GITHUB_ENV"
+          echo "CXXFLAGS=-include cstdint" >> "$GITHUB_ENV"
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
