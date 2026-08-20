@@ -556,6 +556,9 @@ pub struct TrackPlaceBlockCommand {
 	add_track_commands_: Vec<TimelineAddTrackCommand>,
 	/// Ripple-removal of the area the block occupies (`ripple_remove_command_`).
 	ripple_remove_command_: Option<TrackRippleRemoveAreaCommand>,
+	/// The block's in point captured on the first redo (restored on undo
+	/// so a sync re-place / move round-trips the original position).
+	old_in_: Option<Rational>,
 }
 
 impl TrackPlaceBlockCommand {
@@ -572,11 +575,22 @@ impl TrackPlaceBlockCommand {
 			block,
 			add_track_commands_: Vec::new(),
 			ripple_remove_command_: None,
+			old_in_: None,
 		}
 	}
 
 	/// `redo`: place the block destructively.
 	pub fn redo(&mut self) {
+		// The module stores the position on the block (no track-order
+		// derivation like C++), so the placement contract is that the
+		// block's in point becomes `in_` — fresh clips otherwise keep
+		// their birth in=0 and every drop lands at the timeline zero. The
+		// original position is captured once so undo restores it (the
+		// sync re-place path round-trips the block's position).
+		if self.old_in_.is_none() {
+			self.old_in_ = Some(block_in(&self.block));
+		}
+		block_set_in(&self.block, self.in_);
 		// Determine if we need to add tracks
 		let track_count = tracklist_track_count(&self.timeline) as i32;
 
@@ -655,6 +669,10 @@ impl TrackPlaceBlockCommand {
 
 		// Firstly, remove our insert
 		track_ripple_remove_block(&t, &self.block);
+		// Restore the position the block had before the placement.
+		if let Some(old_in) = self.old_in_ {
+			block_set_in(&self.block, old_in);
+		}
 
 		if self.ripple_remove_command_.is_some() {
 			// If we ripple-removed, just undo that

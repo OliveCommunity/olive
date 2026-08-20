@@ -6225,9 +6225,21 @@ mod tests {
 		.expect("imported footage is listed");
 		cx.update(|app| {
 			engine.update(app, |engine, cx| {
-				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(0), cx)
+				// Drop at a non-zero frame: the placement must land where
+				// the cursor was (the "always lands at zero" regression).
+				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(40), cx)
 			})
 		});
+		// The clip landed at the drop frame (not the timeline zero).
+		let video_in = cx.read(|app| {
+			let engine = engine.read(app);
+			engine
+				.tracks
+				.iter()
+				.find(|t| t.kind == TrackKind::Video && !t.clips.is_empty())
+				.map(|t| t.clips[0].range.start.0)
+		});
+		assert_eq!(video_in, Some(40), "the clip lands at the drop frame");
 
 		let clip_count = |engine: &RealEngine, kind: TrackKind| -> usize {
 			engine
