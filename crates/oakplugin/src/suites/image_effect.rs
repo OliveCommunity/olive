@@ -574,6 +574,7 @@ mod tests {
 				lib: std::ptr::null_mut(),
 				entry: dummy_entry,
 				ofx_plugin: std::ptr::null_mut(),
+				unloaded: std::sync::atomic::AtomicBool::new(false),
 			}),
 			context: "OfxImageEffectContextFilter".into(),
 			params: crate::param::ParamSetInstance { params: vec![] },

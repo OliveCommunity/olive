@@ -575,6 +575,7 @@ mod tests {
 			lib: std::ptr::null_mut(),
 			entry: dummy_entry,
 			ofx_plugin: std::ptr::null_mut(),
+			unloaded: std::sync::atomic::AtomicBool::new(false),
 		};
 		let interact = Interact::new(Arc::new(plugin), dummy_entry, std::ptr::null_mut());
 		let handle = interact.handle();
@@ -648,6 +649,7 @@ mod tests {
 			lib: std::ptr::null_mut(),
 			entry: recording_entry,
 			ofx_plugin: std::ptr::null_mut(),
+			unloaded: std::sync::atomic::AtomicBool::new(false),
 		};
 		let interact = Interact::new(Arc::new(plugin), recording_entry, std::ptr::null_mut());
 
@@ -717,6 +719,7 @@ mod tests {
 			lib: std::ptr::null_mut(),
 			entry: capture_entry,
 			ofx_plugin: std::ptr::null_mut(),
+			unloaded: std::sync::atomic::AtomicBool::new(false),
 		};
 		let interact = Interact::new(Arc::new(plugin), capture_entry, std::ptr::null_mut());
 		// 设 pixelScale=2 → canonical = viewport/2。
@@ -768,6 +771,7 @@ mod tests {
 			lib: std::ptr::null_mut(),
 			entry: capture_entry,
 			ofx_plugin: std::ptr::null_mut(),
+			unloaded: std::sync::atomic::AtomicBool::new(false),
 		};
 		let interact = Interact::new(Arc::new(plugin), capture_entry, std::ptr::null_mut());
 		assert_eq!(interact.key_down(crate::host::KEY_RETURN, "", 1.0), status::OK);
@@ -805,6 +809,7 @@ mod tests {
 			lib: std::ptr::null_mut(),
 			entry: counting_entry,
 			ofx_plugin: std::ptr::null_mut(),
+			unloaded: std::sync::atomic::AtomicBool::new(false),
 		};
 		let interact = Interact::new(Arc::new(plugin), counting_entry, std::ptr::null_mut());
 		interact.destroy();

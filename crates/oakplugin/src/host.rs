@@ -605,6 +605,11 @@ pub struct Plugin {
 	/// OfxPlugin 结构指针（kOfxImageEffectPropPluginHandle 属性用；
 	/// 公开：测试构造假插件需要）。
 	pub ofx_plugin: *mut c_void,
+	/// 二进制已卸载（host shutdown / unload_all）。置位后任何
+	/// call_action/call_entry 直接失败而不触碰入口——插件入口指向
+	/// 已 dlclose 的代码，调用即 SIGSEGV（测试串行 shutdown/重扫描
+	/// 会产生跨代实例，它们持有的正是旧代插件记录）。
+	pub unloaded: std::sync::atomic::AtomicBool,
 }
 
 // dlopen 句柄与 OfxPlugin 指针是**不透明令牌**（只经 dlsym/插件
@@ -654,6 +659,9 @@ impl Plugin {
 		in_args: &PropertySet,
 		out_args: &PropertySet,
 	) -> i32 {
+		if self.unloaded.load(std::sync::atomic::Ordering::Acquire) {
+			return status::ERR_FATAL;
+		}
 		// 属性集经裸指针（标签 0）传给插件（property suite 接受）。
 		let in_ptr = in_args as *const PropertySet as *mut c_void;
 		let out_ptr = out_args as *const PropertySet as *mut c_void;
@@ -676,6 +684,9 @@ impl Plugin {
 		in_args: &PropertySet,
 		out_args: &PropertySet,
 	) -> i32 {
+		if self.unloaded.load(std::sync::atomic::Ordering::Acquire) {
+			return status::ERR_FATAL;
+		}
 		let in_ptr = in_args as *const PropertySet as *mut c_void;
 		let out_ptr = out_args as *const PropertySet as *mut c_void;
 		let action = cs(action);
@@ -991,6 +1002,7 @@ impl PluginCache {
 			lib,
 			entry,
 			ofx_plugin: ofx as *mut c_void,
+			unloaded: std::sync::atomic::AtomicBool::new(false),
 		};
 
 		// 根描述符属性（HS: effectDescriptorStuff，ofxhImageEffect.cpp:133-155）。
@@ -1070,7 +1082,16 @@ impl PluginCache {
 
 	/// 卸载全部（shutdown 路径）。`scanned_paths` 一并清空——
 	/// 否则再 init 后的扫描会被去重短路（缓存已空但路径仍在）。
+	/// 卸载前先给每个插件置 `unloaded`：实例可能跨代存活（测试的
+	/// 串行 shutdown/重扫描），它们持有的旧代入口已随 dlclose 失效，
+	/// 置位后 call_action 直接失败而非跳野指针。
 	pub(crate) fn unload_all(&self) {
+		{
+			let plugins = self.plugins.lock().unwrap_or_else(|e| e.into_inner());
+			for p in plugins.iter() {
+				p.unloaded.store(true, std::sync::atomic::Ordering::Release);
+			}
+		}
 		self.plugins
 			.lock()
 			.unwrap_or_else(|e| e.into_inner())

@@ -1131,6 +1131,7 @@ mod tests {
 			lib: std::ptr::null_mut(),
 			entry: dummy_entry,
 			ofx_plugin: std::ptr::null_mut(),
+			unloaded: std::sync::atomic::AtomicBool::new(false),
 		});
 		let mut params = ParamSetInstance { params: Vec::new() };
 		params.params.push(Box::new(ParamInstance::from_def(ParamDef::new(
@@ -1235,6 +1236,7 @@ mod tests {
 			lib: std::ptr::null_mut(),
 			entry: dummy_entry,
 			ofx_plugin: std::ptr::null_mut(),
+			unloaded: std::sync::atomic::AtomicBool::new(false),
 		});
 		let inst = crate::instance::Instance {
 			props: crate::property::PropertySet::new(),

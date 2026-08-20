@@ -77,6 +77,7 @@ fn dummy_plugin(descriptor: EffectDescriptor) -> std::sync::Arc<oakplugin::host:
 		lib: std::ptr::null_mut(),
 		entry: dummy_entry,
 		ofx_plugin: std::ptr::null_mut(),
+		unloaded: std::sync::atomic::AtomicBool::new(false),
 	})
 }
 
