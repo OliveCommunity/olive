@@ -320,13 +320,11 @@ impl ProxyManager {
 			}
 		}
 
-		// Fall back to searching the system PATH.
+		// Fall back to searching the system PATH (split per platform:
+		// `;` on Windows, `:` elsewhere — see [`split_path_env`]).
 		if let Ok(path_env) = std::env::var("PATH") {
-			for dir in path_env.split(':') {
-				if dir.is_empty() {
-					continue;
-				}
-				let candidate = Path::new(dir).join("ffmpeg");
+			for dir in split_path_env(&path_env) {
+				let candidate = Path::new(&dir).join(ffmpeg_exe_name());
 				if is_executable_file(&candidate) {
 					return absolute(&candidate.to_string_lossy());
 				}
@@ -338,12 +336,31 @@ impl ProxyManager {
 		let mut candidates: Vec<String> = Vec::new();
 		let app_path = application_path();
 		if !app_path.is_empty() {
-			candidates.push(format!("{}/ffmpeg", app_path));
+			candidates.push(format!("{}/{}", app_path, ffmpeg_exe_name()));
 		}
 		candidates.push("/opt/homebrew/bin/ffmpeg".to_string());
 		candidates.push("/usr/local/bin/ffmpeg".to_string());
 		candidates.push("/usr/bin/ffmpeg".to_string());
 		candidates.push("/usr/local/bin/ffmpeg".to_string());
+
+		// Windows-specific install locations (GUI-launched apps can also
+		// start with a minimal PATH there).
+		#[cfg(target_os = "windows")]
+		{
+			// The official Windows installer defaults to
+			// %LOCALAPPDATA%\Programs\ffmpeg\bin.
+			if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+				candidates.push(format!(
+					"{}/Programs/ffmpeg/bin/{}",
+					local_app_data,
+					ffmpeg_exe_name()
+				));
+			}
+			// Oak's user configuration directory.
+			if let Ok(config_dir) = FileFunctions::new().get_configuration_location() {
+				candidates.push(format!("{}/{}", config_dir, ffmpeg_exe_name()));
+			}
+		}
 
 		for c in candidates {
 			if is_executable_file(Path::new(&c)) {
@@ -403,12 +420,41 @@ fn application_path() -> String {
 		.unwrap_or_default()
 }
 
-/// True when `p` is a regular file with at least one execute bit set.
+/// Split a PATH-style variable into its non-empty directory entries. The
+/// separator is platform-specific (`;` on Windows, `:` elsewhere);
+/// `std::env::split_paths` already applies that rule natively.
+fn split_path_env(raw: &str) -> Vec<String> {
+	std::env::split_paths(raw)
+		.map(|p| p.to_string_lossy().into_owned())
+		.filter(|p| !p.is_empty())
+		.collect()
+}
+
+/// The executable file name to look for: `ffmpeg.exe` on Windows,
+/// `ffmpeg` everywhere else.
+fn ffmpeg_exe_name() -> &'static str {
+	if cfg!(windows) {
+		"ffmpeg.exe"
+	} else {
+		"ffmpeg"
+	}
+}
+
+/// True when `p` is a regular file that can be run as a program. Unix
+/// checks for at least one execute bit; Windows has no permission bits, so
+/// any regular file counts.
 fn is_executable_file(p: &Path) -> bool {
-	use std::os::unix::fs::PermissionsExt;
-	match std::fs::metadata(p) {
-		Ok(md) if md.is_file() => md.permissions().mode() & 0o111 != 0,
-		_ => false,
+	#[cfg(unix)]
+	{
+		use std::os::unix::fs::PermissionsExt;
+		match std::fs::metadata(p) {
+			Ok(md) if md.is_file() => md.permissions().mode() & 0o111 != 0,
+			_ => false,
+		}
+	}
+	#[cfg(windows)]
+	{
+		matches!(std::fs::metadata(p), Ok(md) if md.is_file())
 	}
 }
 
@@ -667,6 +713,33 @@ mod tests_extra {
 		assert!(found.starts_with('/'), "found: {found}");
 		assert!(found.ends_with("/ffmpeg"), "found: {found}");
 		assert!(std::path::Path::new(&found).exists(), "found: {found}");
+	}
+
+	#[test]
+	fn split_path_env_uses_platform_separator() {
+		// The separator is platform-dependent, so the expected input is
+		// gated: `:` on Unix, `;` on Windows.
+		#[cfg(unix)]
+		{
+			assert_eq!(split_path_env("a:b:c"), ["a", "b", "c"]);
+			// Empty entries are skipped.
+			assert_eq!(split_path_env("a::b:"), ["a", "b"]);
+			assert_eq!(split_path_env("solo"), ["solo"]);
+		}
+		#[cfg(windows)]
+		{
+			assert_eq!(split_path_env("a;b;c"), ["a", "b", "c"]);
+			assert_eq!(split_path_env("a;;b;"), ["a", "b"]);
+			assert_eq!(split_path_env("solo"), ["solo"]);
+		}
+	}
+
+	#[test]
+	fn ffmpeg_exe_name_is_platform_specific() {
+		#[cfg(unix)]
+		assert_eq!(ffmpeg_exe_name(), "ffmpeg");
+		#[cfg(windows)]
+		assert_eq!(ffmpeg_exe_name(), "ffmpeg.exe");
 	}
 
 	#[test]

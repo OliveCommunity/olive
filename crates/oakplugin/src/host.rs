@@ -71,12 +71,17 @@ const RTLD_LOCAL: c_int = 0x4;
 #[cfg(target_os = "linux")]
 const RTLD_LOCAL: c_int = 0x0;
 
+// Windows has no dlopen/dlsym/dlclose: the POSIX FFI below is compiled
+// out and replaced by LoadLibraryExW/GetProcAddress/FreeLibrary (see the
+// `win32` module further down), keeping the same function signatures.
+#[cfg(not(target_os = "windows"))]
 extern "C" {
 	fn dlopen(filename: *const c_char, flag: c_int) -> *mut c_void;
 	fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
 	fn dlclose(handle: *mut c_void) -> c_int;
 }
 
+#[cfg(not(target_os = "windows"))]
 /// 动态加载共享库；失败返回 None。
 fn dl_open(path: &Path) -> Option<*mut c_void> {
 	let c = CString::new(path.to_str()?).ok()?;
@@ -88,6 +93,7 @@ fn dl_open(path: &Path) -> Option<*mut c_void> {
 	}
 }
 
+#[cfg(not(target_os = "windows"))]
 /// 查符号；失败返回 None。
 fn dl_sym(handle: *mut c_void, name: &str) -> Option<*mut c_void> {
 	let c = CString::new(name).ok()?;
@@ -99,6 +105,7 @@ fn dl_sym(handle: *mut c_void, name: &str) -> Option<*mut c_void> {
 	}
 }
 
+#[cfg(not(target_os = "windows"))]
 /// 从 `dlsym` 结果取函数指针（libloading 同款转换；调用方保证符号
 /// 类型正确）。
 ///
@@ -108,6 +115,85 @@ unsafe fn dlsym_fn<T>(handle: *mut c_void, name: &str) -> Option<T> {
 	let p = dl_sym(handle, name)?;
 	Some(unsafe { std::mem::transmute_copy(&p) })
 }
+
+// ---- Windows dynamic loading (kernel32) ----
+//
+// LoadLibraryExW / GetProcAddress / FreeLibrary in place of the POSIX
+// dlopen family. The Windows handle is an HMODULE, which is pointer-sized
+// and stored in the same `*mut c_void` slot, so the public signatures
+// (`dl_open` / `dl_sym` / `dlsym_fn` / `dlclose`) are unchanged.
+
+/// Windows dynamic loading (`LoadLibraryExW` / `GetProcAddress` /
+/// `FreeLibrary`, kernel32). The handle is an `HMODULE` kept as
+/// `*mut c_void` for signature parity with the POSIX path.
+#[cfg(target_os = "windows")]
+mod win32 {
+	use super::*;
+	use std::os::windows::ffi::OsStrExt;
+
+	/// `LOAD_WITH_ALTERED_SEARCH_PATH` (winbase.h): resolve the loaded
+	/// module's dependent DLLs from the module's own directory first, so a
+	/// plugin bundle's sibling DLLs are found next to the binary.
+	const LOAD_WITH_ALTERED_SEARCH_PATH: u32 = 0x0000_0008;
+
+	#[link(name = "kernel32")]
+	unsafe extern "C" {
+		fn LoadLibraryExW(
+			lp_file_name: *const u16,
+			h_file: *mut c_void,
+			dw_flags: u32,
+		) -> *mut c_void;
+		fn GetProcAddress(h_module: *mut c_void, lp_proc_name: *const c_char) -> *mut c_void;
+		fn FreeLibrary(h_module: *mut c_void) -> c_int;
+	}
+
+	/// Dynamically load a shared library from an arbitrary (possibly
+	/// non-UTF-8) path; `None` on failure. The path is converted to a
+	/// NUL-terminated UTF-16 string for `LoadLibraryExW`.
+	pub(super) fn dl_open(path: &Path) -> Option<*mut c_void> {
+		let wide: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+		let h = unsafe {
+			LoadLibraryExW(wide.as_ptr(), std::ptr::null_mut(), LOAD_WITH_ALTERED_SEARCH_PATH)
+		};
+		if h.is_null() {
+			None
+		} else {
+			Some(h)
+		}
+	}
+
+	/// Look up an exported symbol by name; `None` on failure. The symbol
+	/// name is a narrow (ANSI) string — `OfxGetNumberOfPlugins` /
+	/// `OfxGetPlugin`, both plain ASCII.
+	pub(super) fn dl_sym(handle: *mut c_void, name: &str) -> Option<*mut c_void> {
+		let c = CString::new(name).ok()?;
+		let p = unsafe { GetProcAddress(handle, c.as_ptr()) };
+		if p.is_null() {
+			None
+		} else {
+			Some(p)
+		}
+	}
+
+	/// Function pointer from a `GetProcAddress` result (same transmute as
+	/// the POSIX `dlsym_fn`; the caller guarantees the symbol type).
+	///
+	/// # Safety
+	/// The symbol must actually be that function type.
+	pub(super) unsafe fn dlsym_fn<T>(handle: *mut c_void, name: &str) -> Option<T> {
+		let p = dl_sym(handle, name)?;
+		Some(unsafe { std::mem::transmute_copy(&p) })
+	}
+
+	/// Unload a library (`FreeLibrary`; reference-counted like POSIX
+	/// `dlclose`).
+	pub(super) unsafe fn dlclose(handle: *mut c_void) -> c_int {
+		unsafe { FreeLibrary(handle) }
+	}
+}
+
+#[cfg(target_os = "windows")]
+use win32::{dl_open, dl_sym, dlsym_fn, dlclose};
 
 // ---- OFX 宿主侧结构（ofxCore.h，字段序与 SDK 逐字一致）----
 
