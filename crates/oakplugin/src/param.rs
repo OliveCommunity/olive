@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! 参数体系：12 种参数实例 + param ↔ oaknode 桥。
+//! 参数体系：13 种参数实例 + param ↔ oaknode 桥。
 //!
 //! 对应 C++ 的 `ParamInstance`/`OliveParamInstance`。桥的语义
 //! （M9 已定）：节点输入值变化 → 写回 OFX 参数；OFX 参数被插件
@@ -69,7 +69,9 @@ pub const TYPE_PUSHBUTTON: &str = "OfxParamTypePushButton";
 pub const TYPE_GROUP: &str = "OfxParamTypeGroup";
 /// kOfxParamTypePage。
 pub const TYPE_PAGE: &str = "OfxParamTypePage";
-/// kOfxParamTypeParametric（第 1 期不支持，paramDefine 拒绝）。
+/// kOfxParamTypeParametric（值 = 曲线列表，经
+/// OfxParametricParameterSuite 读写，见
+/// [`crate::suites::parametric`] 与 [`crate::param_curve`]）。
 pub const TYPE_PARAMETRIC: &str = "OfxParamTypeParametric";
 
 // ---- 属性名（ofxParam.h / ofxCore.h）----
@@ -150,6 +152,14 @@ pub(crate) const PAGE_SKIP_ROW: &str = "OfxParamPageSkipRow";
 pub(crate) const PAGE_SKIP_COLUMN: &str = "OfxParamPageSkipColumn";
 /// kOfxParamPropCustomInterpCallbackV1。
 pub(crate) const P_CUSTOM_INTERP: &str = "OfxParamPropCustomCallbackV1";
+/// kOfxParamPropParametricDimension（int×1，默认 1）。
+pub(crate) const P_PARAMETRIC_DIMENSION: &str = "OfxParamPropParametricDimension";
+/// kOfxParamPropParametricRange（double×2，默认 (0,1)）。
+pub(crate) const P_PARAMETRIC_RANGE: &str = "OfxParamPropParametricRange";
+/// kOfxParamPropParametricUIColour（double×3N，默认未设）。
+pub(crate) const P_PARAMETRIC_UI_COLOUR: &str = "OfxParamPropParametricUIColour";
+/// kOfxParamPropParametricInteractBackground（pointer×1，默认 NULL）。
+pub(crate) const P_PARAMETRIC_INTERACT_BG: &str = "OfxParamPropParametricInteractBackground";
 /// kOfxParamPropPageChild。
 pub(crate) const P_PAGE_CHILD: &str = "OfxParamPropPageChild";
 /// kOfxParamPropGroupOpen。
@@ -216,7 +226,8 @@ pub enum ParamKind {
 }
 
 /// OFX 类型字符串 → 值类别 + 维度（HS: ofxhParam.cpp `findType`）。
-/// 无值类（PushButton/Group/Page/Unknown）返回 None。
+/// 无值类（PushButton/Group/Page）与 parametric（曲线值走
+/// OfxParametricParameterSuite，无标量变长入口）返回 None。
 pub(crate) fn kind_of_type(ofx_type: &str) -> Option<(ParamKind, usize)> {
 	match ofx_type {
 		TYPE_INTEGER => Some((ParamKind::Int, 1)),
@@ -271,6 +282,10 @@ fn type_default(ofx_type: &str) -> ParamValue {
 			TYPE_BYTES | TYPE_CUSTOM => ParamValue::Bytes(Vec::new()),
 			TYPE_PUSHBUTTON => ParamValue::PushButton,
 			TYPE_GROUP | TYPE_PAGE => ParamValue::Container,
+			// parametric 默认 = 1 条恒等曲线（range 默认 (0,1)）。
+			TYPE_PARAMETRIC => ParamValue::Parametric(vec![crate::param_curve::Curve::identity(
+				0.0, 1.0,
+			)]),
 			_ => ParamValue::Container, // 未知类型占位（paramDefine 已拒绝）
 		},
 	}
@@ -319,6 +334,11 @@ pub enum ParamValue {
 	PushButton,
 	/// kOfxParamTypeGroup / Page（容器，无值）。
 	Container,
+	/// kOfxParamTypeParametric：每维一条曲线（曲线模型见
+	/// [`crate::param_curve`]；默认 = 1 条恒等曲线，维度由属性
+	/// `OfxParamPropParametricDimension` 决定，见
+	/// [`ParamDef::new`]）。
+	Parametric(Vec<crate::param_curve::Curve>),
 }
 
 /// 参数定义（describe 产物，见 [`crate::descriptor::EffectDescriptor`]）。
@@ -433,6 +453,33 @@ impl ParamDef {
 			}
 			TYPE_GROUP => {
 				props.set_one(P_GROUP_OPEN, Value::Int(1));
+			}
+			TYPE_PARAMETRIC => {
+				// parametric（HS addValueParamProps(eDouble, 0) 的
+				// invariantProps + allParametric，ofxhParam.cpp:285-330）：
+				// 值类 invariant 属性照旧；Animates=1（HS 的 animates 计算
+				// 对 parametric 为真）；另加 4 个 parametric 专属属性。
+				// 数值属性表（Min/Max/Display）HS 也加（变量维 double），
+				// 但插件侧从不读 parametric 的数值属性（ofxsPropertyValidation
+				// 只校验本块 4 个 + 通用属性），本 crate 遵循
+				// is_numeric_type 的门控，不为 parametric 预置。
+				props.set_one(P_IS_ANIMATING, Value::Int(0));
+				props.set_one(P_IS_AUTO_KEYING, Value::Int(0));
+				props.set_one(P_PERSISTANT, Value::Int(1));
+				props.set_one(P_EVALUATE_ON_CHANGE, Value::Int(1));
+				props.set_one(P_CAN_UNDO, Value::Int(1));
+				props.set_one(
+					P_CACHE_INVALIDATION,
+					Value::String(cs(V_INVALIDATE_VALUE_CHANGE)),
+				);
+				props.set_one(P_ANIMATES, Value::Int(1));
+				props.set_one(P_PARAMETRIC_DIMENSION, Value::Int(1));
+				props.define(P_PARAMETRIC_UI_COLOUR, vec![]);
+				props.set_one(P_PARAMETRIC_INTERACT_BG, Value::Pointer(std::ptr::null_mut()));
+				props.define(
+					P_PARAMETRIC_RANGE,
+					vec![Value::Double(0.0), Value::Double(1.0)],
+				);
 			}
 			_ => {}
 		}
@@ -823,6 +870,39 @@ mod tests {
 			type_default(TYPE_RGBA),
 			ParamValue::Color([0.0, 0.0, 0.0, 0.0], 4)
 		));
+	}
+
+	/// parametric 的默认：1 条恒等曲线；4 个专属属性就位
+	/// （dimension=1、range=(0,1)、UIColour 未设、interact 背景 NULL）。
+	#[test]
+	fn parametric_type_default() {
+		assert!(matches!(
+			type_default(TYPE_PARAMETRIC),
+			ParamValue::Parametric(ref c) if c.len() == 1 && c[0].len() == 2
+		));
+		let d = ParamDef::new("curve", TYPE_PARAMETRIC);
+		assert!(matches!(d.default, ParamValue::Parametric(ref c) if c.len() == 1));
+		assert!(matches!(
+			d.props.get(P_PARAMETRIC_DIMENSION, 0),
+			Some(Value::Int(1))
+		));
+		assert!(matches!(
+			d.props.get(P_PARAMETRIC_RANGE, 0),
+			Some(Value::Double(0.0))
+		));
+		assert!(matches!(
+			d.props.get(P_PARAMETRIC_RANGE, 1),
+			Some(Value::Double(1.0))
+		));
+		assert_eq!(d.props.dimension(P_PARAMETRIC_UI_COLOUR), 0);
+		assert!(matches!(
+			d.props.get(P_PARAMETRIC_INTERACT_BG, 0),
+			Some(Value::Pointer(p)) if p.is_null()
+		));
+		// 默认曲线求值为恒等。
+		if let ParamValue::Parametric(curves) = &d.default {
+			assert_eq!(curves[0].evaluate(0.5), 0.5);
+		}
 	}
 
 	/// set_from_node 的维度截断/补零与字符串静默路径。

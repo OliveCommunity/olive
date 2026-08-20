@@ -18,7 +18,8 @@
 //!
 //! 语义对照 HS: ofxhParam.cpp：
 //! - paramDefine：describe 期把参数定义挂到效果描述符（未定义类型 →
-//!   kOfxStatErrUnsupported，HS:1665-1710；parametric 第 1 期不支持）；
+//!   kOfxStatErrUnsupported，HS:1665-1710；parametric 类型放行，其
+//!   曲线读写走 OfxParametricParameterSuite，见 suites/parametric.rs）；
 //! - paramGetHandle：按名查（未找到 → kOfxStatErrUnknown，HS:1758）；
 //! - paramGetValue/paramSetValue 等变长入口在 C shim
 //!   （cbits/ofx_param_shim.c）：按 [`crate::param::ParamKind`] 解析
@@ -330,8 +331,9 @@ pub(crate) fn unregister_params_of(instance_props: usize) {
 
 /// paramSetValue 成功后的 instanceChanged 触发（HS:
 /// ofxhParam.cpp:1991-1994 `paramChangedByPlugin`）。未登记实例时
-/// no-op（未绑定节点的场景本就 no-op）。
-fn notify_changed(param_props: usize, name: &str) {
+/// no-op（未绑定节点的场景本就 no-op）。parametric suite 的
+/// Set/Add/Delete 复用此路径（pub(crate)：suites/parametric.rs）。
+pub(crate) fn notify_changed(param_props: usize, name: &str) {
 	let owner = PARAM_OWNER
 		.lock()
 		.unwrap_or_else(|e| e.into_inner())
@@ -463,9 +465,9 @@ pub unsafe extern "C" fn ofx_param_missing_feature_impl(param: *mut c_void) -> c
 
 // ---- 非变长入口 ----------------------------------------------------------
 
-/// paramDefine：describe 期定义参数（未定义类型/parametric →
-/// Unsupported，HS:1704；重复名 → HS 允许，原样再建一条——宿主以
-/// 首个为准，与 HS 的 map 覆盖语义一致）。
+/// paramDefine：describe 期定义参数（未定义类型 → Unsupported，
+/// HS:1704；重复名 → HS 允许，原样再建一条——宿主以首个为准，与
+/// HS 的 map 覆盖语义一致）。
 unsafe extern "C" fn param_define(
 	param_set: *mut c_void,
 	param_type: *const c_char,
@@ -485,7 +487,8 @@ unsafe extern "C" fn param_define(
 			ParamSetRef::Descriptor(d) => d,
 			ParamSetRef::Instance(_) => return Err(status::ERR_BAD_HANDLE),
 		};
-		// 类型合法性（kind_of_type 之外还有无值类与 parametric）。
+		// 类型合法性（kind_of_type 之外还有无值类与 parametric；
+		// parametric 的曲线值走 OfxParametricParameterSuite）。
 		let valid = crate::param::kind_of_type(t).is_some()
 			|| matches!(
 				t,
@@ -494,8 +497,9 @@ unsafe extern "C" fn param_define(
 					| crate::param::TYPE_PUSHBUTTON
 					| crate::param::TYPE_GROUP
 					| crate::param::TYPE_PAGE
+					| crate::param::TYPE_PARAMETRIC
 			);
-		if !valid || t == crate::param::TYPE_PARAMETRIC {
+		if !valid {
 			return Err(status::ERR_UNSUPPORTED);
 		}
 		let def = ParamDef::new(n, t);
@@ -873,7 +877,8 @@ mod tests {
 			);
 		}
 
-		// 未定义类型 / parametric → ErrUnsupported（HS:1704）。
+		// 未定义类型 → ErrUnsupported（HS:1704）；parametric → 放行
+		// （曲线读写走 OfxParametricParameterSuite）。
 		let bad = cs("OfxParamTypeBogus");
 		let par = cs("OfxParamTypeParametric");
 		unsafe {
@@ -881,11 +886,9 @@ mod tests {
 				(s.param_define)(handle, bad.as_ptr(), n.as_ptr(), &mut ph2),
 				status::ERR_UNSUPPORTED
 			);
-			assert_eq!(
-				(s.param_define)(handle, par.as_ptr(), n.as_ptr(), &mut ph2),
-				status::ERR_UNSUPPORTED
-			);
+			assert_eq!((s.param_define)(handle, par.as_ptr(), n.as_ptr(), &mut ph2), 0);
 		}
+		assert_eq!(tag::kind(ph2), tag::PARAM_DEF);
 
 		// 实例期 paramDefine → BadHandle。
 		let (_inst, ih) = make_instance();

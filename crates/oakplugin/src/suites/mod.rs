@@ -34,6 +34,7 @@ pub mod memory;
 pub mod message;
 pub mod multithread;
 pub mod param;
+pub mod parametric;
 pub mod progress;
 pub mod property;
 pub mod timeline;
@@ -224,6 +225,8 @@ pub(crate) const OFX_API_VERSION: i32 = 105;
 /// 第 2 期追加：OfxImageEffectOpenGLRenderSuite v1（GL 路径）；
 /// ofxColour 无 suite 表（纯属性 + GetOutputColourspace action）。
 /// 第 3 期追加：OfxInteractSuite v1、OfxDrawSuite v1（interact 宿主）。
+/// 第 4 期追加：OfxParametricParameterSuite v1（曲线参数，
+/// suites/parametric.rs）。
 pub fn fetch_suite(name: &str, version: i32) -> Option<*const std::ffi::c_void> {
 	let suite: *const std::ffi::c_void = match (name, version) {
 		("OfxPropertySuite", 1) => ptr(property::suite_v1()),
@@ -239,6 +242,7 @@ pub fn fetch_suite(name: &str, version: i32) -> Option<*const std::ffi::c_void> 
 		("OfxImageEffectOpenGLRenderSuite", 1) => ptr(gl_render::suite_v1()),
 		("OfxInteractSuite", 1) => ptr(interact::suite_v1()),
 		("OfxDrawSuite", 1) => ptr(draw::suite_v1()),
+		("OfxParametricParameterSuite", 1) => ptr(parametric::suite_v1()),
 		_ => return None,
 	};
 	Some(suite)
@@ -253,7 +257,7 @@ fn ptr<T>(p: &'static T) -> *const std::ffi::c_void {
 mod tests {
 	use super::*;
 
-	/// 十张 suite 的分发表：版本精确匹配、未知版本/名字 → None。
+	/// suite 分发表：版本精确匹配、未知版本/名字 → None。
 	#[test]
 	fn fetch_suite_dispatch() {
 		assert!(fetch_suite("OfxPropertySuite", 1).is_some());
@@ -269,12 +273,14 @@ mod tests {
 		assert!(fetch_suite("OfxImageEffectOpenGLRenderSuite", 1).is_some());
 		assert!(fetch_suite("OfxInteractSuite", 1).is_some());
 		assert!(fetch_suite("OfxDrawSuite", 1).is_some());
+		assert!(fetch_suite("OfxParametricParameterSuite", 1).is_some());
 
 		assert!(fetch_suite("OfxPropertySuite", 2).is_none());
 		assert!(fetch_suite("OfxMessageSuite", 3).is_none());
 		assert!(fetch_suite("OfxImageEffectOpenGLRenderSuite", 2).is_none());
 		assert!(fetch_suite("OfxInteractSuite", 2).is_none());
 		assert!(fetch_suite("OfxDrawSuite", 2).is_none());
+		assert!(fetch_suite("OfxParametricParameterSuite", 2).is_none());
 		assert!(fetch_suite("OfxBogusSuite", 1).is_none());
 		assert!(fetch_suite("", 1).is_none());
 	}

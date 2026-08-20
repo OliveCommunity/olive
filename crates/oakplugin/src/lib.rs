@@ -66,6 +66,7 @@ pub mod instance;
 pub mod node;
 pub mod node_factory;
 pub mod param;
+pub mod param_curve;
 pub mod progress;
 pub mod property;
 pub mod render;
