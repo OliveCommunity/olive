@@ -107,194 +107,181 @@ jobs:
             target/release/PKGBUILD
           if-no-files-found: error
 
-#  # ------------------------------------------------------------------
-# macOS: Apple Silicon only. The app/CLI/worker no longer link
-# liboakengine (M14 R4: they call the module rlibs directly), so the
-# .app bundle carries no dylib to fold in; package it with
-# cargo-packager and create the DMG with hdiutil.
-# ------------------------------------------------------------------
-macos:
-  name: macOS DMG (Apple Silicon)
-  runs-on: warp-macos-15-arm64-6x
+  # ------------------------------------------------------------------
+  # macOS: Apple Silicon only. The app/CLI/worker call the module rlibs
+  # directly (oakengine is retired), so the .app bundle carries no dylib
+  # to fold in; package it with cargo-packager and create the DMG with
+  # hdiutil.
+  # ------------------------------------------------------------------
+  macos:
+    name: macOS DMG (Apple Silicon)
+    runs-on: warp-macos-15-arm64-6x
 
-  steps:
-    - name: Checkout
-      uses: actions/checkout@v4
-      with:
-        submodules: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
 
-    - name: Install Rust (stable)
-      uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
 
-    - name: Install system dependencies
-      run: |
-        tooling/install-deps.sh
-        brew install opencolorio librsvg
+      - name: Install system dependencies
+        run: |
+          tooling/install-deps.sh
+          brew install opencolorio librsvg
 
-    - name: Configure build environment
-      run: |
-        {
-          echo "OCIO_RS_ENABLE_REAL=1"
-          echo "OCIO_INSTALL_DIR=/opt/homebrew/opt/opencolorio"
-          echo "OCIO_RS_LINK=dynamic"
-          echo "CFLAGS=-I/opt/homebrew/include"
-          echo "LDFLAGS=-L/opt/homebrew/lib"
-          echo "PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig/openjpeg"
-        } >> "$GITHUB_ENV"
+      - name: Configure build environment
+        run: |
+          {
+            echo "OCIO_RS_ENABLE_REAL=1"
+            echo "OCIO_INSTALL_DIR=/opt/homebrew/opt/opencolorio"
+            echo "OCIO_RS_LINK=dynamic"
+            echo "CFLAGS=-I/opt/homebrew/include"
+            echo "LDFLAGS=-L/opt/homebrew/lib"
+            echo "PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig/openjpeg"
+          } >> "$GITHUB_ENV"
 
-    - name: Cache cargo artifacts
-      uses: Swatinem/rust-cache@v2
-      with:
-        shared-key: oak-workspace
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: oak-workspace
 
-    - name: Cache project FFmpeg
-      uses: actions/cache@v4
-      with:
-        path: .cache/ffmpeg
-        key: ffmpeg-${{ runner.os }}-${{ hashFiles('tooling/ffmpeg/build-ffmpeg.sh') }}
+      - name: Cache project FFmpeg
+        uses: actions/cache@v4
+        with:
+          path: .cache/ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('tooling/ffmpeg/build-ffmpeg.sh') }}
 
-    - name: Build project FFmpeg (static, GPL + free codecs + hwaccel)
-      run: |
-        tooling/ffmpeg/build-ffmpeg.sh
-        echo "FFMPEG_DIR=$PWD/.cache/ffmpeg" >> "$GITHUB_ENV"
+      - name: Build project FFmpeg (static, GPL + free codecs + hwaccel)
+        run: |
+          tooling/ffmpeg/build-ffmpeg.sh
+          echo "FFMPEG_DIR=$PWD/.cache/ffmpeg" >> "$GITHUB_ENV"
 
-    - name: Install cargo-packager
-      run: cargo install cargo-packager --locked
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
 
-    - name: Generate app icon (PNG from Oak_Icon.svg)
-      run: |
-        mkdir -p icons
-        # cargo-packager's tauri-icns 0.1.0 maps only 512x512@1x (and
-        # 1024x1024@2x); a plain 1024x1024 PNG aborts with "No matching
-        # IconType", so render 512x512.
-        rsvg-convert -w 512 -h 512 Oak_Icon.svg -o icons/icon.png
-        file icons/icon.png
+      - name: Generate app icon (PNG from Oak_Icon.svg)
+        run: |
+          mkdir -p icons
+          # cargo-packager's tauri-icns 0.1.0 maps only 512x512@1x (and
+          # 1024x1024@2x); a plain 1024x1024 PNG aborts with "No matching
+          # IconType", so render 512x512.
+          rsvg-convert -w 512 -h 512 Oak_Icon.svg -o icons/icon.png
+          file icons/icon.png
 
-    # Build the packaged binaries (default members: the app, oak-cli,
-    # oak-worker). oakengine is a workspace member but NOT a default
-    # member (M14 R4: pure cdylib for plugins/external consumers — no
-    # packaged binary links it), so it is not built here.
-    - name: Build (release)
-      run: cargo build --release --locked
+      # Build the packaged binaries (default members: the app, oak-cli,
+      # oak-worker).
+      - name: Build (release)
+        run: cargo build --release --locked
 
-    - name: Package .app bundle
-      run: cargo packager --release --formats app
+      - name: Package .app bundle
+        run: cargo packager --release --formats app
 
-    - name: Create DMG
-      run: |
-        rm -rf dmg-staging
-        mkdir -p dmg-staging
-        cp -R target/release/Oak.app dmg-staging/
-        ln -s /Applications dmg-staging/Applications
-        hdiutil create -volname "Oak Video Editor" \
-          -srcfolder dmg-staging -ov -format UDZO Oak-macOS-arm64.dmg
+      - name: Create DMG
+        run: |
+          rm -rf dmg-staging
+          mkdir -p dmg-staging
+          cp -R target/release/Oak.app dmg-staging/
+          ln -s /Applications dmg-staging/Applications
+          hdiutil create -volname "Oak Video Editor" \
+            -srcfolder dmg-staging -ov -format UDZO Oak-macOS-arm64.dmg
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: oak-macos
-        path: Oak-macOS-arm64.dmg
-        if-no-files-found: error
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oak-macos
+          path: Oak-macOS-arm64.dmg
+          if-no-files-found: error
 
   # ------------------------------------------------------------------
-  # Windows: NSIS installer — DISABLED. The app does not link on Windows
-  # yet: build.rs explicitly says "Windows: NOT SUPPORTED YET" (a DLL cannot
-  # carry the undefined oakcore_* imports without stub import-library /
-  # delay-load plumbing), and oak-cli/oak-worker build.rs emit GNU-style
-  # `-Wl` flags that the MSVC linker rejects. The NSIS packaging itself is
-  # fine (cargo-packager downloads its own makensis, SHA-1 verified); the
-  # blocker is the binary link. Re-enable this job once crates link on
-  # Windows; the job below is kept verbatim as the reference (the
-  # `-p oakengine` prebuild is obsolete since M14 R4 — no packaged binary
-  # links the cdylib — and should be dropped when re-enabling).
+  # Windows: NSIS installer (restored; cargo-packager downloads its own
+  # makensis, SHA-1 verified). The obsolete `-p oakengine` cdylib prebuild
+  # from before M14 R4 is dropped — no packaged binary links the cdylib.
   # ------------------------------------------------------------------
-  # windows:
-  #   name: Windows installer (NSIS)
-  #   runs-on: warp-windows-latest-x64-16x
-  #
-  #   defaults:
-  #     run:
-  #       shell: msys2 {0}
-  #
-  #   steps:
-  #     - name: Checkout
-  #       uses: actions/checkout@v4
-  #       with:
-  #         submodules: true
-  #
-  #     - name: Install Rust (stable)
-  #       uses: dtolnay/rust-toolchain@stable
-  #
-  #     - name: Setup MSYS2
-  #       uses: msys2/setup-msys2@v2
-  #       with:
-  #         msystem: UCRT64
-  #         update: true
-  #         install: >-
-  #           git
-  #           mingw-w64-ucrt-x86_64-gcc
-  #
-  #     - name: Install system dependencies
-  #       run: |
-  #         bash tooling/install-deps.sh
-  #         pacman -S --needed --noconfirm \
-  #           mingw-w64-ucrt-x86_64-opencolorio \
-  #           mingw-w64-ucrt-x86_64-librsvg
-  #
-  #     - name: Configure build environment
-  #       run: |
-  #         echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
-  #         echo "OCIO_INSTALL_DIR=/ucrt64" >> "$GITHUB_ENV"
-  #         echo "OCIO_RS_LINK=dynamic" >> "$GITHUB_ENV"
-  #
-  #     - name: Cache cargo artifacts
-  #       uses: Swatinem/rust-cache@v2
-  #       with:
-  #         shared-key: oak-workspace
-  #
-  #     - name: Cache project FFmpeg
-  #       uses: actions/cache@v4
-  #       with:
-  #         path: .cache/ffmpeg
-  #         key: ffmpeg-${{ runner.os }}-${{ hashFiles('tooling/ffmpeg/build-ffmpeg.sh') }}
-  #
-  #     - name: Build project FFmpeg (static, GPL + free codecs + hwaccel)
-  #       run: |
-  #         bash tooling/ffmpeg/build-ffmpeg.sh
-  #         echo "FFMPEG_DIR=$(cygpath -m "$PWD/.cache/ffmpeg")" >> "$GITHUB_ENV"
-  #
-  #     - name: Install cargo-packager
-  #       run: cargo install cargo-packager --locked
-  #
-  #     - name: Generate app icon (PNG from Oak_Icon.svg)
-  #       run: |
-  #         mkdir -p icons
-  #         rsvg-convert -w 512 -h 512 Oak_Icon.svg -o icons/icon.png
-  #
-  #     - name: Build (release)
-  #       run: |
-  #         cargo build --release --locked -p oakengine
-  #         cargo build --release --locked
-  #
-  #     - name: Package (NSIS)
-  #       run: cargo packager --release --formats nsis
-  #
-  #     - name: Upload artifact
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: oak-windows
-  #         path: target/release/*-setup.exe
-  #         if-no-files-found: error
+  windows:
+    name: Windows installer (NSIS)
+    runs-on: warp-windows-latest-x64-16x
+
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            git
+            mingw-w64-ucrt-x86_64-gcc
+
+      - name: Install system dependencies
+        run: |
+          bash tooling/install-deps.sh
+          pacman -S --needed --noconfirm \
+            mingw-w64-ucrt-x86_64-opencolorio \
+            mingw-w64-ucrt-x86_64-librsvg
+
+      - name: Configure build environment
+        run: |
+          echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
+          echo "OCIO_INSTALL_DIR=/ucrt64" >> "$GITHUB_ENV"
+          echo "OCIO_RS_LINK=dynamic" >> "$GITHUB_ENV"
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: oak-workspace
+
+      - name: Cache project FFmpeg
+        uses: actions/cache@v4
+        with:
+          path: .cache/ffmpeg
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('tooling/ffmpeg/build-ffmpeg.sh') }}
+
+      - name: Build project FFmpeg (static, GPL + free codecs + hwaccel)
+        run: |
+          bash tooling/ffmpeg/build-ffmpeg.sh
+          echo "FFMPEG_DIR=$(cygpath -m "$PWD/.cache/ffmpeg")" >> "$GITHUB_ENV"
+
+      - name: Install cargo-packager
+        run: cargo install cargo-packager --locked
+
+      - name: Generate app icon (PNG from Oak_Icon.svg)
+        run: |
+          mkdir -p icons
+          rsvg-convert -w 512 -h 512 Oak_Icon.svg -o icons/icon.png
+
+      - name: Build (release)
+        run: cargo build --release --locked
+
+      - name: Package (NSIS)
+        run: cargo packager --release --formats nsis
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oak-windows
+          path: target/release/*-setup.exe
+          if-no-files-found: error
 
   # ------------------------------------------------------------------
   # Publish: attach every platform package to the v* tag's GitHub release
-  # (skipped on workflow_dispatch, which only uploads artifacts). The
-  # Windows stays disabled (the app does not link there yet); macOS is
-  # back on the warp Apple Silicon runner.
+  # (skipped on workflow_dispatch, which only uploads artifacts).
   # ------------------------------------------------------------------
   release:
     name: Publish GitHub release
-    needs: [linux, macos]
+    needs: [linux, macos, windows]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: warp-ubuntu-latest-x64-8x
     steps:

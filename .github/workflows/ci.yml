@@ -176,3 +176,23 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: cargo test --workspace --locked
+
+      # ------------------------------------------------------------------
+      # OFX plugin discovery end-to-end
+      # ------------------------------------------------------------------
+      # Build a minimal but real OFX plugin into a .ofx.bundle, point
+      # OFX_PLUGIN_PATH at it and let the scan_probe example run the full
+      # host path (directory scan -> dlopen -> setHost -> load -> describe
+      # -> register). The assertion is the plugin's registration line; CI
+      # machines have no system-wide OFX plugins, so the fixture is the
+      # only discovery.
+      - name: Build OFX fixture plugin (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: crates/oakplugin/tests/fixtures/build_fixture.sh .cache/ofx-fixture
+
+      - name: Probe OFX plugin discovery (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: |
+          OFX_PLUGIN_PATH="$PWD/.cache/ofx-fixture" \
+            cargo run --locked -p oakplugin --example scan_probe > probe.log 2>&1
+          grep -q 'type_id=rs.oak.CiTestPlugin' probe.log

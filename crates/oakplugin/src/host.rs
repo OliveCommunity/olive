@@ -640,6 +640,8 @@ fn find_binary_in_bundle(bundle: &Path) -> Option<PathBuf> {
 		contents.join("MacOS"),
 		contents.join("Linux-x86-64"),
 		contents.join("Linux-aarch64"),
+		// OFX 规范的 64 位 Windows 平台目录。
+		contents.join("Win64"),
 	] {
 		if let Ok(entries) = std::fs::read_dir(&platform_dir) {
 			for e in entries.flatten() {
