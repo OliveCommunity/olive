@@ -717,9 +717,15 @@ pub fn register_plugin_nodes() -> Vec<String> {
 			}
 		};
 
-		// 元数据实例（name/description；建完即弃）。
-		let Ok(inst) = host.create_instance(&plugin.identifier, Some(&context)) else {
-			continue;
+		// 元数据实例（name/description；建完即弃）。describeInContext
+		// 失败的插件无法实例化（常见于只支持 Vegas 立体声等厂商套件
+		// 的插件）——记录原因，不静默跳过。
+		let inst = match host.create_instance(&plugin.identifier, Some(&context)) {
+			Ok(inst) => inst,
+			Err(e) => {
+				eprintln!("[ofx] {}: instance creation failed: {e}", plugin.identifier);
+				continue;
+			}
 		};
 		let name = plugin_display_name(&inst.value);
 		let description = plugin_description(&inst.value);

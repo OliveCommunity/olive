@@ -90,11 +90,17 @@ static LIVE_IMAGES: std::sync::LazyLock<Mutex<HashMap<usize, std::sync::Arc<Imag
 	std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// 公共入口模板：panic 兜底。
+#[track_caller]
 fn caught(f: impl FnOnce() -> Result<(), c_int>) -> c_int {
-	catch_unwind(AssertUnwindSafe(f)).map_or_else(
+	let caller = std::panic::Location::caller();
+	let code = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).map_or_else(
 		|_| status::FAILED,
 		|r| r.map_or_else(|c| c, |()| status::OK),
-	)
+	);
+	if code != status::OK && std::env::var_os("OAK_OFX_TRACE").is_some() {
+		eprintln!("[ofx] image-effect suite error {code} at {caller}");
+	}
+	code
 }
 
 /// 属性名（空指针/非 UTF-8 → ErrValue）。

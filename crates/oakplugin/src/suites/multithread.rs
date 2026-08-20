@@ -25,7 +25,10 @@
 //!
 //! 参照：HS: ofxhImageEffect.cpp gMultiThreadSuite。
 
+use std::collections::HashMap;
 use std::ffi::{c_int, c_uint, c_void};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use crate::suites::status;
 
@@ -50,6 +53,16 @@ pub struct MultiThreadSuiteV1 {
 	pub index: unsafe extern "C" fn(*mut c_int) -> c_int,
 	/// multiThreadIsSpawnedThread：当前线程是否插件线程。
 	pub is_spawned: unsafe extern "C" fn(*mut c_int) -> c_int,
+	/// mutexCreate：`count` 是初始可用计数（>1 时是信号量语义）。
+	pub mutex_create: unsafe extern "C" fn(*mut *mut c_void, c_int) -> c_int,
+	/// mutexDestroy
+	pub mutex_destroy: unsafe extern "C" fn(*mut c_void) -> c_int,
+	/// mutexLock
+	pub mutex_lock: unsafe extern "C" fn(*mut c_void) -> c_int,
+	/// mutexUnLock
+	pub mutex_unlock: unsafe extern "C" fn(*mut c_void) -> c_int,
+	/// mutexTryLock
+	pub mutex_try_lock: unsafe extern "C" fn(*mut c_void) -> c_int,
 }
 
 /// 公共入口模板：panic 兜底。
@@ -118,6 +131,112 @@ unsafe extern "C" fn multi_thread_is_spawned(out: *mut c_int) -> c_int {
 	})
 }
 
+// ---- 互斥锁（OfxMultiThreadSuiteV1 的 mutex* 函数组）-----------------------
+//
+// 句柄表：全局注册表按 usize 键发号；`count > 1` 是信号量语义（ofxMultiThread.h
+// "a mutex with a count greater than 1 is a counting semaphore"）。
+// 插件在多线程渲染期用它们保护共享状态——ofxs 支持库的
+// ofxsThreadSuiteCheck 在 load 时逐一检查这些函数非空，缺一个整批插件
+// 直接拒载。
+
+/// 计数信号量（count==1 时即普通互斥锁）。
+struct OfxMutex {
+	permits: std::sync::Mutex<c_int>,
+	released: std::sync::Condvar,
+}
+
+/// 句柄注册表（句柄即下一个递增 id 转指针；0 保留给空）。
+static MUTEXES: std::sync::LazyLock<Mutex<HashMap<usize, Arc<OfxMutex>>>> =
+	std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// 下一个互斥锁 id。
+static NEXT_MUTEX: AtomicUsize = AtomicUsize::new(1);
+
+fn mutex_lookup(handle: *mut c_void) -> Option<Arc<OfxMutex>> {
+	if handle.is_null() {
+		return None;
+	}
+	MUTEXES
+		.lock()
+		.unwrap_or_else(|e| e.into_inner())
+		.get(&(handle as usize))
+		.cloned()
+}
+
+unsafe extern "C" fn mutex_create(out: *mut *mut c_void, count: c_int) -> c_int {
+	caught(|| {
+		if out.is_null() {
+			return status::ERR_VALUE;
+		}
+		let id = NEXT_MUTEX.fetch_add(1, Ordering::Relaxed);
+		MUTEXES
+			.lock()
+			.unwrap_or_else(|e| e.into_inner())
+			.insert(id, Arc::new(OfxMutex {
+				permits: std::sync::Mutex::new(count.max(1)),
+				released: std::sync::Condvar::new(),
+			}));
+		unsafe { *out = id as *mut c_void };
+		status::OK
+	})
+}
+
+unsafe extern "C" fn mutex_destroy(handle: *mut c_void) -> c_int {
+	caught(|| {
+		if mutex_lookup(handle).is_none() {
+			return status::ERR_BAD_HANDLE;
+		}
+		MUTEXES
+			.lock()
+			.unwrap_or_else(|e| e.into_inner())
+			.remove(&(handle as usize));
+		status::OK
+	})
+}
+
+unsafe extern "C" fn mutex_lock(handle: *mut c_void) -> c_int {
+	caught(|| {
+		let Some(m) = mutex_lookup(handle) else {
+			return status::ERR_BAD_HANDLE;
+		};
+		let mut permits = m.permits.lock().unwrap_or_else(|e| e.into_inner());
+		while *permits <= 0 {
+			permits = m.released.wait(permits).unwrap_or_else(|e| e.into_inner());
+		}
+		*permits -= 1;
+		status::OK
+	})
+}
+
+unsafe extern "C" fn mutex_unlock(handle: *mut c_void) -> c_int {
+	caught(|| {
+		let Some(m) = mutex_lookup(handle) else {
+			return status::ERR_BAD_HANDLE;
+		};
+		{
+			let mut permits = m.permits.lock().unwrap_or_else(|e| e.into_inner());
+			*permits += 1;
+		}
+		m.released.notify_one();
+		status::OK
+	})
+}
+
+unsafe extern "C" fn mutex_try_lock(handle: *mut c_void) -> c_int {
+	caught(|| {
+		let Some(m) = mutex_lookup(handle) else {
+			return status::ERR_BAD_HANDLE;
+		};
+		let mut permits = m.permits.lock().unwrap_or_else(|e| e.into_inner());
+		if *permits <= 0 {
+			// 规范：占不到锁返回 kOfxStatFailed（不是错误）。
+			return status::FAILED;
+		}
+		*permits -= 1;
+		status::OK
+	})
+}
+
 /// 静态函数表实例。
 pub fn suite_v1() -> &'static MultiThreadSuiteV1 {
 	static SUITE: std::sync::OnceLock<MultiThreadSuiteV1> = std::sync::OnceLock::new();
@@ -126,6 +245,11 @@ pub fn suite_v1() -> &'static MultiThreadSuiteV1 {
 		num_cpus: multi_thread_num_cpus,
 		index: multi_thread_index,
 		is_spawned: multi_thread_is_spawned,
+		mutex_create: mutex_create,
+		mutex_destroy: mutex_destroy,
+		mutex_lock: mutex_lock,
+		mutex_unlock: mutex_unlock,
+		mutex_try_lock: mutex_try_lock,
 	})
 }
 

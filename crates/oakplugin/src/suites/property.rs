@@ -118,15 +118,21 @@ impl Kind {
 /// `# Safety`：`handle` 必须指向活的 `PropertySet` 或已注册对象
 /// （suite 生命周期契约：宿主对象先于 suite 调用创建，后于全部调用
 /// 销毁）。
+#[track_caller]
 unsafe fn caught(handle: *mut c_void, f: impl FnOnce(&PropertySet) -> Result<(), c_int>) -> c_int {
-	std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+	let caller = std::panic::Location::caller();
+	let code = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
 		if handle.is_null() {
 			return status::ERR_BAD_HANDLE;
 		}
 		let set = unsafe { &*crate::suites::tag::strip(handle) };
 		f(set).map_or_else(|code| code, |()| status::OK)
 	}))
-	.unwrap_or(status::FAILED)
+	.unwrap_or(status::FAILED);
+	if code != status::OK && std::env::var_os("OAK_OFX_TRACE").is_some() {
+		eprintln!("[ofx] property suite error {code} at {caller}");
+	}
+	code
 }
 
 /// 属性名：空指针 / 非 UTF-8 → kOfxStatErrValue（防御性；HostSupport
@@ -155,35 +161,78 @@ fn get_value<'a>(
 	index: c_int,
 	kind: Kind,
 ) -> Result<&'a Value, c_int> {
+	let result = get_value_inner(props, name, index, kind);
+	if std::env::var_os("OAK_OFX_TRACE").is_some() {
+		match &result {
+			Ok(_) => eprintln!("[ofx] propGet({name}[{index}]) -> ok"),
+			Err(c) => eprintln!("[ofx] propGet({name}[{index}]) -> {c}"),
+		}
+	}
+	result
+}
+
+fn get_value_inner<'a>(
+	props: &'a [Property],
+	name: &str,
+	index: c_int,
+	kind: Kind,
+) -> Result<&'a Value, c_int> {
 	let p = props
 		.iter()
 		.find(|p| p.name == name)
 		.ok_or(status::ERR_UNKNOWN)?;
 	// 首元素代理整条属性的类型（宿主只定义同构数组；HS 是定义期
-	// 固定类型，等价）。
-	let probe = p.values.first().ok_or(status::ERR_UNKNOWN)?;
-	if Kind::of(probe) != kind {
-		return Err(status::ERR_UNKNOWN);
+	// 固定类型，等价）。空数组没有类型探针，跳过类型检查，越界
+	// 由下面的索引访问报 BadIndex（HS getValueRaw 语义）。
+	if let Some(probe) = p.values.first() {
+		if Kind::of(probe) != kind {
+			return Err(status::ERR_UNKNOWN);
+		}
 	}
 	p.values.get(idx(index)?).ok_or(status::ERR_BAD_INDEX)
 }
 
 // ---- propSet（单元素）-----------------------------------------------------
 
-/// propSet 通用实现：类型不符/未定义 → Unknown；越界 → BadIndex。
+/// propSet 通用实现：属性未定义时按 OFX 语义**隐式创建**（ofxProperty.h：
+/// "If the property does not exist it is created"，HS setValue 同）——
+/// 插件 describe 期写的大量描述符属性（grouping、各 capability 开关）
+/// 并未由宿主预定义，拒绝创建会让 describe 直接失败。已定义但类型
+/// 不符 → Unknown；越界 → BadIndex。
 fn set_value(set: &PropertySet, name: &str, index: c_int, value: Value) -> Result<(), c_int> {
 	set.with_locked(|props| {
-		let p = props
-			.iter_mut()
-			.find(|p| p.name == name)
-			.ok_or(status::ERR_UNKNOWN)?;
-		let probe = p.values.first().ok_or(status::ERR_UNKNOWN)?;
+		let idx = idx(index)?;
+		let Some(p) = props.iter_mut().find(|p| p.name == name) else {
+			// 隐式创建：维度 index+1，前导槽位以同值填充（HS 的新属性
+			// 默认值语义——新建属性先有一个默认元素再逐位写）。
+			let mut values = vec![value.clone(); idx];
+			values.push(value);
+			props.push(crate::property::Property {
+				name: name.to_string(),
+				values,
+			});
+			return Ok(());
+		};
+		// 空属性（宿主预定义的空数组，如 OfxImageEffectPropSupportedContexts）
+		// 没有类型探针：按 HS 的 index == size 追加语义直接 push。
+		if p.values.is_empty() {
+			if idx != 0 {
+				return Err(status::ERR_BAD_INDEX);
+			}
+			p.values.push(value);
+			return Ok(());
+		}
+		let probe = &p.values[0];
 		if Kind::of(probe) != Kind::of(&value) {
 			return Err(status::ERR_UNKNOWN);
 		}
-		// HS `setValue` 允许 index == size 时追加（ofxhPropertySuite.cpp:284）；
-		// 本 crate 维度固定语义（扩容只能经 define）——越界一律 BadIndex。
-		let slot = p.values.get_mut(idx(index)?).ok_or(status::ERR_BAD_INDEX)?;
+		// HS `setValue` 允许 index == size 时追加（ofxhPropertySuite.cpp:284）
+		// ——addSupportedContext 等协商属性正是这样逐位增长的。
+		if idx == p.values.len() {
+			p.values.push(value);
+			return Ok(());
+		}
+		let slot = p.values.get_mut(idx).ok_or(status::ERR_BAD_INDEX)?;
 		*slot = value;
 		Ok(())
 	})
@@ -262,10 +311,14 @@ fn set_values(
 	values: Vec<Value>,
 ) -> Result<(), c_int> {
 	set.with_locked(|props| {
-		let p = props
-			.iter_mut()
-			.find(|p| p.name == name)
-			.ok_or(status::ERR_UNKNOWN)?;
+		let Some(p) = props.iter_mut().find(|p| p.name == name) else {
+			// 与单元素 set_value 一致：未定义属性按 OFX 语义隐式创建。
+			props.push(crate::property::Property {
+				name: name.to_string(),
+				values,
+			});
+			return Ok(());
+		};
 		// count == 0 时无类型可探（HS 仍会做 fetchTypedProperty）。
 		if let Some(first) = p.values.first() {
 			if let Some(v) = values.first() {
@@ -426,7 +479,15 @@ unsafe extern "C" fn prop_get_string(
 			if out.is_null() {
 				return Err(status::ERR_VALUE);
 			}
-			*out = get_string(set, name, index)?;
+			let r = get_string(set, name, index);
+			if std::env::var_os("OAK_OFX_TRACE").is_some() {
+				let status = match &r {
+					Ok(_) => 0,
+					Err(c) => *c,
+				};
+				eprintln!("[ofx] propGetString(h={handle:p}, {name}[{index}]) -> {status}");
+			}
+			*out = r?;
 			Ok(())
 		})
 	}
@@ -476,6 +537,12 @@ unsafe extern "C" fn prop_get_int(
 				}
 				_ => Err(status::FAILED),
 			}
+			.map_err(|c| {
+				if std::env::var_os("OAK_OFX_TRACE").is_some() {
+					eprintln!("[ofx] propGetInt({name}) -> {c}");
+				}
+				c
+			})
 		})
 	}
 }
@@ -614,12 +681,13 @@ unsafe extern "C" fn prop_get_dimension(
 			if out.is_null() {
 				return Err(status::ERR_VALUE);
 			}
-			// HS: fetchProperty 失败（未定义）→ Unknown（ofxhPropertySuite.cpp:992）。
-			let dim = set.dimension(name);
-			if dim == 0 {
+			// HS: fetchProperty 失败（未定义）→ Unknown（ofxhPropertySuite.cpp:992）；
+			// 已定义的空数组（如协商属性的初始状态）是合法维度 0，不是错误。
+			let exists = set.with_locked(|props| props.iter().any(|p| p.name == name));
+			if !exists {
 				return Err(status::ERR_UNKNOWN);
 			}
-			*out = dim as c_int;
+			*out = set.dimension(name) as c_int;
 			Ok(())
 		})
 	}

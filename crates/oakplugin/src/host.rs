@@ -149,9 +149,40 @@ unsafe extern "C" fn host_fetch_suite(
 		crate::suites::fetch_suite(name, version)
 	}));
 	match result {
-		Ok(Some(p)) => p,
+		Ok(Some(p)) => {
+			if std::env::var_os("OAK_OFX_TRACE").is_some() && !name.is_null() {
+				if let Ok(n) = unsafe { CStr::from_ptr(name) }.to_str() {
+					eprintln!("[ofx] fetchSuite hit: {n} v{version}");
+				}
+			}
+			p
+		}
+		Ok(None) => {
+			// 诊断：插件请求的 suite 宿主没有（describe 常因此返回
+			// kOfxStatErrMissingHostFeature）。
+			if !name.is_null() {
+				if let Ok(n) = unsafe { CStr::from_ptr(name) }.to_str() {
+					eprintln!("[ofx] fetchSuite miss: {n} v{version}");
+				}
+			}
+			std::ptr::null()
+		}
 		_ => std::ptr::null(),
 	}
+}
+
+/// 进程级 `OfxHost`（ofxs 支持库的 setHost 只保存**指针**而不拷贝
+/// 结构体——栈上临时变量会在 setHost 返回后悬垂，describe/渲染期
+/// 再经 fetchSuite 回调就是野指针）。堆泄漏一次，永久有效。
+fn global_ofx_host() -> *mut OfxHost {
+	static PTR: OnceLock<usize> = OnceLock::new();
+	*PTR.get_or_init(|| {
+		let host = Host::global();
+		Box::into_raw(Box::new(OfxHost {
+			host: &host.props as *const PropertySet as *mut c_void,
+			fetch_suite: host_fetch_suite,
+		})) as usize
+	}) as *mut OfxHost
 }
 
 // ---- 动作与属性常量（ofxCore.h / ofxImageEffect.h）----
@@ -743,12 +774,15 @@ impl PluginCache {
 		Ok(())
 	}
 
-	/// 加载一个 bundle（幂等：按 bundle 路径去重）。
+	/// 加载一个 bundle（幂等：按 bundle 路径去重）。每个早退分支都打
+	/// 诊断日志——静默失败会让效果库毫无线索地缺插件。
 	fn load_bundle(&self, bundle: &Path) {
 		let Some(binary) = find_binary_in_bundle(bundle) else {
+			eprintln!("[ofx] {}: no plugin binary in bundle", bundle.display());
 			return;
 		};
 		let Some(handle) = dl_open(&binary) else {
+			eprintln!("[ofx] {}: dlopen failed", binary.display());
 			return;
 		};
 		{
@@ -760,6 +794,10 @@ impl PluginCache {
 		}
 		let plugins = unsafe { self.collect_plugins(handle, bundle) };
 		if plugins.is_empty() {
+			eprintln!(
+				"[ofx] {}: no usable plugins (setHost/load/describe failed)",
+				binary.display()
+			);
 			unsafe { dlclose(handle) };
 			return;
 		}
@@ -825,8 +863,10 @@ impl PluginCache {
 	) -> Option<Arc<Plugin>> {
 		let ofx_ref = unsafe { &*ofx };
 		// API 匹配（kOfxImageEffectPluginApi "OfxImageEffectPluginAPI" v1，
-		// ofxImageEffect.h:28-32）。
+		// ofxImageEffect.h:28-32）。每个拒绝分支都打诊断日志（静默拒绝
+		// 会让效果库毫无线索地缺插件）。
 		let api = if ofx_ref.plugin_api.is_null() {
+			eprintln!("[ofx] {}: null plugin_api", bundle.display());
 			return None;
 		} else {
 			unsafe { CStr::from_ptr(ofx_ref.plugin_api) }
@@ -834,6 +874,11 @@ impl PluginCache {
 				.ok()?
 		};
 		if api != "OfxImageEffectPluginAPI" || ofx_ref.api_version != 1 {
+			eprintln!(
+				"[ofx] {}: unsupported api {api} v{}",
+				bundle.display(),
+				ofx_ref.api_version
+			);
 			return None;
 		}
 		let identifier = unsafe { CStr::from_ptr(ofx_ref.plugin_identifier) }
@@ -842,14 +887,10 @@ impl PluginCache {
 			.to_string();
 		let entry = ofx_ref.main_entry?;
 
-		// setHost 是 mandatory 的第一个调用（ofxCore.h:124-132）。
-		let host = Host::global();
-		let mut ofx_host = OfxHost {
-			host: &host.props as *const PropertySet as *mut c_void,
-			fetch_suite: host_fetch_suite,
-		};
+		// setHost 是 mandatory 的第一个调用（ofxCore.h:124-132）。宿主
+		// 结构体是进程级静态（ofxs 只存指针，见 global_ofx_host）。
 		if let Some(f) = ofx_ref.set_host {
-			unsafe { f(&mut ofx_host) };
+			unsafe { f(global_ofx_host()) };
 		}
 
 		let mut plugin = Plugin {
@@ -871,6 +912,7 @@ impl PluginCache {
 		// load（HS: ofxhImageEffectAPI.cpp:158-165；OK/ReplyDefault 接受）。
 		let stat = unsafe { plugin.call_action(ACTION_LOAD, std::ptr::null_mut(), &empty, &empty) };
 		if stat != status::OK && stat != status::REPLY_DEFAULT {
+			eprintln!("[ofx] {}: load action returned {stat}", plugin.identifier);
 			return None;
 		}
 
@@ -881,12 +923,15 @@ impl PluginCache {
 		);
 		let stat = unsafe { plugin.call_action(ACTION_DESCRIBE, desc_handle, &empty, &empty) };
 		if stat != status::OK && stat != status::REPLY_DEFAULT {
+			eprintln!("[ofx] {}: describe action returned {stat}", plugin.identifier);
 			return None;
 		}
 
 		// 支持上下文（describe 产物；HS 从 props 读）。
 		let contexts = read_contexts(&plugin.descriptor.props);
-		// 只收标准上下文。
+		// 只收标准上下文（Filter/Generator/Transition 之外还有
+		// General——kOfxImageEffectContextGeneral 同样是规范上下文，
+		// Roto/AppendClip/STMap 等插件只声明它）。
 		let contexts: Vec<String> = contexts
 			.into_iter()
 			.filter(|c| {
@@ -895,10 +940,15 @@ impl PluginCache {
 					"OfxImageEffectContextFilter"
 						| "OfxImageEffectContextGenerator"
 						| "OfxImageEffectContextTransition"
+						| "OfxImageEffectContextGeneral"
 				)
 			})
 			.collect();
 		if contexts.is_empty() {
+			eprintln!(
+				"[ofx] {}: no standard contexts after describe",
+				plugin.identifier
+			);
 			return None;
 		}
 		plugin.contexts = contexts;
@@ -1227,6 +1277,12 @@ impl Host {
 /// 宿主属性集（对照 C++ OliveHost::OliveHost，olivehost.cpp:193-207：
 /// Name/Label/Version；能力宣告为 phase 1 最小集，协商按需扩展）。
 fn init_host_props(props: &PropertySet) {
+	// ofxCore.h 宿主属性集的必备项：OfxType=OfxTypeHost 与
+	// OfxPropAPIVersion（int[2]，宿主实现的 API 版本）——ofxs 支持库的
+	// loadAction 以 throwOnFailure=true 读它们，缺失会被映射成
+	// kOfxStatErrMissingHostFeature 让插件加载直接失败。
+	props.set_one("OfxPropType", Value::String(cs("OfxTypeHost")));
+	props.define("OfxPropAPIVersion", vec![Value::Int(1), Value::Int(4)]);
 	props.set_one("OfxPropName", Value::String(cs("Oak Video Editor")));
 	props.set_one("OfxPropLabel", Value::String(cs("Oak Video Editor")));
 	props.set_one(
@@ -1242,6 +1298,16 @@ fn init_host_props(props: &PropertySet) {
 		"OfxImageEffectPropSupportedPixelDepths",
 		vec![Value::String(cs("OfxBitDepthFloat"))],
 	);
+	// 宿主支持的上下文集（ofxs 以 throwOnFailure=true 读）。
+	props.define(
+		"OfxImageEffectPropSupportedContexts",
+		vec![
+			Value::String(cs("OfxImageEffectContextFilter")),
+			Value::String(cs("OfxImageEffectContextGenerator")),
+			Value::String(cs("OfxImageEffectContextTransition")),
+			Value::String(cs("OfxImageEffectContextGeneral")),
+		],
+	);
 	props.define(
 		"OfxImageEffectPropSupportedComponents",
 		vec![
@@ -1250,6 +1316,57 @@ fn init_host_props(props: &PropertySet) {
 			Value::String(cs("OfxImageComponentAlpha")),
 		],
 	);
+	// ofxs 支持库 fetchHostDescription 以 throwOnFailure=true 读取的
+	// 全部宿主能力位（IsBackground 缺一个都会让读取链中断——
+	// gHostDescriptionHasInit 已置位，后续插件拿到半初始化描述，
+	// temporalClipAccess 为 0 → 时序类插件集体拒载）。
+	props.set_one("OfxImageEffectHostPropIsBackground", Value::Int(0));
+	props.set_one("OfxParamHostPropSupportsStringAnimation", Value::Int(0));
+	props.set_one("OfxParamHostPropSupportsChoiceAnimation", Value::Int(0));
+	props.set_one("OfxParamHostPropSupportsBooleanAnimation", Value::Int(0));
+	props.set_one("OfxParamHostPropSupportsCustomAnimation", Value::Int(0));
+	// 自定义 interact（检视器叠加层）宿主支持。
+	props.set_one("OfxParamHostPropSupportsCustomInteract", Value::Int(1));
+	// 能力宣告（ofxImageEffect.h 宿主属性集；ofxs 支持库在 load 时读成
+	// ImageEffectHostDescription，temporalClipAccess 等为 0 时整类插件
+	// ——Retime/FrameHold/TimeOffset/SlitScan——直接在 load 里拒载）。
+	props.set_one("OfxImageEffectPropTemporalClipAccess", Value::Int(1));
+	props.set_one("OfxImageEffectPropSupportsMultiResolution", Value::Int(1));
+	props.set_one("OfxImageEffectPropSupportsTiles", Value::Int(1));
+	props.set_one("OfxImageEffectPropSupportsMultipleClipPARs", Value::Int(1));
+	// 像素深度只支持 Float（phase 1 全链路 F32），不做多深度协商。
+	props.set_one("OfxImageEffectPropSupportsMultipleClipDepths", Value::Int(0));
+	// 旧版 ofxs 的 fetchHostDescription 读的是不带 Supports 的同义名
+	// （ofxImageEffect.h 的 kOfxImageEffectPropMultipleClipDepths）。
+	props.set_one("OfxImageEffectPropMultipleClipDepths", Value::Int(0));
+	props.set_one("OfxImageEffectPropSetableFrameRate", Value::Int(0));
+	props.set_one("OfxImageEffectPropSetableFielding", Value::Int(0));
+	// fetchHostDescription 的其余读取项（部分 ofxs 版本以
+	// throwOnFailure=true 读，缺一个首插件的 load 就炸）：
+	// 顺序渲染状态 0=宿主不强制；Draft 渲染质量支持（播放降档）；
+	// 参数数无上限；不支持参数化曲线动画；macOS 无 OS 窗口句柄；
+	// 原生坐标原点按 OFX 规范默认 BottomLeft。
+	props.set_one("OfxImageEffectInstancePropSequentialRender", Value::Int(0));
+	props.set_one("OfxImageEffectPropRenderQualityDraft", Value::Int(1));
+	props.set_one("OfxParamHostPropMaxParameters", Value::Int(-1));
+	// 参数页数无上限；页内行列 0,0 = 自动排布（这两个也是
+	// throwOnFailure=true 的读取项）。
+	props.set_one("OfxParamHostPropMaxPages", Value::Int(-1));
+	props.define(
+		"OfxParamHostPropPageRowColumnCount",
+		vec![Value::Int(0), Value::Int(0)],
+	);
+	props.set_one("OfxParamHostPropSupportsParametricAnimation", Value::Int(0));
+	props.set_one("OfxPropHostOSHandle", Value::Pointer(std::ptr::null_mut()));
+	props.set_one(
+		"OfxImageEffectHostPropNativeOrigin",
+		Value::String(cs("OfxHostNativeOriginBottomLeft")),
+	);
+	// 序列渲染：插件可随意选（0 = 宿主不强制）。
+	props.set_one("OfxImageEffectPropSequentialRenderStatus", Value::Int(0));
+	// 逐帧线程化程度：全帧线程安全（kOfxImageEffectRenderUnsafe 之外的
+	// 最强档——渲染在独立 worker 进程内串行驱动，无共享状态）。
+	props.set_one("OfxImageEffectPropRenderThreadSafety", Value::String(cs("OfxImageEffectRenderFullySafe")));
 	// GL 能力宣告（M11 §4；ofxGPURender.h "OpenGL House Keeping"：
 	// 宿主在描述符置 "true"）。
 	props.set_one(PROP_GL_RENDER_SUPPORTED, Value::String(cs("true")));

@@ -152,11 +152,17 @@ unsafe fn c_name<'a>(name: *const c_char) -> Result<&'a str, c_int> {
 }
 
 /// 公共入口模板：panic 兜底。
+#[track_caller]
 fn caught(f: impl FnOnce() -> Result<(), c_int>) -> c_int {
-	std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).map_or_else(
+	let caller = std::panic::Location::caller();
+	let code = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)).map_or_else(
 		|_| status::FAILED,
 		|r| r.map_or_else(|c| c, |()| status::OK),
-	)
+	);
+	if code != status::OK && std::env::var_os("OAK_OFX_TRACE").is_some() {
+		eprintln!("[ofx] param suite error {code} at {caller}");
+	}
+	code
 }
 
 // ---- 变长参数实现（C shim 转发）----------------------------------------
