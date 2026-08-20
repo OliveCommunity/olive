@@ -277,40 +277,17 @@ jobs:
           bash tooling/install-deps.sh
           pacman -S --needed --noconfirm \
             mingw-w64-ucrt-x86_64-cmake \
+            mingw-w64-ucrt-x86_64-opencolorio \
             mingw-w64-ucrt-x86_64-librsvg
 
       - name: Configure build environment
         run: |
-          # OCIO comes from the ocio-sys vendored source build (same on
-          # every platform); no OCIO_INSTALL_DIR override.
-          # The vendored yaml-cpp predates GCC 13's transitive-include
-          # cleanup (uint16_t/uint32_t used without <cstdint>) — patch the
-          # include into the registry copy (idempotent; a cached cmake
-          # configure would ignore a CXXFLAGS-only fix).
+          # Windows uses the MSYS2 OpenColorIO package (the exact 2.5.2 the
+          # bridge targets; the vendored source needs MSVC-only constructs).
+          # Dynamic; the DLLs are packaged next to the binaries.
           echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
-          echo "OCIO_RS_LINK=static" >> "$GITHUB_ENV"
-          # cargo fetch only downloads the .crate archives; unpack ocio-sys
-          # so the vendored yaml-cpp can be patched before the build. The
-          # registry src dir may not exist yet on a fresh runner — create
-          # it from the cache dir's hash. The trailing ls asserts the
-          # patched file actually exists.
-          # rust-toolchain sets CARGO_HOME to the WINDOWS userprofile
-          # path ($USERPROFILE\.cargo), not the msys2 $HOME — resolve it.
-          CH=$(cygpath -u "${CARGO_HOME:-$HOME/.cargo}")
-          cargo fetch --locked
-          for cache in "$CH"/registry/cache/*/; do
-            src="$CH/registry/src/$(basename "$cache")"
-            mkdir -p "$src"
-            if [ -f "$cache/ocio-sys-0.2.1.crate" ]; then
-              tar xzf "$cache/ocio-sys-0.2.1.crate" -C "$src"
-            fi
-          done
-          for f in "$CH"/registry/src/*/ocio-sys-0.2.1/vendor/OpenColorIO/ext/ocio-rs-deps/yaml-cpp/src/emitterutils.cpp; do
-            [ -e "$f" ] || continue
-            grep -q '#include <cstdint>' "$f" || \
-              sed -i '0,/#include/s||#include <cstdint>\n&|' "$f"
-          done
-          ls "$CH"/registry/src/*/ocio-sys-0.2.1/vendor/OpenColorIO/ext/ocio-rs-deps/yaml-cpp/src/emitterutils.cpp
+          echo "OCIO_INSTALL_DIR=/ucrt64" >> "$GITHUB_ENV"
+          echo "OCIO_RS_LINK=dynamic" >> "$GITHUB_ENV"
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2

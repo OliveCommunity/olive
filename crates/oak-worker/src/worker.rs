@@ -1471,7 +1471,11 @@ mod tests {
 		let mut s = WorkerSession::create("none").unwrap();
 		let (hs, _out, _in) = parent_side(2, 256, true);
 		let resp = s.handle_line(&hs.to_string()).expect("hello_caps response");
-		assert_eq!(resp["type"], crate::ipc::TYPE_HELLO_CAPS);
+		assert_eq!(
+			resp["type"],
+			crate::ipc::TYPE_HELLO_CAPS,
+			"handshake failed: {resp}"
+		);
 		assert!(s.input_pool.is_some());
 		let in_pool = s.input_pool.as_ref().unwrap();
 		assert_eq!(in_pool.slot_count(), 2);
