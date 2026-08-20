@@ -289,7 +289,14 @@ jobs:
           # configure would ignore a CXXFLAGS-only fix).
           echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
           echo "OCIO_RS_LINK=static" >> "$GITHUB_ENV"
+          # cargo fetch only downloads the .crate archives; unpack ocio-sys
+          # so the vendored yaml-cpp can be patched before the build.
           cargo fetch --locked
+          for dir in "$HOME"/.cargo/registry/src/*/; do
+            if ls "$HOME"/.cargo/registry/cache/*/ocio-sys-0.2.1.crate >/dev/null 2>&1; then
+              tar xzf "$HOME"/.cargo/registry/cache/*/ocio-sys-0.2.1.crate -C "$dir" 2>/dev/null || true
+            fi
+          done
           for f in "$HOME"/.cargo/registry/src/*/ocio-sys-0.2.1/vendor/OpenColorIO/ext/ocio-rs-deps/yaml-cpp/src/emitterutils.cpp; do
             grep -q '#include <cstdint>' "$f" || \
               sed -i '0,/#include/s||#include <cstdint>\n&|' "$f"

@@ -505,7 +505,7 @@ mod tests {
 		// state, so detaching a wedged thread is safe here.
 		let (tx, rx) = std::sync::mpsc::channel();
 		std::thread::spawn(move || {
-			Self::output_callback_body();
+			output_callback_body();
 			let _ = tx.send(());
 		});
 		if rx
@@ -518,8 +518,7 @@ mod tests {
 	}
 
 	/// The test body (see the wrapping test for the watchdog rationale).
-	fn output_callback_body() {
-		// Skip when the audio system cannot actually run a stream: open a
+	fn output_callback_body() {		// Skip when the audio system cannot actually run a stream: open a
 		// silent stream and require at least one callback within 2 s. A
 		// device existing is not enough — headless sessions report the
 		// stream running while delivering zero callbacks.
