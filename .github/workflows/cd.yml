@@ -288,6 +288,11 @@ jobs:
           echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
           echo "OCIO_INSTALL_DIR=/ucrt64" >> "$GITHUB_ENV"
           echo "OCIO_RS_LINK=dynamic" >> "$GITHUB_ENV"
+          # The runner image exports the MSVC INCLUDE/LIB; cc-rs appends
+          # them to the MinGW compile lines and drags in the MSVC SDK
+          # headers (vcruntime.h) — clear both for the GNU toolchain.
+          echo "INCLUDE=" >> "$GITHUB_ENV"
+          echo "LIB=" >> "$GITHUB_ENV"
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2

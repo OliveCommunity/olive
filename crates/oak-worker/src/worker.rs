@@ -1325,7 +1325,7 @@ mod tests {
 			"input_slots": if input { slots } else { 0 },
 			"output_slots": slots,
 			"slot_data_bytes": slot_bytes,
-			"input_slot_data_bytes": in_bytes.unwrap_or(0),
+			"input_slot_data_bytes": if input { slot_bytes } else { 0 },
 		});
 		(hs, out_region, in_region)
 	}
