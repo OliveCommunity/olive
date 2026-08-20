@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Oak Video Editor
+Comment=A free, open-source non-linear video editor
+Exec=oak-editor
+Icon=oak
+Categories=Video;AudioVideo;
+Terminal=false

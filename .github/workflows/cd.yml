@@ -16,8 +16,136 @@ jobs:
   # and its "pacman" format emits a PKGBUILD + source tarball rather than a
   # compiled pkg.tar.zst — both are upstream limitations.
   # ------------------------------------------------------------------
+  # ------------------------------------------------------------------
+  # Linux: one native package per distro, each built INSIDE that
+  # distro's container so the declared dependencies always resolve to
+  # the distro's own package names (dpkg-shlibdeps / rpmbuild
+  # auto-requires / Arch static base list). deb: hand-rolled dpkg-deb;
+  # rpm: rpmbuild; arch: makepkg. AppImage stays on the Ubuntu runner
+  # (self-contained by design).
+  # ------------------------------------------------------------------
   linux:
-    name: Linux packages (deb, AppImage, pacman)
+    name: Linux packages (${{ matrix.distro }})
+    runs-on: warp-ubuntu-latest-x64-8x
+    container: ${{ matrix.image }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: debian
+            image: debian:12
+          - distro: fedora
+            image: fedora:41
+          - distro: arch
+            image: archlinux:latest
+
+    steps:
+      # git/curl must land BEFORE actions/checkout runs inside the
+      # container.
+      - name: Install git and fetch tools
+        run: |
+          case "${{ matrix.distro }}" in
+            debian) apt-get update && apt-get install -y git curl ;;
+            fedora) dnf install -y git curl ;;
+            arch) pacman -Sy --noconfirm git curl ;;
+          esac
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install system dependencies
+        run: |
+          case "${{ matrix.distro }}" in
+            debian)
+              apt-get install -y \
+                build-essential cmake pkg-config nasm dpkg-dev \
+                libpipewire-0.3-dev libspa-0.2-dev libjack-jackd2-dev \
+                libasound2-dev libpulse-dev libsndfile1-dev \
+                libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
+                libvulkan-dev libxkbcommon-dev libxkbcommon-x11-dev \
+                librsvg2-bin
+              ;;
+            fedora)
+              dnf install -y \
+                gcc gcc-c++ cmake pkgconf-pkg-config nasm \
+                pipewire-devel jack-audio-connection-kit-devel \
+                alsa-lib-devel pulseaudio-libs-devel libsndfile-devel \
+                mesa-libGL-devel mesa-vulkan-drivers \
+                vulkan-headers vulkan-loader-devel \
+                libxkbcommon-devel libxkbcommon-x11-devel \
+                rpm-build librsvg2-tools
+              ;;
+            arch)
+              pacman -S --needed --noconfirm \
+                base-devel cmake pkgconf nasm \
+                pipewire jack2 alsa-lib libpulse libsndfile \
+                mesa vulkan-headers vulkan-icd-loader \
+                libxkbcommon libxkbcommon-x11 librsvg
+              ;;
+          esac
+
+      - name: Configure build environment
+        run: |
+          # OCIO builds from the ocio-sys vendored source (static) on
+          # Linux; the distro packages are too old for the bridge.
+          echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
+          echo "OCIO_RS_LINK=static" >> "$GITHUB_ENV"
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: oak-${{ matrix.distro }}
+
+      - name: Cache project FFmpeg
+        uses: actions/cache@v4
+        with:
+          path: .cache/ffmpeg
+          key: ffmpeg-${{ matrix.distro }}-${{ hashFiles('tooling/ffmpeg/build-ffmpeg.sh') }}
+
+      - name: Build project FFmpeg (static, GPL + free codecs + hwaccel)
+        run: tooling/ffmpeg/build-ffmpeg.sh
+
+      - name: Build (release)
+        run: cargo build --release --locked
+
+      - name: Generate app icon (PNG from Oak_Icon.svg)
+        run: rsvg-convert -w 512 -h 512 Oak_Icon.svg -o icons/icon.png
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ "$VERSION" = "$GITHUB_REF_NAME" ]; then
+            VERSION="$(cargo pkgid | sed 's/.*#//' | cut -d@ -f2-)+git"
+          fi
+          case "${{ matrix.distro }}" in
+            debian) tooling/package/build-deb.sh "$VERSION" ;;
+            fedora) tooling/package/build-rpm.sh "$VERSION" ;;
+            arch)   tooling/package/build-pkg.sh "$VERSION" ;;
+          esac
+        shell: bash
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: oak-linux-${{ matrix.distro }}
+          path: |
+            target/release/*.deb
+            target/release/*.rpm
+            target/release/*.pkg.tar.zst
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------
+  # AppImage (self-contained; cargo-packager on the Ubuntu runner).
+  # ------------------------------------------------------------------
+  appimage:
+    name: Linux AppImage
     runs-on: warp-ubuntu-latest-x64-8x
 
     steps:
@@ -32,41 +160,31 @@ jobs:
       - name: Install system dependencies
         run: |
           tooling/install-deps.sh
-          # cmake/make for the vendored OpenColorIO build (ocio-sys
-          # `bundled`; Ubuntu's libopencolorio-dev is older than the
-          # bridge's API floor) + rsvg-convert for the app icon
-          # (cargo-packager needs PNG/icns/ico, the repo only has
-          # Oak_Icon.svg).
           sudo apt-get install -y \
-            cmake \
+            cmake librsvg2-bin \
             libpipewire-0.3-dev libspa-0.2-dev libjack-jackd2-dev \
             libasound2-dev libpulse-dev libsndfile1-dev \
-            librsvg2-bin \
             libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
-            libvulkan-dev libxkbcommon-dev
+            libvulkan-dev libxkbcommon-dev libxkbcommon-x11-dev
 
       - name: Configure build environment
         run: |
-          # No OCIO_INSTALL_DIR on purpose: the vendored OpenColorIO is
-          # built from source (see ci.yml).
           echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
           echo "OCIO_RS_LINK=static" >> "$GITHUB_ENV"
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
         with:
-          shared-key: oak-workspace
+          shared-key: oak-appimage
 
       - name: Cache project FFmpeg
         uses: actions/cache@v4
         with:
           path: .cache/ffmpeg
-          key: ffmpeg-${{ runner.os }}-${{ hashFiles('tooling/ffmpeg/build-ffmpeg.sh') }}
+          key: ffmpeg-appimage-${{ hashFiles('tooling/ffmpeg/build-ffmpeg.sh') }}
 
       - name: Build project FFmpeg (static, GPL + free codecs + hwaccel)
-        run: |
-          tooling/ffmpeg/build-ffmpeg.sh
-          echo "FFMPEG_DIR=$PWD/.cache/ffmpeg" >> "$GITHUB_ENV"
+        run: tooling/ffmpeg/build-ffmpeg.sh
 
       - name: Install cargo-packager
         run: cargo install cargo-packager --locked
@@ -74,87 +192,22 @@ jobs:
       - name: Generate app icon (PNG from Oak_Icon.svg)
         run: |
           mkdir -p icons
-          # cargo-packager's tauri-icns 0.1.0 maps only 512x512@1x (and
-          # 1024x1024@2x); a plain 1024x1024 PNG aborts with "No matching
-          # IconType", so render 512x512.
           rsvg-convert -w 512 -h 512 Oak_Icon.svg -o icons/icon.png
           file icons/icon.png
 
-      # Build the packaged binaries (default members: the app, oak-cli, oak-worker).
       - name: Build (release)
         run: cargo build --release --locked
 
-      # Runtime-dependency audit: everything media-related (FFmpeg, OCIO)
-      # is statically linked, so the NEEDED list should contain only
-      # base-OS libraries (glibc, X11, ALSA/PipeWire, Vulkan) — names that
-      # are stable across Debian/openKylin (no distro-specific package
-      # names leak into the deb's dependency surface).
-      - name: Audit runtime dependencies
-        run: |
-          for bin in target/release/oak-editor target/release/oak-cli target/release/oak-worker; do
-            echo "== $bin"
-            objdump -p "$bin" | grep NEEDED || true
-          done
+      - name: Package (AppImage)
+        run: cargo packager --release --formats appimage
 
-      # Declare the FULL runtime dependency set on the deb. dpkg-shlibdeps
-      # resolves every NEEDED entry of every shipped binary to the exact
-      # package names of the build distro (FFmpeg/OCIO are statically
-      # linked, so only base-OS packages appear); an empty Depends is not
-      # self-containment, it just hides the requirements. Distros whose
-      # package names differ (openKylin) get their own build so the names
-      # always resolve.
-      - name: Declare full dependencies on the deb
-        run: |
-          set -euo pipefail
-          deps=$(for bin in target/release/oak-editor target/release/oak-cli target/release/oak-worker; do
-            dpkg-shlibdeps -O "$bin"
-          done | sed 's/^shlibs:Depends=//' | tr ',' '\n' | sed 's/^ //;s/ $//' | sort -u | paste -sd', ' -)
-          echo "declared deps: $deps"
-          for deb in target/release/*.deb; do
-            rm -rf .deb-repack && mkdir .deb-repack
-            dpkg-deb -R "$deb" .deb-repack
-            if grep -q '^Depends:' .deb-repack/DEBIAN/control; then
-              sed -i "s|^Depends:.*|Depends: $deps|" .deb-repack/DEBIAN/control
-            else
-              sed -i "1i Depends: $deps" .deb-repack/DEBIAN/control
-            fi
-            dpkg-deb -b .deb-repack "$deb"
-            rm -rf .deb-repack
-          done
-
-
-      - name: Package (deb, AppImage, pacman)
-        run: cargo packager --release --formats deb,appimage,pacman
-
-      # cargo-packager has no rpm format; convert the deb with fpm. The gem
-      # bin dir may not be on PATH for the system ruby, so call fpm by path.
-      - name: Package (rpm, via fpm)
-        run: |
-          sudo apt-get install -y ruby ruby-dev rpm
-          sudo gem install --no-document fpm
-          sudo "$(sudo gem env gemdir)/bin/fpm" -s deb -t rpm --name oak-editor \
-            --version "$(cargo pkgid | sed 's/.*#//' | cut -d@ -f2-)" \
-            target/release/*.deb
-          mv ./*.rpm target/release/
-
-      - name: Upload artifacts
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: oak-linux
-          path: |
-            target/release/*.deb
-            target/release/*.rpm
-            target/release/*.AppImage
-            target/release/*.tar.gz
-            target/release/PKGBUILD
+          name: oak-linux-appimage
+          path: target/release/*.AppImage
           if-no-files-found: error
 
-  # ------------------------------------------------------------------
-  # macOS: Apple Silicon only. The app/CLI/worker call the module rlibs
-  # directly (oakengine is retired), so the .app bundle carries no dylib
-  # to fold in; package it with cargo-packager and create the DMG with
-  # hdiutil.
-  # ------------------------------------------------------------------
   macos:
     name: macOS DMG (Apple Silicon)
     runs-on: warp-macos-15-arm64-6x
@@ -337,7 +390,7 @@ jobs:
   # ------------------------------------------------------------------
   release:
     name: Publish GitHub release
-    needs: [linux, macos, windows]
+    needs: [linux, appimage, macos, windows]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: warp-ubuntu-latest-x64-8x
     steps:
@@ -354,3 +407,4 @@ jobs:
           name: ${{ github.ref_name }}
           draft: false
           files: artifacts/*
+

@@ -1,0 +1,40 @@
+# Oak Video Editor - Non-Linear Video Editor
+# Copyright (C) 2026 Oak Team
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# Arch package build. The release binaries are built by the caller
+# (tooling/package/build-pkg.sh) before makepkg runs; depends lists the
+# base-OS packages the binaries link (FFmpeg/OCIO are statically linked).
+pkgname=oak-editor
+pkgver=@VERSION@
+pkgrel=1
+pkgdesc="Oak Video Editor — a free, open-source non-linear video editor"
+arch=('x86_64')
+url="https://github.com/OakVideoEditorCommunity/oak"
+license=('GPL-3.0-or-later')
+depends=('glibc' 'gcc-libs' 'alsa-lib' 'libpipewire' 'libx11' 'libxcb'
+         'libxkbcommon' 'libxkbcommon-x11' 'libglvnd' 'vulkan-icd-loader'
+         'fontconfig' 'freetype2')
+
+package() {
+    install -Dm755 "$OAK_BIN/oak-editor" "$pkgdir/usr/bin/oak-editor"
+    install -Dm755 "$OAK_BIN/oak-cli" "$pkgdir/usr/bin/oak-cli"
+    install -Dm755 "$OAK_BIN/oak-worker" "$pkgdir/usr/bin/oak-worker"
+    install -Dm644 "$OAK_ROOT/packaging/oak.desktop" "$pkgdir/usr/share/applications/oak.desktop"
+    install -Dm644 "$OAK_ROOT/icons/icon.png" "$pkgdir/usr/share/icons/hicolor/512x512/apps/oak.png"
+    for f in "$OAK_ROOT"/assets/i18n/*.yaml; do
+        install -Dm644 "$f" "$pkgdir/usr/share/oak/i18n/$(basename "$f")"
+    done
+}
