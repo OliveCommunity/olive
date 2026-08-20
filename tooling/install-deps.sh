@@ -41,6 +41,7 @@ if [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* || -n "${MSYSTEM:-}" ]]; then
 	# --needed makes each retry resume where the last one stopped.
 	for attempt in 1 2 3; do
 		if run pacman -S --needed --noconfirm \
+			make diffutils \
 			mingw-w64-ucrt-x86_64-toolchain mingw-w64-ucrt-x86_64-pkgconf \
 			mingw-w64-ucrt-x86_64-nasm \
 			mingw-w64-ucrt-x86_64-x264 mingw-w64-ucrt-x86_64-x265 \

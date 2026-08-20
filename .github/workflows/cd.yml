@@ -32,22 +32,22 @@ jobs:
       - name: Install system dependencies
         run: |
           tooling/install-deps.sh
-          # Real OpenColorIO (ocio-sys real bridge) + rsvg-convert for the
-          # app icon (cargo-packager needs PNG/icns/ico, the repo only has
+          # cmake/make for the vendored OpenColorIO build (ocio-sys
+          # `bundled`; Ubuntu's libopencolorio-dev is older than the
+          # bridge's API floor) + rsvg-convert for the app icon
+          # (cargo-packager needs PNG/icns/ico, the repo only has
           # Oak_Icon.svg).
           sudo apt-get install -y \
-            libopencolorio-dev \
+            cmake \
             librsvg2-bin \
             libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
             libvulkan-dev libxkbcommon-dev
 
       - name: Configure build environment
         run: |
-          {
-            echo "OCIO_RS_ENABLE_REAL=1"
-            echo "OCIO_INSTALL_DIR=/usr"
-            echo "OCIO_RS_LINK=dynamic"
-          } >> "$GITHUB_ENV"
+          # No OCIO_INSTALL_DIR on purpose: the vendored OpenColorIO is
+          # built from source (see ci.yml).
+          echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
@@ -129,14 +129,14 @@ jobs:
       - name: Install system dependencies
         run: |
           tooling/install-deps.sh
-          brew install opencolorio librsvg
+          brew install cmake librsvg
 
       - name: Configure build environment
         run: |
           {
+            # OCIO comes from the ocio-sys vendored source build (same on
+            # every platform); no OCIO_INSTALL_DIR override.
             echo "OCIO_RS_ENABLE_REAL=1"
-            echo "OCIO_INSTALL_DIR=/opt/homebrew/opt/opencolorio"
-            echo "OCIO_RS_LINK=dynamic"
             echo "CFLAGS=-I/opt/homebrew/include"
             echo "LDFLAGS=-L/opt/homebrew/lib"
             echo "PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig/openjpeg"
@@ -229,14 +229,14 @@ jobs:
         run: |
           bash tooling/install-deps.sh
           pacman -S --needed --noconfirm \
-            mingw-w64-ucrt-x86_64-opencolorio \
+            mingw-w64-ucrt-x86_64-cmake \
             mingw-w64-ucrt-x86_64-librsvg
 
       - name: Configure build environment
         run: |
+          # OCIO comes from the ocio-sys vendored source build (same on
+          # every platform); no OCIO_INSTALL_DIR override.
           echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
-          echo "OCIO_INSTALL_DIR=/ucrt64" >> "$GITHUB_ENV"
-          echo "OCIO_RS_LINK=dynamic" >> "$GITHUB_ENV"
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2

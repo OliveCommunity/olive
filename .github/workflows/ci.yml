@@ -47,10 +47,12 @@ jobs:
           # Codec/filter libraries for the ffmpeg-sys-next build feature
           # (see tooling/install-deps.sh).
           tooling/install-deps.sh
-          # Real OpenColorIO (ocio-sys real bridge) plus the headless test
-          # infra gpui needs: X11, software Mesa Vulkan (lavapipe) and xvfb.
+          # cmake/make for the vendored OpenColorIO build (ocio-sys
+          # `bundled`; Ubuntu's libopencolorio-dev is 2.1, older than the
+          # bridge's API floor) plus the headless test infra gpui needs:
+          # X11, software Mesa Vulkan (lavapipe) and xvfb.
           sudo apt-get install -y \
-            libopencolorio-dev \
+            cmake \
             libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
             libvulkan-dev libxkbcommon-dev xvfb
 
@@ -58,7 +60,7 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           tooling/install-deps.sh
-          brew install opencolorio
+          brew install cmake
 
       - name: Setup MSYS2 (Windows)
         if: runner.os == 'Windows'
@@ -75,7 +77,7 @@ jobs:
         shell: msys2 {0}
         run: |
           bash tooling/install-deps.sh
-          pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-opencolorio
+          pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-cmake
 
       # ------------------------------------------------------------------
       # Build environment
@@ -83,19 +85,20 @@ jobs:
       # ocio-sys builds a stub bridge unless these are set; the oakcommon
       # ocioutils tests need the real library (see crates/oakcommon/.cargo/
       # config.toml, which only applies to builds run from that directory).
+      # ocio-sys builds its vendored OpenColorIO from source on Linux (the
+      # `bundled` feature; the distro package is too old for the bridge),
+      # so no OCIO_INSTALL_DIR here. macOS/Windows keep the system library.
       - name: Configure build environment (Linux)
         if: runner.os == 'Linux'
         run: |
           echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
-          echo "OCIO_INSTALL_DIR=/usr" >> "$GITHUB_ENV"
-          echo "OCIO_RS_LINK=dynamic" >> "$GITHUB_ENV"
 
       - name: Configure build environment (macOS)
         if: runner.os == 'macOS'
         run: |
+          # OCIO comes from the ocio-sys vendored source build (same on
+          # every platform); no OCIO_INSTALL_DIR override.
           echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
-          echo "OCIO_INSTALL_DIR=/opt/homebrew/opt/opencolorio" >> "$GITHUB_ENV"
-          echo "OCIO_RS_LINK=dynamic" >> "$GITHUB_ENV"
           # Homebrew quirks: lame.pc / snappy / libopenjp2.pc live off the
           # default pkg-config search paths (see docs/build.md).
           echo "CFLAGS=-I/opt/homebrew/include" >> "$GITHUB_ENV"
@@ -106,9 +109,9 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
+          # OCIO comes from the ocio-sys vendored source build (same on
+          # every platform); no OCIO_INSTALL_DIR override.
           echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
-          echo "OCIO_INSTALL_DIR=/ucrt64" >> "$GITHUB_ENV"
-          echo "OCIO_RS_LINK=dynamic" >> "$GITHUB_ENV"
 
       # ------------------------------------------------------------------
       # Caches

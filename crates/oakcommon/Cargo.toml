@@ -26,8 +26,11 @@ toml = "0.8"
 # OpenColorIO bindings (crates.io `ocio-rs`, BSD-3-Clause). ocioutils.rs maps
 # PixelFormat to the real `ocio_rs::BitDepth` enum and wraps
 # `ocio_rs::Config`/`CPUProcessor` for config loading and RGBA transforms.
-# Rationale registered in README.md.
-ocio-rs = "0.2.1"
+# Rationale registered in README.md. The `bundled` feature builds the vendored
+# OpenColorIO from source — all platforms build the SAME OCIO version (distro
+# packages are too old for the bridge's API floor, e.g. Ubuntu 24.04's 2.1).
+# An explicit OCIO_INSTALL_DIR still wins over the vendored build when set.
+ocio-rs = { version = "0.2.1", features = ["bundled"] }
 # Pure-Rust image I/O (crates.io `image`, MIT OR Apache-2.0); default features
 # off, TIFF enabled — the only format current callers need. oiioutils.rs
 # derives per-channel bit depths from its color-type tables and does float
