@@ -84,6 +84,18 @@ jobs:
       - name: Build (release)
         run: cargo build --release --locked
 
+      # Runtime-dependency audit: everything media-related (FFmpeg, OCIO)
+      # is statically linked, so the NEEDED list should contain only
+      # base-OS libraries (glibc, X11, ALSA/PipeWire, Vulkan) — names that
+      # are stable across Debian/openKylin (no distro-specific package
+      # names leak into the deb's dependency surface).
+      - name: Audit runtime dependencies
+        run: |
+          for bin in target/release/oak-editor target/release/oak-cli target/release/oak-worker; do
+            echo "== $bin"
+            objdump -p "$bin" | grep NEEDED || true
+          done
+
       - name: Package (deb, AppImage, pacman)
         run: cargo packager --release --formats deb,appimage,pacman
 
