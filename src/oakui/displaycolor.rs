@@ -99,7 +99,12 @@ fn current() -> Option<State> {
 	}
 	// The key changed: everything rendered with the old transform is
 	// stale — bump the generation so frame caches drop their contents.
-	GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+	// The FIRST build (no prior state) must not bump: no frame can be
+	// staler than a transform that did not exist yet, and a spurious
+	// bump would drop the frames being cached right now.
+	if guard.is_some() {
+		GENERATION.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+	}
 	let (mode, icc_path, space) = &key;
 	if mode != "icc" {
 		let state = State {
