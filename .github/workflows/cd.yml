@@ -77,10 +77,7 @@ jobs:
           rsvg-convert -w 512 -h 512 Oak_Icon.svg -o icons/icon.png
           file icons/icon.png
 
-      # Build the packaged binaries (default members: the app, oak-cli,
-      # oak-worker). oakengine is a workspace member but NOT a default
-      # member (M14 R4: pure cdylib for plugins/external consumers — no
-      # packaged binary links it), so it is not built here.
+      # Build the packaged binaries (default members: the app, oak-cli, oak-worker).
       - name: Build (release)
         run: cargo build --release --locked
 

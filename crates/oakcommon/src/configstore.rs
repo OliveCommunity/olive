@@ -21,7 +21,9 @@
 //! refcounted handle (same precedent as `OakCurrent`). Keys are typed
 //! (string / int64 / double / bool); typed getters return a caller-supplied
 //! fallback when the key is absent or of a different type. Persistence is
-//! an INI file at `<config_location>/config.ini`.
+//! a TOML file at `<config_location>/config.toml`; a legacy
+//! `<config_location>/config.ini` (written by old C++/Rust builds) is
+//! read once for migration and left in place.
 
 use std::collections::{BTreeMap, HashMap};
 use std::ffi::{c_char, c_void, CString};
@@ -93,19 +95,22 @@ impl ConfigStore {
 		})
 	}
 
-	/// Reset to compiled-in defaults and load `config.ini` (a missing file
-	/// is not an error). Mirrors `ConfigStore::load()` (`configstore.cpp:239`).
+	/// Reset to compiled-in defaults and load `config.toml`, falling back to
+	/// the legacy `config.ini` for migration when no TOML file exists yet (a
+	/// missing config is not an error). Mirrors `ConfigStore::load()`
+	/// (`configstore.cpp:239`).
 	pub fn load(&self) -> Result<()> {
 		self.set_defaults();
 
-		let path = get_config_file_path();
+		let toml_path = get_config_file_path();
 
-		let metadata = std::fs::metadata(&path);
-		let metadata = match metadata {
+		let metadata = match std::fs::metadata(&toml_path) {
 			Ok(m) => m,
 			Err(_) => {
-				// No saved settings yet: defaults are fine, not an error.
-				return Ok(());
+				// No `config.toml` yet: either this is a fresh install
+				// (defaults are fine, not an error) or an old `config.ini`
+				// remains to be migrated.
+				return self.load_legacy_ini();
 			}
 		};
 
@@ -117,12 +122,56 @@ impl ConfigStore {
 				"Error loading settings",
 				"Failed to load application settings. This session will use defaults.",
 			);
+			return Err(Error::Failed("config.toml is not a regular file".into()));
+		}
+
+		let content = std::fs::read_to_string(&toml_path).map_err(|_| {
+			self.report_error(
+				"Error loading settings",
+				"Failed to load application settings. This session will use defaults.",
+			);
+			Error::Failed("config.toml could not be read".into())
+		})?;
+
+		// A corrupt TOML file is reported and surfaced, not silently ignored:
+		// ignoring it would wipe the user's settings on the next save().
+		let parsed: toml::Value = toml::from_str(&content).map_err(|e| {
+			self.report_error(
+				"Error loading settings",
+				"Failed to load application settings. This session will use defaults.",
+			);
+			Error::Failed(format!("config.toml could not be parsed: {}", e))
+		})?;
+
+		self.apply_toml(&parsed);
+		Ok(())
+	}
+
+	/// Legacy migration path: read an old `config.ini` (written by the C++
+	/// or pre-TOML Rust builds) with the INI parser, then immediately persist
+	/// the loaded values as `config.toml` so the next startup reads TOML. The
+	/// INI file is deliberately left in place. A missing INI is not an error.
+	fn load_legacy_ini(&self) -> Result<()> {
+		let path = get_config_ini_path();
+
+		let metadata = match std::fs::metadata(&path) {
+			Ok(m) => m,
+			Err(_) => {
+				// No saved settings at all: defaults are fine, not an error.
+				return Ok(());
+			}
+		};
+
+		// CPP-PARITY: a directory at the config path is an error (see load()).
+		if !metadata.is_file() {
+			self.report_error(
+				"Error loading settings",
+				"Failed to load application settings. This session will use defaults.",
+			);
 			return Err(Error::Failed("config.ini is not a regular file".into()));
 		}
 
-		// CPP-PARITY: the C++ reads raw bytes via ifstream. A UTF-8 error in
-		// the file is mapped to the same "unreadable file" failure; config
-		// files are ASCII/UTF-8 in practice.
+		// CPP-PARITY: invalid UTF-8 maps to the same "unreadable file" failure.
 		let content = std::fs::read_to_string(&path).map_err(|_| {
 			self.report_error(
 				"Error loading settings",
@@ -131,6 +180,19 @@ impl ConfigStore {
 			Error::Failed("config.ini could not be read".into())
 		})?;
 
+		self.parse_ini(&content);
+
+		// Write the migrated values as TOML now. A failed write is reported by
+		// save() but does not fail load(): the values are already in memory,
+		// and the migration is retried on the next startup.
+		let _ = self.save();
+
+		Ok(())
+	}
+
+	/// Parse legacy INI text into the store (QSettings-style lax parsing).
+	/// Kept solely for the migration path in `load_legacy_ini`.
+	fn parse_ini(&self, content: &str) {
 		let mut group = String::new();
 		for raw_line in content.lines() {
 			let line = trim(raw_line);
@@ -178,23 +240,70 @@ impl ConfigStore {
 				}
 			}
 		}
-
-		Ok(())
 	}
 
-	/// Write the current store to `config.ini` via temp file + rename.
+	/// Apply parsed TOML to the store. Top-level keys become flat entries;
+	/// `[group]` tables (including nested dotted tables) flatten back to
+	/// `group/sub` keys. Known keys keep their declared type; unknown keys are
+	/// stored as strings — the same semantics as the INI loader.
+	fn apply_toml(&self, parsed: &toml::Value) {
+		if let Some(table) = parsed.as_table() {
+			self.flatten_toml("", table);
+		}
+	}
+
+	/// Flatten a TOML table into `prefix`-joined store keys.
+	fn flatten_toml(&self, prefix: &str, table: &toml::map::Map<String, toml::Value>) {
+		for (key, value) in table {
+			let full_key = if prefix.is_empty() {
+				key.clone()
+			} else {
+				format!("{}/{}", prefix, key)
+			};
+			match value.as_table() {
+				Some(sub) => self.flatten_toml(&full_key, sub),
+				None => self.apply_toml_entry(&full_key, value),
+			}
+		}
+	}
+
+	/// Apply a single (already flattened) key/value to the store.
+	fn apply_toml_entry(&self, full_key: &str, value: &toml::Value) {
+		match self.get_entry(full_key) {
+			Some(existing) => {
+				// Known key: honor its declared type. An unconvertible value
+				// keeps the default.
+				let ty = to_entry_type(&existing);
+				if let Some(converted) = toml_value_to_typed(value, ty) {
+					self.set_entry(full_key.to_string(), converted);
+				}
+			}
+			None => {
+				// Unknown key: stored as a string.
+				self.set_entry(
+					full_key.to_string(),
+					ConfigValue::String(toml_value_to_string(value)),
+				);
+			}
+		}
+	}
+
+	/// Write the current store to `config.toml` via temp file + rename.
 	/// Mirrors `ConfigStore::save()` (`configstore.cpp:316`).
 	pub fn save(&self) -> Result<()> {
 		let real_filename = get_config_file_path();
 		let temp_filename = format!("{}.tmp", real_filename);
 
-		// Flat keys are written at the top level; keys containing '/' become
-		// [group] sections (group = everything before the last '/'), keeping
-		// the QSettings INI key shape.
-		let mut sections: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+		// Flat keys are written as top-level TOML keys; keys containing '/'
+		// become `[group]` tables (group = everything before the last '/'),
+		// keeping the QSettings INI key shape. Values are written as native
+		// TOML int/float/bool/string; non-finite doubles have no TOML literal
+		// and are written as strings, which load() restores by declared type.
+		let mut sections: BTreeMap<String, BTreeMap<String, toml::Value>> = BTreeMap::new();
 		{
 			let guard = self.entries.lock().unwrap();
 			for (key, value) in guard.iter() {
+				let toml_value = config_value_to_toml(value);
 				match key.rfind('/') {
 					Some(slash) => {
 						let group = key[..slash].to_string();
@@ -202,34 +311,35 @@ impl ConfigStore {
 						sections
 							.entry(group)
 							.or_default()
-							.insert(sub, value_to_string(value));
+							.insert(sub, toml_value);
 					}
 					None => {
 						sections
 							.entry(String::new())
 							.or_default()
-							.insert(key.clone(), value_to_string(value));
+							.insert(key.clone(), toml_value);
 					}
 				}
 			}
 		}
 
-		let mut out = String::new();
-		if let Some(flat) = sections.get("") {
+		let mut root: toml::map::Map<String, toml::Value> = toml::map::Map::new();
+		if let Some(flat) = sections.remove("") {
 			for (sub, value) in flat {
-				out.push_str(&format!("{}={}\n", sub, value));
+				root.insert(sub, value);
 			}
 		}
-		for (group, subs) in sections.iter() {
-			if group.is_empty() {
-				continue;
-			}
-			out.push('\n');
-			out.push_str(&format!("[{}]\n", group));
-			for (sub, value) in subs {
-				out.push_str(&format!("{}={}\n", sub, value));
-			}
+		for (group, subs) in sections {
+			root.insert(group, toml::Value::Table(subs.into_iter().collect()));
 		}
+
+		let out = toml::to_string_pretty(&toml::Value::Table(root)).map_err(|e| {
+			self.report_error(
+				"Error saving settings",
+				"Failed to serialize application settings as TOML.",
+			);
+			Error::Failed(format!("config.toml could not be serialized: {}", e))
+		})?;
 
 		if std::fs::write(&temp_filename, out.as_bytes()).is_err() {
 			self.report_error(
@@ -245,15 +355,15 @@ impl ConfigStore {
 		// CPP-PARITY: rename temp -> real; on POSIX this overwrites
 		// atomically, so the remove+retry fallback only matters on Windows,
 		// mirrored for behavioral parity (`configstore.cpp:378-390`).
-		if let Err(_) = std::fs::rename(&temp_filename, &real_filename) {
+		if std::fs::rename(&temp_filename, &real_filename).is_err() {
 			let _ = std::fs::remove_file(&real_filename);
-			if let Err(_) = std::fs::rename(&temp_filename, &real_filename) {
+			if std::fs::rename(&temp_filename, &real_filename).is_err() {
 				self.report_error(
 					"Error saving settings",
 					"Failed to overwrite the application settings file.",
 				);
 				return Err(Error::Failed(
-					"config.ini could not be renamed into place".into(),
+					"config.toml could not be renamed into place".into(),
 				));
 			}
 		}
@@ -518,7 +628,7 @@ pub(crate) fn join_key(group: Option<&str>, key: &str) -> String {
 	}
 }
 
-/// Serializes a value for the INI file / string getter. Mirrors
+/// Serializes a value for the string getter. Mirrors
 /// `ConfigStore::value_to_string` (`configstore.cpp:154`).
 fn value_to_string(value: &ConfigValue) -> String {
 	match value {
@@ -532,6 +642,65 @@ fn value_to_string(value: &ConfigValue) -> String {
 				"false".to_string()
 			}
 		}
+	}
+}
+
+/// Converts a stored value to its TOML representation. Non-finite doubles
+/// have no TOML literal, so they are written as strings ("nan"/"inf"/"-inf")
+/// and restored by `toml_value_to_typed` via the declared-type string
+/// conversion.
+fn config_value_to_toml(value: &ConfigValue) -> toml::Value {
+	match value {
+		ConfigValue::String(s) => toml::Value::String(s.clone()),
+		ConfigValue::Int(i) => toml::Value::Integer(*i),
+		ConfigValue::Double(d) if d.is_finite() => toml::Value::Float(*d),
+		ConfigValue::Double(_) => toml::Value::String(value_to_string(value)),
+		ConfigValue::Bool(b) => toml::Value::Boolean(*b),
+	}
+}
+
+/// Converts a TOML value to the declared entry type, mirroring the INI
+/// loader's known-key conversion: a value whose TOML type does not match the
+/// declared type is parsed from its textual form (so `"640"` still loads an
+/// Int key), and an unparseable value keeps the default.
+fn toml_value_to_typed(value: &toml::Value, ty: EntryType) -> Option<ConfigValue> {
+	match ty {
+		EntryType::Int => match value {
+			toml::Value::Integer(i) => Some(ConfigValue::Int(*i)),
+			_ => string_to_value(&toml_value_to_text(value), EntryType::Int),
+		},
+		EntryType::Double => match value {
+			toml::Value::Float(f) => Some(ConfigValue::Double(*f)),
+			_ => string_to_value(&toml_value_to_text(value), EntryType::Double),
+		},
+		EntryType::Bool => match value {
+			toml::Value::Boolean(b) => Some(ConfigValue::Bool(*b)),
+			_ => string_to_value(&toml_value_to_text(value), EntryType::Bool),
+		},
+		EntryType::String => Some(ConfigValue::String(toml_value_to_text(value))),
+		EntryType::None => None,
+	}
+}
+
+/// The textual form of a TOML value, used for declared-type coercion and
+/// known String keys: the raw string for strings, the TOML literal otherwise.
+fn toml_value_to_text(value: &toml::Value) -> String {
+	match value {
+		toml::Value::String(s) => s.clone(),
+		_ => value.to_string(),
+	}
+}
+
+/// The INI-parity string form for an unknown key read from TOML: matches what
+/// the legacy INI writer would have persisted for the same value, so unknown
+/// keys behave identically across formats.
+fn toml_value_to_string(value: &toml::Value) -> String {
+	match value {
+		toml::Value::String(s) => s.clone(),
+		toml::Value::Integer(i) => i.to_string(),
+		toml::Value::Boolean(b) => b.to_string(),
+		toml::Value::Float(f) => format_g(*f),
+		_ => value.to_string(),
 	}
 }
 
@@ -612,8 +781,14 @@ fn configuration_location() -> String {
 		.unwrap_or_else(|_| std::env::temp_dir().to_string_lossy().into_owned())
 }
 
-/// `<config_location>/config.ini`.
+/// `<config_location>/config.toml`.
 fn get_config_file_path() -> String {
+	format!("{}/config.toml", configuration_location())
+}
+
+/// `<config_location>/config.ini` — the legacy format, read once for
+/// migration when no `config.toml` exists yet.
+fn get_config_ini_path() -> String {
 	format!("{}/config.ini", configuration_location())
 }
 
@@ -926,14 +1101,15 @@ mod tests {
 		assert_eq!(s.get_int(Some(""), "flatkey", 0), 7);
 	}
 
-	// ---- INI persistence -------------------------------------------------
+	// ---- TOML persistence --------------------------------------------------
 
 	#[test]
 	fn test_load_missing_file() {
 		with_temp_config(|_dir| {
 			let s = ConfigStore::instance();
 			s.reset_defaults().unwrap();
-			// Missing file is not an error; defaults remain.
+			// Missing file (no config.toml, no config.ini) is not an error;
+			// defaults remain.
 			s.load().unwrap();
 			assert_eq!(s.get_int(None, "DefaultSequenceWidth", -1), 1920);
 		});
@@ -973,31 +1149,45 @@ mod tests {
 	}
 
 	#[test]
-	fn test_save_ini_format() {
+	fn test_save_toml_format() {
 		with_temp_config(|dir| {
 			let s = ConfigStore::instance();
 			s.reset_defaults().unwrap();
 			s.set_int(None, "FlatKey", 1);
+			s.set(None, "StrKey", "hello");
+			s.set_double(None, "DblKey", 2.5);
+			s.set_bool(None, "BoolKey", 1);
 			s.set_int(Some("alpha"), "x", 2);
 			s.set_int(Some("beta"), "y", 3);
 			s.save().unwrap();
 
-			let content = std::fs::read_to_string(dir.join("config.ini")).unwrap();
-			assert!(content.contains("FlatKey=1"));
-			assert!(content.contains("[alpha]\nx=2"));
-			assert!(content.contains("[beta]\ny=3"));
+			let content = std::fs::read_to_string(dir.join("config.toml")).unwrap();
+			// Native TOML types: ints/bools/floats unquoted, strings quoted.
+			assert!(content.contains("FlatKey = 1"), "content: {}", content);
+			assert!(content.contains("StrKey = \"hello\""), "content: {}", content);
+			assert!(content.contains("DblKey = 2.5"), "content: {}", content);
+			assert!(content.contains("BoolKey = true"), "content: {}", content);
+			// Grouped keys land in [group] tables.
+			assert!(content.contains("[alpha]"), "content: {}", content);
+			assert!(content.contains("x = 2"), "content: {}", content);
+			assert!(content.contains("[beta]"), "content: {}", content);
+			assert!(content.contains("y = 3"), "content: {}", content);
 			// Flat keys are written before any section header.
-			let flat_pos = content.find("FlatKey=1").unwrap();
+			let flat_pos = content.find("FlatKey = 1").unwrap();
 			let alpha_pos = content.find("[alpha]").unwrap();
 			assert!(flat_pos < alpha_pos);
 			// The temp file is renamed away and does not linger.
-			assert!(!dir.join("config.ini.tmp").exists());
+			assert!(!dir.join("config.toml.tmp").exists());
+			// save() writes TOML only; no legacy INI is produced.
+			assert!(!dir.join("config.ini").exists());
 		});
 	}
 
 	#[test]
-	fn test_load_parses_types_and_skips_lines() {
+	fn test_migrate_ini_parses_types_and_skips_lines() {
 		with_temp_config(|dir| {
+			// A legacy config.ini with no config.toml: load() reads it via the
+			// migration path.
 			let ini = "\
 # comment
 ; another comment
@@ -1016,11 +1206,13 @@ UnknownTypedThing=hello
 				s.get(Some("section"), "UnknownTypedThing").unwrap(),
 				"hello"
 			);
+			// The migration immediately persisted a config.toml.
+			assert!(dir.join("config.toml").is_file());
 		});
 	}
 
 	#[test]
-	fn test_load_unparseable_keeps_default() {
+	fn test_migrate_ini_unparseable_keeps_default() {
 		with_temp_config(|dir| {
 			std::fs::write(dir.join("config.ini"), "DefaultSequenceWidth=notanumber\n").unwrap();
 			let s = ConfigStore::instance();
@@ -1031,13 +1223,109 @@ UnknownTypedThing=hello
 	}
 
 	#[test]
-	fn test_load_trims_values() {
+	fn test_migrate_ini_trims_values() {
 		with_temp_config(|dir| {
-			// load() trims " \t\r\n" around keys and values.
+			// parse_ini trims " \t\r\n" around keys and values.
 			std::fs::write(dir.join("config.ini"), "  DefaultSequenceWidth = 320  \n").unwrap();
 			let s = ConfigStore::instance();
 			s.load().unwrap();
 			assert_eq!(s.get_int(None, "DefaultSequenceWidth", -1), 320);
+		});
+	}
+
+	#[test]
+	fn test_toml_roundtrip_all_types() {
+		with_temp_config(|dir| {
+			let s = ConfigStore::instance();
+			s.reset_defaults().unwrap();
+			// One custom key per ConfigValue type. Known keys (present in the
+			// compiled-in defaults) keep their declared type across a reload;
+			// unknown keys reload as strings (C++ parity).
+			s.set(None, "CustomString", "hello world");
+			s.set_int(None, "DefaultSequenceWidth", 640); // known Int
+			s.set_bool(None, "SplitClipsCopyNodes", 0); // known Bool
+			s.set(None, "ProxyPreset", "medium"); // known String
+			s.set_double(Some("render"), "gain", 1.5); // unknown Double
+			s.save().unwrap();
+
+			// Wipe back to defaults, dropping custom keys.
+			s.reset_defaults().unwrap();
+			assert!(matches!(s.get(None, "CustomString"), Err(Error::NotFound)));
+
+			s.load().unwrap();
+			assert_eq!(s.get(None, "CustomString").unwrap(), "hello world");
+			assert_eq!(s.get_int(None, "DefaultSequenceWidth", -1), 640);
+			assert_eq!(s.get_bool(None, "SplitClipsCopyNodes", -1), 0);
+			assert_eq!(s.get(None, "ProxyPreset").unwrap(), "medium");
+			// Unknown double reloads in string form ("1.5").
+			assert_eq!(s.get(Some("render"), "gain").unwrap(), "1.5");
+			assert_eq!(s.get_double(Some("render"), "gain", -1.0), -1.0);
+			// The file holds native TOML types, not stringified values.
+			let content = std::fs::read_to_string(dir.join("config.toml")).unwrap();
+			assert!(content.contains("DefaultSequenceWidth = 640"), "content: {}", content);
+			assert!(content.contains("SplitClipsCopyNodes = false"), "content: {}", content);
+			assert!(content.contains("ProxyPreset = \"medium\""), "content: {}", content);
+			assert!(content.contains("gain = 1.5"), "content: {}", content);
+		});
+	}
+
+	#[test]
+	fn test_migrate_from_ini_generates_toml() {
+		with_temp_config(|dir| {
+			// A legacy config.ini with no config.toml: load() must read it and
+			// immediately persist the values as TOML, leaving the INI in place.
+			let ini = "\
+DefaultSequenceWidth=640
+UseProxyMedia=false
+[section]
+CustomKey=hello
+";
+			std::fs::write(dir.join("config.ini"), ini).unwrap();
+			let s = ConfigStore::instance();
+			s.load().unwrap();
+
+			assert_eq!(s.get_int(None, "DefaultSequenceWidth", -1), 640);
+			assert_eq!(s.get_bool(None, "UseProxyMedia", -1), 0);
+			assert_eq!(s.get(Some("section"), "CustomKey").unwrap(), "hello");
+
+			// config.toml was generated with the migrated values; config.ini
+			// is deliberately not deleted.
+			assert!(dir.join("config.toml").is_file());
+			assert!(dir.join("config.ini").is_file());
+			let content = std::fs::read_to_string(dir.join("config.toml")).unwrap();
+			assert!(content.contains("DefaultSequenceWidth = 640"), "content: {}", content);
+			assert!(content.contains("UseProxyMedia = false"), "content: {}", content);
+			assert!(content.contains("[section]"), "content: {}", content);
+			assert!(content.contains("CustomKey = \"hello\""), "content: {}", content);
+
+			// A second load reads the migrated TOML, not the INI.
+			s.reset_defaults().unwrap();
+			s.load().unwrap();
+			assert_eq!(s.get_int(None, "DefaultSequenceWidth", -1), 640);
+			assert_eq!(s.get_bool(None, "UseProxyMedia", -1), 0);
+		});
+	}
+
+	#[test]
+	fn test_toml_preferred_over_ini() {
+		with_temp_config(|dir| {
+			// Both files present with conflicting values: config.toml wins and
+			// the INI is neither consulted nor migrated.
+			std::fs::write(
+				dir.join("config.ini"),
+				"DefaultSequenceWidth=800\nOnlyInIni=legacy\n",
+			)
+			.unwrap();
+			std::fs::write(
+				dir.join("config.toml"),
+				"DefaultSequenceWidth = 640\nOnlyInToml = \"modern\"\n",
+			)
+			.unwrap();
+			let s = ConfigStore::instance();
+			s.load().unwrap();
+			assert_eq!(s.get_int(None, "DefaultSequenceWidth", -1), 640);
+			assert_eq!(s.get(None, "OnlyInToml").unwrap(), "modern");
+			assert!(matches!(s.get(None, "OnlyInIni"), Err(Error::NotFound)));
 		});
 	}
 
@@ -1064,7 +1352,9 @@ UnknownTypedThing=hello
 	#[test]
 	fn test_load_directory_returns_failed_and_reports() {
 		with_temp_config(|dir| {
-			// A directory at config.ini is not a readable config.
+			// A directory at the config path is not a readable config. With no
+			// config.toml present, load() hits the legacy INI fallback, which
+			// treats a directory at config.ini the same way.
 			std::fs::create_dir(dir.join("config.ini")).unwrap();
 			REPORTED.lock().unwrap().clear();
 			let s = ConfigStore::instance();
@@ -1300,71 +1590,32 @@ UnknownTypedThing=hello
 		assert_eq!(s.get_int(Some("a"), "b/c", 0), 5);
 	}
 
-	// ---- INI byte-level format ---------------------------------------------
+	// ---- TOML byte-level format --------------------------------------------
 
 	#[test]
-	fn test_save_exact_bytes() {
+	fn test_save_toml_contents_all_defaults() {
 		with_temp_config(|dir| {
 			let s = ConfigStore::instance();
 			s.reset_defaults().unwrap();
-			s.set(None, "ZCustom", "v");
-			s.set_int(Some("grp"), "b", 2);
-			s.set_int(Some("grp"), "a", 1);
 			s.save().unwrap();
 
-			// Byte-exact match against the C++ writer in
-			// `ConfigStore::save()` (`configstore.cpp:316-393`): flat keys
-			// first (std::map/BTreeMap lexicographic order), then one blank
-			// line + "[group]" header per sorted section, keys sorted within
-			// each section, '\n' line endings, trailing newline.
-			let expected = concat!(
-				"AutoCacheDelay=1000\n",
-				"CatColor0=0\n",
-				"CatColor1=1\n",
-				"CatColor10=10\n",
-				"CatColor11=11\n",
-				"CatColor2=2\n",
-				"CatColor3=3\n",
-				"CatColor4=4\n",
-				"CatColor5=5\n",
-				"CatColor6=6\n",
-				"CatColor7=7\n",
-				"CatColor8=8\n",
-				"CatColor9=9\n",
-				"DefaultSequenceAudioFrequency=48000\n",
-				"DefaultSequenceAudioLayout=3\n",
-				"DefaultSequenceFrameRate=1001/30000\n",
-				"DefaultSequenceHeight=1080\n",
-				"DefaultSequenceInterlacing=0\n",
-				"DefaultSequencePixelAspect=1/1\n",
-				"DefaultSequenceWidth=1920\n",
-				"DiskCacheAhead=60/1\n",
-				"DiskCacheBehind=0/1\n",
-				"DiskCacheSaveInterval=10000\n",
-				"GraphicsBackend=opengl\n",
-				"LUTLibraryPaths=\n",
-				"MarkerColor=6\n",
-				"OfflinePixelFormat=4\n",
-				"ProxyCRF=23\n",
-				"ProxyDivider=1\n",
-				"ProxyHeight=720\n",
-				"ProxyIncludeAudio=true\n",
-				"ProxyPreset=veryfast\n",
-				"ProxyWidth=1280\n",
-				"ReassocLinToNonLin=false\n",
-				"SplitClipsCopyNodes=true\n",
-				"TimelineThumbnailMode=1\n",
-				"TimelineWaveformMode=1\n",
-				"UseGLFinish=false\n",
-				"UseProxyMedia=true\n",
-				"ZCustom=v\n",
-				"\n",
-				"[grp]\n",
-				"a=1\n",
-				"b=2\n",
-			);
-			let content = std::fs::read_to_string(dir.join("config.ini")).unwrap();
-			assert_eq!(content, expected);
+			let content = std::fs::read_to_string(dir.join("config.toml")).unwrap();
+			// Re-parse the saved file with the toml crate itself: it must be
+			// valid TOML carrying every registered default with its native type.
+			let parsed: toml::Value = toml::from_str(&content).expect("saved config.toml parses");
+			let table = parsed.as_table().unwrap();
+			assert_eq!(table["DefaultSequenceWidth"].as_integer(), Some(1920));
+			assert_eq!(table["DefaultSequenceHeight"].as_integer(), Some(1080));
+			assert_eq!(table["ProxyPreset"].as_str(), Some("veryfast"));
+			assert_eq!(table["SplitClipsCopyNodes"].as_bool(), Some(true));
+			assert_eq!(table["UseGLFinish"].as_bool(), Some(false));
+			assert_eq!(table["CatColor3"].as_integer(), Some(3));
+			assert!(table.contains_key("DiskCacheSaveInterval"));
+			assert!(table.contains_key("LUTLibraryPaths"));
+			// No group defaults exist; every top-level key is a plain value.
+			assert!(table.values().all(|v| !v.is_table()));
+			// Serialized output must not contain INI-style "k=v" lines.
+			assert!(!content.contains("DefaultSequenceWidth=1920"), "content: {}", content);
 		});
 	}
 
@@ -1373,12 +1624,13 @@ UnknownTypedThing=hello
 		with_temp_config(|dir| {
 			let s = ConfigStore::instance();
 			s.reset_defaults().unwrap();
-			// Group = everything before the LAST '/', so "a/b" + "c" lands
-			// in an "[a/b]" section (`configstore.cpp:329-335`).
+			// Group = everything before the LAST '/', so "a/b" + "c" lands in
+			// a `["a/b"]` table (the '/' forces a quoted TOML key).
 			s.set_int(Some("a/b"), "c", 5);
 			s.save().unwrap();
-			let content = std::fs::read_to_string(dir.join("config.ini")).unwrap();
-			assert!(content.contains("\n[a/b]\nc=5\n"), "content: {}", content);
+			let content = std::fs::read_to_string(dir.join("config.toml")).unwrap();
+			assert!(content.contains("[\"a/b\"]"), "content: {}", content);
+			assert!(content.contains("c = 5"), "content: {}", content);
 
 			s.reset_defaults().unwrap();
 			s.load().unwrap();
@@ -1469,6 +1721,30 @@ FlatAfterEmptySection=ok
 		});
 	}
 
+	#[test]
+	fn test_load_invalid_toml_reports_error() {
+		with_temp_config(|dir| {
+			// A corrupt config.toml must be reported and surfaced as an error,
+			// never silently ignored (which would lose the user's settings on
+			// the next save).
+			std::fs::write(dir.join("config.toml"), "DefaultSequenceWidth = =\n").unwrap();
+			REPORTED.lock().unwrap().clear();
+			let s = ConfigStore::instance();
+			s.set_error_handler(Some(record_handler), std::ptr::null_mut())
+				.unwrap();
+			let res = s.load();
+			s.set_error_handler(None, std::ptr::null_mut()).unwrap();
+			assert!(res.is_err());
+			assert_eq!(res.unwrap_err().code(), crate::error::OAKCOMMON_E_FAILED);
+			let reported = REPORTED.lock().unwrap().clone();
+			assert_eq!(reported.len(), 1);
+			assert_eq!(reported[0].0, "Error loading settings");
+			assert!(reported[0]
+				.1
+				.contains("Failed to load application settings"));
+		});
+	}
+
 	// ---- Save error path -----------------------------------------------------
 
 	#[test]
@@ -1478,7 +1754,7 @@ FlatAfterEmptySection=ok
 			std::env::temp_dir().join(format!("oakcommon_configstore_test_{}", std::process::id()));
 		let _ = std::fs::create_dir_all(&dir);
 		// Point OAK_CONFIG_DIR at a regular FILE so writing
-		// "<dir>/config.ini.tmp" fails (create_dir_all on it is a silent
+		// "<dir>/config.toml.tmp" fails (create_dir_all on it is a silent
 		// no-op failure, exactly like the C++ ec-swallowing).
 		let blocker = dir.join("not_a_dir");
 		std::fs::write(&blocker, b"x").unwrap();

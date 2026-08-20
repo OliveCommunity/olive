@@ -20,6 +20,9 @@ test-stubs = []
 oakcore-rs = { path = "../oakcore" }
 quick-xml = "0.41.0"
 log = "0.4"
+# TOML persistence for the application config (configstore.rs). Already in
+# Cargo.lock as a transitive dependency (0.8.23); promoted to a direct one.
+toml = "0.8"
 # OpenColorIO bindings (crates.io `ocio-rs`, BSD-3-Clause). ocioutils.rs maps
 # PixelFormat to the real `ocio_rs::BitDepth` enum and wraps
 # `ocio_rs::Config`/`CPUProcessor` for config loading and RGBA transforms.
