@@ -38,9 +38,11 @@
 //!     `ipc.h`. [`write_message`]/[`error_message`] build the wire lines.
 //!   - **Data plane.** Named shared memory holding the frame-slot pools —
 //!     the port of `engine/render/ipc/` (`sharedmemoryregion.cpp`,
-//!     `frameslotpool.cpp`): [`SharedMemoryRegion`] maps a named POSIX
-//!     segment (`shm_open` + `mmap`, `munmap` + `shm_unlink` on close),
-//!     and [`FrameSlotPool`] lays out a fixed pool of equal-sized frame
+//!     `frameslotpool.cpp`): [`SharedMemoryRegion`] maps a named segment —
+//!     POSIX `shm_open` + `mmap` on Unix (`munmap` + `shm_unlink` on
+//!     close), `CreateFileMappingW`/`OpenFileMappingW` + `MapViewOfFile`
+//!     on Windows (`UnmapViewOfFile` + `CloseHandle` on close) — and
+//!     [`FrameSlotPool`] lays out a fixed pool of equal-sized frame
 //!     slots inside it with lock-free hand-off through two
 //!     [`SpscRingBuffer`]s of slot indices (free + ready). Each ring is a
 //!     single-producer/single-consumer structure; the filler owns
@@ -83,6 +85,8 @@
 
 #![allow(dead_code)]
 
+#[cfg(windows)]
+use std::ffi::c_void;
 use std::ffi::{c_char, c_int};
 use std::io::{self, Write};
 use std::ptr;
@@ -1016,7 +1020,7 @@ impl FrameSlotPool {
 // SharedMemoryRegion
 // ---------------------------------------------------------------------------
 
-/// A named, fixed-size POSIX shared-memory segment mapped into the process
+/// A named, fixed-size shared-memory segment mapped into the process
 /// address space — the port of the C++ `SharedMemoryRegion`
 /// (`engine/render/ipc/sharedmemoryregion.cpp`).
 ///
@@ -1027,6 +1031,10 @@ impl FrameSlotPool {
 /// out inside it. Nothing here is locked — synchronization is entirely the
 /// caller's responsibility via the lock-free structures placed in the
 /// mapping.
+///
+/// Two backends: POSIX `shm_open`/`mmap`/`munmap`/`shm_unlink` on Unix,
+/// and the Win32 file-mapping API on Windows
+/// (`CreateFileMappingW`/`OpenFileMappingW` + `MapViewOfFile`).
 ///
 /// **M15 S1 shm spike (macOS):** POSIX `shm_open` + `ftruncate` was
 /// verified to back single segments of at least 512 MiB (spiked to 1 GiB)
@@ -1041,15 +1049,21 @@ pub struct SharedMemoryRegion {
 	key: String,
 	/// Requested mapping size in bytes.
 	size: usize,
-	/// The mmap'd data pointer; null when invalid.
+	/// The mapped data pointer; null when invalid.
 	data: *mut u8,
-	/// File descriptor from `shm_open` (-1 when invalid).
+	/// File descriptor from `shm_open` (-1 when invalid). Unix only.
+	#[cfg(unix)]
 	fd: i32,
+	/// File-mapping handle from `CreateFileMappingW`/`OpenFileMappingW`
+	/// (null when invalid). Windows only.
+	#[cfg(windows)]
+	mapping: *mut c_void,
 	/// Open mode.
 	mode: ShmMode,
 	/// Human-readable reason of the last failed open.
 	error: String,
-	/// The platform-prefixed name actually passed to `shm_open`.
+	/// The platform-prefixed name actually passed to `shm_open`. Unix only.
+	#[cfg(unix)]
 	shm_name: String,
 }
 
@@ -1060,9 +1074,13 @@ impl SharedMemoryRegion {
 			key: String::new(),
 			size: 0,
 			data: ptr::null_mut(),
+			#[cfg(unix)]
 			fd: -1,
+			#[cfg(windows)]
+			mapping: ptr::null_mut(),
 			mode: ShmMode::Attach,
 			error: String::new(),
+			#[cfg(unix)]
 			shm_name: String::new(),
 		}
 	}
@@ -1075,11 +1093,16 @@ impl SharedMemoryRegion {
 		format!("olive-rw-{owner_pid}-{worker_index}")
 	}
 
+	// -------------------------------------------------------------------
+	// Unix backend (POSIX shm_open/mmap/munmap/shm_unlink)
+	// -------------------------------------------------------------------
+
 	/// Best-effort unlink of the segment named by `key` (the same naming
 	/// as [`Self::open`]). Used by the creator side to clear a stale
 	/// segment left behind by a crashed previous owner before re-creating
 	/// it (M15 crash restart). The mapping of a peer still holding the
 	/// segment stays valid — POSIX unlinks only remove the name.
+	#[cfg(unix)]
 	pub fn unlink_key(key: &str) {
 		let shm_name = format!("/{}", key.replace('/', "_"));
 		if let Ok(name_c) = std::ffi::CString::new(shm_name) {
@@ -1095,6 +1118,7 @@ impl SharedMemoryRegion {
 	/// prefix is added internally). Returns true on success; on failure
 	/// [`Self::error`] carries a human-readable reason. An existing region
 	/// is closed first.
+	#[cfg(unix)]
 	pub fn open(&mut self, key: &str, size: usize, mode: ShmMode) -> bool {
 		self.close();
 		self.key = key.to_string();
@@ -1183,6 +1207,7 @@ impl SharedMemoryRegion {
 	}
 
 	/// Unmap and (if owner) unlink the segment. Also called by `Drop`.
+	#[cfg(unix)]
 	pub fn close(&mut self) {
 		if !self.data.is_null() {
 			unsafe { libc::munmap(self.data as *mut std::ffi::c_void, self.size) };
@@ -1226,6 +1251,266 @@ impl SharedMemoryRegion {
 	/// Human-readable reason of the last failed open.
 	pub fn error(&self) -> &str {
 		&self.error
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Windows backend (named file-mapping objects)
+// ---------------------------------------------------------------------------
+//
+// The Win32 file-mapping API (`CreateFileMappingW`/`OpenFileMappingW` +
+// `MapViewOfFile`) is the direct analog of POSIX shm: a named section
+// object shared between processes, mapped into each process's address
+// space. Handles are `*mut c_void`; the mapped view is what callers read
+// and write. The one semantic difference from POSIX is that a section
+// object has no unlink step — the OS destroys it when the last handle to
+// it closes (a crashed owner's handles are reclaimed automatically), which
+// is also why a Create on a live existing name must fail like O_EXCL (see
+// `open`).
+
+#[cfg(windows)]
+#[link(name = "kernel32")]
+unsafe extern "C" {
+	/// `CreateFileMappingW` — create a pagefile-backed section object
+	/// (INVALID_HANDLE_VALUE as `h_file`), or return a handle to the
+	/// existing object when `lp_name` is already in use.
+	fn CreateFileMappingW(
+		h_file: *mut c_void,
+		lp_file_mapping_attributes: *mut c_void,
+		fl_protect: u32,
+		dw_maximum_size_high: u32,
+		dw_maximum_size_low: u32,
+		lp_name: *const u16,
+	) -> *mut c_void;
+	/// `OpenFileMappingW` — open an existing section object by name.
+	fn OpenFileMappingW(
+		dw_desired_access: u32,
+		b_inherit_handle: i32,
+		lp_name: *const u16,
+	) -> *mut c_void;
+	/// `MapViewOfFile` — map (part of) a section object into the process
+	/// address space.
+	fn MapViewOfFile(
+		h_file_mapping_object: *mut c_void,
+		dw_desired_access: u32,
+		dw_file_offset_high: u32,
+		dw_file_offset_low: u32,
+		dw_number_of_bytes_to_map: usize,
+	) -> *mut c_void;
+	/// `UnmapViewOfFile` — release a mapped view.
+	fn UnmapViewOfFile(lp_base_address: *mut c_void) -> i32;
+	/// `CloseHandle` — close a kernel-object handle.
+	fn CloseHandle(h_object: *mut c_void) -> i32;
+	/// `GetLastError` — the last-error code set by a Win32 call.
+	fn GetLastError() -> u32;
+	/// `SetLastError` — set the last-error code (used to clear it before
+	/// the ERROR_ALREADY_EXISTS probe, which must not see a stale value).
+	fn SetLastError(dw_err_code: u32);
+	/// `VirtualQuery` — describe the mapped region containing
+	/// `lp_address`; used to size-check an attached segment.
+	fn VirtualQuery(
+		lp_address: *const c_void,
+		lp_buffer: *mut MemoryBasicInformation,
+		dw_length: usize,
+	) -> usize;
+}
+
+/// `INVALID_HANDLE_VALUE` (winbase.h) — the `h_file` sentinel that makes
+/// `CreateFileMappingW` back the section with the system page file.
+#[cfg(windows)]
+const INVALID_HANDLE_VALUE: *mut c_void = (-1isize) as *mut c_void;
+/// `PAGE_READWRITE` (winnt.h) — read/write protection for the section.
+#[cfg(windows)]
+const PAGE_READWRITE: u32 = 0x04;
+/// `FILE_MAP_ALL_ACCESS` (= `SECTION_ALL_ACCESS`, winnt.h) — full access
+/// to the section, used for both open and map.
+#[cfg(windows)]
+const FILE_MAP_ALL_ACCESS: u32 = 0x000F_001F;
+/// `ERROR_ALREADY_EXISTS` (winerror.h) — reported by `CreateFileMappingW`
+/// when the named object already exists.
+#[cfg(windows)]
+const ERROR_ALREADY_EXISTS: u32 = 183;
+
+/// `MEMORY_BASIC_INFORMATION` (winnt.h) — the layout `VirtualQuery`
+/// writes. Field-for-field, x64: 8+8+4+2+(pad)+8+4+4+4 = 48 bytes.
+#[cfg(windows)]
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct MemoryBasicInformation {
+	base_address: *mut c_void,
+	allocation_base: *mut c_void,
+	allocation_protect: u32,
+	partition_id: u16,
+	region_size: usize,
+	state: u32,
+	protect: u32,
+	type_: u32,
+}
+
+/// Encode `s` as a NUL-terminated UTF-16 buffer for the `...W` Win32
+/// entry points. Returns None when `s` contains a NUL byte (the name
+/// would be truncated).
+#[cfg(windows)]
+fn to_wide(s: &str) -> Option<Vec<u16>> {
+	if s.contains('\0') {
+		return None;
+	}
+	let mut wide: Vec<u16> = s.encode_utf16().collect();
+	wide.push(0);
+	Some(wide)
+}
+
+#[cfg(windows)]
+impl SharedMemoryRegion {
+	/// Best-effort unlink of the segment named by `key` (the same naming
+	/// as [`Self::open`]).
+	///
+	/// Windows no-op: section objects have no name-unlink step. The OS
+	/// destroys the object automatically when the last handle to it is
+	/// closed (a crashed owner's handles are reclaimed by the kernel), so
+	/// there is nothing for the caller to clean up here.
+	pub fn unlink_key(_key: &str) {}
+
+	/// Open the segment identified by `key` with the given `size` in bytes.
+	///
+	/// Windows: `CreateFileMappingW` (Create) or `OpenFileMappingW`
+	/// (Attach) for a pagefile-backed section named `Local\OakShm<key>`,
+	/// then `MapViewOfFile`. Returns true on success; on failure
+	/// [`Self::error`] carries a human-readable reason. An existing region
+	/// is closed first.
+	pub fn open(&mut self, key: &str, size: usize, mode: ShmMode) -> bool {
+		self.close();
+		self.key = key.to_string();
+		self.size = size;
+		self.mode = mode;
+
+		// Win32 object names are case-sensitive and cannot contain '/' or
+		// '\'; the "Local\" namespace scopes the object to the terminal
+		// session (the "Global\" namespace would require the
+		// SeCreateGlobalPrivilege right). The `OakShm` prefix keeps the
+		// name clear of user objects and makes keys recognizable in e.g.
+		// Process Explorer.
+		let map_name = format!("Local\\OakShm{}", key.replace(['/', '\\'], "_"));
+		let name_wide = match to_wide(&map_name) {
+			Some(wide) => wide,
+			None => {
+				self.error = format!("invalid shm key {key:?} (contains NUL)");
+				return false;
+			}
+		};
+
+		let size_hi = ((size as u64) >> 32) as u32;
+		let size_lo = (size as u64 & 0xFFFF_FFFF) as u32;
+		let (handle, api) = unsafe {
+			if mode == ShmMode::Create {
+				// Clear the last-error code so the already-exists probe
+				// below only fires on a real collision.
+				SetLastError(0);
+				(
+					CreateFileMappingW(
+						INVALID_HANDLE_VALUE,
+						ptr::null_mut(),
+						PAGE_READWRITE,
+						size_hi,
+						size_lo,
+						name_wide.as_ptr(),
+					),
+					"CreateFileMappingW",
+				)
+			} else {
+				(
+					OpenFileMappingW(FILE_MAP_ALL_ACCESS, 0, name_wide.as_ptr()),
+					"OpenFileMappingW",
+				)
+			}
+		};
+		if handle.is_null() {
+			self.error = format!(
+				"{api}({map_name}) failed: {}",
+				std::io::Error::last_os_error()
+			);
+			return false;
+		}
+		self.mapping = handle;
+
+		if mode == ShmMode::Create {
+			// CreateFileMappingW on an existing name does not fail — it
+			// returns a handle to the existing object with GetLastError ==
+			// ERROR_ALREADY_EXISTS. That is the O_EXCL case, and unlike
+			// POSIX there is no way to unlink a live section object, so
+			// Create fails on an existing segment. (A segment left by a
+			// crashed owner is already gone: the OS destroyed it when its
+			// last handle closed.)
+			if unsafe { GetLastError() } == ERROR_ALREADY_EXISTS {
+				unsafe { CloseHandle(handle) };
+				self.mapping = ptr::null_mut();
+				self.error = format!("segment {key:?} already exists");
+				return false;
+			}
+		}
+
+		// dwNumberOfBytesToMap = 0 maps the whole object. The POSIX path
+		// mmap()s exactly `size` and size-checks first (fstat) because a
+		// too-short mapping only faults on access; the equivalent check
+		// runs below after mapping.
+		let view = unsafe { MapViewOfFile(handle, FILE_MAP_ALL_ACCESS, 0, 0, 0) };
+		if view.is_null() {
+			self.error = format!(
+				"MapViewOfFile({map_name}) failed: {}",
+				std::io::Error::last_os_error()
+			);
+			self.close();
+			return false;
+		}
+		self.data = view as *mut u8;
+
+		if mode == ShmMode::Attach {
+			// The fstat analog: verify the existing segment is at least
+			// `size` bytes. VirtualQuery reports the region size rounded
+			// up to a page boundary, so sub-page over-requests are not
+			// detected (Windows stores section sizes page-granular anyway).
+			let mut mbi = unsafe { std::mem::zeroed::<MemoryBasicInformation>() };
+			if unsafe {
+				VirtualQuery(
+					view,
+					&mut mbi,
+					std::mem::size_of::<MemoryBasicInformation>(),
+				)
+			} == 0
+			{
+				self.error = format!("VirtualQuery failed: {}", std::io::Error::last_os_error());
+				self.close();
+				return false;
+			}
+			if mbi.region_size < size {
+				self.error = format!(
+					"shared memory segment is {} bytes, smaller than the requested {}",
+					mbi.region_size, size
+				);
+				self.close();
+				return false;
+			}
+		}
+		self.error.clear();
+		true
+	}
+
+	/// Unmap and close the segment. Also called by `Drop`.
+	///
+	/// There is no owner-only unlink step: Windows destroys the object
+	/// when the last handle closes (the owner's `CloseHandle` here, after
+	/// every peer has unmapped) — the automatic equivalent of the POSIX
+	/// `shm_unlink`, so no further cleanup is needed.
+	pub fn close(&mut self) {
+		if !self.data.is_null() {
+			unsafe { UnmapViewOfFile(self.data as *mut c_void) };
+			self.data = ptr::null_mut();
+		}
+		if !self.mapping.is_null() {
+			unsafe { CloseHandle(self.mapping) };
+			self.mapping = ptr::null_mut();
+		}
+		self.size = 0;
 	}
 }
 
@@ -1896,6 +2181,56 @@ mod tests {
 	}
 
 	#[test]
+	#[cfg(windows)]
+	fn region_windows_create_attach_roundtrip() {
+		// The Windows backend round trip — create -> write -> open -> read —
+		// with the same assertions as the platform-neutral
+		// `region_create_attach_write_visibility` test above.
+		let key = test_key("win-roundtrip");
+		let size = 4096usize;
+		let (mut owner, mut peer) = two_mappings(&key, size);
+		assert!(owner.is_valid());
+		assert!(peer.is_valid());
+		assert_eq!(owner.size(), size);
+		assert_eq!(peer.size(), size);
+		assert_eq!(owner.key(), key);
+		assert_eq!(peer.key(), key);
+
+		// Owner writes; peer sees it through its own mapping, and vice
+		// versa.
+		// SAFETY: both mappings are live with `size` bytes.
+		unsafe {
+			let dst = owner.data() as *mut u32;
+			*dst = 0xDEADBEEF;
+		}
+		// SAFETY: peer mapping live.
+		assert_eq!(unsafe { *(peer.data() as *const u32) }, 0xDEADBEEF);
+		// SAFETY: peer mapping live.
+		unsafe {
+			let dst = peer.data() as *mut u32;
+			*dst = 0x12345678;
+		}
+		// SAFETY: owner mapping live.
+		assert_eq!(unsafe { *(owner.data() as *const u32) }, 0x12345678);
+
+		// The object dies when the LAST handle closes: closing the attach
+		// side leaves the owner's object open (a third attach still
+		// works); closing the owner destroys it (further attaches fail).
+		peer.close();
+		assert!(!peer.is_valid());
+		let mut third = SharedMemoryRegion::new();
+		assert!(third.open(&key, size, ShmMode::Attach), "{}", third.error());
+		assert!(third.is_valid());
+		third.close();
+
+		owner.close();
+		assert!(!owner.is_valid());
+		let mut fourth = SharedMemoryRegion::new();
+		assert!(!fourth.open(&key, size, ShmMode::Attach));
+	}
+
+	#[test]
+	#[cfg(unix)]
 	fn region_create_replaces_stale_segment() {
 		// Mirrors the C++: Create unlinks any stale segment with the same
 		// name first (crash cleanup), so a second Create SUCCEEDS and owns
@@ -1917,6 +2252,26 @@ mod tests {
 		// The replacement segment is fresh (zeroed by create).
 		// SAFETY: second mapping live.
 		assert_eq!(unsafe { *(second.data() as *const u32) }, 0);
+	}
+
+	#[test]
+	#[cfg(windows)]
+	fn region_create_fails_on_live_existing_segment() {
+		// Windows has no way to unlink a live section object (it dies only
+		// when its last handle closes), so a second Create while the owner
+		// still holds the object fails like O_EXCL — the reverse of the
+		// POSIX stale-replace behavior above, which unlinks first.
+		let key = test_key("region-exists");
+		let size = 128usize;
+		let (owner, _peer) = two_mappings(&key, size);
+		assert!(owner.is_valid());
+		// SAFETY: owner mapping live.
+		unsafe { *(owner.data() as *mut u32) = 0xCAFEBABE };
+
+		let mut second = SharedMemoryRegion::new();
+		assert!(!second.open(&key, size, ShmMode::Create));
+		assert!(!second.is_valid());
+		assert!(!second.error().is_empty());
 	}
 
 	#[test]
