@@ -874,6 +874,23 @@ impl MockEngine {
 				let index = (*index).min(self.effects.len());
 				self.effects.insert(index, card);
 			}
+			// A drag-and-drop add from the effect library: same insert, with
+			// the dropped type's name on the card.
+			EffectStackEvent::AddTypeRequested { index, type_id } => {
+				let id = EffectId(self.next_effect_id);
+				self.next_effect_id += 1;
+				let card = MockEffect {
+					id,
+					kind: EffectCardKind::Effect,
+					title: type_id.clone(),
+					subtitle: None,
+					enabled: true,
+					expanded: false,
+					badge: None,
+				};
+				let index = (*index).min(self.effects.len());
+				self.effects.insert(index, card);
+			}
 			EffectStackEvent::CardSelected { effect } => {
 				// The inspector card click highlights the matching node in
 				// the node editor (the bidirectional node↔inspector link).

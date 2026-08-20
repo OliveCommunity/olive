@@ -92,6 +92,27 @@ impl NodeBehavior for TrigonometryNode {
 		}
 	}
 
+	/// Combo input option labels (C++ `retranslate()` /
+	/// `set_combo_box_strings`): `method_in` -> "Sine", "Cosine",
+	/// "Tangent", "Inverse Sine", "Inverse Cosine", "Inverse Tangent",
+	/// "Hyperbolic Sine", "Hyperbolic Cosine", "Hyperbolic Tangent".
+	fn input_combo_strings(&self, id: &str) -> Vec<&'static str> {
+		match id {
+			METHOD_INPUT => vec![
+				"Sine",
+				"Cosine",
+				"Tangent",
+				"Inverse Sine",
+				"Inverse Cosine",
+				"Inverse Tangent",
+				"Hyperbolic Sine",
+				"Hyperbolic Cosine",
+				"Hyperbolic Tangent",
+			],
+			_ => Vec::new(),
+		}
+	}
+
 	/// Evaluate outputs (C++ `value()`): reads `x_in` as a double,
 	/// applies the [`Operation`] selected by `method_in`
 	/// (sin/cos/tan/asin/acos/atan/sinh/cosh/tanh), and pushes the

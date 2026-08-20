@@ -3471,6 +3471,17 @@ impl AppEngine for RealEngine {
 				let _ = index;
 				cx.notify();
 			}
+			EffectStackEvent::AddTypeRequested { index, type_id } => {
+				// A drag-and-drop add from the effect library: the type is
+				// already chosen (normally handled by the inspector panel;
+				// applied here too so direct event drives work).
+				let (index, type_id) = (*index, type_id.clone());
+				let result = self.add_effect(index, &type_id, cx);
+				if let Err(err) = result {
+					println!("[real engine] drop-add effect failed: {err}");
+					cx.notify();
+				}
+			}
 			EffectStackEvent::CardSelected { effect } => {
 				// The inspector card click selects the effect's node in the
 				// node editor (the bidirectional node↔inspector link). The

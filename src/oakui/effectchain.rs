@@ -163,28 +163,27 @@ pub fn plugin_instance_handle(g: &Graph, node: NodeId) -> Option<u64> {
 }
 
 /// The parameter controls of `effect` for the inspector, or `None` when
-/// the effect exposes no parameter UI (not a plugin node, or no editable
-/// parameters).
+/// the effect exposes no parameter UI. Any effect node — built-in or OFX
+/// plugin — exposes its inputs as parameters (C++ parity: the parameter
+/// editor lists every non-hidden, non-connection input); connection/data
+/// inputs (texture / samples / matrix) and the structural enabled input
+/// are excluded.
 pub fn effect_params(
 	g: &Graph,
 	node: NodeId,
 ) -> Option<Vec<super::engine::EffectParam>> {
 	use oaknode::input::flags as input_flags;
-	use oaknode::nodes::plugin::PluginNode;
 	use oaknode::value::ValueType;
 
 	let entry = g.get(node)?;
-	// Only OFX plugin nodes expose the parameter UI (built-in effects keep
-	// the inspector's placeholder).
-	let behavior = entry.behavior.as_any()?;
-	if behavior.downcast_ref::<PluginNode>().is_none() {
-		return None;
-	}
 	let mut out = Vec::new();
 	for input in &entry.core.inputs {
-		// Clip/texture inputs are graph connections, not params; hidden
-		// (secret) inputs never render.
-		if input.value_type == ValueType::Texture {
+		// Clip/texture/sample/matrix inputs are graph connections or
+		// internal data, not params; hidden (secret) inputs never render.
+		if matches!(
+			input.value_type,
+			ValueType::Texture | ValueType::Samples | ValueType::Matrix
+		) {
 			continue;
 		}
 		if input.flags & input_flags::HIDDEN != 0 {
@@ -194,13 +193,35 @@ pub fn effect_params(
 		if input.id == oaknode::node::ENABLED_INPUT {
 			continue;
 		}
+		// Display name: the behavior's localized input name (C++
+		// `retranslate`) wins; OFX plugin nodes don't override it, so
+		// their translation-pass label (input.display_name) is kept.
+		let behavior_name = entry.behavior.input_name(&input.id);
+		let display_name = if behavior_name != input.id {
+			behavior_name.to_string()
+		} else {
+			input.display_name.clone()
+		};
+		// Combo options: built-in nodes carry them on the behavior (C++
+		// `set_combo_box_strings`); OFX plugin params already carry the
+		// ("combo_option", _) properties from the translation pass.
+		let mut properties = input.properties.clone();
+		if input.value_type == ValueType::Combo && !properties.iter().any(|(k, _)| k == "combo_option")
+		{
+			for option in entry.behavior.input_combo_strings(&input.id) {
+				properties.push((
+					"combo_option".to_string(),
+					oaknode::value::NodeValue::Text(option.to_string()),
+				));
+			}
+		}
 		out.push(super::engine::EffectParam {
 			input_id: input.id.clone(),
-			display_name: input.display_name.clone(),
+			display_name,
 			value_type: input.value_type,
 			value: entry.core.standard_value(&input.id, -1),
 			flags: input.flags,
-			properties: input.properties.clone(),
+			properties,
 		});
 	}
 	Some(out)

@@ -326,9 +326,31 @@ impl<E: AppEngine> Render for NodeEditorPanel<E> {
 			)
 			.child(
 				div()
+					.id("node-editor-canvas")
 					.debug_selector(|| "node-editor-canvas".into())
 					.flex_1()
 					.min_h_0()
+					// An effect dragged out of the effect library drops onto
+					// the canvas as a new node at the drop position (the
+					// background "add node" menu path).
+					.on_drop::<gpui::effect_stack::LibraryEffectDrag>(cx.listener(
+						|this, payload: &gpui::effect_stack::LibraryEffectDrag, window, cx| {
+							let graph_position = this
+								.graph
+								.read(cx)
+								.graph_position_at(window.mouse_position());
+							let type_id = payload.type_id.to_string();
+							this.engine.update(cx, |engine, cx| {
+								if let Err(err) = engine.add_node_at(&type_id, graph_position, cx)
+								{
+									println!("[node editor] add node failed: {err}");
+								}
+							});
+						},
+					))
+					.can_drop(|payload, _window, _cx| {
+						payload.is::<gpui::effect_stack::LibraryEffectDrag>()
+					})
 					.child(self.graph.clone()),
 			)
 			// The right-click popup renders anchored above the panel.

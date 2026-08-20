@@ -174,6 +174,15 @@ impl NodeBehavior for ColorDifferenceKeyNode {
 		}
 	}
 
+	/// Combo input option labels (C++ `retranslate()` /
+	/// `set_combo_box_strings`): `color_in` -> "Green", "Blue".
+	fn input_combo_strings(&self, id: &str) -> Vec<&'static str> {
+		match id {
+			COLOR_INPUT => vec!["Green", "Blue"],
+			_ => Vec::new(),
+		}
+	}
+
 	/// Evaluate outputs (C++ `value()`): no texture on `tex_in` ->
 	/// push nothing; texture present -> push a `ShaderJob` with the
 	/// whole input row inserted.

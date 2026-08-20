@@ -190,6 +190,17 @@ impl NodeBehavior for MultiCamNode {
 		}
 	}
 
+	/// Combo input option labels (C++ `retranslate()` /
+	/// `set_combo_box_strings`): `sequence_type_in` -> "Video", "Audio".
+	/// `current_in`'s strings are built dynamically per connected source
+	/// (`"<i + 1>: <name>"`) and cannot be expressed statically.
+	fn input_combo_strings(&self, id: &str) -> Vec<&'static str> {
+		match id {
+			SEQUENCE_TYPE_INPUT => vec!["Video", "Audio"],
+			_ => Vec::new(),
+		}
+	}
+
 	/// Inputs excluded from rendering (C++
 	/// `ignore_inputs_for_rendering()`): always
 	/// `{ k_sequence_input }`.

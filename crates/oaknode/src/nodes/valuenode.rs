@@ -88,6 +88,29 @@ impl NodeBehavior for ValueNode {
 		}
 	}
 
+	/// Combo input option labels (C++ `retranslate()` /
+	/// `set_combo_box_strings`): `type_in` -> the pretty data-type names
+	/// of [`SUPPORTED_TYPES`] in order — "Float", "Integer", "Rational",
+	/// "Vector 2D", "Vector 3D", "Vector 4D", "Color", "Text", "Boolean"
+	/// (matching the Rust list, which omits the C++ `k_matrix`/`k_font`
+	/// entries).
+	fn input_combo_strings(&self, id: &str) -> Vec<&'static str> {
+		match id {
+			TYPE_INPUT => vec![
+				"Float",
+				"Integer",
+				"Rational",
+				"Vector 2D",
+				"Vector 3D",
+				"Vector 4D",
+				"Color",
+				"Text",
+				"Boolean",
+			],
+			_ => Vec::new(),
+		}
+	}
+
 	/// Evaluate outputs (C++ `value()`): pushes the `value_in` value
 	/// onto the table unchanged.
 	fn value(

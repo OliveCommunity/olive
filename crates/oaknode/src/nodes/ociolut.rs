@@ -269,6 +269,15 @@ impl NodeBehavior for OCIOLutNode {
 		}
 	}
 
+	/// Combo input option labels (C++ `retranslate()` /
+	/// `set_combo_box_strings`): `lut_dir_in` -> "Forward", "Inverse".
+	fn input_combo_strings(&self, id: &str) -> Vec<&'static str> {
+		match id {
+			DIRECTION_INPUT => vec!["Forward", "Inverse"],
+			_ => Vec::new(),
+		}
+	}
+
 	/// Input value changed (C++ `InputValueChangedEvent`): for
 	/// `lut_file_in` or `lut_dir_in`, regenerates the processor
 	/// immediately in the main process; in the render worker (where

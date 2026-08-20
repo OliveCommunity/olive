@@ -165,6 +165,18 @@ impl NodeBehavior for DisplayTransformNode {
 		}
 	}
 
+	/// Combo input option labels (C++ `retranslate()` /
+	/// `set_combo_box_strings`): `dir_in` -> "Forward", "Inverse". The
+	/// `display_in`/`view_in` strings come from the attached color
+	/// manager at runtime (`update_displays`/`update_views`) and cannot
+	/// be expressed statically.
+	fn input_combo_strings(&self, id: &str) -> Vec<&'static str> {
+		match id {
+			DIRECTION_INPUT => vec!["Forward", "Inverse"],
+			_ => Vec::new(),
+		}
+	}
+
 	/// Input value changed (C++ `InputValueChangedEvent`): for
 	/// `display_in`, `view_in` or `dir_in` regenerates the processor;
 	/// a `display_in` change additionally refreshes the view combo.

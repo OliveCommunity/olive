@@ -307,6 +307,18 @@ impl NodeBehavior for TransformDistortNode {
 		}
 	}
 
+	/// Combo input option labels (C++ `retranslate()` /
+	/// `set_combo_box_strings`): `autoscale_in` -> "None", "Fit", "Fill",
+	/// "Stretch"; `interpolation_in` -> "Nearest Neighbor", "Bilinear",
+	/// "Mipmapped Bilinear".
+	fn input_combo_strings(&self, id: &str) -> Vec<&'static str> {
+		match id {
+			AUTOSCALE_INPUT => vec!["None", "Fit", "Fill", "Stretch"],
+			INTERPOLATION_INPUT => vec!["Nearest Neighbor", "Bilinear", "Mipmapped Bilinear"],
+			_ => Vec::new(),
+		}
+	}
+
 	/// Evaluate outputs (C++ `value()`): generates the matrix from the
 	/// inherited transform inputs (position/rotation/scale/anchor,
 	/// folded with `parent_in`) and always pushes it as a `k_matrix`

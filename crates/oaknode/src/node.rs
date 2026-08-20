@@ -501,6 +501,14 @@ pub trait NodeBehavior: Send {
 		}
 	}
 
+	/// The option labels of a combo input (C++ `set_combo_box_strings`,
+	/// called from each node's `retranslate`). Empty for non-combo inputs;
+	/// the default is no options.
+	fn input_combo_strings(&self, id: &str) -> Vec<&'static str> {
+		let _ = id;
+		Vec::new()
+	}
+
 	/// Inputs excluded from rendering (C++ `ignore_inputs_for_rendering()`).
 	fn ignore_inputs_for_rendering(&self) -> &[String] {
 		&[]

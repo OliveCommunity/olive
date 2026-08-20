@@ -100,6 +100,16 @@ impl NodeBehavior for MathNode {
 		}
 	}
 
+	/// Combo input option labels (C++ `retranslate()` /
+	/// `set_combo_box_strings`): `method_in` -> the five operation names
+	/// "Add", "Subtract", "Multiply", "Divide", "Power".
+	fn input_combo_strings(&self, id: &str) -> Vec<&'static str> {
+		match id {
+			METHOD_INPUT => vec!["Add", "Subtract", "Multiply", "Divide", "Power"],
+			_ => Vec::new(),
+		}
+	}
+
 	/// Evaluate outputs (C++ `value()`): pushes both operands into
 	/// single-value tables, runs the [`super::mathbase::PairingCalculator`]
 	/// heuristic, and if a pairing was found delegates to

@@ -632,12 +632,14 @@ fn load_node(
 
 	// Instantiate the node type; timeline structural types (which are
 	// not in the factory menu) are reconstructed directly, unknown
-	// types fall back to an error.
+	// types fall back to an error. `create_any` also covers the dynamic
+	// (runtime-registered OpenFX plugin) entries — `find` alone would
+	// reject every project that carries a plugin node.
 	let (mut core, behavior): (NodeCore, Box<dyn crate::node::NodeBehavior>) =
 		match create_timeline_type(&type_id) {
 			Some(x) => x,
-			None => match crate::factory::Factory::global().find(&type_id) {
-				Some(meta) => (meta.create)(),
+			None => match crate::factory::Factory::global().create_any(&type_id) {
+				Some(x) => x,
 				None => {
 					// Unknown type: skip the element body.
 					reader.skip_current_element();

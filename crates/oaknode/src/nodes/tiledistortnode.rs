@@ -194,6 +194,27 @@ impl NodeBehavior for TileDistortNode {
 		}
 	}
 
+	/// Combo input option labels (C++ `retranslate()` /
+	/// `set_combo_box_strings`): `anchor_in` -> "Top-Left", "Top-Center",
+	/// "Top-Right", "Middle-Left", "Middle-Center", "Middle-Right",
+	/// "Bottom-Left", "Bottom-Center", "Bottom-Right".
+	fn input_combo_strings(&self, id: &str) -> Vec<&'static str> {
+		match id {
+			ANCHOR_INPUT => vec![
+				"Top-Left",
+				"Top-Center",
+				"Top-Right",
+				"Middle-Left",
+				"Middle-Center",
+				"Middle-Right",
+				"Bottom-Left",
+				"Bottom-Center",
+				"Bottom-Right",
+			],
+			_ => Vec::new(),
+		}
+	}
+
 	/// Evaluate outputs (C++ `value()`): no texture -> push nothing;
 	/// scale differs from 1.0 (an approximate-equality epsilon test:
 	/// `abs(scale-1)*1e12 > min(abs(scale), 1)`) -> shader job over the

@@ -71,8 +71,22 @@ impl<E: AppEngine> InspectorPanel<E> {
 		// the user pick one from the small menu below (the actual insert
 		// runs through `AppEngine::add_effect`).
 		cx.subscribe(&stack, |this, _stack, event: &EffectStackEvent, cx| {
-			if let EffectStackEvent::AddRequested { index } = event {
-				this.pending_add = Some(*index);
+			match event {
+				EffectStackEvent::AddRequested { index } => {
+					this.pending_add = Some(*index);
+				}
+				// A drop from the effect library carries the type id: insert
+				// directly at the drop position, no picker menu.
+				EffectStackEvent::AddTypeRequested { index, type_id } => {
+					let (index, type_id) = (*index, type_id.clone());
+					this.engine.update(cx, |engine, cx| {
+						if let Err(err) = engine.add_effect(index, &type_id, cx) {
+							println!("[inspector] add effect failed: {err}");
+						}
+					});
+					return;
+				}
+				_ => {}
 			}
 			this.engine
 				.update(cx, |engine, cx| engine.apply_effect_event(event, cx));

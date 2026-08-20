@@ -340,9 +340,11 @@ impl WorkerSession {
 		if let Err(e) = oakplugin::host::Host::global().cache.scan() {
 			log_error(&format!("runtime: OFX plugin scan failed ({e}); continuing"));
 		}
+		let discovered = oakplugin::host::Host::global().cache.count();
 		let registered = oakplugin::node_factory::register_plugin_nodes();
 		log_error(&format!(
-			"runtime: registered {} OFX plugin node type(s)",
+			"runtime: discovered {} OFX plugin(s), registered {} node type(s)",
+			discovered,
 			registered.len()
 		));
 		// Worker-side plugin progress forwarding (see the module docs): the

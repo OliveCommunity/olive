@@ -36,9 +36,10 @@
 //! nothing; `ui_group` / `ui_page` become section titles. Every edit is
 //! routed through [`AppEngine::set_effect_param`] (undoable).
 //!
-//! The control set is rebuilt when the card re-renders (the params view is
-//! created fresh per expanded-card render), so it carries no state of its
-//! own; values are re-synced from the engine each frame.
+//! The control set is built once per expanded card — the stack view caches
+//! the params view per effect (recreating it per render would kill
+//! in-progress slider drags); the view observes the engine and re-syncs
+//! the widget values from the engine snapshot on every render.
 
 use std::sync::Arc;
 
@@ -124,6 +125,12 @@ impl<E: AppEngine> OfxParamsView<E> {
 			controls,
 		};
 		wire_controls(&this, cx);
+		// The stack view caches one params view per effect, so the view
+		// lives across edits: re-render (and thereby `sync_values`, which
+		// silently reapplies the engine snapshot) whenever the engine
+		// changes — undo/redo, external edits, plugin-side updates.
+		cx.observe(&this.engine, |_this, _engine, cx| cx.notify())
+			.detach();
 		this
 	}
 

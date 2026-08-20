@@ -158,9 +158,10 @@ unsafe extern "C" fn host_fetch_suite(
 			p
 		}
 		Ok(None) => {
-			// 诊断：插件请求的 suite 宿主没有（describe 常因此返回
-			// kOfxStatErrMissingHostFeature）。
-			if !name.is_null() {
+			// 诊断：插件请求的 suite 宿主没有。厂商套件（Nuke/Vegas/
+			// Foundry）的探测是插件的正常行为，不打正式日志——需要
+			// 排查时用 OAK_OFX_TRACE 打开。
+			if std::env::var_os("OAK_OFX_TRACE").is_some() && !name.is_null() {
 				if let Ok(n) = unsafe { CStr::from_ptr(name) }.to_str() {
 					eprintln!("[ofx] fetchSuite miss: {n} v{version}");
 				}
@@ -1222,6 +1223,12 @@ impl Host {
 				.call_action(ACTION_CREATE_INSTANCE, inst_handle, &empty, &empty)
 		};
 		if stat != status::OK && stat != status::REPLY_DEFAULT {
+			// 插件拒绝了 createInstance——它从没认领这个实例；把
+			// destroyed 门置位，让随后的 drop 跳过 destroyInstance 通知
+			// （否则插件对一个它没创建的实例回 BadIndex 之类的错误）。
+			arc.value
+				.destroyed
+				.store(true, std::sync::atomic::Ordering::Relaxed);
 			return Err(crate::error::Error::Failed(format!(
 				"createInstance 失败：{stat}"
 			)));

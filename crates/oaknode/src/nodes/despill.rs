@@ -158,6 +158,18 @@ impl NodeBehavior for DespillNode {
 		}
 	}
 
+	/// Combo input option labels (C++ `retranslate()` /
+	/// `set_combo_box_strings`): `color_in` -> "Green", "Blue";
+	/// `method_in` -> "Average", "Double Red Average", "Double Average",
+	/// "Limit".
+	fn input_combo_strings(&self, id: &str) -> Vec<&'static str> {
+		match id {
+			COLOR_INPUT => vec!["Green", "Blue"],
+			METHOD_INPUT => vec!["Average", "Double Red Average", "Double Average", "Limit"],
+			_ => Vec::new(),
+		}
+	}
+
 	/// Evaluate outputs (C++ `value()`): builds a `ShaderJob` from
 	/// the whole input row, then inserts a `luma_coeffs` vec3 taken
 	/// from the project's color manager default luma coefficients

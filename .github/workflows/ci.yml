@@ -196,3 +196,7 @@ jobs:
           OFX_PLUGIN_PATH="$PWD/.cache/ofx-fixture" \
             cargo run --locked -p oakplugin --example scan_probe > probe.log 2>&1
           grep -q 'type_id=rs.oak.CiTestPlugin' probe.log
+          # A project carrying a plugin node must survive save/load (the
+          # serializer resolves plugin types via the dynamic factory).
+          OAK_OFX_FIXTURE_DIR="$PWD/.cache/ofx-fixture" \
+            cargo test --locked -p oakplugin --test ofx_roundtrip

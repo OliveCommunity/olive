@@ -175,6 +175,16 @@ impl NodeBehavior for ShapeNode {
 		}
 	}
 
+	/// Combo input option labels (C++ `retranslate()` /
+	/// `set_combo_box_strings`): `type_in` -> "Rectangle", "Ellipse",
+	/// "Rounded Rectangle".
+	fn input_combo_strings(&self, id: &str) -> Vec<&'static str> {
+		match id {
+			TYPE_INPUT => vec!["Rectangle", "Ellipse", "Rounded Rectangle"],
+			_ => Vec::new(),
+		}
+	}
+
 	/// Evaluate outputs (C++ `value()`): builds a `"shape"` shader job
 	/// from the input row, inserting `resolution_in` (the base
 	/// texture's virtual resolution when connected, else the sequence

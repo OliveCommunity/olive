@@ -269,6 +269,16 @@ impl NodeBehavior for TextGeneratorV3 {
 		}
 	}
 
+	/// Combo input option labels (C++ `retranslate()` /
+	/// `set_combo_box_strings`): `valign_in` -> "Top", "Middle",
+	/// "Bottom".
+	fn input_combo_strings(&self, id: &str) -> Vec<&'static str> {
+		match id {
+			VERTICAL_ALIGNMENT_INPUT => vec!["Top", "Middle", "Bottom"],
+			_ => Vec::new(),
+		}
+	}
+
 	/// Evaluate outputs (C++ `value()`): if `use_args_in` is set and
 	/// the args array is non-empty, expand `%N` placeholders in the
 	/// text via [`Self::format_string`]; if the resulting text is

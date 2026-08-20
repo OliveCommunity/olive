@@ -103,6 +103,10 @@ impl<E: AppEngine> Render for EffectLibraryPanel<E> {
 			let row_id = entry.type_id.clone();
 			let name = entry.name.clone();
 			let type_id = entry.type_id.clone();
+			let drag_payload = gpui::effect_stack::LibraryEffectDrag {
+				type_id: SharedString::from(entry.type_id.clone()),
+				name: SharedString::from(entry.name.clone()),
+			};
 			list = list.child(
 				div()
 					.id(SharedString::from(format!("effect-library-{type_id}")))
@@ -115,6 +119,14 @@ impl<E: AppEngine> Render for EffectLibraryPanel<E> {
 					.text_color(colors.text)
 					.hover(|style| style.bg(colors.selected))
 					.child(name)
+					// Drag the effect onto the inspector's effect stack (or
+					// the node editor) to add it there; double-click adds it
+					// to the selected clip's chain end.
+					.on_drag(drag_payload, |payload, _origin, _window, cx| {
+						cx.new(|_cx| EffectDragGhost {
+							name: payload.name.clone(),
+						})
+					})
 					.on_click(move |event: &ClickEvent, _window, cx| {
 						// Double-click appends the effect to the selected
 						// clip's chain; the backend clamps the index to the
@@ -182,6 +194,28 @@ fn group_header(colors: &gpui::colors::Colors, group: &str) -> impl IntoElement 
 		.font_weight(gpui::FontWeight(600.0))
 		.text_color(colors.disabled)
 		.child(group.to_string())
+}
+
+/// The drag ghost shown under the pointer while an effect is dragged out
+/// of the library (a small floating label with the effect name).
+struct EffectDragGhost {
+	name: SharedString,
+}
+
+impl Render for EffectDragGhost {
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let colors = cx.default_colors().clone();
+		div()
+			.px_2()
+			.py_1()
+			.rounded_sm()
+			.border_1()
+			.border_color(colors.border)
+			.bg(colors.container)
+			.text_sm()
+			.text_color(colors.text)
+			.child(self.name.clone())
+	}
 }
 
 impl<E: AppEngine> EventEmitter<PanelEvent> for EffectLibraryPanel<E> {}

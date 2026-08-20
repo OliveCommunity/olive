@@ -1542,12 +1542,10 @@ fn move_clip_command(
 
 /// Move `clip` within its track so its in point becomes `new_in_ts`
 /// (undoable "Move Clip"; the module's `TrackMoveBlockCommand` — the old
-/// spot becomes a gap, length and media-in are preserved).
+/// spot becomes a gap, length and media-in are preserved). A negative
+/// target clamps to frame 0 (the NLE drop-past-the-start behavior).
 pub fn move_clip(p: &ProjectRef, clip: NodeId, new_in_ts: i64) -> Result<(), String> {
-	if new_in_ts < 0 {
-		return Err("invalid move target".to_string());
-	}
-	push(move_clip_command(p, clip, new_in_ts)?, "Move Clip")
+	push(move_clip_command(p, clip, new_in_ts.max(0))?, "Move Clip")
 }
 
 /// The undoable cross-track move commands for one clip (gap on the source
@@ -1638,17 +1636,19 @@ pub fn move_clip_to_track(
 	dest_track: NodeId,
 	new_in_ts: i64,
 ) -> Result<(), String> {
-	if new_in_ts < 0 {
-		return Err("invalid move target".to_string());
-	}
-	push_multi(move_clip_to_track_commands(p, clip, dest_track, new_in_ts)?, "Move Clip to Track")
+	push_multi(
+		move_clip_to_track_commands(p, clip, dest_track, new_in_ts.max(0))?,
+		"Move Clip to Track",
+	)
 }
 
 /// Move `clip` to `new_in_ts` (`dest_track` when the gesture crosses
 /// tracks) while every clip in `linked` follows in lockstep: each linked
 /// clip keeps its own track and moves by the same frame offset. The whole
 /// group lands as ONE undoable "Move Clip" entry (C++ `block_links_`
-/// semantics — grouped edits apply to the whole group).
+/// semantics — grouped edits apply to the whole group). The shared delta
+/// is clamped so no clip of the group lands before frame 0 (a drag past
+/// the timeline start pins the group at 0 instead of failing).
 pub fn move_clip_with_links(
 	p: &ProjectRef,
 	clip: NodeId,
@@ -1656,9 +1656,6 @@ pub fn move_clip_with_links(
 	new_in_ts: i64,
 	linked: &[NodeId],
 ) -> Result<(), String> {
-	if new_in_ts < 0 {
-		return Err("invalid move target".to_string());
-	}
 	// The dragged clip's old in point frames the shared frame delta.
 	let old_in_ts = {
 		let g = lock(p);
@@ -1673,19 +1670,13 @@ pub fn move_clip_with_links(
 			.ok_or_else(|| "the node is not a clip".to_string())?;
 		rational_to_ts(in_r, tb)
 	};
-	let delta = new_in_ts - old_in_ts;
-
-	let mut commands = Vec::new();
-	match dest_track {
-		Some(track) => commands.extend(move_clip_to_track_commands(p, clip, track, new_in_ts)?),
-		None => commands.push(move_clip_command(p, clip, new_in_ts)?),
-	}
+	// The linked clips' current in points (each stays on its own track;
+	// only its in point follows the shared delta).
+	let mut linked_ins: Vec<(NodeId, i64)> = Vec::new();
 	for &other in linked {
 		if other == clip {
 			continue;
 		}
-		// Each linked clip stays on its own track; only its in point follows
-		// the shared frame delta.
 		let other_in_ts = {
 			let g = lock(p);
 			let tb = clip_track(&g.graph, other)
@@ -1699,7 +1690,25 @@ pub fn move_clip_with_links(
 				.ok_or_else(|| "a linked node is not a clip".to_string())?;
 			rational_to_ts(in_r, tb)
 		};
-		commands.push(move_clip_command(p, other, (other_in_ts + delta).max(0))?);
+		linked_ins.push((other, other_in_ts));
+	}
+	// Group-aware clamp: the shared delta may not push ANY clip of the
+	// group below frame 0 (per-clip clamping would silently de-sync the
+	// group).
+	let min_in = linked_ins
+		.iter()
+		.map(|(_, ts)| *ts)
+		.fold(old_in_ts, i64::min);
+	let delta = (new_in_ts - old_in_ts).max(-min_in);
+	let new_in_ts = old_in_ts + delta;
+
+	let mut commands = Vec::new();
+	match dest_track {
+		Some(track) => commands.extend(move_clip_to_track_commands(p, clip, track, new_in_ts)?),
+		None => commands.push(move_clip_command(p, clip, new_in_ts)?),
+	}
+	for (other, other_in_ts) in linked_ins {
+		commands.push(move_clip_command(p, other, other_in_ts + delta)?);
 	}
 	push_multi(commands, "Move Clip")
 }

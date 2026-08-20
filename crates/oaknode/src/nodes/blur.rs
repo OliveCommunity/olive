@@ -305,6 +305,16 @@ impl NodeBehavior for BlurFilterNode {
 		}
 	}
 
+	/// Combo input option labels (C++ `retranslate()` /
+	/// `set_combo_box_strings`): `method_in` -> "Box", "Gaussian",
+	/// "Directional", "Radial".
+	fn input_combo_strings(&self, id: &str) -> Vec<&'static str> {
+		match id {
+			METHOD_INPUT => vec!["Box", "Gaussian", "Directional", "Radial"],
+			_ => Vec::new(),
+		}
+	}
+
 	/// Evaluate outputs (C++ `value()`): no texture -> push nothing;
 	/// radius <= 0.0, or box/gaussian with both horiz and vert unchecked
 	/// -> pass-through push of the input texture; otherwise push a shader

@@ -258,6 +258,16 @@ impl NodeBehavior for TextGeneratorV2 {
 		}
 	}
 
+	/// Combo input option labels (C++ `retranslate()` /
+	/// `set_combo_box_strings`): `valign_in` -> "Top", "Center",
+	/// "Bottom".
+	fn input_combo_strings(&self, id: &str) -> Vec<&'static str> {
+		match id {
+			V_ALIGN_INPUT => vec!["Top", "Center", "Bottom"],
+			_ => Vec::new(),
+		}
+	}
+
 	/// Evaluate outputs (C++ `value()`): if the text input is
 	/// non-empty, push a texture generate job at the global video
 	/// params forced to `PixelFormat::f32`; otherwise push nothing.

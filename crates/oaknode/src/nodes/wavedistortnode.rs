@@ -122,6 +122,16 @@ impl NodeBehavior for WaveDistortNode {
 		}
 	}
 
+	/// Combo input option labels (C++ `retranslate()` /
+	/// `set_combo_box_strings`): `vertical_in` -> "Horizontal",
+	/// "Vertical".
+	fn input_combo_strings(&self, id: &str) -> Vec<&'static str> {
+		match id {
+			VERTICAL_INPUT => vec!["Horizontal", "Vertical"],
+			_ => Vec::new(),
+		}
+	}
+
 	/// Evaluate outputs (C++ `value()`): no texture -> push nothing;
 	/// intensity != 0.0 -> shader job over the whole value row rendered
 	/// at the texture's own params; intensity == 0.0 -> pass-through
