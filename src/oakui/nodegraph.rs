@@ -287,6 +287,35 @@ struct TypedNode {
 	type_id: String,
 }
 
+/// The displayable nodes of ONE clip's context chain — the per-clip node
+/// view the editor shows while that clip is selected: the clip block node
+/// plus its effect chain in signal order. The chain (from
+/// [`effectchain::chain`]) walks the `tex_in`/effect-input link all the way
+/// to the media source, so it already contains the footage node feeding the
+/// clip (`[footage, effect1, effect2, ...]`); concatenating the clip yields
+/// the full `footage → effects → clip` chain. The sequence node is NOT part
+/// of a clip's context — the chain is self-contained, so the filtered view
+/// shows no output card and no synthesized clip→output wires.
+fn clip_context_nodes(g: &oaknode::graph::Graph, clip: DomainNodeId) -> Vec<TypedNode> {
+	let mut out: Vec<TypedNode> = Vec::new();
+	// The clip block card (the chain's output end).
+	out.push(TypedNode {
+		id: clip,
+		ident: clip.identity(),
+		type_id: TYPE_ID_CLIP_BLOCK.into(),
+	});
+	// The media → effects chain, closest-to-source first (the same order
+	// the effect stack lists cards in).
+	for node in crate::oakui::effectchain::chain(g, clip) {
+		out.push(TypedNode {
+			id: node,
+			ident: node.identity(),
+			type_id: graphops::node_type_id(g, node),
+		});
+	}
+	out
+}
+
 /// The displayable nodes of the sequence's graph, in identity order (the
 /// sequence node itself exactly once).
 fn graph_nodes(g: &oaknode::graph::Graph, seq: DomainNodeId) -> Vec<TypedNode> {
@@ -336,14 +365,25 @@ fn context_position(
 	}
 }
 
-/// Build the (nodes, edges) snapshot of the sequence's node graph.
-pub fn build_graph(project: &ProjectRef, seq: DomainNodeId) -> (Vec<RealNode>, Vec<RealEdge>) {
+/// Build the (nodes, edges) snapshot of the sequence's node graph, or of a
+/// single clip's context chain when `clip` is `Some` (the per-clip view the
+/// editor shows while that clip is selected).
+fn build_graph_impl(
+	project: &ProjectRef,
+	seq: DomainNodeId,
+	clip: Option<DomainNodeId>,
+) -> (Vec<RealNode>, Vec<RealEdge>) {
 	let g = graphops::lock(project);
 	let g = &g.graph;
 	let mut nodes = Vec::new();
 	let mut edges = Vec::new();
 	if !g.is_valid(seq) {
 		return (nodes, edges);
+	}
+	if let Some(clip) = clip {
+		if !g.is_valid(clip) {
+			return (nodes, edges);
+		}
 	}
 	let seq_ident = seq.identity();
 	let seq_label = graphops::node_label(g, seq);
@@ -352,7 +392,15 @@ pub fn build_graph(project: &ProjectRef, seq: DomainNodeId) -> (Vec<RealNode>, V
 		.map(|e| e.behavior.name().to_string())
 		.unwrap_or_default();
 
-	let all = graph_nodes(g, seq);
+	// The displayable node set: the whole sequence graph, or one clip's
+	// context chain (footage → effects → clip).
+	let all = match clip {
+		Some(clip) => clip_context_nodes(g, clip),
+		None => graph_nodes(g, seq),
+	};
+	// The synthesized "clip → output" wire only exists in the full-sequence
+	// view: a per-clip context has no output card to wire into.
+	let with_output_wires = clip.is_none();
 
 	// Build every card's ports first (inputs, the implicit output), so
 	// real edges can resolve their target port index by matching the
@@ -427,7 +475,9 @@ pub fn build_graph(project: &ProjectRef, seq: DomainNodeId) -> (Vec<RealNode>, V
 	// Outgoing REAL edges: every source node's output connections, with
 	// the target port resolved to the index of the input whose id matches
 	// (the module stores edges by input id; the index may differ from 0 —
-	// e.g. a clip's `tex_in` sits after `enabled_in`).
+	// e.g. a clip's `tex_in` sits after `enabled_in`). Edges whose target
+	// is not part of THIS view are skipped: a per-clip context ends at the
+	// clip, so its outgoing sequence/track edges are not part of the chain.
 	let mut node_edges: Vec<(u64, Vec<RealEdge>)> = Vec::new();
 	for (typed, _) in &built {
 		let mut edges_of = Vec::new();
@@ -436,6 +486,9 @@ pub fn build_graph(project: &ProjectRef, seq: DomainNodeId) -> (Vec<RealNode>, V
 				continue;
 			}
 			let to_ident = to.identity();
+			if !built.iter().any(|(t, _)| t.ident == to_ident) {
+				continue;
+			}
 			let to_index = built
 				.iter()
 				.find(|(t, _)| t.ident == to_ident)
@@ -474,10 +527,10 @@ pub fn build_graph(project: &ProjectRef, seq: DomainNodeId) -> (Vec<RealNode>, V
 
 	// Assemble: every built card + its real edges, plus the synthesized
 	// "clip → output" wires (each clip's main output into the sequence's
-	// `tex_in`, its first declared input).
+	// `tex_in`, its first declared input) — full-sequence view only.
 	let clip_input = port_id(seq_ident, PortKind::Input, 0);
 	for (typed, node) in built {
-		if typed.type_id == TYPE_ID_CLIP_BLOCK {
+		if with_output_wires && typed.type_id == TYPE_ID_CLIP_BLOCK {
 			edges.push(RealEdge {
 				id: output_wire_id(typed.ident),
 				from_node: node.id,
@@ -492,6 +545,27 @@ pub fn build_graph(project: &ProjectRef, seq: DomainNodeId) -> (Vec<RealNode>, V
 		nodes.push(node);
 	}
 	(nodes, edges)
+}
+
+/// Build the (nodes, edges) snapshot of the sequence's node graph.
+pub fn build_graph(project: &ProjectRef, seq: DomainNodeId) -> (Vec<RealNode>, Vec<RealEdge>) {
+	build_graph_impl(project, seq, None)
+}
+
+/// Build the (nodes, edges) snapshot of ONE clip's context chain — the
+/// per-clip node view the editor shows while that clip is selected. The
+/// chain is footage → effects → clip; the sequence output card and the
+/// synthesized wires are not part of a clip's context. An invalid clip
+/// identity yields an empty graph.
+pub fn build_graph_for_clip(
+	project: &ProjectRef,
+	seq: DomainNodeId,
+	clip_ident: u64,
+) -> (Vec<RealNode>, Vec<RealEdge>) {
+	let Some(clip) = graphops::id_of(clip_ident) else {
+		return (Vec::new(), Vec::new());
+	};
+	build_graph_impl(project, seq, Some(clip))
 }
 
 /// The role column of a displayed node (footage | effects | clips |
@@ -700,5 +774,118 @@ pub fn apply_edit(
 			Ok(())
 		}
 		_ => Ok(()),
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::oakui::effectchain;
+	use crate::oakui::graphops;
+
+	/// Serializes with the other app test modules (the process-global undo
+	/// stack).
+	fn stack_lock() -> std::sync::MutexGuard<'static, ()> {
+		crate::oakui::graphops::test_lock()
+	}
+
+	/// A project with a sequence and a clip whose chain runs footage → one
+	/// effect → clip: `(project, seq, clip, effect, footage)`.
+	fn project_with_chained_clip() -> (
+		ProjectRef,
+		DomainNodeId,
+		DomainNodeId,
+		DomainNodeId,
+		DomainNodeId,
+	) {
+		let project = graphops::create_project();
+		let seq = graphops::create_sequence(&project, "Chain");
+		let clip = {
+			let mut g = graphops::lock(&project);
+			let (core, behavior) = oaknode::block::clip_create();
+			g.graph.add_node(core, behavior)
+		};
+		// Insert the effect on the bare clip first (the chain is empty, so
+		// the insert rewires nothing and connects the effect to the clip's
+		// `tex_in`).
+		let ty = effectchain::addable_effects()
+			.into_iter()
+			.next()
+			.expect("the factory registers at least one video effect")
+			.type_id;
+		let effect = effectchain::insert(&project, clip, 0, &ty).expect("chain the effect");
+		// Then feed the effect's media input from a footage node: the chain
+		// becomes footage → effect → clip.
+		let effect_input = graphops::lock(&project)
+			.graph
+			.get(effect)
+			.map(|e| e.core.effect_input.clone())
+			.unwrap_or_default();
+		let footage = {
+			let mut g = graphops::lock(&project);
+			let (core, behavior) = oaknode::footage::FootageBehavior::create();
+			g.graph.add_node(core, behavior)
+		};
+		{
+			let mut g = graphops::lock(&project);
+			g.graph
+				.connect(footage, effect, &effect_input, -1)
+				.expect("wire the footage into the effect");
+		}
+		(project, seq, clip, effect, footage)
+	}
+
+	/// The per-clip builder yields exactly the clip's context chain
+	/// (footage → effect → clip): no sequence output card, no synthesized
+	/// wires, and the chain's real edges connect footage → effect → clip.
+	/// The full-sequence builder still shows the output card and wires.
+	#[test]
+	fn clip_context_build_is_the_clip_chain_only() {
+		let _g = stack_lock();
+		oakundo::global::clear().unwrap();
+		let (project, seq, clip, effect, footage) = project_with_chained_clip();
+
+		let (nodes, edges) = build_graph_for_clip(&project, seq, clip.identity());
+		let ids: Vec<u64> = nodes.iter().map(|n| n.id.0).collect();
+		assert_eq!(ids.len(), 3, "clip + effect + footage (got {ids:?})");
+		assert!(ids.contains(&clip.identity()), "the clip node is present");
+		assert!(ids.contains(&effect.identity()), "the effect node is present");
+		assert!(ids.contains(&footage.identity()), "the footage node is present");
+		assert!(
+			!ids.contains(&seq.identity()),
+			"the sequence output card is not part of a clip's context"
+		);
+
+		// A per-clip view carries no synthesized clip→output wires.
+		assert!(
+			edges.iter().all(|e| !is_output_wire(e.id)),
+			"the per-clip view has no synthesized output wires"
+		);
+		// The chain's real edges: footage feeds the effect, which feeds the
+		// clip.
+		assert!(
+			edges.iter().any(|e| e.from_node == NodeId(footage.identity())
+				&& e.to_node == NodeId(effect.identity())),
+			"footage feeds the effect"
+		);
+		assert!(
+			edges.iter().any(|e| e.from_node == NodeId(effect.identity())
+				&& e.to_node == NodeId(clip.identity())),
+			"the effect feeds the clip"
+		);
+
+		// The full-sequence view keeps the output card and the synthesized
+		// clip→output wire.
+		let (full, full_edges) = build_graph(&project, seq);
+		assert!(
+			full.iter().any(|n| n.id == NodeId(seq.identity())),
+			"the full graph shows the sequence output card"
+		);
+		assert!(
+			full_edges.iter().any(|e| is_output_wire(e.id)),
+			"the full graph synthesizes the clip→output wire"
+		);
+
+		oakundo::global::clear().unwrap();
 	}
 }

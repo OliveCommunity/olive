@@ -957,8 +957,14 @@ pub struct RealEngine {
 	selected_item: Option<u64>,
 	/// The single selected timeline clip — the effect stack's target
 	/// (`None` for an empty or multi-clip selection, or before any
-	/// selection event).
+	/// selection event). Also drives the node graph's scope: while a single
+	/// clip is selected, the editor shows that clip's context chain only.
 	selected_clip: Option<ClipId>,
+	/// The node-graph selection mirror (`None` = no single node selected):
+	/// set when the user clicks a node in the node editor (or an effect
+	/// card in the inspector) so the inspector and the node graph share one
+	/// selection. A timeline clip selection also writes its block node here.
+	selected_graph_node: Option<u64>,
 	/// The engine clipboard for Cut/Copy/Paste (graphops::ClipboardClip
 	/// entries in timeline order).
 	clipboard: Vec<graphops::ClipboardClip>,
@@ -1141,6 +1147,7 @@ impl RealEngine {
 			waveforms: Mutex::new(None),
 			selected_item: None,
 			selected_clip: None,
+			selected_graph_node: None,
 			clipboard: Vec::new(),
 			expanded_effects: BTreeSet::new(),
 			program_playing: false,
@@ -2728,16 +2735,62 @@ impl RealEngine {
 			.unwrap_or(false)
 	}
 
+	/// Resolves the node-graph selection to the inspector's view: which
+	/// clip's stack to show, and which effect card (if any) to highlight.
+	/// A single selected node that names a clip block on the current
+	/// timeline selects that clip's stack; one that names an effect of some
+	/// clip's chain selects that clip's stack and returns the matching
+	/// card. Without a node-graph selection the timeline-selected clip
+	/// (the existing behavior) is the target.
+	fn inspector_selection(&self) -> (Option<ClipId>, Option<EffectId>) {
+		let Some(project) = self.project_ref() else {
+			return (self.selected_clip, None);
+		};
+		let Some(ident) = self.selected_graph_node else {
+			return (self.selected_clip, None);
+		};
+		let Some(node) = graphops::id_of(ident) else {
+			return (self.selected_clip, None);
+		};
+		let guard = graphops::lock(project);
+		// A clip block node on the current timeline: its stack is the target.
+		if graphops::clip_behavior(&guard.graph, node).is_some()
+			&& self.tracks.iter().any(|t| t.clips.iter().any(|c| c.id.0 == ident))
+		{
+			return (Some(ClipId(ident)), None);
+		}
+		// An effect node of some clip's chain: that clip's stack, with the
+		// matching card highlighted.
+		for track in &self.tracks {
+			for clip in &track.clips {
+				let Some(block) = graphops::id_of(clip.id.0) else {
+					continue;
+				};
+				if graphops::clip_behavior(&guard.graph, block).is_none() {
+					continue;
+				}
+				if let Some(effect) = super::effectchain::chain(&guard.graph, block)
+					.iter()
+					.find(|n| n.identity() == ident)
+				{
+					return (Some(clip.id()), Some(EffectId(effect.identity())));
+				}
+			}
+		}
+		(self.selected_clip, None)
+	}
+
 	/// The selected clip's block node, or `None` when no single clip is
-	/// selected.
+	/// selected. The inspector's stack target follows the node-graph
+	/// selection (see [`inspector_selection`](Self::inspector_selection)).
 	fn selected_clip_node(&self) -> Option<NodeId> {
-		self.clip_block(self.selected_clip?)
+		self.clip_block(self.inspector_selection().0?)
 	}
 
 	/// The display label of the selected clip (its timeline snapshot
 	/// label), if any.
 	fn selected_clip_label(&self) -> Option<SharedString> {
-		let clip_id = self.selected_clip?;
+		let clip_id = self.inspector_selection().0?;
 		for track in &self.tracks {
 			if let Some(clip) = track.clips.iter().find(|c| c.id() == clip_id) {
 				return Some(clip.label());
@@ -3000,6 +3053,10 @@ impl EffectStackDataSource for RealEngine {
 		super::effectchain::effect_input_of(&guard.graph, host)?;
 		Some(label)
 	}
+
+	fn selected_effect(&self) -> Option<EffectId> {
+		self.inspector_selection().1
+	}
 }
 
 impl NodeGraphDataSource for RealEngine {
@@ -3010,14 +3067,23 @@ impl NodeGraphDataSource for RealEngine {
 		let (Some(project), Some(seq)) = (self.project_ref(), self.sequence) else {
 			return Vec::new();
 		};
-		crate::oakui::nodegraph::build_graph(project, seq).0
+		match self.selected_clip {
+			// While one clip is selected the editor shows that clip's
+			// context chain (footage → effects → clip) instead of the whole
+			// sequence graph.
+			Some(clip) => crate::oakui::nodegraph::build_graph_for_clip(project, seq, clip.0).0,
+			None => crate::oakui::nodegraph::build_graph(project, seq).0,
+		}
 	}
 
 	fn edges(&self) -> Vec<Self::Edge> {
 		let (Some(project), Some(seq)) = (self.project_ref(), self.sequence) else {
 			return Vec::new();
 		};
-		crate::oakui::nodegraph::build_graph(project, seq).1
+		match self.selected_clip {
+			Some(clip) => crate::oakui::nodegraph::build_graph_for_clip(project, seq, clip.0).1,
+			None => crate::oakui::nodegraph::build_graph(project, seq).1,
+		}
 	}
 
 	fn can_connect(&self, from: gpui::node_graph::PortId, to: gpui::node_graph::PortId) -> bool {
@@ -3218,9 +3284,16 @@ impl AppEngine for RealEngine {
 	fn set_selected_clips(&mut self, clips: Vec<ClipId>, cx: &mut Context<Self>) {
 		// The effect stack targets exactly one clip: an empty or
 		// multi-clip selection keeps the empty state (see
-		// `EffectStackDataSource::target_label`).
+		// `EffectStackDataSource::target_label`). The node graph follows:
+		// while one clip is selected it shows (and highlights) that clip's
+		// context chain, so its block node becomes the graph selection.
 		self.selected_clip = (clips.len() == 1).then(|| clips[0]);
+		self.selected_graph_node = self.selected_clip.map(|clip| clip.0);
 		cx.notify();
+	}
+
+	fn selected_graph_node(&self) -> Option<u64> {
+		self.selected_graph_node
 	}
 
 	fn addable_effects(&self) -> Vec<crate::oakui::engine::EffectEntry> {
@@ -3376,6 +3449,14 @@ impl AppEngine for RealEngine {
 				let _ = index;
 				cx.notify();
 			}
+			EffectStackEvent::CardSelected { effect } => {
+				// The inspector card click selects the effect's node in the
+				// node editor (the bidirectional node↔inspector link). The
+				// node editor panel observes the engine and pushes the
+				// highlight into the graph widget.
+				self.selected_graph_node = Some(effect.0);
+				cx.notify();
+			}
 			// The app owns the context menu; parameter changes have no
 			// metadata to refresh yet.
 			EffectStackEvent::ContextMenuRequested { .. }
@@ -3394,10 +3475,29 @@ impl AppEngine for RealEngine {
 			NodeGraphEvent::NodeMovePreview { .. }
 			| NodeGraphEvent::ViewChanged { .. }
 			| NodeGraphEvent::BackgroundClicked { .. }
-			| NodeGraphEvent::SelectionChanged { .. }
 			// The node editor panel answers the right-click itself (it owns
 			// the popup); the engine has nothing to apply.
 			| NodeGraphEvent::NodeContextMenuRequested { .. } => {}
+			NodeGraphEvent::SelectionChanged { nodes } => {
+				// The node-graph selection is the inspector's shared
+				// selection: a single selected node is mirrored into
+				// `selected_graph_node`, and when it names an effect of the
+				// targeted clip's chain its card is expanded too (so the
+				// inspector shows that effect's params).
+				let prev = self.selected_graph_node;
+				self.selected_graph_node = (nodes.len() == 1).then(|| {
+					(*nodes
+						.iter()
+						.next()
+						.expect("a one-element set always yields an item"))
+					.0
+				});
+				if prev != self.selected_graph_node {
+					if let Some(effect) = self.selected_effect() {
+						self.expanded_effects.insert(effect.0);
+					}
+				}
+			}
 			_ => {
 				if let (Some(project), Some(seq)) = (self.project.clone(), self.sequence) {
 					let result = crate::oakui::nodegraph::apply_edit(&project, seq, event);
@@ -5883,6 +5983,138 @@ mod tests {
 
 		oakundo::global::clear().unwrap();
 		let _ = std::fs::remove_file(&media);
+	}
+
+	/// The selection linkage: selecting a timeline clip narrows the node
+	/// graph to that clip's context chain and mirrors its block node as the
+	/// graph selection; selecting the effect's node in the graph updates the
+	/// inspector's stack target and the highlighted effect card; and a card
+	/// click selects the effect node again (the reverse direction).
+	#[gpui::test]
+	async fn selection_links_timeline_graph_and_inspector(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+
+		let (clip_id, effect_ident, footage_ident) = cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				let project = graphops::create_project();
+				let seq = graphops::create_sequence(&project, "Selection Link");
+				graphops::add_track(&project, seq, TrackType::Video).expect("a video track");
+				// The clip: a bare block whose chain gets the effect first
+				// (the effect-chain insert on an empty chain rewires nothing
+				// and connects the effect to the clip's `tex_in`), then the
+				// footage feeds the effect's media input.
+				let clip = oaktimeline::util::block_clip_create(&project);
+				let ty = crate::oakui::effectchain::addable_effects()
+					.into_iter()
+					.next()
+					.expect("an addable effect")
+					.type_id;
+				let effect =
+					crate::oakui::effectchain::insert(&project, clip.id, 0, &ty).expect("chain it");
+				let media = std::env::temp_dir().join(format!(
+					"oakapp_sel_link_{}.mp4",
+					std::process::id()
+				));
+				oakcodec::testmedia::write_test_clip(&media, 32, 32, 10, 10)
+					.expect("generate test media");
+				let footage = graphops::import_footage(&project, &media).expect("import the media");
+				let effect_input = graphops::lock(&project)
+					.graph
+					.get(effect)
+					.map(|e| e.core.effect_input.clone())
+					.unwrap_or_default();
+				{
+					let mut g = graphops::lock(&project);
+					g.graph
+						.connect(footage, effect, &effect_input, -1)
+						.expect("wire the footage into the effect");
+				}
+				// Place the clip on the track so the engine's timeline
+				// snapshot includes it (the inspector walks the snapshot).
+				let track0 = {
+					let g = graphops::lock(&project);
+					graphops::track_ids(&g.graph, seq, TrackType::Video)[0]
+				};
+				oaktimeline::util::track_append_block(
+					&oaktimeline::util::NodeRef::new(project.clone(), track0),
+					&clip,
+				);
+				let _ = std::fs::remove_file(&media);
+				engine.adopt_project(project, cx);
+				(ClipId(clip.id.identity()), effect.identity(), footage.identity())
+			})
+		});
+
+		// A single clip selection narrows the node graph to the chain and
+		// mirrors the block node as the graph selection.
+		cx.update(|app| {
+			engine.update(app, |engine, cx| engine.set_selected_clips(vec![clip_id], cx))
+		});
+		assert_eq!(
+			cx.read(|app| engine.read(app).selected_graph_node()),
+			Some(clip_id.0),
+			"a clip selection highlights its block node"
+		);
+		let ids: Vec<u64> = cx
+			.read(|app| engine.read(app).nodes().into_iter().map(|n| n.id.0).collect());
+		assert_eq!(ids.len(), 3, "only the clip's context chain is shown (got {ids:?})");
+		assert!(ids.contains(&clip_id.0), "the clip node is part of the chain");
+		assert!(ids.contains(&effect_ident), "the effect is part of the chain");
+		assert!(ids.contains(&footage_ident), "the footage is part of the chain");
+
+		// Selecting the effect node in the graph retargets the inspector to
+		// the owning clip and highlights the matching card.
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.apply_node_graph_event(
+					&NodeGraphEvent::SelectionChanged {
+						nodes: BTreeSet::from([gpui::node_graph::NodeId(effect_ident)]),
+					},
+					cx,
+				);
+			})
+		});
+		assert_eq!(
+			cx.read(|app| engine.read(app).selected_graph_node()),
+			Some(effect_ident),
+			"the graph selection mirrors the clicked node"
+		);
+		let cards = cx.read(|app| engine.read(app).effects());
+		assert_eq!(
+			cards.len(),
+			2,
+			"the inspector shows the owning clip's chain (media source + effect)"
+		);
+		assert_eq!(
+			cx.read(|app| engine.read(app).selected_effect()),
+			Some(EffectId(effect_ident)),
+			"the selected node highlights its effect card"
+		);
+		assert!(
+			cx.read(|app| engine.read(app).target_label()).is_some(),
+			"the stack keeps its target label"
+		);
+
+		// An inspector card click selects the effect node again (the reverse
+		// direction of the bidirectional link).
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.apply_effect_event(
+					&EffectStackEvent::CardSelected {
+						effect: EffectId(effect_ident),
+					},
+					cx,
+				);
+			})
+		});
+		assert_eq!(
+			cx.read(|app| engine.read(app).selected_graph_node()),
+			Some(effect_ident),
+			"a card click re-selects the effect's node"
+		);
+
+		oakundo::global::clear().unwrap();
 	}
 
 	/// Regression: the source monitor's full-res job renders the selected

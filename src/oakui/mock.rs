@@ -874,6 +874,14 @@ impl MockEngine {
 				let index = (*index).min(self.effects.len());
 				self.effects.insert(index, card);
 			}
+			EffectStackEvent::CardSelected { effect } => {
+				// The inspector card click highlights the matching node in
+				// the node editor (the bidirectional node↔inspector link).
+				// The demo links cards and nodes by shared title.
+				if let Some(node) = self.node_for_effect(*effect) {
+					self.node_selection = BTreeSet::from([node]);
+				}
+			}
 			// The app owns the context menu; the mock ignores it.
 			EffectStackEvent::ContextMenuRequested { .. }
 			| EffectStackEvent::ParameterChanged { .. } => {}
@@ -930,6 +938,17 @@ impl MockEngine {
 			}
 			NodeGraphEvent::SelectionChanged { nodes } => {
 				self.node_selection = nodes.clone();
+				// The demo's node↔inspector link: a single selected node
+				// expands the matching effect card (the real engine mirrors
+				// this through `expanded_effects`).
+				if nodes.len() == 1 {
+					let node = *nodes.iter().next().expect("a one-element set");
+					if let Some(effect) = self.effect_for_node(node) {
+						if let Some(card) = self.effects.iter_mut().find(|e| e.id == effect) {
+							card.expanded = true;
+						}
+					}
+				}
 			}
 			NodeGraphEvent::BackgroundClicked { position } => {
 				// The real app opens an "add node" menu here; the mock logs it.
@@ -943,6 +962,28 @@ impl MockEngine {
 	/// stack will sync to this once it drives the same selection).
 	pub fn selected_node_ids(&self) -> &BTreeSet<NodeId> {
 		&self.node_selection
+	}
+
+	/// The demo node↔effect-card link: a card and a graph node share a
+	/// selection when their titles match (the demo graph's "变换" / "输出"
+	/// cards map 1:1 to the same-named graph nodes). The inspector card
+	/// click and the node-graph click route through this mapping.
+	fn node_for_effect(&self, effect: EffectId) -> Option<NodeId> {
+		let title = self.effects.iter().find(|e| e.id == effect)?.title.clone();
+		self.nodes
+			.iter()
+			.find(|n| n.title() == title)
+			.map(|n| n.id())
+	}
+
+	/// The inverse of [`node_for_effect`](Self::node_for_effect): the card
+	/// matching a selected graph node.
+	fn effect_for_node(&self, node: NodeId) -> Option<EffectId> {
+		let title = self.nodes.iter().find(|n| n.id() == node)?.title();
+		self.effects
+			.iter()
+			.find(|e| e.title == title)
+			.map(|e| e.id)
 	}
 
 	/// Looks up a node by id (test helper).
@@ -1271,6 +1312,14 @@ impl AppEngine for MockEngine {
 
 	fn apply_effect_event(&mut self, event: &EffectStackEvent, cx: &mut Context<Self>) {
 		self.apply_effect_event(event, cx);
+	}
+
+	fn selected_graph_node(&self) -> Option<u64> {
+		if self.node_selection.len() != 1 {
+			return None;
+		}
+		let node = *self.node_selection.iter().next()?;
+		Some(node.0)
 	}
 
 	fn addable_effects(&self) -> Vec<crate::oakui::engine::EffectEntry> {
@@ -2111,6 +2160,14 @@ impl EffectStackDataSource for MockEngine {
 
 	fn target_label(&self) -> Option<SharedString> {
 		Some("第一稿.mp4 · 00:00:00:00–00:04:18:18".into())
+	}
+
+	fn selected_effect(&self) -> Option<EffectId> {
+		if self.node_selection.len() != 1 {
+			return None;
+		}
+		let node = *self.node_selection.iter().next()?;
+		self.effect_for_node(node)
 	}
 }
 

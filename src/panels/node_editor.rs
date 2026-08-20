@@ -25,10 +25,13 @@
 //! view re-reads on the next frame. The toolbar buttons drive the viewport
 //! directly: zoom in/out at the canvas center, or fit the whole graph.
 
+use std::collections::BTreeSet;
+
 use gpui::colors::DefaultColors;
 use gpui::dock::{DockPanel, PanelEvent};
 use gpui::node_graph::{
-	NodeData, NodeElement, NodeGraphEvent, NodeGraphView, NodeVisualState, MAX_ZOOM, MIN_ZOOM,
+	NodeData, NodeElement, NodeGraphEvent, NodeGraphView, NodeId, NodeVisualState, MAX_ZOOM,
+	MIN_ZOOM,
 };
 use gpui::{
 	div, point, prelude::*, px, AnyElement, App, Bounds, ClickEvent, Context, Entity,
@@ -63,6 +66,11 @@ pub struct NodeEditorPanel<E: AppEngine> {
 	/// The Add-menu item ids currently on offer, mapped to their factory
 	/// type ids (rebuilt whenever the menu opens).
 	add_menu_ids: Vec<(usize, String)>,
+	/// The engine's node-graph selection mirror the widget was last synced
+	/// to (see [`Self::sync_graph_selection`]): the panel only pushes into
+	/// the widget when the engine's authoritative selection changes, so a
+	/// marquee or click selection inside the graph is never overwritten.
+	last_graph_selection: Option<u64>,
 }
 
 impl<E: AppEngine> NodeEditorPanel<E> {
@@ -99,9 +107,18 @@ impl<E: AppEngine> NodeEditorPanel<E> {
 		)
 		.detach();
 
+		// The engine's selection mirror is the single source of truth for
+		// what the graph highlights: a timeline clip selection (req: the
+		// selected clip's block node) and an inspector card click both land
+		// in `selected_graph_node`, and this pushes it into the widget.
+		cx.observe(&engine, |this, _engine, cx| {
+			this.sync_graph_selection(cx);
+		})
+		.detach();
+
 		let context_menu = ContextMenuHandle::new(Self::on_local_menu_item, window, cx);
 
-		Self {
+		let mut panel = Self {
 			graph,
 			engine,
 			fitted: false,
@@ -109,7 +126,32 @@ impl<E: AppEngine> NodeEditorPanel<E> {
 			last_right_click: None,
 			add_node_position: None,
 			add_menu_ids: Vec::new(),
+			last_graph_selection: None,
+		};
+		// If a clip (or graph node) is already selected when the panel is
+		// built, push the highlight immediately (the observe only fires on
+		// the next engine notify).
+		panel.sync_graph_selection(cx);
+		panel
+	}
+
+	/// Pushes the engine's selection mirror into the graph widget: the
+	/// single selected node becomes the widget selection, so a timeline
+	/// clip selection highlights that clip's block node and an inspector
+	/// card click highlights the effect's node. `None` is never pushed —
+	/// the widget keeps its live selection (e.g. a marquee) until the
+	/// engine names a new authoritative node.
+	fn sync_graph_selection(&mut self, cx: &mut Context<Self>) {
+		let node = self.engine.read(cx).selected_graph_node();
+		if node == self.last_graph_selection {
+			return;
 		}
+		self.last_graph_selection = node;
+		let Some(node) = node else {
+			return;
+		};
+		self.graph
+			.update(cx, |graph, cx| graph.set_selection(BTreeSet::from([NodeId(node)]), cx));
 	}
 
 	/// Handles the node editor's local (non-registry) context-menu items.
@@ -453,6 +495,7 @@ pub(crate) fn background_menu(
 mod tests {
 	use super::*;
 	use crate::oakui::MockEngine;
+	use gpui::effect_stack::{EffectId, EffectStackEvent};
 	use gpui::{size, TestAppContext, VisualTestContext};
 
 	/// Builds the panel in a window and returns a `VisualTestContext` for
@@ -592,5 +635,53 @@ mod tests {
 		assert_eq!(menu.items.len(), 3);
 		assert!(add_menu_ids.is_empty());
 		assert!(menu.items[2].submenu.as_ref().unwrap().items.is_empty());
+	}
+
+	/// The engine's selection mirror is pushed into the graph widget: a node
+	/// selection (a node click, or an inspector card click) lands in the
+	/// engine through the panel's event loop, and the panel's observe then
+	/// sets the widget selection — so the graph, the inspector and the
+	/// timeline share one highlight.
+	#[gpui::test]
+	async fn engine_selection_syncs_into_the_graph_widget(cx: &mut TestAppContext) {
+		let (cx, panel) = panel_window(cx);
+
+		// A node click round trip: the engine applies the SelectionChanged
+		// (as the panel subscription would forward it), and the observe
+		// pushes the mirrored selection into the widget.
+		cx.update(|_window, app| {
+			let engine = panel.read(app).engine.clone();
+			engine.update(app, |engine, cx| {
+				engine.apply_node_graph_event(
+					&NodeGraphEvent::SelectionChanged {
+						nodes: BTreeSet::from([NodeId(2)]),
+					},
+					cx,
+				);
+			});
+		});
+		cx.run_until_parked();
+
+		let selection = cx.read(|app| panel.read(app).graph.read(app).state().selection().clone());
+		assert!(
+			selection.contains(&NodeId(2)),
+			"the widget highlights the mirrored node (got {selection:?})"
+		);
+
+		// An inspector card click (the "变换" card) selects the same-named
+		// node through the same mirror.
+		cx.update(|_window, app| {
+			let engine = panel.read(app).engine.clone();
+			engine.update(app, |engine, cx| {
+				engine.apply_effect_event(&EffectStackEvent::CardSelected { effect: EffectId(1) }, cx);
+			});
+		});
+		cx.run_until_parked();
+
+		let selection = cx.read(|app| panel.read(app).graph.read(app).state().selection().clone());
+		assert!(
+			selection.contains(&NodeId(2)),
+			"the card click highlights the matching node (got {selection:?})"
+		);
 	}
 }

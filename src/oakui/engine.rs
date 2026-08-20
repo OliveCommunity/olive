@@ -327,6 +327,15 @@ pub trait AppEngine:
 	/// selection-driven stack keep their existing behavior).
 	fn set_selected_clips(&mut self, _clips: Vec<ClipId>, _cx: &mut Context<Self>) {}
 
+	/// The node-graph selection mirror: the single node currently selected
+	/// in the node editor (or the effect card clicked in the inspector),
+	/// when exactly one is selected. The node-editor panel uses this to
+	/// push the highlight into the graph widget; the inspector derives its
+	/// stack target and card highlight from it. Default: none.
+	fn selected_graph_node(&self) -> Option<u64> {
+		None
+	}
+
 	/// The effect types the user can add to the selected clip's chain — the
 	/// factory entries flagged `video_effect` and not hidden from the create
 	/// menu, plus every runtime-registered OpenFX plugin entry (grouped by

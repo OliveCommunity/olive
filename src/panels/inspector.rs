@@ -79,6 +79,11 @@ impl<E: AppEngine> InspectorPanel<E> {
 		})
 		.detach();
 
+		// The stack re-renders whenever the engine changes (selection-driven
+		// highlight, effect edits, project drops) — the stack itself does not
+		// subscribe to the engine entity.
+		cx.observe(&engine, |_this, _engine, cx| cx.notify()).detach();
+
 		let context_menu = ContextMenuHandle::new(Self::on_local_menu_item, window, cx);
 
 		Self {
