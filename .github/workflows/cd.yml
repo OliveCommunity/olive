@@ -341,11 +341,23 @@ jobs:
           echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
           echo "OCIO_INSTALL_DIR=/ucrt64" >> "$GITHUB_ENV"
           echo "OCIO_RS_LINK=dynamic" >> "$GITHUB_ENV"
-          # The runner image exports the MSVC INCLUDE/LIB; cc-rs appends
-          # them to the MinGW compile lines and drags in the MSVC SDK
-          # headers (vcruntime.h) — clear both for the GNU toolchain.
-          echo "INCLUDE=" >> "$GITHUB_ENV"
-          echo "LIB=" >> "$GITHUB_ENV"
+          # ocio-sys' build.rs force-adds the MSVC + Windows SDK include
+          # dirs on Windows (meant for MSVC hosts); with the GNU toolchain
+          # that drags MSVC-only headers into the g++ compile. Unpack the
+          # crate and gate that block behind OCIO_RS_NO_MSVC_INCLUDES.
+          echo "OCIO_RS_NO_MSVC_INCLUDES=1" >> "$GITHUB_ENV"
+          CH=$(cygpath -u "${CARGO_HOME:-$HOME/.cargo}")
+          cargo fetch --locked
+          for cache in "$CH"/registry/cache/*/; do
+            src="$CH/registry/src/$(basename "$cache")"
+            mkdir -p "$src"
+            [ -f "$cache/ocio-sys-0.2.1.crate" ] && tar xzf "$cache/ocio-sys-0.2.1.crate" -C "$src"
+          done
+          BS=$(ls "$CH"/registry/src/*/ocio-sys-0.2.1/build.rs)
+          grep -q 'OCIO_RS_NO_MSVC_INCLUDES' "$BS" || sed -i \
+            's|if cfg!(target_os = "windows") && has_real_ocio {|if cfg!(target_os = "windows") \&\& has_real_ocio \&\& std::env::var_os("OCIO_RS_NO_MSVC_INCLUDES").is_none() {|' \
+            "$BS"
+          grep -q 'OCIO_RS_NO_MSVC_INCLUDES' "$BS"
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
