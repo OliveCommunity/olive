@@ -23,13 +23,21 @@
 //! HS: ofxhImageEffectAPI.cpp:150-238（load/describe/
 //! describeInContext 的 action 序列）。
 //!
-//! ## 扫描语义（对照 olivehost.cpp:118-191）
+//! ## 扫描语义（对照 olivehost.cpp:118-191 + OFX 官方规范）
 //!
-//! 默认路径集：`$HOME/.OFX/Plugins`、`$HOME/.local/share/OFX/Plugins`、
-//! `$HOME/.local/share/olive/ofx/Plugins`、`../OFX/Plugins`、
-//! `../share/olive/ofx/Plugins`、`../lib/olive/ofx/Plugins`，以及
-//! `OLIVE_OFX_PLUGIN_PATH`/`OLIVE_PLUGIN_PATH`/`OFX_PLUGIN_PATH`
-//! 环境变量（':' 分隔）；重复扫描按路径去重。
+//! 默认路径集按平台组织：
+//! 用户级（`$HOME` 非空时）——`$HOME/.OFX/Plugins`、
+//! `$HOME/.local/share/OFX/Plugins`、`$HOME/.local/share/olive/ofx/Plugins`
+//! （macOS 另含 `$HOME/Library/OFX/Plugins`）；
+//! 系统级——macOS `/Library/OFX/Plugins`，Linux `/usr/OFX/Plugins`、
+//! `/usr/local/OFX/Plugins`，Windows `%ProgramFiles%\Common Files\OFX\Plugins`
+//! （`%ProgramFiles%` 未设置时回退 `C:\Program Files\...`）；
+//! Olive app-relative——`../OFX/Plugins`、`../share/olive/ofx/Plugins`、
+//! `../lib/olive/ofx/Plugins`（olivehost.cpp:104-107）；
+//! 以及 `OFX_PLUGIN_PATH`（OFX 官方）与 `OLIVE_OFX_PLUGIN_PATH`/
+//! `OLIVE_PLUGIN_PATH`（Olive 扩展）三个环境变量（平台路径分隔符：
+//! Unix ':' / Windows ';'）。不存在的目录直接跳过；重复扫描按规范化
+//! 路径去重。
 //! `// [P2]`：Info.plist 解析（CFBundleExecutable）不做——bundle 内
 //! 二进制以探测方式定位（`Contents/MacOS/*`、`Contents/Linux-*/*`、
 //! 根下 `*.so`/`*.dylib`）。
@@ -624,28 +632,88 @@ fn find_binary_in_bundle(bundle: &Path) -> Option<PathBuf> {
 	None
 }
 
-impl PluginCache {
-	/// 扫描标准目录（M9 行为：环境变量 + 用户/系统默认路径集，顺序
-	/// 与 olivehost.cpp:118-191 一致）。重复调用是 no-op（按路径
-	/// 去重）。
-	pub fn scan(&self) -> crate::error::Result<()> {
-		let home = std::env::var("HOME").ok().unwrap_or_default();
-		let mut paths = Vec::new();
-		if !home.is_empty() {
-			paths.push(PathBuf::from(&home).join(".OFX/Plugins"));
-			paths.push(PathBuf::from(&home).join(".local/share/OFX/Plugins"));
-			paths.push(PathBuf::from(&home).join(".local/share/olive/ofx/Plugins"));
+/// 默认插件搜索路径（扫描顺序）：OFX 规范的用户/系统级位置（按平台
+/// cfg 组织）、Olive app-relative 位置（C++ 对齐，olivehost.cpp:104-107）。
+///
+/// OFX 官方标准位置（见 OFX "plug-in discovery" 规范）：
+///
+/// * macOS：用户 `~/Library/OFX/Plugins`、系统 `/Library/OFX/Plugins`
+/// * Windows：`%ProgramFiles%\Common Files\OFX\Plugins`（`%ProgramFiles%`
+///   未设置时回退字面 `C:\Program Files\...`）
+/// * Linux：`/usr/OFX/Plugins`、`/usr/local/OFX/Plugins`
+///
+/// 外加 Olive 的历史位置：`$HOME/.OFX/Plugins`、
+/// `$HOME/.local/share/OFX/Plugins`、`$HOME/.local/share/olive/ofx/Plugins`、
+/// `../OFX/Plugins`、`../share/olive/ofx/Plugins`、`../lib/olive/ofx/Plugins`。
+/// 环境变量（`OFX_PLUGIN_PATH`/`OLIVE_OFX_PLUGIN_PATH`/`OLIVE_PLUGIN_PATH`）
+/// 由 [`PluginCache::scan`] 追加。`home` 为 `$HOME`；`None` 时跳过所有
+/// home 基路径。
+fn default_plugin_paths(home: Option<&Path>) -> Vec<PathBuf> {
+	let mut paths = Vec::new();
+	if let Some(home) = home {
+		paths.push(home.join(".OFX/Plugins"));
+		paths.push(home.join(".local/share/OFX/Plugins"));
+		paths.push(home.join(".local/share/olive/ofx/Plugins"));
+		// OFX 规范：macOS 用户级位置。
+		#[cfg(target_os = "macos")]
+		paths.push(home.join("Library/OFX/Plugins"));
+	}
+	// OFX 规范：macOS 系统级位置。
+	#[cfg(target_os = "macos")]
+	paths.push(PathBuf::from("/Library/OFX/Plugins"));
+	// OFX 规范：Windows 系统级位置（优先真实安装根 `%ProgramFiles%`）。
+	#[cfg(target_os = "windows")]
+	{
+		match std::env::var("ProgramFiles")
+			.or_else(|_| std::env::var("ProgramW6432"))
+			.map(PathBuf::from)
+		{
+			Ok(root) => paths.push(root.join("Common Files").join("OFX").join("Plugins")),
+			Err(_) => paths.push(PathBuf::from(r"C:\Program Files\Common Files\OFX\Plugins")),
 		}
-		paths.push(PathBuf::from("../OFX/Plugins"));
-		paths.push(PathBuf::from("../share/olive/ofx/Plugins"));
-		paths.push(PathBuf::from("../lib/olive/ofx/Plugins"));
+	}
+	// OFX 规范：Linux 系统级位置。
+	#[cfg(target_os = "linux")]
+	{
+		paths.push(PathBuf::from("/usr/OFX/Plugins"));
+		paths.push(PathBuf::from("/usr/local/OFX/Plugins"));
+	}
+	// Olive app-relative 位置（olivehost.cpp:104-107）。
+	paths.push(PathBuf::from("../OFX/Plugins"));
+	paths.push(PathBuf::from("../share/olive/ofx/Plugins"));
+	paths.push(PathBuf::from("../lib/olive/ofx/Plugins"));
+	paths
+}
+
+/// 把 `canonical` 记入已扫描路径表，返回 `false` 时表示已存在（调用方
+/// 跳过再次扫描）。保持首见顺序；去重键是规范化后的路径（HS:
+/// addFileToPath 的 weakly_canonical 语义）。
+fn record_scanned_path(seen: &mut Vec<PathBuf>, canonical: PathBuf) -> bool {
+	if seen.iter().any(|p| p == &canonical) {
+		return false;
+	}
+	seen.push(canonical);
+	true
+}
+
+impl PluginCache {
+	/// 扫描标准目录（OFX 规范 + C++ 对齐）：用户级 `$HOME` 路径、平台
+	/// 系统级路径（macOS/Linux/Windows）、Olive app-relative 路径，以及
+	/// `OFX_PLUGIN_PATH`/`OLIVE_OFX_PLUGIN_PATH`/`OLIVE_PLUGIN_PATH` 三个
+	/// 环境变量。重复调用是 no-op（按规范化路径去重）；不存在的目录
+	/// 直接跳过（见 [`Self::scan_path`]）。
+	pub fn scan(&self) -> crate::error::Result<()> {
+		let home = std::env::var("HOME").ok().filter(|h| !h.is_empty());
+		let mut paths = default_plugin_paths(home.as_deref().map(Path::new));
 		for var in [
 			"OLIVE_OFX_PLUGIN_PATH",
 			"OLIVE_PLUGIN_PATH",
 			"OFX_PLUGIN_PATH",
 		] {
 			if let Ok(raw) = std::env::var(var) {
-				paths.extend(raw.split(':').filter(|p| !p.is_empty()).map(PathBuf::from));
+				// 平台路径分隔符（Unix ':' / Windows ';'），与 C++ 的
+				// `QDir::listSeparator` 一致。
+				paths.extend(std::env::split_paths(&raw));
 			}
 		}
 		for p in paths {
@@ -660,10 +728,9 @@ impl PluginCache {
 		let canonical = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
 		{
 			let mut seen = self.scanned_paths.lock().unwrap_or_else(|e| e.into_inner());
-			if seen.iter().any(|p| p == &canonical) {
+			if !record_scanned_path(&mut seen, canonical.clone()) {
 				return Ok(());
 			}
-			seen.push(canonical.clone());
 		}
 		if !canonical.is_dir() {
 			return Ok(());
@@ -1229,4 +1296,96 @@ fn init_instance_props(props: &PropertySet, instance: &Instance) {
 	props.set_one(PROP_COLOUR_STYLE, Value::String(cs(COLOUR_STYLE_OCIO)));
 	props.set_one(PROP_COLOUR_CONFIG, Value::String(cs(NATIVE_CONFIG_ID)));
 	props.set_one(PROP_OCIO_CONFIG, Value::String(cs(OCIO_CONFIG_URI)));
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// The default path table includes every home- and app-relative location
+	/// plus the platform-gated OFX standard locations.
+	#[test]
+	fn default_paths_cover_home_and_standard_locations() {
+		let home = Path::new("/home/octa");
+		let paths = default_plugin_paths(Some(home));
+		// Olive legacy + home locations.
+		assert!(paths.contains(&home.join(".OFX/Plugins")));
+		assert!(paths.contains(&home.join(".local/share/OFX/Plugins")));
+		assert!(paths.contains(&home.join(".local/share/olive/ofx/Plugins")));
+		// App-relative (C++ parity).
+		assert!(paths.contains(&PathBuf::from("../OFX/Plugins")));
+		assert!(paths.contains(&PathBuf::from("../share/olive/ofx/Plugins")));
+		assert!(paths.contains(&PathBuf::from("../lib/olive/ofx/Plugins")));
+		// OFX standard locations, gated by platform.
+		#[cfg(target_os = "macos")]
+		{
+			assert!(paths.contains(&home.join("Library/OFX/Plugins")));
+			assert!(paths.contains(&PathBuf::from("/Library/OFX/Plugins")));
+		}
+		#[cfg(target_os = "linux")]
+		{
+			assert!(paths.contains(&PathBuf::from("/usr/OFX/Plugins")));
+			assert!(paths.contains(&PathBuf::from("/usr/local/OFX/Plugins")));
+		}
+		#[cfg(target_os = "windows")]
+		{
+			assert!(paths
+				.iter()
+				.any(|p| p.ends_with("Common Files/OFX/Plugins") || p.ends_with("Common Files\\OFX\\Plugins")));
+		}
+	}
+
+	/// With no `$HOME` the home-based entries are skipped; the rest remain.
+	#[test]
+	fn default_paths_skip_home_entries_when_home_unset() {
+		let paths = default_plugin_paths(None);
+		assert!(!paths.iter().any(|p| p.to_string_lossy().starts_with("/home/")));
+		assert!(paths.contains(&PathBuf::from("../OFX/Plugins")));
+		assert_eq!(
+			paths
+				.iter()
+				.filter(|p| p.to_string_lossy().contains(".OFX"))
+				.count(),
+			0
+		);
+	}
+
+	/// The dedupe record rejects an already-seen path and keeps first-seen
+	/// order.
+	#[test]
+	fn record_scanned_path_dedupes() {
+		let mut seen: Vec<PathBuf> = Vec::new();
+		assert!(record_scanned_path(&mut seen, PathBuf::from("/a/Plugins")));
+		assert!(record_scanned_path(&mut seen, PathBuf::from("/b/Plugins")));
+		// A duplicate is rejected without being recorded again.
+		assert!(!record_scanned_path(&mut seen, PathBuf::from("/a/Plugins")));
+		assert_eq!(seen, vec![PathBuf::from("/a/Plugins"), PathBuf::from("/b/Plugins")]);
+	}
+
+	/// Scanning an existing directory twice only records it once, and a
+	/// non-existent directory is skipped without error.
+	#[test]
+	fn scan_path_skips_missing_and_dedupes_existing() {
+		let dir = std::env::temp_dir().join(format!("oakplugin-scan-{}", std::process::id()));
+		std::fs::create_dir_all(&dir).unwrap();
+		let cache = PluginCache {
+			plugins: Mutex::new(Vec::new()),
+			scanned_paths: Mutex::new(Vec::new()),
+			binaries: Mutex::new(Vec::new()),
+		};
+		cache.scan_path(&dir).expect("existing dir scans");
+		cache.scan_path(&dir).expect("duplicate scan is a no-op");
+		{
+			let seen = cache.scanned_paths.lock().unwrap_or_else(|e| e.into_inner());
+			assert_eq!(seen.len(), 1, "the same directory is scanned only once");
+		} // drop the guard before scanning again
+
+		// A missing directory is skipped (no error, no plugin scan).
+		let missing = dir.join("does-not-exist");
+		cache.scan_path(&missing).expect("missing dir scan is a no-op");
+		let plugins = cache.plugins.lock().unwrap_or_else(|e| e.into_inner());
+		assert!(plugins.is_empty(), "no bundles were loaded");
+
+		let _ = std::fs::remove_dir_all(&dir);
+	}
 }

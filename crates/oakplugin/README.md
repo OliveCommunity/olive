@@ -34,6 +34,18 @@ src/
   render.rs     oakrender 桥：Texture/Frame/Renderer 值类型调用面
 ```
 
+## 插件搜索路径
+
+`host::PluginCache::scan` 按以下顺序扫描（重复路径去重、不存在的目录
+跳过；bundle 递归扫描，深度 3）：
+
+| 层级 | 路径 |
+| --- | --- |
+| 用户级（`$HOME`） | `$HOME/.OFX/Plugins`、`$HOME/.local/share/OFX/Plugins`、`$HOME/.local/share/olive/ofx/Plugins`；macOS 另含 `$HOME/Library/OFX/Plugins` |
+| 系统级（OFX 规范） | macOS `/Library/OFX/Plugins`；Linux `/usr/OFX/Plugins`、`/usr/local/OFX/Plugins`；Windows `%ProgramFiles%\Common Files\OFX\Plugins`（`%ProgramFiles%` 未设置时回退 `C:\Program Files\Common Files\OFX\Plugins`） |
+| app-relative（Olive 对齐） | `../OFX/Plugins`、`../share/olive/ofx/Plugins`、`../lib/olive/ofx/Plugins` |
+| 环境变量 | `OFX_PLUGIN_PATH`（OFX 官方）、`OLIVE_OFX_PLUGIN_PATH`、`OLIVE_PLUGIN_PATH`（Olive 扩展）；平台路径分隔符（Unix `:` / Windows `;`） |
+
 ## 桥布局决策（M11 第 1 期冻结；第 2 期增补；单库化修订）
 
 单库化（single-lib unification）后 `bridge/`（C ABI 导入）与

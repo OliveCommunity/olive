@@ -98,6 +98,16 @@ pub(crate) mod menu_ids {
 	pub const LANG_ZH: usize = ActionId::LangZh.menu_id();
 	pub const LANG_EN: usize = ActionId::LangEn.menu_id();
 	pub const PREFERENCES: usize = ActionId::Preferences.menu_id();
+
+	pub const FOCUS_PROJECT: usize = ActionId::FocusProject.menu_id();
+	pub const FOCUS_SOURCE_VIEWER: usize = ActionId::FocusSourceViewer.menu_id();
+	pub const FOCUS_PROGRAM_VIEWER: usize = ActionId::FocusProgramViewer.menu_id();
+	pub const FOCUS_NODE_EDITOR: usize = ActionId::FocusNodeEditor.menu_id();
+	pub const FOCUS_INSPECTOR: usize = ActionId::FocusInspector.menu_id();
+	pub const FOCUS_HISTORY: usize = ActionId::FocusHistory.menu_id();
+	pub const FOCUS_TIMELINE: usize = ActionId::FocusTimeline.menu_id();
+	pub const FOCUS_EFFECT_LIBRARY: usize = ActionId::FocusEffectLibrary.menu_id();
+	pub const FOCUS_MULTICAM: usize = ActionId::FocusMulticam.menu_id();
 }
 
 /// Modal-dialog control ids (see [`ModalEvent::control`]).
@@ -584,10 +594,19 @@ impl<E: AppEngine> OakApp<E> {
 		// Track the focused panel: the dock re-emits every panel's
 		// `PanelEvent::Focused` as `DockEvent::PanelFocused` (and its own
 		// `focus_panel` calls), so a single subscription keeps the shell's
-		// focused-panel routing target up to date.
-		cx.subscribe(&dock, |this, _dock, event: &DockEvent, _cx| {
-			if let DockEvent::PanelFocused(id) = event {
-				this.focused_panel = Some(*id);
+		// focused-panel routing target up to date. Structural changes (a panel
+		// closed via its tab ✕, torn off, or re-docked) refresh the 窗口 menu's
+		// checkmarks, which read the dock's live visible-panel set.
+		cx.subscribe(&dock, |this, _dock, event: &DockEvent, cx| {
+			match event {
+				DockEvent::PanelFocused(id) => this.focused_panel = Some(*id),
+				DockEvent::PanelAdded(_)
+				| DockEvent::PanelRemoved(_)
+				| DockEvent::PanelClosed(_) => {
+					this.rebuild_menu_bar(cx);
+					cx.notify();
+				}
+				_ => {}
 			}
 		})
 		.detach();
@@ -995,15 +1014,18 @@ impl<E: AppEngine> OakApp<E> {
 				.update(cx, |engine, cx| engine.remove_marker_at_playhead(cx)),
 			A::SetWorkArea => self.set_workarea_from_selection(cx),
 			// --- Window ----------------------------------------------------
-			A::FocusProject => self.focus_panel(PROJECT, cx),
-			A::FocusSourceViewer => self.focus_panel(SOURCE_VIEWER, cx),
-			A::FocusProgramViewer => self.focus_panel(PROGRAM_VIEWER, cx),
-			A::FocusNodeEditor => self.focus_panel(NODE_EDITOR, cx),
-			A::FocusInspector => self.focus_panel(INSPECTOR, cx),
-			A::FocusHistory => self.focus_panel(HISTORY, cx),
-			A::FocusTimeline => self.focus_panel(TIMELINE, cx),
-			A::FocusEffectLibrary => self.focus_panel(EFFECT_LIBRARY, cx),
-			A::FocusMulticam => self.focus_panel(MULTICAM, cx),
+			// The 窗口 menu toggles each panel: clicking an open panel closes
+			// it (through the dock's remove flow, the same path the tab ✕
+			// takes), clicking a closed one re-opens it.
+			A::FocusProject => self.toggle_panel(PROJECT, cx),
+			A::FocusSourceViewer => self.toggle_panel(SOURCE_VIEWER, cx),
+			A::FocusProgramViewer => self.toggle_panel(PROGRAM_VIEWER, cx),
+			A::FocusNodeEditor => self.toggle_panel(NODE_EDITOR, cx),
+			A::FocusInspector => self.toggle_panel(INSPECTOR, cx),
+			A::FocusHistory => self.toggle_panel(HISTORY, cx),
+			A::FocusTimeline => self.toggle_panel(TIMELINE, cx),
+			A::FocusEffectLibrary => self.toggle_panel(EFFECT_LIBRARY, cx),
+			A::FocusMulticam => self.toggle_panel(MULTICAM, cx),
 			// --- Tools -----------------------------------------------------
 			A::Snapping => {
 				let enabled = !self.timeline.read(cx).state.snap_enabled;
@@ -1256,13 +1278,60 @@ impl<E: AppEngine> OakApp<E> {
 		}
 	}
 
-	/// Focuses a dock panel (used by the 窗口 menu).
-	fn focus_panel(&self, id: gpui::dock::PanelId, cx: &mut Context<Self>) {
-		if let Some(handle) = cx.windows().first() {
+	/// 窗口 menu toggle: clicking a listed panel opens it if it is closed and
+	/// closes it if it is open. Docked panels are removed through the dock's
+	/// remove flow — the same path the tab ✕ button takes (see
+	/// [`DockArea::remove_panel`]) — so the close is symmetrical and the
+	/// position is recorded for a later reopen. Floating (tear-off) panels
+	/// have their window closed for good. Rebuilds the menu bar so the
+	/// checkmarks follow.
+	fn toggle_panel(&mut self, id: gpui::dock::PanelId, cx: &mut Context<Self>) {
+		if self.dock.read(cx).is_floating(id) {
 			let dock = self.dock.clone();
-			let _ = cx.update_window(*handle, move |_root, window, app| {
-				dock.update(app, |dock, cx| dock.focus_panel(id, window, cx));
+			dock.update(cx, |dock, cx| dock.close_floating(id, cx));
+		} else if self.dock.read(cx).is_docked(id) {
+			let dock = self.dock.clone();
+			dock.update(cx, |dock, cx| {
+				let _ = dock.remove_panel(id, cx);
 			});
+		} else {
+			self.reopen_panel(id, cx);
+		}
+		self.rebuild_menu_bar(cx);
+		cx.notify();
+	}
+
+	/// Re-opens a closed panel, preferring its last docked position when the
+	/// anchor panel is still present, then falling back to the design's
+	/// default placement. The panel entity is reused, so its per-panel state
+	/// survives the close/reopen round trip.
+	fn reopen_panel(&mut self, id: gpui::dock::PanelId, cx: &mut Context<Self>) {
+		let Some(handle) = self.panel_handle(id, cx) else {
+			return;
+		};
+		let dock = self.dock.clone();
+		dock.update(cx, |dock, cx| {
+			let target = dock.last_target(id).or_else(|| default_dock_target(id));
+			let target = dock.fallback_target(target);
+			let _ = dock.add_panel(handle, target, cx);
+		});
+		cx.notify();
+	}
+
+	/// Wraps the shell's pre-built panel entity for `id` in a fresh
+	/// [`PanelHandle`], so a reopened panel keeps its live state.
+	fn panel_handle(&self, id: gpui::dock::PanelId, cx: &App) -> Option<PanelHandle> {
+		match id {
+			PROJECT => Some(PanelHandle::new(self.panels.project.clone(), cx)),
+			SOURCE_VIEWER => Some(PanelHandle::new(self.panels.source_viewer.clone(), cx)),
+			PROGRAM_VIEWER => Some(PanelHandle::new(self.panels.program_viewer.clone(), cx)),
+			NODE_EDITOR => Some(PanelHandle::new(self.panels.node_editor.clone(), cx)),
+			INSPECTOR => Some(PanelHandle::new(self.panels.inspector.clone(), cx)),
+			HISTORY => Some(PanelHandle::new(self.panels.history.clone(), cx)),
+			TIMELINE => Some(PanelHandle::new(self.panels.timeline.clone(), cx)),
+			EFFECT_LIBRARY => Some(PanelHandle::new(self.panels.effect_library.clone(), cx)),
+			MULTICAM => Some(PanelHandle::new(self.panels.multicam.clone(), cx)),
+			_ => None,
 		}
 	}
 
@@ -1290,6 +1359,10 @@ impl<E: AppEngine> OakApp<E> {
 			show_all: self.show_all,
 			full_screen: self.full_screen,
 			use_proxy_media: self.engine.read(cx).use_proxy_media(),
+			// The 窗口 menu's checkmarks mirror the dock's live visible panel
+			// set (docked or floating), so a panel closed via its tab ✕ (or
+			// torn off) loses its checkmark on the next rebuild.
+			open_panels: open_panels_mask(self.dock.read(cx)),
 		};
 		let Ok(menu_bar) = cx.update_window(*handle, |_root, window, app| {
 			app.new(|cx| MenuBar::new(1, make_menus(state), window, cx))
@@ -2168,9 +2241,63 @@ impl<E: AppEngine> Render for OakApp<E> {
 	}
 }
 
+/// The nine dockable panels in the 窗口 menu's order, each with the registry
+/// action that toggles it.
+const WINDOW_PANELS: [(PanelId, crate::actions::ActionId); 9] = [
+	(PROJECT, crate::actions::ActionId::FocusProject),
+	(SOURCE_VIEWER, crate::actions::ActionId::FocusSourceViewer),
+	(PROGRAM_VIEWER, crate::actions::ActionId::FocusProgramViewer),
+	(NODE_EDITOR, crate::actions::ActionId::FocusNodeEditor),
+	(INSPECTOR, crate::actions::ActionId::FocusInspector),
+	(HISTORY, crate::actions::ActionId::FocusHistory),
+	(TIMELINE, crate::actions::ActionId::FocusTimeline),
+	(EFFECT_LIBRARY, crate::actions::ActionId::FocusEffectLibrary),
+	(MULTICAM, crate::actions::ActionId::FocusMulticam),
+];
+
+/// The bit for `panel` in [`MenuState::open_panels`] (one bit per `PanelId`).
+fn panel_bit(id: PanelId) -> u16 {
+	1u16 << (id.raw() as u16)
+}
+
+/// The design's default dock position for each panel, mirroring the seeding
+/// in [`OakApp::new`] — 项目 | 素材查看器 | 序列查看器+节点编辑器 |
+/// 检查器+历史记录 row, timeline full width at the bottom. Used to re-open a
+/// closed panel when its last known position's anchor is gone.
+fn default_dock_target(id: PanelId) -> Option<DropTarget> {
+	let t = |panel: PanelId, zone: DropZone| DropTarget {
+		panel: Some(panel),
+		zone,
+	};
+	match id {
+		PROJECT => None,
+		EFFECT_LIBRARY => Some(t(PROJECT, DropZone::Center)),
+		SOURCE_VIEWER => Some(t(PROJECT, DropZone::Right)),
+		PROGRAM_VIEWER => Some(t(SOURCE_VIEWER, DropZone::Right)),
+		NODE_EDITOR => Some(t(PROGRAM_VIEWER, DropZone::Center)),
+		INSPECTOR => Some(t(PROGRAM_VIEWER, DropZone::Right)),
+		HISTORY => Some(t(INSPECTOR, DropZone::Center)),
+		TIMELINE => Some(DropTarget {
+			panel: None,
+			zone: DropZone::Bottom,
+		}),
+		MULTICAM => Some(t(PROGRAM_VIEWER, DropZone::Center)),
+		_ => Some(t(PROJECT, DropZone::Center)),
+	}
+}
+
+/// The 窗口 menu's open-panel bitmask for `dock`'s current visible panel set
+/// (docked or floating). Shared by [`OakApp::rebuild_menu_bar`] and tests.
+fn open_panels_mask(dock: &DockArea) -> u16 {
+	WINDOW_PANELS
+		.iter()
+		.map(|(id, _)| if dock.is_panel_visible(*id) { panel_bit(*id) } else { 0 })
+		.fold(0, |a, b| a | b)
+}
+
 /// The dynamic menu-bar state the registry-driven menu tree reads its
 /// checkmarks from (theme, active tool, snapping, loop, show-all,
-/// full-screen).
+/// full-screen, and which dock panels are open).
 #[derive(Clone, Copy)]
 struct MenuState {
 	dark: bool,
@@ -2180,11 +2307,16 @@ struct MenuState {
 	show_all: bool,
 	full_screen: bool,
 	use_proxy_media: bool,
+	/// Bitmask of the dock panels currently visible (docked or floating), one
+	/// bit per [`PanelId`] via [`panel_bit`]. Read from the live dock area at
+	/// menu-bar build time.
+	open_panels: u16,
 }
 
 impl MenuState {
 	/// The shell's startup state (the timeline widget defaults to snapping
-	/// on, the pointer tool is active).
+	/// on, the pointer tool is active; every panel starts docked, so all bits
+	/// are set).
 	fn new(dark: bool) -> Self {
 		Self {
 			dark,
@@ -2196,6 +2328,10 @@ impl MenuState {
 			use_proxy_media: oakcommon::configstore::ConfigStore::instance()
 				.get_bool(None, "UseProxyMedia", 1)
 				!= 0,
+			open_panels: WINDOW_PANELS
+				.iter()
+				.map(|(id, _)| panel_bit(*id))
+				.fold(0, |a, b| a | b),
 		}
 	}
 }
@@ -2386,19 +2522,23 @@ fn make_menus(state: MenuState) -> Vec<MenuBarEntry> {
 		),
 		MenuBarEntry::new(
 			tr("menu.window"),
-			Menu::new(vec![
-				menu_item(A::FocusProject),
-				menu_item(A::FocusSourceViewer),
-				menu_item(A::FocusProgramViewer),
-				menu_item(A::FocusNodeEditor),
-				menu_item(A::FocusInspector),
-				menu_item(A::FocusHistory),
-				menu_item(A::FocusTimeline),
-				menu_item(A::FocusEffectLibrary),
-				menu_item(A::FocusMulticam).separated(),
-				menu_item(A::MaximizePanel),
-				menu_item(A::ResetDefaultLayout),
-			]),
+			Menu::new({
+				// Every panel is listed, checked when it is currently visible
+				// in the dock (docked or floating); clicking toggles it open
+				// or closed.
+				let mut window_items: Vec<MenuItem> = WINDOW_PANELS
+					.iter()
+					.map(|(id, action)| {
+						menu_item(*action).with_checked(state.open_panels & panel_bit(*id) != 0)
+					})
+					.collect();
+				if let Some(last) = window_items.last_mut() {
+					last.separator_after = true;
+				}
+				window_items.push(menu_item(A::MaximizePanel));
+				window_items.push(menu_item(A::ResetDefaultLayout));
+				window_items
+			}),
 		),
 		MenuBarEntry::new(tr("menu.tools"), Menu::new(tools)),
 		MenuBarEntry::new(
@@ -2685,6 +2825,124 @@ mod tests {
 		};
 		assert_eq!(dark_item(true).checked, Some(true));
 		assert_eq!(dark_item(false).checked, Some(false));
+	}
+
+	/// The 窗口 menu lists every dockable panel, and each item's checkmark
+	/// mirrors the `open_panels` bitmask carried in [`MenuState`] (which the
+	/// shell reads from the dock's live visible-panel set).
+	#[test]
+	fn window_menu_lists_all_panels_and_checks_the_open_ones() {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		crate::i18n::set_language(crate::i18n::Language::EnUs);
+
+		let mask = panel_bit(INSPECTOR) | panel_bit(TIMELINE);
+		let mut state = MenuState::new(true);
+		state.open_panels = mask;
+		let window = make_menus(state)
+			.into_iter()
+			.find(|entry| entry.title == crate::i18n::tr("menu.window"))
+			.expect("Window menu exists")
+			.menu;
+
+		for (panel, action) in WINDOW_PANELS {
+			let item = window
+				.items
+				.iter()
+				.find(|item| item.id == action.menu_id())
+				.unwrap_or_else(|| panic!("Window menu is missing panel {}", panel.raw()));
+			assert_eq!(
+				item.checked,
+				Some(mask & panel_bit(panel) != 0),
+				"panel {} checkmark follows open_panels",
+				panel.raw()
+			);
+		}
+	}
+
+	/// 窗口 → 检查器 closes the inspector through the dock's remove flow (the
+	/// same path the tab ✕ takes) and re-opens it from the closed state — the
+	/// round trip that used to leave a dismissed inspector unrecoverable.
+	#[gpui::test]
+	async fn window_menu_toggle_closes_and_reopens_the_inspector(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let (_window, root) = mock_shell(cx);
+
+		// The checkmark shown in the 窗口 menu for the inspector, derived from
+		// the dock's current visible-panel set exactly as `rebuild_menu_bar`
+		// computes it.
+		let inspector_checked = |app: &App| {
+			let dock = root.read(app).dock.read(app);
+			let mut state = MenuState::new(true);
+			state.open_panels = open_panels_mask(dock);
+			make_menus(state)
+				.into_iter()
+				.find(|e| e.title == crate::i18n::tr("menu.window"))
+				.expect("Window menu exists")
+				.menu
+				.items
+				.iter()
+				.find(|item| item.id == ActionId::FocusInspector.menu_id())
+				.expect("inspector item exists")
+				.checked
+		};
+
+		// The inspector starts docked and checked.
+		assert!(cx.read(|app| root.read(app).dock.read(app).is_docked(INSPECTOR)));
+		assert_eq!(cx.read(|app| inspector_checked(app)), Some(true));
+
+		// Toggle closed via the menu action: removed from the dock and
+		// unchecked.
+		cx.update(|app| root.update(app, |app, cx| app.on_menu(menu_ids::FOCUS_INSPECTOR, cx)));
+		cx.run_until_parked();
+		assert!(!cx.read(|app| root.read(app).dock.read(app).is_docked(INSPECTOR)));
+		assert!(
+			!cx.read(|app| root.read(app).dock.read(app).is_panel_visible(INSPECTOR)),
+			"the inspector is fully closed, not floating"
+		);
+		assert_eq!(cx.read(|app| inspector_checked(app)), Some(false));
+
+		// Toggle open again: the inspector comes back (its entity is reused,
+		// so its state survives the close).
+		cx.update(|app| root.update(app, |app, cx| app.on_menu(menu_ids::FOCUS_INSPECTOR, cx)));
+		cx.run_until_parked();
+		assert!(cx.read(|app| root.read(app).dock.read(app).is_docked(INSPECTOR)));
+		assert_eq!(cx.read(|app| inspector_checked(app)), Some(true));
+	}
+
+	/// Closing a panel via its tab ✕ — the dock's own close flow — also
+	/// refreshes the 窗口 menu: the dock's structural event rebuilds the menu
+	/// bar, so the dismissed panel loses its checkmark without waiting for any
+	/// other rebuild trigger.
+	#[gpui::test]
+	async fn closing_a_panel_via_its_tab_unchecks_it_in_the_window_menu(
+		cx: &mut TestAppContext,
+	) {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let (window, root) = mock_shell(cx);
+
+		let menu_bar_before = cx.read(|app| root.read(app).menu_bar.entity_id());
+		assert!(cx.read(|app| root.read(app).dock.read(app).is_docked(INSPECTOR)));
+
+		// Click the inspector's tab close button.
+		let mut vcx = VisualTestContext::from_window(window.into(), cx);
+		let close = vcx
+			.debug_bounds("dock-tab-close-5")
+			.expect("inspector tab close button rendered");
+		vcx.simulate_click(close.center(), gpui::Modifiers::none());
+		drop(vcx);
+		cx.run_until_parked();
+
+		// The inspector is gone and the menu bar was rebuilt (new entity) from
+		// the dock's shrunken visible-panel set.
+		assert!(!cx.read(|app| root.read(app).dock.read(app).is_docked(INSPECTOR)));
+		let menu_bar_after = cx.read(|app| root.read(app).menu_bar.entity_id());
+		assert_ne!(
+			menu_bar_after, menu_bar_before,
+			"the dock's structural event rebuilds the menu bar"
+		);
 	}
 
 	/// The File menu exposes the full project lifecycle actions (new /
