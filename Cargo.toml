@@ -83,6 +83,10 @@ smallvec = "1"
 # Editable-text widget (used by the file / export dialogs' path fields, the
 # same gpui-elements crate gpui_widgets builds on).
 gpui_elements = { path = "gpui/crates/gpui_elements" }
+# UI string tables: YAML language packs under assets/i18n/, loaded at
+# runtime (bundled with the app, user-extensible) with the compiled-in
+# English table as the fallback.
+serde_yaml = "0.9"
 
 # M14 R3: the app is a PURE module-crate consumer — every engine call is a
 # direct Rust call into the oak* rlibs (oaknode for the project graph,
@@ -150,6 +154,9 @@ copyright = "Copyright (C) 2026 Oak Team"
 licenseFile = "LICENSE"
 category = "Video"
 icons = ["icons/icon.png"]
+# The UI string tables (language packs); users can drop extra
+# <lang>.yaml files into the installed i18n directory.
+resources = ["assets/i18n"]
 binaries = [
     { path = "oak-editor", main = true },
     { path = "oak-cli", main = false },
@@ -157,7 +164,7 @@ binaries = [
 ]
 
 [profile.dev.package."*"]
-opt-level = 3
+opt-level = 1
 
 [profile.dev]
 opt-level = 1
