@@ -39,6 +39,7 @@ jobs:
           # Oak_Icon.svg).
           sudo apt-get install -y \
             cmake \
+            libpipewire-0.3-dev libspa-0.2-dev \
             librsvg2-bin \
             libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
             libvulkan-dev libxkbcommon-dev
@@ -221,9 +222,13 @@ jobs:
         with:
           msystem: UCRT64
           update: true
+          # MSYS2's own Rust targets x86_64-pc-windows-gnu by default —
+          # the Windows build is GNU-target (the MSVC linker rejects the
+          # Unix-style link args the build scripts emit).
           install: >-
             git
             mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-rust
 
       - name: Install system dependencies
         run: |
