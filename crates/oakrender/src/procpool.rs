@@ -519,7 +519,8 @@ pub fn default_batch_size(workers: usize, slots: u32) -> usize {
 	design.min(slots.max(1) as usize)
 }
 
-/// Physical memory in bytes (macOS `hw.memsize`, Linux `sysconf`).
+/// Physical memory in bytes (macOS `hw.memsize`, Linux `sysconf`,
+/// Windows `GlobalMemoryStatusEx`).
 fn physical_memory_bytes() -> Option<u64> {
 	#[cfg(target_os = "macos")]
 	{
@@ -553,7 +554,44 @@ fn physical_memory_bytes() -> Option<u64> {
 			}
 		}
 	}
-	#[cfg(not(any(target_os = "macos", target_os = "linux")))]
+	#[cfg(target_os = "windows")]
+	{
+		// GlobalMemoryStatusEx (kernel32): ullTotalPhys.
+		#[repr(C)]
+		struct MemoryStatusEx {
+			length: u32,
+			memory_load: u32,
+			total_phys: u64,
+			avail_phys: u64,
+			total_page_file: u64,
+			avail_page_file: u64,
+			total_virtual: u64,
+			avail_virtual: u64,
+			avail_extended_virtual: u64,
+		}
+		#[link(name = "kernel32")]
+		unsafe extern "system" {
+			fn GlobalMemoryStatusEx(status: *mut MemoryStatusEx) -> i32;
+		}
+		let mut status = MemoryStatusEx {
+			length: std::mem::size_of::<MemoryStatusEx>() as u32,
+			memory_load: 0,
+			total_phys: 0,
+			avail_phys: 0,
+			total_page_file: 0,
+			avail_page_file: 0,
+			total_virtual: 0,
+			avail_virtual: 0,
+			avail_extended_virtual: 0,
+		};
+		let ok = unsafe { GlobalMemoryStatusEx(&mut status) };
+		if ok != 0 && status.total_phys > 0 {
+			Some(status.total_phys)
+		} else {
+			None
+		}
+	}
+	#[cfg(not(any(target_os = "macos", target_os = "linux", target_os = "windows")))]
 	{
 		None
 	}

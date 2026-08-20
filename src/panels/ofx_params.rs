@@ -74,6 +74,10 @@ struct ParamControl {
 	section: Option<(String, String)>,
 	/// The control(s) for this parameter.
 	kind: ControlKind,
+	/// Parametric-curve normalization: (key lo, key hi, value min, value
+	/// max) used to map between the engine's real coordinates and the
+	/// editor's normalized 0..1 space.
+	curve_domain: Option<(f64, f64, f64, f64)>,
 }
 
 /// The concrete control(s) for one parameter.
@@ -91,6 +95,8 @@ enum ControlKind {
 	Color(Entity<OfxColorPicker>),
 	/// A text field (string).
 	Text(Entity<EditableTextState>),
+	/// One curve editor per dimension (parametric parameter).
+	Curve(Vec<Entity<gpui_widgets::curve_editor::CurveEditor>>),
 	/// A push button (rendered inline, no entity).
 	PushButton,
 	/// A read-only value line (no editable control; e.g. custom/binary).
@@ -198,10 +204,206 @@ impl<E: AppEngine> OfxParamsView<E> {
 						}
 					});
 				}
+				ControlKind::Curve(editors) => {
+					// Re-seed from the engine's JSON mirror, but never
+					// mid-drag (that would steal the gesture) and never on
+					// an identical curve (sync_values runs per render).
+					let curves = match &param.value {
+						NodeValue::Text(json) => {
+							oakplugin::param_curve::curves_from_json(json).unwrap_or_default()
+						}
+						_ => Vec::new(),
+					};
+					let domain = control.curve_domain.unwrap_or((0.0, 1.0, 0.0, 1.0));
+					for (editor, curve) in editors.iter().zip(curves.iter()) {
+						let fresh: Vec<_> = curve
+							.points
+							.iter()
+							.map(|p| curve_point_to_editor(p, &curve.points, domain))
+							.collect();
+						let (current, dragging) = {
+							let e = editor.read(cx);
+							(e.points().to_vec(), e.is_dragging())
+						};
+						if dragging || curve_points_close(&current, &fresh) {
+							continue;
+						}
+						editor.update(cx, |editor, cx| editor.set_points(fresh, cx));
+					}
+				}
 				ControlKind::PushButton | ControlKind::ReadOnly(_) => {}
 			}
 		}
 	}
+}
+
+/// The (key lo, key hi, value min, value max) normalization domain of a
+/// parametric parameter: the key range from the `parametric_range`
+/// property (default 0..1); the value domain is 0..1 when everything fits
+/// (LUT-style params), else the data extent with a 10% pad.
+fn curve_domain(
+	param: &EffectParam,
+	curves: &[oakplugin::param_curve::Curve],
+) -> (f64, f64, f64, f64) {
+	let (mut lo, mut hi) = (0.0, 1.0);
+	if let Some((_, oaknode::value::NodeValue::Vec2(v))) = param
+		.properties
+		.iter()
+		.find(|(k, _)| k == "parametric_range")
+	{
+		lo = v[0];
+		hi = v[1];
+	}
+	if hi <= lo {
+		hi = lo + 1.0;
+	}
+	let (mut vmin, mut vmax) = (0.0f64, 1.0f64);
+	let all_unit = curves
+		.iter()
+		.flat_map(|c| c.points.iter())
+		.all(|p| (0.0..=1.0).contains(&p.value));
+	if !all_unit {
+		vmin = curves
+			.iter()
+			.flat_map(|c| c.points.iter())
+			.map(|p| p.value)
+			.fold(f64::INFINITY, f64::min);
+		vmax = curves
+			.iter()
+			.flat_map(|c| c.points.iter())
+			.map(|p| p.value)
+			.fold(f64::NEG_INFINITY, f64::max);
+		if vmax - vmin < 1e-6 {
+			vmax = vmin + 1.0;
+		}
+		let pad = (vmax - vmin) * 0.1;
+		vmin -= pad;
+		vmax += pad;
+	}
+	(lo, hi, vmin, vmax)
+}
+
+/// Real curve point → normalized editor point (slopes become bezier
+/// handle offsets; a point without an explicit slope edits gets linear
+/// handles).
+fn curve_point_to_editor(
+	p: &oakplugin::param_curve::ControlPoint,
+	points: &[oakplugin::param_curve::ControlPoint],
+	domain: (f64, f64, f64, f64),
+) -> gpui_widgets::curve_editor::CurvePoint {
+	use gpui_widgets::curve_editor::{CurvePoint, CurveVec2};
+	let (lo, hi, vmin, vmax) = domain;
+	let (sx, sy) = (hi - lo, vmax - vmin);
+	let index = points.iter().position(|q| q.key == p.key).unwrap_or(0);
+	let x = (p.key - lo) / sx;
+	let y = (p.value - vmin) / sy;
+	// Hermite slope (real) -> normalized slope: m_norm = m_real * sx / sy.
+	let m_norm = p.slope * sx / sy;
+	let handle_out = points.get(index + 1).map(|next| {
+		let h = (next.key - p.key) / sx;
+		CurveVec2::new(h / 3.0, m_norm * h / 3.0)
+	});
+	let handle_in = index.checked_sub(1).and_then(|pi| points.get(pi)).map(|prev| {
+		let h = (p.key - prev.key) / sx;
+		CurveVec2::new(-h / 3.0, -m_norm * h / 3.0)
+	});
+	CurvePoint {
+		x,
+		y,
+		handle_in,
+		handle_out,
+	}
+}
+
+/// Normalized editor points → real curve points (slopes recovered from
+/// the bezier handles; points without handles get the centered-difference
+/// auto slope).
+fn curve_from_editor(
+	points: &[gpui_widgets::curve_editor::CurvePoint],
+	domain: (f64, f64, f64, f64),
+) -> oakplugin::param_curve::Curve {
+	let (lo, hi, vmin, vmax) = domain;
+	let (sx, sy) = (hi - lo, vmax - vmin);
+	let n = points.len();
+	let mut out = oakplugin::param_curve::Curve::empty();
+	for (i, p) in points.iter().enumerate() {
+		let key = lo + p.x * sx;
+		let value = vmin + p.y * sy;
+		// Slope from the out handle (preferred) or the in handle.
+		let m_norm = if let (Some(h), Some(next)) = (p.handle_out, points.get(i + 1)) {
+			let h_seg = next.x - p.x;
+			if h_seg.abs() > 1e-9 {
+				Some(3.0 * h.y / h_seg)
+			} else {
+				None
+			}
+		} else if let (Some(h), Some(prev)) = (p.handle_in, i.checked_sub(1).map(|pi| &points[pi]))
+		{
+			let h_seg = p.x - prev.x;
+			if h_seg.abs() > 1e-9 {
+				Some(-3.0 * h.y / h_seg)
+			} else {
+				None
+			}
+		} else {
+			None
+		};
+		let m_norm = m_norm.unwrap_or_else(|| {
+			// Centered-difference auto slope (same rule as the host model).
+			match (i.checked_sub(1), points.get(i + 1)) {
+				(Some(pi), Some(next)) => {
+					let prev = &points[pi];
+					let dx = next.x - prev.x;
+					if dx.abs() > 1e-9 {
+						(next.y - prev.y) / dx
+					} else {
+						0.0
+					}
+				}
+				(Some(pi), None) if n > 1 => {
+					let prev = &points[pi];
+					let dx = p.x - prev.x;
+					if dx.abs() > 1e-9 { (p.y - prev.y) / dx } else { 0.0 }
+				}
+				(None, Some(next)) if n > 1 => {
+					let dx = next.x - p.x;
+					if dx.abs() > 1e-9 { (next.y - p.y) / dx } else { 0.0 }
+				}
+				_ => 0.0,
+			}
+		});
+		out.points.push(oakplugin::param_curve::ControlPoint {
+			key,
+			value,
+			slope: m_norm * sy / sx,
+		});
+	}
+	out
+}
+
+/// Cheap curve equality for the per-render re-sync (epsilon on
+/// coordinates; handles compared too).
+fn curve_points_close(
+	a: &[gpui_widgets::curve_editor::CurvePoint],
+	b: &[gpui_widgets::curve_editor::CurvePoint],
+) -> bool {
+	use gpui_widgets::curve_editor::CurveVec2;
+	let vec_close = |a: &CurveVec2, b: &CurveVec2| {
+		(a.x - b.x).abs() < 1e-6 && (a.y - b.y).abs() < 1e-6
+	};
+	let handle_close = |a: &Option<CurveVec2>, b: &Option<CurveVec2>| match (a, b) {
+		(None, None) => true,
+		(Some(a), Some(b)) => vec_close(a, b),
+		_ => false,
+	};
+	a.len() == b.len()
+		&& a.iter().zip(b.iter()).all(|(a, b)| {
+			vec_close(
+				&CurveVec2::new(a.x, a.y),
+				&CurveVec2::new(b.x, b.y),
+			) && handle_close(&a.handle_in, &b.handle_in)
+				&& handle_close(&a.handle_out, &b.handle_out)
+		})
 }
 
 /// The SliderValue for a param's current value (int → Integer, float →
@@ -393,6 +595,36 @@ fn build_control<E: AppEngine>(
 			ControlKind::Color(picker)
 		}
 		ValueType::PushButton => ControlKind::PushButton,
+		ValueType::Parametric => {
+			// One curve editor per dimension; points are seeded from the
+			// JSON mirror of the curves (the input's Text value).
+			let curves = match &param.value {
+				NodeValue::Text(json) => oakplugin::param_curve::curves_from_json(json)
+					.unwrap_or_default(),
+				_ => Vec::new(),
+			};
+			let domain = curve_domain(param, &curves);
+			let mut editors = Vec::new();
+			for curve in &curves {
+				let points = curve
+					.points
+					.iter()
+					.map(|p| curve_point_to_editor(p, &curve.points, domain))
+					.collect::<Vec<_>>();
+				let editor = cx.new(|cx| {
+					gpui_widgets::curve_editor::CurveEditor::new(*next_id, points, window, cx)
+				});
+				*next_id += 1;
+				editors.push(editor);
+			}
+			return ParamControl {
+				input_id: param.input_id.clone(),
+				display_name: param.display_name.clone(),
+				section: crate::oakui::effectchain::ui_section_of(param),
+				kind: ControlKind::Curve(editors),
+				curve_domain: Some(domain),
+			};
+		}
 		// Custom / binary and anything without an editable control: a
 		// read-only line (or nothing).
 		_ => ControlKind::ReadOnly(SharedString::new("")),
@@ -403,6 +635,7 @@ fn build_control<E: AppEngine>(
 		display_name: param.display_name.clone(),
 		section: crate::oakui::effectchain::ui_section_of(param),
 		kind,
+		curve_domain: None,
 	}
 }
 
@@ -528,6 +761,42 @@ fn wire_controls<E: AppEngine>(view: &OfxParamsView<E>, cx: &mut Context<OfxPara
 				// on every card render, so committing on TextChanged would
 				// re-enter the engine update on the same frame the value is
 				// re-synced (an endless re-render loop).
+			}
+			ControlKind::Curve(editors) => {
+				// Any point/handle edit on any dimension's editor rebuilds
+				// the whole curve set and commits it as the JSON mirror
+				// (undoable via the engine's set_effect_param).
+				for editor in editors.iter() {
+					let editor = editor.clone();
+					let editors_all = editors.clone();
+					let domain = control.curve_domain.unwrap_or((0.0, 1.0, 0.0, 1.0));
+					let input_id = input_id.clone();
+					let engine = engine.clone();
+					cx.subscribe(&editor, move |_, _, event: &gpui_widgets::curve_editor::CurveEditorEvent, cx| {
+						use gpui_widgets::curve_editor::CurveEditorEvent as E;
+						match event {
+							E::PointMoved { .. } | E::HandleMoved { .. } | E::PointAdded { .. } => {}
+							_ => return,
+						}
+						let curves: Vec<oakplugin::param_curve::Curve> = editors_all
+							.iter()
+							.map(|e| {
+								let points = e.read(cx).points().to_vec();
+								curve_from_editor(&points, domain)
+							})
+							.collect();
+						let json = oakplugin::param_curve::curves_to_json(&curves);
+						engine.update(cx, |engine, cx| {
+							let _ = engine.set_effect_param(
+								effect,
+								&input_id,
+								NodeValue::Text(json),
+								cx,
+							);
+						});
+					})
+					.detach();
+				}
 			}
 			ControlKind::PushButton | ControlKind::ReadOnly(_) => {}
 		}
@@ -677,6 +946,23 @@ impl<E: AppEngine> Render for OfxParamsView<E> {
 						.text_color(colors.disabled)
 						.child(text.clone())
 						.into_any_element(),
+					ControlKind::Curve(editors) => {
+						// One curve editor per dimension, stacked; each is a
+						// fixed-height canvas.
+						let mut col = div().flex_1().flex().flex_col().gap_1();
+						for editor in editors {
+							col = col.child(
+								div()
+									.h_24()
+									.rounded_md()
+									.border_1()
+									.border_color(colors.border)
+									.bg(colors.background)
+									.child(editor.clone()),
+							);
+						}
+						col.into_any_element()
+					}
 					ControlKind::PushButton => unreachable!("handled above"),
 				};
 				div()
