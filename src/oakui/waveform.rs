@@ -165,12 +165,13 @@ impl ClipDecorator for OakClipDecorator {
 			waveform.samples_per_point.max(1) as f32 / waveform.sample_rate.max(1) as f32;
 		let frames_per_point = secs_per_point * self.cache.fps;
 
-		// Sample one peak per horizontal pixel column.
+		// Sample one peak per horizontal pixel column. The design draws the
+		// waveform as a darker green against the clip's green body.
 		let color = Hsla {
-			h: 0.55,
+			h: 0.38,
 			s: 0.5,
-			l: 0.55,
-			a: 0.85,
+			l: 0.28,
+			a: 0.9,
 		};
 		for x in 0..width {
 			let t = x as f32 / width as f32;

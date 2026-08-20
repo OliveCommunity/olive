@@ -47,8 +47,8 @@ use gpui::timeline::{
 	ClipData, ClipId, Frame, FrameRange, TimelineEvent, TimelineView, TrackData,
 };
 use gpui::{
-	div, prelude::*, px, size, App, AsyncWindowContext, Bounds, Context, Entity, PathPromptOptions,
-	Render, Window, WindowBounds, WindowOptions,
+	colors::DefaultColors, div, prelude::*, px, size, App, AsyncWindowContext, Bounds, Context,
+	Entity, PathPromptOptions, Render, Window, WindowBounds, WindowOptions,
 };
 use gpui_widgets::audio_meter::{AudioLevelMeter, MeterOrientation};
 use gpui_widgets::dialog::progress::{progress_dialog, ProgressContent};
@@ -2214,6 +2214,9 @@ impl<E: AppEngine> Render for OakApp<E> {
 			.size_full()
 			.flex()
 			.flex_col()
+			// The shell paints the design's near-black base behind the dock;
+			// panels and chrome layer their own fills on top.
+			.bg(cx.default_colors().background)
 			.track_focus(&self.shell_focus);
 		// The shell's keyboard dispatch layer: the global key bindings
 		// (registered in `new` from the action registry) dispatch gpui

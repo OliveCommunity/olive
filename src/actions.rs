@@ -992,6 +992,7 @@ mod tests {
 	#[test]
 	fn save_writes_only_entries_that_differ_from_default() {
 		let _guard = shortcuts_test_lock().lock().unwrap();
+		reset_all_custom_shortcuts();
 		let dir = temp_dir("diff");
 		let path = format!("{dir}/shortcuts");
 
