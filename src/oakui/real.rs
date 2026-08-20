@@ -1935,9 +1935,17 @@ impl RealEngine {
 		release_rendered_frame(&rendered);
 		let image = image::RgbaImage::from_raw(width, height, bytes)?;
 		std::fs::create_dir_all(path.parent()?).ok()?;
-		// Write aside then rename so readers never see a partial file.
+		// Write aside then rename so readers never see a partial file. The
+		// temp name ends in `.part` (not `.png`), so the encoder is given
+		// explicitly — `Image::save` infers the format from the extension
+		// and would reject it.
 		let tmp = path.with_extension("part");
-		image.save(&tmp).ok()?;
+		{
+			let file = std::fs::File::create(&tmp).ok()?;
+			image
+				.write_to(&mut std::io::BufWriter::new(file), image::ImageFormat::Png)
+				.ok()?;
+		}
 		std::fs::rename(&tmp, &path).ok()?;
 		Some(path)
 	}
@@ -3559,9 +3567,11 @@ impl AppEngine for RealEngine {
 				new_track,
 				new_start,
 			} => {
-				// Cross-track moves go through the gap + re-home + place
-				// composition (one undoable entry); same-track moves use
-				// the plain move command.
+				// The dragged clip moves to `new_track`/`new_start`; every
+				// clip linked to it (the A/V pair dropped from one file)
+				// follows in lockstep, each staying on its own track and
+				// shifting by the same frame offset. All of it lands as ONE
+				// undoable entry.
 				let Some(block) = self.clip_block(*clip) else {
 					return;
 				};
@@ -3571,19 +3581,45 @@ impl AppEngine for RealEngine {
 				let Some(project) = self.project.clone() else {
 					return;
 				};
+				// Linked clips on locked tracks are left in place.
+				let linked: Vec<NodeId> = {
+					let guard = graphops::lock(&project);
+					guard
+						.graph
+						.links_of(block)
+						.into_iter()
+						.filter(|&other| graphops::clip_behavior(&guard.graph, other).is_some())
+						.collect()
+				};
+				let linked: Vec<NodeId> = linked
+					.into_iter()
+					.filter(|&other| !self.clip_track_locked(other))
+					.collect();
 				let current_track = self
 					.tracks
 					.iter()
 					.position(|t| t.clips.iter().any(|c| c.block == block));
-				let result = match (current_track, self.tracks.get(*new_track)) {
-					(Some(current), _) if current == *new_track => {
-						graphops::move_clip(&project, block, new_start.0)
+				// Cross-track moves go through the gap + re-home + place
+				// composition; same-track moves use the plain move command.
+				let dest_track = match (current_track, self.tracks.get(*new_track)) {
+					(Some(current), _) if current == *new_track => None,
+					(_, Some(dest)) => Some(dest.track),
+					_ => {
+						self.apply_edit(
+							Err("move clip: destination track out of range".to_string()),
+							"move clip",
+							cx,
+						);
+						return;
 					}
-					(_, Some(dest)) => {
-						graphops::move_clip_to_track(&project, block, dest.track, new_start.0)
-					}
-					_ => Err("move clip: destination track out of range".to_string()),
 				};
+				let result = graphops::move_clip_with_links(
+					&project,
+					block,
+					dest_track,
+					new_start.0,
+					&linked,
+				);
 				self.apply_edit(result, "move clip", cx);
 			}
 			TimelineEvent::TrackHeightChanged { track, height } => {
@@ -5699,6 +5735,90 @@ mod tests {
 		let _ = std::fs::remove_file(&media);
 	}
 
+	/// The material-bin thumbnail pipeline end to end: importing a real media
+	/// file (tests/demo.mp4) lists a footage entry whose icon-view thumbnail
+	/// is rendered on a background worker, drained on the tick, and cached as
+	/// a PNG on disk keyed by the media filename — the entry eventually
+	/// carries a `thumbnail` path that resolves to an existing file (the
+	/// engine half of the icon-view img chain; the widget half is covered by
+	/// `icon_view_renders_thumbnail_img_or_placeholder`).
+	#[gpui::test]
+	async fn real_engine_thumbnail_pipeline_produces_png(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let _worker = WorkerBinGuard::set();
+		if !crate::oakui::renderops::ensure_render_manager() {
+			panic!("the render manager failed to start");
+		}
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		let media = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/demo.mp4");
+		let imported = cx
+			.update(|app| engine.update(app, |engine, cx| engine.import_footage(media.clone(), cx)));
+		assert!(imported.is_ok(), "import tests/demo.mp4: {imported:?}");
+		let name = media.file_name().unwrap().to_string_lossy().into_owned();
+
+		// The core render step runs synchronously: the first frame decodes to
+		// a PNG in the shared thumbnail directory.
+		let entry_id = cx
+			.read(|app| {
+				engine
+					.read(app)
+					.roots()
+					.into_iter()
+					.find(|e| e.name.as_ref() == name)
+					.expect("the imported footage is listed")
+					.id
+			});
+		let project = cx.read(|app| engine.read(app).project_ref().cloned().unwrap());
+		let rendered = RealEngine::render_thumbnail(&project, entry_id);
+		let rendered = rendered
+			.expect("render_thumbnail produces a PNG path for the real media");
+		assert!(
+			rendered.exists(),
+			"the rendered PNG exists: {}",
+			rendered.display()
+		);
+
+		// The async path installs it: a fresh engine (no cached done entries)
+		// spawns the worker on `roots()`, and the drain installs the completed
+		// path into the cache so the entry re-reads with the thumbnail.
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.import_footage(media.clone(), cx)
+			})
+		})
+		.expect("re-import the footage");
+		let deadline = std::time::Instant::now() + Duration::from_secs(20);
+		loop {
+			let thumbnail = cx.read(|app| {
+				engine
+					.read(app)
+					.roots()
+					.into_iter()
+					.find(|e| e.name.as_ref() == name)
+					.and_then(|e| e.thumbnail.clone())
+			});
+			if let Some(thumbnail) = thumbnail {
+				assert!(
+					std::path::PathBuf::from(thumbnail.as_ref()).exists(),
+					"the attached thumbnail resolves to a file on disk"
+				);
+				break;
+			}
+			assert!(
+				std::time::Instant::now() < deadline,
+				"the entry eventually carries a thumbnail path"
+			);
+			cx.update(|app| engine.update(app, |engine, _cx| engine.drain_thumbnails()));
+			std::thread::sleep(Duration::from_millis(10));
+		}
+		// Leave the shared cache clean for the next run.
+		let _ = std::fs::remove_file(&rendered);
+	}
+
 	/// Track header toggles through the app seam: a `TrackToggleRequested`
 	/// event lands as ONE undoable engine command, the timeline snapshot
 	/// reflects the new flag, and undo restores it. Visibility maps onto the
@@ -6527,6 +6647,136 @@ mod tests {
 			(clip_count(engine, TrackKind::Video), clip_count(engine, TrackKind::Audio))
 		});
 		assert_eq!((video_clips, audio_clips), (1, 1), "one redo restores both clips");
+	}
+
+	/// Dragging a clip of a linked A/V pair drags its partner in lockstep:
+	/// the linked clip stays on its own track and shifts by the same frame
+	/// offset, both for a same-track drag and a cross-track drag, and ONE
+	/// undo restores the whole group.
+	#[gpui::test]
+	async fn moving_a_linked_clip_drags_its_partner(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		let media = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/demo.mp4");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.import_footage(media.clone(), cx).expect("import")
+			})
+		});
+		let name = media.file_name().unwrap().to_string_lossy().into_owned();
+		let entry = cx.read(|app| {
+			engine
+				.read(app)
+				.roots()
+				.into_iter()
+				.find(|e| e.name.as_ref() == name)
+		})
+		.expect("imported footage is listed");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(40), cx)
+			})
+		});
+
+		// The video clip id, the audio clip id, and their display-track
+		// indices.
+		let (video_id, audio_id, video_idx, audio_idx, other_video_idx) = cx.read(|app| {
+			let engine = engine.read(app);
+			let video_idx = engine
+				.tracks
+				.iter()
+				.position(|t| t.kind == TrackKind::Video && !t.clips.is_empty())
+				.expect("a video track with the clip");
+			let audio_idx = engine
+				.tracks
+				.iter()
+				.position(|t| t.kind == TrackKind::Audio && !t.clips.is_empty())
+				.expect("an audio track with the clip");
+			let other_video_idx = engine
+				.tracks
+				.iter()
+				.enumerate()
+				.find(|(i, t)| t.kind == TrackKind::Video && *i != video_idx)
+				.map(|(i, _)| i)
+				.expect("a second video track");
+			(
+				engine.tracks[video_idx].clips[0].id,
+				engine.tracks[audio_idx].clips[0].id,
+				video_idx,
+				audio_idx,
+				other_video_idx,
+			)
+		});
+
+		let in_points = |cx: &mut gpui::TestAppContext, video_idx: usize, audio_idx: usize| {
+			cx.read(|app| {
+				let engine = engine.read(app);
+				let video = engine.tracks[video_idx]
+					.clips
+					.iter()
+					.find(|c| c.id == video_id)
+					.map(|c| c.range.start.0);
+				let audio = engine.tracks[audio_idx]
+					.clips
+					.iter()
+					.find(|c| c.id == audio_id)
+					.map(|c| c.range.start.0);
+				(video, audio)
+			})
+		};
+
+		let move_video = |cx: &mut gpui::TestAppContext, track: usize, start: i64| {
+			cx.update(|app| {
+				engine.update(app, |engine, cx| {
+					engine.apply_timeline_event(
+						&TimelineEvent::ClipMoveRequested {
+							clip: video_id,
+							new_track: track,
+							new_start: Frame(start),
+						},
+						cx,
+					);
+				})
+			});
+		};
+
+		// Same-track drag: the video clip +40 frames; the audio clip follows
+		// on its own track.
+		move_video(cx, video_idx, 80);
+		assert_eq!(in_points(cx, video_idx, audio_idx), (Some(80), Some(80)));
+
+		// Cross-track drag: the video clip moves to the other video track at
+		// 120; the audio clip stays on its audio track but shifts to 120 too.
+		move_video(cx, other_video_idx, 120);
+		assert_eq!(
+			in_points(cx, other_video_idx, audio_idx),
+			(Some(120), Some(120)),
+			"the audio clip follows the cross-track drag while keeping its track"
+		);
+		assert!(
+			!cx.read(|app| engine.read(app).tracks[video_idx]
+				.clips
+				.iter()
+				.any(|c| c.id == video_id)),
+			"the video clip left its original track"
+		);
+
+		// ONE undo restores the whole group (the cross-track move was a
+		// single "Move Clip" entry).
+		cx.update(|app| engine.update(app, |engine, cx| engine.undo(cx)));
+		assert_eq!(
+			in_points(cx, video_idx, audio_idx),
+			(Some(80), Some(80)),
+			"one undo restores both clips to the same-track position"
+		);
+		cx.update(|app| engine.update(app, |engine, cx| engine.undo(cx)));
+		assert_eq!(
+			in_points(cx, video_idx, audio_idx),
+			(Some(40), Some(40)),
+			"a second undo restores the pre-drag position"
+		);
 	}
 
 	/// Playback pre-render window (M15 S2): during playback the playhead

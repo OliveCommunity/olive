@@ -1504,13 +1504,14 @@ pub fn trim_clip(p: &ProjectRef, clip: NodeId, new_in_ts: i64, new_out_ts: i64) 
 	push_multi(children, "Trim Clip")
 }
 
-/// Move `clip` within its track so its in point becomes `new_in_ts`
-/// (undoable "Move Clip"; the module's `TrackMoveBlockCommand` — the old
-/// spot becomes a gap, length and media-in are preserved).
-pub fn move_clip(p: &ProjectRef, clip: NodeId, new_in_ts: i64) -> Result<(), String> {
-	if new_in_ts < 0 {
-		return Err("invalid move target".to_string());
-	}
+/// The undoable same-track move command for one clip (its in point becomes
+/// `new_in_ts`; the module's `TrackMoveBlockCommand` — the old spot becomes
+/// a gap, length and media-in are preserved).
+fn move_clip_command(
+	p: &ProjectRef,
+	clip: NodeId,
+	new_in_ts: i64,
+) -> Result<oakundo::undocommand::UndoCommand, String> {
 	let (tb, list, track_index) = {
 		let g = lock(p);
 		let track = clip_track(&g.graph, clip).ok_or_else(|| "the clip is not on a track".to_string())?;
@@ -1524,31 +1525,35 @@ pub fn move_clip(p: &ProjectRef, clip: NodeId, new_in_ts: i64) -> Result<(), Str
 			.ok_or_else(|| "the sequence has no valid frame rate".to_string())?;
 		(tb, list, track_index)
 	};
-	push(
-		oaktimeline::undopointer::TrackMoveBlockCommand::new(
-			node_ref(p, list),
-			track_index,
-			node_ref(p, clip),
-			ts_to_rational(new_in_ts, tb),
-		)
-		.to_command(),
-		"Move Clip",
+	Ok(oaktimeline::undopointer::TrackMoveBlockCommand::new(
+		node_ref(p, list),
+		track_index,
+		node_ref(p, clip),
+		ts_to_rational(new_in_ts, tb),
 	)
+	.to_command())
 }
 
-/// Move `clip` to a different track at `new_in_ts` (undoable "Move Clip
-/// to Track", one row): the source spot becomes a gap, the block's in
-/// point is re-homed, and the clip is placed on the destination track
-/// (the facade's `oakengine_sequence_move_clip_to_track` composition).
-pub fn move_clip_to_track(
+/// Move `clip` within its track so its in point becomes `new_in_ts`
+/// (undoable "Move Clip"; the module's `TrackMoveBlockCommand` — the old
+/// spot becomes a gap, length and media-in are preserved).
+pub fn move_clip(p: &ProjectRef, clip: NodeId, new_in_ts: i64) -> Result<(), String> {
+	if new_in_ts < 0 {
+		return Err("invalid move target".to_string());
+	}
+	push(move_clip_command(p, clip, new_in_ts)?, "Move Clip")
+}
+
+/// The undoable cross-track move commands for one clip (gap on the source
+/// track, re-homed in point, place on the destination track), WITHOUT
+/// pushing — assembled by callers that move several clips in one undoable
+/// entry.
+fn move_clip_to_track_commands(
 	p: &ProjectRef,
 	clip: NodeId,
 	dest_track: NodeId,
 	new_in_ts: i64,
-) -> Result<(), String> {
-	if new_in_ts < 0 {
-		return Err("invalid move target".to_string());
-	}
+) -> Result<Vec<oakundo::undocommand::UndoCommand>, String> {
 	let (tb, list, dest_index, source_track) = {
 		let g = lock(p);
 		let source_track =
@@ -1614,7 +1619,83 @@ pub fn move_clip_to_track(
 		in_r,
 	)
 	.to_command();
-	push_multi(vec![gap, rehome, place], "Move Clip to Track")
+	Ok(vec![gap, rehome, place])
+}
+
+/// Move `clip` to a different track at `new_in_ts` (undoable "Move Clip
+/// to Track", one row): the source spot becomes a gap, the block's in
+/// point is re-homed, and the clip is placed on the destination track
+/// (the facade's `oakengine_sequence_move_clip_to_track` composition).
+pub fn move_clip_to_track(
+	p: &ProjectRef,
+	clip: NodeId,
+	dest_track: NodeId,
+	new_in_ts: i64,
+) -> Result<(), String> {
+	if new_in_ts < 0 {
+		return Err("invalid move target".to_string());
+	}
+	push_multi(move_clip_to_track_commands(p, clip, dest_track, new_in_ts)?, "Move Clip to Track")
+}
+
+/// Move `clip` to `new_in_ts` (`dest_track` when the gesture crosses
+/// tracks) while every clip in `linked` follows in lockstep: each linked
+/// clip keeps its own track and moves by the same frame offset. The whole
+/// group lands as ONE undoable "Move Clip" entry (C++ `block_links_`
+/// semantics — grouped edits apply to the whole group).
+pub fn move_clip_with_links(
+	p: &ProjectRef,
+	clip: NodeId,
+	dest_track: Option<NodeId>,
+	new_in_ts: i64,
+	linked: &[NodeId],
+) -> Result<(), String> {
+	if new_in_ts < 0 {
+		return Err("invalid move target".to_string());
+	}
+	// The dragged clip's old in point frames the shared frame delta.
+	let old_in_ts = {
+		let g = lock(p);
+		let tb = clip_track(&g.graph, clip)
+			.and_then(|t| track_behavior(&g.graph, t))
+			.and_then(|t| t.track_list)
+			.and_then(|l| track_list_behavior(&g.graph, l))
+			.and_then(|l| l.sequence)
+			.and_then(|s| sequence_time_base(&g.graph, s))
+			.ok_or_else(|| "the clip's sequence has no valid frame rate".to_string())?;
+		let (in_r, _, _) = clip_range(&g.graph, clip)
+			.ok_or_else(|| "the node is not a clip".to_string())?;
+		rational_to_ts(in_r, tb)
+	};
+	let delta = new_in_ts - old_in_ts;
+
+	let mut commands = Vec::new();
+	match dest_track {
+		Some(track) => commands.extend(move_clip_to_track_commands(p, clip, track, new_in_ts)?),
+		None => commands.push(move_clip_command(p, clip, new_in_ts)?),
+	}
+	for &other in linked {
+		if other == clip {
+			continue;
+		}
+		// Each linked clip stays on its own track; only its in point follows
+		// the shared frame delta.
+		let other_in_ts = {
+			let g = lock(p);
+			let tb = clip_track(&g.graph, other)
+				.and_then(|t| track_behavior(&g.graph, t))
+				.and_then(|t| t.track_list)
+				.and_then(|l| track_list_behavior(&g.graph, l))
+				.and_then(|l| l.sequence)
+				.and_then(|s| sequence_time_base(&g.graph, s))
+				.ok_or_else(|| "a linked clip's sequence has no valid frame rate".to_string())?;
+			let (in_r, _, _) = clip_range(&g.graph, other)
+				.ok_or_else(|| "a linked node is not a clip".to_string())?;
+			rational_to_ts(in_r, tb)
+		};
+		commands.push(move_clip_command(p, other, (other_in_ts + delta).max(0))?);
+	}
+	push_multi(commands, "Move Clip")
 }
 
 /// Delete `clip` leaving a gap (undoable "Delete Clips"; the facade's

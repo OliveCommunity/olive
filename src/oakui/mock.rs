@@ -937,11 +937,14 @@ impl MockEngine {
 				self.refresh_port_connectivity();
 			}
 			NodeGraphEvent::SelectionChanged { nodes } => {
+				// Only auto-expand when the selection actually CHANGED. The
+				// card-header click selects the card's node (CardSelected →
+				// node_selection) and the panel mirrors that into the graph
+				// widget, whose SelectionChanged echo must not fight the
+				// expansion toggle the same click requested.
+				let changed = self.node_selection != *nodes;
 				self.node_selection = nodes.clone();
-				// The demo's node↔inspector link: a single selected node
-				// expands the matching effect card (the real engine mirrors
-				// this through `expanded_effects`).
-				if nodes.len() == 1 {
+				if changed && nodes.len() == 1 {
 					let node = *nodes.iter().next().expect("a one-element set");
 					if let Some(effect) = self.effect_for_node(node) {
 						if let Some(card) = self.effects.iter_mut().find(|e| e.id == effect) {
@@ -2623,6 +2626,66 @@ mod tests {
 			// Source and output cards are pinned and not removable.
 			assert_eq!(titles.first().map(String::as_str), Some("媒体"));
 			assert_eq!(titles.last().map(String::as_str), Some("输出"));
+		});
+	}
+
+	/// The card-header click round trip: expansion toggles collapse then
+	/// re-expand. The header click emits BOTH `ExpansionToggled` and
+	/// `CardSelected`; the card selection mirrors its node into the node
+	/// editor, whose `SelectionChanged` echo must not fight the toggle (the
+	/// demo's 变换 card maps to graph node 2).
+	#[gpui::test]
+	async fn effect_card_expansion_survives_the_card_selection_echo(cx: &mut TestAppContext) {
+		cx.update(|app| {
+			let engine = demo_engine(app);
+			let toggle = |app: &mut gpui::App, expanded: bool| {
+				engine.update(app, |engine, cx| {
+					engine.apply_effect_event(
+						&EffectStackEvent::ExpansionToggled {
+							effect: EffectId(1),
+							expanded,
+						},
+						cx,
+					);
+				});
+			};
+			let is_expanded = |app: &gpui::App| -> bool {
+				engine
+					.read(app)
+					.effects()
+					.iter()
+					.find(|e| e.id() == EffectId(1))
+					.map(|e| e.is_expanded())
+					.unwrap_or(false)
+			};
+
+			// The demo's 变换 card starts expanded; the collapse click also
+			// selects the card (CardSelected → node_selection = {2}), and the
+			// node-editor panel then mirrors that into the graph widget, whose
+			// SelectionChanged echo arrives through apply_node_graph_event.
+			assert!(is_expanded(app), "the demo card starts expanded");
+			toggle(app, false);
+			engine.update(app, |engine, cx| {
+				engine.apply_effect_event(&EffectStackEvent::CardSelected { effect: EffectId(1) }, cx);
+			});
+			engine.update(app, |engine, cx| {
+				engine.apply_node_graph_event(
+					&NodeGraphEvent::SelectionChanged {
+						nodes: BTreeSet::from([NodeId(2)]),
+					},
+					cx,
+				);
+			});
+			assert!(
+				!is_expanded(app),
+				"the selection echo must not re-expand the collapsed card"
+			);
+
+			// Expand → collapse round trip stays clean.
+			toggle(app, true);
+			assert!(is_expanded(app));
+			toggle(app, false);
+			assert!(!is_expanded(app));
 		});
 	}
 
