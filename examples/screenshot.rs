@@ -38,19 +38,32 @@
 //! cargo run --example screenshot -- 1100 900   # any size (same filenames)
 //! ```
 
+#[cfg(target_os = "macos")]
 use gpui::{px, size, AnyWindowHandle, AppContext, Entity, Result, VisualTestAppContext};
+#[cfg(target_os = "macos")]
 use gpui_platform::current_platform;
+#[cfg(target_os = "macos")]
 use oakapp::app::OakApp;
+#[cfg(target_os = "macos")]
 use oakapp::i18n::{self, Language};
+#[cfg(target_os = "macos")]
 use oakapp::oakui::MockEngine;
 
+#[cfg(target_os = "macos")]
 const DEFAULT_WIDTH: f32 = 1600.0;
+#[cfg(target_os = "macos")]
 const DEFAULT_HEIGHT: f32 = 900.0;
+#[cfg(target_os = "macos")]
 const OUT_ZH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-window.png");
+#[cfg(target_os = "macos")]
 const OUT_EN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-window-en.png");
+#[cfg(target_os = "macos")]
 const OUT_MGR_ZH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-manager.png");
+#[cfg(target_os = "macos")]
 const OUT_MGR_EN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-manager-en.png");
+#[cfg(target_os = "macos")]
 const OUT_PREF_ZH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-preferences.png");
+#[cfg(target_os = "macos")]
 const OUT_PREF_EN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-preferences-en.png");
 
 /// Logical y of the timeline toolbar row, which sits at the top of the
@@ -59,9 +72,12 @@ const OUT_PREF_EN: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/docs/screenshot-
 /// split handle separates them from the timeline. The toolbar is its 31px
 /// first row. The assertion scans a small band around it so minor layout
 /// drift does not false-negative.
+#[cfg(target_os = "macos")]
 const TOOLBAR_Y: f32 = 541.0;
+#[cfg(target_os = "macos")]
 const TOOLBAR_BAND: f32 = 44.0;
 
+#[cfg(target_os = "macos")]
 fn main() -> Result<()> {
 	let args: Vec<String> = std::env::args().skip(1).collect();
 	let width = args
@@ -111,6 +127,7 @@ fn main() -> Result<()> {
 /// [`settle`]). Returns the typed window handle and the root entity so the
 /// caller can still drive the shell (the manager capture) after the plain
 /// screenshot.
+#[cfg(target_os = "macos")]
 fn open_shell(
 	cx: &mut VisualTestAppContext,
 	width: f32,
@@ -139,6 +156,7 @@ fn open_shell(
 /// known, the viewers upload their first CPU frame, and the PNG toolbar
 /// icons load through the background executor on the frame after the asset
 /// future resolves.
+#[cfg(target_os = "macos")]
 fn settle(cx: &mut VisualTestAppContext, handle: AnyWindowHandle) {
 	for _ in 0..16 {
 		cx.run_until_parked();
@@ -164,6 +182,7 @@ fn settle(cx: &mut VisualTestAppContext, handle: AnyWindowHandle) {
 /// project / audio). Drives the root ENTITY (not the window handle — see
 /// [`capture_manager`]). The dialog closes afterwards so the manager
 /// capture starts from a clean shell.
+#[cfg(target_os = "macos")]
 fn capture_preferences(
 	cx: &mut VisualTestAppContext,
 	handle: gpui::WindowHandle<OakApp<MockEngine>>,
@@ -185,6 +204,7 @@ fn capture_preferences(
 /// modal card lists the mock library with its per-project stats. Drives the
 /// root ENTITY (not the window handle — a window update borrows the window,
 /// and building the modal inside it would re-enter it).
+#[cfg(target_os = "macos")]
 fn capture_manager(
 	cx: &mut VisualTestAppContext,
 	handle: gpui::WindowHandle<OakApp<MockEngine>>,
@@ -203,6 +223,7 @@ fn capture_manager(
 /// render: the toolbar is the 31px row at the top of the bottom dock panel.
 /// Scan the tool cells for bright glyph pixels, so a broken icon load fails
 /// the capture loudly instead of shipping an empty toolbar.
+#[cfg(target_os = "macos")]
 fn assert_toolbar(image: &image::RgbaImage, language: &str) {
 	// The image is 2× the logical size; convert logical → pixel y. TOOLBAR_Y
 	// is measured from the window's top edge.
@@ -231,4 +252,9 @@ fn assert_toolbar(image: &image::RgbaImage, language: &str) {
 		rendered >= 6,
 		"{language} timeline toolbar icons did not render (only {rendered}/8 tool cells had pixels)"
 	);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn main() {
+	eprintln!("the screenshot example is macOS-only (offscreen Metal rendering)");
 }

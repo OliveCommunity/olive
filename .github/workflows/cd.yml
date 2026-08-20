@@ -294,20 +294,23 @@ jobs:
           # registry src dir may not exist yet on a fresh runner — create
           # it from the cache dir's hash. The trailing ls asserts the
           # patched file actually exists.
+          # rust-toolchain sets CARGO_HOME to the WINDOWS userprofile
+          # path ($USERPROFILE\.cargo), not the msys2 $HOME — resolve it.
+          CH=$(cygpath -u "${CARGO_HOME:-$HOME/.cargo}")
           cargo fetch --locked
-          for cache in "$HOME"/.cargo/registry/cache/*/; do
-            src="$HOME/.cargo/registry/src/$(basename "$cache")"
+          for cache in "$CH"/registry/cache/*/; do
+            src="$CH/registry/src/$(basename "$cache")"
             mkdir -p "$src"
             if [ -f "$cache/ocio-sys-0.2.1.crate" ]; then
               tar xzf "$cache/ocio-sys-0.2.1.crate" -C "$src"
             fi
           done
-          for f in "$HOME"/.cargo/registry/src/*/ocio-sys-0.2.1/vendor/OpenColorIO/ext/ocio-rs-deps/yaml-cpp/src/emitterutils.cpp; do
+          for f in "$CH"/registry/src/*/ocio-sys-0.2.1/vendor/OpenColorIO/ext/ocio-rs-deps/yaml-cpp/src/emitterutils.cpp; do
             [ -e "$f" ] || continue
             grep -q '#include <cstdint>' "$f" || \
               sed -i '0,/#include/s||#include <cstdint>\n&|' "$f"
           done
-          ls "$HOME"/.cargo/registry/src/*/ocio-sys-0.2.1/vendor/OpenColorIO/ext/ocio-rs-deps/yaml-cpp/src/emitterutils.cpp
+          ls "$CH"/registry/src/*/ocio-sys-0.2.1/vendor/OpenColorIO/ext/ocio-rs-deps/yaml-cpp/src/emitterutils.cpp
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
