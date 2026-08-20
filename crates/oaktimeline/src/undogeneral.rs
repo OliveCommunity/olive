@@ -38,8 +38,8 @@ use crate::util::{
 	block_set_in, block_set_length_and_media_in, block_set_length_and_media_out, block_track,
 	clip_media_in, clip_set_media_in, same_block, track_append_block, track_create,
 	track_insert_block_after, track_insert_block_before, track_replace_block,
-	track_ripple_remove_block, tracklist_append, tracklist_remove_last, tracklist_track_at,
-	tracklist_track_count, tracklist_type, BlockKind, NodeRef,
+	track_ripple_remove_block, tracklist_append, tracklist_remove, tracklist_remove_last,
+	tracklist_track_at, tracklist_track_count, tracklist_type, BlockKind, NodeRef,
 };
 
 // `oaknode/sequence.h` element input ids (the C++ automerge branch).
@@ -284,6 +284,9 @@ impl TimelineAddTrackCommand {
 		if self.track_entry.is_some() {
 			block_add_to_graph(&self.track, self.track_entry.take());
 		}
+		// NLE track-growth direction is a DISPLAY concern: the graph list
+		// always appends, and the UI renders video/subtitle lists reversed
+		// (new track on top) but audio lists in order (new track below).
 		tracklist_append(&self.timeline, &self.track);
 	}
 
@@ -292,8 +295,10 @@ impl TimelineAddTrackCommand {
 		// NOTE: the C++ undo disconnects the merge/direct input and removes
 		// the track node from the project graph; the disconnects have no
 		// Rust equivalent, but the graph removal is real: the track's arena
-		// entry is detached and owned here until the next redo.
-		let _ = tracklist_remove_last(&self.timeline);
+		// entry is detached and owned here until the next redo. Removes
+		// THIS track by id (not blindly the last one) and renumbers the
+		// remaining tracks.
+		tracklist_remove(&self.timeline, &self.track);
 		if self.track_entry.is_none() {
 			self.track_entry = block_remove_from_graph(&self.track);
 		}

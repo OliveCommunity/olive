@@ -136,6 +136,15 @@ pub fn addable_effects() -> Vec<super::engine::EffectEntry> {
 			group: Some(meta.sub_category),
 		});
 	}
+	// Default presentation order: built-ins first, then the OpenFX
+	// sub-category groups alphabetically; names alphabetical (folded)
+	// within each group.
+	out.sort_by(|a, b| {
+		let ga = a.group.as_deref().unwrap_or("");
+		let gb = b.group.as_deref().unwrap_or("");
+		ga.cmp(gb)
+			.then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+	});
 	out
 }
 

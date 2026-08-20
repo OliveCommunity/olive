@@ -1056,23 +1056,29 @@ pub fn set_context_position_command(
 	))
 }
 
-/// Append a track of `kind` to the sequence (undoable "Add Track"; the
+/// Add a track of `kind` to the sequence (undoable "Add Track"; the
 /// module's `TimelineAddTrackCommand`), returning the new track's index.
 pub fn add_track(p: &ProjectRef, seq: NodeId, kind: TrackType) -> Result<usize, String> {
 	let list = find_or_create_track_list(p, seq, kind)
 		.ok_or_else(|| "sequence has no track list for this type".to_string())?;
+	let before: Vec<NodeId> = {
+		let g = lock(p);
+		track_list_behavior(&g.graph, list)
+			.map(|l| l.tracks.clone())
+			.unwrap_or_default()
+	};
 	push(
 		oaktimeline::undogeneral::TimelineAddTrackCommand::new(node_ref(p, list)).to_command(),
 		"Add Track",
 	)?;
 	let g = lock(p);
-	let n = track_list_behavior(&g.graph, list)
-		.map(|l| l.tracks.len())
+	let tracks = track_list_behavior(&g.graph, list)
+		.map(|l| l.tracks.clone())
 		.ok_or_else(|| "add track command produced no track list".to_string())?;
-	if n == 0 {
-		return Err("add track command produced no track".to_string());
-	}
-	Ok(n - 1)
+	tracks
+		.iter()
+		.position(|id| !before.contains(id))
+		.ok_or_else(|| "add track command produced no track".to_string())
 }
 
 /// Remove `track` from its list (undoable "Remove Track"; the module's

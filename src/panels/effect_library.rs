@@ -26,6 +26,7 @@ use gpui::{
 	div, prelude::*, AnyElement, App, ClickEvent, Context, Entity, EventEmitter, MouseButton,
 	Render, SharedString, Window,
 };
+use gpui_elements::editable_text::{text_input, EditableTextState, StringStorage, TextChanged};
 
 use crate::i18n;
 use crate::oakui::AppEngine;
@@ -35,6 +36,9 @@ use crate::panels::ids::EFFECT_LIBRARY;
 /// The effect library panel.
 pub struct EffectLibraryPanel<E: AppEngine> {
 	engine: Entity<E>,
+	/// The search box state: live-filters the list by name / type id
+	/// (case-insensitive substring).
+	search: Entity<EditableTextState>,
 }
 
 impl<E: AppEngine> EffectLibraryPanel<E> {
@@ -43,7 +47,12 @@ impl<E: AppEngine> EffectLibraryPanel<E> {
 		// Re-read the effect table whenever the engine notifies (the table
 		// itself is static, but the selection hint depends on the target).
 		cx.observe(&engine, |_this, _engine, cx| cx.notify()).detach();
-		Self { engine }
+		let search = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
+		cx.subscribe(&search, |_this, _state, _event: &TextChanged, cx| {
+			cx.notify();
+		})
+		.detach();
+		Self { engine, search }
 	}
 }
 
@@ -55,6 +64,7 @@ impl<E: AppEngine> Render for EffectLibraryPanel<E> {
 	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let colors = cx.default_colors().clone();
 		let effects = self.engine.read(cx).addable_effects();
+		let query = self.search.read(cx).as_str().trim().to_lowercase();
 
 		let mut list = div()
 			.id("effect-library-list")
@@ -66,21 +76,28 @@ impl<E: AppEngine> Render for EffectLibraryPanel<E> {
 			.p_2()
 			.overflow_y_scroll();
 
-		// Built-in effects render flat; OpenFX plugin entries are grouped
-		// under their sub-category header (Filter / Generator / Transition /
-		// General — the C++ `factorymenu` OpenFX branch).
-		let mut last_group: Option<String> = None;
+		// Built-in effects render flat under a Built-in header; OpenFX
+		// plugin entries are grouped under their sub-category header
+		// (Filter / Generator / Transition / General — the C++
+		// `factorymenu` OpenFX branch). The engine table arrives sorted
+		// (built-ins first, then groups and names alphabetically); the
+		// search box live-filters by name / type id.
+		let mut last_group: Option<Option<String>> = None;
 		for entry in &effects {
-			match &entry.group {
-				Some(group) => {
-					if last_group.as_deref() != Some(group.as_str()) {
-						last_group = Some(group.clone());
-						list = list.child(group_header(&colors, group));
-					}
-				}
-				None => {
-					last_group = None;
-				}
+			if !query.is_empty()
+				&& !entry.name.to_lowercase().contains(&query)
+				&& !entry.type_id.to_lowercase().contains(&query)
+			{
+				continue;
+			}
+			let group_key = entry.group.clone();
+			if last_group.as_ref() != Some(&group_key) {
+				last_group = Some(group_key);
+				let label = match &entry.group {
+					Some(group) => group.clone(),
+					None => i18n::tr("effect_library.group.builtin").to_string(),
+				};
+				list = list.child(group_header(&colors, &label));
 			}
 			let engine = self.engine.clone();
 			let row_id = entry.type_id.clone();
@@ -126,6 +143,18 @@ impl<E: AppEngine> Render for EffectLibraryPanel<E> {
 					cx.emit(PanelEvent::Focused);
 				})
 			})
+			.child(
+				div()
+					.flex_shrink_0()
+					.p_2()
+					.border_b_1()
+					.border_color(colors.border)
+					.child(
+						text_input("effect-library-search")
+							.state(self.search.downgrade())
+							.accepts_input(true),
+					),
+			)
 			.child(list)
 			.child(
 				div()

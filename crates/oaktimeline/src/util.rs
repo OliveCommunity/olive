@@ -696,6 +696,25 @@ pub fn sequence_track_list(sequence: &NodeRef, kind: TrackType) -> Option<NodeRe
 	None
 }
 
+/// Remove `track` from the list by id and renumber the remaining tracks
+/// (the precise counterpart of `tracklist_remove_last` for undo paths
+/// that must not eat the wrong track).
+pub fn tracklist_remove(list: &NodeRef, track: &NodeRef) {
+	let mut p = list.lock();
+	let ids: Vec<NodeId> = {
+		let Some(l) = tracklist_behavior_of_mut(&mut p, list.id) else {
+			return;
+		};
+		l.tracks.retain(|&t| t != track.id);
+		l.tracks.clone()
+	};
+	for (i, id) in ids.iter().enumerate() {
+		if let Some(t) = track_behavior_of_mut(&mut p, *id) {
+			t.index = i as i32;
+		}
+	}
+}
+
 /// `oaknode_sequence_get_all_track_count` / `get_all_track_at`: every
 /// track of every track list owned by the sequence, in list order.
 pub fn sequence_all_tracks(sequence: &NodeRef) -> Vec<NodeRef> {

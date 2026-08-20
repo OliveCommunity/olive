@@ -2021,15 +2021,15 @@ impl RealEngine {
 			!finished.iter().any(|(footage, _)| *footage == run.footage)
 		});
 		if let Some(project) = self.project.clone() {
-			for (footage, ok) in finished {
+			for (footage, ok) in &finished {
 				let mut guard = graphops::lock(&project);
 				if let Some(f) = guard
 					.graph
-					.get_mut(footage)
+					.get_mut(*footage)
 					.and_then(|e| e.behavior.as_any_mut())
 					.and_then(|a| a.downcast_mut::<oaknode::footage::FootageBehavior>())
 				{
-					if ok {
+					if *ok {
 						// The transcode wrote the final file: mark the
 						// proxy ready and usable (state 2, enabled).
 						f.proxy_state = 2;
@@ -2038,11 +2038,17 @@ impl RealEngine {
 						f.proxy_state = 3;
 					}
 				}
-				changed = true;
 			}
 		}
-		if changed {
+		// Only a FINISHED run may change any preview media (the proxy
+		// engages then); progress events only repaint the status bar.
+		// Invalidating the rendered frames on every progress tick would
+		// keep the playback cache permanently cold while a proxy
+		// generates.
+		if !finished.is_empty() {
 			self.invalidate_preview_frames(cx);
+		} else if changed {
+			cx.notify();
 		}
 	}
 
@@ -2595,10 +2601,18 @@ impl RealEngine {
 		let mut out: Vec<RealTrack> = Vec::new();
 		{
 			let guard = graphops::lock(project);
-			// Per-type track lists, each displayed topmost-first.
+			// Per-type track lists, each displayed topmost-first. NLE
+			// growth direction: video/subtitle tracks grow upward (the
+			// list is displayed reversed, so an appended track lands on
+			// top), audio tracks grow downward (list order = display
+			// order, so an appended track lands at the bottom).
 			for kind in [TrackType::Video, TrackType::Audio, TrackType::Subtitle] {
 				let tracks = graphops::track_ids(&guard.graph, seq, kind);
-				for (track_index, &track_id) in tracks.iter().enumerate().rev() {
+				let ordered: Box<dyn Iterator<Item = (usize, &NodeId)>> = match kind {
+					TrackType::Audio => Box::new(tracks.iter().enumerate()),
+					_ => Box::new(tracks.iter().enumerate().rev()),
+				};
+				for (track_index, &track_id) in ordered {
 					out.push(Self::snapshot_track(&guard.graph, track_id, kind, track_index, tb));
 				}
 			}

@@ -88,10 +88,16 @@ impl<E: AppEngine> Render for StatusBar<E> {
 		};
 
 		// The proxy segment doubles as the in-flight proxy transcode's
-		// progress readout (the C++ status bar shows the running task).
+		// progress readout (the C++ status bar shows the running task);
+		// idle it reflects the global Use Proxy Media switch.
 		let proxy_text = match engine.proxy_task_progress() {
 			Some((label, progress)) => format!("{label} {}%", (progress * 100.0) as i32),
-			None => crate::i18n::tr("status.proxy").into(),
+			None => crate::i18n::tr(if engine.use_proxy_media() {
+				"status.proxy.on"
+			} else {
+				"status.proxy.off"
+			})
+			.into(),
 		};
 
 		div()
