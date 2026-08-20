@@ -4033,6 +4033,21 @@ impl AppEngine for RealEngine {
 		self.apply_edit(result, "drop footage", cx);
 	}
 
+	/// The footage's length in sequence frames (the drop ghost's extent):
+	/// the probed duration times the frame rate; `None` when the entry is
+	/// not footage or was never probed.
+	fn footage_length_frames(&self, id: u64) -> Option<i64> {
+		let project = self.project_ref()?;
+		let node = graphops::id_of(id)?;
+		let seconds = {
+			let guard = graphops::lock(project);
+			graphops::footage_duration_seconds(&guard.graph, node)
+		}?;
+		let fps = self.frame_rate();
+		let fps_f = fps.num as f64 / fps.den.max(1) as f64;
+		Some((seconds * fps_f).round().max(1.0) as i64)
+	}
+
 	// --- project library (M13 D4) --------------------------------------
 
 	fn storage_bound(&self) -> bool {

@@ -118,6 +118,8 @@ struct FootageDropTarget {
 	track_index: usize,
 	/// The start frame at the pointer.
 	time: Frame,
+	/// The footage's length in frames (the ghost's extent).
+	length: i64,
 }
 
 impl<E: AppEngine> TimelinePanel<E> {
@@ -365,14 +367,18 @@ impl<E: AppEngine> TimelinePanel<E> {
 		// The clip area starts below the ruler and right of the track
 		// headers column.
 		if f32::from(now.y) < RULER_HEIGHT {
-			self.footage_drop = None;
+			if self.footage_drop.take().is_some() {
+				cx.notify();
+			}
 			return;
 		}
 		let clip_x = f32::from(now.x - px(HEADER_WIDTH)).max(0.0);
 		let clip_y = now.y - px(RULER_HEIGHT);
 		let state = self.timeline.read(cx).state.clone();
-		let seq_len = self.engine.read(cx).sequence_length();
-		let time = state.frame_at_point(px(clip_x)).clamp(Frame::ZERO, seq_len);
+		// No upper clamp: dropping past the sequence end is how the
+		// timeline extends (the old clamp to the sequence length squashed
+		// every drop onto an empty/near-empty timeline to frame zero).
+		let time = state.frame_at_point(px(clip_x)).max(Frame::ZERO);
 		// Walk the display rows top-down, clamping each to the minimum row
 		// height exactly like the timeline's own `track_at_y`.
 		let (track_kind, track_index) = {
@@ -400,7 +406,13 @@ impl<E: AppEngine> TimelinePanel<E> {
 			track_kind,
 			track_index,
 			time,
+			length: event
+				.dragged_item()
+				.downcast_ref::<FootageDrag>()
+				.and_then(|drag| self.engine.read(cx).footage_length_frames(drag.0))
+				.unwrap_or(1),
 		});
+		cx.notify();
 	}
 
 	/// Applies a finished footage drop: routes the payload's footage id with
@@ -414,10 +426,12 @@ impl<E: AppEngine> TimelinePanel<E> {
 			track_kind,
 			track_index,
 			time,
+			..
 		} = target;
 		self.engine.update(cx, |engine, cx| {
 			engine.drop_footage(drag.0, track_kind, track_index, time, cx);
 		});
+		cx.notify();
 	}
 
 	/// Routes a transport command to the engine's program monitor (the
@@ -922,7 +936,49 @@ impl<E: AppEngine> Render for TimelinePanel<E> {
 								}
 								this.finish_footage_drop(drag, cx);
 							}))
-							.child(self.timeline.clone()),
+							.child({
+								let mut inner =
+									div().relative().size_full().child(self.timeline.clone());
+								// The drop ghost: a translucent block at the
+								// resolved track + frame, spanning the footage's
+								// length, so the user sees where the clip lands.
+								if let Some(target) = &self.footage_drop {
+									let state = self.timeline.read(cx).state.clone();
+									let x = px(HEADER_WIDTH) + state.point_at_frame(target.time);
+									let width = px(target.length as f32 * state.zoom).max(px(4.0));
+									let engine = self.engine.read(cx);
+									let mut y = px(RULER_HEIGHT);
+									let mut row_h = px(64.0);
+									for index in 0..=target.track_index {
+										let Some(track) = engine.track(index) else {
+											break;
+										};
+										let h = track.height().max(px(MIN_TRACK_HEIGHT));
+										if index == target.track_index {
+											row_h = h;
+											break;
+										}
+										y += h;
+									}
+									inner = inner.child(
+										div()
+											.absolute()
+											.left(x)
+											.top(y)
+											.w(width)
+											.h(row_h)
+											.rounded_sm()
+											.border_1()
+											.border_color(colors.selected)
+											.bg(gpui::Rgba {
+												a: 0.35,
+												..colors.selected
+											})
+											.into_any_element(),
+									);
+								}
+								inner
+							}),
 					)
 					.child(right_controls),
 			)

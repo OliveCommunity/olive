@@ -724,6 +724,13 @@ pub trait AppEngine:
 	) {
 	}
 
+	/// The footage's length in sequence frames (for the timeline's drop
+	/// ghost): the probed duration times the frame rate. `None` when the
+	/// entry is not footage or has no probed duration.
+	fn footage_length_frames(&self, _id: u64) -> Option<i64> {
+		None
+	}
+
 	/// Starts an export of the current sequence in `format` to `path` and
 	/// returns a session the host polls for progress and can cancel.
 	///

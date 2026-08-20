@@ -1609,8 +1609,7 @@ impl AppEngine for MockEngine {
 		// The footage's media type, inferred from its entry name (the mock
 		// never probes media). Entries the explorer does not list are
 		// rejected.
-		let Some(name) = self.footage_entry_name(id) else {
-			println!("[mock engine] drop footage: entry {id} not in the project");
+		let Some(name) = self.footage_entry_name(id) else {			println!("[mock engine] drop footage: entry {id} not in the project");
 			cx.notify();
 			return;
 		};
@@ -1677,6 +1676,14 @@ impl AppEngine for MockEngine {
 			time: Frame(time.0.max(0)),
 		});
 		cx.notify();
+	}
+
+	/// The mock's drop ghost extent: the 10-second demo clip length used
+	/// by `drop_footage`.
+	fn footage_length_frames(&self, id: u64) -> Option<i64> {
+		self.footage_entry_name(id)?;
+		let fps = self.frame_rate();
+		Some((10.0 * fps.num as f64 / fps.den.max(1) as f64).round().max(1.0) as i64)
 	}
 
 	fn export_project_path(&mut self, _path: PathBuf, cx: &mut Context<Self>) -> Result<(), String> {
