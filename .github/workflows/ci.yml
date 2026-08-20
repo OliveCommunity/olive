@@ -181,13 +181,28 @@ jobs:
       - name: Build (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run: cargo build --workspace --locked
+        run: |
+          # The runner's job hook injects the MSVC INCLUDE/LIB into every
+          # step; clear them in-step (they poison the MinGW compiles with
+          # MSVC SDK headers).
+          unset INCLUDE LIB
+          cargo build --workspace --locked
 
       # xvfb + 24-bit screen: the gpui #[gpui::test] tests open real windows
       # and render through wgpu on Mesa's software Vulkan (lavapipe).
       - name: Test (Linux)
         if: runner.os == 'Linux'
         run: xvfb-run -a -s "-screen 0 1920x1080x24" cargo test --workspace --locked
+
+      # A crashing (SIGSEGV) test gives no Rust backtrace; rerun the
+      # crashing binary under gdb to capture the native stack.
+      - name: Backtrace on test failure (Linux)
+        if: failure()
+        run: |
+          sudo apt-get install -y gdb
+          BIN=$(ls -t target/debug/deps/node_e2e_test-* | grep -v '\.d$' | head -1)
+          xvfb-run -a gdb -batch -ex run -ex bt -- "$BIN" \
+            plugin_renders_constant_frame_end_to_end --exact --nocapture
 
       - name: Test (macOS)
         if: runner.os == 'macOS'
@@ -196,7 +211,9 @@ jobs:
       - name: Test (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
-        run: cargo test --workspace --locked
+        run: |
+          unset INCLUDE LIB
+          cargo test --workspace --locked
 
       # ------------------------------------------------------------------
       # OFX plugin discovery end-to-end

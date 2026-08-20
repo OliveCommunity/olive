@@ -372,7 +372,11 @@ jobs:
           rsvg-convert -w 512 -h 512 Oak_Icon.svg -o icons/icon.png
 
       - name: Build (release)
-        run: cargo build --release --locked
+        run: |
+          # Clear the job-hook-injected MSVC INCLUDE/LIB before the GNU
+          # build (they poison the MinGW compiles with MSVC SDK headers).
+          unset INCLUDE LIB
+          cargo build --release --locked
 
       - name: Package (NSIS)
         run: cargo packager --release --formats nsis
