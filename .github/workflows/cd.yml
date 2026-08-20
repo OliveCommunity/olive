@@ -99,6 +99,32 @@ jobs:
       - name: Package (deb, AppImage, pacman)
         run: cargo packager --release --formats deb,appimage,pacman
 
+      # Declare the FULL runtime dependency set on the deb. dpkg-shlibdeps
+      # resolves every NEEDED entry of every shipped binary to the exact
+      # package names of the build distro (FFmpeg/OCIO are statically
+      # linked, so only base-OS packages appear); an empty Depends is not
+      # self-containment, it just hides the requirements. Distros whose
+      # package names differ (openKylin) get their own build so the names
+      # always resolve.
+      - name: Declare full dependencies on the deb
+        run: |
+          set -euo pipefail
+          deps=$(for bin in target/release/oak-editor target/release/oak-cli target/release/oak-worker; do
+            dpkg-shlibdeps -O "$bin"
+          done | sed 's/^shlibs:Depends=//' | tr ',' '\n' | sed 's/^ //;s/ $//' | sort -u | paste -sd', ' -)
+          echo "declared deps: $deps"
+          for deb in target/release/*.deb; do
+            rm -rf .deb-repack && mkdir .deb-repack
+            dpkg-deb -R "$deb" .deb-repack
+            if grep -q '^Depends:' .deb-repack/DEBIAN/control; then
+              sed -i "s|^Depends:.*|Depends: $deps|" .deb-repack/DEBIAN/control
+            else
+              sed -i "1i Depends: $deps" .deb-repack/DEBIAN/control
+            fi
+            dpkg-deb -b .deb-repack "$deb"
+            rm -rf .deb-repack
+          done
+
       # cargo-packager has no rpm format; convert the deb with fpm. The gem
       # bin dir may not be on PATH for the system ruby, so call fpm by path.
       - name: Package (rpm, via fpm)
