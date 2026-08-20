@@ -36,25 +36,36 @@ if [[ "$OSTYPE" == msys* || "$OSTYPE" == cygwin* || -n "${MSYSTEM:-}" ]]; then
 		echo "Please run this from the MSYS2 UCRT64 shell (MSYSTEM=$MSYSTEM)." >&2
 		exit 1
 	fi
-	run pacman -S --needed --noconfirm \
-		mingw-w64-ucrt-x86_64-toolchain mingw-w64-ucrt-x86_64-pkgconf \
-		mingw-w64-ucrt-x86_64-nasm \
-		mingw-w64-ucrt-x86_64-x264 mingw-w64-ucrt-x86_64-x265 \
-		mingw-w64-ucrt-x86_64-dav1d mingw-w64-ucrt-x86_64-libvpx \
-		mingw-w64-ucrt-x86_64-openh264 mingw-w64-ucrt-x86_64-openjpeg2 \
-		mingw-w64-ucrt-x86_64-libtheora mingw-w64-ucrt-x86_64-libwebp \
-		mingw-w64-ucrt-x86_64-lame mingw-w64-ucrt-x86_64-opus \
-		mingw-w64-ucrt-x86_64-libvorbis mingw-w64-ucrt-x86_64-speex \
-		mingw-w64-ucrt-x86_64-snappy mingw-w64-ucrt-x86_64-libass \
-		mingw-w64-ucrt-x86_64-freetype mingw-w64-ucrt-x86_64-fribidi \
-		mingw-w64-ucrt-x86_64-fontconfig mingw-w64-ucrt-x86_64-gnutls
-	exit 0
+	# Pacman mirrors occasionally stall mid-download (CI hits "Operation
+	# too slow" on .sig retrieval); retry the whole install a few times —
+	# --needed makes each retry resume where the last one stopped.
+	for attempt in 1 2 3; do
+		if run pacman -S --needed --noconfirm \
+			mingw-w64-ucrt-x86_64-toolchain mingw-w64-ucrt-x86_64-pkgconf \
+			mingw-w64-ucrt-x86_64-nasm \
+			mingw-w64-ucrt-x86_64-x264 mingw-w64-ucrt-x86_64-x265 \
+			mingw-w64-ucrt-x86_64-dav1d mingw-w64-ucrt-x86_64-libvpx \
+			mingw-w64-ucrt-x86_64-openh264 mingw-w64-ucrt-x86_64-openjpeg2 \
+			mingw-w64-ucrt-x86_64-libtheora mingw-w64-ucrt-x86_64-libwebp \
+			mingw-w64-ucrt-x86_64-lame mingw-w64-ucrt-x86_64-opus \
+			mingw-w64-ucrt-x86_64-libvorbis mingw-w64-ucrt-x86_64-speex \
+			mingw-w64-ucrt-x86_64-snappy mingw-w64-ucrt-x86_64-libass \
+			mingw-w64-ucrt-x86_64-freetype mingw-w64-ucrt-x86_64-fribidi \
+			mingw-w64-ucrt-x86_64-fontconfig mingw-w64-ucrt-x86_64-gnutls
+		then
+			exit 0
+		fi
+		echo "pacman install attempt $attempt failed; retrying" >&2
+		sleep 5
+	done
+	echo "pacman install failed after 3 attempts" >&2
+	exit 1
 fi
 
 case "$(uname -s)" in
 	Darwin)
 		run brew install pkg-config nasm \
-			x264 x265 dav1d libvpx openh264 openjpeg libtheora libwebp \
+			x264 x265 dav1d libvpx openh264 openjpeg theora webp \
 			lame opus libvorbis speex snappy libass freetype fribidi \
 			fontconfig gnutls
 		;;
