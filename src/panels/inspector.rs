@@ -143,7 +143,11 @@ impl<E: AppEngine> InspectorPanel<E> {
 
 	/// The "add effect" menu: one clickable row per addable effect of the
 	/// engine. Selecting a row inserts that effect at the recorded stack
-	/// index; a dismiss row closes the menu without adding.
+	/// index; the ✕ in the pinned header closes the menu without adding.
+	/// The list is height-capped and scrollable (with the OFX plugins
+	/// registered it runs to 150+ rows — an uncapped list pushed the
+	/// dismiss affordance far off-screen, making the menu impossible to
+	/// close).
 	fn render_add_menu(
 		&mut self,
 		index: usize,
@@ -151,22 +155,22 @@ impl<E: AppEngine> InspectorPanel<E> {
 		cx: &mut Context<Self>,
 	) -> impl IntoElement {
 		let effects = self.engine.read(cx).addable_effects();
-		let mut menu = div()
-			.id("inspector-add-menu")
-			.px_2()
-			.py_1()
-			.border_t_1()
-			.border_color(colors.separator)
+		let mut list = div()
+			.id("inspector-add-menu-list")
+			.max_h_64()
+			.overflow_y_scroll()
 			.flex()
 			.flex_col()
-			.gap_1();
+			.gap_1()
+			.px_2()
+			.py_1();
 
 		for entry in &effects {
 			let engine = self.engine.clone();
 			let type_id = entry.type_id.clone();
 			let name = entry.name.clone();
 			let index = index;
-			menu = menu.child(
+			list = list.child(
 				div()
 					.id(SharedString::from(format!("add-effect-{type_id}")))
 					.cursor_pointer()
@@ -191,26 +195,44 @@ impl<E: AppEngine> InspectorPanel<E> {
 			);
 		}
 
-		// A dismiss row, so a cancelled pick does not linger.
-		menu = menu.child(
-			div()
-				.id("add-effect-dismiss")
-				.cursor_pointer()
-				.px_2()
-				.py_1()
-				.rounded_sm()
-				.hover(|style| style.bg(colors.selected))
-				.text_color(colors.disabled)
-				.text_sm()
-				.child("✕")
-				.on_click(
-					cx.listener(move |this, _event: &gpui::ClickEvent, _window, cx| {
-						this.pending_add = None;
-						cx.notify();
-					}),
-				),
-		);
-		menu
+		div()
+			.id("inspector-add-menu")
+			.border_t_1()
+			.border_color(colors.separator)
+			.flex()
+			.flex_col()
+			.child(
+				div()
+					.flex()
+					.items_center()
+					.px_2()
+					.py_1()
+					.child(
+						div()
+							.flex_1()
+							.text_xs()
+							.text_color(colors.disabled)
+							.child(crate::i18n::tr("inspector.add_effect")),
+					)
+					.child(
+						div()
+							.id("add-effect-dismiss")
+							.cursor_pointer()
+							.px_1()
+							.rounded_sm()
+							.hover(|style| style.bg(colors.selected))
+							.text_color(colors.disabled)
+							.text_sm()
+							.child("✕")
+							.on_click(cx.listener(
+								move |this, _event: &gpui::ClickEvent, _window, cx| {
+									this.pending_add = None;
+									cx.notify();
+								},
+							)),
+					),
+			)
+			.child(list)
 	}
 }
 

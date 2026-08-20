@@ -26,6 +26,7 @@ pub mod colortransform;
 pub mod commandlineparser;
 pub mod configstore;
 pub mod debug;
+pub mod displayicc;
 pub mod error;
 pub mod ffmpegutils;
 pub mod filefunctions;

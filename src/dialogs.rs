@@ -97,6 +97,8 @@ pub struct PreferencesContent {
 	use_proxy: Entity<CheckBox>,
 	hw_decode: Entity<CheckBox>,
 	proxy_divider: Entity<ComboBox>,
+	display_icc: Entity<CheckBox>,
+	display_icc_path: Entity<PathField>,
 	snapshot_interval: Entity<SpinBox>,
 	transition_length: Entity<SpinBox>,
 	audio_output: Entity<ComboBox>,
@@ -276,6 +278,43 @@ impl PreferencesContent {
 		})
 		.detach();
 
+		// --- 色彩 Color: display ICC color management -----------------------
+		// On by default: the viewer frames are transformed through the
+		// display's ICC profile (system profile, or a custom file below).
+		// The macOS layer tag is applied at startup, so a mode change takes
+		// effect after a restart.
+		use crate::oakui::displaycolor::{
+			CONFIG_KEY_COLOR_MODE, CONFIG_KEY_CUSTOM_ICC,
+		};
+		let display_icc = cx.new(|cx| {
+			let mode = config_get_string(CONFIG_KEY_COLOR_MODE);
+			CheckBox::new(
+				13,
+				if mode != "off" {
+					CheckState::Checked
+				} else {
+					CheckState::Unchecked
+				},
+				window,
+				cx,
+			)
+			.with_label(i18n::tr("preferences.color.enable"))
+		});
+		cx.subscribe(&display_icc, |_this, check, event: &CheckBoxEvent, cx| {
+			if let CheckBoxEvent::Toggled { state, .. } = event {
+				let enabled = *state == CheckState::Checked;
+				config_set_string(CONFIG_KEY_COLOR_MODE, if enabled { "icc" } else { "off" });
+				check.update(cx, |check, cx| check.set_state(*state, cx));
+			}
+		})
+		.detach();
+		let display_icc_path = cx.new(|cx| {
+			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
+			PathField { editor }
+		});
+		let configured_icc = config_get_string(CONFIG_KEY_CUSTOM_ICC);
+		display_icc_path.update(cx, |field, cx| field.set_path(configured_icc, cx));
+
 		// --- 项目 Project: snapshot interval + default transition ----------
 		let snapshot_interval = cx.new(|cx| {
 			let current =
@@ -369,6 +408,8 @@ impl PreferencesContent {
 			use_proxy,
 			hw_decode,
 			proxy_divider,
+			display_icc,
+			display_icc_path,
 			snapshot_interval,
 			transition_length,
 			audio_output,
@@ -378,6 +419,41 @@ impl PreferencesContent {
 			output_devices,
 			input_devices,
 		}
+	}
+
+	/// Commits the custom ICC path field to the config (called by the host
+	/// when the dialog closes, like the cache directory).
+	pub fn commit_display_icc_path(&self, cx: &App) {
+		let path = self.display_icc_path.read(cx).path(cx).trim().to_string();
+		config_set_string(
+			crate::oakui::displaycolor::CONFIG_KEY_CUSTOM_ICC,
+			&path,
+		);
+	}
+
+	/// Opens the platform file picker for a custom ICC profile.
+	fn browse_display_icc(&mut self, cx: &mut Context<Self>) {
+		let receiver = cx.prompt_for_paths(gpui::PathPromptOptions {
+			files: true,
+			directories: false,
+			multiple: false,
+			prompt: Some(i18n::tr("preferences.color.browse").into()),
+		});
+		cx.spawn(async move |this, cx| {
+			let Ok(Ok(Some(paths))) = receiver.await else {
+				return;
+			};
+			let Some(path) = paths.first() else {
+				return;
+			};
+			this.update(cx, |this, cx| {
+				this.display_icc_path.update(cx, |field, cx| {
+					field.set_path(path.to_string_lossy().into_owned(), cx)
+				});
+				cx.notify();
+			});
+		})
+		.detach();
 	}
 
 	/// The cache directory currently entered.
@@ -560,6 +636,39 @@ impl Render for PreferencesContent {
 				i18n::tr("preferences.proxy.resolution").into(),
 				self.proxy_divider.clone(),
 			))
+			// 色彩 Color
+			.child(section_header(&colors, i18n::tr("preferences.section.color").into()))
+			.child(self.display_icc.clone())
+			.child(form_row(
+				&colors,
+				i18n::tr("preferences.color.custom").into(),
+				div()
+					.flex()
+					.gap_2()
+					.child(div().flex_1().child(self.display_icc_path.clone()))
+					.child(
+						div()
+							.id("preferences-icc-browse")
+							.px_3()
+							.py_1()
+							.rounded_md()
+							.bg(colors.background)
+							.border_1()
+							.border_color(colors.border)
+							.text_color(colors.text)
+							.cursor_pointer()
+							.child(i18n::tr("preferences.color.browse"))
+							.on_click(cx.listener(|this, _event, _window, cx| {
+								this.browse_display_icc(cx);
+							})),
+					),
+			))
+			.child(
+				div()
+					.text_color(colors.disabled)
+					.text_xs()
+					.child(i18n::tr("preferences.color.restart_hint")),
+			)
 			// 项目 Project
 			.child(section_header(&colors, i18n::tr("preferences.section.project").into()))
 			.child(form_row(
@@ -1221,10 +1330,12 @@ impl PreferencesDialogContent {
 		}
 	}
 
-	/// Commits the general tab's free-text fields (the cache directory), for
-	/// the host when the dialog closes.
+	/// Commits the general tab's free-text fields (the cache directory, the
+	/// custom ICC path), for the host when the dialog closes.
 	pub fn commit_cache_dir(&self, cx: &App) {
-		self.general.read(cx).commit_cache_dir(cx);
+		let general = self.general.read(cx);
+		general.commit_cache_dir(cx);
+		general.commit_display_icc_path(cx);
 	}
 
 	/// The keyboard tab's action-row count (tests).

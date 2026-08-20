@@ -986,6 +986,10 @@ pub struct RealEngine {
 	/// [`RealEngine::render_source_frame`]); the synthetic pattern is only
 	/// the failure fallback.
 	cpu_frame_cache: Mutex<HashMap<Monitor, MonitorFrameCache>>,
+	/// The display-color transform generation the frame cache was built
+	/// against (a change drops every cached image — they were produced
+	/// with the stale transform).
+	display_color_gen: std::cell::Cell<u64>,
 	/// Bumped whenever the rendered content can change underneath an
 	/// in-flight background full-res job (an edit, a selection change or a
 	/// project drop); completions tagged with a stale generation are
@@ -1153,6 +1157,7 @@ impl RealEngine {
 			program_playing: false,
 			meter_phase: 0,
 			cpu_frame_cache: Mutex::new(HashMap::new()),
+			display_color_gen: std::cell::Cell::new(0),
 			full_res_generation: 0,
 			preview_windows: Arc::new(Mutex::new(HashMap::new())),
 			preview_generation: 0,
@@ -3176,6 +3181,14 @@ impl AppEngine for RealEngine {
 	fn cpu_frame(&self, monitor: Monitor, cx: &App) -> Arc<RenderImage> {
 		let frame = self.clock_frame(monitor, cx);
 		let mut cache = self.cpu_frame_cache.lock().unwrap();
+		// A display-color transform change (mode / ICC / content space)
+		// invalidates every cached image: they were produced with the old
+		// transform.
+		let gen = super::displaycolor::generation();
+		if gen != self.display_color_gen.get() {
+			self.display_color_gen.set(gen);
+			cache.clear();
+		}
 		// The full-resolution fill replaces the proxy when its frame matches
 		// the playhead; otherwise the proxy frame is displayed (rendered
 		// synchronously below on a cache miss, filled by the background

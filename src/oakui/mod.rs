@@ -40,6 +40,7 @@
 //! * [`timecode`] — timecode / duration / fps / resolution formatting (pure,
 //!   unit tested).
 
+pub mod displaycolor;
 pub mod effectchain;
 pub mod engine;
 pub mod frames;

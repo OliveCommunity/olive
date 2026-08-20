@@ -39,6 +39,21 @@ pub struct ColorProcessor {
 	cpu: Option<ocio_rs::CPUProcessor>,
 }
 
+/// The R/B channel swap as a 4x4 matrix transform (baked around the
+/// display chain so BGRA buffers can be transformed through OCIO's RGBA
+/// entry points).
+fn rb_swap_matrix() -> Option<ocio_rs::transform::MatrixTransform> {
+	let m = ocio_rs::transform::MatrixTransform::create().ok()?;
+	m.set_matrix(&[
+		0.0, 0.0, 1.0, 0.0, //
+		0.0, 1.0, 0.0, 0.0, //
+		1.0, 0.0, 0.0, 0.0, //
+		0.0, 0.0, 0.0, 1.0,
+	])
+	.ok()?;
+	Some(m)
+}
+
 /// Processor direction.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Direction {
@@ -156,6 +171,75 @@ impl ColorProcessor {
 		})
 	}
 
+	/// Create the display-output processor from a display ICC profile
+	/// (macOS ColorSync / Windows ICM / Linux colord or `_ICC_PROFILE`).
+	///
+	/// OCIO's ICC reader (FileFormatICC, display-class profiles) builds the
+	/// FileTransform's forward direction as "CIE XYZ (D65-adapted PCS) →
+	/// device code values", so the chain is `<src_space> → linear Rec.709 →
+	/// CIE XYZ D65 → ICC forward`. `src_space` is a colorspace or role of
+	/// the default config (the pipeline reference, e.g. "scene_linear").
+	pub fn create_display_icc(src_space: &str, icc_path: &str) -> Option<Self> {
+		Self::create_display_icc_impl(src_space, icc_path, false)
+	}
+
+	/// Create the display-output processor for BGRA8 buffers (the viewer's
+	/// wire format): the [`create_display_icc`](Self::create_display_icc)
+	/// chain with R/B-swapping matrices baked around it, so BGRA bytes are
+	/// transformed in place through OCIO's RGBA entry points (swap∘chain∘swap
+	/// is the identity-wrapped chain evaluated on swapped channels).
+	pub fn create_display_icc_bgra8(src_space: &str, icc_path: &str) -> Option<Self> {
+		Self::create_display_icc_impl(src_space, icc_path, true)
+	}
+
+	/// Shared builder: `bgra` wraps the chain in R/B swap matrices.
+	fn create_display_icc_impl(src_space: &str, icc_path: &str, bgra: bool) -> Option<Self> {
+		let config = default_config()?;
+		// Leg 1: pipeline space -> linear Rec.709 (sRGB primaries, D65).
+		let to_lin709 = ocio_rs::transform::ColorSpaceTransform::create().ok()?;
+		to_lin709.set_src(src_space).ok()?;
+		to_lin709.set_dst("Linear Rec.709 (sRGB)").ok()?;
+		// Leg 2: linear Rec.709 -> CIE XYZ D65 (the ICC connection space as
+		// OCIO's ICC reader adapts it, D50->D65 Bradford baked in). The
+		// builtin configs carry no XYZ colorspace, so the conversion is an
+		// explicit matrix (sRGB/Rec.709 primaries -> XYZ D65).
+		let to_xyz = ocio_rs::transform::MatrixTransform::create().ok()?;
+		to_xyz
+			.set_matrix(&[
+				0.4123908, 0.3575843, 0.1804808, 0.0, //
+				0.2126390, 0.7151687, 0.0721923, 0.0, //
+				0.0193308, 0.1191948, 0.9505322, 0.0, //
+				0.0, 0.0, 0.0, 1.0,
+			])
+			.ok()?;
+		// Leg 3: XYZ D65 -> device, per the ICC profile (OCIO's
+		// FileFormatICC forward direction).
+		let icc = ocio_rs::transform::FileTransform::create().ok()?;
+		icc.set_src(icc_path).ok()?;
+		icc.set_interpolation(ocio_rs::Interpolation::Linear);
+		icc.set_direction(ocio_rs::TransformDirection::Forward);
+		let group = ocio_rs::transform::GroupTransform::create().ok()?;
+		if bgra {
+			group.append_transform(&rb_swap_matrix()?).ok()?;
+		}
+		group.append_transform(&to_lin709).ok()?;
+		group.append_transform(&to_xyz).ok()?;
+		group.append_transform(&icc).ok()?;
+		if bgra {
+			group.append_transform(&rb_swap_matrix()?).ok()?;
+		}
+		let processor = config
+			.processor_from_transform(&group, ocio_rs::TransformDirection::Forward)
+			.ok();
+		let cpu = processor
+			.as_ref()
+			.and_then(|p| p.default_cpu_processor().ok());
+		Some(Self {
+			inner: processor,
+			cpu,
+		})
+	}
+
 	/// Create from an explicit OCIO processor (C++
 	/// `ColorProcessor::create(ConstProcessorRcPtr)`).
 	pub fn from_processor(processor: ocio_rs::Processor) -> Self {
@@ -197,8 +281,7 @@ impl ColorProcessor {
 	}
 
 	/// Convert a whole F32 frame in place (row-major RGBA).
-	pub fn convert_frame(&self, frame: &mut Frame) -> Result<()> {
-		let Some(cpu) = &self.cpu else {
+	pub fn convert_frame(&self, frame: &mut Frame) -> Result<()> {		let Some(cpu) = &self.cpu else {
 			return Ok(()); // pass-through
 		};
 		if frame.format != PixelFormat::F32 {
@@ -226,6 +309,29 @@ impl ColorProcessor {
 			Some(p) => p.cache_id().unwrap_or_default(),
 			None => String::new(),
 		}
+	}
+
+	/// Convert a packed BGRA8 buffer in place (the viewer wire format).
+	/// The processor must have been built with
+	/// [`create_display_icc_bgra8`](Self::create_display_icc_bgra8) — the
+	/// R/B swizzle is baked into the chain, so the bytes go through OCIO's
+	/// RGBA entry point unchanged. A pass-through processor is a no-op.
+	pub fn convert_bgra8(&self, data: &mut [u8], pixels: i64) -> Result<()> {
+		let Some(cpu) = &self.cpu else {
+			return Ok(());
+		};
+		cpu.try_apply_rgba_packed_bit_depth(data, ocio_rs::BitDepth::Uint8, pixels, 4)
+			.map_err(|e| Error::Failed(format!("OCIO packed-u8 apply: {e}")))
+	}
+
+	/// Convert an F32 RGBA buffer in place (tightly packed, 4 floats per
+	/// pixel). A pass-through processor is a no-op.
+	pub fn convert_f32_rgba(&self, samples: &mut [f32], pixels: i64) -> Result<()> {
+		let Some(cpu) = &self.cpu else {
+			return Ok(());
+		};
+		cpu.try_apply_rgba_pixels(samples, pixels, 4)
+			.map_err(|e| Error::Failed(format!("OCIO f32 apply: {e}")))
 	}
 }
 
@@ -595,6 +701,40 @@ mod tests {
 	}
 
 	#[test]
+	fn display_icc_processor_applies_srgb_profile() {
+		let _lock = config_lock();
+		if set_up_default_config().is_err() {
+			return;
+		}
+		// A display-class ICC is required; the macOS system profiles always
+		// have one, CI Linux/Windows runners may not — skip then.
+		let icc = [
+			"/System/Library/ColorSync/Profiles/sRGB Profile.icc",
+			"/System/Library/ColorSync/Profiles/Display P3.icc",
+		]
+		.into_iter()
+		.find(|p| std::path::Path::new(p).exists());
+		let Some(icc) = icc else {
+			eprintln!("no system ICC profile; skipping");
+			return;
+		};
+		let p = ColorProcessor::create_display_icc("scene_linear", icc)
+			.expect("handle always returned");
+		assert!(p.is_valid(), "ICC processor builds from {icc}");
+		// 0.18 scene-linear grey -> ~0.5 sRGB device grey (the sRGB system
+		// profile's device space is sRGB-encoded).
+		let out = p.convert_color([0.18, 0.18, 0.18, 1.0]);
+		assert!(
+			(out[0] - 0.5).abs() < 0.08,
+			"0.18 linear grey should land near 0.5 sRGB (got {})",
+			out[0]
+		);
+		assert!((out[0] - out[1]).abs() < 1e-3 && (out[1] - out[2]).abs() < 1e-3,
+			"grey stays grey: {out:?}");
+		assert!((out[3] - 1.0).abs() < 1e-5, "alpha preserved");
+	}
+
+	#[test]
 	fn inverse_direction_reverses() {
 		let _lock = config_lock();
 		if set_up_default_config().is_err() {
@@ -670,3 +810,4 @@ mod tests {
 		assert!(!p.is_valid(), "unreadable LUT → pass-through processor");
 	}
 }
+

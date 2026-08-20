@@ -403,7 +403,9 @@ impl RenderedFrame {
 	/// zero-copy onscreen path). For the shm variant the slot's BGRA8
 	/// bytes are wrapped into the display buffer — the GPU-upload staging
 	/// copy, the single permitted main-process copy on the preview path
-	/// (design §3.5). The caller releases the slot afterwards.
+	/// (design §3.5). The display color transform (display ICC) is applied
+	/// in place on that staging copy / on the F32 samples, so it costs no
+	/// extra copy. The caller releases the slot afterwards.
 	pub fn to_display(&self) -> Option<(RenderImage, ScopeData)> {
 		match self {
 			RenderedFrame::Shm(f) => {
@@ -411,8 +413,11 @@ impl RenderedFrame {
 				let (w, h) = (meta.width.max(0) as u32, meta.height.max(0) as u32);
 				let pixels = f.shm.slot_bytes(f.slot);
 				let data = pixels.get(..meta.data_size.max(0) as usize)?;
-				let image = bgra_bytes_to_render_image(w, h, data)?;
 				let scope = analyze_bgra8(w, h, data);
+				// The display transform edits the staging copy in place.
+				let mut owned = data.to_vec();
+				super::displaycolor::apply_bgra8(&mut owned, (w * h) as i64);
+				let image = bgra_bytes_to_render_image(w, h, &owned)?;
 				Some((image, scope))
 			}
 			RenderedFrame::CpuF32 {
@@ -422,10 +427,12 @@ impl RenderedFrame {
 				data,
 			} => {
 				let (w, h) = ((*width).max(0) as u32, (*height).max(0) as u32);
-				let samples = repack_f32_rows(*width, *height, *linesize, data)?;
+				let mut samples = repack_f32_rows(*width, *height, *linesize, data)?;
+				let scope = analyze_f32_rgba(w, h, &samples);
+				super::displaycolor::apply_f32_rgba(&mut samples, (w * h) as i64);
 				Some((
 					f32_rgba_to_bgra_image(w, h, &samples),
-					analyze_f32_rgba(w, h, &samples),
+					scope,
 				))
 			}
 		}

@@ -2677,6 +2677,15 @@ fn run_with<E: AppEngine>(args: AppArgs) {
 		if plugin_count > 0 {
 			println!("[ofx] registered {plugin_count} OFX plugin node type(s)");
 		}
+		// Display color management: when the app transforms viewer frames
+		// through the display ICC itself, the macOS Metal layer must be
+		// tagged with the display colorspace so ColorSync passes the
+		// pixels through (otherwise the OS re-corrects them). Read by
+		// gpui_macos at layer creation, which happens below.
+		if crate::oakui::displaycolor::is_active() {
+			// SAFETY: single-threaded startup, before any window exists.
+			unsafe { std::env::set_var("OAK_MACOS_LAYER_COLORSPACE", "display") };
+		}
 		cx.init_colors();
 		let bounds = Bounds::centered(None, size(px(1600.0), px(900.0)), cx);
 		let initial = initial.clone();

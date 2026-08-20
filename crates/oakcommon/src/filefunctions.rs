@@ -29,7 +29,8 @@ use crate::error::Result;
 /// FNV-1a 64-bit hash of `data`, returned as lowercase hex (`%016llx`).
 ///
 /// Mirrors the anonymous `fnv1a_hex` helper in `src/common/src/filefunctions.cpp`.
-fn fnv1a_hex(data: &[u8]) -> String {
+/// `pub(crate)` since `displayicc` reuses it to name ICC cache files.
+pub(crate) fn fnv1a_hex(data: &[u8]) -> String {
 	let mut hash: u64 = 14695981039346656037;
 	for &c in data {
 		hash ^= u64::from(c);

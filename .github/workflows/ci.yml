@@ -56,7 +56,7 @@ jobs:
             libpipewire-0.3-dev libspa-0.2-dev libjack-jackd2-dev \
             libasound2-dev libpulse-dev libsndfile1-dev \
             libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
-            libvulkan-dev libxkbcommon-dev xvfb
+            libvulkan-dev libxkbcommon-dev libxkbcommon-x11-dev xvfb
 
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
@@ -119,11 +119,17 @@ jobs:
         run: |
           # OCIO comes from the ocio-sys vendored source build (same on
           # every platform); no OCIO_INSTALL_DIR override.
-          # `-include cstdint`: the vendored yaml-cpp predates GCC 13's
-          # transitive-include cleanup (uint32_t without <cstdint>).
+          # The vendored yaml-cpp predates GCC 13's transitive-include
+          # cleanup (uint16_t/uint32_t used without <cstdint>) — patch the
+          # include into the registry copy (idempotent; a cached cmake
+          # configure would ignore a CXXFLAGS-only fix).
           echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
           echo "OCIO_RS_LINK=static" >> "$GITHUB_ENV"
-          echo "CXXFLAGS=-include cstdint" >> "$GITHUB_ENV"
+          cargo fetch --locked
+          for f in "$HOME"/.cargo/registry/src/*/ocio-sys-0.2.1/vendor/OpenColorIO/ext/ocio-rs-deps/yaml-cpp/src/emitterutils.cpp; do
+            grep -q '#include <cstdint>' "$f" || \
+              sed -i '0,/#include/s||#include <cstdint>\n&|' "$f"
+          done
 
       # ------------------------------------------------------------------
       # Caches

@@ -96,9 +96,6 @@ jobs:
             objdump -p "$bin" | grep NEEDED || true
           done
 
-      - name: Package (deb, AppImage, pacman)
-        run: cargo packager --release --formats deb,appimage,pacman
-
       # Declare the FULL runtime dependency set on the deb. dpkg-shlibdeps
       # resolves every NEEDED entry of every shipped binary to the exact
       # package names of the build distro (FFmpeg/OCIO are statically
@@ -124,6 +121,10 @@ jobs:
             dpkg-deb -b .deb-repack "$deb"
             rm -rf .deb-repack
           done
+
+
+      - name: Package (deb, AppImage, pacman)
+        run: cargo packager --release --formats deb,appimage,pacman
 
       # cargo-packager has no rpm format; convert the deb with fpm. The gem
       # bin dir may not be on PATH for the system ruby, so call fpm by path.
@@ -282,11 +283,17 @@ jobs:
         run: |
           # OCIO comes from the ocio-sys vendored source build (same on
           # every platform); no OCIO_INSTALL_DIR override.
-          # `-include cstdint`: the vendored yaml-cpp predates GCC 13's
-          # transitive-include cleanup (uint32_t without <cstdint>).
+          # The vendored yaml-cpp predates GCC 13's transitive-include
+          # cleanup (uint16_t/uint32_t used without <cstdint>) — patch the
+          # include into the registry copy (idempotent; a cached cmake
+          # configure would ignore a CXXFLAGS-only fix).
           echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
           echo "OCIO_RS_LINK=static" >> "$GITHUB_ENV"
-          echo "CXXFLAGS=-include cstdint" >> "$GITHUB_ENV"
+          cargo fetch --locked
+          for f in "$HOME"/.cargo/registry/src/*/ocio-sys-0.2.1/vendor/OpenColorIO/ext/ocio-rs-deps/yaml-cpp/src/emitterutils.cpp; do
+            grep -q '#include <cstdint>' "$f" || \
+              sed -i '0,/#include/s||#include <cstdint>\n&|' "$f"
+          done
 
       - name: Cache cargo artifacts
         uses: Swatinem/rust-cache@v2
