@@ -1484,13 +1484,21 @@ mod tests {
 		StorageUri::parse(s).unwrap()
 	}
 
+	/// An absolute database path for the platform: `/tmp/...` is not
+	/// absolute on Windows (no drive prefix), and parse_target rejects
+	/// relative paths.
+	#[cfg(unix)]
+	const ABS_DB: &str = "/tmp/lib.db";
+	#[cfg(windows)]
+	const ABS_DB: &str = "C:/tmp/lib.db";
+
 	#[test]
 	fn parse_target_sqlite_absolute() {
-		let t = parse_target(&uri("oakdb+sqlite:///tmp/lib.db")).unwrap();
+		let t = parse_target(&uri(&format!("oakdb+sqlite://{ABS_DB}"))).unwrap();
 		assert_eq!(
 			t,
 			DbTarget::Sqlite {
-				path: "/tmp/lib.db".to_string(),
+				path: ABS_DB.to_string(),
 				project: None
 			}
 		);
@@ -1498,11 +1506,14 @@ mod tests {
 
 	#[test]
 	fn parse_target_sqlite_project_query() {
-		let t = parse_target(&uri("oakdb+sqlite:///tmp/lib.db?project={abc-123}")).unwrap();
+		let t = parse_target(&uri(&format!(
+			"oakdb+sqlite://{ABS_DB}?project={{abc-123}}"
+		)))
+		.unwrap();
 		assert_eq!(
 			t,
 			DbTarget::Sqlite {
-				path: "/tmp/lib.db".to_string(),
+				path: ABS_DB.to_string(),
 				project: Some("{abc-123}".to_string())
 			}
 		);

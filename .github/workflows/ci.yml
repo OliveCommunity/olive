@@ -152,6 +152,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           shared-key: oak-workspace
+          cache-on-failure: true
 
       # The project FFmpeg (release/8.0, static, all free codecs + hwaccel)
       # is built by tooling/ffmpeg/build-ffmpeg.sh — 10-20 min on a cold
@@ -208,9 +209,30 @@ jobs:
 
       # xvfb + 24-bit screen: the gpui #[gpui::test] tests open real windows
       # and render through wgpu on Mesa's software Vulkan (lavapipe).
+      # The watchdog bounds the step: a deadlocked test produces no output
+      # and no failure, so after 1500 s (a green run needs ~4 min) it dumps
+      # every hung process's thread stacks and kills the suite.
       - name: Test (Linux)
         if: runner.os == 'Linux'
-        run: xvfb-run -a -s "-screen 0 1920x1080x24" cargo test --workspace --locked
+        run: |
+          sudo apt-get install -y gdb
+          xvfb-run -a -s "-screen 0 1920x1080x24" cargo test --workspace --locked &
+          TEST_PID=$!
+          (
+            sleep 1500
+            echo "::warning::test suite exceeded 1500s; dumping hung-process stacks"
+            for p in $(pgrep -f 'target/debug/deps/|target/debug/oak-worker'); do
+              echo "===== thread stacks of pid $p ($(readlink /proc/$p/exe 2>/dev/null)) ====="
+              sudo gdb -batch -ex 'thread apply all bt' -p "$p" || true
+            done
+            pkill -9 -f 'target/debug/deps/' || true
+            pkill -9 -f 'target/debug/oak-worker' || true
+          ) &
+          WATCHDOG_PID=$!
+          wait $TEST_PID
+          rc=$?
+          kill $WATCHDOG_PID 2>/dev/null || true
+          exit $rc
 
       # A crashing (SIGSEGV) test gives no Rust backtrace; rerun the
       # crashing test binaries under gdb to capture the native stack.
