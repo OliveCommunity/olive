@@ -6,3 +6,8 @@
 *.cpp      text eol=lf
 *.sh       text eol=lf
 *.desktop  text eol=lf
+
+# Golden/project data files are byte-compared by tests — keep LF on
+# Windows checkouts too (text=auto would hand out CRLF there).
+*.json     text eol=lf
+*.ove      text eol=lf
