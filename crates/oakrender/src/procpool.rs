@@ -883,9 +883,27 @@ impl ProcessDispatcher {
 	/// display) and audio tickets always keep credit to dispatch. A
 	/// pre-render window larger than the pool exhausted every slot, which
 	/// deadlocked the UI's synchronous frame wait (the playback freeze).
+	///
+	/// The count is over ALIVE workers: with the configured count a window
+	/// opened during worker startup (or after a crash) could still claim
+	/// every slot of the smaller live pool — the same deadlock, just
+	/// timing-dependent (seen as the intermittent Linux CI hang in
+	/// playback_display_tracks_the_playhead).
 	pub fn preview_window_capacity(&self) -> usize {
 		let inner = lock(&self.inner);
-		let workers = inner.scheduler.workers();
+		let alive = inner
+			.workers
+			.iter()
+			.filter(|w| matches!(w.state, WorkerState::Alive))
+			.count();
+		// Nobody alive yet: nothing can be claimed right now anyway, so
+		// reporting the configured pool keeps the window building instead
+		// of stalling at the 1-frame floor.
+		let workers = if alive == 0 {
+			inner.scheduler.workers()
+		} else {
+			alive
+		};
 		workers
 			.saturating_mul(inner.slots as usize)
 			.saturating_sub(workers)
