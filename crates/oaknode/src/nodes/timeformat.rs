@@ -67,10 +67,17 @@ struct Tm {
 
 // `localtime_r` / `gmtime_r` (C `time.h`). Declared locally instead of
 // pulling in a libc crate; both symbols live in the platform C library
-// that `std` already links.
+// that `std` already links. Windows (UCRT) has the `_s` variants with
+// reversed argument order and a 64-bit time_t.
+#[cfg(not(target_os = "windows"))]
 extern "C" {
 	fn localtime_r(timep: *const c_long, result: *mut Tm) -> *mut Tm;
 	fn gmtime_r(timep: *const c_long, result: *mut Tm) -> *mut Tm;
+}
+#[cfg(target_os = "windows")]
+extern "C" {
+	fn localtime_s(result: *mut Tm, timep: *const i64) -> i32;
+	fn gmtime_s(result: *mut Tm, timep: *const i64) -> i32;
 }
 
 /// Expand Qt date/time format tokens (`QDateTime::toString` syntax):
@@ -287,11 +294,21 @@ impl NodeBehavior for TimeFormatNode {
 		let ms = (ms_since_epoch % 1000) as i32;
 
 		let mut tm: Tm = unsafe { std::mem::zeroed() };
+		#[cfg(not(target_os = "windows"))]
 		unsafe {
 			if to_bool(&local_val) {
 				localtime_r(&secs, &mut tm);
 			} else {
 				gmtime_r(&secs, &mut tm);
+			}
+		}
+		#[cfg(target_os = "windows")]
+		unsafe {
+			let secs64 = secs as i64;
+			if to_bool(&local_val) {
+				localtime_s(&mut tm, &secs64);
+			} else {
+				gmtime_s(&mut tm, &secs64);
 			}
 		}
 

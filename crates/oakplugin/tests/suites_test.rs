@@ -743,14 +743,16 @@ fn multithread_suite_spawned_callbacks() {
 		assert_eq!((s.multi_thread)(counter_worker, 8, raw as *mut c_void), OK);
 	}
 	for i in 0..8 {
-		let name = Box::leak(format!("ctr{i}").into_boxed_str());
+		// C 侧按 NUL 结尾读名字——必须经 cs() 包成 CString（裸
+		// `str::as_ptr()` 不带 NUL，CStr::from_ptr 会读越界）。
+		let name = cs(&format!("ctr{i}"));
 		let mut v = 0;
-		// 注意 `&*set`（Arc 负载）而非 `&set`（Arc 结构体）。
+		// 注意传 `&*set`（Arc 负载）而非 `&set`（Arc 结构体）。
 		unsafe {
 			assert_eq!(
 				(ps.get_int)(
 					&*set as *const _ as *mut c_void,
-					name.as_ptr() as *const c_char,
+					name.as_ptr(),
 					0,
 					&mut v
 				),

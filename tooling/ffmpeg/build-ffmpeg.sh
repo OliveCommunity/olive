@@ -139,12 +139,12 @@ if [ -d /opt/homebrew/lib/pkgconfig/openjpeg ]; then
 fi
 enable_if_pkg libopenjp2 libopenjpeg
 # openh264 is redundant for us (decode: FFmpeg's native h264; encode:
-# x264) and its MinGW package does not satisfy the static link — skip it
-# on Windows.
+# x264) and snappy only feeds the hap encoder; neither MinGW package
+# satisfies the static link — skip both on Windows.
 if [ -z "${MSYSTEM:-}" ]; then
 	enable_if_pkg openh264 libopenh264
+	enable_if_pkg snappy libsnappy
 fi
-enable_if_pkg snappy libsnappy
 enable_if_pkg wavpack libwavpack
 enable_if_pkg webp libwebp
 enable_if_pkg xvid libxvid
