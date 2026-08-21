@@ -508,7 +508,10 @@ mod tests {
 	fn proxy_directory_is_cache_slash_proxy() {
 		assert_eq!(
 			ProxyManager::get_proxy_directory("/tmp/cache").unwrap(),
-			"/tmp/cache/proxy"
+			// Path::join separators are platform-native (\ on Windows).
+			std::path::Path::new("/tmp/cache")
+				.join("proxy")
+				.to_string_lossy()
 		);
 	}
 
@@ -522,7 +525,12 @@ mod tests {
 		// C++ parity), so the name is the plain size/version/audio tags.
 		let missing = std::path::Path::new(&temp_subdir("missing")).join("nope.mp4");
 		let f = ProxyManager::get_proxy_filename(&cache, missing.to_str().unwrap(), 0, &p).unwrap();
-		assert_eq!(f, format!("{}/proxy/-0.1280x720.v1.a1.mp4", cache));
+		let plain = std::path::Path::new(&cache)
+			.join("proxy")
+			.join("-0.1280x720.v1.a1.mp4")
+			.to_string_lossy()
+			.into_owned();
+		assert_eq!(f, plain);
 
 		// An existing source embeds a stable per-file identifier.
 		let existing = std::path::Path::new(&temp_subdir("existing")).join("real.mp4");
@@ -535,7 +543,7 @@ mod tests {
 			f1.contains("-0.1280x720.v1.a1.mp4"),
 			"size/version/audio tags present: {f1}"
 		);
-		assert!(f1 != format!("{}/proxy/-0.1280x720.v1.a1.mp4", cache), "id embedded: {f1}");
+		assert!(f1 != plain, "id embedded: {f1}");
 		assert_eq!(f1, f2, "the identifier is stable for the same file");
 
 		// Divider mode tags the divider instead of an absolute size.

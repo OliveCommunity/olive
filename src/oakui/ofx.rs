@@ -903,8 +903,25 @@ mod tests {
 			"clearing the selection should destroy the active interact"
 		);
 
+		// Wait for the destroy record: the active-interact slot is
+		// process-global, and a concurrent viewer frame sync (another
+		// test's real-engine viewer ticking in this binary) can take the
+		// interact out of the slot and destroy it a few milliseconds
+		// after our own clearing. Keep the marker env var set and poll —
+		// the contract (destroy reaches the plugin, in order) is still
+		// asserted in full below.
+		let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+		let lines = loop {
+			let lines = read_marker(&marker);
+			if lines.iter().any(|l| l == "destroy")
+				|| std::time::Instant::now() >= deadline
+			{
+				break lines;
+			}
+			std::thread::sleep(std::time::Duration::from_millis(10));
+		};
+
 		unsafe { std::env::remove_var(MARKER_ENV) };
-		let lines = read_marker(&marker);
 		let _ = std::fs::remove_file(&marker);
 
 		// Lifecycle reached the plugin, in order.

@@ -45,7 +45,7 @@ use gpui_platform::current_platform;
 #[cfg(target_os = "macos")]
 use oakapp::app::OakApp;
 #[cfg(target_os = "macos")]
-use oakapp::i18n::{self, Language};
+use oakapp::i18n;
 #[cfg(target_os = "macos")]
 use oakapp::oakui::MockEngine;
 
@@ -95,8 +95,8 @@ fn main() -> Result<()> {
 	// Initialize the UI language like the real app's startup would: zh-CN
 	// for the primary screenshot, then en-US for the English one. The
 	// original persisted language is restored at the end.
-	let original = i18n::language();
-	i18n::set_language(Language::ZhCN);
+	let original = i18n::language_code();
+	i18n::set_language_code("zh-CN");
 	{
 		let (handle, root) = open_shell(&mut cx, width, height);
 		let image = cx.capture_screenshot(handle.into())?;
@@ -107,7 +107,7 @@ fn main() -> Result<()> {
 		capture_preferences(&mut cx, handle, &root, OUT_PREF_ZH)?;
 		capture_manager(&mut cx, handle, &root, OUT_MGR_ZH)?;
 	}
-	i18n::set_language(Language::EnUs);
+	i18n::set_language_code("en-US");
 	{
 		let (handle, root) = open_shell(&mut cx, width, height);
 		let image = cx.capture_screenshot(handle.into())?;
@@ -118,7 +118,7 @@ fn main() -> Result<()> {
 		capture_preferences(&mut cx, handle, &root, OUT_PREF_EN)?;
 		capture_manager(&mut cx, handle, &root, OUT_MGR_EN)?;
 	}
-	i18n::set_language(original);
+	i18n::set_language_code(&original);
 
 	Ok(())
 }

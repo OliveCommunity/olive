@@ -273,8 +273,18 @@ mod tests {
 		let f1 = m
 			.get_conform_filename(&cache, &src.to_string_lossy(), 0, 48000, 0x3, 0, 1)
 			.unwrap();
-		assert_eq!(f0, format!("{}/{}.0.pcm", cache, base));
-		assert_eq!(f1, format!("{}/{}.1.pcm", cache, base));
+		assert_eq!(
+			f0,
+			std::path::Path::new(&cache)
+				.join(format!("{base}.0.pcm"))
+				.to_string_lossy()
+		);
+		assert_eq!(
+			f1,
+			std::path::Path::new(&cache)
+				.join(format!("{base}.1.pcm"))
+				.to_string_lossy()
+		);
 		// Out of range.
 		assert!(matches!(
 			m.get_conform_filename(&cache, &src.to_string_lossy(), 0, 48000, 0x3, 0, 5),

@@ -629,7 +629,10 @@ mod tests {
 		);
 		assert_eq!(
 			transform_image_sequence_file_name("dir/img012.jpg", 7),
-			"dir/img007.jpg"
+			// Path::join separators are platform-native (\ on Windows).
+			std::path::Path::new("dir")
+				.join("img007.jpg")
+				.to_string_lossy()
 		);
 		// No digit run: number appended with no padding (C++ behavior).
 		assert_eq!(
