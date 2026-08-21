@@ -207,14 +207,16 @@ jobs:
         run: xvfb-run -a -s "-screen 0 1920x1080x24" cargo test --workspace --locked
 
       # A crashing (SIGSEGV) test gives no Rust backtrace; rerun the
-      # crashing binary under gdb to capture the native stack.
+      # plugin test binaries under gdb to capture the native stack.
       - name: Backtrace on test failure (Linux)
         if: failure()
         run: |
           sudo apt-get install -y gdb
-          BIN=$(ls -t target/debug/deps/node_e2e_test-* | grep -v '\.d$' | head -1)
-          xvfb-run -a gdb -batch -ex run -ex bt -- "$BIN" \
-            plugin_renders_constant_frame_end_to_end --exact --nocapture
+          for name in node_e2e_test suites_test; do
+            BIN=$(ls -t target/debug/deps/$name-* | grep -v '\.d$' | head -1)
+            [ -n "$BIN" ] || continue
+            xvfb-run -a gdb -batch -ex run -ex bt -- "$BIN" --nocapture || true
+          done
 
       - name: Test (macOS)
         if: runner.os == 'macOS'

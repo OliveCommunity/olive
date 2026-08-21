@@ -102,6 +102,13 @@ fn main() {
 		if let Some(path) = token.strip_prefix("-L") {
 			println!("cargo:rustc-link-search=native={path}");
 		} else if let Some(lib) = token.strip_prefix("-l") {
+			// MinGW has no libdl: FFmpeg's .pc files can still list it via
+			// an external dep's Requires.private; the Unix dlopen surface
+			// the FFmpeg build uses has no Windows references to satisfy.
+			#[cfg(target_os = "windows")]
+			if lib == "dl" {
+				continue;
+			}
 			// System libs (m, z, bz2, iconv, ...) and externals alike; the
 			// linker picks .a or .dylib per -L search order.
 			println!("cargo:rustc-link-lib={lib}");
