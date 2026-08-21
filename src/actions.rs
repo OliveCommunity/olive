@@ -894,7 +894,7 @@ mod tests {
 	#[test]
 	#[cfg(target_os = "macos")]
 	fn display_shortcut_formats_labels() {
-		let _guard = shortcuts_test_lock().lock().unwrap();
+		let _guard = shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		assert_eq!(
 			display_shortcut(ActionId::Redo).as_deref(),
 			Some("⇧⌘Z")
@@ -958,7 +958,7 @@ mod tests {
 	/// only carries the entries that differ from the registry defaults.
 	#[test]
 	fn shortcuts_file_round_trips_through_the_override_table() {
-		let _guard = shortcuts_test_lock().lock().unwrap();
+		let _guard = shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		reset_all_custom_shortcuts();
 		let dir = temp_dir("roundtrip");
 		let path = format!("{dir}/shortcuts");
@@ -998,7 +998,7 @@ mod tests {
 	/// an all-default table removes the file entirely (the C++ behavior).
 	#[test]
 	fn save_writes_only_entries_that_differ_from_default() {
-		let _guard = shortcuts_test_lock().lock().unwrap();
+		let _guard = shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		reset_all_custom_shortcuts();
 		let dir = temp_dir("diff");
 		let path = format!("{dir}/shortcuts");
@@ -1021,7 +1021,7 @@ mod tests {
 	/// defaults stay intact until overridden.
 	#[test]
 	fn effective_keys_fall_back_to_defaults() {
-		let _guard = shortcuts_test_lock().lock().unwrap();
+		let _guard = shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		reset_all_custom_shortcuts();
 		// Delete defaults to ["delete", "backspace"].
 		assert_eq!(
@@ -1045,7 +1045,7 @@ mod tests {
 	/// none).
 	#[test]
 	fn stealing_a_key_moves_the_binding_away() {
-		let _guard = shortcuts_test_lock().lock().unwrap();
+		let _guard = shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		reset_all_custom_shortcuts();
 		let canon = canonical_key("secondary-c").expect("copy's key parses");
 		assert_eq!(owner_of_shortcut(&canon), Some(ActionId::Copy));
@@ -1071,7 +1071,7 @@ mod tests {
 	#[test]
 	#[cfg(target_os = "macos")]
 	fn display_shortcut_uses_the_effective_key() {
-		let _guard = shortcuts_test_lock().lock().unwrap();
+		let _guard = shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		set_custom_shortcut("saveproj", vec!["cmd-alt-s".to_string()]);
 		assert_eq!(
 			display_shortcut(ActionId::SaveProject).as_deref(),

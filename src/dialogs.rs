@@ -2336,7 +2336,7 @@ mod tests {
 
 	#[test]
 	fn keyboard_rows_cover_the_menu_bar() {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
 		let rows = crate::app::menu_action_paths();

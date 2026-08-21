@@ -2749,7 +2749,7 @@ mod tests {
 	/// language — and the whole menu bar flips language with `i18n`.
 	#[test]
 	fn language_menu_tracks_the_active_language() {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 
@@ -2820,7 +2820,7 @@ mod tests {
 	/// The theme submenu's checkmark follows the `dark` flag.
 	#[test]
 	fn theme_menu_checkmark_follows_dark_flag() {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 
@@ -2852,7 +2852,7 @@ mod tests {
 	/// shell reads from the dock's live visible-panel set).
 	#[test]
 	fn window_menu_lists_all_panels_and_checks_the_open_ones() {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
 
@@ -2885,7 +2885,7 @@ mod tests {
 	/// round trip that used to leave a dismissed inspector unrecoverable.
 	#[gpui::test]
 	async fn window_menu_toggle_closes_and_reopens_the_inspector(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (_window, root) = mock_shell(cx);
 
@@ -2939,7 +2939,7 @@ mod tests {
 	async fn closing_a_panel_via_its_tab_unchecks_it_in_the_window_menu(
 		cx: &mut TestAppContext,
 	) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 
@@ -2971,7 +2971,7 @@ mod tests {
 	/// across both languages.
 	#[test]
 	fn file_and_edit_menus_cover_the_project_lifecycle() {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 
@@ -3029,7 +3029,7 @@ mod tests {
 	/// entity's weak handle (regression test for the Preferences crash).
 	#[gpui::test]
 	async fn preferences_dialog_opens_without_crashing(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
@@ -3066,7 +3066,7 @@ mod tests {
 	/// action.
 	#[test]
 	fn every_shortcut_maps_to_a_menu_item() {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
@@ -3112,7 +3112,7 @@ mod tests {
 	/// every platform.
 	#[test]
 	fn menu_shortcut_labels_match_the_table() {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
@@ -3148,7 +3148,7 @@ mod tests {
 	/// bubbles to the shell's key listener and dispatches 回放 → 播放/暂停).
 	#[gpui::test]
 	async fn space_toggles_program_playback(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
@@ -3180,7 +3180,7 @@ mod tests {
 	/// the still-unwired ripple-to-in/out (q/w).
 	#[gpui::test]
 	async fn keymap_defaults_dispatch_their_actions(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
@@ -3293,7 +3293,7 @@ mod tests {
 	/// at the playhead.
 	#[gpui::test]
 	async fn edit_shortcuts_dispatch_to_the_engine(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
@@ -3349,7 +3349,7 @@ mod tests {
 	/// dialog's text fields must never trigger editing actions).
 	#[gpui::test]
 	async fn shortcuts_are_suppressed_while_a_modal_is_open(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
@@ -3413,7 +3413,7 @@ mod tests {
 	/// default key), and Escape dismisses it.
 	#[gpui::test]
 	async fn action_search_opens_from_the_slash_key(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		// A leftover real shortcuts file must not shadow the default `/`
@@ -3452,7 +3452,7 @@ mod tests {
 	async fn action_search_arrows_and_enter_dispatch_the_selection(
 		cx: &mut TestAppContext,
 	) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		crate::actions::reset_all_custom_shortcuts();
@@ -3490,7 +3490,7 @@ mod tests {
 	async fn preferences_opens_from_its_shortcut_with_the_keyboard_tab(
 		cx: &mut TestAppContext,
 	) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		crate::actions::reset_all_custom_shortcuts();
@@ -3524,7 +3524,7 @@ mod tests {
 	/// override layer + interceptor + save path in one flow).
 	#[gpui::test]
 	async fn keyboard_tab_capture_assigns_a_shortcut(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		crate::actions::reset_all_custom_shortcuts();
@@ -3578,7 +3578,7 @@ mod tests {
 	/// Escape handler).
 	#[gpui::test]
 	async fn keyboard_tab_capture_escape_cancels_without_closing(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		crate::actions::reset_all_custom_shortcuts();
@@ -3620,7 +3620,7 @@ mod tests {
 	/// key drives the action, the displaced default key no longer does.
 	#[gpui::test]
 	async fn custom_shortcut_overrides_are_live_after_rebind(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		crate::actions::reset_all_custom_shortcuts();
