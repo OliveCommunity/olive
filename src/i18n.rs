@@ -14,21 +14,20 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! Localization: UI strings live in YAML language packs under
-//! `assets/i18n/` (one `<lang>.yaml` per language, e.g. `en.yaml`,
-//! `zh-CN.yaml`), loaded at runtime and shipped inside the app bundle.
-//! Users can add or override languages by dropping extra `.yaml` files
-//! into the user pack directory (`~/.oak/i18n/`) — no rebuild needed.
+//! Localization: UI strings live in YAML language packs discovered at
+//! runtime (one `<lang>.yaml` per language — the file stem IS the
+//! language code, e.g. `en-US.yaml`, `zh-CN.yaml`). Nothing is compiled in: adding a language means
+//! dropping one more `.yaml` into any searched directory — no rebuild,
+//! no code change. Each pack carries its own display name in the
+//! `language.name` key (the endonym, e.g. "Français"), which the
+//! language pickers show.
 //!
 //! # Lookup order
 //!
 //! 1. The user pack directory (`~/.oak/i18n/`);
-//! 2. The bundled packs (next to the executable, or the app bundle's
-//!    `Resources/i18n/`);
-//! 3. The dev checkout's `assets/i18n/` (running from the repo);
-//! 4. The compiled-in English/Chinese tables (the same YAML embedded
-//!    with `include_str!`) — the last-resort fallback so a broken
-//!    install still renders English.
+//! 2. The bundled packs (next to the executable, the app bundle's
+//!    `Resources/i18n/`, or the system install's `<exe>/../share/oak/i18n/`);
+//! 3. The dev checkout's `assets/i18n/` (running from the repo).
 //!
 //! Later sources override earlier ones per key. `tr` falls back from
 //! the active language to `en-US` and then to the key itself, so a
@@ -36,148 +35,80 @@
 //!
 //! # The language setting
 //!
-//! The active language code is a process-global string (an atomic-free
+//! The active language code is a process-global string (behind an
 //! `RwLock` — any thread can read it). At startup [`init`] loads the
 //! persisted value from the config key `Language`; unknown codes fall
-//! back to `en-US`. [`set_language`] flips the global and persists.
+//! back to `en-US`. [`set_language_code`] flips the global and persists.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::{OnceLock, RwLock};
 
-/// The languages shipped with the app (compiled-in packs).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Language {
-	/// English (United States).
-	EnUs,
-	/// Simplified Chinese.
-	ZhCN,
-}
-
-impl Language {
-	/// The stable config/pack-file code, e.g. `"en-US"`.
-	pub fn code(self) -> &'static str {
-		match self {
-			Language::EnUs => "en-US",
-			Language::ZhCN => "zh-CN",
-		}
-	}
-
-	/// Parses a stored config value into a built-in language. Empty or
-	/// unknown values fall back to en-US (a custom pack's code is kept
-	/// verbatim by [`set_language_code`]).
-	fn from_code(code: &str) -> Self {
-		let code = code.trim().to_ascii_lowercase();
-		if code.starts_with("zh") {
-			Language::ZhCN
-		} else {
-			Language::EnUs
-		}
-	}
-}
-
-/// The built-in (compiled-in) packs, parsed from the same YAML files the
-/// bundle ships: the YAML is the single source of truth, embedded so a
-/// missing/corrupt install still renders English.
-const BUILTIN_PACKS: &[(&str, &str)] = &[
-	("en-US", include_str!("../assets/i18n/en.yaml")),
-	("zh-CN", include_str!("../assets/i18n/zh-CN.yaml")),
-];
+/// The fallback language code: the reference pack every other pack is
+/// key-compared against, the config default, and `tr`'s last resort
+/// before the raw key.
+pub const FALLBACK_CODE: &str = "en-US";
 
 /// One language's key → value table (values are leaked once at load —
 /// the tables live for the whole process).
 type Table = HashMap<String, &'static str>;
 
-/// All loaded packs: language code → table.
+/// All discovered packs: language code → table.
 static TABLES: OnceLock<RwLock<HashMap<String, Table>>> = OnceLock::new();
 
-/// The active language code (0/1 fast path for the two built-ins; a
-/// custom pack's code lives in [`CURRENT_CUSTOM`]).
-static CURRENT: AtomicU8 = AtomicU8::new(0);
-static CURRENT_CUSTOM: RwLock<Option<String>> = RwLock::new(None);
+/// The active language code. Empty means "not yet initialized" and reads
+/// as [`FALLBACK_CODE`].
+static CURRENT_CODE: RwLock<String> = RwLock::new(String::new());
 
-/// The active language (the built-in view of the current code; custom
-/// packs report the nearest built-in).
-pub fn language() -> Language {
-	if CURRENT_CUSTOM
-		.read()
-		.unwrap_or_else(|e| e.into_inner())
-		.is_some()
-	{
-		return match CURRENT.load(Ordering::Relaxed) {
-			1 => Language::ZhCN,
-			_ => Language::EnUs,
-		};
-	}
-	match CURRENT.load(Ordering::Relaxed) {
-		1 => Language::ZhCN,
-		_ => Language::EnUs,
-	}
-}
-
-/// The active language code (`en-US`, `zh-CN`, or a pack's code).
+/// The active language code (a discovered pack's code, or `en-US`).
 pub fn language_code() -> String {
-	if let Some(custom) = CURRENT_CUSTOM
-		.read()
-		.unwrap_or_else(|e| e.into_inner())
-		.clone()
-	{
-		return custom;
+	let code = CURRENT_CODE.read().unwrap_or_else(|e| e.into_inner());
+	if code.is_empty() {
+		FALLBACK_CODE.to_string()
+	} else {
+		code.clone()
 	}
-	language().code().to_string()
 }
 
-/// Switches the active language live (built-in) and persists the choice.
-pub fn set_language(language: Language) {
-	CURRENT.store(
-		match language {
-			Language::EnUs => 0,
-			Language::ZhCN => 1,
-		},
-		Ordering::Relaxed,
-	);
-	CURRENT_CUSTOM
-		.write()
-		.unwrap_or_else(|e| e.into_inner())
-		.take();
-	persist_language(language.code());
-	sync_widgets();
-}
-
-/// Switches the active language to any loaded pack's code (a custom
-/// language pack). Unknown codes fall back to en-US.
+/// Switches the active language to any discovered pack's code and
+/// persists the choice. Unknown codes fall back to en-US.
 pub fn set_language_code(code: &str) {
-	if code == Language::EnUs.code() || code == Language::ZhCN.code() {
-		set_language(Language::from_code(code));
-		return;
-	}
 	let exists = tables()
 		.read()
 		.unwrap_or_else(|e| e.into_inner())
 		.contains_key(code);
-	if !exists {
-		set_language(Language::EnUs);
-		return;
-	}
-	*CURRENT_CUSTOM
-		.write()
-		.unwrap_or_else(|e| e.into_inner()) = Some(code.to_string());
+	let code = if exists { code } else { FALLBACK_CODE };
+	*CURRENT_CODE.write().unwrap_or_else(|e| e.into_inner()) = code.to_string();
 	persist_language(code);
 	sync_widgets();
 }
 
-/// The language codes with a loaded pack, built-ins first.
+/// A pack's own display name — its `language.name` value (the endonym,
+/// e.g. "Français") — which the language pickers show, so a newly
+/// dropped-in pack needs no code change. Falls back to the code.
+pub fn pack_native_name(code: &str) -> String {
+	tables()
+		.read()
+		.unwrap_or_else(|e| e.into_inner())
+		.get(code)
+		.and_then(|t| t.get("language.name"))
+		.map(|s| s.to_string())
+		.unwrap_or_else(|| code.to_string())
+}
+
+/// The language codes with a discovered pack: en-US first, zh-CN
+/// second, the rest alphabetically by code.
 pub fn available_languages() -> Vec<String> {
 	let tables = tables().read().unwrap_or_else(|e| e.into_inner());
-	let mut codes = vec![Language::EnUs.code().to_string(), Language::ZhCN.code().to_string()];
-	let mut extra: Vec<String> = tables
-		.keys()
-		.filter(|code| !codes.contains(code))
-		.cloned()
-		.collect();
-	extra.sort();
-	codes.extend(extra);
-	codes
+	let mut codes: Vec<String> = tables.keys().cloned().collect();
+	codes.sort();
+	let mut out = Vec::with_capacity(codes.len());
+	for preferred in [FALLBACK_CODE, "zh-CN"] {
+		if let Some(pos) = codes.iter().position(|c| c == preferred) {
+			out.push(codes.remove(pos));
+		}
+	}
+	out.extend(codes);
+	out
 }
 
 /// Loads the persisted language from the config. Called once at startup.
@@ -204,7 +135,7 @@ pub fn tr(key: &'static str) -> &'static str {
 	if let Some(value) = tables.get(&current).and_then(|t| t.get(key)) {
 		return value;
 	}
-	if let Some(value) = tables.get(Language::EnUs.code()).and_then(|t| t.get(key)) {
+	if let Some(value) = tables.get(FALLBACK_CODE).and_then(|t| t.get(key)) {
 		return value;
 	}
 	key
@@ -248,9 +179,8 @@ fn tables() -> &'static RwLock<HashMap<String, Table>> {
 	TABLES.get_or_init(|| RwLock::new(load_packs()))
 }
 
-/// The directories searched for packs, lowest precedence first: the
-/// compiled-in tables are the base; each directory's packs override the
-/// previous source per key.
+/// The directories searched for packs, lowest precedence first; each
+/// directory's packs override the previous source per key.
 fn pack_dirs() -> Vec<std::path::PathBuf> {
 	let mut dirs = Vec::new();
 	// Dev checkout (running from the repo root or a subdir).
@@ -259,9 +189,11 @@ fn pack_dirs() -> Vec<std::path::PathBuf> {
 		if let Some(dir) = exe.parent() {
 			// Portable layout: <exe>/i18n.
 			dirs.push(dir.join("i18n"));
-			// macOS bundle: <exe>/../Resources/i18n.
 			if let Some(contents) = dir.parent() {
+				// macOS bundle: <exe>/../Resources/i18n.
 				dirs.push(contents.join("Resources/i18n"));
+				// System install (deb/rpm/pkg): <exe>/../share/oak/i18n.
+				dirs.push(contents.join("share/oak/i18n"));
 			}
 		}
 	}
@@ -289,14 +221,11 @@ fn parse_pack(code: &str, source: &str) -> Table {
 	table
 }
 
-/// Loads the built-in packs and every pack file found in [`pack_dirs`]
-/// (later sources override earlier ones per key; a file named
-/// `<code>.yaml` registers or extends language `<code>`).
+/// Loads every pack file found in [`pack_dirs`] (later sources override
+/// earlier ones per key; a file named `<code>.yaml` registers or extends
+/// language `<code>`).
 fn load_packs() -> HashMap<String, Table> {
 	let mut packs: HashMap<String, Table> = HashMap::new();
-	for (code, source) in BUILTIN_PACKS {
-		packs.insert(code.to_string(), parse_pack(code, source));
-	}
 	for dir in pack_dirs() {
 		let Ok(read_dir) = std::fs::read_dir(&dir) else {
 			continue;
@@ -324,6 +253,12 @@ fn load_packs() -> HashMap<String, Table> {
 				.extend(table);
 		}
 	}
+	if packs.is_empty() {
+		eprintln!(
+			"[i18n] no language packs found in {:?}; UI strings degrade to raw keys",
+			pack_dirs()
+		);
+	}
 	packs
 }
 
@@ -338,18 +273,35 @@ fn reload_for_test() {
 mod tests {
 	use super::*;
 
-	/// The two compiled-in packs parse and cover the same key set.
+	/// Every shipped pack (the YAML files in `assets/i18n/`) parses and
+	/// covers exactly the en-US key set, and carries its `language.name`
+	/// display name. User packs from `$HOME/.oak/i18n` are deliberately
+	/// not held to the key set (a partial override pack is legitimate).
 	#[test]
-	fn every_key_exists_in_both_languages() {
+	fn every_shipped_pack_matches_en_keys() {
 		let tables = tables().read().unwrap_or_else(|e| e.into_inner());
 		let en = tables.get("en-US").expect("en-US pack");
-		let zh = tables.get("zh-CN").expect("zh-CN pack");
-		assert!(!en.is_empty() && !zh.is_empty(), "packs parse to non-empty tables");
-		for key in en.keys() {
-			assert!(zh.contains_key(key), "key {key} missing from the zh-CN pack");
-		}
-		for key in zh.keys() {
-			assert!(en.contains_key(key), "key {key} missing from the en-US pack");
+		assert!(!en.is_empty(), "en-US pack parses to a non-empty table");
+		for entry in std::fs::read_dir("assets/i18n").expect("dev checkout packs") {
+			let path = entry.unwrap().path();
+			if path.extension().and_then(|e| e.to_str()) != Some("yaml") {
+				continue;
+			}
+			let code = path.file_stem().unwrap().to_str().unwrap().to_string();
+			let table = tables
+				.get(&code)
+				.unwrap_or_else(|| panic!("{code} pack"));
+			assert!(!table.is_empty(), "{code} pack parses to a non-empty table");
+			assert!(
+				table.contains_key("language.name"),
+				"{code} pack has no language.name display name"
+			);
+			for key in en.keys() {
+				assert!(table.contains_key(key), "key {key} missing from the {code} pack");
+			}
+			for key in table.keys() {
+				assert!(en.contains_key(key), "key {key} missing from the en-US pack");
+			}
 		}
 	}
 
@@ -391,18 +343,21 @@ mod tests {
 	#[test]
 	fn tr_falls_back_to_english_then_the_key() {
 		let _guard = crate::i18n::test_lock();
-		set_language(Language::ZhCN);
+		set_language_code("zh-CN");
 		assert_eq!(tr("menu.file"), "文件(F)");
-		set_language(Language::EnUs);
+		set_language_code("en-US");
 		assert_eq!(tr("menu.file"), "File(F)");
 		assert_eq!(tr("no.such.key"), "no.such.key");
 	}
 
 	/// A custom pack on disk overrides built-in values and registers a
-	/// new language.
+	/// new language. The active language is pinned to en-US: the user
+	/// pack overrides the built-in en-US table, so the assertions below
+	/// must not inherit another test's active language.
 	#[test]
 	fn user_pack_overrides_and_extends() {
 		let _guard = crate::i18n::test_lock();
+		set_language_code("en-US");
 		let dir = std::env::temp_dir().join(format!("oak_i18n_pack_{}", std::process::id()));
 		let home = dir.join("home");
 		let pack_dir = home.join(".oak/i18n");
@@ -419,6 +374,8 @@ mod tests {
 		unsafe { std::env::remove_var("HOME") };
 		reload_for_test();
 		let _ = std::fs::remove_dir_all(&dir);
+		// Leave the process language at the default for the next test.
+		set_language_code("en-US");
 	}
 }
 

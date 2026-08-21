@@ -78,15 +78,17 @@ pub(crate) fn chip(colors: &gpui::colors::Colors, label: impl gpui::IntoElement)
 }
 
 /// The viewer panel title, per the design: `<面板>·<素材/序列名>` in zh-CN,
-/// `<Panel> · <name>` in en-US — no redundant "Source"/"Program" placeholder
-/// suffix. The panel key is the localized panel name; `name` is the media or
-/// sequence name (data, not translated).
+/// `<Panel> · <name>` everywhere else — no redundant "Source"/"Program"
+/// placeholder suffix. The panel key is the localized panel name; `name` is
+/// the media or sequence name (data, not translated).
 pub(crate) fn viewer_title(panel_key: &'static str, name: &str) -> String {
 	if name.is_empty() {
 		return crate::i18n::tr(panel_key).to_owned();
 	}
-	match crate::i18n::language() {
-		crate::i18n::Language::ZhCN => format!("{}·{}", crate::i18n::tr(panel_key), name),
-		crate::i18n::Language::EnUs => format!("{} · {}", crate::i18n::tr(panel_key), name),
+	// CJK locales read better without the spaced separator.
+	if crate::i18n::language_code() == "zh-CN" {
+		format!("{}·{}", crate::i18n::tr(panel_key), name)
+	} else {
+		format!("{} · {}", crate::i18n::tr(panel_key), name)
 	}
 }

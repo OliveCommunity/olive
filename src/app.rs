@@ -95,8 +95,6 @@ pub(crate) mod menu_ids {
 	pub const RIPPLE_DELETE: usize = ActionId::RippleDelete.menu_id();
 
 	pub const THEME_DARK: usize = ActionId::ThemeDark.menu_id();
-	pub const LANG_ZH: usize = ActionId::LangZh.menu_id();
-	pub const LANG_EN: usize = ActionId::LangEn.menu_id();
 	pub const PREFERENCES: usize = ActionId::Preferences.menu_id();
 
 	pub const FOCUS_PROJECT: usize = ActionId::FocusProject.menu_id();
@@ -759,10 +757,20 @@ impl<E: AppEngine> OakApp<E> {
 		}
 	}
 
-	/// Routes a menu click: resolves the item id to its registry action and
-	/// dispatches it through the same path the keyboard shortcuts use, so a
-	/// menu click and a key press can never diverge.
+	/// Routes a menu click: the dynamic language items (one per discovered
+	/// pack, above the registry id range) switch the language directly;
+	/// everything else resolves to its registry action and dispatches
+	/// through the same path the keyboard shortcuts use, so a menu click
+	/// and a key press can never diverge.
 	fn on_menu(&mut self, item: usize, cx: &mut Context<Self>) {
+		if let Some(index) = crate::menus::shared::language_item_index(item) {
+			let languages = crate::i18n::available_languages();
+			if let Some(code) = languages.get(index) {
+				let code = code.clone();
+				self.switch_language(&code, cx);
+			}
+			return;
+		}
 		let Some(entry) = crate::actions::entry_for_menu_id(item) else {
 			println!("[menu] unknown item {item}");
 			return;
@@ -910,8 +918,6 @@ impl<E: AppEngine> OakApp<E> {
 				println!("[view] full screen: {} (placeholder)", self.full_screen);
 				self.rebuild_menu_bar(cx);
 			}
-			A::LangZh => self.switch_language(crate::i18n::Language::ZhCN, cx),
-			A::LangEn => self.switch_language(crate::i18n::Language::EnUs, cx),
 			A::Preferences => self.open_preferences(cx),
 			// --- Playback (the program monitor) ----------------------------
 			A::PlayPause => {
@@ -1338,8 +1344,8 @@ impl<E: AppEngine> OakApp<E> {
 	/// Switches the UI language live: updates the [`i18n`] global, rebuilds
 	/// the menu bar (so the menu labels and the language checkmark move
 	/// immediately), and repaints the whole shell.
-	fn switch_language(&mut self, language: crate::i18n::Language, cx: &mut Context<Self>) {
-		crate::i18n::set_language(language);
+	fn switch_language(&mut self, code: &str, cx: &mut Context<Self>) {
+		crate::i18n::set_language_code(code);
 		self.rebuild_menu_bar(cx);
 		cx.notify();
 	}
@@ -2362,12 +2368,6 @@ fn make_menus(state: MenuState) -> Vec<MenuBarEntry> {
 		menu_item(A::ThemeLight).with_checked(!state.dark),
 	]);
 
-	let language = crate::i18n::language();
-	let language_submenu = Menu::new(vec![
-		menu_item(A::LangZh).with_checked(language == crate::i18n::Language::ZhCN),
-		menu_item(A::LangEn).with_checked(language == crate::i18n::Language::EnUs),
-	]);
-
 	// 工具: the mutually exclusive tool group in the registry's order, the
 	// add tool growing its addable-items submenu, then snapping + proxy.
 	let mut tools: Vec<MenuItem> = Vec::new();
@@ -2478,7 +2478,7 @@ fn make_menus(state: MenuState) -> Vec<MenuBarEntry> {
 			tr("menu.view"),
 			Menu::new(vec![
 				menu_item(A::ThemeDark).with_submenu(theme_submenu),
-				menu_item(A::LangZh).with_submenu(language_submenu),
+				crate::menus::shared::language_menu(),
 				menu_item(A::ZoomIn).separated(),
 				menu_item(A::ZoomOut),
 				menu_item(A::IncreaseTrackHeight),
@@ -2751,7 +2751,7 @@ mod tests {
 	fn language_menu_tracks_the_active_language() {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
 		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 
 		let view_entry = |dark: bool| -> MenuBarEntry {
 			make_menus(MenuState::new(dark))
@@ -2766,46 +2766,54 @@ mod tests {
 				.menu
 				.items
 				.iter()
-				.find(|item| item.id == menu_ids::LANG_ZH)
+				.find(|item| item.label == crate::i18n::tr("menu.view.language"))
 				.map(|item| item.submenu.clone().map(|m| *m).unwrap_or_default())
 				.expect("语言/Language submenu exists")
 		};
 
-		crate::i18n::set_language(crate::i18n::Language::EnUs);
+		crate::i18n::set_language_code("en-US");
+		let languages = crate::i18n::available_languages();
+		let en_index = languages.iter().position(|c| c == "en-US").unwrap();
+		let zh_index = languages.iter().position(|c| c == "zh-CN").unwrap();
 		let submenu = language_item(&view_entry(true));
+		assert_eq!(
+			submenu.items.len(),
+			languages.len(),
+			"one menu item per discovered language pack"
+		);
 		let zh = submenu
 			.items
 			.iter()
-			.find(|i| i.id == menu_ids::LANG_ZH)
+			.find(|i| i.id == crate::menus::shared::LANG_ITEM_BASE + zh_index)
 			.expect("zh item");
 		let en = submenu
 			.items
 			.iter()
-			.find(|i| i.id == menu_ids::LANG_EN)
+			.find(|i| i.id == crate::menus::shared::LANG_ITEM_BASE + en_index)
 			.expect("en item");
-		assert_eq!(zh.label, "简体中文");
-		assert_eq!(en.label, "English");
+		assert_eq!(zh.label, "简体中文 (zh-CN)");
+		assert_eq!(en.label, "English (en-US)");
 		assert_eq!(zh.checked, Some(false));
 		assert_eq!(en.checked, Some(true), "en-US is active → checked");
 
-		crate::i18n::set_language(crate::i18n::Language::ZhCN);
+		crate::i18n::set_language_code("zh-CN");
 		let submenu = language_item(&view_entry(true));
 		let zh = submenu
 			.items
 			.iter()
-			.find(|i| i.id == menu_ids::LANG_ZH)
+			.find(|i| i.id == crate::menus::shared::LANG_ITEM_BASE + zh_index)
 			.expect("zh item");
 		let en = submenu
 			.items
 			.iter()
-			.find(|i| i.id == menu_ids::LANG_EN)
+			.find(|i| i.id == crate::menus::shared::LANG_ITEM_BASE + en_index)
 			.expect("en item");
 		assert_eq!(zh.checked, Some(true), "zh-CN is active → checked");
 		assert_eq!(en.checked, Some(false));
 
 		// The menu titles themselves are localized.
 		assert_eq!(view_entry(true).title, "视图(V)");
-		crate::i18n::set_language(crate::i18n::Language::EnUs);
+		crate::i18n::set_language_code("en-US");
 		assert_eq!(view_entry(true).title, "View(V)");
 	}
 
@@ -2814,7 +2822,7 @@ mod tests {
 	fn theme_menu_checkmark_follows_dark_flag() {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
 		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 
 		let dark_item = |dark: bool| -> gpui_widgets::menu::MenuItem {
 			let entries = make_menus(MenuState::new(dark));
@@ -2845,8 +2853,8 @@ mod tests {
 	#[test]
 	fn window_menu_lists_all_panels_and_checks_the_open_ones() {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
-		crate::i18n::set_language(crate::i18n::Language::EnUs);
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		crate::i18n::set_language_code("en-US");
 
 		let mask = panel_bit(INSPECTOR) | panel_bit(TIMELINE);
 		let mut state = MenuState::new(true);
@@ -2878,7 +2886,7 @@ mod tests {
 	#[gpui::test]
 	async fn window_menu_toggle_closes_and_reopens_the_inspector(cx: &mut TestAppContext) {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (_window, root) = mock_shell(cx);
 
 		// The checkmark shown in the 窗口 menu for the inspector, derived from
@@ -2932,7 +2940,7 @@ mod tests {
 		cx: &mut TestAppContext,
 	) {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 
 		let menu_bar_before = cx.read(|app| root.read(app).menu_bar.entity_id());
@@ -2965,7 +2973,7 @@ mod tests {
 	fn file_and_edit_menus_cover_the_project_lifecycle() {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
 		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 
 		let entry = |title: &str| -> MenuBarEntry {
 			make_menus_for_test()
@@ -2974,7 +2982,7 @@ mod tests {
 				.expect("menu exists")
 		};
 
-		crate::i18n::set_language(crate::i18n::Language::EnUs);
+		crate::i18n::set_language_code("en-US");
 		let file = entry("File(F)");
 		for id in [
 			menu_ids::NEW_PROJECT,
@@ -3005,13 +3013,15 @@ mod tests {
 		}
 
 		// The same ids exist in the zh-CN menu bar.
-		crate::i18n::set_language(crate::i18n::Language::ZhCN);
+		crate::i18n::set_language_code("zh-CN");
 		let file = entry("文件(F)");
 		assert!(file
 			.menu
 			.items
 			.iter()
 			.any(|item| item.id == menu_ids::EXPORT_PROJECT));
+		// Restore the default language for the next (lock-free) test.
+		crate::i18n::set_language_code("en-US");
 	}
 
 	/// Opening 视图 → Preferences… must not crash: the dialog content and the
@@ -3021,8 +3031,8 @@ mod tests {
 	async fn preferences_dialog_opens_without_crashing(cx: &mut TestAppContext) {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
 		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
-		crate::i18n::set_language(crate::i18n::Language::EnUs);
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		crate::i18n::set_language_code("en-US");
 
 		cx.update(|cx| cx.init_colors());
 		let window = cx.open_window(size(px(1600.0), px(900.0)), |window, cx| {
@@ -3058,8 +3068,8 @@ mod tests {
 	fn every_shortcut_maps_to_a_menu_item() {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
 		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
-		crate::i18n::set_language(crate::i18n::Language::EnUs);
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		crate::i18n::set_language_code("en-US");
 
 		fn collect(menu: &Menu, out: &mut Vec<usize>) {
 			for item in &menu.items {
@@ -3104,8 +3114,8 @@ mod tests {
 	fn menu_shortcut_labels_match_the_table() {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
 		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
-		crate::i18n::set_language(crate::i18n::Language::EnUs);
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		crate::i18n::set_language_code("en-US");
 
 		fn walk(menu: &Menu) -> Vec<(usize, Option<gpui::SharedString>)> {
 			let mut out = Vec::new();
@@ -3140,7 +3150,7 @@ mod tests {
 	async fn space_toggles_program_playback(cx: &mut TestAppContext) {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
 		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 
 		let playing = cx.read(|app| root.read(app).program_clock.read(app).is_playing());
@@ -3172,7 +3182,7 @@ mod tests {
 	async fn keymap_defaults_dispatch_their_actions(cx: &mut TestAppContext) {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
 		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 
 		let key = |keystroke: &str| gpui::Keystroke::parse(keystroke).unwrap();
@@ -3285,7 +3295,7 @@ mod tests {
 	async fn edit_shortcuts_dispatch_to_the_engine(cx: &mut TestAppContext) {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
 		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 
 		// Move the playhead inside the first clip (the → shortcut steps one
@@ -3341,7 +3351,7 @@ mod tests {
 	async fn shortcuts_are_suppressed_while_a_modal_is_open(cx: &mut TestAppContext) {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
 		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 
 		cx.update(|app| root.update(app, |app, cx| app.on_menu(menu_ids::PREFERENCES, cx)));
@@ -3404,7 +3414,7 @@ mod tests {
 	#[gpui::test]
 	async fn action_search_opens_from_the_slash_key(cx: &mut TestAppContext) {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
-		let _lang = crate::i18n::lang_test_lock().lock().unwrap();
+		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		// A leftover real shortcuts file must not shadow the default `/`
 		// binding under test.
@@ -3443,7 +3453,7 @@ mod tests {
 		cx: &mut TestAppContext,
 	) {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
-		let _lang = crate::i18n::lang_test_lock().lock().unwrap();
+		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		crate::actions::reset_all_custom_shortcuts();
 		cx.update(|app| root.update(app, |app, cx| app.rebind_keys(cx)));
@@ -3481,7 +3491,7 @@ mod tests {
 		cx: &mut TestAppContext,
 	) {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
-		let _lang = crate::i18n::lang_test_lock().lock().unwrap();
+		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		crate::actions::reset_all_custom_shortcuts();
 		cx.update(|app| root.update(app, |app, cx| app.rebind_keys(cx)));
@@ -3515,7 +3525,7 @@ mod tests {
 	#[gpui::test]
 	async fn keyboard_tab_capture_assigns_a_shortcut(cx: &mut TestAppContext) {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
-		let _lang = crate::i18n::lang_test_lock().lock().unwrap();
+		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		crate::actions::reset_all_custom_shortcuts();
 		cx.update(|app| root.update(app, |app, cx| app.on_menu(menu_ids::PREFERENCES, cx)));
@@ -3569,7 +3579,7 @@ mod tests {
 	#[gpui::test]
 	async fn keyboard_tab_capture_escape_cancels_without_closing(cx: &mut TestAppContext) {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
-		let _lang = crate::i18n::lang_test_lock().lock().unwrap();
+		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		crate::actions::reset_all_custom_shortcuts();
 		cx.update(|app| root.update(app, |app, cx| app.on_menu(menu_ids::PREFERENCES, cx)));
@@ -3611,7 +3621,7 @@ mod tests {
 	#[gpui::test]
 	async fn custom_shortcut_overrides_are_live_after_rebind(cx: &mut TestAppContext) {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
-		let _lang = crate::i18n::lang_test_lock().lock().unwrap();
+		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		crate::actions::reset_all_custom_shortcuts();
 
@@ -3645,8 +3655,8 @@ mod tests {
 	/// mock engine records it, so the async round trip is observable.
 	#[gpui::test]
 	async fn import_footage_prompts_and_routes_the_picked_path(cx: &mut TestAppContext) {
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
-		crate::i18n::set_language(crate::i18n::Language::EnUs);
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		crate::i18n::set_language_code("en-US");
 
 		cx.update(|cx| cx.init_colors());
 		let window = cx.open_window(size(px(1600.0), px(900.0)), |window, cx| {
@@ -3694,7 +3704,7 @@ mod tests {
 	/// delivers it — the OS drag entering the window, then the release.
 	#[gpui::test]
 	async fn dropping_files_onto_the_project_browser_imports_them(cx: &mut TestAppContext) {
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		let mut cx = VisualTestContext::from_window(window.into(), cx);
 
@@ -3743,7 +3753,7 @@ mod tests {
 	/// correct parameters.
 	#[gpui::test]
 	async fn dragging_footage_onto_the_timeline_places_a_clip(cx: &mut TestAppContext) {
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		let mut cx = VisualTestContext::from_window(window.into(), cx);
 
@@ -3822,7 +3832,7 @@ mod tests {
 	/// grid the same entry (plus folder children) appears as icons.
 	#[gpui::test]
 	async fn explorer_views_list_root_level_footage(cx: &mut TestAppContext) {
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (window, _root) = mock_shell(cx);
 		let mut cx = VisualTestContext::from_window(window.into(), cx);
 
@@ -3905,7 +3915,7 @@ mod tests {
 		gpui::WindowHandle<OakApp<MockEngine>>,
 		Entity<OakApp<MockEngine>>,
 	) {
-		crate::i18n::set_language(crate::i18n::Language::EnUs);
+		crate::i18n::set_language_code("en-US");
 		cx.update(|cx| cx.init_colors());
 		let window = cx.open_window(size(px(1600.0), px(900.0)), |window, cx| {
 			OakApp::<MockEngine>::new(window, None, cx)
@@ -3941,7 +3951,7 @@ mod tests {
 	/// / 打开 route) drives the engine's library open and closes the dialog.
 	#[gpui::test]
 	async fn manager_lists_and_opens(cx: &mut TestAppContext) {
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (_window, root) = mock_shell(cx);
 		let content = open_manager(cx, &root);
 		let rows = manager_rows(cx, &content);
@@ -3971,7 +3981,7 @@ mod tests {
 	/// and its sub-dialogs.
 	#[gpui::test]
 	async fn manager_create_rename_duplicate_delete(cx: &mut TestAppContext) {
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (_window, root) = mock_shell(cx);
 		let content = open_manager(cx, &root);
 
@@ -4080,7 +4090,7 @@ mod tests {
 	async fn manager_import_and_export_route_through_the_platform_dialogs(
 		cx: &mut TestAppContext,
 	) {
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (_window, root) = mock_shell(cx);
 		let content = open_manager(cx, &root);
 

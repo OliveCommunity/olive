@@ -162,8 +162,11 @@ define_actions! {
 	FullScreenViewer { cpp: "fullscreenviewer", i18n: "menu.view.full_screen_viewer", keys: [], route: FocusedPanel, menu_id: 1044 };
 	ThemeDark { cpp: "themedark", i18n: "menu.view.theme.dark", keys: [], route: Global, menu_id: 301 };
 	ThemeLight { cpp: "themelight", i18n: "menu.view.theme.light", keys: [], route: Global, menu_id: 302 };
-	LangZh { cpp: "langzh", i18n: "menu.view.language.zh", keys: [], route: Global, menu_id: 303 };
-	LangEn { cpp: "langen", i18n: "menu.view.language.en", keys: [], route: Global, menu_id: 304 };
+	// Language switching is deliberately NOT a registry action: the
+	// language menu is built from the discovered packs (menu ids in the
+	// LANG_ITEM_BASE range, see menus::shared), so a new language is a new
+	// YAML file, not a code change. The C++ `langzh`/`langen` action slots
+	// (menu ids 303/304) stay reserved.
 
 	// --- Playback -----------------------------------------------------------
 	GoToStart { cpp: "gotostart", i18n: "menu.playback.to_start", keys: ["home"], route: FocusedPanel, menu_id: 404 };
@@ -820,8 +823,8 @@ mod tests {
 	/// is meant to drive the menus).
 	#[test]
 	fn every_action_appears_in_the_menu_tree() {
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
-		crate::i18n::set_language(crate::i18n::Language::EnUs);
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		crate::i18n::set_language_code("en-US");
 
 		fn collect(menu: &gpui_widgets::menu::Menu, out: &mut Vec<usize>) {
 			for item in &menu.items {
@@ -866,18 +869,22 @@ mod tests {
 	#[test]
 	fn every_i18n_key_exists_in_both_languages() {
 		for entry in REGISTRY {
-			for language in [crate::i18n::Language::EnUs, crate::i18n::Language::ZhCN] {
-				let _guard = crate::i18n::lang_test_lock().lock().unwrap();
-				crate::i18n::set_language(language);
+			for code in ["en-US", "zh-CN"] {
+				let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+				crate::i18n::set_language_code(code);
 				let value = crate::i18n::tr(entry.i18n_key);
 				assert_ne!(
 					value, entry.i18n_key,
-					"i18n key {} ({language:?}) is missing for action {}",
+					"i18n key {} ({code}) is missing for action {}",
 					entry.i18n_key, entry.cpp_id
 				);
 				assert!(!value.is_empty());
 			}
 		}
+		// The loop leaves zh-CN active; restore the default so lock-free
+		// tests building English menus are not fooled mid-assert.
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		crate::i18n::set_language_code("en-US");
 	}
 
 	/// The shortcut display formatter renders the documented labels for a

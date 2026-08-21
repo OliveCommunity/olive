@@ -43,6 +43,41 @@ pub const COLOR_LABEL_BASE: usize = LOCAL_ID_BASE;
 /// gray).
 pub const COLOR_LABEL_COUNT: usize = 16;
 
+/// The first id reserved for the dynamic language items: one per
+/// discovered language pack, `LANG_ITEM_BASE + index` into
+/// [`crate::i18n::available_languages`]. Language switching is
+/// data-driven (a new pack is a new YAML file, not a new registry
+/// action), so these ids live above the registry range like the color
+/// labels.
+pub const LANG_ITEM_BASE: usize = COLOR_LABEL_BASE + COLOR_LABEL_COUNT;
+
+/// The reserved language-item id range (far more than any plausible
+/// pack count).
+pub const LANG_ITEM_COUNT: usize = 32;
+
+/// Maps a menu item id in the language range back to its index into
+/// [`crate::i18n::available_languages`].
+pub fn language_item_index(item: usize) -> Option<usize> {
+	(item >= LANG_ITEM_BASE && item < LANG_ITEM_BASE + LANG_ITEM_COUNT)
+		.then(|| item - LANG_ITEM_BASE)
+}
+
+/// Builds the language submenu: one item per discovered pack, labelled
+/// with the pack's own `language.name` endonym plus its code, the active
+/// pack checkmarked.
+pub fn language_menu() -> MenuItem {
+	let current = crate::i18n::language_code();
+	let items = crate::i18n::available_languages()
+		.iter()
+		.enumerate()
+		.map(|(index, code)| {
+			let label = format!("{} ({code})", crate::i18n::pack_native_name(code));
+			MenuItem::new(LANG_ITEM_BASE + index, label).with_checked(*code == current)
+		})
+		.collect();
+	MenuItem::new(0, crate::i18n::tr("menu.view.language")).with_submenu(Menu::new(items))
+}
+
 /// One menu item straight from the registry: id and label come from the
 /// entry, the shortcut annotation from
 /// [`display_shortcut`](crate::actions::display_shortcut) — the same recipe
@@ -375,6 +410,10 @@ mod tests {
 	/// defaults each radio group to its first entry.
 	#[test]
 	fn viewer_menu_offers_every_zoom_level() {
+		// The label lookups below race with tests that flip the process
+		// language: pin en-US under the shared lock.
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		crate::i18n::set_language_code("en-US");
 		let menu = viewer_menu(1);
 		let zoom = menu
 			.items
@@ -394,6 +433,10 @@ mod tests {
 	/// (default) entry only.
 	#[test]
 	fn viewer_menu_radio_groups_default_to_the_first_entry() {
+		// The label lookups below race with tests that flip the process
+		// language: pin en-US under the shared lock.
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		crate::i18n::set_language_code("en-US");
 		let menu = viewer_menu(1);
 		for label_key in [
 			"viewer.context.playback_resolution",
@@ -417,6 +460,9 @@ mod tests {
 	/// The resolution radio follows the current playback divider.
 	#[test]
 	fn viewer_menu_resolution_radio_follows_the_divider() {
+		// Label lookup: pin en-US under the shared language lock.
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		crate::i18n::set_language_code("en-US");
 		let menu = viewer_menu(4);
 		let item = menu
 			.items

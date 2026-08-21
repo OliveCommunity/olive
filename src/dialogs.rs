@@ -148,26 +148,34 @@ impl PreferencesContent {
 		});
 
 		// --- 常规 General: language + theme --------------------------------
-		let language_options = vec![
-			ComboBoxOption::new(0, "English (en-US)"),
-			ComboBoxOption::new(1, "简体中文 (zh-CN)"),
-		];
+		// Data-driven: one option per discovered language pack, labelled
+		// with the pack's own `language.name` — a newly dropped-in pack
+		// appears here with no code change.
+		let languages = i18n::available_languages();
+		let language_options: Vec<_> = languages
+			.iter()
+			.enumerate()
+			.map(|(index, code)| {
+				ComboBoxOption::new(
+					index,
+					format!("{} ({code})", i18n::pack_native_name(code)),
+				)
+			})
+			.collect();
 		let language = cx.new(|cx| {
 			ComboBox::new(2, language_options, window, cx)
 				.with_placeholder(i18n::tr("preferences.language.placeholder"))
 		});
-		let language_selected = match crate::i18n::language() {
-			crate::i18n::Language::EnUs => 0,
-			crate::i18n::Language::ZhCN => 1,
-		};
-		cx.subscribe(&language, |_this, _combo, event: &ComboBoxEvent, cx| {
+		let language_selected = languages
+			.iter()
+			.position(|code| *code == i18n::language_code())
+			.unwrap_or(0);
+		cx.subscribe(&language, move |_this, _combo, event: &ComboBoxEvent, cx| {
 			if let ComboBoxEvent::Selected { value, .. } = event {
-				let language = match *value {
-					1 => crate::i18n::Language::ZhCN,
-					_ => crate::i18n::Language::EnUs,
-				};
-				crate::i18n::set_language(language);
-				cx.emit(PreferencesEvent::LanguageChanged);
+				if let Some(code) = languages.get(*value) {
+					crate::i18n::set_language_code(code);
+					cx.emit(PreferencesEvent::LanguageChanged);
+				}
 			}
 		})
 		.detach();
@@ -2308,8 +2316,8 @@ mod tests {
 
 	#[test]
 	fn search_filter_matches_label_or_path() {
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap();
-		crate::i18n::set_language(crate::i18n::Language::EnUs);
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		crate::i18n::set_language_code("en-US");
 		assert!(search_filter_matches(ActionId::NewProject, "File", "new"));
 		assert!(search_filter_matches(ActionId::NewProject, "File", "file > new"));
 		assert!(!search_filter_matches(ActionId::NewProject, "File", "undo"));
@@ -2329,8 +2337,8 @@ mod tests {
 	#[test]
 	fn keyboard_rows_cover_the_menu_bar() {
 		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap();
-		let _lang = crate::i18n::lang_test_lock().lock().unwrap();
-		crate::i18n::set_language(crate::i18n::Language::EnUs);
+		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		crate::i18n::set_language_code("en-US");
 		let rows = crate::app::menu_action_paths();
 		assert!(!rows.is_empty());
 		// Every listed action resolves to a registry entry with a menu item.

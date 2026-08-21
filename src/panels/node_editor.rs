@@ -574,6 +574,10 @@ mod tests {
 	/// labels, the reveal entries and properties.
 	#[test]
 	fn node_menu_carries_grouping_and_reveals() {
+		// The color-label lookup below matches on a localized label: pin
+		// en-US under the shared language lock.
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		crate::i18n::set_language_code("en-US");
 		let menu = node_menu();
 		let ids: Vec<usize> = menu.items.iter().map(|item| item.id).collect();
 		assert!(ids.contains(&LOCAL_GROUP));
