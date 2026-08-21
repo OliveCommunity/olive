@@ -798,12 +798,20 @@ mod tests {
 			.join("oak-test-plugin.ofx.bundle");
 		let platform = if cfg!(target_os = "macos") {
 			"MacOS"
+		} else if cfg!(target_os = "windows") {
+			"Win64"
 		} else {
 			"Linux-x86-64"
 		};
 		let bin_dir = bundle.join("Contents").join(platform);
 		std::fs::create_dir_all(&bin_dir).ok()?;
-		let target = bin_dir.join("plugin");
+		// Windows needs the .dll extension: LoadLibrary appends ".dll" to
+		// extension-less module names, so a bare "plugin" file never loads.
+		let target = bin_dir.join(if cfg!(target_os = "windows") {
+			"plugin.dll"
+		} else {
+			"plugin"
+		});
 		if !target.exists() {
 			std::fs::copy(&lib, &target).ok()?;
 		}

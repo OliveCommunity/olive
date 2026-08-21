@@ -52,12 +52,20 @@ pub fn test_plugin_dir() -> Option<PathBuf> {
 				.join("oak-test-plugin.ofx.bundle");
 			let platform = if cfg!(target_os = "macos") {
 				"MacOS"
+			} else if cfg!(target_os = "windows") {
+				"Win64"
 			} else {
 				"Linux-x86-64"
 			};
 			let bin_dir = bundle.join("Contents").join(platform);
 			std::fs::create_dir_all(&bin_dir).ok()?;
-			let target = bin_dir.join("plugin");
+			// Windows 上必须有 .dll 扩展名：LoadLibrary 会对无扩展名的
+			// 模块名自动追加 ".dll"，名为 "plugin" 的文件将加载失败。
+			let target = bin_dir.join(if cfg!(target_os = "windows") {
+				"plugin.dll"
+			} else {
+				"plugin"
+			});
 			if !target.exists() {
 				std::fs::copy(&lib, &target).ok()?;
 			}
