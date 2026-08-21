@@ -1,5 +1,9 @@
 # macOS 编译指南
 
+> **已过时（2026）：** 本文档描述旧的 C++/CMake 构建。当前 Rust
+> workspace 的构建方法见 [`build.md`](build.md)（英文：
+> [`../build.md`](../build.md)）。
+
 本文档介绍如何在 macOS 上从源代码构建 Oak 视频编辑器。
 
 英文版本请参见 [`build-macos.md`](../build_macos.md)。

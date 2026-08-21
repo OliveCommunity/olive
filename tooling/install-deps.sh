@@ -18,8 +18,8 @@
 # Installs the system dependencies of the Oak Rust workspace:
 # the free-license external codec/filter libraries FFmpeg is configured
 # with (see crates/oakcodec/Cargo.toml), plus the build tools. FFmpeg
-# itself is built from source by cargo (ffmpeg-next `build` feature) and
-# is NOT installed here.
+# itself is built from source by tooling/ffmpeg/build-ffmpeg.sh (which
+# installs into .cache/ffmpeg) and is NOT installed here.
 #
 # Supported: Homebrew (macOS), MSYS2 UCRT64 (Windows), Debian/Ubuntu,
 # Fedora, Arch. Run it yourself — nothing in the build invokes it
@@ -102,4 +102,4 @@ case "$(uname -s)" in
 		;;
 esac
 
-echo "Done. 'cargo build' now compiles FFmpeg 8.1 from source with these libraries."
+echo "Done. Now run tooling/ffmpeg/build-ffmpeg.sh once, then 'cargo build'."

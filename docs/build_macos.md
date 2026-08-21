@@ -1,5 +1,9 @@
 # macOS Build Guide
 
+> **Deprecated (2026):** this guide describes the old C++/CMake build.
+> The current Rust workspace build is documented in
+> [`build.md`](build.md) (中文：[`zh/build.md`](zh/build.md)).
+
 This document describes how to build Oak Video Editor from source on macOS.
 
 For the Chinese version, see [`build-macos-zh.md`](zh/build_macos-zh.md).

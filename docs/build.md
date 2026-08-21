@@ -1,392 +1,169 @@
 # Build Guide
 
-This document describes how to build Oak Video Editor from source on Windows, Linux, and macOS.
+This document describes how to build the Oak Video Editor from source on
+macOS, Linux, and Windows. For the Chinese version see
+[`zh/build.md`](zh/build.md).
 
-> **Note (2026):** Oak is now a Rust workspace; `cargo build` at the
-> repository root produces the app, the CLI and the worker
-> (`liboakengine` — the plugin/external-consumer cdylib — is not a
-> default member, M14 R4; build it explicitly with
-> `cargo build -p oakengine`). The CMake instructions below are kept for
-> historical
-> reference only. Rust dependencies are pulled from crates.io; the only
-> native libraries still needed are FFmpeg (see the next section),
-> OpenColorIO (optional; `ocio-sys` builds a stub without it) and a
-> C/C++ toolchain for the FFI shims.
->
-> ### FFmpeg for the Rust build
->
-> `ffmpeg-next` 9.x pairs with FFmpeg 8.x headers, which most distros do
-> not ship yet. Build a project-owned FFmpeg — GPL parts enabled, every
-> free-license external codec library that is installed, per-OS hardware
-> acceleration, static+PIC — with the project scripts:
->
-> ```sh
-> tooling/install-deps.sh           # Homebrew / MSYS2 UCRT64 / Debian / Fedora / Arch
-> tooling/ffmpeg/build-ffmpeg.sh    # clones release/8.0, installs into .cache/ffmpeg
-> cargo build
-> ```
->
-> `FFMPEG_DIR` no longer needs exporting: the committed
-> `.cargo/config.toml` sets it relative to the workspace root (the
-> ffmpeg-sys-next build script cannot read `.env` files — this is the
-> only machine-agnostic way).
->
-> External libraries are probed with `pkg-config` and silently skipped
-> when missing. `FFMPEG_DIR` is mandatory (the `oakffmpeg-link` build
-> script panics without it): silently binding a system FFmpeg risks
-> stale `.pc` paths after package upgrades. IDEs that cannot inject
-> environment variables into cargo (RustRover) can instead put
-> `FFMPEG_DIR=...` (and `PKG_CONFIG_PATH=...` where needed) into a
-> `.env` file at the workspace root — it is git-ignored.
-> ffmpeg-next's `build` cargo feature is deliberately not used: it
-> clones release/<crate-version>, and every such pairing is broken
-> upstream (9.0.0 → FFmpeg 9.0 removed AVCodec fields; 8.1.0 → FFmpeg
-> 8.1 added enum variants; 8.0.0 → FFmpeg 8.0 renamed FF_PROFILE_*).
-
-## Prerequisites
-
-- CMake 3.20+
-- Ninja (recommended)
-- Qt 6 (with private headers)
-- FFmpeg 6.0+ development libraries
-- OpenTimelineIO (0.16+, built from source below — no distro package on most platforms)
-- OpenImageIO
-- OpenColorIO (2.x)
-- OpenEXR
-- Expat
-- PortAudio
-- OpenGL headers
-- Vulkan SDK (optional, required for the Vulkan render backend)
-- XKB common (Linux)
+> **2026 note:** Oak is a pure Rust workspace. `cargo build` at the
+> repository root produces the app (`oak-editor`), the CLI (`oak-cli`)
+> and the render worker (`oak-worker`). The old C++/CMake tree lives on
+> the `cpp-legacy` branch; nothing in this guide uses it.
 
 ---
 
-## Windows (MSYS2)
+## Prerequisites (all platforms)
 
-This guide uses [MSYS2](https://www.msys2.org/) with the UCRT64 toolchain.
+- **git** — clone with submodules (`gpui/` is a submodule):
+  ```sh
+  git clone --recursive https://github.com/OakVideoEditorCommunity/oak.git
+  cd oak
+  # or, on an existing clone: git submodule update --init --recursive
+  ```
+- **Rust stable** (via [rustup](https://rustup.rs/); on Windows use the
+  MSYS2 toolchain instead — see the Windows section).
+- **C toolchain + cmake + pkg-config + nasm** — cmake and a C++ compiler
+  are needed by the vendored OpenColorIO build (Linux/macOS), nasm by
+  the FFmpeg assembly.
+- **FFmpeg 8.1, built by the project script.** Distro packages are too
+  old for `ffmpeg-next` 9 and are deliberately not used:
+  ```sh
+  tooling/install-deps.sh        # codec/filter libraries + build tools
+  tooling/ffmpeg/build-ffmpeg.sh # clones release/8.1, installs into .cache/ffmpeg
+  ```
+  `FFMPEG_DIR` does not need exporting: the committed
+  `.cargo/config.toml` sets it relative to the workspace root
+  (`ffmpeg-sys-next` cannot read `.env` at build-script time — the
+  config entry is the only machine-agnostic way). The `oakffmpeg-link`
+  build script panics without it; run `build-ffmpeg.sh` once before the
+  first `cargo build`.
 
-### 1. Install MSYS2
+## Quick start (macOS / Linux)
 
-Download and install MSYS2 from [https://www.msys2.org/](https://www.msys2.org/). Then open the **MSYS2 UCRT64** terminal.
-
-### 2. Install Dependencies
-
-```bash
-pacman -Syu
-pacman -S --needed \
-  mingw-w64-ucrt-x86_64-cmake \
-  mingw-w64-ucrt-x86_64-ninja \
-  mingw-w64-ucrt-x86_64-qt6-base \
-  mingw-w64-ucrt-x86_64-qt6-tools \
-  mingw-w64-ucrt-x86_64-ffmpeg \
-  mingw-w64-ucrt-x86_64-openimageio \
-  mingw-w64-ucrt-x86_64-opencolorio \
-  mingw-w64-ucrt-x86_64-openexr \
-  mingw-w64-ucrt-x86_64-fmt \
-  mingw-w64-ucrt-x86_64-expat \
-  mingw-w64-ucrt-x86_64-portaudio \
-  mingw-w64-ucrt-x86_64-vulkan-headers \
-  mingw-w64-ucrt-x86_64-vulkan-loader \
-  mingw-w64-ucrt-x86_64-gcc
-```
-
-> **Note:** Qt 6 private headers may require additional packages depending on the MSYS2 repository state. If CMake reports missing private headers, install `mingw-w64-ucrt-x86_64-qt6-base-private` if available.
-
-### 3. Build OpenTimelineIO (required)
-
-There is no MSYS2 package for OpenTimelineIO, so build it from source:
-
-```bash
-git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
-cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
-  -DOTIO_SHARED_LIBS=ON \
-  -DOTIO_PYTHON_BINDINGS=OFF \
-  -DOTIO_FIND_IMATH=ON \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
-cmake --build OpenTimelineIO/build
-cmake --install OpenTimelineIO/build
-```
-
-### 4. Clone and Build
-
-```bash
-# Clone the repository
-git clone --recursive https://github.com/OakVideoEditorCommunity/oak.git
-cd oak
-
-# Configure
-cmake -S . -B build -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DOTIO_LOCATION="/path/to/otio-install" \
-  -DBUILD_QT6=ON
-
-# Build
-cmake --build build --config Release
-```
-
-### 5. Run Tests (Optional)
-
-```bash
-ctest --test-dir build --output-on-failure -C Release
-```
-
----
-
-## Linux
-
-### Debian / Ubuntu
-
-Install dependencies (Ubuntu 24.04+ ships FFmpeg 6.1, which satisfies the 6.0 minimum; on older releases build FFmpeg from source as described in Troubleshooting):
-
-```bash
-sudo apt-get update
-sudo apt-get install -y \
-  cmake ninja-build pkg-config \
-  qt6-base-dev qt6-base-dev-tools qt6-base-private-dev qt6-tools-dev qt6-tools-dev-tools \
-  libavcodec-dev libavformat-dev libavutil-dev libswscale-dev libswresample-dev libavfilter-dev \
-  libopencolorio-dev libopenimageio-dev libopenexr-dev libexpat1-dev \
-  portaudio19-dev libgl1-mesa-dev libvulkan-dev libxkbcommon-dev
-```
-
-Build OpenTimelineIO (required, no distro package):
-
-```bash
-git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
-cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
-  -DOTIO_SHARED_LIBS=ON \
-  -DOTIO_PYTHON_BINDINGS=OFF \
-  -DOTIO_FIND_IMATH=ON \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
-cmake --build OpenTimelineIO/build
-cmake --install OpenTimelineIO/build
-```
-
-Configure and build:
-
-```bash
-cmake -S . -B build -G Ninja \
-  -DBUILD_TESTS=ON -DBUILD_QT6=ON \
-  -DOTIO_LOCATION="$PWD/otio-install"
-cmake --build build --config Release
-```
-
-Run tests:
-
-```bash
-ctest --test-dir build --output-on-failure -C Release
-```
-
-### Fedora
-
-Install dependencies:
-
-```bash
-sudo dnf install -y \
-  cmake ninja-build pkgconf-pkg-config \
-  qt6-qtbase-devel qt6-qtbase-private-devel qt6-qttools-devel \
-  ffmpeg-free-devel \
-  OpenImageIO-devel \
-  OpenColorIO-devel \
-  openexr-devel \
-  expat-devel \
-  portaudio-devel \
-  mesa-libGL-devel \
-  vulkan-headers \
-  vulkan-loader-devel \
-  libxkbcommon-devel \
-  gcc-c++ \
-  bzip2-devel
-```
-
-Build OpenTimelineIO (required, no distro package):
-
-```bash
-git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
-cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
-  -DOTIO_SHARED_LIBS=ON \
-  -DOTIO_PYTHON_BINDINGS=OFF \
-  -DOTIO_FIND_IMATH=ON \
-  -DOTIO_FIND_IMATH=ON \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
-cmake --build OpenTimelineIO/build
-cmake --install OpenTimelineIO/build
-```
-
-Configure and build:
-
-```bash
-cmake -S . -B build -G Ninja -DBUILD_TESTS=ON -DBUILD_QT6=ON \
-  -DOTIO_LOCATION="$PWD/otio-install"
-cmake --build build --config Release
-```
-
-Run tests:
-
-```bash
-ctest --test-dir build --output-on-failure -C Release
-```
-
-### Arch Linux
-
-Install dependencies:
-
-```bash
-sudo pacman -Syu
-sudo pacman -S --needed \
-  cmake ninja pkgconf \
-  qt6-base qt6-tools \
-  ffmpeg \
-  openimageio \
-  opencolorio \
-  openexr \
-  expat \
-  portaudio \
-  opentimelineio \
-  mesa \
-  vulkan-headers \
-  vulkan-icd-loader \
-  libxkbcommon \
-  fmt \
-  gcc
-```
-
-> **Note:** On Arch Linux, Qt 6 private headers are included in the `qt6-base` package.
-
-Configure and build:
-
-```bash
-cmake -S . -B build -G Ninja -DBUILD_TESTS=ON -DBUILD_QT6=ON
-cmake --build build --config Release
-```
-
-Run tests:
-
-```bash
-ctest --test-dir build --output-on-failure -C Release
+```sh
+tooling/install-deps.sh         # Homebrew / apt / dnf / pacman
+tooling/ffmpeg/build-ffmpeg.sh  # ~10–20 min, once
+cargo build --workspace
+cargo test  --workspace         # Linux: see "headless tests" below
 ```
 
 ---
 
 ## macOS
 
-macOS is now a fully supported platform. See [`build_macos.md`](build_macos.md) for a dedicated, step-by-step guide.
+- macOS 12+, Xcode Command Line Tools (`xcode-select --install`), Homebrew.
+- ```sh
+  brew install cmake pkg-config
+  tooling/install-deps.sh
+  tooling/ffmpeg/build-ffmpeg.sh
+  cargo build --workspace
+  cargo test  --workspace
+  ```
+- OpenColorIO is compiled from the vendored 2.5.2 sources and linked
+  statically — no `brew install opencolorio` needed (cmake is required).
+- The GPU-gated tests (OFX GL overlay, hardware decode) run only with
+  `OAK_GPU_TESTS=1`.
 
-Install dependencies:
+## Linux
 
-```bash
-brew update
-brew install cmake ninja pkg-config qt@6 ffmpeg openimageio opencolorio openexr portaudio expat molten-vk vulkan-headers vulkan-loader
-```
+- Debian/Ubuntu, Fedora and Arch are supported by
+  `tooling/install-deps.sh`. Additionally install:
+  ```sh
+  # Debian/Ubuntu
+  sudo apt-get install -y cmake \
+    libpipewire-0.3-dev libspa-0.2-dev libjack-jackd2-dev \
+    libasound2-dev libpulse-dev libsndfile1-dev \
+    libgl1-mesa-dev libvulkan-dev libxkbcommon-dev libxkbcommon-x11-dev
+  ```
+  (the PipeWire/JACK/ALSA/PulseAudio/sndfile dev packages are cpal's
+  audio backends; GL/Vulkan/XKB are the wgpu windowing stack).
+- **Headless tests:** several gpui/UI tests open real windows through
+  wgpu on Mesa's software Vulkan. Under a display-less session run:
+  ```sh
+  sudo apt-get install -y xvfb mesa-vulkan-drivers
+  xvfb-run -a -s "-screen 0 1920x1080x24" cargo test --workspace
+  ```
+- OpenColorIO is the vendored static build, as on macOS.
 
-Build OpenTimelineIO (required):
+## Windows (MSYS2 UCRT64)
 
-```bash
-git clone --depth 1 --branch v0.16.0 https://github.com/PixarAnimationStudios/OpenTimelineIO.git
-cmake -S OpenTimelineIO -B OpenTimelineIO/build -G Ninja \
-  -DOTIO_SHARED_LIBS=ON \
-  -DOTIO_PYTHON_BINDINGS=OFF \
-  -DOTIO_FIND_IMATH=ON \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX="${PWD}/otio-install"
-cmake --build OpenTimelineIO/build
-cmake --install OpenTimelineIO/build
-```
+The Windows build targets **x86_64-pc-windows-gnu** with MSYS2's own
+Rust; the MSVC toolchain is not supported (the build scripts emit
+Unix-style link args the MSVC linker rejects).
 
-Configure and build:
-
-```bash
-export PATH="$(brew --prefix qt@6)/bin:$PATH"
-export CMAKE_PREFIX_PATH="$(brew --prefix qt@6)"
-export OTIO_LOCATION="${PWD}/otio-install"
-export OCIO_LOCATION="$(brew --prefix opencolorio)"
-# Let CMake's FindVulkan locate the Homebrew Vulkan loader (optional,
-# enables the Vulkan render backend)
-export VULKAN_SDK="$(brew --prefix vulkan-loader)"
-
-cmake -S . -B build -G Ninja -DBUILD_TESTS=ON -DBUILD_QT6=ON \
-  -DOTIO_LOCATION="${OTIO_LOCATION}" \
-  -DOCIO_LOCATION="${OCIO_LOCATION}"
-cmake --build build --config Release
-```
-
-Run tests:
-
-```bash
-ctest --test-dir build --output-on-failure -C Release
-```
+1. Install [MSYS2](https://www.msys2.org/) and open the **UCRT64** shell.
+2. ```sh
+   pacman -Syu
+   pacman -S --needed mingw-w64-ucrt-x86_64-rust \
+     mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-opencolorio
+   tooling/install-deps.sh        # must run inside the UCRT64 shell
+   tooling/ffmpeg/build-ffmpeg.sh
+   ```
+3. Environment (put in your shell rc or export per session):
+   ```sh
+   # The vendored OCIO sources contain MSVC-only constructs, so Windows
+   # links MSYS2's OpenColorIO 2.5.2 dynamically instead:
+   export OCIO_RS_ENABLE_REAL=1 OCIO_INSTALL_DIR=/ucrt64 OCIO_RS_LINK=dynamic
+   # mingw-w64 (Nov 2025+) forwards _assert to __msvcrt_assert inside
+   # libmingwex.a while rustc's link order leaves -lmingwex last; the
+   # trailing -lmsvcrt re-scans the CRT import library afterwards
+   # (otherwise: undefined _fileno/_setmode/__imp___msvcrt_assert).
+   export RUSTFLAGS="-C link-args=-lmsvcrt"
+   # If your shell inherits the MSVC INCLUDE/LIB (some CI runners inject
+   # them into every step), clear them — they poison the MinGW compiles:
+   unset INCLUDE LIB
+   ```
+4. ```sh
+   cargo build --workspace
+   cargo test  --workspace
+   ```
 
 ---
 
-## Build Options
+## OpenColorIO summary
 
-| Option | Default | Description |
-|--------|---------|-------------|
-| `BUILD_TESTS` | `OFF` | Build unit tests |
-| `BUILD_DOXYGEN` | `OFF` | Build Doxygen documentation |
-| `USE_WERROR` | `OFF` | Treat warnings as errors |
-| `BUILD_QT6` | `ON` | Build with Qt 6 instead of Qt 5 |
-| `OTIO_LOCATION` | - | Path to OpenTimelineIO installation (required) |
-| `OAK_BUNDLE_OTIO` | `ON` | Install OTIO runtime libraries alongside Oak (set `OFF` for distro-native packaging where `opentimelineio` is a package dependency, e.g. Arch) |
-| `OCIO_LOCATION` | - | Path to OpenColorIO installation |
-| `OAK_ENABLE_DYNAMIC_RENDER_BACKEND` | `ON` | Build dynamic render backend libraries (`liboakgl.so` / `liboakvulkan.so`) |
+| Platform | Source | Linkage | Notes |
+|----------|--------|---------|-------|
+| Linux / macOS | vendored 2.5.2 (`ocio-sys` `bundled` feature, on by default) | static | needs cmake + C++ compiler |
+| Windows | MSYS2 `mingw-w64-ucrt-x86_64-opencolorio` | dynamic | set `OCIO_INSTALL_DIR=/ucrt64`, `OCIO_RS_LINK=dynamic` |
 
----
+Without the `bundled` feature and without `OCIO_RS_ENABLE_REAL=1`,
+`ocio-sys` builds a stub and every colour test early-returns. The
+bundled feature is enabled unconditionally by `oakrender`, so a plain
+`cargo build` always gets the real thing on Linux/macOS.
+
+## Packaging
+
+Distribution packages are built in containers (no host dependencies
+beyond Docker/Podman):
+
+```sh
+tooling/package/build-deb.sh  # Debian 12  → .deb
+tooling/package/build-rpm.sh  # Fedora 41  → .rpm
+tooling/package/build-pkg.sh  # Arch Linux → .pkg.tar.zst
+```
+
+All runtime dependencies are declared in the respective package metadata
+(`packaging/`, `tooling/package/oak.spec`, `tooling/package/PKGBUILD`) —
+the packages are self-contained except for the documented system
+libraries; see `docs/project-storage.md` for what lands where.
 
 ## Troubleshooting
 
-### Qt 6 Not Found
-
-Ensure Qt 6 is in your PATH and CMake prefix path:
-
-```bash
-# Linux / macOS
-export PATH="/path/to/qt6/bin:$PATH"
-export CMAKE_PREFIX_PATH="/path/to/qt6"
-
-# Windows (MSYS2)
-export PATH="/ucrt64/bin:$PATH"
-```
-
-### Missing Private Headers
-
-If you see errors about missing Qt private headers, install the corresponding private development package for your distribution (e.g., `qt6-base-private-dev` on Debian/Ubuntu, `qt6-qtbase-private-devel` on Fedora).
-
-### FFmpeg Not Found
-
-Make sure FFmpeg development libraries are installed and `pkg-config` can locate them:
-
-```bash
-pkg-config --exists libavcodec && echo "Found" || echo "Not found"
-```
-
-### FFmpeg Version Too Old
-
-Oak requires FFmpeg 6.0 or newer; CMake configure fails with `Could NOT find FFMPEG (missing: FFMPEG_VERSION) (Required is at least version "6.0")` on older versions. Ubuntu 24.04+ / Fedora / Arch / Homebrew / MSYS2 all ship new enough FFmpeg. If your distro is older, build from source:
-
-```bash
-git clone --branch n8.1.1 --depth 1 https://git.ffmpeg.org/ffmpeg.git ffmpeg-src
-cd ffmpeg-src
-./configure \
-  --prefix="$PWD/../ffmpeg-install" \
-  --enable-static \
-  --disable-shared \
-  --disable-doc \
-  --disable-programs \
-  --disable-avdevice \
-  --disable-network \
-  --enable-pic \
-  --enable-gpl \
-  --enable-version3
-make -j$(nproc)
-make install
-cd ..
-```
-
-Then pass `-DFFMPEG_ROOT="$PWD/ffmpeg-install"` to CMake.
-
-### OpenTimelineIO Not Found
-
-OpenTimelineIO is a required dependency. Build it from source as shown in your platform's section above and pass `-DOTIO_LOCATION=/path/to/otio-install` to CMake. On Arch Linux the `opentimelineio` package provides it directly.
+- **`oakffmpeg-link` panics about `FFMPEG_DIR`** — run
+  `tooling/ffmpeg/build-ffmpeg.sh` once; it installs into
+  `.cache/ffmpeg`, which `.cargo/config.toml` points at.
+- **IDE builds fail (RustRover etc.)** — IDEs that cannot inject
+  environment variables into cargo can read a git-ignored `.env` at the
+  workspace root with `FFMPEG_DIR=...` (and `PKG_CONFIG_PATH=...` if
+  your codec libraries live in a custom prefix).
+- **pacman stalls with "Operation too slow"** — MSYS2 mirrors hiccup;
+  `install-deps.sh` retries three times, re-running it resumes via
+  `--needed`.
+- **Windows: `undefined reference to _fileno/_setmode/__imp___msvcrt_assert`**
+  — set `RUSTFLAGS="-C link-args=-lmsvcrt"` (see the Windows section).
+- **Windows: `AddInstanceForFactory: No factory registered` / MSVC-flavoured
+  errors** — you are on the MSVC Rust toolchain; switch to MSYS2's Rust
+  (`x86_64-pc-windows-gnu`).
+- **Empty `gpui/` directory** — `git submodule update --init --recursive`.
+- **Linux tests open windows and hang/fail** — use the `xvfb-run` line
+  from the Linux section.
