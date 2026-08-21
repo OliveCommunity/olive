@@ -579,15 +579,18 @@ fn message_suite_v1_v2() {
 			OK
 		);
 	}
-	// question 类型 + 无出口 → REPLY_NO（13）。
+	// question 类型 + 无出口 → REPLY_NO（13）。用无占位符的格式串：
+	// 占位符没有对应的变长参数是 UB（glibc 上 vsnprintf 对野指针
+	// strlen 直接 SIGSEGV；macOS 上恰好读到可映射内存才没崩）。
 	let q = cs("OfxMessageQuestion");
+	let plain = cs("really?");
 	unsafe {
 		assert_eq!(
 			(s.message)(
 				std::ptr::null_mut(),
 				q.as_ptr(),
 				id.as_ptr(),
-				fmt.as_ptr(),
+				plain.as_ptr(),
 				1
 			),
 			13

@@ -138,7 +138,12 @@ if [ -d /opt/homebrew/lib/pkgconfig/openjpeg ]; then
 	export PKG_CONFIG_PATH="${PKG_CONFIG_PATH:-}:/opt/homebrew/lib/pkgconfig/openjpeg"
 fi
 enable_if_pkg libopenjp2 libopenjpeg
-enable_if_pkg openh264 libopenh264
+# openh264 is redundant for us (decode: FFmpeg's native h264; encode:
+# x264) and its MinGW package does not satisfy the static link — skip it
+# on Windows.
+if [ -z "${MSYSTEM:-}" ]; then
+	enable_if_pkg openh264 libopenh264
+fi
 enable_if_pkg snappy libsnappy
 enable_if_pkg wavpack libwavpack
 enable_if_pkg webp libwebp
