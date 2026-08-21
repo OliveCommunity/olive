@@ -61,7 +61,7 @@ jobs:
           echo "OCIO_RS_LINK=static" >> "$GITHUB_ENV"
           echo "RUSTUP_HOME=/opt/rust/rustup" >> "$GITHUB_ENV"
           echo "CARGO_HOME=/opt/rust/cargo" >> "$GITHUB_ENV"
-          echo "PATH='$PATH:/opt/rust/cargo/bin'" >> "$GITHUB_ENV"
+          echo "PATH=$PATH:/opt/rust/cargo/bin" >> "$GITHUB_ENV"
 
       # ------------------------------------------------------------------
       # Caches
@@ -199,7 +199,7 @@ jobs:
       # System dependencies
       # ------------------------------------------------------------------
       - name: Install system dependencies
-        shell: bash
+        shell: C:\msys2\usr\bin\bash.exe
         run: |
           bash tooling/install-deps.sh
           pacman -S --needed --noconfirm \
@@ -213,7 +213,7 @@ jobs:
       # bridge targets; the vendored source needs MSVC-only constructs).
       # Dynamic here — the CD packages the DLLs next to the binaries.
       - name: Configure build environment
-        shell: bash
+        shell: C:\msys2\usr\bin\bash.exe
         run: |
           echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
           echo "OCIO_INSTALL_DIR=/ucrt64" >> "$GITHUB_ENV"
@@ -261,7 +261,7 @@ jobs:
       # Project FFmpeg (script + FFMPEG_DIR; see docs/build.md)
       # ------------------------------------------------------------------
       - name: Build project FFmpeg
-        shell: bash
+        shell: C:\msys2\usr\bin\bash.exe
         run: |
           bash tooling/ffmpeg/build-ffmpeg.sh
           echo "FFMPEG_DIR=$(cygpath -m "$PWD/.cache/ffmpeg")" >> "$GITHUB_ENV"
@@ -270,7 +270,7 @@ jobs:
       # Build & test
       # ------------------------------------------------------------------
       - name: Build
-        shell: bash
+        shell: C:\msys2\usr\bin\bash.exe
         run: |
           # The runner's job hook injects the MSVC INCLUDE/LIB into every
           # step; clear them in-step (they poison the MinGW compiles with
@@ -285,7 +285,7 @@ jobs:
           cargo build --workspace --locked
 
       - name: Test
-        shell: bash
+        shell: C:\msys2\usr\bin\bash.exe
         run: |
           unset INCLUDE LIB
           # See Build (Windows): trailing -lmsvcrt for the mingw-w64
