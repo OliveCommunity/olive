@@ -425,11 +425,14 @@ mod tests {
 /// Serializes tests that mutate the language global / HOME.
 #[cfg(test)]
 pub(crate) fn test_lock() -> std::sync::MutexGuard<'static, ()> {
-	static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-	LOCK.lock().unwrap_or_else(|e| e.into_inner())
+	lang_test_lock().lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// Compatibility alias used by the app/actions test modules.
+/// Compatibility alias used by the app/actions test modules. Both entry
+/// points MUST share the one static mutex: with two separate mutexes the
+/// i18n tests and the app/actions tests do not exclude each other, and
+/// the language global races (observed as a Windows-only CI failure
+/// where `tr` returned the English value mid-test).
 #[cfg(test)]
 pub(crate) fn lang_test_lock() -> &'static std::sync::Mutex<()> {
 	static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());

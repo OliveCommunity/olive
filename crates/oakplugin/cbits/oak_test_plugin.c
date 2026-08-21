@@ -35,6 +35,26 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
+/* Windows 上插件 DLL 带自己的 CRT 环境块：宿主 Rust 侧的
+ * std::env::set_var 走 SetEnvironmentVariableW，只更新 Win32 进程
+ * 环境，插件里 getenv 读的 CRT `_environ` 看不到它。marker 路径
+ * 统一经 Win32 进程环境读取（POSIX 下就是 getenv）。 */
+static const char *marker_env(const char *name)
+{
+#ifdef _WIN32
+    static char buf[32768];
+    DWORD n = GetEnvironmentVariableA(name, buf, (DWORD)sizeof buf);
+    if (n == 0 || n >= sizeof buf)
+        return NULL;
+    return buf;
+#else
+    return getenv(name);
+#endif
+}
 
 #include "ofxCore.h"
 #include "ofxColour.h"
@@ -99,7 +119,7 @@ static int g_button_instance_changed = 0;
 static void record_button_instance_changed(void)
 {
     g_button_instance_changed++;
-    const char *marker = getenv("OAK_TEST_PLUGIN_INSTANCECHANGED_MARKER");
+    const char *marker = marker_env("OAK_TEST_PLUGIN_INSTANCECHANGED_MARKER");
     if (!marker)
         return;
     FILE *f = fopen(marker, "a");
@@ -593,7 +613,7 @@ static OfxStatus mainEntryID(const char *action, const void *handle,
  * （宿主测试断言用；未设环境变量时静默）。 */
 static void interact_record(const char *fmt, ...)
 {
-    const char *marker = getenv("OAK_TEST_PLUGIN_INTERACT_MARKER");
+    const char *marker = marker_env("OAK_TEST_PLUGIN_INTERACT_MARKER");
     if (!marker)
         return;
     FILE *f = fopen(marker, "a");
