@@ -1,7 +1,10 @@
 # actionlint configuration: whitelist the custom self-hosted runner labels
-# used by the CD workflow (Warp.dev runners) so `actionlint cd.yml` passes.
+# used by the CI/CD workflows (Warp.dev runners on GitHub; the oak Gitea
+# instance's runners) so `actionlint ci.yml` / `actionlint cd.yml` passes.
 # See https://github.com/rhysd/actionlint/blob/main/docs/config.md
 self-hosted-runner:
   labels:
     - ubuntu-latest
     - windows-latest
+    - oak-ubuntu-2404
+    - oak-windows-2025
