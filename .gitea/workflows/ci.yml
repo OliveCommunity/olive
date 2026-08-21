@@ -65,7 +65,7 @@ jobs:
       # ------------------------------------------------------------------
       # Covers the whole target/ dir plus ~/.cargo; shared across branches
       # of the same OS.
-      # TEMP: cache disabled until the Gitea instance cache is provisioned (Cache cargo artifacts)
+      # TEMP: cache disabled ntil the Gitea instance cache is provisioned (Cache cargo artifacts)
       #   uses: Swatinem/rust-cache@v2
       #   with:
       #   shared-key: oak-workspace
