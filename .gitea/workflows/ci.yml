@@ -147,21 +147,21 @@ jobs:
       # ------------------------------------------------------------------
       # Covers the whole target/ dir plus ~/.cargo; shared across branches
       # of the same OS.
-      - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
-        with:
-          shared-key: oak-workspace
-          cache-on-failure: true
+      # TEMP: cache disabled until the Gitea instance cache is provisioned (Cache cargo artifacts)
+      #   uses: Swatinem/rust-cache@v2
+      #   with:
+      #   shared-key: oak-workspace
+      #   cache-on-failure: true
 
       # The project FFmpeg (release/8.0, static, all free codecs + hwaccel)
       # is built by tooling/ffmpeg/build-ffmpeg.sh — 10-20 min on a cold
       # cache. It does not depend on the Rust toolchain, so key it on the
       # script itself and keep it out of rust-cache.
-      - name: Cache project FFmpeg
-        uses: actions/cache@v4
-        with:
-          path: .cache/ffmpeg
-          key: ffmpeg-${{ runner.os }}-${{ hashFiles('tooling/ffmpeg/build-ffmpeg.sh') }}
+      # TEMP: cache disabled until the Gitea instance cache is provisioned (Cache project FFmpeg)
+      #   uses: actions/cache@v4
+      #   with:
+      #   path: .cache/ffmpeg
+      #   key: ffmpeg-${{ runner.os }}-${{ hashFiles('tooling/ffmpeg/build-ffmpeg.sh') }}
 
       # ------------------------------------------------------------------
       # Project FFmpeg (script + FFMPEG_DIR; see docs/build.md)

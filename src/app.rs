@@ -2742,7 +2742,9 @@ mod tests {
 	use super::*;
 	use crate::oakui::EngineGateway as _;
 	use gpui::timeline::TimelineDataSource as _;
-	use gpui::{px, size, ExternalPaths, FileDropEvent, TestAppContext, VisualTestContext};
+	use gpui::{
+		px, size, AnyWindowHandle, ExternalPaths, FileDropEvent, TestAppContext, VisualTestContext,
+	};
 
 	/// The 视图/View menu carries a 语言/Language submenu whose items are
 	/// labeled in their own language and whose checkmark follows the active
@@ -3188,23 +3190,20 @@ mod tests {
 		let key = |keystroke: &str| gpui::Keystroke::parse(keystroke).unwrap();
 
 		// --- shuttle: l plays, k stops, j steps back ----------------------
-		cx.dispatch_keystroke(window.into(), key("l"));
-		cx.run_until_parked();
+		settle_key(cx, window.into(), "l");
 		assert!(
 			cx.read(|app| root.read(app).program_clock.read(app).is_playing()),
 			"l starts playback"
 		);
-		cx.dispatch_keystroke(window.into(), key("k"));
-		cx.run_until_parked();
+		settle_key(cx, window.into(), "k");
 		assert!(
 			!cx.read(|app| root.read(app).program_clock.read(app).is_playing()),
 			"k stops playback"
 		);
 		for _ in 0..10 {
-			cx.dispatch_keystroke(window.into(), key("right"));
+			settle_key(cx, window.into(), "right");
 		}
-		cx.dispatch_keystroke(window.into(), key("j"));
-		cx.run_until_parked();
+		settle_key(cx, window.into(), "j");
 		assert_eq!(
 			cx.read(|app| root.read(app).program_clock.read(app).current_frame()),
 			Frame(9),
@@ -3214,16 +3213,14 @@ mod tests {
 		// --- in/out points: i marks the in at 9, o the out at 15 ----------
 		cx.dispatch_keystroke(window.into(), key("i"));
 		for _ in 0..6 {
-			cx.dispatch_keystroke(window.into(), key("right"));
+			settle_key(cx, window.into(), "right");
 		}
-		cx.dispatch_keystroke(window.into(), key("o"));
-		cx.run_until_parked();
+		settle_key(cx, window.into(), "o");
 		let workarea = cx.read(|app| root.read(app).engine.read(app).workarea());
 		assert_eq!(workarea, Some((Frame(9), Frame(15))), "i/o set the work area");
 
 		// --- marker: m adds one at the playhead ---------------------------
-		cx.dispatch_keystroke(window.into(), key("m"));
-		cx.run_until_parked();
+		settle_key(cx, window.into(), "m");
 		let markers = cx.read(|app| root.read(app).engine.read(app).markers());
 		assert!(
 			markers.iter().any(|marker| marker.frame == Frame(15)),
@@ -3231,8 +3228,7 @@ mod tests {
 		);
 
 		// --- snapping: s toggles the timeline's snap flag ------------------
-		cx.dispatch_keystroke(window.into(), key("s"));
-		cx.run_until_parked();
+		settle_key(cx, window.into(), "s");
 		assert!(
 			!cx.read(|app| root.read(app).timeline.read(app).state.snap_enabled),
 			"s toggles snapping off"
@@ -3240,12 +3236,10 @@ mod tests {
 
 		// --- zoom: = zooms in, - zooms out ---------------------------------
 		let zoom_before = cx.read(|app| root.read(app).timeline.read(app).state.zoom);
-		cx.dispatch_keystroke(window.into(), key("="));
-		cx.run_until_parked();
+		settle_key(cx, window.into(), "=");
 		let zoom_in = cx.read(|app| root.read(app).timeline.read(app).state.zoom);
 		assert!(zoom_in > zoom_before, "= zooms the timeline in");
-		cx.dispatch_keystroke(window.into(), key("-"));
-		cx.run_until_parked();
+		settle_key(cx, window.into(), "-");
 		let zoom_out = cx.read(|app| root.read(app).timeline.read(app).state.zoom);
 		assert!(zoom_out < zoom_in, "- zooms the timeline out");
 
@@ -3261,26 +3255,22 @@ mod tests {
 			})
 		};
 		let height_before = height(cx);
-		cx.dispatch_keystroke(window.into(), key("secondary-="));
-		cx.run_until_parked();
+		settle_key(cx, window.into(), "secondary-=");
 		assert_eq!(height(cx), height_before + 8.0, "⌘= grows the tracks");
 
 		// --- focused-panel routing: ⌘A / ⌘⇧A hit the timeline panel --------
 		cx.update(|app| root.update(app, |app, _cx| app.focused_panel = Some(TIMELINE)));
-		cx.dispatch_keystroke(window.into(), key("secondary-a"));
-		cx.run_until_parked();
+		settle_key(cx, window.into(), "secondary-a");
 		let selected = cx.read(|app| root.read(app).timeline.read(app).selection().len());
 		assert!(selected > 0, "⌘A selects every clip via the timeline panel");
-		cx.dispatch_keystroke(window.into(), key("secondary-shift-a"));
-		cx.run_until_parked();
+		settle_key(cx, window.into(), "secondary-shift-a");
 		let selected = cx.read(|app| root.read(app).timeline.read(app).selection().len());
 		assert_eq!(selected, 0, "⌘⇧A deselects via the timeline panel");
 
 		// q/w (ripple-to-in/out) reach the panel but are not wired yet —
 		// they fall through to the shell's placeholder, state untouched.
 		cx.dispatch_keystroke(window.into(), key("q"));
-		cx.dispatch_keystroke(window.into(), key("w"));
-		cx.run_until_parked();
+		settle_key(cx, window.into(), "w");
 		let workarea = cx.read(|app| root.read(app).engine.read(app).workarea());
 		assert_eq!(
 			workarea,
@@ -3301,9 +3291,8 @@ mod tests {
 		// Move the playhead inside the first clip (the → shortcut steps one
 		// frame), then split with ⌘K: the mock sequence grows by one clip.
 		for _ in 0..10 {
-			cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("right").unwrap());
+			settle_key(cx, window.into(), "right");
 		}
-		cx.run_until_parked();
 		let playhead = cx.read(|app| root.read(app).program_clock.read(app).current_frame());
 		assert_eq!(playhead, Frame(10), "→ steps the playhead");
 
@@ -3314,11 +3303,7 @@ mod tests {
 				.map(|t| t.clips().len())
 				.sum()
 		});
-		cx.dispatch_keystroke(
-			window.into(),
-			gpui::Keystroke::parse("secondary-k").unwrap(),
-		);
-		cx.run_until_parked();
+		settle_key(cx, window.into(), "secondary-k");
 		let clips_after: usize = cx.read(|app| {
 			let engine = root.read(app).engine.read(app);
 			(0..engine.track_count())
@@ -3331,20 +3316,11 @@ mod tests {
 			"split at the playhead adds a clip ({clips_before} → {clips_after})"
 		);
 
-		// ⌘Z / ⌘⇧Z reach the engine's undo/redo (the mock counts the calls).
-		// One key per park, like every other assertion in this test — the
-		// two-keys-in-one-park variant intermittently lost the first
-		// binding hit on Windows CI (undo dispatched 0, redo 1).
-		cx.dispatch_keystroke(
-			window.into(),
-			gpui::Keystroke::parse("secondary-z").unwrap(),
-		);
-		cx.run_until_parked();
-		cx.dispatch_keystroke(
-			window.into(),
-			gpui::Keystroke::parse("secondary-shift-z").unwrap(),
-		);
-		cx.run_until_parked();
+		// ⌘Z / ⌘⇧Z reach the engine's undo/redo (the mock counts the
+		// calls). settle_key flushes the deferred binding dispatch that
+		// intermittently landed after the assert on Windows CI.
+		settle_key(cx, window.into(), "secondary-z");
+		settle_key(cx, window.into(), "secondary-shift-z");
 		let (undo, redo) = cx.read(|app| root.read(app).engine.read(app).undo_redo_calls());
 		assert!(
 			undo >= 1 && redo >= 1,
@@ -3912,6 +3888,19 @@ mod tests {
 	// -------------------------------------------------------------------
 	// Project manager (M13 D4)
 	// -------------------------------------------------------------------
+
+	/// Dispatch a synthetic keystroke and settle with a double park.
+	/// gpui's window key handling may defer the binding dispatch (its
+	/// pending/repeat machinery); parking twice drains the executor
+	/// across two idle cycles so a deferred delivery lands before the
+	/// assertion. Deliberately does NOT advance the simulated clock —
+	/// the mock engine's playback ticks with executor time, so a clock
+	/// advance would move the playhead out from under the assertions.
+	fn settle_key(cx: &mut TestAppContext, window: AnyWindowHandle, key: &str) {
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse(key).unwrap());
+		cx.run_until_parked();
+		cx.run_until_parked();
+	}
 
 	/// A running app shell on the mock engine (en-US), plus its root. The
 	/// caller holds the language lock (the tests flip the process-global
