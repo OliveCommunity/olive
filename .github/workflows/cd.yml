@@ -120,10 +120,9 @@ jobs:
       - name: Package
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
-          if [ "$VERSION" = "$GITHUB_REF_NAME" ]; then
-            VERSION="$(cargo pkgid | sed 's/.*#//' | cut -d@ -f2-)+git"
-          fi
+          # The release version lives in [workspace.package] of the root
+          # Cargo.toml (single source of truth; tags do not carry it).
+          VERSION=$(sed -n '/^\[workspace\.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
           case "${{ matrix.distro }}" in
             debian) tooling/package/build-deb.sh "$VERSION" ;;
             fedora) tooling/package/build-rpm.sh "$VERSION" ;;
@@ -274,6 +273,12 @@ jobs:
       - name: Package .app bundle
         run: cargo packager --release --formats app
 
+      # Pull the Homebrew dylibs the binaries reference into
+      # Contents/Frameworks and rewrite install names to
+      # @executable_path-relative (the script ad-hoc re-signs the bundle).
+      - name: Bundle dylibs into the .app
+        run: tooling/package/bundle-dylibs-macos.sh target/release/Oak.app
+
       - name: Create DMG
         run: |
           rm -rf dmg-staging
@@ -389,6 +394,17 @@ jobs:
           # build (they poison the MinGW compiles with MSVC SDK headers).
           unset INCLUDE LIB
           cargo build --release --locked
+
+      # Collect the MSYS2 runtime DLLs (libstdc++/libgcc/OpenColorIO/...)
+      # into target/pkg/win-dlls; the packager `resources` glob then
+      # installs them next to the executables.
+      - name: Bundle runtime DLLs
+        run: |
+          unset INCLUDE LIB
+          pacman -S --needed --noconfirm mingw-w64-ucrt-x86_64-ntldd
+          tooling/package/bundle-dylibs-windows.sh target/pkg/win-dlls \
+            target/release/oak-editor.exe target/release/oak-cli.exe \
+            target/release/oak-worker.exe
 
       - name: Package (NSIS)
         run: cargo packager --release --formats nsis

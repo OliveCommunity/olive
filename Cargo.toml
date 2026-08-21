@@ -40,6 +40,11 @@ exclude = ["gpui", "crates/oakengine.bk"]
 default-members = [".", "crates/oak-cli", "crates/oak-worker"]
 resolver = "2"
 
+[workspace.package]
+# Single source of truth for the release version: the root `oak` package
+# inherits it, and with it cargo-packager and the CD packaging scripts.
+version = "0.5.0"
+
 [profile.release]
 # FFI discipline: every module crate exports an `extern "C"` ABI whose
 # entry points must never unwind/abort across the boundary; panics are
@@ -51,7 +56,7 @@ panic = "unwind"
 
 [package]
 name = "oak"
-version = "0.5.0"
+version.workspace = true
 edition = "2021"
 description = "Oak Video Editor"
 license = "GPL-3.0-or-later"
@@ -156,7 +161,14 @@ category = "Video"
 icons = ["icons/icon.png"]
 # The UI string tables (language packs); users can drop extra
 # <lang>.yaml files into the installed i18n directory.
-resources = ["assets/i18n"]
+# The Windows DLL staging dir is filled by
+# tooling/package/bundle-dylibs-windows.sh before `cargo packager` runs
+# (NSIS/WiX place resources next to the executable, which is exactly
+# where Windows resolves DLLs from). Empty locally = no bundled DLLs.
+resources = [
+    "assets/i18n",
+    { src = "target/pkg/win-dlls/*.dll", target = "." },
+]
 binaries = [
     { path = "oak-editor", main = true },
     { path = "oak-cli", main = false },
