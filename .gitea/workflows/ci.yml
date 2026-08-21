@@ -189,7 +189,12 @@ jobs:
           # gpui/ is a git submodule; its crates are workspace members of
           # their own repo and build as path dependencies of oakapp.
           submodules: true
-
+      - name: debug-env
+        shell: powershell   # Windows Server 镜像原生自带，不依赖你装的任何东西
+        run: |
+          echo "PATH = $env:PATH"
+          Get-Command bash -ErrorAction SilentlyContinue
+          Get-Command msys2 -ErrorAction SilentlyContinue
       # ------------------------------------------------------------------
       # System dependencies
       # ------------------------------------------------------------------
