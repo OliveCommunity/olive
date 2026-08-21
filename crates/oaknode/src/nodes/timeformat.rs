@@ -82,6 +82,31 @@ extern "C" {
 	fn _gmtime64_s(result: *mut Tm, timep: *const i64) -> i32;
 }
 
+/// Split epoch seconds into calendar fields through the C library — local
+/// time when `local` is set, UTC otherwise (C++ `localtime_r`/`gmtime_r`).
+/// Shared by `value()` and its test so both stay on the same cfg-gated FFI.
+fn break_down_time(secs: c_long, local: bool) -> Tm {
+	let mut tm: Tm = unsafe { std::mem::zeroed() };
+	#[cfg(not(target_os = "windows"))]
+	unsafe {
+		if local {
+			localtime_r(&secs, &mut tm);
+		} else {
+			gmtime_r(&secs, &mut tm);
+		}
+	}
+	#[cfg(target_os = "windows")]
+	unsafe {
+		let secs64 = secs as i64;
+		if local {
+			_localtime64_s(&mut tm, &secs64);
+		} else {
+			_gmtime64_s(&mut tm, &secs64);
+		}
+	}
+	tm
+}
+
 /// Expand Qt date/time format tokens (`QDateTime::toString` syntax):
 /// the field tokens d/dd, M/MM, yy/yyyy, h/hh, H/HH, m/mm, s/ss, z/zz/zzz,
 /// AP/ap/A/a, and single-quoted literal sections, mirroring Qt's
@@ -295,24 +320,7 @@ impl NodeBehavior for TimeFormatNode {
 		let secs = (ms_since_epoch / 1000) as c_long;
 		let ms = (ms_since_epoch % 1000) as i32;
 
-		let mut tm: Tm = unsafe { std::mem::zeroed() };
-		#[cfg(not(target_os = "windows"))]
-		unsafe {
-			if to_bool(&local_val) {
-				localtime_r(&secs, &mut tm);
-			} else {
-				gmtime_r(&secs, &mut tm);
-			}
-		}
-		#[cfg(target_os = "windows")]
-		unsafe {
-			let secs64 = secs as i64;
-			if to_bool(&local_val) {
-				_localtime64_s(&mut tm, &secs64);
-			} else {
-				_gmtime64_s(&mut tm, &secs64);
-			}
-		}
+		let tm = break_down_time(secs, to_bool(&local_val));
 
 		let output = format_date_time(&tm, ms, &to_text(&format_val));
 		table.push(crate::value::ValueType::Text, NodeValue::Text(output), None);
@@ -547,15 +555,9 @@ mod tests {
 		// Expected values computed through the same C library calls the C++
 		// makes — this validates the routing (which function is called for
 		// each flag value), not the C library itself.
-		let mut secs: c_long = 45296;
-		let mut local: Tm = unsafe { std::mem::zeroed() };
-		unsafe {
-			localtime_r(&secs, &mut local);
-		}
-		let mut utc: Tm = unsafe { std::mem::zeroed() };
-		unsafe {
-			gmtime_r(&secs, &mut utc);
-		}
+		let secs: c_long = 45296;
+		let local = break_down_time(secs, true);
+		let utc = break_down_time(secs, false);
 		let local_expected = format!("{:04}", local.tm_year + 1900);
 		let utc_expected = format!("{:04}", utc.tm_year + 1900);
 		assert_eq!(utc_expected, "1970");

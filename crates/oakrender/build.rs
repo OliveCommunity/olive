@@ -19,16 +19,20 @@
 //! `-Wl,-export_dynamic` keeps the test binary's symbols in its dynamic
 //! symbol table — originally so the M12 P0 decode bridge could resolve
 //! the oakcodec C ABI with `dlsym(RTLD_DEFAULT)` (the decode bridge is a
-//! direct Rust call now, but the flag is harmless and still matches the
-//! root build.rs's app binary, M12 §0 / §5). The macOS framework flags
-//! below are the load-bearing part: the bundled OpenColorIO's system
-//! monitor references IOKit / ColorSync / CoreGraphics display APIs.
+//! direct Rust call now). It is spelled the macOS way and is therefore
+//! emitted on macOS only: on ELF platforms lld parses `-export_dynamic`
+//! as `-e xport_dynamic` and links a binary with NO entry point, which
+//! then dies with SIGSEGV inside ld.so at startup (Rust >= 1.90 links
+//! x86_64-unknown-linux-gnu with rust-lld by default). The macOS
+//! framework flags below are the load-bearing part: the bundled
+//! OpenColorIO's system monitor references IOKit / ColorSync /
+//! CoreGraphics display APIs.
 
 fn main() {
-	// Only the test binaries need this; the library itself links no
-	// dynamic symbols.
-	println!("cargo:rustc-link-arg-tests=-Wl,-export_dynamic");
 	if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("macos") {
+		// Only the test binaries need this; the library itself links no
+		// dynamic symbols. (macOS-only — see the module comment.)
+		println!("cargo:rustc-link-arg-tests=-Wl,-export_dynamic");
 		// The bundled OpenColorIO's macos system monitor references
 		// IOKit / ColorSync / CoreGraphics display APIs; the engine
 		// dylib links with `-undefined,dynamic_lookup`, so test binaries
