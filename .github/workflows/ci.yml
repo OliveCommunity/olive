@@ -207,7 +207,12 @@ jobs:
         run: xvfb-run -a -s "-screen 0 1920x1080x24" cargo test --workspace --locked
 
       # A crashing (SIGSEGV) test gives no Rust backtrace; rerun the
-      # plugin test binaries under gdb to capture the native stack.
+      # crashing test binaries under gdb to capture the native stack.
+      # `--args` is required — plain `--` makes gdb treat the test args as
+      # a core file. The extra probes target loader-stage crashes (the
+      # copier_test SIGSEGV happens inside ld.so's dl_main): how many
+      # IRELATIVE (ifunc) relocs the binary has, and what the loader was
+      # doing when it died (LD_DEBUG tail).
       - name: Backtrace on test failure (Linux)
         if: failure()
         run: |
@@ -215,7 +220,16 @@ jobs:
           for name in node_e2e_test suites_test copier_test; do
             BIN=$(ls -t target/debug/deps/$name-* | grep -v '\.d$' | head -1)
             [ -n "$BIN" ] || continue
-            xvfb-run -a gdb -batch -ex run -ex bt -- "$BIN" --nocapture || true
+            echo "===== $BIN ====="
+            file "$BIN" || true
+            echo "IRELATIVE relocs: $(readelf -rW "$BIN" 2>/dev/null | grep -c IRELATIVE)"
+            LD_DEBUG=files,reloc "$BIN" --list 2>&1 | tail -30 || true
+            xvfb-run -a gdb -batch \
+              -ex run \
+              -ex 'bt full' \
+              -ex 'info registers rip rsp rbp' \
+              -ex 'x/6i $rip' \
+              --args "$BIN" --nocapture || true
           done
 
       - name: Test (macOS)
