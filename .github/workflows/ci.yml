@@ -212,7 +212,7 @@ jobs:
         if: failure()
         run: |
           sudo apt-get install -y gdb
-          for name in node_e2e_test suites_test; do
+          for name in node_e2e_test suites_test copier_test; do
             BIN=$(ls -t target/debug/deps/$name-* | grep -v '\.d$' | head -1)
             [ -n "$BIN" ] || continue
             xvfb-run -a gdb -batch -ex run -ex bt -- "$BIN" --nocapture || true

@@ -76,8 +76,10 @@ extern "C" {
 }
 #[cfg(target_os = "windows")]
 extern "C" {
-	fn localtime_s(result: *mut Tm, timep: *const i64) -> i32;
-	fn gmtime_s(result: *mut Tm, timep: *const i64) -> i32;
+	// UCRT exports the 64-bit-time variants; `localtime_s`/`gmtime_s` are
+	// header inlines on MinGW, not linkable symbols.
+	fn _localtime64_s(result: *mut Tm, timep: *const i64) -> i32;
+	fn _gmtime64_s(result: *mut Tm, timep: *const i64) -> i32;
 }
 
 /// Expand Qt date/time format tokens (`QDateTime::toString` syntax):
@@ -306,9 +308,9 @@ impl NodeBehavior for TimeFormatNode {
 		unsafe {
 			let secs64 = secs as i64;
 			if to_bool(&local_val) {
-				localtime_s(&mut tm, &secs64);
+				_localtime64_s(&mut tm, &secs64);
 			} else {
-				gmtime_s(&mut tm, &secs64);
+				_gmtime64_s(&mut tm, &secs64);
 			}
 		}
 
