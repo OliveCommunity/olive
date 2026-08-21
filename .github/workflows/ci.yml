@@ -198,6 +198,12 @@ jobs:
           # step; clear them in-step (they poison the MinGW compiles with
           # MSVC SDK headers).
           unset INCLUDE LIB
+          # mingw-w64 >= Nov 2025 forwards _assert to __msvcrt_assert inside
+          # libmingwex.a; rustc's link order puts -lmingwex last, so any
+          # binary that pulls _assert.o leaves _fileno/_setmode/
+          # __imp___msvcrt_assert unresolved. A trailing -lmsvcrt re-scans
+          # the CRT import lib after libmingwex.
+          export RUSTFLAGS="-C link-args=-lmsvcrt"
           cargo build --workspace --locked
 
       # xvfb + 24-bit screen: the gpui #[gpui::test] tests open real windows
@@ -210,24 +216,31 @@ jobs:
       # crashing test binaries under gdb to capture the native stack.
       # `--args` is required — plain `--` makes gdb treat the test args as
       # a core file. The extra probes target loader-stage crashes (the
-      # copier_test SIGSEGV happens inside ld.so's dl_main): how many
-      # IRELATIVE (ifunc) relocs the binary has, and what the loader was
-      # doing when it died (LD_DEBUG tail).
+      # copier_test SIGSEGV happens inside ld.so's dl_main): si_addr/si_code
+      # pin down the fault type, the dynsym dump exposes symbols the
+      # executable exports for interposition, strace shows the last loader
+      # syscalls, and valgrind catches a corrupting static initializer.
       - name: Backtrace on test failure (Linux)
         if: failure()
         run: |
-          sudo apt-get install -y gdb
+          sudo apt-get install -y gdb strace valgrind
           for name in node_e2e_test suites_test copier_test; do
             BIN=$(ls -t target/debug/deps/$name-* | grep -v '\.d$' | head -1)
             [ -n "$BIN" ] || continue
             echo "===== $BIN ====="
             file "$BIN" || true
-            echo "IRELATIVE relocs: $(readelf -rW "$BIN" 2>/dev/null | grep -c IRELATIVE)"
-            LD_DEBUG=files,reloc "$BIN" --list 2>&1 | tail -30 || true
+            echo "--- exported defined dynsyms:"
+            readelf --dyn-syms -W "$BIN" 2>/dev/null | grep -v ' UND ' | tail -n +4 | head -30 || true
+            echo "--- strace tail:"
+            strace -f "$BIN" --list 2>&1 | tail -15 || true
+            echo "--- valgrind tail:"
+            valgrind -q "$BIN" --list 2>&1 | tail -25 || true
+            echo "--- gdb:"
             xvfb-run -a gdb -batch \
               -ex run \
-              -ex 'bt full' \
-              -ex 'info registers rip rsp rbp' \
+              -ex 'bt' \
+              -ex 'p $_siginfo.si_code' \
+              -ex 'p/x $_siginfo._sifields._sigfault.si_addr' \
               -ex 'x/6i $rip' \
               --args "$BIN" --nocapture || true
           done
@@ -241,6 +254,9 @@ jobs:
         shell: msys2 {0}
         run: |
           unset INCLUDE LIB
+          # See Build (Windows): trailing -lmsvcrt for the mingw-w64
+          # _assert/__msvcrt_assert link-order breakage.
+          export RUSTFLAGS="-C link-args=-lmsvcrt"
           cargo test --workspace --locked
 
       # ------------------------------------------------------------------

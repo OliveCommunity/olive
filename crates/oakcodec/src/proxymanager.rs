@@ -657,7 +657,10 @@ mod tests {
 		let found = ProxyManager::find_ffmpeg("/definitely/not/a/real/ffmpeg");
 		// Either an absolute configured/installed match or empty; never a raw
 		// unresolved path.
-		assert!(found.is_empty() || found.starts_with('/'));
+		assert!(
+			found.is_empty() || std::path::Path::new(&found).is_absolute(),
+			"found: {found}"
+		);
 	}
 
 	/// `oakcodec_proxy_params` byte-level layout lock against
@@ -683,6 +686,9 @@ mod tests {
 mod tests_extra {
 	use super::*;
 
+	/// Unix-only: builds a fake `ffmpeg` shell script with a mode-0755
+	/// chmod; Windows has no permission bits and searches for `ffmpeg.exe`.
+	#[cfg(unix)]
 	#[test]
 	fn find_ffmpeg_searches_path() {
 		// Create a fake executable in a temp dir and prepend it to PATH.
