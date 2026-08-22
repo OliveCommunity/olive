@@ -14,19 +14,86 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! The shared context-menu segments: the Rust counterpart of the C++
-//! `MenuShared` item groups (`add_items_for_edit_menu`,
-//! `add_items_for_clip_edit_menu`, `add_items_for_in_out_menu`,
-//! `add_items_for_new_menu` and the `ColorLabelMenu`,
-//! `app/widget/menu/menushared.cpp` + `app/widget/colorlabelmenu/`).
+//! The app's menu component: the menu bar and the context menus.
 //!
-//! Registry-backed items are built from [`crate::actions`] exactly like the
-//! menu bar, so ids, labels and shortcut annotations can never diverge.
-//! Local (non-registry) items — the 16 color labels today — live at
-//! [`LOCAL_ID_BASE`] and above; [`crate::actions::entry_for_menu_id`] is
-//! what splits the two worlds at dispatch time.
+//! All app menu code lives here instead of reaching into gpui_widgets
+//! directly: the rendering-engine types are re-exported
+//! ([`Menu`], [`MenuItem`], [`MenuBar`], …), the shared context-menu
+//! plumbing ([`ContextMenuHandle`], [`ContextMenuTriggered`]) and the
+//! shared menu segments (edit / clip-edit / in-out / color label / new,
+//! plus the viewer context menu) are built from the action registry
+//! ([`crate::actions`]) exactly like the menu bar, so ids, labels and
+//! shortcut annotations can never diverge.
+//!
+//! Local (non-registry) items — the color labels and the dynamic
+//! language items — live at [`LOCAL_ID_BASE`] and above;
+//! [`crate::actions::entry_for_menu_id`] splits the two worlds at
+//! dispatch time.
 
-use gpui_widgets::menu::{Menu, MenuItem};
+pub use gpui_widgets::menu::{
+	ContextMenu, ContextMenuEvent, Menu, MenuBar, MenuBarEntry, MenuBarEvent, MenuItem,
+};
+
+// ---------------------------------------------------------------------------
+// Context-menu plumbing
+// ---------------------------------------------------------------------------
+
+use gpui::{App, AppContext, Context, Entity, EventEmitter, Pixels, Point, Window};
+/// A registry-backed context-menu item was triggered: the panel re-emits it
+/// so the app shell dispatches it like a menu-bar click (after pointing
+/// `focused_panel` at the panel, since a right-click does not emit
+/// `PanelEvent::Focused`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContextMenuTriggered {
+	/// The triggered item's id (an action registry menu id).
+	pub item: usize,
+}
+
+/// A panel's context menu: owns the popup entity, re-emits registry items as
+/// [`ContextMenuTriggered`] and hands local items to the panel.
+pub struct ContextMenuHandle {
+	menu: Entity<ContextMenu>,
+}
+
+impl ContextMenuHandle {
+	/// Create the popup entity and subscribe to it. `on_local_item` handles
+	/// every triggered item that is not in the action registry (color
+	/// labels, panel-specific placeholders, …).
+	pub fn new<P, F>(on_local_item: F, window: &mut Window, cx: &mut Context<P>) -> Self
+	where
+		P: EventEmitter<ContextMenuTriggered>,
+		F: Fn(&mut P, usize, &mut Context<P>) + 'static,
+	{
+		let menu = cx.new(|cx| ContextMenu::new(0, window, cx));
+		cx.subscribe(
+			&menu,
+			move |panel: &mut P, _menu, event: &ContextMenuEvent, cx| {
+				if crate::actions::entry_for_menu_id(event.item).is_some() {
+					cx.emit(ContextMenuTriggered { item: event.item });
+				} else {
+					on_local_item(panel, event.item, cx);
+				}
+			},
+		)
+		.detach();
+		Self { menu }
+	}
+
+	/// Open the menu at `position` (window coordinates).
+	pub fn show(&self, position: Point<Pixels>, menu: Menu, cx: &mut App) {
+		self.menu.update(cx, |menu_view, cx| menu_view.show(position, menu, cx));
+	}
+
+	/// The popup entity, to be rendered as a child of the panel so the
+	/// anchored popup can paint above it.
+	pub fn widget(&self) -> Entity<ContextMenu> {
+		self.menu.clone()
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Shared menu segments
+// ---------------------------------------------------------------------------
 
 use crate::actions::ActionId;
 

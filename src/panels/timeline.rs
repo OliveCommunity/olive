@@ -50,7 +50,7 @@ use gpui::{
 };
 use gpui::{AnyElement, App, ClickEvent, DragMoveEvent, EventEmitter, Render, SharedString};
 use gpui_widgets::checkbox::{CheckBox, CheckBoxEvent, CheckState};
-use gpui_widgets::menu::{Menu, MenuItem};
+use crate::oakui::component::menu::{Menu, MenuItem};
 use gpui_widgets::viewer::PlaybackClock;
 use gpui_widgets::project_explorer::FootageDrag;
 use gpui_widgets::slider::{Slider, SliderEvent, SliderModel};
@@ -59,8 +59,8 @@ use gpui_widgets::value::ValueKind;
 
 use crate::actions::ActionId;
 use crate::i18n;
-use crate::menus::context::{ContextMenuHandle, ContextMenuTriggered};
-use crate::menus::shared;
+use crate::oakui::component::menu::{ContextMenuHandle, ContextMenuTriggered};
+use crate::oakui::component::menu;
 use crate::oakui::icons;
 use crate::oakui::{AppEngine, Monitor};
 use crate::panels::commands::{self as panel_commands, PanelCommandHandler};
@@ -269,7 +269,7 @@ impl<E: AppEngine> TimelinePanel<E> {
 		// Color labels apply to the selected clips; the engine has no
 		// clip-color surface yet, so they log for now (kept visible so the
 		// wiring is testable in the demo).
-		if let Some(color) = shared::color_label_index(item) {
+		if let Some(color) = menu::color_label_index(item) {
 			println!("[timeline] set clip color label to {color}");
 			return;
 		}
@@ -1078,29 +1078,29 @@ pub(crate) fn clip_menu(
 	proxy: &[crate::oakui::engine::ProxyFootageRow],
 	multicam: Option<MulticamMenuState>,
 ) -> Menu {
-	let mut items = shared::edit_section(true);
+	let mut items = menu::edit_section(true);
 	// The C++ puts a separator between the edit section and the color
 	// labels, and another after them.
 	if let Some(last) = items.last_mut() {
 		last.separator_after = true;
 	}
-	items.push(shared::color_label_item(None).separated());
+	items.push(menu::color_label_item(None).separated());
 	// Synchronize group (registry actions; enabled at ≥ 2 eligible clips,
 	// the C++ `get_selected_source_sync_clips` / `_waveform_sync_clips`
 	// counts).
 	let sync_enabled = sync.source_time >= 2;
 	let wave_enabled = sync.waveform >= 2;
-	let mut source_time = shared::action_item(ActionId::SyncBySourceTime);
+	let mut source_time = menu::action_item(ActionId::SyncBySourceTime);
 	if !sync_enabled {
 		source_time = source_time.disabled();
 	}
 	items.push(source_time);
-	let mut waveform = shared::action_item(ActionId::SyncByWaveform);
+	let mut waveform = menu::action_item(ActionId::SyncByWaveform);
 	if !wave_enabled {
 		waveform = waveform.disabled();
 	}
 	items.push(waveform);
-	let mut waveform_speed = shared::action_item(ActionId::SyncByWaveformSpeed).separated();
+	let mut waveform_speed = menu::action_item(ActionId::SyncByWaveformSpeed).separated();
 	if !wave_enabled {
 		waveform_speed = waveform_speed.disabled();
 	}
@@ -1144,7 +1144,7 @@ pub(crate) fn clip_menu(
 		use_proxy,
 		reveal,
 		delete,
-		shared::action_item(ActionId::ProxySettings).separated(),
+		menu::action_item(ActionId::ProxySettings).separated(),
 	]);
 	items.push(MenuItem::new(0, i18n::tr("timeline.context.proxy")).with_submenu(proxy_menu));
 	// Reveal / multi-cam entries (the C++ shows them only when the clip is
@@ -1218,8 +1218,8 @@ pub(crate) fn track_head_menu() -> Menu {
 /// The marker context menu (`SeekableWidget`): color labels, the plain
 /// edit section and marker properties.
 pub(crate) fn marker_menu() -> Menu {
-	let mut items = vec![shared::color_label_item(None).separated()];
-	let mut edit_items = shared::edit_section(false);
+	let mut items = vec![menu::color_label_item(None).separated()];
+	let mut edit_items = menu::edit_section(false);
 	// Separator before the trailing "Properties" entry (the C++ layout).
 	if let Some(last) = edit_items.last_mut() {
 		last.separator_after = true;
@@ -1418,7 +1418,7 @@ mod tests {
 			.expect("color label item");
 		assert_eq!(
 			color.submenu.as_ref().unwrap().items.len(),
-			shared::COLOR_LABEL_COUNT
+			menu::COLOR_LABEL_COUNT
 		);
 
 		// The synchronize entries are the registry actions and stay

@@ -37,10 +37,10 @@ use gpui::{
 	div, point, prelude::*, px, AnyElement, App, Bounds, ClickEvent, Context, Entity,
 	EventEmitter, MouseButton, Pixels, Point, Render, SharedString, Window,
 };
-use gpui_widgets::menu::{Menu, MenuItem};
+use crate::oakui::component::menu::{Menu, MenuItem};
 
-use crate::menus::context::{ContextMenuHandle, ContextMenuTriggered};
-use crate::menus::shared;
+use crate::oakui::component::menu::{ContextMenuHandle, ContextMenuTriggered};
+use crate::oakui::component::menu;
 use crate::oakui::{AppEngine, NodeLibraryEntry};
 use crate::panels::commands::PanelCommandHandler;
 use crate::panels::ids::NODE_EDITOR;
@@ -156,7 +156,7 @@ impl<E: AppEngine> NodeEditorPanel<E> {
 
 	/// Handles the node editor's local (non-registry) context-menu items.
 	fn on_local_menu_item(&mut self, item: usize, cx: &mut Context<Self>) {
-		if let Some(color) = shared::color_label_index(item) {
+		if let Some(color) = menu::color_label_index(item) {
 			println!("[node editor] set node color label to {color}");
 			return;
 		}
@@ -442,13 +442,13 @@ const LOCAL_ADD_NODE_BASE: usize = 2420;
 /// viewer/parameter-editor reveals and properties (the C++ node branch).
 pub(crate) fn node_menu() -> Menu {
 	use crate::i18n::tr;
-	let mut items = shared::edit_section(false);
+	let mut items = menu::edit_section(false);
 	if let Some(last) = items.last_mut() {
 		last.separator_after = true;
 	}
 	items.push(MenuItem::new(LOCAL_GROUP, tr("node.context.group")));
 	items.push(MenuItem::new(LOCAL_UNGROUP, tr("node.context.ungroup")));
-	items.push(shared::color_label_item(None).separated());
+	items.push(menu::color_label_item(None).separated());
 	items.push(MenuItem::new(LOCAL_OPEN_IN_VIEWER, tr("node.context.open_in_viewer")));
 	items.push(MenuItem::new(
 		LOCAL_SHOW_IN_PARAM_EDITOR,

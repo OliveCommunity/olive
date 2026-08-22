@@ -27,7 +27,7 @@ use gpui::{
 	div, prelude::*, px, AnyElement, App, Context, ElementId, Entity, EventEmitter, MouseButton,
 	MouseDownEvent, Render, SharedString, Window,
 };
-use gpui_widgets::menu::{ContextMenu, ContextMenuEvent, Menu, MenuItem};
+use crate::oakui::component::menu::{ContextMenu, ContextMenuEvent, Menu, MenuItem};
 
 use crate::oakui::AppEngine;
 use crate::panels::commands::PanelCommandHandler;

@@ -53,7 +53,8 @@ use gpui::{
 use gpui_widgets::audio_meter::{AudioLevelMeter, MeterOrientation};
 use gpui_widgets::dialog::progress::{progress_dialog, ProgressContent};
 use gpui_widgets::dialog::{DialogButton, Modal, ModalEvent, ModalOptions};
-use gpui_widgets::menu::{Menu, MenuBar, MenuBarEntry, MenuBarEvent, MenuItem};
+use crate::oakui::component::menu::{self, Menu, MenuBar, MenuBarEntry, MenuBarEvent, MenuItem};
+use crate::oakui::component::text_input::install_text_input_bindings;
 use gpui_widgets::theme::{apply_theme, OakTheme};
 use gpui_widgets::viewer::PlaybackClock;
 
@@ -417,6 +418,10 @@ impl<E: AppEngine> OakApp<E> {
 		// the shell's `on_action` listeners — the same path the menu clicks
 		// take through `on_menu`.
 		cx.bind_keys(crate::actions::key_bindings());
+		// The text-input editing keys (Backspace/Delete/arrows/Home/End/
+		// select-all …) are scoped to the `EditableText` key context; without
+		// them every field accepts IME text but ignores its editing keys.
+		install_text_input_bindings(cx);
 
 		// --- dock ----------------------------------------------------------
 		let dock = cx.new(|cx| {
@@ -763,7 +768,7 @@ impl<E: AppEngine> OakApp<E> {
 	/// through the same path the keyboard shortcuts use, so a menu click
 	/// and a key press can never diverge.
 	fn on_menu(&mut self, item: usize, cx: &mut Context<Self>) {
-		if let Some(index) = crate::menus::shared::language_item_index(item) {
+		if let Some(index) = menu::language_item_index(item) {
 			let languages = crate::i18n::available_languages();
 			if let Some(code) = languages.get(index) {
 				let code = code.clone();
@@ -784,11 +789,11 @@ impl<E: AppEngine> OakApp<E> {
 	/// `PanelEvent::Focused`).
 	fn wire_panel_context_menu<P>(cx: &mut Context<Self>, panel: &Entity<P>, id: PanelId)
 	where
-		P: gpui::EventEmitter<crate::menus::context::ContextMenuTriggered>,
+		P: gpui::EventEmitter<menu::ContextMenuTriggered>,
 	{
 		cx.subscribe(
 			panel,
-			move |this, _panel, event: &crate::menus::context::ContextMenuTriggered, cx| {
+			move |this, _panel, event: &menu::ContextMenuTriggered, cx| {
 				this.focused_panel = Some(id);
 				this.on_menu(event.item, cx);
 			},
@@ -2346,10 +2351,10 @@ impl MenuState {
 }
 
 /// One menu item straight from the registry — delegates to
-/// [`menus::shared::action_item`](crate::menus::shared::action_item) so the
+/// [`menu::action_item`](menu::action_item) so the
 /// menu bar and the context menus build items the same way.
 fn menu_item(action: ActionId) -> MenuItem {
-	crate::menus::shared::action_item(action)
+	menu::action_item(action)
 }
 
 /// Builds the menu bar entries (文件/编辑/视图/回放/序列/窗口/工具/帮助) from
@@ -2478,7 +2483,7 @@ fn make_menus(state: MenuState) -> Vec<MenuBarEntry> {
 			tr("menu.view"),
 			Menu::new(vec![
 				menu_item(A::ThemeDark).with_submenu(theme_submenu),
-				crate::menus::shared::language_menu(),
+				menu::language_menu(),
 				menu_item(A::ZoomIn).separated(),
 				menu_item(A::ZoomOut),
 				menu_item(A::IncreaseTrackHeight),
@@ -2786,12 +2791,12 @@ mod tests {
 		let zh = submenu
 			.items
 			.iter()
-			.find(|i| i.id == crate::menus::shared::LANG_ITEM_BASE + zh_index)
+			.find(|i| i.id == menu::LANG_ITEM_BASE + zh_index)
 			.expect("zh item");
 		let en = submenu
 			.items
 			.iter()
-			.find(|i| i.id == crate::menus::shared::LANG_ITEM_BASE + en_index)
+			.find(|i| i.id == menu::LANG_ITEM_BASE + en_index)
 			.expect("en item");
 		assert_eq!(zh.label, "简体中文 (zh-CN)");
 		assert_eq!(en.label, "English (en-US)");
@@ -2803,12 +2808,12 @@ mod tests {
 		let zh = submenu
 			.items
 			.iter()
-			.find(|i| i.id == crate::menus::shared::LANG_ITEM_BASE + zh_index)
+			.find(|i| i.id == menu::LANG_ITEM_BASE + zh_index)
 			.expect("zh item");
 		let en = submenu
 			.items
 			.iter()
-			.find(|i| i.id == crate::menus::shared::LANG_ITEM_BASE + en_index)
+			.find(|i| i.id == menu::LANG_ITEM_BASE + en_index)
 			.expect("en item");
 		assert_eq!(zh.checked, Some(true), "zh-CN is active → checked");
 		assert_eq!(en.checked, Some(false));
@@ -2826,7 +2831,7 @@ mod tests {
 		
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 
-		let dark_item = |dark: bool| -> gpui_widgets::menu::MenuItem {
+		let dark_item = |dark: bool| -> menu::MenuItem {
 			let entries = make_menus(MenuState::new(dark));
 			let view = entries
 				.iter()

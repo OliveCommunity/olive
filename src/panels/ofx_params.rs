@@ -42,6 +42,7 @@
 //! the widget values from the engine snapshot on every render.
 
 use std::sync::Arc;
+use crate::oakui::component::text_input;
 
 use gpui::effect_stack::EffectId;
 use gpui::colors::DefaultColors;
@@ -53,7 +54,7 @@ use gpui::{
 	Anchor, App, Bounds, ElementId, Hsla, KeyDownEvent, MouseButton, MouseDownEvent, MouseUpEvent,
 	Point, Pixels, Rgba, anchored, canvas, deferred, fill,
 };
-use gpui_elements::editable_text::{text_input, EditableTextState, StringStorage};
+use gpui_elements::editable_text::{EditableTextState, StringStorage};
 use gpui_widgets::checkbox::{CheckBox, CheckBoxEvent, CheckState};
 use gpui_widgets::combo_box::{ComboBox, ComboBoxEvent, ComboBoxOption};
 use gpui_widgets::slider::{Slider, SliderEvent, SliderModel};
@@ -912,7 +913,7 @@ impl<E: AppEngine> Render for OfxParamsView<E> {
 									.bg(colors.background)
 									.px_2()
 									.py_1()
-									.child(text_input(format!("ofx-param-{}", control.input_id)).state(weak).accepts_input(true)),
+									.child(text_input(format!("ofx-param-{}", control.input_id), cx).state(weak).accepts_input(true)),
 							)
 							.child(
 								// Explicit commit: reads the field and pushes the
@@ -1267,7 +1268,7 @@ impl OfxColorPicker {
 					.px_2()
 					.py_1()
 					.child(
-						text_input(format!("ofx-color-hex-{control}"))
+						text_input(format!("ofx-color-hex-{control}"), cx)
 							.state(hex_weak)
 							.accepts_input(true),
 					),

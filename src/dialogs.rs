@@ -31,12 +31,13 @@ use gpui::{
 	div, px, App, Context, ElementId, Entity, EventEmitter, Focusable, FocusHandle, Keystroke,
 	PathPromptOptions, Render, SharedString, Window,
 };
-use gpui_elements::editable_text::{text_input, EditableTextState, StringStorage, TextChanged};
+use gpui_elements::editable_text::{EditableTextState, StringStorage, TextChanged};
 use gpui_widgets::checkbox::{CheckBox, CheckBoxEvent, CheckState};
 use gpui_widgets::combo_box::{ComboBox, ComboBoxEvent, ComboBoxOption};
 use gpui_widgets::slider::SliderModel;
 use gpui_widgets::spinbox::{SpinBox, SpinBoxEvent};
 use gpui_widgets::value::ValueKind;
+use crate::oakui::component::text_input;
 
 use crate::actions::ActionId;
 use crate::i18n;
@@ -748,7 +749,7 @@ impl Render for PathField {
 			.px_2()
 			.py_1()
 			.child(
-				text_input("gpui-widgets-export-path")
+				text_input("gpui-widgets-export-path", cx)
 					.state(weak)
 					.accepts_input(true),
 			)
@@ -1720,7 +1721,7 @@ impl Render for KeyboardTabContent {
 			.bg(colors.background)
 			.px_2()
 			.py_1()
-			.child(text_input("keyboard-search-input").state(weak).accepts_input(true));
+			.child(text_input("keyboard-search-input", cx).state(weak).accepts_input(true));
 
 		// The grouped, filtered action list.
 		let mut list = div()
@@ -2221,7 +2222,7 @@ impl Render for ActionSearchContent {
 					.bg(colors.background)
 					.px_2()
 					.py_1()
-					.child(text_input("action-search-input").state(weak).accepts_input(true)),
+					.child(text_input("action-search-input", cx).state(weak).accepts_input(true)),
 			)
 			.child(list)
 	}

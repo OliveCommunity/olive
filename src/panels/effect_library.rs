@@ -26,7 +26,8 @@ use gpui::{
 	div, prelude::*, AnyElement, App, ClickEvent, Context, Entity, EventEmitter, MouseButton,
 	Render, SharedString, Window,
 };
-use gpui_elements::editable_text::{text_input, EditableTextState, StringStorage, TextChanged};
+use gpui_elements::editable_text::{EditableTextState, StringStorage, TextChanged};
+use crate::oakui::component::text_input;
 
 use crate::i18n;
 use crate::oakui::AppEngine;
@@ -162,7 +163,7 @@ impl<E: AppEngine> Render for EffectLibraryPanel<E> {
 					.border_b_1()
 					.border_color(colors.border)
 					.child(
-						text_input("effect-library-search")
+						text_input("effect-library-search", cx)
 							.state(self.search.downgrade())
 							.accepts_input(true),
 					),

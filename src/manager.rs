@@ -36,7 +36,8 @@ use gpui::{
 	div, App, ClickEvent, Context, ElementId, Entity, EventEmitter, Hsla, Render, SharedString,
 	Window,
 };
-use gpui_elements::editable_text::{text_input, EditableTextState, StringStorage};
+use gpui_elements::editable_text::{EditableTextState, StringStorage};
+use crate::oakui::component::text_input;
 
 use crate::i18n;
 use crate::oakui::{AppEngine, LibraryProject};
@@ -438,7 +439,7 @@ impl Render for NamePrompt {
 					.px_2()
 					.py_1()
 					.child(
-						text_input("gpui-widgets-rename-field")
+						text_input("gpui-widgets-rename-field", cx)
 							.state(weak)
 							.accepts_input(true),
 					),

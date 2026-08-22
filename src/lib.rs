@@ -61,7 +61,6 @@ pub mod app;
 pub mod dialogs;
 pub mod i18n;
 pub mod manager;
-pub mod menus;
 pub mod oakui;
 pub mod panels;
 

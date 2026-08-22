@@ -25,12 +25,12 @@ use gpui::{
 	div, px, prelude::*, AnyElement, App, Context, Entity, EventEmitter, MouseButton,
 	PathPromptOptions, Pixels, Point, Render, SharedString, Window,
 };
-use gpui_widgets::menu::{Menu, MenuItem};
+use crate::oakui::component::menu::{Menu, MenuItem};
 use gpui_widgets::project_explorer::{ProjectExplorer, ProjectExplorerEvent};
 
 use crate::actions::ActionId;
-use crate::menus::context::{ContextMenuHandle, ContextMenuTriggered};
-use crate::menus::shared;
+use crate::oakui::component::menu::{ContextMenuHandle, ContextMenuTriggered};
+use crate::oakui::component::menu;
 use crate::oakui::AppEngine;
 use crate::panels::commands::PanelCommandHandler;
 use crate::panels::ids::PROJECT;
@@ -311,7 +311,7 @@ fn proxy_submenu(row: Option<&crate::oakui::engine::ProxyFootageRow>) -> Menu {
 		use_proxy,
 		reveal,
 		delete,
-		shared::action_item(ActionId::ProxySettings).separated(),
+		menu::action_item(ActionId::ProxySettings).separated(),
 	])
 }
 
@@ -319,8 +319,8 @@ fn proxy_submenu(row: Option<&crate::oakui::engine::ProxyFootageRow>) -> Menu {
 pub(crate) fn blank_menu() -> Menu {
 	Menu::new(vec![
 		MenuItem::new(0, crate::i18n::tr("project.context.new"))
-			.with_submenu(Menu::new(shared::new_section())),
-		shared::action_item(ActionId::Import),
+			.with_submenu(Menu::new(menu::new_section())),
+		menu::action_item(ActionId::Import),
 	])
 }
 

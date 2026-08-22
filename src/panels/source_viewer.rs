@@ -26,7 +26,8 @@ use gpui::{
 use gpui_widgets::viewer::{ViewerEvent, ViewerWidget};
 
 use crate::actions::ActionId;
-use crate::menus::context::{ContextMenuHandle, ContextMenuTriggered};
+use crate::oakui::component::menu;
+use crate::oakui::component::menu::{ContextMenuHandle, ContextMenuTriggered};
 use crate::oakui::timecode::{format_fps, format_resolution};
 use crate::oakui::{AppEngine, Monitor};
 use crate::panels::commands::{self as panel_commands, PanelCommandHandler};
@@ -86,7 +87,7 @@ impl<E: AppEngine> SourceViewerPanel<E> {
 
 	/// Handles the viewer's local (non-registry) context-menu items.
 	fn on_local_menu_item(&mut self, item: usize, cx: &mut Context<Self>) {
-		use crate::menus::shared as shared_menu;
+		use crate::oakui::component::menu as shared_menu;
 		let divider = match item {
 			shared_menu::LOCAL_VIEWER_RES_FULL => Some(1),
 			shared_menu::LOCAL_VIEWER_RES_HALF => Some(2),
@@ -161,7 +162,7 @@ impl<E: AppEngine> Render for SourceViewerPanel<E> {
 					let divider = this.engine.read(cx).playback_divider();
 					this.context_menu.show(
 						event.position,
-						crate::menus::shared::viewer_menu(divider),
+						menu::viewer_menu(divider),
 						cx,
 					);
 				})

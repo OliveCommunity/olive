@@ -826,7 +826,8 @@ mod tests {
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
 
-		fn collect(menu: &gpui_widgets::menu::Menu, out: &mut Vec<usize>) {
+		use crate::oakui::component::menu;
+		fn collect(menu: &menu::Menu, out: &mut Vec<usize>) {
 			for item in &menu.items {
 				out.push(item.id);
 				if let Some(sub) = &item.submenu {
