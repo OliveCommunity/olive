@@ -11,3 +11,9 @@
 # Windows checkouts too (text=auto would hand out CRLF there).
 *.json     text eol=lf
 *.ove      text eol=lf
+
+# Workflow manifests: a CRLF ci.yml turns every step command into
+# "cmd\r", and bash then cannot find the referenced scripts on the
+# Windows runner ("No such file or directory").
+*.yml      text eol=lf
+*.yaml     text eol=lf
