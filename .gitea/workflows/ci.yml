@@ -183,6 +183,12 @@ jobs:
     name: Build & test (Windows)
     runs-on: oak-windows-2025
     steps:
+      - name: debug-env
+        shell: powershell   # Windows Server 镜像原生自带，不依赖你装的任何东西
+        run: |
+          echo "PATH = $env:PATH"
+          Get-Command bash -ErrorAction SilentlyContinue
+          Get-Command msys2 -ErrorAction SilentlyContinue
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -190,7 +196,7 @@ jobs:
           # their own repo and build as path dependencies of oakapp.
           submodules: true
       - name: debug-env
-        shell: powershell   # Windows Server 镜像原生自带，不依赖你装的任何东西
+        shell: cmd   # Windows Server 镜像原生自带，不依赖你装的任何东西
         run: |
           echo "PATH = $env:PATH"
           Get-Command bash -ErrorAction SilentlyContinue
