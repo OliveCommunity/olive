@@ -6925,7 +6925,15 @@ mod tests {
 		});
 
 		cx.update(|app| engine.update(app, |engine, cx| engine.play(Monitor::Program, cx)));
-		let deadline = std::time::Instant::now() + Duration::from_secs(30);
+		// Track-the-playhead smoke test. The loop's progress criterion is
+		// the playback clock itself, NOT wall time: the transport advances
+		// independently of render speed, so the loop always terminates
+		// after ~5 s of playback regardless of how fast the machine is.
+		// The assertion is the only judgment: once playback has progressed,
+		// the displayed frame must have tracked the playhead. A wall-clock
+		// deadline here would fail the test for machine slowness rather
+		// than for a broken pipeline — exactly the spurious failures we
+		// are avoiding.
 		let mut last_displayed = -1i64;
 		loop {
 			cx.update(|app| engine.update(app, |engine, cx| engine.tick(cx)));
@@ -6949,13 +6957,15 @@ mod tests {
 				(playhead, displayed, slots)
 			});
 			last_displayed = last_displayed.max(displayed);
-			if displayed >= 3 && playhead - displayed < 4 {
+			// 120 frames ≈ 5 s at 24 fps: enough for the pre-render window
+			// to warm up on any machine. The playhead always gets here.
+			if playhead >= 120 {
+				assert!(
+					displayed >= 3 && playhead - displayed < 4,
+					"the displayed frame must track the playhead (playhead {playhead}, displayed {displayed}, peak displayed {last_displayed}, window slots {slots})"
+				);
 				break;
 			}
-			assert!(
-				std::time::Instant::now() < deadline,
-				"the displayed frame must track the playhead (playhead {playhead}, displayed {displayed}, peak displayed {last_displayed}, window slots {slots})"
-			);
 			// The viewer paints at ~60 Hz.
 			std::thread::sleep(Duration::from_millis(16));
 			cx.update(|app| {
