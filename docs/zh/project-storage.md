@@ -14,7 +14,7 @@ Oak 的工程持久化在**数据库**（默认 SQLite，支持 PostgreSQL），
   payload 里。工程 = 节点图 + settings，没有第三种东西——节点粒度
   因此是封闭全集。
 - **单一序列化事实。** 库里的节点 XML 与 .ove 序列化器
-  （`oaknode::serializer`）产出的是同一份文档。新功能（比如调整图层）
+  （`oak-node::serializer`）产出的是同一份文档。新功能（比如调整图层）
   只需要扩展 XML schema，数据库 schema 永远不变。
 - **journal 由 diff 产生，不靠命令申报。** 每条 undoable 命令成功后，
   在内存里重新序列化工程并与上一状态逐节点比对；变化/新增/删除的
@@ -54,7 +54,7 @@ sequence ──<tracklists>──▶ tracklist ──<tracks>──▶ track ─
 
 clip 行自带时间线区间（`<range in out/>`）、媒体偏移（`<media_in>`）
 和素材引用；效果链是效果节点 XML 里的连接记录。加载时两阶段重连
-这些 identity（见 `oaknode::serializer`），所以不需要任何连接表。
+这些 identity（见 `oak-node::serializer`），所以不需要任何连接表。
 时间线编辑映射为少数节点行：移动 clip 触及它的 track 和 clip 本身；
 分割新增一个节点、更新两个；ripple 编辑触及受影响的 track 并删除
 被移除的 clip。
@@ -69,7 +69,7 @@ clip 行自带时间线区间（`<range in out/>`）、媒体偏移（`<media_in
 
 ## 导入 / 导出
 
-- 导入：.ove / .otio / .fcpxml 由既有 oakstorage 后端解析后，以
+- 导入：.ove / .otio / .fcpxml 由既有 oak-storage 后端解析后，以
   `kind = 'import'` 的 journal 行写为新工程行。
 - 导出：内存序列化经 ove-xml 或 otio 后端写出；除当前状态外不读写
   数据库。
@@ -98,12 +98,12 @@ v1 假设单写者（SQLite `busy_timeout`，PG 行锁）；多写者协作是�
 `Storage/Backend = "pg"` + `Storage/PgUrl` 选择，或直接用
 `oakdb+pg://` 连接串 URI。
 
-数据库测试：`cargo test -p oakstorage` 全绿无需 PostgreSQL——SQLite
+数据库测试：`cargo test -p oak-storage` 全绿无需 PostgreSQL——SQLite
 套件常驻运行；PG 套件（`tests/database_pg_test.rs`）在设置了
 `OAK_TEST_PG_URL`（如 `postgres://user:pass@host:5432/db`）时连接真实
 PG 全量运行，未设置则跳过并打印说明。该 URL 应指向专用测试库：每个
 测试会重置四张表。
 
-另见：[M10 oakstorage 手册](plans/riir/M10-oakstorage.md)、
+另见：[M10 oak-storage 手册](plans/riir/M10-oak-storage.md)、
 [M13 写穿计划](plans/riir/M13-storage-live.md)、
 [工程文件格式参考](project-file-reference.md)。

@@ -19,13 +19,13 @@
 //! cli/main.cpp).
 //!
 //! Runs entirely through the module crates (M14 R2): an
-//! [`oaknode::footage::FootageBehavior`] probes the file through the
+//! [`oak_node::footage::FootageBehavior`] probes the file through the
 //! oakcodec decoder registry and the CLI prints what the module records:
 //! the decoder id, the footage duration and the probed stream inventory
 //! (per-stream duration in rational seconds). A missing file prints
 //! `error: probe: file does not exist: <path>` on stderr and exits 1.
 
-use oaknode::footage::FootageBehavior;
+use oak_node::footage::FootageBehavior;
 
 use crate::cmd::{EXIT_ERROR, EXIT_OK};
 use crate::fmt;
@@ -114,7 +114,7 @@ fn run_probe(mediafile: &str) -> i32 {
 }
 
 /// A rational as floating-point seconds (0 on a zero denominator).
-fn rational_secs(r: oakcore_rs::Rational) -> f64 {
+fn rational_secs(r: oak_core::Rational) -> f64 {
 	if r.denominator() != 0 {
 		r.numerator() as f64 / r.denominator() as f64
 	} else {

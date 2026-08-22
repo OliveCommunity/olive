@@ -29,26 +29,26 @@
 //! `oakengine_renderer_render_frame`, ...) did over the same module APIs;
 //! the facade keeps its own copies for the frozen C ABI. Combinators that
 //! belong upstream (the effect-chain and timeline composites) are M14
-//! follow-up candidates for `oaknode::ops`; kept local until then.
+//! follow-up candidates for `oak_node::ops`; kept local until then.
 
 use std::path::Path;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use oakcore_rs::{Rational, TimeRange};
-use oaknode::block::{self, ClipBlockBehavior};
-use oaknode::footage::FootageBehavior;
-use oaknode::graph::Graph;
-use oaknode::id::NodeId;
-use oaknode::project::Project;
-use oaknode::sequence::SequenceBehavior;
-use oaknode::track::{TrackBehavior, TrackListBehavior, TrackType};
-use oaknode::value::VideoParams;
-use oaktimeline::undogeneral::TimelineAddTrackCommand;
-use oaktimeline::undopointer::TrackPlaceBlockCommand;
-use oaktimeline::util::NodeRef;
-use oakrender::manager::RenderManager;
-use oakrender::procpool::bgra8_to_rgba8;
-use oakrender::ticket::{
+use oak_core::{Rational, TimeRange};
+use oak_node::block::{self, ClipBlockBehavior};
+use oak_node::footage::FootageBehavior;
+use oak_node::graph::Graph;
+use oak_node::id::NodeId;
+use oak_node::project::Project;
+use oak_node::sequence::SequenceBehavior;
+use oak_node::track::{TrackBehavior, TrackListBehavior, TrackType};
+use oak_node::value::VideoParams;
+use oak_timeline::undogeneral::TimelineAddTrackCommand;
+use oak_timeline::undopointer::TrackPlaceBlockCommand;
+use oak_timeline::util::NodeRef;
+use oak_render::manager::RenderManager;
+use oak_render::procpool::bgra8_to_rgba8;
+use oak_render::ticket::{
 	AudioTicketParams, MontageClip, TicketPayload, VideoTicketParams,
 };
 
@@ -71,7 +71,7 @@ fn lock(p: &ProjectRef) -> MutexGuard<'_, Project> {
 /// `oakengine_project_load`.
 pub fn load_project(path: &str) -> Result<ProjectRef, String> {
 	let xml = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
-	let project = oaknode::serializer::load(&xml).map_err(|e| e.to_string())?;
+	let project = oak_node::serializer::load(&xml).map_err(|e| e.to_string())?;
 	let p = Path::new(path);
 	let abs = if p.is_absolute() {
 		p.to_path_buf()
@@ -400,7 +400,7 @@ pub fn place_footage_clip(
 	let footage_id = {
 		let mut guard = lock(project);
 		let (mut core, behavior) = FootageBehavior::create();
-		core.set_standard_value("file_in", -1, oaknode::value::NodeValue::Text(filename.to_string()));
+		core.set_standard_value("file_in", -1, oak_node::value::NodeValue::Text(filename.to_string()));
 		let id = guard.graph.add_node(core, behavior);
 		if let Some(f) = footage_behavior_mut(&mut guard.graph, id) {
 			f.filename = filename.to_string();
@@ -603,7 +603,7 @@ pub fn audio_montage(p: &ProjectRef, seq_id: NodeId, range: TimeRange) -> Vec<Mo
 pub fn render_manager_init() -> Result<(), String> {
 	match RenderManager::init() {
 		Ok(()) => Ok(()),
-		Err(oakrender::error::Error::State) => Ok(()),
+		Err(oak_render::error::Error::State) => Ok(()),
 		Err(e) => Err(e.to_string()),
 	}
 }
@@ -620,7 +620,7 @@ pub struct RenderedFrame {
 	pub width: i32,
 	/// Height in pixels.
 	pub height: i32,
-	/// Pixel format (`oakcore_rs::PixelFormat` as int).
+	/// Pixel format (`oak_core::PixelFormat` as int).
 	pub format: i32,
 	/// Bytes per scanline (stride).
 	pub linesize: i32,
@@ -657,7 +657,7 @@ pub fn render_frame(
 	m.tickets.wait(id).map_err(|e| e.to_string())?;
 	let result = m.tickets.result(id).ok_or_else(|| "render ticket produced no result".to_string())?;
 	match &result {
-		Ok(TicketPayload::Video(oakrender::texture::Texture::Cpu(frame))) => {
+		Ok(TicketPayload::Video(oak_render::texture::Texture::Cpu(frame))) => {
 			Ok(RenderedFrame {
 				width: frame.width,
 				height: frame.height,
@@ -679,7 +679,7 @@ pub fn render_frame(
 /// Copy a process-backend shm frame (BGRA8 slot) out into the CLI's
 /// RGBA8 u8 frame layout (format 0, 4 channels — the PPM writer's RGB
 /// order). Necessary copy: the CLI owns the pixels it writes to disk.
-fn shm_to_rendered_frame(frame: &oakrender::procpool::ShmFrameRef) -> RenderedFrame {
+fn shm_to_rendered_frame(frame: &oak_render::procpool::ShmFrameRef) -> RenderedFrame {
 	let meta = &frame.meta;
 	let pixels = frame
 		.shm
@@ -778,18 +778,18 @@ pub fn export_sequence(
 		return Err("sequence has no valid frame rate".to_string());
 	}
 	let out_num = frames * i64::from(fr_den);
-	let encoding = oaktask::export::EncodingParams {
+	let encoding = oak_task::export::EncodingParams {
 		filename: out.to_string(),
-		format: oakcodec::exportformat::Format::MPEG4Video as i32,
+		format: oak_codec::exportformat::Format::MPEG4Video as i32,
 		video_enabled: true,
-		video_codec: oakcodec::exportcodec::Codec::H264 as i32,
+		video_codec: oak_codec::exportcodec::Codec::H264 as i32,
 		video_width: width,
 		video_height: height,
 		video_time_base_num: fr_den,
 		video_time_base_den: fr_num,
 		video_pixel_format: 0,
 		audio_enabled: true,
-		audio_codec: oakcodec::exportcodec::Codec::AAC as i32,
+		audio_codec: oak_codec::exportcodec::Codec::AAC as i32,
 		audio_sample_rate: 48000,
 		audio_channel_layout: 0x3,
 		subtitles_enabled: false,
@@ -801,8 +801,8 @@ pub fn export_sequence(
 		custom_range_out_num: out_num as i32,
 		custom_range_out_den: fr_num,
 	};
-	let inner = oaktask::export::ExportTask::new((project.clone(), seq_id), encoding);
-	let mut driver = oaktask::task::Task::new("Exporting...", None);
+	let inner = oak_task::export::ExportTask::new((project.clone(), seq_id), encoding);
+	let mut driver = oak_task::task::Task::new("Exporting...", None);
 	driver.set_behavior(Box::new(inner));
 	driver.start().map_err(|_| {
 		driver

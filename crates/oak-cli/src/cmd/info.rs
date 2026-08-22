@@ -124,7 +124,7 @@ fn run_info(project: &str) -> i32 {
 
 /// Print one sequence block (`print_sequence` in cli/main.cpp) through the
 /// module sequence queries.
-fn print_sequence(project: &engine::ProjectRef, seq_id: oaknode::id::NodeId, index: i64) {
+fn print_sequence(project: &engine::ProjectRef, seq_id: oak_node::id::NodeId, index: i64) {
 	let (name, length, frame_rate, track_counts, playhead) = {
 		let guard = project.lock().unwrap_or_else(|e| e.into_inner());
 		(

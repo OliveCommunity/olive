@@ -30,15 +30,15 @@
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use oakcore_rs::{PixelFormat, Rational, TimeRange};
-use oakrender::ipc::SLOT_FORMAT_BGRA8;
-use oakrender::procpool::{
+use oak_core::{PixelFormat, Rational, TimeRange};
+use oak_render::ipc::SLOT_FORMAT_BGRA8;
+use oak_render::procpool::{
 	main_heap_frame_copies, reset_main_heap_frame_copies, DispatcherConfig, ProcessDispatcher,
 };
-use oakrender::ticket::{
+use oak_render::ticket::{
 	AudioTicketParams, TicketPayload, TicketResult, VideoTicketParams,
 };
-use oakrender::worker::{Job, JobDispatch, JobSchedule};
+use oak_render::worker::{Job, JobDispatch, JobSchedule};
 
 /// Serialize every test in this file (shared process environment +
 /// real child processes).
@@ -103,7 +103,7 @@ fn submit(
 			// Never invoked on the process backend (workers render from
 			// the wire spec); must still be a valid producer.
 			produce: Arc::new(|_, _| {
-				Err(oakrender::error::Error::Failed(
+				Err(oak_render::error::Error::Failed(
 					"process backend does not use the in-process producer".into(),
 				))
 			}),
@@ -359,7 +359,7 @@ fn submit_audio(
 		// Never invoked on the process backend (the worker renders audio
 		// from the wire spec); must still be a valid producer.
 		produce: Arc::new(|_, _| {
-			Err(oakrender::error::Error::Failed(
+			Err(oak_render::error::Error::Failed(
 				"process backend does not use the in-process producer".into(),
 			))
 		}),
@@ -399,7 +399,7 @@ fn audio_tickets_roundtrip_through_shm_slots() {
 		};
 		assert_eq!(audio.sample_rate, 48000);
 		assert_eq!(audio.channel_count, 2);
-		assert_eq!(audio.meta.format, oakrender::ipc::SLOT_FORMAT_AUDIO_F32);
+		assert_eq!(audio.meta.format, oak_render::ipc::SLOT_FORMAT_AUDIO_F32);
 		assert_eq!(audio.meta.channel_count, 2);
 		assert_eq!(audio.meta.linesize, 2 * 4);
 		assert_eq!(audio.meta.data_size, 2000 * 2 * 4);
@@ -573,7 +573,7 @@ fn oversized_audio_ticket_is_refused_by_process_backend() {
 		}),
 		audio: Some(audio),
 		produce: Arc::new(|_, _| {
-			Err(oakrender::error::Error::Failed(
+			Err(oak_render::error::Error::Failed(
 				"process backend does not use the in-process producer".into(),
 			))
 		}),
@@ -634,7 +634,7 @@ fn f32_ticket_gets_f32_slot_and_bgra8_stays_bgra8() {
 			}),
 			audio: None,
 			produce: Arc::new(|_, _| {
-				Err(oakrender::error::Error::Failed(
+				Err(oak_render::error::Error::Failed(
 					"process backend does not use the in-process producer".into(),
 				))
 			}),

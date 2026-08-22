@@ -20,7 +20,7 @@
 //! ([`crate::engine`] + the modules directly) — M14 R2 cut the facade
 //! dylib out of this crate:
 //!
-//!   - `probe`     → an `oaknode::footage::FootageBehavior` probe
+//!   - `probe`     → an `oak_node::footage::FootageBehavior` probe
 //!   - `info`      → `crate::engine::load_project` + the project graph
 //!     walks
 //!   - `render`    → `crate::engine::render_manager_init` + the video/

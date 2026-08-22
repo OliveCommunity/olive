@@ -38,7 +38,7 @@
 //! project/sequence/argument failures exit 1; bad seconds exit 64
 //! (usage). Frame progress goes to stderr (`frame N: T s`).
 
-use oakcore_rs::TimeRange;
+use oak_core::TimeRange;
 
 use crate::cmd::{EXIT_ERROR, EXIT_OK, EXIT_RENDER_UNAVAILABLE, EXIT_USAGE};
 use crate::engine;
@@ -148,7 +148,7 @@ fn run_render(project: &str, start: f64, end: f64, out_dir: &str) -> i32 {
 		if time >= end {
 			break;
 		}
-		let time_r = oakcore_rs::Rational::new(index * i64::from(fr_den), i64::from(fr_num));
+		let time_r = oak_core::Rational::new(index * i64::from(fr_den), i64::from(fr_num));
 		let montage = engine::video_montage(&project_ref, seq_id, time_r);
 		let frame = match engine::render_frame(seq_id, time_r, montage, width, height) {
 			Ok(f) => f,
@@ -183,8 +183,8 @@ fn run_render(project: &str, start: f64, end: f64, out_dir: &str) -> i32 {
 	let start_ts = (start * fr_num as f64 / fr_den as f64).round() as i64;
 	let length_ts = ((end - start) * fr_num as f64 / fr_den as f64).round() as i64;
 	let range = TimeRange::new(
-		oakcore_rs::Rational::new(start_ts * i64::from(fr_den), i64::from(fr_num)),
-		oakcore_rs::Rational::new(
+		oak_core::Rational::new(start_ts * i64::from(fr_den), i64::from(fr_num)),
+		oak_core::Rational::new(
 			(start_ts + length_ts) * i64::from(fr_den),
 			i64::from(fr_num),
 		),

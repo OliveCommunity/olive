@@ -17,7 +17,7 @@
 
 # Installs the system dependencies of the Oak Rust workspace:
 # the free-license external codec/filter libraries FFmpeg is configured
-# with (see crates/oakcodec/Cargo.toml), plus the build tools. FFmpeg
+# with (see crates/oak-codec/Cargo.toml), plus the build tools. FFmpeg
 # itself is built from source by tooling/ffmpeg/build-ffmpeg.sh (which
 # installs into .cache/ffmpeg) and is NOT installed here.
 #

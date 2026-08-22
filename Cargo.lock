@@ -4719,7 +4719,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "oak"
+name = "oak-app"
 version = "0.5.0"
 dependencies = [
  "gpui",
@@ -4727,79 +4727,66 @@ dependencies = [
  "gpui_platform",
  "gpui_widgets",
  "image",
- "oakaudio",
- "oakcodec",
- "oakcommon",
- "oakcore-rs",
- "oaknode",
- "oakplugin",
- "oakrender",
- "oakstorage",
- "oaktask",
- "oaktimeline",
- "oakundo",
+ "oak-audio",
+ "oak-codec",
+ "oak-common",
+ "oak-core",
+ "oak-node",
+ "oak-plugin",
+ "oak-render",
+ "oak-storage",
+ "oak-task",
+ "oak-timeline",
+ "oak-undo",
  "serde_yaml",
  "smallvec",
 ]
 
 [[package]]
-name = "oak-cli"
-version = "0.1.0"
-dependencies = [
- "clap",
- "oakcodec",
- "oakcommon",
- "oakcore-rs",
- "oaknode",
- "oakrender",
- "oaktask",
- "oaktimeline",
-]
-
-[[package]]
-name = "oak-worker"
-version = "0.1.0"
-dependencies = [
- "libc",
- "oakcore-rs",
- "oaknode",
- "oakplugin",
- "oakrender",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "oakaudio"
-version = "0.1.0"
+name = "oak-audio"
+version = "0.5.0"
 dependencies = [
  "cpal",
  "ffmpeg-next",
- "oakcodec",
- "oakcommon",
- "oakcore-rs",
- "oakffmpeg-link",
+ "oak-codec",
+ "oak-common",
+ "oak-core",
+ "oak-ffmpeg-link",
  "thiserror 2.0.20",
 ]
 
 [[package]]
-name = "oakcodec"
-version = "0.1.0"
+name = "oak-cli"
+version = "0.5.0"
+dependencies = [
+ "clap",
+ "oak-codec",
+ "oak-common",
+ "oak-core",
+ "oak-node",
+ "oak-render",
+ "oak-task",
+ "oak-timeline",
+]
+
+[[package]]
+name = "oak-codec"
+version = "0.5.0"
 dependencies = [
  "ffmpeg-next",
- "oakcommon",
- "oakcore-rs",
- "oakffmpeg-link",
+ "oak-common",
+ "oak-core",
+ "oak-ffmpeg-link",
  "thiserror 2.0.20",
 ]
 
 [[package]]
-name = "oakcommon"
-version = "0.1.0"
+name = "oak-common"
+version = "0.5.0"
 dependencies = [
  "image",
  "log",
- "oakcore-rs",
+ "oak-core",
  "ocio-rs",
  "quick-xml 0.41.0",
  "thiserror 2.0.20",
@@ -4807,29 +4794,29 @@ dependencies = [
 ]
 
 [[package]]
-name = "oakcore-rs"
-version = "0.1.0"
+name = "oak-core"
+version = "0.5.0"
 
 [[package]]
-name = "oakffmpeg-link"
-version = "0.1.0"
+name = "oak-ffmpeg-link"
+version = "0.5.0"
 
 [[package]]
-name = "oaknode"
-version = "0.1.0"
+name = "oak-node"
+version = "0.5.0"
 dependencies = [
- "oakcodec",
- "oakcommon",
- "oakcore-rs",
- "oakundo",
+ "oak-codec",
+ "oak-common",
+ "oak-core",
+ "oak-undo",
  "thiserror 2.0.20",
 ]
 
 [[package]]
-name = "oakotio"
-version = "0.1.0"
+name = "oak-otio"
+version = "0.5.0"
 dependencies = [
- "oakcore-rs",
+ "oak-core",
  "quick-xml 0.41.0",
  "serde",
  "serde_json",
@@ -4837,26 +4824,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "oakplugin"
-version = "0.1.0"
+name = "oak-plugin"
+version = "0.5.0"
 dependencies = [
  "cc",
- "oakcore-rs",
- "oaknode",
- "oakrender",
- "oakundo",
+ "oak-core",
+ "oak-node",
+ "oak-render",
+ "oak-undo",
  "thiserror 2.0.20",
 ]
 
 [[package]]
-name = "oakrender"
-version = "0.1.0"
+name = "oak-render"
+version = "0.5.0"
 dependencies = [
  "libc",
- "oakcodec",
- "oakcommon",
- "oakcore-rs",
- "oaknode",
+ "oak-codec",
+ "oak-common",
+ "oak-core",
+ "oak-node",
  "ocio-rs",
  "serde",
  "serde_json",
@@ -4865,15 +4852,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "oakstorage"
-version = "0.1.0"
+name = "oak-storage"
+version = "0.5.0"
 dependencies = [
  "chrono",
- "oakcommon",
- "oakcore-rs",
- "oaknode",
- "oakotio",
- "oakundo",
+ "oak-common",
+ "oak-core",
+ "oak-node",
+ "oak-otio",
+ "oak-undo",
  "sea-orm",
  "serde",
  "serde_json",
@@ -4882,35 +4869,48 @@ dependencies = [
 ]
 
 [[package]]
-name = "oaktask"
-version = "0.1.0"
+name = "oak-task"
+version = "0.5.0"
 dependencies = [
- "oakcodec",
- "oakcommon",
- "oakcore-rs",
- "oaknode",
- "oakotio",
- "oakrender",
- "oakundo",
+ "oak-codec",
+ "oak-common",
+ "oak-core",
+ "oak-node",
+ "oak-otio",
+ "oak-render",
+ "oak-undo",
  "thiserror 2.0.20",
 ]
 
 [[package]]
-name = "oaktimeline"
-version = "0.1.0"
+name = "oak-timeline"
+version = "0.5.0"
 dependencies = [
- "oakcommon",
- "oakcore-rs",
- "oaknode",
- "oakundo",
+ "oak-common",
+ "oak-core",
+ "oak-node",
+ "oak-undo",
  "thiserror 2.0.20",
 ]
 
 [[package]]
-name = "oakundo"
-version = "0.1.0"
+name = "oak-undo"
+version = "0.5.0"
 dependencies = [
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "oak-worker"
+version = "0.5.0"
+dependencies = [
+ "libc",
+ "oak-core",
+ "oak-node",
+ "oak-plugin",
+ "oak-render",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -6860,6 +6860,16 @@ name = "simdutf8"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3a9fe34e3e7a50316060351f37187a3f546bce95496156754b601a5fa71b76e"
+
+[[package]]
+name = "simple_player"
+version = "0.1.0"
+dependencies = [
+ "gpui",
+ "gpui_platform",
+ "image",
+ "oak-app",
+]
 
 [[package]]
 name = "simplecss"

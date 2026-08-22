@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Builds a project-owned FFmpeg for the oakcodec/oakaudio `ffmpeg-next`
+# Builds a project-owned FFmpeg for the oak-codec/oak-audio `ffmpeg-next`
 # dependency and installs it into .cache/ffmpeg. Point cargo at it with:
 #
 #   export FFMPEG_DIR="$(pwd)/.cache/ffmpeg"

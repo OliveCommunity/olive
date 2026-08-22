@@ -18,7 +18,7 @@
 //! "media in, renders out" round trip (port of `cmd_transcode()` in
 //! cli/main.cpp), entirely through the module crates (M14 R2).
 //!
-//! The source is probed with an [`oaknode::footage::FootageBehavior`]
+//! The source is probed with an [`oak_node::footage::FootageBehavior`]
 //! (geometry / frame rate / duration), then a temporary sequence is
 //! assembled the same way the facade did: a scratch project holds the
 //! sequence (the facade's documented `oakengine_sequence_new` deviation),
@@ -44,8 +44,8 @@
 //! duration-less sources. Failures exit 1 (general error); bad arguments
 //! exit 64.
 
-use oaknode::footage::FootageBehavior;
-use oaknode::track::TrackType;
+use oak_node::footage::FootageBehavior;
+use oak_node::track::TrackType;
 
 use crate::cmd::{EXIT_ERROR, EXIT_OK, EXIT_USAGE};
 use crate::engine;
@@ -135,7 +135,7 @@ fn run_transcode(input: &str, out: &str, width: Option<&str>, is_ppm: bool) -> i
 /// streams, one audio track/clip).
 struct Assembly {
 	project: engine::ProjectRef,
-	sequence: oaknode::id::NodeId,
+	sequence: oak_node::id::NodeId,
 }
 
 /// Build the temporary sequence for the render/export stage.
@@ -151,7 +151,7 @@ fn assemble_sequence(
 	if let Err(e) = engine::render_manager_init() {
 		return Err(format!("cannot initialize the render manager: {e}"));
 	}
-	let project = oaknode::project::Project::new();
+	let project = oak_node::project::Project::new();
 	let sequence = engine::create_sequence(&project, "transcode");
 	engine::set_sequence_video_params(&project, sequence, out_w, out_h, fr_num, fr_den);
 
@@ -211,7 +211,7 @@ fn transcode_ppm(
 	}
 
 	for i in 0..frames {
-		let time = oakcore_rs::Rational::new(i * i64::from(fr_den), i64::from(fr_num));
+		let time = oak_core::Rational::new(i * i64::from(fr_den), i64::from(fr_num));
 		let montage = engine::video_montage(&assembly.project, assembly.sequence, time);
 		let frame = match engine::render_frame(assembly.sequence, time, montage, out_w, out_h) {
 			Ok(f) => f,
@@ -290,9 +290,9 @@ fn write_audio_wav(
 	fr_num: i32,
 	fr_den: i32,
 ) -> i32 {
-	let range = oakcore_rs::TimeRange::new(
-		oakcore_rs::Rational::new(0, 1),
-		oakcore_rs::Rational::new(frames * i64::from(fr_den), i64::from(fr_num)),
+	let range = oak_core::TimeRange::new(
+		oak_core::Rational::new(0, 1),
+		oak_core::Rational::new(frames * i64::from(fr_den), i64::from(fr_num)),
 	);
 	let montage = engine::audio_montage(&assembly.project, assembly.sequence, range);
 	let audio = match engine::render_audio(assembly.sequence, range, montage) {

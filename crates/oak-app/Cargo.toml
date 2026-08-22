@@ -1,0 +1,140 @@
+# Oak Video Editor - Non-Linear Video Editor
+# Copyright (C) 2026 Oak Team
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# The GUI application: the gpui-based `oakapp` library and the
+# `oak-editor` binary. Everything under src/ is app-specific; the engine
+# and module crates live in the workspace under crates/.
+
+[package]
+name = "oak-app"
+version.workspace = true
+edition = "2021"
+description = "Oak Video Editor"
+license = "GPL-3.0-or-later"
+
+[lib]
+name = "oakapp"
+path = "src/lib.rs"
+# Doctests are disabled: the app links the oak* module crates (which carry
+# media/codec dependencies); the doc examples' assertions are covered by
+# unit tests instead (see `oakui/timecode`).
+doctest = false
+
+[[bin]]
+name = "oak-editor"
+path = "src/main.rs"
+
+[dependencies]
+# gpui: the GPU-accelerated UI framework (oak-gpui fork, git submodule at gpui/).
+gpui = { path = "../../gpui/crates/gpui" }
+# Convenience entry point: `gpui_platform::application()` picks the platform
+# backend. font-kit enables text shaping/rendering on macOS.
+gpui_platform = { path = "../../gpui/crates/gpui_platform", features = ["font-kit"] }
+# Oak's widget library: menus, viewer, form controls, project explorer.
+gpui_widgets = { path = "../../gpui/crates/gpui_widgets" }
+# The mock engine's synthetic viewer frames (`image::Frame` in a
+# `RenderImage`), matching the versions gpui itself uses.
+image = "0.25"
+smallvec = "1"
+# Editable-text widget (used by the file / export dialogs' path fields, the
+# same gpui-elements crate gpui_widgets builds on).
+gpui_elements = { path = "../../gpui/crates/gpui_elements" }
+# UI string tables: YAML language packs under assets/i18n/, loaded at
+# runtime (bundled with the app, user-extensible) with the compiled-in
+# English table as the fallback.
+serde_yaml = "0.9"
+
+# M14 R3: the app is a PURE module-crate consumer — every engine call is a
+# direct Rust call into the oak* rlibs (oak-node for the project graph,
+# oak-timeline/oak-undo for the edit commands and the global undo stack,
+# oak-render for the ticket arena, oak-codec for the export formats/test
+# media, oak-task for the export/interchange tasks, oak-audio for the
+# manager/waveforms, oak-common/oak-core for the config store and shared
+# value types, oak-storage for the write-through library). No liboakengine
+# dylib, no C ABI, no build.rs link step, no host shims.
+oak-audio = { path = "../oak-audio" }
+oak-codec = { path = "../oak-codec" }
+oak-common = { path = "../oak-common" }
+oak-core = { path = "../oak-core" }
+oak-node = { path = "../oak-node" }
+oak-plugin = { path = "../oak-plugin" }
+oak-render = { path = "../oak-render" }
+oak-storage = { path = "../oak-storage" }
+oak-task = { path = "../oak-task" }
+oak-timeline = { path = "../oak-timeline" }
+oak-undo = { path = "../oak-undo" }
+
+[features]
+default = []
+# Force the mock engine even though the real facade is linked. Off by
+# default: the app runs on the real engine unless `--mock` / `OAK_ENGINE=mock`
+# is given at runtime (or this feature is enabled at build time).
+mock-engine = []
+
+[dev-dependencies]
+# `#[gpui::test]` harness for engine-seam smoke tests (test-support feature).
+gpui = { path = "../../gpui/crates/gpui", features = ["test-support"] }
+# `test-support` also enables `gpui_macos/test-support`, which is what makes
+# `render_to_image` (the screenshot example) available.
+gpui_platform = { path = "../../gpui/crates/gpui_platform", features = ["test-support"] }
+# Screenshot capture: `examples/screenshot.rs` saves the rendered window PNG
+# (the `image` crate is already in the lockfile through gpui).
+image = "0.25"
+
+# ---------------------------------------------------------------------------
+# cargo-packager metadata (the CD workflow packages the release binaries
+# with `cargo packager`; the schema lives at
+# https://docs.crabnebula.dev/packager/configuration/).
+#
+# Binaries are resolved relative to `target/<profile>` (oak-editor is the
+# main binary; oak-cli / oak-worker are bundled alongside). They must exist
+# before packaging runs — `cargo packager` does NOT build the app itself, so
+# CD builds with `cargo build --release` first.
+#
+# `icons/icon.png` is NOT committed: it is generated from `Oak_Icon.svg`
+# (rsvg-convert) in CD right before packaging, because cargo-packager needs a
+# bitmap (it converts a square PNG into .icns / .ico / hicolor PNGs itself).
+# It must be 512x512: cargo-packager's tauri-icns 0.1.0 maps only 512x512@1x
+# (and 1024x1024@2x) to an ICNS type — a plain 1024x1024 PNG aborts with
+# "No matching IconType".
+# Keep the path here in sync with the CD workflow.
+# ---------------------------------------------------------------------------
+[package.metadata.packager]
+name = "oak"
+productName = "Oak Video Editor"
+identifier = "org.oakvideoeditor.Oak"
+description = "Oak Video Editor"
+longDescription = "Oak Video Editor: a free, open-source non-linear video editor written in Rust."
+authors = ["Oak Team"]
+copyright = "Copyright (C) 2026 Oak Team"
+licenseFile = "LICENSE"
+category = "Video"
+icons = ["../../icons/icon.png"]
+# The UI string tables (language packs); users can drop extra
+# <lang>.yaml files into the installed i18n directory.
+# The Windows DLL staging dir is filled by
+# tooling/package/bundle-dylibs-windows.sh before `cargo packager` runs
+# (NSIS/WiX place resources next to the executable, which is exactly
+# where Windows resolves DLLs from). Empty locally = no bundled DLLs.
+resources = [
+    "../../assets/i18n",
+    { src = "../../target/pkg/win-dlls/*.dll", target = "." },
+]
+binaries = [
+    { path = "oak-editor", main = true },
+    { path = "oak-cli", main = false },
+    { path = "oak-worker", main = false },
+]

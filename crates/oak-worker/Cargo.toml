@@ -16,7 +16,7 @@
 
 [package]
 name = "oak-worker"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 description = "Oak Video Editor headless render worker process (Rust)"
 license = "GPL-3.0-or-later"
@@ -40,9 +40,9 @@ libc = "0.2"
 # (oakplugin::node_factory::install_render_executor wires the CPU render
 # executor). oakcodec/ocio-rs/ffmpeg arrive transitively through
 # oaknode/oakplugin — the same single-lib unification the engine uses.
-oakcore-rs = { path = "../oakcore" }
-oaknode = { path = "../oaknode" }
-oakplugin = { path = "../oakplugin" }
+oak-core = { path = "../oak-core" }
+oak-node = { path = "../oak-node" }
+oak-plugin = { path = "../oak-plugin" }
 
 # M14 R2 / M15 S1: oak-worker is a PURE module-crate consumer — the
 # worker runtime (src/worker.rs) lives in this binary and calls the oak*
@@ -50,4 +50,4 @@ oakplugin = { path = "../oakplugin" }
 # evaluation path and the shared ipc protocol (src/ipc.rs is a shim
 # re-exporting oakrender::ipc). No liboakengine dylib, no C ABI, no
 # build.rs link step.
-oakrender = { path = "../oakrender" }
+oak-render = { path = "../oak-render" }

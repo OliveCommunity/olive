@@ -21,7 +21,7 @@
 //!
 //!   - **Backend selection.** [`Renderer::create`] initializes the render
 //!     backend through the oakrender crate's direct Rust API
-//!     ([`oakrender::backend::DisplayRenderer`]), falling back to the
+//!     ([`oak_render::backend::DisplayRenderer`]), falling back to the
 //!     direct OpenGL renderer exactly like the C++ `create_renderer()`
 //!     chain. The headless `"cpu"` backend (M15 S1) skips the renderer
 //!     entirely — the render path is CPU evaluation + decode, driven
@@ -38,7 +38,7 @@
 //! Real rendering landed in M15 S1: `load_graph` deserializes the graph
 //! snapshot file (oaknode project XML, with the minimal
 //! `{"project_copy":N}` payload fallback); `render_frame` and
-//! `render_batch` render through [`oakrender::eval`] (generated frames,
+//! `render_batch` render through [`oak_render::eval`] (generated frames,
 //! footage decode, montage compositing) directly into the main-assigned
 //! shm slots and publish `frame_ready` / `frame_failed` (protocol v2).
 
@@ -49,10 +49,10 @@ use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-use oakcore_rs::{PixelFormat, Rational};
-use oakrender::backend::{BackendKind, DisplayRenderer};
-use oakrender::eval;
-use oakrender::ticket::{AudioTicketParams, MontageClip, VideoTicketParams};
+use oak_core::{PixelFormat, Rational};
+use oak_render::backend::{BackendKind, DisplayRenderer};
+use oak_render::eval;
+use oak_render::ticket::{AudioTicketParams, MontageClip, VideoTicketParams};
 
 use crate::ipc::{
 	error_message, write_message, AudioTicketSpec, BatchTicketSpec, FrameSlotPool, FrameSlotMeta,
@@ -66,7 +66,7 @@ use crate::{log_error, PROTOCOL_VERSION};
 /// A loaded graph snapshot (M15 S1): the snapshot file path plus what it
 /// deserialized into — a full oaknode project, or only the copied-project
 /// identity (the minimal `{"project_copy":N}` payload the
-/// [`oakrender::worker::GraphSnapshotStore`] writes before the app wires
+/// [`oak_render::worker::GraphSnapshotStore`] writes before the app wires
 /// full graph uploads in S2).
 struct LoadedGraph {
 	/// Snapshot file path (S2: graph_update diffing is path-based).
@@ -75,7 +75,7 @@ struct LoadedGraph {
 	/// The deserialized project (S2: node-graph render path; today only
 	/// montage/footage/generate tickets use the loaded context).
 	#[allow(dead_code)]
-	project: Option<Arc<Mutex<oaknode::project::Project>>>,
+	project: Option<Arc<Mutex<oak_node::project::Project>>>,
 	project_copy: u64,
 }
 
@@ -146,7 +146,7 @@ struct WorkerProgressReporter {
 	message: String,
 }
 
-impl oakplugin::progress::UiProgressReporter for WorkerProgressReporter {
+impl oak_plugin::progress::UiProgressReporter for WorkerProgressReporter {
 	fn update(&mut self, progress: f64) -> bool {
 		push_worker_progress(progress, &self.label, &self.message);
 		!WORKER_PLUGIN_CANCEL.load(Ordering::Relaxed)
@@ -163,7 +163,7 @@ impl oakplugin::progress::UiProgressReporter for WorkerProgressReporter {
 /// [`WorkerSession::initialize_runtime`]; mirrors the main-process factory
 /// (a fresh progressStart resets the sticky cancel flag).
 fn install_worker_progress_factory() {
-	oakplugin::progress::set_reporter_factory(Some(Arc::new(|label, message| {
+	oak_plugin::progress::set_reporter_factory(Some(Arc::new(|label, message| {
 		// A fresh render begins: reset the sticky cancel flag.
 		WORKER_PLUGIN_CANCEL.store(false, Ordering::Relaxed);
 		push_worker_progress(0.0, label, message);
@@ -186,7 +186,7 @@ pub fn is_no_backend(backend: &str) -> bool {
 
 /// Whether `backend` is the M15 headless CPU render mode: like "none"
 /// (no GPU renderer) but the session stays fully operational — frames
-/// render through the CPU evaluation path ([`oakrender::eval`]).
+/// render through the CPU evaluation path ([`oak_render::eval`]).
 pub fn is_cpu_backend(backend: &str) -> bool {
 	backend.eq_ignore_ascii_case("cpu")
 }
@@ -280,7 +280,7 @@ impl WorkerSession {
 	/// creation, anything else initializes the render backend through the
 	/// oakrender crate's direct Rust API (dynamic -> OpenGL fallback).
 	/// The M15 `"cpu"` backend is the headless render mode: no renderer,
-	/// CPU evaluation + decode via [`oakrender::eval`].
+	/// CPU evaluation + decode via [`oak_render::eval`].
 	pub fn create(backend: &str) -> Result<WorkerSession, String> {
 		let renderer = if is_no_backend(backend) || is_cpu_backend(backend) {
 			None
@@ -321,7 +321,7 @@ impl WorkerSession {
 			return true;
 		}
 		log_error("runtime: loading color-manager default config");
-		if let Err(e) = oakrender::color::set_up_default_config() {
+		if let Err(e) = oak_render::color::set_up_default_config() {
 			log_error(&format!(
 				"runtime: color-manager default config failed ({e}); continuing"
 			));
@@ -331,17 +331,17 @@ impl WorkerSession {
 		// §3.6). oakplugin installs its render driver into the oakrender
 		// executor slot.
 		log_error("runtime: installing oakplugin render executor");
-		oakplugin::node_factory::install_render_executor();
+		oak_plugin::node_factory::install_render_executor();
 		// M15 S2: graphs carrying OFX plugin nodes deserialize/evaluate in
 		// the worker too, so the per-process node factory must register the
 		// discovered plugins exactly like the main process. A failed scan is
 		// non-fatal: the worker stays up for plugin-free graphs.
 		log_error("runtime: scanning and registering OFX plugins");
-		if let Err(e) = oakplugin::host::Host::global().cache.scan() {
+		if let Err(e) = oak_plugin::host::Host::global().cache.scan() {
 			log_error(&format!("runtime: OFX plugin scan failed ({e}); continuing"));
 		}
-		let discovered = oakplugin::host::Host::global().cache.count();
-		let registered = oakplugin::node_factory::register_plugin_nodes();
+		let discovered = oak_plugin::host::Host::global().cache.count();
+		let registered = oak_plugin::node_factory::register_plugin_nodes();
 		log_error(&format!(
 			"runtime: discovered {} OFX plugin(s), registered {} node type(s)",
 			discovered,
@@ -509,7 +509,7 @@ impl WorkerSession {
 
 	/// `load_graph` (M15 S1): the file checks mirror worker.cpp; the
 	/// payload is deserialized for real — an oaknode project XML
-	/// ([`oaknode::serializer::load`]) or the minimal
+	/// ([`oak_node::serializer::load`]) or the minimal
 	/// `{"project_copy":N}` identity payload written by the snapshot
 	/// store before full graph uploads land in S2. Success answers
 	/// nothing (v1 semantics); failures answer an `error` message.
@@ -542,7 +542,7 @@ impl WorkerSession {
 						))
 					}
 				};
-				match oaknode::serializer::load(&content) {
+				match oak_node::serializer::load(&content) {
 					Ok(project) => {
 						self.graph = Some(LoadedGraph {
 							path: load.path.clone(),
@@ -579,7 +579,7 @@ impl WorkerSession {
 	}
 
 	/// `render_frame` (v1 single-frame path, M15 S1 real): generate the
-	/// frame through [`oakrender::eval`], write it into an acquired shm
+	/// frame through [`oak_render::eval`], write it into an acquired shm
 	/// slot and answer `frame_ready`. The v1 message carries no montage
 	/// or footage fields, so this path renders the pipeline's generated
 	/// frame; montage/footage tickets arrive via `render_batch`.
@@ -601,8 +601,8 @@ impl WorkerSession {
 			(render.width, render.height)
 		} else {
 			(
-				oakrender::frame::VideoParamsPod::DEFAULT_WIDTH,
-				oakrender::frame::VideoParamsPod::DEFAULT_HEIGHT,
+				oak_render::frame::VideoParamsPod::DEFAULT_WIDTH,
+				oak_render::frame::VideoParamsPod::DEFAULT_HEIGHT,
 			)
 		};
 		let format = if render.format < 0 {
@@ -983,7 +983,7 @@ impl WorkerSession {
 				.as_ref()
 				.map(|g| g.project_copy)
 				.unwrap_or(0),
-			range: oakcore_rs::TimeRange::new(start, start + duration),
+			range: oak_core::TimeRange::new(start, start + duration),
 			sample_rate: spec.sample_rate,
 			channel_layout: spec.channel_layout,
 			montage,
@@ -1092,7 +1092,7 @@ impl WorkerSession {
 
 /// Render the F32 RGBA pipeline frame for `spec` into `dst`
 /// (`(w*h*16)` bytes): generated transparent black, footage decode,
-/// or montage composite — through [`oakrender::eval`].
+/// or montage composite — through [`oak_render::eval`].
 fn render_f32_into(
 	spec: &BatchTicketSpec,
 	params: &VideoTicketParams,
@@ -1115,7 +1115,7 @@ fn render_f32_into(
 			PixelFormat::F32,
 		)
 		.map_err(|e| format!("footage decode: {e}"))?;
-		let oakrender::texture::Texture::Cpu(frame) = &decoded else {
+		let oak_render::texture::Texture::Cpu(frame) = &decoded else {
 			return Err("decode produced a GPU texture".to_string());
 		};
 		let src_stride = frame.linesize_bytes() as usize;
@@ -1574,8 +1574,8 @@ mod tests {
 		let _ = std::fs::remove_file(&empty);
 
 		// A real oaknode project round-trips through the serializer.
-		let project = oaknode::project::Project::new();
-		let xml = oaknode::serializer::save(&project.lock().unwrap_or_else(|e| e.into_inner()))
+		let project = oak_node::project::Project::new();
+		let xml = oak_node::serializer::save(&project.lock().unwrap_or_else(|e| e.into_inner()))
 			.expect("serialize empty project");
 		let real = std::env::temp_dir().join("oak_worker_main_test_graph.ove");
 		std::fs::write(&real, &xml).unwrap();

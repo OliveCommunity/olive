@@ -1,0 +1,36 @@
+# Oak Video Editor - Non-Linear Video Editor
+# Copyright (C) 2026 Oak Team
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# A standalone cross-crate integration example: renders the full OakApp
+# shell offscreen and saves screenshots to docs/. Every example under
+# examples/ is its own crate with its own Cargo.toml (see the workspace
+# root manifest), so it can depend on oak-app exactly like an external
+# consumer would.
+
+[package]
+name = "simple_player"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Oak cross-crate integration example: renders the app shell to screenshots"
+
+[dependencies]
+# test-support pulls the visual-test harness (VisualTestAppContext,
+# capture_screenshot) the example drives the shell with.
+gpui = { path = "../../gpui/crates/gpui", features = ["test-support"] }
+gpui_platform = { path = "../../gpui/crates/gpui_platform", features = ["test-support"] }
+oak-app = { path = "../../crates/oak-app" }
+image = "0.25"

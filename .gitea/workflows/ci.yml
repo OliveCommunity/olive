@@ -49,8 +49,8 @@ jobs:
 #      # ------------------------------------------------------------------
 #      # Build environment
 #      # ------------------------------------------------------------------
-#      # ocio-sys builds a stub bridge unless these are set; the oakcommon
-#      # ocioutils tests need the real library (see crates/oakcommon/.cargo/
+#      # ocio-sys builds a stub bridge unless these are set; the oak-common
+#      # ocioutils tests need the real library (see crates/oak-common/.cargo/
 #      # config.toml, which only applies to builds run from that directory).
 #      # ocio-sys builds its vendored OpenColorIO from source on Linux (the
 #      # `bundled` feature; the distro package is too old for the bridge),
@@ -167,17 +167,17 @@ jobs:
 #      # machines have no system-wide OFX plugins, so the fixture is the
 #      # only discovery.
 #      - name: Build OFX fixture plugin
-#        run: crates/oakplugin/tests/fixtures/build_fixture.sh .cache/ofx-fixture
+#        run: crates/oak-plugin/tests/fixtures/build_fixture.sh .cache/ofx-fixture
 #
 #      - name: Probe OFX plugin discovery
 #        run: |
 #          OFX_PLUGIN_PATH="$PWD/.cache/ofx-fixture" \
-#            cargo run --locked -p oakplugin --example scan_probe > probe.log 2>&1
+#            cargo run --locked -p oak-plugin --example scan_probe > probe.log 2>&1
 #          grep -q 'type_id=rs.oak.CiTestPlugin' probe.log
 #          # A project carrying a plugin node must survive save/load (the
 #          # serializer resolves plugin types via the dynamic factory).
 #          OAK_OFX_FIXTURE_DIR="$PWD/.cache/ofx-fixtre" \
-#            cargo test --locked -p oakplugin --test ofx_roundtrip
+#            cargo test --locked -p oak-plugin --test ofx_roundtrip
 
   windows:
     name: Build & test (Windows)

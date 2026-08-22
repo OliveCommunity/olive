@@ -16,10 +16,10 @@
 
 //! Render-worker IPC shim (M15 S1): the NDJSON protocol and the
 //! shared-memory frame-slot transport now live in the oakrender crate
-//! (`oakrender::ipc`) so both ends of the pipe link one copy — the
+//! (`oak_render::ipc`) so both ends of the pipe link one copy — the
 //! main-process dispatcher creates the segments and the worker attaches
 //! to them. This module re-exports the whole surface, keeping the
 //! worker-side `crate::ipc::` paths unchanged. The facade (oakengine)
 //! still keeps its own copy for the frozen `oakengine_ipc_*` C ABI.
 
-pub use oakrender::ipc::*;
+pub use oak_render::ipc::*;

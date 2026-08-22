@@ -18,7 +18,7 @@ not the working store.
   "the node graph plus settings" — nothing else — so node granularity
   is a closed, complete model.
 - **One serialization truth.** The node XML in the database is the same
-  document the `.ove` serializer produces (`oaknode::serializer`).
+  document the `.ove` serializer produces (`oak-node::serializer`).
   New features (e.g. adjustment layers) extend the XML schema only —
   the database schema never changes.
 - **The journal is produced by diffing, not by instrumenting commands.**
@@ -65,7 +65,7 @@ sequence ──<tracklists>──▶ tracklist ──<tracks>──▶ track ─
 The clip row carries its timeline range (`<range in out/>`), media
 offset (`<media_in>`) and footage reference; effect chains are
 connection records inside the effect nodes' XML. Loading re-links
-these identities in two passes (see `oaknode::serializer`), so no
+these identities in two passes (see `oak-node::serializer`), so no
 join tables are needed. Timeline edits map to a handful of node rows:
 moving a clip touches its track and the clip; splitting adds one node
 and updates two; ripple edits touch the affected tracks and delete the
@@ -85,7 +85,7 @@ removed clips.
 ## Import / export
 
 - Import: `.ove` / `.otio` / `.fcpxml` are parsed by their existing
-  oakstorage backends and inserted as a new project row with
+  oak-storage backends and inserted as a new project row with
   `kind = 'import'` journal entries.
 - Export: the in-memory serialization is written through the ove-xml
   or otio backend; nothing is read from or written to the database
@@ -118,13 +118,13 @@ database is a single user-level SQLite file; PostgreSQL is selected with
 `Storage/Backend = "pg"` + `Storage/PgUrl`, or directly with an
 `oakdb+pg://` URI.
 
-Database tests: `cargo test -p oakstorage` is green without PostgreSQL —
+Database tests: `cargo test -p oak-storage` is green without PostgreSQL —
 the SQLite suite always runs; the PG suite (`tests/database_pg_test.rs`)
 connects to a real server when `OAK_TEST_PG_URL` is set (e.g.
 `postgres://user:pass@host:5432/db`) and skips with a note otherwise.
 The URL should point at a dedicated test database: each test resets the
 four tables.
 
-See also: [M10 oakstorage manual](plans/riir/M10-oakstorage.md),
+See also: [M10 oak-storage manual](plans/riir/M10-oak-storage.md),
 [M13 write-through plan](plans/riir/M13-storage-live.md),
 [project file reference](project-file-reference.md).

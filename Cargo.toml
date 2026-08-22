@@ -14,34 +14,35 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-# Root manifest: the `oakapp` package (the gpui-based application) plus the
-# Cargo workspace over every crate under crates/.
+# Root manifest: the Cargo workspace only — every package lives under
+# crates/ (the GUI app in oak-app, the CLI in oak-cli, the render worker
+# in oak-worker, the module rlibs in oak-*) or examples/ (standalone
+# integration crates, each with its own Cargo.toml).
 #
 # gpui (the oak-gpui fork at gpui/) is excluded: it is a separate git
 # repository with its own workspace (resolver 3, edition 2024,
 # workspace.package/workspace.dependencies). Without the exclusion its
-# crates would be auto-included here via oakapp's path dependencies and
+# crates would be auto-included here via oak-app's path dependencies and
 # would inherit from THIS workspace's [workspace.package] (which lacks the
 # keys gpui expects). Excluded, each gpui crate resolves against gpui's own
 # workspace root, exactly as before the monorepo workspace existed.
 [workspace]
-members = ["crates/*"]
+members = ["crates/*", "examples/*"]
 exclude = ["gpui", "crates/oakengine.bk"]
-# NOTE: oakstorage (crates/oakstorage) is a workspace member but NOT a
-# default member (it stays out of the default-members test matrix to keep
-# `cargo test` at the root fast; the app links it as a normal path
-# dependency, so it builds with the app). Build/test it explicitly with
-# `cargo test -p oakstorage`.
+# NOTE: oak-storage is a workspace member but NOT a default member (it
+# stays out of the default-members test matrix to keep `cargo test` at
+# the root fast; the app links it as a normal path dependency, so it
+# builds with the app). Build/test it explicitly with `cargo test -p oak-storage`.
 # NOTE: `crates/oakengine` (the frozen C-ABI facade cdylib) is retired:
 # every consumer (app/cli/worker/plugins) links the module rlibs
 # directly, so nothing in the workspace referenced it. The sources are
 # kept at crates/oakengine.bk (excluded from the workspace) as a
 # reference snapshot; git history is the authoritative backup.
-default-members = [".", "crates/oak-cli", "crates/oak-worker"]
+default-members = ["crates/oak-app", "crates/oak-cli", "crates/oak-worker"]
 resolver = "2"
 
 [workspace.package]
-# Single source of truth for the release version: the root `oak` package
+# Single source of truth for the release version: the app package
 # inherits it, and with it cargo-packager and the CD packaging scripts.
 version = "0.5.0"
 
@@ -53,127 +54,6 @@ version = "0.5.0"
 # (it used to live in each member's Cargo.toml, which a workspace root
 # ignores).
 panic = "unwind"
-
-[package]
-name = "oak"
-version.workspace = true
-edition = "2021"
-description = "Oak Video Editor"
-license = "GPL-3.0-or-later"
-
-[lib]
-name = "oakapp"
-path = "src/lib.rs"
-# Doctests are disabled: the app links the oak* module crates (which carry
-# media/codec dependencies); the doc examples' assertions are covered by
-# unit tests instead (see `oakui/timecode`).
-doctest = false
-
-[[bin]]
-name = "oak-editor"
-path = "src/main.rs"
-
-[dependencies]
-# gpui: the GPU-accelerated UI framework (oak-gpui fork, git submodule at gpui/).
-gpui = { path = "gpui/crates/gpui" }
-# Convenience entry point: `gpui_platform::application()` picks the platform
-# backend. font-kit enables text shaping/rendering on macOS.
-gpui_platform = { path = "gpui/crates/gpui_platform", features = ["font-kit"] }
-# Oak's widget library: menus, viewer, form controls, project explorer.
-gpui_widgets = { path = "gpui/crates/gpui_widgets" }
-# The mock engine's synthetic viewer frames (`image::Frame` in a
-# `RenderImage`), matching the versions gpui itself uses.
-image = "0.25"
-smallvec = "1"
-# Editable-text widget (used by the file / export dialogs' path fields, the
-# same gpui-elements crate gpui_widgets builds on).
-gpui_elements = { path = "gpui/crates/gpui_elements" }
-# UI string tables: YAML language packs under assets/i18n/, loaded at
-# runtime (bundled with the app, user-extensible) with the compiled-in
-# English table as the fallback.
-serde_yaml = "0.9"
-
-# M14 R3: the app is a PURE module-crate consumer — every engine call is a
-# direct Rust call into the oak* rlibs (oaknode for the project graph,
-# oaktimeline/oakundo for the edit commands and the global undo stack,
-# oakrender for the ticket arena, oakcodec for the export formats/test
-# media, oaktask for the export/interchange tasks, oakaudio for the
-# manager/waveforms, oakcommon/oakcore-rs for the config store and shared
-# value types, oakstorage for the write-through library). No liboakengine
-# dylib, no C ABI, no build.rs link step, no host shims.
-oakaudio = { path = "crates/oakaudio" }
-oakcodec = { path = "crates/oakcodec" }
-oakcommon = { path = "crates/oakcommon" }
-oakcore-rs = { path = "crates/oakcore" }
-oaknode = { path = "crates/oaknode" }
-oakplugin = { path = "crates/oakplugin" }
-oakrender = { path = "crates/oakrender" }
-oakstorage = { path = "crates/oakstorage" }
-oaktask = { path = "crates/oaktask" }
-oaktimeline = { path = "crates/oaktimeline" }
-oakundo = { path = "crates/oakundo" }
-
-[features]
-default = []
-# Force the mock engine even though the real facade is linked. Off by
-# default: the app runs on the real engine unless `--mock` / `OAK_ENGINE=mock`
-# is given at runtime (or this feature is enabled at build time).
-mock-engine = []
-
-[dev-dependencies]
-# `#[gpui::test]` harness for engine-seam smoke tests (test-support feature).
-gpui = { path = "gpui/crates/gpui", features = ["test-support"] }
-# `test-support` also enables `gpui_macos/test-support`, which is what makes
-# `render_to_image` (the screenshot example) available.
-gpui_platform = { path = "gpui/crates/gpui_platform", features = ["test-support"] }
-# Screenshot capture: `examples/screenshot.rs` saves the rendered window PNG
-# (the `image` crate is already in the lockfile through gpui).
-image = "0.25"
-
-# ---------------------------------------------------------------------------
-# cargo-packager metadata (the CD workflow, .github/workflows/cd.yml, packages
-# the release binaries with `cargo packager`; the schema lives at
-# https://docs.crabnebula.dev/packager/configuration/).
-#
-# Binaries are resolved relative to `target/<profile>` (oak-editor is the
-# main binary; oak-cli / oak-worker are bundled alongside). They must exist
-# before packaging runs — `cargo packager` does NOT build the app itself, so
-# CD builds with `cargo build --release` first.
-#
-# `icons/icon.png` is NOT committed: it is generated from `Oak_Icon.svg`
-# (rsvg-convert) in CD right before packaging, because cargo-packager needs a
-# bitmap (it converts a square PNG into .icns / .ico / hicolor PNGs itself).
-# It must be 512x512: cargo-packager's tauri-icns 0.1.0 maps only 512x512@1x
-# (and 1024x1024@2x) to an ICNS type — a plain 1024x1024 PNG aborts with
-# "No matching IconType".
-# Keep the path here in sync with the CD workflow.
-# ---------------------------------------------------------------------------
-[package.metadata.packager]
-name = "oak"
-productName = "Oak Video Editor"
-identifier = "org.oakvideoeditor.Oak"
-description = "Oak Video Editor"
-longDescription = "Oak Video Editor: a free, open-source non-linear video editor written in Rust."
-authors = ["Oak Team"]
-copyright = "Copyright (C) 2026 Oak Team"
-licenseFile = "LICENSE"
-category = "Video"
-icons = ["icons/icon.png"]
-# The UI string tables (language packs); users can drop extra
-# <lang>.yaml files into the installed i18n directory.
-# The Windows DLL staging dir is filled by
-# tooling/package/bundle-dylibs-windows.sh before `cargo packager` runs
-# (NSIS/WiX place resources next to the executable, which is exactly
-# where Windows resolves DLLs from). Empty locally = no bundled DLLs.
-resources = [
-    "assets/i18n",
-    { src = "target/pkg/win-dlls/*.dll", target = "." },
-]
-binaries = [
-    { path = "oak-editor", main = true },
-    { path = "oak-cli", main = false },
-    { path = "oak-worker", main = false },
-]
 
 [profile.dev.package."*"]
 opt-level = 1

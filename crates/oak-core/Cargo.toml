@@ -1,0 +1,11 @@
+[package]
+name = "oak-core"
+version.workspace = true
+edition = "2021"
+description = "Rust value types mirroring oakcore (Rational, TimeRange, format enums)"
+license = "GPL-3.0-or-later"
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]

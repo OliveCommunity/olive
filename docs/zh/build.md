@@ -31,7 +31,7 @@
   ```
   `FFMPEG_DIR` 无需手动导出：仓库内提交的 `.cargo/config.toml` 已按
   workspace 根的相对路径设置（`ffmpeg-sys-next` 的构建脚本读不了
-  `.env`，这是唯一与机器无关的方式）。缺少它时 `oakffmpeg-link` 的
+  `.env`，这是唯一与机器无关的方式）。缺少它时 `oak-ffmpeg-link` 的
   构建脚本会直接 panic：首次 `cargo build` 前请先跑一次
   `build-ffmpeg.sh`。
 
@@ -125,7 +125,7 @@ Windows 构建目标是 **x86_64-pc-windows-gnu**，使用 MSYS2 自带 Rust；
 | Windows | MSYS2 `mingw-w64-ucrt-x86_64-opencolorio` | 动态 | 设置 `OCIO_INSTALL_DIR=/ucrt64`、`OCIO_RS_LINK=dynamic` |
 
 既没有 `bundled` 特性也没有 `OCIO_RS_ENABLE_REAL=1` 时，`ocio-sys`
-构建为 stub，所有色彩测试直接跳过。`oakrender` 无条件启用 bundled
+构建为 stub，所有色彩测试直接跳过。`oak-render` 无条件启用 bundled
 特性，因此在 Linux/macOS 上直接 `cargo build` 就会得到真实 OCIO。
 
 ## 打包
@@ -145,7 +145,7 @@ tooling/package/build-pkg.sh  # Arch Linux → .pkg.tar.zst
 
 ## 故障排查
 
-- **`oakffmpeg-link` 报 `FFMPEG_DIR` panic** —— 先跑一次
+- **`oak-ffmpeg-link` 报 `FFMPEG_DIR` panic** —— 先跑一次
   `tooling/ffmpeg/build-ffmpeg.sh`；它安装到 `.cache/ffmpeg`，
   `.cargo/config.toml` 已指向该目录。
 - **IDE 构建失败（RustRover 等）** —— 无法向 cargo 注入环境变量的

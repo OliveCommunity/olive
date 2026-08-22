@@ -33,7 +33,7 @@ macOS, Linux, and Windows. For the Chinese version see
   `FFMPEG_DIR` does not need exporting: the committed
   `.cargo/config.toml` sets it relative to the workspace root
   (`ffmpeg-sys-next` cannot read `.env` at build-script time — the
-  config entry is the only machine-agnostic way). The `oakffmpeg-link`
+  config entry is the only machine-agnostic way). The `oak-ffmpeg-link`
   build script panics without it; run `build-ffmpeg.sh` once before the
   first `cargo build`.
 
@@ -128,7 +128,7 @@ Unix-style link args the MSVC linker rejects).
 
 Without the `bundled` feature and without `OCIO_RS_ENABLE_REAL=1`,
 `ocio-sys` builds a stub and every colour test early-returns. The
-bundled feature is enabled unconditionally by `oakrender`, so a plain
+bundled feature is enabled unconditionally by `oak-render`, so a plain
 `cargo build` always gets the real thing on Linux/macOS.
 
 ## Packaging
@@ -149,7 +149,7 @@ libraries; see `docs/project-storage.md` for what lands where.
 
 ## Troubleshooting
 
-- **`oakffmpeg-link` panics about `FFMPEG_DIR`** — run
+- **`oak-ffmpeg-link` panics about `FFMPEG_DIR`** — run
   `tooling/ffmpeg/build-ffmpeg.sh` once; it installs into
   `.cache/ffmpeg`, which `.cargo/config.toml` points at.
 - **IDE builds fail (RustRover etc.)** — IDEs that cannot inject

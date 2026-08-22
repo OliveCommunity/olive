@@ -16,7 +16,7 @@
 
 [package]
 name = "oak-cli"
-version = "0.1.0"
+version.workspace = true
 edition = "2021"
 description = "Oak Video Editor headless command-line consumer of the oak editor module crates (Rust)"
 license = "GPL-3.0-or-later"
@@ -34,10 +34,10 @@ clap = { version = "4", features = ["derive"] }
 # oakcodec for the export formats/codecs, oaktask for the export task,
 # oakcommon/oakcore-rs for the shared value types). No liboakengine dylib,
 # no C ABI, no build.rs link step, no host shims.
-oakcommon = { path = "../oakcommon" }
-oakcore-rs = { path = "../oakcore" }
-oaknode = { path = "../oaknode" }
-oaktimeline = { path = "../oaktimeline" }
-oakcodec = { path = "../oakcodec" }
-oakrender = { path = "../oakrender" }
-oaktask = { path = "../oaktask" }
+oak-common = { path = "../oak-common" }
+oak-core = { path = "../oak-core" }
+oak-node = { path = "../oak-node" }
+ oak-timeline = { path = "../oak-timeline" }
+oak-codec = { path = "../oak-codec" }
+oak-render = { path = "../oak-render" }
+ oak-task = { path = "../oak-task" }
