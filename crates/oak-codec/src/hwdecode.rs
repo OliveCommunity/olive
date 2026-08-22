@@ -229,7 +229,7 @@ mod tests {
 	#[cfg(target_os = "macos")]
 	#[test]
 	fn videotoolbox_device_opens_for_h264() {
-		let mut input = ffmpeg::format::input(&"../../tests/demo.mp4".to_string())
+		let mut input = ffmpeg::format::input(&"../oak-app/tests/demo.mp4".to_string())
 			.expect("open demo.mp4");
 		let fstream = input.stream(0).expect("stream 0");
 		let params = fstream.parameters();

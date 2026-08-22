@@ -155,7 +155,7 @@ fn golden_project_with_footage_loads() {
 
 	let xml = std::fs::read_to_string(concat!(
 		env!("CARGO_MANIFEST_DIR"),
-		"/../../tests/project_with_footage.ove"
+		"/../oak-app/tests/project_with_footage.ove"
 	))
 	.unwrap();
 	let project = oak_node::serializer::load(&xml).unwrap();

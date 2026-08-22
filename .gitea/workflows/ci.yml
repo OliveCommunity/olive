@@ -182,6 +182,10 @@ jobs:
   windows:
     name: Build & test (Windows)
     runs-on: oak-windows-2025
+    env:
+      # The runner's msys2 shell starts as the base MSYS environment; the
+      # build needs the UCRT64 one (mingw-w64-ucrt-x86_64-* toolchain).
+      MSYSTEM: UCRT64
     defaults:
       run:
         shell: msys2 {0}
@@ -198,6 +202,7 @@ jobs:
       - name: Install system dependencies
         run: |
           cd "$GITHUB_WORKSPACE"
+          export PATH="/ucrt64/bin:$PATH"
           bash ./tooling/install-deps.sh
           pacman -S --needed --noconfirm \
             mingw-w64-ucrt-x86_64-cmake \
@@ -212,6 +217,7 @@ jobs:
       - name: Configure build environment
         run: |
           cd "$GITHUB_WORKSPACE"
+          export PATH="/ucrt64/bin:$PATH"
           echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
           echo "OCIO_INSTALL_DIR=/ucrt64" >> "$GITHUB_ENV"
           echo "OCIO_RS_LINK=dynamic" >> "$GITHUB_ENV"
@@ -260,6 +266,7 @@ jobs:
       - name: Build project FFmpeg
         run: |
           cd "$GITHUB_WORKSPACE"
+          export PATH="/ucrt64/bin:$PATH"
           bash tooling/ffmpeg/build-ffmpeg.sh
           echo "FFMPEG_DIR=$(cygpath -m "$PWD/.cache/ffmpeg")" >> "$GITHUB_ENV"
 
@@ -269,6 +276,7 @@ jobs:
       - name: Build
         run: |
           cd "$GITHUB_WORKSPACE"
+          export PATH="/ucrt64/bin:$PATH"
           # The runner's job hook injects the MSVC INCLUDE/LIB into every
           # step; clear them in-step (they poison the MinGW compiles with
           # MSVC SDK headers).
@@ -284,6 +292,7 @@ jobs:
       - name: Test
         run: |
           cd "$GITHUB_WORKSPACE"
+          export PATH="/ucrt64/bin:$PATH"
           unset INCLUDE LIB
           # See Build (Windows): trailing -lmsvcrt for the mingw-w64
           # _assert/__msvcrt_assert link-order breakage.

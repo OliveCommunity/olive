@@ -40,7 +40,7 @@ use std::sync::Arc;
 
 /// `tests/demo.mp4` at the repository root.
 fn demo_path() -> std::path::PathBuf {
-	std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/demo.mp4")
+	std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../oak-app/tests/demo.mp4")
 }
 
 fn video_params(stream: CodecStream, time: Rational) -> RetrieveVideoParams {

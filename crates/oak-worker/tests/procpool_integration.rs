@@ -282,7 +282,7 @@ fn crash_isolation_restarts_worker_and_frame_still_renders() {
 #[test]
 fn worker_decodes_real_footage_into_slot() {
 	let _guard = lock_test();
-	let demo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/demo.mp4");
+	let demo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../oak-app/tests/demo.mp4");
 	assert!(demo.exists(), "repo fixture tests/demo.mp4 missing");
 
 	let dispatcher = ProcessDispatcher::new(config(1, 4)).expect("dispatcher config");
