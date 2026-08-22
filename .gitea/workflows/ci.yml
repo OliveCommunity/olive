@@ -195,8 +195,6 @@ jobs:
           echo "PATH = $env:PATH"
           Get-Command bash -ErrorAction SilentlyContinue
           Get-Command msys2 -ErrorAction SilentlyContinue
-      - run: throw "deliberate"
-        shell: powershell
       - name: Checkout
         uses: actions/checkout@v4
         with:
