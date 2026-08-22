@@ -197,6 +197,7 @@ jobs:
       # ------------------------------------------------------------------
       - name: Install system dependencies
         run: |
+          cd "$GITHUB_WORKSPACE"
           bash ./tooling/install-deps.sh
           pacman -S --needed --noconfirm \
             mingw-w64-ucrt-x86_64-cmake \
@@ -210,6 +211,7 @@ jobs:
       # Dynamic here — the CD packages the DLLs next to the binaries.
       - name: Configure build environment
         run: |
+          cd "$GITHUB_WORKSPACE"
           echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
           echo "OCIO_INSTALL_DIR=/ucrt64" >> "$GITHUB_ENV"
           echo "OCIO_RS_LINK=dynamic" >> "$GITHUB_ENV"
@@ -257,6 +259,7 @@ jobs:
       # ------------------------------------------------------------------
       - name: Build project FFmpeg
         run: |
+          cd "$GITHUB_WORKSPACE"
           bash tooling/ffmpeg/build-ffmpeg.sh
           echo "FFMPEG_DIR=$(cygpath -m "$PWD/.cache/ffmpeg")" >> "$GITHUB_ENV"
 
@@ -265,6 +268,7 @@ jobs:
       # ------------------------------------------------------------------
       - name: Build
         run: |
+          cd "$GITHUB_WORKSPACE"
           # The runner's job hook injects the MSVC INCLUDE/LIB into every
           # step; clear them in-step (they poison the MinGW compiles with
           # MSVC SDK headers).
@@ -279,6 +283,7 @@ jobs:
 
       - name: Test
         run: |
+          cd "$GITHUB_WORKSPACE"
           unset INCLUDE LIB
           # See Build (Windows): trailing -lmsvcrt for the mingw-w64
           # _assert/__msvcrt_assert link-order breakage.
