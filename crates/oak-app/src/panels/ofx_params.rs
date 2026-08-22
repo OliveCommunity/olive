@@ -55,11 +55,11 @@ use gpui::{
 	Point, Pixels, Rgba, anchored, canvas, deferred, fill,
 };
 use gpui_elements::editable_text::{EditableTextState, StringStorage};
-use gpui_widgets::checkbox::{CheckBox, CheckBoxEvent, CheckState};
-use gpui_widgets::combo_box::{ComboBox, ComboBoxEvent, ComboBoxOption};
-use gpui_widgets::slider::{Slider, SliderEvent, SliderModel};
-use gpui_widgets::spinbox::{SpinBox, SpinBoxEvent};
-use gpui_widgets::value::{SliderValue, ValueKind};
+use crate::oakui::component::controls::{CheckBox, CheckBoxEvent, CheckState};
+use crate::oakui::component::controls::{ComboBox, ComboBoxEvent, ComboBoxOption};
+use crate::oakui::component::controls::{Slider, SliderEvent, SliderModel};
+use crate::oakui::component::controls::{SpinBox, SpinBoxEvent};
+use crate::oakui::component::controls::{SliderValue, ValueKind};
 
 use oak_node::value::{NodeValue, ValueType};
 
@@ -650,8 +650,8 @@ fn wire_controls<E: AppEngine>(view: &OfxParamsView<E>, cx: &mut Context<OfxPara
 		match &control.kind {
 			ControlKind::Slider(slider) => {
 				let slider = slider.clone();
-				cx.subscribe(&slider, move |_, _, event: &gpui_widgets::slider::SliderEvent, cx| {
-					if let gpui_widgets::slider::SliderEvent::ValueChanged { value, .. } = event {
+				cx.subscribe(&slider, move |_, _, event: &crate::oakui::component::controls::SliderEvent, cx| {
+					if let crate::oakui::component::controls::SliderEvent::ValueChanged { value, .. } = event {
 						let nv = match value {
 							SliderValue::Integer(v) => NodeValue::Int(*v),
 							_ => NodeValue::Float(value.to_f64()),
@@ -995,7 +995,7 @@ impl<E: AppEngine> Render for OfxParamsView<E> {
 
 /// A request emitted by an [`OfxColorPicker`].
 #[derive(Debug, Clone, Copy, PartialEq)]
-enum OfxColorEvent {
+pub enum OfxColorEvent {
 	/// The popup was opened (draft reset to the committed colour).
 	Opened,
 	/// The popup was dismissed without committing.
@@ -1021,7 +1021,7 @@ enum OfxColorEvent {
 /// The picker is a child entity of the params view and carries its own
 /// state across frames; [`OfxColorPicker::set_committed`] re-syncs it from
 /// the engine each frame (undo / redo / external edits land on the swatch).
-struct OfxColorPicker {
+pub struct OfxColorPicker {
 	/// Stable control id (element ids / slider ids).
 	control: usize,
 	/// Whether the popup is open.

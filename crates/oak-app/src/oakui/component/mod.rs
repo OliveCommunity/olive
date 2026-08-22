@@ -34,8 +34,10 @@
 //! - [`text_input`]: the text field (IME, caret/selection, editing keys).
 //! - [`menu`]: menus (menu bar entries and context menus).
 
+pub mod controls;
 pub mod menu;
 pub mod text_input;
 
+pub use controls::{Slider, SliderEvent, SliderModel, SpinBox, SpinBoxEvent, CheckBox, CheckBoxEvent, CheckState, ComboBox, ComboBoxEvent, ComboBoxOption, SliderValue, ValueKind, OfxColorPicker};
 pub use menu::{ContextMenu, Menu, MenuItem, MenuBar};
 pub use text_input::{install_text_input_bindings, text_input, TextInput};

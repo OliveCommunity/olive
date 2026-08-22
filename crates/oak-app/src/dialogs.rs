@@ -32,11 +32,11 @@ use gpui::{
 	PathPromptOptions, Render, SharedString, Window,
 };
 use gpui_elements::editable_text::{EditableTextState, StringStorage, TextChanged};
-use gpui_widgets::checkbox::{CheckBox, CheckBoxEvent, CheckState};
-use gpui_widgets::combo_box::{ComboBox, ComboBoxEvent, ComboBoxOption};
-use gpui_widgets::slider::SliderModel;
-use gpui_widgets::spinbox::{SpinBox, SpinBoxEvent};
-use gpui_widgets::value::ValueKind;
+use crate::oakui::component::controls::{CheckBox, CheckBoxEvent, CheckState};
+use crate::oakui::component::controls::{ComboBox, ComboBoxEvent, ComboBoxOption};
+use crate::oakui::component::controls::SliderModel;
+use crate::oakui::component::controls::{SpinBox, SpinBoxEvent};
+use crate::oakui::component::controls::ValueKind;
 use crate::oakui::component::text_input;
 
 use crate::actions::ActionId;

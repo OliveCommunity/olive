@@ -183,7 +183,13 @@ fn tables() -> &'static RwLock<HashMap<String, Table>> {
 /// directory's packs override the previous source per key.
 fn pack_dirs() -> Vec<std::path::PathBuf> {
 	let mut dirs = Vec::new();
-	// Dev checkout (running from the repo root or a subdir).
+	// Dev checkout: the repo-root assets/i18n (the app crate now lives in
+	// crates/oak-app, so CARGO_MANIFEST_DIR is no longer the repo root),
+	// plus a CWD-relative fallback for running the binary from the root.
+	dirs.push(
+		std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+			.join("../../assets/i18n"),
+	);
 	dirs.push(std::path::PathBuf::from("assets/i18n"));
 	if let Ok(exe) = std::env::current_exe() {
 		if let Some(dir) = exe.parent() {
@@ -282,7 +288,11 @@ mod tests {
 		let tables = tables().read().unwrap_or_else(|e| e.into_inner());
 		let en = tables.get("en-US").expect("en-US pack");
 		assert!(!en.is_empty(), "en-US pack parses to a non-empty table");
-		for entry in std::fs::read_dir("assets/i18n").expect("dev checkout packs") {
+		for entry in std::fs::read_dir(
+		std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/i18n"),
+	)
+	.expect("dev checkout packs")
+{
 			let path = entry.unwrap().path();
 			if path.extension().and_then(|e| e.to_str()) != Some("yaml") {
 				continue;

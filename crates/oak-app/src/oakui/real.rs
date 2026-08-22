@@ -5289,10 +5289,10 @@ mod tests {
 	impl WorkerBinGuard {
 		fn set() -> Self {
 			let prev = std::env::var("OAK_WORKER_BIN").ok();
+			// The worker binary lives in the workspace-root target dir (the
+			// app crate is at crates/oak-app, not the repo root).
 			let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-				.join("target")
-				.join("debug")
-				.join("oak-worker");
+				.join("../../target/debug/oak-worker");
 			std::env::set_var("OAK_WORKER_BIN", path);
 			Self { prev }
 		}
@@ -5645,7 +5645,7 @@ mod tests {
 		let config = DispatcherConfig {
 			worker_bin: Some(
 				std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-					.join("target/debug/oak-worker"),
+					.join("../../target/debug/oak-worker"),
 			),
 			workers: 1,
 			slots_per_worker: 2,

@@ -49,13 +49,13 @@ use gpui::{
 	div, img, prelude::*, px, Context, Entity, MouseButton, Pixels, Point, Window,
 };
 use gpui::{AnyElement, App, ClickEvent, DragMoveEvent, EventEmitter, Render, SharedString};
-use gpui_widgets::checkbox::{CheckBox, CheckBoxEvent, CheckState};
+use crate::oakui::component::controls::{CheckBox, CheckBoxEvent, CheckState};
 use crate::oakui::component::menu::{Menu, MenuItem};
 use gpui_widgets::viewer::PlaybackClock;
 use gpui_widgets::project_explorer::FootageDrag;
-use gpui_widgets::slider::{Slider, SliderEvent, SliderModel};
+use crate::oakui::component::controls::{Slider, SliderEvent, SliderModel};
 use gpui_widgets::tooltip::tooltip_view;
-use gpui_widgets::value::ValueKind;
+use crate::oakui::component::controls::ValueKind;
 
 use crate::actions::ActionId;
 use crate::i18n;
