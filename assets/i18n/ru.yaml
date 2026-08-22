@@ -1,5 +1,6 @@
 # Oak Video Editor UI strings — Русский (ru)
 # Format: "i18n.key": "Translated text". Add new languages as new files named <lang>.yaml.
+"language.name": "Русский"
 "menu.file": "Файл(Ф)"
 "menu.edit": "Правка(П)"
 "menu.view": "Вид(В)"
@@ -65,7 +66,6 @@
 "menu.view.theme.dark": "Olive Dark"
 "menu.view.theme.light": "Olive Light"
 "menu.view.language": "Язык"
-"language.name": "Русский"
 "menu.view.zoom_in": "Увеличить"
 "menu.view.zoom_out": "Уменьшить"
 "menu.view.increase_track_height": "Увеличить высоту дорожки"

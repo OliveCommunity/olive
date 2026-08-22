@@ -1,5 +1,6 @@
 # Oak Video Editor UI strings — 日本語 (ja)
 # Format: "i18n.key": "Translated text". Add new languages as new files named <lang>.yaml.
+"language.name": "日本語"
 "menu.file": "ファイル(F)"
 "menu.edit": "編集(E)"
 "menu.view": "表示(V)"
@@ -65,7 +66,6 @@
 "menu.view.theme.dark": "Olive Dark"
 "menu.view.theme.light": "Olive Light"
 "menu.view.language": "言語"
-"language.name": "日本語"
 "menu.view.zoom_in": "ズームイン"
 "menu.view.zoom_out": "ズームアウト"
 "menu.view.increase_track_height": "トラックの高さを増やす"

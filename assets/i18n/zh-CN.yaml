@@ -1,5 +1,6 @@
 # Oak Video Editor UI strings — 简体中文 (zh-CN)
 # Format: "i18n.key": "Translated text". Add new languages as new files named <lang>.yaml.
+"language.name": "简体中文"
 "menu.file": "文件(F)"
 "menu.edit": "编辑(E)"
 "menu.view": "视图(V)"
@@ -65,7 +66,6 @@
 "menu.view.theme.dark": "Olive Dark"
 "menu.view.theme.light": "Olive Light"
 "menu.view.language": "语言"
-"language.name": "简体中文"
 "menu.view.zoom_in": "放大"
 "menu.view.zoom_out": "缩小"
 "menu.view.increase_track_height": "增加轨道高度"

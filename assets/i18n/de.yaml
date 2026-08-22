@@ -1,5 +1,6 @@
 # Oak Video Editor UI strings — Deutsch (de)
 # Format: "i18n.key": "Translated text". Add new languages as new files named <lang>.yaml.
+"language.name": "Deutsch"
 "menu.file": "Datei(D)"
 "menu.edit": "Bearbeiten(B)"
 "menu.view": "Ansicht(A)"
@@ -65,7 +66,6 @@
 "menu.view.theme.dark": "Olive Dark"
 "menu.view.theme.light": "Olive Light"
 "menu.view.language": "Sprache"
-"language.name": "Deutsch"
 "menu.view.zoom_in": "Vergrößern"
 "menu.view.zoom_out": "Verkleinern"
 "menu.view.increase_track_height": "Spurhöhe erhöhen"

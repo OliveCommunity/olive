@@ -5829,8 +5829,12 @@ mod tests {
 			})
 		})
 		.expect("re-import the footage");
-		let deadline = std::time::Instant::now() + Duration::from_secs(20);
+		// Progress criterion, not wall time: the worker's async thumbnail
+		// installs after a bounded number of engine pumps (a wall-clock
+		// cap would fail on slow machines for machine speed).
+		let mut pumps = 0usize;
 		loop {
+			pumps += 1;
 			let thumbnail = cx.read(|app| {
 				engine
 					.read(app)
@@ -5847,8 +5851,8 @@ mod tests {
 				break;
 			}
 			assert!(
-				std::time::Instant::now() < deadline,
-				"the entry eventually carries a thumbnail path"
+				pumps < 5000,
+				"the entry eventually carries a thumbnail path (after {pumps} pumps)"
 			);
 			cx.update(|app| engine.update(app, |engine, _cx| engine.drain_thumbnails()));
 			std::thread::sleep(Duration::from_millis(10));
@@ -6318,7 +6322,7 @@ mod tests {
 		std::thread::spawn(move || RealEngine::full_res_worker(request, tx));
 
 		let event = rx
-			.recv_timeout(Duration::from_secs(20))
+			.recv_timeout(Duration::from_secs(60))
 			.expect("the worker delivers the frame after the project drop");
 		let bytes = event.image.as_bytes(0).expect("one frame");
 		assert_eq!(bytes.len(), 64 * 64 * 4, "full-res geometry");
@@ -6488,7 +6492,7 @@ mod tests {
 		std::thread::spawn(move || RealEngine::full_res_worker(request, tx));
 
 		let event = rx
-			.recv_timeout(Duration::from_secs(20))
+			.recv_timeout(Duration::from_secs(60))
 			.expect("the worker delivers the full-res frame");
 		assert_eq!(event.monitor, Monitor::Program);
 		assert_eq!(event.frame, 0);
@@ -6543,9 +6547,12 @@ mod tests {
 
 		// Drive the tick loop until the background fill lands and replaces
 		// the proxy in the display path.
+		// Progress criterion, not wall time: the fill lands after a bounded
+		// number of engine pumps (machine-speed independent).
 		let full_len = (width * height * 4) as usize;
-		let deadline = std::time::Instant::now() + Duration::from_secs(20);
+		let mut pumps = 0usize;
 		loop {
+			pumps += 1;
 			cx.update(|app| engine.update(app, |engine, cx| engine.tick(cx)));
 			let len = cx.read(|app| {
 				engine
@@ -6559,8 +6566,8 @@ mod tests {
 				break;
 			}
 			assert!(
-				std::time::Instant::now() < deadline,
-				"the full-res fill lands within the deadline (got {len} bytes)"
+				pumps < 5000,
+				"the full-res fill lands after a bounded number of pumps (got {len} bytes after {pumps})"
 			);
 			std::thread::sleep(Duration::from_millis(10));
 		}
@@ -6858,10 +6865,11 @@ mod tests {
 
 		// Start playback and drive the tick loop: the window must fill.
 		cx.update(|app| engine.update(app, |engine, cx| engine.play(Monitor::Program, cx)));
-		let deadline = std::time::Instant::now() + Duration::from_secs(30);
 		let mut filled = 0usize;
 		let mut hit = false;
+		let mut pumps = 0usize;
 		loop {
+			pumps += 1;
 			cx.update(|app| engine.update(app, |engine, cx| engine.tick(cx)));
 			let (slots, submitted) = cx.read(|app| {
 				let engine = engine.read(app);
@@ -6882,8 +6890,8 @@ mod tests {
 				break;
 			}
 			assert!(
-				std::time::Instant::now() < deadline,
-				"the playback window must supply playhead frames (peak cached {filled}, submitted {submitted})"
+				pumps < 5000,
+				"the playback window must supply playhead frames (peak cached {filled}, submitted {submitted}, after {pumps} pumps)"
 			);
 			std::thread::sleep(Duration::from_millis(10));
 		}

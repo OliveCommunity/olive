@@ -42,17 +42,17 @@ fn bin() -> &'static str {
 
 /// The fixture `.ove` file (relative to the workspace root).
 fn fixture_project() -> PathBuf {
+	// The fixtures live with the app crate (moved there in the workspace
+	// restructure); oak-cli sits one level below oak-app.
 	Path::new(env!("CARGO_MANIFEST_DIR"))
-		.join("../..")
-		.join("tests")
+		.join("../oak-app/tests")
 		.join("project_with_footage.ove")
 }
 
 /// The real media fixture.
 fn fixture_media() -> PathBuf {
 	Path::new(env!("CARGO_MANIFEST_DIR"))
-		.join("../..")
-		.join("tests")
+		.join("../oak-app/tests")
 		.join("demo.mp4")
 }
 
@@ -60,8 +60,7 @@ fn fixture_media() -> PathBuf {
 /// no audio — fast end-to-end transcode coverage.
 fn fixture_image() -> PathBuf {
 	Path::new(env!("CARGO_MANIFEST_DIR"))
-		.join("../..")
-		.join("tests")
+		.join("../oak-app/tests")
 		.join("img.png")
 }
 
