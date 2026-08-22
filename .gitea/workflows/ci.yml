@@ -16,172 +16,175 @@ permissions:
   contents: read
 
 jobs:
-#  linux:
-#    name: Build & test (Linux)
-#    runs-on: oak-ubuntu-2404
-#    steps:
-#      - name: Checkout
-#        uses: actions/checkout@v4
-#        with:
-#          # gpui/ is a git submodule; its crates are workspace members of
-#          # their own repo and build as path dependencies of oakapp.
-#          submodules: true
-#
-#      # ------------------------------------------------------------------
-#      # System dependencies
-#      # ------------------------------------------------------------------
-#      - name: Install system dependencies
-#        run: |
-#          # Codec/filter libraries for the ffmpeg-sys-next build feature
-#          # (see tooling/install-deps.sh).
-#          tooling/install-deps.sh
-#          # cmake/make for the vendored OpenColorIO build (ocio-sys
-#          # `bundled`; Ubuntu's libopencolorio-dev is 2.1, older than the
-#          # bridge's API floor) plus the headless test infra gpui needs:
-#          # X11, software Mesa Vulkan (lavapipe) and xvfb.
-#          sudo apt-get install -y \
-#            cmake \
-#            libpipewire-0.3-dev libspa-0.2-dev libjack-jackd2-dev \
-#            libasound2-dev libpulse-dev libsndfile1-dev \
-#            libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
-#            libvulkan-dev libxkbcommon-dev libxkbcommon-x11-dev xvfb build-essential
-#
-#      # ------------------------------------------------------------------
-#      # Build environment
-#      # ------------------------------------------------------------------
-#      # ocio-sys builds a stub bridge unless these are set; the oak-common
-#      # ocioutils tests need the real library (see crates/oak-common/.cargo/
-#      # config.toml, which only applies to builds run from that directory).
-#      # ocio-sys builds its vendored OpenColorIO from source on Linux (the
-#      # `bundled` feature; the distro package is too old for the bridge),
-#      # so no OCIO_INSTALL_DIR here.
-#      - name: Configure build environment
-#        run: |
-#          echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
-#          echo "OCIO_RS_LINK=static" >> "$GITHUB_ENV"
-#          echo "RUSTUP_HOME=/opt/rust/rustup" >> "$GITHUB_ENV"
-#          echo "CARGO_HOME=/opt/rust/cargo" >> "$GITHUB_ENV"
-#          echo "PATH=$PATH:/opt/rust/cargo/bin" >> "$GITHUB_ENV"
-#
-#      # ------------------------------------------------------------------
-#      # Caches
-#      # ------------------------------------------------------------------
-#      # Covers the whole target/ dir plus ~/.cargo; shared across branches
-#      # of the same OS.
-#      # TEMP: cache disabled ntil the Gitea instance cache is provisioned (Cache cargo artifacts)
-#      #   uses: Swatinem/rust-cache@v2
-#      #   with:
-#      #   shared-key: oak-workspace
-#      #   cache-on-failure: true
-#
-#      # The project FFmpeg (release/8.0, static, all free codecs + hwaccel)
-#      # is built by tooling/ffmpeg/build-ffmpeg.sh — 10-20 min on a cold
-#      # cache. It does not depend on the Rust toolchain, so key it on the
-#      # script itself and keep it out of rust-cache.
-#      # TEMP: cache disabled until the Gitea instance cache is provisioned (Cache project FFmpeg)
-#      #   uses: actions/cache@v4
-#      #   with:
-#      #   path: .cache/ffmpeg
-#      #   key: ffmpeg-${{ runner.os }}-${{ hashFiles('tooling/ffmpeg/build-ffmpeg.sh') }}
-#
-#      # ------------------------------------------------------------------
-#      # Project FFmpeg (script + FFMPEG_DIR; see docs/build.md)
-#      # ------------------------------------------------------------------
-#      - name: Build project FFmpeg
-#        run: |
-#          tooling/ffmpeg/build-ffmpeg.sh
-#          echo "FFMPEG_DIR=$PWD/.cache/ffmpeg" >> "$GITHUB_ENV"
-#
-#      # ------------------------------------------------------------------
-#      # Build & test
-#      # ------------------------------------------------------------------
-#      - name: Build
-#        run: cargo build --workspace --locked
-#
-#      # xvfb + 24-bit screen: the gpui #[gpui::test] tests open real windows
-#      # and render through wgpu on Mesa's software Vulkan (lavapipe).
-#      # The watchdog bounds the step: a deadlocked test produces no output
-#      # and no failure, so after 1500 s (a green run needs ~4 min) it dumps
-#      # every hung process's thread stacks and kills the suite.
-#      - name: Test
-#        run: |
-#          sudo apt-get install -y gdb
-#          xvfb-run -a -s "-screen 0 1920x1080x24" cargo test --workspace --locked &
-#          TEST_PID=$!
-#          (
-#            sleep 1500
-#            echo "::warning::test suite exceeded 1500s; dumping hung-process stacks"
-#            for p in $(pgrep -f 'target/debug/deps/|target/debug/oak-worker'); do
-#              echo "===== thread stacks of pid $p ($(readlink /proc/$p/exe 2>/dev/null)) ====="
-#              sudo gdb -batch -ex 'thread apply all bt' -p "$p" || true
-#            done
-#            pkill -9 -f 'target/debug/deps/' || true
-#            pkill -9 -f 'target/debug/oak-worker' || true
-#          ) &
-#          WATCHDOG_PID=$!
-#          wait $TEST_PID
-#          rc=$?
-#          kill $WATCHDOG_PID 2>/dev/null || true
-#          exit $rc
-#
-#      # A crashing (SIGSEGV) test gives no Rust backtrace; rerun the
-#      # crashing test binaries under gdb to capture the native stack.
-#      # `--args` is required — plain `--` makes gdb treat the test args as
-#      # a core file. The extra probes target loader-stage crashes (the
-#      # copier_test SIGSEGV happens inside ld.so's dl_main): si_addr/si_code
-#      # pin down the fault type, the dynsym dump exposes symbols the
-#      # executable exports for interposition, strace shows the last loader
-#      # syscalls, and valgrind catches a corrupting static initializer.
-#      - name: Backtrace on test failure
-#        if: failure()
-#        run: |
-#          sudo apt-get install -y gdb strace valgrind
-#          for name in node_e2e_test suites_test copier_test; do
-#            BIN=$(ls -t target/debug/deps/$name-* | grep -v '\.d$' | head -1)
-#            [ -n "$BIN" ] || continue
-#            echo "===== $BIN ====="
-#            file "$BIN" || true
-#            echo "--- exported defined dynsyms:"
-#            readelf --dyn-syms -W "$BIN" 2>/dev/null | grep -v ' UND ' | tail -n +4 | head -30 || true
-#            echo "--- strace tail:"
-#            strace -f "$BIN" --list 2>&1 | tail -15 || true
-#            echo "--- valgrind tail:"
-#            valgrind -q "$BIN" --list 2>&1 | tail -25 || true
-#            echo "--- gdb:"
-#            xvfb-run -a gdb -batch \
-#              -ex run \
-#              -ex 'bt' \
-#              -ex 'p $_siginfo.si_code' \
-#              -ex 'p/x $_siginfo._sifields._sigfault.si_addr' \
-#              -ex 'x/6i $rip' \
-#              --args "$BIN" --nocapture || true
-#          done
-#
-#      # ------------------------------------------------------------------
-#      # OFX plugin discovery end-to-end
-#      # ------------------------------------------------------------------
-#      # Build a minimal but real OFX plugin into a .ofx.bundle, point
-#      # OFX_PLUGIN_PATH at it and let the scan_probe example run the full
-#      # host path (directory scan -> dlopen -> setHost -> load -> describe
-#      # -> register). The assertion is the plugin's registration line; CI
-#      # machines have no system-wide OFX plugins, so the fixture is the
-#      # only discovery.
-#      - name: Build OFX fixture plugin
-#        run: crates/oak-plugin/tests/fixtures/build_fixture.sh .cache/ofx-fixture
-#
-#      - name: Probe OFX plugin discovery
-#        run: |
-#          OFX_PLUGIN_PATH="$PWD/.cache/ofx-fixture" \
-#            cargo run --locked -p oak-plugin --example scan_probe > probe.log 2>&1
-#          grep -q 'type_id=rs.oak.CiTestPlugin' probe.log
-#          # A project carrying a plugin node must survive save/load (the
-#          # serializer resolves plugin types via the dynamic factory).
-#          OAK_OFX_FIXTURE_DIR="$PWD/.cache/ofx-fixtre" \
-#            cargo test --locked -p oak-plugin --test ofx_roundtrip
+  linux:
+    name: Build & test (Linux)
+    runs-on: oak-ubuntu-2404
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # gpui/ is a git submodule; its crates are workspace members of
+          # their own repo and build as path dependencies of oakapp.
+          submodules: true
+
+      # ------------------------------------------------------------------
+      # System dependencies
+      # ------------------------------------------------------------------
+      - name: Install system dependencies
+        run: |
+          # Codec/filter libraries for the ffmpeg-sys-next build feature
+          # (see tooling/install-deps.sh).
+          tooling/install-deps.sh
+          # cmake/make for the vendored OpenColorIO build (ocio-sys
+          # `bundled`; Ubuntu's libopencolorio-dev is 2.1, older than the
+          # bridge's API floor) plus the headless test infra gpui needs:
+          # X11, software Mesa Vulkan (lavapipe) and xvfb.
+          sudo apt-get install -y \
+            cmake \
+            libpipewire-0.3-dev libspa-0.2-dev libjack-jackd2-dev \
+            libasound2-dev libpulse-dev libsndfile1-dev \
+            libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
+            libvulkan-dev libxkbcommon-dev libxkbcommon-x11-dev xvfb build-essential clang libclang-dev
+
+      # ------------------------------------------------------------------
+      # Build environment
+      # ------------------------------------------------------------------
+      # ocio-sys builds a stub bridge unless these are set; the oak-common
+      # ocioutils tests need the real library (see crates/oak-common/.cargo/
+      # config.toml, which only applies to builds run from that directory).
+      # ocio-sys builds its vendored OpenColorIO from source on Linux (the
+      # `bundled` feature; the distro package is too old for the bridge),
+      # so no OCIO_INSTALL_DIR here.
+      - name: Configure build environment
+        run: |
+          echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
+          echo "OCIO_RS_LINK=static" >> "$GITHUB_ENV"
+          echo "RUSTUP_HOME=/opt/rust/rustup" >> "$GITHUB_ENV"
+          echo "CARGO_HOME=/opt/rust/cargo" >> "$GITHUB_ENV"
+          echo "PATH=$PATH:/opt/rust/cargo/bin" >> "$GITHUB_ENV"
+
+      # ------------------------------------------------------------------
+      # Caches
+      # ------------------------------------------------------------------
+      # Covers the whole target/ dir plus ~/.cargo; shared across branches
+      # of the same OS.
+      # TEMP: cache disabled ntil the Gitea instance cache is provisioned (Cache cargo artifacts)
+      #   uses: Swatinem/rust-cache@v2
+      #   with:
+      #   shared-key: oak-workspace
+      #   cache-on-failure: true
+
+      # The project FFmpeg (release/8.0, static, all free codecs + hwaccel)
+      # is built by tooling/ffmpeg/build-ffmpeg.sh — 10-20 min on a cold
+      # cache. It does not depend on the Rust toolchain, so key it on the
+      # script itself and keep it out of rust-cache.
+      # TEMP: cache disabled until the Gitea instance cache is provisioned (Cache project FFmpeg)
+      #   uses: actions/cache@v4
+      #   with:
+      #   path: .cache/ffmpeg
+      #   key: ffmpeg-${{ runner.os }}-${{ hashFiles('tooling/ffmpeg/build-ffmpeg.sh') }}
+
+      # ------------------------------------------------------------------
+      # Project FFmpeg (script + FFMPEG_DIR; see docs/build.md)
+      # ------------------------------------------------------------------
+      - name: Build project FFmpeg
+        run: |
+          tooling/ffmpeg/build-ffmpeg.sh
+          echo "FFMPEG_DIR=$PWD/.cache/ffmpeg" >> "$GITHUB_ENV"
+
+      # ------------------------------------------------------------------
+      # Build & test
+      # ------------------------------------------------------------------
+      - name: Build
+        run: cargo build --workspace --locked
+
+      # xvfb + 24-bit screen: the gpui #[gpui::test] tests open real windows
+      # and render through wgpu on Mesa's software Vulkan (lavapipe).
+      # The watchdog bounds the step: a deadlocked test produces no output
+      # and no failure, so after 1500 s (a green run needs ~4 min) it dumps
+      # every hung process's thread stacks and kills the suite.
+      - name: Test
+        run: |
+          sudo apt-get install -y gdb
+          xvfb-run -a -s "-screen 0 1920x1080x24" cargo test --workspace --locked &
+          TEST_PID=$!
+          (
+            sleep 1500
+            echo "::warning::test suite exceeded 1500s; dumping hung-process stacks"
+            for p in $(pgrep -f 'target/debug/deps/|target/debug/oak-worker'); do
+              echo "===== thread stacks of pid $p ($(readlink /proc/$p/exe 2>/dev/null)) ====="
+              sudo gdb -batch -ex 'thread apply all bt' -p "$p" || true
+            done
+            pkill -9 -f 'target/debug/deps/' || true
+            pkill -9 -f 'target/debug/oak-worker' || true
+          ) &
+          WATCHDOG_PID=$!
+          wait $TEST_PID
+          rc=$?
+          kill $WATCHDOG_PID 2>/dev/null || true
+          exit $rc
+
+      # A crashing (SIGSEGV) test gives no Rust backtrace; rerun the
+      # crashing test binaries under gdb to capture the native stack.
+      # `--args` is required — plain `--` makes gdb treat the test args as
+      # a core file. The extra probes target loader-stage crashes (the
+      # copier_test SIGSEGV happens inside ld.so's dl_main): si_addr/si_code
+      # pin down the fault type, the dynsym dump exposes symbols the
+      # executable exports for interposition, strace shows the last loader
+      # syscalls, and valgrind catches a corrupting static initializer.
+      - name: Backtrace on test failure
+        if: failure()
+        run: |
+          sudo apt-get install -y gdb strace valgrind
+          for name in node_e2e_test suites_test copier_test; do
+            BIN=$(ls -t target/debug/deps/$name-* | grep -v '\.d$' | head -1)
+            [ -n "$BIN" ] || continue
+            echo "===== $BIN ====="
+            file "$BIN" || true
+            echo "--- exported defined dynsyms:"
+            readelf --dyn-syms -W "$BIN" 2>/dev/null | grep -v ' UND ' | tail -n +4 | head -30 || true
+            echo "--- strace tail:"
+            strace -f "$BIN" --list 2>&1 | tail -15 || true
+            echo "--- valgrind tail:"
+            valgrind -q "$BIN" --list 2>&1 | tail -25 || true
+            echo "--- gdb:"
+            xvfb-run -a gdb -batch \
+              -ex run \
+              -ex 'bt' \
+              -ex 'p $_siginfo.si_code' \
+              -ex 'p/x $_siginfo._sifields._sigfault.si_addr' \
+              -ex 'x/6i $rip' \
+              --args "$BIN" --nocapture || true
+          done
+
+      # ------------------------------------------------------------------
+      # OFX plugin discovery end-to-end
+      # ------------------------------------------------------------------
+      # Build a minimal but real OFX plugin into a .ofx.bundle, point
+      # OFX_PLUGIN_PATH at it and let the scan_probe example run the full
+      # host path (directory scan -> dlopen -> setHost -> load -> describe
+      # -> register). The assertion is the plugin's registration line; CI
+      # machines have no system-wide OFX plugins, so the fixture is the
+      # only discovery.
+      - name: Build OFX fixture plugin
+        run: crates/oak-plugin/tests/fixtures/build_fixture.sh .cache/ofx-fixture
+
+      - name: Probe OFX plugin discovery
+        run: |
+          OFX_PLUGIN_PATH="$PWD/.cache/ofx-fixture" \
+            cargo run --locked -p oak-plugin --example scan_probe > probe.log 2>&1
+          grep -q 'type_id=rs.oak.CiTestPlugin' probe.log
+          # A project carrying a plugin node must survive save/load (the
+          # serializer resolves plugin types via the dynamic factory).
+          OAK_OFX_FIXTURE_DIR="$PWD/.cache/ofx-fixtre" \
+            cargo test --locked -p oak-plugin --test ofx_roundtrip
 
   windows:
     name: Build & test (Windows)
     runs-on: oak-windows-2025
+    defaults:
+      run:
+        shell: C:\msys2\usr\bin\bash.exe -eo pipefail {0}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -193,7 +196,6 @@ jobs:
       # System dependencies
       # ------------------------------------------------------------------
       - name: Install system dependencies
-        shell: msys2{0}
         run: |
           bash tooling/install-deps.sh
           pacman -S --needed --noconfirm \
@@ -207,7 +209,6 @@ jobs:
       # bridge targets; the vendored source needs MSVC-only constructs).
       # Dynamic here — the CD packages the DLLs next to the binaries.
       - name: Configure build environment
-        shell: msys2{0}
         run: |
           echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
           echo "OCIO_INSTALL_DIR=/ucrt64" >> "$GITHUB_ENV"
@@ -255,7 +256,6 @@ jobs:
       # Project FFmpeg (script + FFMPEG_DIR; see docs/build.md)
       # ------------------------------------------------------------------
       - name: Build project FFmpeg
-        shell: msys2{0}
         run: |
           bash tooling/ffmpeg/build-ffmpeg.sh
           echo "FFMPEG_DIR=$(cygpath -m "$PWD/.cache/ffmpeg")" >> "$GITHUB_ENV"
@@ -264,7 +264,6 @@ jobs:
       # Build & test
       # ------------------------------------------------------------------
       - name: Build
-        shell: msys2{0}
         run: |
           # The runner's job hook injects the MSVC INCLUDE/LIB into every
           # step; clear them in-step (they poison the MinGW compiles with
@@ -279,7 +278,6 @@ jobs:
           cargo build --workspace --locked
 
       - name: Test
-        shell: msys2{0}
         run: |
           unset INCLUDE LIB
           # See Build (Windows): trailing -lmsvcrt for the mingw-w64
