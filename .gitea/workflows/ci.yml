@@ -181,7 +181,7 @@ jobs:
           grep -q 'type_id=rs.oak.CiTestPlugin' probe.log
           # A project carrying a plugin node must survive save/load (the
           # serializer resolves plugin types via the dynamic factory).
-          OAK_OFX_FIXTURE_DIR="$PWD/.cache/ofx-fixtre" \
+          OAK_OFX_FIXTURE_DIR="$PWD/.cache/ofx-fixture" \
             cargo test --locked -p oak-plugin --test ofx_roundtrip
 
   windows:
