@@ -108,6 +108,9 @@ jobs:
           sudo apt-get install -y gdb
           xvfb-run -a -s "-screen 0 1920x1080x24" cargo test --workspace --locked &
           TEST_PID=$!
+          # The watchdog inherits the step's stdout/stderr; detach it so
+          # it cannot keep the runner's I/O pipes open after the step
+          # ends ("WaitDelay expired before I/O complete" otherwise).
           (
             sleep 1500
             echo "::warning::test suite exceeded 1500s; dumping hung-process stacks"
@@ -117,11 +120,13 @@ jobs:
             done
             pkill -9 -f 'target/debug/deps/' || true
             pkill -9 -f 'target/debug/oak-worker' || true
-          ) &
+          ) >/dev/null 2>&1 &
           WATCHDOG_PID=$!
           wait $TEST_PID
           rc=$?
           kill $WATCHDOG_PID 2>/dev/null || true
+          # Reap the watchdog so no child holds the step's pipes.
+          wait $WATCHDOG_PID 2>/dev/null || true
           exit $rc
 
       # A crashing (SIGSEGV) test gives no Rust backtrace; rerun the
