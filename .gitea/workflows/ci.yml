@@ -211,7 +211,7 @@ jobs:
           bash ./tooling/install-deps.sh
           pacman -S --needed --noconfirm \
             mingw-w64-ucrt-x86_64-cmake \
-            mingw-w64-ucrt-x86_64-opencolorio
+            mingw-w64-ucrt-x86_64-opencolorio git
 
       # ------------------------------------------------------------------
       # Build environment
