@@ -1203,6 +1203,9 @@ impl ProcessDispatcher {
 			Some(h) => h,
 			None => return,
 		};
+		if std::env::var_os("OAK_DEBUG_DISPATCH").is_some() {
+			eprintln!("procpool: worker {worker} frame_ready ticket {ticket} slot {slot}");
+		}
 		if handle.outstanding.remove(&ticket).is_none() {
 			return; // late / duplicate / post-restart frame
 		}
@@ -1274,6 +1277,9 @@ impl ProcessDispatcher {
 		error: &str,
 		fired: &mut Vec<(Completion, TicketResult)>,
 	) {
+		if std::env::var_os("OAK_DEBUG_DISPATCH").is_some() {
+			eprintln!("procpool: worker {worker} frame_failed ticket {ticket}: {error}");
+		}
 		let slot = {
 			let handle = match inner.workers.get_mut(worker) {
 				Some(h) => h,
@@ -1338,6 +1344,19 @@ impl ProcessDispatcher {
 			}
 			let max_bytes = inner.workers[worker].slot_bytes;
 			let Some(batch) = inner.scheduler.claim_batch(worker, credit, max_bytes) else {
+				// Starvation diagnostics (OAK_DEBUG_DISPATCH=1): pending work
+				// exists but this worker claimed none of it — log why (no
+				// credit, shard mismatch or oversized slot) instead of
+				// spinning silently (the seek-starvation hang).
+				if std::env::var_os("OAK_DEBUG_DISPATCH").is_some() {
+					let pending = inner.scheduler.pending_len();
+					if pending > 0 {
+						eprintln!(
+							"procpool: worker {worker} idle with {pending} pending (credit {credit}, slot_bytes {max_bytes}): {:?}",
+							inner.scheduler.pending_summary()
+						);
+					}
+				}
 				return;
 			};
 			// Slot assignment order MUST match the worker's acquisition
@@ -1396,6 +1415,10 @@ impl ProcessDispatcher {
 						"type".to_string(),
 						Value::String(crate::ipc::TYPE_RENDER_BATCH.to_string()),
 					);
+				}
+				if std::env::var_os("OAK_DEBUG_DISPATCH").is_some() {
+					let ids: Vec<i64> = msg.tickets.iter().map(|t| t.ticket).collect();
+					eprintln!("procpool: worker {worker} sent video batch {} tickets {ids:?}", msg.batch_id);
 				}
 				if self.send_json(&mut inner.workers[worker], &value).is_err() {
 					inner.workers[worker].state = WorkerState::Dead;
@@ -1689,6 +1712,23 @@ impl JobDispatch for ProcessDispatcher {
 				payload: id,
 				slot_bytes,
 			};
+			if std::env::var_os("OAK_DEBUG_DISPATCH").is_some() {
+				let pools: Vec<String> = inner
+					.workers
+					.iter()
+					.enumerate()
+					.map(|(i, w)| {
+						format!("w{i}: free {} held {} out {} state {:?}",
+							w.free_slots.len(), w.held.len(), w.outstanding.len(), w.state)
+					})
+					.collect();
+				eprintln!(
+					"procpool: post ticket {id} key ({}, {}, {}) prio {:?} shard {} | {}",
+					key.sequence, key.frame, key.version, request.priority,
+					key.frame.rem_euclid(inner.scheduler.workers() as i64),
+					pools.join(" | ")
+				);
+			}
 			match inner.scheduler.submit(request) {
 				SubmitOutcome::Accepted => {}
 				SubmitOutcome::Replaced(old) => {

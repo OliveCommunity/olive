@@ -1656,12 +1656,15 @@ impl RealEngine {
 		// generation (the old pending/claimed requests are cancelled).
 		let mut windows = self.preview_windows.lock().unwrap_or_else(|e| e.into_inner());
 		let window = windows.entry(monitor).or_default();
+		// Cancel/release calls fire completions synchronously and those
+		// completions lock `preview_windows`, so they must run AFTER this
+		// guard is dropped (calling them here self-deadlocks the UI thread).
+		let mut stale_sequences: Vec<u64> = Vec::new();
+		let mut stale_keys: Vec<(u64, i64, u64)> = Vec::new();
+		let mut stale_slots: Vec<ShmFrameRef> = Vec::new();
 		if window.sequence != node_id || window.generation != self.preview_generation {
-			m.cancel_preview_sequence(window.sequence);
-			for slot in window.slots.values() {
-				m.release_frame(slot);
-			}
-			window.slots.clear();
+			stale_sequences.push(window.sequence);
+			stale_slots.extend(std::mem::take(&mut window.slots).into_values());
 			window.submitted.clear();
 			window.sequence = node_id;
 			window.generation = self.preview_generation;
@@ -1678,7 +1681,7 @@ impl RealEngine {
 			.collect();
 		for f in stale {
 			if let Some(slot) = window.slots.remove(&f) {
-				m.release_frame(&slot);
+				stale_slots.push(slot);
 			}
 		}
 		window
@@ -1697,14 +1700,27 @@ impl RealEngine {
 			.filter(|f| *f < keep_from && !window.slots.contains_key(f))
 			.collect();
 		for f in stale_pending {
-			m.dispatch
-				.cancel_preview_frame(window.sequence, f, window.generation);
+			stale_keys.push((window.sequence, f, window.generation));
 			window.submitted.remove(&f);
 		}
 		let new_frames: Vec<i64> = (playhead.max(0)..end)
 			.filter(|f| !window.submitted.contains(f))
 			.collect();
 		drop(windows);
+
+		// Fire the deferred cancels/releases outside the `preview_windows`
+		// lock (see the comment at the guard above). Cancels come before the
+		// new submissions below: a sequence cancel drops every pending
+		// request of that sequence regardless of version.
+		for sequence in stale_sequences {
+			m.cancel_preview_sequence(sequence);
+		}
+		for (sequence, frame, version) in stale_keys {
+			m.dispatch.cancel_preview_frame(sequence, frame, version);
+		}
+		for slot in &stale_slots {
+			m.release_frame(slot);
+		}
 
 		for frame in new_frames {
 			let params = match monitor {
@@ -1793,17 +1809,26 @@ impl RealEngine {
 	/// slots (edit / selection change / project drop / preview-media
 	/// invalidation).
 	fn cancel_preview_windows(&mut self) {
-		let mut windows = self.preview_windows.lock().unwrap_or_else(|e| e.into_inner());
-		let m = RenderManager::global();
-		for window in windows.values_mut() {
-			if let Some(m) = &m {
-				m.cancel_preview_sequence(window.sequence);
-				for slot in window.slots.values() {
+		// Collect the teardown work under the lock, then run it outside:
+		// `cancel_preview_sequence` fires completions synchronously and those
+		// completions lock `preview_windows` (self-deadlock otherwise).
+		let mut pending: Vec<(u64, Vec<ShmFrameRef>)> = Vec::new();
+		{
+			let mut windows = self.preview_windows.lock().unwrap_or_else(|e| e.into_inner());
+			for window in windows.values_mut() {
+				let slots: Vec<ShmFrameRef> =
+					std::mem::take(&mut window.slots).into_values().collect();
+				pending.push((window.sequence, slots));
+				window.submitted.clear();
+			}
+		}
+		if let Some(m) = RenderManager::global() {
+			for (sequence, slots) in pending {
+				m.cancel_preview_sequence(sequence);
+				for slot in &slots {
 					m.release_frame(slot);
 				}
 			}
-			window.slots.clear();
-			window.submitted.clear();
 		}
 	}
 
@@ -1811,18 +1836,24 @@ impl RealEngine {
 	/// the old footage's window is stale even though the program window is
 	/// untouched).
 	fn cancel_preview_window(&mut self, monitor: Monitor) {
-		let mut windows = self.preview_windows.lock().unwrap_or_else(|e| e.into_inner());
-		let Some(window) = windows.get_mut(&monitor) else {
-			return;
+		// Same lock-order rule as `cancel_preview_windows`: run the cancel
+		// and releases outside the `preview_windows` guard.
+		let pending = {
+			let mut windows = self.preview_windows.lock().unwrap_or_else(|e| e.into_inner());
+			let Some(window) = windows.get_mut(&monitor) else {
+				return;
+			};
+			let slots: Vec<ShmFrameRef> =
+				std::mem::take(&mut window.slots).into_values().collect();
+			window.submitted.clear();
+			(window.sequence, slots)
 		};
 		if let Some(m) = RenderManager::global() {
-			m.cancel_preview_sequence(window.sequence);
-			for slot in window.slots.values() {
+			m.cancel_preview_sequence(pending.0);
+			for slot in &pending.1 {
 				m.release_frame(slot);
 			}
 		}
-		window.slots.clear();
-		window.submitted.clear();
 	}
 
 	/// Invalidates every cached/rendered preview frame: the CPU cache is
@@ -3158,6 +3189,17 @@ impl AudioMeterDataSource for RealEngine {
 // ---------------------------------------------------------------------------
 // AppEngine
 // ---------------------------------------------------------------------------
+
+impl Drop for RealEngine {
+	/// The pre-render windows hold worker shm slots; a dropped engine must
+	/// hand them back. `ShmFrameRef` has no self-release on drop, so without
+	/// this every closed project (and every test engine) permanently shrank
+	/// the shared slot pool until later playback windows starved (the
+	/// full-suite `playback_window_supplies_playhead_frames` failure).
+	fn drop(&mut self) {
+		self.cancel_preview_windows();
+	}
+}
 
 impl AppEngine for RealEngine {
 	type Clock = RealClock;
@@ -6579,6 +6621,10 @@ mod tests {
 	//  empty for the sequence's birth).
 	#[gpui::test]
 	async fn new_sequence_has_default_two_video_two_audio_tracks(cx: &mut gpui::TestAppContext) {
+		// Serializes with the other engine tests: `new_project` clears the
+		// GLOBAL undo stack, and this test asserts on it — running lock-free
+		// raced a parallel test's undo history.
+		let _media = media_lock();
 		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
 		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
 		let kinds: Vec<TrackKind> =
@@ -6897,6 +6943,56 @@ mod tests {
 		}
 		assert!(filled > 0, "the window cached worker frames");
 		let _ = std::fs::remove_file(&media);
+	}
+
+	/// Probe: a single interactive seek must render the seeked frame
+	/// without hanging the UI path (the ruler mouse-down path goes through
+	/// request_frame + a synchronous cpu_frame render).
+	#[gpui::test]
+	async fn interactive_seek_renders_without_hanging(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let _worker = WorkerBinGuard::set();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+		let media = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/demo.mp4");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.import_footage(media.clone(), cx).expect("import")
+			})
+		});
+		let name = media.file_name().unwrap().to_string_lossy().into_owned();
+		let entry = cx.read(|app| {
+			engine.read(app).roots().into_iter().find(|e| e.name.as_ref() == name)
+		}).expect("imported footage is listed");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(0), cx)
+			})
+		});
+		// Interactive seek (not playing): a single synchronous render of the
+		// target frame. If this hangs, the seek render path deadlocks.
+		cx.update(|app| {
+			engine.update(app, |engine, cx| engine.request_frame(Monitor::Program, Frame(24), cx))
+		});
+		let img = cx.read(|app| engine.read(app).cpu_frame(Monitor::Program, app));
+		let bytes = img.as_bytes(0).expect("frame bytes");
+		assert!(!bytes.is_empty(), "seeked frame has content");
+
+		// The reported freeze: play (the preview window fills and holds shm
+		// slots), THEN an interactive seek — the synchronous render must not
+		// deadlock against the window's held slots.
+		cx.update(|app| engine.update(app, |engine, cx| engine.play(Monitor::Program, cx)));
+		for _ in 0..30 {
+			cx.update(|app| engine.update(app, |engine, cx| engine.tick(cx)));
+			std::thread::sleep(Duration::from_millis(10));
+		}
+		cx.update(|app| engine.update(app, |engine, cx| engine.pause(Monitor::Program, cx)));
+		cx.update(|app| {
+			engine.update(app, |engine, cx| engine.request_frame(Monitor::Program, Frame(48), cx))
+		});
+		let img = cx.read(|app| engine.read(app).cpu_frame(Monitor::Program, app));
+		let bytes = img.as_bytes(0).expect("seek-after-play frame bytes");
+		assert!(!bytes.is_empty(), "seek after playback has content");
 	}
 
 	/// The production scenario: real 1080p media on the timeline, driving

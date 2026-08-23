@@ -37,7 +37,11 @@
 //!     re-dispatch is failure recovery, not stealing.
 //!   - **Flow control.** [`PreviewScheduler::claim_batch`] never claims
 //!     more frames than the caller's `credit` (the worker's free shm
-//!     slot count): slots are the credit.
+//!     slot count): slots are the credit. Playback/Background claims
+//!     leave one credit unused — the per-worker interactive reserve, so
+//!     a window batch can never drain the last slot and starve a
+//!     UI-blocking seek (window slots are released by UI-thread
+//!     consumption; a seek waiting on them deadlocks the UI).
 //!   - **Cancellation.** Frame keys carry a parameter `version`;
 //!     submitting a newer version of a key invalidates the older one,
 //!     and [`PreviewScheduler::cancel_sequence`] drops a whole sequence.
@@ -175,17 +179,27 @@ impl<P: Clone> PreviewScheduler<P> {
 	/// Submit a frame request. An already-pending request with the same
 	/// key is replaced; a key already claimed (in flight) is rejected —
 	/// the dispatcher must cancel/re-version it first.
+	///
+	/// Seek-priority requests (interactive frame / real-time audio) are
+	/// claimable by ANY worker, not just their interleaved shard: the
+	/// no-stealing shard rule exists to keep ADJACENT PLAYBACK frames
+	/// finishing together, but pinning a single urgent frame to one worker
+	/// starves it whenever that worker's slots are all held by the window
+	/// (the UI thread then waits on the seek while the window's slot
+	/// releases run on that same thread — the seek-starvation deadlock).
 	pub fn submit(&mut self, request: FrameRequest<P>) -> SubmitOutcome<P> {
 		if self.claimed.contains_key(&request.key) {
 			return SubmitOutcome::InFlight;
 		}
+		let any_worker = request.priority == FramePriority::Seek;
 		if let Some(entry) = self.pending.iter_mut().find(|e| e.request.key == request.key) {
+			entry.any_worker = any_worker;
 			let old = std::mem::replace(&mut entry.request, request);
 			return SubmitOutcome::Replaced(old);
 		}
 		self.pending.push(PendingEntry {
 			request,
-			any_worker: false,
+			any_worker,
 		});
 		SubmitOutcome::Accepted
 	}
@@ -196,16 +210,19 @@ impl<P: Clone> PreviewScheduler<P> {
 	}
 
 	/// Claim the next batch for `worker`: the worker's interleaved shard
-	/// (frame number `≡ worker (mod W)`, plus any crash-requeued frames),
-	/// ordered by priority class / playhead distance / ascending frame,
-	/// capped at `min(batch_size, credit)`. Requests needing more than
+	/// (frame number `≡ worker (mod W)`, plus crash-requeued frames and
+	/// Seek-priority requests — both claimable by any worker), ordered by
+	/// priority class / playhead distance / ascending frame, capped at
+	/// `min(batch_size, credit)`. Playback/Background claims additionally
+	/// leave one credit unused (the per-worker interactive reserve; see
+	/// [`PreviewScheduler::submit`]). Requests needing more than
 	/// `max_bytes` of slot space are skipped (they stay pending until the
 	/// dispatcher grows the segment). Returns `None` when nothing
 	/// claimable (`credit == 0`, unknown worker, empty shard, all
-	/// oversized).
+	/// oversized, or only the reserve remains).
 	///
-	/// Claimed frames never go to another worker while in flight (no
-	/// stealing).
+	/// Claimed Playback frames never go to another worker while in flight
+	/// (no stealing).
 	pub fn claim_batch(
 		&mut self,
 		worker: usize,
@@ -238,7 +255,31 @@ impl<P: Clone> PreviewScheduler<P> {
 				.then(ra.key.frame.cmp(&rb.key.frame))
 				.then(ra.key.sequence.cmp(&rb.key.sequence))
 		});
-		indexes.truncate(self.batch_size.min(credit));
+		// Per-worker interactive reserve: Playback/Background claims must
+		// leave one slot free. Window frames are released by UI-thread
+		// consumption/eviction, so a batch that drains the worker's last
+		// slot can starve a UI-blocking seek FOREVER; seeks and audio
+		// (Seek priority) complete on the worker without UI involvement,
+		// so they may use the last slot. (The global
+		// `preview_window_capacity` reserve alone did not prevent this:
+		// its accounting is pool-wide, while slot exhaustion happens per
+		// worker.)
+		let cap = self.batch_size.min(credit);
+		let mut taken: Vec<usize> = Vec::with_capacity(cap);
+		for &i in &indexes {
+			if taken.len() >= cap {
+				break;
+			}
+			let seek = self.pending[i].request.priority == FramePriority::Seek;
+			if !seek && taken.len() + 1 >= credit {
+				continue; // keep the reserve slot free
+			}
+			taken.push(i);
+		}
+		if taken.is_empty() {
+			return None;
+		}
+		let indexes = taken;
 
 		let batch_id = self.next_batch_id;
 		self.next_batch_id += 1;
@@ -284,6 +325,27 @@ impl<P: Clone> PreviewScheduler<P> {
 	/// request when the key was in flight.
 	pub fn frame_done(&mut self, key: &FrameKey) -> Option<FrameRequest<P>> {
 		self.claimed.remove(key).map(|c| c.request)
+	}
+
+	/// Pending-request count (dispatcher diagnostics).
+	pub fn pending_len(&self) -> usize {
+		self.pending.len()
+	}
+
+	/// One-line summary of the pending queue for starvation debugging
+	/// (frame, pinned shard, needed slot bytes, any_worker).
+	pub fn pending_summary(&self) -> Vec<(i64, i64, usize, bool)> {
+		self.pending
+			.iter()
+			.map(|e| {
+				(
+					e.request.key.frame,
+					e.request.key.frame.rem_euclid(self.workers as i64),
+					e.request.slot_bytes,
+					e.any_worker,
+				)
+			})
+			.collect()
 	}
 
 	/// Report a claimed frame as permanently failed (frame_failed; the
@@ -551,10 +613,47 @@ mod tests {
 		}
 		// Zero credit claims nothing.
 		assert!(s.claim_batch(0, 0, 1024).is_none());
-		// Credit 3 claims exactly 3 (free slots are the credit).
+		// Credit 3 claims 2 playback frames: the last slot stays free as
+		// the per-worker interactive reserve (window frames are released
+		// by UI-thread consumption, so a full drain can starve a
+		// UI-blocking seek).
 		let batch = s.claim_batch(0, 3, 1024).unwrap();
-		assert_eq!(batch.frames.len(), 3);
-		assert_eq!(s.pending_count(), 7);
+		assert_eq!(batch.frames.len(), 2);
+		assert_eq!(s.pending_count(), 8);
+	}
+
+	#[test]
+	fn playback_claims_keep_the_reserve_but_seeks_may_use_it() {
+		let mut s: PreviewScheduler<u64> = PreviewScheduler::new(1, 100);
+		for f in 0..4 {
+			s.submit(req(1, f, FramePriority::Playback));
+		}
+		// One free slot: playback claims nothing (reserve kept)...
+		assert!(s.claim_batch(0, 1, 1024).is_none());
+		assert_eq!(s.pending_count(), 4);
+		// ...but a Seek (interactive frame / real-time audio) may use it:
+		// seeks complete on the worker without UI-thread involvement, so
+		// taking the last slot cannot deadlock the UI.
+		s.submit(req(1, 100, FramePriority::Seek));
+		let batch = s.claim_batch(0, 1, 1024).unwrap();
+		assert_eq!(batch.frames.len(), 1);
+		assert_eq!(batch.frames[0].priority, FramePriority::Seek);
+	}
+
+	#[test]
+	fn seek_is_claimable_by_any_worker() {
+		// The no-stealing shard rule applies to Playback frames (adjacent
+		// frames finish together); a single urgent seek pinned to a full
+		// worker would starve even while other workers idle.
+		let mut s: PreviewScheduler<u64> = PreviewScheduler::new(4, 100);
+		s.submit(req(1, 3, FramePriority::Seek)); // shard 3
+		let batch = s.claim_batch(0, 4, 1024).unwrap();
+		assert_eq!(batch.frames.len(), 1);
+		assert_eq!(batch.frames[0].key.frame, 3);
+		// Playback frames stay pinned to their shard.
+		s.submit(req(1, 7, FramePriority::Playback)); // shard 3
+		assert!(s.claim_batch(0, 4, 1024).is_none());
+		assert!(s.claim_batch(3, 4, 1024).is_some());
 	}
 
 	#[test]
@@ -664,7 +763,7 @@ mod tests {
 		for f in 0..6 {
 			s.submit(req(7, f, FramePriority::Playback));
 		}
-		let _ = s.claim_batch(0, 4, 1024).unwrap(); // claims 4 of sequence 7
+		let _ = s.claim_batch(0, 4, 1024).unwrap(); // claims 3 of sequence 7 (reserve)
 		s.submit(req(8, 0, FramePriority::Playback)); // other sequence
 		let dropped = s.cancel_sequence(7);
 		assert_eq!(dropped.len(), 6, "all 6 sequence-7 requests dropped");

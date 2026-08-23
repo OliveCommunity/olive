@@ -477,8 +477,14 @@ fn validate_geometry(width: i32, height: i32, tb: (i64, i64)) -> Result<(), Stri
 fn render_video(params: VideoTicketParams) -> Result<RenderedFrame, String> {
 	let m = RenderManager::global().ok_or_else(|| "render manager is not initialized".to_string())?;
 	let id = m.tickets.next_id();
+	if std::env::var_os("OAK_DEBUG_DISPATCH").is_some() {
+		eprintln!("renderops: sync render submit arena ticket {}", id.0);
+	}
 	m.tickets.submit_video_with_id(id, params, Box::new(|_| {}));
 	m.tickets.wait(id).map_err(|e| e.to_string())?;
+	if std::env::var_os("OAK_DEBUG_DISPATCH").is_some() {
+		eprintln!("renderops: sync render wait done arena ticket {}", id.0);
+	}
 	let result = m
 		.tickets
 		.result(id)
