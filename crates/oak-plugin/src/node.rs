@@ -463,6 +463,15 @@ pub fn set_input_string_undoable(
 mod tests {
 	use super::*;
 
+	/// Serializes the identity-registry tests: every `test_project()` node
+	/// gets the same packed `NodeId::identity` (a fresh graph's first
+	/// node), so two tests running in parallel collide in the process-wide
+	/// registry and one resolves the other's live entry.
+	fn identity_lock() -> &'static std::sync::Mutex<()> {
+		static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+		&LOCK
+	}
+
 	/// 建一个含 Text/StrCombo/Float 输入的测试节点。
 	fn test_project() -> (Arc<Mutex<oak_node::project::Project>>, oak_node::id::NodeId) {
 		let project = oak_node::project::Project::new();
@@ -496,6 +505,7 @@ mod tests {
 	/// 注册表：register → node_from_identity → unregister 全链。
 	#[test]
 	fn identity_register_roundtrip() {
+		let _guard = identity_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (project, id) = test_project();
 		let identity = register_node(project.clone(), id);
 		let node = node_from_identity(identity as usize).expect("已登记身份应可解析");
@@ -513,6 +523,7 @@ mod tests {
 	/// 覆盖死条目后重新解析到新 project。
 	#[test]
 	fn identity_project_dropped() {
+		let _guard = identity_lock().lock().unwrap_or_else(|e| e.into_inner());
 		let (project, id) = test_project();
 		let identity = register_node(project.clone(), id);
 		drop(project);
