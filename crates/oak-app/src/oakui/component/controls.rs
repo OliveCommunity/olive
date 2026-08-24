@@ -704,19 +704,24 @@ impl Render for ComboBox {
 			}));
 
 		if open {
+			// deferred(): the popup must paint AFTER the rows that follow the
+			// combo in the dialog, otherwise they draw over it and the list
+			// looks transparent (the preferences render-backend dropdown
+			// regression).
 			root = root.child(
-				div()
-					.absolute()
-					.left(px(0.0))
-					.right(px(0.0))
-					.top(px(22.0))
-					.rounded_md()
-					.border_1()
-					.border_color(colors.border)
-					.bg(colors.background)
-					.shadow_md()
-					.py_1()
-					.children(options.iter().enumerate().map(|(i, opt)| {
+				gpui::deferred(
+					div()
+						.absolute()
+						.left(px(0.0))
+						.right(px(0.0))
+						.top(px(22.0))
+						.rounded_md()
+						.border_1()
+						.border_color(colors.border)
+						.bg(colors.background)
+						.shadow_md()
+						.py_1()
+						.children(options.iter().enumerate().map(|(i, opt)| {
 						let highlighted = i == highlight;
 						div()
 							.px_2()
@@ -740,6 +745,7 @@ impl Render for ComboBox {
 							)
 							.child(opt.label.clone())
 					})),
+				),
 			);
 		}
 		let _ = selected;
