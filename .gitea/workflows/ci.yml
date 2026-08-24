@@ -212,7 +212,7 @@ jobs:
           pacman -S --needed --noconfirm \
             mingw-w64-ucrt-x86_64-cmake \
             mingw-w64-ucrt-x86_64-opencolorio \
-            mingw-w64-ucrt-x86_64-clang git
+            mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-clang-libs git
 
       # ------------------------------------------------------------------
       # Build environment
@@ -286,13 +286,13 @@ jobs:
           # The runner's job hook injects the MSVC INCLUDE/LIB into every
           # step; clear them in-step (they poison the MinGW compiles with
           # MSVC SDK headers).
-          unset INCLUDE LIB
+          # unset INCLUDE LIB
           # mingw-w64 >= Nov 2025 forwards _assert to __msvcrt_assert inside
           # libmingwex.a; rustc's link order puts -lmingwex last, so any
           # binary that pulls _assert.o leaves _fileno/_setmode/
           # __imp___msvcrt_assert unresolved. A trailing -lmsvcrt re-scans
           # the CRT import lib after libmingwex.
-          export RUSTFLAGS="-C link-args=-lmsvcrt"
+          # export RUSTFLAGS="-C link-args=-lmsvcrt"
           cargo build --workspace --locked
 
       - name: Test
