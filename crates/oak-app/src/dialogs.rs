@@ -46,9 +46,11 @@ use crate::oakui::real::{
 	config_get_bool, config_get_int, config_get_string, config_set_bool, config_set_int,
 	config_set_string, encoding_formats, proxy_dividers, renderer_backends, set_audio_input_device,
 	set_audio_output_device, set_theme_dark, theme_is_dark, CONFIG_KEY_DEFAULT_TRANSITION_SEC,
-	CONFIG_KEY_DISK_CACHE_PATH, CONFIG_KEY_FFMPEG_PATH, CONFIG_KEY_PROXY_DIVIDER,
-	CONFIG_KEY_RENDERER_BACKEND, CONFIG_KEY_SNAPSHOT_INTERVAL_SEC, CONFIG_KEY_USE_PROXY,
-	DEFAULT_SNAPSHOT_INTERVAL_SEC, DEFAULT_TRANSITION_SEC, EXPORT_FORMAT_MP4,
+	CONFIG_KEY_DISK_CACHE_PATH, CONFIG_KEY_FFMPEG_PATH, CONFIG_KEY_PG_URL,
+	CONFIG_KEY_PREVIEW_WINDOW, CONFIG_KEY_PROXY_DIVIDER, CONFIG_KEY_RENDERER_BACKEND,
+	CONFIG_KEY_SNAPSHOT_INTERVAL_SEC, CONFIG_KEY_STORAGE_BACKEND, CONFIG_KEY_USE_PROXY,
+	DEFAULT_PREVIEW_WINDOW_FORWARD, DEFAULT_SNAPSHOT_INTERVAL_SEC, DEFAULT_TRANSITION_SEC,
+	EXPORT_FORMAT_MP4,
 };
 
 // ---------------------------------------------------------------------------
@@ -77,7 +79,12 @@ impl gpui::EventEmitter<PreferencesEvent> for PreferencesContent {}
 ///
 /// * **常规 General** — language, theme.
 /// * **渲染 Rendering** — the renderer backend.
-/// * **缓存 Cache** — the disk cache directory (`DiskCachePath`).
+/// * **缓存 Cache** — the disk cache directory (`DiskCachePath`) and the
+///   playback pre-render window (`PlaybackPreRenderFrames`, the "cache
+///   ahead" frames the preview scheduler fills during playback).
+/// * **存储 Storage** — the write-through library backend
+///   (`Storage/Backend`, SQLite / PostgreSQL) and the PostgreSQL
+///   connection string (`Storage/PgUrl`).
 /// * **代理 Proxy** — use proxy media (`UseProxyMedia`), proxy resolution
 ///   divider (`ProxyDivider`).
 /// * **项目 Project** — the snapshot interval (`Storage/SnapshotIntervalSec`,
@@ -94,6 +101,7 @@ pub struct PreferencesContent {
 	language: Entity<ComboBox>,
 	theme: Entity<ComboBox>,
 	cache_dir: Entity<PathField>,
+	cache_ahead: Entity<SpinBox>,
 	use_proxy: Entity<CheckBox>,
 	hw_decode: Entity<CheckBox>,
 	proxy_divider: Entity<ComboBox>,
@@ -103,6 +111,11 @@ pub struct PreferencesContent {
 	transition_length: Entity<SpinBox>,
 	audio_output: Entity<ComboBox>,
 	audio_input: Entity<ComboBox>,
+	storage_backend: Entity<ComboBox>,
+	storage_pg_url: Entity<PathField>,
+	/// Whether the write-through library uses PostgreSQL (drives the
+	/// visibility of the connection-string field).
+	storage_is_pg: bool,
 	/// The backend options, in display order.
 	backends: Vec<&'static str>,
 	/// The proxy divider options, in display order (1 = full resolution).
@@ -210,6 +223,33 @@ impl PreferencesContent {
 		});
 		let configured_cache = config_get_string(CONFIG_KEY_DISK_CACHE_PATH);
 		cache_dir.update(cx, |field, cx| field.set_path(configured_cache, cx));
+
+		// --- 缓存 Cache: the playback pre-render window (cache ahead) ------
+		// The number of frames the preview scheduler fills ahead of the
+		// playhead during playback (`PlaybackPreRenderFrames`, consumed by
+		// `update_preview_window` every playback tick — no restart needed).
+		let cache_ahead = cx.new(|cx| {
+			let current = config_get_int(
+				CONFIG_KEY_PREVIEW_WINDOW,
+				DEFAULT_PREVIEW_WINDOW_FORWARD,
+			)
+			.clamp(8, 1200);
+			SpinBox::new(
+				10,
+				SliderModel::new(ValueKind::Integer, 8.0, 1200.0, 8.0, current as f64),
+				window,
+				cx,
+			)
+		});
+		cx.subscribe(&cache_ahead, |_this, _spin, event: &SpinBoxEvent, cx| {
+			let value = match event {
+				SpinBoxEvent::ValueChanged { value, .. }
+				| SpinBoxEvent::EditCommitted { value, .. } => value.to_f64() as i64,
+			};
+			config_set_int(CONFIG_KEY_PREVIEW_WINDOW, value);
+			let _ = cx;
+		})
+		.detach();
 
 		// --- 代理 Proxy -----------------------------------------------------
 		let use_proxy = cx.new(|cx| {
@@ -412,11 +452,50 @@ impl PreferencesContent {
 		})
 		.detach();
 
+		// --- 存储 Storage: the write-through library backend ----------------
+		// `Storage/Backend` + `Storage/PgUrl` are read by oakstorage's
+		// write-through when a project binds (per-project library session),
+		// so a change applies to projects opened afterwards.
+		let storage_is_pg = config_get_string(CONFIG_KEY_STORAGE_BACKEND) == "pg";
+		let storage_backend = cx.new(|cx| {
+			let options = vec![
+				ComboBoxOption::new(0, "SQLite"),
+				ComboBoxOption::new(1, "PostgreSQL"),
+			];
+			ComboBox::new(11, options, window, cx)
+		});
+		cx.subscribe(&storage_backend, |this, _combo, event: &ComboBoxEvent, cx| {
+			match *event {
+				ComboBoxEvent::Selected { value } => {
+					let backend = if value == 1 { "pg" } else { "sqlite" };
+					this.storage_is_pg = backend == "pg";
+					config_set_string(CONFIG_KEY_STORAGE_BACKEND, backend);
+					// Re-render so the connection-string row shows/hides with
+					// the selection.
+					cx.notify();
+				}
+			}
+		})
+		.detach();
+		storage_backend.update(cx, |combo, cx| {
+			combo.set_selected(Some(if storage_is_pg { 1 } else { 0 }), cx)
+		});
+		let storage_pg_url = cx.new(|cx| {
+			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
+			PathField {
+				editor,
+				enabled: true,
+			}
+		});
+		let configured_pg_url = config_get_string(CONFIG_KEY_PG_URL);
+		storage_pg_url.update(cx, |field, cx| field.set_path(configured_pg_url, cx));
+
 		Self {
 			backend,
 			language,
 			theme,
 			cache_dir,
+			cache_ahead,
 			use_proxy,
 			hw_decode,
 			proxy_divider,
@@ -426,6 +505,9 @@ impl PreferencesContent {
 			transition_length,
 			audio_output,
 			audio_input,
+			storage_backend,
+			storage_pg_url,
+			storage_is_pg,
 			backends,
 			dividers,
 			output_devices,
@@ -438,6 +520,13 @@ impl PreferencesContent {
 	pub fn commit_display_icc_path(&self, cx: &App) {
 		let path = self.display_icc_path.read(cx).path(cx).trim().to_string();
 		config_set_string(crate::oakui::displaycolor::CONFIG_KEY_CUSTOM_ICC, &path);
+	}
+
+	/// Commits the PostgreSQL connection-string field to the config (called
+	/// by the host when the dialog closes, like the cache directory).
+	pub fn commit_storage_pg_url(&self, cx: &App) {
+		let url = self.storage_pg_url.read(cx).path(cx).trim().to_string();
+		config_set_string(CONFIG_KEY_PG_URL, &url);
 	}
 
 	/// Opens the platform file picker for a custom ICC profile.
@@ -650,6 +739,43 @@ impl Render for PreferencesContent {
 							})),
 					),
 			))
+			// 缓存 Cache: cache ahead (playback pre-render window)
+			.child(form_row(
+				&colors,
+				i18n::tr("preferences.cache.ahead").into(),
+				div()
+					.debug_selector(|| "preferences-cache-ahead".into())
+					.child(self.cache_ahead.clone()),
+			))
+			// 存储 Storage
+			.child(section_header(
+				&colors,
+				i18n::tr("preferences.section.storage").into(),
+			))
+			.child(form_row(
+				&colors,
+				i18n::tr("preferences.storage.backend").into(),
+				div()
+					.debug_selector(|| "preferences-storage-backend".into())
+					.child(self.storage_backend.clone()),
+			))
+			.child(if self.storage_is_pg {
+				form_row(
+					&colors,
+					i18n::tr("preferences.storage.pg_url").into(),
+					div()
+						.debug_selector(|| "preferences-storage-pg-url".into())
+						.child(self.storage_pg_url.clone()),
+				)
+			} else {
+				div()
+			})
+			.child(
+				div()
+					.text_color(colors.disabled)
+					.text_xs()
+					.child(i18n::tr("preferences.storage.restart_hint")),
+			)
 			// 代理 Proxy
 			.child(section_header(
 				&colors,
@@ -1637,11 +1763,13 @@ impl PreferencesDialogContent {
 	}
 
 	/// Commits the general tab's free-text fields (the cache directory, the
-	/// custom ICC path), for the host when the dialog closes.
+	/// custom ICC path, the PostgreSQL connection string), for the host when
+	/// the dialog closes.
 	pub fn commit_cache_dir(&self, cx: &App) {
 		let general = self.general.read(cx);
 		general.commit_cache_dir(cx);
 		general.commit_display_icc_path(cx);
+		general.commit_storage_pg_url(cx);
 	}
 
 	/// The keyboard tab's action-row count (tests).
@@ -2556,6 +2684,54 @@ fn selection_step(visible: &[usize], current: Option<usize>, delta: i32) -> Opti
 		None => visible.len() - 1,
 	};
 	Some(visible[next])
+}
+
+// ---------------------------------------------------------------------------
+// About (帮助 → 关于 Oak)
+// ---------------------------------------------------------------------------
+
+/// The About dialog's content: the app name + version, the GPL-3.0 license
+/// line and the Olive fork notice (the C++ AboutDialog's text block; the
+/// patrons scroller is not ported).
+pub struct AboutContent;
+
+impl AboutContent {
+	/// Builds the static about text.
+	pub fn new() -> Self {
+		Self
+	}
+}
+
+impl Render for AboutContent {
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let colors = cx.default_colors().clone();
+		div()
+			.flex()
+			.flex_col()
+			.gap_2()
+			.child(
+				div()
+					.text_color(colors.text)
+					.font_weight(gpui::FontWeight::BOLD)
+					.child(format!("Oak Video Editor {}", env!("CARGO_PKG_VERSION"))),
+			)
+			.child(
+				div()
+					.text_color(colors.text)
+					.child(i18n::tr("about.description")),
+			)
+			.child(
+				div()
+					.text_color(colors.text)
+					.child(i18n::tr("about.thanks")),
+			)
+			.child(
+				div()
+					.text_color(colors.disabled)
+					.text_xs()
+					.child(i18n::tr("about.fork_notice")),
+			)
+	}
 }
 
 #[cfg(test)]

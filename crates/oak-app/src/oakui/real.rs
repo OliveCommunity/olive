@@ -253,9 +253,9 @@ enum FullResTarget {
 // their slots back to the workers.
 
 /// The default forward pre-render window (frames).
-const DEFAULT_PREVIEW_WINDOW_FORWARD: i64 = 120;
+pub const DEFAULT_PREVIEW_WINDOW_FORWARD: i64 = 120;
 /// Config key for the forward pre-render window size (frames).
-const CONFIG_KEY_PREVIEW_WINDOW: &str = "PlaybackPreRenderFrames";
+pub const CONFIG_KEY_PREVIEW_WINDOW: &str = "PlaybackPreRenderFrames";
 
 /// One monitor's playback pre-render state (UI-thread-owned; the completions
 /// delivered by the dispatcher's poll run on the UI thread too).
@@ -5403,6 +5403,10 @@ pub fn audio_init_from_config() {
 /// The config key selecting the storage backend (see
 /// `crates/oakstorage/src/writethrough.rs`).
 pub const CONFIG_KEY_STORAGE_BACKEND: &str = "Storage/Backend";
+/// The config key holding the PostgreSQL connection string (`Storage/PgUrl`,
+/// `user:pass@host:5432/dbname`; used when the backend is `"pg"` — see
+/// `crates/oakstorage/src/writethrough.rs`).
+pub const CONFIG_KEY_PG_URL: &str = "Storage/PgUrl";
 
 /// Enables the SQLite write-through library unless the user configured the
 /// backend explicitly (any existing value — including "off" — wins over the

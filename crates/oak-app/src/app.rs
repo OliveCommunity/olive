@@ -121,6 +121,8 @@ mod modal_ids {
 	pub const PLUGIN_PROGRESS: usize = 10;
 	/// The action search dialog (Help > Search Actions…, the `/` key).
 	pub const ACTION_SEARCH: usize = 11;
+	/// The about dialog (Help > About Oak…).
+	pub const ABOUT: usize = 13;
 	/// The project properties dialog (File > Project Properties…).
 	pub const PROJECT_PROPERTIES: usize = 12;
 }
@@ -187,6 +189,8 @@ enum ModalState<E: AppEngine> {
 		modal: Entity<Modal>,
 		content: Entity<crate::dialogs::ProjectPropertiesContent<E>>,
 	},
+	/// The about dialog (Help > About Oak…; static content).
+	About { modal: Entity<Modal> },
 }
 
 /// A running export: the session the tick loop drains for progress.
@@ -207,7 +211,8 @@ impl<E: AppEngine> ModalState<E> {
 			| ModalState::ManagerDelete { modal, .. }
 			| ModalState::Proxy { modal, .. }
 			| ModalState::ActionSearch { modal, .. }
-			| ModalState::ProjectProperties { modal, .. } => Some(modal.clone()),
+			| ModalState::ProjectProperties { modal, .. }
+			| ModalState::About { modal } => Some(modal.clone()),
 		}
 	}
 }
@@ -1080,6 +1085,7 @@ impl<E: AppEngine> OakApp<E> {
 			| A::MulticamSwitchNoSplit9 => {}
 			// --- Help --------------------------------------------------------
 			A::ActionSearch => self.open_action_search(cx),
+			A::About => self.open_about(cx),
 			// --- everything else is a placeholder --------------------------
 			other => println!(
 				"[action] {} not wired yet (placeholder)",
@@ -1927,7 +1933,10 @@ impl<E: AppEngine> OakApp<E> {
 			let modal = app.new(|cx| {
 				Modal::new(
 					modal_ids::ACTION_SEARCH,
-					ModalOptions::new(crate::i18n::tr("menu.help.action_search"), px(640.0)),
+					ModalOptions::new(crate::i18n::tr("menu.help.action_search"), px(640.0))
+						// Launcher-style: a backdrop click dismisses (same as
+						// Escape and the title-row ✕).
+						.with_dismiss_on_mask(true),
 					window,
 					cx,
 				)
@@ -1957,6 +1966,30 @@ impl<E: AppEngine> OakApp<E> {
 				});
 			}
 		}
+	}
+
+	/// Opens the about dialog (Help > About Oak…): the app name, version,
+	/// license line and fork notice. No engine interaction.
+	fn open_about(&mut self, cx: &mut Context<Self>) {
+		if !matches!(self.modal, ModalState::None) {
+			return;
+		}
+		self.spawn_modal(cx, |window, app| {
+			let content = app.new(|_cx| crate::dialogs::AboutContent::new());
+			let modal = app.new(|cx| {
+				Modal::new(
+					modal_ids::ABOUT,
+					ModalOptions::new(crate::i18n::tr("about.title"), px(480.0))
+						.with_button(DialogButton::primary(crate::i18n::tr("dialog.ok")))
+						// Launcher-style dismissal is natural here too.
+						.with_dismiss_on_mask(true),
+					window,
+					cx,
+				)
+				.with_content(content.clone())
+			});
+			ModalState::About { modal }
+		});
 	}
 
 	/// Opens the proxy settings dialog (Tools > Proxy Settings; the C++
@@ -2225,6 +2258,7 @@ impl<E: AppEngine> OakApp<E> {
 						}
 					}
 				}
+				modal_ids::ABOUT => self.close_modal(cx),
 				modal_ids::PROJECT_PROPERTIES => {
 					if let ModalState::ProjectProperties { content, .. } = &self.modal {
 						let content = content.clone();
@@ -3156,6 +3190,103 @@ mod tests {
 			has_modal,
 			"preferences modal should be shown after the menu action"
 		);
+	}
+
+	/// The General tab's new rows are live end to end: the cache-ahead spin
+	/// box writes `PlaybackPreRenderFrames` (the playback pre-render window
+	/// reads it every tick) and the storage backend combo writes
+	/// `Storage/Backend` — PostgreSQL reveals the `Storage/PgUrl` field the
+	/// write-through library consumes.
+	#[gpui::test]
+	async fn preferences_general_tab_writes_cache_ahead_and_storage(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		let _lang = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		crate::i18n::set_language_code("en-US");
+
+		// The config store is process-wide: pin the keys to a known state and
+		// restore them afterwards so no other test inherits these writes.
+		struct Restore(&'static str, String);
+		impl Drop for Restore {
+			fn drop(&mut self) {
+				crate::oakui::real::config_set_string(self.0, &self.1);
+			}
+		}
+		let _ahead = Restore(
+			"PlaybackPreRenderFrames",
+			crate::oakui::real::config_get_string("PlaybackPreRenderFrames"),
+		);
+		let _backend = Restore(
+			"Storage/Backend",
+			crate::oakui::real::config_get_string("Storage/Backend"),
+		);
+		let _pg_url = Restore(
+			"Storage/PgUrl",
+			crate::oakui::real::config_get_string("Storage/PgUrl"),
+		);
+		crate::oakui::real::config_set_int("PlaybackPreRenderFrames", 120);
+		crate::oakui::real::config_set_string("Storage/Backend", "sqlite");
+
+		let (window, root) = mock_shell(cx);
+		cx.update(|app| root.update(app, |app, cx| app.on_menu(menu_ids::PREFERENCES, cx)));
+		cx.run_until_parked();
+		cx.update_window(window.into(), |_root, window, cx| {
+			window.draw(cx).clear();
+		})
+		.expect("window is still open");
+		cx.run_until_parked();
+		// Clear the app keymap: the global up/down/home/end bindings
+		// (GoToPrevCut / GoToNextCut / GoToStart / GoToEnd) dispatch before
+		// the controls' element key handlers and would shadow the spin
+		// box's arrow keys and the combo's selection keys.
+		cx.update(|cx| cx.clear_key_bindings());
+
+		let mut cx = VisualTestContext::from_window(window.into(), cx).into_mut();
+		// The connection-string row only exists for the PostgreSQL backend.
+		assert!(
+			cx.debug_bounds("preferences-storage-pg-url").is_none(),
+			"the PostgreSQL connection-string row is hidden for SQLite"
+		);
+
+		// Step the cache-ahead spin box once (8 frames): 120 → 128 lands in
+		// the config the playback pre-render window reads.
+		let ahead = cx
+			.debug_bounds("preferences-cache-ahead")
+			.expect("the cache-ahead row is rendered");
+		cx.simulate_click(ahead.center(), gpui::Modifiers::none());
+		cx.run_until_parked();
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("up").unwrap());
+		cx.run_until_parked();
+		assert_eq!(
+			crate::oakui::real::config_get_int("PlaybackPreRenderFrames", 120),
+			128,
+			"the cache-ahead spin box writes its stepped value to the config"
+		);
+
+		// Re-select the storage backend: PostgreSQL (the combo starts on
+		// SQLite; with the popup closed the arrow keys drive the selection).
+		let backend = cx
+			.debug_bounds("preferences-storage-backend")
+			.expect("the storage backend row is rendered");
+		cx.simulate_click(backend.center(), gpui::Modifiers::none());
+		cx.run_until_parked();
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("escape").unwrap());
+		cx.run_until_parked();
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("down").unwrap());
+		cx.run_until_parked();
+		assert_eq!(
+			crate::oakui::real::config_get_string("Storage/Backend"),
+			"pg",
+			"selecting PostgreSQL writes Storage/Backend to the config"
+		);
+		// A fresh draw reveals the connection-string row.
+		cx.update(|window, cx| window.draw(cx).clear());
+		cx.run_until_parked();
+		cx.debug_bounds("preferences-storage-pg-url")
+			.expect("the PostgreSQL connection-string row appears after the switch");
 	}
 
 	/// Opening File → Project Properties… must not crash: the content is
