@@ -927,8 +927,45 @@ static EXECUTOR_INSTALLED: OnceLock<()> = OnceLock::new();
 pub fn install_render_executor() {
 	EXECUTOR_INSTALLED.get_or_init(|| {
 		oak_render::eval::set_plugin_executor(Some(Arc::new(execute_plugin_job)));
+		oak_render::eval::set_plugin_instance_factory(Some(Arc::new(shared_plugin_instance)));
 		oak_node::nodes::plugin::set_plugin_duplicator(Some(Arc::new(duplicate_instance)));
 	});
+}
+
+// ---------------------------------------------------------------------------
+// montage 渲染路径的共享实例（渲染进程按插件标识惰性创建 + 进程级缓存）
+// ---------------------------------------------------------------------------
+
+/// montage 效果栈携带插件标识而非实例 id（montage 在主进程从时间线
+/// 解析，实例活在渲染进程）。渲染进程经此工厂按需创建实例并缓存：
+/// 参数每次渲染前由 montage 注入（[`execute_plugin_job`] 的 values
+/// 覆盖），worker 单线程顺序渲染，共享实例无跨帧状态冲突。
+fn shared_plugin_instance(identifier: &str) -> Option<u64> {
+	static SHARED: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
+	let cache = SHARED.get_or_init(|| Mutex::new(HashMap::new()));
+	if let Some(&id) = cache
+		.lock()
+		.unwrap_or_else(|e| e.into_inner())
+		.get(identifier)
+	{
+		return Some(id);
+	}
+	let host = Host::global();
+	let plugin = host.cache.find(identifier)?;
+	// 上下文选择与 [`register_plugin_nodes`] 一致（filter 优先，否则
+	// 首个支持上下文；factory.cpp:171-177）。
+	let context = if plugin.contexts.iter().any(|c| c == "OfxImageEffectContextFilter") {
+		"OfxImageEffectContextFilter".to_string()
+	} else {
+		plugin.contexts.first()?.clone()
+	};
+	let inst = host.create_instance(identifier, Some(&context)).ok()?;
+	let id = register_instance(inst);
+	cache
+		.lock()
+		.unwrap_or_else(|e| e.into_inner())
+		.insert(identifier.to_string(), id);
+	Some(id)
 }
 
 // ---------------------------------------------------------------------------
@@ -1083,6 +1120,13 @@ mod tests {
 		// 注册表对不存在的键返回 None；摘除未登记键 no-op。
 		assert!(instance_from_id(u64::MAX).is_none());
 		unregister_instance(u64::MAX);
+	}
+
+	#[test]
+	fn shared_instance_unknown_identifier_yields_none() {
+		// 缓存里查无此标识 → None（montage 路径据此按"无求值器"
+		// 告警并直通）。
+		assert!(shared_plugin_instance("com.example.definitely-missing").is_none());
 	}
 
 	/// 构造一个只含 push-button 参数的最小实例（直接登记进注册表）。

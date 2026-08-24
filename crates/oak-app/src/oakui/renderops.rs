@@ -142,6 +142,38 @@ fn clip_preview_media(
 	Some(preview_footage_media(f, is_video))
 }
 
+/// The clip block's effect stack as montage effect descriptors
+/// (source-first order — the chain walk's signal order, so the renderer
+/// applies them media-side first). The chain walk runs all the way to
+/// the media source, so its first element is the footage node feeding
+/// the clip; the montage decodes that footage itself, so the source
+/// node (the one WITHOUT an effect input) is dropped here. Disabled
+/// effects are carried with `enabled = false`; the renderer bypasses
+/// them (the C++ traverser's bypass pushes the effect input through
+/// unchanged). Parameters are the inspector's parameter set (non-hidden,
+/// non-connection inputs at their standard values; keyframed values are
+/// not time-resolved on this path).
+fn clip_effects(g: &oak_node::graph::Graph, block_id: NodeId) -> Vec<oak_render::ticket::MontageEffect> {
+	use super::effectchain;
+	effectchain::chain(g, block_id)
+		.into_iter()
+		.filter(|&fx| effectchain::effect_input_of(g, fx).is_some())
+		.filter_map(|fx| {
+			let entry = g.get(fx)?;
+			Some(oak_render::ticket::MontageEffect {
+				type_id: entry.behavior.type_id().to_string(),
+				enabled: effectchain::is_enabled(g, fx),
+				effect_input_id: effectchain::effect_input_of(g, fx),
+				params: effectchain::effect_params(g, fx)
+					.unwrap_or_default()
+					.into_iter()
+					.map(|p| (p.input_id, p.value))
+					.collect(),
+			})
+		})
+		.collect()
+}
+
 /// The video montage at sequence time `time`: every clip covering `time`
 /// on video tracks, ordered bottom-to-top (track index 0 is topmost, so
 /// it is composited last). Hidden tracks (the muted flag doubles as the
@@ -187,6 +219,7 @@ pub fn video_montage(p: &ProjectRef, seq: NodeId, time: Rational) -> Vec<Montage
 					out_time: out,
 					media_in: clip.core.media_in,
 					gain: 1.0,
+					effects: clip_effects(&g.graph, block_id),
 				});
 			}
 		}
@@ -244,6 +277,7 @@ pub fn single_track_video_montage(
 			out_time: out,
 			media_in: clip.core.media_in,
 			gain: 1.0,
+			effects: clip_effects(&g.graph, block_id),
 		});
 	}
 	clips
@@ -335,6 +369,9 @@ pub fn audio_montage(p: &ProjectRef, seq: NodeId, range: TimeRange) -> Vec<Monta
 					out_time: out,
 					media_in: clip.core.media_in,
 					gain: 1.0,
+					// Audio clips: the effect stack is a video-side
+					// concept; the mixer never consults it.
+					effects: Vec::new(),
 				});
 			}
 		}
@@ -903,6 +940,126 @@ mod tests {
 			video_montage(&project, seq, at(-1)).is_empty(),
 			"a negative time covers nothing"
 		);
+		oak_undo::global::clear().unwrap();
+		let _ = std::fs::remove_file(&media);
+	}
+
+	/// The acceptance gate for montage effect rendering: a 50% Opacity on
+	/// a real clip (generated media, real graph, real decode, real
+	/// compositing — nothing mocked) must change the rendered pixels, and
+	/// disabling the effect must restore the plain render byte-for-byte.
+	#[test]
+	fn montage_effect_stack_reaches_the_rendered_pixels() {
+		let _media = media_lock();
+		oak_undo::global::clear().unwrap();
+		let media =
+			std::env::temp_dir().join(format!("oakapp_montage_fx_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate test media");
+
+		let project = graphops::create_project();
+		let seq = graphops::create_sequence(&project, "Effect Montage");
+		let footage = graphops::import_footage(&project, &media).expect("import the generated media");
+		graphops::add_track(&project, seq, TrackType::Video).expect("add a video track");
+		let block = graphops::place_footage_clip(&project, seq, footage, TrackType::Video, 0, 0, 10, 0)
+			.expect("place the clip");
+
+		// The effect-library double-click flow: append a 50% Opacity to the
+		// footage-backed clip (the insert rewires footage -> effect -> clip).
+		let fx = crate::oakui::effectchain::insert(
+			&project,
+			block,
+			usize::MAX,
+			"org.olivevideoeditor.Olive.opacity",
+		)
+		.expect("append the opacity effect");
+		crate::oakui::effectchain::set_input_value(
+			&project,
+			fx,
+			"opacity_in",
+			oak_node::value::NodeValue::Float(0.5),
+		)
+		.expect("set the opacity value");
+
+		let tb = graphops::sequence_time_base(&lock(&project).graph, seq).unwrap();
+		let time = graphops::ts_to_rational(0, tb);
+
+		// Render the montage through the same entry point the render worker
+		// uses (`render_montage_frame_into`, F32 RGBA rows).
+		let render = |montage: Vec<MontageClip>| {
+			let params = VideoTicketParams {
+				viewer: 0,
+				time,
+				force_size: Some((64, 64)),
+				force_format: Some(oak_core::PixelFormat::F32),
+				cache: None,
+				cache_dir: None,
+				cache_id: None,
+				cache_timebase: None,
+				footage: None,
+				montage,
+			};
+			let mut dst = vec![0u8; 64 * 64 * 16];
+			oak_render::eval::render_montage_frame_into(time, &params, (64, 64), &mut dst, 64 * 16)
+				.expect("montage render");
+			dst
+		};
+		// A left-half pixel of the test pattern (known content, r ~= 0.9).
+		let pixel = |frame: &[u8]| {
+			let off = (8 * 64 + 8) * 16;
+			[0, 1, 2, 3].map(|i| f32::from_le_bytes(frame[off + i * 4..off + i * 4 + 4].try_into().unwrap()))
+		};
+
+		let with_fx = video_montage(&project, seq, time);
+		assert_eq!(with_fx.len(), 1, "one clip covers frame 0");
+		assert_eq!(
+			with_fx[0].effects.len(),
+			1,
+			"the montage carries the clip's effect stack (not the footage source node)"
+		);
+		assert_eq!(with_fx[0].effects[0].type_id, "org.olivevideoeditor.Olive.opacity");
+		assert!(with_fx[0].effects[0].enabled);
+
+		let plain = render(
+			with_fx
+				.iter()
+				.cloned()
+				.map(|mut c| {
+					c.effects.clear();
+					c
+				})
+				.collect(),
+		);
+		let effected = render(with_fx);
+		let (p, e) = (pixel(&plain), pixel(&effected));
+		assert!(p[0] > 0.6, "the plain render shows the test pattern (r={})", p[0]);
+		// 50% opacity: the shader halves every channel, then the composite
+		// over transparent black halves it again via the halved alpha.
+		assert!(
+			(e[0] - p[0] * 0.25).abs() < 0.1,
+			"50% opacity quarters the output ({} vs {})",
+			e[0],
+			p[0] * 0.25
+		);
+		assert!(
+			(e[3] - 0.5).abs() < 0.1,
+			"the composited alpha halves (a={})",
+			e[3]
+		);
+
+		// Disabled effect = bypass: pixels match the plain render.
+		crate::oakui::effectchain::set_enabled(&project, fx, false).expect("disable the effect");
+		let disabled_montage = video_montage(&project, seq, time);
+		assert_eq!(disabled_montage[0].effects.len(), 1);
+		assert!(!disabled_montage[0].effects[0].enabled);
+		let disabled = render(disabled_montage);
+		let d = pixel(&disabled);
+		assert!(
+			(d[0] - p[0]).abs() < 0.05,
+			"a disabled effect leaves the pixels alone ({} vs {})",
+			d[0],
+			p[0]
+		);
+
 		oak_undo::global::clear().unwrap();
 		let _ = std::fs::remove_file(&media);
 	}

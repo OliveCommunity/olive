@@ -535,6 +535,9 @@ pub fn video_montage(p: &ProjectRef, seq_id: NodeId, time: Rational) -> Vec<Mont
 					out_time: out,
 					media_in: clip.core.media_in,
 					gain: 1.0,
+					// The CLI's simplified montage builder does not resolve
+					// effect chains (unchanged behavior).
+					effects: Vec::new(),
 				});
 			}
 		}
@@ -585,6 +588,7 @@ pub fn audio_montage(p: &ProjectRef, seq_id: NodeId, range: TimeRange) -> Vec<Mo
 					out_time: out,
 					media_in: clip.core.media_in,
 					gain: 1.0,
+					effects: Vec::new(),
 				});
 			}
 		}

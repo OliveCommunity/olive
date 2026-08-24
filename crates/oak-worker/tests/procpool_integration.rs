@@ -321,6 +321,105 @@ fn worker_decodes_real_footage_into_slot() {
 	dispatcher.shutdown();
 }
 
+/// M14 R3 end-to-end: a montage clip carrying an effect stack renders
+/// through a REAL worker process — the effects ride the wire (protocol
+/// v2 additive `effects` field on the montage clip), the worker applies
+/// the stack between decode and compositing, and the main process reads
+/// the changed pixels back from the shm slot. 50% Opacity quarters the
+/// output (the shader halves every channel; the composite over
+/// transparent black halves again via the halved alpha).
+#[test]
+fn montage_effects_render_through_the_worker() {
+	let _guard = lock_test();
+	let demo = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../oak-app/tests/demo.mp4");
+	assert!(demo.exists(), "repo fixture tests/demo.mp4 missing");
+
+	let dispatcher = ProcessDispatcher::new(config(1, 4)).expect("dispatcher config");
+	dispatcher.start().expect("worker starts");
+
+	let clip = |effects| oak_render::ticket::MontageClip {
+		filename: demo.display().to_string(),
+		stream_index: 0,
+		in_time: Rational::new(0, 1),
+		out_time: Rational::new(10, 1),
+		media_in: Rational::new(0, 1),
+		gain: 1.0,
+		effects,
+	};
+	let montages = [
+		vec![clip(Vec::new())],
+		vec![clip(vec![oak_render::ticket::MontageEffect {
+			type_id: "org.olivevideoeditor.Olive.opacity".into(),
+			enabled: true,
+			effect_input_id: Some("tex_in".into()),
+			params: vec![(
+				"opacity_in".into(),
+				oak_node::value::NodeValue::Float(0.5),
+			)],
+		}])],
+	];
+
+	let results = Arc::new(Mutex::new(Vec::new()));
+	for (i, montage) in montages.into_iter().enumerate() {
+		let results = results.clone();
+		let time = Rational::new(i as i64, 25);
+		let mut p = params(time, None).as_ref().clone();
+		p.montage = montage;
+		let job = Job {
+			node_identity: 1,
+			time,
+			params: Arc::new(p),
+			audio: None,
+			produce: Arc::new(|_, _| {
+				Err(oak_render::error::Error::Failed(
+					"process backend does not use the in-process producer".into(),
+				))
+			}),
+			done: Box::new(move |result| {
+				results.lock().unwrap_or_else(|e| e.into_inner()).push(result);
+			}),
+			schedule: JobSchedule::seek(),
+		};
+		assert!(dispatcher.post(job), "post accepted while alive");
+	}
+	pump_until(&dispatcher, &results, 2);
+
+	// Results arrive in ticket order (one batch, in-order rendering).
+	let mut frames: Vec<Vec<u8>> = Vec::new();
+	for result in results.lock().unwrap().drain(..) {
+		let payload = result.expect("montage frame rendered");
+		let TicketPayload::ShmFrame(frame) = payload else {
+			panic!("ShmFrame payload");
+		};
+		frames.push(frame.shm.slot_bytes(frame.slot)[..frame.meta.data_size as usize].to_vec());
+		dispatcher.release_frame(&frame);
+	}
+	dispatcher.shutdown();
+
+	let [plain, dimmed] = &frames[..] else {
+		panic!("two frames rendered");
+	};
+	// Pick an opaque, non-black pixel in the plain render as the probe.
+	let probe = plain
+		.chunks_exact(4)
+		.position(|px| px[3] == 255 && px[0] > 40)
+		.expect("the fixture frame has an opaque non-black pixel");
+	let p = &plain[probe * 4..probe * 4 + 4];
+	let d = &dimmed[probe * 4..probe * 4 + 4];
+	assert_eq!(p[3], 255, "the plain montage render is opaque");
+	assert!(
+		(d[3] as i32 - 128).abs() <= 3,
+		"50% opacity halves the alpha ({} vs 128)",
+		d[3]
+	);
+	assert!(
+		(d[0] as i32 - p[0] as i32 / 4).abs() <= 6,
+		"50% opacity quarters the color ({} vs {}/4)",
+		d[0],
+		p[0]
+	);
+}
+
 /// Submit an empty-montage audio range pull through the dispatcher
 /// (M15 S3): the worker mixes silence into a shm slot and the main
 /// process reads it back as [`TicketPayload::ShmAudio`].

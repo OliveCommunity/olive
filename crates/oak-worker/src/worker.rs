@@ -975,6 +975,7 @@ impl WorkerSession {
 				out_time: Rational::new(c.out_num, c.out_den),
 				media_in: Rational::new(c.media_in_num, c.media_in_den),
 				gain: c.gain,
+				effects: c.effects.iter().map(crate::ipc::montage_effect_from).collect(),
 			})
 			.collect();
 		Ok(AudioTicketParams {
@@ -1069,6 +1070,7 @@ impl WorkerSession {
 				out_time: Rational::new(c.out_num, c.out_den),
 				media_in: Rational::new(c.media_in_num, c.media_in_den),
 				gain: c.gain,
+				effects: c.effects.iter().map(crate::ipc::montage_effect_from).collect(),
 			})
 			.collect();
 		VideoTicketParams {

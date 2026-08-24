@@ -35,6 +35,31 @@ use crate::eval;
 use crate::texture::Texture;
 use crate::worker::{JobDispatch, JobSchedule};
 
+/// One effect of a montage clip's effect stack (M14 R3 effect-chain
+/// wiring into the montage render path). The stack is ordered
+/// source-first (the chain walk's signal order: the first element feeds
+/// the media side, the last feeds the clip's effect input); the renderer
+/// applies them in sequence after decode, before compositing.
+#[derive(Clone, Debug)]
+pub struct MontageEffect {
+	/// Node type id: the built-in factory type id (e.g.
+	/// `org.olivevideoeditor.Olive.opacity`) or the OFX plugin identifier.
+	pub type_id: String,
+	/// The effect's enabled flag. Disabled effects are bypassed (the C++
+	/// traverser's bypass pushes the effect input through unchanged), so
+	/// the renderer skips them; they are carried anyway so the render side
+	/// can log what it skipped.
+	pub enabled: bool,
+	/// The clip/input name the source texture arrives on (the node's
+	/// effect input id — "tex_in" for built-ins, "Source" for typical OFX
+	/// filters; `None` when the node has no effect input).
+	pub effect_input_id: Option<String>,
+	/// Parameter values (input id -> value): the node's non-hidden,
+	/// non-connection data inputs at their standard (non-keyframed)
+	/// values — the same parameter set the inspector exposes.
+	pub params: Vec<(String, oak_node::value::NodeValue)>,
+}
+
 /// One clip of a sequence montage (M12 P0): the facade resolves the
 /// timeline into an ordered list of clips; the producer decodes each and
 /// composites them topmost-last.
@@ -52,6 +77,9 @@ pub struct MontageClip {
 	pub media_in: Rational,
 	/// Playback gain (1.0 = unity).
 	pub gain: f32,
+	/// The clip's effect stack (source-first; empty for audio clips and
+	/// for montage builders that do not resolve effect chains).
+	pub effects: Vec<MontageEffect>,
 }
 
 /// Audio ticket parameters (M12 P1): the output format plus the audio

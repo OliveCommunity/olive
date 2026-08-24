@@ -1936,6 +1936,7 @@ fn build_ticket_spec(
 			media_in_num: c.media_in.numerator(),
 			media_in_den: c.media_in.denominator(),
 			gain: c.gain,
+			effects: c.effects.iter().map(crate::ipc::wire_effect_from).collect(),
 		})
 		.collect();
 	BatchTicketSpec {
@@ -1970,6 +1971,7 @@ fn build_audio_ticket_spec(ticket: i64, slot: u32, params: &AudioTicketParams) -
 			media_in_num: c.media_in.numerator(),
 			media_in_den: c.media_in.denominator(),
 			gain: c.gain,
+			effects: c.effects.iter().map(crate::ipc::wire_effect_from).collect(),
 		})
 		.collect();
 	AudioTicketSpec {

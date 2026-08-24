@@ -149,6 +149,36 @@ pub fn plugin_executor() -> Option<Arc<PluginExecutor>> {
 		.clone()
 }
 
+/// Plugin instance factory: resolves an OFX plugin identifier to a live
+/// instance-registry id, creating (and caching) the instance lazily.
+/// Implemented by the oakplugin crate — the montage effect path carries
+/// plugin identifiers, not instance ids (the montage is resolved from
+/// the timeline in the main process; the instance lives in whichever
+/// process renders the frame).
+pub type PluginInstanceFactory = dyn Fn(&str) -> Option<u64> + Send + Sync;
+
+static PLUGIN_INSTANCE_FACTORY: std::sync::OnceLock<
+	std::sync::Mutex<Option<Arc<PluginInstanceFactory>>>,
+> = std::sync::OnceLock::new();
+
+fn instance_factory_slot() -> &'static std::sync::Mutex<Option<Arc<PluginInstanceFactory>>> {
+	PLUGIN_INSTANCE_FACTORY.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+/// Install the plugin instance factory (oakplugin registration point;
+/// `None` clears it).
+pub fn set_plugin_instance_factory(factory: Option<Arc<PluginInstanceFactory>>) {
+	*instance_factory_slot().lock().unwrap_or_else(|e| e.into_inner()) = factory;
+}
+
+/// The installed plugin instance factory, if any.
+pub fn plugin_instance_factory() -> Option<Arc<PluginInstanceFactory>> {
+	instance_factory_slot()
+		.lock()
+		.unwrap_or_else(|e| e.into_inner())
+		.clone()
+}
+
 /// The failure marker frame: solid magenta (1, 0, 1, 1) F32 RGBA —
 /// the C++ plugin renderer paints failed plugin output purple so a
 /// broken plugin is visible instead of silently black.
@@ -775,7 +805,11 @@ pub fn render_montage_frame_into(
 			(w, h),
 			PixelFormat::F32,
 		)?;
-		let (src_data, src_stride) = match &decoded {
+		// The clip's effect stack runs between decode and compositing
+		// (C++ semantics: the clip texture passes through the chain
+		// bottom-up, the chain top feeds the track composite).
+		let effected = apply_clip_effects(decoded, clip, time);
+		let (src_data, src_stride) = match &effected {
 			Texture::Cpu(src) => (&src.data, src.linesize_bytes() as i32),
 			_ => continue,
 		};
@@ -821,6 +855,139 @@ pub fn composite_over(
 			for i in 0..4 {
 				dst[off + i * 4..off + i * 4 + 4].copy_from_slice(&out[i].clamp(0.0, 1.0).to_le_bytes());
 			}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Montage clip effect stacks
+// ---------------------------------------------------------------------------
+
+/// The built-in Opacity effect's type id (oaknode `OpacityEffect`) — the
+/// one built-in video effect with a CPU evaluator on the montage path.
+const OPACITY_EFFECT_TYPE_ID: &str = "org.olivevideoeditor.Olive.opacity";
+
+/// The Opacity effect's value input id (oaknode `opacity_in`).
+const OPACITY_VALUE_INPUT: &str = "opacity_in";
+
+/// The effect type ids the montage path already warned about (one log
+/// line per type per process instead of one per frame).
+fn unsupported_warned() -> std::sync::MutexGuard<'static, std::collections::HashSet<String>> {
+	static WARNED: std::sync::OnceLock<std::sync::Mutex<std::collections::HashSet<String>>> =
+		std::sync::OnceLock::new();
+	WARNED
+		.get_or_init(|| std::sync::Mutex::new(std::collections::HashSet::new()))
+		.lock()
+		.unwrap_or_else(|e| e.into_inner())
+}
+
+/// Log an unsupported-effect passthrough once per type id.
+fn warn_unsupported_once(type_id: &str, reason: &str) {
+	if unsupported_warned().insert(type_id.to_string()) {
+		eprintln!("montage effect \"{type_id}\" passes through unchanged: {reason}");
+	}
+}
+
+/// Run a clip's effect stack over its decoded frame (source-first order;
+/// disabled effects are bypassed — the C++ traverser's bypass pushes the
+/// effect input through unchanged). Effects the montage path cannot
+/// evaluate log a warning once and pass the frame through.
+fn apply_clip_effects(
+	src: Texture,
+	clip: &crate::ticket::MontageClip,
+	time: Rational,
+) -> Texture {
+	let mut tex = src;
+	for effect in &clip.effects {
+		if !effect.enabled {
+			continue;
+		}
+		tex = apply_montage_effect(tex, effect, time);
+	}
+	tex
+}
+
+/// Apply one effect to `src` (an F32 RGBA CPU frame of the montage
+/// pipeline). `time` is the sequence time the frame is rendered at (the
+/// C++ node evaluation time).
+fn apply_montage_effect(
+	src: Texture,
+	effect: &crate::ticket::MontageEffect,
+	time: Rational,
+) -> Texture {
+	// Built-in Opacity: multiply every channel by the opacity factor
+	// (C++ `:/shaders/opacity.frag`: `frag_color = texture(tex_in, …) *
+	// opacity_in` — the shader scales the whole vec4, alpha included).
+	if effect.type_id == OPACITY_EFFECT_TYPE_ID {
+		let factor = effect
+			.params
+			.iter()
+			.find(|(id, _)| id == OPACITY_VALUE_INPUT)
+			.map(|(_, v)| v.to_double())
+			.unwrap_or(1.0);
+		// Unity is a pass-through (C++ `qFuzzyCompare(opacity, 1.0)`).
+		if (factor - 1.0).abs() * 1e12 <= factor.abs().min(1.0) {
+			return src;
+		}
+		// Texture implements Drop, so scale in place through a mutable
+		// borrow instead of moving the frame out.
+		let mut tex = src;
+		match &mut tex {
+			Texture::Cpu(frame) => {
+				let stride = frame.linesize_bytes();
+				for row in frame.data.chunks_exact_mut(stride).take(frame.height.max(0) as usize) {
+					for px in row[..(frame.width.max(0) as usize) * 16].chunks_exact_mut(16) {
+						for c in px.chunks_exact_mut(4) {
+							let v = f32::from_le_bytes(c.try_into().unwrap());
+							c.copy_from_slice(&(v * factor as f32).to_le_bytes());
+						}
+					}
+				}
+			}
+			_ => {
+				warn_unsupported_once(
+					&effect.type_id,
+					"opacity on a non-CPU texture is not supported by the montage path",
+				);
+			}
+		}
+		return tex;
+	}
+
+	// Everything else: an OFX plugin effect. The montage carries the
+	// plugin identifier; the rendering process resolves it to a live
+	// instance through the oakplugin-installed factory (lazily created
+	// and cached per identifier), then dispatches through the plugin
+	// executor exactly like the graph path's plugin jobs.
+	let Some(factory) = plugin_instance_factory() else {
+		warn_unsupported_once(
+			&effect.type_id,
+			"no plugin instance factory installed (oakplugin init missing in this process)",
+		);
+		return src;
+	};
+	let Some(instance) = factory(&effect.type_id) else {
+		warn_unsupported_once(
+			&effect.type_id,
+			"no evaluator: unknown built-in effect or OFX plugin unavailable in this process",
+		);
+		return src;
+	};
+	let spec = JobSpec::Plugin {
+		instance,
+		time: time.to_f64(),
+		effect_input_id: effect.effect_input_id.clone(),
+		inputs: Vec::new(),
+		values: effect.params.clone(),
+	};
+	let size = src.size();
+	match RenderEvalHooks::new().process_plugin_job(src, &spec) {
+		Ok(texture) => texture,
+		Err(err) => {
+			// Unreachable for a Plugin spec (the executor failure path
+			// yields a purple frame); stay loud rather than silent.
+			eprintln!("montage plugin job failed to dispatch: {err:#}");
+			purple_frame(time, size)
 		}
 	}
 }
@@ -1164,5 +1331,119 @@ mod tests {
 		let params = audio_params(TimeRange::new(Rational::new(0, 1), Rational::new(1, 24)));
 		let mut dst = [0u8; 8]; // far too small for 2000x2 f32 samples
 		assert!(render_audio_samples_into(&params, &mut dst).is_err());
+	}
+
+	// ---- Montage clip effect stacks -------------------------------------
+
+	/// A 2x1 F32 texture filled with a known color.
+	fn solid_texture(r: f32, g: f32, b: f32, a: f32) -> Texture {
+		let mut frame = generate_frame(Rational::new(0, 1), (2, 1), PixelFormat::F32).unwrap();
+		for px in frame.data.chunks_exact_mut(16) {
+			for (c, v) in px.chunks_exact_mut(4).zip([r, g, b, a]) {
+				c.copy_from_slice(&v.to_le_bytes());
+			}
+		}
+		Texture::Cpu(frame)
+	}
+
+	fn opacity_effect(enabled: bool, value: f64) -> crate::ticket::MontageEffect {
+		crate::ticket::MontageEffect {
+			type_id: OPACITY_EFFECT_TYPE_ID.to_string(),
+			enabled,
+			effect_input_id: Some("tex_in".to_string()),
+			params: vec![(OPACITY_VALUE_INPUT.to_string(), NodeValue::Float(value))],
+		}
+	}
+
+	fn clip_with_effects(effects: Vec<crate::ticket::MontageEffect>) -> crate::ticket::MontageClip {
+		crate::ticket::MontageClip {
+			filename: String::new(),
+			stream_index: 0,
+			in_time: Rational::new(0, 1),
+			out_time: Rational::new(1, 1),
+			media_in: Rational::new(0, 1),
+			gain: 1.0,
+			effects,
+		}
+	}
+
+	/// The built-in Opacity effect really scales the decoded pixels
+	/// (every channel, C++ `opacity.frag` parity).
+	#[test]
+	fn montage_opacity_effect_scales_pixels() {
+		let clip = clip_with_effects(vec![opacity_effect(true, 0.5)]);
+		let out = apply_clip_effects(solid_texture(0.8, 0.4, 0.2, 1.0), &clip, Rational::new(0, 1));
+		assert_eq!(first_pixel(&out), [0.4, 0.2, 0.1, 0.5]);
+	}
+
+	/// Disabled effects are bypassed (C++ traverser parity), and unity
+	/// opacity is a pass-through.
+	#[test]
+	fn montage_disabled_or_unity_effects_pass_through() {
+		let disabled = clip_with_effects(vec![opacity_effect(false, 0.5)]);
+		let out = apply_clip_effects(solid_texture(0.8, 0.4, 0.2, 1.0), &disabled, Rational::new(0, 1));
+		assert_eq!(first_pixel(&out), [0.8, 0.4, 0.2, 1.0]);
+
+		let unity = clip_with_effects(vec![opacity_effect(true, 1.0)]);
+		let out = apply_clip_effects(solid_texture(0.8, 0.4, 0.2, 1.0), &unity, Rational::new(0, 1));
+		assert_eq!(first_pixel(&out), [0.8, 0.4, 0.2, 1.0]);
+	}
+
+	/// An OFX effect (any non-built-in type id) resolves its instance
+	/// through the installed factory and dispatches through the executor,
+	/// carrying the montage's parameter values.
+	#[test]
+	fn montage_plugin_effect_dispatches_with_params() {
+		let _guard = PLUGIN_TEST_LOCK.lock().unwrap();
+		set_plugin_instance_factory(Some(Arc::new(|identifier: &str| {
+			(identifier == "com.example.darken").then_some(7)
+		})));
+		set_plugin_executor(Some(Arc::new(|req: &PluginJobRequest<'_>| {
+			let JobSpec::Plugin { instance, values, .. } = req.spec else {
+				return Err(Error::Invalid);
+			};
+			assert_eq!(*instance, 7);
+			// The injected parameter drives the output: paint the frame
+			// with the "gain" value so the test observes the param path.
+			let gain = values
+				.iter()
+				.find(|(k, _)| k == "gain")
+				.map(|(_, v)| v.to_double() as f32)
+				.unwrap_or(1.0);
+			let mut frame = generate_frame(Rational::new(0, 1), req.src.size(), PixelFormat::F32)?;
+			for px in frame.data.chunks_exact_mut(16) {
+				for (c, v) in px.chunks_exact_mut(4).zip([gain, gain, gain, 1.0]) {
+					c.copy_from_slice(&v.to_le_bytes());
+				}
+			}
+			Ok(Texture::Cpu(frame))
+		})));
+		let clip = clip_with_effects(vec![crate::ticket::MontageEffect {
+			type_id: "com.example.darken".to_string(),
+			enabled: true,
+			effect_input_id: Some("Source".to_string()),
+			params: vec![("gain".to_string(), NodeValue::Float(0.25))],
+		}]);
+		let out = apply_clip_effects(solid_texture(0.8, 0.4, 0.2, 1.0), &clip, Rational::new(0, 1));
+		assert_eq!(first_pixel(&out), [0.25, 0.25, 0.25, 1.0]);
+		set_plugin_executor(None);
+		set_plugin_instance_factory(None);
+	}
+
+	/// An effect nobody can evaluate (no factory / unknown type) passes
+	/// the frame through unchanged — loudly (the warn-once log), never a
+	/// silent no-op.
+	#[test]
+	fn montage_unknown_effect_passes_through() {
+		let _guard = PLUGIN_TEST_LOCK.lock().unwrap();
+		set_plugin_instance_factory(None);
+		let clip = clip_with_effects(vec![crate::ticket::MontageEffect {
+			type_id: "com.example.missing".to_string(),
+			enabled: true,
+			effect_input_id: Some("Source".to_string()),
+			params: Vec::new(),
+		}]);
+		let out = apply_clip_effects(solid_texture(0.8, 0.4, 0.2, 1.0), &clip, Rational::new(0, 1));
+		assert_eq!(first_pixel(&out), [0.8, 0.4, 0.2, 1.0]);
 	}
 }

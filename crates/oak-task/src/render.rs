@@ -61,7 +61,7 @@ use oak_render::procpool::{
 	bgra8_to_f32_rgba, DispatcherConfig, ProcessDispatcher, ShmAudioRef, ShmFrameRef,
 };
 use oak_render::ticket::{
-	ticket_kind, AudioTicketParams, MontageClip, TicketArena, TicketId, TicketPayload,
+	ticket_kind, AudioTicketParams, MontageClip, MontageEffect, TicketArena, TicketId, TicketPayload,
 	TicketResult, VideoTicketParams,
 };
 use oak_render::worker::JobDispatch;
@@ -245,6 +245,90 @@ impl RenderTask {
 		}
 	}
 
+	/// The effect stack of a clip block as montage effect descriptors
+	/// (source-first order). Mirrors the app's `effectchain` walk —
+	/// oak-task cannot link oak-app, so the export path keeps its own
+	/// copy over the public oaknode graph API. Disabled effects ride
+	/// along with `enabled = false`; the worker bypasses them (the C++
+	/// traverser's bypass pushes the effect input through unchanged).
+	/// Parameters are the non-hidden, non-connection data inputs at
+	/// their standard (non-keyframed) values.
+	fn clip_effects(graph: &oak_node::graph::Graph, host: oak_node::id::NodeId) -> Vec<MontageEffect> {
+		// Walk the chain: from the host's effect input upstream until an
+		// unconnected input or a node without an effect input; a `seen`
+		// guard protects against malformed cycles.
+		let mut chain = Vec::new();
+		let mut cur = host;
+		let mut seen: Vec<oak_node::id::NodeId> = Vec::new();
+		loop {
+			if seen.contains(&cur) {
+				break;
+			}
+			seen.push(cur);
+			let Some(entry) = graph.get(cur) else {
+				break;
+			};
+			let input = &entry.core.effect_input;
+			if input.is_empty() {
+				break;
+			}
+			let Some(up) = graph.connected_output(cur, input, -1) else {
+				break;
+			};
+			chain.push(up);
+			cur = up;
+		}
+		chain.reverse();
+		chain
+			.into_iter()
+			// The walk runs all the way to the media source; drop the
+			// source node (the one WITHOUT an effect input) — the montage
+			// decodes the footage itself.
+			.filter(|&fx| {
+				graph
+					.get(fx)
+					.map(|e| !e.core.effect_input.is_empty())
+					.unwrap_or(false)
+			})
+			.filter_map(|fx| {
+				let entry = graph.get(fx)?;
+				let enabled = matches!(
+					entry.core.standard_value(oak_node::node::ENABLED_INPUT, -1),
+					oak_node::value::NodeValue::Boolean(true)
+				);
+				let effect_input_id = if entry.core.effect_input.is_empty() {
+					None
+				} else {
+					Some(entry.core.effect_input.clone())
+				};
+				let mut params = Vec::new();
+				for input in &entry.core.inputs {
+					if matches!(
+						input.value_type,
+						oak_node::value::ValueType::Texture
+							| oak_node::value::ValueType::Samples
+							| oak_node::value::ValueType::Matrix
+					) {
+						continue;
+					}
+					if input.flags & oak_node::input::flags::HIDDEN != 0 {
+						continue;
+					}
+					if input.id == oak_node::node::ENABLED_INPUT {
+						continue;
+					}
+					params.push((input.id.clone(), entry.core.standard_value(&input.id, -1)));
+				}
+				Some(MontageEffect {
+					type_id: entry.behavior.type_id().to_string(),
+					enabled,
+					effect_input_id,
+					params,
+				})
+			})
+			.collect()
+	}
+
 	/// Flatten the video tracks of `sequence` into an ordered montage
 	/// (bottom-most track first so the topmost track composites last;
 	/// `// CPP-PARITY: M12 P0 montage contract`).
@@ -316,6 +400,7 @@ impl RenderTask {
 						out_time: core.out(),
 						media_in: core.media_in,
 						gain: 1.0,
+						effects: Self::clip_effects(&guard.graph, *block_id),
 					});
 				}
 			}
@@ -393,6 +478,9 @@ impl RenderTask {
 						out_time: core.out(),
 						media_in: core.media_in,
 						gain: 1.0,
+						// Audio clips carry no effect stack (video-side
+						// concept; the mixer never consults it).
+						effects: Vec::new(),
 					});
 				}
 			}

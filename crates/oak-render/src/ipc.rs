@@ -272,6 +272,122 @@ pub struct HelloCapsMsg {
 	pub max_slot_bytes: i64,
 }
 
+/// A node value on the wire (protocol v2, montage effect parameters).
+/// `oak_node::value::NodeValue` itself is not serde-able (texture/sample
+/// payloads, handles); this enum covers the plain-data variants an effect
+/// parameter can carry. Connection/handle variants (texture, samples,
+/// node refs, video/audio params, push buttons) have no wire
+/// representation and are dropped by [`WireNodeValue::from_node_value`].
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(tag = "t", content = "v", rename_all = "snake_case")]
+pub enum WireNodeValue {
+	/// No value.
+	None,
+	/// Integer.
+	Int(i64),
+	/// Float.
+	Float(f64),
+	/// RGBA color.
+	Color([f64; 4]),
+	/// Text.
+	Text(String),
+	/// Boolean.
+	Boolean(bool),
+	/// Rational (num, den).
+	Rational(i64, i64),
+	/// Vec2.
+	Vec2([f64; 2]),
+	/// Vec3.
+	Vec3([f64; 3]),
+	/// Vec4.
+	Vec4([f64; 4]),
+	/// 4x4 matrix, row-major.
+	Matrix([f64; 16]),
+	/// Combo index.
+	Combo(i64),
+	/// String combo.
+	StrCombo(String),
+	/// Opaque bytes.
+	Binary(Vec<u8>),
+}
+
+impl Default for WireNodeValue {
+	fn default() -> Self {
+		WireNodeValue::None
+	}
+}
+
+impl WireNodeValue {
+	/// The wire form of a node value, or `None` when the variant has no
+	/// wire representation (the parameter is then not carried).
+	pub fn from_node_value(v: &oak_node::value::NodeValue) -> Option<WireNodeValue> {
+		use oak_node::value::NodeValue as NV;
+		Some(match v {
+			NV::None => WireNodeValue::None,
+			NV::Int(i) => WireNodeValue::Int(*i),
+			NV::Float(f) => WireNodeValue::Float(*f),
+			NV::Color(c) => WireNodeValue::Color(*c),
+			NV::Text(s) => WireNodeValue::Text(s.clone()),
+			NV::Boolean(b) => WireNodeValue::Boolean(*b),
+			NV::Rational(r) => WireNodeValue::Rational(r.numerator(), r.denominator()),
+			NV::Vec2(v2) => WireNodeValue::Vec2(*v2),
+			NV::Vec3(v3) => WireNodeValue::Vec3(*v3),
+			NV::Vec4(v4) => WireNodeValue::Vec4(*v4),
+			NV::Matrix(m) => WireNodeValue::Matrix(*m),
+			NV::Combo(i) => WireNodeValue::Combo(*i),
+			NV::StrCombo(s) => WireNodeValue::StrCombo(s.clone()),
+			NV::Binary(b) => WireNodeValue::Binary(b.clone()),
+			_ => return None,
+		})
+	}
+
+	/// Back to a node value (worker side).
+	pub fn to_node_value(&self) -> oak_node::value::NodeValue {
+		use oak_node::value::NodeValue as NV;
+		match self {
+			WireNodeValue::None => NV::None,
+			WireNodeValue::Int(i) => NV::Int(*i),
+			WireNodeValue::Float(f) => NV::Float(*f),
+			WireNodeValue::Color(c) => NV::Color(*c),
+			WireNodeValue::Text(s) => NV::Text(s.clone()),
+			WireNodeValue::Boolean(b) => NV::Boolean(*b),
+			WireNodeValue::Rational(n, d) => NV::Rational(oak_core::Rational::new(*n, *d)),
+			WireNodeValue::Vec2(v2) => NV::Vec2(*v2),
+			WireNodeValue::Vec3(v3) => NV::Vec3(*v3),
+			WireNodeValue::Vec4(v4) => NV::Vec4(*v4),
+			WireNodeValue::Matrix(m) => NV::Matrix(*m),
+			WireNodeValue::Combo(i) => NV::Combo(*i),
+			WireNodeValue::StrCombo(s) => NV::StrCombo(s.clone()),
+			WireNodeValue::Binary(b) => NV::Binary(b.clone()),
+		}
+	}
+}
+
+/// One effect parameter on the wire (input id + value).
+#[derive(Serialize, Deserialize, Default, Debug, Clone, PartialEq)]
+#[serde(default)]
+pub struct WireEffectParam {
+	/// Node input id.
+	pub input: String,
+	/// Parameter value.
+	pub value: WireNodeValue,
+}
+
+/// One effect of a montage clip's effect stack on the wire (protocol v2
+/// additive field of [`WireMontageClip`]; source-first order).
+#[derive(Serialize, Deserialize, Default, Debug, Clone, PartialEq)]
+#[serde(default)]
+pub struct WireMontageEffect {
+	/// Built-in node type id or OFX plugin identifier.
+	pub type_id: String,
+	/// Enabled flag (disabled effects are bypassed).
+	pub enabled: bool,
+	/// Effect input (clip) name; "" = none.
+	pub effect_input_id: String,
+	/// Parameter values.
+	pub params: Vec<WireEffectParam>,
+}
+
 /// One montage clip on the wire (rationals flattened to num/den pairs).
 #[derive(Serialize, Deserialize, Default, Debug, Clone, PartialEq)]
 #[serde(default)]
@@ -294,6 +410,47 @@ pub struct WireMontageClip {
 	pub media_in_den: i64,
 	/// Playback gain (1.0 = unity).
 	pub gain: f32,
+	/// The clip's effect stack (protocol v2 additive: older peers omit the
+	/// field and it defaults to an empty stack).
+	pub effects: Vec<WireMontageEffect>,
+}
+
+/// Map a ticket-side montage effect to its wire form (main process;
+/// parameters without a wire representation are dropped).
+pub fn wire_effect_from(effect: &crate::ticket::MontageEffect) -> WireMontageEffect {
+	WireMontageEffect {
+		type_id: effect.type_id.clone(),
+		enabled: effect.enabled,
+		effect_input_id: effect.effect_input_id.clone().unwrap_or_default(),
+		params: effect
+			.params
+			.iter()
+			.filter_map(|(input, value)| {
+				WireNodeValue::from_node_value(value).map(|value| WireEffectParam {
+					input: input.clone(),
+					value,
+				})
+			})
+			.collect(),
+	}
+}
+
+/// Map a wire effect back to the ticket-side form (worker).
+pub fn montage_effect_from(wire: &WireMontageEffect) -> crate::ticket::MontageEffect {
+	crate::ticket::MontageEffect {
+		type_id: wire.type_id.clone(),
+		enabled: wire.enabled,
+		effect_input_id: if wire.effect_input_id.is_empty() {
+			None
+		} else {
+			Some(wire.effect_input_id.clone())
+		},
+		params: wire
+			.params
+			.iter()
+			.map(|p| (p.input.clone(), p.value.to_node_value()))
+			.collect(),
+	}
 }
 
 /// One frame ticket inside a [`RenderBatchMsg`] — the main process
@@ -1710,6 +1867,15 @@ mod tests {
 						media_in_num: 10,
 						media_in_den: 24,
 						gain: 0.5,
+						effects: vec![WireMontageEffect {
+							type_id: "org.olivevideoeditor.Olive.opacity".into(),
+							enabled: true,
+							effect_input_id: "tex_in".into(),
+							params: vec![WireEffectParam {
+								input: "opacity_in".into(),
+								value: WireNodeValue::Float(0.5),
+							}],
+						}],
 					}],
 				},
 			],
@@ -1721,6 +1887,15 @@ mod tests {
 		assert_eq!(value["tickets"][0]["format"], SLOT_FORMAT_BGRA8);
 		assert_eq!(value["tickets"][1]["montage"][0]["filename"], "b.mp4");
 		assert_eq!(value["tickets"][1]["montage"][0]["media_in_num"], 10);
+		// The effect stack rides the clip as an additive v2 field.
+		assert_eq!(
+			value["tickets"][1]["montage"][0]["effects"][0]["type_id"],
+			"org.olivevideoeditor.Olive.opacity"
+		);
+		assert_eq!(
+			value["tickets"][1]["montage"][0]["effects"][0]["params"][0]["value"],
+			json!({ "t": "float", "v": 0.5 })
+		);
 		// Round-trip back to the struct.
 		let round: RenderBatchMsg = serde_json::from_value(value).unwrap();
 		assert_eq!(round, batch);
@@ -1731,6 +1906,49 @@ mod tests {
 		assert_eq!(bare.slot, 2);
 		assert_eq!(bare.format, 0);
 		assert!(bare.montage.is_empty());
+	}
+
+	/// Protocol v2 compatibility: a v1-shaped montage clip (no `effects`
+	/// field) parses with an empty effect stack, and the node-value wire
+	/// enum round-trips every plain-data variant.
+	#[test]
+	fn montage_clip_effects_are_additive_and_values_roundtrip() {
+		let legacy = json!({
+			"filename": "a.mp4",
+			"stream_index": 0,
+			"in_num": 0, "in_den": 24,
+			"out_num": 48, "out_den": 24,
+			"media_in_num": 0, "media_in_den": 24,
+			"gain": 1.0,
+		});
+		let parsed: WireMontageClip = serde_json::from_value(legacy).unwrap();
+		assert!(parsed.effects.is_empty(), "v1 clips carry no effects");
+
+		use oak_node::value::NodeValue as NV;
+		let cases = [
+			NV::None,
+			NV::Int(-3),
+			NV::Float(0.25),
+			NV::Color([0.1, 0.2, 0.3, 1.0]),
+			NV::Text("hello".into()),
+			NV::Boolean(true),
+			NV::Rational(oak_core::Rational::new(1, 24)),
+			NV::Vec2([1.0, 2.0]),
+			NV::Vec3([1.0, 2.0, 3.0]),
+			NV::Vec4([1.0, 2.0, 3.0, 4.0]),
+			NV::Matrix([0.0; 16]),
+			NV::Combo(2),
+			NV::StrCombo("choice".into()),
+			NV::Binary(vec![1, 2, 3]),
+		];
+		for value in cases {
+			let wire = WireNodeValue::from_node_value(&value).expect("plain data has a wire form");
+			let json = serde_json::to_string(&wire).unwrap();
+			let back: WireNodeValue = serde_json::from_str(&json).unwrap();
+			assert_eq!(back.to_node_value(), value, "wire round-trip of {value:?}");
+		}
+		// Connection/handle variants have no wire form.
+		assert!(WireNodeValue::from_node_value(&NV::PushButton).is_none());
 	}
 
 	#[test]
@@ -1790,6 +2008,7 @@ mod tests {
 					media_in_num: 10,
 					media_in_den: 24,
 					gain: 0.5,
+					effects: vec![],
 				}],
 			}],
 		};
