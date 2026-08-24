@@ -2480,6 +2480,9 @@ fn make_menus(state: MenuState) -> Vec<MenuBarEntry> {
 	tools.push(menu_item(A::Snapping).with_checked(state.snapping).separated());
 	tools.push(menu_item(A::UseProxyMedia).with_checked(state.use_proxy_media));
 	tools.push(menu_item(A::ProxySettings));
+	// 首选项 belongs to the Tools menu (the C++ layout); on macOS it ALSO
+	// stays here (the Qt menu-role relocation does not exist in gpui).
+	tools.push(menu_item(A::Preferences));
 
 	vec![
 		MenuBarEntry::new(
@@ -2562,8 +2565,7 @@ fn make_menus(state: MenuState) -> Vec<MenuBarEntry> {
 				menu_item(A::DecreaseTrackHeight).separated(),
 				menu_item(A::ToggleShowAll).with_checked(state.show_all),
 				menu_item(A::FullScreen).with_checked(state.full_screen),
-				menu_item(A::FullScreenViewer).separated(),
-				menu_item(A::Preferences),
+				menu_item(A::FullScreenViewer),
 			]),
 		),
 		MenuBarEntry::new(
