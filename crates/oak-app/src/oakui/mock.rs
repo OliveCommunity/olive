@@ -543,6 +543,9 @@ pub struct MockEngine {
 	ocio_config: String,
 	/// The demo project's disk-cache location (setting, custom path).
 	cache_location: (i32, String),
+	/// The demo clip link pairs (normalized `(min, max)` id pairs; the
+	/// 链接/重新链接 toggle edits them).
+	clip_links: std::collections::HashSet<(u64, u64)>,
 	/// The demo multicam graph: a real oaknode project whose source
 	/// sequence's video tracks are the angles. Created lazily so the demo
 	/// panel shows a genuine graph behind its synthetic frames — and the
@@ -812,6 +815,7 @@ impl MockEngine {
 			use_proxy: true,
 			ocio_config: String::new(),
 			cache_location: (0, String::new()),
+			clip_links: std::collections::HashSet::new(),
 			multicam_graph: Mutex::new(None),
 			multicam_frames: Mutex::new(HashMap::new()),
 		};
@@ -1158,6 +1162,13 @@ impl MockEngine {
 			.max()
 			.map(|max| max + 1)
 			.unwrap_or(1)
+	}
+
+	/// Whether two demo clips are linked (the 链接/重新链接 toggle's state;
+	/// the app tests assert through this).
+	pub fn clips_linked(&self, a: u64, b: u64) -> bool {
+		let pair = if a < b { (a, b) } else { (b, a) };
+		self.clip_links.contains(&pair)
 	}
 
 	/// Splits the clip at (track, clip) position into two at `time`
@@ -1939,6 +1950,31 @@ impl AppEngine for MockEngine {
 				String::new()
 			},
 		);
+		cx.notify();
+	}
+
+	/// 链接/重新链接 the demo clips: a fully linked selection unlinks,
+	/// otherwise the set links together (matching the real engine's rule).
+	/// The demo stores the pairs (normalized min-max ids).
+	fn toggle_clip_links(&mut self, clips: Vec<ClipId>, cx: &mut Context<Self>) {
+		if clips.len() < 2 {
+			return;
+		}
+		let pair = |a: u64, b: u64| if a < b { (a, b) } else { (b, a) };
+		let all_linked = clips.iter().enumerate().all(|(i, a)| {
+			clips[i + 1..]
+				.iter()
+				.all(|b| self.clip_links.contains(&pair(a.0, b.0)))
+		});
+		for (i, a) in clips.iter().enumerate() {
+			for b in &clips[i + 1..] {
+				if all_linked {
+					self.clip_links.remove(&pair(a.0, b.0));
+				} else {
+					self.clip_links.insert(pair(a.0, b.0));
+				}
+			}
+		}
 		cx.notify();
 	}
 

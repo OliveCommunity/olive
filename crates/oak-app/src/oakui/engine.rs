@@ -948,6 +948,15 @@ pub trait AppEngine:
 		let _ = (clips, adjust_speed, cx);
 	}
 
+	/// 链接/重新链接 the selected clips (the C++ `toggle_links_on_selected`):
+	/// when ANY of them carries a link the set is unlinked, otherwise the
+	/// set is linked together — one undoable entry either way. Linked clips
+	/// move/trim in lockstep (the timeline's drag expansion reads the graph
+	/// links).
+	fn toggle_clip_links(&mut self, clips: Vec<ClipId>, cx: &mut Context<Self>) {
+		let _ = (clips, cx);
+	}
+
 	// -------------------------------------------------------------------
 	// Multi-camera (the C++ MulticamWidget / timeline Multi-Cam menu):
 	// detection state for the panel, angle-frame rendering, the timeline

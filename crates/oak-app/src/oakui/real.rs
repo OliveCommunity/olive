@@ -4848,6 +4848,39 @@ impl AppEngine for RealEngine {
 		cx.notify();
 	}
 
+	fn toggle_clip_links(&mut self, clips: Vec<ClipId>, cx: &mut Context<Self>) {
+		let Some(project) = self.project.clone() else {
+			return;
+		};
+		// Only clip blocks can be linked (the C++ `block_as_clip` filter).
+		let blocks: Vec<NodeId> = clips
+			.iter()
+			.filter_map(|c| graphops::id_of(c.0))
+			.filter(|&n| {
+				let g = graphops::lock(&project);
+				graphops::clip_behavior(&g.graph, n).is_some()
+			})
+			.collect();
+		if blocks.len() < 2 {
+			return;
+		}
+		// Toggle rule: fully linked internally → unlink; otherwise link
+		// (deviation from the C++ crude "any member has ANY link" check,
+		// which made split halves — carrying inherited A/V links —
+		// impossible to link to each other). The undo restores the prior
+		// internal topology; links to nodes outside the set stay untouched.
+		let all_linked = {
+			let g = graphops::lock(&project);
+			blocks.iter().enumerate().all(|(i, &a)| {
+				blocks[i + 1..]
+					.iter()
+					.all(|&b| g.graph.links_of(a).contains(&b))
+			})
+		};
+		let result = graphops::set_clips_linked(&project, &blocks, !all_linked);
+		self.apply_edit(result, if all_linked { "unlink clips" } else { "link clips" }, cx);
+	}
+
 	fn start_export(&mut self, format: i32, path: PathBuf) -> Result<ExportSession, String> {
 		let (Some(project), Some(seq)) = (self.project.clone(), self.sequence) else {
 			return Err("no sequence open".into());
@@ -7007,6 +7040,127 @@ mod tests {
 			in_points(cx, video_idx, audio_idx),
 			(Some(40), Some(40)),
 			"a second undo restores the pre-drag position"
+		);
+	}
+
+	/// 链接/重新链接 toggles the graph links among the selected clips (one
+	/// undoable entry, the C++ toggle_links_on_selected): the A/V pair
+	/// dropped from one file starts linked, the toggle unlinks it, a second
+	/// toggle re-links it; and the two halves of a SPLIT clip — unlinked by
+	/// default — link manually (the reported regression: nothing happened
+	/// either way).
+	#[gpui::test]
+	async fn link_unlink_toggles_the_selection_links(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		let media = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/demo.mp4");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.import_footage(media.clone(), cx).expect("import")
+			})
+		});
+		let name = media.file_name().unwrap().to_string_lossy().into_owned();
+		let entry = cx
+			.read(|app| {
+				engine
+					.read(app)
+					.roots()
+					.into_iter()
+					.find(|e| e.name.as_ref() == name)
+			})
+			.expect("imported footage is listed");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(0), cx)
+			})
+		});
+
+		// The dropped pair: the video clip and its linked audio clip.
+		let (video_id, audio_id) = cx.read(|app| {
+			let engine = engine.read(app);
+			let video = engine
+				.tracks
+				.iter()
+				.find(|t| t.kind == TrackKind::Video && !t.clips.is_empty())
+				.expect("video track with the clip")
+				.clips[0]
+				.id;
+			let audio = engine
+				.tracks
+				.iter()
+				.find(|t| t.kind == TrackKind::Audio && !t.clips.is_empty())
+				.expect("audio track with the clip")
+				.clips[0]
+				.id;
+			(video, audio)
+		});
+		let linked = |cx: &mut gpui::TestAppContext, a: ClipId, b: ClipId| {
+			cx.read(|app| {
+				let engine = engine.read(app);
+				let project = engine.project_ref().expect("project").clone();
+				let (Some(na), Some(nb)) = (graphops::id_of(a.0), graphops::id_of(b.0)) else {
+					return false;
+				};
+				let guard = graphops::lock(&project);
+				guard.graph.links_of(na).contains(&nb)
+			})
+		};
+		assert!(linked(cx, video_id, audio_id), "the dropped A/V pair starts linked");
+
+		// The toggle unlinks the pair; ONE undo restores the link; the next
+		// toggle unlinks it again (the undo left the pair linked, so the
+		// toggle goes the unlink way).
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.toggle_clip_links(vec![video_id, audio_id], cx)
+			})
+		});
+		assert!(!linked(cx, video_id, audio_id), "the toggle unlinks the pair");
+		cx.update(|app| engine.update(app, |engine, cx| engine.undo(cx)));
+		assert!(linked(cx, video_id, audio_id), "one undo restores the link");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.toggle_clip_links(vec![video_id, audio_id], cx)
+			})
+		});
+		assert!(
+			!linked(cx, video_id, audio_id),
+			"the pair is linked after the undo, so the toggle unlinks it again"
+		);
+		cx.update(|app| engine.update(app, |engine, cx| engine.undo(cx)));
+
+		// Split the video clip at frame 20: the two halves are NOT linked by
+		// default; selecting both and toggling links them.
+		cx.update(|app| {
+			engine.update(app, |engine, cx| engine.request_frame(Monitor::Program, Frame(20), cx))
+		});
+		cx.update(|app| engine.update(app, |engine, cx| engine.split_at_playhead(cx)));
+		let halves: Vec<ClipId> = cx.read(|app| {
+			let engine = engine.read(app);
+			engine
+				.tracks
+				.iter()
+				.find(|t| t.kind == TrackKind::Video && t.clips.len() == 2)
+				.expect("the split produced two clips on the video track")
+				.clips
+				.iter()
+				.map(|c| c.id)
+				.collect()
+		});
+		assert!(
+			!linked(cx, halves[0], halves[1]),
+			"the split halves start unlinked"
+		);
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.toggle_clip_links(halves.clone(), cx)
+			})
+		});
+		assert!(
+			linked(cx, halves[0], halves[1]),
+			"the halves link through the toggle"
 		);
 	}
 

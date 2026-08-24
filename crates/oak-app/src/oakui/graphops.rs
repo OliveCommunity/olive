@@ -1713,6 +1713,65 @@ pub fn move_clip_with_links(
 	push_multi(commands, "Move Clip")
 }
 
+/// Link or unlink a set of clips as ONE undoable entry (the C++
+/// `TimelineWidget::toggle_links_on_selected` → `oakengine_clip_set_linked`
+/// composition): linking connects every pair of the set, unlinking clears
+/// every link among them. The undo restores the exact prior topology among
+/// the set (links to nodes OUTSIDE the set are untouched, like the C++
+/// command's).
+pub fn set_clips_linked(p: &ProjectRef, blocks: &[NodeId], linked: bool) -> Result<(), String> {
+	if blocks.len() < 2 {
+		return Ok(());
+	}
+	let blocks: Vec<NodeId> = blocks.to_vec();
+	// Snapshot the prior links among the set (the undo's target state).
+	let prior: Vec<(NodeId, NodeId)> = {
+		let g = lock(p);
+		let mut v = Vec::new();
+		for (i, &a) in blocks.iter().enumerate() {
+			for &b in &blocks[i + 1..] {
+				if g.graph.links_of(a).contains(&b) {
+					v.push((a, b));
+				}
+			}
+		}
+		v
+	};
+	let all_pairs: Vec<(NodeId, NodeId)> = {
+		let mut v = Vec::new();
+		for (i, &a) in blocks.iter().enumerate() {
+			for &b in &blocks[i + 1..] {
+				v.push((a, b));
+			}
+		}
+		v
+	};
+	// The shared mutation: clear the set's internal links, then restore the
+	// target topology (redo: all pairs when linking, none when unlinking;
+	// undo: the snapshot).
+	fn apply(p: &ProjectRef, blocks: &[NodeId], target: &[(NodeId, NodeId)]) {
+		let mut g = lock(p);
+		for (i, &a) in blocks.iter().enumerate() {
+			for &b in &blocks[i + 1..] {
+				g.graph.unlink(a, b);
+			}
+		}
+		for &(a, b) in target {
+			g.graph.link(a, b);
+		}
+	}
+	let redo_target = if linked { all_pairs } else { Vec::new() };
+	let (p1, p2) = (p.clone(), p.clone());
+	let (b1, b2) = (blocks.clone(), blocks);
+	push_command(
+		oak_undo::undocommand::UndoCommand::from_closures(
+			move || apply(&p1, &b1, &redo_target),
+			move || apply(&p2, &b2, &prior),
+		),
+		if linked { "Link Clips" } else { "Unlink Clips" },
+	)
+}
+
 /// Delete `clip` leaving a gap (undoable "Delete Clips"; the facade's
 /// single-clip `oakengine_sequence_delete_clips` composition).
 pub fn delete_clip(p: &ProjectRef, clip: NodeId) -> Result<(), String> {

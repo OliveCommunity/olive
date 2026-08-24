@@ -683,6 +683,14 @@ impl<E: AppEngine> PanelCommandHandler for TimelinePanel<E> {
 			.update(cx, |engine, cx| engine.sync_clips_by_waveform(ids, true, cx));
 		true
 	}
+	/// 编辑 → 链接/重新链接: toggles the graph links among the selected
+	/// clips through the engine (one undoable entry).
+	fn toggle_links(&mut self, cx: &mut Context<Self>) -> bool {
+		let ids: Vec<ClipId> = self.timeline.read(cx).selection().iter().copied().collect();
+		self.engine
+			.update(cx, |engine, cx| engine.toggle_clip_links(ids, cx));
+		true
+	}
 
 	// --- view ---
 	fn zoom_in(&mut self, cx: &mut Context<Self>) -> bool {
