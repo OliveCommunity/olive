@@ -25,31 +25,30 @@
 //! additionally emit a [`PreferencesEvent`] so the host can re-apply the
 //! shell chrome immediately.
 
+use crate::oakui::component::controls::SliderModel;
+use crate::oakui::component::controls::ValueKind;
+use crate::oakui::component::controls::{CheckBox, CheckBoxEvent, CheckState};
+use crate::oakui::component::controls::{ComboBox, ComboBoxEvent, ComboBoxOption};
+use crate::oakui::component::controls::{SpinBox, SpinBoxEvent};
+use crate::oakui::component::text_input;
 use gpui::colors::DefaultColors;
 use gpui::prelude::*;
 use gpui::{
-	div, px, App, Context, ElementId, Entity, EventEmitter, Focusable, FocusHandle, Keystroke,
+	div, px, App, Context, ElementId, Entity, EventEmitter, FocusHandle, Focusable, Keystroke,
 	PathPromptOptions, Render, SharedString, Window,
 };
 use gpui_elements::editable_text::{EditableTextState, StringStorage, TextChanged};
-use crate::oakui::component::controls::{CheckBox, CheckBoxEvent, CheckState};
-use crate::oakui::component::controls::{ComboBox, ComboBoxEvent, ComboBoxOption};
-use crate::oakui::component::controls::SliderModel;
-use crate::oakui::component::controls::{SpinBox, SpinBoxEvent};
-use crate::oakui::component::controls::ValueKind;
-use crate::oakui::component::text_input;
 
 use crate::actions::ActionId;
 use crate::i18n;
 use crate::oakui::real::{
 	audio_input_device, audio_input_devices, audio_output_device, audio_output_devices,
 	config_get_bool, config_get_int, config_get_string, config_set_bool, config_set_int,
-	config_set_string, encoding_formats, proxy_dividers, renderer_backends,
-	set_audio_input_device, set_audio_output_device, set_theme_dark, theme_is_dark,
-	CONFIG_KEY_DEFAULT_TRANSITION_SEC, CONFIG_KEY_DISK_CACHE_PATH, CONFIG_KEY_FFMPEG_PATH,
-	CONFIG_KEY_PROXY_DIVIDER, CONFIG_KEY_RENDERER_BACKEND, CONFIG_KEY_SNAPSHOT_INTERVAL_SEC,
-	CONFIG_KEY_USE_PROXY, DEFAULT_SNAPSHOT_INTERVAL_SEC, DEFAULT_TRANSITION_SEC,
-	EXPORT_FORMAT_MP4,
+	config_set_string, encoding_formats, proxy_dividers, renderer_backends, set_audio_input_device,
+	set_audio_output_device, set_theme_dark, theme_is_dark, CONFIG_KEY_DEFAULT_TRANSITION_SEC,
+	CONFIG_KEY_DISK_CACHE_PATH, CONFIG_KEY_FFMPEG_PATH, CONFIG_KEY_PROXY_DIVIDER,
+	CONFIG_KEY_RENDERER_BACKEND, CONFIG_KEY_SNAPSHOT_INTERVAL_SEC, CONFIG_KEY_USE_PROXY,
+	DEFAULT_SNAPSHOT_INTERVAL_SEC, DEFAULT_TRANSITION_SEC, EXPORT_FORMAT_MP4,
 };
 
 // ---------------------------------------------------------------------------
@@ -157,10 +156,7 @@ impl PreferencesContent {
 			.iter()
 			.enumerate()
 			.map(|(index, code)| {
-				ComboBoxOption::new(
-					index,
-					format!("{} ({code})", i18n::pack_native_name(code)),
-				)
+				ComboBoxOption::new(index, format!("{} ({code})", i18n::pack_native_name(code)))
 			})
 			.collect();
 		let language = cx.new(|cx| {
@@ -171,14 +167,17 @@ impl PreferencesContent {
 			.iter()
 			.position(|code| *code == i18n::language_code())
 			.unwrap_or(0);
-		cx.subscribe(&language, move |_this, _combo, event: &ComboBoxEvent, cx| {
-			if let ComboBoxEvent::Selected { value, .. } = event {
-				if let Some(code) = languages.get(*value) {
-					crate::i18n::set_language_code(code);
-					cx.emit(PreferencesEvent::LanguageChanged);
+		cx.subscribe(
+			&language,
+			move |_this, _combo, event: &ComboBoxEvent, cx| {
+				if let ComboBoxEvent::Selected { value, .. } = event {
+					if let Some(code) = languages.get(*value) {
+						crate::i18n::set_language_code(code);
+						cx.emit(PreferencesEvent::LanguageChanged);
+					}
 				}
-			}
-		})
+			},
+		)
 		.detach();
 		language.update(cx, |combo, cx| {
 			combo.set_selected(Some(language_selected), cx)
@@ -295,9 +294,7 @@ impl PreferencesContent {
 		// display's ICC profile (system profile, or a custom file below).
 		// The macOS layer tag is applied at startup, so a mode change takes
 		// effect after a restart.
-		use crate::oakui::displaycolor::{
-			CONFIG_KEY_COLOR_MODE, CONFIG_KEY_CUSTOM_ICC,
-		};
+		use crate::oakui::displaycolor::{CONFIG_KEY_COLOR_MODE, CONFIG_KEY_CUSTOM_ICC};
 		let display_icc = cx.new(|cx| {
 			let mode = config_get_string(CONFIG_KEY_COLOR_MODE);
 			CheckBox::new(
@@ -332,8 +329,10 @@ impl PreferencesContent {
 
 		// --- 项目 Project: snapshot interval + default transition ----------
 		let snapshot_interval = cx.new(|cx| {
-			let current =
-				config_get_int(CONFIG_KEY_SNAPSHOT_INTERVAL_SEC, DEFAULT_SNAPSHOT_INTERVAL_SEC);
+			let current = config_get_int(
+				CONFIG_KEY_SNAPSHOT_INTERVAL_SEC,
+				DEFAULT_SNAPSHOT_INTERVAL_SEC,
+			);
 			SpinBox::new(
 				8,
 				SliderModel::new(ValueKind::Integer, 0.0, 86400.0, 10.0, current as f64),
@@ -385,10 +384,8 @@ impl PreferencesContent {
 		// --- 音频 Audio: output / input devices -----------------------------
 		// The enumeration reads the oakaudio manager even on the mock
 		// engine; the config choice applies the moment the dropdown changes.
-		let (audio_output, output_devices) =
-			device_combo(5, true, window, cx);
-		let (audio_input, input_devices) =
-			device_combo(6, false, window, cx);
+		let (audio_output, output_devices) = device_combo(5, true, window, cx);
+		let (audio_input, input_devices) = device_combo(6, false, window, cx);
 		cx.subscribe(&audio_output, |this, _combo, event: &ComboBoxEvent, cx| {
 			if let ComboBoxEvent::Selected { value, .. } = event {
 				// Option 0 is the system default; the devices start at 1.
@@ -440,10 +437,7 @@ impl PreferencesContent {
 	/// when the dialog closes, like the cache directory).
 	pub fn commit_display_icc_path(&self, cx: &App) {
 		let path = self.display_icc_path.read(cx).path(cx).trim().to_string();
-		config_set_string(
-			crate::oakui::displaycolor::CONFIG_KEY_CUSTOM_ICC,
-			&path,
-		);
+		config_set_string(crate::oakui::displaycolor::CONFIG_KEY_CUSTOM_ICC, &path);
 	}
 
 	/// Opens the platform file picker for a custom ICC profile.
@@ -530,7 +524,10 @@ fn device_combo(
 	} else {
 		audio_input_device()
 	};
-	let mut options = vec![ComboBoxOption::new(0, i18n::tr("preferences.audio.default"))];
+	let mut options = vec![ComboBoxOption::new(
+		0,
+		i18n::tr("preferences.audio.default"),
+	)];
 	for (i, name) in devices.iter().enumerate() {
 		options.push(ComboBoxOption::new(i + 1, name.clone()));
 	}
@@ -544,7 +541,8 @@ fn device_combo(
 	} else {
 		i18n::tr("preferences.audio.input.placeholder")
 	};
-	let combo = cx.new(|cx| ComboBox::new(control, options, window, cx).with_placeholder(placeholder));
+	let combo =
+		cx.new(|cx| ComboBox::new(control, options, window, cx).with_placeholder(placeholder));
 	combo.update(cx, |combo, cx| combo.set_selected(Some(selected), cx));
 	(combo, devices)
 }
@@ -598,7 +596,10 @@ impl Render for PreferencesContent {
 			.max_h(px(720.0))
 			.overflow_y_scroll()
 			// 常规 General
-			.child(section_header(&colors, i18n::tr("preferences.section.general").into()))
+			.child(section_header(
+				&colors,
+				i18n::tr("preferences.section.general").into(),
+			))
 			.child(form_row(
 				&colors,
 				i18n::tr("preferences.language").into(),
@@ -610,7 +611,10 @@ impl Render for PreferencesContent {
 				self.theme.clone(),
 			))
 			// 渲染 Rendering
-			.child(section_header(&colors, i18n::tr("preferences.section.render").into()))
+			.child(section_header(
+				&colors,
+				i18n::tr("preferences.section.render").into(),
+			))
 			.child(form_row(
 				&colors,
 				i18n::tr("preferences.backend").into(),
@@ -618,7 +622,10 @@ impl Render for PreferencesContent {
 			))
 			.child(self.hw_decode.clone())
 			// 缓存 Cache
-			.child(section_header(&colors, i18n::tr("preferences.section.cache").into()))
+			.child(section_header(
+				&colors,
+				i18n::tr("preferences.section.cache").into(),
+			))
 			.child(form_row(
 				&colors,
 				i18n::tr("preferences.cache.dir").into(),
@@ -644,7 +651,10 @@ impl Render for PreferencesContent {
 					),
 			))
 			// 代理 Proxy
-			.child(section_header(&colors, i18n::tr("preferences.section.proxy").into()))
+			.child(section_header(
+				&colors,
+				i18n::tr("preferences.section.proxy").into(),
+			))
 			.child(self.use_proxy.clone())
 			.child(form_row(
 				&colors,
@@ -652,7 +662,10 @@ impl Render for PreferencesContent {
 				self.proxy_divider.clone(),
 			))
 			// 色彩 Color
-			.child(section_header(&colors, i18n::tr("preferences.section.color").into()))
+			.child(section_header(
+				&colors,
+				i18n::tr("preferences.section.color").into(),
+			))
 			.child(self.display_icc.clone())
 			.child(form_row(
 				&colors,
@@ -685,7 +698,10 @@ impl Render for PreferencesContent {
 					.child(i18n::tr("preferences.color.restart_hint")),
 			)
 			// 项目 Project
-			.child(section_header(&colors, i18n::tr("preferences.section.project").into()))
+			.child(section_header(
+				&colors,
+				i18n::tr("preferences.section.project").into(),
+			))
 			.child(form_row(
 				&colors,
 				i18n::tr("preferences.snapshot.interval").into(),
@@ -697,7 +713,10 @@ impl Render for PreferencesContent {
 				self.transition_length.clone(),
 			))
 			// 音频 Audio
-			.child(section_header(&colors, i18n::tr("preferences.section.audio").into()))
+			.child(section_header(
+				&colors,
+				i18n::tr("preferences.section.audio").into(),
+			))
 			.child(form_row(
 				&colors,
 				i18n::tr("preferences.audio.output").into(),
@@ -716,7 +735,6 @@ impl Render for PreferencesContent {
 			)
 	}
 }
-
 
 // ---------------------------------------------------------------------------
 // Export
@@ -949,7 +967,9 @@ impl<E: crate::oakui::engine::AppEngine> ProxyDialogContent<E> {
 			.iter()
 			.position(|d| *d == params.divider)
 			.unwrap_or(0);
-		divider.update(cx, |combo, cx| combo.set_selected(Some(divider_selected), cx));
+		divider.update(cx, |combo, cx| {
+			combo.set_selected(Some(divider_selected), cx)
+		});
 
 		let width = cx.new(|cx| {
 			SpinBox::new(
@@ -998,7 +1018,9 @@ impl<E: crate::oakui::engine::AppEngine> ProxyDialogContent<E> {
 			.iter()
 			.position(|name| *name == params.preset)
 			.unwrap_or(2);
-		preset.update(cx, |combo, cx| combo.set_selected(Some(preset_selected), cx));
+		preset.update(cx, |combo, cx| {
+			combo.set_selected(Some(preset_selected), cx)
+		});
 
 		let include_audio = cx.new(|cx| {
 			CheckBox::new(
@@ -1119,7 +1141,9 @@ impl<E: crate::oakui::engine::AppEngine> ProxyDialogContent<E> {
 					engine.proxy_set_custom_params(id, params.clone(), cx)
 				});
 			}
-			if let Err(err) = self.engine.update(cx, |engine, cx| engine.proxy_generate(id, cx))
+			if let Err(err) = self
+				.engine
+				.update(cx, |engine, cx| engine.proxy_generate(id, cx))
 			{
 				println!("[proxy] generate failed for {id}: {err}");
 			}
@@ -1131,7 +1155,8 @@ impl<E: crate::oakui::engine::AppEngine> ProxyDialogContent<E> {
 	pub fn delete(&mut self, cx: &mut Context<Self>) {
 		let ids: Vec<u64> = self.rows.iter().map(|row| row.id).collect();
 		for id in ids {
-			self.engine.update(cx, |engine, cx| engine.proxy_delete(id, cx));
+			self.engine
+				.update(cx, |engine, cx| engine.proxy_delete(id, cx));
 		}
 		self.refresh(cx);
 	}
@@ -1198,7 +1223,8 @@ impl<E: crate::oakui::engine::AppEngine> Render for ProxyDialogContent<E> {
 					if row.has_custom {
 						state.push_str(&i18n::tr("proxydialog.custom_suffix"));
 					}
-					let enabled = row.enabled && row.state == crate::oakui::engine::ProxyMediaState::Ready;
+					let enabled =
+						row.enabled && row.state == crate::oakui::engine::ProxyMediaState::Ready;
 					let dot = if enabled {
 						colors.selected
 					} else {
@@ -1353,20 +1379,25 @@ impl<E: crate::oakui::engine::AppEngine> ProjectPropertiesContent<E> {
 			combo.set_selected(Some(cache_setting as usize), cx)
 		});
 		// The custom-path field follows the combo selection live.
-		cx.subscribe(&cache_location, |this, _combo, event: &ComboBoxEvent, cx| {
-			let ComboBoxEvent::Selected { value } = event;
-			let setting = *value as i32;
-			this.cache_setting = setting;
-			this.custom_cache_path.update(cx, |field, cx| {
-				field.set_enabled(setting == 2, cx)
-			});
-			cx.notify();
-		})
+		cx.subscribe(
+			&cache_location,
+			|this, _combo, event: &ComboBoxEvent, cx| {
+				let ComboBoxEvent::Selected { value } = event;
+				let setting = *value as i32;
+				this.cache_setting = setting;
+				this.custom_cache_path
+					.update(cx, |field, cx| field.set_enabled(setting == 2, cx));
+				cx.notify();
+			},
+		)
 		.detach();
 
 		let custom_cache_path = cx.new(|cx| {
 			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
-			PathField { editor, enabled: cache_setting == 2 }
+			PathField {
+				editor,
+				enabled: cache_setting == 2,
+			}
 		});
 		custom_cache_path.update(cx, |field, cx| field.set_path(custom_path, cx));
 
@@ -1412,11 +1443,11 @@ impl<E: crate::oakui::engine::AppEngine> ProjectPropertiesContent<E> {
 	pub fn select_cache_setting(&mut self, setting: i32, cx: &mut Context<Self>) {
 		let setting = setting.clamp(0, 2);
 		self.cache_setting = setting;
-		self.cache_location
-			.update(cx, |combo, cx| combo.set_selected(Some(setting as usize), cx));
-		self.custom_cache_path.update(cx, |field, cx| {
-			field.set_enabled(setting == 2, cx)
+		self.cache_location.update(cx, |combo, cx| {
+			combo.set_selected(Some(setting as usize), cx)
 		});
+		self.custom_cache_path
+			.update(cx, |field, cx| field.set_enabled(setting == 2, cx));
 		cx.notify();
 	}
 
@@ -1430,8 +1461,9 @@ impl<E: crate::oakui::engine::AppEngine> ProjectPropertiesContent<E> {
 		let custom = self.custom_cache_path(cx).to_string();
 		let setting = self.cache_setting;
 		let path = if setting == 2 { custom } else { String::new() };
-		self.engine
-			.update(cx, |engine, cx| engine.set_project_cache_location(setting, path, cx));
+		self.engine.update(cx, |engine, cx| {
+			engine.set_project_cache_location(setting, path, cx)
+		});
 		self.set_error(None, cx);
 		Ok(())
 	}
@@ -1473,30 +1505,29 @@ impl<E: crate::oakui::engine::AppEngine> Render for ProjectPropertiesContent<E> 
 			.border_color(colors.border)
 			.text_color(colors.text)
 			.cursor_pointer()
-			.on_click(cx.listener(move |_this, _event: &gpui::ClickEvent, _window, cx| {
-				let receiver = cx.prompt_for_paths(PathPromptOptions {
-					files: true,
-					directories: false,
-					multiple: false,
-					prompt: None,
-				});
-				cx.spawn(async move |this, cx| {
-					if let Ok(Ok(Some(paths))) = receiver.await {
-						if let Some(path) = paths.first() {
-							let path = path.to_string_lossy().into_owned();
-							let _ = this.update(cx, |this, cx| this.set_ocio_config_path(path, cx));
+			.on_click(
+				cx.listener(move |_this, _event: &gpui::ClickEvent, _window, cx| {
+					let receiver = cx.prompt_for_paths(PathPromptOptions {
+						files: true,
+						directories: false,
+						multiple: false,
+						prompt: None,
+					});
+					cx.spawn(async move |this, cx| {
+						if let Ok(Ok(Some(paths))) = receiver.await {
+							if let Some(path) = paths.first() {
+								let path = path.to_string_lossy().into_owned();
+								let _ =
+									this.update(cx, |this, cx| this.set_ocio_config_path(path, cx));
+							}
 						}
-					}
-				})
-				.detach();
-			}))
+					})
+					.detach();
+				}),
+			)
 			.child(i18n::tr("projprops.browse"));
 
-		let ocio_row = div()
-			.flex()
-			.gap_2()
-			.child(ocio_field)
-			.child(browse);
+		let ocio_row = div().flex().gap_2().child(ocio_field).child(browse);
 
 		let custom_row = form_row(
 			&colors,
@@ -1515,20 +1546,17 @@ impl<E: crate::oakui::engine::AppEngine> Render for ProjectPropertiesContent<E> 
 				div().text_color(colors.text).child(project_name),
 			))
 			.child(
-				form_row(
-					&colors,
-					i18n::tr("projprops.ocio_config").into(),
-					ocio_row,
-				)
-				.child(if let Some(error) = &self.error {
-					div()
-						.debug_selector(|| "projprops-error".into())
-						.text_color(gpui::rgb(0xe5484d))
-						.text_xs()
-						.child(error.clone())
-				} else {
-					div()
-				}),
+				form_row(&colors, i18n::tr("projprops.ocio_config").into(), ocio_row).child(
+					if let Some(error) = &self.error {
+						div()
+							.debug_selector(|| "projprops-error".into())
+							.text_color(gpui::rgb(0xe5484d))
+							.text_xs()
+							.child(error.clone())
+					} else {
+						div()
+					},
+				),
 			)
 			.child(form_row(
 				&colors,
@@ -1584,13 +1612,16 @@ impl PreferencesDialogContent {
 	pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
 		let general = cx.new(|cx| PreferencesContent::new(window, cx));
 		let keyboard = cx.new(|cx| KeyboardTabContent::new(window, cx));
-		cx.subscribe(&general, |_this, _general, event: &PreferencesEvent, cx| match event {
-			PreferencesEvent::ThemeChanged(dark) => {
-				cx.emit(PreferencesEvent::ThemeChanged(*dark));
-			}
-			PreferencesEvent::LanguageChanged => cx.emit(PreferencesEvent::LanguageChanged),
-			PreferencesEvent::ShortcutsChanged => {}
-		})
+		cx.subscribe(
+			&general,
+			|_this, _general, event: &PreferencesEvent, cx| match event {
+				PreferencesEvent::ThemeChanged(dark) => {
+					cx.emit(PreferencesEvent::ThemeChanged(*dark));
+				}
+				PreferencesEvent::LanguageChanged => cx.emit(PreferencesEvent::LanguageChanged),
+				PreferencesEvent::ShortcutsChanged => {}
+			},
+		)
 		.detach();
 		cx.subscribe(&keyboard, |_this, _keyboard, event: &KeyboardEvent, cx| {
 			if matches!(event, KeyboardEvent::Changed) {
@@ -1635,10 +1666,18 @@ impl Render for PreferencesDialogContent {
 				div()
 					.flex()
 					.gap_1()
-					.child(
-						tab_button(PreferencesTab::General, self.active, &colors, cx),
-					)
-					.child(tab_button(PreferencesTab::Keyboard, self.active, &colors, cx)),
+					.child(tab_button(
+						PreferencesTab::General,
+						self.active,
+						&colors,
+						cx,
+					))
+					.child(tab_button(
+						PreferencesTab::Keyboard,
+						self.active,
+						&colors,
+						cx,
+					)),
 			)
 			.child(content)
 	}
@@ -1669,8 +1708,16 @@ fn tab_button(
 		.py_1()
 		.rounded_md()
 		.cursor_pointer()
-		.bg(if selected { colors.selected } else { transparent() })
-		.text_color(if selected { colors.selected_text } else { colors.text })
+		.bg(if selected {
+			colors.selected
+		} else {
+			transparent()
+		})
+		.text_color(if selected {
+			colors.selected_text
+		} else {
+			colors.text
+		})
 		.on_click(cx.listener(move |this, _event, _window, cx| {
 			this.active = tab;
 			cx.notify();
@@ -1931,8 +1978,7 @@ impl KeyboardTabContent {
 			this.update(cx, |this, cx| {
 				match result {
 					Ok(_) => {
-						this.status =
-							Some(i18n::tr("preferences.keyboard.imported").to_string());
+						this.status = Some(i18n::tr("preferences.keyboard.imported").to_string());
 						let _ = crate::actions::save_custom_shortcuts();
 					}
 					Err(_) => {
@@ -1951,10 +1997,7 @@ impl KeyboardTabContent {
 
 	/// Export: write the current override diff to a picked file.
 	fn export_shortcuts(&mut self, cx: &mut Context<Self>) {
-		let receiver = cx.prompt_for_new_path(
-			&std::path::PathBuf::from("."),
-			Some("shortcuts"),
-		);
+		let receiver = cx.prompt_for_new_path(&std::path::PathBuf::from("."), Some("shortcuts"));
 		cx.spawn(async move |this, cx| {
 			let Ok(Ok(Some(path))) = receiver.await else {
 				return;
@@ -1987,7 +2030,11 @@ impl Render for KeyboardTabContent {
 			.bg(colors.background)
 			.px_2()
 			.py_1()
-			.child(text_input("keyboard-search-input", cx).state(weak).accepts_input(true));
+			.child(
+				text_input("keyboard-search-input", cx)
+					.state(weak)
+					.accepts_input(true),
+			);
 
 		// The grouped, filtered action list.
 		let mut list = div()
@@ -2027,7 +2074,11 @@ impl Render for KeyboardTabContent {
 					.px_1()
 					.py_0p5()
 					.rounded_md()
-					.bg(if row_selected { colors.selected } else { transparent() })
+					.bg(if row_selected {
+						colors.selected
+					} else {
+						transparent()
+					})
 					.on_click(cx.listener(move |this, _event, _window, cx| {
 						this.selected = Some(index);
 						cx.notify();
@@ -2037,12 +2088,7 @@ impl Render for KeyboardTabContent {
 							.flex_1()
 							.flex_col()
 							.child(div().text_color(colors.text).child(label))
-							.child(
-								div()
-									.text_color(colors.disabled)
-									.text_xs()
-									.child(row_path),
-							),
+							.child(div().text_color(colors.disabled).text_xs().child(row_path)),
 					)
 					.child(
 						div()
@@ -2062,14 +2108,12 @@ impl Render for KeyboardTabContent {
 							.text_color(colors.text)
 							.cursor_pointer()
 							.track_focus(&focus)
-							.on_click(cx.listener(
-								move |this, _event, _window, cx| {
-									if this.capturing != Some(index) {
-										this.begin_capture(index, cx);
-									}
-									cx.stop_propagation();
-								},
-							))
+							.on_click(cx.listener(move |this, _event, _window, cx| {
+								if this.capturing != Some(index) {
+									this.begin_capture(index, cx);
+								}
+								cx.stop_propagation();
+							}))
 							.child(field_label),
 					),
 			);
@@ -2121,9 +2165,7 @@ impl Render for KeyboardTabContent {
 						colors.background,
 						colors.text,
 					)
-					.on_click(cx.listener(|this, _event, _window, cx| {
-						this.import_shortcuts(cx)
-					})),
+					.on_click(cx.listener(|this, _event, _window, cx| this.import_shortcuts(cx))),
 				)
 				.child(
 					pill_button(
@@ -2132,9 +2174,7 @@ impl Render for KeyboardTabContent {
 						colors.background,
 						colors.text,
 					)
-					.on_click(cx.listener(|this, _event, _window, cx| {
-						this.export_shortcuts(cx)
-					})),
+					.on_click(cx.listener(|this, _event, _window, cx| this.export_shortcuts(cx))),
 				)
 				.child(div().flex_1())
 				.child(
@@ -2144,9 +2184,7 @@ impl Render for KeyboardTabContent {
 						colors.background,
 						colors.text,
 					)
-					.on_click(cx.listener(|this, _event, _window, cx| {
-						this.reset_selected(cx)
-					})),
+					.on_click(cx.listener(|this, _event, _window, cx| this.reset_selected(cx))),
 				)
 				.child(
 					pill_button(
@@ -2155,9 +2193,7 @@ impl Render for KeyboardTabContent {
 						colors.background,
 						colors.text,
 					)
-					.on_click(cx.listener(|this, _event, _window, cx| {
-						this.reset_all(cx)
-					})),
+					.on_click(cx.listener(|this, _event, _window, cx| this.reset_all(cx))),
 				)
 		};
 
@@ -2178,16 +2214,14 @@ impl Render for KeyboardTabContent {
 			)
 			.child(list)
 			.child(footer)
-			.child(
-				if let Some(status) = &self.status {
-					div()
-						.text_color(colors.disabled)
-						.text_xs()
-						.child(status.clone())
-				} else {
-					div()
-				},
-			)
+			.child(if let Some(status) = &self.status {
+				div()
+					.text_color(colors.disabled)
+					.text_xs()
+					.child(status.clone())
+			} else {
+				div()
+			})
 	}
 }
 
@@ -2214,8 +2248,8 @@ fn capture_decision(keystroke: &Keystroke) -> CaptureDecision {
 		"backspace" | "delete" => CaptureDecision::Clear,
 		// Modifier-only key presses (the parser represents a bare modifier as
 		// the modifier's own key name).
-		"shift" | "control" | "alt" | "cmd" | "super" | "win" | "fn" | "function"
-		| "secondary" | "platform" => CaptureDecision::Ignore,
+		"shift" | "control" | "alt" | "cmd" | "super" | "win" | "fn" | "function" | "secondary"
+		| "platform" => CaptureDecision::Ignore,
 		"" => CaptureDecision::Ignore,
 		_ => CaptureDecision::Assign(keystroke.unparse()),
 	}
@@ -2369,7 +2403,9 @@ impl ActionSearchContent {
 
 	/// The currently selected action (tests).
 	pub fn selected_action(&self) -> Option<ActionId> {
-		self.selection.and_then(|index| self.items.get(index)).map(|item| item.action)
+		self.selection
+			.and_then(|index| self.items.get(index))
+			.map(|item| item.action)
 	}
 
 	/// The current search filter (tests).
@@ -2406,16 +2442,13 @@ impl Render for ActionSearchContent {
 				.flex_col()
 				.max_h(px(360.0))
 				.overflow_y_scroll()
-				.child(
-					div()
-						.text_color(colors.disabled)
-						.text_xs()
-						.child(if self.items.is_empty() {
-							i18n::tr("actionsearch.no_actions")
-						} else {
-							i18n::tr("actionsearch.empty")
-						}),
-				)
+				.child(div().text_color(colors.disabled).text_xs().child(
+					if self.items.is_empty() {
+						i18n::tr("actionsearch.no_actions")
+					} else {
+						i18n::tr("actionsearch.empty")
+					},
+				))
 		} else {
 			div()
 				.id("action-search-list")
@@ -2436,7 +2469,11 @@ impl Render for ActionSearchContent {
 						.px_2()
 						.py_0p5()
 						.rounded_md()
-						.bg(if row_selected { colors.selected } else { transparent() })
+						.bg(if row_selected {
+							colors.selected
+						} else {
+							transparent()
+						})
 						.text_color(if row_selected {
 							colors.selected_text
 						} else {
@@ -2449,27 +2486,21 @@ impl Render for ActionSearchContent {
 						}))
 						.on_mouse_down(
 							gpui::MouseButton::Left,
-							cx.listener(
-								move |this, event: &gpui::MouseDownEvent, _window, cx| {
-									// Double-click executes.
-									if event.click_count >= 2 {
-										this.selection = Some(index);
-										this.execute(cx);
-									}
-								},
-							),
+							cx.listener(move |this, event: &gpui::MouseDownEvent, _window, cx| {
+								// Double-click executes.
+								if event.click_count >= 2 {
+									this.selection = Some(index);
+									this.execute(cx);
+								}
+							}),
 						)
 						.child(
-							div()
-								.flex_1()
-								.flex_col()
-								.child(div().child(label))
-								.child(
-									div()
-										.text_xs()
-										.text_color(colors.disabled)
-										.child(format!("({path})")),
-								),
+							div().flex_1().flex_col().child(div().child(label)).child(
+								div()
+									.text_xs()
+									.text_color(colors.disabled)
+									.child(format!("({path})")),
+							),
 						)
 				}))
 		};
@@ -2488,7 +2519,11 @@ impl Render for ActionSearchContent {
 					.bg(colors.background)
 					.px_2()
 					.py_1()
-					.child(text_input("action-search-input", cx).state(weak).accepts_input(true)),
+					.child(
+						text_input("action-search-input", cx)
+							.state(weak)
+							.accepts_input(true),
+					),
 			)
 			.child(list)
 	}
@@ -2533,7 +2568,10 @@ mod tests {
 
 	#[test]
 	fn capture_decision_handles_all_shapes() {
-		assert!(matches!(capture_decision(&keystroke("escape")), CaptureDecision::Cancel));
+		assert!(matches!(
+			capture_decision(&keystroke("escape")),
+			CaptureDecision::Cancel
+		));
 		assert!(matches!(
 			capture_decision(&keystroke("backspace")),
 			CaptureDecision::Clear
@@ -2569,11 +2607,31 @@ mod tests {
 
 	#[test]
 	fn keyboard_filter_matches_name_path_and_shortcut() {
-		assert!(keyboard_filter_matches("Save Project", "File", Some("⌘S"), "save"));
-		assert!(keyboard_filter_matches("Save Project", "File", Some("⌘S"), "file > save"));
+		assert!(keyboard_filter_matches(
+			"Save Project",
+			"File",
+			Some("⌘S"),
+			"save"
+		));
+		assert!(keyboard_filter_matches(
+			"Save Project",
+			"File",
+			Some("⌘S"),
+			"file > save"
+		));
 		// Shortcut matching is case-insensitive.
-		assert!(keyboard_filter_matches("Save Project", "File", Some("⌘S"), "⌘s"));
-		assert!(!keyboard_filter_matches("Save Project", "File", Some("⌘S"), "undo"));
+		assert!(keyboard_filter_matches(
+			"Save Project",
+			"File",
+			Some("⌘S"),
+			"⌘s"
+		));
+		assert!(!keyboard_filter_matches(
+			"Save Project",
+			"File",
+			Some("⌘S"),
+			"undo"
+		));
 		// Empty query matches everything; rows without a shortcut match only
 		// by name/path.
 		assert!(keyboard_filter_matches("About Oak…", "Help", None, ""));
@@ -2583,10 +2641,16 @@ mod tests {
 
 	#[test]
 	fn search_filter_matches_label_or_path() {
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
 		assert!(search_filter_matches(ActionId::NewProject, "File", "new"));
-		assert!(search_filter_matches(ActionId::NewProject, "File", "file > new"));
+		assert!(search_filter_matches(
+			ActionId::NewProject,
+			"File",
+			"file > new"
+		));
 		assert!(!search_filter_matches(ActionId::NewProject, "File", "undo"));
 		assert!(search_filter_matches(ActionId::NewProject, "File", ""));
 	}
@@ -2603,8 +2667,12 @@ mod tests {
 
 	#[test]
 	fn keyboard_rows_cover_the_menu_bar() {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		let _lang = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
 		let rows = crate::app::menu_action_paths();
 		assert!(!rows.is_empty());

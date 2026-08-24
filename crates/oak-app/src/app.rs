@@ -39,13 +39,13 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crate::oakui::component::menu::{self, Menu, MenuBar, MenuBarEntry, MenuBarEvent, MenuItem};
+use crate::oakui::component::text_input::install_text_input_bindings;
 use gpui::dock::{
 	DockArea, DockEvent, DockLayout, DropTarget, DropZone, NodePath, PanelHandle, PanelId,
 	PanelRegistry,
 };
-use gpui::timeline::{
-	ClipData, ClipId, Frame, FrameRange, TimelineEvent, TimelineView, TrackData,
-};
+use gpui::timeline::{ClipData, ClipId, Frame, FrameRange, TimelineEvent, TimelineView, TrackData};
 use gpui::{
 	colors::DefaultColors, div, prelude::*, px, size, App, AsyncWindowContext, Bounds, Context,
 	Entity, PathPromptOptions, Render, Window, WindowBounds, WindowOptions,
@@ -53,8 +53,6 @@ use gpui::{
 use gpui_widgets::audio_meter::{AudioLevelMeter, MeterOrientation};
 use gpui_widgets::dialog::progress::{progress_dialog, ProgressContent};
 use gpui_widgets::dialog::{DialogButton, Modal, ModalEvent, ModalOptions};
-use crate::oakui::component::menu::{self, Menu, MenuBar, MenuBarEntry, MenuBarEvent, MenuItem};
-use crate::oakui::component::text_input::install_text_input_bindings;
 use gpui_widgets::theme::{apply_theme, OakTheme};
 use gpui_widgets::viewer::PlaybackClock;
 
@@ -169,7 +167,10 @@ enum ModalState<E: AppEngine> {
 		uuid: String,
 	},
 	/// The manager's delete confirmation.
-	ManagerDelete { modal: Entity<Modal>, uuid: String },
+	ManagerDelete {
+		modal: Entity<Modal>,
+		uuid: String,
+	},
 	/// The proxy settings dialog (Tools > Proxy Settings).
 	Proxy {
 		modal: Entity<Modal>,
@@ -390,10 +391,11 @@ impl<E: AppEngine> OakApp<E> {
 		// M12 P4: install the waveform decorator when the engine provides
 		// a waveform cache.
 		if let Some(cache) = engine.read(cx).waveform_cache() {
-			let decorator: std::sync::Arc<std::sync::RwLock<dyn gpui::timeline::clip::ClipDecorator>> =
-				std::sync::Arc::new(std::sync::RwLock::new(
-					crate::oakui::waveform::OakClipDecorator { cache },
-				));
+			let decorator: std::sync::Arc<
+				std::sync::RwLock<dyn gpui::timeline::clip::ClipDecorator>,
+			> = std::sync::Arc::new(std::sync::RwLock::new(
+				crate::oakui::waveform::OakClipDecorator { cache },
+			));
 			timeline.update(cx, |view, _| view.set_clip_decorator(decorator));
 		}
 		let meter = cx.new(|cx| {
@@ -404,9 +406,7 @@ impl<E: AppEngine> OakApp<E> {
 		// --- menu bar ------------------------------------------------------
 		// The menus are generated from the action registry; the dynamic
 		// checkmarks (theme, tool, snapping, loop, …) come from this state.
-		let menu_bar = cx.new(|cx| {
-			MenuBar::new(1, make_menus(MenuState::new(dark)), window, cx)
-		});
+		let menu_bar = cx.new(|cx| MenuBar::new(1, make_menus(MenuState::new(dark)), window, cx));
 		cx.subscribe(
 			&menu_bar,
 			|this, _menu: Entity<MenuBar>, event: &MenuBarEvent, cx| {
@@ -609,17 +609,13 @@ impl<E: AppEngine> OakApp<E> {
 		// focused-panel routing target up to date. Structural changes (a panel
 		// closed via its tab ✕, torn off, or re-docked) refresh the 窗口 menu's
 		// checkmarks, which read the dock's live visible-panel set.
-		cx.subscribe(&dock, |this, _dock, event: &DockEvent, cx| {
-			match event {
-				DockEvent::PanelFocused(id) => this.focused_panel = Some(*id),
-				DockEvent::PanelAdded(_)
-				| DockEvent::PanelRemoved(_)
-				| DockEvent::PanelClosed(_) => {
-					this.rebuild_menu_bar(cx);
-					cx.notify();
-				}
-				_ => {}
+		cx.subscribe(&dock, |this, _dock, event: &DockEvent, cx| match event {
+			DockEvent::PanelFocused(id) => this.focused_panel = Some(*id),
+			DockEvent::PanelAdded(_) | DockEvent::PanelRemoved(_) | DockEvent::PanelClosed(_) => {
+				this.rebuild_menu_bar(cx);
+				cx.notify();
 			}
+			_ => {}
 		})
 		.detach();
 
@@ -715,8 +711,9 @@ impl<E: AppEngine> OakApp<E> {
 		// Read every tick so undo/redo and the ruler-drag commit land on the
 		// band promptly; the read is a cheap engine getter.
 		let work_area = self.engine.read(cx).workarea();
-		self.timeline
-			.update(cx, |timeline, _| timeline.state.work_area = work_area.map(|(s, e)| FrameRange::new(s, e)));
+		self.timeline.update(cx, |timeline, _| {
+			timeline.state.work_area = work_area.map(|(s, e)| FrameRange::new(s, e))
+		});
 		self.meter.update(cx, |meter, cx| meter.update(cx));
 		self.poll_export(cx);
 		self.poll_plugin_progress(cx);
@@ -833,10 +830,9 @@ impl<E: AppEngine> OakApp<E> {
 			return false;
 		};
 		match id {
-			PROJECT => self
-				.panels
-				.project
-				.update(cx, |panel, cx| panel_commands::dispatch_to(panel, action, cx)),
+			PROJECT => self.panels.project.update(cx, |panel, cx| {
+				panel_commands::dispatch_to(panel, action, cx)
+			}),
 			SOURCE_VIEWER => self.panels.source_viewer.update(cx, |panel, cx| {
 				panel_commands::dispatch_to(panel, action, cx)
 			}),
@@ -846,25 +842,21 @@ impl<E: AppEngine> OakApp<E> {
 			NODE_EDITOR => self.panels.node_editor.update(cx, |panel, cx| {
 				panel_commands::dispatch_to(panel, action, cx)
 			}),
-			INSPECTOR => self
-				.panels
-				.inspector
-				.update(cx, |panel, cx| panel_commands::dispatch_to(panel, action, cx)),
-			HISTORY => self
-				.panels
-				.history
-				.update(cx, |panel, cx| panel_commands::dispatch_to(panel, action, cx)),
-			TIMELINE => self
-				.panels
-				.timeline
-				.update(cx, |panel, cx| panel_commands::dispatch_to(panel, action, cx)),
+			INSPECTOR => self.panels.inspector.update(cx, |panel, cx| {
+				panel_commands::dispatch_to(panel, action, cx)
+			}),
+			HISTORY => self.panels.history.update(cx, |panel, cx| {
+				panel_commands::dispatch_to(panel, action, cx)
+			}),
+			TIMELINE => self.panels.timeline.update(cx, |panel, cx| {
+				panel_commands::dispatch_to(panel, action, cx)
+			}),
 			EFFECT_LIBRARY => self.panels.effect_library.update(cx, |panel, cx| {
 				panel_commands::dispatch_to(panel, action, cx)
 			}),
-			MULTICAM => self
-				.panels
-				.multicam
-				.update(cx, |panel, cx| panel_commands::dispatch_to(panel, action, cx)),
+			MULTICAM => self.panels.multicam.update(cx, |panel, cx| {
+				panel_commands::dispatch_to(panel, action, cx)
+			}),
 			_ => false,
 		}
 	}
@@ -921,10 +913,7 @@ impl<E: AppEngine> OakApp<E> {
 			A::DecreaseTrackHeight => self.nudge_track_height(-8.0, cx),
 			A::ToggleShowAll => {
 				self.show_all = !self.show_all;
-				println!(
-					"[view] toggle show all: {} (placeholder)",
-					self.show_all
-				);
+				println!("[view] toggle show all: {} (placeholder)", self.show_all);
 				self.rebuild_menu_bar(cx);
 			}
 			A::FullScreen => {
@@ -981,24 +970,21 @@ impl<E: AppEngine> OakApp<E> {
 			A::GoToEnd => {
 				let monitor = Monitor::Program;
 				let length = self.engine.read(cx).sequence_length();
-				self.engine.update(cx, |engine, cx| {
-					engine.request_frame(monitor, length, cx)
-				});
+				self.engine
+					.update(cx, |engine, cx| engine.request_frame(monitor, length, cx));
 			}
 			A::GoToIn => {
 				if let Some((start, _)) = self.engine.read(cx).workarea() {
 					let monitor = Monitor::Program;
-					self.engine.update(cx, |engine, cx| {
-						engine.request_frame(monitor, start, cx)
-					});
+					self.engine
+						.update(cx, |engine, cx| engine.request_frame(monitor, start, cx));
 				}
 			}
 			A::GoToOut => {
 				if let Some((_, end)) = self.engine.read(cx).workarea() {
 					let monitor = Monitor::Program;
-					self.engine.update(cx, |engine, cx| {
-						engine.request_frame(monitor, end, cx)
-					});
+					self.engine
+						.update(cx, |engine, cx| engine.request_frame(monitor, end, cx));
 				}
 			}
 			A::PlayInToOut => {
@@ -1006,11 +992,11 @@ impl<E: AppEngine> OakApp<E> {
 				// stopping is a transport gap).
 				let monitor = Monitor::Program;
 				if let Some((start, _)) = self.engine.read(cx).workarea() {
-					self.engine.update(cx, |engine, cx| {
-						engine.request_frame(monitor, start, cx)
-					});
+					self.engine
+						.update(cx, |engine, cx| engine.request_frame(monitor, start, cx));
 				}
-				self.engine.update(cx, |engine, cx| engine.play(monitor, cx));
+				self.engine
+					.update(cx, |engine, cx| engine.play(monitor, cx));
 			}
 			A::Loop => {
 				self.loop_playback = !self.loop_playback;
@@ -1065,9 +1051,8 @@ impl<E: AppEngine> OakApp<E> {
 			// --- Proxy (Tools) ---------------------------------------------
 			A::UseProxyMedia => {
 				let enabled = !self.engine.read(cx).use_proxy_media();
-				self.engine.update(cx, |engine, cx| {
-					engine.set_use_proxy_media(enabled, cx)
-				});
+				self.engine
+					.update(cx, |engine, cx| engine.set_use_proxy_media(enabled, cx));
 				self.rebuild_menu_bar(cx);
 			}
 			A::ProxySettings => self.open_proxy_dialog(cx),
@@ -1532,7 +1517,11 @@ impl<E: AppEngine> OakApp<E> {
 				)
 				.with_content(content.clone())
 			});
-			ModalState::ManagerRename { modal, content, uuid }
+			ModalState::ManagerRename {
+				modal,
+				content,
+				uuid,
+			}
 		});
 	}
 
@@ -1568,9 +1557,9 @@ impl<E: AppEngine> OakApp<E> {
 			self.back_to_manager(cx);
 			return;
 		}
-		let result = self
-			.engine
-			.update(cx, |engine, _cx| engine.library_rename_project(&uuid, &name));
+		let result = self.engine.update(cx, |engine, _cx| {
+			engine.library_rename_project(&uuid, &name)
+		});
 		match result {
 			Ok(()) => self.back_to_manager(cx),
 			Err(err) => {
@@ -1613,8 +1602,7 @@ impl<E: AppEngine> OakApp<E> {
 			.filter(|n| !n.is_empty())
 			.unwrap_or_else(|| "project".to_string());
 		self.pending_export = Some(uuid);
-		let receiver =
-			cx.prompt_for_new_path(&PathBuf::from("."), Some(&format!("{name}.ove")));
+		let receiver = cx.prompt_for_new_path(&PathBuf::from("."), Some(&format!("{name}.ove")));
 		cx.spawn(async move |this, cx| {
 			if let Ok(Ok(Some(path))) = receiver.await {
 				this.update(cx, |this, cx| {
@@ -1742,8 +1730,7 @@ impl<E: AppEngine> OakApp<E> {
 						path.parent()
 							.map(|dir| dir.to_path_buf())
 							.unwrap_or_else(|| PathBuf::from(".")),
-						path
-							.file_name()
+						path.file_name()
 							.map(|name| name.to_string_lossy().into_owned()),
 					),
 					None => (PathBuf::from("."), None),
@@ -1774,9 +1761,9 @@ impl<E: AppEngine> OakApp<E> {
 				let Some(path) = paths.first() else {
 					return;
 				};
-				let result = self
-					.engine
-					.update(cx, |engine, _cx| engine.library_import_project(path.clone()));
+				let result = self.engine.update(cx, |engine, _cx| {
+					engine.library_import_project(path.clone())
+				});
 				match result {
 					Ok(uuid) => {
 						println!("[manager] imported \"{}\" as {uuid}", path.display());
@@ -1790,9 +1777,9 @@ impl<E: AppEngine> OakApp<E> {
 				let (Some(uuid), Some(path)) = (self.pending_export.take(), paths.first()) else {
 					return;
 				};
-				let result = self
-					.engine
-					.update(cx, |engine, _cx| engine.library_export_project(&uuid, path.clone()));
+				let result = self.engine.update(cx, |engine, _cx| {
+					engine.library_export_project(&uuid, path.clone())
+				});
 				match result {
 					Ok(()) => println!("[manager] exported to \"{}\"", path.display()),
 					Err(err) => self.manager_status(err, cx),
@@ -1940,10 +1927,7 @@ impl<E: AppEngine> OakApp<E> {
 			let modal = app.new(|cx| {
 				Modal::new(
 					modal_ids::ACTION_SEARCH,
-					ModalOptions::new(
-						crate::i18n::tr("menu.help.action_search"),
-						px(640.0),
-					),
+					ModalOptions::new(crate::i18n::tr("menu.help.action_search"), px(640.0)),
 					window,
 					cx,
 				)
@@ -1984,8 +1968,7 @@ impl<E: AppEngine> OakApp<E> {
 		}
 		let engine = self.engine.clone();
 		self.spawn_modal(cx, move |window, app| {
-			let content =
-				app.new(|cx| crate::dialogs::ProxyDialogContent::new(engine, window, cx));
+			let content = app.new(|cx| crate::dialogs::ProxyDialogContent::new(engine, window, cx));
 			let modal = app.new(|cx| {
 				Modal::new(
 					modal_ids::PROXY,
@@ -1998,9 +1981,7 @@ impl<E: AppEngine> OakApp<E> {
 							crate::i18n::tr("proxydialog.delete"),
 							gpui_widgets::dialog::DialogButtonRole::Secondary,
 						))
-						.with_button(DialogButton::primary(crate::i18n::tr(
-							"proxydialog.close",
-						))),
+						.with_button(DialogButton::primary(crate::i18n::tr("proxydialog.close"))),
 					window,
 					cx,
 				)
@@ -2253,9 +2234,8 @@ impl<E: AppEngine> OakApp<E> {
 							match content.update(cx, |dialog, cx| dialog.commit(cx)) {
 								Ok(()) => self.close_modal(cx),
 								Err(err) => {
-									content.update(cx, |dialog, cx| {
-										dialog.set_error(Some(err), cx)
-									});
+									content
+										.update(cx, |dialog, cx| dialog.set_error(Some(err), cx));
 								}
 							}
 						} else {
@@ -2377,7 +2357,13 @@ fn default_dock_target(id: PanelId) -> Option<DropTarget> {
 fn open_panels_mask(dock: &DockArea) -> u16 {
 	WINDOW_PANELS
 		.iter()
-		.map(|(id, _)| if dock.is_panel_visible(*id) { panel_bit(*id) } else { 0 })
+		.map(|(id, _)| {
+			if dock.is_panel_visible(*id) {
+				panel_bit(*id)
+			} else {
+				0
+			}
+		})
 		.fold(0, |a, b| a | b)
 }
 
@@ -2411,9 +2397,11 @@ impl MenuState {
 			loop_playback: false,
 			show_all: false,
 			full_screen: false,
-			use_proxy_media: oak_common::configstore::ConfigStore::instance()
-				.get_bool(None, "UseProxyMedia", 1)
-				!= 0,
+			use_proxy_media: oak_common::configstore::ConfigStore::instance().get_bool(
+				None,
+				"UseProxyMedia",
+				1,
+			) != 0,
 			open_panels: WINDOW_PANELS
 				.iter()
 				.map(|(id, _)| panel_bit(*id))
@@ -2477,7 +2465,11 @@ fn make_menus(state: MenuState) -> Vec<MenuBarEntry> {
 		}
 		tools.push(item);
 	}
-	tools.push(menu_item(A::Snapping).with_checked(state.snapping).separated());
+	tools.push(
+		menu_item(A::Snapping)
+			.with_checked(state.snapping)
+			.separated(),
+	);
 	tools.push(menu_item(A::UseProxyMedia).with_checked(state.use_proxy_media));
 	tools.push(menu_item(A::ProxySettings));
 	// 首选项 belongs to the Tools menu (the C++ layout); on macOS it ALSO
@@ -2573,7 +2565,9 @@ fn make_menus(state: MenuState) -> Vec<MenuBarEntry> {
 			Menu::new(vec![
 				menu_item(A::PlayPause),
 				menu_item(A::PlayInToOut),
-				menu_item(A::Loop).with_checked(state.loop_playback).separated(),
+				menu_item(A::Loop)
+					.with_checked(state.loop_playback)
+					.separated(),
 				menu_item(A::ShuttleLeft),
 				menu_item(A::ShuttleStop),
 				menu_item(A::ShuttleRight).separated(),
@@ -2830,9 +2824,13 @@ mod tests {
 	/// language — and the whole menu bar flips language with `i18n`.
 	#[test]
 	fn language_menu_tracks_the_active_language() {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 
 		let view_entry = |dark: bool| -> MenuBarEntry {
 			make_menus(MenuState::new(dark))
@@ -2901,9 +2899,13 @@ mod tests {
 	/// The theme submenu's checkmark follows the `dark` flag.
 	#[test]
 	fn theme_menu_checkmark_follows_dark_flag() {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 
 		let dark_item = |dark: bool| -> menu::MenuItem {
 			let entries = make_menus(MenuState::new(dark));
@@ -2933,8 +2935,12 @@ mod tests {
 	/// shell reads from the dock's live visible-panel set).
 	#[test]
 	fn window_menu_lists_all_panels_and_checks_the_open_ones() {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
 
 		let mask = panel_bit(INSPECTOR) | panel_bit(TIMELINE);
@@ -2966,8 +2972,12 @@ mod tests {
 	/// round trip that used to leave a dismissed inspector unrecoverable.
 	#[gpui::test]
 	async fn window_menu_toggle_closes_and_reopens_the_inspector(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (_window, root) = mock_shell(cx);
 
 		// The checkmark shown in the 窗口 menu for the inspector, derived from
@@ -3017,11 +3027,13 @@ mod tests {
 	/// bar, so the dismissed panel loses its checkmark without waiting for any
 	/// other rebuild trigger.
 	#[gpui::test]
-	async fn closing_a_panel_via_its_tab_unchecks_it_in_the_window_menu(
-		cx: &mut TestAppContext,
-	) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+	async fn closing_a_panel_via_its_tab_unchecks_it_in_the_window_menu(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 
 		let menu_bar_before = cx.read(|app| root.read(app).menu_bar.entity_id());
@@ -3052,9 +3064,13 @@ mod tests {
 	/// across both languages.
 	#[test]
 	fn file_and_edit_menus_cover_the_project_lifecycle() {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 
 		let entry = |title: &str| -> MenuBarEntry {
 			make_menus_for_test()
@@ -3110,9 +3126,13 @@ mod tests {
 	/// entity's weak handle (regression test for the Preferences crash).
 	#[gpui::test]
 	async fn preferences_dialog_opens_without_crashing(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
 
 		cx.update(|cx| cx.init_colors());
@@ -3143,8 +3163,12 @@ mod tests {
 	/// same deferred-build path as Preferences).
 	#[gpui::test]
 	async fn project_properties_dialog_opens_without_crashing(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
 
 		cx.update(|cx| cx.init_colors());
@@ -3155,10 +3179,9 @@ mod tests {
 		let root = window.root(cx).expect("app root");
 
 		cx.update(|app| {
-			root.update(
-				app,
-				|app, cx| app.on_menu(ActionId::ProjectProperties.menu_id(), cx),
-			)
+			root.update(app, |app, cx| {
+				app.on_menu(ActionId::ProjectProperties.menu_id(), cx)
+			})
 		});
 		cx.run_until_parked();
 		// Force a draw so render-time panics in the dialog content surface.
@@ -3180,15 +3203,18 @@ mod tests {
 	/// `project_cache_location()` as `(2, path)` and closes the dialog.
 	#[gpui::test]
 	async fn project_properties_commit_applies_cache_location(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 
 		cx.update(|app| {
-			root.update(
-				app,
-				|app, cx| app.on_menu(ActionId::ProjectProperties.menu_id(), cx),
-			)
+			root.update(app, |app, cx| {
+				app.on_menu(ActionId::ProjectProperties.menu_id(), cx)
+			})
 		});
 		cx.run_until_parked();
 		let content = cx.read(|app| match &root.read(app).modal {
@@ -3212,7 +3238,9 @@ mod tests {
 		.expect("window is still open");
 		cx.run_until_parked();
 		let mut vcx = VisualTestContext::from_window(window.into(), cx);
-		let ok = vcx.debug_bounds("dialog-button-0").expect("OK button rendered");
+		let ok = vcx
+			.debug_bounds("dialog-button-0")
+			.expect("OK button rendered");
 		vcx.simulate_click(ok.center(), gpui::Modifiers::none());
 		drop(vcx);
 		cx.run_until_parked();
@@ -3230,15 +3258,18 @@ mod tests {
 	/// under the OCIO row and leaves the modal on screen.
 	#[gpui::test]
 	async fn project_properties_invalid_ocio_keeps_the_dialog_open(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 
 		cx.update(|app| {
-			root.update(
-				app,
-				|app, cx| app.on_menu(ActionId::ProjectProperties.menu_id(), cx),
-			)
+			root.update(app, |app, cx| {
+				app.on_menu(ActionId::ProjectProperties.menu_id(), cx)
+			})
 		});
 		cx.run_until_parked();
 		let content = cx.read(|app| match &root.read(app).modal {
@@ -3261,7 +3292,9 @@ mod tests {
 		.expect("window is still open");
 		cx.run_until_parked();
 		let mut vcx = VisualTestContext::from_window(window.into(), cx);
-		let ok = vcx.debug_bounds("dialog-button-0").expect("OK button rendered");
+		let ok = vcx
+			.debug_bounds("dialog-button-0")
+			.expect("OK button rendered");
 		vcx.simulate_click(ok.center(), gpui::Modifiers::none());
 		drop(vcx);
 		cx.run_until_parked();
@@ -3301,9 +3334,13 @@ mod tests {
 	/// action.
 	#[test]
 	fn every_shortcut_maps_to_a_menu_item() {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
 
 		fn collect(menu: &Menu, out: &mut Vec<usize>) {
@@ -3347,9 +3384,13 @@ mod tests {
 	/// every platform.
 	#[test]
 	fn menu_shortcut_labels_match_the_table() {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
 
 		fn walk(menu: &Menu) -> Vec<(usize, Option<gpui::SharedString>)> {
@@ -3383,26 +3424,24 @@ mod tests {
 	/// bubbles to the shell's key listener and dispatches 回放 → 播放/暂停).
 	#[gpui::test]
 	async fn space_toggles_program_playback(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 
 		let playing = cx.read(|app| root.read(app).program_clock.read(app).is_playing());
 		assert!(!playing, "the shell starts paused");
 
-		cx.dispatch_keystroke(
-			window.into(),
-			gpui::Keystroke::parse("space").unwrap(),
-		);
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("space").unwrap());
 		cx.run_until_parked();
 		let playing = cx.read(|app| root.read(app).program_clock.read(app).is_playing());
 		assert!(playing, "space starts program playback");
 
-		cx.dispatch_keystroke(
-			window.into(),
-			gpui::Keystroke::parse("space").unwrap(),
-		);
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("space").unwrap());
 		cx.run_until_parked();
 		let playing = cx.read(|app| root.read(app).program_clock.read(app).is_playing());
 		assert!(!playing, "space again pauses program playback");
@@ -3415,9 +3454,13 @@ mod tests {
 	/// the still-unwired ripple-to-in/out (q/w).
 	#[gpui::test]
 	async fn keymap_defaults_dispatch_their_actions(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 
 		let key = |keystroke: &str| gpui::Keystroke::parse(keystroke).unwrap();
@@ -3450,7 +3493,11 @@ mod tests {
 		}
 		settle_key(cx, window.into(), "o");
 		let workarea = cx.read(|app| root.read(app).engine.read(app).workarea());
-		assert_eq!(workarea, Some((Frame(9), Frame(15))), "i/o set the work area");
+		assert_eq!(
+			workarea,
+			Some((Frame(9), Frame(15))),
+			"i/o set the work area"
+		);
 
 		// --- marker: m adds one at the playhead ---------------------------
 		settle_key(cx, window.into(), "m");
@@ -3516,9 +3563,13 @@ mod tests {
 	/// at the playhead.
 	#[gpui::test]
 	async fn edit_shortcuts_dispatch_to_the_engine(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 
 		// Move the playhead inside the first clip (the → shortcut steps one
@@ -3565,9 +3616,13 @@ mod tests {
 	/// dialog's text fields must never trigger editing actions).
 	#[gpui::test]
 	async fn shortcuts_are_suppressed_while_a_modal_is_open(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 
 		cx.update(|app| root.update(app, |app, cx| app.on_menu(menu_ids::PREFERENCES, cx)));
@@ -3582,17 +3637,13 @@ mod tests {
 				.map(|t| t.clips().len())
 				.sum()
 		});
-		let snapping_before =
-			cx.read(|app| root.read(app).timeline.read(app).state.snap_enabled);
+		let snapping_before = cx.read(|app| root.read(app).timeline.read(app).state.snap_enabled);
 		cx.dispatch_keystroke(
 			window.into(),
 			gpui::Keystroke::parse("secondary-k").unwrap(),
 		);
 		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("s").unwrap());
-		cx.dispatch_keystroke(
-			window.into(),
-			gpui::Keystroke::parse("space").unwrap(),
-		);
+		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("space").unwrap());
 		cx.run_until_parked();
 
 		let (clips_after, playing, snapping_after) = cx.read(|app| {
@@ -3607,7 +3658,10 @@ mod tests {
 				root.timeline.read(app).state.snap_enabled,
 			)
 		});
-		assert_eq!(clips_after, clips_before, "no split while the modal is open");
+		assert_eq!(
+			clips_after, clips_before,
+			"no split while the modal is open"
+		);
 		assert!(!playing, "no playback toggle while the modal is open");
 		assert_eq!(
 			snapping_after, snapping_before,
@@ -3623,14 +3677,16 @@ mod tests {
 	// Action search + custom shortcuts (stage 7)
 	// -------------------------------------------------------------------
 
-
-
 	/// The `/` key opens the action search dialog (the registry's ActionSearch
 	/// default key), and Escape dismisses it.
 	#[gpui::test]
 	async fn action_search_opens_from_the_slash_key(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		let _lang = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		// A leftover real shortcuts file must not shadow the default `/`
 		// binding under test.
@@ -3645,10 +3701,7 @@ mod tests {
 		})
 		.expect("window is still open");
 		assert!(
-			cx.read(|app| matches!(
-				root.read(app).modal,
-				ModalState::ActionSearch { .. }
-			)),
+			cx.read(|app| matches!(root.read(app).modal, ModalState::ActionSearch { .. })),
 			"the / key should open the action search dialog"
 		);
 
@@ -3665,11 +3718,13 @@ mod tests {
 	/// through the same dispatch path the menu clicks take (here the dialog
 	/// closes because the action dispatched successfully).
 	#[gpui::test]
-	async fn action_search_arrows_and_enter_dispatch_the_selection(
-		cx: &mut TestAppContext,
-	) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+	async fn action_search_arrows_and_enter_dispatch_the_selection(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		let _lang = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		crate::actions::reset_all_custom_shortcuts();
 		cx.update(|app| root.update(app, |app, cx| app.rebind_keys(cx)));
@@ -3678,10 +3733,7 @@ mod tests {
 		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("/").unwrap());
 		cx.run_until_parked();
 		assert!(
-			cx.read(|app| matches!(
-				root.read(app).modal,
-				ModalState::ActionSearch { .. }
-			)),
+			cx.read(|app| matches!(root.read(app).modal, ModalState::ActionSearch { .. })),
 			"the search dialog is open"
 		);
 
@@ -3703,17 +3755,22 @@ mod tests {
 	/// fix matters here: a shortcut dispatches inside a window update where
 	/// `spawn_modal` would otherwise silently fail.
 	#[gpui::test]
-	async fn preferences_opens_from_its_shortcut_with_the_keyboard_tab(
-		cx: &mut TestAppContext,
-	) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+	async fn preferences_opens_from_its_shortcut_with_the_keyboard_tab(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		let _lang = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		crate::actions::reset_all_custom_shortcuts();
 		cx.update(|app| root.update(app, |app, cx| app.rebind_keys(cx)));
 		cx.run_until_parked();
 
-		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("secondary-,").unwrap());
+		cx.dispatch_keystroke(
+			window.into(),
+			gpui::Keystroke::parse("secondary-,").unwrap(),
+		);
 		cx.run_until_parked();
 		cx.update_window(window.into(), |_root, window, cx| {
 			window.draw(cx).clear();
@@ -3727,9 +3784,9 @@ mod tests {
 		// The tabbed content carries the Keyboard tab with a non-empty action
 		// list (the general tab stays the default active tab).
 		let rows = cx.read(|app| match &root.read(app).modal {
-			ModalState::Preferences { content, .. } => content
-				.read(app)
-				.keyboard_tab_row_count(app),
+			ModalState::Preferences { content, .. } => {
+				content.read(app).keyboard_tab_row_count(app)
+			}
 			_ => 0,
 		});
 		assert!(rows > 0, "the keyboard tab lists the menu-bar actions");
@@ -3740,8 +3797,12 @@ mod tests {
 	/// override layer + interceptor + save path in one flow).
 	#[gpui::test]
 	async fn keyboard_tab_capture_assigns_a_shortcut(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		let _lang = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		crate::actions::reset_all_custom_shortcuts();
 		cx.update(|app| root.update(app, |app, cx| app.on_menu(menu_ids::PREFERENCES, cx)));
@@ -3766,7 +3827,10 @@ mod tests {
 		cx.simulate_click(field.center(), gpui::Modifiers::none());
 		cx.run_until_parked();
 		// Press a key → it becomes the new binding.
-		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("secondary-x").unwrap());
+		cx.dispatch_keystroke(
+			window.into(),
+			gpui::Keystroke::parse("secondary-x").unwrap(),
+		);
 		cx.run_until_parked();
 		drop(cx);
 
@@ -3794,8 +3858,12 @@ mod tests {
 	/// Escape handler).
 	#[gpui::test]
 	async fn keyboard_tab_capture_escape_cancels_without_closing(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		let _lang = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		crate::actions::reset_all_custom_shortcuts();
 		cx.update(|app| root.update(app, |app, cx| app.on_menu(menu_ids::PREFERENCES, cx)));
@@ -3824,7 +3892,10 @@ mod tests {
 			cx.read(|app| matches!(root.read(app).modal, ModalState::Preferences { .. }));
 		let override_keys = crate::actions::effective_keys(ActionId::NewProject.entry());
 		drop(cx);
-		assert!(modal_still_open, "escape cancels the capture, not the dialog");
+		assert!(
+			modal_still_open,
+			"escape cancels the capture, not the dialog"
+		);
 		assert_eq!(
 			override_keys,
 			vec!["secondary-n".to_string()],
@@ -3836,8 +3907,12 @@ mod tests {
 	/// key drives the action, the displaced default key no longer does.
 	#[gpui::test]
 	async fn custom_shortcut_overrides_are_live_after_rebind(cx: &mut TestAppContext) {
-		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		let _lang = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		let _lang = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		crate::actions::reset_all_custom_shortcuts();
 
@@ -3871,7 +3946,9 @@ mod tests {
 	/// mock engine records it, so the async round trip is observable.
 	#[gpui::test]
 	async fn import_footage_prompts_and_routes_the_picked_path(cx: &mut TestAppContext) {
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
 
 		cx.update(|cx| cx.init_colors());
@@ -3900,8 +3977,7 @@ mod tests {
 		});
 		cx.run_until_parked();
 
-		let imported =
-			cx.read(|app| root.read(app).engine.read(app).imported_footage().to_vec());
+		let imported = cx.read(|app| root.read(app).engine.read(app).imported_footage().to_vec());
 		assert_eq!(imported, vec![picked]);
 
 		// Cancelling the picker imports nothing.
@@ -3920,7 +3996,9 @@ mod tests {
 	/// delivers it — the OS drag entering the window, then the release.
 	#[gpui::test]
 	async fn dropping_files_onto_the_project_browser_imports_them(cx: &mut TestAppContext) {
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		let mut cx = VisualTestContext::from_window(window.into(), cx);
 
@@ -3969,7 +4047,9 @@ mod tests {
 	/// correct parameters.
 	#[gpui::test]
 	async fn dragging_footage_onto_the_timeline_places_a_clip(cx: &mut TestAppContext) {
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (window, root) = mock_shell(cx);
 		let mut cx = VisualTestContext::from_window(window.into(), cx);
 
@@ -4036,7 +4116,11 @@ mod tests {
 		cx.run_until_parked();
 
 		let drops = cx.read(|app| root.read(app).engine.read(app).footage_drops().to_vec());
-		assert_eq!(drops.len(), 1, "the drop must reach the engine exactly once");
+		assert_eq!(
+			drops.len(),
+			1,
+			"the drop must reach the engine exactly once"
+		);
 		assert_eq!(drops[0].id, 3);
 		assert_eq!(drops[0].track_kind, gpui::timeline::TrackKind::Video);
 		assert_eq!(drops[0].track_index, 0);
@@ -4048,7 +4132,9 @@ mod tests {
 	/// grid the same entry (plus folder children) appears as icons.
 	#[gpui::test]
 	async fn explorer_views_list_root_level_footage(cx: &mut TestAppContext) {
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (window, _root) = mock_shell(cx);
 		let mut cx = VisualTestContext::from_window(window.into(), cx);
 
@@ -4180,7 +4266,9 @@ mod tests {
 	/// / 打开 route) drives the engine's library open and closes the dialog.
 	#[gpui::test]
 	async fn manager_lists_and_opens(cx: &mut TestAppContext) {
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (_window, root) = mock_shell(cx);
 		let content = open_manager(cx, &root);
 		let rows = manager_rows(cx, &content);
@@ -4200,7 +4288,15 @@ mod tests {
 
 		let opened = cx.read(|app| root.read(app).engine.read(app).library_opened().to_vec());
 		assert_eq!(opened, vec![uuid], "the engine opened the selected row");
-		let name = cx.read(|app| root.read(app).engine.read(app).project().unwrap().name.clone());
+		let name = cx.read(|app| {
+			root.read(app)
+				.engine
+				.read(app)
+				.project()
+				.unwrap()
+				.name
+				.clone()
+		});
 		assert_eq!(name, "宣传片 v3");
 		let modal_none = cx.read(|app| matches!(root.read(app).modal, ModalState::None));
 		assert!(modal_none, "a successful open closes the manager");
@@ -4210,7 +4306,9 @@ mod tests {
 	/// and its sub-dialogs.
 	#[gpui::test]
 	async fn manager_create_rename_duplicate_delete(cx: &mut TestAppContext) {
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (_window, root) = mock_shell(cx);
 		let content = open_manager(cx, &root);
 
@@ -4228,15 +4326,29 @@ mod tests {
 			.find(|row| row.name == "Untitled Project")
 			.expect("the created row")
 			.clone();
-		let project_name = cx.read(|app| root.read(app).engine.read(app).project().unwrap().name.clone());
-		assert_eq!(project_name, "Untitled Project", "create opens the new project");
+		let project_name = cx.read(|app| {
+			root.read(app)
+				.engine
+				.read(app)
+				.project()
+				.unwrap()
+				.name
+				.clone()
+		});
+		assert_eq!(
+			project_name, "Untitled Project",
+			"create opens the new project"
+		);
 
 		// Reopen the manager, select the created row, rename it.
 		let content = open_manager(cx, &root);
 		cx.update(|app| content.update(app, |m, cx| m.select(&created.uuid, cx)));
 		cx.update(|app| {
 			root.update(app, |app, cx| {
-				app.on_manager_event(&crate::manager::ManagerEvent::Rename(created.uuid.clone()), cx)
+				app.on_manager_event(
+					&crate::manager::ManagerEvent::Rename(created.uuid.clone()),
+					cx,
+				)
 			})
 		});
 		cx.run_until_parked();
@@ -4288,11 +4400,15 @@ mod tests {
 		// Delete the original through the confirmation dialog.
 		cx.update(|app| {
 			root.update(app, |app, cx| {
-				app.on_manager_event(&crate::manager::ManagerEvent::Delete(created.uuid.clone()), cx)
+				app.on_manager_event(
+					&crate::manager::ManagerEvent::Delete(created.uuid.clone()),
+					cx,
+				)
 			})
 		});
 		cx.run_until_parked();
-		let confirming = cx.read(|app| matches!(root.read(app).modal, ModalState::ManagerDelete { .. }));
+		let confirming =
+			cx.read(|app| matches!(root.read(app).modal, ModalState::ManagerDelete { .. }));
 		assert!(confirming, "the delete confirmation should be open");
 		cx.update(|app| {
 			root.update(app, |app, cx| {
@@ -4316,10 +4432,10 @@ mod tests {
 	/// The manager's 导入 opens the platform path picker and lands the file
 	/// as a new row; 导出 asks for a new path and routes it to the engine.
 	#[gpui::test]
-	async fn manager_import_and_export_route_through_the_platform_dialogs(
-		cx: &mut TestAppContext,
-	) {
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+	async fn manager_import_and_export_route_through_the_platform_dialogs(cx: &mut TestAppContext) {
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let (_window, root) = mock_shell(cx);
 		let content = open_manager(cx, &root);
 
@@ -4357,10 +4473,7 @@ mod tests {
 			})
 		});
 		cx.run_until_parked();
-		assert!(
-			cx.did_prompt_for_new_path(),
-			"export shows the save dialog"
-		);
+		assert!(cx.did_prompt_for_new_path(), "export shows the save dialog");
 		cx.simulate_new_path_selection(|_dir| Some(PathBuf::from("/library/先导片.otio")));
 		cx.run_until_parked();
 		let exported = cx.read(|app| root.read(app).engine.read(app).library_exported().to_vec());
