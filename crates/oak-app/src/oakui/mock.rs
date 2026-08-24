@@ -539,6 +539,10 @@ pub struct MockEngine {
 	proxy_custom: HashMap<u64, crate::oakui::engine::ProxyParamsUi>,
 	/// The demo's global "Use Proxy Media" switch.
 	use_proxy: bool,
+	/// The demo project's OCIO config override (the 项目属性 color tab).
+	ocio_config: String,
+	/// The demo project's disk-cache location (setting, custom path).
+	cache_location: (i32, String),
 	/// The demo multicam graph: a real oaknode project whose source
 	/// sequence's video tracks are the angles. Created lazily so the demo
 	/// panel shows a genuine graph behind its synthetic frames — and the
@@ -806,6 +810,8 @@ impl MockEngine {
 			proxy_enabled: HashMap::new(),
 			proxy_custom: HashMap::new(),
 			use_proxy: true,
+			ocio_config: String::new(),
+			cache_location: (0, String::new()),
 			multicam_graph: Mutex::new(None),
 			multicam_frames: Mutex::new(HashMap::new()),
 		};
@@ -1900,6 +1906,39 @@ impl AppEngine for MockEngine {
 		// The mock's viewer frames are synthetic; still drop the cache so
 		// the toggle behaves like the real engine.
 		self.cpu_frame_cache.lock().unwrap().clear();
+		cx.notify();
+	}
+
+	fn project_ocio_config(&self) -> String {
+		self.ocio_config.clone()
+	}
+
+	fn set_project_ocio_config(&mut self, path: String, cx: &mut Context<Self>) -> Result<(), String> {
+		let trimmed = path.trim().to_string();
+		// Validate like the real engine (a bogus path keeps the dialog open).
+		if !trimmed.is_empty() {
+			oak_render::color::set_up_default_config_from(Some(&trimmed))
+				.map_err(|e| e.to_string())?;
+		}
+		self.ocio_config = trimmed;
+		cx.notify();
+		Ok(())
+	}
+
+	fn project_cache_location(&self) -> (i32, String) {
+		self.cache_location.clone()
+	}
+
+	fn set_project_cache_location(&mut self, setting: i32, custom_path: String, cx: &mut Context<Self>) {
+		let setting = setting.clamp(0, 2);
+		self.cache_location = (
+			setting,
+			if setting == 2 {
+				custom_path.trim().to_string()
+			} else {
+				String::new()
+			},
+		);
 		cx.notify();
 	}
 

@@ -123,6 +123,8 @@ mod modal_ids {
 	pub const PLUGIN_PROGRESS: usize = 10;
 	/// The action search dialog (Help > Search Actions…, the `/` key).
 	pub const ACTION_SEARCH: usize = 11;
+	/// The project properties dialog (File > Project Properties…).
+	pub const PROJECT_PROPERTIES: usize = 12;
 }
 
 /// What a picked platform-dialog path should do.
@@ -178,6 +180,12 @@ enum ModalState<E: AppEngine> {
 		modal: Entity<Modal>,
 		content: Entity<crate::dialogs::ActionSearchContent>,
 	},
+	/// The project properties dialog (File > Project Properties…; the
+	/// per-project OCIO config override and the disk-cache location).
+	ProjectProperties {
+		modal: Entity<Modal>,
+		content: Entity<crate::dialogs::ProjectPropertiesContent<E>>,
+	},
 }
 
 /// A running export: the session the tick loop drains for progress.
@@ -197,7 +205,8 @@ impl<E: AppEngine> ModalState<E> {
 			| ModalState::ManagerRename { modal, .. }
 			| ModalState::ManagerDelete { modal, .. }
 			| ModalState::Proxy { modal, .. }
-			| ModalState::ActionSearch { modal, .. } => Some(modal.clone()),
+			| ModalState::ActionSearch { modal, .. }
+			| ModalState::ProjectProperties { modal, .. } => Some(modal.clone()),
 		}
 	}
 }
@@ -1062,6 +1071,7 @@ impl<E: AppEngine> OakApp<E> {
 				self.rebuild_menu_bar(cx);
 			}
 			A::ProxySettings => self.open_proxy_dialog(cx),
+			A::ProjectProperties => self.open_project_properties(cx),
 			// The multicam source-switch hotkeys are scoped to the Multicam
 			// panel (the focused-panel route handles them there); a fall-through
 			// from any other focused panel is a silent no-op.
@@ -2000,6 +2010,46 @@ impl<E: AppEngine> OakApp<E> {
 		});
 	}
 
+	/// Opens the project properties dialog (File > Project Properties…; the
+	/// C++ `ProjectPropertiesDialog`): the read-only project name, the
+	/// per-project OCIO config override and the disk-cache location. The OK
+	/// button applies through the content's `commit` (an invalid OCIO config
+	/// keeps the dialog open), Escape / Cancel discard without applying.
+	fn open_project_properties(&mut self, cx: &mut Context<Self>) {
+		if !matches!(self.modal, ModalState::None) {
+			return;
+		}
+		let engine = self.engine.clone();
+		let project_name = self
+			.engine
+			.read(cx)
+			.project()
+			.map(|p| p.name.clone())
+			.unwrap_or_default();
+		self.spawn_modal(cx, move |window, app| {
+			let content =
+				app.new(|cx| crate::dialogs::ProjectPropertiesContent::new(engine, window, cx));
+			let modal = app.new(|cx| {
+				Modal::new(
+					modal_ids::PROJECT_PROPERTIES,
+					ModalOptions::new(
+						format!("{} — {project_name}", crate::i18n::tr("projprops.title")),
+						px(560.0),
+					)
+					.with_button(DialogButton::primary(crate::i18n::tr("dialog.ok")))
+					.with_button(DialogButton::new(
+						crate::i18n::tr("dialog.cancel"),
+						gpui_widgets::dialog::DialogButtonRole::Secondary,
+					)),
+					window,
+					cx,
+				)
+				.with_content(content.clone())
+			});
+			ModalState::ProjectProperties { modal, content }
+		});
+	}
+
 	/// Opens the export dialog.
 	fn open_export_dialog(&mut self, cx: &mut Context<Self>) {
 		if self.engine.read(cx).current_sequence().is_none() {
@@ -2194,6 +2244,25 @@ impl<E: AppEngine> OakApp<E> {
 						}
 					}
 				}
+				modal_ids::PROJECT_PROPERTIES => {
+					if let ModalState::ProjectProperties { content, .. } = &self.modal {
+						let content = content.clone();
+						if *button == 0 {
+							// OK: apply the settings; an invalid OCIO config
+							// keeps the dialog open with the error shown.
+							match content.update(cx, |dialog, cx| dialog.commit(cx)) {
+								Ok(()) => self.close_modal(cx),
+								Err(err) => {
+									content.update(cx, |dialog, cx| {
+										dialog.set_error(Some(err), cx)
+									});
+								}
+							}
+						} else {
+							self.close_modal(cx);
+						}
+					}
+				}
 				_ => {}
 			},
 			ModalEvent::Dismissed { control } => match *control {
@@ -2213,6 +2282,9 @@ impl<E: AppEngine> OakApp<E> {
 				// Escape closes the proxy dialog without applying (the
 				// Close button is the apply path, like the C++ accept()).
 				modal_ids::PROXY => self.close_modal(cx),
+				// Escape / backdrop close the project properties dialog
+				// without applying (only OK commits).
+				modal_ids::PROJECT_PROPERTIES => self.close_modal(cx),
 				_ => self.close_modal(cx),
 			},
 		}
@@ -3062,6 +3134,160 @@ mod tests {
 			has_modal,
 			"preferences modal should be shown after the menu action"
 		);
+	}
+
+	/// Opening File → Project Properties… must not crash: the content is
+	/// built with the engine and the modal is layered onto the shell (the
+	/// same deferred-build path as Preferences).
+	#[gpui::test]
+	async fn project_properties_dialog_opens_without_crashing(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		crate::i18n::set_language_code("en-US");
+
+		cx.update(|cx| cx.init_colors());
+		let window = cx.open_window(size(px(1600.0), px(900.0)), |window, cx| {
+			OakApp::<MockEngine>::new(window, None, cx)
+		});
+		cx.run_until_parked();
+		let root = window.root(cx).expect("app root");
+
+		cx.update(|app| {
+			root.update(
+				app,
+				|app, cx| app.on_menu(ActionId::ProjectProperties.menu_id(), cx),
+			)
+		});
+		cx.run_until_parked();
+		// Force a draw so render-time panics in the dialog content surface.
+		cx.update_window(window.into(), |_root, window, cx| {
+			window.draw(cx).clear();
+		})
+		.expect("window is still open");
+
+		let has_modal =
+			cx.read(|app| matches!(root.read(app).modal, ModalState::ProjectProperties { .. }));
+		assert!(
+			has_modal,
+			"project properties modal should be shown after the menu action"
+		);
+	}
+
+	/// The dialog's OK button applies the chosen cache location to the
+	/// engine: choosing 自定义位置 + a path, then clicking OK, lands in
+	/// `project_cache_location()` as `(2, path)` and closes the dialog.
+	#[gpui::test]
+	async fn project_properties_commit_applies_cache_location(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let (window, root) = mock_shell(cx);
+
+		cx.update(|app| {
+			root.update(
+				app,
+				|app, cx| app.on_menu(ActionId::ProjectProperties.menu_id(), cx),
+			)
+		});
+		cx.run_until_parked();
+		let content = cx.read(|app| match &root.read(app).modal {
+			ModalState::ProjectProperties { content, .. } => content.clone(),
+			_ => panic!("project properties modal should be open"),
+		});
+
+		// Choose 自定义位置 and type a path.
+		cx.update(|app| {
+			content.update(app, |dialog, cx| {
+				dialog.select_cache_setting(2, cx);
+				dialog.set_custom_cache_path("/tmp/oak-cache", cx);
+			})
+		});
+		cx.run_until_parked();
+
+		// Click the OK button (the modal's primary button).
+		cx.update_window(window.into(), |_root, window, cx| {
+			window.draw(cx).clear();
+		})
+		.expect("window is still open");
+		cx.run_until_parked();
+		let mut vcx = VisualTestContext::from_window(window.into(), cx);
+		let ok = vcx.debug_bounds("dialog-button-0").expect("OK button rendered");
+		vcx.simulate_click(ok.center(), gpui::Modifiers::none());
+		drop(vcx);
+		cx.run_until_parked();
+
+		assert!(
+			cx.read(|app| matches!(root.read(app).modal, ModalState::None)),
+			"OK closes the dialog"
+		);
+		let location = cx.read(|app| root.read(app).engine.read(app).project_cache_location());
+		assert_eq!(location, (2, "/tmp/oak-cache".to_string()));
+	}
+
+	/// A bogus OCIO config keeps the dialog open: clicking OK runs the
+	/// engine's validation, which rejects the path, shows the error label
+	/// under the OCIO row and leaves the modal on screen.
+	#[gpui::test]
+	async fn project_properties_invalid_ocio_keeps_the_dialog_open(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let (window, root) = mock_shell(cx);
+
+		cx.update(|app| {
+			root.update(
+				app,
+				|app, cx| app.on_menu(ActionId::ProjectProperties.menu_id(), cx),
+			)
+		});
+		cx.run_until_parked();
+		let content = cx.read(|app| match &root.read(app).modal {
+			ModalState::ProjectProperties { content, .. } => content.clone(),
+			_ => panic!("project properties modal should be open"),
+		});
+
+		// Type a path that cannot load as an OCIO config.
+		cx.update(|app| {
+			content.update(app, |dialog, cx| {
+				dialog.set_ocio_config_path("/nonexistent/ocio/config.ocio", cx);
+			})
+		});
+		cx.run_until_parked();
+
+		// Click OK: the commit fails, the dialog stays open, the error shows.
+		cx.update_window(window.into(), |_root, window, cx| {
+			window.draw(cx).clear();
+		})
+		.expect("window is still open");
+		cx.run_until_parked();
+		let mut vcx = VisualTestContext::from_window(window.into(), cx);
+		let ok = vcx.debug_bounds("dialog-button-0").expect("OK button rendered");
+		vcx.simulate_click(ok.center(), gpui::Modifiers::none());
+		drop(vcx);
+		cx.run_until_parked();
+
+		let still_open =
+			cx.read(|app| matches!(root.read(app).modal, ModalState::ProjectProperties { .. }));
+		assert!(still_open, "an invalid OCIO config keeps the dialog open");
+		let error = cx.read(|app| match &root.read(app).modal {
+			ModalState::ProjectProperties { content, .. } => content.read(app).error().cloned(),
+			_ => None,
+		});
+		let error = error.expect("the commit error is recorded");
+		assert!(
+			error.to_lowercase().contains("ocio"),
+			"the error mentions the config: {error}"
+		);
+
+		// The error label renders under the OCIO row.
+		cx.update_window(window.into(), |_root, window, cx| {
+			window.draw(cx).clear();
+		})
+		.expect("window is still open");
+		let mut vcx = VisualTestContext::from_window(window.into(), cx);
+		assert!(
+			vcx.debug_bounds("projprops-error").is_some(),
+			"the OCIO error label renders"
+		);
+		drop(vcx);
 	}
 
 	// -------------------------------------------------------------------

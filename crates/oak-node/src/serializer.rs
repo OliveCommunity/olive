@@ -307,7 +307,26 @@ pub fn save(project: &Project) -> crate::error::Result<String> {
 	let mut keys: Vec<&String> = project.settings.keys().collect();
 	keys.sort();
 	for key in keys {
+		// The cache location lives on the struct fields; any settings-map
+		// copies (from a load) are skipped — the fields win on save.
+		if key == crate::project::SETTING_CACHE_LOCATION
+			|| key == crate::project::SETTING_CACHE_PATH
+		{
+			continue;
+		}
 		writer.text_element(key, project.settings.get(key).unwrap_or(&String::new()));
+	}
+	// Persist the cache location as settings entries (the C++
+	// k_cache_location_setting_key / k_cache_path_key); defaults add no
+	// noise to the file.
+	if project.cache_location_setting != 0 {
+		writer.text_element(
+			crate::project::SETTING_CACHE_LOCATION,
+			&project.cache_location_setting.to_string(),
+		);
+	}
+	if !project.custom_cache_path.is_empty() {
+		writer.text_element(crate::project::SETTING_CACHE_PATH, &project.custom_cache_path);
 	}
 	writer.end_element(); // settings
 
@@ -602,6 +621,20 @@ fn load_project_body(reader: &mut dyn XmlRead, project: &mut Project) -> crate::
 				project.root = *id;
 			}
 		}
+	}
+
+	// The cache location arrives as settings entries (see the save side).
+	if let Some(setting) = project
+		.settings
+		.get(crate::project::SETTING_CACHE_LOCATION)
+		.and_then(|s| s.parse::<i32>().ok())
+	{
+		// Clamp to the known CacheSetting range: a hand-edited file must not
+		// poison the dialog's combo selection.
+		project.cache_location_setting = setting.clamp(0, 2);
+	}
+	if let Some(path) = project.settings.get(crate::project::SETTING_CACHE_PATH) {
+		project.custom_cache_path = path.clone();
 	}
 
 	// Rebuild the timeline structure: the custom segments carry packed

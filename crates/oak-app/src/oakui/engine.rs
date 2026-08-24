@@ -795,6 +795,39 @@ pub trait AppEngine:
 		let _ = cx;
 	}
 
+	// -------------------------------------------------------------------
+	// Project properties (the C++ File > Project Properties dialog):
+	// the per-project OCIO config override and the disk-cache location.
+	// Defaults cover engines without a project surface.
+	// -------------------------------------------------------------------
+
+	/// The project's OCIO config override ("" = the app default config).
+	fn project_ocio_config(&self) -> String {
+		String::new()
+	}
+
+	/// Validates and applies the OCIO config override: the file must load
+	/// as an OCIO config (Err keeps the dialog open, like the C++ accept()),
+	/// then the display color pipeline reloads and every rendered frame is
+	/// invalidated. Empty path restores the app default.
+	fn set_project_ocio_config(&mut self, path: String, cx: &mut Context<Self>) -> Result<(), String> {
+		let _ = (path, cx);
+		Ok(())
+	}
+
+	/// The project's disk-cache location: `(setting, custom_path)` with
+	/// setting 0 = default location, 1 = alongside the project file,
+	/// 2 = custom path (the C++ `Project::CacheSetting`).
+	fn project_cache_location(&self) -> (i32, String) {
+		(0, String::new())
+	}
+
+	/// Sets the disk-cache location; later cache writes (thumbnails and
+	/// any future per-project caches) land in the new location.
+	fn set_project_cache_location(&mut self, setting: i32, custom_path: String, cx: &mut Context<Self>) {
+		let _ = (setting, custom_path, cx);
+	}
+
 	/// The footage rows the proxy dialog's footage mode lists (every
 	/// footage node in the open project).
 	fn proxy_rows(&self) -> Vec<ProxyFootageRow> {

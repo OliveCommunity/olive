@@ -444,6 +444,10 @@ struct ThumbnailState {
 	pending: HashSet<u64>,
 }
 
+/// The project settings key of the OCIO config override (the 项目属性
+/// color tab).
+pub const PROJECT_SETTING_OCIO_CONFIG: &str = "ocioconfig";
+
 /// The shared directory holding generated footage thumbnails.
 fn thumbnail_dir() -> PathBuf {
 	std::env::temp_dir().join("oak-thumbnails")
@@ -451,13 +455,18 @@ fn thumbnail_dir() -> PathBuf {
 
 /// The PNG path of a footage's thumbnail: an FNV-1a hash of the media
 /// filename, so the same file always hits the same cached PNG.
-fn thumbnail_path(filename: &str) -> PathBuf {
+/// `cache_dir` is the project's cache-location override (the 项目属性
+/// disk-cache setting); `None` uses the shared default directory.
+fn thumbnail_path(cache_dir: Option<&str>, filename: &str) -> PathBuf {
 	let mut h: u64 = 0xcbf29ce484222325;
 	for b in filename.as_bytes() {
 		h ^= u64::from(*b);
 		h = h.wrapping_mul(0x100000001b3);
 	}
-	thumbnail_dir().join(format!("{h:016x}.png"))
+	let dir = cache_dir
+		.map(|d| PathBuf::from(d).join("thumbnails"))
+		.unwrap_or_else(thumbnail_dir);
+	dir.join(format!("{h:016x}.png"))
 }
 
 // ---------------------------------------------------------------------------
@@ -1920,18 +1929,22 @@ impl RealEngine {
 		});
 	}
 
-	/// Renders `identity`'s footage first frame into the shared thumbnail
+	/// Renders `identity`'s footage first frame into the thumbnail
 	/// directory and returns the PNG path (`None` when the entry is not a
-	/// renderable footage or the render fails).
+	/// renderable footage or the render fails). The directory follows the
+	/// project's disk-cache location when it overrides the default (the
+	/// 项目属性 disk-cache setting's live consumer).
 	fn render_thumbnail(project: &ProjectRef, identity: u64) -> Option<PathBuf> {
 		let node = graphops::id_of(identity)?;
-		let filename = {
+		let (filename, cache_dir) = {
 			let guard = graphops::lock(project);
-			graphops::footage_behavior(&guard.graph, node)
+			let filename = graphops::footage_behavior(&guard.graph, node)
 				.map(|f| f.filename.clone())
-				.filter(|f| !f.is_empty())?
+				.filter(|f| !f.is_empty())?;
+			let dir = (guard.cache_location_setting != 0).then(|| guard.cache_path());
+			(filename, dir)
 		};
-		let path = thumbnail_path(&filename);
+		let path = thumbnail_path(cache_dir.as_deref(), &filename);
 		if path.exists() {
 			return Some(path);
 		}
@@ -2531,6 +2544,10 @@ impl RealEngine {
 		self.refresh_sequence_info();
 		self.rebuild_timeline();
 
+		// The project's stored OCIO override (if any) drives the display
+		// color pipeline from here on.
+		Self::apply_project_color_config(Some(&project));
+
 		cx.notify();
 	}
 
@@ -2573,6 +2590,31 @@ impl RealEngine {
 			name: UNTITLED.into(),
 			path: PathBuf::new(),
 		};
+		// The dropped project's OCIO override leaves with it: the display
+		// color pipeline returns to the app default config.
+		Self::apply_project_color_config(None);
+	}
+
+	/// Applies a project's stored OCIO override (`Some(project)`) or
+	/// restores the app default config (`None`, or a project without an
+	/// override). A config that fails to load falls back to the app default
+	/// (the file may have moved since the project was saved).
+	fn apply_project_color_config(project: Option<&ProjectRef>) {
+		let stored = project.and_then(|p| {
+			graphops::lock(p)
+				.settings
+				.get(PROJECT_SETTING_OCIO_CONFIG)
+				.cloned()
+		});
+		let applied = match stored.as_deref() {
+			None => oak_render::color::set_up_default_config(),
+			Some(path) => oak_render::color::set_up_default_config_from(Some(path)),
+		};
+		if let Err(e) = applied {
+			println!("[real engine] project OCIO config apply failed: {e}");
+			let _ = oak_render::color::set_up_default_config();
+		}
+		super::displaycolor::invalidate();
 	}
 
 	/// Refreshes the cached `Sequence` (name / format / length) from the
@@ -4343,6 +4385,78 @@ impl AppEngine for RealEngine {
 			&divider.clamp(1, 8).to_string(),
 		);
 		self.invalidate_preview_frames(cx);
+	}
+
+	/// The project's OCIO config override (the 项目属性 color tab; "" = the
+	/// app default config).
+	fn project_ocio_config(&self) -> String {
+		self.project_ref()
+			.map(|p| {
+				graphops::lock(p)
+					.settings
+					.get(PROJECT_SETTING_OCIO_CONFIG)
+					.cloned()
+					.unwrap_or_default()
+			})
+			.unwrap_or_default()
+	}
+
+	fn set_project_ocio_config(&mut self, path: String, cx: &mut Context<Self>) -> Result<(), String> {
+		let Some(project) = self.project.clone() else {
+			return Err("no project open".to_string());
+		};
+		let trimmed = path.trim().to_string();
+		// Validate first — the dialog stays open on Err (the C++ accept()
+		// refuses an invalid config the same way). Applying is the
+		// process-wide color config reload plus a full frame invalidation.
+		if trimmed.is_empty() {
+			oak_render::color::set_up_default_config().map_err(|e| e.to_string())?;
+		} else {
+			oak_render::color::set_up_default_config_from(Some(&trimmed))
+				.map_err(|e| e.to_string())?;
+		}
+		{
+			let mut guard = graphops::lock(&project);
+			if trimmed.is_empty() {
+				guard.settings.remove(PROJECT_SETTING_OCIO_CONFIG);
+			} else {
+				guard
+					.settings
+					.insert(PROJECT_SETTING_OCIO_CONFIG.to_string(), trimmed);
+			}
+			guard.modified = true;
+		}
+		super::displaycolor::invalidate();
+		self.invalidate_rendered_frames();
+		cx.notify();
+		Ok(())
+	}
+
+	fn project_cache_location(&self) -> (i32, String) {
+		self.project_ref()
+			.map(|p| {
+				let g = graphops::lock(p);
+				// Clamp: the dialog's combo indexes by this value.
+				(g.cache_location_setting.clamp(0, 2), g.custom_cache_path.clone())
+			})
+			.unwrap_or((0, String::new()))
+	}
+
+	fn set_project_cache_location(&mut self, setting: i32, custom_path: String, cx: &mut Context<Self>) {
+		let Some(project) = self.project.clone() else {
+			return;
+		};
+		{
+			let mut guard = graphops::lock(&project);
+			guard.cache_location_setting = setting.clamp(0, 2);
+			guard.custom_cache_path = if guard.cache_location_setting == 2 {
+				custom_path.trim().to_string()
+			} else {
+				String::new()
+			};
+			guard.modified = true;
+		}
+		cx.notify();
 	}
 
 	fn proxy_rows(&self) -> Vec<super::engine::ProxyFootageRow> {

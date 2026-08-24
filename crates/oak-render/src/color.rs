@@ -412,10 +412,18 @@ pub fn default_config() -> Option<std::sync::Arc<SafeConfig>> {
 /// Load the process-wide default config from $OCIO or the bundled config
 /// (C++ `ColorManager::SetUpDefaultConfig`).
 pub fn set_up_default_config() -> Result<()> {
-	let config = match std::env::var("OCIO") {
-		Ok(path) if !path.is_empty() => ocio_rs::Config::from_file(&path)
-			.map_err(|e| Error::Failed(format!("load $OCIO config: {e}")))?,
-		_ => ocio_rs::Config::create_from_builtin_config("default")
+	let env = std::env::var("OCIO").ok().filter(|p| !p.is_empty());
+	set_up_default_config_from(env.as_deref())
+}
+
+/// Load the process-wide default config from an explicit path (`None` =
+/// the bundled default config). The project-properties OCIO override and
+/// the `$OCIO` startup path both land here.
+pub fn set_up_default_config_from(path: Option<&str>) -> Result<()> {
+	let config = match path {
+		Some(path) => ocio_rs::Config::from_file(path)
+			.map_err(|e| Error::Failed(format!("load OCIO config \"{path}\": {e}")))?,
+		None => ocio_rs::Config::create_from_builtin_config("default")
 			.or_else(|_| ocio_rs::Config::create_from_builtin_config("ocio-2.2-default"))
 			.map_err(|e| Error::Failed(format!("load bundled config: {e}")))?,
 	};

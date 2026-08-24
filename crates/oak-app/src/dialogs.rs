@@ -204,7 +204,10 @@ impl PreferencesContent {
 		// --- 缓存 Cache: the disk cache directory --------------------------
 		let cache_dir = cx.new(|cx| {
 			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
-			PathField { editor }
+			PathField {
+				editor,
+				enabled: true,
+			}
 		});
 		let configured_cache = config_get_string(CONFIG_KEY_DISK_CACHE_PATH);
 		cache_dir.update(cx, |field, cx| field.set_path(configured_cache, cx));
@@ -319,7 +322,10 @@ impl PreferencesContent {
 		.detach();
 		let display_icc_path = cx.new(|cx| {
 			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
-			PathField { editor }
+			PathField {
+				editor,
+				enabled: true,
+			}
 		});
 		let configured_icc = config_get_string(CONFIG_KEY_CUSTOM_ICC);
 		display_icc_path.update(cx, |field, cx| field.set_path(configured_icc, cx));
@@ -719,6 +725,9 @@ impl Render for PreferencesContent {
 /// A text field with the same shape as the file dialog's path field.
 pub struct PathField {
 	editor: Entity<EditableTextState>,
+	/// Whether the field accepts input (disabled fields dim and drop the
+	/// text-input handler, like the checkbox disabled state).
+	enabled: bool,
 }
 
 impl PathField {
@@ -735,12 +744,29 @@ impl PathField {
 		});
 		cx.notify();
 	}
+
+	/// Whether the field accepts input (disabled fields are read-only and
+	/// render dimmed).
+	pub fn set_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+		if self.enabled == enabled {
+			return;
+		}
+		self.enabled = enabled;
+		cx.notify();
+	}
+
+	/// The input state the field starts in (chainable after construction).
+	pub fn with_enabled(mut self, enabled: bool) -> Self {
+		self.enabled = enabled;
+		self
+	}
 }
 
 impl Render for PathField {
 	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let colors = cx.default_colors().clone();
 		let weak = self.editor.downgrade();
+		let enabled = self.enabled;
 		div()
 			.rounded_md()
 			.border_1()
@@ -748,10 +774,11 @@ impl Render for PathField {
 			.bg(colors.background)
 			.px_2()
 			.py_1()
+			.opacity(if enabled { 1.0 } else { 0.45 })
 			.child(
 				text_input("gpui-widgets-export-path", cx)
 					.state(weak)
-					.accepts_input(true),
+					.accepts_input(enabled),
 			)
 	}
 }
@@ -790,7 +817,10 @@ impl ExportDialogContent {
 
 		let path = cx.new(|cx| {
 			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
-			PathField { editor }
+			PathField {
+				editor,
+				enabled: true,
+			}
 		});
 
 		Self {
@@ -986,7 +1016,10 @@ impl<E: crate::oakui::engine::AppEngine> ProxyDialogContent<E> {
 
 		let ffmpeg_path = cx.new(|cx| {
 			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
-			PathField { editor }
+			PathField {
+				editor,
+				enabled: true,
+			}
 		});
 		ffmpeg_path.update(cx, |field, cx| {
 			field.set_path(config_get_string(CONFIG_KEY_FFMPEG_PATH), cx)
@@ -1270,6 +1303,239 @@ impl<E: crate::oakui::engine::AppEngine> Render for ProxyDialogContent<E> {
 			.w_full()
 			.child(footage_group)
 			.child(settings_group)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Project properties (the C++ File > Project Properties dialog)
+// ---------------------------------------------------------------------------
+
+/// The project-properties dialog content (the C++ `ProjectPropertiesDialog`):
+/// the read-only project name, the per-project OCIO config override and the
+/// disk-cache location. Apply happens through [`Self::commit`], which the
+/// host runs on the OK button — an invalid OCIO config keeps the dialog open
+/// with the error shown under the OCIO row.
+pub struct ProjectPropertiesContent<E: crate::oakui::engine::AppEngine> {
+	engine: Entity<E>,
+	ocio_config: Entity<PathField>,
+	cache_location: Entity<ComboBox>,
+	custom_cache_path: Entity<PathField>,
+	/// The cache location selected in the combo (0 = default location,
+	/// 1 = alongside the project, 2 = custom path; see
+	/// [`crate::oakui::engine::AppEngine::project_cache_location`]).
+	cache_setting: i32,
+	/// The commit error shown under the OCIO row (an invalid config keeps
+	/// the dialog open, like the C++ accept()).
+	error: Option<String>,
+}
+
+impl<E: crate::oakui::engine::AppEngine> ProjectPropertiesContent<E> {
+	/// Builds the content seeded from the engine's current project state.
+	pub fn new(engine: Entity<E>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+		let ocio_config = cx.new(|cx| {
+			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
+			PathField {
+				editor,
+				enabled: true,
+			}
+		});
+		let configured_ocio = engine.read(cx).project_ocio_config();
+		ocio_config.update(cx, |field, cx| field.set_path(configured_ocio, cx));
+
+		let cache_options = vec![
+			ComboBoxOption::new(0, i18n::tr("projprops.cache.default")),
+			ComboBoxOption::new(1, i18n::tr("projprops.cache.alongside")),
+			ComboBoxOption::new(2, i18n::tr("projprops.cache.custom")),
+		];
+		let cache_location = cx.new(|cx| ComboBox::new(30, cache_options, window, cx));
+		let (cache_setting, custom_path) = engine.read(cx).project_cache_location();
+		cache_location.update(cx, |combo, cx| {
+			combo.set_selected(Some(cache_setting as usize), cx)
+		});
+		// The custom-path field follows the combo selection live.
+		cx.subscribe(&cache_location, |this, _combo, event: &ComboBoxEvent, cx| {
+			let ComboBoxEvent::Selected { value } = event;
+			let setting = *value as i32;
+			this.cache_setting = setting;
+			this.custom_cache_path.update(cx, |field, cx| {
+				field.set_enabled(setting == 2, cx)
+			});
+			cx.notify();
+		})
+		.detach();
+
+		let custom_cache_path = cx.new(|cx| {
+			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
+			PathField { editor, enabled: cache_setting == 2 }
+		});
+		custom_cache_path.update(cx, |field, cx| field.set_path(custom_path, cx));
+
+		Self {
+			engine,
+			ocio_config,
+			cache_location,
+			custom_cache_path,
+			cache_setting,
+			error: None,
+		}
+	}
+
+	/// The OCIO config path currently entered.
+	pub fn ocio_config_path(&self, cx: &App) -> SharedString {
+		self.ocio_config.read(cx).path(cx)
+	}
+
+	/// Replaces the OCIO config path (the 浏览… picker and tests).
+	pub fn set_ocio_config_path(&mut self, path: impl Into<SharedString>, cx: &mut Context<Self>) {
+		let path = path.into();
+		self.ocio_config
+			.update(cx, |field, cx| field.set_path(path, cx));
+		cx.notify();
+	}
+
+	/// The custom disk-cache path currently entered.
+	pub fn custom_cache_path(&self, cx: &App) -> SharedString {
+		self.custom_cache_path.read(cx).path(cx)
+	}
+
+	/// Replaces the custom disk-cache path.
+	pub fn set_custom_cache_path(&mut self, path: impl Into<SharedString>, cx: &mut Context<Self>) {
+		let path = path.into();
+		self.custom_cache_path
+			.update(cx, |field, cx| field.set_path(path, cx));
+		cx.notify();
+	}
+
+	/// Selects the cache location option (0 = default, 1 = alongside,
+	/// 2 = custom) and enables the custom-path field accordingly — the
+	/// combo's own event path, exposed for tests.
+	pub fn select_cache_setting(&mut self, setting: i32, cx: &mut Context<Self>) {
+		let setting = setting.clamp(0, 2);
+		self.cache_setting = setting;
+		self.cache_location
+			.update(cx, |combo, cx| combo.set_selected(Some(setting as usize), cx));
+		self.custom_cache_path.update(cx, |field, cx| {
+			field.set_enabled(setting == 2, cx)
+		});
+		cx.notify();
+	}
+
+	/// Applies the edited settings (the C++ `accept()`): validates and
+	/// applies the OCIO config override first — an invalid config keeps the
+	/// dialog open — then the disk-cache location. Ok clears the error row.
+	pub fn commit(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
+		let ocio = self.ocio_config_path(cx).to_string();
+		self.engine
+			.update(cx, |engine, cx| engine.set_project_ocio_config(ocio, cx))?;
+		let custom = self.custom_cache_path(cx).to_string();
+		let setting = self.cache_setting;
+		let path = if setting == 2 { custom } else { String::new() };
+		self.engine
+			.update(cx, |engine, cx| engine.set_project_cache_location(setting, path, cx));
+		self.set_error(None, cx);
+		Ok(())
+	}
+
+	/// The error shown under the OCIO row after a rejected commit.
+	pub fn set_error(&mut self, msg: Option<String>, cx: &mut Context<Self>) {
+		self.error = msg;
+		cx.notify();
+	}
+
+	/// The commit error currently shown (`None` while the last commit
+	/// applied cleanly).
+	pub fn error(&self) -> Option<&String> {
+		self.error.as_ref()
+	}
+}
+
+impl<E: crate::oakui::engine::AppEngine> Render for ProjectPropertiesContent<E> {
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let colors = cx.default_colors().clone();
+		let project_name = self
+			.engine
+			.read(cx)
+			.project()
+			.map(|p| p.name.clone())
+			.unwrap_or_default();
+
+		// The 浏览… button picks an OCIO config through the platform file
+		// dialog and fills the path field (the resolve is async, so the
+		// picker's receiver is drained in a spawned task).
+		let ocio_field = self.ocio_config.clone();
+		let browse = div()
+			.id("projprops-browse")
+			.px_3()
+			.py_1()
+			.rounded_md()
+			.bg(colors.background)
+			.border_1()
+			.border_color(colors.border)
+			.text_color(colors.text)
+			.cursor_pointer()
+			.on_click(cx.listener(move |_this, _event: &gpui::ClickEvent, _window, cx| {
+				let receiver = cx.prompt_for_paths(PathPromptOptions {
+					files: true,
+					directories: false,
+					multiple: false,
+					prompt: None,
+				});
+				cx.spawn(async move |this, cx| {
+					if let Ok(Ok(Some(paths))) = receiver.await {
+						if let Some(path) = paths.first() {
+							let path = path.to_string_lossy().into_owned();
+							let _ = this.update(cx, |this, cx| this.set_ocio_config_path(path, cx));
+						}
+					}
+				})
+				.detach();
+			}))
+			.child(i18n::tr("projprops.browse"));
+
+		let ocio_row = div()
+			.flex()
+			.gap_2()
+			.child(ocio_field)
+			.child(browse);
+
+		let custom_row = form_row(
+			&colors,
+			i18n::tr("projprops.cache.custom").into(),
+			self.custom_cache_path.clone(),
+		);
+
+		div()
+			.flex()
+			.flex_col()
+			.gap_3()
+			.w_full()
+			.child(form_row(
+				&colors,
+				i18n::tr("projprops.name").into(),
+				div().text_color(colors.text).child(project_name),
+			))
+			.child(
+				form_row(
+					&colors,
+					i18n::tr("projprops.ocio_config").into(),
+					ocio_row,
+				)
+				.child(if let Some(error) = &self.error {
+					div()
+						.debug_selector(|| "projprops-error".into())
+						.text_color(gpui::rgb(0xe5484d))
+						.text_xs()
+						.child(error.clone())
+				} else {
+					div()
+				}),
+			)
+			.child(form_row(
+				&colors,
+				i18n::tr("projprops.cache.location").into(),
+				self.cache_location.clone(),
+			))
+			.child(custom_row)
 	}
 }
 
