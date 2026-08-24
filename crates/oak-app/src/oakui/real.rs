@@ -3330,13 +3330,19 @@ impl AppEngine for RealEngine {
 			return;
 		};
 		let internal = oak_node::track::pixel_height_to_internal_height(f32::from(height) as i32);
-		let guard = graphops::lock(&project);
-		for kind in [TrackType::Video, TrackType::Audio, TrackType::Subtitle] {
-			for track in graphops::track_ids(&guard.graph, seq, kind) {
-				graphops::set_track_height(&project, track, internal);
-			}
+		// Collect the track ids under the graph lock, then release it:
+		// graphops::set_track_height locks the project itself, so calling
+		// it with the guard held self-deadlocks (the Cmd+= freeze).
+		let ids: Vec<NodeId> = {
+			let guard = graphops::lock(&project);
+			[TrackType::Video, TrackType::Audio, TrackType::Subtitle]
+				.into_iter()
+				.flat_map(|kind| graphops::track_ids(&guard.graph, seq, kind))
+				.collect()
+		};
+		for track in ids {
+			graphops::set_track_height(&project, track, internal);
 		}
-		drop(guard);
 		self.rebuild_timeline();
 		cx.notify();
 	}
@@ -6641,6 +6647,22 @@ mod tests {
 		);
 	}
 
+	/// Cmd+= regression: set_track_height used to lock the project graph
+	/// and then call graphops::set_track_height (which locks it again)
+	/// inside the same scope — an instant self-deadlock. Completing this
+	/// call at all is the assertion.
+	#[gpui::test]
+	async fn set_track_height_does_not_self_deadlock(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+		cx.update(|app| {
+			engine.update(app, |engine, cx| engine.set_track_height(px(96.0), cx))
+		});
+		let height = cx.read(|app| engine.read(app).tracks[0].height());
+		assert_eq!(height, px(96.0), "the new height is applied");
+	}
+
 	/// Dropping a video-with-audio footage places BOTH a video clip and a
 	/// linked audio clip at the same range in ONE undoable entry (the NLE
 	/// A/V drop): one undo removes both, and the clips are linked.
@@ -6993,6 +7015,53 @@ mod tests {
 		let img = cx.read(|app| engine.read(app).cpu_frame(Monitor::Program, app));
 		let bytes = img.as_bytes(0).expect("seek-after-play frame bytes");
 		assert!(!bytes.is_empty(), "seek after playback has content");
+	}
+
+	/// A project with a real clip on the timeline survives a save/load
+	/// roundtrip (also the fixture generator for viewer debugging: the
+	/// saved file lands at a stable temp path).
+	#[gpui::test]
+	async fn save_load_roundtrips_a_timeline_clip(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+		let media = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/demo.mp4");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.import_footage(media.clone(), cx).expect("import")
+			})
+		});
+		let name = media.file_name().unwrap().to_string_lossy().into_owned();
+		let entry = cx.read(|app| {
+			engine.read(app).roots().into_iter().find(|e| e.name.as_ref() == name)
+		}).expect("imported footage is listed");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(0), cx)
+			})
+		});
+		let path = std::env::temp_dir().join("oakapp_save_roundtrip.ove");
+		cx.update(|app| {
+			engine.update(app, |engine, _cx| {
+				let project = engine.project_ref().expect("project").clone();
+				crate::oakui::graphops::save_ove(&project, &path).expect("save")
+			})
+		});
+		// Load it back: the footage and the timeline clip are restored.
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.open_project_path(path.clone(), cx).expect("load")
+			})
+		});
+		let (roots, tracks) = cx.read(|app| {
+			let engine = engine.read(app);
+			(
+				engine.roots().iter().map(|e| e.name.to_string()).collect::<Vec<_>>(),
+				engine.tracks.iter().map(|t| t.clips.len()).sum::<usize>(),
+			)
+		});
+		assert!(roots.iter().any(|n| n == &name), "footage survives: {roots:?}");
+		assert!(tracks > 0, "the timeline clip survives the roundtrip");
 	}
 
 	/// The production scenario: real 1080p media on the timeline, driving
