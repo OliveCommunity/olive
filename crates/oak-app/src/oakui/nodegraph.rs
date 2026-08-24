@@ -193,6 +193,9 @@ pub struct RealPort {
 	pub id: PortId,
 	/// Direction.
 	pub kind: PortKind,
+	/// The node input id this port fronts ("" for the implicit output) —
+	/// edges resolve to ports by this, not by the display label.
+	pub input_id: SharedString,
 	/// Port label.
 	pub label: SharedString,
 	/// Wire type.
@@ -427,20 +430,47 @@ fn build_graph_impl(
 			}
 		};
 
-		// Inputs.
-		let input_ids: Vec<String> = g
+		// Inputs: only stream inputs (texture / samples) become ports — an
+		// OFX plugin declares every PARAMETER as an input too, and those
+		// belong to the params panel, not the card (the garbled wall of
+		// "NatronOfxParamProcess*" rows). Secret/internal inputs are hidden
+		// outright. The port label is the human-readable display name (the
+		// OFX param label), the wire lookup uses the id.
+		let input_decls: Vec<(usize, String, String)> = g
 			.get(typed.id)
-			.map(|e| e.core.inputs.iter().map(|i| i.id.clone()).collect())
+			.map(|e| {
+				e.core
+					.inputs
+					.iter()
+					.enumerate()
+					.filter(|(_, i)| {
+						matches!(
+							i.value_type,
+							oak_node::value::ValueType::Texture
+								| oak_node::value::ValueType::Samples
+						) && i.flags & oak_node::input::flags::HIDDEN == 0
+					})
+					.map(|(idx, i)| {
+						let label = if i.display_name.is_empty() {
+							i.id.clone()
+						} else {
+							i.display_name.clone()
+						};
+						(idx, i.id.clone(), label)
+					})
+					.collect()
+			})
 			.unwrap_or_default();
-		let mut inputs = Vec::with_capacity(input_ids.len());
-		for (idx, id_str) in input_ids.iter().enumerate() {
+		let mut inputs = Vec::with_capacity(input_decls.len());
+		for (idx, id_str, label) in &input_decls {
 			if id_str.is_empty() {
 				continue;
 			}
 			inputs.push(RealPort {
-				id: port_id(ident, PortKind::Input, idx as u32),
+				id: port_id(ident, PortKind::Input, *idx as u32),
 				kind: PortKind::Input,
-				label: id_str.clone().into(),
+				input_id: id_str.clone().into(),
+				label: label.clone().into(),
 				data_type: video_type(),
 				connected: g.is_input_connected(typed.id, id_str, -1),
 			});
@@ -451,6 +481,7 @@ fn build_graph_impl(
 		let outputs = vec![RealPort {
 			id: port_id(ident, PortKind::Output, 0),
 			kind: PortKind::Output,
+			input_id: SharedString::new_static(""),
 			label: SharedString::new_static("out"),
 			data_type: out_type(),
 			connected: out_count > 0,
@@ -489,17 +520,21 @@ fn build_graph_impl(
 			if !built.iter().any(|(t, _)| t.ident == to_ident) {
 				continue;
 			}
-			let to_index = built
+			// The port id packs the DECLARATION index of the input (stable
+			// across the param filtering), so resolve the edge to the
+			// port's own id, not a recomputed index.
+			let to_port = built
 				.iter()
 				.find(|(t, _)| t.ident == to_ident)
-				.and_then(|(_, n)| n.inputs.iter().position(|p| p.label.as_ref() == conn_id))
-				.unwrap_or(0) as u32;
+				.and_then(|(_, n)| n.inputs.iter().find(|p| p.input_id.as_ref() == conn_id))
+				.map(|p| p.id)
+				.unwrap_or_else(|| port_id(to_ident, PortKind::Input, 0));
 			edges_of.push(RealEdge {
 				id: real_edge_id(typed.ident, to_ident, &conn_id),
 				from_node: NodeId(typed.ident),
 				from_port: port_id(typed.ident, PortKind::Output, 0),
 				to_node: NodeId(to_ident),
-				to_port: port_id(to_ident, PortKind::Input, to_index),
+				to_port,
 			});
 		}
 		node_edges.push((typed.ident, edges_of));
