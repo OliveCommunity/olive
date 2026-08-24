@@ -1,10 +1,10 @@
 # Oak 主界面 UI 改版计划
 
 > 本文是主界面重新设计的执行手册，面向 DeepSeek Flash（**不识字图，本文全部
-> 用文字精确定义目标形态**）。详细程度对齐 `completed/r5-app-migration-guide.md`。
+> 用文字精确定义目标形态**）。详细程度对齐 `r5-app-migration-guide.md`。
 > 工作分支：`c-abi-migration`。**启动前提：R5（C ABI app 侧迁移）验收完成之
 > 后**；启动后可与 Google Test 统一迁移并行——协调规则见 §2。
-> 依据：`design/Oak-UI设计图-主界面-标注版.png`、`...-效果栈版.png`、
+> 依据：`../../../../design/Oak-UI设计图-主界面-标注版.png`、`...-效果栈版.png`、
 > `...-节点编辑器版.png`（共 10 项关键改动，本文逐项落地）。
 
 ---
@@ -198,7 +198,7 @@ R5 已验收完成（§2.1），无错峰约束。建议先做无依赖的布局
 
 ## 5. 测试要求（沿用项目规则）
 
-- 所有测试用 **Google Test**（`CONTRIBUTING.md` 已立规）。
+- 所有测试用 **Google Test**（`../../../../CONTRIBUTING.md` 已立规）。
 - 检查器卡片模型、效果栈↔节点图数据一致性、轨道头控件状态、状态栏信息、
   工具条功能：补 Google Test 用例（`tests/gtest/`，`gtest_discover_tests`）。
 - UI 行为改动以现有 `olive-gtest` 不回归为底线；新增可测逻辑（卡片模型、
@@ -210,4 +210,4 @@ R5 已验收完成（§2.1），无错峰约束。建议先做无依赖的布局
 - 不改 `oakengine_*` 公共 API（见 `riir.md` 的 API 冻结保证）。
 - 不动 engine 内部实现、不动 R5 的 facade 工作。
 - 不重写底层渲染/播放路径；本计划只改 UI 布局、容器与交互。
-- 不做 AI 相关 UI（属 `ai-agent-design.md` 范围，另行）。
+- 不做 AI 相关 UI（属 `../ai-agent-design.md` 范围，另行）。

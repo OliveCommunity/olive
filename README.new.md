@@ -45,7 +45,7 @@ Oak is split into small, independently testable components with a pure C ABI at 
 | `oak-render-worker` | process | headless render process that executes frames off the GUI thread (NDJSON IPC) |
 | `oak-cli` | tool | command-line frontend for the engine: media info, probing, rendering, and transcoding without the GUI |
 
-The C ABI boundary is what makes the engine embeddable and is the foundation for a planned module-by-module rewrite of the engine in Rust (see [`docs/zh/plans/riir.md`](docs/zh/plans/riir.md)).
+The C ABI boundary is what makes the engine embeddable and is the foundation for a planned module-by-module rewrite of the engine in Rust (see [`docs/zh/plans/completed/riir.md`](docs/zh/plans/completed/riir.md)).
 
 <!-- DIAGRAM: component / ABI layout -->
 ![Architecture diagram](docs/images/architecture.png)
@@ -89,7 +89,7 @@ Contributions are welcome. Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) firs
 - the **Google Test** requirement for all tests,
 - the C ABI boundary contract for engine-facing code.
 
-Useful project docs: [`docs/zh/`](docs/zh/) (中文文档), [`docs/zh/facade-migration-roadmap.md`](docs/zh/facade-migration-roadmap.md), [`docs/zh/plans/riir.md`](docs/zh/plans/riir.md).
+Useful project docs: [`docs/zh/`](docs/zh/) (中文文档), [`docs/zh/facade-migration-roadmap.md`](docs/zh/facade-migration-roadmap.md), [`docs/zh/plans/completed/riir.md`](docs/zh/plans/completed/riir.md).
 
 ## License
 

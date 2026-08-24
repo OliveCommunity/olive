@@ -7,7 +7,7 @@
 > through the [`ffmpeg-next`] crate (decode, probe, audio conform,
 > encode); the OIIO engine remains a stub in this build.
 >
-> Single-lib unification (M14, `docs/zh/plans/riir/single-lib.md`): the
+> Single-lib unification (M14, `../../docs/zh/plans/completed/riir/single-lib.md`): the
 > C-ABI export layer (`src/ffi.rs`) and the module-crossing bridge
 > (`src/bridge/`) are gone. Other module crates and the oakengine facade
 > call this crate's modules directly; the facade (`crates/oakengine`)

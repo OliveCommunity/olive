@@ -132,7 +132,7 @@ TEST_F(TimelineTest, AddTrack) {
 - `ctest -N` 对比基线（只增不减）；全量 `--output-on-failure` 绿。
 - 全仓库 grep 确认无 `OAK_ADD_TEST`/`OAK_ASSERT`/`make_oakengine_test`/
   `olive_add_test` 残留。
-- 更新 `docs/zh/` 相关文档与本指引标注"已完成"。
+- 更新 `../..` 相关文档与本指引标注"已完成"。
 
 ## 6. 注意事项（别踩坑）
 

@@ -104,6 +104,6 @@ v1 假设单写者（SQLite `busy_timeout`，PG 行锁）；多写者协作是�
 PG 全量运行，未设置则跳过并打印说明。该 URL 应指向专用测试库：每个
 测试会重置四张表。
 
-另见：[M10 oak-storage 手册](plans/riir/M10-oak-storage.md)、
-[M13 写穿计划](plans/riir/M13-storage-live.md)、
+另见：[M10 oak-storage 手册](plans/completed/riir/M10-oak-storage.md)、
+[M13 写穿计划](plans/completed/riir/M13-storage-live.md)、
 [工程文件格式参考](project-file-reference.md)。

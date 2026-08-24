@@ -1,6 +1,6 @@
 # RIIR 绞杀者模式执行计划：liboakengine 模块化拆分与渐进式 Rust 重写
 
-> 本文档描述在 C ABI 迁移战役（见 `completed/c-abi-migration-handoff.md`）完成之后，
+> 本文档描述在 C ABI 迁移战役（见 `c-abi-migration-handoff.md`）完成之后，
 > 如何用绞杀者模式（Strangler Fig）把 liboakengine.so 安全地拆成若干小模块，
 > 再逐个重写为 Rust。
 > **核心约束：每一步都可验证、可回退；任何一步失败都不影响已验证的部分。**
@@ -103,7 +103,7 @@
 
 ### Step 1 — 冻结 ABI
 - 评审模块对外 C ABI 头（公开 facade 已有部分直接复用；模块间内部调用需要的
-  新增内部头，按 `completed/c-abi-migration-handoff.md` §6.1 的同一套规则写：纯 C 类型、
+  新增内部头，按 `c-abi-migration-handoff.md` §6.1 的同一套规则写：纯 C 类型、
   buf/size 约定、owned/borrowed 注释、错误码）。
 - 用门禁脚本生成 ABI 快照（§5-G1）并入库。**此后该头的任何改动都是显式评审行为。**
 

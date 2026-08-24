@@ -20,5 +20,5 @@
   `r7-pure-abi-plan.md`
 
 这些文档**只作历史参考**，其中的"当前状态/进行中"描述均已是
-过去时。后续工作在上一层：`../riir/`（模块拆分）、
-`../gtest-migration-guide.md`、`../ui-redesign-plan.md`。
+过去时。后续工作在上一层：`riir/`（模块拆分）、
+`gtest-migration-guide.md`、`ui-redesign-plan.md`。

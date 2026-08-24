@@ -45,7 +45,7 @@ Oak 拆分为若干可独立测试的组件，组件之间以**纯 C ABI** 为�
 | `oak-render-worker` | 进程 | 无头渲染进程，在 GUI 线程之外渲染帧（NDJSON IPC） |
 | `oak-cli` | 工具 | 引擎的命令行前端：媒体信息、探测、渲染、转码，无需 GUI |
 
-这条 C ABI 边界让引擎可以被嵌入，也是后续将引擎按模块逐步用 Rust 重写的基础（见 [`riir.md`](plans/riir.md)）。
+这条 C ABI 边界让引擎可以被嵌入，也是后续将引擎按模块逐步用 Rust 重写的基础（见 [`riir.md`](plans/completed/riir.md)）。
 
 <!-- 架构图：组件与 ABI 布局 -->
 ![架构图](../images/architecture.png)
@@ -89,7 +89,7 @@ ctest --test-dir build --output-on-failure
 - 所有测试必须使用 **Google Test** 编写，
 - 面向引擎代码的 C ABI 边界契约。
 
-更多项目文档：[中文文档目录](./)、[`facade-migration-roadmap.md`](plans/completed/facade-migration-roadmap.md)、[`riir.md`](plans/riir.md)、[`gtest-migration-guide.md`](plans/gtest-migration-guide.md)。
+更多项目文档：[中文文档目录](./)、[`facade-migration-roadmap.md`](plans/completed/facade-migration-roadmap.md)、[`riir.md`](plans/completed/riir.md)、[`gtest-migration-guide.md`](plans/completed/gtest-migration-guide.md)。
 
 ## 许可证
 

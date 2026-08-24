@@ -101,7 +101,7 @@ cmake --build build && ctest --test-dir build --output-on-failure
   - NodeValue::Type → int, NodeValue::k_* → AppNodeValueType 常量
   - keyframeproperties.h 改为前置声明 NodeKeyframe
 - [x] Phase 3：node/node.h + node/param.h 主体清理完成，**以双适配器（oak:: wrapper）形态落地**，
-  消费侧统一经 `shared/include/oakutil/oaknode.h` 访问 engine，AppNodeInput 方案已废弃
+  消费侧统一经 `../../../../shared/include/oakutil/oaknode.h` 访问 engine，AppNodeInput 方案已废弃
   （落地细节与 WRAPPER-GAP 登记见 [r8-p3-node-param-abi.md](r8-p3-node-param-abi.md) 的"落地状态"一节）
 - [x] Phase 4-9 + 补充批（2026-07-29 完成）：node/project*、render/*、timeline/*、codec/*、audio/*、
   tool/*、undo/*、pluginSupport/* 及 P3 遗留（block/track/clip/gizmo/factory 等）全部清理，
@@ -110,7 +110,7 @@ cmake --build build && ctest --test-dir build --output-on-failure
     thumbnail/waveform/frame cache、playback cache、disk folder、sequence_track_list、
     visible_block_at_time、set_length_and_media_out、node_free、footage_is_valid、
     block_get_track 等）
-  - 新增 app 侧构件：`shared/include/oakutil/oakvideo.h`（oak::VideoParams/ColorTransform）、
+  - 新增 app 侧构件：`../../../../shared/include/oakutil/oakvideo.h`（oak::VideoParams/ColorTransform）、
     `app/common/`（tooltypes.h、trackreferencehandle.h、keyframetypes.h、subtitleapp.h、
     serializedlayoutinfoapp.h、nodedatatypes.h、projecttypes.h、sliderdisplaytypeapp.h）、
     `app/timeline/timelinecommonapp.h`（TimelineApp 枚举镜像）、

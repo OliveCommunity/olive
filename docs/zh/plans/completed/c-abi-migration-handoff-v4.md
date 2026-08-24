@@ -81,7 +81,7 @@ cd cmake-build-debug && ctest --output-on-failure -j$(nproc)
   colorcodingapp、filefunctionsapp、hashstreamapp、htmlapp、xmlutilsapp、debugapp）、
   各 handle 头（keyframehandle/markerhandle/cliphandle/trackhandle/colorprocessorhandle/
   vieweroutpututils）、`markerpainting.*`、`app/timeline/`、`app/ui/icons/`。
-- **文档**：v3 交接文档（`c-abi-migration-handoff.md`）、RIIR 计划（`../riir.md`）、
+- **文档**：v3 交接文档（`c-abi-migration-handoff.md`）、RIIR 计划（`riir.md`）、
   roadmap 批次记录（经 LocalHistory 恢复，`facade-migration-roadmap.md`）。
 - **结构性改动**：B1 图标（engine 返回图标名 + app from_name 映射，已修复一致）、
   B2 布局 POD（SerializedLayoutInfo 全链路，已修复一致）、B3 coreengine.h、

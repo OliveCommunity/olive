@@ -34,7 +34,7 @@ infrastructure ones first — they simplify everything else).
 - 每完成一个 issue：删掉对应 `bridge_->subscribe` / `oakengine_event_subscribe`
   调用，并在本文勾掉该条。
   When done: remove the matching subscribe calls and check off the item here.
-- 架构总览 / Architecture background：`docs/zh/plans/eliminate-event-bridge.md`
+- 架构总览 / Architecture background：`eliminate-event-bridge.md`
 
 ---
 

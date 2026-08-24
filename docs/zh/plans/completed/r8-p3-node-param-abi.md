@@ -14,7 +14,7 @@
 本阶段最终按**双适配器**形态落地，与下文 §2.1 的原始决策不同：
 
 - 消费侧不直接调 C ABI，统一经过 C++ wrapper 层
-  `shared/include/oakutil/oaknode.h`（namespace `oak`）：
+  `../../../../shared/include/oakutil/oaknode.h`（namespace `oak`）：
   `Node`/`Project`/`Footage`/`Input`/`Keyframe`/`KeyframeTrackRef`/`InputPair`
   + `NodeCategory` 枚举 + `NodeConnection`/`ContextNodeItem` 结构。
   wrapper 只做转发；owned/borrowed 语义见文件头注释。
