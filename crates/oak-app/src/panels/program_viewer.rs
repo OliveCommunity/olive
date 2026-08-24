@@ -276,6 +276,20 @@ impl<E: AppEngine> ProgramViewerPanel<E> {
 		{
 			self.last_cpu_frame = Some(displayed.clone());
 			let displayed = displayed.clone();
+			if std::env::var_os("OAK_DEBUG_VIEWER").is_some() {
+				let sz = displayed.size(0);
+				eprintln!("[viewer] push frame {}x{}", sz.width.0, sz.height.0);
+				// Dump the displayed pixels (BGRA -> PPM) for black-frame
+				// debugging: what the viewer RECEIVES, before the GPU path.
+				if let Some(bytes) = displayed.as_bytes(0) {
+					let (w, h) = (sz.width.0 as usize, sz.height.0 as usize);
+					let mut ppm = format!("P6\n{w} {h}\n255\n").into_bytes();
+					for px in bytes[..w * h * 4].chunks_exact(4) {
+						ppm.extend_from_slice(&[px[2], px[1], px[0]]);
+					}
+					let _ = std::fs::write("/tmp/oak_viewer_frame.ppm", ppm);
+				}
+			}
 			self.viewer
 				.update(cx, |viewer, cx| viewer.set_cpu_frame(Some(displayed), cx));
 		}

@@ -391,7 +391,6 @@ fn audio_tickets_roundtrip_through_shm_slots() {
 	}
 	pump_until(&dispatcher, &results, 4);
 
-	let mut seen_worker = [false; 2];
 	for result in results.lock().unwrap().drain(..) {
 		let payload = result.expect("audio rendered");
 		let TicketPayload::ShmAudio(audio) = payload else {
@@ -407,10 +406,12 @@ fn audio_tickets_roundtrip_through_shm_slots() {
 		let samples = audio.samples();
 		assert_eq!(samples.len(), 2000 * 2);
 		assert!(samples.iter().all(|&v| v == 0.0), "empty montage is silence");
-		seen_worker[audio.worker as usize] = true;
+		// Audio tickets are Seek priority — claimable by ANY worker (the
+		// seek-starvation fix), so there is no shard-spread assertion; what
+		// matters is that every ticket rendered on a live worker.
+		assert!(audio.worker < 2, "rendered on a live worker");
 		dispatcher.release_audio_frame(&audio);
 	}
-	assert!(seen_worker[0] && seen_worker[1], "both workers rendered audio");
 	// Samples are read via the slot mapping and parsed into a Vec — never
 	// through the counted `slot_to_vec` copy path.
 	assert_eq!(main_heap_frame_copies(), 0);

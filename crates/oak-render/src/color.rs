@@ -316,12 +316,27 @@ impl ColorProcessor {
 	/// [`create_display_icc_bgra8`](Self::create_display_icc_bgra8) — the
 	/// R/B swizzle is baked into the chain, so the bytes go through OCIO's
 	/// RGBA entry point unchanged. A pass-through processor is a no-op.
+	///
+	/// The conversion detours through F32: the default CPU processor is
+	/// F32-finalized and rejects packed u8 buffers with a bit-depth
+	/// mismatch, and the ocio-rs binding exposes no Uint8-finalized CPU
+	/// processor. The round-trip cost is one small staging buffer.
 	pub fn convert_bgra8(&self, data: &mut [u8], pixels: i64) -> Result<()> {
 		let Some(cpu) = &self.cpu else {
 			return Ok(());
 		};
-		cpu.try_apply_rgba_packed_bit_depth(data, ocio_rs::BitDepth::Uint8, pixels, 4)
-			.map_err(|e| Error::Failed(format!("OCIO packed-u8 apply: {e}")))
+		let count = (pixels.max(0) as usize) * 4;
+		if data.len() < count {
+			return Err(Error::Invalid);
+		}
+		let mut f32s: Vec<f32> =
+			data[..count].iter().map(|&v| v as f32 / 255.0).collect();
+		cpu.try_apply_rgba_pixels(&mut f32s, pixels, 4)
+			.map_err(|e| Error::Failed(format!("OCIO f32 apply (bgra8 detour): {e}")))?;
+		for (dst, v) in data[..count].iter_mut().zip(f32s) {
+			*dst = (v.clamp(0.0, 1.0) * 255.0).round() as u8;
+		}
+		Ok(())
 	}
 
 	/// Convert an F32 RGBA buffer in place (tightly packed, 4 floats per
@@ -732,6 +747,65 @@ mod tests {
 		assert!((out[0] - out[1]).abs() < 1e-3 && (out[1] - out[2]).abs() < 1e-3,
 			"grey stays grey: {out:?}");
 		assert!((out[3] - 1.0).abs() < 1e-5, "alpha preserved");
+	}
+
+	/// The exact chain the viewers use (BGRA8, display-class ICC from
+	/// `OAK_DISPLAY_ICC`): a mid-grey frame must NOT collapse to black —
+	/// the viewer-black-screen regression guard. Skipped without the env
+	/// var (point it at the display profile under investigation).
+	#[test]
+	fn display_icc_bgra8_never_outputs_black() {
+		let _lock = config_lock();
+		if set_up_default_config().is_err() {
+			return;
+		}
+		let Ok(icc) = std::env::var("OAK_DISPLAY_ICC") else {
+			eprintln!("OAK_DISPLAY_ICC unset; skipping");
+			return;
+		};
+		let p = ColorProcessor::create_display_icc_bgra8("sRGB Encoded Rec.709 (sRGB)", &icc)
+			.expect("handle always returned");
+		assert!(p.is_valid(), "BGRA8 ICC processor builds from {icc}");
+		// BGRA bytes: 0.5 grey, 0.75 red, 0.25 green, 0.6 blue.
+		let mut data: Vec<u8> = vec![
+			128, 128, 128, 255, // grey
+			0, 0, 191, 255, // red
+			0, 64, 0, 255, // green
+			153, 0, 0, 255, // blue
+		];
+		let bgra_result = p.convert_bgra8(&mut data, 4);
+		eprintln!("bgra8 convert: {bgra_result:?} -> {data:?}");
+		// The F32 RGBA leg (the CpuF32 display path) must not crush to
+		// black either — and unlike the u8 leg it must not even fail.
+		let p32 = ColorProcessor::create_display_icc("sRGB Encoded Rec.709 (sRGB)", &icc)
+			.expect("handle always returned");
+		assert!(p32.is_valid(), "F32 ICC processor builds from {icc}");
+		let mut f32s: Vec<f32> = vec![
+			0.5, 0.5, 0.5, 1.0, // grey
+			0.75, 0.0, 0.0, 1.0, // red
+			0.0, 0.25, 0.0, 1.0, // green
+			0.0, 0.0, 0.6, 1.0, // blue
+		];
+		let f32_result = p32.convert_f32_rgba(&mut f32s, 4);
+		eprintln!("f32 convert: {f32_result:?} -> {f32s:?}");
+		bgra_result.expect("convert");
+		for (i, px) in data.chunks_exact(4).enumerate() {
+			assert_eq!(px[3], 255, "pixel {i}: alpha preserved");
+			let rgb: u32 = px[0] as u32 + px[1] as u32 + px[2] as u32;
+			assert!(rgb > 0, "pixel {i} must not be crushed to black: {px:?}");
+		}
+		// Grey stays greyish (a display profile must not tint wildly).
+		let (b, g, r) = (data[0] as i32, data[1] as i32, data[2] as i32);
+		assert!(
+			(b - g).abs() < 24 && (g - r).abs() < 24,
+			"grey stays grey through the display ICC: {b} {g} {r}"
+		);
+		f32_result.expect("convert f32");
+		for (i, px) in f32s.chunks_exact(4).enumerate() {
+			assert!((px[3] - 1.0).abs() < 1e-3, "pixel {i}: alpha preserved");
+			let rgb = px[0] + px[1] + px[2];
+			assert!(rgb > 0.0, "pixel {i} must not be crushed to black: {px:?}");
+		}
 	}
 
 	#[test]
