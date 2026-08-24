@@ -41,6 +41,7 @@ use gpui::{
 	Entity, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point,
 	Render, ScrollWheelEvent, SharedString, StatefulInteractiveElement, Styled, Window, AppContext, Focusable,
 };
+use gpui::prelude::FluentBuilder;
 use std::sync::Arc;
 
 pub use gpui_widgets::value::{SliderValue, ValueKind};
@@ -666,6 +667,15 @@ impl Render for ComboBox {
 					cx.notify();
 				}),
 			)
+			// A click anywhere outside the combo closes the open popup (the
+			// dropdown-dismiss users expect; the toggle click above is inside,
+			// so it never triggers this).
+			.on_mouse_down_out(cx.listener(|this, _event: &MouseDownEvent, _window, cx| {
+				if this.open {
+					this.open = false;
+					cx.notify();
+				}
+			}))
 			.on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
 				match event.keystroke.key.as_str() {
 					"down" | "up" => {
@@ -779,13 +789,21 @@ pub enum SpinBoxEvent {
 
 /// A numeric field over a [`SliderModel`].
 ///
-/// Mouse: click focuses, the wheel steps (Shift = fine). Keyboard (once
-/// focused): Up/Down step, Shift-Up/Down fine-step, Home/End jump to the
-/// range ends.
+/// Mouse: click focuses, double click opens a numeric editor (the app's
+/// text input; commit on blur/Enter, Escape cancels), the wheel steps ONLY
+/// while the field is focused (Shift = fine) — hover-wheel is deliberately
+/// inert so two-finger trackpad scrolling across a dialog never drifts the
+/// value. Keyboard (once focused): Up/Down step, Shift-Up/Down fine-step,
+/// Home/End jump to the range ends, typing a digit starts editing.
 pub struct SpinBox {
 	control: usize,
 	model: SliderModel,
 	focus: FocusHandle,
+	/// The numeric editor, while a direct-entry edit is open.
+	edit: Option<Entity<gpui_elements::editable_text::EditableTextState>>,
+	/// Whether the open editor should cancel (Escape) instead of commit
+	/// on blur.
+	edit_cancel: bool,
 }
 
 impl SpinBox {
@@ -800,6 +818,8 @@ impl SpinBox {
 			control,
 			model,
 			focus: cx.focus_handle(),
+			edit: None,
+			edit_cancel: false,
 		}
 	}
 
@@ -823,6 +843,51 @@ impl SpinBox {
 		}
 	}
 
+	/// Open the numeric editor; `seed` replaces the text (a typed digit
+	/// starts a fresh entry, double-click edits the current value).
+	fn begin_edit(&mut self, seed: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
+		let text = seed.unwrap_or_else(|| self.display().to_string());
+		let editor = cx.new(|cx| {
+			gpui_elements::editable_text::EditableTextState::new(
+				gpui_elements::editable_text::StringStorage::from(text),
+				cx,
+			)
+		});
+		let weak = editor.downgrade();
+		let focus = editor.read(cx).focus_handle(cx);
+		cx.on_focus_out(&focus, window, move |this: &mut Self, _event, _window, cx| {
+			if let Some(editor) = weak.upgrade() {
+				let text = editor.read(cx).as_str().to_string();
+				if !this.edit_cancel {
+					this.apply_text(&text, cx);
+				}
+			}
+			this.edit = None;
+			this.edit_cancel = false;
+			cx.notify();
+		})
+		.detach();
+		window.focus(&editor.read(cx).focus_handle(cx), cx);
+		self.edit = Some(editor);
+		cx.notify();
+	}
+
+	/// Parse `text` as the model's value kind, clamp it and apply + emit.
+	fn apply_text(&mut self, text: &str, cx: &mut Context<Self>) {
+		let parsed: Option<f64> = match self.model.value() {
+			SliderValue::Integer(_) => text.trim().parse::<i64>().ok().map(|v| v as f64),
+			_ => text.trim().parse::<f64>().ok(),
+		};
+		let Some(raw) = parsed else {
+			return;
+		};
+		// The commit reports through ValueChanged like every other gesture
+		// (the hosts subscribe to it; EditCommitted stays for API parity
+		// with the slider-less hosts).
+		let changed = self.model.apply_raw(raw);
+		self.emit_changed(changed, cx);
+	}
+
 	/// Format the current value for display.
 	fn display(&self) -> SharedString {
 		match self.model.value() {
@@ -842,7 +907,7 @@ impl Render for SpinBox {
 		let control = self.control;
 		let text = self.display();
 
-		div()
+		let mut root = div()
 			.id(ElementId::named_usize("oak-spinbox", control))
 			.rounded_md()
 			.border_1()
@@ -853,14 +918,26 @@ impl Render for SpinBox {
 			.track_focus(&self.focus)
 			.cursor_text()
 			.text_color(colors.text)
-			.child(text)
+			// While editing, the text input replaces the readout (not stacks
+			// under it).
+			.when(self.edit.is_none(), |root| root.child(text))
+			.on_click(cx.listener(|this, event: &gpui::ClickEvent, window, cx| {
+				if event.click_count() >= 2 {
+					this.begin_edit(None, window, cx);
+				}
+			}))
 			.on_mouse_down(
 				MouseButton::Left,
 				cx.listener(|this, _event: &MouseDownEvent, window, cx| {
 					window.focus(&this.focus, cx);
 				}),
 			)
-			.on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, _window, cx| {
+			.on_scroll_wheel(cx.listener(|this, event: &ScrollWheelEvent, window, cx| {
+				// Touchpad-safe: the wheel only steps a FOCUSED field, so
+				// two-finger scrolling over a dialog never drifts values.
+				if this.edit.is_some() || !this.focus.is_focused(window) {
+					return;
+				}
 				let dir = match event.delta {
 					gpui::ScrollDelta::Pixels(p) => {
 						if f32::from(p.y) > 0.0 { 1 } else { -1 }
@@ -873,17 +950,50 @@ impl Render for SpinBox {
 				let changed = this.model.apply_step(dir, fine);
 				this.emit_changed(changed, cx);
 			}))
-			.on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
+			.on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+				// While the numeric editor is open, Escape cancels the edit
+				// (blur still fires; edit_cancel makes it restore).
+				if this.edit.is_some() {
+					if event.keystroke.key.as_str() == "escape" {
+						this.edit_cancel = true;
+					}
+					return;
+				}
 				let fine = event.keystroke.modifiers.shift;
 				let changed = match event.keystroke.key.as_str() {
 					"up" => this.model.apply_step(1, fine),
 					"down" => this.model.apply_step(-1, fine),
 					"home" => this.model.set_fraction(0.0),
 					"end" => this.model.set_fraction(1.0),
-					_ => return,
+					_ => {
+						// Typing a number key (or sign/point) starts editing
+						// with that character — click, then just type.
+						let key = &event.keystroke.key;
+						let starts_number = key.len() == 1
+							&& key.chars().next().is_some_and(|c| {
+								c.is_ascii_digit() || c == '-' || c == '.'
+							}) && event.keystroke.modifiers == gpui::Modifiers::none();
+						if starts_number {
+							this.begin_edit(Some(key.clone()), window, cx);
+						}
+						return;
+					}
 				};
 				this.emit_changed(changed, cx);
 				cx.stop_propagation();
-			}))
+			}));
+
+		if let Some(editor) = self.edit.clone() {
+			// Numeric editor: an app text input bound to the editor state.
+			root = root.child(
+				crate::oakui::component::text_input(
+					ElementId::named_usize("oak-spinbox-edit", control),
+					cx,
+				)
+				.state(editor.downgrade())
+				.accepts_input(true),
+			);
+		}
+		root
 	}
 }
