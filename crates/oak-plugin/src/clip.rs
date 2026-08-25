@@ -112,6 +112,15 @@ impl ClipInstance {
 				),
 			);
 		}
+		// OfxImageClipPropConnected（ofxsImageEffect.cpp:1106 的
+		// `Clip::isConnected()` 是无默认值强读——缺这个属性时，CImg 这类
+		// 带可选 mask clip 的插件直接抛
+		// PropertyUnknownToHost → MissingHostFeature 紫帧）。默认 0
+		// （未连接），挂接输入纹理时由 set_input_texture 置 1。
+		props.set_one(
+			crate::host::PROP_CLIP_CONNECTED,
+			crate::property::Value::Int(0),
+		);
 		Self {
 			props,
 			name,
@@ -166,6 +175,14 @@ impl ClipInstance {
 	/// 挂接输入纹理（oaknode 侧 clip 输入值变化时由 param/render 桥
 	/// 调用）。`time` 用于多帧纹理选择。None 断开。
 	pub fn set_input_texture(&self, texture: Option<crate::render::Texture>, _time: f64) {
+		// The connection state follows the texture hand-off (the render
+		// driver only feeds clips that have input; optional mask clips
+		// stay 0, so `Clip::isConnected()` answers false for them).
+		let connected = i32::from(texture.is_some());
+		self.props.set_one(
+			crate::host::PROP_CLIP_CONNECTED,
+			crate::property::Value::Int(connected),
+		);
 		*self.input_texture.lock().unwrap_or_else(|e| e.into_inner()) = texture;
 	}
 

@@ -207,6 +207,38 @@ impl Image {
 			K_IMAGE_PROP_UNIQUE_ID,
 			vec![Value::String(unique_identifier())],
 		);
+		// OfxPropType="OfxTypeImage"：图像实例的类型标识（支持库
+		// validateImageBaseProperties 的必备项，带可校验默认值）。
+		img.props.define(
+			"OfxPropType",
+			vec![Value::String(std::ffi::CString::new("OfxTypeImage").unwrap())],
+		);
+		// OFX 必备图像属性（支持库 ImageBase/Image 构造的无默认值强读；
+		// 缺失即抛 PropertyUnknownToHost → MissingHostFeature 紫帧）：
+		// 方形像素 1.0；预乘声明（本管线按预乘 alpha 处理）；无场。
+		img.props.define(
+			"OfxImagePropPixelAspectRatio",
+			vec![Value::Double(1.0)],
+		);
+		img.props.define(
+			"OfxImageEffectPropPreMultiplication",
+			// kOfxImagePreMultiplied 的真实字符串值是
+			// "OfxImageAlphaPremultiplied"（ofxImageEffect.h），
+			// ofxs mapStrToPreMultiplicationEnum 只认这三个精确值。
+			vec![Value::String(
+				std::ffi::CString::new("OfxImageAlphaPremultiplied").unwrap(),
+			)],
+		);
+		img.props.define(
+			"OfxImagePropField",
+			vec![Value::String(std::ffi::CString::new("OfxFieldNone").unwrap())],
+		);
+		// OfxImageEffectPropRenderScale：openfx-misc 的
+		// checkBadRenderScaleOrField 用它比对渲染参数（1:1）。
+		img.props.define(
+			"OfxImageEffectPropRenderScale",
+			vec![Value::Double(1.0), Value::Double(1.0)],
+		);
 
 		img
 	}

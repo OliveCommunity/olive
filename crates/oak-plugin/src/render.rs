@@ -144,6 +144,37 @@ pub fn renderer_is_open_gl(renderer: &Renderer) -> bool {
 	renderer.kind() == oak_render::backend::BackendKind::Gl
 }
 
+/// A GL-kind marker context for [`RenderJob::renderer`]. The field's only
+/// consumer is the use_opengl decision's kind check
+/// ([`renderer_is_open_gl`]); the actual GL work (offscreen context, FBO,
+/// readback) goes through [`crate::gl_bridge`], which needs no renderer
+/// object. Passing this marker flips OpenGL-requiring plugins (the CImg
+/// suite, which answers `kOfxStatErrMissingHostFeature` on the CPU path)
+/// onto the real GL path in any process — including the headless
+/// oak-worker, where gl_bridge creates its own offscreen context.
+pub struct GlKindMarker;
+
+impl oak_render::backend::GpuContextLike for GlKindMarker {
+	fn kind(&self) -> oak_render::backend::BackendKind {
+		oak_render::backend::BackendKind::Gl
+	}
+	fn destroy_texture(&self, _token: u64) {}
+	fn upload(&self, _token: u64, _frame: &oak_render::texture::Frame) -> oak_render::error::Result<()> {
+		Ok(())
+	}
+	fn download(&self, _token: u64) -> oak_render::error::Result<oak_render::texture::Frame> {
+		Ok(oak_render::texture::Frame::new())
+	}
+	fn blit(
+		&self,
+		_src: u64,
+		_dst: u64,
+		_processor: Option<&oak_render::color::ColorProcessor>,
+	) -> oak_render::error::Result<()> {
+		Ok(())
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

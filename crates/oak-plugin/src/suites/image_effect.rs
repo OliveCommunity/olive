@@ -100,6 +100,9 @@ fn caught(f: impl FnOnce() -> Result<(), c_int>) -> c_int {
 	if code != status::OK && std::env::var_os("OAK_OFX_TRACE").is_some() {
 		eprintln!("[ofx] image-effect suite error {code} at {caller}");
 	}
+	if std::env::var_os("OAK_OFX_TRACE").is_some() {
+		eprintln!("[ofx] image-effect suite call at {caller} -> {code}");
+	}
 	code
 }
 

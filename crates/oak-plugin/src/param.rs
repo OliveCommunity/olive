@@ -442,8 +442,13 @@ impl ParamDef {
 				props.set_one(P_STRING_FILE_EXISTS, Value::Int(1));
 			}
 			TYPE_CHOICE => {
-				// 维度 0：选项数由插件 SetN 决定。
+				// 维度 0：选项数由插件 SetN 决定。ChoiceEnum（枚举值映射）
+				// 与 ChoiceLabelOption（OFX 1.5 按值标签）同样预定义空
+				// 数组——新支持库读它们时不是"未知属性"（其强读会抛成
+				// PropertyUnknownToHost → MissingHostFeature）。
 				props.define(P_CHOICE_OPTION, vec![]);
+				props.define("OfxParamPropChoiceEnum", vec![]);
+				props.define("OfxParamPropChoiceLabelOption", vec![]);
 			}
 			TYPE_CUSTOM => {
 				props.set_one(P_CUSTOM_INTERP, Value::Pointer(std::ptr::null_mut()));

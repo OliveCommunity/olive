@@ -264,6 +264,10 @@ impl Instance {
 			crate::suites::tag::INSTANCE,
 		);
 		let empty = PropertySet::new();
+		Self::add_action_arg_compat_props(&empty);
+		if std::env::var_os("OAK_OFX_TRACE").is_some() {
+			eprintln!("[probe-args] getClipPreferences in_args {:p} out {:p}", &empty, &out);
+		}
 		let stat = unsafe {
 			self.plugin
 				.call_action(ACTION_GET_CLIP_PREFERENCES, inst_handle, &empty, &out)
@@ -360,6 +364,10 @@ impl Instance {
 			PROP_RENDER_SCALE,
 			vec![Value::Double(scale.x), Value::Double(scale.y)],
 		);
+		Self::add_action_arg_compat_props(&in_args);
+		if std::env::var_os("OAK_OFX_TRACE").is_some() {
+			eprintln!("[probe-args] getRod in_args {:p}", &in_args);
+		}
 		// out args 预定义（HS 行为：宿主先建属性表，插件只管写——
 		// 缺失属性上插件的 propSet 会失败被忽略）。
 		let out = PropertySet::new();
@@ -407,6 +415,10 @@ impl Instance {
 			PROP_RENDER_SCALE,
 			vec![Value::Double(scale.x), Value::Double(scale.y)],
 		);
+		Self::add_action_arg_compat_props(&in_args);
+		if std::env::var_os("OAK_OFX_TRACE").is_some() {
+			eprintln!("[probe-args] getRoi in_args {:p}", &in_args);
+		}
 		in_args.define(
 			PROP_ROI,
 			vec![
@@ -454,6 +466,19 @@ impl Instance {
 	}
 
 	/// isIdentity action：返回 Some((time, input_clip_name)) 表示本帧
+	/// OFX 1.4+/Natron 框架对 action in-args 的强读属性：缺了会被抛成
+	/// PropertyUnknownToHost → MissingHostFeature（紫帧根因）。每个
+	/// action in-args 都带上。
+	fn add_action_arg_compat_props(in_args: &PropertySet) {
+		use crate::property::Value;
+		// NatronOfxPropNativeOverlays：Natron 支持库强读（0 = 宿主不
+		// 支持原生 overlay，插件走自己的回退）。OfxImageEffectPropRenderPlanes
+		// 不放 in-args：Natron 框架按**字符串**读它，存在但类型是 Int
+		// 反而会抛 PropertyUnknownToHost（缺失它才容忍）——它只属于
+		// 图像/clip 属性（OFX 1.4 语义在 clipGetImagePlane 一侧）。
+		in_args.set_one("NatronOfxPropNativeOverlays", Value::Int(0));
+	}
+
 	/// 直接透传该输入 clip；None 表示需要真正 render。
 	///
 	/// 参照 HS: ofxhImageEffect.cpp:1378-1450：in args = time + scale +
@@ -475,16 +500,17 @@ impl Instance {
 		in_args.define(
 			PROP_RENDER_WINDOW,
 			vec![
-				Value::Double(0.0),
-				Value::Double(0.0),
-				Value::Double(0.0),
-				Value::Double(0.0),
+				Value::Int(0),
+				Value::Int(0),
+				Value::Int(0),
+				Value::Int(0),
 			],
 		);
 		in_args.set_one(
 			PROP_FIELD_TO_RENDER,
-			Value::String(CString::new("OfxImageFieldBoth").unwrap()),
+			Value::String(CString::new("OfxFieldNone").unwrap()),
 		);
+		in_args.set_one("NatronOfxPropNativeOverlays", Value::Int(0));
 		// out args 预定义：IsIdentity（String）+ Time（Double）。
 		let out = PropertySet::new();
 		out.set_one(PROP_IS_IDENTITY, Value::String(CString::new("").unwrap()));
@@ -494,14 +520,23 @@ impl Instance {
 			&self.props as *const PropertySet,
 			crate::suites::tag::INSTANCE,
 		);
+		if std::env::var_os("OAK_OFX_TRACE").is_some() {
+			eprintln!("[ofx] isIdentity in_args {:p} out_args {:p}", &in_args, &out);
+		}
 		let stat = unsafe {
 			self.plugin
 				.call_action(ACTION_IS_IDENTITY, inst_handle, &in_args, &out)
 		};
 		if stat != crate::suites::status::OK && stat != crate::suites::status::REPLY_DEFAULT {
-			return Err(crate::error::Error::Failed(format!(
-				"isIdentity 失败：{stat}"
-			)));
+			// A failed isIdentity is NOT fatal: the C++ plugin renderer
+			// never calls this action at all (plugins that error on it —
+			// the CImg suite answers MissingHostFeature — simply render
+			// normally). Treat any non-OK as "not identity" and let the
+			// real render decide.
+			if std::env::var_os("OAK_OFX_TRACE").is_some() {
+				eprintln!("[ofx] isIdentity stat {stat}: proceeding to render");
+			}
+			return Ok(None);
 		}
 		let identity = out.get(PROP_IS_IDENTITY, 0);
 		match identity {
@@ -541,23 +576,29 @@ impl Instance {
 			PROP_RENDER_SCALE,
 			vec![Value::Double(scale.x), Value::Double(scale.y)],
 		);
+		// RenderWindow 必须是 Int x4（支持库 ofxsPropertyValidation 对
+		// render in-args 的强制类型；像素坐标本就是整型——Double 会校验
+		// 失败成 kOfxStatFailed）。
 		in_args.define(
 			PROP_RENDER_WINDOW,
 			vec![
-				Value::Double(window.x1),
-				Value::Double(window.y1),
-				Value::Double(window.x2),
-				Value::Double(window.y2),
+				Value::Int(window.x1.round() as i32),
+				Value::Int(window.y1.round() as i32),
+				Value::Int(window.x2.round() as i32),
+				Value::Int(window.y2.round() as i32),
 			],
 		);
 		in_args.set_one(
 			PROP_FIELD_TO_RENDER,
-			Value::String(CString::new("OfxImageFieldBoth").unwrap()),
+			Value::String(CString::new("OfxFieldNone").unwrap()),
 		);
 		in_args.set_one(PROP_SEQUENTIAL_RENDER, Value::Int(0));
 		in_args.set_one(PROP_INTERACTIVE_RENDER, Value::Int(0));
 		in_args.set_one(PROP_RENDER_QUALITY_DRAFT, Value::Int(0));
 		in_args.set_one(PROP_NO_SPATIAL_AWARENESS, Value::Int(0));
+		// Natron 支持库对 NatronOfxPropNativeOverlays 的强读（0 = 宿主
+		// 不支持原生 overlay——插件据此走自己的回退路径）。
+		in_args.set_one("NatronOfxPropNativeOverlays", Value::Int(0));
 		if gl_enabled {
 			in_args.set_one(crate::host::PROP_GL_ENABLED, Value::Int(1));
 		}

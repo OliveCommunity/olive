@@ -171,6 +171,16 @@ pub fn render_frame(
 				crate::suites::gl_render::pick_gl_pixel_depth(&inst.plugin.descriptor.props)
 					.is_some();
 			let gl_name_ok = crate::gl_bridge::gl_available();
+			if std::env::var_os("OAK_OFX_TRACE").is_some() {
+				let raw = inst
+					.plugin
+					.descriptor
+					.props
+					.get(crate::host::PROP_GL_RENDER_SUPPORTED, 0);
+				eprintln!(
+					"[ofx] use_opengl decision: plugin_gl={plugin_gl} depth_ok={depth_ok} gl_available={gl_name_ok} (raw GL prop: {raw:?})"
+				);
+			}
 			plugin_gl && depth_ok && gl_name_ok
 		}
 		_ => false,
@@ -203,6 +213,9 @@ pub fn render_frame(
 
 	// 4. getClipPreferences（pluginrenderer.cpp:1554-1594）。
 	let prefs = inst.get_clip_preferences()?;
+	if std::env::var_os("OAK_OFX_TRACE").is_some() {
+		eprintln!("[ofx] clip prefs: components={} (inst {})", prefs.output_components, inst.plugin.identifier);
+	}
 	let components = match prefs.output_components.as_str() {
 		"OfxImageComponentRGBA" => crate::image::Components::Rgba,
 		"OfxImageComponentRGB" => crate::image::Components::Rgb,

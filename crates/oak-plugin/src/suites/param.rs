@@ -160,8 +160,10 @@ fn caught(f: impl FnOnce() -> Result<(), c_int>) -> c_int {
 		|_| status::FAILED,
 		|r| r.map_or_else(|c| c, |()| status::OK),
 	);
-	if code != status::OK && std::env::var_os("OAK_OFX_TRACE").is_some() {
-		eprintln!("[ofx] param suite error {code} at {caller}");
+	if std::env::var_os("OAK_OFX_TRACE").is_some() {
+		if code != status::OK {
+			eprintln!("[ofx] param suite error {code} at {caller}");
+		}
 	}
 	code
 }

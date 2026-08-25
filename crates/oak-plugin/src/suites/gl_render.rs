@@ -318,7 +318,7 @@ fn make_texture_props(
 	rect_props(&props, crate::image::K_IMAGE_PROP_BOUNDS, bounds);
 	rect_props(&props, crate::image::K_IMAGE_PROP_ROD, bounds);
 	props.set_one(crate::image::K_IMAGE_PROP_ROW_BYTES, Value::Int(row_bytes));
-	props.set_one("OfxImagePropField", Value::String(cs("OfxImageFieldNone")));
+	props.set_one("OfxImagePropField", Value::String(cs("OfxFieldNone")));
 	props.set_one(
 		crate::image::K_IMAGE_PROP_UNIQUE_ID,
 		Value::String(crate::image::unique_identifier()),

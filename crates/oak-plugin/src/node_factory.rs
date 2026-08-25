@@ -899,7 +899,11 @@ fn execute_plugin_job(
 		effect_input_id: effect_input_id.clone(),
 		inputs: inputs.clone(),
 		values: pod_values,
-		renderer: None,
+		// GL 渲染路径：OpenGL-only 插件（CImg 套件）在 CPU 路径的
+		// isIdentity 直接回 kOfxStatErrMissingHostFeature（紫帧根因）。
+		// 标记上下文只服务于 use_opengl 的 kind 判定；真正的 GL 渲染走
+		// gl_bridge 的离屏上下文（无头的 oak-worker 进程同样可用）。
+		renderer: Some(std::sync::Arc::new(crate::render::GlKindMarker)),
 		clear_destination: false,
 		interactive: false,
 	};
@@ -1127,6 +1131,76 @@ mod tests {
 		// 缓存里查无此标识 → None（montage 路径据此按"无求值器"
 		// 告警并直通）。
 		assert!(shared_plugin_instance("com.example.definitely-missing").is_none());
+	}
+
+	/// 最简单的真实插件（AddOFX：每个像素加一个常量）经 executor
+	/// 路径渲染成功——区分"系统性宿主问题"与"单插件问题"（机器上
+	/// 没装该插件则跳过）。
+	#[test]
+	fn add_plugin_renders_through_the_executor() {
+		render_real_plugin_smoke("net.sf.openfx.AddPlugin");
+	}
+
+	/// 真实 GL-only 插件（CImg 的 ChromaKeyerOFX）经 executor 路径渲染
+	/// 成功——GL-kind 标记必须把它引上可用的 GL 路径，而不是
+	/// MissingHostFeature 紫帧（机器上没装该插件则跳过）。
+	#[test]
+	fn cimg_chromakeyer_renders_through_the_executor() {
+		render_real_plugin_smoke("net.sf.openfx.ChromaKeyerPlugin");
+	}
+
+	fn render_real_plugin_smoke(identifier: &str) {
+		let host = crate::host::Host::global();
+		let _ = host.cache.scan();
+		if host.cache.find(identifier).is_none() {
+			eprintln!("{identifier} not installed; skipping");
+			return;
+		}
+		install_render_executor();
+		let instance = shared_plugin_instance(identifier)
+			.expect("the shared instance factory resolves the plugin");
+		if std::env::var_os("OAK_OFX_TRACE").is_some() {
+			let inst = instance_from_id(instance).expect("registered");
+			let props = &inst.value.plugin.descriptor.props;
+			props.with_locked(|all| {
+				for p in all.iter().filter(|p| p.name.contains("GL") || p.name.contains("OpenGL")) {
+					eprintln!("[probe] desc prop {} = {:?}", p.name, p.values);
+				}
+			});
+		}
+
+		// 8x8 不透明绿帧（典型 keyer 输入）。
+		let mut frame = oak_render::eval::generate_frame(
+			oak_core::Rational::new(0, 1),
+			(8, 8),
+			oak_core::PixelFormat::F32,
+		)
+		.unwrap();
+		for px in frame.data.chunks_exact_mut(16) {
+			for (c, v) in px.chunks_exact_mut(4).zip([0.1f32, 0.9, 0.1, 1.0]) {
+				c.copy_from_slice(&v.to_le_bytes());
+			}
+		}
+		let spec = oak_render::eval::JobSpec::Plugin {
+			instance,
+			time: 0.0,
+			effect_input_id: Some("Source".to_string()),
+			inputs: Vec::new(),
+			values: Vec::new(),
+		};
+		let out = execute_plugin_job(&oak_render::eval::PluginJobRequest {
+			spec: &spec,
+			src: oak_render::texture::Texture::wrap_frame(frame),
+		})
+		.expect("the GL-capable render succeeds (no MissingHostFeature purple)");
+		let oak_render::texture::Texture::Cpu(out_frame) = &out else {
+			panic!("a CPU frame comes back");
+		};
+		let mut px = [0f32; 4];
+		for i in 0..4 {
+			px[i] = f32::from_le_bytes(out_frame.data[i * 4..i * 4 + 4].try_into().unwrap());
+		}
+		assert_ne!(px, [1.0, 0.0, 1.0, 1.0], "must not be the purple failure frame");
 	}
 
 	/// 构造一个只含 push-button 参数的最小实例（直接登记进注册表）。

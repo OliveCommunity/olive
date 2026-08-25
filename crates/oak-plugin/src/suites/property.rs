@@ -130,7 +130,8 @@ unsafe fn caught(handle: *mut c_void, f: impl FnOnce(&PropertySet) -> Result<(),
 	}))
 	.unwrap_or(status::FAILED);
 	if code != status::OK && std::env::var_os("OAK_OFX_TRACE").is_some() {
-		eprintln!("[ofx] property suite error {code} at {caller}");
+		let tag = crate::suites::tag::kind(handle);
+		eprintln!("[ofx] property suite error {code} at {caller} (handle {handle:p} tag {tag})");
 	}
 	code
 }
@@ -185,7 +186,13 @@ fn get_value_inner<'a>(
 	// 固定类型，等价）。空数组没有类型探针，跳过类型检查，越界
 	// 由下面的索引访问报 BadIndex（HS getValueRaw 语义）。
 	if let Some(probe) = p.values.first() {
-		if Kind::of(probe) != kind {
+		// Int <-> Double 数值协随（与 get_n 同款宽容宿主语义）。
+		let numeric = matches!(Kind::of(probe), Kind::Int | Kind::Double)
+			&& matches!(kind, Kind::Int | Kind::Double);
+		if Kind::of(probe) != kind && !numeric {
+			if std::env::var_os("OAK_OFX_TRACE").is_some() {
+				eprintln!("[ofx] property kind mismatch: {name}");
+			}
 			return Err(status::ERR_UNKNOWN);
 		}
 	}
@@ -481,11 +488,11 @@ unsafe extern "C" fn prop_get_string(
 			}
 			let r = get_string(set, name, index);
 			if std::env::var_os("OAK_OFX_TRACE").is_some() {
-				let status = match &r {
-					Ok(_) => 0,
-					Err(c) => *c,
+				let rendered = match &r {
+					Ok(p) => format!("0 <- {:?}", unsafe { std::ffi::CStr::from_ptr(*p) }),
+					Err(c) => format!("{c}"),
 				};
-				eprintln!("[ofx] propGetString(h={handle:p}, {name}[{index}]) -> {status}");
+				eprintln!("[ofx] propGetString(h={handle:p}, {name}[{index}]) -> {rendered}");
 			}
 			*out = r?;
 			Ok(())
@@ -511,6 +518,11 @@ unsafe extern "C" fn prop_get_double(
 					*out = d;
 					Ok(())
 				}
+				// Int <-> Double 数值协随（宽容宿主语义，同 get_n）。
+				Value::Int(i) => {
+					*out = i as f64;
+					Ok(())
+				}
 				_ => Err(status::FAILED),
 			}
 		})
@@ -533,6 +545,11 @@ unsafe extern "C" fn prop_get_int(
 			match v {
 				Value::Int(i) => {
 					*out = i;
+					Ok(())
+				}
+				// Int <-> Double 数值协随（宽容宿主语义，同 get_n）。
+				Value::Double(d) => {
+					*out = d as i32;
 					Ok(())
 				}
 				_ => Err(status::FAILED),
@@ -564,14 +581,32 @@ fn get_n(
 			.find(|p| p.name == name)
 			.ok_or(status::ERR_UNKNOWN)?;
 		let probe = p.values.first().ok_or(status::ERR_UNKNOWN)?;
-		if Kind::of(probe) != kind {
+		// Int <-> Double coercion (forgiving-host semantics): the CImg
+		// framework reads the DOUBLE render window with propGetIntN and
+		// must still get the values; strict kind checks turn that into a
+		// bogus MissingHostFeature at render time.
+		let numeric = matches!(Kind::of(probe), Kind::Int | Kind::Double)
+			&& matches!(kind, Kind::Int | Kind::Double);
+		if Kind::of(probe) != kind && !numeric {
 			return Err(status::ERR_UNKNOWN);
 		}
 		let n = idx(count)?.min(p.values.len());
 		for (i, v) in p.values.iter().take(n).enumerate() {
 			write(v, i);
 		}
+		if std::env::var_os("OAK_OFX_TRACE").is_some() {
+			eprintln!("[ofx] propGetN({name} x{n}) -> ok");
+		}
 		Ok(())
+	})
+	.map_err(|code| {
+		// The property the plugin asked for and we did not have — the
+		// single most useful line when a plugin reports
+		// MissingHostFeature (trace-gated, like fetchSuite misses).
+		if std::env::var_os("OAK_OFX_TRACE").is_some() {
+			eprintln!("[ofx] property miss: {name} (code {code})");
+		}
+		code
 	})
 }
 
@@ -629,6 +664,7 @@ unsafe extern "C" fn prop_get_double_n(
 			}
 			get_n(set, name, count, Kind::Double, |v, i| match v {
 				Value::Double(d) => *out.add(i) = *d,
+				Value::Int(d) => *out.add(i) = *d as f64,
 				_ => {}
 			})
 		})
@@ -649,6 +685,7 @@ unsafe extern "C" fn prop_get_int_n(
 			}
 			get_n(set, name, count, Kind::Int, |v, i| match v {
 				Value::Int(d) => *out.add(i) = *d,
+				Value::Double(d) => *out.add(i) = *d as i32,
 				_ => {}
 			})
 		})
@@ -685,6 +722,10 @@ unsafe extern "C" fn prop_get_dimension(
 			// 已定义的空数组（如协商属性的初始状态）是合法维度 0，不是错误。
 			let exists = set.with_locked(|props| props.iter().any(|p| p.name == name));
 			if !exists {
+				if std::env::var_os("OAK_OFX_TRACE").is_some() {
+					let tag = crate::suites::tag::kind(handle);
+					eprintln!("[ofx] property miss (dimension): {name} (handle {handle:p} tag {tag})");
+				}
 				return Err(status::ERR_UNKNOWN);
 			}
 			*out = set.dimension(name) as c_int;
