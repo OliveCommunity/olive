@@ -456,6 +456,9 @@ unsafe extern "C" fn prop_get_pointer(
 			let v = get_scalar(set, name, index, Kind::Pointer)?;
 			match v {
 				Value::Pointer(p) => {
+					if std::env::var_os("OAK_OFX_TRACE").is_some() {
+						eprintln!("[ofx] propGetPointer(h={handle:p}, {name}[{index}]) -> {p:p}");
+					}
 					*out = p;
 					Ok(())
 				}
@@ -595,7 +598,17 @@ fn get_n(
 			write(v, i);
 		}
 		if std::env::var_os("OAK_OFX_TRACE").is_some() {
-			eprintln!("[ofx] propGetN({name} x{n}) -> ok");
+			let dump: Vec<String> = p
+				.values
+				.iter()
+				.take(n)
+				.map(|v| match v {
+					Value::Int(i) => i.to_string(),
+					Value::Double(d) => d.to_string(),
+					_ => "?".to_string(),
+				})
+				.collect();
+			eprintln!("[ofx] propGetN({name} x{n}) -> ok [{dump:?}]");
 		}
 		Ok(())
 	})

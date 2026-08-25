@@ -23,8 +23,9 @@
 //! - clipGetRegionOfDefinition：读 clip 实例属性里的
 //!   kOfxImageEffectPropRegionOfDefinition（协商时宿主写入）；非法
 //!   RoD → kOfxStatFailed（HS:2143-2147）；
-//! - abort：实例期 → 当前渲染的进度取消状态（HS:2154-2170；
-//!   HS 默认返回 0，本实现按规范返回 REPLY_YES/REPLY_NO）；
+//! - abort：实例期 → 当前渲染的取消状态（HS:2154-2170；契约是
+//!   0 = 继续、非 0 = 中止——REPLY_YES/NO 会让 ofxs 的
+//!   `abort(...) != 0` 判断误判中止，像素循环一行不写 → 黑帧）；
 //! - imageMemory*：账本同 memory suite（HS 的 lock 是"锁住防重分配"
 //!   语义，第 1 期账本不需要 → OK no-op，见 memory.rs 文档）。
 //!
@@ -71,7 +72,7 @@ pub struct ImageEffectSuiteV1 {
 	/// clipGetRegionOfDefinition
 	pub clip_get_region_of_definition:
 		unsafe extern "C" fn(*mut c_void, c_double, *mut c_void) -> c_int,
-	/// abort：查询是否应中止（进度取消透传）。
+	/// abort：查询是否应中止（0 = 继续，非 0 = 中止；取消透传）。
 	pub abort: unsafe extern "C" fn(*mut c_void) -> c_int,
 	/// imageMemoryAlloc / imageMemoryFree / imageMemoryLock /
 	/// imageMemoryUnlock：图像内存管理（账本同 memory suite）。
@@ -309,6 +310,15 @@ unsafe extern "C" fn clip_get_image(
 		let image = c
 			.fetch_image(time, scale, region)
 			.map_err(|_| status::FAILED)?;
+		if std::env::var_os("OAK_OFX_TRACE").is_some() {
+			let p = image.pixels();
+			let dump: Vec<f32> = p
+				.chunks_exact(4)
+				.take(4)
+				.map(|c| f32::from_le_bytes(c.try_into().unwrap()))
+				.collect();
+			eprintln!("[ofx] clipGetImage({}) fetched pixels[0..4] = {dump:?}", c.name);
+		}
 		let image = std::sync::Arc::new(image);
 		let addr = &image.props as *const _ as usize;
 		LIVE_IMAGES
@@ -377,26 +387,26 @@ fn read_rod(props: &PropertySet) -> Option<OfxRectD> {
 	Some(OfxRectD { x1, y1, x2, y2 })
 }
 
-/// abort：实例期 → 当前渲染进度是否已取消（HS:2154-2170 的
-/// `instance->abort()`；HS 默认 0，本实现按规范返回 REPLY_YES/NO）。
+/// abort：查询是否应中止渲染。OFX 契约（ofxImageEffect.h）与
+/// ofxs 实现（ofxsImageEffect.cpp `abort(...) != 0`）都是
+/// **0 = 继续、非 0 = 中止**——不能回 REPLY_YES/NO（13 会被
+/// openfx-misc 理解成"立即中止"，像素循环一行都不写 → 黑帧）。
 /// 取消状态是成功应答而非错误码，不能走 caught 的 Err 通道。
 unsafe extern "C" fn abort(effect: *mut c_void) -> c_int {
 	catch_unwind(AssertUnwindSafe(|| {
-		match resolve_effect(effect)? {
-			EffectRef::Instance(_) => {}
+		let inst = match resolve_effect(effect)? {
+			EffectRef::Instance(i) => i,
 			EffectRef::Descriptor(_) => return Err(status::ERR_BAD_HANDLE),
-		}
-		Ok(())
+		};
+		Ok(inst)
 	}))
 	.map_or_else(
 		|_| status::FAILED,
 		|r| match r {
-			Ok(()) => {
-				if crate::suites::progress::is_cancelled() {
-					status::REPLY_YES
-				} else {
-					status::REPLY_NO
-				}
+			Ok(inst) => {
+				let cancelled = inst.cancel.load(std::sync::atomic::Ordering::Relaxed)
+					|| crate::suites::progress::is_cancelled();
+				if cancelled { 1 } else { 0 }
 			}
 			Err(c) => c,
 		},
@@ -555,7 +565,7 @@ mod tests {
 		}
 	}
 
-	/// abort：describe 期 → BadHandle；实例期 → REPLY_NO（未取消）。
+	/// abort：describe 期 → BadHandle；实例期 → 0（未取消）。
 	#[test]
 	fn abort_requires_instance() {
 		let desc = EffectDescriptor::new();
@@ -565,7 +575,7 @@ mod tests {
 			assert_eq!((s.abort)(dh), status::ERR_BAD_HANDLE);
 			assert_eq!((s.abort)(std::ptr::null_mut()), status::ERR_BAD_HANDLE);
 		}
-		// 实例期：未取消 → REPLY_NO。
+		// 实例期：未取消 → 0（OFX 契约：0 = 继续，非 0 = 中止）。
 		let inst = std::sync::Arc::new(crate::instance::Instance {
 			props: PropertySet::new(),
 			plugin: std::sync::Arc::new(crate::host::Plugin {
@@ -593,7 +603,7 @@ mod tests {
 		});
 		let ih = tag::make(&inst.props as *const PropertySet, tag::INSTANCE);
 		unsafe {
-			assert_eq!((s.abort)(ih), status::REPLY_NO);
+			assert_eq!((s.abort)(ih), 0);
 		}
 	}
 

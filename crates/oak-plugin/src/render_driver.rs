@@ -293,6 +293,15 @@ pub fn render_frame(
 			render_window,
 			output.clone(),
 		)?;
+		if std::env::var_os("OAK_OFX_TRACE").is_some() {
+			let p = output.pixels();
+			let dump: Vec<f32> = p
+				.chunks_exact(4)
+				.take(4)
+				.map(|c| f32::from_le_bytes(c.try_into().unwrap()))
+				.collect();
+			eprintln!("[ofx] render_frame: output buffer at {:p}, pixels[0..4] = {dump:?}", p.as_ptr());
+		}
 		// 输出装配（pluginrenderer.cpp:1762-1834 的 CPU 路径）。
 		write_output_frame(&mut dst, &output)?;
 	} else {

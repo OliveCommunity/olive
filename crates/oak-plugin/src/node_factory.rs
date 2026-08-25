@@ -1200,7 +1200,9 @@ mod tests {
 		for i in 0..4 {
 			px[i] = f32::from_le_bytes(out_frame.data[i * 4..i * 4 + 4].try_into().unwrap());
 		}
+		eprintln!("[smoke] {identifier} first pixel out = {px:?}");
 		assert_ne!(px, [1.0, 0.0, 1.0, 1.0], "must not be the purple failure frame");
+		assert_ne!(px, [0.0, 0.0, 0.0, 0.0], "must not be a black empty frame");
 	}
 
 	/// 构造一个只含 push-button 参数的最小实例（直接登记进注册表）。

@@ -78,6 +78,9 @@ unsafe extern "C" fn multi_thread(
 	thread_arg: *mut c_void,
 ) -> c_int {
 	caught(|| {
+		if std::env::var_os("OAK_OFX_TRACE").is_some() {
+			eprintln!("[ofx] multiThread: n_threads={n_threads} func={:#x} arg={thread_arg:p}", func as usize);
+		}
 		// 裸指针不可 Send：以 usize 搬运，线程内还原（C 侧本即
 		// 整数传递语义）。
 		let arg = thread_arg as usize;
