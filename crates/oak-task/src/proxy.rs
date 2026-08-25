@@ -347,3 +347,55 @@ fn probe_source_duration_seconds(ffmpeg_path: &str, source_filename: &str) -> f6
 		_ => 0.0,
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// End-to-end: transcode a real 4K H.265 4:2:2 10-bit file (the
+	/// class of media the 4K playback lag was reported on) to a 720p
+	/// proxy. Skipped when the fixture or ffmpeg is missing.
+	#[test]
+	fn proxy_task_transcodes_hevc_422_10bit() {
+		let src = "/tmp/oakperf/hevc422-4k.mp4";
+		if !std::path::Path::new(src).exists() {
+			eprintln!("fixture missing; skipping");
+			return;
+		}
+		let ffmpeg = ProxyManager::find_ffmpeg("");
+		if ffmpeg.is_empty() {
+			eprintln!("ffmpeg not found; skipping");
+			return;
+		}
+		let out = "/tmp/oakperf/proxy-720p.mp4";
+		let _ = std::fs::remove_file(out);
+		let request = oak_codec::task::TaskRequest {
+			kind: oak_codec::task::TaskKind::Proxy,
+			input_filename: src,
+			output_filename: out,
+			stream_index: 0,
+			sample_rate: 0,
+			channel_layout: 0,
+			sample_format: 0,
+			proxy_width: 1280,
+			proxy_height: 720,
+		};
+		let params = ProxyParams {
+			width: 1280,
+			height: 720,
+			divider: 1,
+			version: 1,
+			crf: 23,
+			include_audio: true,
+			extension: "mp4".to_string(),
+			preset: "veryfast".to_string(),
+		};
+		let mut proxy_task = ProxyTask::new(&request, params);
+		let mut task = Task::new("probe", None);
+		proxy_task
+			.run(&mut task)
+			.expect("the proxy transcode succeeds on 4K HEVC 4:2:2 10-bit");
+		let meta = std::fs::metadata(out).expect("the proxy file exists");
+		assert!(meta.len() > 0, "the proxy file is non-empty");
+	}
+}

@@ -1895,6 +1895,23 @@ impl RealEngine {
 		self.clear_multicam_frames();
 	}
 
+	/// The bin entry's proxy badge (角标): the footage's proxy lifecycle
+	/// mapped onto the widget's badge enum; folders and footage without
+	/// proxy state get none.
+	fn proxy_badge_of(&self, id: u64) -> Option<gpui_widgets::project_explorer::ProxyBadge> {
+		use gpui_widgets::project_explorer::ProxyBadge;
+		let project = self.project.as_ref()?;
+		let node = graphops::id_of(id)?;
+		let guard = graphops::lock(project);
+		let f = graphops::footage_behavior(&guard.graph, node)?;
+		match self.proxy_state_of(f, node) {
+			super::engine::ProxyMediaState::Ready => Some(ProxyBadge::Ready),
+			super::engine::ProxyMediaState::Generating => Some(ProxyBadge::Generating),
+			super::engine::ProxyMediaState::Failed => Some(ProxyBadge::Failed),
+			super::engine::ProxyMediaState::Missing => None,
+		}
+	}
+
 	/// Attaches cached thumbnails to the bin entries, spawning a background
 	/// generation job for every footage that has none yet. Entries without a
 	/// renderable frame keep the widget's placeholder.
@@ -1908,6 +1925,12 @@ impl RealEngine {
 				if entry.is_dir {
 					return entry;
 				}
+				// The proxy badge rides every bin row (with or without a
+				// thumbnail), so a Ready proxy is visible at a glance.
+				let entry = match self.proxy_badge_of(entry.id) {
+					Some(badge) => entry.with_proxy_badge(badge),
+					None => entry,
+				};
 				let mut thumbs = self.thumbnails.lock().unwrap();
 				if let Some(path) = thumbs.done.get(&entry.id) {
 					return entry.with_thumbnail(path.to_string_lossy().into_owned());
@@ -2117,6 +2140,64 @@ impl RealEngine {
 			cx.notify();
 		}
 	}
+
+	/// Auto-start proxy generation in the background for every footage
+	/// that needs one (设计：全局 UseProxyMedia 开启时素材代理在后台
+	/// 自动生成，不要求手动点 Generate；触发点：导入素材、打开工程）。
+	///
+	/// 逐素材规则：
+	/// - 已有 Ready 代理 / 已在生成 / 上次失败（state 3，避免失败
+	///   循环）→ 跳过；
+	/// - 显式关过代理的素材（记录了代理路径但未启用）→ 跳过
+	///   （尊重每个素材的 opt-out）；
+	/// - 其余（从未触碰过代理的，或已启用但未就绪的）→ 启动生成，
+	///   生成路径会同时把 proxy_enabled 置位，完成后预览即走代理。
+	fn autostart_proxies(&mut self, cx: &mut Context<Self>) {
+		if !super::renderops::use_proxy_media() {
+			return;
+		}
+		let Some(project) = self.project.clone() else {
+			return;
+		};
+		let candidates: Vec<u64> = {
+			let guard = graphops::lock(&project);
+			graphops::footage_ids(&guard)
+				.into_iter()
+				.filter(|&node| {
+					let Some(f) = graphops::footage_behavior(&guard.graph, node) else {
+						return false;
+					};
+					if !f.streams.iter().any(|s| s.is_video) {
+						return false;
+					}
+					if f.proxy_state == 3 {
+						return false; // 上次失败：不自动重试
+					}
+					if !f.proxy.is_empty() {
+						if !f.proxy_enabled {
+							return false; // 显式关过代理
+						}
+						// 已启用：磁盘上就绪则无需再生成。
+						if oak_codec::proxymanager::ProxyManager::get_proxy_state(&f.proxy)
+							== oak_codec::proxymanager::ProxyState::Ready
+						{
+							return false;
+						}
+					}
+					self.proxy_runs.iter().all(|run| run.footage != node)
+				})
+				.map(|node| node.identity())
+				.collect()
+		};
+		for id in candidates {
+			// proxy_generate 自己处理路径构建/任务线程/状态标记；失败
+			// 只记日志（自动路径不打扰用户）。
+			if let Err(err) = self.proxy_generate(id, cx) {
+				println!("[real engine] auto proxy generation skipped {id}: {err}");
+			}
+		}
+	}
+
 
 	/// The proxy lifecycle state of one footage row: an in-flight run
 	/// wins, then the disk state of the recorded proxy path, with a
@@ -2564,6 +2645,10 @@ impl RealEngine {
 		// The project's stored OCIO override (if any) drives the display
 		// color pipeline from here on.
 		Self::apply_project_color_config(Some(&project));
+
+		// 全局代理开关开启时，工程里未就绪素材的代理在后台自动生成
+		// （打开长素材工程不等待：生成走任务线程）。
+		self.autostart_proxies(cx);
 
 		cx.notify();
 	}
@@ -4121,6 +4206,8 @@ impl AppEngine for RealEngine {
 		// The material bin reads the folder tree live from the graph, so a
 		// notify is enough for the explorer to list the new entry.
 		cx.notify();
+		// 全局代理开关开启时，新素材的代理在后台自动生成。
+		self.autostart_proxies(cx);
 		Ok(())
 	}
 
@@ -4694,6 +4781,11 @@ impl AppEngine for RealEngine {
 			{
 				f.proxy_enabled = enabled;
 			}
+		}
+		// 启用而代理未就绪时立即后台生成（禁用则是 opt-out，
+		// autostart_proxies 对有记录路径但未启用的素材不会重启）。
+		if enabled {
+			self.autostart_proxies(cx);
 		}
 		self.invalidate_preview_frames(cx);
 	}
