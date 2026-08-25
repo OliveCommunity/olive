@@ -54,6 +54,7 @@ fn video_params(stream: CodecStream, time: Rational) -> RetrieveVideoParams {
 		image_sequence_number: 0,
 		mode: RenderMode::Offline,
 		alpha_is_premultiplied: false,
+		target_size: None,
 	}
 }
 

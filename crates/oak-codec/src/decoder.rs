@@ -136,6 +136,13 @@ pub struct RetrieveVideoParams {
 	pub mode: RenderMode,
 	/// Frame alpha channel is premultiplied.
 	pub alpha_is_premultiplied: bool,
+	/// Target output size for the scaled frame: `Some((w, h))` lets the
+	/// decoder's swscale pass convert AND resize in one step (native
+	/// yuv → RGBA/F32 at the target size), skipping the full-resolution
+	/// float intermediate (a 4K frame is ~132 MB as F32 RGBA — decoding
+	/// to a 480px preview through it costs ~260 MB of churn per frame).
+	/// `None` keeps the native size (the old behavior).
+	pub target_size: Option<(u32, u32)>,
 }
 
 /// `Decoder::RetrieveAudioStatus` — outcome of an audio retrieve.
@@ -708,6 +715,7 @@ mod tests_unimplemented {
 			image_sequence_number: 0,
 			mode: RenderMode::Offline,
 			alpha_is_premultiplied: false,
+			target_size: None,
 		};
 		assert!(d.retrieve_video_frame(&p).is_err());
 		assert!(d.retrieve_video(&p).is_err());

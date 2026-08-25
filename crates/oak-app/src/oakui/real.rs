@@ -1750,19 +1750,36 @@ impl RealEngine {
 			let version = self.preview_generation;
 			let preview_windows = self.preview_windows.clone();
 			let done: oak_render::ticket::Completion = Box::new(move |result| {
-				let mut windows =
-					preview_windows.lock().unwrap_or_else(|e| e.into_inner());
-				let window = windows.entry(monitor).or_default();
-				match result {
-					Ok(oak_render::ticket::TicketPayload::ShmFrame(slot)) => {
-						// The rendered frame is cached in its shm slot until
-						// the playhead reaches it (cpu_frame) or it falls out
-						// of the window.
-						window.slots.insert(frame, slot);
+				// Generation gate: a completion queued before a window
+				// rebuild (edit/generation bump) must not land in the new
+				// window — the stale render would display at this frame
+				// and its `submitted` entry would reject the fresh
+				// request. The stale slot's credit goes back instead.
+				let mut stale_slot = None;
+				{
+					let mut windows =
+						preview_windows.lock().unwrap_or_else(|e| e.into_inner());
+					let window = windows.entry(monitor).or_default();
+					if window.sequence == node_id && window.generation == version {
+						match result {
+							Ok(oak_render::ticket::TicketPayload::ShmFrame(slot)) => {
+								// The rendered frame is cached in its shm slot
+								// until the playhead reaches it (cpu_frame)
+								// or it falls out of the window.
+								window.slots.insert(frame, slot);
+							}
+							_ => {
+								// Render failed / cancelled: allow a re-request.
+								window.submitted.remove(&frame);
+							}
+						}
+					} else if let Ok(oak_render::ticket::TicketPayload::ShmFrame(slot)) = result {
+						stale_slot = Some(slot);
 					}
-					_ => {
-						// Render failed / cancelled: allow a re-request.
-						window.submitted.remove(&frame);
+				}
+				if let Some(slot) = stale_slot {
+					if let Some(m) = RenderManager::global() {
+						m.release_frame(&slot);
 					}
 				}
 			});

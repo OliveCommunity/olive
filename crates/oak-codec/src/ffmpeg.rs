@@ -332,7 +332,7 @@ impl Decoder for FFmpegDecoder {
 		let f = decoded?
 			.ok_or_else(|| fail("no video frame available at the requested time"))?;
 
-		let (w, h, bytes) = state.scale_video_to_f32(f, p.force_range)?;
+		let (w, h, bytes) = state.scale_video_to_f32(f, p.force_range, p.target_size)?;
 		let frame = copy_rgba_f32_to_frame(w, h, &bytes, p.time)?;
 		Ok(Arc::new(frame))
 	}
@@ -908,10 +908,15 @@ impl DecoderState {
 	/// Scale a decoded frame to float RGBA (F32, 4 channels), returning the
 	/// raw pixel bytes plus dimensions. Mirrors `pre_process_frame` +
 	/// `retrieve_video_frame_internal` scaling with the color-range forcing.
+	/// `target_size` resizes in the same swscale pass (native → RGBA/F32 at
+	/// the target size) instead of converting at native size first — the
+	/// caller's downscale then degenerates to a plain copy, and no
+	/// full-resolution float intermediate (~132 MB at 4K) ever exists.
 	fn scale_video_to_f32(
 		&mut self,
 		f: ffmpeg::frame::Video,
 		force_range: i32,
+		target_size: Option<(u32, u32)>,
 	) -> crate::error::Result<(u32, u32, Vec<u8>)> {
 		let video = self
 			.video
@@ -929,7 +934,12 @@ impl DecoderState {
 			ffmpeg::color::Range::MPEG
 		});
 
-		let (w, h) = (f.width(), f.height());
+		let (src_w, src_h) = (f.width(), f.height());
+		// 目标尺寸（None = 原生；0 边回退原生，swscale 不接受 0）。
+		let (w, h) = match target_size {
+			Some((tw, th)) if tw > 0 && th > 0 => (tw, th),
+			_ => (src_w, src_h),
+		};
 
 		// swscale cannot reliably output float RGBA on every build:
 		// float output is missing from some static FFmpeg swscale
@@ -945,7 +955,7 @@ impl DecoderState {
 		} else {
 			(Pixel::RGBA, false)
 		};
-		let ctx = get_or_create_scaler(&mut video.scaler, src_format, w, h, out_fmt, w, h)?;
+		let ctx = get_or_create_scaler(&mut video.scaler, src_format, src_w, src_h, out_fmt, w, h)?;
 		let mut out = ffmpeg::frame::Video::empty();
 		ctx.run(&f, &mut out).map_err(ffmpeg_err)?;
 		let stride = out.stride(0);
@@ -1389,6 +1399,8 @@ fn get_or_create_scaler(
 		None => true,
 	};
 	if recreate {
+		// BILINEAR：与渲染侧原 Rust 双线性重采样器等效（POINT 会
+		// 明显锯齿）；同尺寸纯格式转换时滤波器不参与运算。
 		let ctx = scaling::Context::get(
 			src_format,
 			src_width,
@@ -1396,7 +1408,7 @@ fn get_or_create_scaler(
 			dst_format,
 			dst_width,
 			dst_height,
-			scaling::Flags::POINT,
+			scaling::Flags::BILINEAR,
 		)
 		.map_err(ffmpeg_err)?;
 		*cache = Some(ScalingCache {
@@ -2448,6 +2460,7 @@ mod tests {
 			image_sequence_number: 0,
 			mode: crate::decoder::RenderMode::Offline,
 			alpha_is_premultiplied: false,
+			target_size: None,
 		}
 	}
 

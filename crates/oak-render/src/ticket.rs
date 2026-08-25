@@ -231,6 +231,13 @@ struct TicketSlot {
 	/// whose render completed must recycle its shm slot — the consumer
 	/// never sees the `ShmFrame` payload).
 	dispatch: Arc<dyn JobDispatch>,
+	/// The caller polls `wait()`/`result()` after completion (the sync
+	/// render path): the arena entry must survive `finish()` until
+	/// `result()` reaps it. Fire-and-forget tickets (completion-only:
+	/// playback window, autocacher, manager) are reaped at the next
+	/// `allocate()` once finished — the arena map must not grow
+	/// unbounded (playback posts 50-100 tickets/sec).
+	poll_after: bool,
 }
 
 impl TicketSlot {
@@ -348,7 +355,12 @@ impl TicketArena {
 
 	fn allocate(&self, slot: Arc<TicketSlot>) -> TicketId {
 		let id = slot.id;
-		lock(&self.slots).insert(id, slot);
+		let mut slots = lock(&self.slots);
+		slots.insert(id, slot);
+		// Reap finished fire-and-forget tickets (their completions were
+		// delivered at finish(); nobody will poll them). Poll-path slots
+		// survive until `result()` reaps them.
+		slots.retain(|_, s| !(s.is_finished() && !s.poll_after));
 		id
 	}
 
@@ -365,24 +377,29 @@ impl TicketArena {
 	/// on cancellation (with `Error::State`). The job posts as a Seek
 	/// single-frame request (M15 S2; see
 	/// [`TicketArena::submit_playback`] for the pre-render window).
+	/// The caller is expected to poll `wait()`/`result()` (the sync
+	/// render path); the arena entry survives until `result()` reaps it.
 	pub fn submit_video_with_id(
 		&self,
 		id: TicketId,
 		params: VideoTicketParams,
 		done: Completion,
 	) -> TicketId {
-		self.submit_video_impl(id, params, done, JobSchedule::seek())
+		self.submit_video_impl(id, params, done, JobSchedule::seek(), true)
 	}
 
 	/// The shared video-ticket submit path: register the slot, post the
 	/// job with `schedule` (M15 S2), and deliver `Error::State`
-	/// immediately when the backend is gone.
+	/// immediately when the backend is gone. `poll_after` marks entries
+	/// the caller reaps via `result()` (sync path) rather than the
+	/// completion (fire-and-forget — reaped once finished).
 	fn submit_video_impl(
 		&self,
 		id: TicketId,
 		params: VideoTicketParams,
 		done: Completion,
 		schedule: JobSchedule,
+		poll_after: bool,
 	) -> TicketId {
 		let meta = TicketMeta {
 			kind: Some(ticket_kind::VIDEO),
@@ -404,6 +421,7 @@ impl TicketArena {
 			completion: Mutex::new(Some(done)),
 			result: Mutex::new(None),
 			dispatch: self.dispatch.clone(),
+			poll_after,
 		});
 		self.allocate(slot.clone());
 
@@ -446,6 +464,7 @@ impl TicketArena {
 			params,
 			done,
 			JobSchedule::playback(frame, distance, version),
+			false,
 		)
 	}
 
@@ -468,24 +487,38 @@ impl TicketArena {
 		params: VideoTicketParams,
 		done: Completion,
 	) -> TicketId {
-		self.submit_video_impl(id, params, done, JobSchedule::background())
+		self.submit_video_impl(id, params, done, JobSchedule::background(), false)
 	}
 
 	/// Submit a video ticket; completion fires exactly once, including
 	/// on cancellation (with `Error::State`).
 	pub fn submit_video(&self, params: VideoTicketParams, done: Completion) -> TicketId {
 		let id = self.next_id();
-		self.submit_video_with_id(id, params, done)
+		self.submit_video_impl(id, params, done, JobSchedule::seek(), false)
 	}
 
 	/// Submit an audio ticket (range pull; C++ render_audio) with a
 	/// caller-reserved id (allocated by [`TicketArena::next_id`]). The
-	/// completion fires exactly once.
+	/// completion fires exactly once. The caller is expected to poll
+	/// `wait()`/`result()` (the sync path); the arena entry survives
+	/// until `result()` reaps it.
 	pub fn submit_audio_with_id(
 		&self,
 		id: TicketId,
 		params: AudioTicketParams,
 		done: Completion,
+	) -> TicketId {
+		self.submit_audio_impl(id, params, done, true)
+	}
+
+	/// The shared audio-ticket submit path (`poll_after` 语义同
+	/// [`TicketArena::submit_video_impl`]).
+	fn submit_audio_impl(
+		&self,
+		id: TicketId,
+		params: AudioTicketParams,
+		done: Completion,
+		poll_after: bool,
 	) -> TicketId {
 		let range = params.range;
 		let meta = TicketMeta {
@@ -506,6 +539,7 @@ impl TicketArena {
 			completion: Mutex::new(Some(done)),
 			result: Mutex::new(None),
 			dispatch: self.audio_dispatch.clone(),
+			poll_after,
 		});
 		self.allocate(slot.clone());
 
@@ -562,7 +596,7 @@ impl TicketArena {
 	/// completion fires exactly once.
 	pub fn submit_audio(&self, params: AudioTicketParams, done: Completion) -> TicketId {
 		let id = self.next_id();
-		self.submit_audio_with_id(id, params, done)
+		self.submit_audio_impl(id, params, done, false)
 	}
 
 	/// True when the ticket has finished.
@@ -602,7 +636,9 @@ impl TicketArena {
 	/// The ticket result, when finished (clone; unknown/unfinished ids give
 	/// `None`).
 	pub fn result(&self, id: TicketId) -> Option<TicketResult> {
-		lock(&self.slots).get(&id).and_then(|s| s.result())
+		// Terminal read: the poll path's only observation point — reap
+		// the entry with it (the arena map must not grow unbounded).
+		lock(&self.slots).remove(&id).and_then(|s| s.result())
 	}
 
 	/// Ticket metadata query (C++ property()).
@@ -716,6 +752,9 @@ mod tests {
 			"exactly once"
 		);
 
+		// is_finished 必须在 result() 之前查：result() 是终止性读取
+		// （连同条目一起回收，arena 表不能无限增长）。
+		assert!(arena.is_finished(id));
 		let res = arena.result(id).unwrap().unwrap();
 		assert_eq!(
 			match res {
@@ -724,7 +763,6 @@ mod tests {
 			},
 			(4, 4)
 		);
-		assert!(arena.is_finished(id));
 		video.shutdown();
 	}
 

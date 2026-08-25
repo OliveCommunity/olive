@@ -99,10 +99,12 @@ fn ticket_completion_once_success() {
 		"exactly once"
 	);
 
+	// is_finished 必须在 result() 之前查：result() 是终止性读取
+	// （连同条目一起回收，arena 表不能无限增长）。
+	assert!(arena.is_finished(id));
 	let res = arena.result(id).unwrap().unwrap();
 	assert_eq!(res_video(&res).size(), (8, 4));
 	assert_eq!(res_video(&res).format(), oak_core::PixelFormat::F32);
-	assert!(arena.is_finished(id));
 	d.shutdown();
 }
 

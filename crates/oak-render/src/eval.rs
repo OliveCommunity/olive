@@ -485,14 +485,31 @@ pub fn render_produced_frame(
 
 /// Process-wide open decoder sessions, keyed by (filename, stream).
 /// Sessions are mutex-serialized inside the oakcodec box, so sharing
-/// one handle across worker threads is safe.
+/// one handle across worker threads is safe. The value carries an LRU
+/// tick: the map is capped ([`MAX_CACHED_DECODERS`]) because every
+/// session pins an FFmpeg context plus up to two native decoded frames
+/// (~50 MB at 4K) — before the cap, scrubbing a footage bin grew the
+/// map without bound.
 static DECODERS: std::sync::OnceLock<
-	std::sync::Mutex<std::collections::HashMap<(String, i32), Arc<dyn oak_codec::decoder::Decoder>>>,
+	std::sync::Mutex<
+		std::collections::HashMap<(String, i32), (Arc<dyn oak_codec::decoder::Decoder>, u64)>,
+	>,
 > = std::sync::OnceLock::new();
 
+/// Cap on cached decoder sessions per process (LRU beyond this). 16
+/// covers heavy multi-clip montages without reopen thrash; eviction only
+/// drops the map entry — an in-flight render keeps its Arc alive and the
+/// session dies with the last reference (Drop releases FFmpeg).
+const MAX_CACHED_DECODERS: usize = 16;
+
+/// LRU tick source for [`DECODERS`].
+static DECODER_TICK: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 fn decoders(
-) -> std::sync::MutexGuard<'static, std::collections::HashMap<(String, i32), Arc<dyn oak_codec::decoder::Decoder>>>
-{
+) -> std::sync::MutexGuard<
+	'static,
+	std::collections::HashMap<(String, i32), (Arc<dyn oak_codec::decoder::Decoder>, u64)>,
+> {
 	DECODERS
 		.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 		.lock()
@@ -501,9 +518,12 @@ fn decoders(
 
 /// Open (or reuse) the decoder session for `(filename, stream_index)`.
 fn open_decoder(filename: &str, stream_index: i32) -> Result<Arc<dyn oak_codec::decoder::Decoder>> {
+	let key = (filename.to_string(), stream_index);
+	let tick = DECODER_TICK.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 	{
-		let cache = decoders();
-		if let Some(d) = cache.get(&(filename.to_string(), stream_index)) {
+		let mut cache = decoders();
+		if let Some((d, t)) = cache.get_mut(&key) {
+			*t = tick;
 			return Ok(d.clone());
 		}
 	}
@@ -513,7 +533,19 @@ fn open_decoder(filename: &str, stream_index: i32) -> Result<Arc<dyn oak_codec::
 		.open(&stream)
 		.map_err(|e| Error::Failed(format!("footage decode open: {e:?}")))?;
 	let mut cache = decoders();
-	cache.insert((filename.to_string(), stream_index), decoder.clone());
+	// LRU eviction: the session is dropped here, but an in-flight render
+	// holds its own Arc — the FFmpeg context dies with the last reference.
+	while cache.len() >= MAX_CACHED_DECODERS {
+		let victim = cache
+			.iter()
+			.min_by_key(|(_, (_, t))| *t)
+			.map(|(k, _)| k.clone());
+		let Some(victim) = victim else {
+			break;
+		};
+		cache.remove(&victim);
+	}
+	cache.insert(key, (decoder.clone(), tick));
 	Ok(decoder)
 }
 
@@ -527,6 +559,7 @@ pub fn render_footage_frame(
 	format: PixelFormat,
 ) -> Result<Texture> {
 	let decoder = open_decoder(filename, stream_index)?;
+	let (w, h) = size;
 	let params = RetrieveVideoParams {
 		stream: CodecStream::with_block(filename.to_string(), stream_index, None),
 		time,
@@ -537,6 +570,13 @@ pub fn render_footage_frame(
 		image_sequence_number: 0,
 		mode: RenderMode::Offline,
 		alpha_is_premultiplied: false,
+		// 直接按目标尺寸出帧：swscale 一次完成格式转换 + 缩放，不再
+		// 产生全分辨率 F32 中间帧（4K 预览每帧省 ~260MB 瞬时拷贝）。
+		target_size: if w > 0 && h > 0 {
+			Some((w as u32, h as u32))
+		} else {
+			None
+		},
 	};
 	let decoded = decoder
 		.retrieve_video_frame(&params)
@@ -545,7 +585,6 @@ pub fn render_footage_frame(
 	let src_w = decoded.width();
 	let src_h = decoded.height();
 	let src_linesize = decoded.linesize_bytes();
-	let (w, h) = size;
 	if src_w <= 0 || src_h <= 0 || src_linesize <= 0 || !decoded.is_allocated() {
 		return Err(Error::Failed("footage decode: bad decoded frame".into()));
 	}

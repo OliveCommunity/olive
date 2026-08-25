@@ -1005,7 +1005,9 @@ impl ProcessDispatcher {
 				.find(|(_, pt)| &pt.key == key)
 				.map(|(id, _)| *id);
 			if let Some(id) = ticket {
-				if let Some(pt) = inner.tickets.get_mut(&id) {
+				// 完成即移除（ticket 表只增不减是内存泄漏——播放时
+				// 每秒 50-100 个 ticket 全部永久驻留）。
+				if let Some(mut pt) = inner.tickets.remove(&id) {
 					if let Some(done) = pt.done.take() {
 						fired.push((done, Err(Error::State)));
 					}
@@ -1224,9 +1226,9 @@ impl ProcessDispatcher {
 		let shm = handle.shm.clone();
 		handle.held.insert(slot as u32);
 
-		let pt = inner.tickets.get_mut(&ticket);
+		let pt = inner.tickets.remove(&ticket);
 		match pt {
-			Some(pt) => {
+			Some(mut pt) => {
 				let key = pt.key;
 				inner.scheduler.frame_done(&key);
 				if let Some(done) = pt.done.take() {
@@ -1291,7 +1293,7 @@ impl ProcessDispatcher {
 		// The worker acquired the slot but never published it: the
 		// dispatcher (drainer) hands it back to the free pool.
 		self.recycle_slot(inner, worker, slot);
-		if let Some(pt) = inner.tickets.get_mut(&ticket) {
+		if let Some(mut pt) = inner.tickets.remove(&ticket) {
 			inner.scheduler.frame_failed(&pt.key);
 			if let Some(done) = pt.done.take() {
 				fired.push((done, Err(Error::Failed(format!("render failed: {error}")))));
@@ -1573,7 +1575,7 @@ impl ProcessDispatcher {
 			inner.workers[worker].state = WorkerState::PermanentlyDead;
 			for req in reclaimed {
 				inner.scheduler.cancel_key(&req.key);
-				if let Some(pt) = inner.tickets.get_mut(&req.payload) {
+				if let Some(mut pt) = inner.tickets.remove(&req.payload) {
 					if let Some(done) = pt.done.take() {
 						fired.push((
 							done,
@@ -1733,17 +1735,25 @@ impl JobDispatch for ProcessDispatcher {
 				SubmitOutcome::Accepted => {}
 				SubmitOutcome::Replaced(old) => {
 					// A newer request for the same key superseded the old
-					// pending one: cancel the old ticket's completion.
-					if let Some(pt) = inner.tickets.get_mut(&old.payload) {
+					// pending one: cancel the old ticket's completion (and
+					// reap the entry — the table must not grow unbounded).
+					if let Some(mut pt) = inner.tickets.remove(&old.payload) {
 						if let Some(done) = pt.done.take() {
 							fired.push((done, Err(Error::State)));
 						}
 					}
 				}
 				SubmitOutcome::InFlight => {
-					// Already claimed by a worker; the rendered frame is
-					// still valid for the same params (playback window
-					// slides re-request frames that are in flight).
+					// Already claimed by a worker under the same key: the
+					// worker will deliver the OLD ticket only. Fire the new
+					// ticket's completion as cancelled so its entry does
+					// not leak and the caller (playback window) may
+					// re-request once the in-flight render lands.
+					if let Some(mut pt) = inner.tickets.remove(&id) {
+						if let Some(done) = pt.done.take() {
+							fired.push((done, Err(Error::State)));
+						}
+					}
 				}
 			}
 		}
@@ -1766,7 +1776,7 @@ impl JobDispatch for ProcessDispatcher {
 			let mut inner = lock(&self.inner);
 			let dropped = inner.scheduler.cancel_sequence(sequence);
 			for request in dropped {
-				if let Some(pt) = inner.tickets.get_mut(&request.payload) {
+				if let Some(mut pt) = inner.tickets.remove(&request.payload) {
 					if let Some(done) = pt.done.take() {
 						fired.push((done, Err(Error::State)));
 					}
@@ -1866,12 +1876,15 @@ impl JobDispatch for ProcessDispatcher {
 				}
 				w.stdin = None;
 			}
-			// Every ticket still open completes with cancellation.
+			// Every ticket still open completes with cancellation; the map
+			// is dropped with the dispatcher (clear for hygiene — leaked
+			// entries pin shm region views).
 			for (_, pt) in inner.tickets.iter_mut() {
 				if let Some(done) = pt.done.take() {
 					fired.push((done, Err(Error::State)));
 				}
 			}
+			inner.tickets.clear();
 		}
 		for (done, result) in fired {
 			done(result);

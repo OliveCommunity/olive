@@ -718,9 +718,10 @@ pub fn submit_audio_chunk(
 	let channel_layout = 0x3u64;
 	let channels = channel_layout.count_ones().max(1) as i32;
 	let m = RenderManager::global().ok_or_else(|| "render manager is not initialized".to_string())?;
-	let id = m.tickets.next_id();
-	m.tickets.submit_audio_with_id(
-		id,
+	// Completion-only (fire-and-forget): use the non-polling submit so
+	// the arena reaps the entry once the completion lands (the polling
+	// variant would pin it forever — nobody calls result() on this path).
+	m.tickets.submit_audio(
 		AudioTicketParams {
 			viewer: seq.identity(),
 			range,

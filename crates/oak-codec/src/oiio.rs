@@ -242,6 +242,7 @@ mod tests {
 			image_sequence_number: 0,
 			mode: crate::decoder::RenderMode::Offline,
 			alpha_is_premultiplied: false,
+			target_size: None,
 		}
 	}
 
