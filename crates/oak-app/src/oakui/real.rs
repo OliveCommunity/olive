@@ -1038,6 +1038,9 @@ pub struct RealEngine {
 	/// The sending half of `thumb_rx` (cloned into every job).
 	thumb_tx: Mutex<mpsc::Sender<ThumbEvent>>,
 	proxy_runs: Vec<ProxyRun>,
+	/// Last waveform-cache version seen by the tick (background waveform
+	/// extractions bump it on insert → repaint the timeline).
+	waveform_version_seen: u64,
 	/// The multicam angle-frame cache (rendered grid cells keyed by
 	/// (multicam node, source), LRU-capped). An `Arc` so the background
 	/// angle workers' completions can reach it; the mutex keeps the engine
@@ -1179,6 +1182,7 @@ impl RealEngine {
 			thumb_rx: Mutex::new(thumb_rx),
 			thumb_tx: Mutex::new(thumb_tx),
 			proxy_runs: Vec::new(),
+			waveform_version_seen: 0,
 			multicam_frames: Arc::new(Mutex::new(MulticamFrameCache::default())),
 			multicam_rx: Mutex::new(multicam_rx),
 			multicam_tx: Mutex::new(multicam_tx),
@@ -2906,7 +2910,11 @@ impl RealEngine {
 			return;
 		};
 		let duration_frames = (clip.range.end.0 - clip.range.start.0).max(1);
-		cache.refresh(clip.id.0, &filename, duration_frames);
+		// 后台提取：全音频解码按素材时长走（40 分钟 HEVC 要秒级），
+		// 在 UI 线程上同步跑会把打开工程/重建时间轴卡死；落盘后由
+		// 缓存 version 触发重绘（见 drain_proxy_runs 处的检查）。
+		let clip_id = clip.id.0;
+		std::thread::spawn(move || cache.refresh(clip_id, &filename, duration_frames));
 	}
 
 	/// Looks up the snapshot clip's block node by `ClipId` (the id IS the
@@ -3187,6 +3195,14 @@ impl EngineGateway for RealEngine {
 		// the next fills for the resting playheads (the schedule skips
 		// playing monitors, so playback keeps the proxy path).
 		self.drain_full_res();
+		// 后台波形提取落盘（version 递增）→ 重绘时间轴显示波形。
+		if let Some(cache) = self.waveform_cache() {
+			let v = cache.version();
+			if v != self.waveform_version_seen {
+				self.waveform_version_seen = v;
+				cx.notify();
+			}
+		}
 		self.drain_thumbnails();
 		self.drain_proxy_runs(cx);
 		self.drain_multicam_frames(cx);

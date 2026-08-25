@@ -66,6 +66,11 @@ pub struct WaveformCache {
 	map: Mutex<HashMap<u64, Arc<ClipWaveform>>>,
 	/// Timeline frame rate (frames per second) for frame→time mapping.
 	fps: f32,
+	/// Bumped on every insert so the UI can repaint when a background
+	/// extraction lands (the extraction itself runs off the UI thread —
+	/// a 40-minute file's full audio decode blocks project open for
+	/// seconds when run inline).
+	version: std::sync::atomic::AtomicU64,
 }
 
 impl WaveformCache {
@@ -74,7 +79,13 @@ impl WaveformCache {
 		Arc::new(WaveformCache {
 			map: Mutex::new(HashMap::new()),
 			fps: if fps > 0.0 { fps } else { 25.0 },
+			version: std::sync::atomic::AtomicU64::new(0),
 		})
+	}
+
+	/// Monotonic insert counter (repaint trigger for async refresh).
+	pub fn version(&self) -> u64 {
+		self.version.load(std::sync::atomic::Ordering::Relaxed)
 	}
 
 	/// The cached waveform of `clip`, if extracted.
@@ -96,6 +107,7 @@ impl WaveformCache {
 		let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
 		if !map.contains_key(&clip) {
 			map.insert(clip, Arc::new(waveform));
+			self.version.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 		}
 	}
 }
