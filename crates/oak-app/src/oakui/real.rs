@@ -3834,10 +3834,10 @@ impl AppEngine for RealEngine {
 				})
 			})
 			.collect();
-		let mut result = Ok(());
-		for block in targets {
-			result = graphops::split_clip(&project, block, frame.0);
-		}
+		// ONE preserving-links split for the whole set: linked pairs (the
+		// A/V drop) get their rear halves linked too — the per-block plain
+		// split left the rear halves unlinked.
+		let result = graphops::split_clips_preserving_links(&project, &targets, frame.0);
 		self.apply_edit(result, "split at playhead", cx);
 	}
 
@@ -7162,6 +7162,86 @@ mod tests {
 			linked(cx, halves[0], halves[1]),
 			"the halves link through the toggle"
 		);
+	}
+
+	/// Cmd+K split of an A/V pair: the front halves keep their link AND
+	/// the two rear halves are linked to each other (the old per-block
+	/// plain split left the rear halves unlinked).
+	#[gpui::test]
+	async fn split_at_playhead_links_the_rear_halves(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+		let media = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/demo.mp4");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.import_footage(media.clone(), cx).expect("import")
+			})
+		});
+		let name = media.file_name().unwrap().to_string_lossy().into_owned();
+		let entry = cx
+			.read(|app| {
+				engine
+					.read(app)
+					.roots()
+					.into_iter()
+					.find(|e| e.name.as_ref() == name)
+			})
+			.expect("imported footage is listed");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(0), cx)
+			})
+		});
+		cx.update(|app| {
+			engine.update(app, |engine, cx| engine.request_frame(Monitor::Program, Frame(20), cx))
+		});
+		cx.update(|app| engine.update(app, |engine, cx| engine.split_at_playhead(cx)));
+
+		// Front/rear clips of the video track and the audio track (matched
+		// by their start frame: front starts at 0, rear at 20).
+		let clips_of = |kind: TrackKind, cx: &mut gpui::TestAppContext| {
+			cx.read(|app| {
+				let engine = engine.read(app);
+				let mut clips: Vec<ClipId> = engine
+					.tracks
+					.iter()
+					.filter(|t| t.kind == kind)
+					.flat_map(|t| t.clips.iter().map(|c| c.id))
+					.collect();
+				clips.sort_by_key(|c| c.0);
+				clips
+			})
+		};
+		let by_start = |kind: TrackKind, start: i64, cx: &mut gpui::TestAppContext| {
+			cx.read(|app| {
+				let engine = engine.read(app);
+				engine
+					.tracks
+					.iter()
+					.filter(|t| t.kind == kind)
+					.flat_map(|t| t.clips.iter())
+					.find(|c| c.range.start.0 == start)
+					.map(|c| c.id)
+					.unwrap_or_else(|| panic!("a {kind:?} clip starts at {start}"))
+			})
+		};
+		let linked = |a: ClipId, b: ClipId, cx: &mut gpui::TestAppContext| {
+			cx.read(|app| {
+				let engine = engine.read(app);
+				let project = engine.project_ref().expect("project").clone();
+				let (Some(na), Some(nb)) = (graphops::id_of(a.0), graphops::id_of(b.0)) else {
+					return false;
+				};
+				let guard = graphops::lock(&project);
+				guard.graph.links_of(na).contains(&nb)
+			})
+		};
+		let _ = clips_of;
+		let (vf, vr) = (by_start(TrackKind::Video, 0, cx), by_start(TrackKind::Video, 20, cx));
+		let (af, ar) = (by_start(TrackKind::Audio, 0, cx), by_start(TrackKind::Audio, 20, cx));
+		assert!(linked(vf, af, cx), "the front halves stay linked");
+		assert!(linked(vr, ar, cx), "the rear halves are linked too");
 	}
 
 	/// Playback pre-render window (M15 S2): during playback the playhead

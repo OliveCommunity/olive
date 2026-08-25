@@ -1421,6 +1421,41 @@ pub fn split_clip(p: &ProjectRef, clip: NodeId, time_ts: i64) -> Result<(), Stri
 	)
 }
 
+/// Split every clip of `blocks` at `time_ts` as ONE undoable
+/// `BlockSplitPreservingLinksCommand` (the Cmd+K path): originally linked
+/// pairs that are both split get their rear halves linked too — the
+/// per-block plain split left the rear half of an A/V pair unlinked.
+/// Blocks whose range does not strictly contain the time are skipped by
+/// the command itself.
+pub fn split_clips_preserving_links(
+	p: &ProjectRef,
+	blocks: &[NodeId],
+	time_ts: i64,
+) -> Result<(), String> {
+	let Some((&first, rest)) = blocks.split_first() else {
+		return Ok(());
+	};
+	let tb = {
+		let g = lock(p);
+		clip_track(&g.graph, first)
+			.and_then(|t| track_behavior(&g.graph, t))
+			.and_then(|t| t.track_list)
+			.and_then(|l| track_list_behavior(&g.graph, l))
+			.and_then(|l| l.sequence)
+			.and_then(|s| sequence_time_base(&g.graph, s))
+			.ok_or_else(|| "the clip's sequence has no valid frame rate".to_string())?
+	};
+	let point = ts_to_rational(time_ts, tb);
+	let mut refs = Vec::with_capacity(blocks.len());
+	refs.push(node_ref(p, first));
+	refs.extend(rest.iter().map(|&b| node_ref(p, b)));
+	let times = vec![point; refs.len()];
+	push(
+		oak_timeline::undosplit::BlockSplitPreservingLinksCommand::new(refs, times).to_command(),
+		"Split Clips",
+	)
+}
+
 /// Trim `clip`'s timeline range to `[new_in_ts, new_out_ts)` (undoable
 /// "Trim Clip"; the facade's `oakengine_clip_trim` semantics: one end at
 /// a time, trim-in anchors the OUT, trim-out anchors the IN — the
