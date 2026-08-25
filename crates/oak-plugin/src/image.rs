@@ -89,6 +89,83 @@ impl BitDepth {
 			BitDepth::Float => "OfxBitDepthFloat",
 		}
 	}
+
+	/// Parse a kOfxBitDepth* string (the clip-preferences negotiation
+	/// value); `None` for unknown depths.
+	pub(crate) fn from_ofx(s: &str) -> Option<BitDepth> {
+		match s {
+			"OfxBitDepthByte" => Some(BitDepth::Byte),
+			"OfxBitDepthShort" => Some(BitDepth::Short),
+			"OfxBitDepthHalf" => Some(BitDepth::Half),
+			"OfxBitDepthFloat" => Some(BitDepth::Float),
+			_ => None,
+		}
+	}
+}
+
+/// IEEE 754 half → single (no `half` dependency; subnormals/Inf/NaN
+/// follow the standard expansion).
+pub(crate) fn f16_to_f32(bits: u16) -> f32 {
+	let sign = ((bits >> 15) & 0x1) as u32;
+	let exp = ((bits >> 10) & 0x1f) as u32;
+	let mant = (bits & 0x3ff) as u32;
+	let f32_bits = if exp == 0 {
+		if mant == 0 {
+			sign << 31
+		} else {
+			// Subnormal: normalize into the f32 exponent domain.
+			let mut m = mant;
+			let mut e = 127 - 15;
+			while m & 0x400 == 0 {
+				m <<= 1;
+				e -= 1;
+			}
+			let m = (m & 0x3ff) << 13;
+			(sign << 31) | (((e + 1) as u32) << 23) | m
+		}
+	} else if exp == 0x1f {
+		(sign << 31) | (0xff << 23) | (mant << 13)
+	} else {
+		(sign << 31) | ((exp + 127 - 15) << 23) | (mant << 13)
+	};
+	f32::from_bits(f32_bits)
+}
+
+/// Single → IEEE 754 half (round-to-nearest-even; overflow → Inf,
+/// NaN/Inf map per the standard).
+pub(crate) fn f32_to_f16(value: f32) -> u16 {
+	let bits = value.to_bits();
+	let sign = ((bits >> 16) & 0x8000) as u16;
+	let exp = ((bits >> 23) & 0xff) as i32;
+	let mant = bits & 0x7fffff;
+	if exp == 255 {
+		// Inf/NaN.
+		return sign | 0x7c00 | if mant != 0 { 0x200 } else { 0 };
+	}
+	let e = exp - 127 + 15;
+	if e >= 31 {
+		return sign | 0x7c00; // overflow → Inf
+	}
+	if e <= 0 {
+		// Half subnormal or zero.
+		if e < -10 {
+			return sign;
+		}
+		let mant = mant | 0x800000;
+		let shift = (14 - e) as u32;
+		let mut half = (mant >> shift) as u16;
+		let halfway = 1u32 << (shift - 1);
+		if mant & halfway != 0 && ((half & 1) == 1 || mant & (halfway - 1) != 0) {
+			half += 1;
+		}
+		return sign | half;
+	}
+	let mut half = ((e as u16) << 10) | ((mant >> 13) as u16);
+	let rem = mant & 0x1fff;
+	if rem > 0x1000 || (rem == 0x1000 && (half & 1) == 1) {
+		half += 1;
+	}
+	sign | half
 }
 
 /// Component layout (OFX kOfxImageComponent*).
@@ -274,6 +351,55 @@ impl Image {
 	pub fn row_bytes(&self) -> usize {
 		self.row_bytes
 	}
+
+	/// Convert the pixel buffer to another bit depth. The pipeline's
+	/// working format is ACEScg + F32 end to end; an OFX plugin that
+	/// negotiates Byte/Short/Half gets its inputs converted down before
+	/// the render action and its output converted back afterwards
+	/// (values are [0,1]-normalized across depths; same-depth calls just
+	/// re-allocate and copy).
+	pub(crate) fn convert_depth(&self, depth: BitDepth) -> Image {
+		let mut out = Image::allocate(depth, self.components, self.bounds);
+		if depth == self.depth {
+			out.data.copy_from_slice(&self.data);
+			return out;
+		}
+		let sb = self.depth.bytes_per_component();
+		let n = self.data.len() / sb;
+		let read = |i: usize| -> f32 {
+			let o = i * sb;
+			match self.depth {
+				BitDepth::Byte => self.data[o] as f32 / 255.0,
+				BitDepth::Short | BitDepth::Half => {
+					let bits = u16::from_le_bytes([self.data[o], self.data[o + 1]]);
+					if self.depth == BitDepth::Half {
+						f16_to_f32(bits)
+					} else {
+						bits as f32 / 65535.0
+					}
+				}
+				BitDepth::Float => f32::from_le_bytes(self.data[o..o + 4].try_into().unwrap()),
+			}
+		};
+		let ob = depth.bytes_per_component();
+		let od = &mut out.data;
+		for i in 0..n {
+			let v = read(i);
+			let o = i * ob;
+			match depth {
+				BitDepth::Byte => od[o] = (v.clamp(0.0, 1.0) * 255.0).round() as u8,
+				BitDepth::Short => {
+					let q = (v.clamp(0.0, 1.0) * 65535.0).round() as u16;
+					od[o..o + 2].copy_from_slice(&q.to_le_bytes());
+				}
+				BitDepth::Half => {
+					od[o..o + 2].copy_from_slice(&f32_to_f16(v).to_le_bytes());
+				}
+				BitDepth::Float => od[o..o + 4].copy_from_slice(&v.to_le_bytes()),
+			}
+		}
+		out
+	}
 }
 
 /// Unique identifier string (monotonically increasing per process,
@@ -283,4 +409,80 @@ pub(crate) fn unique_identifier() -> CString {
 	let n = NEXT_IMAGE_ID.fetch_add(1, Ordering::Relaxed);
 	// Hexadecimal ASCII, no NUL; unwrap cannot fail.
 	CString::new(format!("{:x}", n)).unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	fn f32_image(values: &[f32]) -> Image {
+		let mut img = Image::allocate(
+			BitDepth::Float,
+			Components::Alpha,
+			crate::instance::OfxRectD {
+				x1: 0.0,
+				y1: 0.0,
+				x2: values.len() as f64,
+				y2: 1.0,
+			},
+		);
+		for (i, v) in values.iter().enumerate() {
+			img.pixels_mut()[i * 4..i * 4 + 4].copy_from_slice(&v.to_le_bytes());
+		}
+		img
+	}
+
+	fn samples(img: &Image) -> Vec<f32> {
+		let f = img.convert_depth(BitDepth::Float);
+		f.pixels()
+			.chunks_exact(4)
+			.map(|c| f32::from_le_bytes(c.try_into().unwrap()))
+			.collect()
+	}
+
+	/// F32 → U8/U16/F16 → F32 的往返保持 [0,1] 归一化语义（OFX 低位深
+	/// 协商插件的输入转低、输出转回路径）。
+	#[test]
+	fn convert_depth_roundtrips() {
+		let src = f32_image(&[0.0, 0.25, 0.5, 1.0]);
+
+		let u8img = src.convert_depth(BitDepth::Byte);
+		assert_eq!(u8img.depth(), BitDepth::Byte);
+		assert_eq!(u8img.pixels(), &[0, 64, 128, 255]);
+		let back = samples(&u8img);
+		for (a, b) in back.iter().zip([0.0, 0.25, 0.5, 1.0]) {
+			assert!((a - b).abs() < 0.003, "u8 roundtrip: {a} vs {b}");
+		}
+
+		let u16img = src.convert_depth(BitDepth::Short);
+		assert_eq!(u16img.depth(), BitDepth::Short);
+		let back = samples(&u16img);
+		for (a, b) in back.iter().zip([0.0, 0.25, 0.5, 1.0]) {
+			assert!((a - b).abs() < 0.0001, "u16 roundtrip: {a} vs {b}");
+		}
+
+		let f16img = src.convert_depth(BitDepth::Half);
+		assert_eq!(f16img.depth(), BitDepth::Half);
+		let back = samples(&f16img);
+		for (a, b) in back.iter().zip([0.0, 0.25, 0.5, 1.0]) {
+			assert!((a - b).abs() < 0.001, "f16 roundtrip: {a} vs {b}");
+		}
+
+		// 同深度 = 重新分配 + 拷贝（props 的数据指针必须指向新缓冲）。
+		let same = src.convert_depth(BitDepth::Float);
+		assert_eq!(same.pixels(), src.pixels());
+		assert!(!std::ptr::eq(same.pixels().as_ptr(), src.pixels().as_ptr()));
+	}
+
+	/// f16 转换的边界：零/次规格数/Inf/NaN。
+	#[test]
+	fn f16_edges() {
+		assert_eq!(f32_to_f16(0.0), 0);
+		assert_eq!(f16_to_f32(0), 0.0);
+		assert!(f16_to_f32(f32_to_f16(1.0)) == 1.0);
+		assert!(f16_to_f32(f32_to_f16(f32::INFINITY)).is_infinite());
+		assert!(f16_to_f32(f32_to_f16(f32::NAN)).is_nan());
+		// 超 half 范围 → Inf。
+		assert!(f16_to_f32(f32_to_f16(1e10)).is_infinite());
+	}
 }

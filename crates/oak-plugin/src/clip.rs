@@ -61,33 +61,10 @@ fn components_from_props(props: &PropertySet) -> Option<crate::image::Components
 	}
 }
 
-/// IEEE 754 半精度 → 单精度（无 half 依赖，手写位转换；非规格数/
-/// Inf/NaN 均按标准展开）。
+/// IEEE 754 半精度 → 单精度（[`crate::image::f16_to_f32`] 的本地别名，
+/// 保持调用点可读）。
 fn f16_to_f32(bits: u16) -> f32 {
-	let sign = ((bits >> 15) & 1) as u32;
-	let exp = ((bits >> 10) & 0x1f) as u32;
-	let mant = (bits & 0x3ff) as u32;
-	let f32_bits = if exp == 0 {
-		if mant == 0 {
-			sign << 31
-		} else {
-			// 非规格数：规格化到 f32 指数域。
-			let mut m = mant;
-			let mut e: i32 = 127 - 15;
-			while m & 0x400 == 0 {
-				m <<= 1;
-				e -= 1;
-			}
-			let m = (m & 0x3ff) << 13;
-			(sign << 31) | (((e + 1) as u32) << 23) | m
-		}
-	} else if exp == 0x1f {
-		// Inf/NaN。
-		(sign << 31) | (0xff << 23) | (mant << 13)
-	} else {
-		(sign << 31) | ((exp + 127 - 15) << 23) | (mant << 13)
-	};
-	f32::from_bits(f32_bits)
+	crate::image::f16_to_f32(bits)
 }
 
 impl ClipInstance {
@@ -325,6 +302,23 @@ impl ClipInstance {
 		}
 		if scrubbed {
 			eprintln!("[PLUGIN] NaN/Inf scrubbed from input frame data during fetch");
+		}
+		// 位深协商（设计约束：管线全链路 ACEScg + F32；插件不支持
+		// F32 时输入图像转成协商位深——输出端在 render 驱动转回
+		// F32）。clip props 的 PixelDepth 由协商流程
+		// （set_video_params）写入；缺省 = F32。
+		let negotiated = self
+			.props
+			.get(crate::image::K_IMAGE_EFFECT_PROP_PIXEL_DEPTH, 0)
+			.and_then(|v| match v {
+				crate::property::Value::String(s) => {
+					crate::image::BitDepth::from_ofx(&s.to_string_lossy())
+				}
+				_ => None,
+			})
+			.unwrap_or(crate::image::BitDepth::Float);
+		if negotiated != crate::image::BitDepth::Float {
+			image = image.convert_depth(negotiated);
 		}
 		Ok(image)
 	}

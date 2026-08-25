@@ -222,9 +222,24 @@ pub fn render_frame(
 		"OfxImageComponentAlpha" => crate::image::Components::Alpha,
 		_ => return Err(Error::Failed("协商分量未知".into())),
 	};
-	if prefs.output_bit_depth != "OfxBitDepthFloat" {
-		return Err(Error::Failed("Phase 2 仅支持 F32 输出".into()));
-	}
+	// 位深协商（设计约束：管线全链路 ACEScg + F32；插件不支持 F32
+	// 时按插件协商的位深渲染——输入图像转低、输出转回 F32，而不是
+	// 直接失败）。GL 路径强制 F32：GL 纹理按管线格式创建，位深由
+	// kOfxOpenGLPropPixelDepth 另行协商，clip props 必须与插件实际
+	// 见到的图像一致。olive 像素格式号：0=u8, 2=u16, 3=f16, 4=f32。
+	let (depth, depth_format) = if use_opengl {
+		(crate::image::BitDepth::Float, 4)
+	} else {
+		let d = crate::image::BitDepth::from_ofx(&prefs.output_bit_depth)
+			.ok_or_else(|| Error::Failed(format!("协商位深未知：{}", prefs.output_bit_depth)))?;
+		let f = match d {
+			crate::image::BitDepth::Byte => 0,
+			crate::image::BitDepth::Short => 2,
+			crate::image::BitDepth::Half => 3,
+			crate::image::BitDepth::Float => 4,
+		};
+		(d, f)
+	};
 
 	// 5. 输出 clip：RoD + 输出纹理挂接（pluginrenderer.cpp:1603-1606）。
 	let output_clip = inst
@@ -235,15 +250,15 @@ pub fn render_frame(
 	output_clip.set_region_of_definition(region_of_interest, job.time);
 	output_clip.set_output_texture(Some(dst.clone()), job.time);
 
-	// 6. 输入 clip：RoD 与格式（pluginrenderer.cpp:1627-1665；Phase 2
-	// 全链路 F32 → 格式选择恒等，无转换路径）。
+	// 6. 输入 clip：RoD 与格式（pluginrenderer.cpp:1627-1665；位深按
+	// 协商结果——非 F32 插件的输入图像在 fetch 时转低）。
 	for clip in &inst.clips {
 		if clip.name == "Output" {
 			continue;
 		}
 		if pick_input(&clip.name, job).map_or(false, |t| usable(&t)) {
 			clip.set_region_of_definition(region_of_interest, job.time);
-			clip.set_video_params(render::PIXEL_FORMAT_F32, 4);
+			clip.set_video_params(depth_format, 4);
 		}
 	}
 
@@ -254,8 +269,8 @@ pub fn render_frame(
 		.get_regions_of_interest(job.time, RenderScale { x: 1.0, y: 1.0 }, region_of_interest)
 		.unwrap_or_else(|_| inst.clips.iter().map(|_| region_of_interest).collect());
 
-	// 8. 输出 clip 格式（pluginrenderer.cpp:1686-1697）。
-	output_clip.set_video_params(render::PIXEL_FORMAT_F32, components.channel_count() as i32);
+	// 8. 输出 clip 格式（pluginrenderer.cpp:1686-1697；位深按协商）。
+	output_clip.set_video_params(depth_format, components.channel_count() as i32);
 
 	// 渲染窗口（像素坐标；pluginrenderer.cpp:1699-1704）。
 	let render_window = OfxRectD {
@@ -278,7 +293,7 @@ pub fn render_frame(
 	// 11. render action。
 	if !use_opengl {
 		let output = std::sync::Arc::new(Image::allocate(
-			crate::image::BitDepth::Float,
+			depth,
 			components,
 			OfxRectD {
 				x1: 0.0,
@@ -293,7 +308,7 @@ pub fn render_frame(
 			render_window,
 			output.clone(),
 		)?;
-		if std::env::var_os("OAK_OFX_TRACE").is_some() {
+		if std::env::var_os("OAK_OFX_TRACE").is_some() && depth == crate::image::BitDepth::Float {
 			let p = output.pixels();
 			let dump: Vec<f32> = p
 				.chunks_exact(4)
@@ -302,8 +317,16 @@ pub fn render_frame(
 				.collect();
 			eprintln!("[ofx] render_frame: output buffer at {:p}, pixels[0..4] = {dump:?}", p.as_ptr());
 		}
-		// 输出装配（pluginrenderer.cpp:1762-1834 的 CPU 路径）。
-		write_output_frame(&mut dst, &output)?;
+		// 输出装配（pluginrenderer.cpp:1762-1834 的 CPU 路径）：插件
+		// 协商了低位深时先转回管线工作格式（全链路 F32/ACEScg）。
+		let f32_output;
+		let output_f32 = if depth == crate::image::BitDepth::Float {
+			&*output
+		} else {
+			f32_output = output.convert_depth(crate::image::BitDepth::Float);
+			&f32_output
+		};
+		write_output_frame(&mut dst, output_f32)?;
 	} else {
 		// GL 路径（方案 B，见 [`crate::gl_bridge`]）：宿主自建离屏
 		// 上下文，为输出帧建 GL 纹理 + FBO（插件直接画进附着的输出
@@ -324,7 +347,7 @@ pub fn render_frame(
 			Err(gl_err) => {
 				eprintln!("[PLUGIN] GL 渲染失败，回退 CPU：{gl_err}");
 				let output = std::sync::Arc::new(Image::allocate(
-					crate::image::BitDepth::Float,
+					depth,
 					components,
 					OfxRectD {
 						x1: 0.0,
@@ -339,7 +362,15 @@ pub fn render_frame(
 					render_window,
 					output.clone(),
 				)?;
-				write_output_frame(&mut dst, &output)?;
+				// 同主 CPU 路径：低位深协商的输出先转回 F32 再装帧。
+				let f32_output;
+				let output_f32 = if depth == crate::image::BitDepth::Float {
+					&*output
+				} else {
+					f32_output = output.convert_depth(crate::image::BitDepth::Float);
+					&f32_output
+				};
+				write_output_frame(&mut dst, output_f32)?;
 			}
 		}
 	}
