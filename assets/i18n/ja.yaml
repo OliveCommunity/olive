@@ -339,6 +339,7 @@
 "proxydialog.height": "プロキシ高さ"
 "proxydialog.crf": "プロキシCRF"
 "proxydialog.preset": "プロキシプリセット"
+"proxydialog.max_concurrent": "最大同時ジョブ数"
 "proxydialog.include_audio": "プロキシにオーディオを含める"
 "proxydialog.ffmpeg": "ffmpeg 実行ファイル"
 "proxydialog.generate": "プロキシを生成"

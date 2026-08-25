@@ -1038,6 +1038,9 @@ pub struct RealEngine {
 	/// The sending half of `thumb_rx` (cloned into every job).
 	thumb_tx: Mutex<mpsc::Sender<ThumbEvent>>,
 	proxy_runs: Vec<ProxyRun>,
+	/// 待启动的代理生成队列（entry id）：自动代理不并发轰炸系统——
+	/// 同时只跑 [`PROXY_MAX_CONCURRENT`] 个转码，完成后从队列递补。
+	proxy_queue: Vec<u64>,
 	/// Last waveform-cache version seen by the tick (background waveform
 	/// extractions bump it on insert → repaint the timeline).
 	waveform_version_seen: u64,
@@ -1182,6 +1185,7 @@ impl RealEngine {
 			thumb_rx: Mutex::new(thumb_rx),
 			thumb_tx: Mutex::new(thumb_tx),
 			proxy_runs: Vec::new(),
+			proxy_queue: Vec::new(),
 			waveform_version_seen: 0,
 			multicam_frames: Arc::new(Mutex::new(MulticamFrameCache::default())),
 			multicam_rx: Mutex::new(multicam_rx),
@@ -2140,8 +2144,28 @@ impl RealEngine {
 		// generates.
 		if !finished.is_empty() {
 			self.invalidate_preview_frames(cx);
+			// 有转码完成：从队列递补下一个（并发上限可调，见
+			// proxy_max_concurrent）。
+			self.pump_proxy_queue(cx);
 		} else if changed {
 			cx.notify();
+		}
+	}
+
+	/// 自动代理转码的并发上限（Proxy Settings 对话框可调，默认 1；
+	/// 不变式"并发 × 每任务线程 ≤ 核数一半"的线程侧见
+	/// [`oak_task::proxy::ProxyTask::transcode_thread_budget`]）。
+	fn proxy_max_concurrent() -> usize {
+		oak_task::proxy::ProxyTask::proxy_max_concurrent() as usize
+	}
+
+	/// 按并发上限从队列递补启动代理生成（队列去重由入队侧保证）。
+	fn pump_proxy_queue(&mut self, cx: &mut Context<Self>) {
+		while self.proxy_runs.len() < Self::proxy_max_concurrent() && !self.proxy_queue.is_empty() {
+			let id = self.proxy_queue.remove(0);
+			if let Err(err) = self.proxy_generate(id, cx) {
+				println!("[real engine] queued proxy generation skipped {id}: {err}");
+			}
 		}
 	}
 
@@ -2193,13 +2217,14 @@ impl RealEngine {
 				.map(|node| node.identity())
 				.collect()
 		};
+		// 入队 + 按并发上限递补（不一次全部启动：每个转码本身就是
+		// 多线程 ffmpeg，N 个并发会把 CPU 打满）。
 		for id in candidates {
-			// proxy_generate 自己处理路径构建/任务线程/状态标记；失败
-			// 只记日志（自动路径不打扰用户）。
-			if let Err(err) = self.proxy_generate(id, cx) {
-				println!("[real engine] auto proxy generation skipped {id}: {err}");
+			if !self.proxy_queue.contains(&id) {
+				self.proxy_queue.push(id);
 			}
 		}
+		self.pump_proxy_queue(cx);
 	}
 
 
@@ -4754,6 +4779,9 @@ impl AppEngine for RealEngine {
 		let Some(footage) = self.footage_of(id) else {
 			return;
 		};
+		// 删除代理 = 明确不要了：同时移出自动生成队列（否则递补时
+		// 会立刻重新生成一个）。
+		self.proxy_queue.retain(|&q| q != id);
 		let proxy_path = {
 			let Some(project) = self.project.as_ref() else {
 				return;

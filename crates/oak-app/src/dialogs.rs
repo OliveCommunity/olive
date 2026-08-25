@@ -1068,6 +1068,7 @@ pub struct ProxyDialogContent<E: crate::oakui::engine::AppEngine> {
 	crf: Entity<SpinBox>,
 	preset: Entity<ComboBox>,
 	include_audio: Entity<CheckBox>,
+	max_concurrent: Entity<SpinBox>,
 	ffmpeg_path: Entity<PathField>,
 	custom_params: Entity<CheckBox>,
 	/// Snapshot of the footage rows (refreshed after generate / delete).
@@ -1162,6 +1163,21 @@ impl<E: crate::oakui::engine::AppEngine> ProxyDialogContent<E> {
 			.with_label(i18n::tr("proxydialog.include_audio"))
 		});
 
+		let max_concurrent = cx.new(|cx| {
+			SpinBox::new(
+				28,
+				SliderModel::new(
+					ValueKind::Integer,
+					1.0,
+					16.0,
+					1.0,
+					config_get_int("ProxyMaxConcurrent", 1).clamp(1, 16) as f64,
+				),
+				window,
+				cx,
+			)
+		});
+
 		let ffmpeg_path = cx.new(|cx| {
 			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
 			PathField {
@@ -1197,6 +1213,7 @@ impl<E: crate::oakui::engine::AppEngine> ProxyDialogContent<E> {
 			crf,
 			preset,
 			include_audio,
+			max_concurrent,
 			ffmpeg_path,
 			custom_params,
 			rows,
@@ -1241,6 +1258,10 @@ impl<E: crate::oakui::engine::AppEngine> ProxyDialogContent<E> {
 		config_set_int("ProxyCRF", i64::from(params.crf));
 		config_set_string("ProxyPreset", &params.preset);
 		config_set_bool("ProxyIncludeAudio", params.include_audio);
+		config_set_int(
+			"ProxyMaxConcurrent",
+			self.max_concurrent.read(cx).value().to_f64().clamp(1.0, 16.0) as i64,
+		);
 		config_set_string(
 			CONFIG_KEY_FFMPEG_PATH,
 			self.ffmpeg_path.read(cx).path(cx).trim(),
@@ -1426,6 +1447,11 @@ impl<E: crate::oakui::engine::AppEngine> Render for ProxyDialogContent<E> {
 						self.height.clone(),
 					)),
 			)
+			.child(form_row(
+				&colors,
+				i18n::tr("proxydialog.max_concurrent").into(),
+				self.max_concurrent.clone(),
+			))
 			.child(
 				div()
 					.flex()

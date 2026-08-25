@@ -339,6 +339,7 @@
 "proxydialog.height": "代理高度"
 "proxydialog.crf": "代理 CRF"
 "proxydialog.preset": "代理预设"
+"proxydialog.max_concurrent": "最大并发任务数"
 "proxydialog.include_audio": "代理包含音频"
 "proxydialog.ffmpeg": "ffmpeg 可执行文件"
 "proxydialog.generate": "生成代理"

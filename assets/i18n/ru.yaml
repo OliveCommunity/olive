@@ -339,6 +339,7 @@
 "proxydialog.height": "Высота прокси"
 "proxydialog.crf": "CRF прокси"
 "proxydialog.preset": "Пресет прокси"
+"proxydialog.max_concurrent": "Макс. параллельных задач"
 "proxydialog.include_audio": "Включать звук в прокси"
 "proxydialog.ffmpeg": "Исполняемый файл ffmpeg"
 "proxydialog.generate": "Создать прокси"

@@ -339,6 +339,7 @@
 "proxydialog.height": "Hauteur du proxy"
 "proxydialog.crf": "CRF du proxy"
 "proxydialog.preset": "Présélection du proxy"
+"proxydialog.max_concurrent": "Tâches simultanées max."
 "proxydialog.include_audio": "Inclure l'audio dans les proxies"
 "proxydialog.ffmpeg": "Exécutable ffmpeg"
 "proxydialog.generate": "Générer les proxies"

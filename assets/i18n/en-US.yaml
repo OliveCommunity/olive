@@ -339,6 +339,7 @@
 "proxydialog.height": "Proxy Height"
 "proxydialog.crf": "Proxy CRF"
 "proxydialog.preset": "Proxy Preset"
+"proxydialog.max_concurrent": "Max Concurrent Jobs"
 "proxydialog.include_audio": "Include audio in proxies"
 "proxydialog.ffmpeg": "ffmpeg Executable"
 "proxydialog.generate": "Generate Proxies"
