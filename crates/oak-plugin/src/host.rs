@@ -1232,6 +1232,44 @@ impl Host {
 		})
 	}
 
+	/// 上下文选择 + 实例化（filter 优先；实例化失败时按 general →
+	/// tracker → paint → 其余支持上下文的顺序回退——TrackerPM 这类
+	/// 插件 describe 支持 filter，但其 createInstance 在非
+	/// paint/tracker/general 上下文抓不到 Mask clip 会炸
+	/// BadHandle；Natron 上它天然以 tracker 上下文实例化）。
+	/// 返回实际使用的上下文与实例；所有上下文都失败时返回最后一个
+	/// 错误。
+	pub fn create_instance_preferred(
+		&self,
+		identifier: &str,
+	) -> crate::error::Result<(String, Arc<RefBox<Instance>>)> {
+		let plugin = self.cache.find(identifier).ok_or(crate::error::Error::NotFound)?;
+		let mut order: Vec<&str> = Vec::with_capacity(plugin.contexts.len());
+		for pref in [
+			"OfxImageEffectContextFilter",
+			"OfxImageEffectContextGeneral",
+			"OfxImageEffectContextTracker",
+			"OfxImageEffectContextPaint",
+		] {
+			if plugin.contexts.iter().any(|c| c == pref) {
+				order.push(pref);
+			}
+		}
+		for c in &plugin.contexts {
+			if !order.contains(&c.as_str()) {
+				order.push(c);
+			}
+		}
+		let mut last_err = crate::error::Error::Failed("插件无支持上下文".into());
+		for ctx in order {
+			match self.create_instance(identifier, Some(ctx)) {
+				Ok(inst) => return Ok((ctx.to_string(), inst)),
+				Err(e) => last_err = e,
+			}
+		}
+		Err(last_err)
+	}
+
 	/// 按标识创建实例（describeInContext → createInstance）。
 	/// 参照 HS: ofxhImageEffectAPI.cpp:200-238（describeInContext 的
 	/// in-args 只有 kOfxImageEffectPropContext）与

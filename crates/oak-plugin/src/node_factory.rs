@@ -753,27 +753,13 @@ pub fn register_plugin_nodes() -> Vec<String> {
 			continue;
 		};
 
-		// 上下文选择：filter 优先，否则第一个（factory.cpp:171-177）。
-		let context = if plugin.contexts.iter().any(|c| c == "OfxImageEffectContextFilter") {
-			"OfxImageEffectContextFilter".to_string()
-		} else {
-			match plugin.contexts.first() {
-				Some(c) => c.clone(),
-				None => {
-					eprintln!(
-						"Skipping OFX plugin with no contexts: {}",
-						plugin.identifier
-					);
-					continue;
-				}
-			}
-		};
-
-		// 元数据实例（name/description；建完即弃）。describeInContext
-		// 失败的插件无法实例化（常见于只支持 Vegas 立体声等厂商套件
-		// 的插件）——记录原因，不静默跳过。
-		let inst = match host.create_instance(&plugin.identifier, Some(&context)) {
-			Ok(inst) => inst,
+		// 元数据实例（name/description；建完即弃）。上下文选择：
+		// filter 优先、实例化失败按序回退（TrackerPM 这类插件的
+		// createInstance 只在 tracker/general/paint 下能跑）。所有
+		// 上下文都失败的插件无法实例化（常见于只支持 Vegas 立体声
+		// 等厂商套件的插件）——记录原因，不静默跳过。
+		let (context, inst) = match host.create_instance_preferred(&plugin.identifier) {
+			Ok(pair) => pair,
 			Err(e) => {
 				eprintln!("[ofx] {}: instance creation failed: {e}", plugin.identifier);
 				continue;
@@ -955,15 +941,13 @@ fn shared_plugin_instance(identifier: &str) -> Option<u64> {
 		return Some(id);
 	}
 	let host = Host::global();
-	let plugin = host.cache.find(identifier)?;
-	// 上下文选择与 [`register_plugin_nodes`] 一致（filter 优先，否则
-	// 首个支持上下文；factory.cpp:171-177）。
-	let context = if plugin.contexts.iter().any(|c| c == "OfxImageEffectContextFilter") {
-		"OfxImageEffectContextFilter".to_string()
-	} else {
-		plugin.contexts.first()?.clone()
-	};
-	let inst = host.create_instance(identifier, Some(&context)).ok()?;
+	if host.cache.find(identifier).is_none() {
+		return None;
+	}
+	// 上下文选择：filter 优先、实例化失败按序回退（与
+	// [`register_plugin_nodes`] 同一策略，见
+	// [`Host::create_instance_preferred`]）。
+	let (_context, inst) = host.create_instance_preferred(identifier).ok()?;
 	let id = register_instance(inst);
 	cache
 		.lock()

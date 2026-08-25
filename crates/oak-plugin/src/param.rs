@@ -479,7 +479,10 @@ impl ParamDef {
 				);
 				props.set_one(P_ANIMATES, Value::Int(1));
 				props.set_one(P_PARAMETRIC_DIMENSION, Value::Int(1));
-				props.define(P_PARAMETRIC_UI_COLOUR, vec![]);
+				// UIColour 默认未设：不预定义（插件首写时按 OFX 语义
+				// 隐式创建并允许逐位追加；预定义空数组会让 index >= 1
+				// 的写入炸 BadIndex——ColorLookup/HueCorrect 的
+				// describeInContext 失败根因）。
 				props.set_one(P_PARAMETRIC_INTERACT_BG, Value::Pointer(std::ptr::null_mut()));
 				props.define(
 					P_PARAMETRIC_RANGE,
@@ -913,7 +916,9 @@ mod tests {
 			d.props.get(P_PARAMETRIC_RANGE, 1),
 			Some(Value::Double(1.0))
 		));
-		assert_eq!(d.props.dimension(P_PARAMETRIC_UI_COLOUR), 0);
+		// UIColour 默认未设：属性不存在（插件首写隐式创建），而不是
+		// 预定义的空数组（空数组会把 index >= 1 的写入挡成 BadIndex）。
+		assert!(d.props.get(P_PARAMETRIC_UI_COLOUR, 0).is_none());
 		assert!(matches!(
 			d.props.get(P_PARAMETRIC_INTERACT_BG, 0),
 			Some(Value::Pointer(p)) if p.is_null()

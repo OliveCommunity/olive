@@ -78,6 +78,14 @@ impl ClipDescriptor {
 		props.set_one(CLIP_OPTIONAL, Value::Int(0));
 		props.set_one(CLIP_IS_MASK, Value::Int(0));
 		props.set_one(CLIP_FIELD_EXTRACTION, Value::String(cs(CLIP_FIELD_DOUBLED)));
+		// kOfxImageClipPropFieldOrder（ofxhClip.cpp 的 clip 描述符必备
+		// 属性；ofxs `Clip::getFieldOrder()` 无默认值强读——Mirror 这类
+		// 场感知插件缺它直接 MissingHostFeature）。取值是
+		// kOfxImageField* 族（ofxImageEffect.h:1288），默认无场。
+		props.set_one(
+			"OfxImageClipPropFieldOrder",
+			Value::String(cs("OfxFieldNone")),
+		);
 		props.set_one(CLIP_SUPPORTS_TILES, Value::Int(1));
 		// ofxColour（M11 §4）：clip 色彩空间属性族。Colourspace 由宿主
 		// 在实例化时写入（输入 clip = 工作空间 ACEScg）；Preferred 由

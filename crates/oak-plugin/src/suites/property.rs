@@ -224,6 +224,9 @@ fn set_value(set: &PropertySet, name: &str, index: c_int, value: Value) -> Resul
 		// 没有类型探针：按 HS 的 index == size 追加语义直接 push。
 		if p.values.is_empty() {
 			if idx != 0 {
+				if std::env::var_os("OAK_OFX_TRACE").is_some() {
+					eprintln!("[ofx] propSet into empty predefined array: {name}[{idx}]");
+				}
 				return Err(status::ERR_BAD_INDEX);
 			}
 			p.values.push(value);
@@ -238,6 +241,9 @@ fn set_value(set: &PropertySet, name: &str, index: c_int, value: Value) -> Resul
 		if idx == p.values.len() {
 			p.values.push(value);
 			return Ok(());
+		}
+		if idx >= p.values.len() && std::env::var_os("OAK_OFX_TRACE").is_some() {
+			eprintln!("[ofx] propSet out of range: {name}[{idx}] (dim {})", p.values.len());
 		}
 		let slot = p.values.get_mut(idx).ok_or(status::ERR_BAD_INDEX)?;
 		*slot = value;
