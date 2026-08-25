@@ -82,6 +82,12 @@ const HORIZONTAL_DRAG_RANGE_PX: f32 = 240.0;
 /// by 1/10 step, Home/End jump to the range ends.
 /// The in-flight drag gesture payload shared with the drag events.
 struct SliderDrag {
+	/// The control that STARTED the drag. gpui delivers drag-move events
+	/// to every drop target with a matching payload type under the
+	/// cursor — without this gate, dragging one slider also moved every
+	/// other slider the cursor passed over (the OFX-panel drag that
+	/// moved the timeline zoom/track-height sliders).
+	control: usize,
 	/// The cursor x of the first drag-move (the drag origin).
 	first_x: f32,
 	/// The model fraction when the drag started.
@@ -161,6 +167,16 @@ impl Slider {
 		cx.notify();
 	}
 
+	/// Complete an in-flight drag (one undoable edit per gesture): emits
+	/// the final value and the DragFinished notice. No-op without a drag.
+	fn finish_drag(&mut self, cx: &mut Context<Self>) {
+		if self.dragging {
+			self.dragging = false;
+			self.emit_changed(cx);
+			cx.emit(SliderEvent::DragFinished { control: self.control });
+		}
+	}
+
 	/// Open the numeric editor with the current value as its text.
 	fn begin_edit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		let text = self.display();
@@ -227,6 +243,7 @@ impl Render for Slider {
 		let control = self.control;
 		let handle_x = (fraction * 100.0).clamp(0.0, 100.0) as f32;
 		let drag_payload = std::sync::Arc::new(std::sync::RwLock::new(SliderDrag {
+			control,
 			first_x: 0.0,
 			origin_fraction: 0.0,
 			first: true,
@@ -248,6 +265,10 @@ impl Render for Slider {
 				cx.listener(|this, event: &gpui::DragMoveEvent<std::sync::Arc<std::sync::RwLock<SliderDrag>>>, _window, cx| {
 					{
 						let mut drag = event.drag(cx).write().unwrap();
+						if drag.control != this.control {
+							// Another slider's drag passing over us: not ours.
+							return;
+						}
 						if drag.first {
 							drag.first = false;
 							drag.first_x = f32::from(event.event.position.x);
@@ -275,13 +296,21 @@ impl Render for Slider {
 					cx.notify();
 				}),
 			)
-			.on_drop(
-				cx.listener(|this, _drag: &std::sync::Arc<std::sync::RwLock<SliderDrag>>, _window, cx| {
-					if this.dragging {
-						this.dragging = false;
-						this.emit_changed(cx);
-						cx.emit(SliderEvent::DragFinished { control: this.control });
-					}
+			// Finish the gesture on mouse up — wherever it lands (gpui only
+			// delivers drop events to the hovered target, so finishing via
+			// `on_drop` lost the gesture when the cursor ended outside the
+			// track). Both the inside and the outside variants gate on
+			// `dragging`, so only a gesture this slider started completes.
+			.on_mouse_up(
+				MouseButton::Left,
+				cx.listener(|this, _event: &MouseUpEvent, _window, cx| {
+					this.finish_drag(cx);
+				}),
+			)
+			.on_mouse_up_out(
+				MouseButton::Left,
+				cx.listener(|this, _event: &MouseUpEvent, _window, cx| {
+					this.finish_drag(cx);
 				}),
 			)
 			.on_click(cx.listener(|this, event: &gpui::ClickEvent, window, cx| {
