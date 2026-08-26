@@ -145,9 +145,14 @@ FramePtr OIIODecoder::RetrieveVideoFrameInternal(const RetrieveVideoParams &p)
 		buffer_.allocate();
 
 		if (p.divider == 1) {
-			// Just upload straight to the buffer
-			image_->read_image(0, 0, 0, -1, oiio_pix_fmt_, buffer_.data());
-		} else {
+    // 告诉 OIIO 目标 buffer 的真实行步长，避免错位
+    image_->read_image(0, 0, 0, -1, oiio_pix_fmt_, buffer_.data(),
+                       OIIO::AutoStride,           // xstride：OIIO 自动算 = bpp
+                       buffer_.linesize_bytes(),     // ystride：Oak Frame 的真实行步长
+                       OIIO::AutoStride);            // zstride
+}
+
+else {
 			OIIO::ImageBuf buf(image_->spec());
 			image_->read_image(0, 0, 0, -1, image_->spec().format,
 							   buf.localpixels(), buf.pixel_stride(),
