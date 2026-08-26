@@ -20,6 +20,7 @@
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, NodeBehavior, NodeCore};
+use crate::nodes::jobs::ShaderJobPayload;
 
 /// Texture input id (C++ `k_texture_input`). Type: texture; flags:
 /// not-keyframable; this is the node's effect input.
@@ -136,6 +137,13 @@ impl NodeBehavior for WaveDistortNode {
 	/// intensity != 0.0 -> shader job over the whole value row rendered
 	/// at the texture's own params; intensity == 0.0 -> pass-through
 	/// push of the input texture unchanged.
+	///
+	/// The job boxes a [`ShaderJobPayload`] that the renderer's resolve
+	/// hook executes and replaces with the result texture; the params row
+	/// carries the input texture and uniforms, keyed by the effect input.
+	/// C++ renders the job at the texture's own params and inserts no
+	/// `resolution_in` (the wave shader declares none), so the runner has
+	/// nothing extra to fill (`// CPP-PARITY: wavedistortnode.cpp` value()).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -154,12 +162,21 @@ impl NodeBehavior for WaveDistortNode {
 		};
 
 		if intensity != 0.0 {
-			// C++ pushes `Texture::job(texture->params(), ShaderJob(value))`;
-			// the deferred job is resolved by the renderer seam
-			// (`// CPP-PARITY: wavedistortnode.cpp` value()).
+			// The shader-job box (C++ ShaderJob): the behavior's type id
+			// selects the fragment source; the effect input key locates the
+			// main texture inside the params row.
 			table.push(
 				crate::value::ValueType::Texture,
-				crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+				crate::value::NodeValue::Texture(crate::handle::make_owned(ShaderJobPayload {
+					node_id: crate::id::NodeId::INVALID,
+					time,
+					iterations: 1,
+					type_id: self.type_id().to_string(),
+					shader_id: String::new(),
+					effect_input: core.effect_input.clone(),
+					params: inputs.clone(),
+					iterative_input: String::new(),
+				})),
 				None,
 			);
 		} else {
@@ -287,7 +304,7 @@ mod tests {
 	}
 
 	#[test]
-	fn value_nonzero_intensity_pushes_deferred_job() {
+	fn value_nonzero_intensity_pushes_job_payload() {
 		let (core, behavior) = create();
 		let inputs = crate::value::NodeValueRow::from([
 			(TEXTURE_INPUT.to_string(), tex()),
@@ -295,7 +312,15 @@ mod tests {
 		]);
 		let mut table = NodeValueTable::default();
 		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
-		assert!(table.get(ValueType::Texture).is_some());
+		let NodeValue::Texture(handle) = table.get(ValueType::Texture).unwrap() else {
+			unreachable!()
+		};
+		let payload = unsafe { crate::handle::get_checked::<crate::nodes::jobs::ShaderJobPayload>(handle) }
+			.expect("wave output boxes a ShaderJobPayload");
+		assert_eq!(payload.type_id, "org.olivevideoeditor.Olive.wave");
+		assert_eq!(payload.shader_id, "");
+		assert_eq!(payload.iterations, 1);
+		assert_eq!(payload.effect_input, TEXTURE_INPUT);
 	}
 
 	#[test]

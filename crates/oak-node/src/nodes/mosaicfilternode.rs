@@ -20,6 +20,7 @@
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, NodeBehavior, NodeCore};
+use crate::nodes::jobs::ShaderJobPayload;
 
 /// Texture input id (C++ `k_texture_input`). Type: texture; flags:
 /// not-keyframable; this is the node's effect input.
@@ -111,15 +112,13 @@ impl NodeBehavior for MosaicFilterNode {
 		}
 	}
 
-	/// Evaluate outputs (C++ `value()`): no texture -> push nothing; if
-	/// the block counts already equal the texture's pixel dimensions ->
-	/// pass-through push of the input texture; otherwise push a shader
-	/// job with bilinear interpolation forced on `tex_in` (mipmapping
-	/// makes block colors look wrong).
+	/// Evaluate outputs (C++ `value()`): no texture -> push nothing;
+	/// otherwise queue the input texture as a shader job.
 	///
-	/// The "block counts equal the pixel dimensions" check compares the
-	/// input values against the texture's width/height, which the Rust
-	/// texture handle does not carry — so the pass-through optimization
+	/// The C++ pass-through optimization — when the block counts already
+	/// equal the texture's pixel dimensions, push the input texture
+	/// unchanged — compares the input values against the texture's
+	/// width/height, which the Rust texture handle does not carry, so it
 	/// is not representable and a shader job is always queued when a
 	/// texture is present (`// CPP-PARITY: mosaicfilternode.cpp` value()).
 	fn value(
@@ -135,10 +134,33 @@ impl NodeBehavior for MosaicFilterNode {
 		) {
 			return;
 		}
-		let _ = (core, time, inputs);
+
+		// `// CPP-PARITY: mosaicfilternode.cpp` `value()` — the C++ pushes
+		// `tex->to_job(job)` when the block counts differ from the texture's
+		// pixel dimensions and passes the texture through when they match;
+		// the Rust texture handle carries no width/height, so the
+		// pass-through branch is not representable and a shader job is
+		// always queued here. The C++ also forces bilinear interpolation on
+		// `tex_in` (`job.SetInterpolation(tex_in, kLinear)`) so mipmapping
+		// does not smear block colors; [`ShaderJobPayload`] has no
+		// interpolation field and the renderer does not support it yet
+		// (TODO: carry interpolation on the payload and apply it in the
+		// renderer). The job is boxed here as a [`ShaderJobPayload`] that
+		// the renderer's resolve hook executes and replaces with the result
+		// texture; the params row is the whole input row.
+		let params = inputs.clone();
 		table.push(
 			crate::value::ValueType::Texture,
-			crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+			crate::value::NodeValue::Texture(crate::handle::make_owned(ShaderJobPayload {
+				node_id: crate::id::NodeId::INVALID,
+				time,
+				iterations: 1,
+				type_id: self.type_id().to_string(),
+				shader_id: String::new(),
+				effect_input: core.effect_input.clone(),
+				params,
+				iterative_input: String::new(),
+			})),
 			None,
 		);
 	}
@@ -244,12 +266,35 @@ mod tests {
 	}
 
 	#[test]
-	fn value_with_texture_pushes_deferred_job() {
+	fn value_with_texture_pushes_shader_job_payload() {
 		let (core, behavior) = create();
-		let inputs = crate::value::NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex())]);
+		let inputs = crate::value::NodeValueRow::from([
+			(TEXTURE_INPUT.to_string(), tex()),
+			(HORIZ_INPUT.to_string(), NodeValue::Float(32.0)),
+			(VERT_INPUT.to_string(), NodeValue::Float(18.0)),
+		]);
 		let mut table = NodeValueTable::default();
 		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
-		assert!(table.get(ValueType::Texture).is_some());
+		let NodeValue::Texture(handle) = table.get(ValueType::Texture).unwrap() else {
+			panic!("expected a texture-typed value");
+		};
+		let payload =
+			unsafe { crate::handle::get_checked::<crate::nodes::jobs::ShaderJobPayload>(handle) }
+				.expect("payload boxed behind the handle");
+		assert_eq!(payload.type_id, "org.olivevideoeditor.Olive.mosaicfilter");
+		assert_eq!(payload.shader_id, "");
+		assert_eq!(payload.iterations, 1);
+		assert_eq!(payload.effect_input, TEXTURE_INPUT);
+		// The whole input row travels as the params; horiz/vert stay put
+		// under their input ids.
+		assert_eq!(
+			payload.params.get(HORIZ_INPUT),
+			Some(&NodeValue::Float(32.0))
+		);
+		assert_eq!(
+			payload.params.get(VERT_INPUT),
+			Some(&NodeValue::Float(18.0))
+		);
 	}
 
 	#[test]

@@ -33,7 +33,12 @@
 //!   - **The main loop.** [`worker_main`] creates the session, loads the
 //!     runtime config (including the oakplugin render executor), writes
 //!     the startup handshake, and serves the stdin/stdout NDJSON loop
-//!     until a `shutdown` message or EOF.
+//!     until a `shutdown` message or EOF. The worker is single-threaded
+//!     by design — there is no render thread: a `render_batch` renders
+//!     its tickets synchronously on this loop thread, and parallelism
+//!     comes from the main process's worker pool
+//!     (`oak_render::procpool`), not from threads here (see "Where the
+//!     rendering happens" in this crate's README).
 //!
 //! Real rendering landed in M15 S1: `load_graph` deserializes the graph
 //! snapshot file (oaknode project XML, with the minimal
@@ -66,16 +71,27 @@ use crate::{log_error, PROTOCOL_VERSION};
 /// A loaded graph snapshot (M15 S1): the snapshot file path plus what it
 /// deserialized into — a full oaknode project, or only the copied-project
 /// identity (the minimal `{"project_copy":N}` payload the
-/// [`oak_render::worker::GraphSnapshotStore`] writes before the app wires
-/// full graph uploads in S2).
+/// [`oak_render::worker::GraphSnapshotStore`] wrote before M16 S1 shipped
+/// full graph snapshots).
 struct LoadedGraph {
 	/// Snapshot file path (S2: graph_update diffing is path-based).
 	#[allow(dead_code)]
 	path: String,
-	/// The deserialized project (S2: node-graph render path; today only
-	/// montage/footage/generate tickets use the loaded context).
-	#[allow(dead_code)]
+	/// The deserialized project (M16 S1: node-graph tickets render the
+	/// viewer's frame from here; montage/footage/generate tickets use the
+	/// loaded context too).
 	project: Option<Arc<Mutex<oak_node::project::Project>>>,
+	/// The loaded snapshot's owning project uuid; `None` for the
+	/// identity-only legacy payload. Graph-mode tickets (which carry their
+	/// owning project's uuid) only render from this graph when it matches —
+	/// a stale snapshot from a different project must not answer foreign
+	/// viewer identities (M16 S1 cross-process snapshot race).
+	project_uuid: Option<String>,
+	/// Source-identity -> loaded-id map (see
+	/// [`oak_node::serializer::load_with_id_map`]): tickets carry viewer
+	/// identities from the *saved* project, while the loaded graph's arena
+	/// slots differ (deleted slots shift every later node).
+	id_map: std::collections::HashMap<u64, oak_node::id::NodeId>,
 	project_copy: u64,
 }
 
@@ -280,12 +296,22 @@ impl WorkerSession {
 	/// creation, anything else initializes the render backend through the
 	/// oakrender crate's direct Rust API (dynamic -> OpenGL fallback).
 	/// The M15 `"cpu"` backend is the headless render mode: no renderer,
-	/// CPU evaluation + decode via [`oak_render::eval`].
+	/// CPU evaluation + decode via [`oak_render::eval`]. M16 S1: a failed
+	/// renderer init for any other backend (e.g. "auto" on a GPU-less
+	/// host) is tolerated — the session continues headless and tickets
+	/// evaluate through the CPU path.
 	pub fn create(backend: &str) -> Result<WorkerSession, String> {
-		let renderer = if is_no_backend(backend) || is_cpu_backend(backend) {
-			None
-		} else {
-			Some(Renderer::create(backend)?)
+		let renderer = match backend {
+			b if is_no_backend(b) || is_cpu_backend(b) => None,
+			b => match Renderer::create(b) {
+				Ok(r) => Some(r),
+				Err(e) => {
+					log_error(&format!(
+						"session: {b} renderer init failed ({e}); continuing headless (CPU eval path)"
+					));
+					None
+				}
+			},
 		};
 		Ok(WorkerSession {
 			renderer,
@@ -542,11 +568,18 @@ impl WorkerSession {
 						))
 					}
 				};
-				match oak_node::serializer::load(&content) {
-					Ok(project) => {
+				match oak_node::serializer::load_with_id_map(&content) {
+					Ok((project, id_map)) => {
+						let project_uuid = project
+							.lock()
+							.unwrap_or_else(|e| e.into_inner())
+							.uuid
+							.clone();
 						self.graph = Some(LoadedGraph {
 							path: load.path.clone(),
 							project: Some(project),
+							project_uuid: Some(project_uuid),
+							id_map,
 							project_copy: 0,
 						});
 						log_error("LoadGraph: oaknode project deserialized");
@@ -560,6 +593,8 @@ impl WorkerSession {
 								self.graph = Some(LoadedGraph {
 									path: load.path.clone(),
 									project: None,
+									project_uuid: None,
+									id_map: std::collections::HashMap::new(),
 									project_copy: pc,
 								});
 								log_error(&format!(
@@ -1022,7 +1057,7 @@ impl WorkerSession {
 
 		if !bgra8 {
 			// F32 RGBA: render straight into the slot (no staging copy).
-			render_f32_into(spec, &params, time, (w, h), &mut dst[..dst_need])?;
+			render_f32_into(spec, &params, &self.graph, time, (w, h), &mut dst[..dst_need])?;
 		} else {
 			// BGRA8: render the F32 pipeline frame into the session
 			// scratch, then convert into the slot (the end-of-pipe format
@@ -1031,7 +1066,14 @@ impl WorkerSession {
 			if self.f32_scratch.len() < f32_need {
 				self.f32_scratch.resize(f32_need, 0);
 			}
-			render_f32_into(spec, &params, time, (w, h), &mut self.f32_scratch[..f32_need])?;
+			render_f32_into(
+				spec,
+				&params,
+				&self.graph,
+				time,
+				(w, h),
+				&mut self.f32_scratch[..f32_need],
+			)?;
 			convert_f32_rgba_to_bgra8(&self.f32_scratch[..f32_need], &mut dst[..dst_need]);
 		}
 
@@ -1074,11 +1116,15 @@ impl WorkerSession {
 			})
 			.collect();
 		VideoTicketParams {
-			viewer: self
-				.graph
-				.as_ref()
-				.map(|g| g.project_copy)
-				.unwrap_or(0),
+			viewer: if spec.viewer_node != 0 {
+				spec.viewer_node
+			} else {
+				self.graph
+					.as_ref()
+					.map(|g| g.project_copy)
+					.unwrap_or(0)
+			},
+			project: spec.project_key.clone(),
 			time,
 			force_size: Some((spec.width, spec.height)),
 			force_format: Some(PixelFormat::F32),
@@ -1093,17 +1139,73 @@ impl WorkerSession {
 }
 
 /// Render the F32 RGBA pipeline frame for `spec` into `dst`
-/// (`(w*h*16)` bytes): generated transparent black, footage decode,
-/// or montage composite — through [`oak_render::eval`].
+/// (`(w*h*16)` bytes): graph-mode viewer frame, generated transparent
+/// black, footage decode, or montage composite — through
+/// [`oak_render::eval`].
 fn render_f32_into(
 	spec: &BatchTicketSpec,
 	params: &VideoTicketParams,
+	graph: &Option<LoadedGraph>,
 	time: Rational,
 	size: (i32, i32),
 	dst: &mut [u8],
 ) -> Result<(), String> {
 	let (w, h) = size;
 	let stride = w * 16;
+	// M16 S1 graph mode: render the ticket's viewer node from the loaded
+	// snapshot — but only when the snapshot belongs to the ticket's own
+	// project. The ticket carries its owning project's uuid; a stale graph
+	// from a different project (fresh projects reuse small identity
+	// numbers, so a foreign viewer identity can resolve successfully and
+	// silently render the wrong picture) must never answer it — that ticket
+	// falls through to the montage path instead, and is NOT logged (the
+	// mismatch is the normal suite-order case, not an error). A missing
+	// graph / viewer is logged once and also falls back.
+	if spec.viewer_node != 0 {
+		let project_matches = graph
+			.as_ref()
+			.and_then(|g| g.project_uuid.as_deref())
+			.map(|uuid| uuid == spec.project_key.as_str())
+			.unwrap_or(false);
+		if project_matches {
+			if let Some(project) = graph.as_ref().and_then(|g| g.project.as_ref()) {
+				// The ticket's viewer is an identity in the *saved* project;
+				// translate through the load map first, then fall back to the
+				// raw packed id (identity-only snapshots, foreign files).
+				let viewer_id = graph
+					.as_ref()
+					.and_then(|g| g.id_map.get(&spec.viewer_node).copied())
+					.or_else(|| oak_node::id::NodeId::from_identity(spec.viewer_node));
+				match viewer_id {
+					Some(viewer_id) => {
+						let rendered = eval::render_graph_frame(project, viewer_id, time, (w, h), PixelFormat::F32);
+						match &rendered {
+							Ok(oak_render::texture::Texture::Cpu(frame)) => {
+								let src_stride = frame.linesize_bytes() as usize;
+								let row_bytes = (w as usize) * 16;
+								if frame.data.len() < src_stride * (h as usize)
+									|| dst.len() < row_bytes * (h as usize)
+								{
+									return Err("graph frame geometry mismatch".to_string());
+								}
+								for y in 0..h as usize {
+									dst[y * row_bytes..(y + 1) * row_bytes].copy_from_slice(
+										&frame.data[y * src_stride..y * src_stride + row_bytes],
+									);
+								}
+								return Ok(());
+							}
+							Ok(_) => return Err("graph render produced a GPU texture".to_string()),
+							Err(e) => warn_graph_fallback(spec.viewer_node, &e.to_string()),
+						}
+					}
+					None => warn_graph_fallback(spec.viewer_node, "viewer node not in graph"),
+				}
+			} else {
+				warn_graph_fallback(spec.viewer_node, "no loaded graph");
+			}
+		}
+	}
 	if !params.montage.is_empty() {
 		return eval::render_montage_frame_into(time, params, (w, h), dst, stride)
 			.map_err(|e| format!("montage render: {e}"));
@@ -1134,6 +1236,17 @@ fn render_f32_into(
 	// Generated frame: transparent black.
 	dst[..(h as usize) * (stride as usize)].fill(0);
 	Ok(())
+}
+
+/// Log (once per process) why a graph-mode ticket fell back to the
+/// montage path — a missing snapshot, an absent viewer node, or a graph
+/// render error. AtomicBool keeps a GPU-less or graph-less host from
+/// spamming the worker log on every frame.
+fn warn_graph_fallback(viewer: u64, why: &str) {
+	static WARNED: AtomicBool = AtomicBool::new(false);
+	if !WARNED.swap(true, Ordering::Relaxed) {
+		log_error(&format!("graph-mode ticket viewer {viewer}: {why}; falling back to montage"));
+	}
 }
 
 /// Convert F32 RGBA (`src`, 16 bytes/px) to 8-bit BGRA (`dst`, 4
@@ -1171,8 +1284,9 @@ pub fn worker_main(backend: &str) -> i32 {
 	// 1. Session creation initializes the render backend through the
 	//    oakrender crate's direct Rust API
 	//    (oakengine_worker_session_create()). The M15 "cpu" backend is
-	//    headless: no renderer, CPU evaluation + decode only.
-	let cpu_mode = is_cpu_backend(backend);
+	//    headless: no renderer, CPU evaluation + decode only. M16 S1: a
+	//    failed GPU init for any other backend (e.g. "auto" on a GPU-less
+	//    host) is tolerated — the session continues headless.
 	let mut session = match WorkerSession::create(backend) {
 		Ok(s) => s,
 		Err(msg) => {
@@ -1180,9 +1294,10 @@ pub fn worker_main(backend: &str) -> i32 {
 			return 1;
 		}
 	};
-	if !session.has_renderer() && !cpu_mode {
-		// Mirrors oakengine_worker_main(): without a renderer the worker
-		// cannot do anything, so it exits 1. ("--backend none" lands here.)
+	if !session.has_renderer() && is_no_backend(backend) {
+		// Mirrors oakengine_worker_main(): an explicit no-renderer request
+		// (""/"none") leaves nothing to evaluate, so the worker exits 1.
+		// Any other backend failure already logged headless continuation.
 		log_error("no renderer initialized");
 		return 1;
 	}

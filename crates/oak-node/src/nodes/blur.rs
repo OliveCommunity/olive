@@ -19,6 +19,7 @@
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, Gizmo, NodeBehavior, NodeCore};
+use crate::nodes::jobs::ShaderJobPayload;
 
 /// Texture input id (C++ `k_texture_input`). Type: texture; flags:
 /// not-keyframable; this is the node's effect input.
@@ -144,6 +145,11 @@ int determine_mode() {
     if (ove_iteration == 1) {
         return MODE_VERTICAL;
     }
+
+    // Unreachable in practice (the branches above are exhaustive), but
+    // naga's validator rejects functions with a fallthrough path —
+    // deviation from the verbatim C++ shader text.
+    return MODE_NONE;
 }
 
 vec4 add_to_composite(vec4 composite, vec2 pixel_coord, float weight)
@@ -322,9 +328,10 @@ impl NodeBehavior for BlurFilterNode {
 	/// running 2 iterations for box/gaussian when both horiz and vert are
 	/// checked (1 otherwise).
 	///
-	/// The Rust model has no shader-job payload: the job (including the
-	/// `resolution_in` value and the iteration count) is deferred to the
-	/// renderer seam (`// CPP-PARITY: blur.cpp` value()).
+	/// The job boxes a [`ShaderJobPayload`] that the renderer's resolve
+	/// hook executes and replaces with the result texture; `resolution_in`
+	/// is filled by the runner from the input texture's size, matching the
+	/// C++ `tex->virtual_resolution()` (`// CPP-PARITY: blur.cpp` `value()`).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -367,10 +374,32 @@ impl NodeBehavior for BlurFilterNode {
 			can_push_job = false;
 		}
 
+		// Iterate twice for the two-pass box/gaussian blur (once per axis);
+		// all other methods are single-pass (C++ `iterations = 2` only for
+		// the double-pass case).
+		let mut iterations = 1;
+		if method == Method::Box as i64 || method == Method::Gaussian as i64 {
+			if horiz && vert {
+				iterations = 2;
+			}
+		}
+
 		if can_push_job {
+			// The shader-job box (C++ ShaderJob): the behavior's type id
+			// selects the fragment source; the effect input key locates
+			// the main texture inside the params row.
 			table.push(
 				crate::value::ValueType::Texture,
-				crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+				crate::value::NodeValue::Texture(crate::handle::make_owned(ShaderJobPayload {
+					node_id: crate::id::NodeId::INVALID,
+					time,
+					iterations,
+					type_id: self.type_id().to_string(),
+					shader_id: String::new(),
+					effect_input: core.effect_input.clone(),
+					params: inputs.clone(),
+					iterative_input: String::new(),
+				})),
 				None,
 			);
 		} else {

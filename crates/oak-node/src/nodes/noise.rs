@@ -19,6 +19,7 @@
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, NodeBehavior, NodeCore};
+use crate::nodes::jobs::ShaderJobPayload;
 
 /// Base texture input id (C++ `k_base_in`). Type: texture; flags:
 /// not-keyframable; this is the node's effect input.
@@ -127,15 +128,16 @@ impl NodeBehavior for NoiseGeneratorNode {
 		}
 	}
 
-	/// Evaluate outputs (C++ `value()`): builds a shader job from the
-	/// input row, additionally inserting `time_in` (current time in
-	/// seconds as a float), then pushes a texture job using the base
-	/// texture's params when connected, else the sequence video params.
+	/// Evaluate outputs (C++ `value()`): always pushes a shader job —
+	/// with a base texture connected it runs at the base's params,
+	/// otherwise at the sequence params. The params row is the whole
+	/// input row plus `time_in` (the request time in seconds as a
+	/// float, C++ `globals.time().in().toDouble()`).
 	///
-	/// The Rust model has no shader-job payload: the job (including the
-	/// `time_in` value) is deferred to the renderer seam, so a null
-	/// texture handle marks "renderer must produce this texture"
-	/// (`// CPP-PARITY: noise.cpp` value()).
+	/// The job boxes a [`ShaderJobPayload`] that the renderer's resolve
+	/// hook executes and replaces with the result texture; the runner
+	/// fills the shader's `base_in_enabled` flag from the presence of
+	/// the `base_in` texture (`// CPP-PARITY: noise.cpp` `value()`).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -143,12 +145,23 @@ impl NodeBehavior for NoiseGeneratorNode {
 		time: oak_core::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		// C++ always pushes a job — with a base texture connected it runs
-		// at the base's params, otherwise at the sequence params.
-		let _ = (core, inputs, time);
+		let mut params = inputs.clone();
+		params.insert(
+			"time_in".to_string(),
+			crate::value::NodeValue::Float(time.to_f64()),
+		);
 		table.push(
 			crate::value::ValueType::Texture,
-			crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+			crate::value::NodeValue::Texture(crate::handle::make_owned(ShaderJobPayload {
+				node_id: crate::id::NodeId::INVALID,
+				time,
+				iterations: 1,
+				type_id: self.type_id().to_string(),
+				shader_id: String::new(),
+				effect_input: core.effect_input.clone(),
+				params,
+				iterative_input: String::new(),
+			})),
 			None,
 		);
 	}
@@ -238,25 +251,48 @@ mod tests {
 	}
 
 	#[test]
-	fn value_always_pushes_deferred_job() {
+	fn value_pushes_shader_job() {
 		let (core, behavior) = create();
 		let mut table = NodeValueTable::default();
 		behavior.value(
 			&core,
 			&crate::value::NodeValueRow::default(),
-			Rational::new(0, 1),
+			Rational::new(3, 1),
 			&mut table,
 		);
-		assert!(table.get(ValueType::Texture).is_some());
+		let NodeValue::Texture(handle) = table.get(ValueType::Texture).unwrap() else {
+			unreachable!()
+		};
+		let job =
+			unsafe { crate::handle::get_checked::<crate::nodes::jobs::ShaderJobPayload>(handle) }
+				.expect("noise output boxes a ShaderJobPayload");
+		assert_eq!(job.type_id, "org.olivevideoeditor.Olive.noise");
+		assert_eq!(job.shader_id, "");
+		assert_eq!(job.iterations, 1);
+		assert_eq!(job.effect_input, BASE_INPUT);
+		// The params row carries the request time as the `time_in` float
+		// (C++ `globals.time().in().toDouble()`).
+		assert_eq!(job.params.get("time_in").map(|v| v.to_double()), Some(3.0));
+	}
 
-		// With a base texture connected the job is still pushed.
+	#[test]
+	fn value_with_base_texture_pushes_shader_job() {
+		let (core, behavior) = create();
 		let inputs = crate::value::NodeValueRow::from([(
 			BASE_INPUT.to_string(),
 			NodeValue::Texture(crate::handle::CHandle::null()),
 		)]);
 		let mut table = NodeValueTable::default();
 		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
-		assert!(table.get(ValueType::Texture).is_some());
+		let NodeValue::Texture(handle) = table.get(ValueType::Texture).unwrap() else {
+			unreachable!()
+		};
+		let job =
+			unsafe { crate::handle::get_checked::<crate::nodes::jobs::ShaderJobPayload>(handle) }
+				.expect("noise output boxes a ShaderJobPayload");
+		assert_eq!(job.type_id, "org.olivevideoeditor.Olive.noise");
+		assert!(job.params.contains_key(BASE_INPUT));
+		assert!(job.params.contains_key("time_in"));
 	}
 
 	#[test]

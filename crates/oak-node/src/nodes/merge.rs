@@ -19,6 +19,7 @@
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, NodeBehavior, NodeCore};
+use crate::nodes::jobs::ShaderJobPayload;
 
 /// Base (background) texture input id (C++ `k_base_in`). Type:
 /// texture; flags: not-keyframable.
@@ -117,13 +118,17 @@ impl NodeBehavior for MergeNode {
 	/// present, push a shader job over the base texture with the whole
 	/// input row as job values; if neither, push nothing.
 	///
-	/// The Rust model has no shader-job payload: the both-present case
-	/// pushes a null texture handle marking a renderer-deferred
-	/// alpha-over job resolved via [`Self::shader_code`]
-	/// (`// CPP-PARITY: merge.cpp` `value()`). The "blend has fewer
-	/// than 4 channels" check needs the texture's channel count, which
-	/// the Rust texture handle does not carry, so the alpha-less blend
-	/// case is only distinguishable by presence here.
+	/// The both-present case boxes a [`ShaderJobPayload`] that the
+	/// renderer's resolve hook executes and replaces with the result
+	/// texture; the params row carries both input textures, keyed by
+	/// their input ids. The C++ `MergeNode` constructor never sets an
+	/// effect input, so `effect_input` is empty and the runner has no
+	/// main texture to bind — binding `base_in`/`blend_in` explicitly is
+	/// a renderer TODO. The "blend has fewer than 4 channels" check
+	/// needs the texture's channel count, which the Rust texture handle
+	/// does not carry, so the alpha-less blend case is only
+	/// distinguishable by presence here (`// CPP-PARITY: merge.cpp`
+	/// `value()`).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -131,7 +136,6 @@ impl NodeBehavior for MergeNode {
 		time: oak_core::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		let _ = (core, time);
 		let base = inputs.get(BASE_INPUT);
 		let blend = inputs.get(BLEND_INPUT);
 
@@ -140,15 +144,25 @@ impl NodeBehavior for MergeNode {
 				Some(b @ crate::value::NodeValue::Texture(_)),
 				Some(bl @ crate::value::NodeValue::Texture(_)),
 			) => {
-				// Both present: alpha-over shader job. The C++ checks
-				// the blend channel count here (RGBA required for an
-				// alpha to over with) and pushes the blend as-is when it
-				// has no alpha channel — not representable without the
-				// texture params (`// CPP-PARITY: merge.cpp`).
+				// Both present: alpha-over shader job (C++
+				// `base_tex->toJob(ShaderJob(value))`). The C++ checks the
+				// blend channel count here (RGBA required for an alpha to over
+				// with) and pushes the blend as-is when it has no alpha
+				// channel — not representable without the texture params
+				// (`// CPP-PARITY: merge.cpp`).
 				let _ = (b, bl);
 				table.push(
 					crate::value::ValueType::Texture,
-					crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+					crate::value::NodeValue::Texture(crate::handle::make_owned(ShaderJobPayload {
+						node_id: crate::id::NodeId::INVALID,
+						time,
+						iterations: 1,
+						type_id: self.type_id().to_string(),
+						shader_id: String::new(),
+						effect_input: core.effect_input.clone(),
+						params: inputs.clone(),
+						iterative_input: String::new(),
+					})),
 					None,
 				);
 			}
@@ -262,7 +276,7 @@ mod tests {
 	}
 
 	#[test]
-	fn value_both_pushes_deferred_job() {
+	fn value_both_pushes_job_payload() {
 		let (core, behavior) = create();
 		let inputs = crate::value::NodeValueRow::from([
 			(BASE_INPUT.to_string(), tex()),
@@ -270,7 +284,19 @@ mod tests {
 		]);
 		let mut table = NodeValueTable::default();
 		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
-		assert!(table.get(ValueType::Texture).is_some());
+		match table.get(ValueType::Texture) {
+			Some(NodeValue::Texture(h)) => {
+				let payload = unsafe { crate::handle::get_checked::<ShaderJobPayload>(h) }
+					.expect("shader job payload boxed");
+				assert_eq!(payload.type_id, "org.olivevideoeditor.Olive.merge");
+				assert_eq!(payload.shader_id, "");
+				assert_eq!(payload.iterations, 1);
+				assert_eq!(payload.iterative_input, "");
+				assert!(payload.params.contains_key(BASE_INPUT));
+				assert!(payload.params.contains_key(BLEND_INPUT));
+			}
+			_ => panic!("texture expected"),
+		}
 	}
 
 	#[test]

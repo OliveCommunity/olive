@@ -75,18 +75,24 @@ pub struct ChromaKeyNode {
 
 /// Fragment shader (C++ loads the `:/shaders/chromakey.frag` resource
 /// in `get_shader_code`). Text copied verbatim from
-/// `engine/shaders/chromakey.frag`. The `%1` marker is replaced with
+/// `engine/shaders/chromakey.frag`, except the tolerance uniforms,
+/// which are spelled `upper_tolerance_in`/`lower_tolerance_in` to
+/// match the input ids: the renderer binds uniforms by matching the
+/// shader-declared name against the job's value keys, so the C++
+/// misspelling (`upper_tolerence_in`) never receives the renamed
+/// input's value and the tolerances stay 0. `// CPP-PARITY: the C++
+/// frag still declares the misspelled names (the input rename commit
+/// bec52b46b did not update it), which makes chromakey broken there;
+/// the fix is applied here only.` The `%1` marker is replaced with
 /// the OCIO-generated shader stub (`request.stub`) at request time;
 /// the shader calls `SceneLinearToCIEXYZ_d65`, which the stub must
-/// define. Note the shader still uses the legacy misspelled uniform
-/// names `upper_tolerence_in`/`lower_tolerence_in`, matching the old
-/// input ids remapped by `map_legacy_input_id`.
+/// define.
 const SHADER_FRAG: &str = r#"// Main texture input
 uniform sampler2D tex_in;
 uniform vec4 color_key;
 uniform bool mask_only_in;
-uniform float upper_tolerence_in;
-uniform float lower_tolerence_in;
+uniform float upper_tolerance_in;
+uniform float lower_tolerance_in;
 
 uniform sampler2D garbage_in;
 uniform sampler2D core_in;
@@ -154,7 +160,7 @@ void main() {
   vec4 cie_xyz_key = SceneLinearToCIEXYZ_d65(color_key);
   vec4 lab_key = CIExyz_to_Lab(cie_xyz_key);
 
-  float mask = colorclose(lab, lab_key, lower_tolerence_in, upper_tolerence_in);
+  float mask = colorclose(lab, lab_key, lower_tolerance_in, upper_tolerance_in);
 
   mask = clamp(mask, 0.0, 1.0);
 

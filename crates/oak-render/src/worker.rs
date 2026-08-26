@@ -160,6 +160,11 @@ pub trait JobDispatch: Send + Sync {
 	/// flight; the completion fires `Error::State`). Default no-op: only
 	/// the process backend schedules.
 	fn cancel_preview_frame(&self, _sequence: u64, _frame: i64, _version: u64) {}
+
+	/// Set (or clear) the graph snapshot path sent to workers via
+	/// `load_graph` (M16 S1). Default no-op: only the process backend
+	/// ships snapshots.
+	fn set_graph_snapshot(&self, _path: Option<String>) {}
 }
 
 /// Thread-free job dispatcher (M15 S2). Executes jobs on the calling
@@ -267,7 +272,10 @@ impl JobDispatch for InlineDispatcher {
 
 /// Graph snapshot files shared with worker processes (C++
 /// write_graph_snapshot + path refcounting): a snapshot is written once
-/// and reference-counted; the file is unlinked at zero.
+/// per project (uuid) and undo revision, reference-counted, and NEVER
+/// unlinked at zero refs (M16 S1: a worker may still hold the path for
+/// a late `load_graph`). The whole store directory is cleared by
+/// [`GraphSnapshotStore::cleanup`] at manager shutdown.
 pub struct GraphSnapshotStore {
 	entries: Mutex<HashMap<String, SnapshotEntry>>,
 	dir: std::path::PathBuf,
@@ -294,21 +302,46 @@ impl GraphSnapshotStore {
 		&self.dir
 	}
 
-	/// Write (or reuse) the snapshot for a project copy; returns the path
-	/// token with the reference count incremented.
-	pub fn acquire(&mut self, project_copy: u64) -> Result<String> {
-		let path = self.dir.join(format!("{project_copy}.json"));
+	/// Write (or reuse) the snapshot for `revision` of `project`; returns
+	/// the path token with the reference count incremented. The project is
+	/// serialized to the store's XML snapshot format; the same (uuid,
+	/// revision) pair is never rewritten. The write is atomic: the XML is
+	/// staged to a temp file and renamed over the final path, so a worker
+	/// reading the file sees a complete snapshot — never a torn write.
+	pub fn acquire(
+		&self,
+		project: &std::sync::Mutex<oak_node::project::Project>,
+		revision: u64,
+	) -> Result<String> {
+		let (uuid, xml) = {
+			let g = lock(project);
+			let xml = oak_node::serializer::save(&g)
+				.map_err(|e| Error::Failed(format!("save graph snapshot: {e}")))?;
+			(g.uuid.clone(), xml)
+		};
+		// Per-project filename: two projects never share a snapshot path,
+		// so a stale load of another project's graph can never be mistaken
+		// for this project's (identity collisions are otherwise the norm —
+		// fresh projects reuse small identity numbers).
+		let path = self.dir.join(format!("graph-{uuid}-{revision}.xml"));
 		let path_str = path.to_string_lossy().into_owned();
 		let mut entries = lock(&self.entries);
 		if let Some(entry) = entries.get_mut(&path_str) {
 			entry.refs += 1;
 			return Ok(path_str);
 		}
-		// Minimal snapshot payload: the copied-project identity. The real
-		// graph serialization is owned by oaknode.
-		let payload = format!("{{\"project_copy\":{project_copy}}}\n");
-		std::fs::write(&path, payload)
-			.map_err(|e| Error::Failed(format!("write snapshot: {e}")))?;
+		// Atomic staging: temp file + rename. The rename is a single
+		// directory entry swap, so a concurrent worker load observes
+		// either the old file or the complete new one.
+		let tmp = self
+			.dir
+			.join(format!("graph-{uuid}-{revision}.{}.tmp", std::process::id()));
+		std::fs::write(&tmp, &xml)
+			.map_err(|e| Error::Failed(format!("write snapshot temp: {e}")))?;
+		if let Err(e) = std::fs::rename(&tmp, &path) {
+			let _ = std::fs::remove_file(&tmp);
+			return Err(Error::Failed(format!("rename snapshot: {e}")));
+		}
 		entries.insert(
 			path_str.clone(),
 			SnapshotEntry {
@@ -319,24 +352,31 @@ impl GraphSnapshotStore {
 		Ok(path_str)
 	}
 
-	/// Drop one reference; unlinks the file at zero.
-	pub fn release(&mut self, path: &str) {
+	/// Drop one reference. The FILE IS NOT UNLINKED: a worker may still
+	/// hold the path for a late `load_graph` (M16 S1), and per-project
+	/// filenames mean a stale snapshot is never confused with a live one.
+	/// Entries leave the table at zero refs; the files themselves are
+	/// removed wholesale by [`GraphSnapshotStore::cleanup`].
+	pub fn release(&self, path: &str) {
 		let mut entries = lock(&self.entries);
-		let remove = if let Some(entry) = entries.get_mut(path) {
+		if let Some(entry) = entries.get_mut(path) {
 			entry.refs = entry.refs.saturating_sub(1);
-			entry.refs == 0
-		} else {
-			false
-		};
-		if remove {
-			entries.remove(path);
-			let _ = std::fs::remove_file(path);
+			if entry.refs == 0 {
+				entries.remove(path);
+			}
 		}
+	}
+
+	/// Remove the store's whole directory — called from manager shutdown
+	/// only, when no worker can still reference a snapshot file.
+	pub fn cleanup(&self) {
+		let _ = std::fs::remove_dir_all(&self.dir);
+		lock(&self.entries).clear();
 	}
 
 	/// Mark a snapshot as already uploaded to all live children
 	/// (C++ set_graph_path_cached).
-	pub fn mark_cached(&mut self, path: &str, cached: bool) {
+	pub fn mark_cached(&self, path: &str, cached: bool) {
 		if let Some(entry) = lock(&self.entries).get_mut(path) {
 			entry.cached = cached;
 		}
@@ -384,6 +424,7 @@ mod tests {
 			time: Rational::new(tag as i64, 1),
 			params: Arc::new(VideoTicketParams {
 				viewer: 0,
+				project: String::new(),
 				time: Rational::new(0, 1),
 				force_size: None,
 				force_format: None,
@@ -454,6 +495,7 @@ mod tests {
 				time: Rational::new(0, 1),
 				params: Arc::new(VideoTicketParams {
 					viewer: 0,
+					project: String::new(),
 					time: Rational::new(0, 1),
 					force_size: None,
 					force_format: None,
@@ -491,6 +533,7 @@ mod tests {
 		let ok: Producer = Arc::new(|_, _| Ok(crate::ticket::TicketPayload::Video(Texture::dummy())));
 		let params = Arc::new(VideoTicketParams {
 			viewer: 0,
+			project: String::new(),
 			time: Rational::new(0, 1),
 			force_size: None,
 			force_format: None,
@@ -534,10 +577,11 @@ mod tests {
 	}
 
 	#[test]
-	fn snapshot_store_refcount_and_unlink() {
-		let mut store = GraphSnapshotStore::new();
-		let p1 = store.acquire(42).unwrap();
-		let p2 = store.acquire(42).unwrap();
+	fn snapshot_store_refcount_and_cleanup() {
+		let store = GraphSnapshotStore::new();
+		let project = oak_node::project::Project::new();
+		let p1 = store.acquire(&project, 1).unwrap();
+		let p2 = store.acquire(&project, 1).unwrap();
 		assert_eq!(p1, p2, "second acquire reuses the file");
 		assert!(std::path::Path::new(&p1).exists());
 		store.mark_cached(&p1, true);
@@ -550,7 +594,18 @@ mod tests {
 			"refcount 1: still alive"
 		);
 		store.release(&p1);
-		assert!(!std::path::Path::new(&p1).exists(), "refcount 0: unlinked");
-		assert_eq!(store.refs(&p1), 0);
+		assert_eq!(store.refs(&p1), 0, "entry removed at zero refs");
+		// M16 S1: release no longer unlinks the file (a worker may still
+		// hold the path for a late load_graph); the store directory is
+		// cleared wholesale at shutdown instead.
+		assert!(
+			std::path::Path::new(&p1).exists(),
+			"refcount 0: file retained for late loads"
+		);
+		store.cleanup();
+		assert!(
+			!std::path::Path::new(&p1).exists(),
+			"cleanup removes the snapshot directory"
+		);
 	}
 }

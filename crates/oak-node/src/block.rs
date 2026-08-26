@@ -22,7 +22,7 @@ use oak_core::{Rational, TimeRange};
 use crate::id::NodeId;
 use crate::input::Input;
 use crate::node::{Category, NodeBehavior, NodeCore};
-use crate::value::{NodeValue, ValueType};
+use crate::value::{NodeValue, NodeValueRow, NodeValueTable, ValueType};
 
 /// Block core data (C++ `Block` members): timeline span + media range.
 #[derive(Clone)]
@@ -330,6 +330,57 @@ impl NodeBehavior for ClipBlockBehavior {
 		});
 		true
 	}
+
+	/// Timeline -> media time mapping on the texture input (C++
+	/// `ClipBlock::InputTimeAdjustment`): `media = (time - in) * speed`
+	/// (reversed flips inside the block span), offset by the media
+	/// in-point. Other inputs pass through unchanged.
+	fn input_time_adjustment(
+		&self,
+		input: &str,
+		_element: i32,
+		time: TimeRange,
+		_traverse: bool,
+	) -> TimeRange {
+		if input != clip_input::TEXTURE_INPUT {
+			return time;
+		}
+		let mut media = time.in_() - self.core.in_();
+		if (self.core.speed - 1.0).abs() > 1e-9 {
+			if self.core.speed.abs() < 1e-12 {
+				media = Rational::new(0, 1);
+			} else {
+				media = Rational::from_double(media.to_f64() * self.core.speed);
+			}
+		}
+		if self.core.reversed {
+			media = self.core.length() - media;
+		}
+		media = media + self.core.media_in;
+		TimeRange::new(media, media + (time.out() - time.in_()))
+	}
+
+	/// Pass the connected texture through (C++ `ClipBlock::ProcessFrame`
+	/// copies `tex_in` to the output). An unconnected `tex_in` yields
+	/// nothing, so a bare clip is inert.
+	fn value(
+		&self,
+		_core: &NodeCore,
+		inputs: &NodeValueRow,
+		_time: Rational,
+		table: &mut NodeValueTable,
+	) {
+		if !self.core.enabled {
+			return;
+		}
+		let Some(value) = inputs.get(clip_input::TEXTURE_INPUT) else {
+			return;
+		};
+		// `NodeValue::clone` addrefs the texture handle so the table row
+		// owns its own reference (released on drop); a plain handle copy
+		// would double-release the input's reference.
+		table.push(ValueType::Texture, value.clone(), None);
+	}
 }
 
 impl NodeBehavior for GapBlockBehavior {
@@ -374,6 +425,16 @@ impl NodeBehavior for GapBlockBehavior {
 	) -> bool {
 		load_block_core(reader, &mut self.core, &mut |_, _| false);
 		true
+	}
+
+	/// No video output (the compositor skips uncovered spans).
+	fn value(
+		&self,
+		_core: &NodeCore,
+		_inputs: &NodeValueRow,
+		_time: Rational,
+		_table: &mut NodeValueTable,
+	) {
 	}
 }
 
@@ -435,6 +496,17 @@ impl NodeBehavior for TransitionBlockBehavior {
 		});
 		true
 	}
+
+	/// No video output yet (C++ transition crossfades are not ported; a
+	/// transition renders as a hole for now).
+	fn value(
+		&self,
+		_core: &NodeCore,
+		_inputs: &NodeValueRow,
+		_time: Rational,
+		_table: &mut NodeValueTable,
+	) {
+	}
 }
 
 /// Constructor for a clip block (C++ `ClipBlock::ClipBlock()`): adds the
@@ -448,9 +520,9 @@ pub fn clip_create() -> (NodeCore, Box<dyn NodeBehavior>) {
 	// The texture input (C++ `ClipBlock` prepends it ahead of the static
 	// inputs): this is where the effect chain attaches, so it sits right
 	// after the inherited `enabled_in` and stays connectable. An unconnected
-	// `tex_in` is inert — the traverser only feeds rows from actual edges
-	// and `ClipBlockBehavior` never reads inputs, so a bare clip (no
-	// effects) evaluates exactly as before.
+	// `tex_in` is inert — [`ClipBlockBehavior::value`] passes only a
+	// connected texture through (the traverser feeds rows from actual
+	// edges), so a bare clip (no effects) emits no output.
 	let mut tex = Input::new(
 		clip_input::TEXTURE_INPUT,
 		ValueType::Texture,
@@ -573,6 +645,97 @@ mod tests {
 				clip_input::LOOP_MODE,
 			]
 		);
+	}
+
+	fn clip_with(speed: f64, reversed: bool) -> ClipBlockBehavior {
+		ClipBlockBehavior {
+			core: BlockCore {
+				range: TimeRange::new(Rational::new(10, 1), Rational::new(20, 1)),
+				media_in: Rational::new(5, 1),
+				speed,
+				reversed,
+				..BlockCore::default()
+			},
+			footage: None,
+		}
+	}
+
+	/// Timeline -> media time mapping on `tex_in` (C++
+	/// `ClipBlock::InputTimeAdjustment`): speed first, then reverse, then
+	/// the media in-point offset. Other inputs pass through unchanged.
+	#[test]
+	fn clip_input_time_adjustment_maps_timeline_to_media() {
+		let time = TimeRange::new(Rational::new(12, 1), Rational::new(13, 1));
+		let map = |c: &ClipBlockBehavior| c.input_time_adjustment(clip_input::TEXTURE_INPUT, -1, time, false);
+
+		// Speed 1: media = (12 - 10) + 5 = 7.
+		assert_eq!(
+			map(&clip_with(1.0, false)),
+			TimeRange::new(Rational::new(7, 1), Rational::new(8, 1))
+		);
+		// Speed 2: media = (12 - 10) * 2 + 5 = 9.
+		assert_eq!(
+			map(&clip_with(2.0, false)),
+			TimeRange::new(Rational::new(9, 1), Rational::new(10, 1))
+		);
+		// Speed 0 clamps to the media in-point.
+		assert_eq!(
+			map(&clip_with(0.0, false)),
+			TimeRange::new(Rational::new(5, 1), Rational::new(6, 1))
+		);
+		// Reversed flips inside the block span before the media offset:
+		// (10 - (12 - 10)) + 5 = 13.
+		assert_eq!(
+			map(&clip_with(1.0, true)),
+			TimeRange::new(Rational::new(13, 1), Rational::new(14, 1))
+		);
+		// Reversed + speed 2: (10 - (12 - 10) * 2) + 5 = 11.
+		assert_eq!(
+			map(&clip_with(2.0, true)),
+			TimeRange::new(Rational::new(11, 1), Rational::new(12, 1))
+		);
+		// Non-`tex_in` inputs pass through untouched.
+		assert_eq!(clip_with(2.0, true).input_time_adjustment("other_in", -1, time, false), time);
+	}
+
+	/// The clip copies the connected `tex_in` texture to its output;
+	/// disabled clips, unconnected clips and non-clip blocks emit nothing
+	/// (a bare clip is inert, matching C++ `ClipBlock::ProcessFrame`).
+	#[test]
+	fn clip_value_passes_connected_texture_only() {
+		let mut inputs = NodeValueRow::new();
+		let handle = crate::handle::make_owned(42i32);
+		// The value owns the `make_owned` reference; the inserted row is a
+		// proper `NodeValue` clone (addref'd), never a bare handle copy.
+		let tex_value = NodeValue::Texture(handle);
+		inputs.insert(clip_input::TEXTURE_INPUT.to_string(), tex_value.clone());
+
+		let mut table = NodeValueTable::default();
+		clip_with(1.0, false).value(&NodeCore::empty(), &inputs, Rational::new(0, 1), &mut table);
+		assert_eq!(table.count(), 1);
+		let NodeValue::Texture(out) = table.get(ValueType::Texture).unwrap() else {
+			unreachable!()
+		};
+		assert_eq!(out.ctx, handle.ctx, "the same texture box passes through");
+
+		let mut disabled = clip_with(1.0, false);
+		disabled.core.enabled = false;
+		let mut table = NodeValueTable::default();
+		disabled.value(&NodeCore::empty(), &inputs, Rational::new(0, 1), &mut table);
+		assert_eq!(table.count(), 0, "disabled clip emits nothing");
+
+		let mut table = NodeValueTable::default();
+		clip_with(1.0, false).value(&NodeCore::empty(), &NodeValueRow::new(), Rational::new(0, 1), &mut table);
+		assert_eq!(table.count(), 0, "unconnected clip emits nothing");
+
+		for behavior in [
+			Box::new(GapBlockBehavior::new()) as Box<dyn NodeBehavior>,
+			Box::new(TransitionBlockBehavior::new()) as Box<dyn NodeBehavior>,
+		] {
+			let mut table = NodeValueTable::default();
+			behavior.value(&NodeCore::empty(), &NodeValueRow::new(), Rational::new(0, 1), &mut table);
+			assert_eq!(table.count(), 0, "gap/transition emit nothing");
+		}
 	}
 
 	/// An effect node can be chained onto the clip through `tex_in`: the

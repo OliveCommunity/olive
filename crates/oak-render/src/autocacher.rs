@@ -143,6 +143,7 @@ impl PreviewAutoCacher {
 		let id = self.arena.submit_video(
 			VideoTicketParams {
 				viewer: owner,
+				project: String::new(),
 				time: range.in_(),
 				force_size: None,
 				force_format: None,
@@ -180,6 +181,7 @@ impl PreviewAutoCacher {
 		let id = self.arena.submit_video(
 			VideoTicketParams {
 				viewer,
+				project: String::new(),
 				time,
 				force_size: None,
 				force_format: None,

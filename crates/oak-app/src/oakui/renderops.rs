@@ -297,8 +297,13 @@ pub fn multicam_angle_frame_params(
 ) -> Result<VideoTicketParams, String> {
 	validate_geometry(width, height, tb)?;
 	let time = Rational::new(frame_ts * tb.0, tb.1);
+	// Bind the uuid before the literal: the struct expression is the tail of
+	// the block, so an inline `lock(p)` temporary would outlive the field
+	// initializers and deadlock the reentrant lock in `single_track_video_montage`.
+	let project = lock(p).uuid.clone();
 	Ok(VideoTicketParams {
 		viewer: seq.identity(),
+		project,
 		time,
 		force_size: Some((width, height)),
 		force_format: None,
@@ -551,8 +556,13 @@ pub fn sequence_frame_params(
 ) -> Result<VideoTicketParams, String> {
 	validate_geometry(width, height, tb)?;
 	let time = Rational::new(frame_ts * tb.0, tb.1);
+	// Bind the uuid before the literal: an inline `lock(p)` temporary in the
+	// block-tail struct expression would still be alive when `video_montage`
+	// re-locks the project, deadlocking the same thread.
+	let project = lock(p).uuid.clone();
 	Ok(VideoTicketParams {
 		viewer: seq.identity(),
+		project,
 		time,
 		force_size: Some((width, height)),
 		force_format: None,
@@ -598,8 +608,12 @@ pub fn footage_frame_params(
 			.ok_or_else(|| "the node is not footage".to_string())?
 	};
 	let time = Rational::new(frame_ts * tb.0, tb.1);
+	// Bind the uuid before the literal (same tail-expression temporary rule
+	// as the montage paths; harmless here but keeps the pattern uniform).
+	let project = lock(p).uuid.clone();
 	Ok(VideoTicketParams {
 		viewer: footage.identity(),
+		project,
 		time,
 		force_size: Some((width, height)),
 		force_format: None,
@@ -989,6 +1003,7 @@ mod tests {
 		let render = |montage: Vec<MontageClip>| {
 			let params = VideoTicketParams {
 				viewer: 0,
+				project: String::new(),
 				time,
 				force_size: Some((64, 64)),
 				force_format: Some(oak_core::PixelFormat::F32),

@@ -492,6 +492,15 @@ impl RenderTask {
 	/// `start_video_ticket` param marshalling).
 	fn build_video_ticket(&self, time: Rational) -> Result<VideoTicketParams> {
 		let (project, viewer_id) = &self.viewer;
+		// The owning project's uuid (M16 S1: graph-mode tickets carry it so
+		// workers render only from their own project's snapshot). Read
+		// without holding the lock across the montage build below
+		// (`std::sync::Mutex` is not reentrant).
+		let project_uuid = project
+			.lock()
+			.unwrap_or_else(|e| e.into_inner())
+			.uuid
+			.clone();
 		// Inspect the viewer node WITHOUT holding the project lock across
 		// the montage build below: `video_montage` locks the same project,
 		// and `std::sync::Mutex` is not reentrant — holding it here
@@ -522,6 +531,7 @@ impl RenderTask {
 		match footage {
 			Some(filename) => Ok(VideoTicketParams {
 				viewer: viewer_id.identity(),
+				project: project_uuid.clone(),
 				time,
 				force_size: self.force_size(),
 				force_format: self.force_format(),
@@ -537,6 +547,7 @@ impl RenderTask {
 				let montage = Self::video_montage(project, *viewer_id, time);
 				Ok(VideoTicketParams {
 					viewer: viewer_id.identity(),
+					project: project_uuid.clone(),
 					time,
 					force_size: self.force_size(),
 					force_format: self.force_format(),

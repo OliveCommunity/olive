@@ -480,6 +480,13 @@ pub struct BatchTicketSpec {
 	pub footage_stream: i32,
 	/// Sequence montage (ordered topmost-last; empty = none).
 	pub montage: Vec<WireMontageClip>,
+	/// Sequence viewer node identity (0 = montage mode; nonzero = render
+	/// the viewer's graph frame from the worker's loaded snapshot).
+	pub viewer_node: u64,
+	/// The owning project's uuid (M16 S1): the worker renders the viewer's
+	/// graph frame only when this matches the loaded snapshot's project
+	/// ("" = no graph mode).
+	pub project_key: String,
 }
 
 /// `render_batch` (main->worker) — a batch of frame tickets with
@@ -1224,6 +1231,22 @@ pub struct SharedMemoryRegion {
 	shm_name: String,
 }
 
+/// Owned segment keys that are still mapped when the process exits. Test
+/// binaries finish via `std::process::exit` (libtest), which skips Rust
+/// static destructors — the process-wide render-manager singleton never
+/// runs `Drop`, its `shm_unlink` never fires, and every test run leaks one
+/// ~66 MiB segment per worker until `/dev/shm` fills up (the next create
+/// then `memset`s a mapping backed by a full tmpfs and faults with SIGBUS).
+/// `libc::atexit` handlers DO run under `process::exit`, so each `Create`
+/// registers its key here and [`SharedMemoryRegion::atexit_cleanup_owned_shm`]
+/// unlinks them all at exit. Unlinking while a peer still maps the segment
+/// is safe — POSIX only removes the name; the mapping lives until the last
+/// `munmap` (the workers attach without owning, so they never register).
+#[cfg(unix)]
+static OWNED_SHM_KEYS: std::sync::Mutex<Option<Vec<String>>> = std::sync::Mutex::new(None);
+#[cfg(unix)]
+static ATEXIT_REGISTERED: std::sync::Once = std::sync::Once::new();
+
 impl SharedMemoryRegion {
 	/// An empty (invalid) region.
 	pub fn new() -> SharedMemoryRegion {
@@ -1266,6 +1289,36 @@ impl SharedMemoryRegion {
 			// SAFETY: a NUL-terminated name; unlink is safe whether or not
 			// the segment exists (ENOENT is ignored by the caller).
 			unsafe { libc::shm_unlink(name_c.as_ptr()) };
+		}
+	}
+
+	/// Remember `key` so it is unlinked at process exit (see
+	/// [`OWNED_SHM_KEYS`]). Safe to call from any thread; duplicate keys
+	/// are harmless (the unlink is idempotent).
+	#[cfg(unix)]
+	fn track_owned_key(key: &str) {
+		ATEXIT_REGISTERED.call_once(|| {
+			// SAFETY: `atexit_cleanup_owned_shm` is a plain extern "C" fn
+			// that is valid for the whole process lifetime, which is what
+			// libc::atexit requires.
+			unsafe {
+				libc::atexit(Self::atexit_cleanup_owned_shm);
+			}
+		});
+		if let Ok(mut keys) = OWNED_SHM_KEYS.lock() {
+			keys.get_or_insert_with(Vec::new).push(key.to_string());
+		}
+	}
+
+	/// Unlink every segment this process created, at process exit — runs
+	/// even when the exit path is `std::process::exit` (test binaries).
+	#[cfg(unix)]
+	extern "C" fn atexit_cleanup_owned_shm() {
+		let keys = OWNED_SHM_KEYS.lock().ok().and_then(|mut keys| keys.take());
+		if let Some(keys) = keys {
+			for key in keys {
+				Self::unlink_key(&key);
+			}
 		}
 	}
 
@@ -1358,6 +1411,7 @@ impl SharedMemoryRegion {
 		self.error.clear();
 
 		if mode == ShmMode::Create {
+			Self::track_owned_key(&self.key);
 			unsafe { ptr::write_bytes(self.data, 0, size) };
 		}
 		true
@@ -1845,6 +1899,8 @@ mod tests {
 					footage_file: "a.mp4".into(),
 					footage_stream: 0,
 					montage: vec![],
+					viewer_node: 0,
+					project_key: String::new(),
 				},
 				BatchTicketSpec {
 					ticket: 42,
@@ -1877,6 +1933,8 @@ mod tests {
 							}],
 						}],
 					}],
+					viewer_node: 0,
+					project_key: String::new(),
 				},
 			],
 		};

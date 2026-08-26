@@ -919,6 +919,99 @@ fn multicam_node_round_trip_preserves_current_in() {
 	);
 }
 
+/// A runtime-registered (dynamic) node type — the OFX plugin seam — is
+/// rebuilt from a snapshot by the serializer: a type id that lives only
+/// in the factory's dynamic table (the C++ `register_plugin_nodes`
+/// library entries) is rejected before registration and round-trips
+/// once registered. The worker process runs the identical plugin scan
+/// at startup (worker.rs `register_plugin_nodes`), so a snapshot
+/// carrying plugin nodes deserializes there the same way.
+#[test]
+fn dynamic_plugin_node_round_trips_across_load() {
+	use oak_node::factory::{DynamicNodeMeta, Factory};
+	use oak_node::input::Input;
+	use oak_node::node::{Category, NodeBehavior, NodeCore};
+	use oak_node::project::Project;
+	use oak_node::value::{NodeValue, ValueType};
+
+	const TYPE_ID: &str = "org.test.dynamic-rebuild-probe";
+	const INPUT_ID: &str = "probe_in";
+
+	// A pure-Rust stand-in for a discovered OFX plugin node: its type id
+	// is unknown to the static menu table, so only the dynamic path of
+	// `create_any` can construct it (mirroring the plugin closure that
+	// captures the identifier).
+	struct Probe;
+	impl NodeBehavior for Probe {
+		fn name(&self) -> &str {
+			"Dynamic Probe"
+		}
+		fn type_id(&self) -> &str {
+			TYPE_ID
+		}
+		fn duplicate(&self, _core: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+			Some(Box::new(Probe))
+		}
+	}
+
+	// Build a project with one probe node carrying a standard value.
+	let project = Project::new();
+	// The dynamic constructor must rebuild the same declared inputs as
+	// the original (a real plugin's `create_plugin_node` builds the core
+	// from its OFX params).
+	let probe_core = || {
+		let mut core = NodeCore::new();
+		core.inputs
+			.push(Input::new(INPUT_ID, ValueType::Float, NodeValue::Float(0.0)));
+		core
+	};
+	{
+		let mut p = project.lock().unwrap();
+		let id = p.graph.add_node(probe_core(), Box::new(Probe));
+		p.graph
+			.get_mut(id)
+			.unwrap()
+			.core
+			.set_standard_value(INPUT_ID, -1, NodeValue::Float(2.5));
+	}
+	let xml = {
+		let p = project.lock().unwrap();
+		oak_node::serializer::save(&p).unwrap()
+	};
+	assert!(xml.contains(TYPE_ID), "the dynamic type id is persisted");
+
+	// Before the plugin scan registers the entry the snapshot is
+	// unreadable (the plugin is not installed in this process).
+	assert!(oak_node::serializer::load(&xml).is_err());
+
+	// The scan registers the dynamic entry...
+	let registered = Factory::global().register_dynamic(DynamicNodeMeta {
+		type_id: TYPE_ID.to_string(),
+		name: "Dynamic Probe".to_string(),
+		categories: vec![Category::OpenFx],
+		sub_category: "Filter".to_string(),
+		description: "test probe".to_string(),
+		create: std::sync::Arc::new(move || (probe_core(), Box::new(Probe))),
+	});
+	assert!(registered, "the probe type id was not registered before");
+
+	// ...and the same snapshot now rebuilds the node in-process, with
+	// its type id and standard value intact.
+	let loaded = oak_node::serializer::load(&xml).unwrap();
+	let l = loaded.lock().unwrap();
+	let probe = l
+		.graph
+		.node_ids()
+		.into_iter()
+		.find(|id| l.graph.get(*id).map(|e| e.behavior.type_id()) == Some(TYPE_ID))
+		.expect("loaded project has the dynamic node");
+	assert_eq!(
+		l.graph.get(probe).unwrap().core.standard_value(INPUT_ID, -1),
+		NodeValue::Float(2.5),
+		"the standard value survives the rebuild"
+	);
+}
+
 /// A clip with multicam enabled round-trips: the `current_in` value, the
 /// `sequence_in` edge, and the `sequence_type_in` selector all survive.
 #[test]

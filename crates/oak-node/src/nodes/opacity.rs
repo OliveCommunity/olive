@@ -19,6 +19,7 @@
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, NodeBehavior, NodeCore};
+use crate::nodes::jobs::ShaderJobPayload;
 
 /// Texture input id (C++ `k_texture_input`). Type: texture; flags:
 /// not-keyframable; this is the node's effect input.
@@ -135,10 +136,10 @@ impl NodeBehavior for OpacityEffect {
 	/// != 1.0 -> plain shader job; opacity == 1.0 -> pass-through push
 	/// of the input texture unchanged.
 	///
-	/// The Rust model has no shader-job payload: the two job cases push
-	/// a null texture handle marking a renderer-deferred job resolved
-	/// via [`Self::shader_code`] (`// CPP-PARITY: opacityeffect.cpp`
-	/// `value()`).
+	/// The job cases box a [`ShaderJobPayload`] that the renderer's
+	/// resolve hook executes and replaces with the result texture; the
+	/// params row carries the input texture and uniforms, keyed by the
+	/// effect input (`// CPP-PARITY: opacityeffect.cpp` `value()`).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -146,31 +147,39 @@ impl NodeBehavior for OpacityEffect {
 		time: oak_core::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		let _ = (core, time);
 		let tex = match inputs.get(TEXTURE_INPUT) {
 			Some(tex @ crate::value::NodeValue::Texture(_)) => tex.clone(),
 			_ => return,
 		};
 
+		// The shader-job box (C++ ShaderJob): the behavior's type id plus
+		// the shader-variant id select the fragment source, and the effect
+		// input key locates the main texture inside the params row. `time`
+		// is diagnostics-only (C++ jobs keep the request timestamp).
+		let job = |shader_id: &str| -> crate::value::NodeValue {
+			crate::value::NodeValue::Texture(crate::handle::make_owned(ShaderJobPayload {
+				node_id: crate::id::NodeId::INVALID,
+				time,
+				iterations: 1,
+				type_id: self.type_id().to_string(),
+				shader_id: shader_id.to_string(),
+				effect_input: core.effect_input.clone(),
+				params: inputs.clone(),
+				iterative_input: String::new(),
+			}))
+		};
+
 		match inputs.get(VALUE_INPUT) {
 			Some(crate::value::NodeValue::Texture(_)) => {
 				// Texture opacity input: rgbmult shader job.
-				table.push(
-					crate::value::ValueType::Texture,
-					crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
-					None,
-				);
+				table.push(crate::value::ValueType::Texture, job("rgbmult"), None);
 			}
 			Some(v) => {
 				let opacity = v.to_double();
 				// Same semantics as `!qFuzzyCompare(opacity, 1.0)`
 				// (double overload).
 				if (opacity - 1.0).abs() * 1e12 > opacity.abs().min(1.0) {
-					table.push(
-						crate::value::ValueType::Texture,
-						crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
-						None,
-					);
+					table.push(crate::value::ValueType::Texture, job(""), None);
 				} else {
 					table.push(crate::value::ValueType::Texture, tex, None);
 				}
@@ -178,11 +187,7 @@ impl NodeBehavior for OpacityEffect {
 			None => {
 				let opacity = core.value_at_time(VALUE_INPUT, -1, time).to_double();
 				if (opacity - 1.0).abs() * 1e12 > opacity.abs().min(1.0) {
-					table.push(
-						crate::value::ValueType::Texture,
-						crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
-						None,
-					);
+					table.push(crate::value::ValueType::Texture, job(""), None);
 				} else {
 					table.push(crate::value::ValueType::Texture, tex, None);
 				}

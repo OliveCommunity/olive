@@ -493,6 +493,21 @@ fn writer_text_chars(writer: &mut dyn XmlWrite, text: &str) {
 /// Load a project from XML text. Applies version upgrades in order;
 /// rejects versions newer than the build (C++ `k_project_too_new`).
 pub fn load(xml: &str) -> crate::error::Result<Arc<Mutex<Project>>> {
+	Ok(load_with_id_map(xml)?.0)
+}
+
+/// Deserialize a project and also return the source-identity -> loaded-id
+/// translation map built while loading (XML `ptr` -> [`NodeId`]).
+///
+/// `load` rebuilds the graph in file order and assigns fresh arena slots,
+/// so a node's identity in the saved project does not generally match its
+/// identity after loading (a gap left by any deleted slot shifts every
+/// later node). Callers that hold identities from the *saved* project —
+/// e.g. a render worker resolving a ticket's viewer node against the
+/// snapshot it loaded — must translate through this map.
+pub fn load_with_id_map(
+	xml: &str,
+) -> crate::error::Result<(Arc<Mutex<Project>>, std::collections::HashMap<u64, NodeId>)> {
 	use crate::error::Error;
 	let mut reader = XmlReaderBridge::new(xml).ok_or(Error::Failed(
 		"oakcommon XML reader unavailable".to_string(),
@@ -534,11 +549,11 @@ pub fn load(xml: &str) -> crate::error::Result<Arc<Mutex<Project>>> {
 	}
 
 	let project = Project::new();
-	{
+	let id_map = {
 		let mut guard = lock(&project);
-		load_project_body(&mut reader, &mut guard)?;
-	}
-	Ok(project)
+		load_project_body(&mut reader, &mut guard)?
+	};
+	Ok((project, id_map))
 }
 
 /// Parse the `<project>` body: uuid, nodes, settings. C++ full saves
@@ -546,7 +561,10 @@ pub fn load(xml: &str) -> crate::error::Result<Arc<Mutex<Project>>> {
 /// ...</project><layout>...</layout></project>` — `// CPP-PARITY:
 /// serializer230220.cpp`); a nested `<project>` element is descended
 /// into transparently instead of skipped.
-fn load_project_body(reader: &mut dyn XmlRead, project: &mut Project) -> crate::error::Result<()> {
+fn load_project_body(
+	reader: &mut dyn XmlRead,
+	project: &mut Project,
+) -> crate::error::Result<std::collections::HashMap<u64, NodeId>> {
 	use crate::error::Error;
 	// Identity -> NodeId map for connection resolution.
 	let mut id_map: std::collections::HashMap<u64, NodeId> = std::collections::HashMap::new();
@@ -644,7 +662,7 @@ fn load_project_body(reader: &mut dyn XmlRead, project: &mut Project) -> crate::
 	// reattach each child to its bin folder.
 	resolve_folder_children(&mut project.graph, &id_map);
 
-	Ok(())
+	Ok(id_map)
 }
 
 /// Parse one `<node>` into the graph; returns its id.

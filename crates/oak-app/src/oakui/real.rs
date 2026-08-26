@@ -2626,6 +2626,17 @@ impl RealEngine {
 		let _ = graphops::push_multi_command(children, "Synchronize Clips by Waveform");
 	}
 
+	/// M16 S1 graph mode: pushes the current project state to the worker
+	/// pool (snapshot serialized once per undo-stack revision; the worker
+	/// renders node-graph tickets from it).
+	fn push_graph_snapshot(&self) {
+		let Some(project) = self.project.clone() else { return };
+		if let Some(m) = RenderManager::global() {
+			let revision = oak_undo::global::index().unwrap_or(0).max(0) as u64;
+			let _ = m.set_graph_snapshot(&project, revision);
+		}
+	}
+
 	/// Adopts a newly created/loaded project, dropping any previous one,
 	/// and rebuilds every snapshot. The undo stack is cleared (a project
 	/// switch starts a fresh history, mirroring the facade's
@@ -2670,6 +2681,7 @@ impl RealEngine {
 		self.workarea = Some(AuxHandle(graphops::workarea_create()));
 		self.refresh_sequence_info();
 		self.rebuild_timeline();
+		self.push_graph_snapshot();
 
 		// The project's stored OCIO override (if any) drives the display
 		// color pipeline from here on.
@@ -2689,6 +2701,9 @@ impl RealEngine {
 		*self.renderer.lock().unwrap() = RendererSlot::Untried;
 		*self.source_renderer.lock().unwrap() = RendererSlot::Untried;
 		oak_undo::global::clear().ok();
+		if let Some(m) = RenderManager::global() {
+			m.clear_graph_snapshot();
+		}
 		if let Some(mut markers) = self.markers.take() {
 			graphops::release_handle(&mut markers.0);
 		}
@@ -2847,6 +2862,7 @@ impl RealEngine {
 		self.refresh_sequence_info();
 		self.rebuild_timeline();
 		self.invalidate_rendered_frames();
+		self.push_graph_snapshot();
 		cx.notify();
 	}
 
@@ -3093,6 +3109,7 @@ impl RealEngine {
 		// and so are any in-flight full-res renders and pre-render windows
 		// (M12 P5a / M15 S2).
 		self.invalidate_rendered_frames();
+		self.push_graph_snapshot();
 		cx.notify();
 	}
 }

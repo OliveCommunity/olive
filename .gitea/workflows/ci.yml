@@ -62,6 +62,7 @@ jobs:
           echo "RUSTUP_HOME=/opt/rust/rustup" >> "$GITHUB_ENV"
           echo "CARGO_HOME=/opt/rust/cargo" >> "$GITHUB_ENV"
           echo "PATH=$PATH:/opt/rust/cargo/bin" >> "$GITHUB_ENV"
+          echo "FFMPEG_DIR=.cache/ffmpeg" >> "$GITHUB_ENV"
 
       # ------------------------------------------------------------------
       # Caches
@@ -227,6 +228,7 @@ jobs:
           echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
           echo "OCIO_INSTALL_DIR=/ucrt64" >> "$GITHUB_ENV"
           echo "OCIO_RS_LINK=dynamic" >> "$GITHUB_ENV"
+          echo "FFMPEG_DIR=.cache/ffmpeg" >> "$GITHUB_ENV"
           # ocio-sys' build.rs force-adds the MSVC + Windows SDK include
           # dirs on Windows (meant for MSVC hosts); with the GNU toolchain
           # that drags MSVC-only headers into the g++ compile. Unpack the

@@ -646,6 +646,7 @@ pub fn render_frame(
 	let m = RenderManager::global().ok_or_else(|| "render manager is not initialized".to_string())?;
 	let params = VideoTicketParams {
 		viewer: seq_id.identity(),
+		project: String::new(),
 		time,
 		force_size: Some((width, height)),
 		force_format: None,

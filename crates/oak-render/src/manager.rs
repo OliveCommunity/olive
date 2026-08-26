@@ -33,7 +33,7 @@ use crate::error::{Error, Result};
 use crate::eval;
 use crate::procpool::{DispatcherConfig, ProcessDispatcher, ShmAudioRef, ShmFrameRef};
 use crate::ticket::{TicketArena, TicketId};
-use crate::worker::{InlineDispatcher, JobDispatch};
+use crate::worker::{GraphSnapshotStore, InlineDispatcher, JobDispatch};
 
 static MANAGER: Mutex<Option<Arc<RenderManager>>> = Mutex::new(None);
 
@@ -73,6 +73,20 @@ pub struct RenderManager {
 	pub autocacher: Mutex<Option<PreviewAutoCacher>>,
 	/// Aggressive decoder GC toggle.
 	aggressive_gc: AtomicBool,
+	/// Graph snapshot files shared with worker processes (M16 S1).
+	snapshots: GraphSnapshotStore,
+	/// The snapshot path currently shipped to the worker pool (None until
+	/// the app pushes one).
+	current_snapshot: Mutex<Option<String>>,
+	/// The (project uuid, undo revision) the current snapshot was written
+	/// for (M16 S1: dedup key — revisions alone collide across projects,
+	/// since every fresh project shares small revision numbers).
+	current_key: Mutex<Option<(String, u64)>>,
+	/// Teardown in progress (M16 S1): set first thing in
+	/// [`RenderManager::shutdown`]; `set_graph_snapshot` /
+	/// `clear_graph_snapshot` become no-ops afterwards so a stale push
+	/// from a dying test/app cannot re-arm the worker pool mid-shutdown.
+	stopping: AtomicBool,
 }
 
 impl RenderManager {
@@ -133,6 +147,10 @@ impl RenderManager {
 			requested_backend: backend,
 			autocacher: Mutex::new(None),
 			aggressive_gc: AtomicBool::new(false),
+			snapshots: GraphSnapshotStore::new(),
+			current_snapshot: Mutex::new(None),
+			current_key: Mutex::new(None),
+			stopping: AtomicBool::new(false),
 		}));
 		Ok(())
 	}
@@ -155,13 +173,70 @@ impl RenderManager {
 	pub fn shutdown() {
 		let manager = lock(&MANAGER).take();
 		if let Some(manager) = manager {
+			// Mark stopping FIRST: from here on `set_graph_snapshot`,
+			// `clear_graph_snapshot` and `poll` become no-ops, so a
+			// concurrent app thread racing the teardown cannot re-arm the
+			// dispatcher after it is drained.
+			manager.stopping.store(true, Ordering::Release);
 			manager.tickets.cancel_all();
 			// Drain after the cancels so queued completions fire. Both
 			// dispatches are idempotent.
 			manager.dispatch.shutdown();
 			manager.audio_dispatch.shutdown();
+			// Release the graph snapshot (the file is retained: a worker
+			// may still hold the path for a late load_graph).
+			if let Some(path) = lock(&manager.current_snapshot).take() {
+				manager.snapshots.release(&path);
+			}
+			// The store directory is cleared here and only here — no worker
+			// can reference a snapshot file once the dispatchers are down.
+			manager.snapshots.cleanup();
 			drop(manager);
 		}
+	}
+
+	/// M16 S1 graph mode: snapshot the project to the worker pool. The
+	/// snapshot is serialized once per (project, revision) — the undo-stack
+	/// position; the key includes the project's uuid because fresh projects
+	/// reuse small identity numbers and two projects at the same revision
+	/// would otherwise collide on one file (the cross-project snapshot race
+	/// that shipped before M16 S1). A new key rewrites the file and
+	/// re-sends `load_graph` to every live worker, releasing the previous
+	/// snapshot (file retained at zero refs).
+	pub fn set_graph_snapshot(
+		&self,
+		project: &std::sync::Mutex<oak_node::project::Project>,
+		revision: u64,
+	) -> Result<()> {
+		if self.stopping.load(Ordering::Acquire) {
+			return Ok(()); // teardown: no re-arm after the drain
+		}
+		let uuid = lock(project).uuid.clone();
+		if *lock(&self.current_key) == Some((uuid.clone(), revision)) {
+			return Ok(()); // unchanged state: no rewrite, no re-send
+		}
+		let path = self.snapshots.acquire(project, revision)?;
+		if let Some(old) = lock(&self.current_snapshot).replace(path.clone()) {
+			self.snapshots.release(&old);
+		}
+		self.dispatch.set_graph_snapshot(Some(path));
+		*lock(&self.current_key) = Some((uuid, revision));
+		Ok(())
+	}
+
+	/// M16 S1 graph mode: drop the current snapshot (project closed). The
+	/// protocol has no clear message, so alive workers keep their loaded
+	/// graph; new/restarted workers no longer load it and the snapshot file
+	/// is retained (removed wholesale at manager shutdown).
+	pub fn clear_graph_snapshot(&self) {
+		if self.stopping.load(Ordering::Acquire) {
+			return;
+		}
+		if let Some(old) = lock(&self.current_snapshot).take() {
+			self.snapshots.release(&old);
+		}
+		*lock(&self.current_key) = None;
+		self.dispatch.set_graph_snapshot(None);
 	}
 
 	/// Pump the video backend's control plane (M15 S2): the process

@@ -20,6 +20,7 @@
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, NodeBehavior, NodeCore};
+use crate::nodes::jobs::ShaderJobPayload;
 
 /// Texture input id (C++ `k_texture_input`). Type: texture; flags:
 /// not-keyframable; this is the node's effect input.
@@ -167,7 +168,6 @@ impl NodeBehavior for ThreeWayColorNode {
 		time: oak_core::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		let _ = (core, time);
 		match inputs.get(TEXTURE_INPUT) {
 			Some(crate::value::NodeValue::Texture(_)) => {}
 			_ => return,
@@ -178,12 +178,27 @@ impl NodeBehavior for ThreeWayColorNode {
 		// project color manager's default luma coefficients when one is
 		// attached — the Rust model has no project/manager access, so the
 		// fallback always applies) into a ShaderJob over the whole input
-		// row and pushes `tex->to_job(job)`. The Rust model has no
-		// shader-job payload: the renderer seam resolves the deferred job
-		// from this null handle.
+		// row and pushes `tex->to_job(job)`. The job is boxed here as a
+		// [`ShaderJobPayload`] that the renderer's resolve hook executes
+		// and replaces with the result texture; the params row carries the
+		// luma coefficients under the shader uniform name.
+		let mut params = inputs.clone();
+		params.insert(
+			LUMA_COEFFICIENTS_INPUT.to_string(),
+			crate::value::NodeValue::Vec3([0.2126, 0.7152, 0.0722]),
+		);
 		table.push(
 			crate::value::ValueType::Texture,
-			crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+			crate::value::NodeValue::Texture(crate::handle::make_owned(ShaderJobPayload {
+				node_id: crate::id::NodeId::INVALID,
+				time,
+				iterations: 1,
+				type_id: self.type_id().to_string(),
+				shader_id: String::new(),
+				effect_input: core.effect_input.clone(),
+				params,
+				iterative_input: String::new(),
+			})),
 			None,
 		);
 	}
@@ -348,7 +363,7 @@ mod tests {
 	}
 
 	#[test]
-	fn value_with_texture_pushes_deferred_shader_job() {
+	fn value_with_texture_pushes_shader_job_payload() {
 		let (core, behavior) = create();
 		let inputs = crate::value::NodeValueRow::from([(
 			TEXTURE_INPUT.to_string(),
@@ -356,7 +371,22 @@ mod tests {
 		)]);
 		let mut table = NodeValueTable::default();
 		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
-		assert!(table.get(ValueType::Texture).is_some());
+		let NodeValue::Texture(handle) = table.get(ValueType::Texture).unwrap() else {
+			panic!("expected a texture-typed value");
+		};
+		let payload =
+			unsafe { crate::handle::get_checked::<crate::nodes::jobs::ShaderJobPayload>(handle) }
+				.expect("payload boxed behind the handle");
+		assert_eq!(payload.type_id, "org.olivevideoeditor.Olive.threewaycolor");
+		assert_eq!(payload.shader_id, "");
+		assert_eq!(payload.iterations, 1);
+		assert_eq!(payload.effect_input, TEXTURE_INPUT);
+		// The luma coefficients are injected under the shader uniform name
+		// (C++ `job.Insert("luma_coefficients_in", ...)`).
+		assert_eq!(
+			payload.params.get(LUMA_COEFFICIENTS_INPUT),
+			Some(&NodeValue::Vec3([0.2126, 0.7152, 0.0722]))
+		);
 	}
 
 	#[test]

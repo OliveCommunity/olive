@@ -21,6 +21,7 @@
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, NodeBehavior, NodeCore};
+use crate::nodes::jobs::ShaderJobPayload;
 
 /// Shape type input id (C++ `k_type_input`). Type: combo; prepended
 /// ahead of the base inputs; combo strings (matching the C++ `Type`
@@ -192,11 +193,15 @@ impl NodeBehavior for ShapeNode {
 	/// the sequence video params), and pushes it through
 	/// `push_mergable_job` (merged over `base_in` when connected).
 	///
-	/// The Rust model has no shader-job payload: the deferred job
-	/// (including the `resolution_in` value and the `"shape"` shader id)
-	/// is resolved by the renderer seam, so a null texture handle marks
-	/// "renderer must produce this texture" (`// CPP-PARITY: shapenode.cpp`
-	/// `value()`).
+	/// The job boxes a [`ShaderJobPayload`] that the renderer's resolve
+	/// hook executes and replaces with the result texture; `resolution_in`
+	/// is filled by the runner from the frame size, so it is not part of
+	/// the params here. With a `base_in` texture connected, the C++
+	/// `push_mergable_job` instead pushes a `"mrg"` alpha-over job whose
+	/// `blend_in` is the shape job nested as a texture value — mirrored
+	/// here as a nested payload, which the renderer cannot yet
+	/// recursively resolve (TODO; `// CPP-PARITY: shapenode.cpp`
+	/// `value()`, `generatorwithmerge.cpp` `push_mergable_job`).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -204,12 +209,59 @@ impl NodeBehavior for ShapeNode {
 		time: oak_core::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		let _ = (core, time);
-		super::generatorwithmerge::GeneratorWithMerge::push_mergable_job(
-			inputs,
-			crate::handle::CHandle::null(),
-			table,
-		);
+		// The `"shape"` shader job (C++ `value()`: `ShaderJob job(value);`
+		// `Insert("resolution_in")`; `SetShaderID("shape")`).
+		let shape_job = crate::value::NodeValue::Texture(crate::handle::make_owned(
+			ShaderJobPayload {
+				node_id: crate::id::NodeId::INVALID,
+				time,
+				iterations: 1,
+				type_id: self.type_id().to_string(),
+				shader_id: "shape".to_string(),
+				effect_input: core.effect_input.clone(),
+				params: inputs.clone(),
+				iterative_input: String::new(),
+			},
+		));
+
+		match inputs.get(super::generatorwithmerge::BASE_INPUT) {
+			Some(base @ crate::value::NodeValue::Texture(_)) => {
+				// A base is connected: the C++ `push_mergable_job` pushes
+				// `base->toJob(ShaderJob("mrg"))` with `base_in` = the base
+				// texture and `blend_in` = the shape job nested as a texture
+				// value; the merge's params are a fresh row holding exactly
+				// those two keys, and the default `ShaderJob` has
+				// `iterations = 1` and no iterative input. Recursively
+				// resolving the nested payload is a renderer TODO
+				// (`// CPP-PARITY: generatorwithmerge.cpp`
+				// `push_mergable_job`).
+				let mut params = crate::value::NodeValueRow::new();
+				params.insert(
+					super::generatorwithmerge::BASE_INPUT.to_string(),
+					base.clone(),
+				);
+				params.insert(crate::nodes::merge::BLEND_INPUT.to_string(), shape_job);
+				table.push(
+					crate::value::ValueType::Texture,
+					crate::value::NodeValue::Texture(crate::handle::make_owned(
+						ShaderJobPayload {
+							node_id: crate::id::NodeId::INVALID,
+							time,
+							iterations: 1,
+							type_id: self.type_id().to_string(),
+							shader_id: "mrg".to_string(),
+							effect_input: core.effect_input.clone(),
+							params,
+							iterative_input: String::new(),
+						},
+					)),
+					None,
+				);
+			}
+			_ => {
+				table.push(crate::value::ValueType::Texture, shape_job, None);
+			}
+		}
 	}
 
 	/// Shader code request (C++ `get_shader_code()`): `"shape"` returns
@@ -378,7 +430,7 @@ mod tests {
 	}
 
 	#[test]
-	fn value_pushes_deferred_job() {
+	fn value_pushes_shape_job_payload() {
 		let (core, behavior) = create();
 		let mut table = NodeValueTable::default();
 		behavior.value(
@@ -387,7 +439,54 @@ mod tests {
 			Rational::new(0, 1),
 			&mut table,
 		);
-		assert!(table.get(ValueType::Texture).is_some());
+		match table.get(ValueType::Texture) {
+			Some(NodeValue::Texture(h)) => {
+				let payload = unsafe { crate::handle::get_checked::<ShaderJobPayload>(h) }
+					.expect("shader job payload boxed");
+				assert_eq!(payload.type_id, "org.olivevideoeditor.Olive.shape");
+				assert_eq!(payload.shader_id, "shape");
+				assert_eq!(payload.iterations, 1);
+				assert_eq!(
+					payload.effect_input,
+					super::super::generatorwithmerge::BASE_INPUT
+				);
+				assert_eq!(payload.iterative_input, "");
+			}
+			_ => panic!("texture expected"),
+		}
+	}
+
+	#[test]
+	fn value_with_base_merges_nested_shape_job() {
+		let (core, behavior) = create();
+		let inputs = crate::value::NodeValueRow::from([(
+			super::super::generatorwithmerge::BASE_INPUT.to_string(),
+			NodeValue::Texture(crate::handle::CHandle::null()),
+		)]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		match table.get(ValueType::Texture) {
+			Some(NodeValue::Texture(h)) => {
+				let merge = unsafe { crate::handle::get_checked::<ShaderJobPayload>(h) }
+					.expect("merge job payload boxed");
+				assert_eq!(merge.shader_id, "mrg");
+				assert_eq!(merge.iterations, 1);
+				assert!(merge
+					.params
+					.contains_key(super::super::generatorwithmerge::BASE_INPUT));
+				// The shape job is nested as the merge's blend texture.
+				match merge.params.get(crate::nodes::merge::BLEND_INPUT) {
+					Some(NodeValue::Texture(blend)) => {
+						let shape =
+							unsafe { crate::handle::get_checked::<ShaderJobPayload>(blend) }
+								.expect("nested shape job payload boxed");
+						assert_eq!(shape.shader_id, "shape");
+					}
+					_ => panic!("nested blend job expected"),
+				}
+			}
+			_ => panic!("texture expected"),
+		}
 	}
 
 	#[test]

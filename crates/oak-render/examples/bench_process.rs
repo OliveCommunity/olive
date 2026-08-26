@@ -108,6 +108,7 @@ fn main() {
 			time: Rational::new(frame, 25),
 			params: Arc::new(VideoTicketParams {
 				viewer: 1,
+				project: String::new(),
 				time: Rational::new(frame, 25),
 				force_size: Some((width, height)),
 				force_format: None,

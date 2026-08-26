@@ -51,3 +51,10 @@ oak-plugin = { path = "../oak-plugin" }
 # re-exporting oakrender::ipc). No liboakengine dylib, no C ABI, no
 # build.rs link step.
 oak-render = { path = "../oak-render" }
+
+[dev-dependencies]
+# oakcodec's test-media generator (`testmedia::write_test_clip`) for the
+# graph-mode procpool integration tests — self-contained generated clips
+# instead of repo fixtures. oakcodec already links in transitively via
+# oaknode; this re-entry makes it nameable from the test binary.
+oak-codec = { path = "../oak-codec" }

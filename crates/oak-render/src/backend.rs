@@ -188,6 +188,12 @@ pub struct GpuContext {
 	textures: Mutex<HashMap<u64, GpuTexture>>,
 	next_token: AtomicU64,
 	blit: Mutex<Option<wgpu::RenderPipeline>>,
+	/// FLOAT32_FILTERABLE was available (linear sampling on F32 textures).
+	filterable: bool,
+	/// Compiled effect pipelines, keyed by the shaderfx cache key.
+	programs: Mutex<HashMap<String, Arc<ShaderProgram>>>,
+	/// The lazily created 1×1 placeholder texture (unconnected inputs).
+	placeholder: Mutex<Option<u64>>,
 }
 
 // SAFETY check: wgpu Device/Queue/Instance are Send+Sync; the rest is
@@ -215,10 +221,19 @@ impl GpuContext {
 					Err(_) => continue, // try the next backend in the fallback order
 				};
 			let info = adapter.get_info();
+			// Linear sampling on Rgba32Float needs FLOAT32_FILTERABLE
+			// (widely available on desktop GPUs); without it effect
+			// shaders sample nearest — a quality degradation, not a
+			// failure (logged once by the shaderfx runner).
+			let filterable = adapter.features().contains(wgpu::Features::FLOAT32_FILTERABLE);
+			let mut required_features = wgpu::Features::empty();
+			if filterable {
+				required_features |= wgpu::Features::FLOAT32_FILTERABLE;
+			}
 			let (device, queue) =
 				match pollster_block_on(adapter.request_device(&wgpu::DeviceDescriptor {
 					label: Some("oakrender"),
-					required_features: wgpu::Features::empty(),
+					required_features,
 					required_limits: wgpu::Limits::default(),
 					memory_hints: wgpu::MemoryHints::default(),
 					trace: wgpu::Trace::Off,
@@ -239,6 +254,9 @@ impl GpuContext {
 				textures: Mutex::new(HashMap::new()),
 				next_token: AtomicU64::new(1),
 				blit: Mutex::new(None),
+				filterable,
+				programs: Mutex::new(HashMap::new()),
+				placeholder: Mutex::new(None),
 			}));
 		}
 		None
@@ -556,7 +574,331 @@ impl GpuContext {
 			});
 		Ok(pipeline)
 	}
+
+	/// The process-wide shared context (lazy; `None` when no adapter is
+	/// available — callers then take the CPU fallback). The effect/montage
+	/// evaluation path renders through this context; the backend choice
+	/// follows the user's `GraphicsBackend` config (`OAK_RENDER_BACKEND`
+	/// overrides). `DisplayRenderer::init` adopts it too, so a process
+	/// owns exactly one wgpu device.
+	pub fn shared() -> Option<Arc<GpuContext>> {
+		static SHARED: std::sync::OnceLock<Option<Arc<GpuContext>>> = std::sync::OnceLock::new();
+		SHARED
+			.get_or_init(|| Self::create(BackendKind::from_user_config()))
+			.clone()
+	}
+
+	/// True when the device can linear-sample Rgba32Float textures
+	/// (FLOAT32_FILTERABLE). Effect shaders use a filtering sampler when
+	/// true, nearest otherwise.
+	pub fn is_filterable(&self) -> bool {
+		self.filterable
+	}
+
+	/// The context's shared 1×1 transparent placeholder texture, created
+	/// on first use: unconnected effect inputs bind it (C++ binds texture
+	/// id 0 — an empty texture — the same way).
+	pub fn placeholder_texture(&self) -> Result<u64> {
+		let mut slot = lock(&self.placeholder);
+		if let Some(token) = *slot {
+			return Ok(token);
+		}
+		let token = self.create_texture(1, 1)?;
+		let mut pod = VideoParamsPod::default();
+		pod.width = 1;
+		pod.height = 1;
+		pod.format = PixelFormat::F32 as i32;
+		let mut frame = Frame::new();
+		frame.set_video_params(pod);
+		frame.allocate();
+		self.upload(token, &frame)?;
+		*slot = Some(token);
+		Ok(token)
+	}
+
+	/// Compile (or fetch from the cache) an effect pass: the translated
+	/// fragment WGSL (`shaderfx::translate` output, entry point `main`)
+	/// paired with the fixed fullscreen-triangle vertex stage. `key`
+	/// identifies the shader program in the context cache (include the
+	/// filtering mode when it varies for the same shader). Pipeline
+	/// creation runs under a validation error scope so a bad shader is a
+	/// fallible result, not a device loss.
+	pub fn compile_shader_pass(
+		&self,
+		key: &str,
+		wgsl: &str,
+		texture_count: u32,
+		has_uniforms: bool,
+		filtering: bool,
+	) -> Result<Arc<ShaderProgram>> {
+		if let Some(p) = lock(&self.programs).get(key) {
+			return Ok(p.clone());
+		}
+
+		// Bind group layout, mirroring shaderfx's binding assignment:
+		// binding 0 = the uniform block (when present), then each input
+		// texture as a (texture, sampler) pair.
+		let mut entries = Vec::new();
+		if has_uniforms {
+			entries.push(wgpu::BindGroupLayoutEntry {
+				binding: 0,
+				visibility: wgpu::ShaderStages::FRAGMENT,
+				ty: wgpu::BindingType::Buffer {
+					ty: wgpu::BufferBindingType::Uniform,
+					has_dynamic_offset: false,
+					min_binding_size: None,
+				},
+				count: None,
+			});
+		}
+		let sample_type = wgpu::TextureSampleType::Float {
+			filterable: self.filterable && filtering,
+		};
+		for i in 0..texture_count {
+			entries.push(wgpu::BindGroupLayoutEntry {
+				binding: 1 + 2 * i,
+				visibility: wgpu::ShaderStages::FRAGMENT,
+				ty: wgpu::BindingType::Texture {
+					sample_type,
+					view_dimension: wgpu::TextureViewDimension::D2,
+					multisampled: false,
+				},
+				count: None,
+			});
+			entries.push(wgpu::BindGroupLayoutEntry {
+				binding: 2 + 2 * i,
+				visibility: wgpu::ShaderStages::FRAGMENT,
+				ty: wgpu::BindingType::Sampler(if self.filterable && filtering {
+					wgpu::SamplerBindingType::Filtering
+				} else {
+					wgpu::SamplerBindingType::NonFiltering
+				}),
+				count: None,
+			});
+		}
+		let layout = self
+			.device
+			.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+				label: Some("oakrender-fx-layout"),
+				entries: &entries,
+			});
+
+		let vs_module = self
+			.device
+			.create_shader_module(wgpu::ShaderModuleDescriptor {
+				label: Some("oakrender-fx-vs"),
+				source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Borrowed(EFFECT_VS_WGSL)),
+			});
+		let fs_module = self
+			.device
+			.create_shader_module(wgpu::ShaderModuleDescriptor {
+				label: Some("oakrender-fx-fs"),
+				source: wgpu::ShaderSource::Wgsl(std::borrow::Cow::Owned(wgsl.to_string())),
+			});
+		let pipeline_layout = self
+			.device
+			.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+				label: Some("oakrender-fx-pipeline-layout"),
+				bind_group_layouts: &[&layout],
+				push_constant_ranges: &[],
+			});
+
+		self.device.push_error_scope(wgpu::ErrorFilter::Validation);
+		let pipeline = self
+			.device
+			.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+				label: Some("oakrender-fx"),
+				layout: Some(&pipeline_layout),
+				vertex: wgpu::VertexState {
+					module: &vs_module,
+					entry_point: Some("vs_main"),
+					compilation_options: Default::default(),
+					buffers: &[],
+				},
+				primitive: wgpu::PrimitiveState::default(),
+				depth_stencil: None,
+				multisample: wgpu::MultisampleState::default(),
+				fragment: Some(wgpu::FragmentState {
+					module: &fs_module,
+					entry_point: Some("main"),
+					compilation_options: Default::default(),
+					targets: &[Some(wgpu::ColorTargetState {
+						format: wgpu::TextureFormat::Rgba32Float,
+						blend: None,
+						write_mask: wgpu::ColorWrites::ALL,
+					})],
+				}),
+				multiview: None,
+				cache: None,
+			});
+		if let Some(err) = pollster_block_on(self.device.pop_error_scope()) {
+			return Err(Error::Failed(format!("effect pipeline validation failed: {err}")));
+		}
+
+		let program = Arc::new(ShaderProgram {
+			pipeline,
+			layout,
+			texture_count,
+			has_uniforms,
+			filtering,
+		});
+		lock(&self.programs).insert(key.to_string(), program.clone());
+		Ok(program)
+	}
+
+	/// Run one effect pass: fragment-shade `dst` from `textures[0]` (the
+	/// main input) plus any extra input textures, with `uniforms` as the
+	/// packed std140 block (see [`crate::shaderfx::pack_uniforms`]).
+	pub fn run_shader_pass(
+		&self,
+		program: &ShaderProgram,
+		uniforms: &[u8],
+		textures: &[u64],
+		dst: u64,
+	) -> Result<()> {
+		if textures.len() != program.texture_count as usize {
+			return Err(Error::Invalid);
+		}
+		let dst_tex = lock(&self.textures)
+			.get(&dst)
+			.cloned()
+			.ok_or(Error::NotFound)?;
+
+		let uniform_buffer = if program.has_uniforms {
+			let size = uniforms.len().max(16) as u64;
+			let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+				label: Some("oakrender-fx-uniforms"),
+				size,
+				usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+				mapped_at_creation: false,
+			});
+			if !uniforms.is_empty() {
+				self.queue.write_buffer(&buffer, 0, uniforms);
+			}
+			Some(buffer)
+		} else {
+			None
+		};
+
+		let sampler = self.device.create_sampler(&wgpu::SamplerDescriptor {
+			label: Some("oakrender-fx-sampler"),
+			mag_filter: if self.filterable && program.filtering {
+				wgpu::FilterMode::Linear
+			} else {
+				wgpu::FilterMode::Nearest
+			},
+			min_filter: if self.filterable && program.filtering {
+				wgpu::FilterMode::Linear
+			} else {
+				wgpu::FilterMode::Nearest
+			},
+			address_mode_u: wgpu::AddressMode::ClampToEdge,
+			address_mode_v: wgpu::AddressMode::ClampToEdge,
+			..Default::default()
+		});
+
+		let mut bg_entries: Vec<wgpu::BindGroupEntry> = Vec::new();
+		if let Some(buffer) = &uniform_buffer {
+			bg_entries.push(wgpu::BindGroupEntry {
+				binding: 0,
+				resource: buffer.as_entire_binding(),
+			});
+		}
+		// Texture views must outlive the bind group creation.
+		let views: Vec<wgpu::TextureView> = textures
+			.iter()
+			.map(|t| {
+				let reg = lock(&self.textures);
+				let tex = reg.get(t).ok_or(Error::NotFound)?;
+				Ok(tex
+					.texture
+					.create_view(&wgpu::TextureViewDescriptor::default()))
+			})
+			.collect::<Result<Vec<_>>>()?;
+		for (i, view) in views.iter().enumerate() {
+			bg_entries.push(wgpu::BindGroupEntry {
+				binding: 1 + 2 * i as u32,
+				resource: wgpu::BindingResource::TextureView(view),
+			});
+			bg_entries.push(wgpu::BindGroupEntry {
+				binding: 2 + 2 * i as u32,
+				resource: wgpu::BindingResource::Sampler(&sampler),
+			});
+		}
+		let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+			label: Some("oakrender-fx-bg"),
+			layout: &program.layout,
+			entries: &bg_entries,
+		});
+
+		let dst_view = dst_tex
+			.texture
+			.create_view(&wgpu::TextureViewDescriptor::default());
+		let mut encoder = self
+			.device
+			.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+				label: Some("oakrender-fx"),
+			});
+		{
+			let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+				label: Some("oakrender-fx-pass"),
+				color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+					view: &dst_view,
+					resolve_target: None,
+					ops: wgpu::Operations {
+						load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+						store: wgpu::StoreOp::Store,
+					},
+				})],
+				depth_stencil_attachment: None,
+				timestamp_writes: None,
+				occlusion_query_set: None,
+			});
+			pass.set_pipeline(&program.pipeline);
+			pass.set_bind_group(0, &bind_group, &[]);
+			pass.draw(0..3, 0..1);
+		}
+		self.queue.submit(Some(encoder.finish()));
+		Ok(())
+	}
 }
+
+/// A compiled effect pass: the translated fragment WGSL paired with the
+/// fixed fullscreen-triangle vertex stage, plus its bind group layout.
+pub struct ShaderProgram {
+	pipeline: wgpu::RenderPipeline,
+	layout: wgpu::BindGroupLayout,
+	/// Input texture count (each binds a (texture, sampler) pair).
+	pub texture_count: u32,
+	/// Whether the shader declares the uniform block (binding 0).
+	pub has_uniforms: bool,
+	/// Whether the input samplers filter (subject to FLOAT32_FILTERABLE).
+	pub filtering: bool,
+}
+
+/// The fixed vertex stage for effect passes: a fullscreen triangle
+/// emitting `ove_texcoord`-convention UVs at location 0. UV v=0 is the
+/// first texture data row (the upload/download row order), so effect
+/// passes are pixel-identity with the CPU pipeline — no vertical flip
+/// anywhere in the chain.
+const EFFECT_VS_WGSL: &str = r#"
+struct VsOut {
+    @builtin(position) pos: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+};
+
+@vertex
+fn vs_main(@builtin(vertex_index) vi: u32) -> VsOut {
+    var pos = array<vec2<f32>, 3>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>(3.0, -1.0),
+        vec2<f32>(-1.0, 3.0),
+    );
+    let p = pos[vi];
+    return VsOut(vec4<f32>(p, 0.0, 1.0), vec2<f32>(0.5 + 0.5 * p.x, 0.5 - 0.5 * p.y));
+}
+"#;
+
 
 impl GpuContextLike for GpuContext {
 	fn kind(&self) -> BackendKind {
@@ -675,11 +1017,21 @@ impl DisplayRenderer {
 	/// Initialize: create the GPU context for the configured backend.
 	/// `gl_context` must be null — a foreign OpenGL context cannot be
 	/// adopted by wgpu (documented limitation).
+	///
+	/// When the requested backend matches the user's configured choice
+	/// (the common case), the process-wide shared context
+	/// ([`GpuContext::shared`]) is adopted so the process owns exactly
+	/// one wgpu device; an explicit different backend gets its own
+	/// context.
 	pub fn init(&mut self, gl_context: *mut std::ffi::c_void) -> Result<()> {
 		if !gl_context.is_null() {
 			return Err(Error::Invalid);
 		}
-		self.ctx = GpuContext::create(self.backend);
+		self.ctx = if self.backend == BackendKind::from_user_config() {
+			GpuContext::shared()
+		} else {
+			GpuContext::create(self.backend)
+		};
 		if self.ctx.is_none() {
 			return Err(Error::Failed("no GPU adapter available".into()));
 		}
@@ -1021,6 +1373,78 @@ mod tests {
 				Some(&crate::color::ColorProcessor::pass_through())
 			)
 			.is_err());
+		ctx.destroy_texture(src);
+		ctx.destroy_texture(dst);
+	}
+
+	/// End-to-end effect pass: a translated node shader (gain multiply)
+	/// runs through `compile_shader_pass`/`run_shader_pass` and the
+	/// readback matches the expected pixels exactly.
+	#[test]
+	fn gpu_effect_pass_runs_translated_shader() {
+		let Some(ctx) = any_gpu() else {
+			eprintln!("no adapter; skipping effect pass");
+			return;
+		};
+		let glsl = r#"
+uniform sampler2D tex_in;
+uniform float gain_in;
+
+in vec2 ove_texcoord;
+out vec4 frag_color;
+
+void main() {
+    frag_color = texture(tex_in, ove_texcoord) * gain_in;
+}
+"#;
+		let translated = crate::shaderfx::translate(glsl).unwrap();
+		let program = ctx
+			.compile_shader_pass(
+				"test-gain",
+				&translated.wgsl,
+				translated.textures.len() as u32,
+				!translated.uniforms.is_empty(),
+				false,
+			)
+			.unwrap();
+
+		let mut row = oak_node::value::NodeValueRow::new();
+		row.insert("gain_in".into(), oak_node::value::NodeValue::Float(0.5));
+		let uniforms = crate::shaderfx::pack_uniforms(&translated, &row);
+
+		let w = 4;
+		let h = 2;
+		let src = ctx.create_texture(w, h).unwrap();
+		let dst = ctx.create_texture(w, h).unwrap();
+		let mut frame = Frame::new();
+		let mut pod = VideoParamsPod::default();
+		pod.width = w;
+		pod.height = h;
+		frame.set_video_params(pod);
+		frame.allocate();
+		// Distinct values per pixel (F32 RGBA): 0.2/0.4/0.6/1.0 shifted
+		// per pixel, so a UV mixup would be visible.
+		for px in 0..(w * h) as usize {
+			for c in 0..4 {
+				let v = 0.2 + 0.1 * (px + c) as f32;
+				frame.data[(px * 4 + c) * 4..(px * 4 + c) * 4 + 4]
+					.copy_from_slice(&v.to_le_bytes());
+			}
+		}
+		ctx.upload(src, &frame).unwrap();
+		ctx.run_shader_pass(&program, &uniforms, &[src], dst).unwrap();
+		let out = ctx.download(dst).unwrap();
+		for px in 0..(w * h) as usize {
+			for c in 0..4 {
+				let at = (px * 4 + c) * 4;
+				let got = f32::from_le_bytes(out.data[at..at + 4].try_into().unwrap());
+				let want = (0.2 + 0.1 * (px + c) as f32) * 0.5;
+				assert!(
+					(got - want).abs() < 1e-6,
+					"px {px} ch {c}: got {got}, want {want}"
+				);
+			}
+		}
 		ctx.destroy_texture(src);
 		ctx.destroy_texture(dst);
 	}

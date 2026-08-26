@@ -145,6 +145,8 @@ impl NodeBehavior for MathNode {
 				&calc.most_likely_value_a,
 				PARAM_B_INPUT,
 				&calc.most_likely_value_b,
+				time,
+				self.type_id(),
 				core,
 				inputs,
 				table,
@@ -397,5 +399,62 @@ mod tests {
 		);
 		assert_eq!(out.sample_value(0, 0), 3.0);
 		assert_eq!(out.sample_value(0, 1), 6.0);
+	}
+
+	#[test]
+	fn value_texture_multiplied_pushes_job_payload() {
+		let (mut core, behavior) = create();
+		core.set_standard_value(METHOD_INPUT, -1, NodeValue::Combo(2)); // Multiply
+		let tex = NodeValue::Texture(crate::handle::make_owned::<u8>(7));
+		let inputs = row(&[
+			(PARAM_A_INPUT, tex.clone()),
+			(PARAM_B_INPUT, NodeValue::Float(2.0)),
+		]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(7, 1), &mut table);
+		let handle = match table.get(ValueType::Texture).unwrap() {
+			NodeValue::Texture(h) => *h,
+			_ => panic!("texture expected"),
+		};
+		let payload = unsafe {
+			crate::handle::get_checked::<crate::nodes::jobs::ShaderJobPayload>(&handle)
+		}
+		.expect("shader job payload boxed in the pushed texture");
+		assert_eq!(payload.type_id, "org.olivevideoeditor.Olive.math");
+		// op=2 (multiply), pairing=8 (texture_number), a=10 (texture),
+		// b=2 (float).
+		assert_eq!(payload.shader_id, "2.8.10.2");
+		assert_eq!(payload.iterations, 1);
+		assert_eq!(payload.effect_input, "");
+		assert_eq!(payload.time, Rational::new(7, 1));
+		assert_eq!(payload.params.get(PARAM_A_INPUT), Some(&tex));
+		assert_eq!(
+			payload.params.get(PARAM_B_INPUT),
+			Some(&NodeValue::Float(2.0))
+		);
+	}
+
+	#[test]
+	fn value_null_texture_pushes_no_payload() {
+		let (mut core, behavior) = create();
+		core.set_standard_value(METHOD_INPUT, -1, NodeValue::Combo(2)); // Multiply
+		let inputs = row(&[
+			(
+				PARAM_A_INPUT,
+				NodeValue::Texture(crate::handle::CHandle::null()),
+			),
+			(PARAM_B_INPUT, NodeValue::Float(2.0)),
+		]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		// Null texture operand -> no-op push-through, not a job payload.
+		let handle = match table.get(ValueType::Texture).unwrap() {
+			NodeValue::Texture(h) => *h,
+			_ => panic!("texture expected"),
+		};
+		let payload = unsafe {
+			crate::handle::get_checked::<crate::nodes::jobs::ShaderJobPayload>(&handle)
+		};
+		assert!(payload.is_none(), "no shader job for a null texture");
 	}
 }

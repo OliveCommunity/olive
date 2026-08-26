@@ -21,6 +21,7 @@
 //! OpenColorIO v2.5.2, bundled real-OCIO build). OCIO is never rewritten —
 //! this module maps the C++ call surface onto ocio-rs.
 
+use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 
 use oak_core::PixelFormat;
@@ -524,6 +525,78 @@ pub fn config_path() -> Option<String> {
 	))
 }
 
+// ---- OCIO GPU function shaders (C++ colormanagement.cpp GetColorContext) --
+
+/// Cache of generated GLSL stubs, keyed by function name + color spaces +
+/// config cache id (so a swapped test config re-generates). `None` entries
+/// are cached too — the lookup result is deterministic per key.
+static OCIO_STUB_CACHE: LazyLock<Mutex<HashMap<String, Option<String>>>> =
+	LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// The GLSL ES 3.0 shader text implementing the OCIO function `fn_name`
+/// between `from_space` and `to_space` (both resolved as color-space names
+/// or roles, exactly like the C++ `getProcessor(src, dst)` calls).
+///
+/// This mirrors the C++ OCIO-node shader path: the node's
+/// `GenerateProcessor` builds a `ColorTransform` between two spaces and
+/// `GetShaderCode` receives the auto-generated stub from
+/// `Renderer::GetColorContext` (colormanagement.cpp), which the node then
+/// splices into its fragment shader at the `%1` marker.
+///
+/// `None` when no default config exists or the processor is LUT-based:
+/// `extractGpuShaderInfo` reports lookup textures that the C++ renderer
+/// uploads per LUT (the loops right after `GetColorContext`), but the Rust
+/// renderer has no such upload path, so those transforms are skipped and
+/// the node passes through.
+pub fn ocio_function_shader(fn_name: &str, from_space: &str, to_space: &str) -> Option<String> {
+	let config = default_config()?;
+	let cache_key = format!(
+		"{}:{}:{}:{}",
+		fn_name,
+		from_space,
+		to_space,
+		config.cache_id().unwrap_or_default()
+	);
+	if let Some(hit) = OCIO_STUB_CACHE
+		.lock()
+		.unwrap_or_else(|e| e.into_inner())
+		.get(&cache_key)
+	{
+		return hit.clone();
+	}
+	let stub = build_ocio_function_shader(&config, fn_name, from_space, to_space);
+	OCIO_STUB_CACHE
+		.lock()
+		.unwrap_or_else(|e| e.into_inner())
+		.insert(cache_key, stub.clone());
+	stub
+}
+
+/// Build (but do not cache) the GLSL stub for `fn_name` between the two
+/// spaces (C++ `GpuShaderDesc::CreateShaderDesc` + `setLanguage` +
+/// `extractGpuShaderInfo`, colormanagement.cpp `GetColorContext`).
+fn build_ocio_function_shader(
+	config: &SafeConfig,
+	fn_name: &str,
+	from_space: &str,
+	to_space: &str,
+) -> Option<String> {
+	let processor = config.processor(from_space, to_space).ok()?;
+	let gpu = processor.default_gpu_processor().ok()?;
+	let mut desc = ocio_rs::GpuShaderDesc::create().ok()?;
+	desc.set_language(ocio_rs::GpuLanguage::GlslEs3_0).ok()?;
+	desc.set_function_name(fn_name).ok()?;
+	desc.set_resource_prefix("ocio_").ok()?;
+	gpu.try_extract_shader_info(&mut desc).ok()?;
+	// LUT-based processors need their 1D/3D textures uploaded (the C++
+	// `GetColorContext` caller loops over `getNum3DTextures`/`getNumTextures`
+	// right after extraction); without a LUT upload path these cannot render.
+	if desc.num_textures() > 0 || desc.num_3d_textures() > 0 {
+		return None;
+	}
+	desc.shader_text()
+}
+
 // ---- LUT library (C++ LUTLibrary) ------------------------------------------
 
 /// Supported LUT extensions (C++ `LUTLibrary::supported_extensions()`).
@@ -627,8 +700,7 @@ mod tests {
 		let _lock = config_lock();
 		if set_up_default_config().is_err() {
 			return;
-		}
-		// Create via the built-in config; a valid processor must exist for
+		}		// Create via the built-in config; a valid processor must exist for
 		// the ACES scene→display-encoded pairing and must preserve alpha.
 		let p = ColorProcessor::create("ACEScg", "sRGB Encoded Rec.709 (sRGB)", Direction::Normal);
 		let p = p.expect("processor handle always returned");
@@ -890,6 +962,52 @@ mod tests {
 		}
 		let p = ColorProcessor::create_lut("/nonexistent/never.cube", Direction::Normal).unwrap();
 		assert!(!p.is_valid(), "unreadable LUT → pass-through processor");
+	}
+
+	#[test]
+	fn ocio_function_shader_generates_glsl_for_chromakey() {
+		let _lock = config_lock();
+		if set_up_default_config().is_err() {
+			return; // Bundled OCIO missing (e.g. stub build): skip.
+		}
+		let stub = ocio_function_shader(
+			"SceneLinearToCIEXYZ_d65",
+			"scene_linear",
+			"cie_xyz_d65_interchange",
+		)
+		.expect("default config generates an analytic shader");
+		assert!(stub.contains("SceneLinearToCIEXYZ_d65"), "function name present");
+		assert!(!stub.contains("sampler"), "no LUT upload expected in the default config");
+		// Cache hit: a repeated call returns the same text.
+		let again = ocio_function_shader(
+			"SceneLinearToCIEXYZ_d65",
+			"scene_linear",
+			"cie_xyz_d65_interchange",
+		)
+		.unwrap();
+		assert_eq!(stub, again);
+	}
+
+	#[test]
+	fn ocio_function_shader_rejects_lut_processors() {
+		let _lock = config_lock();
+		// studio-config's Rec.709 display is a CLF LUT chain (unlike the
+		// analytic sRGB one); without a LUT upload path it must be refused.
+		let Ok(cfg) = ocio_rs::Config::create_from_builtin_config(
+			"studio-config-v2.1.0_aces-v1.3_ocio-v2.3",
+		) else {
+			return;
+		};
+		let cfg = SafeConfig(cfg);
+		assert!(
+			build_ocio_function_shader(&cfg, "probe", "ACEScg", "Rec.709 - Display").is_none(),
+			"LUT-based processor must be refused"
+		);
+		// A pure-matrix pairing on the same config still generates.
+		assert!(
+			build_ocio_function_shader(&cfg, "probe", "ACEScg", "ACES2065-1").is_some(),
+			"analytic processor still generates"
+		);
 	}
 }
 

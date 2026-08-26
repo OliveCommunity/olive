@@ -23,6 +23,7 @@
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, Gizmo, NodeBehavior, NodeCore};
+use crate::nodes::jobs::ShaderJobPayload;
 
 /// Parent matrix input id (C++ `k_parent_input`). Type: matrix; no
 /// default (identity when unconnected).
@@ -330,12 +331,15 @@ impl NodeBehavior for TransformDistortNode {
 	/// identity matrix (or no texture) -> pass-through push of the
 	/// input texture value.
 	///
+	/// The job boxes a [`ShaderJobPayload`] that the renderer's resolve
+	/// hook executes and replaces with the result texture; the params row
+	/// carries the input texture and uniforms, keyed by the effect input.
 	/// The real matrix needs the texture's params and the sequence
 	/// resolution (the Rust texture handle carries no params and the
 	/// value() signature no globals), so the identity check — and thus
 	/// the pass-through-vs-job decision — is not representable here: with
-	/// a texture the job is always queued for the renderer seam
-	/// (`// CPP-PARITY: transformdistortnode.cpp` value()).
+	/// a texture the job is always queued (`// CPP-PARITY:
+	/// transformdistortnode.cpp` value()).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -362,16 +366,33 @@ impl NodeBehavior for TransformDistortNode {
 		);
 
 		match inputs.get(TEXTURE_INPUT) {
-			Some(tex @ crate::value::NodeValue::Texture(_)) => {
-				// C++ builds the auto-scaled real matrix and pushes a job
-				// at the global video params binding `ove_maintex` /
-				// `ove_mvpmat`; the deferred job is resolved by the
-				// renderer seam (`// CPP-PARITY: transformdistortnode.cpp`
-				// value()).
-				let _ = tex;
+			Some(crate::value::NodeValue::Texture(_)) => {
+				// The shader-job box (C++ `Texture::Job(globals.vparams(),
+				// job)`): the behavior's type id selects the fragment
+				// source, and the effect input key locates the main
+				// texture inside the params row. C++ also inserts
+				// `ove_mvpmat` (the auto-scaled real matrix) and sets the
+				// `ove_maintex` interpolation, but the matrix needs the
+				// texture's params and the sequence resolution — neither
+				// available here — so it is left absent and the runner
+				// fills an identity `ove_mvpmat`; the C++ identity check
+				// (pass-through when the real matrix is identity) is not
+				// representable either, so the job is always queued with a
+				// texture (`// CPP-PARITY: transformdistortnode.cpp`
+				// value(); TODO: inject the real matrix from the renderer
+				// seam, where the resolution data is available).
 				table.push(
 					crate::value::ValueType::Texture,
-					crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+					crate::value::NodeValue::Texture(crate::handle::make_owned(ShaderJobPayload {
+						node_id: crate::id::NodeId::INVALID,
+						time,
+						iterations: 1,
+						type_id: self.type_id().to_string(),
+						shader_id: String::new(),
+						effect_input: core.effect_input.clone(),
+						params: inputs.clone(),
+						iterative_input: TEXTURE_INPUT.to_string(),
+					})),
 					None,
 				);
 			}
@@ -701,7 +722,18 @@ mod tests {
 		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
 		// Matrix output always pushed; texture job queued for the seam.
 		assert!(table.get(ValueType::Matrix).is_some());
-		assert!(table.get(ValueType::Texture).is_some());
+		let handle = match table.get(ValueType::Texture).unwrap() {
+			NodeValue::Texture(h) => *h,
+			_ => panic!("texture expected"),
+		};
+		let payload = unsafe { crate::handle::get_checked::<crate::nodes::jobs::ShaderJobPayload>(&handle) }
+			.expect("shader job payload expected");
+		assert_eq!(payload.type_id, "org.olivevideoeditor.Olive.transform");
+		assert_eq!(payload.shader_id, "");
+		assert_eq!(payload.iterations, 1);
+		assert_eq!(payload.effect_input, TEXTURE_INPUT);
+		assert_eq!(payload.time, Rational::new(0, 1));
+		assert!(payload.params.contains_key(TEXTURE_INPUT));
 	}
 
 	#[test]

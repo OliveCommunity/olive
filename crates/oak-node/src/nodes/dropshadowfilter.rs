@@ -20,6 +20,7 @@
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, NodeBehavior, NodeCore};
+use crate::nodes::jobs::ShaderJobPayload;
 
 /// Texture input id (C++ `k_texture_input`). Type: texture; flags:
 /// not-keyframable; this is the node's effect input.
@@ -48,6 +49,12 @@ pub const OPACITY_INPUT: &str = "opacity_in";
 /// Fast/low-quality toggle input id (C++ `k_fast_input`). Type: bool;
 /// default `false`.
 pub const FAST_INPUT: &str = "fast_in";
+
+/// Iterative-input texture id (C++ ShaderJob param
+/// `previous_iteration_in`). Not a real node input: the C++ `value()`
+/// inserts it into the job params directly, so it only exists here as
+/// the feedback slot between the two blur passes and the merge step.
+pub const ITERATIVE_INPUT: &str = "previous_iteration_in";
 
 /// Drop shadow filter node. Adds a colored, blurred, offset copy of the
 /// input's alpha behind the image. The C++ class declares no own member
@@ -222,10 +229,14 @@ impl NodeBehavior for DropShadowFilter {
 	/// the input texture; when softness is non-zero the job runs 3
 	/// iterations feeding back through `previous_iteration_in`.
 	///
-	/// The Rust model has no shader-job payload: the job (including the
-	/// `resolution_in` / `previous_iteration_in` bindings and the 3-iteration
-	/// feedback when softness != 0) is deferred to the renderer seam
-	/// (`// CPP-PARITY: dropshadowfilter.cpp` value()).
+	/// The job boxes a [`ShaderJobPayload`] that the renderer's resolve
+	/// hook executes and replaces with the result texture; `resolution_in`
+	/// is filled by the runner from the input texture's size. The
+	/// feedback is carried both as metadata (`iterations` = 3 and
+	/// `iterative_input` = `previous_iteration_in` when softness != 0,
+	/// else 1 / empty) and as an unconditional `previous_iteration_in`
+	/// entry in `params`, mirroring the C++ unconditional `SetParam`
+	/// (`// CPP-PARITY: dropshadowfilter.cpp` `value()`).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -233,16 +244,45 @@ impl NodeBehavior for DropShadowFilter {
 		time: oak_core::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		if !matches!(
-			inputs.get(TEXTURE_INPUT),
-			Some(crate::value::NodeValue::Texture(_))
-		) {
-			return;
-		}
-		let _ = (core, time, inputs);
+		let tex = match inputs.get(TEXTURE_INPUT) {
+			Some(tex @ crate::value::NodeValue::Texture(_)) => tex.clone(),
+			_ => return,
+		};
+		let softness = match inputs.get(SOFTNESS_INPUT) {
+			Some(v) => v.to_double(),
+			None => core.value_at_time(SOFTNESS_INPUT, -1, time).to_double(),
+		};
+
+		// C++ unconditionally binds the input texture to
+		// `previous_iteration_in` (SetParam), so the params row always
+		// carries the entry even when the job runs a single iteration.
+		let mut params = inputs.clone();
+		params.insert(ITERATIVE_INPUT.to_string(), tex);
+
+		// C++ `if (!qIsNull(softness)) job.SetIterations(3)`: the merge
+		// step (ove_iteration == 2) needs two blur passes first, so a
+		// non-zero softness runs 3 iterations feeding back through
+		// `previous_iteration_in`.
+		let softness_nonzero = softness != 0.0;
+		let iterations = if softness_nonzero { 3 } else { 1 };
+		let iterative_input = if softness_nonzero {
+			ITERATIVE_INPUT.to_string()
+		} else {
+			String::new()
+		};
+
 		table.push(
 			crate::value::ValueType::Texture,
-			crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+			crate::value::NodeValue::Texture(crate::handle::make_owned(ShaderJobPayload {
+				node_id: crate::id::NodeId::INVALID,
+				time,
+				iterations,
+				type_id: self.type_id().to_string(),
+				shader_id: String::new(),
+				effect_input: core.effect_input.clone(),
+				params,
+				iterative_input,
+			})),
 			None,
 		);
 	}
@@ -384,12 +424,50 @@ mod tests {
 	}
 
 	#[test]
-	fn value_with_texture_pushes_deferred_job() {
+	fn value_with_softness_pushes_three_iteration_job() {
 		let (core, behavior) = create();
-		let inputs = crate::value::NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex())]);
+		let inputs = crate::value::NodeValueRow::from([
+			(TEXTURE_INPUT.to_string(), tex()),
+			(SOFTNESS_INPUT.to_string(), NodeValue::Float(10.0)),
+		]);
 		let mut table = NodeValueTable::default();
 		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
-		assert!(table.get(ValueType::Texture).is_some());
+		match table.get(ValueType::Texture) {
+			Some(NodeValue::Texture(h)) => {
+				let payload = unsafe { crate::handle::get_checked::<ShaderJobPayload>(h) }
+					.expect("shader job payload boxed");
+				assert_eq!(payload.type_id, "org.olivevideoeditor.Olive.dropshadow");
+				assert_eq!(payload.shader_id, "");
+				assert_eq!(payload.iterations, 3);
+				assert_eq!(payload.effect_input, TEXTURE_INPUT);
+				assert_eq!(payload.iterative_input, ITERATIVE_INPUT);
+				assert!(payload.params.contains_key(ITERATIVE_INPUT));
+			}
+			_ => panic!("texture expected"),
+		}
+	}
+
+	#[test]
+	fn value_zero_softness_pushes_single_iteration_job() {
+		let (core, behavior) = create();
+		let inputs = crate::value::NodeValueRow::from([
+			(TEXTURE_INPUT.to_string(), tex()),
+			(SOFTNESS_INPUT.to_string(), NodeValue::Float(0.0)),
+		]);
+		let mut table = NodeValueTable::default();
+		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
+		match table.get(ValueType::Texture) {
+			Some(NodeValue::Texture(h)) => {
+				let payload = unsafe { crate::handle::get_checked::<ShaderJobPayload>(h) }
+					.expect("shader job payload boxed");
+				assert_eq!(payload.iterations, 1);
+				assert_eq!(payload.iterative_input, "");
+				// The params row still carries the unconditional
+				// `previous_iteration_in` binding (C++ SetParam).
+				assert!(payload.params.contains_key(ITERATIVE_INPUT));
+			}
+			_ => panic!("texture expected"),
+		}
 	}
 
 	#[test]

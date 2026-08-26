@@ -22,6 +22,7 @@
 //! base texture. Not instantiable, so this is a helper module, not a
 //! [`NodeBehavior`] implementation.
 
+use crate::nodes::jobs::ShaderJobPayload;
 use crate::value::NodeValue;
 
 /// Base texture input id (C++ `k_base_input`). Type: texture; flags:
@@ -87,12 +88,15 @@ impl GeneratorWithMerge {
 	/// `MergeNode::k_blend_in`, pushing `base->to_job(merge)`; without
 	/// a base, pushes the generated job unchanged.
 	///
-	/// The Rust model has no shader-job payload (see
-	/// [`crate::nodes::mathbase`]): the merged case pushes a null
-	/// texture handle marking a renderer-deferred `"mrg"` shader job,
-	/// and the un-merged case pushes `job` itself. `job` is an opaque
-	/// oakrender texture handle (cross-module payload; null in the
-	/// deferred-job model) — see [`crate::value::NodeValue::Texture`].
+	/// `job` boxes the generated job's [`ShaderJobPayload`]. Without a
+	/// base the box is pushed through as-is (addref'd, so the table's
+	/// reference outlives the caller's handle). With a base, a new
+	/// `"mrg"` payload is boxed whose params row carries the base
+	/// texture under [`BASE_INPUT`] and the generated job (the blend
+	/// layer) under [`crate::nodes::merge::BLEND_INPUT`], with
+	/// `type_id`/`time` taken from the generated job — mirroring the
+	/// C++ `merge` shader job. A null or foreign `job` handle (the
+	/// legacy deferred model) keeps the old placeholder behavior.
 	pub fn push_mergable_job(
 		inputs: &crate::value::NodeValueRow,
 		job: crate::handle::CHandle,
@@ -101,19 +105,54 @@ impl GeneratorWithMerge {
 		match inputs.get(BASE_INPUT) {
 			Some(NodeValue::Texture(_)) => {
 				// A base is connected: the C++ pushes
-				// `base->to_job(ShaderJob("mrg"))` — a deferred alpha-over
-				// merge of the generated texture over the base.
+				// `base->to_job(ShaderJob("mrg"))` — an alpha-over merge
+				// of the generated texture over the base.
 				// `// CPP-PARITY: generatorwithmerge.cpp` push_mergable_job.
-				table.push(
-					crate::value::ValueType::Texture,
-					NodeValue::Texture(crate::handle::CHandle::null()),
-					None,
-				);
+				match unsafe { crate::handle::get_checked::<ShaderJobPayload>(&job) } {
+					Some(gen_job) => {
+						let mut params = crate::value::NodeValueRow::new();
+						params.insert(
+							BASE_INPUT.to_string(),
+							inputs
+								.get(BASE_INPUT)
+								.cloned()
+								.expect("base input matched above"),
+						);
+						params.insert(
+							crate::nodes::merge::BLEND_INPUT.to_string(),
+							NodeValue::Texture(unsafe { job.addref() }),
+						);
+						table.push(
+							crate::value::ValueType::Texture,
+							NodeValue::Texture(crate::handle::make_owned(ShaderJobPayload {
+								node_id: crate::id::NodeId::INVALID,
+								time: gen_job.time,
+								iterations: 1,
+								type_id: gen_job.type_id.clone(),
+								shader_id: "mrg".to_string(),
+								effect_input: BASE_INPUT.to_string(),
+								params,
+								iterative_input: String::new(),
+							})),
+							None,
+						);
+					}
+					None => {
+						// Legacy null-handle deferred model: keep the
+						// placeholder — TODO: drop once every generator
+						// boxes a job payload.
+						table.push(
+							crate::value::ValueType::Texture,
+							NodeValue::Texture(crate::handle::CHandle::null()),
+							None,
+						);
+					}
+				}
 			}
 			_ => {
 				table.push(
 					crate::value::ValueType::Texture,
-					NodeValue::Texture(job),
+					NodeValue::Texture(unsafe { job.addref() }),
 					None,
 				);
 			}
@@ -125,9 +164,37 @@ impl GeneratorWithMerge {
 mod tests {
 	use super::*;
 	use crate::value::{NodeValue, NodeValueTable, ValueType};
+	use oak_core::Rational;
 
 	#[test]
-	fn push_job_without_base_pushes_job() {
+	fn push_job_without_base_pushes_job_unchanged() {
+		let job = crate::handle::make_owned(crate::nodes::jobs::ShaderJobPayload {
+			type_id: "org.olivevideoeditor.Olive.solidgenerator".to_string(),
+			time: Rational::new(2, 1),
+			shader_id: "1".to_string(),
+			..Default::default()
+		});
+		let mut table = NodeValueTable::default();
+		GeneratorWithMerge::push_mergable_job(
+			&crate::value::NodeValueRow::default(),
+			job,
+			&mut table,
+		);
+		let handle = match table.get(ValueType::Texture) {
+			Some(NodeValue::Texture(h)) => *h,
+			_ => panic!("texture expected"),
+		};
+		let payload = unsafe {
+			crate::handle::get_checked::<crate::nodes::jobs::ShaderJobPayload>(&handle)
+		}
+		.expect("job payload boxed");
+		assert_eq!(payload.type_id, "org.olivevideoeditor.Olive.solidgenerator");
+		assert_eq!(payload.shader_id, "1");
+		assert_eq!(payload.time, Rational::new(2, 1));
+	}
+
+	#[test]
+	fn push_job_without_base_null_job_pushes_null() {
 		let job = crate::handle::CHandle::null();
 		let mut table = NodeValueTable::default();
 		GeneratorWithMerge::push_mergable_job(
@@ -142,7 +209,46 @@ mod tests {
 	}
 
 	#[test]
-	fn push_job_with_base_pushes_deferred_merge() {
+	fn push_job_with_base_boxes_merge_payload() {
+		let gen_job = crate::handle::make_owned(crate::nodes::jobs::ShaderJobPayload {
+			type_id: "org.olivevideoeditor.Olive.solidgenerator".to_string(),
+			time: Rational::new(2, 1),
+			shader_id: "1".to_string(),
+			..Default::default()
+		});
+		let base = NodeValue::Texture(crate::handle::make_owned::<u8>(7));
+		let inputs = crate::value::NodeValueRow::from([(BASE_INPUT.to_string(), base.clone())]);
+		let mut table = NodeValueTable::default();
+		GeneratorWithMerge::push_mergable_job(&inputs, gen_job, &mut table);
+
+		let handle = match table.get(ValueType::Texture) {
+			Some(NodeValue::Texture(h)) => *h,
+			_ => panic!("texture expected"),
+		};
+		let merge = unsafe {
+			crate::handle::get_checked::<crate::nodes::jobs::ShaderJobPayload>(&handle)
+		}
+		.expect("merge job payload boxed");
+		assert_eq!(merge.shader_id, "mrg");
+		assert_eq!(merge.type_id, "org.olivevideoeditor.Olive.solidgenerator");
+		assert_eq!(merge.time, Rational::new(2, 1));
+		assert_eq!(merge.iterations, 1);
+		assert_eq!(merge.effect_input, BASE_INPUT);
+		assert_eq!(merge.params.get(BASE_INPUT), Some(&base));
+		let blend = match merge.params.get(crate::nodes::merge::BLEND_INPUT) {
+			Some(NodeValue::Texture(h)) => *h,
+			_ => panic!("texture expected"),
+		};
+		let blend_job = unsafe {
+			crate::handle::get_checked::<crate::nodes::jobs::ShaderJobPayload>(&blend)
+		}
+		.expect("blend job payload boxed");
+		assert_eq!(blend_job.type_id, "org.olivevideoeditor.Olive.solidgenerator");
+		assert_eq!(blend_job.shader_id, "1");
+	}
+
+	#[test]
+	fn push_job_with_base_null_job_keeps_placeholder() {
 		let job = crate::handle::CHandle::null();
 		let inputs = crate::value::NodeValueRow::from([(
 			BASE_INPUT.to_string(),
@@ -150,9 +256,9 @@ mod tests {
 		)]);
 		let mut table = NodeValueTable::default();
 		GeneratorWithMerge::push_mergable_job(&inputs, job, &mut table);
-		assert!(
-			table.get(ValueType::Texture).is_some(),
-			"merge job placeholder pushed"
-		);
+		match table.get(ValueType::Texture) {
+			Some(NodeValue::Texture(h)) => assert!(h.is_null()),
+			_ => panic!("texture expected"),
+		}
 	}
 }

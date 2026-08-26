@@ -145,7 +145,6 @@ if [ -z "${MSYSTEM:-}" ]; then
 	enable_if_pkg openh264 libopenh264
 	enable_if_pkg snappy libsnappy
 fi
-enable_if_pkg wavpack libwavpack
 enable_if_pkg webp libwebp
 enable_if_pkg xvid libxvid
 enable_if_pkg kvazaar libkvazaar

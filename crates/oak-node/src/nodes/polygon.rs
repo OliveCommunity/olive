@@ -107,10 +107,14 @@ impl NodeBehavior for PolygonGenerator {
 	/// texture at the sequence video params and pushes it through
 	/// `push_mergable_job` (merged over `base_in` when connected).
 	///
-	/// The Rust model has no generate/shader-job payloads: the deferred
-	/// job chain (rasterize -> `"rgb"` recolor -> optional `"mrg"`
-	/// alpha-over) is resolved by the renderer seam, so a null texture
-	/// handle marks "renderer must produce this texture"
+	/// The C++ chain starts with `get_generate_job()` — a CPU
+	/// rasterization of the polygon path (QPainterPath bezier fill into
+	/// an RGBA8888 frame via `generate_frame()`), which a
+	/// [`ShaderJobPayload`] cannot express: the payload has no generate
+	/// phase, and the rasterize -> `"rgb"` recolor -> optional `"mrg"`
+	/// alpha-over chain has no Rust equivalent. The output is kept as a
+	/// null texture handle marking "renderer must produce this texture";
+	/// expressing the chain as payloads is a renderer TODO
 	/// (`// CPP-PARITY: polygon.cpp` `value()`).
 	fn value(
 		&self,
@@ -119,11 +123,11 @@ impl NodeBehavior for PolygonGenerator {
 		time: oak_core::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		let _ = (core, time);
-		super::generatorwithmerge::GeneratorWithMerge::push_mergable_job(
-			inputs,
-			crate::handle::CHandle::null(),
-			table,
+		let _ = (core, inputs, time);
+		table.push(
+			crate::value::ValueType::Texture,
+			crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+			None,
 		);
 	}
 

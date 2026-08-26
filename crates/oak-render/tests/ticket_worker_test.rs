@@ -21,7 +21,6 @@
 
 mod common;
 
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
 
@@ -58,6 +57,7 @@ fn ok_producer() -> oak_render::ticket::Producer {
 fn params(time: Rational) -> VideoTicketParams {
 	VideoTicketParams {
 		viewer: 1,
+		project: String::new(),
 		time,
 		force_size: Some((8, 4)),
 		force_format: None,
@@ -212,13 +212,16 @@ fn ticket_id_monotonic() {
 	d.shutdown();
 }
 
-/// GraphSnapshotStore: acquire twice shares one file; release to zero
-/// unlinks it (no orphaned snapshots after shutdown).
+/// GraphSnapshotStore: acquire twice shares one file; release never
+/// unlinks at zero refs (M16 S1 — a worker may still hold the path for
+/// a late load_graph); the whole store is removed by cleanup() at
+/// manager shutdown.
 #[test]
 fn snapshot_store_refcount() {
-	let mut store = GraphSnapshotStore::new();
-	let p1 = store.acquire(42).unwrap();
-	let p2 = store.acquire(42).unwrap();
+	let store = GraphSnapshotStore::new();
+	let project = oak_node::project::Project::new();
+	let p1 = store.acquire(&project, 1).unwrap();
+	let p2 = store.acquire(&project, 1).unwrap();
 	assert_eq!(p1, p2);
 	assert!(std::path::Path::new(&p1).exists());
 	assert_eq!(store.refs(&p1), 2);
@@ -227,11 +230,17 @@ fn snapshot_store_refcount() {
 	store.mark_cached(&p1, true);
 	assert!(store.is_cached(&p1));
 	store.release(&p1);
+	// Zero refs: file intentionally kept (late worker loads), entry dropped.
+	assert_eq!(store.refs(&p1), 0);
+	assert!(
+		std::path::Path::new(&p1).exists(),
+		"file kept after release at refcount 0"
+	);
+	store.cleanup();
 	assert!(
 		!std::path::Path::new(&p1).exists(),
-		"unlinked at refcount 0"
+		"store directory removed by cleanup"
 	);
-	assert_eq!(store.refs(&p1), 0);
 }
 
 /// TimeRange sanity (used above).

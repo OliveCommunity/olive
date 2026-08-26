@@ -323,6 +323,14 @@ impl NodeBehavior for MaskDistortNode {
 	/// feather value, `resolution_in` from the texture or the global
 	/// square resolution); without a base texture pushes the matte
 	/// itself.
+	///
+	/// The chain starts with a CPU rasterization of the polygon matte
+	/// (C++ `get_generate_job`), which a [`ShaderJobPayload`] cannot
+	/// express — the payload has no generate phase. The output is kept
+	/// as a null texture handle marking "renderer must produce this
+	/// texture"; expressing the rasterize -> (optional `"invert"`) ->
+	/// (optional `"feather"` nested in) `"mrg"` multiply chain as
+	/// payloads is a renderer TODO (`// CPP-PARITY: mask.cpp` `value()`).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -330,17 +338,7 @@ impl NodeBehavior for MaskDistortNode {
 		time: oak_core::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		let _ = (core, time);
-		let _ = inputs;
-		// `// CPP-PARITY: mask.cpp` `value()` — the C++ rasterizes the
-		// polygon matte via the inherited `get_generate_job`, optionally
-		// wraps it in an `"invert"` shader job, then pushes an `"mrg"`
-		// multiply merge over `base_in` (nesting a two-iteration
-		// gaussian `"feather"` blur job when `feather_in` > 0.0) — or
-		// the bare matte job when there is no base texture. Every
-		// outcome is a renderer-deferred job in the Rust model (the
-		// Rust polygon base provides no generate job either), so a
-		// single null texture handle marks the result.
+		let _ = (core, inputs, time);
 		table.push(
 			crate::value::ValueType::Texture,
 			crate::value::NodeValue::Texture(crate::handle::CHandle::null()),

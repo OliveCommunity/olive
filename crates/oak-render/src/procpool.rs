@@ -49,6 +49,14 @@
 //!     worker dead: its claimed frames are re-queued to the scheduler
 //!     (any healthy worker may claim them), the child is reaped, the
 //!     segment recreated and the process respawned (bounded restarts).
+//!   - **Where rendering runs.** Each `oak-worker` child is a
+//!     single-threaded NDJSON loop (no render thread inside the worker):
+//!     a `render_batch` message renders every ticket synchronously on the
+//!     child's loop thread (`WorkerSession::handle_render_batch_stream`
+//!     in `crates/oak-worker/src/worker.rs`). Parallelism comes from
+//!     the pool of worker processes spawned here (`spawn_worker`),
+//!     never from threads inside a worker — see "Where the rendering
+//!     happens" in `crates/oak-worker/README.md`.
 //!   - **S2 model.** The in-process [`crate::worker::WorkerPool`] is
 //!     gone (M15 S2 mandate); [`crate::manager::RenderManager`] defaults
 //!     to this backend. The ticket arena also routes **playback-window**
@@ -950,10 +958,15 @@ impl ProcessDispatcher {
 	/// Pump the control plane: drain worker events, restart the dead,
 	/// claim + dispatch batches. Non-blocking; call from the UI tick (or
 	/// after any submit/release). Completions fire after the lock drops.
+	/// A no-op once shutting down (M16 S1: a stale poll must not restart
+	/// dead workers during/after teardown).
 	pub fn poll(&self) {
 		let mut fired: Vec<(Completion, TicketResult)> = Vec::new();
 		{
 			let mut inner = lock(&self.inner);
+			if inner.shutting_down {
+				return;
+			}
 			self.pump(&mut inner, &mut fired);
 		}
 		for (done, result) in fired {
@@ -1029,6 +1042,32 @@ impl ProcessDispatcher {
 		for handle in inner.workers.iter_mut() {
 			if matches!(handle.state, WorkerState::Alive | WorkerState::Starting) {
 				if self.send_json(handle, &plugin_cancel_json()).is_err() {
+					handle.state = WorkerState::Dead;
+				}
+			}
+		}
+	}
+
+	/// Set (or clear) the graph snapshot path shipped to every worker via
+	/// `load_graph` (M16 S1). A new path is sent to every alive worker —
+	/// reloading a snapshot is idempotent, and the manager only re-sends
+	/// when the snapshot revision actually changes. Clearing only updates
+	/// the config: the protocol has no clear message, so alive workers
+	/// keep their loaded graph and only new/restarted workers skip it.
+	pub fn set_graph_snapshot(&self, path: Option<String>) {
+		let mut inner = lock(&self.inner);
+		if inner.shutting_down {
+			return;
+		}
+		inner.config.graph_snapshot = path.clone();
+		let Some(path) = path else { return };
+		for handle in inner.workers.iter_mut() {
+			if matches!(handle.state, WorkerState::Alive | WorkerState::Starting) {
+				handle.graph_sent = true;
+				if self
+					.send_json(handle, &json!({ "type": "load_graph", "path": path }))
+					.is_err()
+				{
 					handle.state = WorkerState::Dead;
 				}
 			}
@@ -1476,7 +1515,10 @@ impl ProcessDispatcher {
 		let shm = ShmRegionView::create(&key, inner.slots, inner.slot_bytes)?;
 
 		let mut child = Command::new(&inner.bin)
-			.args(["--backend", "cpu"])
+			// Auto backend: prefer the GPU, fall back to the CPU renderer
+			// (M16 S1 — the worker tolerates a GPU init failure and keeps
+			// evaluating headless).
+			.args(["--backend", "auto"])
 			.stdin(Stdio::piped())
 			.stdout(Stdio::piped())
 			.stderr(Stdio::inherit())
@@ -1810,6 +1852,12 @@ impl JobDispatch for ProcessDispatcher {
 		});
 	}
 
+	/// Ship a graph snapshot to the worker pool (M16 S1; delegates to the
+	/// inherent [`ProcessDispatcher::set_graph_snapshot`]).
+	fn set_graph_snapshot(&self, path: Option<String>) {
+		self.set_graph_snapshot(path);
+	}
+
 	/// Release a consumed frame's slot (delegates to the inherent
 	/// release — see [`ProcessDispatcher::release_frame`]).
 	fn release_frame(&self, frame: &ShmFrameRef) {
@@ -1964,6 +2012,12 @@ fn build_ticket_spec(
 		footage_file,
 		footage_stream,
 		montage,
+		// M16 S1 graph mode: the worker renders the viewer's graph frame
+		// when nonzero (else the montage path above) — and only when the
+		// ticket's project matches the worker's loaded snapshot (the
+		// `project_key` uuid guard).
+		viewer_node: params.viewer,
+		project_key: params.project.clone(),
 	}
 }
 

@@ -232,3 +232,124 @@ fn invalidation_fanout() {
 	assert!(walked.contains(&a) && walked.contains(&d));
 	let _ = NodeId::INVALID;
 }
+
+/// A behavior that echoes its `val_in` row value into the table (probes
+/// what the traverser fed it).
+struct Echo;
+impl NodeBehavior for Echo {
+	fn name(&self) -> &str {
+		"Echo"
+	}
+	fn type_id(&self) -> &str {
+		"test.echo"
+	}
+	fn duplicate(&self, _c: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+		Some(Box::new(Echo))
+	}
+	fn value(&self, _c: &NodeCore, inputs: &NodeValueRow, _t: Rational, table: &mut NodeValueTable) {
+		if let Some(v) = inputs.get("val_in") {
+			table.push(ValueType::Float, v.clone(), None);
+		}
+	}
+}
+
+/// Unconnected inputs are filled with the keyframe-interpolated value at
+/// the evaluation time (C++ GetValueAtTime): a linear 0→10 keyframe
+/// track read at its midpoint feeds 5.
+#[test]
+fn unconnected_input_evaluates_keyframes_at_time() {
+	use oak_node::keyframe::{Keyframe, KeyframeTrack};
+	let mut g = Graph::new();
+	let mut core = NodeCore::new();
+	core.add_input(Input::new("val_in", ValueType::Float, NodeValue::Float(0.0)));
+	core.keyframe_track_mut("val_in", -1).set_key(Keyframe {
+		time: Rational::new(0, 1),
+		value: NodeValue::Float(0.0),
+		interpolation: oak_node::keyframe::Interpolation::Linear,
+		bezier_in: (0.0, 0.0),
+		bezier_out: (0.0, 0.0),
+	});
+	core.keyframe_track_mut("val_in", -1).set_key(Keyframe {
+		time: Rational::new(10, 1),
+		value: NodeValue::Float(10.0),
+		interpolation: oak_node::keyframe::Interpolation::Linear,
+		bezier_in: (0.0, 0.0),
+		bezier_out: (0.0, 0.0),
+	});
+	let id = g.add_node(core, Box::new(Echo));
+
+	let mut t = Traverser::new();
+	let mut hooks = Noop;
+	let table = t
+		.evaluate(&g, &EvalRequest::new(id, Rational::new(5, 1)), &mut hooks)
+		.unwrap();
+	assert_eq!(table.get(ValueType::Float), Some(&NodeValue::Float(5.0)));
+}
+
+/// A connected input is evaluated at the consumer's adjusted time (C++
+/// InputTimeAdjustment with traverse=true): the consumer doubles the
+/// time, the upstream time-echo reports what it was evaluated at.
+#[test]
+fn connected_input_uses_adjusted_time() {
+	struct TimeEcho;
+	impl NodeBehavior for TimeEcho {
+		fn name(&self) -> &str {
+			"TimeEcho"
+		}
+		fn type_id(&self) -> &str {
+			"test.timeecho"
+		}
+		fn duplicate(&self, _c: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+			Some(Box::new(TimeEcho))
+		}
+		fn value(&self, _c: &NodeCore, _i: &NodeValueRow, t: Rational, table: &mut NodeValueTable) {
+			table.push(ValueType::Rational, NodeValue::Rational(t), None);
+		}
+	}
+	struct Doubler;
+	impl NodeBehavior for Doubler {
+		fn name(&self) -> &str {
+			"Doubler"
+		}
+		fn type_id(&self) -> &str {
+			"test.doubler"
+		}
+		fn duplicate(&self, _c: &NodeCore) -> Option<Box<dyn NodeBehavior>> {
+			Some(Box::new(Doubler))
+		}
+		fn input_time_adjustment(
+			&self,
+			input: &str,
+			_element: i32,
+			time: TimeRange,
+			traverse: bool,
+		) -> TimeRange {
+			if input == "val_in" && traverse {
+				TimeRange::new(time.in_() * Rational::new(2, 1), time.out() * Rational::new(2, 1))
+			} else {
+				time
+			}
+		}
+		fn value(&self, _c: &NodeCore, inputs: &NodeValueRow, _t: Rational, table: &mut NodeValueTable) {
+			if let Some(v) = inputs.get("val_in") {
+				table.push(ValueType::Rational, v.clone(), None);
+			}
+		}
+	}
+
+	let mut g = Graph::new();
+	let src = node_with_input(&mut g, Box::new(TimeEcho));
+	let consumer = node_with_input(&mut g, Box::new(Doubler));
+	g.connect(src, consumer, "val_in", -1).unwrap();
+
+	let mut t = Traverser::new();
+	let mut hooks = Noop;
+	let table = t
+		.evaluate(&g, &EvalRequest::new(consumer, Rational::new(3, 1)), &mut hooks)
+		.unwrap();
+	assert_eq!(
+		table.get(ValueType::Rational),
+		Some(&NodeValue::Rational(Rational::new(6, 1))),
+		"the upstream was evaluated at the doubled time"
+	);
+}

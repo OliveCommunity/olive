@@ -20,6 +20,7 @@
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, Gizmo, NodeBehavior, NodeCore};
+use crate::nodes::jobs::ShaderJobPayload;
 
 /// Texture input id (C++ `k_texture_input`). Type: texture; flags:
 /// not-keyframable; this is the node's effect input.
@@ -123,13 +124,14 @@ impl NodeBehavior for SwirlDistortNode {
 
 	/// Evaluate outputs (C++ `value()`): no texture -> push nothing;
 	/// angle != 0.0 AND radius != 0.0 -> shader job over the whole value
-	/// row with `resolution_in` inserted from the texture's virtual
-	/// resolution; otherwise pass-through push of the input texture
-	/// unchanged.
+	/// row; otherwise pass-through push of the input texture unchanged.
 	///
-	/// The Rust model has no shader-job payload: the job (including the
-	/// `resolution_in` value) is deferred to the renderer seam
-	/// (`// CPP-PARITY: swirldistortnode.cpp` value()).
+	/// The job boxes a [`ShaderJobPayload`] that the renderer's resolve
+	/// hook executes and replaces with the result texture; the params row
+	/// carries the input texture and uniforms, keyed by the effect input,
+	/// and `resolution_in` is filled by the runner from the input
+	/// texture's size, matching the C++ insert of the texture's virtual
+	/// resolution (`// CPP-PARITY: swirldistortnode.cpp` value()).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -152,9 +154,21 @@ impl NodeBehavior for SwirlDistortNode {
 		};
 
 		if angle != 0.0 && radius != 0.0 {
+			// The shader-job box (C++ ShaderJob): the behavior's type id
+			// selects the fragment source; the effect input key locates the
+			// main texture inside the params row.
 			table.push(
 				crate::value::ValueType::Texture,
-				crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+				crate::value::NodeValue::Texture(crate::handle::make_owned(ShaderJobPayload {
+					node_id: crate::id::NodeId::INVALID,
+					time,
+					iterations: 1,
+					type_id: self.type_id().to_string(),
+					shader_id: String::new(),
+					effect_input: core.effect_input.clone(),
+					params: inputs.clone(),
+					iterative_input: String::new(),
+				})),
 				None,
 			);
 		} else {
@@ -336,7 +350,7 @@ mod tests {
 	}
 
 	#[test]
-	fn value_angle_and_radius_pushes_deferred_job() {
+	fn value_angle_and_radius_pushes_job_payload() {
 		let (core, behavior) = create();
 		let inputs = crate::value::NodeValueRow::from([
 			(TEXTURE_INPUT.to_string(), tex()),
@@ -345,7 +359,15 @@ mod tests {
 		]);
 		let mut table = NodeValueTable::default();
 		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
-		assert!(table.get(ValueType::Texture).is_some());
+		let NodeValue::Texture(handle) = table.get(ValueType::Texture).unwrap() else {
+			unreachable!()
+		};
+		let payload = unsafe { crate::handle::get_checked::<crate::nodes::jobs::ShaderJobPayload>(handle) }
+			.expect("swirl output boxes a ShaderJobPayload");
+		assert_eq!(payload.type_id, "org.olivevideoeditor.Olive.swirl");
+		assert_eq!(payload.shader_id, "");
+		assert_eq!(payload.iterations, 1);
+		assert_eq!(payload.effect_input, TEXTURE_INPUT);
 	}
 
 	#[test]

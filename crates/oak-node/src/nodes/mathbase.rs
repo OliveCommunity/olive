@@ -22,6 +22,7 @@
 //! by `MathNode` (and conceptually other binary math nodes).
 
 use crate::node::NodeCore;
+use crate::nodes::jobs::ShaderJobPayload;
 use crate::value::{NodeValue, NodeValueRow, NodeValueTable, ValueType};
 
 /// Binary operation (C++ `MathNodeBase::Operation`).
@@ -380,14 +381,18 @@ impl MathNodeBase {
 	/// vec/vec (zero-padding divide guard), matrix*vec, vec/number,
 	/// matrix/matrix, color+/-color, color*number, sample buffers
 	/// (elementwise, longer tail memcpy'd), texture pairings (shader job
-	/// with `"op.pairing.ta.tb"` id; no-op push-through when the texture
-	/// is null, the number is identity, or the matrix is identity), and
-	/// sample*number (static: in-place SIMD loop; dynamic: sample job).
+	/// payload boxed in the texture value with `"op.pairing.ta.tb"` id;
+	/// no-op push-through when the texture is null, the number is
+	/// identity, or the matrix is identity), and sample*number (static:
+	/// in-place SIMD loop; dynamic: sample job).
 	///
 	/// `core`/`inputs` carry the node's input state so the sample*number
 	/// branch can tell a static number (in-place transform) from a
 	/// dynamic one (deferred sample job), mirroring the C++ `this`
-	/// member access in `is_input_static(number_param)`.
+	/// member access in `is_input_static(number_param)`. `time` is the
+	/// job's request timestamp and `type_id` the emitting behavior's
+	/// type id — the caller (e.g. `MathNode::value`) forwards its `time`
+	/// argument and `self.type_id()`.
 	pub fn value_internal(
 		operation: Operation,
 		pairing: Pairing,
@@ -395,6 +400,8 @@ impl MathNodeBase {
 		val_a: &NodeValue,
 		param_b_in: &str,
 		val_b: &NodeValue,
+		time: oak_core::Rational,
+		type_id: &str,
 		core: &NodeCore,
 		inputs: &NodeValueRow,
 		output: &mut NodeValueTable,
@@ -607,19 +614,37 @@ impl MathNodeBase {
 					// Just push texture as-is.
 					output.push(ValueType::Texture, texture_val.clone(), None);
 				} else {
-					// Push a texture-typed value representing the deferred
-					// shader job. The C++ pushes `Texture::job(...)`
-					// carrying the `ShaderJob` (with the
-					// `"op.pairing.type_a.type_b"` id), which the renderer
-					// resolves via `get_shader_code`; the Rust model defers
-					// the job to the renderer seam
-					// (`traverser::RenderHooks::resolve`), so the job
-					// payload is not representable and a null handle marks
-					// "renderer must produce this texture".
+					// Push a texture value boxing the deferred shader job
+					// (C++ `Texture::job(ShaderJob)`), which the renderer
+					// seam (`traverser::RenderHooks::resolve`) downcasts
+					// and resolves via `get_shader_code`. The id encodes
+					// the operation, the pairing, and the actual operand
+					// types; the params row carries the two operands under
+					// their input ids, mirroring C++ `job.Insert(param_a_in,
+					// val_a); job.Insert(param_b_in, val_b)`.
 					// `// CPP-PARITY: mathbase.cpp` texture pairings.
+					let shader_id = format!(
+						"{}.{}.{}.{}",
+						operation as i32,
+						pairing as i32,
+						val_a.value_type().to_cpp_discriminant(),
+						val_b.value_type().to_cpp_discriminant()
+					);
 					output.push(
 						ValueType::Texture,
-						NodeValue::Texture(crate::handle::CHandle::null()),
+						NodeValue::Texture(crate::handle::make_owned(ShaderJobPayload {
+							node_id: crate::id::NodeId::INVALID,
+							time,
+							iterations: 1,
+							type_id: type_id.to_string(),
+							shader_id,
+							effect_input: core.effect_input.clone(),
+							params: NodeValueRow::from([
+								(param_a_in.to_string(), val_a.clone()),
+								(param_b_in.to_string(), val_b.clone()),
+							]),
+							iterative_input: String::new(),
+						})),
 						None,
 					);
 				}
@@ -1050,6 +1075,8 @@ mod tests {
 			&NodeValue::Float(2.0),
 			"b",
 			&NodeValue::Float(3.0),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,
@@ -1067,6 +1094,8 @@ mod tests {
 			&NodeValue::Rational(Rational::new(1, 2)),
 			"b",
 			&NodeValue::Rational(Rational::new(1, 3)),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,
@@ -1084,6 +1113,8 @@ mod tests {
 			&NodeValue::Rational(Rational::new(2, 1)),
 			"b",
 			&NodeValue::Rational(Rational::new(3, 1)),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,
@@ -1101,6 +1132,8 @@ mod tests {
 			&NodeValue::Vec2([1.0, 4.0]),
 			"b",
 			&NodeValue::Vec2([2.0, 2.0]),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,
@@ -1118,6 +1151,8 @@ mod tests {
 			&NodeValue::Vec3([1.0, 2.0, 3.0]),
 			"b",
 			&NodeValue::Float(2.0),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,
@@ -1147,6 +1182,8 @@ mod tests {
 			&NodeValue::Matrix(m),
 			"b",
 			&NodeValue::Vec2([10.0, 20.0]),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,
@@ -1168,6 +1205,8 @@ mod tests {
 			&NodeValue::Color([1.0, 0.0, 0.0, 1.0]),
 			"b",
 			&NodeValue::Color([0.5, 0.5, 0.0, 0.0]),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,
@@ -1185,6 +1224,8 @@ mod tests {
 			&NodeValue::Float(0.5),
 			"b",
 			&NodeValue::Color([1.0, 1.0, 1.0, 1.0]),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,
@@ -1223,6 +1264,8 @@ mod tests {
 			&a,
 			"b",
 			&b,
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,
@@ -1252,6 +1295,8 @@ mod tests {
 			&samples,
 			"number_in",
 			&NodeValue::Float(2.0),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&core,
 			&inputs,
 			&mut out,
@@ -1280,6 +1325,8 @@ mod tests {
 			&samples,
 			"number_in",
 			&NodeValue::Float(1.0),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,
@@ -1379,6 +1426,8 @@ mod tests {
 			&tex,
 			"num_in",
 			&NodeValue::Float(1.0),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,
@@ -1403,6 +1452,8 @@ mod tests {
 			&tex,
 			"num_in",
 			&NodeValue::Float(1.0),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,
@@ -1415,7 +1466,7 @@ mod tests {
 	}
 
 	#[test]
-	fn value_texture_number_job_placeholder() {
+	fn value_texture_number_pushes_job_payload() {
 		let tex = crate::value::NodeValue::Texture(crate::handle::make_owned::<u8>(7));
 		let mut out = NodeValueTable::default();
 		MathNodeBase::value_internal(
@@ -1425,14 +1476,28 @@ mod tests {
 			&tex,
 			"num_in",
 			&NodeValue::Float(2.0),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,
 		);
-		match out.get(ValueType::Texture).unwrap() {
-			NodeValue::Texture(h) => assert!(h.is_null(), "deferred job placeholder"),
-			_ => panic!("texture"),
+		let handle = match out.get(ValueType::Texture).unwrap() {
+			NodeValue::Texture(h) => *h,
+			_ => panic!("texture expected"),
+		};
+		let payload = unsafe {
+			crate::handle::get_checked::<crate::nodes::jobs::ShaderJobPayload>(&handle)
 		}
+		.expect("shader job payload boxed in the pushed texture");
+		assert_eq!(payload.type_id, "org.olivevideoeditor.Olive.math");
+		// op=2 (multiply), pairing=8 (texture_number), a=10 (texture),
+		// b=2 (float).
+		assert_eq!(payload.shader_id, "2.8.10.2");
+		assert_eq!(payload.iterations, 1);
+		assert_eq!(payload.effect_input, "");
+		assert_eq!(payload.params.get("tex_in"), Some(&tex));
+		assert_eq!(payload.params.get("num_in"), Some(&NodeValue::Float(2.0)));
 	}
 
 	#[test]
@@ -1446,6 +1511,8 @@ mod tests {
 			&tex,
 			"mat_in",
 			&NodeValue::Matrix(identity_matrix()),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,
@@ -1483,6 +1550,8 @@ mod tests {
 			&samples,
 			"num_in",
 			&NodeValue::Float(2.0),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&core,
 			&NodeValueRow::default(),
 			&mut out,
@@ -1504,6 +1573,8 @@ mod tests {
 			&NodeValue::Vec2([1.0, 2.0]),
 			"b",
 			&NodeValue::Vec3([1.0, 1.0, 1.0]),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,
@@ -1524,6 +1595,8 @@ mod tests {
 			&NodeValue::Vec2([4.0, 8.0]),
 			"b",
 			&NodeValue::Float(2.0),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,
@@ -1545,6 +1618,8 @@ mod tests {
 			&NodeValue::Matrix(a),
 			"b",
 			&NodeValue::Matrix(b),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,
@@ -1592,6 +1667,8 @@ mod tests {
 				&NodeValue::Rational(a),
 				"b",
 				&NodeValue::Rational(b),
+				Rational::new(0, 1),
+				"org.olivevideoeditor.Olive.math",
 				&NodeCore::new(),
 				&NodeValueRow::default(),
 				&mut out,
@@ -1719,6 +1796,8 @@ mod tests {
 			&NodeValue::Color([1.0, 2.0, 3.0, 4.0]),
 			"b",
 			&NodeValue::Color([0.5, 0.5, 0.5, 0.5]),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,
@@ -1739,6 +1818,8 @@ mod tests {
 			&NodeValue::Float(1.0),
 			"b",
 			&NodeValue::Float(2.0),
+			Rational::new(0, 1),
+			"org.olivevideoeditor.Olive.math",
 			&NodeCore::new(),
 			&NodeValueRow::default(),
 			&mut out,

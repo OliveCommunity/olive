@@ -20,6 +20,7 @@
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, Gizmo, NodeBehavior, NodeCore};
+use crate::nodes::jobs::ShaderJobPayload;
 
 /// Texture input id (C++ `k_texture_input`). Type: texture; flags:
 /// not-keyframable; this is the node's effect input.
@@ -277,16 +278,24 @@ impl NodeBehavior for CornerPinDistortNode {
 
 	/// Evaluate outputs (C++ `value()`): no texture -> push nothing;
 	/// all four corner sliders at their `(0, 0)` default -> pass-through
-	/// push of the input texture unchanged; otherwise build a shader job
-	/// with `resolution_in` inserted and custom vertex coordinates: each
-	/// corner offset is converted to pixels via `value_to_pixel` and then
-	/// to clip space (`/ half_resolution - 1.0`) and pushed as two
-	/// triangles (TL, TR, BR / TL, BL, BR).
+	/// push of the input texture unchanged; otherwise push a shader job.
 	///
-	/// The Rust model has no shader-job payload: the job (including the
-	/// `resolution_in` value and the adjusted vertex coordinates) is
-	/// deferred to the renderer seam (`// CPP-PARITY:
-	/// cornerpindistortnode.cpp` value()).
+	/// The job boxes a [`ShaderJobPayload`] that the renderer's resolve
+	/// hook executes and replaces with the result texture; the params row
+	/// carries the input texture and uniforms, keyed by the effect input,
+	/// and `resolution_in` is filled by the runner from the input
+	/// texture's size, matching the C++ insert of the texture's virtual
+	/// resolution (`// CPP-PARITY: cornerpindistortnode.cpp` value()).
+	///
+	/// TODO(vertex-shader): C++ additionally overrides the vertex
+	/// coordinates — each corner offset converted to pixels via
+	/// `value_to_pixel` and then to clip space (`/ half_resolution - 1.0`),
+	/// pushed as two triangles (TL, TR, BR / TL, BL, BR) via
+	/// `job.SetVertexCoordinates(...)` — and the quad warp needs the custom
+	/// vertex shader `cornerpin.vert` (`ove_mvpmat`), which the
+	/// [`ShaderJobPayload`] (no vertex field) and the single-fragment
+	/// `shader_code()` seam cannot carry. The fragment path (perspective
+	/// interpolation) is testable without it.
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -317,9 +326,21 @@ impl NodeBehavior for CornerPinDistortNode {
 			&& corner_is_null(BOTTOM_RIGHT_INPUT)
 			&& corner_is_null(BOTTOM_LEFT_INPUT))
 		{
+			// The shader-job box (C++ ShaderJob): the behavior's type id
+			// selects the fragment source; the effect input key locates the
+			// main texture inside the params row.
 			table.push(
 				crate::value::ValueType::Texture,
-				crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+				crate::value::NodeValue::Texture(crate::handle::make_owned(ShaderJobPayload {
+					node_id: crate::id::NodeId::INVALID,
+					time,
+					iterations: 1,
+					type_id: self.type_id().to_string(),
+					shader_id: String::new(),
+					effect_input: core.effect_input.clone(),
+					params: inputs.clone(),
+					iterative_input: String::new(),
+				})),
 				None,
 			);
 		} else {
@@ -570,17 +591,25 @@ mod tests {
 	}
 
 	#[test]
-	fn value_moved_corner_pushes_deferred_job() {
+	fn value_moved_corner_pushes_job_payload() {
 		let (mut core, behavior) = create();
 		core.set_standard_value(TOP_RIGHT_INPUT, -1, NodeValue::Vec2([10.0, 5.0]));
 		let inputs = crate::value::NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex())]);
 		let mut table = NodeValueTable::default();
 		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
-		assert!(table.get(ValueType::Texture).is_some());
+		let NodeValue::Texture(handle) = table.get(ValueType::Texture).unwrap() else {
+			unreachable!()
+		};
+		let payload = unsafe { crate::handle::get_checked::<crate::nodes::jobs::ShaderJobPayload>(handle) }
+			.expect("cornerpin output boxes a ShaderJobPayload");
+		assert_eq!(payload.type_id, "org.olivevideoeditor.Olive.cornerpin");
+		assert_eq!(payload.shader_id, "");
+		assert_eq!(payload.iterations, 1);
+		assert_eq!(payload.effect_input, TEXTURE_INPUT);
 	}
 
 	#[test]
-	fn value_corner_moved_on_y_only_pushes_deferred_job() {
+	fn value_corner_moved_on_y_only_pushes_job_payload() {
 		// C++ `is_null()` requires both components zero: a corner at
 		// (0, 5) is not at its default.
 		let (mut core, behavior) = create();

@@ -19,6 +19,7 @@
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, NodeBehavior, NodeCore};
+use crate::nodes::jobs::ShaderJobPayload;
 
 /// Texture input id (C++ `k_texture_input`). Type: texture; flags:
 /// not-keyframable; this is the node's effect input.
@@ -177,9 +178,10 @@ impl NodeBehavior for StrokeFilterNode {
 	/// texture; otherwise push a shader job with `resolution_in` set to
 	/// the texture's virtual resolution.
 	///
-	/// The Rust model has no shader-job payload: the job (including the
-	/// `resolution_in` value) is deferred to the renderer seam
-	/// (`// CPP-PARITY: stroke.cpp` value()).
+	/// The job boxes a [`ShaderJobPayload`] that the renderer's resolve
+	/// hook executes and replaces with the result texture; `resolution_in`
+	/// is filled by the runner from the frame size, matching the C++
+	/// `tex->virtual_resolution()` (`// CPP-PARITY: stroke.cpp` `value()`).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -202,9 +204,21 @@ impl NodeBehavior for StrokeFilterNode {
 		};
 
 		if radius > 0.0 && opacity > 0.0 {
+			// The shader-job box (C++ ShaderJob): the behavior's type id
+			// selects the fragment source; the effect input key locates the
+			// main texture inside the params row.
 			table.push(
 				crate::value::ValueType::Texture,
-				crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+				crate::value::NodeValue::Texture(crate::handle::make_owned(ShaderJobPayload {
+					node_id: crate::id::NodeId::INVALID,
+					time,
+					iterations: 1,
+					type_id: self.type_id().to_string(),
+					shader_id: String::new(),
+					effect_input: core.effect_input.clone(),
+					params: inputs.clone(),
+					iterative_input: String::new(),
+				})),
 				None,
 			);
 		} else {
@@ -360,7 +374,7 @@ mod tests {
 	}
 
 	#[test]
-	fn value_positive_radius_and_opacity_pushes_deferred_job() {
+	fn value_positive_radius_and_opacity_pushes_job_payload() {
 		let (core, behavior) = create();
 		let inputs = crate::value::NodeValueRow::from([
 			(TEXTURE_INPUT.to_string(), tex()),
@@ -369,7 +383,19 @@ mod tests {
 		]);
 		let mut table = NodeValueTable::default();
 		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
-		assert!(table.get(ValueType::Texture).is_some());
+		match table.get(ValueType::Texture) {
+			Some(NodeValue::Texture(h)) => {
+				let payload = unsafe { crate::handle::get_checked::<ShaderJobPayload>(h) }
+					.expect("shader job payload boxed");
+				assert_eq!(payload.type_id, "org.olivevideoeditor.Olive.stroke");
+				assert_eq!(payload.shader_id, "");
+				assert_eq!(payload.iterations, 1);
+				assert_eq!(payload.effect_input, TEXTURE_INPUT);
+				assert_eq!(payload.iterative_input, "");
+				assert!(payload.params.contains_key(RADIUS_INPUT));
+			}
+			_ => panic!("texture expected"),
+		}
 	}
 
 	#[test]

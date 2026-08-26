@@ -19,9 +19,22 @@
 //! Key change from C++: no inheritance. C++ `RenderProcessor :
 //! NodeTraverser` overrode virtuals to plug rendering in; here the
 //! traverser is a free engine and oakrender supplies [`RenderHooks`].
-//! The graph is walked iteratively in topological order with an
-//! explicit value stack (the C++ recursive path could blow the stack
-//! on deep graphs — same order, no recursion).
+//!
+//! Evaluation is **time-aware and memoized per (node, time)**: a node's
+//! inputs may pull upstream values at adjusted times (the consuming
+//! node's `input_time_adjustment` — clips map sequence time to media
+//! time, tracks clamp to the covering block, C++
+//! `traverser.cpp` `ProcessInput`), so one evaluation pass can evaluate
+//! the same node at several times (keyed like the C++ `value_cache_`,
+//! which is per (node, range)). The walk is an explicit-stack DFS —
+//! 10k-deep chains must not blow the call stack (the earlier
+//! topological-order pass was recursion-free for the same reason).
+//!
+//! Input rows carry the C++ `GenerateRowValue` semantics: connected
+//! inputs take the upstream output (evaluated at the adjusted time);
+//! unconnected inputs take `NodeCore::value_at_time` — keyframe
+//! interpolation when the track is non-empty, else the standard value
+//! (C++ `ProcessInputElement` → `GetValueAtTime`).
 //! `// CPP-PARITY: src/node/src/traverser.cpp`.
 
 use std::collections::{HashMap, HashSet};
@@ -75,18 +88,22 @@ impl EvalRequest {
 
 /// The traversal engine.
 pub struct Traverser {
-	/// Value stack / per-node row cache for this pass.
-	stack: Vec<(NodeId, NodeValueTable)>,
 	/// Nodes touched by the last [`Traverser::invalidate_downstream`]
 	/// walk (observable for tests; the C++ fan-out has no return value).
 	last_invalidation: Vec<NodeId>,
+}
+
+/// DFS stack frame: `Enter` queues the upstream nodes, `Exit` builds the
+/// row and evaluates.
+enum Frame {
+	Enter(NodeId, Rational),
+	Exit(NodeId, Rational),
 }
 
 impl Traverser {
 	/// New empty engine (reusable across evaluations).
 	pub fn new() -> Self {
 		Traverser {
-			stack: Vec::new(),
 			last_invalidation: Vec::new(),
 		}
 	}
@@ -99,9 +116,9 @@ impl Traverser {
 	/// Evaluate `request` against `graph`, calling `hooks` at the
 	/// backend seams. Returns the root's output table.
 	///
-	/// Errors: `State` on cancellation, `Failed` on node evaluation
-	/// errors (C++ returned empty tables; we surface the error —
-	/// `// CPP-PARITY: traverser.cpp` behavior notes inline).
+	/// Errors: `State` on cancellation, `NotFound` on an invalid root.
+	/// Only nodes upstream of the root are evaluated (lazy — the C++
+	/// recursion shares this property).
 	pub fn evaluate(
 		&mut self,
 		graph: &Graph,
@@ -113,72 +130,58 @@ impl Traverser {
 			return Err(Error::NotFound);
 		}
 
-		self.stack.clear();
-		let order = graph.topological_order();
+		// Per-pass memo: (node, time) -> evaluated output table. A shared
+		// upstream evaluates once per requested time (C++ value_cache_).
+		let mut cache: HashMap<(NodeId, Rational), NodeValueTable> = HashMap::new();
+		let mut queued: HashSet<(NodeId, Rational)> = HashSet::new();
+		let mut stack: Vec<Frame> = vec![Frame::Enter(request.root, request.time)];
+		queued.insert((request.root, request.time));
 
-		// Per-node output tables for this pass (memoization: a shared
-		// upstream evaluates once — `// CPP-PARITY: traverser.cpp`
-		// process_node_children).
-		let mut tables: HashMap<NodeId, NodeValueTable> = HashMap::new();
-
-		for node in order {
+		while let Some(frame) = stack.pop() {
 			if hooks.is_cancelled() {
 				return Err(Error::State);
 			}
-
-			let entry = graph.get(node).ok_or(Error::NotFound)?;
-
-			// Build this node's input row from its upstream outputs. The
-			// C++ picks the last value of the matching type per input;
-			// the Rust model keys rows by input id. Inputs declared as
-			// texture take the upstream texture directly (the scalar
-			// chain below would otherwise hand a plugin node's tagged
-			// param passthrough to a downstream clip input).
-			let mut row: NodeValueRow = std::collections::BTreeMap::new();
-			for (from, input_id, element) in graph.input_connections(node) {
-				let _ = element;
-				if let Some(from_table) = tables.get(&from) {
-					let value = if entry.core.input_data_type(&input_id)
-						== Some(ValueType::Texture)
-					{
-						from_table
-							.get(ValueType::Texture)
-							.cloned()
-							.unwrap_or(NodeValue::None)
-					} else {
-						from_table
-							.get(ValueType::Float)
-							.or_else(|| from_table.get(ValueType::Int))
-							.or_else(|| from_table.get(ValueType::Color))
-							.or_else(|| from_table.get(ValueType::Vec2))
-							.or_else(|| from_table.get(ValueType::Vec3))
-							.or_else(|| from_table.get(ValueType::Vec4))
-							.or_else(|| from_table.get(ValueType::Boolean))
-							.or_else(|| from_table.get(ValueType::Rational))
-							.or_else(|| from_table.get(ValueType::Text))
-							.or_else(|| from_table.get(ValueType::Combo))
-							.or_else(|| from_table.get(ValueType::StrCombo))
-							.or_else(|| from_table.get(ValueType::Texture))
-							.cloned()
-							.unwrap_or(NodeValue::None)
+			match frame {
+				Frame::Enter(node, time) => {
+					if cache.contains_key(&(node, time)) {
+						continue;
+					}
+					let Some(entry) = graph.get(node) else {
+						continue;
 					};
-					row.insert(input_id, value);
+					stack.push(Frame::Exit(node, time));
+					// Queue every connected upstream at its adjusted time.
+					for (from, input, element) in graph.input_connections(node) {
+						let from = entry
+							.behavior
+							.connected_render_output(&entry.core, &input, element)
+							.unwrap_or(from);
+						let adjusted = adjusted_time(entry, &input, element, time);
+						let key = (from, adjusted);
+						if !cache.contains_key(&key) && queued.insert(key) {
+							stack.push(Frame::Enter(from, adjusted));
+						}
+					}
+				}
+				Frame::Exit(node, time) => {
+					if cache.contains_key(&(node, time)) {
+						continue;
+					}
+					let Some(entry) = graph.get(node) else {
+						continue;
+					};
+					let row = build_row(graph, &cache, entry, node, time);
+					let mut table = NodeValueTable::default();
+					entry.behavior.value(&entry.core, &row, time, &mut table);
+					hooks.resolve(node, &row, &mut table);
+					cache.insert((node, time), table);
 				}
 			}
-
-			// Evaluate the node's behavior into its output table.
-			let mut table = NodeValueTable::default();
-			// The behavior writes outputs; the default no-op leaves the
-			// table empty (C++ `Node::value` default).
-			entry
-				.behavior
-				.value(&entry.core, &row, request.time, &mut table);
-			hooks.resolve(node, &row, &mut table);
-
-			tables.insert(node, table);
 		}
 
-		Ok(tables.remove(&request.root).unwrap_or_default())
+		Ok(cache
+			.remove(&(request.root, request.time))
+			.unwrap_or_default())
 	}
 
 	/// Invalidate walk: mark downstream caches dirty after an input
@@ -201,8 +204,107 @@ impl Traverser {
 
 impl Default for Traverser {
 	fn default() -> Self {
-		Traverser::new()
+		Self::new()
 	}
+}
+
+/// The consuming node's time adjustment for `input` (C++
+/// `Node::InputTimeAdjustment` with `traverse = true`): clips map
+/// sequence time to media time, tracks clamp to the covering block. The
+/// trait speaks ranges; a video frame evaluates at a point, so the
+/// adjusted range's `in` is the upstream time.
+fn adjusted_time(
+	entry: &crate::graph::NodeEntry,
+	input: &str,
+	element: i32,
+	time: Rational,
+) -> Rational {
+	entry
+		.behavior
+		.input_time_adjustment(input, element, TimeRange::new(time, time), true)
+		.in_()
+}
+
+/// Build the input row of `node` at `time` from the memoized upstream
+/// tables plus the standard/keyframed values of unconnected inputs
+/// (C++ `GenerateRowValue` + `ProcessInputElement`).
+fn build_row(
+	graph: &Graph,
+	cache: &HashMap<(NodeId, Rational), NodeValueTable>,
+	entry: &crate::graph::NodeEntry,
+	node: NodeId,
+	time: Rational,
+) -> NodeValueRow {
+	let mut row: NodeValueRow = std::collections::BTreeMap::new();
+	let connections = graph.input_connections(node);
+	for input in &entry.core.inputs {
+		let id = input.id.as_str();
+		let mut conns: Vec<(NodeId, i32)> = connections
+			.iter()
+			.filter(|(_, i, _)| i == id)
+			.map(|(from, _, element)| (*from, *element))
+			.collect();
+		if conns.is_empty() {
+			// Unconnected: keyframe interpolation when the track is
+			// non-empty, else the standard value (C++ GetValueAtTime).
+			row.insert(id.to_string(), entry.core.value_at_time(id, -1, time));
+			continue;
+		}
+		// Array inputs (element >= 0): the consuming node may restrict
+		// which elements are live at this time (C++
+		// `GetActiveElementsAtTime` — a track pulls only the blocks
+		// covering the frame). An empty answer means "no restriction".
+		if conns.iter().any(|(_, e)| *e >= 0) {
+			let active = entry.behavior.active_elements_at_time(id, time);
+			if !active.is_empty() {
+				conns.retain(|(_, e)| active.contains(e));
+			}
+			conns.sort_by_key(|(_, e)| *e);
+		}
+		for (from, element) in conns {
+			let from = entry
+				.behavior
+				.connected_render_output(&entry.core, id, element)
+				.unwrap_or(from);
+			let upstream_time = adjusted_time(entry, id, element, time);
+			let value = cache
+				.get(&(from, upstream_time))
+				.map(|t| pick_value(t, entry.core.input_data_type(id)))
+				.unwrap_or(NodeValue::None);
+			row.insert(id.to_string(), value);
+		}
+	}
+	row
+}
+
+/// Pick the row value for an input of `data_type` from an upstream
+/// output table. Texture inputs take the upstream texture directly (the
+/// scalar chain would otherwise hand a plugin node's tagged param
+/// passthrough to a downstream clip input); everything else takes the
+/// last value of the first matching scalar type (C++ value-hint
+/// resolution's common case).
+fn pick_value(table: &NodeValueTable, data_type: Option<ValueType>) -> NodeValue {
+	if data_type == Some(ValueType::Texture) {
+		return table
+			.get(ValueType::Texture)
+			.cloned()
+			.unwrap_or(NodeValue::None);
+	}
+	table
+		.get(ValueType::Float)
+		.or_else(|| table.get(ValueType::Int))
+		.or_else(|| table.get(ValueType::Color))
+		.or_else(|| table.get(ValueType::Vec2))
+		.or_else(|| table.get(ValueType::Vec3))
+		.or_else(|| table.get(ValueType::Vec4))
+		.or_else(|| table.get(ValueType::Boolean))
+		.or_else(|| table.get(ValueType::Rational))
+		.or_else(|| table.get(ValueType::Text))
+		.or_else(|| table.get(ValueType::Combo))
+		.or_else(|| table.get(ValueType::StrCombo))
+		.or_else(|| table.get(ValueType::Texture))
+		.cloned()
+		.unwrap_or(NodeValue::None)
 }
 
 /// A value database: per-node input rows over a time range (C++

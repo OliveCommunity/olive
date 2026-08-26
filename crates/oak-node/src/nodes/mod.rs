@@ -19,7 +19,7 @@
 //! [`crate::sequence`]). Each registers with the factory via
 //! [`register_all`].
 
-mod blur;
+pub mod blur;
 mod chromakey;
 mod colordifferencekey;
 mod cornerpindistortnode;
@@ -30,6 +30,7 @@ mod dropshadowfilter;
 mod flipdistortnode;
 mod generatorwithmerge;
 pub mod group;
+pub mod jobs;
 mod mask;
 mod math;
 mod mathbase;
@@ -42,7 +43,7 @@ mod ociobase;
 mod ociogradingtransformlinear;
 mod ociogradingtransformlog;
 mod ociolut;
-mod opacity;
+pub mod opacity;
 mod pan;
 pub mod plugin;
 mod polygon;

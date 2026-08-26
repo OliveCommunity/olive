@@ -20,6 +20,7 @@
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, Gizmo, NodeBehavior, NodeCore};
+use crate::nodes::jobs::ShaderJobPayload;
 
 /// Texture input id (C++ `k_texture_input`). Type: texture; flags:
 /// not-keyframable; this is the node's effect input.
@@ -174,9 +175,12 @@ impl NodeBehavior for CropDistortNode {
 	/// shader job; all zero -> pass-through push of the input texture
 	/// unchanged.
 	///
-	/// The Rust model has no shader-job payload: the job (including the
-	/// `resolution_in` value) is deferred to the renderer seam
-	/// (`// CPP-PARITY: cropdistortnode.cpp` value()).
+	/// The job case boxes a [`ShaderJobPayload`] that the renderer's
+	/// resolve hook executes and replaces with the result texture; the
+	/// params row carries the input texture and uniforms, keyed by the
+	/// effect input, and `resolution_in` is filled by the runner from the
+	/// input texture's size, matching the C++ `texture->params()`
+	/// insertion (`// CPP-PARITY: cropdistortnode.cpp` `value()`).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -207,9 +211,21 @@ impl NodeBehavior for CropDistortNode {
 		};
 
 		if left != 0.0 || right != 0.0 || top != 0.0 || bottom != 0.0 {
+			// The shader-job box (C++ `texture->toJob(job)`): the behavior's
+			// type id selects the fragment source, and the effect input key
+			// locates the main texture inside the params row.
 			table.push(
 				crate::value::ValueType::Texture,
-				crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+				crate::value::NodeValue::Texture(crate::handle::make_owned(ShaderJobPayload {
+					node_id: crate::id::NodeId::INVALID,
+					time,
+					iterations: 1,
+					type_id: self.type_id().to_string(),
+					shader_id: String::new(),
+					effect_input: core.effect_input.clone(),
+					params: inputs.clone(),
+					iterative_input: TEXTURE_INPUT.to_string(),
+				})),
 				None,
 			);
 		} else {
@@ -477,13 +493,24 @@ mod tests {
 	}
 
 	#[test]
-	fn value_any_crop_pushes_deferred_job() {
+	fn value_any_crop_pushes_shader_job_payload() {
 		let (mut core, behavior) = create();
 		core.set_standard_value(LEFT_INPUT, -1, NodeValue::Float(0.25));
 		let inputs = crate::value::NodeValueRow::from([(TEXTURE_INPUT.to_string(), tex())]);
 		let mut table = NodeValueTable::default();
 		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
-		assert!(table.get(ValueType::Texture).is_some());
+		let handle = match table.get(ValueType::Texture).unwrap() {
+			NodeValue::Texture(h) => *h,
+			_ => panic!("texture expected"),
+		};
+		let payload = unsafe { crate::handle::get_checked::<crate::nodes::jobs::ShaderJobPayload>(&handle) }
+			.expect("shader job payload expected");
+		assert_eq!(payload.type_id, "org.olivevideoeditor.Olive.crop");
+		assert_eq!(payload.shader_id, "");
+		assert_eq!(payload.iterations, 1);
+		assert_eq!(payload.effect_input, TEXTURE_INPUT);
+		assert_eq!(payload.time, Rational::new(0, 1));
+		assert!(payload.params.contains_key(TEXTURE_INPUT));
 	}
 
 	#[test]

@@ -47,14 +47,16 @@ CARGO_TARGET_DIR=/path/to/oak/crates/oakrender/target cargo build --release
 
 Same flow as the C++ main, in the same order:
 
-1. **parse `--backend <name>`** (default `opengl`; `none` skips
-   renderer creation and the process exits 1, like the C++ main;
-   `cpu` is the M15 headless render mode — no renderer, but the session
-   stays fully operational and renders through the CPU evaluation path).
+1. **parse `--backend <name>`** (the pool spawns workers with `auto`;
+   `none` skips renderer creation and the process exits 1, like the C++
+   main; `cpu` is the M15 headless render mode — no renderer, but the
+   session stays fully operational and renders through the CPU
+   evaluation path).
 2. **initialize the render backend** (inside `src/worker.rs`): the
-   oakrender `DisplayRenderer` direct Rust API, falling back to the direct
-   OpenGL renderer exactly like the C++ `create_renderer()` fallback
-   chain. Then the runtime services load (color-manager default config,
+   oakrender `DisplayRenderer` direct Rust API. Under `auto` a failed
+   initialization degrades to a cpu-mode session (logged) instead of
+   exiting — GPU-less machines keep rendering through the CPU fallback.
+   Then the runtime services load (color-manager default config,
    the oakplugin render executor).
 3. **write the startup handshake** (protocol version 1, empty shared-memory
    geometry — same as the C++ worker's startup handshake; the parent
@@ -69,6 +71,56 @@ Same flow as the C++ main, in the same order:
    one `frame_ready`/`frame_failed` per ticket); `cancel` / `shutdown`
    are dispatched by the session. Responses are one compact JSON line
    per message.
+
+## Where the rendering happens (no render thread)
+
+A frequent reading trap: **oak-worker spawns no render thread.** The
+binary is a deliberately single-threaded NDJSON loop — `main.rs` →
+`worker::worker_main` (`src/worker.rs`) reads one control line from
+stdin, handles it, writes the response, repeat. Rendering happens
+**synchronously on that loop thread** the moment a batch arrives:
+
+```
+stdin "render_batch"
+  → WorkerSession::handle_render_batch_stream   (src/worker.rs)
+    → render_ticket_to_slot                     (acquire shm slot)
+      → render_spec_pixels                      (the actual render)
+    → stdout "frame_ready" / "frame_failed"     (one line per ticket)
+```
+
+`render_spec_pixels` picks between two render paths per ticket:
+
+- **Graph path** (the default when a project snapshot is loaded):
+  tickets carry `viewer_node` (the sequence's node identity), the worker
+  evaluates the deserialized project through `oak_node::traverser`
+  (time-aware, keyframe-resolving), and every node `value()` pushes a
+  job payload that `oakrender::eval`'s resolve hooks execute — footage
+  decode, **shader effects as wgpu fullscreen passes**
+  (`oakrender::shaderfx`: the nodes' embedded GLSL is translated to WGSL
+  through naga, uniforms packed std140), OFX plugins through the
+  oakplugin render driver. Textures stay GPU-resident across the effect
+  chain; the frame is read back once, at the end, into the shm slot.
+- **Montage path** (fallback: no snapshot loaded / legacy tickets): the
+  flat wire-spec CPU pipeline (`render_montage_frame_into`).
+
+The parallelism is **across processes, not threads**: the main process
+(app side) spawns the pool of `oak-worker` children in
+`oakrender::procpool::ProcessDispatcher` (`spawn_worker` in
+`crates/oak-render/src/procpool.rs`), one shared-memory segment and one
+reader thread per child, and shards ticket batches across them. So
+"no worker ⇒ no rendering" does not imply a hidden render thread — the
+dispatcher has no in-process rendering path at all (M15 S2 deleted it;
+only the test-only inline backend renders in-process). Audio follows
+the same shape via `render_audio_batch` → `render_audio_ticket_to_slot`
+→ `oakrender::eval::render_audio_samples_into`.
+
+Consequences worth knowing before editing this file:
+
+- A frame render blocks the control loop: `cancel` is observed only
+  between batches (batch granularity), which is why the main process
+  also stops the render loop on its side.
+- A crash mid-render kills the whole loop — that is the point (OFX
+  crash isolation); the dispatcher reaps, re-queues and respawns.
 
 ## Implemented vs stubbed (nothing is faked)
 
@@ -86,10 +138,12 @@ slots** (`render_frame` v1 + `render_batch` v2: generated frames,
 footage decode, montage compositing, end-of-pipe F32→BGRA8 conversion),
 unknown-type/malformed-message errors, shutdown/EOF termination.
 
-**Deferred to M15 S2/S3 (documented in `src/worker.rs`):** the loaded
-project's node-graph render path (plugin-node evaluation per graph
-snapshot update) — today tickets render from their wire spec
-(montage/footage/generate), which covers the preview pipeline.
+**Deferred / known limits:** the graph path is live (tickets with
+`viewer_node` evaluate the loaded project through the node graph). Still
+open: transition blocks render as plain cuts, polygon/mask's CPU
+rasterization stage (the matte generators pass through with a TODO), and
+audio still renders from the montage wire spec (graph audio evaluation
+is later work).
 
 **Deviation from the C++:** the startup handshake omits `gl_major`/
 `gl_minor` — the oakrender module exposes no GL context version (the C++

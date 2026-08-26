@@ -23,7 +23,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::input::Input;
 use crate::node::{Category, NodeBehavior, NodeCore};
-use crate::value::{AudioParams, NodeValue, ValueType, VideoParams};
+use crate::value::{AudioParams, NodeValue, NodeValueRow, NodeValueTable, ValueType, VideoParams};
 
 /// One media stream inside a footage file.
 #[derive(Clone, Debug)]
@@ -345,6 +345,35 @@ impl NodeBehavior for FootageBehavior {
 			valid: self.valid,
 			cancel: self.cancel.clone(),
 		}))
+	}
+
+	/// Emit the decode request (C++ `Footage::ProcessFootageRequest`): a
+	/// boxed [`crate::nodes::jobs::FootageJobPayload`] the render hooks
+	/// resolve to the decoded frame. A footage with no probed video stream
+	/// (or no filename) outputs nothing.
+	fn value(
+		&self,
+		_core: &NodeCore,
+		_inputs: &NodeValueRow,
+		time: oak_core::Rational,
+		table: &mut NodeValueTable,
+	) {
+		if self.filename.is_empty() {
+			return;
+		}
+		let Some(stream) = self.streams.iter().find(|s| s.is_video) else {
+			return;
+		};
+		let payload = crate::nodes::jobs::FootageJobPayload {
+			filename: self.filename.clone(),
+			stream_index: stream.index,
+			time,
+		};
+		table.push(
+			ValueType::Texture,
+			NodeValue::Texture(crate::handle::make_owned(payload)),
+			None,
+		);
 	}
 
 	/// Custom project save (C++ `Footage::SaveCustom`): the file name,
@@ -789,5 +818,65 @@ mod tests {
 		assert!(!f.valid);
 		assert!(f.streams.is_empty());
 		assert_eq!(f.timestamp, 0);
+	}
+
+	/// A footage with a probed video stream emits a boxed footage job
+	/// payload carrying the decode request (C++ `Footage::ProcessFootageRequest`);
+	/// a footage with no filename or no video stream outputs nothing.
+	#[test]
+	fn footage_value_emits_footage_job_payload() {
+		let mut f = FootageBehavior::new("clip.mov");
+		f.streams.push(StreamInfo {
+			index: 1,
+			is_video: true,
+			video: None,
+			audio: None,
+			duration: oak_core::Rational::new(1, 1),
+		});
+
+		let mut table = NodeValueTable::default();
+		f.value(
+			&NodeCore::empty(),
+			&NodeValueRow::new(),
+			oak_core::Rational::new(3, 1),
+			&mut table,
+		);
+		assert_eq!(table.count(), 1);
+		let NodeValue::Texture(handle) = table.get(ValueType::Texture).unwrap() else {
+			unreachable!()
+		};
+		let payload = unsafe { crate::handle::get_checked::<crate::nodes::jobs::FootageJobPayload>(handle) }
+			.expect("footage output boxes a FootageJobPayload");
+		assert_eq!(payload.filename, "clip.mov");
+		assert_eq!(payload.stream_index, 1);
+		assert_eq!(payload.time, oak_core::Rational::new(3, 1));
+
+		// No filename: nothing.
+		let mut table = NodeValueTable::default();
+		FootageBehavior::new("").value(
+			&NodeCore::empty(),
+			&NodeValueRow::new(),
+			oak_core::Rational::new(1, 1),
+			&mut table,
+		);
+		assert_eq!(table.count(), 0);
+
+		// Only an audio stream: nothing.
+		let mut audio_only = FootageBehavior::new("clip.mov");
+		audio_only.streams.push(StreamInfo {
+			index: 0,
+			is_video: false,
+			video: None,
+			audio: None,
+			duration: oak_core::Rational::new(1, 1),
+		});
+		let mut table = NodeValueTable::default();
+		audio_only.value(
+			&NodeCore::empty(),
+			&NodeValueRow::new(),
+			oak_core::Rational::new(1, 1),
+			&mut table,
+		);
+		assert_eq!(table.count(), 0);
 	}
 }

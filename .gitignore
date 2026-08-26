@@ -121,3 +121,5 @@ tarpaulin-out/
 .env
 # CD packaging artifacts
 /*.dmg
+.cargo/config.toml
+perf.data

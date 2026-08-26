@@ -31,6 +31,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use oak_core::{PixelFormat, Rational, TimeRange};
+use oak_node::block::ClipBlockBehavior;
+use oak_node::footage::FootageBehavior;
+use oak_node::id::NodeId;
+use oak_node::node::NodeCore;
+use oak_node::project::Project;
+use oak_node::sequence::SequenceBehavior;
+use oak_node::track::{TrackBehavior, TrackListBehavior};
 use oak_render::ipc::SLOT_FORMAT_BGRA8;
 use oak_render::procpool::{
 	main_heap_frame_copies, reset_main_heap_frame_copies, DispatcherConfig, ProcessDispatcher,
@@ -69,6 +76,7 @@ fn config(workers: usize, slots: u32) -> DispatcherConfig {
 fn params(time: Rational, footage: Option<(String, i32)>) -> Arc<VideoTicketParams> {
 	Arc::new(VideoTicketParams {
 		viewer: 1,
+		project: String::new(),
 		time,
 		force_size: Some((64, 64)),
 		// No forced format: the dispatcher's default slot format (BGRA8)
@@ -444,6 +452,7 @@ fn submit_audio(
 		time: start,
 		params: Arc::new(VideoTicketParams {
 			viewer,
+			project: String::new(),
 			time: start,
 			force_size: None,
 			force_format: None,
@@ -661,6 +670,7 @@ fn oversized_audio_ticket_is_refused_by_process_backend() {
 		time: Rational::new(0, 1),
 		params: Arc::new(VideoTicketParams {
 			viewer: 1,
+			project: String::new(),
 			time: Rational::new(0, 1),
 			force_size: None,
 			force_format: None,
@@ -722,6 +732,7 @@ fn f32_ticket_gets_f32_slot_and_bgra8_stays_bgra8() {
 			time: Rational::new(0, 1),
 			params: Arc::new(VideoTicketParams {
 				viewer: 1,
+				project: String::new(),
 				time: Rational::new(0, 1),
 				force_size: Some((64, 64)),
 				force_format: Some(PixelFormat::F32),
@@ -773,4 +784,238 @@ fn f32_ticket_gets_f32_slot_and_bgra8_stays_bgra8() {
 	dispatcher.release_frame(&frame);
 
 	dispatcher.shutdown();
+}
+
+/// One sequence with a single video track holding one clip over `clip`
+/// (range [0, 1)); returns the project and the sequence node.
+fn build_graph_project(clip: &std::path::Path) -> (Arc<Mutex<Project>>, NodeId) {
+	let project = Project::new();
+	let seq;
+	{
+		let mut p = project.lock().unwrap();
+
+		// Footage is created first so the sequence lands on slot 1
+		// (identity != 0): identity 0 is the "no viewer" sentinel in
+		// ticket specs, and the graph branch short-circuits on it.
+		let mut footage = FootageBehavior::new(clip.to_str().unwrap());
+		footage.probe().expect("probe the test clip");
+		let footage = p.graph.add_node(NodeCore::new(), Box::new(footage));
+
+		let (score, sbehavior) = SequenceBehavior::create();
+		seq = p.graph.add_node(score, sbehavior);
+
+		let (tcore, tbehavior) = TrackListBehavior::create();
+		let tl = p.graph.add_node(tcore, tbehavior);
+
+		let (tcore, tbehavior) = TrackBehavior::create();
+		let track = p.graph.add_node(tcore, tbehavior);
+
+		let (ccore, cbehavior) = oak_node::block::clip_create();
+		let clip_node = p.graph.add_node(ccore, cbehavior);
+		p.graph
+			.connect(footage, clip_node, oak_node::block::clip_input::TEXTURE_INPUT, -1)
+			.expect("connect footage to clip");
+
+		let clip_behavior = p
+			.graph
+			.get_mut(clip_node)
+			.unwrap()
+			.behavior
+			.as_any_mut()
+			.unwrap()
+			.downcast_mut::<ClipBlockBehavior>()
+			.expect("clip block");
+		clip_behavior.core.range = TimeRange::new(Rational::new(0, 1), Rational::new(1, 1));
+
+		p.graph
+			.get_mut(track)
+			.unwrap()
+			.behavior
+			.as_any_mut()
+			.unwrap()
+			.downcast_mut::<TrackBehavior>()
+			.expect("video track")
+			.append_block(clip_node);
+		p.graph
+			.get_mut(tl)
+			.unwrap()
+			.behavior
+			.as_any_mut()
+			.unwrap()
+			.downcast_mut::<TrackListBehavior>()
+			.expect("video track list")
+			.tracks
+			.push(track);
+		p.graph
+			.get_mut(seq)
+			.unwrap()
+			.behavior
+			.as_any_mut()
+			.unwrap()
+			.downcast_mut::<SequenceBehavior>()
+			.expect("sequence")
+			.track_lists
+			.push(tl);
+	}
+	(project, seq)
+}
+
+/// Post a single graph-mode ticket rendering the sequence `viewer` at
+/// t=0 through the worker pool. `project_uuid` must be the owning project's
+/// uuid (M16 S1: workers render graph tickets only when the snapshot's
+/// project matches the ticket's).
+fn post_graph_job(
+	dispatcher: &ProcessDispatcher,
+	results: &Arc<Mutex<Vec<TicketResult>>>,
+	viewer: u64,
+	project_uuid: &str,
+) {
+	let results = results.clone();
+	let job = Job {
+		node_identity: viewer,
+		time: Rational::new(0, 1),
+		params: Arc::new(VideoTicketParams {
+			viewer,
+			project: project_uuid.to_string(),
+			time: Rational::new(0, 1),
+			force_size: Some((64, 64)),
+			force_format: None,
+			cache: None,
+			cache_dir: None,
+			cache_id: None,
+			cache_timebase: None,
+			footage: None,
+			montage: Vec::new(),
+		}),
+		audio: None,
+		produce: Arc::new(|_, _| {
+			Err(oak_render::error::Error::Failed(
+				"process backend does not use the in-process producer".into(),
+			))
+		}),
+		done: Box::new(move |result| {
+			results.lock().unwrap_or_else(|e| e.into_inner()).push(result);
+		}),
+		schedule: JobSchedule::seek(),
+	};
+	assert!(dispatcher.post(job), "post accepted while alive");
+}
+
+/// Assert a delivered ticket is a 64x64 BGRA8 slot carrying opaque
+/// non-black content — the signature of a real graph render (the
+/// transparent-black montage fallback would be all zero), then release
+/// the slot.
+fn assert_graph_frame_opaque(dispatcher: &ProcessDispatcher, payload: TicketResult) {
+	let payload = payload.expect("graph-mode frame rendered");
+	let TicketPayload::ShmFrame(frame) = payload else {
+		panic!("graph-mode tickets must deliver ShmFrame payloads");
+	};
+	assert_eq!(frame.meta.width, 64);
+	assert_eq!(frame.meta.height, 64);
+	assert_eq!(frame.meta.format, SLOT_FORMAT_BGRA8);
+	assert_eq!(frame.meta.data_size, 64 * 64 * 4);
+	let pixels = &frame.shm.slot_bytes(frame.slot)[..frame.meta.data_size as usize];
+	let alpha_ok = pixels.chunks_exact(4).filter(|px| px[3] == 255).count();
+	assert!(
+		alpha_ok as f64 >= 0.99 * (64 * 64) as f64,
+		"graph-rendered frame must be opaque ({alpha_ok}/4096)"
+	);
+	assert!(
+		pixels.iter().any(|&b| b != 0),
+		"graph-rendered frame is not black"
+	);
+	dispatcher.release_frame(&frame);
+}
+
+/// M16 S1 end-to-end graph mode: the dispatcher starts with a real
+/// project snapshot (oaknode XML), the worker loads it right after the
+/// handshake, and a ticket naming the sequence node as its viewer
+/// renders the sequence's clip through the graph path into the slot.
+#[test]
+fn graph_mode_renders_sequence_viewer_from_snapshot() {
+	let _guard = lock_test();
+
+	let clip = std::env::temp_dir().join(format!(
+		"oak-procpool-graph-clip-{}.mp4",
+		std::process::id()
+	));
+	let snapshot = std::env::temp_dir().join(format!(
+		"oak-procpool-graph-snapshot-{}.xml",
+		std::process::id()
+	));
+	let _ = std::fs::remove_file(&clip);
+	let _ = std::fs::remove_file(&snapshot);
+	oak_codec::testmedia::write_test_clip(&clip, 64, 64, 10, 10).expect("test clip generation");
+
+	let (project, seq) = build_graph_project(&clip);
+	let xml = {
+		let p = project.lock().unwrap_or_else(|e| e.into_inner());
+		oak_node::serializer::save(&p).expect("project serializes")
+	};
+	std::fs::write(&snapshot, xml).expect("snapshot written");
+	let viewer = seq.identity();
+	assert_ne!(viewer, 0, "viewer must not be the no-viewer sentinel 0");
+
+	let mut cfg = config(1, 4);
+	cfg.graph_snapshot = Some(snapshot.display().to_string());
+	let dispatcher = ProcessDispatcher::new(cfg).expect("dispatcher config");
+	dispatcher.start().expect("worker starts");
+
+	let results = Arc::new(Mutex::new(Vec::new()));
+	let project_uuid = project.lock().unwrap_or_else(|e| e.into_inner()).uuid.clone();
+	post_graph_job(&dispatcher, &results, viewer, &project_uuid);
+	pump_until(&dispatcher, &results, 1);
+
+	let result = results.lock().unwrap_or_else(|e| e.into_inner()).pop().unwrap();
+	assert_graph_frame_opaque(&dispatcher, result);
+
+	dispatcher.shutdown();
+	let _ = std::fs::remove_file(&clip);
+	let _ = std::fs::remove_file(&snapshot);
+}
+
+/// M16 S1: a snapshot pushed after startup reroutes subsequent viewer
+/// tickets — `set_graph_snapshot` sends `load_graph` down the same FIFO
+/// as the batches, so the worker loads the graph before it claims the
+/// ticket (no restart needed).
+#[test]
+fn set_graph_snapshot_after_start_reroutes_tickets() {
+	let _guard = lock_test();
+
+	let clip = std::env::temp_dir().join(format!(
+		"oak-procpool-reroute-clip-{}.mp4",
+		std::process::id()
+	));
+	let snapshot = std::env::temp_dir().join(format!(
+		"oak-procpool-reroute-snapshot-{}.xml",
+		std::process::id()
+	));
+	let _ = std::fs::remove_file(&clip);
+	let _ = std::fs::remove_file(&snapshot);
+	oak_codec::testmedia::write_test_clip(&clip, 64, 64, 10, 10).expect("test clip generation");
+
+	let (project, seq) = build_graph_project(&clip);
+	let xml = {
+		let p = project.lock().unwrap_or_else(|e| e.into_inner());
+		oak_node::serializer::save(&p).expect("project serializes")
+	};
+	std::fs::write(&snapshot, xml).expect("snapshot written");
+	let viewer = seq.identity();
+	assert_ne!(viewer, 0, "viewer must not be the no-viewer sentinel 0");
+
+	let dispatcher = ProcessDispatcher::new(config(1, 4)).expect("dispatcher config");
+	dispatcher.start().expect("worker starts");
+	dispatcher.set_graph_snapshot(Some(snapshot.display().to_string()));
+
+	let results = Arc::new(Mutex::new(Vec::new()));
+	let project_uuid = project.lock().unwrap_or_else(|e| e.into_inner()).uuid.clone();
+	post_graph_job(&dispatcher, &results, viewer, &project_uuid);
+	pump_until(&dispatcher, &results, 1);
+
+	let result = results.lock().unwrap_or_else(|e| e.into_inner()).pop().unwrap();
+	assert_graph_frame_opaque(&dispatcher, result);
+
+	dispatcher.shutdown();
+	let _ = std::fs::remove_file(&clip);
+	let _ = std::fs::remove_file(&snapshot);
 }

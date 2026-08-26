@@ -19,6 +19,7 @@
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, NodeBehavior, NodeCore};
+use crate::nodes::jobs::ShaderJobPayload;
 
 /// Color input id (C++ `k_color_input`). Type: color; default
 /// `(1.0, 0.0, 0.0, 1.0)` (red — "a color that isn't black").
@@ -77,12 +78,14 @@ impl NodeBehavior for SolidGenerator {
 		}
 	}
 
-	/// Evaluate outputs (C++ `value()`): pushes a texture job built
-	/// from the whole input row at the sequence video params.
+	/// Evaluate outputs (C++ `value()`): always pushes a shader job
+	/// built from the whole input row, run at the sequence video params
+	/// (the generator has no texture input to source params from).
 	///
-	/// The Rust model has no shader-job payload: the job is deferred to
-	/// the renderer seam, so a null texture handle marks "renderer must
-	/// produce this texture" (`// CPP-PARITY: solid.cpp` value()).
+	/// The job boxes a [`ShaderJobPayload`] that the renderer's resolve
+	/// hook executes and replaces with the result texture; the params
+	/// row carries the color uniform keyed by `color_in`
+	/// (`// CPP-PARITY: solid.cpp` `value()`).
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -90,10 +93,18 @@ impl NodeBehavior for SolidGenerator {
 		time: oak_core::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		let _ = (core, inputs, time);
 		table.push(
 			crate::value::ValueType::Texture,
-			crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+			crate::value::NodeValue::Texture(crate::handle::make_owned(ShaderJobPayload {
+				node_id: crate::id::NodeId::INVALID,
+				time,
+				iterations: 1,
+				type_id: self.type_id().to_string(),
+				shader_id: String::new(),
+				effect_input: core.effect_input.clone(),
+				params: inputs.clone(),
+				iterative_input: String::new(),
+			})),
 			None,
 		);
 	}
@@ -156,16 +167,32 @@ mod tests {
 	}
 
 	#[test]
-	fn value_pushes_deferred_job() {
+	fn value_pushes_shader_job() {
 		let (core, behavior) = create();
+		let inputs = crate::value::NodeValueRow::from([(
+			COLOR_INPUT.to_string(),
+			NodeValue::Color([0.0, 1.0, 0.0, 1.0]),
+		)]);
 		let mut table = NodeValueTable::default();
-		behavior.value(
-			&core,
-			&crate::value::NodeValueRow::default(),
-			Rational::new(0, 1),
-			&mut table,
+		behavior.value(&core, &inputs, Rational::new(3, 1), &mut table);
+		let NodeValue::Texture(handle) = table.get(ValueType::Texture).unwrap() else {
+			unreachable!()
+		};
+		let job = unsafe {
+			crate::handle::get_checked::<crate::nodes::jobs::ShaderJobPayload>(handle)
+		}
+		.expect("solid output boxes a ShaderJobPayload");
+		assert_eq!(
+			job.type_id,
+			"org.olivevideoeditor.Olive.solidgenerator"
 		);
-		assert!(table.get(ValueType::Texture).is_some());
+		assert_eq!(job.shader_id, "");
+		assert_eq!(job.iterations, 1);
+		assert_eq!(job.effect_input, "");
+		assert_eq!(
+			job.params.get(COLOR_INPUT).map(|v| v.to_double()),
+			Some(0.0)
+		);
 	}
 
 	#[test]

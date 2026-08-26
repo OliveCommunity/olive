@@ -104,6 +104,11 @@ pub struct AudioTicketParams {
 pub struct VideoTicketParams {
 	/// Node graph context (copied project identity).
 	pub viewer: u64,
+	/// The owning project's uuid (M16 S1): the worker renders the viewer's
+	/// graph frame from the loaded snapshot ONLY when this matches the
+	/// snapshot's project — empty means "no graph mode" (montage/footage/
+	/// generated frames never match a loaded graph).
+	pub project: String,
 	/// Frame time.
 	pub time: Rational,
 	/// Forced size override (None = sequence size).
@@ -559,6 +564,7 @@ impl TicketArena {
 				time: range.in_(),
 				params: Arc::new(VideoTicketParams {
 					viewer,
+					project: String::new(),
 					time: range.in_(),
 					force_size: None,
 					force_format: None,
@@ -728,6 +734,7 @@ mod tests {
 		let id = arena.submit_video(
 			VideoTicketParams {
 				viewer: 1,
+				project: String::new(),
 				time: Rational::new(0, 1),
 				force_size: Some((4, 4)),
 				force_format: None,
@@ -778,6 +785,7 @@ mod tests {
 		let id = arena.submit_video(
 			VideoTicketParams {
 				viewer: 1,
+				project: String::new(),
 				time: Rational::new(0, 1),
 				force_size: None,
 				force_format: None,
@@ -863,6 +871,7 @@ mod tests {
 		let a = arena.submit_video(
 			VideoTicketParams {
 				viewer: 1,
+				project: String::new(),
 				time: Rational::new(0, 1),
 				force_size: None,
 				force_format: None,
@@ -878,6 +887,7 @@ mod tests {
 		let b = arena.submit_video(
 			VideoTicketParams {
 				viewer: 1,
+				project: String::new(),
 				time: Rational::new(1, 1),
 				force_size: None,
 				force_format: None,

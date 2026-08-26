@@ -1,0 +1,483 @@
+// Oak Video Editor - Non-Linear Video Editor
+// Copyright (C) 2026 Oak Team
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+//! M12 phase 2: the graph-driven sequence renderer.
+//!
+//! Builds a real node graph (sequence -> video track list -> video tracks
+//! -> clip blocks -> footage), evaluates the clip overlapping the request
+//! time through the traverser and composites the decoded frames — the same
+//! path the engine's viewer uses. Track 0 is the topmost stack element.
+
+use std::sync::{Arc, Mutex};
+
+use oak_core::{PixelFormat, Rational, TimeRange};
+use oak_node::block::ClipBlockBehavior;
+use oak_node::footage::FootageBehavior;
+use oak_node::id::NodeId;
+use oak_node::node::NodeCore;
+use oak_node::project::Project;
+use oak_node::sequence::SequenceBehavior;
+use oak_node::track::{TrackBehavior, TrackListBehavior};
+
+use oak_render::texture::Texture;
+
+mod common;
+
+/// Unique temp path per test (the process id disambiguates parallel test
+/// binaries; the tag separates tests inside one binary).
+fn clip_path(tag: &str) -> std::path::PathBuf {
+    std::env::temp_dir().join(format!("oakrender_graph_{tag}_{}.mp4", std::process::id()))
+}
+
+/// One sequence + one video track list with one track per clip
+/// `(filename, [in, out))`. Track 0 (the first entry) composites on top.
+fn build_project(clips: &[(&str, Rational, Rational)]) -> (Arc<Mutex<Project>>, NodeId) {
+    let project = Project::new();
+    let seq;
+    {
+        let mut p = project.lock().unwrap();
+        let (score, sbehavior) = SequenceBehavior::create();
+        seq = p.graph.add_node(score, sbehavior);
+
+        let (tcore, tbehavior) = TrackListBehavior::create();
+        let tl = p.graph.add_node(tcore, tbehavior);
+
+        for &(path, in_, out) in clips {
+            let (tcore, tbehavior) = TrackBehavior::create();
+            let track = p.graph.add_node(tcore, tbehavior);
+
+            let mut footage = FootageBehavior::new(path);
+            footage.probe().expect("probe the generated clip");
+            let footage = p.graph.add_node(NodeCore::new(), Box::new(footage));
+
+            let (ccore, cbehavior) = oak_node::block::clip_create();
+            let clip = p.graph.add_node(ccore, cbehavior);
+            p.graph
+                .connect(footage, clip, oak_node::block::clip_input::TEXTURE_INPUT, -1)
+                .expect("connect footage to clip");
+
+            let clip_behavior = p
+                .graph
+                .get_mut(clip)
+                .unwrap()
+                .behavior
+                .as_any_mut()
+                .unwrap()
+                .downcast_mut::<ClipBlockBehavior>()
+                .expect("clip block");
+            clip_behavior.core.range = TimeRange::new(in_, out);
+
+            p.graph
+                .get_mut(track)
+                .unwrap()
+                .behavior
+                .as_any_mut()
+                .unwrap()
+                .downcast_mut::<TrackBehavior>()
+                .expect("video track")
+                .append_block(clip);
+            p.graph
+                .get_mut(tl)
+                .unwrap()
+                .behavior
+                .as_any_mut()
+                .unwrap()
+                .downcast_mut::<TrackListBehavior>()
+                .expect("video track list")
+                .tracks
+                .push(track);
+        }
+
+        p.graph
+            .get_mut(seq)
+            .unwrap()
+            .behavior
+            .as_any_mut()
+            .unwrap()
+            .downcast_mut::<SequenceBehavior>()
+            .expect("sequence")
+            .track_lists
+            .push(tl);
+    }
+    (project, seq)
+}
+
+/// The raw CPU frame bytes of a rendered texture.
+fn frame_data(texture: &Texture) -> &[u8] {
+    let Texture::Cpu(frame) = texture else {
+        panic!("graph render produced a non-CPU texture");
+    };
+    &frame.data
+}
+
+/// Two clips on two tracks, non-overlapping in time: at each request time
+/// exactly one clip covers, and its output must match the single-track
+/// render byte for byte (same decode + same composite path).
+#[test]
+fn graph_sequence_renders_two_tracks() {
+    let path_a = clip_path("two_tracks_a");
+    let path_b = clip_path("two_tracks_b");
+    oak_codec::testmedia::write_test_clip(&path_a, 64, 64, 10, 10).expect("clip A generation");
+    oak_codec::testmedia::write_test_clip(&path_b, 32, 32, 10, 10).expect("clip B generation");
+
+    let (project, seq) = build_project(&[
+        (&path_a.to_string_lossy(), Rational::new(0, 1), Rational::new(1, 1)),
+        (&path_b.to_string_lossy(), Rational::new(1, 1), Rational::new(2, 1)),
+    ]);
+
+    let t05 = oak_render::eval::render_graph_frame(
+        &project,
+        seq,
+        Rational::new(1, 2),
+        (64, 64),
+        PixelFormat::F32,
+    )
+    .expect("render t=0.5");
+    let t15 = oak_render::eval::render_graph_frame(
+        &project,
+        seq,
+        Rational::new(3, 2),
+        (64, 64),
+        PixelFormat::F32,
+    )
+    .expect("render t=1.5");
+    assert_eq!(t05.size(), (64, 64));
+    assert_eq!(t15.size(), (64, 64));
+
+    // Solo renders of each clip for byte comparison.
+    let (solo_a, seq_a) = build_project(&[(&path_a.to_string_lossy(), Rational::new(0, 1), Rational::new(1, 1))]);
+    let solo_a_tex = oak_render::eval::render_graph_frame(
+        &solo_a,
+        seq_a,
+        Rational::new(1, 2),
+        (64, 64),
+        PixelFormat::F32,
+    )
+    .expect("solo A render");
+    let (solo_b, seq_b) = build_project(&[(&path_b.to_string_lossy(), Rational::new(1, 1), Rational::new(2, 1))]);
+    let solo_b_tex = oak_render::eval::render_graph_frame(
+        &solo_b,
+        seq_b,
+        Rational::new(3, 2),
+        (64, 64),
+        PixelFormat::F32,
+    )
+    .expect("solo B render");
+
+    // Each time picks exactly the clip covering it, unchanged by the other
+    // track (B is 32x32 and must scale up to the 64x64 target).
+    assert_eq!(frame_data(&t05), frame_data(&solo_a_tex), "t=0.5 renders clip A");
+    assert_eq!(frame_data(&t15), frame_data(&solo_b_tex), "t=1.5 renders clip B");
+    assert_ne!(frame_data(&t05), frame_data(&t15), "the two clips differ");
+
+    // Both frames carry real content.
+    assert!(frame_data(&t05).iter().any(|&b| b != 0), "t=0.5 is not black");
+    assert!(frame_data(&t15).iter().any(|&b| b != 0), "t=1.5 is not black");
+
+    let _ = std::fs::remove_file(&path_a);
+    let _ = std::fs::remove_file(&path_b);
+}
+
+/// The driver rejects bad arguments explainably: non-F32 format, a
+/// non-positive size, and a missing viewer.
+#[test]
+fn graph_render_rejects_bad_inputs() {
+    let (project, seq) = build_project(&[]);
+
+    let err = oak_render::eval::render_graph_frame(&project, seq, Rational::new(0, 1), (64, 64), PixelFormat::U8)
+        .err()
+        .expect("non-F32 format rejected");
+    assert_eq!(err.code(), oak_render::error::Error::Invalid.code());
+
+    let err = oak_render::eval::render_graph_frame(&project, seq, Rational::new(0, 1), (0, 64), PixelFormat::F32)
+        .err()
+        .expect("non-positive size rejected");
+    assert_eq!(err.code(), oak_render::error::Error::Invalid.code());
+
+    let err = oak_render::eval::render_graph_frame(&project, NodeId::INVALID, Rational::new(0, 1), (64, 64), PixelFormat::F32)
+        .err()
+        .expect("missing viewer rejected");
+    assert_eq!(err.code(), oak_render::error::Error::NotFound.code());
+}
+
+/// One sequence + one track with a single clip, with an effect node
+/// inserted between the footage and the clip block: `insert_effect`
+/// receives the project lock plus the footage and clip node ids, rewires
+/// the graph, and returns the effect node id. The clip keeps the
+/// `(in, out)` range from `clip`.
+fn build_effect_project(
+    clip: (&str, Rational, Rational),
+    insert_effect: impl FnOnce(&mut Project, NodeId, NodeId) -> NodeId,
+) -> (Arc<Mutex<Project>>, NodeId) {
+    let project = Project::new();
+    let seq;
+    {
+        let mut p = project.lock().unwrap();
+        let (score, sbehavior) = SequenceBehavior::create();
+        seq = p.graph.add_node(score, sbehavior);
+
+        let (tcore, tbehavior) = TrackListBehavior::create();
+        let tl = p.graph.add_node(tcore, tbehavior);
+
+        let (tcore, tbehavior) = TrackBehavior::create();
+        let track = p.graph.add_node(tcore, tbehavior);
+
+        let mut footage = FootageBehavior::new(clip.0);
+        footage.probe().expect("probe the generated clip");
+        let footage = p.graph.add_node(NodeCore::new(), Box::new(footage));
+
+        let (ccore, cbehavior) = oak_node::block::clip_create();
+        let clip_node = p.graph.add_node(ccore, cbehavior);
+        p.graph
+            .connect(footage, clip_node, oak_node::block::clip_input::TEXTURE_INPUT, -1)
+            .expect("connect footage to clip");
+
+        let clip_behavior = p
+            .graph
+            .get_mut(clip_node)
+            .unwrap()
+            .behavior
+            .as_any_mut()
+            .unwrap()
+            .downcast_mut::<ClipBlockBehavior>()
+            .expect("clip block");
+        clip_behavior.core.range = TimeRange::new(clip.1, clip.2);
+
+        let _effect = insert_effect(&mut p, footage, clip_node);
+
+        p.graph
+            .get_mut(track)
+            .unwrap()
+            .behavior
+            .as_any_mut()
+            .unwrap()
+            .downcast_mut::<TrackBehavior>()
+            .expect("video track")
+            .append_block(clip_node);
+        p.graph
+            .get_mut(tl)
+            .unwrap()
+            .behavior
+            .as_any_mut()
+            .unwrap()
+            .downcast_mut::<TrackListBehavior>()
+            .expect("video track list")
+            .tracks
+            .push(track);
+        p.graph
+            .get_mut(seq)
+            .unwrap()
+            .behavior
+            .as_any_mut()
+            .unwrap()
+            .downcast_mut::<SequenceBehavior>()
+            .expect("sequence")
+            .track_lists
+            .push(tl);
+    }
+    (project, seq)
+}
+
+/// The F32 RGBA channel of a 64x64 frame at `(x, y)`.
+fn channel(data: &[u8], x: usize, y: usize, c: usize) -> f32 {
+    let off = (y * 64 + x) * 16 + c * 4;
+    f32::from_le_bytes(data[off..off + 4].try_into().unwrap())
+}
+
+/// M12 phase 3a: an opacity shader job (scalar 0.5) pushed by the effect
+/// node is resolved on the shared GPU context and composited — each color
+/// channel ends up as the plain render halved twice (the shader scales the
+/// straight-alpha vec4 by 0.5, then the alpha-over composite applies the
+/// halved alpha again), i.e. a 0.25 channel ratio. Skipped (with a note)
+/// when no GPU adapter exists.
+#[test]
+fn shader_job_opacity_halves_pixels() {
+    if oak_render::backend::GpuContext::shared().is_none() {
+        eprintln!("skipping shader_job_opacity_halves_pixels: no GPU adapter");
+        return;
+    }
+    let path = clip_path("opacity_job");
+    oak_codec::testmedia::write_test_clip(&path, 64, 64, 10, 10).expect("clip generation");
+
+    let (plain_project, plain_seq) = build_project(&[(
+        &path.to_string_lossy(),
+        Rational::new(0, 1),
+        Rational::new(1, 1),
+    )]);
+    let plain_tex = oak_render::eval::render_graph_frame(
+        &plain_project,
+        plain_seq,
+        Rational::new(0, 1),
+        (64, 64),
+        PixelFormat::F32,
+    )
+    .expect("plain render");
+    let plain = frame_data(&plain_tex).to_vec();
+
+    let (effect_project, effect_seq) = build_effect_project(
+        (&path.to_string_lossy(), Rational::new(0, 1), Rational::new(1, 1)),
+        |p, footage, clip| {
+            let (ecore, ebehavior) = oak_node::nodes::opacity::create();
+            let effect = p.graph.add_node(ecore, ebehavior);
+            p.graph.disconnect(footage, clip, oak_node::block::clip_input::TEXTURE_INPUT, -1);
+            p.graph
+                .connect(footage, effect, oak_node::nodes::opacity::TEXTURE_INPUT, -1)
+                .expect("connect footage to effect");
+            p.graph
+                .connect(effect, clip, oak_node::block::clip_input::TEXTURE_INPUT, -1)
+                .expect("connect effect to clip");
+            p.graph
+                .get_mut(effect)
+                .unwrap()
+                .core
+                .set_standard_value(
+                    oak_node::nodes::opacity::VALUE_INPUT,
+                    -1,
+                    oak_node::value::NodeValue::Float(0.5),
+                );
+            effect
+        },
+    );
+    let effect_tex = oak_render::eval::render_graph_frame(
+        &effect_project,
+        effect_seq,
+        Rational::new(0, 1),
+        (64, 64),
+        PixelFormat::F32,
+    )
+    .expect("opacity render");
+    let blurred = frame_data(&effect_tex).to_vec();
+
+    // Sample away from the x=32 half boundary (MPEG-2 chroma bleed and
+    // luma ringing stay within a few pixels of it).
+    let mut ratios: Vec<f32> = Vec::new();
+    for y in 4..60 {
+        for x in (4..24).chain(40..60) {
+            for c in 0..3 {
+                let a = channel(&plain, x, y, c);
+                if a > 0.02 {
+                    ratios.push(channel(&blurred, x, y, c) / a);
+                }
+            }
+        }
+    }
+    assert!(ratios.len() >= 512, "too few comparable samples: {}", ratios.len());
+    let mean = ratios.iter().sum::<f32>() / ratios.len() as f32;
+    assert!(
+        (mean - 0.25).abs() < 0.02,
+        "opacity channel ratio {mean} is not 0.25"
+    );
+
+    let _ = std::fs::remove_file(&path);
+}
+
+/// M12 phase 3a: a box-blur shader job (radius 2, both axes) is resolved
+/// on the shared GPU context — the output differs from the plain render
+/// byte-wise, the hard left/right half boundary softens (the per-pixel
+/// step at the boundary shrinks), and left-half content bleeds into the
+/// boundary pixel on the right half. Skipped when no GPU adapter exists.
+#[test]
+fn shader_job_blur_smooths_edge() {
+    if oak_render::backend::GpuContext::shared().is_none() {
+        eprintln!("skipping shader_job_blur_smooths_edge: no GPU adapter");
+        return;
+    }
+    let path = clip_path("blur_job");
+    oak_codec::testmedia::write_test_clip(&path, 64, 64, 10, 10).expect("clip generation");
+
+    let (plain_project, plain_seq) = build_project(&[(
+        &path.to_string_lossy(),
+        Rational::new(0, 1),
+        Rational::new(1, 1),
+    )]);
+    let plain_tex = oak_render::eval::render_graph_frame(
+        &plain_project,
+        plain_seq,
+        Rational::new(0, 1),
+        (64, 64),
+        PixelFormat::F32,
+    )
+    .expect("plain render");
+    let plain = frame_data(&plain_tex).to_vec();
+
+    let (effect_project, effect_seq) = build_effect_project(
+        (&path.to_string_lossy(), Rational::new(0, 1), Rational::new(1, 1)),
+        |p, footage, clip| {
+            let (ecore, ebehavior) = oak_node::nodes::blur::create();
+            let effect = p.graph.add_node(ecore, ebehavior);
+            p.graph.disconnect(footage, clip, oak_node::block::clip_input::TEXTURE_INPUT, -1);
+            p.graph
+                .connect(footage, effect, oak_node::nodes::blur::TEXTURE_INPUT, -1)
+                .expect("connect footage to effect");
+            p.graph
+                .connect(effect, clip, oak_node::block::clip_input::TEXTURE_INPUT, -1)
+                .expect("connect effect to clip");
+            let core = &mut p.graph.get_mut(effect).unwrap().core;
+            core.set_standard_value(
+                oak_node::nodes::blur::METHOD_INPUT,
+                -1,
+                oak_node::value::NodeValue::Combo(0),
+            );
+            core.set_standard_value(
+                oak_node::nodes::blur::RADIUS_INPUT,
+                -1,
+                oak_node::value::NodeValue::Float(2.0),
+            );
+            core.set_standard_value(
+                oak_node::nodes::blur::HORIZ_INPUT,
+                -1,
+                oak_node::value::NodeValue::Boolean(true),
+            );
+            core.set_standard_value(
+                oak_node::nodes::blur::VERT_INPUT,
+                -1,
+                oak_node::value::NodeValue::Boolean(true),
+            );
+            effect
+        },
+    );
+    let effect_tex = oak_render::eval::render_graph_frame(
+        &effect_project,
+        effect_seq,
+        Rational::new(0, 1),
+        (64, 64),
+        PixelFormat::F32,
+    )
+    .expect("blur render");
+    let blurred = frame_data(&effect_tex).to_vec();
+
+    // The blur must actually change pixels (a silently dropped job would
+    // fall back to the pass-through input and byte-match the plain frame).
+    assert_ne!(plain, blurred, "the blur job must actually change pixels");
+
+    // Row y=32 (vertically uniform): the boundary step x=31 -> x=32 must
+    // shrink, and the right-side boundary pixel picks up left-half content.
+    let r = |data: &[u8], x: usize| channel(data, x, 32, 0);
+    let plain_step = (r(&plain, 32) - r(&plain, 31)).abs();
+    let blurred_step = (r(&blurred, 32) - r(&blurred, 31)).abs();
+    assert!(
+        blurred_step < plain_step,
+        "boundary step {blurred_step} not below the plain {plain_step}"
+    );
+    assert!(
+        r(&blurred, 32) > r(&plain, 32),
+        "blurred boundary pixel {} not above the plain {}",
+        r(&blurred, 32),
+        r(&plain, 32)
+    );
+
+    let _ = std::fs::remove_file(&path);
+}

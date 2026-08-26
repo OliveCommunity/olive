@@ -19,15 +19,15 @@
 //! implementing oaknode's `RenderHooks`. Each C++ `process_*` virtual
 //! is one hook method.
 //!
-//! This pass implements the CPU-side, graph-free parts of the hooks:
-//! frame generation and color transforms run fully; plugin jobs
-//! dispatch through the executor slot oakplugin installs
-//! ([`set_plugin_executor`]); footage decode, shader execution and the
-//! disk frame-cache payload I/O depend on the oakcodec / oakplugin C
-//! ABIs and fail with explainable errors (their success-path tests are
-//! `#[ignore]`d).
+//! This pass implements the graph hooks: frame generation runs fully;
+//! plugin jobs dispatch through the executor slot oakplugin installs
+//! ([`set_plugin_executor`]); footage jobs decode through the oakcodec
+//! decoder bridge; shader jobs execute on the shared GPU context
+//! ([`crate::backend::GpuContext`], falling back to an input pass-
+//! through when no adapter is available); color transforms by identity
+//! and the disk frame-cache payload I/O remain deferred.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use oak_codec::decoder::{
 	CodecStream, Decoder as _, RenderMode, RetrieveAudioStatus, RetrieveVideoParams,
@@ -35,11 +35,41 @@ use oak_codec::decoder::{
 };
 use oak_codec::ffmpeg::FFmpegDecoder;
 use oak_core::{PixelFormat, Rational, TimeRange};
+use oak_node::nodes::jobs::{FootageJobPayload, ShaderJobPayload};
 use oak_node::value::{NodeValue, NodeValueRow, NodeValueTable};
 
 use crate::error::{Error, Result};
 use crate::frame::VideoParamsPod;
+use crate::shaderfx::{compile_effect, run_effect};
 use crate::texture::{Frame, Texture};
+
+/// Static mapping of OCIO-based node shaders to the OCIO function they
+/// splice at their `%1` marker: (node type id, OCIO function name, source
+/// space/role, destination space/role) — the C++ `GenerateProcessor`
+/// `ColorTransform` pairs, resolved by the OCIO config at runtime.
+///
+/// Only the node's *function* (the GPU stub) is requested here; the
+/// processor is built against the manager's reference color space
+/// (C++ chromakey.cpp `GenerateProcessor` uses `GetReferenceColorSpace`,
+/// which `ColorManager` sets to `OCIO::ROLE_SCENE_LINEAR`,
+/// colormanager.cpp).
+pub const OCIO_SHADER_STUBS: &[(&str, &str, &str, &str)] = &[(
+	"org.olivevideoeditor.Olive.chromakey",
+	"SceneLinearToCIEXYZ_d65",
+	"scene_linear",
+	"cie_xyz_d65_interchange",
+)];
+
+/// The OCIO GPU function shader for `type_id` (the `%1` stub), or `None`
+/// when the node is not OCIO-based or the processor cannot be generated
+/// (no default config, or a LUT processor the renderer cannot upload).
+pub fn ocio_stub_for(type_id: &str) -> Option<String> {
+	let (_, fn_name, from, to) = OCIO_SHADER_STUBS
+		.iter()
+		.find(|(id, ..)| *id == type_id)
+		.copied()?;
+	crate::color::ocio_function_shader(fn_name, from, to)
+}
 
 /// Job specification: the closed set of C++ `*Job` payloads
 /// (AcceleratedJob family) as internal evaluation records — jobs no
@@ -101,6 +131,11 @@ pub struct RenderEvalHooks {
 	pub use_cache: bool,
 	/// Active ticket identity (for cancellation polling).
 	pub ticket: Option<crate::ticket::TicketId>,
+	/// Forced output size for resolved footage jobs; `None` decodes at
+	/// the media's native size (C++ `RenderProcessor` requests the
+	/// texture at the output resolution). The graph-sequence driver sets
+	/// this to the sequence frame size.
+	pub frame_size: Option<(i32, i32)>,
 }
 
 // ---------------------------------------------------------------------------
@@ -202,6 +237,7 @@ impl RenderEvalHooks {
 		Self {
 			use_cache: false,
 			ticket: None,
+			frame_size: None,
 		}
 	}
 
@@ -405,6 +441,260 @@ impl RenderEvalHooks {
 			}
 		}
 	}
+
+	/// Resolve the footage payloads a footage node pushed into its output
+	/// table (C++ FootageJob processing in jobmanager.cpp): decodes each
+	/// boxed [`FootageJobPayload`] at its request time and replaces the
+	/// box with the resulting texture. Genuine textures pass through.
+	fn resolve_footage_jobs(&mut self, table: &mut NodeValueTable) {
+		let size = self.frame_size.unwrap_or((0, 0));
+		for (_, value, _) in table.rows_mut() {
+			let NodeValue::Texture(handle) = value else {
+				continue;
+			};
+			if handle.ctx.is_null() {
+				continue;
+			}
+			let payload = unsafe {
+				oak_node::handle::get_checked::<FootageJobPayload>(handle)
+			}
+			.cloned();
+			let Some(payload) = payload else {
+				continue;
+			};
+			match render_footage_frame(
+				&payload.filename,
+				payload.stream_index,
+				payload.time,
+				size,
+				PixelFormat::F32,
+			) {
+				Ok(texture) => {
+					*value = NodeValue::Texture(oak_node::handle::make_owned(texture));
+				}
+				Err(err) => {
+					eprintln!("footage job decode failed: {err:#}");
+				}
+			}
+		}
+	}
+
+	/// Resolve the shader payloads an effect node pushed into its output
+	/// table (C++ ShaderJob processing in jobmanager.cpp): execute each
+	/// boxed [`ShaderJobPayload`] on the shared GPU context and replace
+	/// the box with the result texture. Failed or un-runnable jobs fall
+	/// back to the effect input texture from the params row (a pass-
+	/// through — C++ leaves the failed shader's output as its input);
+	/// a missing input resolves to `NodeValue::None`.
+	fn resolve_shader_jobs(&mut self, table: &mut NodeValueTable) {
+		// Collect the boxes up front: replacing a row while iterating
+		// `rows_mut` would alias the table.
+		let jobs: Vec<(usize, ShaderJobPayload)> = table
+			.rows_mut()
+			.iter_mut()
+			.enumerate()
+			.filter_map(|(i, (_, value, _))| {
+				let NodeValue::Texture(handle) = value else {
+					return None;
+				};
+				if handle.ctx.is_null() {
+					return None;
+				}
+				let payload = unsafe {
+					oak_node::handle::get_checked::<ShaderJobPayload>(handle)
+				}
+				.cloned();
+				payload.map(|p| (i, p))
+			})
+			.collect();
+		for (i, payload) in jobs {
+			let resolved = match self.process_shader_job(&payload) {
+				Some(texture) => NodeValue::Texture(oak_node::handle::make_owned(texture)),
+				None => payload
+					.params
+					.get(&payload.effect_input)
+					.cloned()
+					.unwrap_or(NodeValue::None),
+			};
+			table.rows_mut()[i].1 = resolved;
+		}
+	}
+
+	/// Execute one shader payload (C++ process_shader run by the render
+	/// worker): compile the emitting behavior's fragment shader on the
+	/// shared GPU context, upload a CPU input frame when needed, run the
+	/// requested iterations and return the result texture. `None` when the
+	/// job cannot run (no GPU context, unknown node type, missing shader,
+	/// or a compile/upload/run failure) — the caller then falls back to
+	/// the effect input texture.
+	fn process_shader_job(&self, payload: &ShaderJobPayload) -> Option<Texture> {
+		// One log line per shader per process instead of one per frame.
+		let warn = |reason: &str| {
+			let key = format!("shader:{}:{}", payload.type_id, payload.shader_id);
+			if unsupported_warned().insert(key) {
+				eprintln!(
+					"shader job \"{}\" (shader \"{}\") failed: {reason}",
+					payload.type_id, payload.shader_id
+				);
+			}
+		};
+
+		// The main input texture: the param row entry under the effect
+		// input id (usually "tex_in"), already resolved by the traverser
+		// (footage decode runs before the shader pass in `resolve`).
+		let input = match payload.params.get(&payload.effect_input) {
+			Some(NodeValue::Texture(handle)) if !handle.ctx.is_null() => {
+				(unsafe { oak_node::handle::get_checked::<Texture>(handle) }).cloned()
+			}
+			_ => None,
+		};
+
+		let Some(ctx) = crate::backend::GpuContext::shared() else {
+			warn("no GPU context");
+			return None;
+		};
+
+		// The emitting node behavior: the type id selects the fragment
+		// source (C++ `node->get_shader_code(shader_id)`).
+		let Some((_, behavior)) =
+			oak_node::factory::Factory::global().create_any(&payload.type_id)
+		else {
+			warn("unknown node type");
+			return None;
+		};
+
+		// OCIO-based nodes splice the auto-generated OCIO function into
+		// their `%1` marker (C++ `GetShaderCode({shader_id, stub})`, the
+		// stub built in colormanagement.cpp `GetColorContext`). A stub
+		// that cannot be generated — no default config, or a LUT
+		// processor with no upload path — falls back to the effect input
+		// pass-through.
+		let ocio_entry = OCIO_SHADER_STUBS
+			.iter()
+			.find(|(id, ..)| *id == payload.type_id)
+			.copied();
+		let glsl = match ocio_entry {
+			Some((_, fn_name, from, to)) => {
+				let Some(stub) = crate::color::ocio_function_shader(fn_name, from, to) else {
+					return None;
+				};
+				match behavior.shader_code(&stub) {
+					Some(glsl) => glsl,
+					None => {
+						warn("shader not found");
+						return None;
+					}
+				}
+			}
+			None => match behavior.shader_code(&payload.shader_id) {
+				Some(glsl) => glsl,
+				None => {
+					warn("shader not found");
+					return None;
+				}
+			},
+		};
+
+		// Pipeline cache key: the type id plus the shader-variant id (the
+		// OCIO stub text folds in too, so a config change recompiles
+		// instead of reusing a stale variant).
+		let key = match ocio_entry {
+			Some(_) => {
+				let mut h = std::collections::hash_map::DefaultHasher::new();
+				std::hash::Hash::hash(&glsl, &mut h);
+				format!(
+					"{}:{}:ocio:{}",
+					payload.type_id,
+					payload.shader_id,
+					std::hash::Hasher::finish(&h)
+				)
+			}
+			None => format!("{}:{}", payload.type_id, payload.shader_id),
+		};
+		let compiled = match compile_effect(&ctx, &key, &glsl, ctx.is_filterable()) {
+			Ok(effect) => effect,
+			Err(err) => {
+				warn(&format!("compile failed: {err:#}"));
+				return None;
+			}
+		};
+
+		// Inputs + pass size: GPU input textures bind directly; CPU frames
+		// upload into a scratch texture first (`uploaded` is freed on every
+		// exit path).
+		let (inputs, size, uploaded): (Vec<(String, u64)>, (i32, i32), Option<u64>) =
+			match &input {
+				Some(Texture::Gpu {
+					token,
+					width,
+					height,
+					..
+				}) => (
+					vec![(payload.effect_input.clone(), *token)],
+					(*width, *height),
+					None,
+				),
+				Some(Texture::Cpu(frame)) => {
+					let token = match ctx.create_texture(frame.width, frame.height) {
+						Ok(t) => t,
+						Err(err) => {
+							warn(&format!("input texture: {err:#}"));
+							return None;
+						}
+					};
+					if let Err(err) = ctx.upload(token, frame) {
+						ctx.destroy_texture(token);
+						warn(&format!("input upload failed: {err:#}"));
+						return None;
+					}
+					(
+						vec![(payload.effect_input.clone(), token)],
+						(frame.width, frame.height),
+						Some(token),
+					)
+				}
+				None => (Vec::new(), (1, 1), None),
+			};
+
+		let dst = match ctx.create_texture(size.0.max(1), size.1.max(1)) {
+			Ok(t) => t,
+			Err(err) => {
+				if let Some(t) = uploaded {
+					ctx.destroy_texture(t);
+				}
+				warn(&format!("output texture: {err:#}"));
+				return None;
+			}
+		};
+
+		let result = run_effect(
+			&ctx,
+			&compiled,
+			&payload.params,
+			&inputs,
+			dst,
+			size,
+			payload.iterations.max(1) as u32,
+		);
+		if let Some(t) = uploaded {
+			ctx.destroy_texture(t);
+		}
+		match result {
+			Ok(()) => Some(Texture::Gpu {
+				token: dst,
+				backend: ctx.kind(),
+				width: size.0.max(1),
+				height: size.1.max(1),
+				format: PixelFormat::F32,
+				ctx: ctx.clone(),
+			}),
+			Err(err) => {
+				ctx.destroy_texture(dst);
+				warn(&format!("run failed: {err:#}"));
+				None
+			}
+		}
+	}
 }
 
 impl oak_node::traverser::RenderHooks for RenderEvalHooks {
@@ -420,11 +710,14 @@ impl oak_node::traverser::RenderHooks for RenderEvalHooks {
 
 	fn resolve(
 		&mut self,
-		_node: oak_node::id::NodeId,
+		node: oak_node::id::NodeId,
 		_row: &NodeValueRow,
 		table: &mut NodeValueTable,
 	) {
+		let _ = node;
 		self.resolve_plugin_jobs(table);
+		self.resolve_footage_jobs(table);
+		self.resolve_shader_jobs(table);
 	}
 }
 
@@ -589,14 +882,18 @@ pub fn render_footage_frame(
 		return Err(Error::Failed("footage decode: bad decoded frame".into()));
 	}
 
-	let mut dst = generate_frame(time, (w, h), format)?;
+	// `(0, 0)` means "native size": decode without scaling and produce a
+	// frame matching the decoded dimensions (M12: the graph sequence
+	// path requests native frames and scales at composite time).
+	let (dw, dh) = if w > 0 && h > 0 { (w, h) } else { (src_w, src_h) };
+	let mut dst = generate_frame(time, (dw, dh), format)?;
 	let dst_linesize = dst.linesize_bytes() as i32;
 	let src_data = match decoded.data() {
 		Some(d) => d,
 		None => return Err(Error::Failed("footage decode: no frame data".into())),
 	};
 
-	if src_w == w && src_h == h && src_linesize == dst_linesize {
+	if src_w == dw && src_h == dh && src_linesize == dst_linesize {
 		let bytes = (src_h as usize)
 			.checked_mul(src_linesize as usize)
 			.ok_or(Error::NoMem)?;
@@ -609,11 +906,213 @@ pub fn render_footage_frame(
 			src_h,
 			&mut dst.data,
 			dst_linesize,
-			w,
-			h,
+			dw,
+			dh,
 		);
 	}
 	Ok(Texture::wrap_frame(dst))
+}
+
+// ---------------------------------------------------------------------------
+// Graph-driven sequence rendering
+// ---------------------------------------------------------------------------
+
+/// WGSL fragment for the graph compositor's alpha-over pass (the C++
+/// viewer shader is `:/shaders/alphaover.frag`; same premultiplied-over
+/// math on raw texture loads). Bindings: 1 = destination (accumulator),
+/// 3 = source (the clip frame) — the layout [`GpuContext::compile_shader_pass`]
+/// assigns to texture pairs.
+const COMP_WGSL: &str = r#"
+@group(0) @binding(1) var dst_tex: texture_2d<f32>;
+@group(0) @binding(3) var src_tex: texture_2d<f32>;
+
+@fragment
+fn main(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
+    let dims = textureDimensions(dst_tex);
+    let coord = clamp(vec2<u32>(u32(i32(frag.x)), u32(i32(frag.y))), vec2<u32>(0u, 0u), dims - vec2<u32>(1u, 1u));
+    let s = textureLoad(src_tex, coord, 0);
+    let d = textureLoad(dst_tex, coord, 0);
+    let a = clamp(s.a, 0.0, 1.0);
+    return clamp(vec4<f32>(s.rgb * a + d.rgb * (1.0 - a), a + d.a * (1.0 - a)), vec4<f32>(0.0), vec4<f32>(1.0));
+}
+"#;
+
+/// GPU composite of `frames` into one `(w, h)` frame: bottom (last) to
+/// top (first), alpha-over into a ping-pong accumulator pair. Frames that
+/// do not match `(w, h)` are skipped (the caller scales at decode time;
+/// mismatches are defensive).
+fn composite_tracks_gpu(
+	ctx: &crate::backend::GpuContext,
+	frames: &[Frame],
+	size: (i32, i32),
+) -> Result<Frame> {
+	let (w, h) = size;
+	if w <= 0 || h <= 0 {
+		return Err(Error::Invalid);
+	}
+	let program = ctx.compile_shader_pass("oak/builtin/alpha-over", COMP_WGSL, 2, false, false)?;
+	let mut acc = ctx.create_texture(w, h)?;
+	let mut out = ctx.create_texture(w, h)?;
+	let src = ctx.create_texture(w, h)?;
+
+	let result = (|| {
+		// The accumulator starts fully transparent.
+		let clear = generate_frame(Rational::new(0, 1), (w, h), PixelFormat::F32)?;
+		ctx.upload(acc, &clear)?;
+		for frame in frames.iter().rev().filter(|f| f.width == w && f.height == h) {
+			ctx.upload(src, frame)?;
+			ctx.run_shader_pass(&program, &[], &[acc, src], out)?;
+			std::mem::swap(&mut acc, &mut out);
+		}
+		ctx.download(acc)
+	})();
+
+	ctx.destroy_texture(acc);
+	ctx.destroy_texture(out);
+	ctx.destroy_texture(src);
+	result
+}
+
+/// CPU composite of `frames` into one `size` frame — the fallback when no
+/// GPU device is available (or the pass fails): bottom (last) to top
+/// (first) via [`composite_over`].
+fn composite_tracks(frames: Vec<Frame>, size: (i32, i32)) -> Frame {
+	let (w, h) = size;
+	if w <= 0 || h <= 0 {
+		return Frame::dummy();
+	}
+	if let Some(ctx) = crate::backend::GpuContext::shared() {
+		match composite_tracks_gpu(&ctx, &frames, (w, h)) {
+			Ok(frame) => return frame,
+			Err(err) => eprintln!("GPU track composite failed, using CPU: {err:#}"),
+		}
+	}
+	let Ok(mut acc) = generate_frame(Rational::new(0, 1), (w, h), PixelFormat::F32) else {
+		return Frame::dummy();
+	};
+	let acc_stride = acc.linesize_bytes() as i32;
+	for frame in frames.iter().rev().filter(|f| f.width == w && f.height == h) {
+		composite_over(
+			&mut acc.data,
+			acc_stride,
+			w,
+			h,
+			&frame.data,
+			frame.linesize_bytes() as i32,
+			1.0,
+		);
+	}
+	acc
+}
+
+/// Render one frame of `viewer` (a sequence) at `time`: evaluate every
+/// enabled clip overlapping `time` through the node graph (one traverser
+/// pass per clip; the hooks' decoder cache is shared across clips) and
+/// composite the resulting frames topmost-first — in the video track
+/// list, track 0 is the topmost stack element (C++ `TrackList` order).
+///
+/// `size` is the decode target for every clip, so all frames composite
+/// without per-frame scaling. Errors: `Invalid` for a non-F32 format or a
+/// non-positive size, `NotFound` for a missing viewer or non-sequence.
+pub fn render_graph_frame(
+	project: &Mutex<oak_node::project::Project>,
+	viewer: oak_node::id::NodeId,
+	time: Rational,
+	size: (i32, i32),
+	format: PixelFormat,
+) -> Result<Texture> {
+	if format != PixelFormat::F32 {
+		return Err(Error::Invalid);
+	}
+	let (w, h) = size;
+	if w <= 0 || h <= 0 {
+		return Err(Error::Invalid);
+	}
+	let graph = &project.lock().unwrap().graph;
+	let entry = graph.get(viewer).ok_or(Error::NotFound)?;
+	let sequence = entry
+		.behavior
+		.as_any()
+		.and_then(|a| a.downcast_ref::<oak_node::sequence::SequenceBehavior>())
+		.ok_or(Error::NotFound)?;
+
+	// Collect the clips covering `time`: the sequence's track lists (video
+	// then audio — C++ `Sequence` keeps them in the `k_track_input_format`
+	// array order), the video list's tracks in stack order, then each
+	// track's blocks.
+	let mut clips: Vec<oak_node::id::NodeId> = Vec::new();
+	for tl_id in &sequence.track_lists {
+		let Some(tl) = graph.get(*tl_id) else {
+			continue;
+		};
+		let Some(tl) = tl
+			.behavior
+			.as_any()
+			.and_then(|a| a.downcast_ref::<oak_node::track::TrackListBehavior>())
+		else {
+			continue;
+		};
+		if tl.kind != oak_node::track::TrackType::Video {
+			continue;
+		}
+		for track_id in &tl.tracks {
+			let Some(track) = graph.get(*track_id) else {
+				continue;
+			};
+			let Some(track) = track
+				.behavior
+				.as_any()
+				.and_then(|a| a.downcast_ref::<oak_node::track::TrackBehavior>())
+			else {
+				continue;
+			};
+			for block_id in &track.blocks {
+				let Some(block) = graph.get(*block_id) else {
+					continue;
+				};
+				let Some(clip) = block
+					.behavior
+					.as_any()
+					.and_then(|a| a.downcast_ref::<oak_node::block::ClipBlockBehavior>())
+				else {
+					continue;
+				};
+				if clip.core.enabled && time >= clip.core.in_() && time < clip.core.out() {
+					clips.push(*block_id);
+				}
+			}
+		}
+	}
+
+	let mut traverser = oak_node::traverser::Traverser::new();
+	let mut hooks = RenderEvalHooks::new();
+	hooks.frame_size = Some(size);
+	let mut frames: Vec<Frame> = Vec::new();
+	for clip in clips {
+		let request = oak_node::traverser::EvalRequest::new(clip, time);
+		let table = traverser.evaluate(graph, &request, &mut hooks).map_err(|e| {
+			Error::Failed(format!("graph evaluation of clip {clip:?} failed: {e:?}"))
+		})?;
+		let Some(NodeValue::Texture(handle)) = table.get(oak_node::value::ValueType::Texture)
+		else {
+			continue;
+		};
+		if handle.ctx.is_null() {
+			continue;
+		}
+		let Some(texture) = (unsafe { oak_node::handle::get_checked::<Texture>(handle) }).cloned()
+		else {
+			continue;
+		};
+		match texture.to_frame() {
+			Ok(frame) => frames.push(frame),
+			Err(err) => eprintln!("graph sequence: texture read-back failed: {err:#}"),
+		}
+	}
+
+	let mut frame = composite_tracks(frames, size);
+	frame.timestamp = time;
+	Ok(Texture::wrap_frame(frame))
 }
 
 /// Render the audio montage over `params.range` (M12 P1): every clip
@@ -1056,6 +1555,7 @@ mod tests {
 	fn produced_frame_honors_ticket_params() {
 		let params = crate::ticket::VideoTicketParams {
 			viewer: 1,
+			project: String::new(),
 			time: Rational::new(2, 1),
 			force_size: Some((16, 9)),
 			force_format: Some(PixelFormat::F32),
@@ -1484,5 +1984,204 @@ mod tests {
 		}]);
 		let out = apply_clip_effects(solid_texture(0.8, 0.4, 0.2, 1.0), &clip, Rational::new(0, 1));
 		assert_eq!(first_pixel(&out), [0.8, 0.4, 0.2, 1.0]);
+	}
+
+	// ---- Graph-driven sequence (M12 phase 2) ----------------------------
+
+	/// Native-size decode: a `(0, 0)` request produces the footage's
+	/// intrinsic dimensions (the graph sequence path decodes native and
+	/// scales at composite time).
+	#[test]
+	fn footage_native_size_decode() {
+		let path = std::env::temp_dir().join(format!("oakrender_graph_native_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip(&path, 64, 64, 10, 10).expect("test clip generation");
+		let tex = render_footage_frame(&path.to_string_lossy(), 0, Rational::new(0, 1), (0, 0), PixelFormat::F32)
+			.expect("native-size decode");
+		assert_eq!(tex.size(), (64, 64));
+		let _ = std::fs::remove_file(&path);
+	}
+
+	/// The resolve seam decodes each boxed [`FootageJobPayload`] into a
+	/// texture and leaves genuine texture boxes untouched (in-place row
+	/// replacement, C++ FootageJob processing).
+	#[test]
+	fn resolve_footage_jobs_decodes_payload_box() {
+		let path = std::env::temp_dir().join(format!("oakrender_graph_resolve_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip(&path, 32, 32, 10, 10).expect("test clip generation");
+
+		let mut table = NodeValueTable::default();
+		let payload = FootageJobPayload {
+			filename: path.to_string_lossy().into_owned(),
+			stream_index: 0,
+			time: Rational::new(0, 1),
+		};
+		table.push(
+			oak_node::value::ValueType::Texture,
+			NodeValue::Texture(oak_node::handle::make_owned(payload)),
+			None,
+		);
+		let genuine = Texture::wrap_frame(generate_frame(Rational::new(0, 1), (4, 4), PixelFormat::F32).unwrap());
+		table.push(
+			oak_node::value::ValueType::Texture,
+			NodeValue::Texture(oak_node::handle::make_owned(genuine)),
+			None,
+		);
+
+		let mut hooks = RenderEvalHooks::new();
+		hooks.frame_size = Some((32, 32));
+		hooks.resolve_footage_jobs(&mut table);
+		assert_eq!(table.count(), 2, "both rows stay, only the payload is replaced");
+
+		let rows = table.rows();
+		let NodeValue::Texture(decoded_handle) = &rows[0].1 else {
+			unreachable!()
+		};
+		let decoded = unsafe { oak_node::handle::get_checked::<Texture>(decoded_handle) }
+			.expect("payload box replaced by the decoded texture");
+		let Texture::Cpu(frame) = decoded else {
+			unreachable!()
+		};
+		assert_eq!((frame.width, frame.height), (32, 32));
+		assert!(
+			frame.data.iter().any(|&b| b != 0),
+			"decoded frame must contain non-black pixels"
+		);
+
+		let NodeValue::Texture(genuine_handle) = &rows[1].1 else {
+			unreachable!()
+		};
+		let genuine = unsafe { oak_node::handle::get_checked::<Texture>(genuine_handle) }
+			.expect("genuine texture box stays untouched");
+		assert_eq!(genuine.size(), (4, 4));
+
+		let _ = std::fs::remove_file(&path);
+	}
+
+	/// The composite seam matches the C++ alpha-over math: bottom (last)
+	/// into transparent, then top (first) over it — `out = src*a +
+	/// dst*(1-a)`, `out_a = a + dst_a*(1-a)` (premultiplied source).
+	#[test]
+	fn composite_tracks_matches_alpha_over_math() {
+		let Texture::Cpu(top) = &solid_texture(0.5, 0.25, 0.125, 0.5) else {
+			unreachable!()
+		};
+		let Texture::Cpu(bottom) = &solid_texture(1.0, 1.0, 1.0, 0.75) else {
+			unreachable!()
+		};
+		let frames = vec![top.clone(), bottom.clone()];
+		let expected = [0.625f32, 0.5, 0.4375, 0.875];
+
+		// bottom over transparent: (0.75, 0.75, 0.75, 0.75), then top over:
+		// r = 0.5*0.5 + 0.75*0.5, g = 0.25*0.5 + 0.75*0.5,
+		// b = 0.125*0.5 + 0.75*0.5, a = 0.5 + 0.75*0.5.
+		let out = composite_tracks(frames.clone(), (2, 1));
+		let pixel = first_pixel(&Texture::wrap_frame(out));
+		for (got, want) in pixel.iter().zip(expected) {
+			assert!((got - want).abs() < 1e-4, "CPU composite: expected {want}, got {got}");
+		}
+
+		// Same math through the GPU pass when a device is available.
+		if let Some(ctx) = crate::backend::GpuContext::shared() {
+			let gpu_out = composite_tracks_gpu(&ctx, &frames, (2, 1)).expect("GPU composite");
+			let pixel = first_pixel(&Texture::wrap_frame(gpu_out));
+			for (got, want) in pixel.iter().zip(expected) {
+				assert!((got - want).abs() < 1e-3, "GPU composite: expected {want}, got {got}");
+			}
+		}
+	}
+
+	/// End-to-end chromakey through the real GPU path: a solid opaque
+	/// green frame keyed on the node's default green key leaves every
+	/// pixel at zero (the C++ `ColorTransformJob` + `chromakey.frag`
+	/// math: `colorclose` returns 0 at the key color, so the
+	/// shadows/highlights transform yields `mask = 0` and `col *= mask`
+	/// blanks the frame). Exercises the OCIO splice in
+	/// [`super::process_shader_job`]: the shader's `%1` marker is filled
+	/// with the real `SceneLinearToCIEXYZ_d65` GLSL generated from the
+	/// default OCIO config, and the tolerance uniforms reach the shader
+	/// under their (fixed) input-id spelling.
+	#[test]
+	fn gpu_chromakey_keys_green_with_ocio_stub() {
+		let Some(ctx) = crate::backend::GpuContext::shared() else {
+			eprintln!("no adapter; skipping");
+			return;
+		};
+		// Install the process-wide default config (the C++
+		// `ColorManager::SetUpDefaultConfig` startup step; color.rs tests
+		// do the same). Without it the OCIO stub cannot be generated and
+		// the job falls back to the input pass-through.
+		if crate::color::set_up_default_config().is_err() {
+			eprintln!("bundled OCIO missing; skipping");
+			return;
+		}
+		if crate::color::ocio_function_shader(
+			"SceneLinearToCIEXYZ_d65",
+			"scene_linear",
+			"cie_xyz_d65_interchange",
+		)
+		.is_none()
+		{
+			eprintln!("no OCIO config; skipping");
+			return;
+		}
+
+		let size = (16, 16);
+		let mut frame = generate_frame(Rational::new(0, 1), size, PixelFormat::F32).unwrap();
+		for px in frame.data.chunks_exact_mut(16) {
+			for (c, v) in px.chunks_exact_mut(4).zip([0.0f32, 1.0, 0.0, 1.0]) {
+				c.copy_from_slice(&v.to_le_bytes());
+			}
+		}
+
+		let src = ctx.create_texture(size.0, size.1).unwrap();
+		ctx.upload(src, &frame).unwrap();
+		let input = Texture::Gpu {
+			token: src,
+			backend: ctx.kind(),
+			width: size.0,
+			height: size.1,
+			format: PixelFormat::F32,
+			ctx: ctx.clone(),
+		};
+
+		let mut params = NodeValueRow::new();
+		params.insert("tex_in".into(), NodeValue::Texture(oak_node::handle::make_owned(input)));
+		params.insert("color_key".into(), NodeValue::Color([0.0, 1.0, 0.0, 1.0]));
+		params.insert("lower_tolerance_in".into(), NodeValue::Float(5.0));
+		params.insert("upper_tolerance_in".into(), NodeValue::Float(25.0));
+		params.insert("mask_only_in".into(), NodeValue::Boolean(false));
+		params.insert("invert_in".into(), NodeValue::Boolean(false));
+		params.insert("shadows_in".into(), NodeValue::Float(100.0));
+		params.insert("highlights_in".into(), NodeValue::Float(100.0));
+
+		let payload = ShaderJobPayload {
+			node_id: oak_node::id::NodeId::from_identity(1).unwrap(),
+			time: Rational::new(0, 1),
+			iterations: 1,
+			type_id: "org.olivevideoeditor.Olive.chromakey".into(),
+			shader_id: String::new(),
+			effect_input: "tex_in".into(),
+			params,
+			iterative_input: String::new(),
+		};
+		let rendered = RenderEvalHooks::new()
+			.process_shader_job(&payload)
+			.expect("chromakey renders on the GPU");
+
+		let Texture::Gpu { token: dst, .. } = rendered else {
+			panic!("expected a GPU texture");
+		};
+		let out = ctx.download(dst).unwrap();
+		for px in out.data.chunks_exact(16) {
+			for (c, v) in px.chunks_exact(4).enumerate() {
+				let got = f32::from_le_bytes(v.try_into().unwrap());
+				assert!(
+					got.abs() < 1e-4,
+					"channel {c}: keyed green must be fully transparent (got {got})"
+				);
+			}
+		}
+		ctx.destroy_texture(dst);
+		ctx.destroy_texture(src);
 	}
 }
