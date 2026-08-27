@@ -43,7 +43,10 @@ use oak_node::sequence::SequenceBehavior;
 use oak_node::track::{TrackBehavior, TrackListBehavior, TrackType};
 use oak_node::value::VideoParams;
 use oak_timeline::handle::CHandle;
-use oak_timeline::util::NodeRef;
+use oak_timeline::util::{
+	block_in, block_length, block_out, block_set_in, block_set_length_and_media_in,
+	block_set_length_and_media_out, clip_set_media_in, NodeRef,
+};
 
 use oak_storage::backend::StorageBackend;
 
@@ -142,8 +145,7 @@ pub fn create_project() -> ProjectRef {
 pub fn load_ove(path: &Path) -> Result<ProjectRef, String> {
 	let xml = std::fs::read_to_string(path)
 		.map_err(|e| format!("failed to read \"{}\": {e}", path.display()))?;
-	let project =
-		oak_node::serializer::load(&xml).map_err(|e| format!("failed to parse: {e}"))?;
+	let project = oak_node::serializer::load(&xml).map_err(|e| format!("failed to parse: {e}"))?;
 	let abs = if path.is_absolute() {
 		path.to_path_buf()
 	} else {
@@ -166,7 +168,8 @@ pub fn save_ove(project: &ProjectRef, path: &Path) -> Result<(), String> {
 		let guard = lock(project);
 		oak_node::serializer::save(&guard).map_err(|e| format!("failed to serialize: {e}"))?
 	};
-	std::fs::write(path, &xml).map_err(|e| format!("failed to write \"{}\": {e}", path.display()))?;
+	std::fs::write(path, &xml)
+		.map_err(|e| format!("failed to write \"{}\": {e}", path.display()))?;
 	let mut guard = lock(project);
 	guard.set_filename(&path.to_string_lossy());
 	guard.set_modified(false);
@@ -250,17 +253,19 @@ pub fn create_sequence_with_params(
 	// Mount the sequence under the root folder. Not pushed to the undo
 	// stack: like the default track layout below, it is part of the
 	// sequence's creation, not an undoable edit.
-	oak_task::nodeops::folder_add_child_command(
-		(project.clone(), root),
-		(project.clone(), seq),
-	)
-	.redo_now();
+	oak_task::nodeops::folder_add_child_command((project.clone(), root), (project.clone(), seq))
+		.redo_now();
 	// A new sequence starts with the default 2 video + 2 audio track
 	// layout (user-mandated NLE default: V1, V2 on top, A1, A2 below).
 	// Driven directly through the add-track commands' redo — NOT pushed
 	// to the undo stack, a sequence's default layout is part of its
 	// creation, not an undoable edit.
-	for kind in [TrackType::Video, TrackType::Video, TrackType::Audio, TrackType::Audio] {
+	for kind in [
+		TrackType::Video,
+		TrackType::Video,
+		TrackType::Audio,
+		TrackType::Audio,
+	] {
 		let Some(list) = find_or_create_track_list(project, seq, kind) else {
 			continue;
 		};
@@ -285,10 +290,8 @@ pub fn create_folder(project: &ProjectRef, name: &str) -> Result<NodeId, String>
 		let mut guard = lock(project);
 		guard.graph.add_node(core, behavior)
 	};
-	let cmd = oak_task::nodeops::folder_add_child_command(
-		(project.clone(), root),
-		(project.clone(), id),
-	);
+	let cmd =
+		oak_task::nodeops::folder_add_child_command((project.clone(), root), (project.clone(), id));
 	oak_undo::global::push(cmd, "New Folder").map_err(|e| e.to_string())?;
 	Ok(id)
 }
@@ -324,11 +327,8 @@ pub fn ensure_sequences_mounted(project: &ProjectRef) {
 		(root, orphans)
 	};
 	for id in orphans {
-		oak_task::nodeops::folder_add_child_command(
-			(project.clone(), root),
-			(project.clone(), id),
-		)
-		.redo_now();
+		oak_task::nodeops::folder_add_child_command((project.clone(), root), (project.clone(), id))
+			.redo_now();
 	}
 }
 
@@ -715,12 +715,18 @@ pub fn import_footage(project: &ProjectRef, path: &Path) -> Result<NodeId, Strin
 			return Err("the project has no root folder".to_string());
 		}
 		let (mut core, mut behavior) = FootageBehavior::create();
-		core.set_standard_value("file_in", -1, oak_node::value::NodeValue::Text(filename.clone()));
+		core.set_standard_value(
+			"file_in",
+			-1,
+			oak_node::value::NodeValue::Text(filename.clone()),
+		);
 		let Some(f) = behavior
 			.as_any_mut()
 			.and_then(|a| a.downcast_mut::<FootageBehavior>())
 		else {
-			return Err("internal error: footage node created without footage behavior".to_string());
+			return Err(
+				"internal error: footage node created without footage behavior".to_string(),
+			);
 		};
 		f.filename = filename.clone();
 		// Probe before the node enters the graph so a failed probe leaves
@@ -737,10 +743,8 @@ pub fn import_footage(project: &ProjectRef, path: &Path) -> Result<NodeId, Strin
 		}
 		(guard.root, id)
 	};
-	let cmd = oak_task::nodeops::folder_add_child_command(
-		(project.clone(), root),
-		(project.clone(), id),
-	);
+	let cmd =
+		oak_task::nodeops::folder_add_child_command((project.clone(), root), (project.clone(), id));
 	oak_undo::global::push(cmd, "Import Footage").map_err(|e| e.to_string())?;
 	Ok(id)
 }
@@ -784,9 +788,9 @@ pub fn markers_of(list: &CHandle) -> Vec<(Rational, String, i32)> {
 	// SAFETY: `list` boxes a `TimelineMarkerList` (created by
 	// `marker_list_create`); the read is shared and brief.
 	let Some(l) = (unsafe {
-		oak_timeline::handle::get::<std::sync::Arc<std::sync::Mutex<oak_timeline::marker::TimelineMarkerList>>>(
-			list,
-		)
+		oak_timeline::handle::get::<
+			std::sync::Arc<std::sync::Mutex<oak_timeline::marker::TimelineMarkerList>>,
+		>(list)
 	}) else {
 		return Vec::new();
 	};
@@ -804,9 +808,9 @@ pub fn marker_index_at(list: &CHandle, time: Rational) -> Option<usize> {
 	}
 	// SAFETY: as `markers_of`.
 	let l = unsafe {
-		oak_timeline::handle::get::<std::sync::Arc<std::sync::Mutex<oak_timeline::marker::TimelineMarkerList>>>(
-			list,
-		)
+		oak_timeline::handle::get::<
+			std::sync::Arc<std::sync::Mutex<oak_timeline::marker::TimelineMarkerList>>,
+		>(list)
 	}?;
 	let l = l.lock().unwrap_or_else(|e| e.into_inner());
 	(0..l.size()).find(|&i| l.at(i).map(|m| m.time().in_()) == Some(time))
@@ -820,9 +824,9 @@ pub fn workarea_state(wa: &CHandle) -> Option<(bool, TimeRange)> {
 	// SAFETY: `wa` boxes a `TimelineWorkArea` (created by
 	// `workarea_create`); the read is shared and brief.
 	let w = unsafe {
-		oak_timeline::handle::get::<std::sync::Arc<std::sync::Mutex<oak_timeline::workarea::TimelineWorkArea>>>(
-			wa,
-		)
+		oak_timeline::handle::get::<
+			std::sync::Arc<std::sync::Mutex<oak_timeline::workarea::TimelineWorkArea>>,
+		>(wa)
 	}?;
 	let w = w.lock().unwrap_or_else(|e| e.into_inner());
 	Some((w.enabled(), *w.range()))
@@ -836,9 +840,9 @@ pub fn workarea_set(wa: &CHandle, enabled: bool, range: TimeRange) {
 	// SAFETY: `wa` boxes a `TimelineWorkArea`; the engine writes it only
 	// from the UI thread.
 	if let Some(w) = unsafe {
-		oak_timeline::handle::get_mut::<std::sync::Arc<std::sync::Mutex<oak_timeline::workarea::TimelineWorkArea>>>(
-			wa,
-		)
+		oak_timeline::handle::get_mut::<
+			std::sync::Arc<std::sync::Mutex<oak_timeline::workarea::TimelineWorkArea>>,
+		>(wa)
 	} {
 		let mut w = w.lock().unwrap_or_else(|e| e.into_inner());
 		w.set_enabled(enabled);
@@ -959,8 +963,8 @@ pub fn library_duplicate(uuid: &str) -> Result<String, String> {
 /// Import a `.ove` / `.otio` / `.fcpxml` project file as a new library
 /// row; returns the new row's uuid.
 pub fn library_import(path: &Path) -> Result<String, String> {
-	let file_uri = oak_storage::uri::StorageUri::parse(&path.to_string_lossy())
-		.map_err(|e| e.to_string())?;
+	let file_uri =
+		oak_storage::uri::StorageUri::parse(&path.to_string_lossy()).map_err(|e| e.to_string())?;
 	oak_storage::writethrough::backend()
 		.import_from_file(&library()?, &file_uri)
 		.map_err(|e| e.to_string())
@@ -972,8 +976,8 @@ pub fn library_export(uuid: &str, path: &Path) -> Result<(), String> {
 	if uuid.is_empty() {
 		return Err("invalid uuid".to_string());
 	}
-	let file_uri = oak_storage::uri::StorageUri::parse(&path.to_string_lossy())
-		.map_err(|e| e.to_string())?;
+	let file_uri =
+		oak_storage::uri::StorageUri::parse(&path.to_string_lossy()).map_err(|e| e.to_string())?;
 	oak_storage::writethrough::backend()
 		.export_to_file(&library()?, uuid, &file_uri)
 		.map_err(|e| e.to_string())
@@ -996,8 +1000,8 @@ pub fn library_open(uuid: &str) -> Result<ProjectRef, String> {
 		));
 	}
 	let handle = result.project;
-	let project = unsafe { oak_storage::nodeutil::project_arc(&handle) }
-		.map_err(|e| e.to_string())?;
+	let project =
+		unsafe { oak_storage::nodeutil::project_arc(&handle) }.map_err(|e| e.to_string())?;
 	lock(&project).set_modified(false);
 	Ok(project)
 }
@@ -1105,7 +1109,9 @@ pub fn connect_command(
 			return Err(format!("connect: input \"{input_id}\" is not connectable"));
 		}
 		if g.graph.connected_output(to, input_id, -1).is_some() {
-			return Err(format!("connect: input \"{input_id}\" is already connected"));
+			return Err(format!(
+				"connect: input \"{input_id}\" is already connected"
+			));
 		}
 	}
 	let (p1, p2) = (p.clone(), p.clone());
@@ -1177,15 +1183,13 @@ pub fn set_context_position_command(
 		if !g.graph.is_valid(node) || !g.graph.is_valid(context) {
 			return Err("set position: node not found".to_string());
 		};
-		g.graph
-			.get(node)
-			.and_then(|e| {
-				e.core
-					.context_positions
-					.iter()
-					.find(|(c, _, _)| *c == context)
-					.map(|(_, pos, expanded)| (*pos, *expanded))
-			})
+		g.graph.get(node).and_then(|e| {
+			e.core
+				.context_positions
+				.iter()
+				.find(|(c, _, _)| *c == context)
+				.map(|(_, pos, expanded)| (*pos, *expanded))
+		})
 	};
 	let (p1, p2) = (p.clone(), p.clone());
 	Ok(oak_undo::undocommand::UndoCommand::from_closures(
@@ -1546,7 +1550,12 @@ pub fn place_footage_clips_linked(
 			)
 			.to_command(),
 		);
-		commands.push(connect_command(p, footage, clip, oak_node::block::clip_input::TEXTURE_INPUT)?);
+		commands.push(connect_command(
+			p,
+			footage,
+			clip,
+			oak_node::block::clip_input::TEXTURE_INPUT,
+		)?);
 	}
 	// Link the group both ways. Each ordered pair is its own command whose
 	// undo removes ONLY the direction it added (incremental undo), so a
@@ -1583,7 +1592,8 @@ pub fn place_footage_clips_linked(
 /// Split `clip` at `time_ts` (a frame timestamp strictly inside the
 /// clip's range), undoable "Split Clip" (the module's
 /// `BlockSplitCommand`).
-pub fn split_clip(p: &ProjectRef, clip: NodeId, time_ts: i64) -> Result<(), String> {	let (tb, in_r, out_r) = {
+pub fn split_clip(p: &ProjectRef, clip: NodeId, time_ts: i64) -> Result<(), String> {
+	let (tb, in_r, out_r) = {
 		let g = lock(p);
 		let tb = clip_track(&g.graph, clip)
 			.and_then(|t| track_behavior(&g.graph, t))
@@ -1592,13 +1602,15 @@ pub fn split_clip(p: &ProjectRef, clip: NodeId, time_ts: i64) -> Result<(), Stri
 			.and_then(|l| l.sequence)
 			.and_then(|s| sequence_time_base(&g.graph, s))
 			.ok_or_else(|| "the clip's sequence has no valid frame rate".to_string())?;
-		let (in_r, out_r, _) = clip_range(&g.graph, clip)
-			.ok_or_else(|| "the node is not a clip".to_string())?;
+		let (in_r, out_r, _) =
+			clip_range(&g.graph, clip).ok_or_else(|| "the node is not a clip".to_string())?;
 		(tb, in_r, out_r)
 	};
 	let point = ts_to_rational(time_ts, tb);
 	if point <= in_r || point >= out_r {
-		return Err(format!("split time {time_ts} is not strictly inside the clip"));
+		return Err(format!(
+			"split time {time_ts} is not strictly inside the clip"
+		));
 	}
 	push(
 		oak_timeline::undosplit::BlockSplitCommand::new(node_ref(p, clip), point).to_command(),
@@ -1646,8 +1658,64 @@ pub fn split_clips_preserving_links(
 /// a time, trim-in anchors the OUT, trim-out anchors the IN — the
 /// module's own `BlockTrimCommand` applies its length setters with
 /// inverted semantics, so the closures carry the correct mapping).
-pub fn trim_clip(p: &ProjectRef, clip: NodeId, new_in_ts: i64, new_out_ts: i64) -> Result<(), String> {
+/// An undoable length change for `clip` (trim semantics: `out_anchored`
+/// keeps the out point — trim-in — and shifts the in; otherwise the in
+/// stays — trim-out). Shared by [`trim_clip`] and [`ripple_trim_clip`];
+/// the closure applies the new length on redo and restores `old` on undo.
+pub(crate) fn trim_command(
+	p: &ProjectRef,
+	clip: NodeId,
+	out_anchored: bool,
+	old: Rational,
+	new: Rational,
+) -> oak_undo::undocommand::UndoCommand {
 	use oak_node::block::BlockCore;
+	let (p1, p2) = (p.clone(), p.clone());
+	oak_undo::undocommand::UndoCommand::from_closures(
+		move || {
+			let mut g = lock(&p1);
+			if let Some(c) = g
+				.graph
+				.get_mut(clip)
+				.and_then(|e| e.behavior.as_any_mut())
+				.and_then(|a| a.downcast_mut::<ClipBlockBehavior>())
+			{
+				if out_anchored {
+					BlockCore::set_length_and_media_out(&mut c.core, new);
+				} else {
+					BlockCore::set_length_and_media_in(&mut c.core, new);
+				}
+			}
+		},
+		move || {
+			let mut g = lock(&p2);
+			if let Some(c) = g
+				.graph
+				.get_mut(clip)
+				.and_then(|e| e.behavior.as_any_mut())
+				.and_then(|a| a.downcast_mut::<ClipBlockBehavior>())
+			{
+				if out_anchored {
+					BlockCore::set_length_and_media_out(&mut c.core, old);
+				} else {
+					BlockCore::set_length_and_media_in(&mut c.core, old);
+				}
+			}
+		},
+	)
+}
+
+/// Trim `clip`'s timeline range to `[new_in_ts, new_out_ts)` (undoable
+/// "Trim Clip"; the facade's `oakengine_clip_trim` semantics: one end at
+/// a time, trim-in anchors the OUT, trim-out anchors the IN — the
+/// module's own `BlockTrimCommand` applies its length setters with
+/// inverted semantics, so the closures carry the correct mapping).
+pub fn trim_clip(
+	p: &ProjectRef,
+	clip: NodeId,
+	new_in_ts: i64,
+	new_out_ts: i64,
+) -> Result<(), String> {
 	if new_in_ts < 0 || new_out_ts <= new_in_ts {
 		return Err("invalid trim range (need 0 <= new_in < new_out)".to_string());
 	}
@@ -1671,63 +1739,249 @@ pub fn trim_clip(p: &ProjectRef, clip: NodeId, new_in_ts: i64, new_out_ts: i64) 
 	let new_in = ts_to_rational(new_in_ts, tb);
 	let new_out = ts_to_rational(new_out_ts, tb);
 
-	/// A trim closure command: `set` applies the length (in anchored or
-	/// out anchored) for both redo and undo with the captured values.
-	fn trim_cmd(
-		p: &ProjectRef,
-		clip: NodeId,
-		out_anchored: bool,
-		old: Rational,
-		new: Rational,
-	) -> oak_undo::undocommand::UndoCommand {
-		let (p1, p2) = (p.clone(), p.clone());
-		oak_undo::undocommand::UndoCommand::from_closures(
-			move || {
-				let mut g = lock(&p1);
-				if let Some(c) = g
-					.graph
-					.get_mut(clip)
-					.and_then(|e| e.behavior.as_any_mut())
-					.and_then(|a| a.downcast_mut::<ClipBlockBehavior>())
-				{
-					if out_anchored {
-						BlockCore::set_length_and_media_out(&mut c.core, new);
-					} else {
-						BlockCore::set_length_and_media_in(&mut c.core, new);
-					}
-				}
-			},
-			move || {
-				let mut g = lock(&p2);
-				if let Some(c) = g
-					.graph
-					.get_mut(clip)
-					.and_then(|e| e.behavior.as_any_mut())
-					.and_then(|a| a.downcast_mut::<ClipBlockBehavior>())
-				{
-					if out_anchored {
-						BlockCore::set_length_and_media_out(&mut c.core, old);
-					} else {
-						BlockCore::set_length_and_media_in(&mut c.core, old);
-					}
-				}
-			},
-		)
-	}
-
 	let mut children = Vec::new();
 	if new_in != old_in {
 		// in-trim: length = block out - new in (out anchored).
-		children.push(trim_cmd(p, clip, true, old_length, old_out - new_in));
+		children.push(trim_command(p, clip, true, old_length, old_out - new_in));
 	}
 	if new_out != old_out {
 		// out-trim: length = new out - new in (in anchored); the old
 		// length is the post-in-trim length (out - new in) when both ends
 		// move.
 		let post_in_trim = old_out - new_in;
-		children.push(trim_cmd(p, clip, false, post_in_trim, new_out - new_in));
+		children.push(trim_command(p, clip, false, post_in_trim, new_out - new_in));
 	}
 	push_multi(children, "Trim Clip")
+}
+
+/// Ripple-trim `clip` so its `start_edge` lands on `new_frame` (undoable
+/// "Ripple Trim Clip"): the trimmed clip's media anchor is kept (trim-in
+/// anchors the OUT, trim-out anchors the IN, exactly like [`trim_clip`]),
+/// and every block after it on the same track shifts rigidly by the same
+/// delta — no gap opens behind the trimmed edge, the tail just follows.
+pub fn ripple_trim_clip(
+	p: &ProjectRef,
+	clip: NodeId,
+	start_edge: bool,
+	new_frame: i64,
+) -> Result<(), String> {
+	let (tb, old_in, old_out, tail) = {
+		let g = lock(p);
+		let tb = clip_track(&g.graph, clip)
+			.and_then(|t| track_behavior(&g.graph, t))
+			.and_then(|t| t.track_list)
+			.and_then(|l| track_list_behavior(&g.graph, l))
+			.and_then(|l| l.sequence)
+			.and_then(|s| sequence_time_base(&g.graph, s))
+			.ok_or_else(|| "the clip's sequence has no valid frame rate".to_string())?;
+		let (in_r, out_r, _) =
+			clip_range(&g.graph, clip).ok_or_else(|| "the node is not a clip".to_string())?;
+		let track =
+			clip_track(&g.graph, clip).ok_or_else(|| "the clip is not on a track".to_string())?;
+		let blocks = track_behavior(&g.graph, track)
+			.map(|t| t.blocks.clone())
+			.unwrap_or_default();
+		let index = blocks
+			.iter()
+			.position(|&b| b == clip)
+			.ok_or_else(|| "the clip is not on its track".to_string())?;
+		(tb, in_r, out_r, blocks[index + 1..].to_vec())
+	};
+	let new = ts_to_rational(new_frame, tb);
+	let old_length = old_out - old_in;
+	// start_edge (trim-in): the out stays anchored, length = out - new;
+	// the tail shifts by (new - in). Otherwise (trim-out): the in stays
+	// anchored, length = new - in; the tail shifts by (new - out).
+	let (trim_len, anchored) = if start_edge {
+		(old_out - new, true)
+	} else {
+		(new - old_in, false)
+	};
+	let delta = if start_edge {
+		new - old_in
+	} else {
+		new - old_out
+	};
+	if delta.is_null() {
+		return Ok(());
+	}
+	let mut children = Vec::new();
+	children.push(trim_command(p, clip, anchored, old_length, trim_len));
+	for b in tail {
+		let b_ref = node_ref(p, b);
+		let b_old_in = block_in(&b_ref);
+		let (r1, r2) = (b_ref.clone(), b_ref);
+		children.push(oak_undo::undocommand::UndoCommand::from_closures(
+			move || block_set_in(&r1, b_old_in + delta),
+			move || block_set_in(&r2, b_old_in),
+		));
+	}
+	push_multi(children, "Ripple Trim Clip")
+}
+
+/// Roll-edit the shared boundary of adjacent clips `a`/`b` (both on
+/// `track`) to `new_frame` (undoable "Roll Edit"): the boundary moves
+/// without disturbing anything else on the track — the module's own
+/// `BlockTrimCommand` in roll-edit mode trims `a` out-anchored and
+/// compensates `b` in-anchored, so both media anchors are preserved.
+pub fn roll_edit(
+	p: &ProjectRef,
+	track: NodeId,
+	a: NodeId,
+	b: NodeId,
+	new_frame: i64,
+) -> Result<(), String> {
+	let (tb, a_in, a_out, b_in, b_out) = {
+		let g = lock(p);
+		let tb = clip_track(&g.graph, a)
+			.and_then(|t| track_behavior(&g.graph, t))
+			.and_then(|t| t.track_list)
+			.and_then(|l| track_list_behavior(&g.graph, l))
+			.and_then(|l| l.sequence)
+			.and_then(|s| sequence_time_base(&g.graph, s))
+			.ok_or_else(|| "the clip's sequence has no valid frame rate".to_string())?;
+		let (a_in, a_out, _) =
+			clip_range(&g.graph, a).ok_or_else(|| "node a is not a clip".to_string())?;
+		let (b_in, b_out, _) =
+			clip_range(&g.graph, b).ok_or_else(|| "node b is not a clip".to_string())?;
+		(tb, a_in, a_out, b_in, b_out)
+	};
+	if a_out != b_in {
+		return Err("roll edit: the clips do not share a boundary".to_string());
+	}
+	let new = ts_to_rational(new_frame, tb);
+	if new <= a_in || new >= b_out {
+		return Err("roll edit: boundary would escape the adjacent clips".to_string());
+	}
+	if new == a_out {
+		// Boundary didn't move — nothing to do.
+		return Ok(());
+	}
+	let mut cmd = oak_timeline::undopointer::BlockTrimCommand::new(
+		node_ref(p, track),
+		node_ref(p, a),
+		new - a_in,
+		oak_timeline::common::MovementMode::TrimOut,
+	);
+	cmd.set_trim_is_a_roll_edit(true);
+	cmd.prepare();
+	push(cmd.to_command(), "Roll Edit")
+}
+
+/// Slide `clip` so its in point becomes `new_start` (undoable "Slide
+/// Clip"): the clip's own media window and length are untouched — the
+/// in point moves and the out follows — while the adjacent blocks are
+/// shortened/lengthened to fill the gap or absorb the overlap (the left
+/// neighbor's out moves to `new_start`, the right neighbor's in follows
+/// the clip's new out). A neighbor that would collapse to a negative
+/// length is left alone, leaving the hole open.
+pub fn slide_clip(p: &ProjectRef, clip: NodeId, new_start: i64) -> Result<(), String> {
+	let (tb, old_in, old_out, left, right) = {
+		let g = lock(p);
+		let tb = clip_track(&g.graph, clip)
+			.and_then(|t| track_behavior(&g.graph, t))
+			.and_then(|t| t.track_list)
+			.and_then(|l| track_list_behavior(&g.graph, l))
+			.and_then(|l| l.sequence)
+			.and_then(|s| sequence_time_base(&g.graph, s))
+			.ok_or_else(|| "the clip's sequence has no valid frame rate".to_string())?;
+		let (in_r, out_r, _) =
+			clip_range(&g.graph, clip).ok_or_else(|| "the node is not a clip".to_string())?;
+		let track =
+			clip_track(&g.graph, clip).ok_or_else(|| "the clip is not on a track".to_string())?;
+		let blocks = track_behavior(&g.graph, track)
+			.map(|t| t.blocks.clone())
+			.unwrap_or_default();
+		let index = blocks
+			.iter()
+			.position(|&b| b == clip)
+			.ok_or_else(|| "the clip is not on its track".to_string())?;
+		(
+			tb,
+			in_r,
+			out_r,
+			blocks.get(index.wrapping_sub(1)).copied(),
+			blocks.get(index + 1).copied(),
+		)
+	};
+	let new = ts_to_rational(new_start.max(0), tb);
+	let delta = new - old_in;
+	if delta.is_null() {
+		return Ok(());
+	}
+	let clip_len = old_out - old_in;
+	let mut children = Vec::new();
+	// The clip itself slides: in moves, length and media window stay put
+	// (`set_in` keeps the length and never touches the media in-point).
+	{
+		let c_ref = node_ref(p, clip);
+		let (r1, r2) = (c_ref.clone(), c_ref);
+		children.push(oak_undo::undocommand::UndoCommand::from_closures(
+			move || block_set_in(&r1, new),
+			move || block_set_in(&r2, old_in),
+		));
+	}
+	// Left neighbor: its out follows the clip's new in (in anchored,
+	// media untouched). A neighbor that would collapse to a negative
+	// length is left alone, leaving the hole open.
+	if let Some(l) = left {
+		let l_ref = node_ref(p, l);
+		let l_len = block_length(&l_ref);
+		if new > block_in(&l_ref) {
+			let (r1, r2) = (l_ref.clone(), l_ref);
+			children.push(oak_undo::undocommand::UndoCommand::from_closures(
+				move || block_set_length_and_media_in(&r1, l_len + delta),
+				move || block_set_length_and_media_in(&r2, l_len),
+			));
+		}
+	}
+	// Right neighbor: its in follows the clip's new out (out anchored,
+	// media untouched); skipped when it would collapse to a negative
+	// length.
+	if let Some(r) = right {
+		let r_ref = node_ref(p, r);
+		let r_len = block_length(&r_ref);
+		if new + clip_len < block_out(&r_ref) {
+			let (r1, r2) = (r_ref.clone(), r_ref);
+			children.push(oak_undo::undocommand::UndoCommand::from_closures(
+				move || block_set_length_and_media_out(&r1, r_len - delta),
+				move || block_set_length_and_media_out(&r2, r_len),
+			));
+		}
+	}
+	push_multi(children, "Slide Clip")
+}
+
+/// Slip `clip` so its media in-point becomes `new_media_in` (undoable
+/// "Slip Clip"): the timeline range and length stay put, only the media
+/// window slides inside the clip (clamped to frame 0).
+pub fn slip_clip(p: &ProjectRef, clip: NodeId, new_media_in: i64) -> Result<(), String> {
+	let (tb, old_media_in) = {
+		let g = lock(p);
+		let tb = clip_track(&g.graph, clip)
+			.and_then(|t| track_behavior(&g.graph, t))
+			.and_then(|t| t.track_list)
+			.and_then(|l| track_list_behavior(&g.graph, l))
+			.and_then(|l| l.sequence)
+			.and_then(|s| sequence_time_base(&g.graph, s))
+			.ok_or_else(|| "the clip's sequence has no valid frame rate".to_string())?;
+		let (_, _, media_in) =
+			clip_range(&g.graph, clip).ok_or_else(|| "the node is not a clip".to_string())?;
+		(tb, media_in)
+	};
+	let new = ts_to_rational(new_media_in.max(0), tb);
+	if new == old_media_in {
+		return Ok(());
+	}
+	let c_ref = node_ref(p, clip);
+	let (r1, r2) = (c_ref.clone(), c_ref);
+	push(
+		oak_undo::undocommand::UndoCommand::from_closures(
+			move || clip_set_media_in(&r1, new),
+			move || clip_set_media_in(&r2, old_media_in),
+		),
+		"Slip Clip",
+	)
 }
 
 /// The undoable same-track move command for one clip (its in point becomes
@@ -1740,11 +1994,14 @@ fn move_clip_command(
 ) -> Result<oak_undo::undocommand::UndoCommand, String> {
 	let (tb, list, track_index) = {
 		let g = lock(p);
-		let track = clip_track(&g.graph, clip).ok_or_else(|| "the clip is not on a track".to_string())?;
+		let track =
+			clip_track(&g.graph, clip).ok_or_else(|| "the clip is not on a track".to_string())?;
 		let list = track_behavior(&g.graph, track)
 			.and_then(|t| t.track_list)
 			.ok_or_else(|| "the clip's track has no list".to_string())?;
-		let track_index = track_behavior(&g.graph, track).map(|t| t.index).unwrap_or(0);
+		let track_index = track_behavior(&g.graph, track)
+			.map(|t| t.index)
+			.unwrap_or(0);
 		let tb = track_list_behavior(&g.graph, list)
 			.and_then(|l| l.sequence)
 			.and_then(|s| sequence_time_base(&g.graph, s))
@@ -1886,8 +2143,8 @@ pub fn move_clip_with_links(
 			.and_then(|l| l.sequence)
 			.and_then(|s| sequence_time_base(&g.graph, s))
 			.ok_or_else(|| "the clip's sequence has no valid frame rate".to_string())?;
-		let (in_r, _, _) = clip_range(&g.graph, clip)
-			.ok_or_else(|| "the node is not a clip".to_string())?;
+		let (in_r, _, _) =
+			clip_range(&g.graph, clip).ok_or_else(|| "the node is not a clip".to_string())?;
 		rational_to_ts(in_r, tb)
 	};
 	// The linked clips' current in points (each stays on its own track;
@@ -2162,7 +2419,9 @@ pub fn copy_clips(p: &ProjectRef, clips: &[NodeId]) -> Vec<ClipboardClip> {
 			seq.unwrap_or((1, 25))
 		};
 		let to_ts = |r: Rational| {
-			(r.numerator() * tb_den).checked_div(r.denominator() * tb_num).unwrap_or(0)
+			(r.numerator() * tb_den)
+				.checked_div(r.denominator() * tb_num)
+				.unwrap_or(0)
 		};
 		let speed = clip_behavior(&g.graph, clip)
 			.map(|c| c.core.speed)
@@ -2377,7 +2636,11 @@ mod tests {
 			for kind in [TrackType::Video, TrackType::Audio] {
 				let blocks: Vec<usize> = track_ids(&g.graph, seq, kind)
 					.iter()
-					.map(|t| track_behavior(&g.graph, *t).map(|t| t.blocks.len()).unwrap_or(0))
+					.map(|t| {
+						track_behavior(&g.graph, *t)
+							.map(|t| t.blocks.len())
+							.unwrap_or(0)
+					})
 					.collect();
 				tracks.push((kind, blocks));
 			}
@@ -2392,13 +2655,20 @@ mod tests {
 			let g = lock(&project);
 			let video_blocks: usize = track_ids(&g.graph, seq, TrackType::Video)
 				.iter()
-				.map(|t| track_behavior(&g.graph, *t).map(|t| t.blocks.len()).unwrap_or(0))
+				.map(|t| {
+					track_behavior(&g.graph, *t)
+						.map(|t| t.blocks.len())
+						.unwrap_or(0)
+				})
 				.sum();
 			assert_eq!(video_blocks, 0, "cycle {cycle}: undo removes the clips");
 			drop(g);
 			oak_undo::global::redo().expect("redo");
 			let state = snapshot(&project);
-			assert_eq!(state, before, "cycle {cycle}: redo must restore the exact state");
+			assert_eq!(
+				state, before,
+				"cycle {cycle}: redo must restore the exact state"
+			);
 		}
 		oak_undo::global::clear().unwrap();
 		let _ = std::fs::remove_file(&media);
@@ -2432,7 +2702,11 @@ mod tests {
 
 		let color_of = |p: &ProjectRef, id: NodeId| -> i32 {
 			let g = lock(p);
-			g.graph.get(id).expect("the clip node exists").core.override_color
+			g.graph
+				.get(id)
+				.expect("the clip node exists")
+				.core
+				.override_color
 		};
 
 		// Label = the footage name; the color is locked in at creation.
@@ -2489,7 +2763,8 @@ mod tests {
 		oak_undo::global::clear().unwrap();
 		let project = create_project();
 		let seq = create_sequence(&project, "Paste Links");
-		let media = std::env::temp_dir().join(format!("oak_paste_links_{}.mp4", std::process::id()));
+		let media =
+			std::env::temp_dir().join(format!("oak_paste_links_{}.mp4", std::process::id()));
 		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate test media");
 		let footage = import_footage(&project, &media).expect("import");
 		let dropped = place_footage_clips_linked(
@@ -2520,12 +2795,18 @@ mod tests {
 		oak_undo::global::undo().expect("undo paste");
 		{
 			let g = lock(&project);
-			assert!(!g.graph.are_linked(pasted[0], pasted[1]), "undo unlinks the pair");
+			assert!(
+				!g.graph.are_linked(pasted[0], pasted[1]),
+				"undo unlinks the pair"
+			);
 		}
 		oak_undo::global::redo().expect("redo paste");
 		{
 			let g = lock(&project);
-			assert!(g.graph.are_linked(pasted[0], pasted[1]), "redo relinks the pair");
+			assert!(
+				g.graph.are_linked(pasted[0], pasted[1]),
+				"redo relinks the pair"
+			);
 		}
 		oak_undo::global::clear().unwrap();
 		let _ = std::fs::remove_file(&media);
@@ -2541,7 +2822,8 @@ mod tests {
 		oak_undo::global::clear().unwrap();
 		let project = create_project();
 		let seq = create_sequence(&project, "Delete Linked");
-		let media = std::env::temp_dir().join(format!("oak_delete_linked_{}.mp4", std::process::id()));
+		let media =
+			std::env::temp_dir().join(format!("oak_delete_linked_{}.mp4", std::process::id()));
 		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate test media");
 		let footage = import_footage(&project, &media).expect("import");
 		let dropped = place_footage_clips_linked(
@@ -2670,7 +2952,10 @@ mod tests {
 		);
 		{
 			let g = lock(&project);
-			assert!(clip_track(&g.graph, audio).is_none(), "audio is off-track now");
+			assert!(
+				clip_track(&g.graph, audio).is_none(),
+				"audio is off-track now"
+			);
 			assert!(g.graph.are_linked(video, audio), "the link itself survives");
 		}
 
@@ -2706,7 +2991,11 @@ mod undo_cycle_track_tests {
 			let g = lock(p);
 			track_ids(&g.graph, seq, kind).len()
 		};
-		assert_eq!(count_of(&project, TrackType::Video), 2, "default 2 video tracks");
+		assert_eq!(
+			count_of(&project, TrackType::Video),
+			2,
+			"default 2 video tracks"
+		);
 
 		let index = add_track(&project, seq, TrackType::Video).expect("add a track");
 		assert_eq!(index, 2, "the new track is the third video track");
@@ -2763,8 +3052,10 @@ mod undo_cycle_ops_tests {
 								let (in_r, out_r, _) = clip_range(&g.graph, b).unwrap_or_default();
 								(
 									b,
-									in_r.numerator() as i128 * 1_000_000 / in_r.denominator().max(1) as i128,
-									out_r.numerator() as i128 * 1_000_000 / out_r.denominator().max(1) as i128,
+									in_r.numerator() as i128 * 1_000_000
+										/ in_r.denominator().max(1) as i128,
+									out_r.numerator() as i128 * 1_000_000
+										/ out_r.denominator().max(1) as i128,
 								)
 							})
 							.collect()
@@ -2776,7 +3067,12 @@ mod undo_cycle_ops_tests {
 		(g.graph.node_count(), tracks)
 	}
 
-	fn cycle_assert(p: &ProjectRef, seq: NodeId, post: &(usize, Vec<(NodeId, Vec<(NodeId, i128, i128)>)>), what: &str) {
+	fn cycle_assert(
+		p: &ProjectRef,
+		seq: NodeId,
+		post: &(usize, Vec<(NodeId, Vec<(NodeId, i128, i128)>)>),
+		what: &str,
+	) {
 		for cycle in 0..3 {
 			oak_undo::global::undo().unwrap_or_else(|e| panic!("{what}: undo failed: {e:?}"));
 			oak_undo::global::redo().unwrap_or_else(|e| panic!("{what}: redo failed: {e:?}"));

@@ -39,28 +39,26 @@
 //! timeline wrapper is `min_w_0` so the ruler always keeps the remaining
 //! space — no overlap at 1600×900 or down to ~1100px wide.
 
+use crate::oakui::component::controls::ValueKind;
+use crate::oakui::component::controls::{CheckBox, CheckBoxEvent, CheckState};
+use crate::oakui::component::controls::{Slider, SliderEvent, SliderModel};
+use crate::oakui::component::menu::{Menu, MenuItem};
 use gpui::colors::DefaultColors;
 use gpui::dock::{DockPanel, PanelEvent};
 use gpui::timeline::{
-	ClipData, ClipId, Frame, TimelineEvent, TimelineHit, TimelineView, TrackData, TrackKind,
-	HEADER_WIDTH, MIN_TRACK_HEIGHT, RULER_HEIGHT,
+	ClipData, ClipId, Frame, TimelineEvent, TimelineHit, TimelineTool, TimelineView, TrackData,
+	TrackKind, HEADER_WIDTH, MIN_TRACK_HEIGHT, RULER_HEIGHT,
 };
-use gpui::{
-	div, img, prelude::*, px, Context, Entity, MouseButton, Pixels, Point, Window,
-};
+use gpui::{div, img, prelude::*, px, Context, Entity, MouseButton, Pixels, Point, Window};
 use gpui::{AnyElement, App, ClickEvent, DragMoveEvent, EventEmitter, Render, SharedString};
-use crate::oakui::component::controls::{CheckBox, CheckBoxEvent, CheckState};
-use crate::oakui::component::menu::{Menu, MenuItem};
-use gpui_widgets::viewer::PlaybackClock;
 use gpui_widgets::project_explorer::FootageDrag;
-use crate::oakui::component::controls::{Slider, SliderEvent, SliderModel};
 use gpui_widgets::tooltip::tooltip_view;
-use crate::oakui::component::controls::ValueKind;
+use gpui_widgets::viewer::PlaybackClock;
 
 use crate::actions::ActionId;
 use crate::i18n;
-use crate::oakui::component::menu::{ContextMenuHandle, ContextMenuTriggered};
 use crate::oakui::component::menu;
+use crate::oakui::component::menu::{ContextMenuHandle, ContextMenuTriggered};
 use crate::oakui::icons;
 use crate::oakui::{AppEngine, Monitor};
 use crate::panels::commands::{self as panel_commands, PanelCommandHandler};
@@ -95,8 +93,6 @@ pub struct TimelinePanel<E: AppEngine> {
 	zoom: Entity<Slider>,
 	height: Entity<Slider>,
 	snap: Entity<CheckBox>,
-	/// The currently selected tool (visual only).
-	selected_tool: usize,
 	/// The drop point of an in-flight footage drag: the display track under
 	/// the cursor plus the start frame. `None` outside the clip area or while
 	/// no footage drag is active.
@@ -185,16 +181,12 @@ impl<E: AppEngine> TimelinePanel<E> {
 		// The right-click menu: the view reports what was hit
 		// (`ContextMenuRequested`), the panel assembles the matching menu
 		// and opens the popup at the click position.
-		let context_menu =
-			ContextMenuHandle::new(Self::on_local_menu_item, window, cx);
-		cx.subscribe(
-			&timeline,
-			|this, _view, event: &TimelineEvent, cx| {
-				if let TimelineEvent::ContextMenuRequested { position, hit } = event {
-					this.open_context_menu(*position, hit.clone(), cx);
-				}
-			},
-		)
+		let context_menu = ContextMenuHandle::new(Self::on_local_menu_item, window, cx);
+		cx.subscribe(&timeline, |this, _view, event: &TimelineEvent, cx| {
+			if let TimelineEvent::ContextMenuRequested { position, hit } = event {
+				this.open_context_menu(*position, hit.clone(), cx);
+			}
+		})
 		.detach();
 
 		Self {
@@ -203,7 +195,6 @@ impl<E: AppEngine> TimelinePanel<E> {
 			zoom,
 			height,
 			snap,
-			selected_tool: 0,
 			footage_drop: None,
 			context_menu,
 			context_track: None,
@@ -235,8 +226,7 @@ impl<E: AppEngine> TimelinePanel<E> {
 						cx.notify();
 					});
 				}
-				let ids: Vec<ClipId> =
-					self.timeline.read(cx).selection().iter().copied().collect();
+				let ids: Vec<ClipId> = self.timeline.read(cx).selection().iter().copied().collect();
 				let (sync, proxy, multicam) = {
 					let engine = self.engine.read(cx);
 					(
@@ -275,35 +265,36 @@ impl<E: AppEngine> TimelinePanel<E> {
 		}
 		match item {
 			LOCAL_ADD_VIDEO_TRACK => {
-				self.engine.update(cx, |engine, cx| engine.add_track(TrackKind::Video, cx));
+				self.engine
+					.update(cx, |engine, cx| engine.add_track(TrackKind::Video, cx));
 			}
 			LOCAL_ADD_AUDIO_TRACK => {
-				self.engine.update(cx, |engine, cx| engine.add_track(TrackKind::Audio, cx));
+				self.engine
+					.update(cx, |engine, cx| engine.add_track(TrackKind::Audio, cx));
 			}
 			LOCAL_DELETE_TRACK => {
 				if let Some(track) = self.context_track {
-					self.engine.update(cx, |engine, cx| engine.remove_track(track, cx));
+					self.engine
+						.update(cx, |engine, cx| engine.remove_track(track, cx));
 				}
 			}
 			LOCAL_DELETE_ALL_EMPTY => {
-				self.engine.update(cx, |engine, cx| engine.delete_empty_tracks(cx));
+				self.engine
+					.update(cx, |engine, cx| engine.delete_empty_tracks(cx));
 			}
 			LOCAL_CACHE_ALL | LOCAL_CACHE_IN_OUT | LOCAL_CACHE_DISCARD => {
 				println!("[timeline] cache action {item} (not implemented yet)");
 			}
-			LOCAL_PROXY_GENERATE
-			| LOCAL_PROXY_USE
-			| LOCAL_PROXY_REVEAL
-			| LOCAL_PROXY_DELETE => {
-				let ids: Vec<ClipId> =
-					self.timeline.read(cx).selection().iter().copied().collect();
+			LOCAL_PROXY_GENERATE | LOCAL_PROXY_USE | LOCAL_PROXY_REVEAL | LOCAL_PROXY_DELETE => {
+				let ids: Vec<ClipId> = self.timeline.read(cx).selection().iter().copied().collect();
 				let rows = self.engine.read(cx).clip_footage_entries(&ids);
 				match item {
 					LOCAL_PROXY_GENERATE => {
 						for row in rows.into_iter().filter(|row| row.can_generate) {
-							if let Err(err) = self.engine.update(cx, |engine, cx| {
-								engine.proxy_generate(row.id, cx)
-							}) {
+							if let Err(err) = self
+								.engine
+								.update(cx, |engine, cx| engine.proxy_generate(row.id, cx))
+							{
 								println!("[timeline] proxy generate failed: {err}");
 							}
 						}
@@ -326,9 +317,8 @@ impl<E: AppEngine> TimelinePanel<E> {
 					}
 					_ => {
 						for row in rows.into_iter().filter(|row| row.has_proxy) {
-							self.engine.update(cx, |engine, cx| {
-								engine.proxy_delete(row.id, cx)
-							});
+							self.engine
+								.update(cx, |engine, cx| engine.proxy_delete(row.id, cx));
 						}
 					}
 				}
@@ -343,8 +333,7 @@ impl<E: AppEngine> TimelinePanel<E> {
 			LOCAL_MULTICAM => {
 				// The C++ `multicam_enabled_triggered` flip: checked clips
 				// disable, unchecked ones enable.
-				let ids: Vec<ClipId> =
-					self.timeline.read(cx).selection().iter().copied().collect();
+				let ids: Vec<ClipId> = self.timeline.read(cx).selection().iter().copied().collect();
 				let enable = !self.engine.read(cx).multicam_enabled_on_selection(&ids);
 				self.engine.update(cx, |engine, cx| {
 					engine.multicam_enable_selected(ids, enable, cx)
@@ -596,7 +585,8 @@ impl<E: AppEngine> PanelCommandHandler for TimelinePanel<E> {
 		true
 	}
 	fn clear_in_out(&mut self, cx: &mut Context<Self>) -> bool {
-		self.engine.update(cx, |engine, cx| engine.clear_workarea(cx));
+		self.engine
+			.update(cx, |engine, cx| engine.clear_workarea(cx));
 		true
 	}
 
@@ -633,16 +623,19 @@ impl<E: AppEngine> PanelCommandHandler for TimelinePanel<E> {
 	// --- editing ---
 	fn cut_selected(&mut self, cx: &mut Context<Self>) -> bool {
 		let ids: Vec<ClipId> = self.timeline.read(cx).selection().iter().copied().collect();
-		self.engine.update(cx, |engine, cx| engine.clipboard_cut(ids, cx));
+		self.engine
+			.update(cx, |engine, cx| engine.clipboard_cut(ids, cx));
 		true
 	}
 	fn copy_selected(&mut self, cx: &mut Context<Self>) -> bool {
 		let ids: Vec<ClipId> = self.timeline.read(cx).selection().iter().copied().collect();
-		self.engine.update(cx, |engine, cx| engine.clipboard_copy(ids, cx));
+		self.engine
+			.update(cx, |engine, cx| engine.clipboard_copy(ids, cx));
 		true
 	}
 	fn paste(&mut self, cx: &mut Context<Self>) -> bool {
-		self.engine.update(cx, |engine, cx| engine.clipboard_paste(cx));
+		self.engine
+			.update(cx, |engine, cx| engine.clipboard_paste(cx));
 		true
 	}
 	fn delete_selected(&mut self, cx: &mut Context<Self>) -> bool {
@@ -673,14 +666,16 @@ impl<E: AppEngine> PanelCommandHandler for TimelinePanel<E> {
 	}
 	fn sync_by_waveform(&mut self, cx: &mut Context<Self>) -> bool {
 		let ids: Vec<ClipId> = self.timeline.read(cx).selection().iter().copied().collect();
-		self.engine
-			.update(cx, |engine, cx| engine.sync_clips_by_waveform(ids, false, cx));
+		self.engine.update(cx, |engine, cx| {
+			engine.sync_clips_by_waveform(ids, false, cx)
+		});
 		true
 	}
 	fn sync_by_waveform_speed(&mut self, cx: &mut Context<Self>) -> bool {
 		let ids: Vec<ClipId> = self.timeline.read(cx).selection().iter().copied().collect();
-		self.engine
-			.update(cx, |engine, cx| engine.sync_clips_by_waveform(ids, true, cx));
+		self.engine.update(cx, |engine, cx| {
+			engine.sync_clips_by_waveform(ids, true, cx)
+		});
 		true
 	}
 	/// 编辑 → 链接/重新链接: toggles the graph links among the selected
@@ -730,11 +725,12 @@ impl<E: AppEngine> Render for TimelinePanel<E> {
 			.bg(colors.container);
 
 		// A tool button: a 16px icon on a 24px hit target with a localized
-		// tooltip; the selected tool is highlighted.
+		// tooltip; the selected tool is highlighted (driven by the widget's
+		// current tool, so the toolbar and the Tools menu stay in sync).
 		let tool_button =
 			|index: usize, icon_name: &'static str, key: &'static str, cx: &mut Context<Self>| {
 				let tool = i18n::tr(key);
-				let selected = self.selected_tool == index;
+				let selected = self.timeline.read(cx).tool().index() == index;
 				let background = if selected {
 					colors.selected
 				} else {
@@ -753,9 +749,10 @@ impl<E: AppEngine> Render for TimelinePanel<E> {
 					.bg(background)
 					.hover(move |style| style.bg(hover_bg))
 					.tooltip(move |window, cx| tooltip_view(tool.into(), window, cx))
-					.on_click(cx.listener(move |this, _event: &ClickEvent, _window, _cx| {
-						println!("[timeline] tool: {tool} (placeholder)");
-						this.selected_tool = index;
+					.on_click(cx.listener(move |this, _event: &ClickEvent, _window, cx| {
+						if let Some(tt) = TimelineTool::from_index(index) {
+							this.timeline.update(cx, |view, cx| view.set_tool(tt, cx));
+						}
 					}))
 					.child(img(path).size(px(16.0)))
 			};
@@ -766,29 +763,28 @@ impl<E: AppEngine> Render for TimelinePanel<E> {
 
 		// Add-track buttons (the convenient way to create tracks; the track
 		// header context menu offers the same two entries).
-		let add_track_btn = |id: &'static str,
-		                     key: &'static str,
-		                     kind: TrackKind,
-		                     cx: &mut Context<Self>| {
-			let label = i18n::tr(key);
-			let hover_bg = colors.selected;
-			div()
-				.id(id)
-				.h(px(24.0))
-				.px_2()
-				.flex()
-				.items_center()
-				.rounded_sm()
-				.cursor_pointer()
-				.text_color(colors.text)
-				.text_xs()
-				.hover(move |style| style.bg(hover_bg))
-				.tooltip(move |window, cx| tooltip_view(label.into(), window, cx))
-				.on_click(cx.listener(move |this, _event: &ClickEvent, _window, cx| {
-					this.engine.update(cx, |engine, cx| engine.add_track(kind, cx));
-				}))
-				.child(label)
-		};
+		let add_track_btn =
+			|id: &'static str, key: &'static str, kind: TrackKind, cx: &mut Context<Self>| {
+				let label = i18n::tr(key);
+				let hover_bg = colors.selected;
+				div()
+					.id(id)
+					.h(px(24.0))
+					.px_2()
+					.flex()
+					.items_center()
+					.rounded_sm()
+					.cursor_pointer()
+					.text_color(colors.text)
+					.text_xs()
+					.hover(move |style| style.bg(hover_bg))
+					.tooltip(move |window, cx| tooltip_view(label.into(), window, cx))
+					.on_click(cx.listener(move |this, _event: &ClickEvent, _window, cx| {
+						this.engine
+							.update(cx, |engine, cx| engine.add_track(kind, cx));
+					}))
+					.child(label)
+			};
 		toolbar = toolbar
 			.child(add_track_btn(
 				"toolbar-add-video-track",
@@ -803,10 +799,12 @@ impl<E: AppEngine> Render for TimelinePanel<E> {
 				cx,
 			));
 
-		// A plain icon button (no selection state), e.g. zoom in/out.
+		// A plain icon button (no selection state), e.g. zoom in/out. The
+		// zoom buttons scale around the playhead (the design's fixed anchor).
 		let icon_btn = |id: &'static str,
 		                icon_name: &'static str,
 		                key: &'static str,
+		                factor: f32,
 		                cx: &mut Context<Self>| {
 			let label = i18n::tr(key);
 			let hover_bg = colors.container;
@@ -822,12 +820,21 @@ impl<E: AppEngine> Render for TimelinePanel<E> {
 				.text_color(colors.text)
 				.hover(move |style| style.bg(hover_bg))
 				.tooltip(move |window, cx| tooltip_view(label.into(), window, cx))
+				.on_click(cx.listener(move |this, _event: &ClickEvent, _window, cx| {
+					this.timeline.update(cx, |view, cx| {
+						let anchor = view.state.point_at_frame(view.state.playhead);
+						let zoom = view.state.zoom * factor;
+						view.state.set_zoom(zoom, anchor);
+						cx.emit(TimelineEvent::ZoomChanged(zoom));
+						cx.notify();
+					});
+				}))
 				.child(img(path).size(px(16.0)))
 		};
 
 		// The snap toggle: the magnet icon next to the checkbox box. The icon
-		// is decorative (the box itself is clickable, as in the widget's
-		// default row).
+		// is a real toggle too — clicking it flips snap state and mirrors it
+		// into the checkbox, keeping the two in sync.
 		let snap_row = div()
 			.flex()
 			.items_center()
@@ -844,6 +851,23 @@ impl<E: AppEngine> Render for TimelinePanel<E> {
 					.tooltip(move |window, cx| {
 						tooltip_view(i18n::tr("timeline.snap").into(), window, cx)
 					})
+					.on_click(cx.listener(|this, _event: &ClickEvent, _window, cx| {
+						let enabled = !this.timeline.read(cx).state.snap_enabled;
+						this.timeline.update(cx, |timeline, cx| {
+							timeline.state.snap_enabled = enabled;
+							cx.notify();
+						});
+						this.snap.update(cx, |snap, cx| {
+							snap.set_state(
+								if enabled {
+									CheckState::Checked
+								} else {
+									CheckState::Unchecked
+								},
+								cx,
+							);
+						});
+					}))
 					.child(img(icons::icon_path(icons::ICON_SNAP, cx)).size(px(16.0))),
 			)
 			.child(self.snap.clone());
@@ -853,12 +877,14 @@ impl<E: AppEngine> Render for TimelinePanel<E> {
 				"toolbar-zoom-in",
 				icons::ICON_ZOOM_IN,
 				"timeline.zoom_in",
+				1.25,
 				cx,
 			))
 			.child(icon_btn(
 				"toolbar-zoom-out",
 				icons::ICON_ZOOM_OUT,
 				"timeline.zoom_out",
+				0.8,
 				cx,
 			))
 			.child(
@@ -1119,8 +1145,14 @@ pub(crate) fn clip_menu(
 			.with_checked(false)
 			.separated(),
 		MenuItem::new(LOCAL_CACHE_ALL, i18n::tr("timeline.context.cache_all")),
-		MenuItem::new(LOCAL_CACHE_IN_OUT, i18n::tr("timeline.context.cache_in_out")),
-		MenuItem::new(LOCAL_CACHE_DISCARD, i18n::tr("timeline.context.cache_discard")),
+		MenuItem::new(
+			LOCAL_CACHE_IN_OUT,
+			i18n::tr("timeline.context.cache_in_out"),
+		),
+		MenuItem::new(
+			LOCAL_CACHE_DISCARD,
+			i18n::tr("timeline.context.cache_discard"),
+		),
 	]);
 	items.push(MenuItem::new(0, i18n::tr("timeline.context.cache")).with_submenu(cache_menu));
 	// Proxy group: the enable state mirrors the C++
@@ -1130,7 +1162,10 @@ pub(crate) fn clip_menu(
 	let can_generate = proxy.iter().any(|row| row.can_generate);
 	let any_proxy = proxy.iter().any(|row| row.has_proxy);
 	let all_enabled = has_footage && proxy.iter().all(|row| row.enabled);
-	let mut generate = MenuItem::new(LOCAL_PROXY_GENERATE, i18n::tr("timeline.context.generate_proxy"));
+	let mut generate = MenuItem::new(
+		LOCAL_PROXY_GENERATE,
+		i18n::tr("timeline.context.generate_proxy"),
+	);
 	if !can_generate {
 		generate = generate.disabled();
 	}
@@ -1139,11 +1174,17 @@ pub(crate) fn clip_menu(
 	if !has_footage {
 		use_proxy = use_proxy.disabled();
 	}
-	let mut reveal = MenuItem::new(LOCAL_PROXY_REVEAL, i18n::tr("timeline.context.reveal_proxy"));
+	let mut reveal = MenuItem::new(
+		LOCAL_PROXY_REVEAL,
+		i18n::tr("timeline.context.reveal_proxy"),
+	);
 	if !any_proxy {
 		reveal = reveal.disabled();
 	}
-	let mut delete = MenuItem::new(LOCAL_PROXY_DELETE, i18n::tr("timeline.context.delete_proxy"));
+	let mut delete = MenuItem::new(
+		LOCAL_PROXY_DELETE,
+		i18n::tr("timeline.context.delete_proxy"),
+	);
 	if !any_proxy {
 		delete = delete.disabled();
 	}
@@ -1166,8 +1207,11 @@ pub(crate) fn clip_menu(
 		.disabled(),
 	);
 	items.push(
-		MenuItem::new(LOCAL_REVEAL_PROJECT, i18n::tr("timeline.context.reveal_in_project"))
-			.disabled(),
+		MenuItem::new(
+			LOCAL_REVEAL_PROJECT,
+			i18n::tr("timeline.context.reveal_in_project"),
+		)
+		.disabled(),
 	);
 	// Multi-Cam (checkable): enabled when any selected clip's connected
 	// viewer is a sequence, checked when that clip already has a multicam —
@@ -1187,15 +1231,21 @@ pub(crate) fn clip_menu(
 /// sequence "Properties" entry.
 pub(crate) fn empty_area_menu() -> Menu {
 	let thumbnails = Menu::new(vec![
-		MenuItem::new(LOCAL_THUMBNAIL_OFF, i18n::tr("timeline.context.thumbnails_off"))
-			.with_checked(false),
+		MenuItem::new(
+			LOCAL_THUMBNAIL_OFF,
+			i18n::tr("timeline.context.thumbnails_off"),
+		)
+		.with_checked(false),
 		MenuItem::new(
 			LOCAL_THUMBNAIL_IN_OUT,
 			i18n::tr("timeline.context.thumbnails_at_in_points"),
 		)
 		.with_checked(false),
-		MenuItem::new(LOCAL_THUMBNAIL_ON, i18n::tr("timeline.context.thumbnails_on"))
-			.with_checked(false),
+		MenuItem::new(
+			LOCAL_THUMBNAIL_ON,
+			i18n::tr("timeline.context.thumbnails_on"),
+		)
+		.with_checked(false),
 	]);
 	Menu::new(vec![
 		MenuItem::new(
@@ -1203,11 +1253,13 @@ pub(crate) fn empty_area_menu() -> Menu {
 			i18n::tr("timeline.context.use_audio_time_units"),
 		)
 		.with_checked(false),
-		MenuItem::new(0, i18n::tr("timeline.context.show_thumbnails"))
-			.with_submenu(thumbnails),
-		MenuItem::new(LOCAL_SHOW_WAVEFORMS, i18n::tr("timeline.context.show_waveforms"))
-			.with_checked(false)
-			.separated(),
+		MenuItem::new(0, i18n::tr("timeline.context.show_thumbnails")).with_submenu(thumbnails),
+		MenuItem::new(
+			LOCAL_SHOW_WAVEFORMS,
+			i18n::tr("timeline.context.show_waveforms"),
+		)
+		.with_checked(false)
+		.separated(),
 		properties_item(ActionId::SequenceSettings),
 	])
 }
@@ -1216,10 +1268,23 @@ pub(crate) fn empty_area_menu() -> Menu {
 /// every empty track.
 pub(crate) fn track_head_menu() -> Menu {
 	Menu::new(vec![
-		MenuItem::new(LOCAL_ADD_VIDEO_TRACK, i18n::tr("timeline.context.add_video_track")),
-		MenuItem::new(LOCAL_ADD_AUDIO_TRACK, i18n::tr("timeline.context.add_audio_track")),
-		MenuItem::new(LOCAL_DELETE_TRACK, i18n::tr("timeline.context.delete_track")).separated(),
-		MenuItem::new(LOCAL_DELETE_ALL_EMPTY, i18n::tr("timeline.context.delete_all_empty")),
+		MenuItem::new(
+			LOCAL_ADD_VIDEO_TRACK,
+			i18n::tr("timeline.context.add_video_track"),
+		),
+		MenuItem::new(
+			LOCAL_ADD_AUDIO_TRACK,
+			i18n::tr("timeline.context.add_audio_track"),
+		),
+		MenuItem::new(
+			LOCAL_DELETE_TRACK,
+			i18n::tr("timeline.context.delete_track"),
+		)
+		.separated(),
+		MenuItem::new(
+			LOCAL_DELETE_ALL_EMPTY,
+			i18n::tr("timeline.context.delete_all_empty"),
+		),
 	])
 }
 
@@ -1253,10 +1318,16 @@ pub(crate) fn ruler_menu() -> Menu {
 			i18n::tr("timeline.context.timecode_non_drop_frame"),
 		)
 		.with_checked(false),
-		MenuItem::new(LOCAL_TIMECODE_SECONDS, i18n::tr("timeline.context.timecode_seconds"))
-			.with_checked(false),
-		MenuItem::new(LOCAL_TIMECODE_FRAMES, i18n::tr("timeline.context.timecode_frames"))
-			.with_checked(false),
+		MenuItem::new(
+			LOCAL_TIMECODE_SECONDS,
+			i18n::tr("timeline.context.timecode_seconds"),
+		)
+		.with_checked(false),
+		MenuItem::new(
+			LOCAL_TIMECODE_FRAMES,
+			i18n::tr("timeline.context.timecode_frames"),
+		)
+		.with_checked(false),
 		MenuItem::new(
 			LOCAL_TIMECODE_MILLISECONDS,
 			i18n::tr("timeline.context.timecode_milliseconds"),
@@ -1385,7 +1456,10 @@ mod tests {
 		cx.update(|window, cx| {
 			window.draw(cx).clear();
 		});
-		assert!(cx.debug_bounds("menu-popup").is_none(), "menu starts hidden");
+		assert!(
+			cx.debug_bounds("menu-popup").is_none(),
+			"menu starts hidden"
+		);
 
 		let canvas = cx
 			.debug_bounds("timeline-canvas")
@@ -1412,11 +1486,7 @@ mod tests {
 	/// entries and a registry-backed "Properties".
 	#[test]
 	fn clip_menu_keeps_the_cpp_shape() {
-		let menu = clip_menu(
-			crate::oakui::engine::SyncEligibility::default(),
-			&[],
-			None,
-		);
+		let menu = clip_menu(crate::oakui::engine::SyncEligibility::default(), &[], None);
 		// Color label item sits right after the edit section and carries a
 		// submenu of all 16 labels.
 		let color = menu
@@ -1437,9 +1507,11 @@ mod tests {
 			ActionId::SyncByWaveformSpeed,
 		] {
 			let id = action.entry().menu_id();
-			let item = menu.items.iter().find(|item| item.id == id).unwrap_or_else(|| {
-				panic!("clip menu missing synchronize entry {id}")
-			});
+			let item = menu
+				.items
+				.iter()
+				.find(|item| item.id == id)
+				.unwrap_or_else(|| panic!("clip menu missing synchronize entry {id}"));
 			assert!(!item.enabled, "synchronize {id} should be disabled");
 		}
 
@@ -1448,9 +1520,11 @@ mod tests {
 			LOCAL_REVEAL_PROJECT,
 			LOCAL_MULTICAM,
 		] {
-			let item = menu.items.iter().find(|item| item.id == id).unwrap_or_else(|| {
-				panic!("clip menu missing disabled placeholder id {id}")
-			});
+			let item = menu
+				.items
+				.iter()
+				.find(|item| item.id == id)
+				.unwrap_or_else(|| panic!("clip menu missing disabled placeholder id {id}"));
 			assert!(!item.enabled, "placeholder {id} should be disabled");
 		}
 
@@ -1474,10 +1548,7 @@ mod tests {
 
 		// "Properties" dispatches through the speed/duration registry entry.
 		let properties = menu.items.last().expect("properties is the clip menu tail");
-		assert_eq!(
-			properties.id,
-			ActionId::SpeedDuration.entry().menu_id()
-		);
+		assert_eq!(properties.id, ActionId::SpeedDuration.entry().menu_id());
 	}
 
 	/// The synchronize / proxy enable state follows the selection (the C++
@@ -1580,7 +1651,10 @@ mod tests {
 			.find(|item| item.id == LOCAL_MULTICAM)
 			.expect("multi-cam item");
 		assert!(item.enabled, "a sequence-fed clip enables Multi-Cam");
-		assert!(item.checked.unwrap_or(false), "checked when multicam present");
+		assert!(
+			item.checked.unwrap_or(false),
+			"checked when multicam present"
+		);
 
 		// Eligible but not enabled: enabled, unchecked.
 		let menu = clip_menu(
@@ -1614,25 +1688,22 @@ mod tests {
 		let ids: Vec<usize> = sub.iter().map(|item| item.id).collect();
 		assert_eq!(
 			ids,
-			vec![LOCAL_THUMBNAIL_OFF, LOCAL_THUMBNAIL_IN_OUT, LOCAL_THUMBNAIL_ON]
+			vec![
+				LOCAL_THUMBNAIL_OFF,
+				LOCAL_THUMBNAIL_IN_OUT,
+				LOCAL_THUMBNAIL_ON
+			]
 		);
 		assert!(sub.iter().all(|item| item.checked == Some(false)));
 
 		let properties = menu.items.last().expect("properties tail");
-		assert_eq!(
-			properties.id,
-			ActionId::SequenceSettings.entry().menu_id()
-		);
+		assert_eq!(properties.id, ActionId::SequenceSettings.entry().menu_id());
 	}
 
 	/// The track-header menu is exactly the two delete entries.
 	#[test]
 	fn track_head_menu_offers_add_then_delete_entries() {
-		let ids: Vec<usize> = track_head_menu()
-			.items
-			.iter()
-			.map(|item| item.id)
-			.collect();
+		let ids: Vec<usize> = track_head_menu().items.iter().map(|item| item.id).collect();
 		assert_eq!(
 			ids,
 			vec![

@@ -56,7 +56,7 @@ use gpui_widgets::dialog::{DialogButton, Modal, ModalEvent, ModalOptions};
 use gpui_widgets::theme::{apply_theme, OakTheme};
 use gpui_widgets::viewer::PlaybackClock;
 
-use crate::actions::{ActionId, Tool};
+use crate::actions::{ActionId, TimelineToolExt, Tool};
 use crate::dialogs::{ExportDialogContent, PreferencesDialogContent};
 use crate::oakui::{AppEngine, ExportSession, MockEngine, Monitor, RealEngine};
 use crate::panels::commands as panel_commands;
@@ -195,7 +195,9 @@ enum ModalState<E: AppEngine> {
 		content: Entity<crate::dialogs::ProjectPropertiesContent<E>>,
 	},
 	/// The about dialog (Help > About Oak…; static content).
-	About { modal: Entity<Modal> },
+	About {
+		modal: Entity<Modal>,
+	},
 	/// The new-sequence dialog (File > New > Sequence…).
 	NewSequence {
 		modal: Entity<Modal>,
@@ -370,6 +372,9 @@ pub struct OakApp<E: AppEngine> {
 	/// The active timeline tool (the Tools menu's exclusive group; the
 	/// timeline toolbar keeps its own visual selection for now).
 	active_tool: Tool,
+	/// The tool the timeline widget last reported; app tool follows it via
+	/// the observe hook on [`Self::timeline`] (toolbar ↔ menu stay in sync).
+	last_timeline_tool: gpui::timeline::TimelineTool,
 	/// 回放 → 循环播放 is on (the C++ `Loop` config flag; playback looping
 	/// itself is a transport gap, so this only drives the checkmark).
 	loop_playback: bool,
@@ -411,6 +416,17 @@ impl<E: AppEngine> OakApp<E> {
 		let source_clock = engine.read(cx).source_clock().clone();
 		let program_clock = engine.read(cx).program_clock().clone();
 		let timeline = cx.new(|cx| TimelineView::new(engine.clone(), window, cx).zoom(2.0));
+		// The toolbar and the Tools menu both drive the widget's tool; the
+		// widget is the single source of truth, and any change (from either
+		// side) is mirrored into the app tool + menu checkmark here.
+		cx.observe(&timeline, |this, timeline, cx| {
+			let tool = timeline.read(cx).tool();
+			if tool != this.last_timeline_tool {
+				this.last_timeline_tool = tool;
+				this.active_tool = tool.app_tool();
+				this.rebuild_menu_bar(cx);
+			}
+		});
 		// M12 P4: install the waveform decorator when the engine provides
 		// a waveform cache.
 		if let Some(cache) = engine.read(cx).waveform_cache() {
@@ -516,7 +532,9 @@ impl<E: AppEngine> OakApp<E> {
 		// properties dialog.
 		cx.subscribe(
 			&panels.project,
-			|this, _panel, event: &crate::panels::project_explorer::SequencePropertiesRequested,
+			|this,
+			 _panel,
+			 event: &crate::panels::project_explorer::SequencePropertiesRequested,
 			 cx| {
 				this.open_sequence_properties(event.0, cx);
 			},
@@ -735,6 +753,7 @@ impl<E: AppEngine> OakApp<E> {
 			focused_panel: None,
 			panels,
 			active_tool: Tool::Pointer,
+			last_timeline_tool: gpui::timeline::TimelineTool::Select,
 			loop_playback: false,
 			show_all: false,
 			full_screen: false,
@@ -1094,7 +1113,15 @@ impl<E: AppEngine> OakApp<E> {
 			tool_action if Tool::from_action(tool_action).is_some() => {
 				let tool = Tool::from_action(tool_action).unwrap();
 				self.active_tool = tool;
-				println!("[tools] selected: {tool:?} (placeholder behavior)");
+				println!("[tools] selected: {tool:?}");
+				// Push the app tool into the timeline widget when it models
+				// one; unmodeled tools (edit/transition/add/record/hand) keep
+				// the widget's current tool.
+				if let Some(tt) = tool.timeline_tool() {
+					self.timeline.update(cx, |timeline, cx| {
+						timeline.set_tool(tt, cx);
+					});
+				}
 				self.rebuild_menu_bar(cx);
 			}
 			// --- Proxy (Tools) ---------------------------------------------
@@ -1436,7 +1463,8 @@ impl<E: AppEngine> OakApp<E> {
 			menu::ViewerPanelEvent::SetInPoint => self.set_point_at_playhead(true, cx),
 			menu::ViewerPanelEvent::SetOutPoint => self.set_point_at_playhead(false, cx),
 			menu::ViewerPanelEvent::ClearRange => {
-				self.engine.update(cx, |engine, cx| engine.clear_workarea(cx));
+				self.engine
+					.update(cx, |engine, cx| engine.clear_workarea(cx));
 			}
 		}
 	}
@@ -2193,8 +2221,9 @@ impl<E: AppEngine> OakApp<E> {
 			.map(|p| p.name)
 			.unwrap_or_default();
 		self.spawn_modal(cx, move |window, app| {
-			let content =
-				app.new(|cx| crate::dialogs::SequencePropertiesContent::new(engine, sequence_id, window, cx));
+			let content = app.new(|cx| {
+				crate::dialogs::SequencePropertiesContent::new(engine, sequence_id, window, cx)
+			});
 			let modal = app.new(|cx| {
 				Modal::new(
 					modal_ids::SEQUENCE_PROPERTIES,

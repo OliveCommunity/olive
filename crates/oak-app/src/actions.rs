@@ -356,8 +356,7 @@ pub fn key_bindings() -> Vec<KeyBinding> {
 pub fn display_shortcut(action: ActionId) -> Option<String> {
 	let keys = effective_keys(action.entry());
 	let key = keys.first()?;
-	let keystroke =
-		gpui::Keystroke::parse(key).expect("effective keys parse (tests enforce it)");
+	let keystroke = gpui::Keystroke::parse(key).expect("effective keys parse (tests enforce it)");
 
 	// `secondary-` parses to `platform` on macOS and `control` elsewhere;
 	// the modifier renderers below follow the same split.
@@ -568,14 +567,18 @@ pub fn has_custom_shortcuts() -> bool {
 /// compare keys regardless of the `secondary-` vs `cmd-`/`super-`/`win-`
 /// spelling (the parser maps all of them to the same modifier bits).
 fn canonical_key(key: &str) -> Option<String> {
-	gpui::Keystroke::parse(key).ok().map(|keystroke| keystroke.unparse())
+	gpui::Keystroke::parse(key)
+		.ok()
+		.map(|keystroke| keystroke.unparse())
 }
 
 /// The canonical form of a key list (accepts both `&str` and `String`
 /// slices, so the `&'static [&str]` registry defaults and the `Vec<String>`
 /// overrides share one code path).
 fn canonical_keys<K: AsRef<str>>(keys: &[K]) -> Vec<String> {
-	keys.iter().filter_map(|key| canonical_key(key.as_ref())).collect()
+	keys.iter()
+		.filter_map(|key| canonical_key(key.as_ref()))
+		.collect()
 }
 
 /// The action's effective key list: the override when one is set, else the
@@ -584,7 +587,11 @@ pub fn effective_keys(entry: &ActionEntry) -> Vec<String> {
 	match overrides().lock().unwrap().get(entry.cpp_id) {
 		Some(ShortcutOverride::Unbound) => Vec::new(),
 		Some(ShortcutOverride::Keys(keys)) => keys.clone(),
-		None => entry.default_keys.iter().map(|key| key.to_string()).collect(),
+		None => entry
+			.default_keys
+			.iter()
+			.map(|key| key.to_string())
+			.collect(),
 	}
 }
 
@@ -748,6 +755,47 @@ impl Tool {
 			_ => None,
 		}
 	}
+
+	/// The timeline-widget tool this app tool drives, if the widget models it.
+	///
+	/// `Edit`/`Transition`/`Add`/`Record`/`Hand` have no widget counterpart
+	/// (the widget's pointer tool covers them); those map to `None` and the
+	/// timeline keeps its previous tool.
+	pub const fn timeline_tool(self) -> Option<gpui::timeline::TimelineTool> {
+		match self {
+			Tool::Pointer => Some(gpui::timeline::TimelineTool::Select),
+			Tool::TrackSelect => Some(gpui::timeline::TimelineTool::TrackSelect),
+			Tool::Ripple => Some(gpui::timeline::TimelineTool::Ripple),
+			Tool::Rolling => Some(gpui::timeline::TimelineTool::Roll),
+			Tool::Razor => Some(gpui::timeline::TimelineTool::Razor),
+			Tool::Slip => Some(gpui::timeline::TimelineTool::Slip),
+			Tool::Slide => Some(gpui::timeline::TimelineTool::Slide),
+			Tool::Zoom => Some(gpui::timeline::TimelineTool::Zoom),
+			_ => None,
+		}
+	}
+}
+
+/// Extension trait mapping the timeline widget's tool back to the app tool
+/// (for the toolbar highlight). Unmodeled tools fall back to the pointer.
+pub trait TimelineToolExt {
+	fn app_tool(self) -> Tool;
+}
+
+impl TimelineToolExt for gpui::timeline::TimelineTool {
+	fn app_tool(self) -> Tool {
+		match self {
+			gpui::timeline::TimelineTool::Select => Tool::Pointer,
+			gpui::timeline::TimelineTool::TrackSelect => Tool::TrackSelect,
+			gpui::timeline::TimelineTool::Ripple => Tool::Ripple,
+			gpui::timeline::TimelineTool::Roll => Tool::Rolling,
+			gpui::timeline::TimelineTool::Razor => Tool::Razor,
+			gpui::timeline::TimelineTool::Slip => Tool::Slip,
+			gpui::timeline::TimelineTool::Slide => Tool::Slide,
+			gpui::timeline::TimelineTool::Zoom => Tool::Zoom,
+			_ => Tool::Pointer,
+		}
+	}
 }
 
 #[cfg(test)]
@@ -759,7 +807,11 @@ mod tests {
 	fn registry_ids_are_unique() {
 		let mut seen = std::collections::HashSet::new();
 		for entry in REGISTRY {
-			assert!(seen.insert(entry.cpp_id), "duplicate cpp id {}", entry.cpp_id);
+			assert!(
+				seen.insert(entry.cpp_id),
+				"duplicate cpp id {}",
+				entry.cpp_id
+			);
 		}
 	}
 
@@ -823,7 +875,9 @@ mod tests {
 	/// is meant to drive the menus).
 	#[test]
 	fn every_action_appears_in_the_menu_tree() {
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
 
 		use crate::oakui::component::menu;
@@ -871,7 +925,9 @@ mod tests {
 	fn every_i18n_key_exists_in_both_languages() {
 		for entry in REGISTRY {
 			for code in ["en-US", "zh-CN"] {
-				let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+				let _guard = crate::i18n::lang_test_lock()
+					.lock()
+					.unwrap_or_else(|e| e.into_inner());
 				crate::i18n::set_language_code(code);
 				let value = crate::i18n::tr(entry.i18n_key);
 				assert_ne!(
@@ -884,7 +940,9 @@ mod tests {
 		}
 		// The loop leaves zh-CN active; restore the default so lock-free
 		// tests building English menus are not fooled mid-assert.
-		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
 	}
 
@@ -895,27 +953,20 @@ mod tests {
 	#[test]
 	#[cfg(target_os = "macos")]
 	fn display_shortcut_formats_labels() {
-		let _guard = shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
-		assert_eq!(
-			display_shortcut(ActionId::Redo).as_deref(),
-			Some("⇧⌘Z")
-		);
+		let _guard = shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		assert_eq!(display_shortcut(ActionId::Redo).as_deref(), Some("⇧⌘Z"));
 		assert_eq!(
 			display_shortcut(ActionId::SplitAtPlayhead).as_deref(),
 			Some("⌘K")
 		);
-		assert_eq!(
-			display_shortcut(ActionId::NudgeLeft).as_deref(),
-			Some("⌥←")
-		);
+		assert_eq!(display_shortcut(ActionId::NudgeLeft).as_deref(), Some("⌥←"));
 		assert_eq!(
 			display_shortcut(ActionId::FullScreen).as_deref(),
 			Some("F11")
 		);
-		assert_eq!(
-			display_shortcut(ActionId::Insert).as_deref(),
-			Some(",")
-		);
+		assert_eq!(display_shortcut(ActionId::Insert).as_deref(), Some(","));
 		assert!(display_shortcut(ActionId::About).is_none());
 	}
 
@@ -926,8 +977,7 @@ mod tests {
 	/// A unique temporary directory for one test (the `shortcuts` file
 	/// round-trip), so parallel tests never collide on the same path.
 	fn temp_dir(label: &str) -> String {
-		static COUNTER: std::sync::atomic::AtomicUsize =
-			std::sync::atomic::AtomicUsize::new(0);
+		static COUNTER: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 		let n = COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 		let path = std::env::temp_dir().join(format!(
 			"oak-shortcuts-test-{label}-{}-{n}",
@@ -959,7 +1009,9 @@ mod tests {
 	/// only carries the entries that differ from the registry defaults.
 	#[test]
 	fn shortcuts_file_round_trips_through_the_override_table() {
-		let _guard = shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		reset_all_custom_shortcuts();
 		let dir = temp_dir("roundtrip");
 		let path = format!("{dir}/shortcuts");
@@ -984,10 +1036,7 @@ mod tests {
 			effective_keys(ActionId::SaveProject.entry()),
 			vec!["cmd-alt-s".to_string()]
 		);
-		assert_eq!(
-			effective_keys(ActionId::Undo.entry()),
-			Vec::<String>::new()
-		);
+		assert_eq!(effective_keys(ActionId::Undo.entry()), Vec::<String>::new());
 		// The un-overridden action keeps its registry default.
 		assert_eq!(
 			effective_keys(ActionId::NewProject.entry()),
@@ -999,7 +1048,9 @@ mod tests {
 	/// an all-default table removes the file entirely (the C++ behavior).
 	#[test]
 	fn save_writes_only_entries_that_differ_from_default() {
-		let _guard = shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		reset_all_custom_shortcuts();
 		let dir = temp_dir("diff");
 		let path = format!("{dir}/shortcuts");
@@ -1022,7 +1073,9 @@ mod tests {
 	/// defaults stay intact until overridden.
 	#[test]
 	fn effective_keys_fall_back_to_defaults() {
-		let _guard = shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		reset_all_custom_shortcuts();
 		// Delete defaults to ["delete", "backspace"].
 		assert_eq!(
@@ -1046,7 +1099,9 @@ mod tests {
 	/// none).
 	#[test]
 	fn stealing_a_key_moves_the_binding_away() {
-		let _guard = shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		reset_all_custom_shortcuts();
 		let canon = canonical_key("secondary-c").expect("copy's key parses");
 		assert_eq!(owner_of_shortcut(&canon), Some(ActionId::Copy));
@@ -1072,7 +1127,9 @@ mod tests {
 	#[test]
 	#[cfg(target_os = "macos")]
 	fn display_shortcut_uses_the_effective_key() {
-		let _guard = shortcuts_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		let _guard = shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		set_custom_shortcut("saveproj", vec!["cmd-alt-s".to_string()]);
 		assert_eq!(
 			display_shortcut(ActionId::SaveProject).as_deref(),

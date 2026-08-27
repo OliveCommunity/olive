@@ -1020,10 +1020,7 @@ impl MockEngine {
 	/// matching a selected graph node.
 	fn effect_for_node(&self, node: NodeId) -> Option<EffectId> {
 		let title = self.nodes.iter().find(|n| n.id() == node)?.title();
-		self.effects
-			.iter()
-			.find(|e| e.title == title)
-			.map(|e| e.id)
+		self.effects.iter().find(|e| e.title == title).map(|e| e.id)
 	}
 
 	/// Looks up a node by id (test helper).
@@ -1486,6 +1483,103 @@ impl AppEngine for MockEngine {
 				}
 				cx.notify();
 			}
+			TimelineEvent::ClipSplitRequested { clip, time } => {
+				self.split_clip(*clip, *time, cx);
+			}
+			TimelineEvent::ClipRippleTrimRequested {
+				clip,
+				edge,
+				new_frame,
+			} => {
+				if let Some((track, index)) = self.mock_clip_position(*clip) {
+					if self.tracks[track].locked {
+						return;
+					}
+					// Trim the clip itself (same as a plain trim), then shift
+					// every later clip on the track by the same delta — the
+					// mock's stand-in for the real ripple-close of the gap.
+					let delta = {
+						let clip = &self.tracks[track].clips[index];
+						match edge {
+							gpui::timeline::TrimEdge::Start => new_frame.0 - clip.range.start.0,
+							gpui::timeline::TrimEdge::End => new_frame.0 - clip.range.end.0,
+						}
+					};
+					{
+						let clip = &mut self.tracks[track].clips[index];
+						match edge {
+							gpui::timeline::TrimEdge::Start => {
+								clip.range.start = *new_frame;
+								clip.media_in = Frame(clip.media_in.0 + delta);
+							}
+							gpui::timeline::TrimEdge::End => {
+								clip.range.end = *new_frame;
+							}
+						}
+					}
+					for later in self.tracks[track].clips.iter_mut().skip(index + 1) {
+						later.range = FrameRange::new(
+							Frame(later.range.start.0 + delta),
+							Frame(later.range.end.0 + delta),
+						);
+					}
+				}
+				cx.notify();
+			}
+			TimelineEvent::ClipRollRequested {
+				clip_a,
+				clip_b,
+				new_frame,
+			} => {
+				let (Some((ta, ia)), Some((tb, ib))) = (
+					self.mock_clip_position(*clip_a),
+					self.mock_clip_position(*clip_b),
+				) else {
+					return;
+				};
+				if ta != tb || self.tracks[ta].locked {
+					return;
+				}
+				// The boundary must stay inside the two clips' combined span.
+				let (a_start, b_end) = {
+					let a = &self.tracks[ta].clips[ia];
+					let b = &self.tracks[ta].clips[ib];
+					(a.range.start.0, b.range.end.0)
+				};
+				if new_frame.0 <= a_start || new_frame.0 >= b_end {
+					return;
+				}
+				let (a_idx, b_idx) = if ia < ib { (ia, ib) } else { (ib, ia) };
+				self.tracks[ta].clips[a_idx].range.end = *new_frame;
+				self.tracks[ta].clips[b_idx].range.start = *new_frame;
+				cx.notify();
+			}
+			TimelineEvent::ClipSlideRequested { clip, new_start } => {
+				if let Some((track, index)) = self.mock_clip_position(*clip) {
+					if self.tracks[track].locked {
+						return;
+					}
+					// The clip slides in time; its media offset is unchanged.
+					let length = {
+						let clip = &self.tracks[track].clips[index];
+						clip.range.end.0 - clip.range.start.0
+					};
+					let clip = &mut self.tracks[track].clips[index];
+					clip.range = FrameRange::new(*new_start, Frame(new_start.0 + length));
+				}
+				cx.notify();
+			}
+			TimelineEvent::ClipSlipRequested { clip, new_media_in } => {
+				if let Some((track, index)) = self.mock_clip_position(*clip) {
+					if self.tracks[track].locked {
+						return;
+					}
+					// The clip's position in time is fixed; only the media
+					// offset under it changes.
+					self.tracks[track].clips[index].media_in = *new_media_in;
+				}
+				cx.notify();
+			}
 			TimelineEvent::ClipMoveRequested {
 				clip,
 				new_track,
@@ -1495,7 +1589,11 @@ impl AppEngine for MockEngine {
 					return;
 				};
 				if self.tracks[track].locked
-					|| self.tracks.get(*new_track).map(|t| t.locked).unwrap_or(true)
+					|| self
+						.tracks
+						.get(*new_track)
+						.map(|t| t.locked)
+						.unwrap_or(true)
 				{
 					return;
 				}
@@ -1542,17 +1640,17 @@ impl AppEngine for MockEngine {
 				}
 				cx.notify();
 			}
-				TimelineEvent::WorkAreaPreview { start, end } => {
-					self.set_workarea_preview(*start, *end, cx);
-				}
-				TimelineEvent::WorkAreaCommitted {
-					start,
-					end,
-					old_start,
-					old_end,
-				} => {
-					self.commit_workarea(*old_start, *old_end, *start, *end, cx);
-				}
+			TimelineEvent::WorkAreaPreview { start, end } => {
+				self.set_workarea_preview(*start, *end, cx);
+			}
+			TimelineEvent::WorkAreaCommitted {
+				start,
+				end,
+				old_start,
+				old_end,
+			} => {
+				self.commit_workarea(*old_start, *old_end, *start, *end, cx);
+			}
 		}
 	}
 
@@ -1706,7 +1804,8 @@ impl AppEngine for MockEngine {
 		// The footage's media type, inferred from its entry name (the mock
 		// never probes media). Entries the explorer does not list are
 		// rejected.
-		let Some(name) = self.footage_entry_name(id) else {			println!("[mock engine] drop footage: entry {id} not in the project");
+		let Some(name) = self.footage_entry_name(id) else {
+			println!("[mock engine] drop footage: entry {id} not in the project");
 			cx.notify();
 			return;
 		};
@@ -1734,7 +1833,9 @@ impl AppEngine for MockEngine {
 		// A 10-second demo clip (the mock has no media durations).
 		let fps = self.frame_rate();
 		let length = Frame(
-			(10.0 * fps.num as f64 / fps.den.max(1) as f64).round().max(1.0) as i64,
+			(10.0 * fps.num as f64 / fps.den.max(1) as f64)
+				.round()
+				.max(1.0) as i64,
 		);
 		let clip = MockClip {
 			id: ClipId(self.next_mock_clip_id()),
@@ -1780,10 +1881,18 @@ impl AppEngine for MockEngine {
 	fn footage_length_frames(&self, id: u64) -> Option<i64> {
 		self.footage_entry_name(id)?;
 		let fps = self.frame_rate();
-		Some((10.0 * fps.num as f64 / fps.den.max(1) as f64).round().max(1.0) as i64)
+		Some(
+			(10.0 * fps.num as f64 / fps.den.max(1) as f64)
+				.round()
+				.max(1.0) as i64,
+		)
 	}
 
-	fn export_project_path(&mut self, _path: PathBuf, cx: &mut Context<Self>) -> Result<(), String> {
+	fn export_project_path(
+		&mut self,
+		_path: PathBuf,
+		cx: &mut Context<Self>,
+	) -> Result<(), String> {
 		println!("[mock engine] export: no persistence in mock mode");
 		cx.notify();
 		Ok(())
@@ -1935,7 +2044,11 @@ impl AppEngine for MockEngine {
 		self.ocio_config.clone()
 	}
 
-	fn set_project_ocio_config(&mut self, path: String, cx: &mut Context<Self>) -> Result<(), String> {
+	fn set_project_ocio_config(
+		&mut self,
+		path: String,
+		cx: &mut Context<Self>,
+	) -> Result<(), String> {
 		let trimmed = path.trim().to_string();
 		// Validate like the real engine (a bogus path keeps the dialog open).
 		if !trimmed.is_empty() {
@@ -1951,7 +2064,12 @@ impl AppEngine for MockEngine {
 		self.cache_location.clone()
 	}
 
-	fn set_project_cache_location(&mut self, setting: i32, custom_path: String, cx: &mut Context<Self>) {
+	fn set_project_cache_location(
+		&mut self,
+		setting: i32,
+		custom_path: String,
+		cx: &mut Context<Self>,
+	) {
 		let setting = setting.clamp(0, 2);
 		self.cache_location = (
 			setting,
@@ -2137,7 +2255,11 @@ impl AppEngine for MockEngine {
 		self.mock_multicam_state()
 	}
 
-	fn multicam_angle_frame(&mut self, source: i32, cx: &mut Context<Self>) -> Option<Arc<RenderImage>> {
+	fn multicam_angle_frame(
+		&mut self,
+		source: i32,
+		cx: &mut Context<Self>,
+	) -> Option<Arc<RenderImage>> {
 		let playhead = self.clock_frame(Monitor::Program, cx).0;
 		self.mock_multicam_angle_frame(source, playhead)
 	}
@@ -2152,7 +2274,12 @@ impl AppEngine for MockEngine {
 		self.mock_multicam_state().is_some()
 	}
 
-	fn multicam_enable_selected(&mut self, _clips: Vec<ClipId>, enabled: bool, cx: &mut Context<Self>) {
+	fn multicam_enable_selected(
+		&mut self,
+		_clips: Vec<ClipId>,
+		enabled: bool,
+		cx: &mut Context<Self>,
+	) {
 		// Run the real enable/disable commands on the demo graph (one undo
 		// entry each, like the real engine).
 		let mut guard = self.ensure_demo_multicam();
@@ -2188,7 +2315,8 @@ impl AppEngine for MockEngine {
 		let Some(demo) = guard.as_ref() else {
 			return;
 		};
-		let Some(state) = crate::oakui::multicam::multicam_state_for_clip(&demo.project, demo.clip.id)
+		let Some(state) =
+			crate::oakui::multicam::multicam_state_for_clip(&demo.project, demo.clip.id)
 		else {
 			return;
 		};
@@ -2203,9 +2331,7 @@ impl AppEngine for MockEngine {
 			split_clip,
 			playhead,
 		);
-		if let Err(e) =
-			super::graphops::push_command(cmd, oak_timeline::multicam::SWITCH_LABEL)
-		{
+		if let Err(e) = super::graphops::push_command(cmd, oak_timeline::multicam::SWITCH_LABEL) {
 			println!("[mock] multicam switch failed: {e}");
 		}
 		drop(guard);
@@ -2393,8 +2519,10 @@ impl DemoMulticamGraph {
 			list.sequence = Some(sequence);
 			let list_id = g.graph.add_node(core, behavior);
 			for _ in 0..4 {
-				let (core, behavior) =
-					(NodeCore::new(), Box::new(TrackBehavior::new(TrackType::Video)));
+				let (core, behavior) = (
+					NodeCore::new(),
+					Box::new(TrackBehavior::new(TrackType::Video)),
+				);
 				let track_id = g.graph.add_node(core, behavior);
 				let t = g
 					.graph
@@ -2724,7 +2852,11 @@ mod tests {
 		clock.started = Some((Instant::now() - Duration::from_secs(10), Frame(0)));
 
 		clock.tick(Frame(5), true);
-		assert_eq!(clock.transport.frame(), Frame(4), "pinned to the last frame");
+		assert_eq!(
+			clock.transport.frame(),
+			Frame(4),
+			"pinned to the last frame"
+		);
 		assert!(!clock.transport.is_playing(), "playback stopped");
 		// A later tick is a no-op: the anchor is cleared.
 		clock.tick(Frame(5), true);
@@ -2799,7 +2931,12 @@ mod tests {
 			assert!(is_expanded(app), "the demo card starts expanded");
 			toggle(app, false);
 			engine.update(app, |engine, cx| {
-				engine.apply_effect_event(&EffectStackEvent::CardSelected { effect: EffectId(1) }, cx);
+				engine.apply_effect_event(
+					&EffectStackEvent::CardSelected {
+						effect: EffectId(1),
+					},
+					cx,
+				);
 			});
 			engine.update(app, |engine, cx| {
 				engine.apply_node_graph_event(
@@ -3002,7 +3139,8 @@ mod tests {
 	}
 
 	#[gpui::test]
-	async fn mock_split_at_playhead_and_ripple_delete(cx: &mut TestAppContext) {		cx.update(|app| {
+	async fn mock_split_at_playhead_and_ripple_delete(cx: &mut TestAppContext) {
+		cx.update(|app| {
 			let engine = demo_engine(app);
 
 			// Park the program playhead inside 开场 (0–240) and split there.

@@ -203,21 +203,14 @@ impl MonitorFrameCache {
 		// Proxy stays primary while playing (a full-res render would fight
 		// the moving playhead); a cached fill or an in-flight job mean no
 		// new job (the drain re-schedules once the job lands).
-		!playing
-			&& self.pending.is_none()
-			&& !self.full.as_ref().is_some_and(|f| f.frame == frame)
+		!playing && self.pending.is_none() && !self.full.as_ref().is_some_and(|f| f.frame == frame)
 	}
 
 	/// Installs a completed full-res frame. Returns false — and keeps the
 	/// cache untouched — when the completion is stale (the pending job it
 	/// belongs to no longer matches, i.e. an edit, a selection change or a
 	/// project drop happened while it was in flight).
-	fn install_full_res(
-		&mut self,
-		frame: i64,
-		generation: u64,
-		image: Arc<RenderImage>,
-	) -> bool {
+	fn install_full_res(&mut self, frame: i64, generation: u64, image: Arc<RenderImage>) -> bool {
 		if self.pending != Some((frame, generation)) {
 			return false;
 		}
@@ -1102,7 +1095,10 @@ impl RealEngine {
 		// audio per frame advance regardless of the rate.
 		let chunk: i64 = 1;
 
-		let mut st = self.audio_prefetch.lock().unwrap_or_else(|e| e.into_inner());
+		let mut st = self
+			.audio_prefetch
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		// Reset on seek / (re)start: the playhead must lie inside the
 		// submitted window [front_ts, next_submit).
 		if !st.covers(frame) {
@@ -1111,7 +1107,11 @@ impl RealEngine {
 		// Submit chunks to cover [next_submit, frame + PREFETCH ahead). In
 		// steady state the window moves by one chunk per tick, so exactly
 		// one new ticket is posted; the rest are already buffered.
-		let tx = self.audio_tx.lock().unwrap_or_else(|e| e.into_inner()).clone();
+		let tx = self
+			.audio_tx
+			.lock()
+			.unwrap_or_else(|e| e.into_inner())
+			.clone();
 		let target = frame + chunk * AUDIO_PREFETCH_CHUNKS;
 		while st.next_submit < target {
 			let ts = st.next_submit;
@@ -1458,8 +1458,12 @@ impl RealEngine {
 		let Some(request) = self.build_full_res_request(monitor, frame) else {
 			return;
 		};
-		self.cpu_frame_cache.lock().unwrap().entry(monitor).or_default().pending =
-			Some((frame, request.generation));
+		self.cpu_frame_cache
+			.lock()
+			.unwrap()
+			.entry(monitor)
+			.or_default()
+			.pending = Some((frame, request.generation));
 		let tx = self.full_res_tx.lock().unwrap().clone();
 		std::thread::spawn(move || Self::full_res_worker(request, tx));
 	}
@@ -1471,10 +1475,11 @@ impl RealEngine {
 		let mut cache = self.cpu_frame_cache.lock().unwrap();
 		let rx = self.full_res_rx.lock().unwrap();
 		while let Ok(event) = rx.try_recv() {
-			cache
-				.entry(event.monitor)
-				.or_default()
-				.install_full_res(event.frame, event.generation, event.image);
+			cache.entry(event.monitor).or_default().install_full_res(
+				event.frame,
+				event.generation,
+				event.image,
+			);
 		}
 	}
 
@@ -1486,7 +1491,9 @@ impl RealEngine {
 	/// time; 0 without a sequence). The sequence's stored playhead is
 	/// mirrored from the program clock on every seek/tick.
 	fn program_playhead_ts(&self) -> i64 {
-		let Some(project) = self.project_ref() else { return 0 };
+		let Some(project) = self.project_ref() else {
+			return 0;
+		};
 		let Some(seq) = self.sequence else { return 0 };
 		let Some(tb) = self.time_base() else { return 0 };
 		let time = graphops::sequence_playhead(&graphops::lock(project).graph, seq);
@@ -1556,16 +1563,22 @@ impl RealEngine {
 		if source < 0 || source >= state.source_count {
 			return None;
 		}
-		let Some(project) = self.project.clone() else { return None };
-		let Some(seq) = self.sequence else { return None };
-		let Some(tb) = self.time_base() else { return None };
+		let Some(project) = self.project.clone() else {
+			return None;
+		};
+		let Some(seq) = self.sequence else {
+			return None;
+		};
+		let Some(tb) = self.time_base() else {
+			return None;
+		};
 		let playhead = self.program_playhead_ts();
 		// Exact-playhead cache hit.
-		if let Some(img) = self
-			.multicam_frames
-			.lock()
-			.unwrap()
-			.lookup(state.node_id, source, playhead)
+		if let Some(img) =
+			self.multicam_frames
+				.lock()
+				.unwrap()
+				.lookup(state.node_id, source, playhead)
 		{
 			return Some(img);
 		}
@@ -1585,7 +1598,10 @@ impl RealEngine {
 			let info = self.sequence_info.as_ref()?;
 			let (w, h) = (info.format.width.max(1), info.format.height.max(1));
 			let scale = MULTICAM_ANGLE_LONG_EDGE as f64 / w.max(h) as f64;
-			(((w as f64 * scale).round() as u32).max(2) as i32, ((h as f64 * scale).round() as u32).max(2) as i32)
+			(
+				((w as f64 * scale).round() as u32).max(2) as i32,
+				((h as f64 * scale).round() as u32).max(2) as i32,
+			)
 		};
 		cache.pending.insert((state.node_id, source));
 		let request = MulticamAngleRequest {
@@ -1646,9 +1662,13 @@ impl RealEngine {
 		if !playing {
 			return;
 		}
-		let Some(project) = self.project.clone() else { return };
+		let Some(project) = self.project.clone() else {
+			return;
+		};
 		let Some(tb) = self.time_base() else { return };
-		let Some((width, height)) = self.proxy_render_size() else { return };
+		let Some((width, height)) = self.proxy_render_size() else {
+			return;
+		};
 		let Some(node) = (match monitor {
 			Monitor::Program => self.sequence,
 			Monitor::Source => self.selected_footage_node(),
@@ -1664,7 +1684,9 @@ impl RealEngine {
 			Monitor::Program => self.sequence_length().0,
 			Monitor::Source => self.source_length().0,
 		};
-		let Some(m) = RenderManager::global() else { return };
+		let Some(m) = RenderManager::global() else {
+			return;
+		};
 
 		let forward = config_get_int(CONFIG_KEY_PREVIEW_WINDOW, DEFAULT_PREVIEW_WINDOW_FORWARD)
 			.clamp(8, 1200);
@@ -1681,7 +1703,10 @@ impl RealEngine {
 
 		// Reset / rebuild when the node changed or an invalidation bumped the
 		// generation (the old pending/claimed requests are cancelled).
-		let mut windows = self.preview_windows.lock().unwrap_or_else(|e| e.into_inner());
+		let mut windows = self
+			.preview_windows
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let window = windows.entry(monitor).or_default();
 		// Cancel/release calls fire completions synchronously and those
 		// completions lock `preview_windows`, so they must run AFTER this
@@ -1752,12 +1777,7 @@ impl RealEngine {
 		for frame in new_frames {
 			let params = match monitor {
 				Monitor::Program => super::renderops::sequence_frame_params(
-					&project,
-					node,
-					frame,
-					tb,
-					width,
-					height,
+					&project, node, frame, tb, width, height,
 				),
 				Monitor::Source => {
 					super::renderops::footage_frame_params(&project, node, frame, tb, width, height)
@@ -1775,8 +1795,7 @@ impl RealEngine {
 				// request. The stale slot's credit goes back instead.
 				let mut stale_slot = None;
 				{
-					let mut windows =
-						preview_windows.lock().unwrap_or_else(|e| e.into_inner());
+					let mut windows = preview_windows.lock().unwrap_or_else(|e| e.into_inner());
 					let window = windows.entry(monitor).or_default();
 					if window.sequence == node_id && window.generation == version {
 						match result {
@@ -1801,7 +1820,8 @@ impl RealEngine {
 					}
 				}
 			});
-			m.tickets.submit_playback(params, frame, distance, version, done);
+			m.tickets
+				.submit_playback(params, frame, distance, version, done);
 			self.preview_windows
 				.lock()
 				.unwrap_or_else(|e| e.into_inner())
@@ -1826,7 +1846,10 @@ impl RealEngine {
 			Monitor::Source => self.selected_footage_node()?,
 		};
 		let node_id = node.identity();
-		let mut windows = self.preview_windows.lock().unwrap_or_else(|e| e.into_inner());
+		let mut windows = self
+			.preview_windows
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
 		let window = windows.get_mut(&monitor)?;
 		if window.sequence != node_id || window.generation != self.preview_generation {
 			return None;
@@ -1858,7 +1881,10 @@ impl RealEngine {
 		// completions lock `preview_windows` (self-deadlock otherwise).
 		let mut pending: Vec<(u64, Vec<ShmFrameRef>)> = Vec::new();
 		{
-			let mut windows = self.preview_windows.lock().unwrap_or_else(|e| e.into_inner());
+			let mut windows = self
+				.preview_windows
+				.lock()
+				.unwrap_or_else(|e| e.into_inner());
 			for window in windows.values_mut() {
 				let slots: Vec<ShmFrameRef> =
 					std::mem::take(&mut window.slots).into_values().collect();
@@ -1883,12 +1909,14 @@ impl RealEngine {
 		// Same lock-order rule as `cancel_preview_windows`: run the cancel
 		// and releases outside the `preview_windows` guard.
 		let pending = {
-			let mut windows = self.preview_windows.lock().unwrap_or_else(|e| e.into_inner());
+			let mut windows = self
+				.preview_windows
+				.lock()
+				.unwrap_or_else(|e| e.into_inner());
 			let Some(window) = windows.get_mut(&monitor) else {
 				return;
 			};
-			let slots: Vec<ShmFrameRef> =
-				std::mem::take(&mut window.slots).into_values().collect();
+			let slots: Vec<ShmFrameRef> = std::mem::take(&mut window.slots).into_values().collect();
 			window.submitted.clear();
 			(window.sequence, slots)
 		};
@@ -2124,9 +2152,8 @@ impl RealEngine {
 				}
 			}
 		}
-		self.proxy_runs.retain(|run| {
-			!finished.iter().any(|(footage, _)| *footage == run.footage)
-		});
+		self.proxy_runs
+			.retain(|run| !finished.iter().any(|(footage, _)| *footage == run.footage));
 		if let Some(project) = self.project.clone() {
 			for (footage, ok) in &finished {
 				let mut guard = graphops::lock(&project);
@@ -2237,7 +2264,6 @@ impl RealEngine {
 		self.pump_proxy_queue(cx);
 	}
 
-
 	/// The proxy lifecycle state of one footage row: an in-flight run
 	/// wins, then the disk state of the recorded proxy path, with a
 	/// recorded failure (state 3) preserved while no file is on disk.
@@ -2296,8 +2322,7 @@ impl RealEngine {
 				let Some(node) = graphops::id_of(clip.0) else {
 					continue;
 				};
-				let Some((block_in, _, media_in)) = graphops::clip_range(&guard.graph, node)
-				else {
+				let Some((block_in, _, media_in)) = graphops::clip_range(&guard.graph, node) else {
 					continue;
 				};
 				let Some(track) = graphops::clip_track(&guard.graph, node) else {
@@ -2349,8 +2374,7 @@ impl RealEngine {
 
 		// (node, track, list, track index, placement) for every valid
 		// placement (the reference itself lands on the anchor).
-		let mut placements: Vec<(NodeId, NodeId, NodeId, i32, oak_core::Rational)> =
-			Vec::new();
+		let mut placements: Vec<(NodeId, NodeId, NodeId, i32, oak_core::Rational)> = Vec::new();
 		for target in &targets {
 			let placement = place_by_source_time(&reference.source, &target.source, anchor_in);
 			if placement.valid {
@@ -2400,7 +2424,9 @@ impl RealEngine {
 	/// speed (one multi-undo).
 	fn sync_clips_by_waveform_internal(&mut self, clips: &[ClipId], allow_speed: bool) {
 		use oak_audio::synchronizer::place_by_waveform_offset;
-		use oak_audio::waveformsync::{estimate_envelope_offset_valid, estimate_stretch_and_offset};
+		use oak_audio::waveformsync::{
+			estimate_envelope_offset_valid, estimate_stretch_and_offset,
+		};
 
 		let Some(cache) = self.waveform_cache() else {
 			return;
@@ -2494,23 +2520,16 @@ impl RealEngine {
 		);
 
 		// (node, track, list, track index, placement, speed, old speed).
-		let mut placements: Vec<(
-			NodeId,
-			NodeId,
-			NodeId,
-			i32,
-			oak_core::Rational,
-			f64,
-			f64,
-		)> = vec![(
-			reference.node,
-			reference.track,
-			reference.list,
-			reference.track_index,
-			reference.block_in,
-			1.0,
-			reference.speed,
-		)];
+		let mut placements: Vec<(NodeId, NodeId, NodeId, i32, oak_core::Rational, f64, f64)> =
+			vec![(
+				reference.node,
+				reference.track,
+				reference.list,
+				reference.track_index,
+				reference.block_in,
+				1.0,
+				reference.speed,
+			)];
 
 		for (i, target) in targets.iter().enumerate() {
 			if i == ref_index {
@@ -2534,9 +2553,8 @@ impl RealEngine {
 			if allow_speed && (!offset.valid || offset.confidence < 0.6) {
 				// Inconclusive: the clips may run at different speeds —
 				// search a rate range with a tighter offset radius.
-				let radius = max_offset_windows.min(
-					(i64::from(sample_rate) * 30) / window_samples as i64,
-				);
+				let radius =
+					max_offset_windows.min((i64::from(sample_rate) * 30) / window_samples as i64);
 				let stretch = estimate_stretch_and_offset(
 					&ref_envelope,
 					&cand_envelope,
@@ -2640,7 +2658,9 @@ impl RealEngine {
 	/// pool (snapshot serialized once per undo-stack revision; the worker
 	/// renders node-graph tickets from it).
 	fn push_graph_snapshot(&self) {
-		let Some(project) = self.project.clone() else { return };
+		let Some(project) = self.project.clone() else {
+			return;
+		};
 		if let Some(m) = RenderManager::global() {
 			let revision = oak_undo::global::index().unwrap_or(0).max(0) as u64;
 			let _ = m.set_graph_snapshot(&project, revision);
@@ -2688,8 +2708,8 @@ impl RealEngine {
 		graphops::ensure_sequences_mounted(&project);
 
 		// The sequence: the project's first, or a blank default.
-		let seq = first_sequence
-			.unwrap_or_else(|| graphops::create_sequence(&project, "Sequence 1"));
+		let seq =
+			first_sequence.unwrap_or_else(|| graphops::create_sequence(&project, "Sequence 1"));
 		self.sequence = Some(seq);
 		self.markers = Some(AuxHandle(graphops::marker_list_create()));
 		self.workarea = Some(AuxHandle(graphops::workarea_create()));
@@ -2851,7 +2871,13 @@ impl RealEngine {
 					_ => Box::new(tracks.iter().enumerate().rev()),
 				};
 				for (track_index, &track_id) in ordered {
-					out.push(Self::snapshot_track(&guard.graph, track_id, kind, track_index, tb));
+					out.push(Self::snapshot_track(
+						&guard.graph,
+						track_id,
+						kind,
+						track_index,
+						tb,
+					));
 				}
 			}
 		}
@@ -2895,16 +2921,16 @@ impl RealEngine {
 		};
 		// Height in internal units → pixels.
 		let height = graphops::track_behavior(graph, track)
-			.map(|t| {
-				px(oak_node::track::internal_height_to_pixel_height(t.height).max(24) as f32)
-			})
+			.map(|t| px(oak_node::track::internal_height_to_pixel_height(t.height).max(24) as f32))
 			.unwrap_or(px(64.0));
 		let clips = graphops::clip_ids(graph, track)
 			.iter()
 			.enumerate()
 			.filter_map(|(clip_index, &block)| {
 				let (in_r, out_r, media_r) = graphops::clip_range(graph, block)?;
-				let to_ts = |r: oak_core::Rational| tb.map(|tb| graphops::rational_to_ts(r, tb)).unwrap_or(0);
+				let to_ts = |r: oak_core::Rational| {
+					tb.map(|tb| graphops::rational_to_ts(r, tb)).unwrap_or(0)
+				};
 				// The clip's color is locked in at creation time (its
 				// `override_color`); clips without one (older projects)
 				// fall back to the track-relative palette so their color
@@ -3035,7 +3061,10 @@ impl RealEngine {
 		let guard = graphops::lock(project);
 		// A clip block node on the current timeline: its stack is the target.
 		if graphops::clip_behavior(&guard.graph, node).is_some()
-			&& self.tracks.iter().any(|t| t.clips.iter().any(|c| c.id.0 == ident))
+			&& self
+				.tracks
+				.iter()
+				.any(|t| t.clips.iter().any(|c| c.id.0 == ident))
 		{
 			return (Some(ClipId(ident)), None);
 		}
@@ -3105,8 +3134,7 @@ impl RealEngine {
 			// The OpenFX plugin badge: the persistent-message count (the
 			// simplified 徽标/计数 of stage 6b). Built-in effects show none.
 			let badge = plugin_handle.and_then(|handle| {
-				let count =
-					oak_plugin::suites::message::persistent_message_count(handle as usize);
+				let count = oak_plugin::suites::message::persistent_message_count(handle as usize);
 				(count > 0).then_some(count)
 			});
 			let subtitle = plugin_handle.map(|_| {
@@ -3414,7 +3442,10 @@ impl AudioMeterDataSource for RealEngine {
 		if n <= 0 {
 			return vec![0.0, 0.0];
 		}
-		peaks[..n as usize].iter().map(|p| p.clamp(0.0, 1.0)).collect()
+		peaks[..n as usize]
+			.iter()
+			.map(|p| p.clamp(0.0, 1.0))
+			.collect()
 	}
 }
 
@@ -3554,7 +3585,11 @@ impl AppEngine for RealEngine {
 		let Some(project) = self.project.clone() else {
 			return;
 		};
-		self.apply_edit(graphops::remove_track(&project, track_id), "remove track", cx);
+		self.apply_edit(
+			graphops::remove_track(&project, track_id),
+			"remove track",
+			cx,
+		);
 	}
 
 	fn set_track_height(&mut self, height: Pixels, cx: &mut Context<Self>) {
@@ -3589,7 +3624,10 @@ impl AppEngine for RealEngine {
 			// the old selection is stale. The source pre-render window (M15
 			// S2) rebuilds against the new footage.
 			*self.source_renderer.lock().unwrap() = RendererSlot::Untried;
-			self.cpu_frame_cache.lock().unwrap().remove(&Monitor::Source);
+			self.cpu_frame_cache
+				.lock()
+				.unwrap()
+				.remove(&Monitor::Source);
 			self.full_res_generation = self.full_res_generation.wrapping_add(1);
 			self.cancel_preview_window(Monitor::Source);
 		}
@@ -3880,6 +3918,85 @@ impl AppEngine for RealEngine {
 				let result = graphops::trim_clip(&project, block, new_in, new_out);
 				self.apply_edit(result, "trim clip", cx);
 			}
+			TimelineEvent::ClipSplitRequested { clip, time } => {
+				self.split_clip(*clip, *time, cx);
+			}
+			TimelineEvent::ClipRippleTrimRequested {
+				clip,
+				edge,
+				new_frame,
+			} => {
+				let Some(block) = self.clip_block(*clip) else {
+					return;
+				};
+				if self.clip_track_locked(block) {
+					return;
+				}
+				let Some(project) = self.project.clone() else {
+					return;
+				};
+				let result = graphops::ripple_trim_clip(
+					&project,
+					block,
+					matches!(edge, TrimEdge::Start),
+					new_frame.0,
+				);
+				self.apply_edit(result, "ripple trim clip", cx);
+			}
+			TimelineEvent::ClipRollRequested {
+				clip_a,
+				clip_b,
+				new_frame,
+			} => {
+				let (Some(block_a), Some(project)) =
+					(self.clip_block(*clip_a), self.project.clone())
+				else {
+					return;
+				};
+				if self.clip_track_locked(block_a) {
+					return;
+				}
+				let Some(block_b) = self.clip_block(*clip_b) else {
+					return;
+				};
+				// The roll pair lives on one track; locate that track's node.
+				let Some(track) = self
+					.tracks
+					.iter()
+					.find(|t| t.clips.iter().any(|c| c.block == block_a))
+					.map(|t| t.track)
+				else {
+					return;
+				};
+				let result = graphops::roll_edit(&project, track, block_a, block_b, new_frame.0);
+				self.apply_edit(result, "roll edit", cx);
+			}
+			TimelineEvent::ClipSlideRequested { clip, new_start } => {
+				let Some(block) = self.clip_block(*clip) else {
+					return;
+				};
+				if self.clip_track_locked(block) {
+					return;
+				}
+				let Some(project) = self.project.clone() else {
+					return;
+				};
+				let result = graphops::slide_clip(&project, block, new_start.0);
+				self.apply_edit(result, "slide clip", cx);
+			}
+			TimelineEvent::ClipSlipRequested { clip, new_media_in } => {
+				let Some(block) = self.clip_block(*clip) else {
+					return;
+				};
+				if self.clip_track_locked(block) {
+					return;
+				}
+				let Some(project) = self.project.clone() else {
+					return;
+				};
+				let result = graphops::slip_clip(&project, block, new_media_in.0);
+				self.apply_edit(result, "slip clip", cx);
+			}
 			TimelineEvent::ClipMoveRequested {
 				clip,
 				new_track,
@@ -3969,8 +4086,7 @@ impl AppEngine for RealEngine {
 				// setters. The muted flag doubles as the video/subtitle
 				// visibility toggle (Olive parity); the model has no solo
 				// flag yet, so solo requests are inert.
-				let (Some(t), Some(project)) =
-					(self.tracks.get(*track), self.project.clone())
+				let (Some(t), Some(project)) = (self.tracks.get(*track), self.project.clone())
 				else {
 					return;
 				};
@@ -4271,11 +4387,7 @@ impl AppEngine for RealEngine {
 		}
 	}
 
-	fn export_project_path(
-		&mut self,
-		path: PathBuf,
-		cx: &mut Context<Self>,
-	) -> Result<(), String> {
+	fn export_project_path(&mut self, path: PathBuf, cx: &mut Context<Self>) -> Result<(), String> {
 		if self.project.is_none() {
 			return Err("no project open".into());
 		}
@@ -4477,7 +4589,11 @@ impl AppEngine for RealEngine {
 			self.apply_edit(result, "drop footage", cx);
 			return;
 		} else {
-			let footage_kind = if has_video { TrackKind::Video } else { TrackKind::Audio };
+			let footage_kind = if has_video {
+				TrackKind::Video
+			} else {
+				TrackKind::Audio
+			};
 			let Some(target) = ensure_track(self, footage_kind, cx) else {
 				return;
 			};
@@ -4551,8 +4667,7 @@ impl AppEngine for RealEngine {
 	}
 
 	fn library_delete_project(&mut self, uuid: &str) -> Result<(), String> {
-		graphops::library_delete(uuid)
-			.map_err(|e| format!("failed to delete the project: {e}"))
+		graphops::library_delete(uuid).map_err(|e| format!("failed to delete the project: {e}"))
 	}
 
 	fn library_rename_project(&mut self, uuid: &str, name: &str) -> Result<(), String> {
@@ -4572,8 +4687,12 @@ impl AppEngine for RealEngine {
 	}
 
 	fn library_export_project(&mut self, uuid: &str, path: PathBuf) -> Result<(), String> {
-		graphops::library_export(uuid, &path)
-			.map_err(|e| format!("failed to export the project to \"{}\": {e}", path.display()))
+		graphops::library_export(uuid, &path).map_err(|e| {
+			format!(
+				"failed to export the project to \"{}\": {e}",
+				path.display()
+			)
+		})
 	}
 
 	fn set_use_proxy_media(&mut self, enabled: bool, cx: &mut Context<Self>) {
@@ -4613,7 +4732,11 @@ impl AppEngine for RealEngine {
 			.unwrap_or_default()
 	}
 
-	fn set_project_ocio_config(&mut self, path: String, cx: &mut Context<Self>) -> Result<(), String> {
+	fn set_project_ocio_config(
+		&mut self,
+		path: String,
+		cx: &mut Context<Self>,
+	) -> Result<(), String> {
 		let Some(project) = self.project.clone() else {
 			return Err("no project open".to_string());
 		};
@@ -4649,12 +4772,20 @@ impl AppEngine for RealEngine {
 			.map(|p| {
 				let g = graphops::lock(p);
 				// Clamp: the dialog's combo indexes by this value.
-				(g.cache_location_setting.clamp(0, 2), g.custom_cache_path.clone())
+				(
+					g.cache_location_setting.clamp(0, 2),
+					g.custom_cache_path.clone(),
+				)
 			})
 			.unwrap_or((0, String::new()))
 	}
 
-	fn set_project_cache_location(&mut self, setting: i32, custom_path: String, cx: &mut Context<Self>) {
+	fn set_project_cache_location(
+		&mut self,
+		setting: i32,
+		custom_path: String,
+		cx: &mut Context<Self>,
+	) {
 		let Some(project) = self.project.clone() else {
 			return;
 		};
@@ -4704,7 +4835,10 @@ impl AppEngine for RealEngine {
 			format: VideoFormat {
 				width,
 				height,
-				rate: FrameRate::new(rate.numerator().max(1) as u32, rate.denominator().max(1) as u32),
+				rate: FrameRate::new(
+					rate.numerator().max(1) as u32,
+					rate.denominator().max(1) as u32,
+				),
 			},
 			interlaced,
 		})
@@ -4828,8 +4962,8 @@ impl AppEngine for RealEngine {
 		let (filename, stream_index, params) = {
 			let project = self.project.as_ref().ok_or("no project open")?;
 			let guard = graphops::lock(project);
-			let f = graphops::footage_behavior(&guard.graph, footage)
-				.ok_or("entry is not footage")?;
+			let f =
+				graphops::footage_behavior(&guard.graph, footage).ok_or("entry is not footage")?;
 			if f.filename.is_empty() {
 				return Err("the footage has no media file".into());
 			}
@@ -4974,7 +5108,8 @@ impl AppEngine for RealEngine {
 			}
 		};
 		let _ = std::fs::remove_file(&proxy_path);
-		if let Ok(working) = oak_codec::proxymanager::ProxyManager::get_working_filename(&proxy_path)
+		if let Ok(working) =
+			oak_codec::proxymanager::ProxyManager::get_working_filename(&proxy_path)
 		{
 			let _ = std::fs::remove_file(&working);
 		}
@@ -5212,7 +5347,15 @@ impl AppEngine for RealEngine {
 			})
 		};
 		let result = graphops::set_clips_linked(&project, &blocks, !all_linked);
-		self.apply_edit(result, if all_linked { "unlink clips" } else { "link clips" }, cx);
+		self.apply_edit(
+			result,
+			if all_linked {
+				"unlink clips"
+			} else {
+				"link clips"
+			},
+			cx,
+		);
 	}
 
 	fn start_export(&mut self, format: i32, path: PathBuf) -> Result<ExportSession, String> {
@@ -5235,7 +5378,11 @@ impl AppEngine for RealEngine {
 		self.multicam_state_internal()
 	}
 
-	fn multicam_angle_frame(&mut self, source: i32, _cx: &mut Context<Self>) -> Option<Arc<RenderImage>> {
+	fn multicam_angle_frame(
+		&mut self,
+		source: i32,
+		_cx: &mut Context<Self>,
+	) -> Option<Arc<RenderImage>> {
 		self.multicam_angle_frame_internal(source)
 	}
 
@@ -5277,7 +5424,12 @@ impl AppEngine for RealEngine {
 		false
 	}
 
-	fn multicam_enable_selected(&mut self, clips: Vec<ClipId>, enabled: bool, cx: &mut Context<Self>) {
+	fn multicam_enable_selected(
+		&mut self,
+		clips: Vec<ClipId>,
+		enabled: bool,
+		cx: &mut Context<Self>,
+	) {
 		let Some(project) = self.project.clone() else {
 			return;
 		};
@@ -5361,8 +5513,7 @@ impl AppEngine for RealEngine {
 			split_clip,
 			playhead,
 		);
-		let result =
-			graphops::push_command(cmd, oak_timeline::multicam::SWITCH_LABEL);
+		let result = graphops::push_command(cmd, oak_timeline::multicam::SWITCH_LABEL);
 		self.apply_edit(result, "multicam switch", cx);
 	}
 
@@ -5531,7 +5682,11 @@ impl RealEngine {
 	}
 
 	/// Exports as `.otio` / `.fcpxml` through the oaktask save task.
-	fn export_interchange(&mut self, path: &PathBuf, _cx: &mut Context<Self>) -> Result<(), String> {
+	fn export_interchange(
+		&mut self,
+		path: &PathBuf,
+		_cx: &mut Context<Self>,
+	) -> Result<(), String> {
 		let Some(project) = self.project.clone() else {
 			return Err("no project open".into());
 		};
@@ -5974,10 +6129,7 @@ mod tests {
 
 		let _transition = ConfigRestore::of(CONFIG_KEY_DEFAULT_TRANSITION_SEC);
 		config_set_string(CONFIG_KEY_DEFAULT_TRANSITION_SEC, "1.5");
-		assert_eq!(
-			config_get_string(CONFIG_KEY_DEFAULT_TRANSITION_SEC),
-			"1.5"
-		);
+		assert_eq!(config_get_string(CONFIG_KEY_DEFAULT_TRANSITION_SEC), "1.5");
 
 		let _output = ConfigRestore::of(CONFIG_KEY_AUDIO_OUTPUT);
 		config_set_string(CONFIG_KEY_AUDIO_OUTPUT, "Test Speakers");
@@ -6031,7 +6183,10 @@ mod tests {
 	/// writethrough.rs) — a rename here would silently disconnect the dialog.
 	#[test]
 	fn snapshot_interval_key_matches_the_storage_module() {
-		assert_eq!(CONFIG_KEY_SNAPSHOT_INTERVAL_SEC, "Storage/SnapshotIntervalSec");
+		assert_eq!(
+			CONFIG_KEY_SNAPSHOT_INTERVAL_SEC,
+			"Storage/SnapshotIntervalSec"
+		);
 	}
 
 	/// End-to-end through the module crates: a project the engine itself
@@ -6065,7 +6220,10 @@ mod tests {
 		let loaded = graphops::load_ove(&save_path).expect("load");
 		let (loaded_name, sequences) = {
 			let guard = graphops::lock(&loaded);
-			(graphops::project_name(&guard), graphops::sequence_ids(&guard))
+			(
+				graphops::project_name(&guard),
+				graphops::sequence_ids(&guard),
+			)
 		};
 		assert!(!loaded_name.is_empty(), "the loaded project has a name");
 		assert_eq!(sequences.len(), 1, "the sequence survives the round-trip");
@@ -6097,8 +6255,8 @@ mod tests {
 	#[test]
 	fn legacy_footage_is_reprobed_after_load() {
 		let _media = media_lock();
-		let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-			.join("tests/project_with_footage.ove");
+		let fixture =
+			std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/project_with_footage.ove");
 		let project = graphops::load_ove(&fixture).expect("the C++ fixture loads");
 
 		let ids = graphops::footage_ids(&graphops::lock(&project));
@@ -6120,7 +6278,10 @@ mod tests {
 		for &id in &ids {
 			let secs = graphops::footage_duration_seconds(&guard.graph, id)
 				.expect("the reprobe restores a duration");
-			assert!(secs > 0.5, "the fixture's demo.mp4 has a real duration: {secs}");
+			assert!(
+				secs > 0.5,
+				"the fixture's demo.mp4 has a real duration: {secs}"
+			);
 		}
 	}
 
@@ -6168,10 +6329,8 @@ mod tests {
 		// M12 P0: with a clip of real media on the video track, the same
 		// render must produce the decoded footage (known content, non
 		// black). The media is program-generated.
-		let media = std::env::temp_dir().join(format!(
-			"oakapp_e2e_media_{}.mp4",
-			std::process::id()
-		));
+		let media =
+			std::env::temp_dir().join(format!("oakapp_e2e_media_{}.mp4", std::process::id()));
 		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10)
 			.expect("generate e2e test media");
 		let footage = graphops::import_footage(&project, &media).expect("import_footage");
@@ -6183,7 +6342,10 @@ mod tests {
 			.expect("render_frame with a clip must produce a frame");
 		let (image, _scope) = frame.to_display().expect("display image from the slot");
 		let bytes = image.as_bytes(0).expect("one frame");
-		let nonzero = bytes.chunks(4).filter(|px| px[..3].iter().any(|&c| c != 0)).count();
+		let nonzero = bytes
+			.chunks(4)
+			.filter(|px| px[..3].iter().any(|&c| c != 0))
+			.count();
 		assert!(
 			nonzero > 0,
 			"the sequence with a footage clip must render non-black pixels"
@@ -6199,10 +6361,14 @@ mod tests {
 		release_rendered_frame(&frame);
 
 		// A second frame at a later timestamp renders too.
-		assert!(crate::oakui::renderops::render_sequence_frame(&project, seq, 30, tb, 480, 270).is_ok());
+		assert!(
+			crate::oakui::renderops::render_sequence_frame(&project, seq, 30, tb, 480, 270).is_ok()
+		);
 
 		// Invalid geometry is rejected.
-		assert!(crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 0, 270).is_err());
+		assert!(
+			crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 0, 270).is_err()
+		);
 
 		oak_undo::global::clear().unwrap();
 		let _ = std::fs::remove_file(&media);
@@ -6284,12 +6450,8 @@ mod tests {
 		let project = graphops::create_project();
 
 		// Generate a real media file, import it.
-		let media = std::env::temp_dir().join(format!(
-			"oakapp_browser_{}.mp4",
-			std::process::id()
-		));
-		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10)
-			.expect("generate test media");
+		let media = std::env::temp_dir().join(format!("oakapp_browser_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate test media");
 		graphops::import_footage(&project, &media).expect("import must succeed");
 
 		// The project browser (ProjectDataSource) must list it.
@@ -6326,15 +6488,17 @@ mod tests {
 		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
 		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
 
-		let media = std::env::temp_dir().join(format!(
-			"oakapp_engine_import_{}.mp4",
-			std::process::id()
-		));
+		let media =
+			std::env::temp_dir().join(format!("oakapp_engine_import_{}.mp4", std::process::id()));
 		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10)
 			.expect("generate e2e test media");
-		let imported = cx
-			.update(|app| engine.update(app, |engine, cx| engine.import_footage(media.clone(), cx)));
-		assert!(imported.is_ok(), "import through the seam succeeds: {imported:?}");
+		let imported = cx.update(|app| {
+			engine.update(app, |engine, cx| engine.import_footage(media.clone(), cx))
+		});
+		assert!(
+			imported.is_ok(),
+			"import through the seam succeeds: {imported:?}"
+		);
 
 		// The project browser (ProjectDataSource) lists the file at the root.
 		let name = media.file_name().unwrap().to_string_lossy().into_owned();
@@ -6373,27 +6537,26 @@ mod tests {
 		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
 
 		let media = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/demo.mp4");
-		let imported = cx
-			.update(|app| engine.update(app, |engine, cx| engine.import_footage(media.clone(), cx)));
+		let imported = cx.update(|app| {
+			engine.update(app, |engine, cx| engine.import_footage(media.clone(), cx))
+		});
 		assert!(imported.is_ok(), "import tests/demo.mp4: {imported:?}");
 		let name = media.file_name().unwrap().to_string_lossy().into_owned();
 
 		// The core render step runs synchronously: the first frame decodes to
 		// a PNG in the shared thumbnail directory.
-		let entry_id = cx
-			.read(|app| {
-				engine
-					.read(app)
-					.roots()
-					.into_iter()
-					.find(|e| e.name.as_ref() == name)
-					.expect("the imported footage is listed")
-					.id
-			});
+		let entry_id = cx.read(|app| {
+			engine
+				.read(app)
+				.roots()
+				.into_iter()
+				.find(|e| e.name.as_ref() == name)
+				.expect("the imported footage is listed")
+				.id
+		});
 		let project = cx.read(|app| engine.read(app).project_ref().cloned().unwrap());
 		let rendered = RealEngine::render_thumbnail(&project, entry_id);
-		let rendered = rendered
-			.expect("render_thumbnail produces a PNG path for the real media");
+		let rendered = rendered.expect("render_thumbnail produces a PNG path for the real media");
 		assert!(
 			rendered.exists(),
 			"the rendered PNG exists: {}",
@@ -6405,12 +6568,8 @@ mod tests {
 		// path into the cache so the entry re-reads with the thumbnail.
 		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
 		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
-		cx.update(|app| {
-			engine.update(app, |engine, cx| {
-				engine.import_footage(media.clone(), cx)
-			})
-		})
-		.expect("re-import the footage");
+		cx.update(|app| engine.update(app, |engine, cx| engine.import_footage(media.clone(), cx)))
+			.expect("re-import the footage");
 		// Progress criterion, not wall time: the worker's async thumbnail
 		// installs after a bounded number of engine pumps (a wall-clock
 		// cap would fail on slow machines for machine speed).
@@ -6515,13 +6674,19 @@ mod tests {
 			entries[base].name.is_empty() == false && entries[base + 1].name.is_empty() == false,
 			"edit rows carry their command labels"
 		);
-		assert_eq!(cx.read(|app| engine.read(app).history_index()), (base + 2) as i64);
+		assert_eq!(
+			cx.read(|app| engine.read(app).history_index()),
+			(base + 2) as i64
+		);
 
 		// Undo grays the newest row (it joins the redoable tail).
 		cx.update(|app| engine.update(app, |engine, cx| engine.undo(cx)));
 		let entries = cx.read(|app| engine.read(app).history_entries());
 		assert!(!entries.last().unwrap().done, "undone row stays listed");
-		assert_eq!(cx.read(|app| engine.read(app).history_index()), (base + 1) as i64);
+		assert_eq!(
+			cx.read(|app| engine.read(app).history_index()),
+			(base + 1) as i64
+		);
 
 		// A jump to the bottom undoes everything below the base command;
 		// the rows stay listed (gray), matching the C++ jump semantics.
@@ -6536,9 +6701,15 @@ mod tests {
 		cx.update(|app| {
 			engine.update(app, |engine, cx| engine.jump_history((base + 2) as i64, cx))
 		});
-		assert_eq!(cx.read(|app| engine.read(app).history_index()), (base + 2) as i64);
+		assert_eq!(
+			cx.read(|app| engine.read(app).history_index()),
+			(base + 2) as i64
+		);
 		let entries = cx.read(|app| engine.read(app).history_entries());
-		assert!(entries.iter().all(|e| e.done), "the redo restored every row");
+		assert!(
+			entries.iter().all(|e| e.done),
+			"the redo restored every row"
+		);
 
 		oak_undo::global::clear().unwrap();
 	}
@@ -6549,9 +6720,7 @@ mod tests {
 	/// grid clicks all run this exact path. Also covers the timeline menu's
 	/// eligibility/checked state and the enable/disable detection.
 	#[gpui::test]
-	async fn real_engine_multicam_switch_round_trips_through_undo(
-		cx: &mut gpui::TestAppContext,
-	) {
+	async fn real_engine_multicam_switch_round_trips_through_undo(cx: &mut gpui::TestAppContext) {
 		use oak_node::block::clip_input::TEXTURE_INPUT;
 		let _media = media_lock();
 		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
@@ -6621,14 +6790,15 @@ mod tests {
 		let state = cx
 			.read(|app| engine.read(app).multicam_state())
 			.expect("a selected multicam clip is detected");
-		assert_eq!(state.source_count, 4, "default 2 video tracks + 2 added = four angles");
+		assert_eq!(
+			state.source_count, 4,
+			"default 2 video tracks + 2 added = four angles"
+		);
 		assert_eq!(state.current_source, 0);
 
 		// Switch through the UI path (no split: the playhead sits at the
 		// clip's in point, so the switch is a plain current_in write).
-		cx.update(|app| {
-			engine.update(app, |engine, cx| engine.multicam_switch_to(1, false, cx))
-		});
+		cx.update(|app| engine.update(app, |engine, cx| engine.multicam_switch_to(1, false, cx)));
 		let state = cx
 			.read(|app| engine.read(app).multicam_state())
 			.expect("still detected after the switch");
@@ -6637,13 +6807,17 @@ mod tests {
 		// ONE undo entry restores the previous source; redo re-applies it.
 		cx.update(|app| engine.update(app, |engine, cx| engine.undo(cx)));
 		assert_eq!(
-			cx.read(|app| engine.read(app).multicam_state()).unwrap().current_source,
+			cx.read(|app| engine.read(app).multicam_state())
+				.unwrap()
+				.current_source,
 			0,
 			"undo restores the pre-switch source"
 		);
 		cx.update(|app| engine.update(app, |engine, cx| engine.redo(cx)));
 		assert_eq!(
-			cx.read(|app| engine.read(app).multicam_state()).unwrap().current_source,
+			cx.read(|app| engine.read(app).multicam_state())
+				.unwrap()
+				.current_source,
 			1,
 			"redo re-applies the switched source"
 		);
@@ -6675,12 +6849,9 @@ mod tests {
 		let seq = graphops::create_sequence(&project, "Node Editor");
 		graphops::add_track(&project, seq, TrackType::Video).expect("add a video track");
 
-		let media = std::env::temp_dir().join(format!(
-			"oakapp_nodegraph_{}.mp4",
-			std::process::id()
-		));
-		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10)
-			.expect("generate test media");
+		let media =
+			std::env::temp_dir().join(format!("oakapp_nodegraph_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate test media");
 		let footage = graphops::import_footage(&project, &media).expect("import must succeed");
 		graphops::place_footage_clip(&project, seq, footage, TrackType::Video, 0, 0, 10, 0)
 			.expect("clip placement");
@@ -6756,10 +6927,8 @@ mod tests {
 					.type_id;
 				let effect =
 					crate::oakui::effectchain::insert(&project, clip.id, 0, &ty).expect("chain it");
-				let media = std::env::temp_dir().join(format!(
-					"oakapp_sel_link_{}.mp4",
-					std::process::id()
-				));
+				let media = std::env::temp_dir()
+					.join(format!("oakapp_sel_link_{}.mp4", std::process::id()));
 				oak_codec::testmedia::write_test_clip(&media, 32, 32, 10, 10)
 					.expect("generate test media");
 				let footage = graphops::import_footage(&project, &media).expect("import the media");
@@ -6786,26 +6955,51 @@ mod tests {
 				);
 				let _ = std::fs::remove_file(&media);
 				engine.adopt_project(project, cx);
-				(ClipId(clip.id.identity()), effect.identity(), footage.identity())
+				(
+					ClipId(clip.id.identity()),
+					effect.identity(),
+					footage.identity(),
+				)
 			})
 		});
 
 		// A single clip selection narrows the node graph to the chain and
 		// mirrors the block node as the graph selection.
 		cx.update(|app| {
-			engine.update(app, |engine, cx| engine.set_selected_clips(vec![clip_id], cx))
+			engine.update(app, |engine, cx| {
+				engine.set_selected_clips(vec![clip_id], cx)
+			})
 		});
 		assert_eq!(
 			cx.read(|app| engine.read(app).selected_graph_node()),
 			Some(clip_id.0),
 			"a clip selection highlights its block node"
 		);
-		let ids: Vec<u64> = cx
-			.read(|app| engine.read(app).nodes().into_iter().map(|n| n.id.0).collect());
-		assert_eq!(ids.len(), 3, "only the clip's context chain is shown (got {ids:?})");
-		assert!(ids.contains(&clip_id.0), "the clip node is part of the chain");
-		assert!(ids.contains(&effect_ident), "the effect is part of the chain");
-		assert!(ids.contains(&footage_ident), "the footage is part of the chain");
+		let ids: Vec<u64> = cx.read(|app| {
+			engine
+				.read(app)
+				.nodes()
+				.into_iter()
+				.map(|n| n.id.0)
+				.collect()
+		});
+		assert_eq!(
+			ids.len(),
+			3,
+			"only the clip's context chain is shown (got {ids:?})"
+		);
+		assert!(
+			ids.contains(&clip_id.0),
+			"the clip node is part of the chain"
+		);
+		assert!(
+			ids.contains(&effect_ident),
+			"the effect is part of the chain"
+		);
+		assert!(
+			ids.contains(&footage_ident),
+			"the footage is part of the chain"
+		);
 
 		// Selecting the effect node in the graph retargets the inspector to
 		// the owning clip and highlights the matching card.
@@ -6875,12 +7069,9 @@ mod tests {
 
 		let project = graphops::create_project();
 		let seq = graphops::create_sequence(&project, "Full Res Source");
-		let media = std::env::temp_dir().join(format!(
-			"oakapp_fullres_src_{}.mp4",
-			std::process::id()
-		));
-		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10)
-			.expect("generate test media");
+		let media =
+			std::env::temp_dir().join(format!("oakapp_fullres_src_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate test media");
 		let footage = graphops::import_footage(&project, &media).expect("import must succeed");
 		let tb = graphops::sequence_time_base(&graphops::lock(&project).graph, seq).unwrap();
 
@@ -7049,12 +7240,8 @@ mod tests {
 		let seq = graphops::create_sequence(&project, "Full Res E2E");
 		graphops::add_track(&project, seq, TrackType::Video).expect("add a video track");
 
-		let media = std::env::temp_dir().join(format!(
-			"oakapp_fullres_{}.mp4",
-			std::process::id()
-		));
-		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10)
-			.expect("generate test media");
+		let media = std::env::temp_dir().join(format!("oakapp_fullres_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate test media");
 		let footage = graphops::import_footage(&project, &media).expect("import must succeed");
 		graphops::place_footage_clip(&project, seq, footage, TrackType::Video, 0, 0, 10, 0)
 			.expect("clip placement");
@@ -7190,9 +7377,7 @@ mod tests {
 		let _media = media_lock();
 		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
 		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
-		cx.update(|app| {
-			engine.update(app, |engine, cx| engine.set_track_height(px(96.0), cx))
-		});
+		cx.update(|app| engine.update(app, |engine, cx| engine.set_track_height(px(96.0), cx)));
 		let height = cx.read(|app| engine.read(app).tracks[0].height());
 		assert_eq!(height, px(96.0), "the new height is applied");
 	}
@@ -7214,14 +7399,15 @@ mod tests {
 			})
 		});
 		let name = media.file_name().unwrap().to_string_lossy().into_owned();
-		let entry = cx.read(|app| {
-			engine
-				.read(app)
-				.roots()
-				.into_iter()
-				.find(|e| e.name.as_ref() == name)
-		})
-		.expect("imported footage is listed");
+		let entry = cx
+			.read(|app| {
+				engine
+					.read(app)
+					.roots()
+					.into_iter()
+					.find(|e| e.name.as_ref() == name)
+			})
+			.expect("imported footage is listed");
 		cx.update(|app| {
 			engine.update(app, |engine, cx| {
 				// Drop at a non-zero frame: the placement must land where
@@ -7250,9 +7436,16 @@ mod tests {
 		};
 		let (video_clips, audio_clips) = cx.read(|app| {
 			let engine = engine.read(app);
-			(clip_count(engine, TrackKind::Video), clip_count(engine, TrackKind::Audio))
+			(
+				clip_count(engine, TrackKind::Video),
+				clip_count(engine, TrackKind::Audio),
+			)
 		});
-		assert_eq!((video_clips, audio_clips), (1, 1), "one video clip + one audio clip");
+		assert_eq!(
+			(video_clips, audio_clips),
+			(1, 1),
+			"one video clip + one audio clip"
+		);
 
 		// The two clips are linked (grouped edits apply to both).
 		let (video_block, audio_block) = cx.read(|app| {
@@ -7285,15 +7478,29 @@ mod tests {
 		cx.update(|app| engine.update(app, |engine, cx| engine.undo(cx)));
 		let (video_clips, audio_clips) = cx.read(|app| {
 			let engine = engine.read(app);
-			(clip_count(engine, TrackKind::Video), clip_count(engine, TrackKind::Audio))
+			(
+				clip_count(engine, TrackKind::Video),
+				clip_count(engine, TrackKind::Audio),
+			)
 		});
-		assert_eq!((video_clips, audio_clips), (0, 0), "one undo removes both clips");
+		assert_eq!(
+			(video_clips, audio_clips),
+			(0, 0),
+			"one undo removes both clips"
+		);
 		cx.update(|app| engine.update(app, |engine, cx| engine.redo(cx)));
 		let (video_clips, audio_clips) = cx.read(|app| {
 			let engine = engine.read(app);
-			(clip_count(engine, TrackKind::Video), clip_count(engine, TrackKind::Audio))
+			(
+				clip_count(engine, TrackKind::Video),
+				clip_count(engine, TrackKind::Audio),
+			)
 		});
-		assert_eq!((video_clips, audio_clips), (1, 1), "one redo restores both clips");
+		assert_eq!(
+			(video_clips, audio_clips),
+			(1, 1),
+			"one redo restores both clips"
+		);
 	}
 
 	/// Dragging a clip of a linked A/V pair drags its partner in lockstep:
@@ -7313,14 +7520,15 @@ mod tests {
 			})
 		});
 		let name = media.file_name().unwrap().to_string_lossy().into_owned();
-		let entry = cx.read(|app| {
-			engine
-				.read(app)
-				.roots()
-				.into_iter()
-				.find(|e| e.name.as_ref() == name)
-		})
-		.expect("imported footage is listed");
+		let entry = cx
+			.read(|app| {
+				engine
+					.read(app)
+					.roots()
+					.into_iter()
+					.find(|e| e.name.as_ref() == name)
+			})
+			.expect("imported footage is listed");
 		cx.update(|app| {
 			engine.update(app, |engine, cx| {
 				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(40), cx)
@@ -7442,14 +7650,15 @@ mod tests {
 			})
 		});
 		let name = media.file_name().unwrap().to_string_lossy().into_owned();
-		let entry = cx.read(|app| {
-			engine
-				.read(app)
-				.roots()
-				.into_iter()
-				.find(|e| e.name.as_ref() == name)
-		})
-		.expect("imported footage is listed");
+		let entry = cx
+			.read(|app| {
+				engine
+					.read(app)
+					.roots()
+					.into_iter()
+					.find(|e| e.name.as_ref() == name)
+			})
+			.expect("imported footage is listed");
 		cx.update(|app| {
 			engine.update(app, |engine, cx| {
 				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(40), cx)
@@ -7599,7 +7808,10 @@ mod tests {
 				guard.graph.links_of(na).contains(&nb)
 			})
 		};
-		assert!(linked(cx, video_id, audio_id), "the dropped A/V pair starts linked");
+		assert!(
+			linked(cx, video_id, audio_id),
+			"the dropped A/V pair starts linked"
+		);
 
 		// The toggle unlinks the pair; ONE undo restores the link; the next
 		// toggle unlinks it again (the undo left the pair linked, so the
@@ -7609,7 +7821,10 @@ mod tests {
 				engine.toggle_clip_links(vec![video_id, audio_id], cx)
 			})
 		});
-		assert!(!linked(cx, video_id, audio_id), "the toggle unlinks the pair");
+		assert!(
+			!linked(cx, video_id, audio_id),
+			"the toggle unlinks the pair"
+		);
 		cx.update(|app| engine.update(app, |engine, cx| engine.undo(cx)));
 		assert!(linked(cx, video_id, audio_id), "one undo restores the link");
 		cx.update(|app| {
@@ -7626,7 +7841,9 @@ mod tests {
 		// Split the video clip at frame 20: the two halves are NOT linked by
 		// default; selecting both and toggling links them.
 		cx.update(|app| {
-			engine.update(app, |engine, cx| engine.request_frame(Monitor::Program, Frame(20), cx))
+			engine.update(app, |engine, cx| {
+				engine.request_frame(Monitor::Program, Frame(20), cx)
+			})
 		});
 		cx.update(|app| engine.update(app, |engine, cx| engine.split_at_playhead(cx)));
 		let halves: Vec<ClipId> = cx.read(|app| {
@@ -7686,7 +7903,9 @@ mod tests {
 			})
 		});
 		cx.update(|app| {
-			engine.update(app, |engine, cx| engine.request_frame(Monitor::Program, Frame(20), cx))
+			engine.update(app, |engine, cx| {
+				engine.request_frame(Monitor::Program, Frame(20), cx)
+			})
 		});
 		cx.update(|app| engine.update(app, |engine, cx| engine.split_at_playhead(cx)));
 
@@ -7730,8 +7949,14 @@ mod tests {
 			})
 		};
 		let _ = clips_of;
-		let (vf, vr) = (by_start(TrackKind::Video, 0, cx), by_start(TrackKind::Video, 20, cx));
-		let (af, ar) = (by_start(TrackKind::Audio, 0, cx), by_start(TrackKind::Audio, 20, cx));
+		let (vf, vr) = (
+			by_start(TrackKind::Video, 0, cx),
+			by_start(TrackKind::Video, 20, cx),
+		);
+		let (af, ar) = (
+			by_start(TrackKind::Audio, 0, cx),
+			by_start(TrackKind::Audio, 20, cx),
+		);
 		assert!(linked(vf, af, cx), "the front halves stay linked");
 		assert!(linked(vr, ar, cx), "the rear halves are linked too");
 	}
@@ -7749,10 +7974,8 @@ mod tests {
 		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
 		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
 
-		let media = std::env::temp_dir().join(format!(
-			"oakapp_playback_window_{}.mp4",
-			std::process::id()
-		));
+		let media =
+			std::env::temp_dir().join(format!("oakapp_playback_window_{}.mp4", std::process::id()));
 		oak_codec::testmedia::write_test_clip(&media, 64, 64, 250, 25)
 			.expect("generate playback test media");
 		cx.update(|app| {
@@ -7761,14 +7984,15 @@ mod tests {
 			})
 		});
 		let name = media.file_name().unwrap().to_string_lossy().into_owned();
-		let entry = cx.read(|app| {
-			engine
-				.read(app)
-				.roots()
-				.into_iter()
-				.find(|e| e.name.as_ref() == name)
-		})
-		.expect("imported footage is listed");
+		let entry = cx
+			.read(|app| {
+				engine
+					.read(app)
+					.roots()
+					.into_iter()
+					.find(|e| e.name.as_ref() == name)
+			})
+			.expect("imported footage is listed");
 		cx.update(|app| {
 			engine.update(app, |engine, cx| {
 				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(0), cx)
@@ -7796,7 +8020,11 @@ mod tests {
 			let playhead = cx.read(|app| engine.read(app).clock_frame(Monitor::Program, app));
 			hit = hit
 				|| cx
-					.update(|app| engine.update(app, |engine, _cx| engine.preview_slot_frame(Monitor::Program, playhead)))
+					.update(|app| {
+						engine.update(app, |engine, _cx| {
+							engine.preview_slot_frame(Monitor::Program, playhead)
+						})
+					})
 					.is_some();
 			if hit {
 				break;
@@ -7827,9 +8055,15 @@ mod tests {
 			})
 		});
 		let name = media.file_name().unwrap().to_string_lossy().into_owned();
-		let entry = cx.read(|app| {
-			engine.read(app).roots().into_iter().find(|e| e.name.as_ref() == name)
-		}).expect("imported footage is listed");
+		let entry = cx
+			.read(|app| {
+				engine
+					.read(app)
+					.roots()
+					.into_iter()
+					.find(|e| e.name.as_ref() == name)
+			})
+			.expect("imported footage is listed");
 		cx.update(|app| {
 			engine.update(app, |engine, cx| {
 				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(0), cx)
@@ -7838,7 +8072,9 @@ mod tests {
 		// Interactive seek (not playing): a single synchronous render of the
 		// target frame. If this hangs, the seek render path deadlocks.
 		cx.update(|app| {
-			engine.update(app, |engine, cx| engine.request_frame(Monitor::Program, Frame(24), cx))
+			engine.update(app, |engine, cx| {
+				engine.request_frame(Monitor::Program, Frame(24), cx)
+			})
 		});
 		let img = cx.read(|app| engine.read(app).cpu_frame(Monitor::Program, app));
 		let bytes = img.as_bytes(0).expect("frame bytes");
@@ -7854,7 +8090,9 @@ mod tests {
 		}
 		cx.update(|app| engine.update(app, |engine, cx| engine.pause(Monitor::Program, cx)));
 		cx.update(|app| {
-			engine.update(app, |engine, cx| engine.request_frame(Monitor::Program, Frame(48), cx))
+			engine.update(app, |engine, cx| {
+				engine.request_frame(Monitor::Program, Frame(48), cx)
+			})
 		});
 		let img = cx.read(|app| engine.read(app).cpu_frame(Monitor::Program, app));
 		let bytes = img.as_bytes(0).expect("seek-after-play frame bytes");
@@ -7876,9 +8114,15 @@ mod tests {
 			})
 		});
 		let name = media.file_name().unwrap().to_string_lossy().into_owned();
-		let entry = cx.read(|app| {
-			engine.read(app).roots().into_iter().find(|e| e.name.as_ref() == name)
-		}).expect("imported footage is listed");
+		let entry = cx
+			.read(|app| {
+				engine
+					.read(app)
+					.roots()
+					.into_iter()
+					.find(|e| e.name.as_ref() == name)
+			})
+			.expect("imported footage is listed");
 		cx.update(|app| {
 			engine.update(app, |engine, cx| {
 				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(0), cx)
@@ -7900,11 +8144,18 @@ mod tests {
 		let (roots, tracks) = cx.read(|app| {
 			let engine = engine.read(app);
 			(
-				engine.roots().iter().map(|e| e.name.to_string()).collect::<Vec<_>>(),
+				engine
+					.roots()
+					.iter()
+					.map(|e| e.name.to_string())
+					.collect::<Vec<_>>(),
 				engine.tracks.iter().map(|t| t.clips.len()).sum::<usize>(),
 			)
 		});
-		assert!(roots.iter().any(|n| n == &name), "footage survives: {roots:?}");
+		assert!(
+			roots.iter().any(|n| n == &name),
+			"footage survives: {roots:?}"
+		);
 		assert!(tracks > 0, "the timeline clip survives the roundtrip");
 	}
 
@@ -7927,14 +8178,15 @@ mod tests {
 			})
 		});
 		let name = media.file_name().unwrap().to_string_lossy().into_owned();
-		let entry = cx.read(|app| {
-			engine
-				.read(app)
-				.roots()
-				.into_iter()
-				.find(|e| e.name.as_ref() == name)
-		})
-		.expect("imported footage is listed");
+		let entry = cx
+			.read(|app| {
+				engine
+					.read(app)
+					.roots()
+					.into_iter()
+					.find(|e| e.name.as_ref() == name)
+			})
+			.expect("imported footage is listed");
 		cx.update(|app| {
 			engine.update(app, |engine, cx| {
 				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(0), cx)
@@ -8090,25 +8342,26 @@ mod tests {
 
 		let folder = cx.update(|app| {
 			engine
-				.update(app, |engine, cx| engine.create_folder("Folder 1".to_string(), cx))
+				.update(app, |engine, cx| {
+					engine.create_folder("Folder 1".to_string(), cx)
+				})
 				.expect("create folder")
 		});
 		let seq = cx.update(|app| {
-			engine
-				.update(app, |engine, cx| {
-					engine
-						.create_sequence_with_params(
-							"Seq 4K".to_string(),
-							VideoFormat {
-								width: 3840,
-								height: 2160,
-								rate: FrameRate::new(24000, 1001),
-							},
-							true,
-							cx,
-						)
-						.expect("create sequence")
-				})
+			engine.update(app, |engine, cx| {
+				engine
+					.create_sequence_with_params(
+						"Seq 4K".to_string(),
+						VideoFormat {
+							width: 3840,
+							height: 2160,
+							rate: FrameRate::new(24000, 1001),
+						},
+						true,
+						cx,
+					)
+					.expect("create sequence")
+			})
 		});
 
 		// Both mount under the root folder, like the explorer expects.
@@ -8127,8 +8380,14 @@ mod tests {
 				.map(|f| f.children.clone())
 				.unwrap_or_default()
 		};
-		assert!(children.contains(&folder_node), "the folder mounts under root");
-		assert!(children.contains(&seq_node), "the sequence mounts under root");
+		assert!(
+			children.contains(&folder_node),
+			"the folder mounts under root"
+		);
+		assert!(
+			children.contains(&seq_node),
+			"the sequence mounts under root"
+		);
 
 		let is_seq = cx.read(|app| engine.read(app).entry_is_sequence(seq));
 		assert!(is_seq, "the created entry is a sequence");
@@ -8141,7 +8400,10 @@ mod tests {
 			.expect("sequence parameters");
 		assert_eq!(params.name, "Seq 4K");
 		assert_eq!((params.format.width, params.format.height), (3840, 2160));
-		assert_eq!((params.format.rate.num, params.format.rate.den), (24000, 1001));
+		assert_eq!(
+			(params.format.rate.num, params.format.rate.den),
+			(24000, 1001)
+		);
 		assert!(params.interlaced, "the interlaced flag round-trips");
 	}
 
@@ -8155,39 +8417,37 @@ mod tests {
 		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
 
 		let seq = cx.update(|app| {
-			engine
-				.update(app, |engine, cx| {
-					engine
-						.create_sequence_with_params(
-							"Before".to_string(),
-							VideoFormat {
-								width: 1280,
-								height: 720,
-								rate: FrameRate::new(25, 1),
-							},
-							false,
-							cx,
-						)
-						.expect("create sequence")
-				})
+			engine.update(app, |engine, cx| {
+				engine
+					.create_sequence_with_params(
+						"Before".to_string(),
+						VideoFormat {
+							width: 1280,
+							height: 720,
+							rate: FrameRate::new(25, 1),
+						},
+						false,
+						cx,
+					)
+					.expect("create sequence")
+			})
 		});
 		cx.update(|app| {
-			engine
-				.update(app, |engine, cx| {
-					engine
-						.update_sequence_parameters(
-							seq,
-							"After".to_string(),
-							VideoFormat {
-								width: 1920,
-								height: 1080,
-								rate: FrameRate::new(30000, 1001),
-							},
-							true,
-							cx,
-						)
-						.expect("update parameters")
-				})
+			engine.update(app, |engine, cx| {
+				engine
+					.update_sequence_parameters(
+						seq,
+						"After".to_string(),
+						VideoFormat {
+							width: 1920,
+							height: 1080,
+							rate: FrameRate::new(30000, 1001),
+						},
+						true,
+						cx,
+					)
+					.expect("update parameters")
+			})
 		});
 
 		let params = cx
@@ -8195,7 +8455,10 @@ mod tests {
 			.expect("sequence parameters");
 		assert_eq!(params.name, "After");
 		assert_eq!((params.format.width, params.format.height), (1920, 1080));
-		assert_eq!((params.format.rate.num, params.format.rate.den), (30000, 1001));
+		assert_eq!(
+			(params.format.rate.num, params.format.rate.den),
+			(30000, 1001)
+		);
 		assert!(params.interlaced, "the interlace flag updates too");
 	}
 
@@ -8236,7 +8499,12 @@ mod tests {
 		});
 
 		let seq = cx
-			.read(|app| engine.read(app).sequence.expect("a sequence was auto-created"))
+			.read(|app| {
+				engine
+					.read(app)
+					.sequence
+					.expect("a sequence was auto-created")
+			})
 			.identity();
 		let params = cx
 			.read(|app| engine.read(app).sequence_parameters(seq))
@@ -8261,7 +8529,10 @@ mod tests {
 			)
 		};
 		assert_eq!((params.format.width, params.format.height), (width, height));
-		assert_eq!((params.format.rate.num, params.format.rate.den), (rate_num, rate_den));
+		assert_eq!(
+			(params.format.rate.num, params.format.rate.den),
+			(rate_num, rate_den)
+		);
 		assert_eq!(params.interlaced, interlaced);
 
 		// The drop placed a clip on the auto-created sequence's timeline.
