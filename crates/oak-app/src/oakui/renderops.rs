@@ -515,6 +515,119 @@ fn validate_geometry(width: i32, height: i32, tb: (i64, i64)) -> Result<(), Stri
 	Ok(())
 }
 
+/// The background full-res render geometry: the sequence's native size
+/// scaled by the playback resolution divider (the viewer `Playback
+/// Resolution ▸` menu). A paused preview at Half/Quarter/Eighth must not
+/// be overwritten by a native-size background fill, so the full-res job
+/// renders at the same divider as the preview window.
+pub fn full_res_render_size(seq_width: u32, seq_height: u32, divider: u32) -> (i32, i32) {
+	let w = seq_width.max(1) as f64;
+	let h = seq_height.max(1) as f64;
+	let scale = 1.0 / divider.max(1) as f64;
+	let width = ((w * scale).round() as u32).max(2) as i32;
+	let height = ((h * scale).round() as u32).max(2) as i32;
+	(width, height)
+}
+
+/// The resolution a footage's proxy decodes at, inferred from its
+/// generation parameters: the absolute `ProxyParams` width/height when
+/// configured, otherwise the source video resolution divided by the
+/// proxy divider. `None` when there is no probed video stream to base a
+/// divider mode on.
+fn proxy_resolution(f: &oak_node::footage::FootageBehavior) -> Option<(i32, i32)> {
+	let params = f
+		.custom_proxy_params
+		.clone()
+		.unwrap_or_else(oak_codec::proxymanager::ProxyManager::proxy_params_from_config);
+	if params.width > 0 && params.height > 0 {
+		return Some((params.width, params.height));
+	}
+	let source = f.streams.iter().find(|s| s.is_video)?.video.as_ref()?;
+	let d = params.divider.max(1) as u32;
+	Some((
+		(source.width as u32 / d).max(2) as i32,
+		(source.height as u32 / d).max(2) as i32,
+	))
+}
+
+/// Clamp `(w, h)` (keeping the aspect ratio) down to the largest size
+/// that fits inside every limit rectangle — i.e. the render never
+/// upscales any of the limit sources. Unchanged when it already fits.
+fn clamp_render_size(w: i32, h: i32, limits: &[(i32, i32)]) -> (i32, i32) {
+	let mut scale = 1.0f64;
+	for &(lw, lh) in limits {
+		if lw <= 0 || lh <= 0 {
+			continue;
+		}
+		scale = scale.min(lw as f64 / w as f64).min(lh as f64 / h as f64);
+	}
+	if scale >= 1.0 {
+		return (w, h);
+	}
+	(
+		((w as f64 * scale).round() as i32).max(2),
+		((h as f64 * scale).round() as i32).max(2),
+	)
+}
+
+/// The proxy resolutions of the clips covering `time` on `seq`'s video
+/// tracks whose preview media actually IS the proxy (the global
+/// `UseProxyMedia` switch, the footage's proxy flag and an on-disk Ready
+/// proxy all have to line up — the same test [`preview_footage_media`]
+/// applies). The montage composites every clip at one shared size, so an
+/// active proxy bounds the whole render: decoding a 720p proxy up to a
+/// 1080p target (then scaling back down for display) is the wasted
+/// upscale this limit removes.
+fn proxy_limits_at(p: &ProjectRef, seq: NodeId, time: Rational) -> Vec<(i32, i32)> {
+	let g = lock(p);
+	let mut limits = Vec::new();
+	let Some(s) = sequence_behavior(&g.graph, seq) else {
+		return limits;
+	};
+	for &list_id in &s.track_lists {
+		let Some(list) = track_list_behavior(&g.graph, list_id) else {
+			continue;
+		};
+		if list.kind != TrackType::Video {
+			continue;
+		}
+		for &track_id in list.tracks.iter() {
+			let Some(track) = track_behavior(&g.graph, track_id) else {
+				continue;
+			};
+			if track.muted {
+				continue;
+			}
+			for &block_id in &track.blocks {
+				let Some(clip) = clip_behavior(&g.graph, block_id) else {
+					continue;
+				};
+				let in_ = clip.core.in_();
+				let out = clip.core.out();
+				if time < in_ || time >= out {
+					continue;
+				}
+				let Some(footage_id) = super::graphops::find_input_footage(&g.graph, block_id)
+				else {
+					continue;
+				};
+				let Some(f) = super::graphops::footage_behavior(&g.graph, footage_id) else {
+					continue;
+				};
+				// A proxy that does not substitute the original (off switch,
+				// disabled flag, missing file) leaves the render unclamped.
+				if preview_footage_media(f, true).0 != f.proxy {
+					continue;
+				}
+				if let Some(limit) = proxy_resolution(f) {
+					limits.push(limit);
+				}
+			}
+		}
+	}
+	limits
+}
+
 /// Drive one video ticket synchronously (M15 S2: returns the payload
 /// variant without copying frame bytes — the shm slot is read zero-copy
 /// by the caller and released after building the display image).
@@ -558,6 +671,10 @@ pub fn sequence_frame_params(
 ) -> Result<VideoTicketParams, String> {
 	validate_geometry(width, height, tb)?;
 	let time = Rational::new(frame_ts * tb.0, tb.1);
+	// Proxy clamping: the montage composites every clip at one shared
+	// size, so any active proxy bounds the whole render — never decode a
+	// 720p proxy up to a 1080p target.
+	let (width, height) = clamp_render_size(width, height, &proxy_limits_at(p, seq, time));
 	// Bind the uuid before the literal: an inline `lock(p)` temporary in the
 	// block-tail struct expression would still be alive when `video_montage`
 	// re-locks the project, deadlocking the same thread.
@@ -603,12 +720,23 @@ pub fn footage_frame_params(
 	height: i32,
 ) -> Result<VideoTicketParams, String> {
 	validate_geometry(width, height, tb)?;
-	let (filename, stream_index) = {
+	let (filename, stream_index, limits) = {
 		let g = lock(p);
-		super::graphops::footage_behavior(&g.graph, footage)
-			.map(|f| preview_footage_media(f, true))
-			.ok_or_else(|| "the node is not footage".to_string())?
+		let f = super::graphops::footage_behavior(&g.graph, footage)
+			.ok_or_else(|| "the node is not footage".to_string())?;
+		let (media, stream) = preview_footage_media(f, true);
+		// The proxy is the selected preview media: bound the render to the
+		// proxy's own resolution instead of upscaling it to the requested
+		// target (the source monitor's full-res fill runs this path too).
+		let mut limits = Vec::new();
+		if media == f.proxy {
+			if let Some(resolution) = proxy_resolution(f) {
+				limits.push(resolution);
+			}
+		}
+		(media, stream, limits)
 	};
+	let (width, height) = clamp_render_size(width, height, &limits);
 	let time = Rational::new(frame_ts * tb.0, tb.1);
 	// Bind the uuid before the literal (same tail-expression temporary rule
 	// as the montage paths; harmless here but keeps the pattern uniform).
@@ -1291,5 +1419,118 @@ mod tests {
 		assert_eq!(audio_montage(&project, seq, range).len(), 1, "undo restores the audio clip");
 		oak_undo::global::clear().unwrap();
 		let _ = std::fs::remove_file(&media);
+	}
+
+	/// The background full-res geometry follows the playback resolution
+	/// divider (the viewer `Playback Resolution ▸` menu): a paused
+	/// Half/Quarter/Eighth preview must not be overwritten by a native-size
+	/// background fill, so the fill renders at the same divider the window
+	/// shows.
+	#[test]
+	fn full_res_size_follows_the_playback_divider() {
+		assert_eq!(full_res_render_size(1920, 1080, 1), (1920, 1080));
+		assert_eq!(full_res_render_size(1920, 1080, 2), (960, 540));
+		assert_eq!(full_res_render_size(1920, 1080, 4), (480, 270));
+		assert_eq!(full_res_render_size(1920, 1080, 8), (240, 135));
+		// An unprobed/zero format stays sane, and the divider never
+		// underflows the renderable minimum.
+		assert_eq!(full_res_render_size(0, 0, 1), (2, 2));
+		assert_eq!(full_res_render_size(1, 1, 8), (2, 2));
+		assert_eq!(full_res_render_size(1920, 1080, 0), (1920, 1080), "a zero divider means Full");
+	}
+
+	/// Clamping only shrinks: a render that already fits a limit is left
+	/// alone (no pointless upscale), and the aspect ratio is preserved
+	/// while every limit rectangle is respected.
+	#[test]
+	fn render_size_clamps_to_proxy_without_upscaling() {
+		assert_eq!(clamp_render_size(1920, 1080, &[(1280, 720)]), (1280, 720));
+		assert_eq!(
+			clamp_render_size(960, 540, &[(1280, 720)]),
+			(960, 540),
+			"a smaller request is not upscaled to the proxy"
+		);
+		assert_eq!(clamp_render_size(1920, 1080, &[]), (1920, 1080), "no limits = no clamping");
+		assert_eq!(
+			clamp_render_size(1920, 1080, &[(640, 640)]),
+			(640, 360),
+			"the tighter dimension (width 640/1920 = 1/3) wins"
+		);
+		assert_eq!(
+			clamp_render_size(1920, 1080, &[(640, 640), (1280, 720)]),
+			(640, 360),
+			"the smallest limit binds"
+		);
+	}
+
+	/// The proxy-clamping acceptance gate: with the global `UseProxyMedia`
+	/// switch on and a footage whose proxy is a ready file on disk, the
+	/// sequence render is bounded by the proxy's own resolution — the 64x64
+	/// source proxied at 32x32 renders at 32x32 (never decoded up to the
+	/// native size) and the pixels come from the proxy file.
+	#[test]
+	fn proxy_resolution_bounds_the_sequence_render() {
+		let _media = media_lock();
+		oak_undo::global::clear().unwrap();
+		let orig =
+			std::env::temp_dir().join(format!("oakapp_proxy_src_{}.mp4", std::process::id()));
+		let proxy =
+			std::env::temp_dir().join(format!("oakapp_proxy_32_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip(&orig, 64, 64, 10, 10).expect("generate the source media");
+		oak_codec::testmedia::write_test_clip_solid(&proxy, 32, 32, 10, 10, [0.1, 0.1, 0.9, 1.0])
+			.expect("generate the proxy media");
+
+		// Force the global proxy switch on and restore it afterwards (the
+		// config store is process-global; the serialization lock held
+		// above is the same one the other app test modules use).
+		let store = oak_common::configstore::ConfigStore::instance();
+		let old = store.get(None, "UseProxyMedia").unwrap_or_default();
+		store.set_bool(None, "UseProxyMedia", 1);
+
+		let (project, seq, footage) = project_with_clip(&orig);
+		{
+			let mut g = lock(&project);
+			let f = g
+				.graph
+				.get_mut(footage)
+				.and_then(|e| e.behavior.as_any_mut()?.downcast_mut::<oak_node::footage::FootageBehavior>())
+				.expect("the footage behavior");
+			f.proxy = proxy.to_string_lossy().into_owned();
+			f.proxy_enabled = true;
+			f.proxy_state = 2;
+			f.proxy_video_stream_index = 0;
+			f.custom_proxy_params = Some(oak_codec::proxymanager::ProxyParams {
+				width: 32,
+				height: 32,
+				..Default::default()
+			});
+		}
+		// The preview media is the proxy file…
+		let selected = {
+			let g = lock(&project);
+			let f = graphops::footage_behavior(&g.graph, footage).expect("the footage behavior");
+			preview_footage_media(f, true).0
+		};
+		assert_eq!(selected, proxy.to_string_lossy(), "the proxy stands in for the source");
+
+		// …and the sequence frame ticket is clamped to its 32x32 size.
+		let tb = graphops::sequence_time_base(&lock(&project).graph, seq).unwrap();
+		let params =
+			sequence_frame_params(&project, seq, 0, tb, 64, 64).expect("sequence frame params");
+		assert_eq!(params.force_size, Some((32, 32)), "the proxy bounds the render size");
+
+		// The decoded pixels are the proxy's (solid blue), not the source's.
+		let mut dst = vec![0u8; 32 * 32 * 16];
+		oak_render::eval::render_montage_frame_into(params.time, &params, (32, 32), &mut dst, 32 * 16)
+			.expect("montage render at the proxy size");
+		let off = (8 * 32 + 8) * 16;
+		let r = f32::from_le_bytes(dst[off..off + 4].try_into().unwrap());
+		let b = f32::from_le_bytes(dst[off + 8..off + 12].try_into().unwrap());
+		assert!(b > 0.5 && r < 0.4, "the proxy's blue covers the frame (r={r}, b={b})");
+
+		store.set(None, "UseProxyMedia", &old);
+		oak_undo::global::clear().unwrap();
+		let _ = std::fs::remove_file(&orig);
+		let _ = std::fs::remove_file(&proxy);
 	}
 }

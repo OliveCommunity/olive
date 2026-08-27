@@ -1268,9 +1268,9 @@ impl RealEngine {
 	/// The proxy resolution the viewer renders at: the sequence's aspect
 	/// scaled to a small long edge. Rendering is a synchronous call made
 	/// from `cpu_frame` (a `&self` read on the UI thread), so the geometry
-	/// stays tiny to keep the block short; the full-resolution frame is
-	/// rendered off-thread at the sequence's native size by the background
-	/// job (M12 P5a, see [`RealEngine::schedule_full_res`]).
+	/// stays tiny to keep the block short; the background job renders the
+	/// full-resolution frame off-thread at the divider-scaled size (M12
+	/// P5a, see [`RealEngine::schedule_full_res`]).
 	fn proxy_render_size(&self) -> Option<(i32, i32)> {
 		let info = self.sequence_info.as_ref()?;
 		let (w, h) = (info.format.width.max(1), info.format.height.max(1));
@@ -1367,22 +1367,30 @@ impl RealEngine {
 
 	/// Builds the background full-res job for `monitor` at `frame` (the
 	/// program monitor's sequence or the source monitor's selected footage
-	/// node) at the sequence's native size. Returns None when there is
-	/// nothing to render (no sequence open, no footage selected).
+	/// node) at the sequence's native size scaled by the playback
+	/// resolution divider (a paused Half/Quarter/Eighth preview must not
+	/// be overwritten by a native-size background render). Returns None
+	/// when there is nothing to render (no sequence open, no footage
+	/// selected).
 	fn build_full_res_request(&self, monitor: Monitor, frame: i64) -> Option<FullResRequest> {
 		let info = self.sequence_info.as_ref()?;
 		let target = match monitor {
 			Monitor::Program => FullResTarget::Sequence(self.sequence?),
 			Monitor::Source => FullResTarget::Footage(self.selected_footage_node()?),
 		};
+		let (width, height) = super::renderops::full_res_render_size(
+			info.format.width.max(1),
+			info.format.height.max(1),
+			self.playback_divider().max(1) as u32,
+		);
 		Some(FullResRequest {
 			monitor,
 			frame,
 			generation: self.full_res_generation,
 			project: self.project_ref()?.clone(),
 			target,
-			width: info.format.width.max(1) as i32,
-			height: info.format.height.max(1) as i32,
+			width,
+			height,
 			tb: self.time_base()?,
 		})
 	}
