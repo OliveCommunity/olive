@@ -175,9 +175,11 @@ fn clip_effects(g: &oak_node::graph::Graph, block_id: NodeId) -> Vec<oak_render:
 }
 
 /// The video montage at sequence time `time`: every clip covering `time`
-/// on video tracks, ordered bottom-to-top (track index 0 is topmost, so
-/// it is composited last). Hidden tracks (the muted flag doubles as the
-/// video visibility toggle, Olive parity) contribute nothing.
+/// on video tracks, ordered bottom-to-top (the highest-numbered track —
+/// the list's last — is topmost, so it is composited last; NLE stacking
+/// matches the timeline UI, which shows the highest-numbered track on
+/// top). Hidden tracks (the muted flag doubles as the video visibility
+/// toggle, Olive parity) contribute nothing.
 pub fn video_montage(p: &ProjectRef, seq: NodeId, time: Rational) -> Vec<MontageClip> {
 	let g = lock(p);
 	let mut clips = Vec::new();
@@ -191,7 +193,7 @@ pub fn video_montage(p: &ProjectRef, seq: NodeId, time: Rational) -> Vec<Montage
 		if list.kind != TrackType::Video {
 			continue;
 		}
-		for &track_id in list.tracks.iter().rev() {
+		for &track_id in list.tracks.iter() {
 			let Some(track) = track_behavior(&g.graph, track_id) else {
 				continue;
 			};
@@ -957,6 +959,73 @@ mod tests {
 		);
 		oak_undo::global::clear().unwrap();
 		let _ = std::fs::remove_file(&media);
+	}
+
+	/// NLE stacking regression: two OPAQUE solid-color clips covering the
+	/// same time on V1 (red) and V2 (blue) — the montage lists V1's clip
+	/// first and V2's LAST (the topmost composites last), and the rendered
+	/// frame shows V2's blue (the highest-numbered track wins, matching
+	/// the timeline UI).
+	#[test]
+	fn video_montage_stacks_highest_track_on_top() {
+		let _media = media_lock();
+		oak_undo::global::clear().unwrap();
+		let red =
+			std::env::temp_dir().join(format!("oakapp_stack_red_{}.mp4", std::process::id()));
+		let blue =
+			std::env::temp_dir().join(format!("oakapp_stack_blue_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip_solid(&red, 64, 64, 10, 10, [0.9, 0.1, 0.1, 1.0])
+			.expect("generate the red media");
+		oak_codec::testmedia::write_test_clip_solid(&blue, 64, 64, 10, 10, [0.1, 0.1, 0.9, 1.0])
+			.expect("generate the blue media");
+
+		let project = graphops::create_project();
+		let seq = graphops::create_sequence(&project, "Stack Montage");
+		let red_footage = graphops::import_footage(&project, &red).expect("import the red media");
+		let blue_footage = graphops::import_footage(&project, &blue).expect("import the blue media");
+		graphops::place_footage_clip(&project, seq, red_footage, TrackType::Video, 0, 0, 10, 0)
+			.expect("place the V1 (red) clip");
+		graphops::place_footage_clip(&project, seq, blue_footage, TrackType::Video, 1, 0, 10, 0)
+			.expect("place the V2 (blue) clip");
+		let tb = graphops::sequence_time_base(&lock(&project).graph, seq).unwrap();
+		let time = graphops::ts_to_rational(0, tb);
+
+		// Bottom-to-top: V1's (red) clip first, V2's (blue) last.
+		let montage = video_montage(&project, seq, time);
+		assert_eq!(montage.len(), 2, "both clips cover frame 0");
+		assert_eq!(montage[0].filename, red.to_string_lossy(), "V1's clip is the bottom of the stack");
+		assert_eq!(
+			montage[1].filename,
+			blue.to_string_lossy(),
+			"V2's clip is the top of the stack (composited last)"
+		);
+
+		// Render through the same entry point the render worker uses: V2's
+		// blue covers V1's red.
+		let params = VideoTicketParams {
+			viewer: 0,
+			project: String::new(),
+			time,
+			force_size: Some((64, 64)),
+			force_format: Some(oak_core::PixelFormat::F32),
+			cache: None,
+			cache_dir: None,
+			cache_id: None,
+			cache_timebase: None,
+			footage: None,
+			montage,
+		};
+		let mut dst = vec![0u8; 64 * 64 * 16];
+		oak_render::eval::render_montage_frame_into(time, &params, (64, 64), &mut dst, 64 * 16)
+			.expect("montage render");
+		let off = (8 * 64 + 8) * 16;
+		let r = f32::from_le_bytes(dst[off..off + 4].try_into().unwrap());
+		let b = f32::from_le_bytes(dst[off + 8..off + 12].try_into().unwrap());
+		assert!(b > 0.5 && r < 0.4, "V2's blue covers V1's red (r={r}, b={b})");
+
+		oak_undo::global::clear().unwrap();
+		let _ = std::fs::remove_file(&red);
+		let _ = std::fs::remove_file(&blue);
 	}
 
 	/// The acceptance gate for montage effect rendering: a 50% Opacity on

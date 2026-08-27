@@ -19,7 +19,8 @@
 //! Builds a real node graph (sequence -> video track list -> video tracks
 //! -> clip blocks -> footage), evaluates the clip overlapping the request
 //! time through the traverser and composites the decoded frames — the same
-//! path the engine's viewer uses. Track 0 is the topmost stack element.
+//! path the engine's viewer uses. The LAST track is the topmost stack
+//! element (NLE stacking: the highest-numbered track wins).
 
 use std::sync::{Arc, Mutex};
 
@@ -43,7 +44,8 @@ fn clip_path(tag: &str) -> std::path::PathBuf {
 }
 
 /// One sequence + one video track list with one track per clip
-/// `(filename, [in, out))`. Track 0 (the first entry) composites on top.
+/// `(filename, [in, out))`. The LAST entry's track composites on top
+/// (NLE stacking: the highest-numbered track is topmost).
 fn build_project(clips: &[(&str, Rational, Rational)]) -> (Arc<Mutex<Project>>, NodeId) {
     let project = Project::new();
     let seq;
@@ -189,6 +191,51 @@ fn graph_sequence_renders_two_tracks() {
 
     let _ = std::fs::remove_file(&path_a);
     let _ = std::fs::remove_file(&path_b);
+}
+
+/// NLE stacking regression: two OPAQUE solid-color clips covering the
+/// same time on two video tracks — the clip on the LAST track (V2, blue)
+/// composites on top of the clip on the first track (V1, red), matching
+/// the timeline UI (the highest-numbered track displays on top).
+#[test]
+fn graph_sequence_stacks_highest_track_on_top() {
+    let red = clip_path("stack_red");
+    let blue = clip_path("stack_blue");
+    oak_codec::testmedia::write_test_clip_solid(&red, 64, 64, 10, 10, [0.9, 0.1, 0.1, 1.0])
+        .expect("red clip generation");
+    oak_codec::testmedia::write_test_clip_solid(&blue, 64, 64, 10, 10, [0.1, 0.1, 0.9, 1.0])
+        .expect("blue clip generation");
+
+    // V1 = red (bottom), V2 = blue (top).
+    let (project, seq) = build_project(&[
+        (&red.to_string_lossy(), Rational::new(0, 1), Rational::new(1, 1)),
+        (&blue.to_string_lossy(), Rational::new(0, 1), Rational::new(1, 1)),
+    ]);
+    let tex = oak_render::eval::render_graph_frame(&project, seq, Rational::new(0, 1), (64, 64), PixelFormat::F32)
+        .expect("stacked render");
+    let data = frame_data(&tex);
+    assert!(
+        channel(data, 8, 8, 2) > 0.5 && channel(data, 8, 8, 0) < 0.4,
+        "V2's blue covers V1's red (r={}, b={})",
+        channel(data, 8, 8, 0),
+        channel(data, 8, 8, 2)
+    );
+
+    // Distinguishability guard: solo, the V1 clip really is red (the two
+    // tracks carry different content).
+    let (solo, solo_seq) = build_project(&[(&red.to_string_lossy(), Rational::new(0, 1), Rational::new(1, 1))]);
+    let solo_tex = oak_render::eval::render_graph_frame(&solo, solo_seq, Rational::new(0, 1), (64, 64), PixelFormat::F32)
+        .expect("solo V1 render");
+    let solo_data = frame_data(&solo_tex);
+    assert!(
+        channel(solo_data, 8, 8, 0) > 0.5 && channel(solo_data, 8, 8, 2) < 0.4,
+        "solo V1 is red (r={}, b={})",
+        channel(solo_data, 8, 8, 0),
+        channel(solo_data, 8, 8, 2)
+    );
+
+    let _ = std::fs::remove_file(&red);
+    let _ = std::fs::remove_file(&blue);
 }
 
 /// The driver rejects bad arguments explainably: non-F32 format, a

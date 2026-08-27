@@ -1008,8 +1008,9 @@ fn composite_tracks(frames: Vec<Frame>, size: (i32, i32)) -> Frame {
 /// Render one frame of `viewer` (a sequence) at `time`: evaluate every
 /// enabled clip overlapping `time` through the node graph (one traverser
 /// pass per clip; the hooks' decoder cache is shared across clips) and
-/// composite the resulting frames topmost-first — in the video track
-/// list, track 0 is the topmost stack element (C++ `TrackList` order).
+/// composite the resulting frames bottommost-first — in the video track
+/// list the LAST track (the highest-numbered one) is the topmost stack
+/// element (NLE stacking, matching the timeline UI).
 ///
 /// `size` is the decode target for every clip, so all frames composite
 /// without per-frame scaling. Errors: `Invalid` for a non-F32 format or a
@@ -1038,8 +1039,9 @@ pub fn render_graph_frame(
 
 	// Collect the clips covering `time`: the sequence's track lists (video
 	// then audio — C++ `Sequence` keeps them in the `k_track_input_format`
-	// array order), the video list's tracks in stack order, then each
-	// track's blocks.
+	// array order), the video list's tracks topmost-first (the list's last
+	// track is the top of the stack; `composite_tracks` walks the frames in
+	// reverse and draws the first frame last), then each track's blocks.
 	let mut clips: Vec<oak_node::id::NodeId> = Vec::new();
 	for tl_id in &sequence.track_lists {
 		let Some(tl) = graph.get(*tl_id) else {
@@ -1055,7 +1057,7 @@ pub fn render_graph_frame(
 		if tl.kind != oak_node::track::TrackType::Video {
 			continue;
 		}
-		for track_id in &tl.tracks {
+		for track_id in tl.tracks.iter().rev() {
 			let Some(track) = graph.get(*track_id) else {
 				continue;
 			};
@@ -1297,7 +1299,8 @@ fn scale_rgba_f32(
 }
 
 /// Composite the montage at `time`: decode each covering clip and
-/// alpha-composite topmost-last (C++ track order: track 0 is topmost).
+/// alpha-composite topmost-last (NLE track order: the highest-numbered
+/// track is topmost).
 fn render_montage_frame(
 	time: Rational,
 	params: &crate::ticket::VideoTicketParams,

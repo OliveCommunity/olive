@@ -330,7 +330,8 @@ impl RenderTask {
 	}
 
 	/// Flatten the video tracks of `sequence` into an ordered montage
-	/// (bottom-most track first so the topmost track composites last;
+	/// (bottom-most track first so the topmost track — the highest-numbered
+	/// one, the list's last — composites last;
 	/// `// CPP-PARITY: M12 P0 montage contract`).
 	fn video_montage(project: &ProjectRef, sequence: oak_node::id::NodeId, time: Rational) -> Vec<MontageClip> {
 		let guard = project
@@ -361,7 +362,7 @@ impl RenderTask {
 			if list.kind != TrackType::Video {
 				continue;
 			}
-			for track_id in list.tracks.iter().rev() {
+			for track_id in list.tracks.iter() {
 				let Some(te) = guard.graph.get(*track_id) else {
 					continue;
 				};

@@ -492,8 +492,8 @@ fn clip_media(g: &Graph, block_id: NodeId) -> Option<(String, i32)> {
 }
 
 /// The video montage at sequence time `time`: every clip covering `time`
-/// on video tracks, ordered bottom-to-top (track index 0 is topmost, so
-/// it is composited last).
+/// on video tracks, ordered bottom-to-top (the highest-numbered track —
+/// the list's last — is topmost, so it is composited last).
 pub fn video_montage(p: &ProjectRef, seq_id: NodeId, time: Rational) -> Vec<MontageClip> {
 	let g = lock(p);
 	let mut clips = Vec::new();
@@ -507,7 +507,7 @@ pub fn video_montage(p: &ProjectRef, seq_id: NodeId, time: Rational) -> Vec<Mont
 		if list.kind != TrackType::Video {
 			continue;
 		}
-		for &track_id in list.tracks.iter().rev() {
+		for &track_id in list.tracks.iter() {
 			let Some(track) = track_behavior(&g.graph, track_id) else {
 				continue;
 			};

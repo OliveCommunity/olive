@@ -58,23 +58,7 @@ pub fn write_test_clip(
 	if width <= 0 || height <= 0 || frame_count <= 0 || fps <= 0 {
 		return Err(Error::Invalid);
 	}
-	let mut params = EncodingParams::default();
-	let name = out.as_os_str().as_encoded_bytes();
-	if name.len() >= params.filename.len() {
-		return Err(Error::Failed("output path too long".into()));
-	}
-	params.filename[..name.len()].copy_from_slice(name);
-	params.format = 2; // MPEG-4 video container
-	params.video_enabled = 1;
-	params.video_codec = 10; // MPEG-2 (B-frame-free; the H.264 B-frame streams hit a muxer timing bug)
-	params.video_width = width;
-	params.video_height = height;
-	params.video_time_base_num = 1;
-	params.video_time_base_den = fps;
-	params.video_pixel_format = PixelFormat::F32;
-	params.video_interlacing = 0;
-	params.video_pixel_aspect_num = 1;
-	params.video_pixel_aspect_den = 1;
+	let mut params = video_params(out, width, height, fps)?;
 	// A stereo PCM audio track with a known 440 Hz sine (M12 P1: the
 	// audio-render path needs a decodable audio stream; PCM avoids
 	// codec sample-format negotiation issues in this FFmpeg pairing).
@@ -101,6 +85,75 @@ pub fn write_test_clip(
 	}
 	encoder.write_audio(&tone, rate as i32)?;
 	encoder.flush()
+}
+
+/// Encode `frame_count` frames of a solid `rgba` color into `out` (same
+/// MPEG-2/MP4 pairing as [`write_test_clip`], video only). The stacking
+/// tests need two OPAQUE clips of different known colors covering the
+/// same time — the sweeping pattern cannot provide that (every clip's
+/// frame 0 is identical, and decode-time seeking is not exercised here).
+pub fn write_test_clip_solid(
+	out: &Path,
+	width: i32,
+	height: i32,
+	frame_count: i32,
+	fps: i32,
+	rgba: [f32; 4],
+) -> Result<()> {
+	if width <= 0 || height <= 0 || frame_count <= 0 || fps <= 0 {
+		return Err(Error::Invalid);
+	}
+	let params = video_params(out, width, height, fps)?;
+	let encoder = create_from_params(&params)
+		.ok_or_else(|| Error::Failed("no encoder for test clip params".into()))?;
+	encoder.configure(&params)?;
+	encoder.open()?;
+	for i in 0..frame_count {
+		encoder.write_video(&solid_frame(i, width, height, fps, rgba))?;
+	}
+	encoder.flush()
+}
+
+/// The shared MPEG-2-video-in-MP4 encoder params of the test clips
+/// (B-frame-free; the H.264 B-frame streams hit a muxer timing bug).
+fn video_params(out: &Path, width: i32, height: i32, fps: i32) -> Result<EncodingParams> {
+	let mut params = EncodingParams::default();
+	let name = out.as_os_str().as_encoded_bytes();
+	if name.len() >= params.filename.len() {
+		return Err(Error::Failed("output path too long".into()));
+	}
+	params.filename[..name.len()].copy_from_slice(name);
+	params.format = 2; // MPEG-4 video container
+	params.video_enabled = 1;
+	params.video_codec = 10; // MPEG-2 (B-frame-free; the H.264 B-frame streams hit a muxer timing bug)
+	params.video_width = width;
+	params.video_height = height;
+	params.video_time_base_num = 1;
+	params.video_time_base_den = fps;
+	params.video_pixel_format = PixelFormat::F32;
+	params.video_interlacing = 0;
+	params.video_pixel_aspect_num = 1;
+	params.video_pixel_aspect_den = 1;
+	Ok(params)
+}
+
+/// One frame of solid `rgba` (F32 RGBA rows, like [`pattern_frame`]).
+fn solid_frame(i: i32, width: i32, height: i32, fps: i32, rgba: [f32; 4]) -> Frame {
+	let mut f = pattern_frame(0, width, height, fps);
+	f.set_timestamp(Rational::new(i as i64, fps as i64));
+	let linesize = f.linesize_bytes() as usize;
+	let data = f.data_mut().expect("test frame buffer");
+	let [r, g, b, a] = rgba;
+	for y in 0..height as usize {
+		for x in 0..width as usize {
+			let off = y * linesize + x * 16;
+			data[off..off + 4].copy_from_slice(&r.to_le_bytes());
+			data[off + 4..off + 8].copy_from_slice(&g.to_le_bytes());
+			data[off + 8..off + 12].copy_from_slice(&b.to_le_bytes());
+			data[off + 12..off + 16].copy_from_slice(&a.to_le_bytes());
+		}
+	}
+	f
 }
 
 /// One frame of the known pattern (see module doc).
