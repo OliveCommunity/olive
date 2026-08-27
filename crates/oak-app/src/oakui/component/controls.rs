@@ -608,6 +608,29 @@ impl CheckBox {
 	}
 }
 
+/// The checkbox's fill: the theme selection colour when checked, white when
+/// not (the user wants the unchecked box to stand out as a white well).
+/// Kept as a pure function so the unit test below pins the colours without
+/// needing pixel reads.
+fn checkbox_fill(colors: &gpui::colors::Colors, checked: bool) -> gpui::Rgba {
+	if checked {
+		colors.selected
+	} else {
+		gpui::rgba(0xFFFFFF)
+	}
+}
+
+/// The checkbox's border: black around the white unchecked box (the theme
+/// border reads as light blue on the dark panel), the theme border when
+/// checked.
+fn checkbox_border(colors: &gpui::colors::Colors, checked: bool) -> gpui::Rgba {
+	if checked {
+		colors.border
+	} else {
+		gpui::rgba(0x000000)
+	}
+}
+
 impl EventEmitter<CheckBoxEvent> for CheckBox {}
 
 impl Render for CheckBox {
@@ -628,8 +651,8 @@ impl Render for CheckBox {
 					.size(px(16.0))
 					.rounded_md()
 					.border_1()
-					.border_color(colors.border)
-					.bg(if checked { colors.selected } else { gpui::rgba(0xFFFFFF) })
+					.border_color(checkbox_border(&colors, checked))
+					.bg(checkbox_fill(&colors, checked))
 					.shadow(if checked {
 						vec![]
 					} else {
@@ -1146,5 +1169,42 @@ impl Render for SpinBox {
 			);
 		}
 		root
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	/// The unchecked box is a white well with a black border (the theme
+	/// border reads as light blue on the dark panel); the checked box uses
+	/// the theme selection colours. The expressions are pure functions, so
+	/// the colours are pinned without pixel reads, which gpui's test
+	/// renderer does not expose.
+	#[test]
+	fn checkbox_fill_uses_theme_colors() {
+		let dark = gpui::colors::Colors::dark();
+		assert_eq!(
+			checkbox_fill(&dark, false),
+			gpui::rgba(0xFFFFFF),
+			"an unchecked box is white"
+		);
+		assert_eq!(
+			checkbox_border(&dark, false),
+			gpui::rgba(0x000000),
+			"an unchecked box has a black border"
+		);
+		assert_eq!(
+			checkbox_fill(&dark, true),
+			dark.selected,
+			"a checked box uses the theme selection colour"
+		);
+		assert_eq!(checkbox_border(&dark, true), dark.border);
+
+		let light = gpui::colors::Colors::light();
+		assert_eq!(checkbox_fill(&light, false), gpui::rgba(0xFFFFFF));
+		assert_eq!(checkbox_border(&light, false), gpui::rgba(0x000000));
+		assert_eq!(checkbox_fill(&light, true), light.selected);
+		assert_eq!(checkbox_border(&light, true), light.border);
 	}
 }
