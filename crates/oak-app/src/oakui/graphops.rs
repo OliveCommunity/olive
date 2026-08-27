@@ -1206,6 +1206,59 @@ pub fn set_track_height(p: &ProjectRef, track: NodeId, height: f64) {
 	}
 }
 
+/// The stable per-clip color index, fixed when the clip is created: the
+/// node identity is unique per creation and never shifts when clips are
+/// added or removed elsewhere, so a clip keeps its color for its whole
+/// life (persisted through [`crate::oakui::real`]'s `override_color`).
+fn clip_color_index(id: NodeId) -> i32 {
+	(id.identity() % 8) as i32
+}
+
+/// The display name of `footage` for clip labels: its node label (the
+/// imported basename), falling back to the file basename.
+fn footage_display_name(g: &Graph, footage: NodeId) -> String {
+	if let Some(e) = g.get(footage) {
+		if !e.core.label.is_empty() {
+			return e.core.label.clone();
+		}
+	}
+	footage_behavior(g, footage)
+		.and_then(|f| {
+			Path::new(&f.filename)
+				.file_name()
+				.map(|n| n.to_string_lossy().into_owned())
+		})
+		.unwrap_or_default()
+}
+
+/// Create a footage clip block in `g`: the shared span/state setup plus
+/// the per-clip color and footage-name label, both fixed at creation
+/// time (C++ `oaknode_clip_set_media_in` +
+/// `oaknode_block_set_length_and_media_in`).
+fn create_footage_clip(
+	g: &mut Graph,
+	footage: NodeId,
+	media_in: Rational,
+	length: Rational,
+) -> NodeId {
+	let label = footage_display_name(g, footage);
+	let (core, behavior) = oak_node::block::clip_create();
+	let id = g.add_node(core, behavior);
+	if let Some(entry) = g.get_mut(id) {
+		entry.core.override_color = clip_color_index(id);
+		entry.core.label = label;
+		if let Some(c) = entry
+			.behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<ClipBlockBehavior>())
+		{
+			c.core.media_in = media_in;
+			c.core.set_length_and_media_in(length);
+		}
+	}
+	id
+}
+
 /// Place a clip of `footage` on track `track_index` of the sequence's
 /// `kind` list (undoable "Add Clip", one row): the clip block is created
 /// in the project, placed by the module's `TrackPlaceBlockCommand`, and
@@ -1261,22 +1314,11 @@ pub fn place_footage_clip(
 	let media_r = ts_to_rational(media_in_ts, tb);
 	let length = out_r - in_r;
 
-	// The clip block, positioned by media-in + length (the facade's
-	// `oaknode_clip_set_media_in` + `oaknode_block_set_length_and_media_in`).
+	// The clip block, positioned by media-in + length and stamped with
+	// its creation-time color + footage-name label.
 	let clip = {
 		let mut g = lock(p);
-		let (core, behavior) = oak_node::block::clip_create();
-		let id = g.graph.add_node(core, behavior);
-		if let Some(c) = g
-			.graph
-			.get_mut(id)
-			.and_then(|e| e.behavior.as_any_mut())
-			.and_then(|a| a.downcast_mut::<ClipBlockBehavior>())
-		{
-			c.core.media_in = media_r;
-			c.core.set_length_and_media_in(length);
-		}
-		id
+		create_footage_clip(&mut g.graph, footage, media_r, length)
 	};
 
 	let place = oak_timeline::undopointer::TrackPlaceBlockCommand::new(
@@ -1324,21 +1366,12 @@ pub fn place_footage_clips_linked(
 	let length = out_r - in_r;
 
 	// Create all clips first (graph writes are not undoable; the placement
-	// commands below are).
+	// commands below are). Each gets its creation-time color + footage
+	// name label.
 	let mut clips = Vec::with_capacity(placements.len());
 	for _ in placements {
 		let mut g = lock(p);
-		let (core, behavior) = oak_node::block::clip_create();
-		let id = g.graph.add_node(core, behavior);
-		if let Some(c) = g
-			.graph
-			.get_mut(id)
-			.and_then(|e| e.behavior.as_any_mut())
-			.and_then(|a| a.downcast_mut::<ClipBlockBehavior>())
-		{
-			c.core.media_in = media_r;
-			c.core.set_length_and_media_in(length);
-		}
+		let id = create_footage_clip(&mut g.graph, footage, media_r, length);
 		clips.push(id);
 	}
 
@@ -2048,17 +2081,14 @@ pub fn paste_clips(
 
 		let clip = {
 			let mut g = lock(p);
-			let (core, behavior) = oak_node::block::clip_create();
-			let id = g.graph.add_node(core, behavior);
+			let id = create_footage_clip(&mut g.graph, item.footage, media_r, length_r);
 			if let Some(c) = g
 				.graph
 				.get_mut(id)
 				.and_then(|e| e.behavior.as_any_mut())
 				.and_then(|a| a.downcast_mut::<ClipBlockBehavior>())
 			{
-				c.core.media_in = media_r;
 				c.core.speed = item.speed;
-				c.core.set_length_and_media_in(length_r);
 			}
 			id
 		};
@@ -2252,6 +2282,69 @@ mod tests {
 		assert!(set_track_muted(&project, seq, true).is_err());
 		assert!(set_track_locked(&project, seq, true).is_err());
 		oak_undo::global::clear().unwrap();
+	}
+
+	/// Every clip is stamped at creation with the footage's name as its
+	/// label and a color index fixed for its whole life — adding or
+	/// removing other clips must not reshuffle it (the old
+	/// track-position-derived color did).
+	#[test]
+	fn clips_get_a_creation_time_label_and_stable_color() {
+		let _g = test_lock();
+		oak_undo::global::clear().unwrap();
+		let project = create_project();
+		let seq = create_sequence(&project, "Clip Color");
+		let media = std::env::temp_dir().join(format!("oak_clip_color_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate test media");
+		let footage = import_footage(&project, &media).expect("import");
+		let name = media.file_name().unwrap().to_string_lossy().into_owned();
+
+		let color_of = |p: &ProjectRef, id: NodeId| -> i32 {
+			let g = lock(p);
+			g.graph.get(id).expect("the clip node exists").core.override_color
+		};
+
+		// Label = the footage name; the color is locked in at creation.
+		let first = place_footage_clip(&project, seq, footage, TrackType::Video, 0, 0, 10, 0)
+			.expect("place first");
+		let color1 = color_of(&project, first);
+		assert_ne!(color1, -1, "the clip color is locked in at creation");
+		{
+			let g = lock(&project);
+			assert_eq!(
+				g.graph.get(first).unwrap().core.label,
+				name,
+				"the clip is named after its footage"
+			);
+		}
+
+		// Adding another clip must not reshuffle the first one's color.
+		let _second = place_footage_clip(&project, seq, footage, TrackType::Video, 0, 10, 20, 0)
+			.expect("place second");
+		assert_eq!(
+			color_of(&project, first),
+			color1,
+			"the color survives later edits"
+		);
+
+		// The linked A/V drop names both clips after the footage too.
+		let linked = place_footage_clips_linked(
+			&project,
+			seq,
+			footage,
+			&[(TrackType::Video, 0), (TrackType::Audio, 0)],
+			20,
+			30,
+			0,
+		)
+		.expect("linked placement");
+		for clip in linked {
+			let g = lock(&project);
+			assert_eq!(g.graph.get(clip).unwrap().core.label, name);
+		}
+
+		oak_undo::global::clear().unwrap();
+		let _ = std::fs::remove_file(&media);
 	}
 }
 

@@ -2891,12 +2891,27 @@ impl RealEngine {
 			.filter_map(|(clip_index, &block)| {
 				let (in_r, out_r, media_r) = graphops::clip_range(graph, block)?;
 				let to_ts = |r: oak_core::Rational| tb.map(|tb| graphops::rational_to_ts(r, tb)).unwrap_or(0);
+				// The clip's color is locked in at creation time (its
+				// `override_color`); clips without one (older projects)
+				// fall back to the track-relative palette so their color
+				// still varies.
+				let entry = graph.get(block)?;
+				let color = if entry.core.override_color >= 0 {
+					clip_color(entry.core.override_color as u64)
+				} else {
+					clip_color(clip_index as u64)
+				};
+				let label = if entry.core.label.is_empty() {
+					format!("Clip {}", clip_index + 1)
+				} else {
+					entry.core.label.clone()
+				};
 				Some(RealClip {
 					id: ClipId(block.identity()),
 					range: FrameRange::new(Frame(to_ts(in_r)), Frame(to_ts(out_r))),
 					media_in: Frame(to_ts(media_r)),
-					label: format!("Clip {}", clip_index + 1).into(),
-					color: clip_color(clip_index as u64),
+					label: label.into(),
+					color,
 					block,
 				})
 			})
