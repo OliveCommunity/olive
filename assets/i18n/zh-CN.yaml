@@ -237,6 +237,8 @@
 "ofx.color.cancel": "取消"
 "ofx.color.invalid": "无效的十六进制颜色"
 "ofx.color.pick_viewer": "从画面取色"
+"ofx.color.mode_rgb": "RGB"
+"ofx.color.mode_hsv": "HSV"
 "dialog.cancel": "取消"
 "dialog.close": "关闭"
 "dialog.ok": "确定"

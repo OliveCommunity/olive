@@ -331,6 +331,8 @@ mod tests {
 			"Vulkan",
 			"MP4",
 			"OpenFX",
+			"RGB",
+			"HSV",
 			"1/2",
 			"1/4",
 			"1/8",

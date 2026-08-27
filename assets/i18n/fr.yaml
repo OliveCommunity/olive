@@ -237,6 +237,8 @@
 "ofx.color.cancel": "Annuler"
 "ofx.color.invalid": "Couleur hexadécimale invalide"
 "ofx.color.pick_viewer": "Choisir dans le visualiseur"
+"ofx.color.mode_rgb": "RGB"
+"ofx.color.mode_hsv": "HSV"
 "dialog.cancel": "Annuler"
 "dialog.close": "Fermer"
 "dialog.ok": "OK"

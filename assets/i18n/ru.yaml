@@ -237,6 +237,8 @@
 "ofx.color.cancel": "Отмена"
 "ofx.color.invalid": "Недопустимый шестнадцатеричный цвет"
 "ofx.color.pick_viewer": "Выбрать из просмотрщика"
+"ofx.color.mode_rgb": "RGB"
+"ofx.color.mode_hsv": "HSV"
 "dialog.cancel": "Отмена"
 "dialog.close": "Закрыть"
 "dialog.ok": "ОК"

@@ -237,6 +237,8 @@
 "ofx.color.cancel": "Cancel"
 "ofx.color.invalid": "Invalid hex color"
 "ofx.color.pick_viewer": "Pick from viewer"
+"ofx.color.mode_rgb": "RGB"
+"ofx.color.mode_hsv": "HSV"
 "dialog.cancel": "Cancel"
 "dialog.close": "Close"
 "dialog.ok": "OK"

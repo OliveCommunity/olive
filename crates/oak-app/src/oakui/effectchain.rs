@@ -923,6 +923,107 @@ mod tests {
 		oak_undo::global::clear().unwrap();
 	}
 
+	/// The plugin-node colour loop, shaped exactly like the OFX translation
+	/// pass's `build_core` (default cached at element 0 AND on
+	/// `Input::default`; the panel reads/writes element -1; the renderer's
+	/// traverser fills unconnected inputs from `value_at_time(id, -1)`):
+	/// the inspector's commit must echo back through `effect_params` and
+	/// reach the render-side input row, or the plugin would keep rendering
+	/// the old colour while the swatch snapped back.
+	#[test]
+	fn plugin_color_param_set_read_round_trip() {
+		let _g = stack_lock();
+		oak_undo::global::clear().unwrap();
+		let (project, _host) = project_with_clip();
+
+		// A plugin-shaped node: colour param + texture clip input, defaults
+		// cached at element 0 and on the input (node_factory `build_core`).
+		let plugin = {
+			let mut g = lock(&project);
+			let mut core = oak_node::node::NodeCore::new();
+			let default = oak_node::value::NodeValue::Color([1.0, 0.0, 0.0, 1.0]);
+			core.add_input(oak_node::input::Input::new(
+				"TintColor",
+				oak_node::value::ValueType::Color,
+				default.clone(),
+			));
+			core.set_standard_value("TintColor", 0, default);
+			core.add_input(oak_node::input::Input::new(
+				"Source",
+				oak_node::value::ValueType::Texture,
+				oak_node::value::NodeValue::None,
+			));
+			core.effect_input = "Source".to_string();
+			let behavior = Box::new(oak_node::nodes::plugin::PluginNode::new(
+				oak_node::nodes::plugin::PluginInstanceHandle::null(),
+				"Tint".to_string(),
+				"org.example.tint".to_string(),
+				"A test tint plugin".to_string(),
+				"Filter".to_string(),
+			));
+			g.graph.add_node(core, behavior)
+		};
+
+		// The snapshot lists the colour param under the OFX param name.
+		let params = effect_params(&lock(&project).graph, plugin).unwrap();
+		let param = params
+			.iter()
+			.find(|p| p.input_id == "TintColor")
+			.expect("the plugin colour param appears in the snapshot");
+		assert_eq!(param.value_type, oak_node::value::ValueType::Color);
+		assert_eq!(
+			param.value,
+			oak_node::value::NodeValue::Color([1.0, 0.0, 0.0, 1.0]),
+			"the panel must open with the plugin's default colour"
+		);
+
+		// Commit the way `OfxColorPicker::commit` does (f64 channels from
+		// the f32 draft).
+		let color = oak_node::value::NodeValue::Color([0.25, 0.5, 0.75, 0.4]);
+		set_input_value(&project, plugin, "TintColor", color.clone()).unwrap();
+		let snapshot = effect_params(&lock(&project).graph, plugin).unwrap();
+		let read = snapshot
+			.iter()
+			.find(|p| p.input_id == "TintColor")
+			.unwrap();
+		assert_eq!(read.value, color, "the engine must echo the committed colour");
+
+		// The render-side read: the traverser fills unconnected inputs from
+		// `value_at_time(id, -1)`, which the plugin job payload then carries
+		// to `apply_param_overrides`.
+		let render_read = lock(&project)
+			.graph
+			.get(plugin)
+			.unwrap()
+			.core
+			.value_at_time("TintColor", -1, oak_core::Rational::new(0, 1));
+		assert_eq!(render_read, color, "the renderer must see the committed colour");
+
+		// Undo restores the default; redo reapplies the commit.
+		oak_undo::global::undo().unwrap();
+		assert_eq!(
+			lock(&project)
+				.graph
+				.get(plugin)
+				.unwrap()
+				.core
+				.standard_value("TintColor", -1),
+			oak_node::value::NodeValue::Color([1.0, 0.0, 0.0, 1.0])
+		);
+		oak_undo::global::redo().unwrap();
+		assert_eq!(
+			lock(&project)
+				.graph
+				.get(plugin)
+				.unwrap()
+				.core
+				.standard_value("TintColor", -1),
+			color
+		);
+
+		oak_undo::global::clear().unwrap();
+	}
+
 	/// The combo-option collector reads the repeated `("combo_option", _)`
 	/// property keys (and the string-combo values from `("combo_value", _)`).
 	#[test]

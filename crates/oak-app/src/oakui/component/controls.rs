@@ -159,6 +159,12 @@ impl Slider {
 		self.model.set_value(value);
 	}
 
+	/// Replace the range model without rebuilding the entity — the colour
+	/// picker re-ranges its primary sliders when switching RGB ↔ HSV.
+	pub fn set_model(&mut self, model: SliderModel) {
+		self.model = model;
+	}
+
 	/// The current value.
 	pub fn value(&self) -> SliderValue {
 		self.model.value()

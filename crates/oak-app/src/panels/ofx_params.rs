@@ -57,9 +57,8 @@ use gpui::{
 use gpui_elements::editable_text::{EditableTextState, StringStorage};
 use crate::oakui::component::controls::{CheckBox, CheckBoxEvent, CheckState};
 use crate::oakui::component::controls::{ComboBox, ComboBoxEvent, ComboBoxOption};
-use crate::oakui::component::controls::{Slider, SliderEvent, SliderModel};
+use crate::oakui::component::controls::{Slider, SliderEvent, SliderModel, SliderValue, ValueKind};
 use crate::oakui::component::controls::{SpinBox, SpinBoxEvent};
-use crate::oakui::component::controls::{SliderValue, ValueKind};
 
 use oak_node::value::{NodeValue, ValueType};
 
@@ -1038,9 +1037,10 @@ pub enum OfxColorEvent {
 ///
 /// - The swatch shows the **committed** colour (the engine value) over a
 ///   two-tone checkerboard so alpha is visible.
-/// - Clicking opens a deferred popup with four 0..1 channel sliders, a
-///   live preview swatch, a hex field (`#RRGGBB` / `#RRGGBBAA`, validated)
-///   and Cancel / OK buttons.
+/// - Clicking opens a deferred popup with a Photoshop-style palette (an
+///   S/V square + hue bar, switchable to RGB sliders), a live preview
+///   swatch, a hex field (`#RRGGBB` / `#RRGGBBAA`, validated) and
+///   Cancel / OK buttons.
 /// - Slider drags only mutate the **draft**; only OK emits
 ///   [`OfxColorEvent::Committed`], which the params view routes through
 ///   [`AppEngine::set_effect_param`] (undoable). A drag session is
@@ -1066,16 +1066,28 @@ pub struct OfxColorPicker {
 	/// Whether the popup was open when the swatch was pressed (a second
 	/// click closes it).
 	was_open_at_down: bool,
-	/// Channel sliders, R/G/B/A in 0..1.
-	r: Entity<Slider>,
-	g: Entity<Slider>,
-	b: Entity<Slider>,
+	/// The editing mode of the primary sliders (RGB channels or HSV).
+	mode: ColorMode,
+	/// Primary channel sliders (R/G/B or H/S/V, re-ranged on mode switch).
+	c0: Entity<Slider>,
+	c1: Entity<Slider>,
+	c2: Entity<Slider>,
+	/// The alpha slider (always 0..1).
 	a: Entity<Slider>,
 	/// The hex editor (`#RRGGBB` / `#RRGGBBAA`).
 	hex: Entity<EditableTextState>,
 	/// Whether the viewer eyedropper is armed (a click on the program
 	/// viewer samples a pixel back into the draft).
 	picking: bool,
+}
+
+/// How the primary channel sliders present the colour.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ColorMode {
+	/// Red / Green / Blue, each 0..1.
+	Rgb,
+	/// Hue (0..360°) / Saturation / Value (0..1).
+	Hsv,
 }
 
 impl OfxColorPicker {
@@ -1094,10 +1106,11 @@ impl OfxColorPicker {
 			draft: color,
 			hex_error: false,
 			was_open_at_down: false,
-			r: Self::channel_slider(cx, window, 0, color.r as f64),
-			g: Self::channel_slider(cx, window, 1, color.g as f64),
-			b: Self::channel_slider(cx, window, 2, color.b as f64),
-			a: Self::channel_slider(cx, window, 3, color.a as f64),
+			mode: ColorMode::Rgb,
+			c0: Self::channel_slider(cx, window, 0, 0.0, 1.0, 0.01, color.r as f64),
+			c1: Self::channel_slider(cx, window, 1, 0.0, 1.0, 0.01, color.g as f64),
+			c2: Self::channel_slider(cx, window, 2, 0.0, 1.0, 0.01, color.b as f64),
+			a: Self::channel_slider(cx, window, 3, 0.0, 1.0, 0.01, color.a as f64),
 			hex: cx.new(|cx| EditableTextState::new(StringStorage::default(), cx)),
 			picking: false,
 		};
@@ -1106,15 +1119,18 @@ impl OfxColorPicker {
 		picker
 	}
 
-	/// Build a 0..1 float slider for one channel and subscribe its edits to
-	/// [`Self::on_slider`].
+	/// Build a float slider over `min..=max` with `step` for one channel and
+	/// subscribe its edits to [`Self::on_slider`].
 	fn channel_slider(
 		cx: &mut Context<Self>,
 		window: &mut Window,
 		channel: usize,
+		min: f64,
+		max: f64,
+		step: f64,
 		value: f64,
 	) -> Entity<Slider> {
-		let model = SliderModel::new(ValueKind::Float, 0.0, 1.0, 0.01, value.clamp(0.0, 1.0));
+		let model = SliderModel::new(ValueKind::Float, min, max, step, value.clamp(min, max));
 		let slider = cx.new(|cx| Slider::new(channel * 1000 + 100, model, window, cx));
 		cx.subscribe(
 			&slider,
@@ -1127,39 +1143,99 @@ impl OfxColorPicker {
 	}
 
 	/// A slider changed: update the draft channel and re-format the hex
-	/// field (no commit — the value only lands on OK).
+	/// field (no commit — the value only lands on OK). In HSV mode the
+	/// primary channels edit hue/saturation/value and write the derived RGB
+	/// back into the draft.
 	fn on_slider(&mut self, channel: usize, event: &SliderEvent, cx: &mut Context<Self>) {
 		if let SliderEvent::ValueChanged { value, .. } = event {
-			let v = value.to_f64().clamp(0.0, 1.0) as f32;
-			match channel {
-				0 => self.draft.r = v,
-				1 => self.draft.g = v,
-				2 => self.draft.b = v,
-				3 => self.draft.a = v,
-				_ => return,
-			}
-			self.hex_error = false;
-			let hex_entity = self.hex.clone();
-			let hex_text = format_hex(self.draft);
-			hex_entity.update(cx, |hex, cx| {
-				if hex.as_str() != hex_text {
-					hex.emplace(&hex_text, cx);
+			match self.mode {
+				ColorMode::Rgb => {
+					let v = value.to_f64().clamp(0.0, 1.0) as f32;
+					match channel {
+						0 => self.apply_draft_rgb(v, self.draft.g, self.draft.b, cx),
+						1 => self.apply_draft_rgb(self.draft.r, v, self.draft.b, cx),
+						2 => self.apply_draft_rgb(self.draft.r, self.draft.g, v, cx),
+						3 => self.apply_draft_alpha(v, cx),
+						_ => return,
+					}
 				}
-			});
-			cx.notify();
+				ColorMode::Hsv => {
+					let (mut h, mut s, mut v) =
+						rgb_to_hsv(self.draft.r, self.draft.g, self.draft.b);
+					match channel {
+						0 => h = value.to_f64().clamp(0.0, 360.0) as f32,
+						1 => s = value.to_f64().clamp(0.0, 1.0) as f32,
+						2 => v = value.to_f64().clamp(0.0, 1.0) as f32,
+						3 => {
+							self.apply_draft_alpha(value.to_f64().clamp(0.0, 1.0) as f32, cx);
+							return;
+						}
+						_ => return,
+					}
+					let rgb = hsv_to_rgb(h, s, v);
+					self.apply_draft_rgb(rgb.r, rgb.g, rgb.b, cx);
+				}
+			}
 		}
 	}
 
+	/// Set the draft RGB from a computed colour and refresh the hex field.
+	fn apply_draft_rgb(&mut self, r: f32, g: f32, b: f32, cx: &mut Context<Self>) {
+		self.draft.r = r;
+		self.draft.g = g;
+		self.draft.b = b;
+		self.refresh_hex(cx);
+	}
+
+	/// Set the draft alpha and refresh the hex field.
+	fn apply_draft_alpha(&mut self, a: f32, cx: &mut Context<Self>) {
+		self.draft.a = a;
+		self.refresh_hex(cx);
+	}
+
+	/// Clear the hex error, re-format the hex field from the draft and
+	/// repaint (shared by every draft mutation).
+	fn refresh_hex(&mut self, cx: &mut Context<Self>) {
+		self.hex_error = false;
+		let hex_entity = self.hex.clone();
+		let hex_text = format_hex(self.draft);
+		hex_entity.update(cx, |hex, cx| {
+			if hex.as_str() != hex_text {
+				hex.emplace(&hex_text, cx);
+			}
+		});
+		cx.notify();
+	}
+
+	/// S/V palette click / drag: keep the draft's hue, take the picked
+	/// saturation / value, write the result back into the draft.
+	fn on_palette(&mut self, s: f32, v: f32, cx: &mut Context<Self>) {
+		let (h, _, _) = rgb_to_hsv(self.draft.r, self.draft.g, self.draft.b);
+		let rgb = hsv_to_rgb(h, s, v);
+		self.apply_draft_rgb(rgb.r, rgb.g, rgb.b, cx);
+	}
+
+	/// Hue bar click / drag: keep the draft's saturation / value, take the
+	/// picked hue, write the result back into the draft.
+	fn on_hue(&mut self, h: f32, cx: &mut Context<Self>) {
+		let (_, s, v) = rgb_to_hsv(self.draft.r, self.draft.g, self.draft.b);
+		let rgb = hsv_to_rgb(h, s, v);
+		self.apply_draft_rgb(rgb.r, rgb.g, rgb.b, cx);
+	}
+
 	/// Re-sync the sliders and the hex field from the current draft (no
-	/// events emitted; used when the draft is reset or committed).
+	/// events emitted; used when the draft is reset or committed). In HSV
+	/// mode the primary sliders show the hue/saturation/value of the draft.
 	fn sync_from_draft(&self, cx: &mut Context<Self>) {
-		let values = [
-			self.draft.r as f64,
-			self.draft.g as f64,
-			self.draft.b as f64,
-			self.draft.a as f64,
-		];
-		let sliders = [&self.r, &self.g, &self.b, &self.a];
+		let (a, b, c) = match self.mode {
+			ColorMode::Rgb => (self.draft.r, self.draft.g, self.draft.b),
+			ColorMode::Hsv => {
+				let (h, s, v) = rgb_to_hsv(self.draft.r, self.draft.g, self.draft.b);
+				(h, s, v)
+			}
+		};
+		let values = [a as f64, b as f64, c as f64, self.draft.a as f64];
+		let sliders = [&self.c0, &self.c1, &self.c2, &self.a];
 		for (slider, value) in sliders.iter().zip(values.iter()) {
 			let slider = slider.clone();
 			slider.update(cx, |slider, _| {
@@ -1173,6 +1249,53 @@ impl OfxColorPicker {
 				hex.emplace(&hex_text, cx);
 			}
 		});
+	}
+
+	/// Switch the primary sliders between RGB and HSV editing. The draft is
+	/// preserved: the other mode's channels are derived from it.
+	fn set_mode(&mut self, mode: ColorMode, cx: &mut Context<Self>) {
+		if self.mode == mode {
+			return;
+		}
+		self.mode = mode;
+		self.rebuild_primary_sliders(cx);
+		self.sync_from_draft(cx);
+		cx.notify();
+	}
+
+	/// Re-range the three primary sliders for the current mode (RGB 0..1 /
+	/// HSV 0..360/0..1/0..1) without rebuilding the entities, so in-flight
+	/// subscriptions stay intact.
+	fn rebuild_primary_sliders(&mut self, cx: &mut Context<Self>) {
+		let (ranges, vals) = match self.mode {
+			ColorMode::Rgb => (
+				[(0.0, 1.0, 0.01); 3],
+				[
+					self.draft.r as f64,
+					self.draft.g as f64,
+					self.draft.b as f64,
+				],
+			),
+			ColorMode::Hsv => {
+				let (h, s, v) = rgb_to_hsv(self.draft.r, self.draft.g, self.draft.b);
+				(
+					[(0.0, 360.0, 1.0), (0.0, 1.0, 0.01), (0.0, 1.0, 0.01)],
+					[h as f64, s as f64, v as f64],
+				)
+			}
+		};
+		let sliders = [&self.c0, &self.c1, &self.c2];
+		for (slider, (range, value)) in sliders
+			.into_iter()
+			.zip(ranges.iter().zip(vals.iter()))
+		{
+			let (min, max, step) = *range;
+			let value = *value;
+			let slider = slider.clone();
+			slider.update(cx, |slider, _| {
+				slider.set_model(SliderModel::new(ValueKind::Float, min, max, step, value));
+			});
+		}
 	}
 
 	/// Apply a committed colour from the engine (called every frame from
@@ -1281,15 +1404,171 @@ impl OfxColorPicker {
 		let draft = self.draft;
 		let hex_weak = self.hex.downgrade();
 		let hex_error = self.hex_error;
+		let mode = self.mode;
 
-		// Four labelled 0..1 channel sliders.
+		// RGB / HSV mode tabs.
+		let tab = |this_mode: ColorMode| {
+			div()
+				.id(SharedString::from(format!(
+					"ofx-color-mode-{control}-{}",
+					if this_mode == ColorMode::Rgb { "rgb" } else { "hsv" }
+				)))
+				.debug_selector(move || {
+					format!(
+						"ofx-color-mode-{control}-{}",
+						if this_mode == ColorMode::Rgb { "rgb" } else { "hsv" }
+					)
+					.into()
+				})
+				.cursor_pointer()
+				.flex_1()
+				.rounded_sm()
+				.border_1()
+				.border_color(colors.border)
+				.bg(if mode == this_mode {
+					colors.selected
+				} else {
+					colors.background
+				})
+				.text_sm()
+				.text_color(colors.text)
+				.flex()
+				.items_center()
+				.justify_center()
+				.py_1()
+				.child(crate::i18n::tr(if this_mode == ColorMode::Rgb {
+					"ofx.color.mode_rgb"
+				} else {
+					"ofx.color.mode_hsv"
+				}))
+				.on_click(cx.listener(move |this, _event: &ClickEvent, _window, cx| {
+					this.set_mode(this_mode, cx);
+				}))
+		};
+		let tab_row = div().flex().gap_1().child(tab(ColorMode::Rgb)).child(tab(ColorMode::Hsv));
+
+		// Photoshop-style S/V palette + hue bar. Both record their layout
+		// bounds each frame (an invisible canvas) so a click / drag can map
+		// the cursor to a value.
+		let sv_bounds = std::sync::Arc::new(std::sync::RwLock::new(None::<gpui::Bounds<gpui::Pixels>>));
+		let sv_drag = std::sync::Arc::new(std::sync::RwLock::new(SvPaletteDrag));
+		let (hue, _, _) = rgb_to_hsv(draft.r, draft.g, draft.b);
+		let record_sv = sv_bounds.clone();
+		let sv_canvas = canvas(
+			move |b, _window, _cx| {
+				*record_sv.write().unwrap() = Some(b);
+				b
+			},
+			move |b, _content, window, cx| paint_sv_palette(b, hue, window, cx),
+		);
+		let sv_panel = div()
+			.id(ElementId::named_usize("ofx-color-sv-palette", control))
+			.debug_selector(|| "ofx-color-sv-palette".into())
+			.w(px(180.0))
+			.h(px(180.0))
+			.relative()
+			.rounded_md()
+			.border_1()
+			.border_color(colors.border)
+			.overflow_hidden()
+			.cursor_pointer()
+			.on_mouse_down(
+				MouseButton::Left,
+				{
+					let sv_bounds = sv_bounds.clone();
+					cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
+						let Some(bounds) = sv_bounds.read().unwrap().as_ref().copied() else {
+							return;
+						};
+						let (s, v) = sv_from_point(bounds, event.position);
+						this.on_palette(s, v, cx);
+					})
+				},
+			)
+			.on_drag(sv_drag.clone(), |_payload, _offset, _window, cx| {
+				cx.new(|_| SvPaletteDragGhost)
+			})
+			.on_drag_move(
+				{
+					let sv_bounds = sv_bounds.clone();
+					cx.listener(
+						move |this,
+						      event: &gpui::DragMoveEvent<std::sync::Arc<std::sync::RwLock<SvPaletteDrag>>>,
+						      _window,
+						      cx| {
+							let Some(bounds) = sv_bounds.read().unwrap().as_ref().copied() else {
+								return;
+							};
+							let (s, v) = sv_from_point(bounds, event.event.position);
+							this.on_palette(s, v, cx);
+						},
+					)
+				},
+			)
+			.child(sv_canvas);
+		let hue_bounds = std::sync::Arc::new(std::sync::RwLock::new(None::<gpui::Bounds<gpui::Pixels>>));
+		let hue_drag = std::sync::Arc::new(std::sync::RwLock::new(HueBarDrag));
+		let record_hue = hue_bounds.clone();
+		let hue_canvas = canvas(
+			move |b, _window, _cx| {
+				*record_hue.write().unwrap() = Some(b);
+				b
+			},
+			|b, _content, window, cx| paint_hue_bar(b, window, cx),
+		);
+		let hue_bar = div()
+			.id(ElementId::named_usize("ofx-color-hue-bar", control))
+			.debug_selector(|| "ofx-color-hue-bar".into())
+			.w(px(18.0))
+			.h(px(180.0))
+			.relative()
+			.rounded_md()
+			.border_1()
+			.border_color(colors.border)
+			.overflow_hidden()
+			.cursor_pointer()
+			.on_mouse_down(
+				MouseButton::Left,
+				{
+					let hue_bounds = hue_bounds.clone();
+					cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
+						let Some(bounds) = hue_bounds.read().unwrap().as_ref().copied() else {
+							return;
+						};
+						this.on_hue(hue_from_point(bounds, event.position), cx);
+					})
+				},
+			)
+			.on_drag(hue_drag.clone(), |_payload, _offset, _window, cx| {
+				cx.new(|_| HueBarDragGhost)
+			})
+			.on_drag_move(
+				{
+					let hue_bounds = hue_bounds.clone();
+					cx.listener(
+						move |this,
+						      event: &gpui::DragMoveEvent<std::sync::Arc<std::sync::RwLock<HueBarDrag>>>,
+						      _window,
+						      cx| {
+							let Some(bounds) = hue_bounds.read().unwrap().as_ref().copied() else {
+								return;
+							};
+							this.on_hue(hue_from_point(bounds, event.event.position), cx);
+						},
+					)
+				},
+			)
+			.child(hue_canvas);
+		let palette_row = div().flex().gap_1().child(sv_panel).child(hue_bar);
+
+		// Four labelled channel sliders — R/G/B/A or H/S/V/A depending on
+		// the mode.
+		let labels: [&str; 4] = match mode {
+			ColorMode::Rgb => ["R", "G", "B", "A"],
+			ColorMode::Hsv => ["H", "S", "V", "A"],
+		};
 		let mut slider_rows = div().flex().flex_col().gap_1();
-		for (label, slider) in [
-			("R", &self.r),
-			("G", &self.g),
-			("B", &self.b),
-			("A", &self.a),
-		] {
+		for (label, slider) in labels.iter().zip([&self.c0, &self.c1, &self.c2, &self.a]) {
 			slider_rows = slider_rows.child(
 				div()
 					.flex()
@@ -1300,7 +1579,7 @@ impl OfxColorPicker {
 							.w(px(12.0))
 							.text_sm()
 							.text_color(colors.text)
-							.child(label),
+							.child(*label),
 					)
 					.child(div().flex_1().child(slider.clone())),
 			);
@@ -1413,7 +1692,7 @@ impl OfxColorPicker {
 				.snap_to_window_with_margin(px(8.0))
 				.child(
 				div()
-					.w(px(240.0))
+					.w(px(300.0))
 					.p_2()
 					.rounded_lg()
 					.border_1()
@@ -1426,7 +1705,14 @@ impl OfxColorPicker {
 					.on_mouse_up_out(
 						MouseButton::Left,
 						cx.listener(|this, _event: &MouseUpEvent, _window, cx| {
-							this.close_menu(cx);
+							// While the viewer eyedropper is armed, the click
+							// that follows is a *pick* on the program viewer,
+							// not an outside-click dismissal: the popup must
+							// survive it so the sampled colour lands in the
+							// draft (`apply_viewer_pick` disarms afterwards).
+							if !this.picking {
+								this.close_menu(cx);
+							}
 						}),
 					)
 					.on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
@@ -1438,6 +1724,8 @@ impl OfxColorPicker {
 							}
 						}
 					}))
+					.child(tab_row)
+					.child(palette_row)
 					.child(slider_rows)
 					.child(hex_row)
 					.child(error_hint)
@@ -1572,6 +1860,155 @@ fn paint_checker_swatch(
 	window.paint_quad(fill(bounds, Hsla::from(color)));
 }
 
+/// Drag payload for the S/V palette. The palette reads its own layout
+/// bounds from the recorded canvas, so the payload itself is empty.
+struct SvPaletteDrag;
+
+/// The invisible ghost that accompanies an S/V palette drag (gpui requires
+/// one for `on_drag`).
+struct SvPaletteDragGhost;
+
+impl Render for SvPaletteDragGhost {
+	fn render(&mut self, _window: &mut Window, _cx: &mut gpui::Context<Self>) -> impl IntoElement {
+		div()
+	}
+}
+
+/// Drag payload for the hue bar.
+struct HueBarDrag;
+
+/// The invisible ghost that accompanies a hue-bar drag.
+struct HueBarDragGhost;
+
+impl Render for HueBarDragGhost {
+	fn render(&mut self, _window: &mut Window, _cx: &mut gpui::Context<Self>) -> impl IntoElement {
+		div()
+	}
+}
+
+/// Convert RGB (0..1 components) to HSV: hue in degrees (0..360, 0 when
+/// the colour is achromatic), saturation 0..1, value 0..1.
+fn rgb_to_hsv(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
+	let max = r.max(g).max(b);
+	let min = r.min(g).min(b);
+	let d = max - min;
+	let s = if max > 0.0 { d / max } else { 0.0 };
+	let h = if d <= 0.0 {
+		0.0
+	} else if max == r {
+		((g - b) / d).rem_euclid(6.0) * 60.0
+	} else if max == g {
+		((b - r) / d + 2.0) * 60.0
+	} else {
+		((r - g) / d + 4.0) * 60.0
+	};
+	(h, s, max)
+}
+
+/// Convert HSV (hue in degrees) back to an opaque RGB [`Rgba`].
+fn hsv_to_rgb(h: f32, s: f32, v: f32) -> Rgba {
+	let h = h.rem_euclid(360.0);
+	let c = v * s;
+	let x = c * (1.0 - ((h / 60.0).rem_euclid(2.0) - 1.0).abs());
+	let m = v - c;
+	let (r, g, b) = match (h / 60.0) as u32 {
+		0 => (c, x, 0.0),
+		1 => (x, c, 0.0),
+		2 => (0.0, c, x),
+		3 => (0.0, x, c),
+		4 => (x, 0.0, c),
+		_ => (c, 0.0, x),
+	};
+	Rgba {
+		r: r + m,
+		g: g + m,
+		b: b + m,
+		a: 1.0,
+	}
+}
+
+/// Map a cursor position to (saturation, value) in 0..1 — x rightwards, y
+/// upwards (clamped to the palette bounds).
+fn sv_from_point(bounds: Bounds<Pixels>, pos: Point<Pixels>) -> (f32, f32) {
+	let width = f32::from(bounds.size.width).max(1.0);
+	let height = f32::from(bounds.size.height).max(1.0);
+	let s = ((f32::from(pos.x) - f32::from(bounds.left())) / width).clamp(0.0, 1.0);
+	let v = 1.0 - ((f32::from(pos.y) - f32::from(bounds.top())) / height).clamp(0.0, 1.0);
+	(s, v)
+}
+
+/// Inverse of [`sv_from_point`] — the palette position of a (s, v) pair.
+fn point_from_sv(bounds: Bounds<Pixels>, s: f32, v: f32) -> Point<Pixels> {
+	let width = f32::from(bounds.size.width).max(1.0);
+	let height = f32::from(bounds.size.height).max(1.0);
+	point(
+		bounds.left() + px(s.clamp(0.0, 1.0) * width),
+		bounds.top() + px((1.0 - v.clamp(0.0, 1.0)) * height),
+	)
+}
+
+/// Map a cursor position on the hue bar to a hue in degrees (0..360, top
+/// to bottom, clamped).
+fn hue_from_point(bounds: Bounds<Pixels>, pos: Point<Pixels>) -> f32 {
+	let height = f32::from(bounds.size.height).max(1.0);
+	let t = ((f32::from(pos.y) - f32::from(bounds.top())) / height).clamp(0.0, 1.0);
+	t * 360.0
+}
+
+/// Paint the S/V palette: a 24×24 grid whose base colour is the hue at
+/// full value, overlaid per row with a black fade (value 1.0 → 0.0).
+fn paint_sv_palette(bounds: Bounds<Pixels>, hue: f32, window: &mut Window, _cx: &mut App) {
+	const GRID: u32 = 24;
+	let width = f32::from(bounds.size.width);
+	let height = f32::from(bounds.size.height);
+	let cw = width / GRID as f32;
+	let ch = height / GRID as f32;
+	for row in 0..GRID {
+		for col in 0..GRID {
+			let s = col as f32 / (GRID - 1) as f32;
+			let color = hsv_to_rgb(hue, s, 1.0);
+			let cell = Bounds::new(
+				point(
+					bounds.left() + px(col as f32 * cw),
+					bounds.top() + px(row as f32 * ch),
+				),
+				size(px(cw + 1.0), px(ch + 1.0)),
+			);
+			window.paint_quad(fill(cell, Hsla::from(color)));
+		}
+		// Black overlay fades the row's value from 1.0 down to 0.0.
+		let v = 1.0 - row as f32 / (GRID - 1) as f32;
+		let overlay = Rgba {
+			r: 0.0,
+			g: 0.0,
+			b: 0.0,
+			a: 1.0 - v,
+		};
+		let bar = Bounds::new(
+			point(bounds.left(), bounds.top() + px(row as f32 * ch)),
+			size(px(width), px(ch + 1.0)),
+		);
+		window.paint_quad(fill(bar, Hsla::from(overlay)));
+	}
+}
+
+/// Paint the hue bar: 36 vertical stripes spanning the full hue circle.
+fn paint_hue_bar(bounds: Bounds<Pixels>, window: &mut Window, _cx: &mut App) {
+	const STRIPES: u32 = 36;
+	let width = f32::from(bounds.size.width);
+	let height = f32::from(bounds.size.height);
+	let ch = height / STRIPES as f32;
+	for i in 0..STRIPES {
+		let hue = i as f32 / STRIPES as f32 * 360.0;
+		let color = hsv_to_rgb(hue, 1.0, 1.0);
+		let cell = Bounds::new(
+			point(bounds.left(), bounds.top() + px(i as f32 * ch)),
+			size(px(width), px(ch + 1.0)),
+		);
+		window.paint_quad(fill(cell, Hsla::from(color)));
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -1691,7 +2128,7 @@ mod tests {
 		}
 
 		cx.update(|cx| cx.init_colors());
-		let window = cx.open_window(size(px(320.0), px(400.0)), |window, cx| {
+		let window = cx.open_window(size(px(320.0), px(560.0)), |window, cx| {
 			let picker = cx.new(|cx| {
 				OfxColorPicker::new(
 					1,
@@ -1762,6 +2199,130 @@ mod tests {
 		);
 	}
 
+	/// While the viewer eyedropper is armed, a click outside the popup is a
+	/// *pick* on the program viewer, not a dismissal: the popup must survive
+	/// it (no `Cancelled` emitted, the arm state kept), or the sampled colour
+	/// would be dropped by `apply_viewer_pick`'s `picking` guard. Once the
+	/// eyedropper is disarmed, an outside click dismisses as usual.
+	#[gpui::test]
+	async fn outside_click_while_picking_keeps_popup_open(cx: &mut TestAppContext) {
+		struct Host {
+			picker: Entity<OfxColorPicker>,
+			events: Arc<Mutex<Vec<OfxColorEvent>>>,
+			_subscription: Subscription,
+		}
+		impl Render for Host {
+			fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
+				div().size_full().child(self.picker.clone())
+			}
+		}
+
+		cx.update(|cx| cx.init_colors());
+		let window = cx.open_window(size(px(320.0), px(560.0)), |window, cx| {
+			let picker = cx.new(|cx| {
+				OfxColorPicker::new(
+					1,
+					Rgba {
+						r: 0.4,
+						g: 0.2,
+						b: 0.8,
+						a: 0.5,
+					},
+					window,
+					cx,
+				)
+			});
+			let events = Arc::new(Mutex::new(Vec::new()));
+			let events_sub = events.clone();
+			let _subscription = cx.subscribe(&picker, move |_this, _emitter, event: &OfxColorEvent, _cx| {
+				events_sub.lock().unwrap().push(*event);
+			});
+			Host {
+				picker,
+				events,
+				_subscription,
+			}
+		});
+		cx.run_until_parked();
+
+		let mut visual = gpui::VisualTestContext::from_window(window.into(), cx).into_mut();
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+
+		// Open the popup by clicking the swatch, then re-draw so the popup's
+		// deferred layer is laid out.
+		let swatch = visual.debug_bounds("ofx-color-swatch").expect("swatch painted");
+		let swatch_center = Point::new(
+			swatch.origin.x + swatch.size.width * 0.5,
+			swatch.origin.y + swatch.size.height * 0.5,
+		);
+		visual.simulate_click(swatch_center, Modifiers::default());
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+
+		// Arm the eyedropper.
+		let button = visual
+			.debug_bounds("ofx-color-pick-viewer-1")
+			.expect("pick button painted");
+		let button_center = Point::new(
+			button.origin.x + button.size.width * 0.5,
+			button.origin.y + button.size.height * 0.5,
+		);
+		visual.simulate_click(button_center, Modifiers::default());
+		cx.run_until_parked();
+
+		// A click outside the popup (clear of its right/bottom edges, inside
+		// the window) while armed: the popup survives, the arm is kept, and no
+		// dismissal is emitted.
+		let popup = visual
+			.debug_bounds("ofx-color-popup")
+			.expect("popup painted");
+		let outside = Point::new(
+			px((f32::from(popup.origin.x) + f32::from(popup.size.width) + 10.0).min(318.0)),
+			px((f32::from(popup.origin.y) + f32::from(popup.size.height) + 10.0).min(399.0)),
+		);
+		visual.simulate_click(outside, Modifiers::default());
+		cx.run_until_parked();
+		let host = window.root(cx).expect("host root");
+		let (open, picking, cancelled) = cx.read(|cx| {
+			let host = host.read(cx);
+			(
+				host.picker.read(cx).open,
+				host.picker.read(cx).picking,
+				host.events
+					.lock()
+					.unwrap()
+					.iter()
+					.any(|e| matches!(e, OfxColorEvent::Cancelled)),
+			)
+		});
+		assert!(open, "the popup must survive an outside click while picking");
+		assert!(picking, "the eyedropper stays armed through the pick");
+		assert!(!cancelled, "no dismissal may be emitted while picking");
+
+		// Once disarmed (the pick landed / the button toggled again), an
+		// outside click dismisses the popup as usual.
+		visual.simulate_click(button_center, Modifiers::default());
+		cx.run_until_parked();
+		visual.simulate_click(outside, Modifiers::default());
+		cx.run_until_parked();
+		let (open, cancelled) = cx.read(|cx| {
+			let host = host.read(cx);
+			(
+				host.picker.read(cx).open,
+				host.events
+					.lock()
+					.unwrap()
+					.iter()
+					.any(|e| matches!(e, OfxColorEvent::Cancelled)),
+			)
+		});
+		assert!(!open, "outside click dismisses the popup once disarmed");
+		assert!(cancelled, "the dismissal emits Cancelled");
+	}
+
 	/// Applying a viewer pick lands the sampled colour in the draft and
 	/// disarms the eyedropper.
 	#[gpui::test]
@@ -1802,5 +2363,67 @@ mod tests {
 		});
 		assert_eq!(draft, red, "viewer pick should land in the draft");
 		assert!(!picking, "a viewer pick disarms the eyedropper");
+	}
+
+	/// Known-value checks + round-trips for the RGB↔HSV conversion.
+	#[test]
+	fn hsv_rgb_known_values() {
+		let hsv = |c: Rgba| rgb_to_hsv(c.r, c.g, c.b);
+		let close = |a: f32, b: f32| (a - b).abs() < 1e-4;
+
+		// The six canonical corners of the RGB cube.
+		assert_eq!(hsv(Rgba { r: 1.0, g: 0.0, b: 0.0, a: 1.0 }), (0.0, 1.0, 1.0));
+		assert_eq!(hsv(Rgba { r: 0.0, g: 1.0, b: 0.0, a: 1.0 }), (120.0, 1.0, 1.0));
+		assert_eq!(hsv(Rgba { r: 0.0, g: 0.0, b: 1.0, a: 1.0 }), (240.0, 1.0, 1.0));
+		assert_eq!(hsv(Rgba { r: 1.0, g: 1.0, b: 0.0, a: 1.0 }), (60.0, 1.0, 1.0));
+		assert_eq!(hsv(Rgba { r: 1.0, g: 1.0, b: 1.0, a: 1.0 }), (0.0, 0.0, 1.0));
+		assert_eq!(hsv(Rgba { r: 0.0, g: 0.0, b: 0.0, a: 1.0 }), (0.0, 0.0, 0.0));
+
+		// The same corners back to RGB.
+		let rgb = |h: f32, s: f32, v: f32| hsv_to_rgb(h, s, v);
+		assert_eq!(rgb(0.0, 1.0, 1.0), Rgba { r: 1.0, g: 0.0, b: 0.0, a: 1.0 });
+		assert_eq!(rgb(120.0, 1.0, 1.0), Rgba { r: 0.0, g: 1.0, b: 0.0, a: 1.0 });
+		assert_eq!(rgb(240.0, 1.0, 1.0), Rgba { r: 0.0, g: 0.0, b: 1.0, a: 1.0 });
+
+		// Arbitrary RGB round-trips.
+		for (r, g, b) in [(0.5, 0.25, 0.75), (0.1, 0.9, 0.2), (0.33, 0.67, 0.44)] {
+			let (h, s, v) = rgb_to_hsv(r, g, b);
+			let back = hsv_to_rgb(h, s, v);
+			assert!(
+				close(back.r, r) && close(back.g, g) && close(back.b, b),
+				"RGB round-trip failed for ({r}, {g}, {b}) -> {back:?}"
+			);
+		}
+
+		// Arbitrary HSV round-trips (the hue may land on the other side of
+		// 0° / 360°, hence the looser tolerance).
+		for (h, s, v) in [(30.0, 0.5, 0.5), (200.0, 0.3, 0.8), (345.0, 1.0, 0.2)] {
+			let rgb = hsv_to_rgb(h, s, v);
+			let (h2, s2, v2) = rgb_to_hsv(rgb.r, rgb.g, rgb.b);
+			assert!(
+				(h2 - h).abs() < 1e-3 && (s2 - s).abs() < 1e-4 && (v2 - v).abs() < 1e-4,
+				"HSV round-trip failed for ({h}, {s}, {v}) -> ({h2}, {s2}, {v2})"
+			);
+		}
+	}
+
+	/// The palette ↔ cursor mapping: corners, centre and out-of-bounds
+	/// clamping.
+	#[test]
+	fn sv_point_mapping() {
+		let bounds = Bounds::new(point(px(10.0), px(20.0)), size(px(100.0), px(50.0)));
+		let at = |x: f32, y: f32| point(px(x), px(y));
+
+		assert_eq!(sv_from_point(bounds, at(10.0, 20.0)), (0.0, 1.0));
+		assert_eq!(sv_from_point(bounds, at(110.0, 70.0)), (1.0, 0.0));
+		assert_eq!(sv_from_point(bounds, at(60.0, 45.0)), (0.5, 0.5));
+		// Out of bounds clamps to the edges.
+		assert_eq!(sv_from_point(bounds, at(0.0, 0.0)), (0.0, 1.0));
+		assert_eq!(sv_from_point(bounds, at(500.0, 500.0)), (1.0, 0.0));
+
+		assert_eq!(point_from_sv(bounds, 0.0, 1.0), at(10.0, 20.0));
+		assert_eq!(point_from_sv(bounds, 1.0, 0.0), at(110.0, 70.0));
+		assert_eq!(point_from_sv(bounds, 0.5, 0.5), at(60.0, 45.0));
+		assert_eq!(point_from_sv(bounds, -1.0, 2.0), at(10.0, 20.0));
 	}
 }

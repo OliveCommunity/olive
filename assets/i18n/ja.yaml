@@ -237,6 +237,8 @@
 "ofx.color.cancel": "キャンセル"
 "ofx.color.invalid": "無効な16進カラーです"
 "ofx.color.pick_viewer": "ビューアから拾う"
+"ofx.color.mode_rgb": "RGB"
+"ofx.color.mode_hsv": "HSV"
 "dialog.cancel": "キャンセル"
 "dialog.close": "閉じる"
 "dialog.ok": "OK"
