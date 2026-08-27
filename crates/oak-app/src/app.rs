@@ -3010,6 +3010,18 @@ fn run_with<E: AppEngine>(args: AppArgs) {
 			// SAFETY: single-threaded startup, before any window exists.
 			unsafe { std::env::set_var("OAK_MACOS_LAYER_COLORSPACE", "display") };
 		}
+		// Display bit depth: the wgpu window layer must pick the swapchain
+		// format before the surface is created, so surface the persisted
+		// choice the same way the colorspace tag is passed to the platform
+		// layer above. Read by gpui_wgpu as OAK_DISPLAY_BIT_DEPTH ("8" opts
+		// into the 8-bit pair; anything else requests 10-bit).
+		let bit_depth = oak_render::backend::DisplayBitDepth::from_config_string(
+			&crate::oakui::real::config_get_string(
+				oak_render::backend::CONFIG_KEY_DISPLAY_BIT_DEPTH,
+			),
+		);
+		// SAFETY: single-threaded startup, before any window exists.
+		unsafe { std::env::set_var("OAK_DISPLAY_BIT_DEPTH", bit_depth.to_config_string()) };
 		cx.init_colors();
 		let bounds = Bounds::centered(None, size(px(1600.0), px(900.0)), cx);
 		let initial = initial.clone();

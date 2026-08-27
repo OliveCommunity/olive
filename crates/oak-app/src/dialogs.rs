@@ -54,6 +54,10 @@ use crate::oakui::real::{
 	DEFAULT_PREVIEW_WINDOW_FORWARD, DEFAULT_SNAPSHOT_INTERVAL_SEC, DEFAULT_TRANSITION_SEC,
 	EXPORT_FORMAT_MP4,
 };
+// The `DisplayBitDepth` config key lives with the format mapping it
+// drives (oak-render's backend); the preferences dropdown and the
+// window-layer consumer share the same key.
+use oak_render::backend::CONFIG_KEY_DISPLAY_BIT_DEPTH;
 
 // ---------------------------------------------------------------------------
 // Preferences
@@ -100,6 +104,10 @@ impl gpui::EventEmitter<PreferencesEvent> for PreferencesContent {}
 /// exit).
 pub struct PreferencesContent {
 	backend: Entity<ComboBox>,
+	/// The on-screen display bit depth (10-bit default, 8-bit fallback).
+	/// The swapchain format is fixed at surface creation, so a change
+	/// takes effect after a restart.
+	display_bit_depth: Entity<ComboBox>,
 	language: Entity<ComboBox>,
 	theme: Entity<ComboBox>,
 	cache_dir: Entity<PathField>,
@@ -160,6 +168,37 @@ impl PreferencesContent {
 		.detach();
 		backend.update(cx, |combo, cx| {
 			combo.set_selected(Some(backend_selected), cx)
+		});
+
+		// --- 渲染 Rendering: on-screen display bit depth ---------------------
+		// 10-bit is the default; 8-bit is the compatibility fallback. The
+		// swapchain format is chosen once at window/surface creation, so a
+		// change takes effect after a restart (see oak-render's
+		// `DisplayBitDepth::present_formats`).
+		let display_bit_depth = cx.new(|cx| {
+			let options = vec![
+				ComboBoxOption::new(0, i18n::tr("preferences.bit_depth.10bit")),
+				ComboBoxOption::new(1, i18n::tr("preferences.bit_depth.8bit")),
+			];
+			ComboBox::new(12, options, window, cx)
+		});
+		cx.subscribe(&display_bit_depth, |_this, _combo, event: &ComboBoxEvent, cx| {
+			if let ComboBoxEvent::Selected { value, .. } = event {
+				let depth = if *value == 1 { "8" } else { "10" };
+				config_set_string(CONFIG_KEY_DISPLAY_BIT_DEPTH, depth);
+				println!("[preferences] display bit depth → {depth}");
+			}
+			let _ = cx;
+		})
+		.detach();
+		let bit_depth_selected =
+			if config_get_string(CONFIG_KEY_DISPLAY_BIT_DEPTH) == "8" {
+				1
+			} else {
+				0
+			};
+		display_bit_depth.update(cx, |combo, cx| {
+			combo.set_selected(Some(bit_depth_selected), cx)
 		});
 
 		// --- 常规 General: language + theme --------------------------------
@@ -494,6 +533,7 @@ impl PreferencesContent {
 
 		Self {
 			backend,
+			display_bit_depth,
 			language,
 			theme,
 			cache_dir,
@@ -855,6 +895,19 @@ impl Render for PreferencesContent {
 				i18n::tr("preferences.audio.input").into(),
 				self.audio_input.clone(),
 			))
+			// 渲染 Rendering: display bit depth (kept at the bottom of the list
+			// so the rows above stay inside the card's scroll viewport).
+			.child(form_row(
+				&colors,
+				i18n::tr("preferences.bit_depth.label").into(),
+				self.display_bit_depth.clone(),
+			))
+			.child(
+				div()
+					.text_color(colors.disabled)
+					.text_xs()
+					.child(i18n::tr("preferences.bit_depth.restart_hint")),
+			)
 			.child(
 				div()
 					.text_color(colors.disabled)

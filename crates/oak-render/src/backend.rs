@@ -144,6 +144,74 @@ impl BackendKind {
 	}
 }
 
+/// The config-store key for the on-screen display bit depth ("10" or
+/// "8"). The window swapchain format is chosen once at surface creation,
+/// so a change takes effect after a restart.
+pub const CONFIG_KEY_DISPLAY_BIT_DEPTH: &str = "DisplayBitDepth";
+
+/// On-screen presentation bit depth, persisted under the
+/// `DisplayBitDepth` config key. The choice is user-visible: the
+/// preferences dialog exposes a 10-bit/8-bit dropdown, and it decides
+/// the formats the window layer presents with (see
+/// [`DisplayBitDepth::present_formats`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DisplayBitDepth {
+	/// 8-bit per channel (Bgra8/Rgba8 swapchain).
+	Bit8,
+	/// 10-bit per channel (RGB10A2 — the default; RGBA16F for HDR).
+	Bit10,
+}
+
+impl DisplayBitDepth {
+	/// Parse the settings string; unknown values yield the default 10-bit.
+	pub fn from_config_string(s: &str) -> DisplayBitDepth {
+		match s.trim() {
+			"8" => DisplayBitDepth::Bit8,
+			_ => DisplayBitDepth::Bit10,
+		}
+	}
+
+	/// The config-store value persisted for this depth.
+	pub fn to_config_string(self) -> &'static str {
+		match self {
+			DisplayBitDepth::Bit8 => "8",
+			DisplayBitDepth::Bit10 => "10",
+		}
+	}
+
+	/// Read the user's persisted choice through the oakcommon config C ABI
+	/// ("DisplayBitDepth").
+	pub fn from_user_config() -> DisplayBitDepth {
+		let configured =
+			crate::commonutil::config_get_string(None, CONFIG_KEY_DISPLAY_BIT_DEPTH)
+				.unwrap_or_default();
+		DisplayBitDepth::from_config_string(&configured)
+	}
+
+	/// The wgpu surface formats the window layer should present with, in
+	/// preference order (the platform picks the first the surface
+	/// supports). 10-bit prefers RGB10A2 with an RGBA16F (HDR) fallback;
+	/// 8-bit mirrors the engine's current default preference list.
+	///
+	/// The actual swapchain is configured by the window layer
+	/// (gpui_wgpu's surface setup intersects these with the surface
+	/// capabilities); this crate is headless and never creates a surface
+	/// itself, so the mapping is the format-selection contract the window
+	/// layer consumes at surface creation.
+	pub fn present_formats(self) -> &'static [wgpu::TextureFormat] {
+		match self {
+			DisplayBitDepth::Bit10 => &[
+				wgpu::TextureFormat::Rgb10a2Unorm,
+				wgpu::TextureFormat::Rgba16Float,
+			],
+			DisplayBitDepth::Bit8 => &[
+				wgpu::TextureFormat::Bgra8Unorm,
+				wgpu::TextureFormat::Rgba8Unorm,
+			],
+		}
+	}
+}
+
 /// A GPU-resident texture in the context registry.
 #[derive(Clone)]
 struct GpuTexture {
@@ -1310,6 +1378,43 @@ mod tests {
 		std::env::set_var("OAK_RENDER_BACKEND", "vulkan");
 		assert_eq!(BackendKind::from_user_config(), BackendKind::Vulkan);
 		std::env::remove_var("OAK_RENDER_BACKEND");
+	}
+
+	#[test]
+	fn display_bit_depth_string_roundtrip() {
+		assert_eq!(DisplayBitDepth::from_config_string("8"), DisplayBitDepth::Bit8);
+		assert_eq!(
+			DisplayBitDepth::from_config_string("10"),
+			DisplayBitDepth::Bit10
+		);
+		// Unknown / missing → the 10-bit default.
+		assert_eq!(DisplayBitDepth::from_config_string(""), DisplayBitDepth::Bit10);
+		assert_eq!(
+			DisplayBitDepth::from_config_string("bogus"),
+			DisplayBitDepth::Bit10
+		);
+		assert_eq!(
+			DisplayBitDepth::from_config_string(DisplayBitDepth::Bit8.to_config_string()),
+			DisplayBitDepth::Bit8
+		);
+		assert_eq!(
+			DisplayBitDepth::from_config_string(DisplayBitDepth::Bit10.to_config_string()),
+			DisplayBitDepth::Bit10
+		);
+	}
+
+	#[test]
+	fn display_bit_depth_present_formats() {
+		// 10-bit → the 10-bit (RGB10A2) swapchain format, HDR float fallback.
+		assert_eq!(
+			DisplayBitDepth::Bit10.present_formats(),
+			&[wgpu::TextureFormat::Rgb10a2Unorm, wgpu::TextureFormat::Rgba16Float]
+		);
+		// 8-bit → the engine's current default preference list.
+		assert_eq!(
+			DisplayBitDepth::Bit8.present_formats(),
+			&[wgpu::TextureFormat::Bgra8Unorm, wgpu::TextureFormat::Rgba8Unorm]
+		);
 	}
 
 	#[test]
