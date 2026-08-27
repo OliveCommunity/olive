@@ -316,6 +316,7 @@ fn node_video_from_common(v: &CommonVideoParams) -> oak_node::value::VideoParams
 		frame_rate: Rational::new(v.frame_rate().0 as i64, v.frame_rate().1 as i64),
 		pixel_format: v.format().code(),
 		channels: v.channel_count(),
+		interlaced: false,
 	}
 }
 

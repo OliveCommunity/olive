@@ -580,6 +580,8 @@ pub struct VideoParams {
 	pub pixel_format: i32,
 	/// Channel count.
 	pub channels: i32,
+	/// Whether the stream is interlaced.
+	pub interlaced: bool,
 }
 
 /// Audio parameters (plain data).

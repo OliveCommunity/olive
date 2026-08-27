@@ -82,6 +82,18 @@ impl VideoFormat {
 	}
 }
 
+/// The editable parameters of a sequence, as the sequence-properties
+/// dialog reads and writes them.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SequenceParameters {
+	/// The sequence's display name.
+	pub name: String,
+	/// The sequence's video format.
+	pub format: VideoFormat,
+	/// Whether the sequence's video stream is interlaced.
+	pub interlaced: bool,
+}
+
 /// A project open in the engine.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Project {
@@ -826,6 +838,59 @@ pub trait AppEngine:
 	/// any future per-project caches) land in the new location.
 	fn set_project_cache_location(&mut self, setting: i32, custom_path: String, cx: &mut Context<Self>) {
 		let _ = (setting, custom_path, cx);
+	}
+
+	// -------------------------------------------------------------------
+	// Sequence management (the C++ File > New Sequence / New Folder and
+	// the project-explorer sequence context menu): creating, querying and
+	// updating sequences and folders in the open project. Defaults cover
+	// engines without a project surface.
+	// -------------------------------------------------------------------
+
+	/// Whether the project-explorer entry `id` is a sequence node.
+	fn entry_is_sequence(&self, id: u64) -> bool {
+		let _ = id;
+		false
+	}
+
+	/// The sequence parameters of `id` (the sequence-properties dialog
+	/// seed), or `None` when the entry is not a sequence.
+	fn sequence_parameters(&self, id: u64) -> Option<SequenceParameters> {
+		let _ = id;
+		None
+	}
+
+	/// Creates a sequence in the open project with the given parameters
+	/// and opens it. `Err` keeps the new-sequence dialog open.
+	fn create_sequence_with_params(
+		&mut self,
+		name: String,
+		format: VideoFormat,
+		interlaced: bool,
+		cx: &mut Context<Self>,
+	) -> Result<u64, String> {
+		let _ = (name, format, interlaced, cx);
+		Err("no project open".to_string())
+	}
+
+	/// Creates a folder in the open project. `Err` keeps the caller's
+	/// action from completing.
+	fn create_folder(&mut self, name: String, cx: &mut Context<Self>) -> Result<u64, String> {
+		let _ = (name, cx);
+		Err("no project open".to_string())
+	}
+
+	/// Applies new name/format/interlaced parameters to the sequence `id`.
+	fn update_sequence_parameters(
+		&mut self,
+		id: u64,
+		name: String,
+		format: VideoFormat,
+		interlaced: bool,
+		cx: &mut Context<Self>,
+	) -> Result<(), String> {
+		let _ = (id, name, format, interlaced, cx);
+		Err("no project open".to_string())
 	}
 
 	/// The footage rows the proxy dialog's footage mode lists (every

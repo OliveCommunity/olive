@@ -34,12 +34,14 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use oak_core::{Rational, TimeRange};
 use oak_node::block::ClipBlockBehavior;
+use oak_node::folder::FolderBehavior;
 use oak_node::footage::FootageBehavior;
 use oak_node::graph::Graph;
 use oak_node::id::NodeId;
 use oak_node::project::Project;
 use oak_node::sequence::SequenceBehavior;
 use oak_node::track::{TrackBehavior, TrackListBehavior, TrackType};
+use oak_node::value::VideoParams;
 use oak_timeline::handle::CHandle;
 use oak_timeline::util::NodeRef;
 
@@ -201,13 +203,58 @@ pub fn footage_ids(p: &Project) -> Vec<NodeId> {
 /// Create a sequence node named `name` directly in the project's graph
 /// (unlike the facade's `oakengine_sequence_new`, which kept the sequence
 /// in a scratch project, the direct-rlib app keeps it in the project so
-/// saves and the write-through library cover it).
+/// saves and the write-through library cover it). The sequence is attached
+/// to the project's root folder so the project explorer shows it.
 pub fn create_sequence(project: &ProjectRef, name: &str) -> NodeId {
+	create_sequence_with_params(project, name, None)
+}
+
+/// Create a sequence with an explicit first-video-stream format. `params`
+/// `(width, height, rate, interlaced)` overrides the sequence's default
+/// video parameters; `None` keeps the defaults. The sequence is attached
+/// to the root folder.
+pub fn create_sequence_with_params(
+	project: &ProjectRef,
+	name: &str,
+	params: Option<(i32, i32, Rational, bool)>,
+) -> NodeId {
 	let mut guard = lock(project);
-	let (mut core, behavior) = SequenceBehavior::create();
+	let (mut core, mut behavior) = SequenceBehavior::create();
 	core.label = name.to_string();
+	if let Some((width, height, rate, interlaced)) = params {
+		if let Some(seq) = behavior
+			.as_any_mut()
+			.and_then(|a| a.downcast_mut::<SequenceBehavior>())
+		{
+			if seq.video_params.is_empty() {
+				seq.video_params.push(VideoParams {
+					width,
+					height,
+					frame_rate: rate,
+					pixel_format: 4, // f32
+					channels: 4,
+					interlaced,
+				});
+			} else {
+				let v = &mut seq.video_params[0];
+				v.width = width;
+				v.height = height;
+				v.frame_rate = rate;
+				v.interlaced = interlaced;
+			}
+		}
+	}
+	let root = guard.root;
 	let seq = guard.graph.add_node(core, behavior);
 	drop(guard);
+	// Mount the sequence under the root folder. Not pushed to the undo
+	// stack: like the default track layout below, it is part of the
+	// sequence's creation, not an undoable edit.
+	oak_task::nodeops::folder_add_child_command(
+		(project.clone(), root),
+		(project.clone(), seq),
+	)
+	.redo_now();
 	// A new sequence starts with the default 2 video + 2 audio track
 	// layout (user-mandated NLE default: V1, V2 on top, A1, A2 below).
 	// Driven directly through the add-track commands' redo — NOT pushed
@@ -220,6 +267,114 @@ pub fn create_sequence(project: &ProjectRef, name: &str) -> NodeId {
 		oak_timeline::undogeneral::TimelineAddTrackCommand::new(node_ref(project, list)).redo();
 	}
 	seq
+}
+
+/// Create a folder under the project's root (the C++ File > New Folder
+/// action). The "New Folder" command is pushed to the undo stack — an
+/// explicit user action, unlike sequence creation.
+pub fn create_folder(project: &ProjectRef, name: &str) -> Result<NodeId, String> {
+	let root = {
+		let guard = lock(project);
+		if !guard.root.valid() {
+			return Err("the project has no root folder".to_string());
+		}
+		guard.root
+	};
+	let (core, behavior) = oak_node::folder::create(name);
+	let id = {
+		let mut guard = lock(project);
+		guard.graph.add_node(core, behavior)
+	};
+	let cmd = oak_task::nodeops::folder_add_child_command(
+		(project.clone(), root),
+		(project.clone(), id),
+	);
+	oak_undo::global::push(cmd, "New Folder").map_err(|e| e.to_string())?;
+	Ok(id)
+}
+
+/// Every folder node in the graph, in arena order.
+pub fn folder_ids(p: &Project) -> Vec<NodeId> {
+	p.graph
+		.node_ids()
+		.into_iter()
+		.filter(|&id| is_folder(&p.graph, id))
+		.collect()
+}
+
+/// Attach every orphaned sequence to the root folder with a non-undoable
+/// command. Projects saved before sequences mounted under the root load
+/// with their sequences free-floating; the open path runs this once to
+/// migrate them.
+pub fn ensure_sequences_mounted(project: &ProjectRef) {
+	let (root, orphans) = {
+		let guard = lock(project);
+		let root = guard.root;
+		let children = guard
+			.graph
+			.get(root)
+			.and_then(|e| e.behavior.as_any())
+			.and_then(|a| a.downcast_ref::<FolderBehavior>())
+			.map(|f| f.children.clone())
+			.unwrap_or_default();
+		let orphans = sequence_ids(&guard)
+			.into_iter()
+			.filter(|&id| !children.contains(&id))
+			.collect::<Vec<_>>();
+		(root, orphans)
+	};
+	for id in orphans {
+		oak_task::nodeops::folder_add_child_command(
+			(project.clone(), root),
+			(project.clone(), id),
+		)
+		.redo_now();
+	}
+}
+
+/// Apply new display name and video parameters to a sequence (the
+/// sequence-properties dialog's commit; mirrors the CLI's
+/// `set_sequence_video_params`, plus the label). Not undoable, like the
+/// CLI setter.
+pub fn set_sequence_parameters(
+	project: &ProjectRef,
+	seq: NodeId,
+	name: &str,
+	width: i32,
+	height: i32,
+	rate: Rational,
+	interlaced: bool,
+) -> Result<(), String> {
+	let mut guard = lock(project);
+	let entry = guard
+		.graph
+		.get_mut(seq)
+		.ok_or_else(|| "sequence no longer exists".to_string())?;
+	entry.core.label = name.to_string();
+	let Some(s) = entry
+		.behavior
+		.as_any_mut()
+		.and_then(|a| a.downcast_mut::<SequenceBehavior>())
+	else {
+		return Err("entry is not a sequence".to_string());
+	};
+	if s.video_params.is_empty() {
+		s.video_params.push(VideoParams {
+			width,
+			height,
+			frame_rate: rate,
+			pixel_format: 4, // f32
+			channels: 4,
+			interlaced,
+		});
+	} else {
+		let v = &mut s.video_params[0];
+		v.width = width;
+		v.height = height;
+		v.frame_rate = rate;
+		v.interlaced = interlaced;
+	}
+	Ok(())
 }
 
 /// The label of a node (`NodeCore::label`).
@@ -2705,5 +2860,145 @@ mod undo_cycle_ops_tests {
 		oak_undo::global::clear().unwrap();
 
 		let _ = std::fs::remove_file(&media);
+	}
+
+	// ---- sequence folder mounting ------------------------------------------
+
+	/// The root folder's direct children.
+	fn root_children(p: &ProjectRef) -> Vec<NodeId> {
+		let guard = lock(p);
+		guard
+			.graph
+			.get(guard.root)
+			.and_then(|e| e.behavior.as_any())
+			.and_then(|a| a.downcast_ref::<FolderBehavior>())
+			.map(|f| f.children.clone())
+			.unwrap_or_default()
+	}
+
+	/// Folders and sequences created through the module helpers mount under
+	/// the root folder, so the project explorer lists them.
+	#[test]
+	fn create_folder_and_sequence_mount_under_root() {
+		let _g = test_lock();
+		oak_undo::global::clear().unwrap();
+		let project = create_project();
+		let folder = create_folder(&project, "Folder 1").expect("create folder");
+		let seq = create_sequence_with_params(
+			&project,
+			"Seq 4K",
+			Some((3840, 2160, Rational::new(24000, 1001), true)),
+		);
+		let children = root_children(&project);
+		assert!(children.contains(&folder), "the folder mounts under root");
+		assert!(children.contains(&seq), "the sequence mounts under root");
+		assert_eq!(
+			folder_ids(&lock(&project)).len(),
+			2,
+			"the root folder itself plus the new folder"
+		);
+		oak_undo::global::clear().unwrap();
+	}
+
+	/// `create_sequence_with_params` writes the format into the sequence's
+	/// first video stream, including the new `interlaced` flag.
+	#[test]
+	fn create_sequence_with_params_sets_first_stream_format() {
+		let _g = test_lock();
+		let project = create_project();
+		let seq = create_sequence_with_params(
+			&project,
+			"Interlaced",
+			Some((1280, 720, Rational::new(30000, 1001), true)),
+		);
+		let guard = lock(&project);
+		let (width, height, rate) = sequence_video_params(&guard.graph, seq).expect("video params");
+		assert_eq!((width, height), (1280, 720));
+		assert_eq!((rate.numerator(), rate.denominator()), (30000, 1001));
+		let interlaced = guard
+			.graph
+			.get(seq)
+			.and_then(|e| e.behavior.as_any())
+			.and_then(|a| a.downcast_ref::<SequenceBehavior>())
+			.expect("sequence behavior")
+			.video_params
+			.first()
+			.expect("a video stream")
+			.interlaced;
+		assert!(interlaced, "the interlaced flag lands in the first stream");
+		oak_undo::global::clear().unwrap();
+	}
+
+	/// Sequences saved before they mounted under the root load free-floating;
+	/// `ensure_sequences_mounted` reattaches them (the open path's migration).
+	#[test]
+	fn ensure_sequences_mounted_reattaches_orphans() {
+		let _g = test_lock();
+		oak_undo::global::clear().unwrap();
+		let project = create_project();
+		let seq = create_sequence(&project, "Legacy");
+		// Detach the sequence from the root: a legacy project loaded without
+		// the mount migration.
+		{
+			let mut guard = lock(&project);
+			let root = guard.root;
+			let folder = guard
+				.graph
+				.get_mut(root)
+				.and_then(|e| e.behavior.as_any_mut())
+				.and_then(|a| a.downcast_mut::<FolderBehavior>())
+				.expect("root folder behavior");
+			folder.children.retain(|&c| c != seq);
+		}
+		assert!(
+			!root_children(&project).contains(&seq),
+			"the sequence floats free after the detach"
+		);
+		ensure_sequences_mounted(&project);
+		assert!(
+			root_children(&project).contains(&seq),
+			"the orphan sequence reattaches under root"
+		);
+		oak_undo::global::clear().unwrap();
+	}
+
+	/// `set_sequence_parameters` rewrites the display name and the first video
+	/// stream's format in one call (the properties dialog's commit path).
+	#[test]
+	fn set_sequence_parameters_updates_name_and_format() {
+		let _g = test_lock();
+		let project = create_project();
+		let seq = create_sequence_with_params(
+			&project,
+			"Before",
+			Some((1280, 720, Rational::new(25, 1), false)),
+		);
+		set_sequence_parameters(
+			&project,
+			seq,
+			"After",
+			1920,
+			1080,
+			Rational::new(30000, 1001),
+			true,
+		)
+		.expect("update parameters");
+		let guard = lock(&project);
+		assert_eq!(node_label(&guard.graph, seq), "After");
+		let (width, height, rate) = sequence_video_params(&guard.graph, seq).expect("video params");
+		assert_eq!((width, height), (1920, 1080));
+		assert_eq!((rate.numerator(), rate.denominator()), (30000, 1001));
+		let interlaced = guard
+			.graph
+			.get(seq)
+			.and_then(|e| e.behavior.as_any())
+			.and_then(|a| a.downcast_ref::<SequenceBehavior>())
+			.expect("sequence behavior")
+			.video_params
+			.first()
+			.expect("a video stream")
+			.interlaced;
+		assert!(interlaced, "the interlaced flag updates too");
+		oak_undo::global::clear().unwrap();
 	}
 }

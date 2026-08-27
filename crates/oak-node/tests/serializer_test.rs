@@ -270,6 +270,7 @@ fn build_full_project() -> std::sync::Arc<std::sync::Mutex<oak_node::project::Pr
 					frame_rate: Rational::new(25, 1),
 					pixel_format: 4,
 					channels: 4,
+					interlaced: false,
 				}),
 				audio: None,
 				duration: Rational::new(217600, 12800),

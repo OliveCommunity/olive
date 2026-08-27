@@ -151,8 +151,18 @@ impl<E: AppEngine> ProjectExplorerPanel<E> {
 				})
 				.detach();
 			}
-			LOCAL_RENAME | LOCAL_DELETE | LOCAL_PROPERTIES | LOCAL_OPEN_IN_NEW_TAB => {
+			LOCAL_RENAME | LOCAL_DELETE | LOCAL_OPEN_IN_NEW_TAB => {
 				println!("[project explorer] menu action {item} (not implemented yet)");
+			}
+			LOCAL_PROPERTIES => {
+				let Some(id) = self.context_entry else {
+					return;
+				};
+				if self.engine.read(cx).entry_is_sequence(id) {
+					cx.emit(SequencePropertiesRequested(id));
+				} else {
+					println!("[project explorer] properties for non-sequence entry {id} (not implemented yet)");
+				}
 			}
 			LOCAL_PROXY_GENERATE | LOCAL_PROXY_USE | LOCAL_PROXY_REVEAL | LOCAL_PROXY_DELETE => {
 				let Some(id) = self.context_entry else {
@@ -242,6 +252,13 @@ impl<E: AppEngine> Render for ProjectExplorerPanel<E> {
 impl<E: AppEngine> EventEmitter<PanelEvent> for ProjectExplorerPanel<E> {}
 
 impl<E: AppEngine> EventEmitter<ContextMenuTriggered> for ProjectExplorerPanel<E> {}
+
+/// The project explorer asked the shell to open the sequence properties
+/// dialog for the given sequence entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SequencePropertiesRequested(pub u64);
+
+impl<E: AppEngine> EventEmitter<SequencePropertiesRequested> for ProjectExplorerPanel<E> {}
 
 impl<E: AppEngine> DockPanel for ProjectExplorerPanel<E> {
 	fn panel_id(&self) -> gpui::dock::PanelId {

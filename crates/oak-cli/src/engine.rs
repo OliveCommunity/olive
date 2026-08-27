@@ -255,6 +255,7 @@ pub fn set_sequence_video_params(
 				frame_rate: Rational::new(i64::from(fr_num), i64::from(fr_den)),
 				pixel_format: 4, // f32
 				channels: 4,
+				interlaced: false,
 			});
 		} else {
 			let v = &mut s.video_params[0];

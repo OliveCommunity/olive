@@ -26,6 +26,7 @@
 //! shell chrome immediately.
 
 use crate::oakui::component::controls::SliderModel;
+use crate::oakui::component::controls::SliderValue;
 use crate::oakui::component::controls::ValueKind;
 use crate::oakui::component::controls::{CheckBox, CheckBoxEvent, CheckState};
 use crate::oakui::component::controls::{ComboBox, ComboBoxEvent, ComboBoxOption};
@@ -33,6 +34,7 @@ use crate::oakui::component::controls::{SpinBox, SpinBoxEvent};
 use crate::oakui::component::text_input;
 use gpui::colors::DefaultColors;
 use gpui::prelude::*;
+use gpui::timeline::FrameRate;
 use gpui::{
 	div, px, App, Context, ElementId, Entity, EventEmitter, FocusHandle, Focusable, Keystroke,
 	PathPromptOptions, Render, SharedString, Window,
@@ -2756,6 +2758,576 @@ impl Render for AboutContent {
 					.text_color(colors.disabled)
 					.text_xs()
 					.child(i18n::tr("about.fork_notice")),
+			)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Sequence: 新建序列 (New Sequence) + 序列属性 (Sequence Properties)
+// ---------------------------------------------------------------------------
+
+/// The frame-rate choices offered for a sequence, as rational pairs in
+/// dropdown order (matching [`SEQUENCE_RATE_OPTIONS`]).
+const SEQUENCE_RATES: &[(u32, u32)] = &[
+	(24000, 1001), // 23.98
+	(24, 1),       // 24
+	(25, 1),       // 25
+	(30000, 1001), // 29.97
+	(30, 1),       // 30
+	(50, 1),       // 50
+	(60000, 1001), // 59.94
+	(60, 1),       // 60
+];
+
+/// The frame-rate labels, in the same order as [`SEQUENCE_RATES`].
+const SEQUENCE_RATE_OPTIONS: &[&str] = &["23.98", "24", "25", "29.97", "30", "50", "59.94", "60"];
+
+/// The preset formats offered for a sequence (0 = custom, which leaves the
+/// width / height / frame-rate fields free).
+fn sequence_preset_options() -> Vec<ComboBoxOption> {
+	vec![
+		ComboBoxOption::new(0, i18n::tr("seqprops.preset.custom")),
+		ComboBoxOption::new(1, i18n::tr("seqprops.preset.pal")),
+		ComboBoxOption::new(2, i18n::tr("seqprops.preset.ntsc")),
+		ComboBoxOption::new(3, i18n::tr("seqprops.preset.hd_1080_25")),
+		ComboBoxOption::new(4, i18n::tr("seqprops.preset.hd_1080_30")),
+	]
+}
+
+/// The `(width, height, rate-num, rate-den)` of a preset entry, or `None`
+/// for the custom entry.
+fn sequence_preset_format(index: usize) -> Option<(u32, u32, u32, u32)> {
+	match index {
+		1 => Some((720, 576, 25, 1)),       // PAL
+		2 => Some((720, 480, 30000, 1001)), // NTSC
+		3 => Some((1920, 1080, 25, 1)),     // HD 1080p25
+		4 => Some((1920, 1080, 30, 1)),     // HD 1080p30
+		_ => None,
+	}
+}
+
+/// The frame-rate choices for the sequence dialogs.
+fn sequence_rate_options() -> Vec<ComboBoxOption> {
+	SEQUENCE_RATE_OPTIONS
+		.iter()
+		.enumerate()
+		.map(|(i, label)| ComboBoxOption::new(i, *label))
+		.collect()
+}
+
+/// A text field for the sequence name, shaped like the export path field
+/// (its own editor so the name can be replaced without retyping).
+pub struct TextValue {
+	editor: Entity<EditableTextState>,
+}
+
+impl TextValue {
+	/// The name currently entered.
+	pub fn value(&self, app: &App) -> SharedString {
+		self.editor.read(app).as_str().into()
+	}
+
+	/// Replaces the name shown in the field.
+	pub fn set_value(&mut self, value: impl Into<SharedString>, cx: &mut Context<Self>) {
+		let value = value.into();
+		self.editor.update(cx, |editor, cx| {
+			editor.emplace(value.as_ref(), cx);
+		});
+		cx.notify();
+	}
+}
+
+impl Render for TextValue {
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let colors = cx.default_colors().clone();
+		let weak = self.editor.downgrade();
+		div()
+			.rounded_md()
+			.border_1()
+			.border_color(colors.border)
+			.bg(colors.background)
+			.px_2()
+			.py_1()
+			.child(text_input("oak-seq-name", cx).state(weak).accepts_input(true))
+	}
+}
+
+/// The initial state of the sequence format fields.
+pub struct SequenceFormatSeed {
+	/// The selected preset index (0 = custom).
+	pub preset: usize,
+	/// The width shown in the spin box (presets override it).
+	pub width: u32,
+	/// The height shown in the spin box.
+	pub height: u32,
+	/// The selected frame-rate index, or `None` for the custom default.
+	pub rate: Option<usize>,
+	/// Whether the interlaced checkbox is checked.
+	pub interlaced: bool,
+}
+
+/// The format controls shared by the new-sequence and sequence-properties
+/// dialogs: a preset combo that fills the numeric fields, width / height
+/// spin boxes, a frame-rate combo and an interlaced checkbox. Picking a
+/// preset overwrites the numeric fields; editing any of them snaps the
+/// preset back to *custom*.
+pub struct SequenceFormatFields {
+	preset: Entity<ComboBox>,
+	width: Entity<SpinBox>,
+	height: Entity<SpinBox>,
+	rate: Entity<ComboBox>,
+	interlaced: Entity<CheckBox>,
+}
+
+impl SequenceFormatFields {
+	/// Builds the fields and wires the preset / field cross-updates.
+	pub fn build(
+		seed: SequenceFormatSeed,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> Self {
+		let preset = cx.new(|cx| ComboBox::new(40, sequence_preset_options(), window, cx));
+		preset.update(cx, |combo, cx| {
+			combo.set_selected(Some(seed.preset), cx)
+		});
+
+		let width = cx.new(|cx| {
+			SpinBox::new(
+				41,
+				SliderModel::new(
+					ValueKind::Integer,
+					16.0,
+					8192.0,
+					2.0,
+					f64::from(seed.width),
+				),
+				window,
+				cx,
+			)
+		});
+		let height = cx.new(|cx| {
+			SpinBox::new(
+				42,
+				SliderModel::new(
+					ValueKind::Integer,
+					16.0,
+					8192.0,
+					2.0,
+					f64::from(seed.height),
+				),
+				window,
+				cx,
+			)
+		});
+
+		let rate = cx.new(|cx| ComboBox::new(43, sequence_rate_options(), window, cx));
+		rate.update(cx, |combo, cx| combo.set_selected(seed.rate, cx));
+
+		let interlaced = cx.new(|cx| {
+			CheckBox::new(
+				44,
+				if seed.interlaced {
+					CheckState::Checked
+				} else {
+					CheckState::Unchecked
+				},
+				window,
+				cx,
+			)
+			.with_label(i18n::tr("seqprops.interlaced"))
+		});
+
+		// Picking a preset fills the numeric fields. The programmatic
+		// set_value/set_selected calls below emit no events, so this never
+		// loops back into itself.
+		cx.subscribe(&preset, |this, _preset, event: &ComboBoxEvent, cx| {
+			if let ComboBoxEvent::Selected { value } = event {
+				if let Some((w, h, num, den)) = sequence_preset_format(*value) {
+					this.width.update(cx, |spin, cx| {
+						spin.set_value(SliderValue::Integer(i64::from(w)), cx)
+					});
+					this.height.update(cx, |spin, cx| {
+						spin.set_value(SliderValue::Integer(i64::from(h)), cx)
+					});
+					if let Some(index) = SEQUENCE_RATES.iter().position(|r| *r == (num, den)) {
+						this.rate
+							.update(cx, |combo, cx| combo.set_selected(Some(index), cx));
+					}
+					cx.notify();
+				}
+			}
+		})
+		.detach();
+
+		// Editing a dimension or the frame rate reverts to the custom entry.
+		cx.subscribe(&width, |this, _spin, event: &SpinBoxEvent, cx| {
+			if let SpinBoxEvent::ValueChanged { .. } = event {
+				this.preset.update(cx, |combo, cx| {
+					combo.set_selected(Some(0), cx)
+				});
+				cx.notify();
+			}
+		})
+		.detach();
+		cx.subscribe(&height, |this, _spin, event: &SpinBoxEvent, cx| {
+			if let SpinBoxEvent::ValueChanged { .. } = event {
+				this.preset.update(cx, |combo, cx| {
+					combo.set_selected(Some(0), cx)
+				});
+				cx.notify();
+			}
+		})
+		.detach();
+		cx.subscribe(&rate, |this, _combo, event: &ComboBoxEvent, cx| {
+			if let ComboBoxEvent::Selected { .. } = event {
+				this.preset.update(cx, |combo, cx| {
+					combo.set_selected(Some(0), cx)
+				});
+				cx.notify();
+			}
+		})
+		.detach();
+
+		// The interlaced checkbox is request-only: the host accepts the
+		// toggled state back (the standard checkbox pattern).
+		cx.subscribe(&interlaced, |_this, check, event: &CheckBoxEvent, cx| {
+			if let CheckBoxEvent::Toggled { state, .. } = event {
+				check.update(cx, |check, cx| check.set_state(*state, cx));
+			}
+		})
+		.detach();
+
+		Self {
+			preset,
+			width,
+			height,
+			rate,
+			interlaced,
+		}
+	}
+
+	/// The video format currently selected in the fields.
+	pub fn format(&self, cx: &App) -> crate::oakui::engine::VideoFormat {
+		let width = self.width.read(cx).value().to_f64().max(1.0) as u32;
+		let height = self.height.read(cx).value().to_f64().max(1.0) as u32;
+		let (num, den) = self
+			.rate
+			.read(cx)
+			.selected()
+			.and_then(|i| SEQUENCE_RATES.get(i))
+			.copied()
+			.unwrap_or((25, 1));
+		crate::oakui::engine::VideoFormat {
+			width,
+			height,
+			rate: FrameRate::new(num.max(1), den.max(1)),
+		}
+	}
+
+	/// Whether the interlaced checkbox is checked.
+	pub fn interlaced(&self, cx: &App) -> bool {
+		self.interlaced.read(cx).state() == CheckState::Checked
+	}
+
+	/// The labeled form rows (preset, width/height, frame rate, interlaced).
+	pub fn rows(&self, colors: &gpui::colors::Colors) -> gpui::Div {
+		let size_row = div()
+			.flex()
+			.gap_3()
+			.child(form_row(
+				colors,
+				i18n::tr("seqprops.width").into(),
+				self.width.clone(),
+			))
+			.child(form_row(
+				colors,
+				i18n::tr("seqprops.height").into(),
+				self.height.clone(),
+			));
+		div()
+			.flex()
+			.flex_col()
+			.gap_3()
+			.w_full()
+			.child(form_row(
+				colors,
+				i18n::tr("seqprops.preset").into(),
+				self.preset.clone(),
+			))
+			.child(size_row)
+			.child(form_row(
+				colors,
+				i18n::tr("seqprops.frame_rate").into(),
+				self.rate.clone(),
+			))
+			.child(form_row(
+				colors,
+				i18n::tr("seqprops.interlaced").into(),
+				self.interlaced.clone(),
+			))
+	}
+}
+
+/// The new-sequence dialog content: the sequence name plus the format
+/// fields. The host reads the name / format when the OK button is clicked.
+pub struct NewSequenceContent<E: crate::oakui::engine::AppEngine> {
+	engine: Entity<E>,
+	name: Entity<TextValue>,
+	format: Entity<SequenceFormatFields>,
+	/// The commit error shown under the form (a rejected create keeps the
+	/// dialog open).
+	error: Option<String>,
+}
+
+impl<E: crate::oakui::engine::AppEngine> NewSequenceContent<E> {
+	/// Builds the content seeded with the default name and the HD 1080p25
+	/// preset.
+	pub fn new(engine: Entity<E>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+		let name = cx.new(|cx| {
+			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
+			TextValue { editor }
+		});
+		name.update(cx, |field, cx| {
+			field.set_value(i18n::tr("seqprops.default_name"), cx)
+		});
+
+		let format = cx.new(|cx| {
+			SequenceFormatFields::build(
+				SequenceFormatSeed {
+					preset: 3,
+					width: 1920,
+					height: 1080,
+					rate: Some(2),
+					interlaced: false,
+				},
+				window,
+				cx,
+			)
+		});
+
+		Self {
+			engine,
+			name,
+			format,
+			error: None,
+		}
+	}
+
+	/// The name currently entered.
+	pub fn name(&self, cx: &App) -> SharedString {
+		self.name.read(cx).value(cx)
+	}
+
+	/// The format currently selected.
+	pub fn format(&self, cx: &App) -> crate::oakui::engine::VideoFormat {
+		self.format.read(cx).format(cx)
+	}
+
+	/// Whether the interlaced checkbox is checked.
+	pub fn interlaced(&self, cx: &App) -> bool {
+		self.format.read(cx).interlaced(cx)
+	}
+
+	/// Applies the dialog (the C++ `accept()`): creates the sequence with the
+	/// entered name / format and clears the error row.
+	pub fn commit(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
+		let name = self.name(cx).to_string();
+		let format = self.format(cx);
+		let interlaced = self.interlaced(cx);
+		self.engine.update(cx, |engine, cx| {
+			engine.create_sequence_with_params(name, format, interlaced, cx)
+		})?;
+		self.set_error(None, cx);
+		Ok(())
+	}
+
+	/// The error shown under the form after a rejected commit.
+	pub fn set_error(&mut self, msg: Option<String>, cx: &mut Context<Self>) {
+		self.error = msg;
+		cx.notify();
+	}
+
+	/// The commit error currently shown (`None` while the last commit
+	/// applied cleanly).
+	pub fn error(&self) -> Option<&String> {
+		self.error.as_ref()
+	}
+}
+
+impl<E: crate::oakui::engine::AppEngine> Render for NewSequenceContent<E> {
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let colors = cx.default_colors().clone();
+		let format_rows = self.format.read(cx).rows(&colors);
+		div()
+			.flex()
+			.flex_col()
+			.gap_3()
+			.w_full()
+			.child(form_row(
+				&colors,
+				i18n::tr("seqprops.name").into(),
+				self.name.clone(),
+			))
+			.child(format_rows)
+			.child(
+				if let Some(error) = &self.error {
+					div()
+						.debug_selector(|| "seqprops-error".into())
+						.text_color(gpui::rgb(0xe5484d))
+						.text_xs()
+						.child(error.clone())
+				} else {
+					div()
+				},
+			)
+	}
+}
+
+/// The sequence-properties dialog content: the sequence name plus the
+/// format fields, seeded from the sequence's current parameters.
+pub struct SequencePropertiesContent<E: crate::oakui::engine::AppEngine> {
+	engine: Entity<E>,
+	sequence_id: u64,
+	name: Entity<TextValue>,
+	format: Entity<SequenceFormatFields>,
+	/// The commit error shown under the form.
+	error: Option<String>,
+}
+
+impl<E: crate::oakui::engine::AppEngine> SequencePropertiesContent<E> {
+	/// Builds the content seeded from the sequence's current parameters (the
+	/// C++ `SequencePropertiesDialog` initializers); a missing sequence
+	/// falls back to the HD 1080p25 defaults with a blank name.
+	pub fn new(
+		engine: Entity<E>,
+		sequence_id: u64,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> Self {
+		let current = engine.read(cx).sequence_parameters(sequence_id);
+
+		let name = cx.new(|cx| {
+			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
+			TextValue { editor }
+		});
+		let current_name = current.as_ref().map(|p| p.name.as_str()).unwrap_or("");
+		name.update(cx, |field, cx| field.set_value(current_name, cx));
+
+		let seed = match &current {
+			Some(params) => {
+				let preset = (1..=4)
+					.find(|i| {
+						sequence_preset_format(*i)
+							== Some((
+								params.format.width,
+								params.format.height,
+								params.format.rate.num,
+								params.format.rate.den,
+							))
+					})
+					.unwrap_or(0);
+				let rate = SEQUENCE_RATES
+					.iter()
+					.position(|r| *r == (params.format.rate.num, params.format.rate.den));
+				SequenceFormatSeed {
+					preset,
+					width: params.format.width,
+					height: params.format.height,
+					rate,
+					interlaced: params.interlaced,
+				}
+			}
+			None => SequenceFormatSeed {
+				preset: 0,
+				width: 1920,
+				height: 1080,
+				rate: None,
+				interlaced: false,
+			},
+		};
+		let format = cx.new(|cx| SequenceFormatFields::build(seed, window, cx));
+
+		Self {
+			engine,
+			sequence_id,
+			name,
+			format,
+			error: None,
+		}
+	}
+
+	/// The name currently entered.
+	pub fn name(&self, cx: &App) -> SharedString {
+		self.name.read(cx).value(cx)
+	}
+
+	/// The format currently selected.
+	pub fn format(&self, cx: &App) -> crate::oakui::engine::VideoFormat {
+		self.format.read(cx).format(cx)
+	}
+
+	/// Whether the interlaced checkbox is checked.
+	pub fn interlaced(&self, cx: &App) -> bool {
+		self.format.read(cx).interlaced(cx)
+	}
+
+	/// Applies the edits (the C++ `accept()`): updates the sequence's name /
+	/// format and clears the error row.
+	pub fn commit(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
+		let name = self.name(cx).to_string();
+		let format = self.format(cx);
+		let interlaced = self.interlaced(cx);
+		self.engine.update(cx, |engine, cx| {
+			engine.update_sequence_parameters(
+				self.sequence_id,
+				name,
+				format,
+				interlaced,
+				cx,
+			)
+		})?;
+		self.set_error(None, cx);
+		Ok(())
+	}
+
+	/// The error shown under the form after a rejected commit.
+	pub fn set_error(&mut self, msg: Option<String>, cx: &mut Context<Self>) {
+		self.error = msg;
+		cx.notify();
+	}
+
+	/// The commit error currently shown (`None` while the last commit
+	/// applied cleanly).
+	pub fn error(&self) -> Option<&String> {
+		self.error.as_ref()
+	}
+}
+
+impl<E: crate::oakui::engine::AppEngine> Render for SequencePropertiesContent<E> {
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let colors = cx.default_colors().clone();
+		let format_rows = self.format.read(cx).rows(&colors);
+		div()
+			.flex()
+			.flex_col()
+			.gap_3()
+			.w_full()
+			.child(form_row(
+				&colors,
+				i18n::tr("seqprops.name").into(),
+				self.name.clone(),
+			))
+			.child(format_rows)
+			.child(
+				if let Some(error) = &self.error {
+					div()
+						.debug_selector(|| "seqprops-error".into())
+						.text_color(gpui::rgb(0xe5484d))
+						.text_xs()
+						.child(error.clone())
+				} else {
+					div()
+				},
 			)
 	}
 }

@@ -125,6 +125,11 @@ mod modal_ids {
 	pub const ABOUT: usize = 13;
 	/// The project properties dialog (File > Project Properties…).
 	pub const PROJECT_PROPERTIES: usize = 12;
+	/// The new-sequence dialog (File > New > Sequence…).
+	pub const NEW_SEQUENCE: usize = 14;
+	/// The sequence properties dialog (right-click a sequence in the
+	/// project explorer > Sequence Properties).
+	pub const SEQUENCE_PROPERTIES: usize = 15;
 }
 
 /// What a picked platform-dialog path should do.
@@ -191,6 +196,17 @@ enum ModalState<E: AppEngine> {
 	},
 	/// The about dialog (Help > About Oak…; static content).
 	About { modal: Entity<Modal> },
+	/// The new-sequence dialog (File > New > Sequence…).
+	NewSequence {
+		modal: Entity<Modal>,
+		content: Entity<crate::dialogs::NewSequenceContent<E>>,
+	},
+	/// The sequence properties dialog (project-explorer context menu >
+	/// Sequence Properties).
+	SequenceProperties {
+		modal: Entity<Modal>,
+		content: Entity<crate::dialogs::SequencePropertiesContent<E>>,
+	},
 }
 
 /// A running export: the session the tick loop drains for progress.
@@ -212,7 +228,9 @@ impl<E: AppEngine> ModalState<E> {
 			| ModalState::Proxy { modal, .. }
 			| ModalState::ActionSearch { modal, .. }
 			| ModalState::ProjectProperties { modal, .. }
-			| ModalState::About { modal } => Some(modal.clone()),
+			| ModalState::About { modal }
+			| ModalState::NewSequence { modal, .. }
+			| ModalState::SequenceProperties { modal, .. } => Some(modal.clone()),
 		}
 	}
 }
@@ -493,6 +511,17 @@ impl<E: AppEngine> OakApp<E> {
 		Self::wire_panel_context_menu(cx, &panels.node_editor, NODE_EDITOR);
 		Self::wire_panel_context_menu(cx, &panels.inspector, INSPECTOR);
 		Self::wire_panel_context_menu(cx, &panels.timeline, TIMELINE);
+
+		// The project explorer's 序列属性 context item opens the sequence
+		// properties dialog.
+		cx.subscribe(
+			&panels.project,
+			|this, _panel, event: &crate::panels::project_explorer::SequencePropertiesRequested,
+			 cx| {
+				this.open_sequence_properties(event.0, cx);
+			},
+		)
+		.detach();
 
 		// Arrange the default workspace: the design's 素材查看器 | 序列查看器 |
 		// 检查器 row (project bin docked on the left), node editor + history
@@ -1062,6 +1091,15 @@ impl<E: AppEngine> OakApp<E> {
 			}
 			A::ProxySettings => self.open_proxy_dialog(cx),
 			A::ProjectProperties => self.open_project_properties(cx),
+			A::NewSequence => self.open_new_sequence(cx),
+			A::NewFolder => {
+				if let Err(err) = self
+					.engine
+					.update(cx, |engine, cx| engine.create_folder(String::new(), cx))
+				{
+					println!("[sequence] new folder: {err}");
+				}
+			}
 			// The multicam source-switch hotkeys are scoped to the Multicam
 			// panel (the focused-panel route handles them there); a fall-through
 			// from any other focused panel is a silent no-op.
@@ -2064,6 +2102,73 @@ impl<E: AppEngine> OakApp<E> {
 		});
 	}
 
+	/// Opens the new-sequence dialog (File > New > Sequence…; the C++
+	/// `NewSequenceDialog`): the sequence name plus the format fields. The
+	/// OK button creates the sequence through the content's `commit`.
+	fn open_new_sequence(&mut self, cx: &mut Context<Self>) {
+		if !matches!(self.modal, ModalState::None) {
+			return;
+		}
+		let engine = self.engine.clone();
+		self.spawn_modal(cx, move |window, app| {
+			let content = app.new(|cx| crate::dialogs::NewSequenceContent::new(engine, window, cx));
+			let modal = app.new(|cx| {
+				Modal::new(
+					modal_ids::NEW_SEQUENCE,
+					ModalOptions::new(crate::i18n::tr("seqprops.new.title"), px(480.0))
+						.with_button(DialogButton::primary(crate::i18n::tr("dialog.ok")))
+						.with_button(DialogButton::new(
+							crate::i18n::tr("dialog.cancel"),
+							gpui_widgets::dialog::DialogButtonRole::Secondary,
+						)),
+					window,
+					cx,
+				)
+				.with_content(content.clone())
+			});
+			ModalState::NewSequence { modal, content }
+		});
+	}
+
+	/// Opens the sequence properties dialog for the given sequence (the
+	/// project explorer's context menu; the C++ `SequencePropertiesDialog`).
+	/// The OK button applies the name / format edits through the content's
+	/// `commit`.
+	fn open_sequence_properties(&mut self, sequence_id: u64, cx: &mut Context<Self>) {
+		if !matches!(self.modal, ModalState::None) {
+			return;
+		}
+		let engine = self.engine.clone();
+		let sequence_name = self
+			.engine
+			.read(cx)
+			.sequence_parameters(sequence_id)
+			.map(|p| p.name)
+			.unwrap_or_default();
+		self.spawn_modal(cx, move |window, app| {
+			let content =
+				app.new(|cx| crate::dialogs::SequencePropertiesContent::new(engine, sequence_id, window, cx));
+			let modal = app.new(|cx| {
+				Modal::new(
+					modal_ids::SEQUENCE_PROPERTIES,
+					ModalOptions::new(
+						format!("{} — {sequence_name}", crate::i18n::tr("seqprops.title")),
+						px(480.0),
+					)
+					.with_button(DialogButton::primary(crate::i18n::tr("dialog.ok")))
+					.with_button(DialogButton::new(
+						crate::i18n::tr("dialog.cancel"),
+						gpui_widgets::dialog::DialogButtonRole::Secondary,
+					)),
+					window,
+					cx,
+				)
+				.with_content(content.clone())
+			});
+			ModalState::SequenceProperties { modal, content }
+		});
+	}
+
 	/// Opens the export dialog.
 	fn open_export_dialog(&mut self, cx: &mut Context<Self>) {
 		if self.engine.read(cx).current_sequence().is_none() {
@@ -2265,6 +2370,42 @@ impl<E: AppEngine> OakApp<E> {
 						if *button == 0 {
 							// OK: apply the settings; an invalid OCIO config
 							// keeps the dialog open with the error shown.
+							match content.update(cx, |dialog, cx| dialog.commit(cx)) {
+								Ok(()) => self.close_modal(cx),
+								Err(err) => {
+									content
+										.update(cx, |dialog, cx| dialog.set_error(Some(err), cx));
+								}
+							}
+						} else {
+							self.close_modal(cx);
+						}
+					}
+				}
+				modal_ids::NEW_SEQUENCE => {
+					if let ModalState::NewSequence { content, .. } = &self.modal {
+						let content = content.clone();
+						if *button == 0 {
+							// OK: create the sequence; a rejected create
+							// keeps the dialog open with the error shown.
+							match content.update(cx, |dialog, cx| dialog.commit(cx)) {
+								Ok(()) => self.close_modal(cx),
+								Err(err) => {
+									content
+										.update(cx, |dialog, cx| dialog.set_error(Some(err), cx));
+								}
+							}
+						} else {
+							self.close_modal(cx);
+						}
+					}
+				}
+				modal_ids::SEQUENCE_PROPERTIES => {
+					if let ModalState::SequenceProperties { content, .. } = &self.modal {
+						let content = content.clone();
+						if *button == 0 {
+							// OK: apply the edits; a rejected update keeps
+							// the dialog open with the error shown.
 							match content.update(cx, |dialog, cx| dialog.commit(cx)) {
 								Ok(()) => self.close_modal(cx),
 								Err(err) => {

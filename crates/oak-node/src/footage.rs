@@ -438,6 +438,10 @@ impl NodeBehavior for FootageBehavior {
 					writer.attribute("framerate", &v.frame_rate.to_display_string());
 					writer.attribute("pixelformat", &v.pixel_format.to_string());
 					writer.attribute("channels", &v.channels.to_string());
+					writer.attribute(
+						"interlaced",
+						if v.interlaced { "1" } else { "0" },
+					);
 					writer.end_element(); // video
 				}
 				if let Some(a) = s.audio {
@@ -586,6 +590,10 @@ impl NodeBehavior for FootageBehavior {
 												.attribute("channels")
 												.and_then(|v| v.parse().ok())
 												.unwrap_or(0),
+											interlaced: reader
+												.attribute("interlaced")
+												.map(|v| v == "1")
+												.unwrap_or(false),
 										});
 										// Consume the (self-closing) element.
 										let _ = reader.read_element_text();
@@ -673,6 +681,7 @@ fn streams_from_description(
 				frame_rate: oak_core::Rational::new(num as i64, den as i64),
 				pixel_format: vp.format().code(),
 				channels: vp.channel_count(),
+				interlaced: false,
 			}),
 			audio: None,
 			duration: stream_duration_seconds(vp.duration(), vp.time_base()),

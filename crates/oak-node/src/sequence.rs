@@ -138,6 +138,7 @@ impl SequenceBehavior {
 			frame_rate: oak_core::Rational::new(fps_num as i64, fps_den as i64),
 			pixel_format: 4, // f32
 			channels: 4,
+			interlaced: false,
 		}];
 		self.audio_params = vec![AudioParams {
 			sample_rate,

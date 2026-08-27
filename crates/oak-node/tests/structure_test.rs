@@ -348,6 +348,7 @@ fn footage_probe() {
 				frame_rate: Rational::new(30, 1),
 				pixel_format: 4,
 				channels: 4,
+				interlaced: false,
 			}),
 			audio: None,
 			duration: Rational::new(600, 1),

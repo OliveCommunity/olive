@@ -87,7 +87,7 @@ use oak_timeline::util::NodeRef;
 
 use super::engine::{
 	AppEngine, EngineGateway, ExportSession, LibraryProject, Monitor, MulticamState, Project,
-	ScopeData, Sequence, VideoFormat,
+	ScopeData, Sequence, SequenceParameters, VideoFormat,
 };
 use super::frames::{bgra_bytes_to_render_image, f32_rgba_to_bgra_image, synthetic_frame_samples};
 use super::graphops::{self, ProjectRef};
@@ -2673,6 +2673,10 @@ impl RealEngine {
 		// probe cascade).
 		graphops::reprobe_unprobed_footage(&project);
 
+		// Sequences saved before they mounted under the root folder load
+		// free-floating; reattach them so the project explorer lists them.
+		graphops::ensure_sequences_mounted(&project);
+
 		// The sequence: the project's first, or a blank default.
 		let seq = first_sequence
 			.unwrap_or_else(|| graphops::create_sequence(&project, "Sequence 1"));
@@ -4353,7 +4357,7 @@ impl AppEngine for RealEngine {
 		time: Frame,
 		cx: &mut Context<Self>,
 	) {
-		let (Some(project), Some(seq)) = (self.project.clone(), self.sequence) else {
+		let Some(project) = self.project.clone() else {
 			return;
 		};
 		// The explorer's entry id IS the footage node's stable identity
@@ -4374,6 +4378,18 @@ impl AppEngine for RealEngine {
 				f.total_stream_count(),
 				graphops::footage_duration_seconds(&guard.graph, footage),
 			)
+		};
+		// Empty timeline: dropping footage auto-creates a sequence sized to
+		// the footage's first video stream (the NLE convention); pure-audio
+		// footage falls back to the default sequence format.
+		let seq = match self.sequence {
+			Some(seq) => seq,
+			None => {
+				let Some(seq) = self.create_sequence_for_drop(&project, footage, cx) else {
+					return;
+				};
+				seq
+			}
 		};
 		// Media type from the probed stream list (the probe is real since
 		// the import fills it); fall back to the extension only when no
@@ -4642,6 +4658,120 @@ impl AppEngine for RealEngine {
 			guard.modified = true;
 		}
 		cx.notify();
+	}
+
+	fn entry_is_sequence(&self, id: u64) -> bool {
+		let Some(project) = self.project_ref() else {
+			return false;
+		};
+		let Some(node) = graphops::id_of(id) else {
+			return false;
+		};
+		let guard = graphops::lock(project);
+		graphops::sequence_behavior(&guard.graph, node).is_some()
+	}
+
+	fn sequence_parameters(&self, id: u64) -> Option<SequenceParameters> {
+		let project = self.project_ref()?;
+		let node = graphops::id_of(id)?;
+		let guard = graphops::lock(project);
+		let (_, _, rate) = graphops::sequence_video_params(&guard.graph, node)?;
+		let params = guard
+			.graph
+			.get(node)
+			.and_then(|e| e.behavior.as_any())
+			.and_then(|a| a.downcast_ref::<oak_node::sequence::SequenceBehavior>())?
+			.video_params
+			.first()
+			.copied();
+		let (width, height, interlaced) = match params {
+			Some(v) => (v.width.max(1) as u32, v.height.max(1) as u32, v.interlaced),
+			None => return None,
+		};
+		Some(SequenceParameters {
+			name: graphops::node_label(&guard.graph, node),
+			format: VideoFormat {
+				width,
+				height,
+				rate: FrameRate::new(rate.numerator().max(1) as u32, rate.denominator().max(1) as u32),
+			},
+			interlaced,
+		})
+	}
+
+	fn create_sequence_with_params(
+		&mut self,
+		name: String,
+		format: VideoFormat,
+		interlaced: bool,
+		cx: &mut Context<Self>,
+	) -> Result<u64, String> {
+		let (Some(project), _) = (self.project.clone(), self.sequence) else {
+			return Err(crate::i18n::tr("seqprops.error.no_project").to_string());
+		};
+		let name = if name.trim().is_empty() {
+			"Sequence 1".to_string()
+		} else {
+			name.trim().to_string()
+		};
+		let seq = graphops::create_sequence_with_params(
+			&project,
+			&name,
+			Some((
+				format.width as i32,
+				format.height as i32,
+				oak_core::Rational::new(i64::from(format.rate.num), i64::from(format.rate.den)),
+				interlaced,
+			)),
+		);
+		self.sequence = Some(seq);
+		self.refresh_sequence_info();
+		self.rebuild_timeline();
+		self.push_graph_snapshot();
+		cx.notify();
+		Ok(seq.identity())
+	}
+
+	fn create_folder(&mut self, name: String, cx: &mut Context<Self>) -> Result<u64, String> {
+		let Some(project) = self.project.clone() else {
+			return Err(crate::i18n::tr("seqprops.error.no_project").to_string());
+		};
+		let name = if name.trim().is_empty() {
+			let count = graphops::folder_ids(&graphops::lock(&project)).len();
+			format!("Folder {}", count + 1)
+		} else {
+			name.trim().to_string()
+		};
+		let id = graphops::create_folder(&project, &name)?;
+		self.apply_edit(Ok(()), "new folder", cx);
+		Ok(id.identity())
+	}
+
+	fn update_sequence_parameters(
+		&mut self,
+		id: u64,
+		name: String,
+		format: VideoFormat,
+		interlaced: bool,
+		cx: &mut Context<Self>,
+	) -> Result<(), String> {
+		let Some(project) = self.project.clone() else {
+			return Err(crate::i18n::tr("seqprops.error.no_project").to_string());
+		};
+		let Some(node) = graphops::id_of(id) else {
+			return Err(crate::i18n::tr("seqprops.error.no_sequence").to_string());
+		};
+		graphops::set_sequence_parameters(
+			&project,
+			node,
+			name.trim(),
+			format.width as i32,
+			format.height as i32,
+			oak_core::Rational::new(i64::from(format.rate.num), i64::from(format.rate.den)),
+			interlaced,
+		)?;
+		self.apply_edit(Ok(()), "set sequence parameters", cx);
+		Ok(())
 	}
 
 	fn proxy_rows(&self) -> Vec<super::engine::ProxyFootageRow> {
@@ -5262,6 +5392,55 @@ impl ProjectFormat {
 }
 
 impl RealEngine {
+	/// Auto-creates a sequence for a footage drop onto an empty timeline (see
+	/// `drop_footage`): the format mirrors the footage's first video stream;
+	/// pure-audio footage uses the default sequence format. Returns the new
+	/// sequence's node, or `None` when creation failed (errors are logged, not
+	/// propagated — the drop itself is a no-op in that case).
+	fn create_sequence_for_drop(
+		&mut self,
+		project: &ProjectRef,
+		footage: NodeId,
+		cx: &mut Context<Self>,
+	) -> Option<NodeId> {
+		let params = {
+			let guard = graphops::lock(project);
+			graphops::footage_behavior(&guard.graph, footage).and_then(|f| f.video_params(0))
+		};
+		match params {
+			Some(vp) => match self.create_sequence_with_params(
+				"Sequence 1".to_string(),
+				VideoFormat {
+					width: vp.width.max(1) as u32,
+					height: vp.height.max(1) as u32,
+					rate: FrameRate::new(
+						vp.frame_rate.numerator().max(1) as u32,
+						vp.frame_rate.denominator().max(1) as u32,
+					),
+				},
+				vp.interlaced,
+				cx,
+			) {
+				// `create_sequence_with_params` sets `self.sequence` and
+				// refreshes; nothing else to do here.
+				Ok(_) => self.sequence,
+				Err(err) => {
+					println!("[real engine] drop footage: auto-create sequence failed: {err}");
+					None
+				}
+			},
+			None => {
+				let seq = graphops::create_sequence(project, "Sequence 1");
+				self.sequence = Some(seq);
+				self.refresh_sequence_info();
+				self.rebuild_timeline();
+				self.push_graph_snapshot();
+				cx.notify();
+				Some(seq)
+			}
+		}
+	}
+
 	/// Opens a `.ove` / `.ovexml` project through the module serializer.
 	fn open_ove(&mut self, path: &PathBuf, cx: &mut Context<Self>) -> Result<(), String> {
 		let project = graphops::load_ove(path)
@@ -7884,5 +8063,200 @@ mod tests {
 		st.insert(10, audio_chunk(10).1);
 		st.insert(10, audio_chunk(10).1);
 		assert_eq!(st.buffered.len(), 1, "duplicates dropped");
+	}
+
+	// ---- sequence management (engine facade) ------------------------------
+
+	/// The engine's create-folder / create-sequence-with-params commands
+	/// mount their nodes under the root folder (so the project explorer
+	/// lists them) and the parameters round-trip through
+	/// `sequence_parameters`.
+	#[gpui::test]
+	async fn engine_creates_folder_and_sequence_with_params(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		let folder = cx.update(|app| {
+			engine
+				.update(app, |engine, cx| engine.create_folder("Folder 1".to_string(), cx))
+				.expect("create folder")
+		});
+		let seq = cx.update(|app| {
+			engine
+				.update(app, |engine, cx| {
+					engine
+						.create_sequence_with_params(
+							"Seq 4K".to_string(),
+							VideoFormat {
+								width: 3840,
+								height: 2160,
+								rate: FrameRate::new(24000, 1001),
+							},
+							true,
+							cx,
+						)
+						.expect("create sequence")
+				})
+		});
+
+		// Both mount under the root folder, like the explorer expects.
+		let project = cx.read(|app| engine.read(app).project.clone().expect("project"));
+		let (folder_node, seq_node) = (
+			graphops::id_of(folder).expect("folder node"),
+			graphops::id_of(seq).expect("sequence node"),
+		);
+		let children = {
+			let guard = graphops::lock(&project);
+			guard
+				.graph
+				.get(guard.root)
+				.and_then(|e| e.behavior.as_any())
+				.and_then(|a| a.downcast_ref::<oak_node::folder::FolderBehavior>())
+				.map(|f| f.children.clone())
+				.unwrap_or_default()
+		};
+		assert!(children.contains(&folder_node), "the folder mounts under root");
+		assert!(children.contains(&seq_node), "the sequence mounts under root");
+
+		let is_seq = cx.read(|app| engine.read(app).entry_is_sequence(seq));
+		assert!(is_seq, "the created entry is a sequence");
+		let is_folder_seq = cx.read(|app| engine.read(app).entry_is_sequence(folder));
+		assert!(!is_folder_seq, "a folder is not a sequence");
+
+		// The parameters round-trip (name, size, rate, interlace).
+		let params = cx
+			.read(|app| engine.read(app).sequence_parameters(seq))
+			.expect("sequence parameters");
+		assert_eq!(params.name, "Seq 4K");
+		assert_eq!((params.format.width, params.format.height), (3840, 2160));
+		assert_eq!((params.format.rate.num, params.format.rate.den), (24000, 1001));
+		assert!(params.interlaced, "the interlaced flag round-trips");
+	}
+
+	/// `update_sequence_parameters` rewrites the name, the format and the
+	/// interlace flag in one call; `sequence_parameters` reads the new
+	/// state back (the properties dialog's commit path).
+	#[gpui::test]
+	async fn engine_update_sequence_parameters_round_trips(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		let seq = cx.update(|app| {
+			engine
+				.update(app, |engine, cx| {
+					engine
+						.create_sequence_with_params(
+							"Before".to_string(),
+							VideoFormat {
+								width: 1280,
+								height: 720,
+								rate: FrameRate::new(25, 1),
+							},
+							false,
+							cx,
+						)
+						.expect("create sequence")
+				})
+		});
+		cx.update(|app| {
+			engine
+				.update(app, |engine, cx| {
+					engine
+						.update_sequence_parameters(
+							seq,
+							"After".to_string(),
+							VideoFormat {
+								width: 1920,
+								height: 1080,
+								rate: FrameRate::new(30000, 1001),
+							},
+							true,
+							cx,
+						)
+						.expect("update parameters")
+				})
+		});
+
+		let params = cx
+			.read(|app| engine.read(app).sequence_parameters(seq))
+			.expect("sequence parameters");
+		assert_eq!(params.name, "After");
+		assert_eq!((params.format.width, params.format.height), (1920, 1080));
+		assert_eq!((params.format.rate.num, params.format.rate.den), (30000, 1001));
+		assert!(params.interlaced, "the interlace flag updates too");
+	}
+
+	/// Empty timeline + footage drop = the NLE auto-create path: a new
+	/// sequence sized to the footage's first video stream appears and the
+	/// clip lands on its default tracks.
+	#[gpui::test]
+	async fn drop_footage_on_empty_timeline_auto_creates_sequence(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		let media = std::env::temp_dir().join(format!("oak_seq_auto_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate");
+		cx.update(|app| {
+			engine
+				.update(app, |engine, cx| engine.import_footage(media.clone(), cx))
+				.expect("import")
+		});
+		let name = media.file_name().unwrap().to_string_lossy().into_owned();
+		let entry = cx
+			.read(|app| {
+				engine
+					.read(app)
+					.roots()
+					.into_iter()
+					.find(|e| e.name.as_ref() == name)
+			})
+			.expect("imported footage is listed");
+
+		// A blank timeline: no sequence open yet.
+		cx.update(|app| engine.update(app, |engine, _cx| engine.sequence = None));
+
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(0), cx)
+			})
+		});
+
+		let seq = cx
+			.read(|app| engine.read(app).sequence.expect("a sequence was auto-created"))
+			.identity();
+		let params = cx
+			.read(|app| engine.read(app).sequence_parameters(seq))
+			.expect("sequence parameters");
+		assert_eq!(params.name, "Sequence 1");
+
+		// The auto-created sequence sizes to the footage's first video stream
+		// (read the expected values from the probe, not hard-coded).
+		let (width, height, rate_num, rate_den, interlaced) = {
+			let project = cx.read(|app| engine.read(app).project.clone().expect("project"));
+			let guard = graphops::lock(&project);
+			let footage = graphops::id_of(entry.id).expect("footage node");
+			let vp = graphops::footage_behavior(&guard.graph, footage)
+				.and_then(|f| f.video_params(0))
+				.expect("a video stream");
+			(
+				vp.width.max(1) as u32,
+				vp.height.max(1) as u32,
+				vp.frame_rate.numerator().max(1) as u32,
+				vp.frame_rate.denominator().max(1) as u32,
+				vp.interlaced,
+			)
+		};
+		assert_eq!((params.format.width, params.format.height), (width, height));
+		assert_eq!((params.format.rate.num, params.format.rate.den), (rate_num, rate_den));
+		assert_eq!(params.interlaced, interlaced);
+
+		// The drop placed a clip on the auto-created sequence's timeline.
+		let placed = cx.read(|app| engine.read(app).tracks.iter().any(|t| !t.clips.is_empty()));
+		assert!(placed, "the footage landed on the auto-created timeline");
+
+		let _ = std::fs::remove_file(&media);
 	}
 }
