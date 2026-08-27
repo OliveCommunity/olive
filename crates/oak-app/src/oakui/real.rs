@@ -3904,9 +3904,17 @@ impl AppEngine for RealEngine {
 					.position(|t| t.clips.iter().any(|c| c.block == block));
 				// Cross-track moves go through the gap + re-home + place
 				// composition; same-track moves use the plain move command.
+				// A clip may only move between tracks of the same kind: a
+				// video → audio (or audio → video) drop is silently ignored
+				// (no error, no effect).
 				let dest_track = match (current_track, self.tracks.get(*new_track)) {
 					(Some(current), _) if current == *new_track => None,
-					(_, Some(dest)) => Some(dest.track),
+					(Some(current), Some(dest)) if self.tracks[current].kind == dest.kind => {
+						Some(dest.track)
+					}
+					(Some(_), Some(_)) => {
+						return;
+					}
 					_ => {
 						self.apply_edit(
 							Err("move clip: destination track out of range".to_string()),
@@ -7225,6 +7233,115 @@ mod tests {
 			in_points(cx, video_idx, audio_idx),
 			(Some(40), Some(40)),
 			"a second undo restores the pre-drag position"
+		);
+	}
+
+	/// A clip cannot be dragged across track kinds: dropping a video clip
+	/// on an audio track (or an audio clip on a video track) is silently
+	/// ignored — no error, no movement.
+	#[gpui::test]
+	async fn cross_kind_drag_is_silently_ignored(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		let media = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/demo.mp4");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.import_footage(media.clone(), cx).expect("import")
+			})
+		});
+		let name = media.file_name().unwrap().to_string_lossy().into_owned();
+		let entry = cx.read(|app| {
+			engine
+				.read(app)
+				.roots()
+				.into_iter()
+				.find(|e| e.name.as_ref() == name)
+		})
+		.expect("imported footage is listed");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(40), cx)
+			})
+		});
+
+		let (video_id, audio_id, video_idx, audio_idx) = cx.read(|app| {
+			let engine = engine.read(app);
+			let video_idx = engine
+				.tracks
+				.iter()
+				.position(|t| t.kind == TrackKind::Video && !t.clips.is_empty())
+				.expect("a video track with the clip");
+			let audio_idx = engine
+				.tracks
+				.iter()
+				.position(|t| t.kind == TrackKind::Audio && !t.clips.is_empty())
+				.expect("an audio track with the clip");
+			let video_id = engine.tracks[video_idx].clips[0].id;
+			let audio_id = engine.tracks[audio_idx].clips[0].id;
+			(video_id, audio_id, video_idx, audio_idx)
+		});
+
+		let snapshot = |cx: &mut gpui::TestAppContext, video_idx: usize, audio_idx: usize| {
+			cx.read(|app| {
+				let engine = engine.read(app);
+				let video = engine.tracks[video_idx]
+					.clips
+					.iter()
+					.find(|c| c.id == video_id)
+					.map(|c| c.range.start.0);
+				let audio = engine.tracks[audio_idx]
+					.clips
+					.iter()
+					.find(|c| c.id == audio_id)
+					.map(|c| c.range.start.0);
+				(video, audio)
+			})
+		};
+		let before = snapshot(cx, video_idx, audio_idx);
+
+		// Drop the video clip on an audio track and the audio clip on a
+		// video track: neither move takes effect.
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.apply_timeline_event(
+					&TimelineEvent::ClipMoveRequested {
+						clip: video_id,
+						new_track: audio_idx,
+						new_start: Frame(200),
+					},
+					cx,
+				);
+				engine.apply_timeline_event(
+					&TimelineEvent::ClipMoveRequested {
+						clip: audio_id,
+						new_track: video_idx,
+						new_start: Frame(300),
+					},
+					cx,
+				);
+			})
+		});
+
+		assert_eq!(
+			snapshot(cx, video_idx, audio_idx),
+			before,
+			"cross-kind drags leave every clip in place"
+		);
+		assert!(
+			cx.read(|app| engine.read(app).tracks[video_idx]
+				.clips
+				.iter()
+				.any(|c| c.id == video_id)),
+			"the video clip stays on its video track"
+		);
+		assert!(
+			cx.read(|app| engine.read(app).tracks[audio_idx]
+				.clips
+				.iter()
+				.any(|c| c.id == audio_id)),
+			"the audio clip stays on its audio track"
 		);
 	}
 
