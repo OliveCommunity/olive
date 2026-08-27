@@ -46,7 +46,7 @@ use gpui::colors::{Colors, DefaultColors};
 use gpui::dock::{DockPanel, PanelEvent};
 use gpui::{
 	canvas, div, img, prelude::*, px, AnyElement, App, Bounds, Context, Entity, EventEmitter,
-	MouseButton, ObjectFit, Pixels, Point, Rgba, Render, SharedString, Window,
+	FocusHandle, MouseButton, ObjectFit, Pixels, Point, Rgba, Render, SharedString, Window,
 };
 use gpui_widgets::viewer::PlaybackClock;
 
@@ -97,6 +97,12 @@ pub struct MulticamPanel<E: AppEngine> {
 	/// Set when a switch cleared the frames: the next refresh pass covers
 	/// every source immediately.
 	full_refresh: bool,
+	/// The panel's own focus handle: clicking the panel focuses it and puts
+	/// `MulticamPanel` on the key context path, which is what gates the
+	/// `1..9` / `⌘1..⌘9` source-switch bindings (see
+	/// [`crate::actions::key_bindings`]) — outside the panel those digit
+	/// keys stay free for text entry.
+	focus: FocusHandle,
 }
 
 impl<E: AppEngine> MulticamPanel<E> {
@@ -117,6 +123,7 @@ impl<E: AppEngine> MulticamPanel<E> {
 			refresh_cursor: 0,
 			last_playhead: i64::MIN,
 			full_refresh: true,
+			focus: _cx.focus_handle(),
 		}
 	}
 
@@ -348,11 +355,17 @@ impl<E: AppEngine> Render for MulticamPanel<E> {
 			.flex()
 			.flex_col()
 			.overflow_hidden()
+			// The panel owns the key context that gates the `1..9` /
+			// `⌘1..⌘9` source-switch bindings: focusing the panel (click)
+			// makes the keys switch angles, anywhere else they type digits.
+			.key_context("MulticamPanel")
+			.track_focus(&self.focus)
 			// Any click inside the panel makes it the focused panel (the
 			// dock re-emits this as `DockEvent::PanelFocused`, which the
 			// shell uses to route the focused-panel hotkeys).
 			.on_mouse_down(MouseButton::Left, {
-				cx.listener(|_this, _event: &gpui::MouseDownEvent, _window, cx| {
+				cx.listener(|this, _event: &gpui::MouseDownEvent, window, cx| {
+					window.focus(&this.focus, cx);
 					cx.emit(PanelEvent::Focused);
 				})
 			})
@@ -444,7 +457,10 @@ impl<E: AppEngine> DockPanel for MulticamPanel<E> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use gpui::{point, size, TestAppContext, VisualTestContext};
+	use crate::actions::MulticamSwitch5;
+	use gpui::{point, size, Focusable, TestAppContext, VisualTestContext};
+	use std::cell::Cell;
+	use std::rc::Rc;
 
 	/// The grid conversion helpers used by the panel (rows/cols from the
 	/// node, index round-trips) plus the panel's click math.
@@ -521,5 +537,110 @@ mod tests {
 		let state = state.expect("the mock reports a demo multicam");
 		assert!(state.source_count >= 1, "demo sources: {}", state.source_count);
 		assert_eq!(frame_count, state.source_count as usize, "every angle frame is cached");
+	}
+
+	/// A minimal window root that mirrors the multicam panel's key-context
+	/// wiring: a `MulticamPanel`-scoped interactive region next to a text
+	/// field, with the source-switch action bound the way the shell binds
+	/// it (through the app keymap).
+	struct KeyContextHarness {
+		panel_focus: FocusHandle,
+		switched: Rc<Cell<bool>>,
+		editable: Entity<gpui_elements::editable_text::EditableTextState>,
+	}
+
+	impl KeyContextHarness {
+		fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+			let _ = window;
+			let editable = cx.new(|cx| {
+				gpui_elements::editable_text::EditableTextState::new(
+					gpui_elements::editable_text::StringStorage::from("0"),
+					cx,
+				)
+			});
+			Self {
+				panel_focus: cx.focus_handle(),
+				switched: Rc::new(Cell::new(false)),
+				editable,
+			}
+		}
+	}
+
+	impl EventEmitter<()> for KeyContextHarness {}
+
+	impl Render for KeyContextHarness {
+		fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+			let switched = self.switched.clone();
+			div()
+				.size_full()
+				.flex()
+				.gap_4()
+				.child(
+					div()
+						.key_context("MulticamPanel")
+						.track_focus(&self.panel_focus)
+						.w_1_2()
+						.bg(gpui::rgb(0x202020))
+						.on_action(
+							move |_: &MulticamSwitch5, _: &mut Window, _: &mut App| {
+								switched.set(true);
+							},
+						),
+				)
+				.child(
+					crate::oakui::component::text_input("value-box", cx)
+						.state(self.editable.downgrade()),
+				)
+		}
+	}
+
+	/// The digit keys must type into a focused text field and only switch
+	/// sources while the multicam panel itself is focused. (Regression:
+	/// the `1..9` / `⌘1..⌘9` switch bindings were global, so a digit in
+	/// any value box / hex field / text input dispatched the switch action
+	/// instead of reaching the input handler — every field could only ever
+	/// type `0`.)
+	#[gpui::test]
+	async fn digit_keys_type_in_text_fields_but_switch_inside_the_panel(
+		cx: &mut TestAppContext,
+	) {
+		cx.update(|cx| cx.init_colors());
+		let window = cx.open_window(size(px(640.0), px(360.0)), |window, cx| {
+			cx.bind_keys(crate::actions::key_bindings());
+			KeyContextHarness::new(window, cx)
+		});
+		cx.run_until_parked();
+		let harness = window.root(cx).expect("key-context harness root");
+		let cx = VisualTestContext::from_window(window.into(), cx).into_mut();
+
+		// Focus the text field: `5` must type into it — no binding matches
+		// on a focus path that lacks the `MulticamPanel` context. (The
+		// field's caret starts at position 0, so the digit lands at the
+		// front of the initial "0".)
+		let field_focus = cx.read(|app| harness.read(app).editable.focus_handle(app));
+		cx.update(|window, app| window.focus(&field_focus, app));
+		cx.run_until_parked();
+		cx.simulate_keystrokes("5");
+		let text = cx.read(|app| harness.read(app).editable.read(app).as_str().to_string());
+		assert_eq!(text, "50", "a digit reaches the focused text field");
+
+		// Focus the panel: the same key now dispatches the switch action
+		// and never reaches the (still registered) input handler.
+		let panel_focus = cx.read(|app| harness.read(app).panel_focus.clone());
+		cx.update(|window, app| window.focus(&panel_focus, app));
+		cx.run_until_parked();
+		cx.simulate_keystrokes("5");
+		let (switched, text) = cx.read(|app| {
+			let harness = harness.read(app);
+			(harness.switched.get(), harness.editable.read(app).as_str().to_string())
+		});
+		assert!(
+			switched,
+			"the panel-scoped binding fires while the panel is focused"
+		);
+		assert_eq!(
+			text, "50",
+			"the same key no longer types into the field"
+		);
 	}
 }

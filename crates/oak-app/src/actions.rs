@@ -38,9 +38,10 @@
 //! up in `OakApp::dispatch_action_id`.
 
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::{Mutex, OnceLock};
 
-use gpui::{Action, KeyBinding};
+use gpui::{Action, KeyBinding, KeyBindingContextPredicate};
 
 // One macro call generates all three views of the registry, so they can
 // never drift apart: the gpui action structs, the `ActionId` enum and the
@@ -326,18 +327,31 @@ pub fn entry_for_menu_id(id: usize) -> Option<&'static ActionEntry> {
 	REGISTRY.iter().find(|entry| entry.action.menu_id() == id)
 }
 
-/// The global key bindings for every action's *effective* key (context
-/// `None`: the shell dispatches them wherever the focus is, and the modal
-/// guard in the shell's action listeners suppresses them while a dialog is
-/// open). An unbound action contributes nothing.
+/// The global key bindings for every action's *effective* key. The shell
+/// dispatches them wherever the focus is (the modal guard in the shell's
+/// action listeners suppresses them while a dialog is open). An unbound
+/// action contributes nothing.
+///
+/// The multicam source-switch keys (`1..9` / `⌘1..⌘9`) are the exception:
+/// they are scoped to the multicam panel's key context. Bound globally
+/// they would swallow the digit keys everywhere — the matched action
+/// bubbles through the focused panel and stops the keystroke before any
+/// value box / hex field / text input can type `1..9`.
 pub fn key_bindings() -> Vec<KeyBinding> {
 	let mut bindings = Vec::new();
 	for entry in REGISTRY {
+		// The stable C++ ids of the 18 source-switch actions all start
+		// with `multicamswitch` (1..9 and 1nosplit..9nosplit); nothing
+		// else shares the prefix.
+		let context = entry
+			.cpp_id
+			.starts_with("multicamswitch")
+			.then(|| Rc::new(KeyBindingContextPredicate::parse("MulticamPanel").unwrap()));
 		for key in effective_keys(entry) {
 			let binding = KeyBinding::load(
 				&key,
 				(entry.build)(),
-				None,
+				context.clone(),
 				false,
 				None,
 				&gpui::DummyKeyboardMapper,
@@ -868,6 +882,47 @@ mod tests {
 				);
 			}
 		}
+	}
+
+	/// The multicam source-switch hotkeys are panel-context: their
+	/// bindings carry the `MulticamPanel` key context so the digit keys
+	/// stay free for text entry outside the panel, and every other binding
+	/// stays global. (Regression: bound globally, `1..9` matched in every
+	/// focused panel and swallowed the digits before any value box / hex
+	/// field / text input could type them.)
+	#[test]
+	fn multicam_bindings_are_scoped_to_the_panel_context() {
+		let panel_context = Some(Rc::new(
+			KeyBindingContextPredicate::parse("MulticamPanel").unwrap(),
+		));
+		let multicam_actions: &[&dyn Action] = &[
+			&MulticamSwitch1, &MulticamSwitch2, &MulticamSwitch3, &MulticamSwitch4,
+			&MulticamSwitch5, &MulticamSwitch6, &MulticamSwitch7, &MulticamSwitch8,
+			&MulticamSwitch9, &MulticamSwitchNoSplit1, &MulticamSwitchNoSplit2,
+			&MulticamSwitchNoSplit3, &MulticamSwitchNoSplit4, &MulticamSwitchNoSplit5,
+			&MulticamSwitchNoSplit6, &MulticamSwitchNoSplit7, &MulticamSwitchNoSplit8,
+			&MulticamSwitchNoSplit9,
+		];
+		let mut scoped = 0usize;
+		for binding in key_bindings() {
+			let is_multicam = multicam_actions
+				.iter()
+				.any(|known| binding.action().partial_eq(*known));
+			if is_multicam {
+				scoped += 1;
+				assert_eq!(
+					binding.predicate(),
+					panel_context,
+					"the source-switch binding must be gated on the MulticamPanel key context"
+				);
+			} else {
+				assert!(
+					binding.predicate().is_none(),
+					"non-multicam bindings must stay global"
+				);
+			}
+		}
+		assert_eq!(scoped, 18, "all 18 source-switch bindings are panel-scoped");
 	}
 
 	/// Every registry action appears somewhere in the menu tree (an action
