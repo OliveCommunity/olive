@@ -904,6 +904,11 @@ impl Render for ComboBox {
 						.border_color(colors.border)
 						.bg(colors.background)
 						.shadow_md()
+						// Block clicks on the dropdown's padding/empty areas
+						// from falling through to the controls below (this is
+						// a plain deferred div, not an anchored element, so it
+						// gets no automatic BlockMouse hitbox).
+						.occlude()
 						.py_1()
 						.children(options.iter().enumerate().map(|(i, opt)| {
 						let highlighted = i == highlight;
