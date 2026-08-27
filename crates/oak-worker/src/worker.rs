@@ -59,6 +59,7 @@ use oak_render::backend::{BackendKind, DisplayRenderer};
 use oak_render::eval;
 use oak_render::ticket::{AudioTicketParams, MontageClip, VideoTicketParams};
 
+use crate::framecache::FrameCache;
 use crate::ipc::{
 	error_message, write_message, AudioTicketSpec, BatchTicketSpec, FrameSlotPool, FrameSlotMeta,
 	HandshakeMsg, LoadGraphMsg, PluginProgressMsg, RenderAudioBatchMsg, RenderBatchMsg,
@@ -288,6 +289,10 @@ pub struct WorkerSession {
 	/// Reusable F32 staging buffer (BGRA8 slot conversion; the F32
 	/// pipeline renders there before the end-of-pipe format convert).
 	f32_scratch: Vec<u8>,
+	/// LRU byte-budgeted memo of rendered F32 frames, keyed by the
+	/// render-deterministic ticket-spec subset (M16 S2; see
+	/// [`crate::framecache`]).
+	frame_cache: FrameCache,
 }
 
 impl WorkerSession {
@@ -323,6 +328,7 @@ impl WorkerSession {
 			input_pool: None,
 			graph: None,
 			f32_scratch: Vec::new(),
+			frame_cache: FrameCache::new(),
 		})
 	}
 
@@ -582,6 +588,10 @@ impl WorkerSession {
 							id_map,
 							project_copy: 0,
 						});
+						// A fresh graph snapshot can change what any viewer
+						// identity renders; cached pixels from the previous
+						// graph must not be served (M16 S2 frame cache).
+						self.frame_cache.clear();
 						log_error("LoadGraph: oaknode project deserialized");
 						None
 					}
@@ -597,6 +607,9 @@ impl WorkerSession {
 									id_map: std::collections::HashMap::new(),
 									project_copy: pc,
 								});
+								// See the full-snapshot branch: any reload
+								// invalidates the frame cache (M16 S2).
+								self.frame_cache.clear();
 								log_error(&format!(
 									"LoadGraph: identity-only snapshot (project_copy {pc})"
 								));
@@ -1055,26 +1068,57 @@ impl WorkerSession {
 			std::slice::from_raw_parts_mut(pool.slot_data(spec.slot as u32), pool.slot_data_bytes())
 		};
 
+		// M16 S2 frame cache: memoized F32 pipeline bytes keyed by the
+		// render-deterministic spec subset (ticket/slot/format/channels are
+		// delivery, not picture — an F32 and a BGRA8 request for the same
+		// frame share one entry). A hit is a copy (plus the end-of-pipe
+		// convert for BGRA8 slots); a miss renders as before and memoizes
+		// the F32 bytes. See [`crate::framecache`].
+		let f32_need = (w as usize) * (h as usize) * 16;
+		let key = crate::framecache::spec_cache_key(spec);
+		let mut cached = self.frame_cache.get(&key).map(|b| b.to_vec());
+		if let Some(c) = &cached {
+			if c.len() < f32_need {
+				// Defensive: an entry smaller than this geometry is not for
+				// this frame (keys are geometry-signed); re-render.
+				cached = None;
+			}
+		}
+
 		if !bgra8 {
 			// F32 RGBA: render straight into the slot (no staging copy).
-			render_f32_into(spec, &params, &self.graph, time, (w, h), &mut dst[..dst_need])?;
-		} else {
-			// BGRA8: render the F32 pipeline frame into the session
-			// scratch, then convert into the slot (the end-of-pipe format
-			// convert is not an extra frame copy, design §3.1).
-			let f32_need = (w as usize) * (h as usize) * 16;
-			if self.f32_scratch.len() < f32_need {
-				self.f32_scratch.resize(f32_need, 0);
+			match &cached {
+				Some(c) => dst[..f32_need].copy_from_slice(&c[..f32_need]),
+				None => {
+					render_f32_into(spec, &params, &self.graph, time, (w, h), &mut dst[..dst_need])?;
+					self.frame_cache.insert(key, dst[..f32_need].to_vec());
+				}
 			}
-			render_f32_into(
-				spec,
-				&params,
-				&self.graph,
-				time,
-				(w, h),
-				&mut self.f32_scratch[..f32_need],
-			)?;
-			convert_f32_rgba_to_bgra8(&self.f32_scratch[..f32_need], &mut dst[..dst_need]);
+		} else {
+			// BGRA8: the F32 pipeline frame comes from the cache or the
+			// session scratch, then converts into the slot (the end-of-pipe
+			// format convert is not an extra frame copy, design §3.1).
+			match &cached {
+				Some(c) => {
+					convert_f32_rgba_to_bgra8(&c[..f32_need], &mut dst[..dst_need]);
+				}
+				None => {
+					if self.f32_scratch.len() < f32_need {
+						self.f32_scratch.resize(f32_need, 0);
+					}
+					render_f32_into(
+						spec,
+						&params,
+						&self.graph,
+						time,
+						(w, h),
+						&mut self.f32_scratch[..f32_need],
+					)?;
+					self.frame_cache
+						.insert(key, self.f32_scratch[..f32_need].to_vec());
+					convert_f32_rgba_to_bgra8(&self.f32_scratch[..f32_need], &mut dst[..dst_need]);
+				}
+			}
 		}
 
 		// Slot meta (fresh each publish).

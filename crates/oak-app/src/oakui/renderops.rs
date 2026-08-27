@@ -870,10 +870,11 @@ pub fn render_audio_range(
 	}
 }
 
-/// Submit one audio-chunk render for the async playback prefetch (M15
-/// S3): the chunk `[start_ts, start_ts + len_ts)` is rendered through the
-/// process dispatcher; the completion copies the samples out of the shm
-/// slot, releases it and sends `(start_ts, samples)` on `tx`. Render
+/// Submit one audio-chunk render for the playback prefetch (M15 S3; M16
+/// S2: rendered inline on the calling tick — the manager's audio dispatch
+/// is the inline dispatcher, so this is a synchronous mix into
+/// `TicketPayload::Audio`; the shm-slot branch stays for worker-pool
+/// backends). The completion sends `(start_ts, samples)` on `tx`. Render
 /// errors send silence of the expected length so the playback buffer stays
 /// aligned (the real-time path must never stall the UI thread on a worker).
 pub fn submit_audio_chunk(

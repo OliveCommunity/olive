@@ -268,23 +268,23 @@ struct PreviewWindow {
 }
 
 // ---------------------------------------------------------------------------
-// Playback audio prefetch (M15 S3)
+// Playback audio prefetch (M15 S3; M16 S2: rendered inline)
 // ---------------------------------------------------------------------------
 //
-// Real-time audio is pulled by the UI tick; rendering it through the worker
-// pool adds one IPC round trip and can wait behind a busy render worker. To
-// avoid dropouts the chunks are rendered AHEAD asynchronously (tickets
-// complete on the dispatcher's poll) and buffered here; the pull never
-// blocks on a worker. `AUDIO_PREFETCH_CHUNKS` ahead ≈ 64 ms of audio at
-// 60 fps — enough to cover the delivery latency while keeping at most a
-// handful of audio slots in flight (the dispatcher's credit flow control
-// caps them per worker).
+// Real-time audio is pulled by the UI tick. Through the worker pool it had
+// one IPC round trip and could wait behind a busy render worker, so the
+// chunks are rendered AHEAD (tickets complete on the dispatcher's poll) and
+// buffered here. M16 S2 renders audio on the UI tick itself (the manager's
+// audio dispatch is inline — see oak_render::manager), so the prefetch
+// window now serves as the scheduling cushion instead of the delivery
+// latency: the pull never blocks on a worker. `AUDIO_PREFETCH_CHUNKS` ahead
+// ≈ 64 ms of audio at 60 fps — enough to cover the delivery latency while
+// keeping at most a handful of audio chunks in flight.
 
-/// How many audio chunks are kept rendered ahead of the playhead (M15 S3).
-/// Each chunk is one sequence frame of audio; 4 frames ahead ≈ 66 ms at
-/// 60 fps and ≈ 160 ms at 25 fps — enough to cover the delivery latency
-/// while keeping at most a handful of audio slots in flight (the
-/// dispatcher's credit flow control caps them per worker).
+/// How many audio chunks are kept rendered ahead of the playhead (M15
+/// S3; M16 S2: rendered inline on the UI tick, so the window is the
+/// scheduling cushion). Each chunk is one sequence frame of audio;
+/// 4 frames ahead ≈ 66 ms at 60 fps and ≈ 160 ms at 25 fps.
 const AUDIO_PREFETCH_CHUNKS: i64 = 4;
 
 /// The playback-audio prefetch buffer: rendered chunks ordered by start
@@ -1106,13 +1106,14 @@ pub struct RealEngine {
 
 impl RealEngine {
 	/// Render one tick's worth of audio at the program playhead and queue
-	/// it for playback (M12 P1; M15 S3: async worker-pool prefetch). The
-	/// audio chunks are rendered AHEAD in oak-worker (tickets posted
-	/// through the process dispatcher; completions arrive on the UI tick's
-	/// poll) and buffered by [`AudioPrefetch`], so the real-time pull never
-	/// blocks the UI thread on a busy render worker. Failures degrade to
-	/// silence; when the manager is down the channel stays empty and
-	/// playback continues video-only.
+	/// it for playback (M12 P1; M15 S3: worker-pool prefetch; M16 S2: the
+	/// manager's audio dispatch is inline, so each chunk renders
+	/// synchronously on this tick and lands in the channel before the drain
+	/// below). The chunks are submitted AHEAD of the playhead and buffered
+	/// by [`AudioPrefetch`], so the real-time pull never blocks on a render
+	/// worker or an IPC round trip. Failures degrade to silence; when the
+	/// manager is down the channel stays empty and playback continues
+	/// video-only.
 	fn pull_audio_tick(&mut self, cx: &mut Context<Self>) {
 		let (Some(project), Some(seq)) = (self.project.clone(), self.sequence) else {
 			return;
@@ -1157,9 +1158,9 @@ impl RealEngine {
 			}
 			st.next_submit += chunk;
 		}
-		// Drain completed chunks. For the inline fallback backend the
-		// submit above already ran them synchronously into the channel; for
-		// the process backend they arrived on this tick's earlier poll.
+		// Drain completed chunks. With the M16 S2 inline audio dispatch the
+		// submit above already ran each chunk synchronously into the channel;
+		// the drain stays for the worker-pool path (Threads/other backends).
 		let rx = self.audio_rx.lock().unwrap_or_else(|e| e.into_inner());
 		while let Ok((ts, data)) = rx.try_recv() {
 			st.insert(ts, data);

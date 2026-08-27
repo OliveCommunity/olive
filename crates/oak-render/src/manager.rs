@@ -58,9 +58,10 @@ pub enum RenderBackendChoice {
 pub struct RenderManager {
 	/// Video job dispatch (the process dispatcher, M15).
 	pub dispatch: Arc<dyn JobDispatch>,
-	/// Audio job dispatch (M15 S3: the process dispatcher, like video —
-	/// audio renders in oak-worker so plugin crashes are isolated; the
-	/// inline fallback lives in the arena, design §3.7).
+	/// Audio job dispatch (M16 S2: deliberately the inline dispatcher —
+	/// playback audio renders synchronously on the submitting thread so it
+	/// never queues behind worker video batches; the worker-pool audio path
+	/// was the M15 S3 default, design §3.7).
 	pub audio_dispatch: Arc<dyn JobDispatch>,
 	/// Ticket arena.
 	pub tickets: Arc<TicketArena>,
@@ -124,13 +125,20 @@ impl RenderManager {
 			RenderBackendChoice::Processes(config) => {
 				let dispatcher = ProcessDispatcher::new(config)?;
 				dispatcher.start()?;
-				// M15 S3: audio rendering runs in the worker pool too (a
-				// plugin crash during an audio render must not take down
-				// the main process — design §3.7). The inline dispatcher
-				// stays as the fallback when the process dispatcher is
-				// unavailable (teardown).
-				let fallback = InlineDispatcher::sync();
-				(dispatcher.clone(), dispatcher, Some(fallback))
+				// M16 S2: audio rendering deliberately runs INLINE on the
+				// submitting (UI) thread instead of the worker pool. Video
+				// batches — especially OFX plugin frames at ~100-500 ms
+				// each — can occupy the workers far longer than the cpal
+				// output buffer (~4 chunks, ≈100 ms) holds; an audio batch
+				// parked behind them underruns and the audio goes silent
+				// while the video is merely slow. Playback audio is a short
+				// synchronous range pull, so inline mixing keeps audio
+				// flowing no matter how stuck the video workers are
+				// (design §3.7 prefers inline before S3). Trade: an
+				// audio-side plugin crash now takes down the main process,
+				// and the mix cost lands on the UI tick.
+				let inline = InlineDispatcher::sync();
+				(dispatcher.clone(), inline, None)
 			}
 		};
 		let tickets = Arc::new(TicketArena::new_with_audio_fallback(
