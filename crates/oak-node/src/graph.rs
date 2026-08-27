@@ -166,6 +166,18 @@ impl Graph {
 		let taken = std::mem::replace(&mut self.entries[idx], vacant_entry);
 		self.free_list.push(id.index());
 		self.drop_edges_touching(id);
+		// Symmetric link cleanup: partners drop their reference to the
+		// detached node, so no dangling link outlives it. The taken entry
+		// keeps its own links, but `add_entry` (the undo path) does NOT
+		// re-establish the partners' back-references — a delete-then-undo
+		// leaves the link one-way (known trade-off: a restorable asymmetric
+		// link beats a stale reference; `are_linked` reads both ways and
+		// `link()` repairs the missing direction).
+		for partner in taken.core.links.clone() {
+			if let Some(entry) = self.get_mut(partner) {
+				entry.core.links.retain(|&l| l != id);
+			}
+		}
 		Some(taken)
 	}
 
@@ -468,9 +480,16 @@ impl Graph {
 	}
 
 	/// Link two nodes bidirectionally (C++ `Node::link`); false when
-	/// already linked or `a == b`.
+	/// already linked both ways or `a == b`. A one-way link (e.g. left
+	/// behind by a delete-then-undo) is repaired: only the missing
+	/// direction is added.
 	pub fn link(&mut self, a: NodeId, b: NodeId) -> bool {
-		if a == b || !self.is_valid(a) || !self.is_valid(b) || self.are_linked(a, b) {
+		if a == b || !self.is_valid(a) || !self.is_valid(b) {
+			return false;
+		}
+		let a_has = self.get(a).map(|e| e.core.links.contains(&b)).unwrap_or(false);
+		let b_has = self.get(b).map(|e| e.core.links.contains(&a)).unwrap_or(false);
+		if a_has && b_has {
 			return false;
 		}
 		let (a_idx, b_idx) = (a.index() as usize, b.index() as usize);
@@ -478,8 +497,12 @@ impl Graph {
 		let b_placeholder = vacant_entry(self.entries[b_idx].generation);
 		let mut a_entry = std::mem::replace(&mut self.entries[a_idx], a_placeholder);
 		let mut b_entry = std::mem::replace(&mut self.entries[b_idx], b_placeholder);
-		a_entry.core.links.push(b);
-		b_entry.core.links.push(a);
+		if !a_has {
+			a_entry.core.links.push(b);
+		}
+		if !b_has {
+			b_entry.core.links.push(a);
+		}
 		self.entries[a_idx] = a_entry;
 		self.entries[b_idx] = b_entry;
 		true
@@ -502,11 +525,17 @@ impl Graph {
 		true
 	}
 
-	/// True when `a` and `b` are linked (C++ `Node::are_linked`).
+	/// True when `a` and `b` are linked in EITHER direction (C++
+	/// `Node::are_linked`); the bidirectional read tolerates the one-way
+	/// links a delete-then-undo can leave behind.
 	pub fn are_linked(&self, a: NodeId, b: NodeId) -> bool {
 		self.get(a)
 			.map(|e| e.core.links.contains(&b))
 			.unwrap_or(false)
+			|| self
+				.get(b)
+				.map(|e| e.core.links.contains(&a))
+				.unwrap_or(false)
 	}
 
 	/// Linked node ids of `id` (C++ `Node::links`).
@@ -618,6 +647,20 @@ impl Graph {
 			let from = *map.get(&from).unwrap_or(&from);
 			let to = *map.get(&to).unwrap_or(&to);
 			self.connect(from, to, &input, element).ok();
+		}
+		// `take_node`'s symmetric link cleanup stripped the back-references
+		// of nodes that were still waiting in `other`; now that every live
+		// node moved over, re-establish the missing directions (identities
+		// are preserved, so the stored links still name the right nodes).
+		let moved: Vec<NodeId> = map.values().copied().collect();
+		for id in moved {
+			for partner in self.links_of(id) {
+				if let Some(entry) = self.get_mut(partner) {
+					if !entry.core.links.contains(&id) {
+						entry.core.links.push(id);
+					}
+				}
+			}
 		}
 		map
 	}

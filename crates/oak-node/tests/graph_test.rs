@@ -254,3 +254,60 @@ fn add_entry_reclaims_the_free_slot() {
 	);
 	assert_eq!(g.node_count(), count_before + 1);
 }
+
+/// Link topology: link/unlink are symmetric and idempotent, `are_linked`
+/// reads BOTH directions, and a one-way link (e.g. left behind by a
+/// delete-then-undo) is repaired by `link()` instead of deadlocking the
+/// pair (the old `are_linked` read only `a.links`, so a one-way link made
+/// `link()` refuse to fix the missing direction).
+#[test]
+fn link_repairs_asymmetry() {
+	let (mut g, ids) = build(2);
+	let [a, b] = [ids[0], ids[1]];
+
+	// The symmetric happy path.
+	assert!(g.link(a, b));
+	assert!(g.are_linked(a, b) && g.are_linked(b, a));
+	assert!(!g.link(a, b), "already linked both ways: no-op");
+	assert!(g.unlink(a, b));
+	assert!(!g.are_linked(a, b) && !g.are_linked(b, a));
+	assert!(!g.unlink(a, b), "not linked: no-op");
+	assert!(!g.link(a, a), "self-link rejected");
+
+	// Hand-craft a one-way link: only a.links names b.
+	g.get_mut(a).expect("a exists").core.links.push(b);
+	assert!(g.are_linked(a, b), "a -> b reads as linked");
+	assert!(g.are_linked(b, a), "the reverse read is linked too");
+	assert!(g.link(a, b), "link() repairs the missing direction");
+	assert!(g.links_of(a).contains(&b) && g.links_of(b).contains(&a));
+	assert!(!g.link(b, a), "fully linked after the repair");
+	assert!(g.unlink(a, b), "unlink clears a one-way link too");
+	assert!(g.links_of(a).is_empty() && g.links_of(b).is_empty());
+}
+
+/// take_node cleans up symmetrically: the partners of a detached node
+/// drop their reference to it, so no dangling link outlives the node
+/// (the delete-one-of-a-pair regression: the survivor kept a stale id
+/// that later edits tripped over).
+#[test]
+fn take_node_clears_partner_links() {
+	let (mut g, ids) = build(3);
+	let [a, b, c] = [ids[0], ids[1], ids[2]];
+	g.link(a, b);
+	g.link(a, c);
+
+	let entry = g.take_node(a).expect("take the node");
+	assert!(!g.links_of(b).contains(&a), "b dropped the stale reference");
+	assert!(!g.links_of(c).contains(&a), "c dropped the stale reference");
+	assert!(entry.core.links.contains(&b), "the entry keeps its own links");
+
+	// Re-inserting restores the node's own links but not the partners'
+	// back-references (the documented undo trade-off); `are_linked` still
+	// reads the pair as linked and `link()` repairs the direction.
+	let readded = g.add_entry(entry, a);
+	assert_eq!(readded, a);
+	assert!(g.are_linked(a, b));
+	assert!(!g.links_of(b).contains(&a), "add_entry does not restore the back-reference");
+	assert!(g.link(b, a), "link() re-establishes symmetry");
+	assert!(g.links_of(b).contains(&a) && g.links_of(a).contains(&b));
+}

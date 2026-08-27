@@ -1393,17 +1393,14 @@ pub fn place_footage_clips_linked(
 		);
 		commands.push(connect_command(p, footage, clip, oak_node::block::clip_input::TEXTURE_INPUT)?);
 	}
-	// Link the group both ways (closure commands capture the current
-	// links for undo).
+	// Link the group both ways. Each ordered pair is its own command whose
+	// undo removes ONLY the direction it added (incremental undo), so a
+	// link created after the drop survives the drop's undo.
 	for (i, &a) in clips.iter().enumerate() {
 		for (j, &b) in clips.iter().enumerate() {
 			if i == j {
 				continue;
 			}
-			let old: Vec<NodeId> = {
-				let g = lock(p);
-				g.graph.links_of(a)
-			};
 			let (p1, p2) = (p.clone(), p.clone());
 			commands.push(oak_undo::undocommand::UndoCommand::from_closures(
 				move || {
@@ -1418,7 +1415,7 @@ pub fn place_footage_clips_linked(
 				move || {
 					let mut g = lock(&p2);
 					if let Some(entry) = g.graph.get_mut(a) {
-						entry.core.links = old.clone();
+						entry.core.links.retain(|&l| l != b);
 					}
 				},
 			));
@@ -1739,7 +1736,9 @@ pub fn move_clip_with_links(
 		rational_to_ts(in_r, tb)
 	};
 	// The linked clips' current in points (each stays on its own track;
-	// only its in point follows the shared delta).
+	// only its in point follows the shared delta). A linked clip that is
+	// off any track (e.g. ripple-removed) is left in place instead of
+	// failing the whole move.
 	let mut linked_ins: Vec<(NodeId, i64)> = Vec::new();
 	for &other in linked {
 		if other == clip {
@@ -1747,8 +1746,10 @@ pub fn move_clip_with_links(
 		}
 		let other_in_ts = {
 			let g = lock(p);
-			let tb = clip_track(&g.graph, other)
-				.and_then(|t| track_behavior(&g.graph, t))
+			let Some(track) = clip_track(&g.graph, other) else {
+				continue;
+			};
+			let tb = track_behavior(&g.graph, track)
 				.and_then(|t| t.track_list)
 				.and_then(|l| track_list_behavior(&g.graph, l))
 				.and_then(|l| l.sequence)
@@ -2109,44 +2110,19 @@ pub fn paste_clips(
 			oak_node::block::clip_input::TEXTURE_INPUT,
 		)?);
 	}
-	// Link the pasted group both ways (the C++ pastes linked selections as
-	// a linked group).
+	// Link the pasted group both ways via the graph API, so the links land
+	// on NodeCore.links where links_of/are_linked read them (the C++ pastes
+	// linked selections as a linked group).
 	if new_ids.len() > 1 {
 		let first = new_ids[0];
 		for &other in &new_ids[1..] {
 			let (p1, p2) = (p.clone(), p.clone());
 			commands.push(oak_undo::undocommand::UndoCommand::from_closures(
 				move || {
-					let mut g = lock(&p1);
-					for (a, b) in [(first, other), (other, first)] {
-						if let Some(entry) = g.graph.get_mut(a) {
-							let links = &mut entry
-								.behavior
-								.as_any_mut()
-								.and_then(|any| any.downcast_mut::<ClipBlockBehavior>())
-								.expect("clip behavior")
-								.core
-								.links;
-							if !links.contains(&b) {
-								links.push(b);
-							}
-						}
-					}
+					lock(&p1).graph.link(first, other);
 				},
 				move || {
-					let mut g = lock(&p2);
-					for (a, b) in [(first, other), (other, first)] {
-						if let Some(entry) = g.graph.get_mut(a) {
-							let links = &mut entry
-								.behavior
-								.as_any_mut()
-								.and_then(|any| any.downcast_mut::<ClipBlockBehavior>())
-								.expect("clip behavior")
-								.core
-								.links;
-							links.retain(|&l| l != b);
-						}
-					}
+					lock(&p2).graph.unlink(first, other);
 				},
 			));
 		}
@@ -2343,6 +2319,216 @@ mod tests {
 			assert_eq!(g.graph.get(clip).unwrap().core.label, name);
 		}
 
+		oak_undo::global::clear().unwrap();
+		let _ = std::fs::remove_file(&media);
+	}
+
+	/// Paste regression: the pasted group's links must land on
+	/// NodeCore.links (where links_of/are_linked read them), not on the
+	/// parallel BlockCore.links mirror the graph API never sees. Paste a
+	/// copied linked A/V pair and require links_of to find the link; undo
+	/// clears it, redo restores it.
+	#[test]
+	fn paste_links_the_group_in_node_core_links() {
+		let _g = test_lock();
+		oak_undo::global::clear().unwrap();
+		let project = create_project();
+		let seq = create_sequence(&project, "Paste Links");
+		let media = std::env::temp_dir().join(format!("oak_paste_links_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate test media");
+		let footage = import_footage(&project, &media).expect("import");
+		let dropped = place_footage_clips_linked(
+			&project,
+			seq,
+			footage,
+			&[(TrackType::Video, 0), (TrackType::Audio, 0)],
+			0,
+			10,
+			0,
+		)
+		.expect("linked placement");
+
+		let items = copy_clips(&project, &dropped);
+		assert_eq!(items.len(), 2, "both clips copied");
+		let pasted = paste_clips(&project, seq, &items, 20).expect("paste");
+		assert_eq!(pasted.len(), 2);
+		{
+			let g = lock(&project);
+			assert!(
+				g.graph.links_of(pasted[0]).contains(&pasted[1]),
+				"links_of finds the pasted link (the wrong-field regression)"
+			);
+			assert!(g.graph.are_linked(pasted[1], pasted[0]));
+		}
+
+		// Undo unlinks the group; redo relinks it.
+		oak_undo::global::undo().expect("undo paste");
+		{
+			let g = lock(&project);
+			assert!(!g.graph.are_linked(pasted[0], pasted[1]), "undo unlinks the pair");
+		}
+		oak_undo::global::redo().expect("redo paste");
+		{
+			let g = lock(&project);
+			assert!(g.graph.are_linked(pasted[0], pasted[1]), "redo relinks the pair");
+		}
+		oak_undo::global::clear().unwrap();
+		let _ = std::fs::remove_file(&media);
+	}
+
+	/// Delete-one-of-a-pair regression: deleting a linked clip removes the
+	/// survivor's back-reference (take_node cleans up symmetrically), so
+	/// moving the survivor afterwards neither trips over a stale id nor
+	/// fails the whole move.
+	#[test]
+	fn deleting_one_of_a_linked_pair_clears_the_partner_link() {
+		let _g = test_lock();
+		oak_undo::global::clear().unwrap();
+		let project = create_project();
+		let seq = create_sequence(&project, "Delete Linked");
+		let media = std::env::temp_dir().join(format!("oak_delete_linked_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate test media");
+		let footage = import_footage(&project, &media).expect("import");
+		let dropped = place_footage_clips_linked(
+			&project,
+			seq,
+			footage,
+			&[(TrackType::Video, 0), (TrackType::Audio, 0)],
+			0,
+			10,
+			0,
+		)
+		.expect("linked placement");
+		let (video, audio) = (dropped[0], dropped[1]);
+
+		delete_clip(&project, video).expect("delete the video clip");
+		{
+			let g = lock(&project);
+			assert!(
+				!g.graph.links_of(audio).contains(&video),
+				"the survivor holds no stale reference to the deleted clip"
+			);
+		}
+
+		// Dragging the survivor works — even when the stale id is still
+		// handed in as a linked partner (the old whole-move failure).
+		move_clip_with_links(&project, audio, None, 30, &[video]).expect("move the survivor");
+		{
+			let g = lock(&project);
+			let tb = sequence_time_base(&g.graph, seq).expect("a valid frame rate");
+			let (in_r, _, _) = clip_range(&g.graph, audio).expect("audio is still a clip");
+			assert_eq!(rational_to_ts(in_r, tb), 30, "the survivor moved");
+		}
+		oak_undo::global::clear().unwrap();
+		let _ = std::fs::remove_file(&media);
+	}
+
+	/// Incremental link-undo regression: undoing the A/V drop removes ONLY
+	/// the links the drop created — a link added afterwards (here: the
+	/// video clip to a third clip) survives (the old undo restored the
+	/// whole links vector from a construction-time snapshot and clobbered
+	/// it).
+	#[test]
+	fn drop_undo_keeps_links_created_after_the_drop() {
+		let _g = test_lock();
+		oak_undo::global::clear().unwrap();
+		let project = create_project();
+		let seq = create_sequence(&project, "Drop Undo Links");
+		let media = std::env::temp_dir().join(format!("oak_drop_undo_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate test media");
+		let footage = import_footage(&project, &media).expect("import");
+		let dropped = place_footage_clips_linked(
+			&project,
+			seq,
+			footage,
+			&[(TrackType::Video, 0), (TrackType::Audio, 0)],
+			0,
+			10,
+			0,
+		)
+		.expect("linked placement");
+		let (video, audio) = (dropped[0], dropped[1]);
+
+		// A third clip, linked to the dropped video clip AFTER the drop.
+		let third = place_footage_clip(&project, seq, footage, TrackType::Video, 0, 20, 30, 0)
+			.expect("place third");
+		{
+			let mut g = lock(&project);
+			assert!(g.graph.link(video, third), "the third link is established");
+		}
+
+		// Undo twice: the third clip's placement, then the drop. Neither
+		// may touch the video<->third link.
+		oak_undo::global::undo().expect("undo the third placement");
+		oak_undo::global::undo().expect("undo the drop");
+		{
+			let g = lock(&project);
+			assert!(
+				g.graph.links_of(video).contains(&third),
+				"the later link survives the drop's undo"
+			);
+			assert!(g.graph.links_of(third).contains(&video));
+			assert!(
+				!g.graph.links_of(video).contains(&audio),
+				"the drop's own link is removed"
+			);
+			assert!(!g.graph.links_of(audio).contains(&video));
+		}
+		oak_undo::global::clear().unwrap();
+		let _ = std::fs::remove_file(&media);
+	}
+
+	/// Off-track linked clip regression: a linked clip that was
+	/// ripple-removed from its track (track = None) is SKIPPED by a group
+	/// move instead of failing the whole move — the on-track clip moves
+	/// and the off-track one keeps its range.
+	#[test]
+	fn moving_a_linked_clip_skips_the_off_track_partner() {
+		let _g = test_lock();
+		oak_undo::global::clear().unwrap();
+		let project = create_project();
+		let seq = create_sequence(&project, "Off Track Move");
+		let media = std::env::temp_dir().join(format!("oak_off_track_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate test media");
+		let footage = import_footage(&project, &media).expect("import");
+		let dropped = place_footage_clips_linked(
+			&project,
+			seq,
+			footage,
+			&[(TrackType::Video, 0), (TrackType::Audio, 0)],
+			0,
+			10,
+			0,
+		)
+		.expect("linked placement");
+		let (video, audio) = (dropped[0], dropped[1]);
+
+		// Ripple-remove the audio clip from its track: the node stays in
+		// the graph, its links intact, but it is off any track.
+		let audio_track = {
+			let g = lock(&project);
+			clip_track(&g.graph, audio).expect("audio starts on a track")
+		};
+		oak_timeline::util::track_ripple_remove_block(
+			&node_ref(&project, audio_track),
+			&node_ref(&project, audio),
+		);
+		{
+			let g = lock(&project);
+			assert!(clip_track(&g.graph, audio).is_none(), "audio is off-track now");
+			assert!(g.graph.are_linked(video, audio), "the link itself survives");
+		}
+
+		// Moving the video clip succeeds and moves ONLY the on-track clip.
+		move_clip_with_links(&project, video, None, 40, &[audio]).expect("the move succeeds");
+		{
+			let g = lock(&project);
+			let tb = sequence_time_base(&g.graph, seq).expect("a valid frame rate");
+			let (v_in, _, _) = clip_range(&g.graph, video).expect("video is a clip");
+			assert_eq!(rational_to_ts(v_in, tb), 40, "the on-track clip moved");
+			let (a_in, _, _) = clip_range(&g.graph, audio).expect("audio is a clip");
+			assert_eq!(rational_to_ts(a_in, tb), 0, "the off-track clip stayed put");
+		}
 		oak_undo::global::clear().unwrap();
 		let _ = std::fs::remove_file(&media);
 	}
