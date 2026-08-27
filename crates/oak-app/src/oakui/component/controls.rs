@@ -23,8 +23,8 @@
 //!
 //! - [`Slider`] — horizontal drag (the gpui_widgets slider only reacted
 //!   to *vertical* cursor movement, so a normal horizontal drag looked
-//!   dead), click-to-jump, wheel, and the arrow keys (Shift = fine steps,
-//!   Home/End = range ends).
+//!   dead), click-to-jump, wheel, arrow keys (Shift = fine steps, Home/End
+//!   = range ends), and a persistent value box (Enter commits).
 //! - [`SpinBox`] / [`ComboBox`] / [`CheckBox`] — the gpui_widgets
 //!   implementations, re-exported here so the app never reaches into
 //!   gpui_widgets directly.
@@ -36,13 +36,12 @@
 //! text inputs and menus.
 
 use gpui::{
-	colors::{Colors, DefaultColors},
-	div, px, App, Context, ElementId, EventEmitter, FocusHandle, IntoElement, InteractiveElement, ParentElement,
-	Entity, KeyDownEvent, MouseButton, MouseDownEvent, MouseMoveEvent, MouseUpEvent, Pixels, Point,
+	colors::DefaultColors,
+	canvas, div, px, Context, ElementId, EventEmitter, FocusHandle, IntoElement, InteractiveElement, ParentElement,
+	Entity, KeyDownEvent, MouseButton, MouseDownEvent, MouseUpEvent,
 	Render, ScrollWheelEvent, SharedString, StatefulInteractiveElement, Styled, Window, AppContext, Focusable,
 };
 use gpui::prelude::FluentBuilder;
-use std::sync::Arc;
 
 pub use gpui_widgets::value::{SliderValue, ValueKind};
 
@@ -70,16 +69,6 @@ pub enum SliderEvent {
 	DragFinished { control: usize },
 }
 
-/// The number of horizontal pixels that maps to the full slider range.
-const HORIZONTAL_DRAG_RANGE_PX: f32 = 240.0;
-
-/// A horizontal slider: track + filled portion + handle.
-///
-/// Mouse: press on the track jumps the value to the click position, a
-/// drag adjusts continuously (Shift = fine), the wheel steps, middle
-/// click resets.
-/// Keyboard (once focused): Left/Right step by one step, Shift-Left/Right
-/// by 1/10 step, Home/End jump to the range ends.
 /// The in-flight drag gesture payload shared with the drag events.
 struct SliderDrag {
 	/// The control that STARTED the drag. gpui delivers drag-move events
@@ -108,15 +97,20 @@ impl Render for SliderDragGhost {
 
 /// A horizontal slider: track + filled portion + handle.
 ///
-/// Mouse: a drag adjusts the value with 1:1 cursor tracking (the handle
-/// follows the cursor; Shift = 1/10 sensitivity), the wheel steps, middle
-/// click resets, double click opens a numeric editor.
+/// Mouse: a single click on the track jumps the value to the click
+/// position (a double click opens the editor instead), a drag adjusts the
+/// value with 1:1 cursor tracking (the handle follows the cursor; Shift =
+/// 1/10 sensitivity), the wheel steps, middle click resets.
 /// Keyboard (once focused): Left/Right step by one step, Shift-Left/Right
 /// by 1/10 step, Home/End jump to the range ends.
+/// A persistent value box shows the current value and accepts typed input
+/// (Enter commits, clamped to the range); double-clicking the track opens
+/// the same editor full-width over the track.
 ///
-/// A gesture (drag, wheel tick or arrow key) emits [`SliderEvent::ValueChanged`]
-/// exactly once — on drop for drags — so the host applies one undoable
-/// edit per gesture instead of one per mouse move.
+/// A gesture (drag, wheel tick, arrow key, click or typed commit) emits
+/// [`SliderEvent::ValueChanged`] once per gesture — on drop for drags — so
+/// the host applies one undoable edit per gesture instead of one per mouse
+/// move.
 pub struct Slider {
 	control: usize,
 	model: SliderModel,
@@ -128,6 +122,9 @@ pub struct Slider {
 	/// Whether the open editor should cancel (Escape) instead of commit
 	/// on blur.
 	edit_cancel: bool,
+	/// The persistent value box: shows the current value and accepts typed
+	/// input (Enter commits, exactly like the double-click editor).
+	value_editor: Entity<gpui_elements::editable_text::EditableTextState>,
 }
 
 impl Slider {
@@ -139,6 +136,13 @@ impl Slider {
 		cx: &mut Context<Self>,
 	) -> Self {
 		let _ = window;
+		let display = Self::display_value(&model);
+		let value_editor = cx.new(|cx| {
+			gpui_elements::editable_text::EditableTextState::new(
+				gpui_elements::editable_text::StringStorage::from(display.to_string()),
+				cx,
+			)
+		});
 		Self {
 			control,
 			model,
@@ -146,6 +150,7 @@ impl Slider {
 			edit: None,
 			dragging: false,
 			edit_cancel: false,
+			value_editor,
 		}
 	}
 
@@ -225,7 +230,12 @@ impl Slider {
 
 	/// The current value formatted for display.
 	fn display(&self) -> SharedString {
-		match self.model.value() {
+		Self::display_value(&self.model)
+	}
+
+	/// Format a model's value for display.
+	fn display_value(model: &SliderModel) -> SharedString {
+		match model.value() {
 			SliderValue::Integer(v) => v.to_string().into(),
 			SliderValue::Float(v) => format_value(v).into(),
 			SliderValue::Angle(v) => format!("{v:.1}°").into(),
@@ -242,6 +252,11 @@ impl Render for Slider {
 		let fraction = self.model.fraction();
 		let control = self.control;
 		let handle_x = (fraction * 100.0).clamp(0.0, 100.0) as f32;
+		// The track's layout bounds, recorded by an invisible canvas every
+		// frame so the click-to-jump handler can map a click x to a value
+		// (mouse events carry no bounds of their own).
+		let track_bounds =
+			std::sync::Arc::new(std::sync::RwLock::new(None::<gpui::Bounds<gpui::Pixels>>));
 		let drag_payload = std::sync::Arc::new(std::sync::RwLock::new(SliderDrag {
 			control,
 			first_x: 0.0,
@@ -319,6 +334,33 @@ impl Render for Slider {
 				}
 			}))
 			.on_mouse_down(
+				MouseButton::Left,
+				{
+					let click_bounds = track_bounds.clone();
+					cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
+					// A single click jumps to the click position. Double
+					// clicks skip the jump so the editor opens at the value
+					// that was already there.
+					if event.click_count >= 2 || this.edit.is_some() {
+						return;
+					}
+					let Some(bounds) = click_bounds.read().unwrap().as_ref().copied() else {
+						return;
+					};
+					let width = f32::from(bounds.size.width);
+					if width <= 0.0 {
+						return;
+					}
+					let t = ((f32::from(event.position.x) - f32::from(bounds.left())) / width)
+						as f64;
+					let changed = this.model.set_fraction(t);
+					if changed {
+						this.emit_changed(cx);
+					}
+					})
+				}
+			)
+			.on_mouse_down(
 				MouseButton::Middle,
 				cx.listener(|this, _event: &MouseDownEvent, _window, cx| {
 					let changed = this.model.reset();
@@ -365,6 +407,24 @@ impl Render for Slider {
 				cx.stop_propagation();
 			}));
 
+		// Invisible overlay recording the track's bounds each frame so the
+		// click-to-jump handler above can map a click x to a value.
+		let record_bounds = track_bounds.clone();
+		track = track.child(
+			canvas(
+				move |bounds, _window, _cx| {
+					*record_bounds.write().unwrap() = Some(bounds);
+					bounds
+				},
+				|_bounds, _content, _window, _cx| {},
+			)
+			.absolute()
+			.left(px(0.0))
+			.right(px(0.0))
+			.top(px(0.0))
+			.bottom(px(0.0)),
+		);
+
 		if let Some(editor) = self.edit.clone() {
 			// Numeric editor: an app text input bound to the editor state.
 			track = track.child(
@@ -375,29 +435,78 @@ impl Render for Slider {
 				.state(editor.downgrade())
 				.accepts_input(true),
 			);
-			return track;
+		} else {
+			track = track
+				.child(
+					div()
+						.absolute()
+						.left(px(0.0))
+						.top(px(0.0))
+						.bottom(px(0.0))
+						.w(px(handle_x))
+						.rounded_md()
+						.bg(colors.selected),
+				)
+				.child(
+					div()
+						.absolute()
+						.left(px(handle_x))
+						.top(px(3.0))
+						.size(px(12.0))
+						.rounded_full()
+						.bg(colors.text),
+				);
 		}
 
-		track
+		// Persistent value box: shows the current value and accepts typed
+		// input (Enter commits). The text is re-synced to the model's
+		// display format whenever the box isn't focused.
+		let display_text = self.display();
+		let value_editor = self.value_editor.clone();
+		if !value_editor.read(cx).focus_handle(cx).is_focused(window)
+			&& value_editor.read(cx).as_str() != display_text.as_ref()
+		{
+			value_editor.update(cx, |editor, cx| {
+				editor.emplace(display_text.as_ref(), cx);
+			});
+		}
+		let value_box = div()
+			.id(ElementId::named_usize("oak-slider-value", control))
+			.w(px(56.0))
+			.flex_shrink_0()
+			.rounded_md()
+			.border_1()
+			.border_color(colors.border)
+			.bg(colors.background)
+			.px_1()
+			.flex()
+			.items_center()
 			.child(
-				div()
-					.absolute()
-					.left(px(0.0))
-					.top(px(0.0))
-					.bottom(px(0.0))
-					.w(px(handle_x))
-					.rounded_md()
-					.bg(colors.selected),
+				crate::oakui::component::text_input(
+					ElementId::named_usize("oak-slider-value-input", control),
+					cx,
+				)
+				.state(value_editor.downgrade())
+				.accepts_input(true),
 			)
-			.child(
-				div()
-					.absolute()
-					.left(px(handle_x))
-					.top(px(3.0))
-					.size(px(12.0))
-					.rounded_full()
-					.bg(colors.text),
-			)
+			.on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+				if event.keystroke.key.as_str() != "enter" {
+					return;
+				}
+				let text = this.value_editor.read(cx).as_str().to_string();
+				this.apply_text(&text, cx);
+				// Move focus to the slider so the box re-syncs to the
+				// normalized display text on the next frame.
+				window.focus(&this.focus, cx);
+				cx.stop_propagation();
+			}));
+
+		div()
+			.flex()
+			.items_center()
+			.gap_1()
+			.child(track)
+			.child(value_box)
 	}
 }
 
