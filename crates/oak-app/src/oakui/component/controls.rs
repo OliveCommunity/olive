@@ -519,10 +519,23 @@ impl Render for CheckBox {
 					.size(px(16.0))
 					.rounded_md()
 					.border_1()
-			.border_color(colors.border)
-			.bg(if checked { colors.selected } else { colors.background })
-			.track_focus(&self.focus)
-			.cursor_pointer()
+					.border_color(colors.border)
+					.bg(if checked { colors.selected } else { gpui::rgba(0xFFFFFF) })
+					.shadow(if checked {
+						vec![]
+					} else {
+						// Inset shadow makes the unchecked box read as an
+						// empty well on the dark panel.
+						vec![gpui::BoxShadow {
+							color: gpui::Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.25 },
+							offset: gpui::Point::new(px(0.0), px(1.0)),
+							blur_radius: px(2.0),
+							spread_radius: px(0.0),
+							inset: true,
+						}]
+					})
+					.track_focus(&self.focus)
+					.cursor_pointer()
 			.on_mouse_down(
 				MouseButton::Left,
 				cx.listener(|this, _event: &MouseDownEvent, window, cx| {
