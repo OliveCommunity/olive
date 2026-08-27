@@ -254,29 +254,72 @@ fn audio_conform_writes_planar_pcm() {
 	let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// Count red-dominant pixels on `row` within the left half of the frame
+/// (`x < width/2`). The test pattern's red/blue boundary sweeps right, so
+/// the left half is solid red for exactly `32 - shift` columns; the right
+/// half contains the wrap-around red strip, which is excluded here. MPEG-2's
+/// lossy YUV round-trip keeps the dominance, shifting the boundary by at
+/// most a couple of columns.
+fn red_row_count(f: &Frame, row: usize) -> usize {
+	let stride = f.linesize_bytes() as usize;
+	let data = f.data().expect("allocated frame data");
+	let width = f.width() as usize;
+	let mut count = 0;
+	for x in 0..width / 2 {
+		let off = row * stride + x * 16;
+		let r = f32::from_le_bytes(data[off..off + 4].try_into().unwrap());
+		let b = f32::from_le_bytes(data[off + 8..off + 12].try_into().unwrap());
+		if r > b {
+			count += 1;
+		}
+	}
+	count
+}
+
 #[test]
 fn testmedia_clip_probe_roundtrip() {
 	let out = std::env::temp_dir().join(format!("oakcodec_tm3_{}.mp4", std::process::id()));
 	crate::testmedia::write_test_clip(&out, 64, 64, 10, 10).expect("generate");
+	println!("out: {}", out.display());
 	let d = FFmpegDecoder::new();
+
+	// The container duration must be ~1s (10 frames at 10 fps) in the video
+	// stream's own time base. This is the regression test for the encoder
+	// timestamp fix: when the muxer's `write_header` time-base change was
+	// ignored, the whole clip was crammed into ~1ms and this failed.
+	let desc = d.probe(&out.to_string_lossy(), None).expect("probe");
+	let vp = desc.get_video_stream(0).expect("video stream");
+	let (tb_num, tb_den) = vp.time_base();
+	let duration_secs = vp.duration() as f64 * tb_num as f64 / tb_den as f64;
+	assert!(
+		(0.8..=1.2).contains(&duration_secs),
+		"container duration {duration_secs}s is not ~1s (tb {tb_num}/{tb_den}, {} ticks)",
+		vp.duration()
+	);
+
+	// Every frame must decode to its own content: the pattern's red/blue
+	// boundary sweeps right `shift` columns per frame, so the red-run
+	// length in the left half of row 32 is 32 - shift (tolerance for
+	// MPEG-2 loss).
 	let s = CodecStream::with_block(out.to_string_lossy().into_owned(), 0, None);
 	d.open(&s).expect("open");
-	for t in [0i64, 3, 5, 9] {
+	for t in 0..10i64 {
 		let f = d
 			.retrieve_video_frame(&video_params(s.clone(), Rational::new(t, 10)))
 			.unwrap_or_else(|e| panic!("decode t={t}: {e:?}"));
-		let stride = f.linesize_bytes() as usize;
-		let data = f.data().unwrap();
-		let off = 32 * stride + 8 * 16;
-		let px = [
-			f32::from_le_bytes(data[off..off + 4].try_into().unwrap()),
-			f32::from_le_bytes(data[off + 4..off + 8].try_into().unwrap()),
-			f32::from_le_bytes(data[off + 8..off + 12].try_into().unwrap()),
-			f32::from_le_bytes(data[off + 12..off + 16].try_into().unwrap()),
-		];
-		println!("t={t}/10 px(8,32): {px:?}");
+		let red = red_row_count(&f, 32);
+		let shift = (t * 64 / (2 * 10)) % 64;
+		let expected = 32 - shift;
+		assert!(
+			(red as i64 - expected).abs() <= 3,
+			"t={t}/10 red pixels on row 32: {red}, expected ~{expected} (shift {shift})"
+		);
 	}
-	let _ = std::fs::remove_file(&out);
+
+	// OAK_KEEP_TESTMEDIA keeps the clip for external inspection (ffprobe).
+	if std::env::var_os("OAK_KEEP_TESTMEDIA").is_none() {
+		let _ = std::fs::remove_file(&out);
+	}
 }
 
 #[test]

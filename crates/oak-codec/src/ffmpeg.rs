@@ -474,6 +474,10 @@ struct VideoDecodeState {
 	cache_at_eof: bool,
 	/// One second in the stream's time base.
 	second_ts: i64,
+	/// Whether the EOF-fallback warning has been printed for this session
+	/// (the warning fires once, when the last cached frame is returned with
+	/// a PTS far from the requested one).
+	eof_fallback_warned: bool,
 }
 
 /// Cached swscale context (recreated when any dimension/format changes).
@@ -602,6 +606,7 @@ impl DecoderState {
 				cache_at_zero: false,
 				cache_at_eof: false,
 				second_ts,
+				eof_fallback_warned: false,
 			})
 		} else {
 			None
@@ -754,6 +759,24 @@ impl DecoderState {
 		Ok(())
 	}
 
+	/// The smallest positive PTS gap between consecutive cached frames, in
+	/// the stream's time base. `None` when it cannot be derived (fewer than
+	/// two frames, or all frames share a PTS).
+	fn frame_interval_ts(video: &VideoDecodeState) -> Option<i64> {
+		let mut min: Option<i64> = None;
+		for pair in video.cache.iter().zip(video.cache.iter().skip(1)) {
+			let a = pair.0.pts().unwrap_or(AV_NOPTS_VALUE);
+			let b = pair.1.pts().unwrap_or(AV_NOPTS_VALUE);
+			if a != AV_NOPTS_VALUE && b != AV_NOPTS_VALUE {
+				let gap = (b - a).abs();
+				if gap > 0 {
+					min = Some(min.map_or(gap, |m: i64| m.min(gap)));
+				}
+			}
+		}
+		min
+	}
+
 	/// Retrieve the video frame at (or before) `time`, mirroring the C++
 	/// `retrieve_frame` seek/cache logic.
 	fn retrieve_frame(
@@ -850,6 +873,26 @@ impl DecoderState {
 						return Err(fail("unexpected codec EOF - unable to retrieve frame"));
 					}
 					return_frame = video.cache.back().cloned();
+					// The returned frame is the last cached one, which may
+					// sit far from the requested timestamp (e.g. a corrupt
+					// or truncated file whose frames all decode to the
+					// start). Warn once per session with the actual offsets
+					// so the mismatch is diagnosable; skip files whose
+					// frames carry no usable PTS spacing (still images).
+					if !video.eof_fallback_warned {
+						video.eof_fallback_warned = true;
+						if let (Some(frame), Some(gap)) =
+							(return_frame.as_ref(), Self::frame_interval_ts(&video))
+						{
+							let got = frame.pts().unwrap_or(AV_NOPTS_VALUE);
+							if got != AV_NOPTS_VALUE && (got - target_ts).abs() > gap {
+								eprintln!(
+									"oak-codec: EOF fallback in '{}': target {} got {} (frame gap {})",
+									self.filename, target_ts, got, gap
+								);
+							}
+						}
+					}
 					break;
 				}
 				Pull::Eagain => {
@@ -1794,6 +1837,12 @@ struct VideoEncoderState {
 	/// One frame in the encoder's time base (the last packet's duration;
 	/// see `FFmpegEncoder::open`).
 	frame_duration: i64,
+	/// The output stream's time base as left by `write_header`. The muxer
+	/// may re-set it while writing the header (mp4/mov force a video
+	/// timescale >= 10000) and FFmpeg 9 no longer rescales packet
+	/// timestamps to match, so every packet must be rescaled into this
+	/// value before `write_interleaved` (see `EncoderState::open`).
+	stream_time_base: FfRational,
 }
 
 /// Opened audio encoder + its conversion resampler.
@@ -1982,11 +2031,11 @@ impl EncoderState {
 			encoder.set_frame_rate(Some(frame_rate));
 			// The codecs' packet timestamps use a fine tick (x264 encodes at
 			// 1024 ticks per frame); give H.264 an encoder time base scaled
-			// to that so the frame PTS stay integral, and sync the stream to
-			// the encoder's ACTUAL post-open time base (the value the muxer
-			// reads) so the container timing is `seconds * frame_rate`.
-			// Other codecs (e.g. MPEG-2) reject the scaled rate and keep the
-			// nominal frame-duration time base.
+			// to that so the frame PTS stay integral. Other codecs (e.g.
+			// MPEG-2) reject the scaled rate and keep the nominal
+			// frame-duration time base. The stream is synced to this value
+			// below (pre-header); packets are rescaled into the stream's
+			// post-header time base when written (`stream_time_base`).
 			let tick = if codec_id == ffmpeg::codec::Id::H264 {
 				FfRational(time_base.0, time_base.1 * 1024)
 			} else {
@@ -2010,9 +2059,14 @@ impl EncoderState {
 			stream.set_parameters(&opened);
 			// The encoder may adjust the time base during `open` (x264
 			// picks its own); sync the stream to the encoder's ACTUAL time
-			// base so the container timing matches the frame PTS computed
-			// from it (a mismatched stream time base crams the whole video
-			// into the first milliseconds).
+			// base. This is only the pre-header value though: the muxer
+			// re-sets the stream time base inside `write_header` (mp4/mov
+			// force a video timescale >= 10000, so a 10 fps stream's 1/10
+			// becomes 1/10240) and FFmpeg 9 no longer rescales packet
+			// timestamps for us, so the packets written after that point
+			// must already be in the stream's final time base. `open`
+			// records that post-header value and every video packet is
+			// rescaled into it (identity when both match, e.g. mkv).
 			let time_base = opened.time_base();
 			stream.set_time_base(time_base);
 			// One frame in the encoder's time base, used to fill the last
@@ -2042,6 +2096,8 @@ impl EncoderState {
 				height,
 				time_base,
 				frame_duration,
+				// Overwritten below with the stream's real post-header value.
+				stream_time_base: time_base,
 			});
 		}
 
@@ -2097,6 +2153,15 @@ impl EncoderState {
 		}
 
 		output.write_header().map_err(ffmpeg_err)?;
+
+		// The muxer may have adjusted the stream time base while writing
+		// the header (see the note above); read the value the container
+		// actually uses so packets can be rescaled into it.
+		if let Some(video) = video.as_mut() {
+			if let Some(tb) = stream_time_base_after_header(&output, video.stream_index) {
+				video.stream_time_base = tb;
+			}
+		}
 
 		self.output = Some(OutputState {
 			output,
@@ -2162,9 +2227,11 @@ impl EncoderState {
 
 		// # CPP-PARITY
 		// `FFmpegEncoder::write_frame` passes the frame time in seconds; the
-		// Rust `Frame` carries the timestamp as a rational. The PTS is
-		// expressed in the encoder's own time base (captured at open), so
-		// the container timing is exactly `seconds * rate`.
+		// Rust `Frame` carries the timestamp as a rational. The frame PTS
+		// given to the encoder stays in the encoder's own time base
+		// (captured at open) — the encoder validates them against its own
+		// rate — and the packets it emits are rescaled into the stream's
+		// post-`write_header` time base when written (`drain_video_packets`).
 		let secs = frame.timestamp().to_f64();
 		let tb = video.time_base;
 		let pts = (secs * tb.1 as f64 / tb.0 as f64).round() as i64;
@@ -2287,6 +2354,10 @@ fn drain_video_encoder(
 				if pkt.duration() <= 0 {
 					pkt.set_duration(video.frame_duration);
 				}
+				// Same rescale as `drain_video_packets`: the final flushed
+				// frame is emitted with encoder time base, which the muxer
+				// cannot consume directly.
+				pkt.rescale_ts(video.time_base, video.stream_time_base);
 				pkt.write_interleaved(output).map_err(ffmpeg_err)?;
 			}
 			Err(e) if is_eof_or_eagain(&e) => break,
@@ -2332,6 +2403,11 @@ fn drain_video_packets(
 				if pkt.duration() <= 0 {
 					pkt.set_duration(video.frame_duration);
 				}
+				// The encoder emits timestamps in its own time base; the
+				// muxer expects them in the stream's post-`write_header`
+				// time base (see `EncoderState::open`), so rescale the
+				// whole packet (pts/dts/duration) before writing.
+				pkt.rescale_ts(video.time_base, video.stream_time_base);
 				pkt.write_interleaved(output).map_err(ffmpeg_err)?;
 			}
 			Err(e) if is_eof_or_eagain(&e) => break,
@@ -2358,6 +2434,30 @@ fn drain_audio_packets(
 		}
 	}
 	Ok(())
+}
+
+/// The stream's time base as recorded in the container after
+/// `write_header` (the muxer may have re-set it). `None` if the stream is
+/// missing or the muxer left the time base unset (num/den == 0).
+fn stream_time_base_after_header(
+	output: &ffmpeg::format::context::Output,
+	index: usize,
+) -> Option<FfRational> {
+	// SAFETY: `output` is a live `AVFormatContext`; `nb_streams` bounds the
+	// `streams` array, and `index` came from the same context's
+	// `add_stream`. Reading the (muxer-owned) stream time base is a plain
+	// field read with no aliasing.
+	unsafe {
+		let ctx = output.as_ptr();
+		let streams = std::slice::from_raw_parts((*ctx).streams, (*ctx).nb_streams as usize);
+		let st = *streams.get(index)?;
+		let tb = (*st).time_base;
+		if tb.num == 0 || tb.den == 0 {
+			None
+		} else {
+			Some(FfRational(tb.num, tb.den))
+		}
+	}
 }
 
 /// Map an `ExportCodec::Codec` raw value to an FFmpeg codec id
