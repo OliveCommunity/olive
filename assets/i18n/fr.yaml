@@ -236,6 +236,7 @@
 "ofx.color.ok": "Valider"
 "ofx.color.cancel": "Annuler"
 "ofx.color.invalid": "Couleur hexadécimale invalide"
+"ofx.color.pick_project": "Choisir dans le projet"
 "dialog.cancel": "Annuler"
 "dialog.close": "Fermer"
 "dialog.ok": "OK"

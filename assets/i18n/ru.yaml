@@ -236,6 +236,7 @@
 "ofx.color.ok": "ОК"
 "ofx.color.cancel": "Отмена"
 "ofx.color.invalid": "Недопустимый шестнадцатеричный цвет"
+"ofx.color.pick_project": "Выбрать из проекта"
 "dialog.cancel": "Отмена"
 "dialog.close": "Закрыть"
 "dialog.ok": "ОК"

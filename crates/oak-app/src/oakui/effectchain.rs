@@ -857,6 +857,72 @@ mod tests {
 		oak_undo::global::clear().unwrap();
 	}
 
+	/// The inspector's colour-parameter loop: the value the UI commits
+	/// (`NodeValue::Color` built from `f32` channels) must read back
+	/// **exactly** through `effect_params` — the per-frame value sync
+	/// (`sync_values` → `set_committed`) pulls the swatch back to the engine
+	/// value whenever the readback differs, so any rounding here would make
+	/// a freshly committed colour snap back to the old one.
+	#[test]
+	fn color_param_set_read_round_trip() {
+		let _g = stack_lock();
+		oak_undo::global::clear().unwrap();
+		let (project, host) = project_with_clip();
+
+		// A built-in video effect whose scratch core exposes a colour input
+		// (the inspector's swatch picker handles `ValueType::Color`).
+		let ty = addable_effects()
+			.into_iter()
+			.find(|entry| {
+				let (core, _behavior) = oak_node::factory::Factory::global()
+					.create_any(&entry.type_id)
+					.expect("the entry resolves");
+				core.inputs.iter().any(|i| {
+					i.value_type == oak_node::value::ValueType::Color
+						&& i.flags & oak_node::input::flags::HIDDEN == 0
+				})
+			})
+			.expect("at least one built-in effect exposes a colour input")
+			.type_id;
+		let eff = insert(&project, host, 0, &ty).unwrap();
+
+		let input_id = {
+			let g = lock(&project);
+			g.graph
+				.get(eff)
+				.and_then(|e| {
+					e.core.inputs.iter().find(|i| {
+						i.value_type == oak_node::value::ValueType::Color
+							&& i.flags & oak_node::input::flags::HIDDEN == 0
+					})
+				})
+				.map(|i| i.id.clone())
+				.expect("the effect exposes a colour input")
+		};
+
+		// The snapshot lists the param under the same id the UI writes to.
+		let params = effect_params(&lock(&project).graph, eff).unwrap();
+		let param = params
+			.iter()
+			.find(|p| p.input_id == input_id)
+			.expect("the colour param appears in the snapshot");
+		assert_eq!(param.value_type, oak_node::value::ValueType::Color);
+
+		// Commit the way `OfxColorPicker::commit` does: f32 channels widened
+		// to f64. The readback (f64 → f32) must round-trip exactly, or the
+		// swatch would snap back on the next `sync_values` pass.
+		let color = NodeValue::Color([0.25, 0.5, 0.75, 0.4]);
+		set_input_value(&project, eff, &input_id, color.clone()).unwrap();
+		let snapshot = effect_params(&lock(&project).graph, eff).unwrap();
+		let read = snapshot
+			.iter()
+			.find(|p| p.input_id == input_id)
+			.unwrap();
+		assert_eq!(read.value, color, "the engine must echo the committed colour");
+
+		oak_undo::global::clear().unwrap();
+	}
+
 	/// The combo-option collector reads the repeated `("combo_option", _)`
 	/// property keys (and the string-combo values from `("combo_value", _)`).
 	#[test]
