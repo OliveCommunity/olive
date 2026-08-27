@@ -27,9 +27,11 @@
 //! (the wgpu map_async callback marshalling) besides `bridge/`.
 //!
 //! Headless status: `GpuContext::create` requests an adapter without any
-//! surface; when no adapter is available (headless CI, VMs) it returns
-//! `None` and every consumer falls back to the CPU path. GPU tests skip
-//! with no adapter. Verified on macOS Metal (wgpu 25.0.2).
+//! surface; when no adapter is available (headless CI, VMs) or the only
+//! candidates cannot render the pipeline's canonical Rgba32Float target
+//! (downlevel GL/GLES), it returns `None` and every consumer falls back
+//! to the CPU path. GPU tests skip with no adapter. Verified on macOS
+//! Metal (wgpu 25.0.2).
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -221,6 +223,18 @@ impl GpuContext {
 					Err(_) => continue, // try the next backend in the fallback order
 				};
 			let info = adapter.get_info();
+			// The pipeline's canonical render target is Rgba32Float;
+			// adapters that cannot render it (downlevel GL/GLES without
+			// GL_EXT_color_buffer_float — e.g. some software Mesa
+			// setups) fail every pipeline/texture-usage validation, so
+			// treat them as unavailable and let the CPU path take over.
+			if !adapter
+				.get_texture_format_features(wgpu::TextureFormat::Rgba32Float)
+				.allowed_usages
+				.contains(wgpu::TextureUsages::RENDER_ATTACHMENT)
+			{
+				continue;
+			}
 			// Linear sampling on Rgba32Float needs FLOAT32_FILTERABLE
 			// (widely available on desktop GPUs); without it effect
 			// shaders sample nearest — a quality degradation, not a
