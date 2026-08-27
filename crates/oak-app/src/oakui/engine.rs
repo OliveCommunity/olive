@@ -40,7 +40,7 @@ use gpui::node_graph::{NodeGraphDataSource, NodeGraphEvent};
 use gpui::timeline::{
 	ClipId, Frame, FrameRate, TimelineDataSource, TimelineEvent, TrackData, TrackKind,
 };
-use gpui::{App, Context, Entity, Pixels, Point, RenderImage};
+use gpui::{App, Context, Entity, Pixels, Point, Rgba, RenderImage};
 use gpui_widgets::audio_meter::AudioMeterDataSource;
 use gpui_widgets::project_explorer::ProjectDataSource;
 use gpui_widgets::viewer::PlaybackClock;
@@ -273,6 +273,21 @@ pub trait EngineGateway: Sized {
 pub trait EngineClock: PlaybackClock + 'static {}
 
 impl<T: PlaybackClock + 'static> EngineClock for T {}
+
+/// The cross-panel mailbox for the viewer eyedropper. The OFX color picker
+/// arms the program viewer's eyedropper, the viewer samples a pixel on click,
+/// and the picker polls for the result — without `AppEngine` (or either
+/// panel) having to know about the other. Stored as a gpui global so the
+/// default-method implementation needs no state on the engine types.
+#[derive(Default)]
+struct EyedropperMailbox {
+	/// Whether the program viewer's eyedropper is armed.
+	armed: bool,
+	/// The color picked by the viewer, consumed by the picker.
+	result: Option<Rgba>,
+}
+
+impl gpui::Global for EyedropperMailbox {}
 
 /// The full app-facing engine surface: the gateway plus every widget
 /// data-source trait and the app-only operations (clocks, viewer frames,
@@ -1158,6 +1173,34 @@ pub trait AppEngine:
 	/// The display name of the engine backend ("mock" / "real"), shown in
 	/// the status bar.
 	fn backend_name(&self) -> &'static str;
+
+	/// Arms or disarms the program viewer's eyedropper. While armed the
+	/// viewer samples the pixel under the cursor on click and reports it via
+	/// [`Self::eyedropper_picked`]; the OFX color picker drives both.
+	fn set_eyedropper_armed(&mut self, armed: bool, cx: &mut Context<Self>) {
+		cx.default_global::<EyedropperMailbox>().armed = armed;
+		cx.notify();
+	}
+
+	/// Whether the program viewer's eyedropper is currently armed.
+	fn eyedropper_armed(&self, cx: &App) -> bool {
+		cx.try_global::<EyedropperMailbox>().is_some_and(|mailbox| mailbox.armed)
+	}
+
+	/// Reports a color picked by the program viewer's eyedropper and
+	/// disarms it in the same move.
+	fn eyedropper_picked(&mut self, color: Rgba, cx: &mut Context<Self>) {
+		let mailbox = cx.default_global::<EyedropperMailbox>();
+		mailbox.result = Some(color);
+		mailbox.armed = false;
+		cx.notify();
+	}
+
+	/// Takes (and clears) the last picked color, if any. Polled by the OFX
+	/// color picker every frame while its picker is armed.
+	fn take_eyedropper_result(&mut self, cx: &mut Context<Self>) -> Option<Rgba> {
+		cx.default_global::<EyedropperMailbox>().result.take()
+	}
 }
 
 /// The detected multicam state the Multicam panel displays (the C++

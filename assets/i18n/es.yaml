@@ -236,7 +236,7 @@
 "ofx.color.ok": "Aceptar"
 "ofx.color.cancel": "Cancelar"
 "ofx.color.invalid": "Color hexadecimal no válido"
-"ofx.color.pick_project": "Seleccionar del proyecto"
+"ofx.color.pick_viewer": "Seleccionar del visor"
 "dialog.cancel": "Cancelar"
 "dialog.close": "Cerrar"
 "dialog.ok": "Aceptar"

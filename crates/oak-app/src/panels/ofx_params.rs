@@ -41,14 +41,13 @@
 //! in-progress slider drags); the view observes the engine and re-syncs
 //! the widget values from the engine snapshot on every render.
 
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use crate::oakui::component::text_input;
 
 use gpui::effect_stack::EffectId;
 use gpui::colors::DefaultColors;
 use gpui::{
-	div, img, prelude::*, px, rgb, size, point, ClickEvent, Context, Entity, EventEmitter, Render,
+	div, prelude::*, px, rgb, size, point, ClickEvent, Context, Entity, EventEmitter, Render,
 	SharedString, Window,
 };
 use gpui::{
@@ -191,6 +190,16 @@ impl<E: AppEngine> OfxParamsView<E> {
 						};
 						let picker = picker.clone();
 						picker.update(cx, |picker, cx| picker.set_committed(color, cx));
+					}
+					// Drain a viewer eyedropper pick into the draft. The result
+					// is taken (not peeked) so an armed-but-unpicked picker
+					// keeps the previous value once the picker disarms.
+					if let Some(color) = self
+						.engine
+						.update(cx, |engine, cx| engine.take_eyedropper_result(cx))
+					{
+						let picker = picker.clone();
+						picker.update(cx, |picker, cx| picker.apply_viewer_pick(color, cx));
 					}
 				}
 				ControlKind::Text(editor) => {
@@ -740,10 +749,10 @@ fn wire_controls<E: AppEngine>(view: &OfxParamsView<E>, cx: &mut Context<OfxPara
 			}
 			ControlKind::Color(picker) => {
 				let picker = picker.clone();
-				cx.subscribe(&picker, move |_, _, event: &OfxColorEvent, cx| {
+				cx.subscribe(&picker, move |_, _, event: &OfxColorEvent, cx| match event {
 					// Only OK commits; slider drags update the draft inside
 					// the picker, so a drag session is one undo row.
-					if let OfxColorEvent::Committed(color) = event {
+					OfxColorEvent::Committed(color) => {
 						let nv = NodeValue::Color([
 							color.r as f64,
 							color.g as f64,
@@ -760,6 +769,15 @@ fn wire_controls<E: AppEngine>(view: &OfxParamsView<E>, cx: &mut Context<OfxPara
 							}
 						});
 					}
+					// Arming the picker points the program viewer's cursor at
+					// the frame; the next click there lands in the draft.
+					OfxColorEvent::PickViewerToggle { armed } => {
+						engine.update(cx, |engine, cx| {
+							engine.set_eyedropper_armed(*armed, cx);
+						});
+					}
+					// Open/close are purely local to the popup.
+					OfxColorEvent::Opened | OfxColorEvent::Cancelled => {}
 				})
 				.detach();
 			}
@@ -899,11 +917,6 @@ impl<E: AppEngine> Render for OfxParamsView<E> {
 						row.into_any_element()
 					}
 					ControlKind::Color(picker) => {
-						// Refresh the "pick from project" strip from the
-						// engine's bin every frame (equality inside the
-						// picker short-circuits unchanged media).
-						let media = collect_project_media(self.engine.read(cx));
-						picker.update(cx, |picker, cx| picker.set_project_media(media, cx));
 						div().flex_1().child(picker.clone()).into_any_element()
 					}
 					ControlKind::Text(editor) => {
@@ -1014,103 +1027,10 @@ pub enum OfxColorEvent {
 	Cancelled,
 	/// OK pressed: the caller should commit this colour (undoable).
 	Committed(Rgba),
-}
-
-/// A project media entry offered by the colour picker's "pick from
-/// project" strip (a flattened view of the bin's entries).
-#[derive(Debug, Clone, PartialEq)]
-pub struct ProjectMedia {
-	/// The entry's stable id (host-side key).
-	id: u64,
-	/// The display name.
-	name: String,
-	/// An asset path for the thumbnail, if any.
-	thumbnail: Option<PathBuf>,
-}
-
-impl From<gpui_widgets::project_explorer::ProjectEntry> for ProjectMedia {
-	fn from(entry: gpui_widgets::project_explorer::ProjectEntry) -> Self {
-		Self {
-			id: entry.id,
-			name: entry.name.to_string(),
-			thumbnail: entry.thumbnail.map(|p| PathBuf::from(p.to_string())),
-		}
-	}
-}
-
-/// Flatten the engine's project entries into the picker's media strip: a
-/// directory root contributes its direct file children; a file root is
-/// itself an entry. Matches the project explorer's icon view.
-fn collect_project_media<E: AppEngine>(engine: &E) -> Vec<ProjectMedia> {
-	let mut media = Vec::new();
-	for root in engine.roots() {
-		if root.is_dir {
-			for child in engine.children(root.id) {
-				if !child.is_dir {
-					media.push(ProjectMedia::from(child));
-				}
-			}
-		} else {
-			media.push(ProjectMedia::from(root));
-		}
-	}
-	media
-}
-
-/// Sample an [`image::RgbaImage`] at unit coordinates (0..1 each);
-/// out-of-range coordinates clamp to the nearest edge pixel.
-fn sample_rgba8(img: &image::RgbaImage, u: f32, v: f32) -> Option<Rgba> {
-	let w = img.width();
-	let h = img.height();
-	if w == 0 || h == 0 {
-		return None;
-	}
-	let x = (u.clamp(0.0, 1.0) * (w - 1) as f32).round() as u32;
-	let y = (v.clamp(0.0, 1.0) * (h - 1) as f32).round() as u32;
-	let p = img.get_pixel(x, y);
-	Some(Rgba {
-		r: p[0] as f32 / 255.0,
-		g: p[1] as f32 / 255.0,
-		b: p[2] as f32 / 255.0,
-		a: p[3] as f32 / 255.0,
-	})
-}
-
-/// Map a point inside a `box_w` x `box_h` widget to unit coordinates in an
-/// `img_w` x `img_h` image laid out with `ObjectFit::Contain` (the `img`
-/// default). Returns `None` when the point falls in the letterbox.
-fn contain_uv(
-	img_w: u32,
-	img_h: u32,
-	box_w: f32,
-	box_h: f32,
-	u: f32,
-	v: f32,
-) -> Option<(f32, f32)> {
-	let (w, h) = (img_w as f32, img_h as f32);
-	if w <= 0.0 || h <= 0.0 || box_w <= 0.0 || box_h <= 0.0 {
-		return None;
-	}
-	let scale = (box_w / w).min(box_h / h);
-	let cw = w * scale;
-	let ch = h * scale;
-	let ox = (box_w - cw) / 2.0;
-	let oy = (box_h - ch) / 2.0;
-	let px = u * box_w - ox;
-	let py = v * box_h - oy;
-	if px < 0.0 || py < 0.0 || px > cw || py > ch {
-		return None;
-	}
-	Some((px / cw, py / ch))
-}
-
-/// Load `path` and sample it at unit coordinates, assuming the image is
-/// laid out with `ObjectFit::Contain` in a `box_w` x `box_h` box. `None`
-/// when the file can't be decoded or the point lands in the letterbox.
-fn sample_pixel(path: &Path, box_w: f32, box_h: f32, u: f32, v: f32) -> Option<Rgba> {
-	let img = image::open(path).ok()?.to_rgba8();
-	let (uu, vv) = contain_uv(img.width(), img.height(), box_w, box_h, u, v)?;
-	sample_rgba8(&img, uu, vv)
+	/// The viewer eyedropper was armed (`true`) or disarmed (`false`); the
+	/// params view routes it to the engine, which mirrors it into the
+	/// program viewer.
+	PickViewerToggle { armed: bool },
 }
 
 /// A colour swatch with a deferred popup picker, used for OFX colour
@@ -1153,8 +1073,9 @@ pub struct OfxColorPicker {
 	a: Entity<Slider>,
 	/// The hex editor (`#RRGGBB` / `#RRGGBBAA`).
 	hex: Entity<EditableTextState>,
-	/// The "pick from project" media strip (thumbnails to sample from).
-	media: Vec<ProjectMedia>,
+	/// Whether the viewer eyedropper is armed (a click on the program
+	/// viewer samples a pixel back into the draft).
+	picking: bool,
 }
 
 impl OfxColorPicker {
@@ -1165,7 +1086,7 @@ impl OfxColorPicker {
 		window: &mut Window,
 		cx: &mut Context<Self>,
 	) -> Self {
-		let mut picker = Self {
+		let picker = Self {
 			control,
 			open: false,
 			position: Point::default(),
@@ -1178,7 +1099,7 @@ impl OfxColorPicker {
 			b: Self::channel_slider(cx, window, 2, color.b as f64),
 			a: Self::channel_slider(cx, window, 3, color.a as f64),
 			hex: cx.new(|cx| EditableTextState::new(StringStorage::default(), cx)),
-			media: Vec::new(),
+			picking: false,
 		};
 		let hex_text = format_hex(color);
 		picker.hex.update(cx, |hex, cx| hex.emplace(&hex_text, cx));
@@ -1269,15 +1190,26 @@ impl OfxColorPicker {
 		cx.notify();
 	}
 
-	/// Refresh the "pick from project" media strip. No-op when unchanged
-	/// (the params view pushes this every frame; equality short-circuits
-	/// the notify so the strip does not re-render endlessly).
-	pub(crate) fn set_project_media(&mut self, media: Vec<ProjectMedia>, cx: &mut Context<Self>) {
-		if self.media == media {
-			return;
-		}
-		self.media = media;
+	/// Toggle the viewer eyedropper. While armed the program viewer samples
+	/// the pixel under the cursor on click; the params view routes the
+	/// toggle to the engine and polls [`AppEngine::take_eyedropper_result`]
+	/// every frame, so this picker stays in sync with the armed state.
+	fn toggle_viewer_pick(&mut self, cx: &mut Context<Self>) {
+		self.picking = !self.picking;
+		cx.emit(OfxColorEvent::PickViewerToggle { armed: self.picking });
 		cx.notify();
+	}
+
+	/// Apply a colour sampled from the program viewer into the draft and
+	/// disarm the eyedropper (the engine already cleared its armed flag).
+	pub(crate) fn apply_viewer_pick(&mut self, color: Rgba, cx: &mut Context<Self>) {
+		if self.picking {
+			self.draft = color;
+			self.picking = false;
+			self.hex_error = false;
+			self.sync_from_draft(cx);
+			cx.notify();
+		}
 	}
 
 	fn open_menu(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
@@ -1293,8 +1225,13 @@ impl OfxColorPicker {
 		}
 	}
 
-	/// Cancel: discard the draft, keep the committed colour.
+	/// Cancel: discard the draft, keep the committed colour. Also disarms a
+	/// viewer eyedropper that was left armed.
 	fn close_menu(&mut self, cx: &mut Context<Self>) {
+		if self.picking {
+			self.picking = false;
+			cx.emit(OfxColorEvent::PickViewerToggle { armed: false });
+		}
 		if self.open {
 			self.open = false;
 			self.hex_error = false;
@@ -1307,8 +1244,13 @@ impl OfxColorPicker {
 		}
 	}
 
-	/// OK: validate a hand-typed hex edit, then commit the draft.
+	/// OK: validate a hand-typed hex edit, then commit the draft. Also
+	/// disarms a viewer eyedropper that was left armed.
 	fn commit(&mut self, cx: &mut Context<Self>) {
+		if self.picking {
+			self.picking = false;
+			cx.emit(OfxColorEvent::PickViewerToggle { armed: false });
+		}
 		let text = self.hex.read(cx).as_str().trim().to_string();
 		if !text.is_empty() {
 			match parse_hex(&text) {
@@ -1444,84 +1386,24 @@ impl OfxColorPicker {
 			}));
 		let buttons = div().flex().justify_between().gap_1().child(cancel).child(ok);
 
-		// "Pick from project": a strip of bin thumbnails; clicking one
-		// samples the pixel under the cursor into the draft. Thumbnails are
-		// `img` (ObjectFit::Contain), and the strip's canvas captures the
-		// rendered bounds so the click can be mapped back into the image.
-		let media_section = if self.media.is_empty() {
-			div().into_any_element()
-		} else {
-			let mut strip = div().flex().flex_wrap().gap_1();
-			for media in &self.media {
-				let Some(thumb) = &media.thumbnail else {
-					continue;
-				};
-				let id = media.id;
-				let thumb = thumb.clone();
-				let bounds_cell = Arc::new(Mutex::new(None::<Bounds<Pixels>>));
-				let bounds_cell_prepaint = bounds_cell.clone();
-				let thumb_click = thumb.clone();
-				strip = strip.child(
-					div()
-						.id(ElementId::named_usize("ofx-color-project-thumb", id as usize))
-						.debug_selector(move || format!("ofx-color-project-thumb-{id}").into())
-						.relative()
-						.w(px(72.0))
-						.h(px(48.0))
-						.overflow_hidden()
-						.rounded_sm()
-						.border_1()
-						.border_color(colors.border)
-						.cursor_pointer()
-						.child(img(thumb).w(px(72.0)).h(px(48.0)))
-						.child(
-							canvas(
-								move |bounds, _window, _cx| {
-									*bounds_cell_prepaint.lock().unwrap() = Some(bounds);
-								},
-								|_bounds, _content, _window, _cx| {},
-							)
-							.absolute()
-							.inset_0(),
-						)
-						.on_mouse_down(
-							MouseButton::Left,
-							cx.listener(move |this, event: &MouseDownEvent, _window, cx| {
-								let Some(bounds) = bounds_cell.lock().unwrap().take() else {
-									return;
-								};
-								let pos = event.position - bounds.origin;
-								let u = f32::from(pos.x) / f32::from(bounds.size.width);
-								let v = f32::from(pos.y) / f32::from(bounds.size.height);
-								let Some(color) = sample_pixel(&thumb_click, 72.0, 48.0, u, v)
-								else {
-									return;
-								};
-								this.draft = color;
-								this.hex_error = false;
-								this.sync_from_draft(cx);
-								cx.notify();
-							}),
-						),
-				);
-			}
-			div()
-				.flex()
-				.flex_col()
-				.gap_1()
-				.pt_1()
-				.mt_1()
-				.border_t_1()
-				.border_color(colors.border)
-				.child(
-					div()
-						.text_xs()
-						.text_color(colors.text)
-						.child(crate::i18n::tr("ofx.color.pick_project")),
-				)
-				.child(strip)
-				.into_any_element()
-		};
+		// "Pick from viewer": arms the eyedropper in the program viewer; the
+		// next click on the frame samples the pixel under the cursor.
+		let pick_viewer = div()
+			.id(SharedString::from(format!("ofx-color-pick-viewer-{control}")))
+			.debug_selector(move || format!("ofx-color-pick-viewer-{control}").into())
+			.cursor_pointer()
+			.rounded_sm()
+			.border_1()
+			.border_color(colors.border)
+			.bg(if self.picking { colors.selected } else { colors.background })
+			.text_sm()
+			.text_color(colors.text)
+			.px_2()
+			.py_1()
+			.child(crate::i18n::tr("ofx.color.pick_viewer"))
+			.on_click(cx.listener(|this, _event: &ClickEvent, _window, cx| {
+				this.toggle_viewer_pick(cx);
+			}));
 
 		deferred(
 			anchored()
@@ -1549,14 +1431,18 @@ impl OfxColorPicker {
 					)
 					.on_key_down(cx.listener(|this, event: &KeyDownEvent, _window, cx| {
 						if event.keystroke.key == "escape" {
-							this.close_menu(cx);
+							if this.picking {
+								this.toggle_viewer_pick(cx);
+							} else {
+								this.close_menu(cx);
+							}
 						}
 					}))
 					.child(slider_rows)
 					.child(hex_row)
 					.child(error_hint)
 					.child(buttons)
-					.child(media_section),
+					.child(pick_viewer),
 				),
 			)
 			.with_priority(1)
@@ -1689,7 +1575,8 @@ fn paint_checker_swatch(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use gpui::{Modifiers, TestAppContext};
+	use gpui::{Modifiers, Subscription, TestAppContext};
+	use std::sync::Mutex;
 
 	#[test]
 	fn hex_parsing_and_formatting() {
@@ -1788,86 +1675,14 @@ mod tests {
 		);
 	}
 
-	#[test]
-	fn sample_rgba8_reads_corners() {
-		let mut img = image::RgbaImage::new(4, 2);
-		img.put_pixel(0, 0, image::Rgba([255, 0, 0, 255]));
-		img.put_pixel(3, 0, image::Rgba([0, 255, 0, 255]));
-		img.put_pixel(0, 1, image::Rgba([0, 0, 255, 255]));
-		img.put_pixel(3, 1, image::Rgba([255, 255, 255, 128]));
-
-		let close = |a: Rgba, b: Rgba| {
-			(a.r - b.r).abs() < 1e-6
-				&& (a.g - b.g).abs() < 1e-6
-				&& (a.b - b.b).abs() < 1e-6
-				&& (a.a - b.a).abs() < 1e-6
-		};
-
-		let red = Rgba { r: 1.0, g: 0.0, b: 0.0, a: 1.0 };
-		let green = Rgba { r: 0.0, g: 1.0, b: 0.0, a: 1.0 };
-		let blue = Rgba { r: 0.0, g: 0.0, b: 1.0, a: 1.0 };
-		let white_half = Rgba { r: 1.0, g: 1.0, b: 1.0, a: 128.0 / 255.0 };
-		assert!(close(sample_rgba8(&img, 0.0, 0.0).unwrap(), red), "top-left");
-		assert!(close(sample_rgba8(&img, 1.0, 0.0).unwrap(), green), "top-right");
-		assert!(close(sample_rgba8(&img, 0.0, 1.0).unwrap(), blue), "bottom-left");
-		assert!(
-			close(sample_rgba8(&img, 1.0, 1.0).unwrap(), white_half),
-			"bottom-right translucent"
-		);
-
-		// Out-of-range coordinates clamp to the nearest edge pixel.
-		assert!(close(sample_rgba8(&img, 2.0, -0.5).unwrap(), green), "clamps u/v");
-		assert!(close(sample_rgba8(&img, -1.0, 2.0).unwrap(), blue), "clamps negative");
-		// (0.5, 0.5) rounds to pixel (2, 1), which was never set (transparent
-		// black) — exercises the rounding path.
-		let mid = sample_rgba8(&img, 0.5, 0.5).unwrap();
-		assert!(mid.r.abs() < 1e-6 && mid.a.abs() < 1e-6, "middle pixel unset");
-	}
-
-	#[test]
-	fn contain_uv_maps_letterbox() {
-		// A 4x3 image inside a 72x48 box: scale = min(18, 16) = 16, so the
-		// content is 64x48, letterboxed by 4px on each side.
-		assert_eq!(contain_uv(4, 3, 72.0, 48.0, 0.5, 0.5), Some((0.5, 0.5)));
-		assert_eq!(contain_uv(4, 3, 72.0, 48.0, 0.0, 0.5), None, "left letterbox");
-		assert_eq!(contain_uv(4, 3, 72.0, 48.0, 1.0, 0.5), None, "right letterbox");
-		// The content's right edge sits at u = 4/72 + 64/72.
-		let right = contain_uv(4, 3, 72.0, 48.0, 68.0 / 72.0, 0.5).unwrap();
-		assert!((right.0 - 1.0).abs() < 1e-6 && (right.1 - 0.5).abs() < 1e-6);
-		// Degenerate boxes / images sample nothing.
-		assert_eq!(contain_uv(0, 3, 72.0, 48.0, 0.5, 0.5), None);
-		assert_eq!(contain_uv(4, 3, 0.0, 48.0, 0.5, 0.5), None);
-	}
-
-	#[test]
-	fn sample_pixel_reads_png_file() {
-		let dir = std::env::temp_dir().join(format!("oak-ofx-sample-{}", std::process::id()));
-		std::fs::create_dir_all(&dir).unwrap();
-		let path = dir.join("flat.png");
-		let img = image::RgbaImage::from_pixel(2, 2, image::Rgba([0x1A, 0x80, 0xE6, 0xFF]));
-		img.save(&path).unwrap();
-
-		// 2x2 in a 72x48 box: scale = 24 -> 48x48 content, 12px side bars.
-		let c = sample_pixel(&path, 72.0, 48.0, 0.5, 0.5).expect("centre samples");
-		assert!((c.r - 0x1A as f32 / 255.0).abs() < 1e-6);
-		assert!((c.g - 0x80 as f32 / 255.0).abs() < 1e-6);
-		assert!((c.b - 0xE6 as f32 / 255.0).abs() < 1e-6);
-		assert!((c.a - 1.0).abs() < 1e-6);
-		// A click in the left letterbox has no image pixel under it.
-		assert!(sample_pixel(&path, 72.0, 48.0, 0.0, 0.5).is_none());
-		// A missing file samples nothing.
-		assert!(sample_pixel(&dir.join("nope.png"), 72.0, 48.0, 0.5, 0.5).is_none());
-
-		std::fs::remove_file(&path).unwrap();
-		std::fs::remove_dir(&dir).unwrap();
-	}
-
-	/// Opening the popup and clicking a project thumbnail samples the pixel
-	/// under the cursor into the draft (the "pick from project" strip).
+	/// The "pick from viewer" button toggles the eyedropper and emits
+	/// `PickViewerToggle` events that the params view routes to the engine.
 	#[gpui::test]
-	async fn project_eyedropper_samples_into_draft(cx: &mut TestAppContext) {
+	async fn pick_viewer_button_toggles_armed(cx: &mut TestAppContext) {
 		struct Host {
 			picker: Entity<OfxColorPicker>,
+			events: Arc<Mutex<Vec<OfxColorEvent>>>,
+			_subscription: Subscription,
 		}
 		impl Render for Host {
 			fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
@@ -1875,32 +1690,31 @@ mod tests {
 			}
 		}
 
-		// 4x4 source image: red centre pixel, black elsewhere. In a 72x48
-		// thumbnail (scale 12 -> 48x48 content) the strip's centre maps to
-		// image pixel (2, 2).
-		let dir = std::env::temp_dir().join(format!("oak-ofx-eyedrop-{}", std::process::id()));
-		std::fs::create_dir_all(&dir).unwrap();
-		let path = dir.join("clip.png");
-		let mut img = image::RgbaImage::new(4, 4);
-		img.put_pixel(2, 2, image::Rgba([255, 0, 0, 255]));
-		img.save(&path).unwrap();
-
 		cx.update(|cx| cx.init_colors());
 		let window = cx.open_window(size(px(320.0), px(400.0)), |window, cx| {
 			let picker = cx.new(|cx| {
 				OfxColorPicker::new(
 					1,
 					Rgba {
-						r: 0.0,
-						g: 0.0,
-						b: 0.0,
-						a: 1.0,
+						r: 0.4,
+						g: 0.2,
+						b: 0.8,
+						a: 0.5,
 					},
 					window,
 					cx,
 				)
 			});
-			Host { picker }
+			let events = Arc::new(Mutex::new(Vec::new()));
+			let events_sub = events.clone();
+			let _subscription = cx.subscribe(&picker, move |_this, _emitter, event: &OfxColorEvent, _cx| {
+				events_sub.lock().unwrap().push(*event);
+			});
+			Host {
+				picker,
+				events,
+				_subscription,
+			}
 		});
 		cx.run_until_parked();
 
@@ -1909,48 +1723,84 @@ mod tests {
 			window.draw(cx).clear();
 		});
 
-		// Open the popup by clicking the swatch.
+		// Open the popup by clicking the swatch, then re-draw so the popup's
+		// deferred layer is laid out.
 		let swatch = visual.debug_bounds("ofx-color-swatch").expect("swatch painted");
 		let swatch_center = Point::new(
 			swatch.origin.x + swatch.size.width * 0.5,
 			swatch.origin.y + swatch.size.height * 0.5,
 		);
 		visual.simulate_click(swatch_center, Modifiers::default());
-
-		// The params view normally pushes the media strip every frame; here
-		// the Host injects it directly, then re-draws so the strip lays out.
-		let host = window.root(cx).expect("host root");
 		visual.update(|window, cx| {
-			host.update(cx, |host, cx| {
-				host.picker.update(cx, |picker, cx| {
-					picker.set_project_media(
-						vec![ProjectMedia {
-							id: 7,
-							name: "clip.png".into(),
-							thumbnail: Some(path.clone()),
-						}],
-						cx,
-					)
-				});
-			});
 			window.draw(cx).clear();
 		});
 
-		// Click the thumbnail's centre: samples the red pixel into the draft.
-		let thumb = visual
-			.debug_bounds("ofx-color-project-thumb-7")
-			.expect("thumbnail painted");
-		let thumb_center = Point::new(
-			thumb.origin.x + thumb.size.width * 0.5,
-			thumb.origin.y + thumb.size.height * 0.5,
+		// Clicking "pick from viewer" arms the eyedropper...
+		let button = visual
+			.debug_bounds("ofx-color-pick-viewer-1")
+			.expect("pick button painted");
+		let button_center = Point::new(
+			button.origin.x + button.size.width * 0.5,
+			button.origin.y + button.size.height * 0.5,
 		);
-		visual.simulate_click(thumb_center, Modifiers::default());
+		visual.simulate_click(button_center, Modifiers::default());
+		cx.run_until_parked();
+		let host = window.root(cx).expect("host root");
+		let events = cx.read(|cx| host.read(cx).events.lock().unwrap().clone());
+		assert!(
+			matches!(events.last(), Some(OfxColorEvent::PickViewerToggle { armed: true })),
+			"clicking pick should arm the eyedropper, got {events:?}"
+		);
 
-		let draft = cx.read(|cx| host.read(cx).picker.read(cx).draft);
-		assert!((draft.r - 1.0).abs() < 1e-6, "draft should sample red, got {draft:?}");
-		assert!(draft.g.abs() < 1e-6 && draft.b.abs() < 1e-6, "no green/blue leaked");
+		// ...and a second click disarms it again.
+		visual.simulate_click(button_center, Modifiers::default());
+		cx.run_until_parked();
+		let events = cx.read(|cx| host.read(cx).events.lock().unwrap().clone());
+		assert!(
+			matches!(events.last(), Some(OfxColorEvent::PickViewerToggle { armed: false })),
+			"second click should disarm the eyedropper, got {events:?}"
+		);
+	}
 
-		std::fs::remove_file(&path).unwrap();
-		std::fs::remove_dir(&dir).unwrap();
+	/// Applying a viewer pick lands the sampled colour in the draft and
+	/// disarms the eyedropper.
+	#[gpui::test]
+	async fn apply_viewer_pick_updates_draft(cx: &mut TestAppContext) {
+		cx.update(|cx| cx.init_colors());
+		let window = cx.open_window(size(px(320.0), px(200.0)), |window, cx| {
+			OfxColorPicker::new(
+				1,
+				Rgba {
+					r: 0.0,
+					g: 0.0,
+					b: 0.0,
+					a: 1.0,
+				},
+				window,
+				cx,
+			)
+		});
+		cx.run_until_parked();
+
+		let picker = window.root(cx).expect("picker root");
+		let red = Rgba {
+			r: 1.0,
+			g: 0.0,
+			b: 0.0,
+			a: 1.0,
+		};
+		cx.update(|cx| {
+			picker.update(cx, |picker, cx| {
+				picker.toggle_viewer_pick(cx);
+				picker.apply_viewer_pick(red, cx);
+			});
+		});
+
+		let (draft, picking) = cx.read(|cx| {
+			let picker = picker.read(cx);
+			(picker.draft, picker.picking)
+		});
+		assert_eq!(draft, red, "viewer pick should land in the draft");
+		assert!(!picking, "a viewer pick disarms the eyedropper");
 	}
 }

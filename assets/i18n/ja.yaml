@@ -236,7 +236,7 @@
 "ofx.color.ok": "決定"
 "ofx.color.cancel": "キャンセル"
 "ofx.color.invalid": "無効な16進カラーです"
-"ofx.color.pick_project": "プロジェクトから拾う"
+"ofx.color.pick_viewer": "ビューアから拾う"
 "dialog.cancel": "キャンセル"
 "dialog.close": "閉じる"
 "dialog.ok": "OK"

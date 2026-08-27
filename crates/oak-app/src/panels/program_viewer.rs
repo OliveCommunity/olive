@@ -156,6 +156,12 @@ impl<E: AppEngine> ProgramViewerPanel<E> {
 			ViewerEvent::InPointRequested { .. } => cx.emit(menu::ViewerPanelEvent::SetInPoint),
 			ViewerEvent::OutPointRequested { .. } => cx.emit(menu::ViewerPanelEvent::SetOutPoint),
 			ViewerEvent::ClearRangeRequested { .. } => cx.emit(menu::ViewerPanelEvent::ClearRange),
+			// The OFX color picker armed the eyedropper and the user clicked
+			// the frame: hand the sampled colour back to the engine's mailbox.
+			ViewerEvent::EyedropperPick { color } => {
+				this.engine
+					.update(cx, |engine, cx| engine.eyedropper_picked(*color, cx))
+			}
 			event => {
 				let monitor = Monitor::Program;
 				this.engine.update(cx, |engine, cx| match event {
@@ -167,6 +173,10 @@ impl<E: AppEngine> ProgramViewerPanel<E> {
 			}
 		})
 		.detach();
+
+		// Re-render whenever the engine's global eyedropper arm state flips,
+		// so `sync_frame` mirrors it into the viewer widget.
+		cx.observe(&engine, |_this, _engine, cx| cx.notify()).detach();
 
 		// A throttled idle pump for the OFX interact: the plugin's UI work
 		// loop is served on the viewer's own timer (the app tick is
@@ -320,6 +330,13 @@ impl<E: AppEngine> ProgramViewerPanel<E> {
 	/// viewport changed or the plugin requested a repaint (so a paused
 	/// viewer stays inert).
 	fn sync_frame(&mut self, cx: &mut Context<Self>) {
+		// Mirror the OFX color picker's eyedropper arm state into the viewer
+		// widget; while armed, clicking the frame samples the pixel under the
+		// cursor (the setter no-ops when the state is unchanged, so a paused
+		// viewer stays inert).
+		let armed = self.engine.read(cx).eyedropper_armed(cx);
+		self.viewer.update(cx, |viewer, cx| viewer.set_eyedropper_armed(armed, cx));
+
 		// Keep the main-process interact in sync with the inspector's
 		// current selection (creates/destroys the interact as the target
 		// moves; a no-op while it is unchanged).

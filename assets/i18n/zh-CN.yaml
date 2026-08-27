@@ -236,7 +236,7 @@
 "ofx.color.ok": "确定"
 "ofx.color.cancel": "取消"
 "ofx.color.invalid": "无效的十六进制颜色"
-"ofx.color.pick_project": "从项目取色"
+"ofx.color.pick_viewer": "从画面取色"
 "dialog.cancel": "取消"
 "dialog.close": "关闭"
 "dialog.ok": "确定"
