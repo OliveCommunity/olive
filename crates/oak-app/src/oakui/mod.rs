@@ -46,6 +46,7 @@ pub mod effectchain;
 pub mod engine;
 pub mod frames;
 pub mod graphops;
+pub mod gpu;
 pub mod icons;
 pub mod mock;
 pub mod multicam;

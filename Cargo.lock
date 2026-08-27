@@ -4727,6 +4727,7 @@ dependencies = [
  "gpui_elements",
  "gpui_platform",
  "gpui_widgets",
+ "half",
  "image",
  "oak-audio",
  "oak-codec",
@@ -4741,6 +4742,7 @@ dependencies = [
  "oak-undo",
  "serde_yaml",
  "smallvec",
+ "wgpu 29.0.4",
 ]
 
 [[package]]

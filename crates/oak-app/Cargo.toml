@@ -49,6 +49,11 @@ gpui_widgets = { path = "../../gpui/crates/gpui_widgets" }
 # `RenderImage`), matching the versions gpui itself uses.
 image = "0.25"
 smallvec = "1"
+# The 10-bit display path: wgpu matches the version gpui_wgpu links (see the
+# gpui workspace manifest), `half` packs the F32 pipeline output into
+# Rgba16Float texture data (10-bit code values are distinguishable in f16).
+wgpu = "29"
+half = "2.7.1"
 # Editable-text widget (used by the file / export dialogs' path fields, the
 # same gpui-elements crate gpui_widgets builds on).
 gpui_elements = { path = "../../gpui/crates/gpui_elements" }

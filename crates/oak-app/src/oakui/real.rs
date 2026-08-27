@@ -622,13 +622,49 @@ fn rendered_to_owned_image(rendered: &super::renderops::RenderedFrame) -> Option
 			let (w, h) = (meta.width.max(0) as u32, meta.height.max(0) as u32);
 			let pixels = f.shm.slot_to_vec(f.slot);
 			let data = pixels.get(..meta.data_size.max(0) as usize)?;
+			if meta.format == super::renderops::PIXEL_FORMAT_F32 {
+				// M15 S3: the worker rendered F32 (the 10-bit display path)
+				// — repack the padded rows, apply the display transform and
+				// register the RGBA16F texture for the viewer; the BGRA8
+				// image below is only the CPU fallback (scope / eyedropper /
+				// cached fills without a GPU).
+				let mut samples = repack_f32_row_bytes(meta.width, meta.height, meta.linesize, data)?;
+				super::displaycolor::apply_f32_rgba(&mut samples, (w * h) as i64);
+				let image = f32_rgba_to_bgra_image(w, h, &samples);
+				super::gpu::register_display_frame(image.id.0, w, h, &samples);
+				return Some(Arc::new(image));
+			}
 			bgra_bytes_to_render_image(w, h, data).map(Arc::new)
 		}
 		super::renderops::RenderedFrame::CpuF32 { .. } => {
 			let (w, h, samples) = read_f32_frame(rendered)?;
-			Some(Arc::new(f32_rgba_to_bgra_image(w, h, &samples)))
+			let image = f32_rgba_to_bgra_image(w, h, &samples);
+			super::gpu::register_display_frame(image.id.0, w, h, &samples);
+			Some(Arc::new(image))
 		}
 	}
+}
+
+/// Repack one F32 RGBA shm slot (rows padded to `linesize`) into tightly
+/// packed samples. The in-process variant is handled by [`read_f32_frame`].
+fn repack_f32_row_bytes(width: i32, height: i32, linesize: i32, data: &[u8]) -> Option<Vec<f32>> {
+	if width <= 0 || height <= 0 {
+		return None;
+	}
+	let row_bytes = (width * 4 * 4) as usize;
+	let linesize = (linesize as usize).max(row_bytes);
+	if data.len() < linesize * height as usize {
+		return None;
+	}
+	let mut samples = vec![0.0f32; (width * height * 4) as usize];
+	for y in 0..height as usize {
+		let row = &data[y * linesize..y * linesize + row_bytes];
+		for (i, px) in row.chunks_exact(4).enumerate() {
+			let v = f32::from_ne_bytes([px[0], px[1], px[2], px[3]]);
+			samples[y * (width as usize) * 4 + i] = v;
+		}
+	}
+	Some(samples)
 }
 
 // ---------------------------------------------------------------------------
@@ -1306,12 +1342,23 @@ impl RealEngine {
 			return None;
 		}
 		let (width, height) = self.proxy_render_size()?;
-		match super::renderops::render_sequence_frame(&project, seq, frame.0, tb, width, height) {
+		match super::renderops::render_sequence_frame(
+			&project,
+			seq,
+			frame.0,
+			tb,
+			width,
+			height,
+			Some(oak_core::PixelFormat::F32),
+		) {
 			Ok(rendered) => {
 				*slot = RendererSlot::Ready;
-				let out = rendered.to_display();
+				let (image, scope, samples) = rendered.to_display()?;
+				if let Some(samples) = samples {
+					super::gpu::register_display_frame(image.id.0, width as u32, height as u32, &samples);
+				}
 				release_rendered_frame(&rendered);
-				out
+				Some((image, scope))
 			}
 			Err(error) => {
 				println!("[real engine] render_frame failed: {error}");
@@ -1350,12 +1397,23 @@ impl RealEngine {
 			return None;
 		}
 		let (width, height) = self.proxy_render_size()?;
-		match super::renderops::render_footage_frame(&project, node, frame.0, tb, width, height) {
+		match super::renderops::render_footage_frame(
+			&project,
+			node,
+			frame.0,
+			tb,
+			width,
+			height,
+			Some(oak_core::PixelFormat::F32),
+		) {
 			Ok(rendered) => {
 				*slot = RendererSlot::Ready;
-				let out = rendered.to_display();
+				let (image, scope, samples) = rendered.to_display()?;
+				if let Some(samples) = samples {
+					super::gpu::register_display_frame(image.id.0, width as u32, height as u32, &samples);
+				}
 				release_rendered_frame(&rendered);
-				out
+				Some((image, scope))
 			}
 			Err(error) => {
 				println!("[real engine] source render_frame failed: {error}");
@@ -1414,12 +1472,24 @@ impl RealEngine {
 		let mut event = None;
 		if super::renderops::ensure_render_manager() {
 			let rendered = match target {
-				FullResTarget::Sequence(seq) => {
-					super::renderops::render_sequence_frame(&project, seq, frame, tb, width, height)
-				}
-				FullResTarget::Footage(node) => {
-					super::renderops::render_footage_frame(&project, node, frame, tb, width, height)
-				}
+				FullResTarget::Sequence(seq) => super::renderops::render_sequence_frame(
+					&project,
+					seq,
+					frame,
+					tb,
+					width,
+					height,
+					Some(oak_core::PixelFormat::F32),
+				),
+				FullResTarget::Footage(node) => super::renderops::render_footage_frame(
+					&project,
+					node,
+					frame,
+					tb,
+					width,
+					height,
+					Some(oak_core::PixelFormat::F32),
+				),
 			};
 			if let Ok(rendered) = rendered {
 				// M15 S2: the process backend delivers a shm slot — copy the
@@ -1785,11 +1855,11 @@ impl RealEngine {
 		for frame in new_frames {
 			let params = match monitor {
 				Monitor::Program => super::renderops::sequence_frame_params(
-					&project, node, frame, tb, width, height,
+					&project, node, frame, tb, width, height, Some(oak_core::PixelFormat::F32),
 				),
-				Monitor::Source => {
-					super::renderops::footage_frame_params(&project, node, frame, tb, width, height)
-				}
+				Monitor::Source => super::renderops::footage_frame_params(
+					&project, node, frame, tb, width, height, Some(oak_core::PixelFormat::F32),
+				),
 			};
 			let Ok(params) = params else { continue };
 			let distance = frame.saturating_sub(playhead).abs();
@@ -1866,13 +1936,26 @@ impl RealEngine {
 		let out = {
 			let meta = &slot.meta;
 			let (w, h) = (meta.width.max(0) as u32, meta.height.max(0) as u32);
-			let data = slot
-				.shm
-				.slot_bytes(slot.slot)
-				.get(..meta.data_size.max(0) as usize)?;
-			let image = bgra_bytes_to_render_image(w, h, data)?;
-			let scope = analyze_bgra8(w, h, data);
-			(Arc::new(image), scope)
+			if meta.format == super::renderops::PIXEL_FORMAT_F32 {
+				// M15 S3: the worker rendered F32 (the 10-bit display
+				// path) — repack/transform via `to_display` and register
+				// the RGBA16F texture for the viewer; the BGRA8 image it
+				// also builds is the CPU fallback only.
+				let (image, scope, samples) =
+					super::renderops::RenderedFrame::Shm(slot.clone()).to_display()?;
+				if let Some(samples) = samples {
+					super::gpu::register_display_frame(image.id.0, w, h, &samples);
+				}
+				(Arc::new(image), scope)
+			} else {
+				let data = slot
+					.shm
+					.slot_bytes(slot.slot)
+					.get(..meta.data_size.max(0) as usize)?;
+				let image = bgra_bytes_to_render_image(w, h, data)?;
+				let scope = analyze_bgra8(w, h, data);
+				(Arc::new(image), scope)
+			}
 		};
 		if let Some(m) = RenderManager::global() {
 			m.release_frame(&slot);
@@ -2056,6 +2139,7 @@ impl RealEngine {
 			(1, 1000),
 			THUMBNAIL_WIDTH,
 			THUMBNAIL_HEIGHT,
+			None,
 		)
 		.ok()?;
 		let (width, height, bytes) = match &rendered {
@@ -3501,6 +3585,9 @@ impl AppEngine for RealEngine {
 		if gen != self.display_color_gen.get() {
 			self.display_color_gen.set(gen);
 			cache.clear();
+			// The GPU textures hold the display-transformed pixels too — drop
+			// them with the CPU cache so the next frame re-uploads.
+			gpui_widgets::viewer::clear_gpu_frames();
 		}
 		// The full-resolution fill replaces the proxy when its frame matches
 		// the playhead; otherwise the proxy frame is displayed (rendered
@@ -3550,10 +3637,9 @@ impl AppEngine for RealEngine {
 			None => {
 				let (width, height, samples) = synthetic_frame_samples(frame);
 				let scope = analyze_f32_rgba(width, height, &samples);
-				(
-					Arc::new(f32_rgba_to_bgra_image(width, height, &samples)),
-					scope,
-				)
+				let image = f32_rgba_to_bgra_image(width, height, &samples);
+				super::gpu::register_display_frame(image.id.0, width, height, &samples);
+				(Arc::new(image), scope)
 			}
 		};
 		cache.entry(monitor).or_default().proxy = Some(ProxyEntry {
@@ -6317,7 +6403,7 @@ mod tests {
 
 		// The app's proxy size: sequence aspect (default 1920x1080) scaled
 		// to a 480px long edge.
-		let frame = crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 480, 270)
+		let frame = crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 480, 270, None)
 			.expect("render_frame must produce a frame");
 		assert_eq!((frame.width(), frame.height()), (480, 270));
 		assert!(
@@ -6325,7 +6411,7 @@ mod tests {
 			"the default process backend delivers shm slots (got format {})",
 			frame.format()
 		);
-		let (image, _scope) = frame.to_display().expect("display image from the slot");
+		let (image, _scope, _samples) = frame.to_display().expect("display image from the slot");
 		let bytes = image.as_bytes(0).expect("one frame");
 		assert_eq!(bytes.len(), 480 * 270 * 4, "BGRA8 proxy geometry");
 		assert!(
@@ -6346,9 +6432,9 @@ mod tests {
 		// Clip covering [0, 10) frames at the sequence's rate.
 		graphops::place_footage_clip(&project, seq, footage, TrackType::Video, 0, 0, 10, 0)
 			.expect("clip placement");
-		let frame = crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 480, 270)
+		let frame = crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 480, 270, None)
 			.expect("render_frame with a clip must produce a frame");
-		let (image, _scope) = frame.to_display().expect("display image from the slot");
+		let (image, _scope, _samples) = frame.to_display().expect("display image from the slot");
 		let bytes = image.as_bytes(0).expect("one frame");
 		let nonzero = bytes
 			.chunks(4)
@@ -6370,12 +6456,12 @@ mod tests {
 
 		// A second frame at a later timestamp renders too.
 		assert!(
-			crate::oakui::renderops::render_sequence_frame(&project, seq, 30, tb, 480, 270).is_ok()
+			crate::oakui::renderops::render_sequence_frame(&project, seq, 30, tb, 480, 270, None).is_ok()
 		);
 
 		// Invalid geometry is rejected.
 		assert!(
-			crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 0, 270).is_err()
+			crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 0, 270, None).is_err()
 		);
 
 		oak_undo::global::clear().unwrap();
@@ -6418,13 +6504,13 @@ mod tests {
 		let tb = graphops::sequence_time_base(&graphops::lock(&project).graph, seq).unwrap();
 
 		reset_main_heap_frame_copies();
-		let frame = crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 64, 64)
+		let frame = crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 64, 64, None)
 			.expect("render_frame must produce a frame");
 		let crate::oakui::renderops::RenderedFrame::Shm(slot) = &frame else {
 			panic!("the process backend must deliver a shm slot");
 		};
 		assert_eq!(slot.meta.format, crate::oakui::renderops::SLOT_FORMAT_BGRA8);
-		let (image, _scope) = frame.to_display().expect("display image from the slot");
+		let (image, _scope, _samples) = frame.to_display().expect("display image from the slot");
 		assert_eq!(image.as_bytes(0).expect("one frame").len(), 64 * 64 * 4);
 		assert_eq!(
 			main_heap_frame_copies(),
@@ -6435,7 +6521,7 @@ mod tests {
 		assert_eq!(main_heap_frame_copies(), 0);
 
 		// The long-lived full-res path is the one counted copy.
-		let frame = crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 64, 64)
+		let frame = crate::oakui::renderops::render_sequence_frame(&project, seq, 0, tb, 64, 64, None)
 			.expect("render_frame must produce a frame");
 		let image = rendered_to_owned_image(&frame).expect("owned full-res image");
 		assert_eq!(image.as_bytes(0).expect("one frame").len(), 64 * 64 * 4);

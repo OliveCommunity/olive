@@ -135,6 +135,26 @@ pub(crate) fn bgra_bytes_to_render_image(
 	)))
 }
 
+/// Packs F32 RGBA samples (the engine pipeline's pixel format) into the
+/// half-float RGBA16F texture bytes of the 10-bit display path (the viewer
+/// uploads these into a GPU texture and samples it straight to a 10-bit
+/// swapchain — no 8-bit quantization in between). The 10-bit code step
+/// `1/1023 ≈ 0.000977` is resolvable in f16 (whose ULP is ~0.000977 at
+/// 1.0), so every displayable code survives the round trip. Samples must
+/// hold exactly `width * height * 4` values (tightly packed rows); values
+/// clamp to `0.0..=1.0` before packing.
+pub(crate) fn f32_rgba_to_16f_bytes(width: u32, height: u32, samples: &[f32]) -> Option<Vec<u8>> {
+	if samples.len() != (width * height * 4) as usize {
+		return None;
+	}
+	let mut bytes = Vec::with_capacity(samples.len() * 2);
+	for &v in samples {
+		let h = half::f16::from_f32(v.clamp(0.0, 1.0));
+		bytes.extend_from_slice(&h.to_bits().to_le_bytes());
+	}
+	Some(bytes)
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -147,5 +167,38 @@ mod tests {
 		let frame = image.as_bytes(0).expect("one frame"); // BGRA8, tightly packed
 		assert_eq!(&frame[0..4], &[127, 0, 255, 255]);
 		assert_eq!(&frame[4..8], &[63, 0, 255, 255]);
+	}
+
+	#[test]
+	fn f32_round_trips_to_16f_without_8bit_quantization() {
+		// Two adjacent 10-bit codes near white: `v1 = 1022/1023` and
+		// `v2 = 1023/1023 = 1.0`. The 16f round trip keeps them on distinct
+		// codes (the f16 grid at 1.0 is 2^-10, ~the 10-bit step 1/1023, so
+		// the codes align), while the 8-bit path (×255) collapses both to the
+		// same code 255.
+		let (v1, v2) = (1022.0f32 / 1023.0, 1.0f32);
+		let samples = [v1, 0.0, 0.0, 1.0, v2, 0.0, 0.0, 1.0];
+		let bytes = f32_rgba_to_16f_bytes(2, 1, &samples).expect("packed 16f bytes");
+		assert_eq!(bytes.len(), 2 * 1 * 4 * 2, "two pixels, four f16 channels");
+		let code_of = |value: f32| {
+			let h = half::f16::from_f32(value);
+			((h.to_f32() * 1023.0).round()) as u32
+		};
+		assert_eq!(
+			code_of(v1),
+			1022,
+			"v1 stays on 10-bit code 1022 after the 16f round trip"
+		);
+		assert_eq!(code_of(v2), 1023, "white stays on code 1023");
+		assert_ne!(
+			code_of(v1),
+			code_of(v2),
+			"adjacent 10-bit codes near white stay distinct through 16f"
+		);
+		assert_eq!(
+			(v1 * 255.0).round() as u32,
+			(v2 * 255.0).round() as u32,
+			"the same two values collapse in 8-bit — proving the 16f path carries the resolution"
+		);
 	}
 }

@@ -29,7 +29,7 @@
 use std::sync::mpsc;
 
 use gpui::RenderImage;
-use oak_core::{Rational, TimeRange};
+use oak_core::{PixelFormat, Rational, TimeRange};
 use oak_node::id::NodeId;
 use oak_node::track::TrackType;
 use oak_render::manager::RenderManager;
@@ -429,11 +429,13 @@ impl RenderedFrame {
 		}
 	}
 
-	/// The pixel format: the BGRA8 slot wire format for the shm variant,
+	/// The pixel format: the slot's wire format for the shm variant
+	/// (`PIXEL_FORMAT_F32` when the worker rendered F32 for the 10-bit
+	/// display path, `SLOT_FORMAT_BGRA8` for the 8-bit fallback),
 	/// `PIXEL_FORMAT_F32` for the in-process variant.
 	pub fn format(&self) -> i32 {
 		match self {
-			RenderedFrame::Shm(_) => SLOT_FORMAT_BGRA8,
+			RenderedFrame::Shm(f) => f.meta.format,
 			RenderedFrame::CpuF32 { .. } => PIXEL_FORMAT_F32,
 		}
 	}
@@ -444,25 +446,43 @@ impl RenderedFrame {
 	}
 
 	/// Build the viewer display image plus the scope samples (M15 S2
-	/// zero-copy onscreen path). For the shm variant the slot's BGRA8
-	/// bytes are wrapped into the display buffer — the GPU-upload staging
-	/// copy, the single permitted main-process copy on the preview path
-	/// (design §3.5). The display color transform (display ICC) is applied
-	/// in place on that staging copy / on the F32 samples, so it costs no
-	/// extra copy. The caller releases the slot afterwards.
-	pub fn to_display(&self) -> Option<(RenderImage, ScopeData)> {
+	/// zero-copy onscreen path). For the shm variant the slot's bytes are
+	/// wrapped into the display buffer — the GPU-upload staging copy, the
+	/// single permitted main-process copy on the preview path (design §3.5).
+	/// The display color transform (display ICC) is applied in place on that
+	/// staging copy / on the F32 samples, so it costs no extra copy.
+	///
+	/// The third return value is the display-transformed F32 RGBA samples
+	/// when the frame arrived in F32 (the 10-bit display path: the caller
+	/// uploads them as an RGBA16F texture and skips the BGRA8 image), `None`
+	/// for BGRA8 frames (whose 8-bit quantization is already baked in). The
+	/// caller releases the slot afterwards.
+	pub fn to_display(&self) -> Option<(RenderImage, ScopeData, Option<Vec<f32>>)> {
 		match self {
 			RenderedFrame::Shm(f) => {
 				let meta = &f.meta;
 				let (w, h) = (meta.width.max(0) as u32, meta.height.max(0) as u32);
 				let pixels = f.shm.slot_bytes(f.slot);
 				let data = pixels.get(..meta.data_size.max(0) as usize)?;
-				let scope = analyze_bgra8(w, h, data);
-				// The display transform edits the staging copy in place.
-				let mut owned = data.to_vec();
-				super::displaycolor::apply_bgra8(&mut owned, (w * h) as i64);
-				let image = bgra_bytes_to_render_image(w, h, &owned)?;
-				Some((image, scope))
+				if meta.format == PIXEL_FORMAT_F32 {
+					// M15 S3: the worker rendered F32 (the 10-bit display
+					// path) — repack the padded rows, transform and hand the
+					// samples back for the RGBA16F texture.
+					let mut samples = repack_f32_rows(meta.width, meta.height, meta.linesize, data)?;
+					let scope = analyze_f32_rgba(w, h, &samples);
+					super::displaycolor::apply_f32_rgba(&mut samples, (w * h) as i64);
+					let image = f32_rgba_to_bgra_image(w, h, &samples);
+					Some((image, scope, Some(samples)))
+				} else {
+					// BGRA8 slot: the worker already downconverted — wrap the
+					// bytes directly (no 10-bit path available for them).
+					let scope = analyze_bgra8(w, h, data);
+					// The display transform edits the staging copy in place.
+					let mut owned = data.to_vec();
+					super::displaycolor::apply_bgra8(&mut owned, (w * h) as i64);
+					let image = bgra_bytes_to_render_image(w, h, &owned)?;
+					Some((image, scope, None))
+				}
 			}
 			RenderedFrame::CpuF32 {
 				width,
@@ -477,6 +497,7 @@ impl RenderedFrame {
 				Some((
 					f32_rgba_to_bgra_image(w, h, &samples),
 					scope,
+					Some(samples),
 				))
 			}
 		}
@@ -661,6 +682,9 @@ fn render_video(params: VideoTicketParams) -> Result<RenderedFrame, String> {
 
 /// Build the video ticket params for one sequence-montage frame (M15 S2:
 /// shared by the synchronous render and the playback pre-render window).
+/// `format` is the slot wire format the worker renders into: `None` keeps
+/// the BGRA8 8-bit slot (the default), `Some(PixelFormat::F32)` renders F32
+/// for the 10-bit display path.
 pub fn sequence_frame_params(
 	p: &ProjectRef,
 	seq: NodeId,
@@ -668,6 +692,7 @@ pub fn sequence_frame_params(
 	tb: (i64, i64),
 	width: i32,
 	height: i32,
+	format: Option<oak_core::PixelFormat>,
 ) -> Result<VideoTicketParams, String> {
 	validate_geometry(width, height, tb)?;
 	let time = Rational::new(frame_ts * tb.0, tb.1);
@@ -684,7 +709,7 @@ pub fn sequence_frame_params(
 		project,
 		time,
 		force_size: Some((width, height)),
-		force_format: None,
+		force_format: format,
 		cache: None,
 		cache_dir: None,
 		cache_id: None,
@@ -696,7 +721,8 @@ pub fn sequence_frame_params(
 
 /// Render one frame of the sequence's montage at `frame_ts` (a timestamp
 /// in the `(tb.1 / tb.0)`-per-frame timebase) into a `(width, height)`
-/// frame.
+/// frame. `format` is the slot wire format (see
+/// [`sequence_frame_params`]).
 pub fn render_sequence_frame(
 	p: &ProjectRef,
 	seq: NodeId,
@@ -704,13 +730,15 @@ pub fn render_sequence_frame(
 	tb: (i64, i64),
 	width: i32,
 	height: i32,
+	format: Option<oak_core::PixelFormat>,
 ) -> Result<RenderedFrame, String> {
-	render_video(sequence_frame_params(p, seq, frame_ts, tb, width, height)?)
+	render_video(sequence_frame_params(p, seq, frame_ts, tb, width, height, format)?)
 }
 
 /// Build the video ticket params for one single-footage frame (M15 S2:
 /// shared by the synchronous render and the source-monitor pre-render
-/// window).
+/// window). `format` is the slot wire format (see
+/// [`sequence_frame_params`]).
 pub fn footage_frame_params(
 	p: &ProjectRef,
 	footage: NodeId,
@@ -718,6 +746,7 @@ pub fn footage_frame_params(
 	tb: (i64, i64),
 	width: i32,
 	height: i32,
+	format: Option<oak_core::PixelFormat>,
 ) -> Result<VideoTicketParams, String> {
 	validate_geometry(width, height, tb)?;
 	let (filename, stream_index, limits) = {
@@ -746,7 +775,7 @@ pub fn footage_frame_params(
 		project,
 		time,
 		force_size: Some((width, height)),
-		force_format: None,
+		force_format: format,
 		cache: None,
 		cache_dir: None,
 		cache_id: None,
@@ -757,7 +786,8 @@ pub fn footage_frame_params(
 }
 
 /// Render one frame of a single footage node (the source monitor) at
-/// `frame_ts`, decoded straight from the media file.
+/// `frame_ts`, decoded straight from the media file. `format` is the slot
+/// wire format (see [`sequence_frame_params`]).
 pub fn render_footage_frame(
 	p: &ProjectRef,
 	footage: NodeId,
@@ -765,8 +795,9 @@ pub fn render_footage_frame(
 	tb: (i64, i64),
 	width: i32,
 	height: i32,
+	format: Option<oak_core::PixelFormat>,
 ) -> Result<RenderedFrame, String> {
-	render_video(footage_frame_params(p, footage, frame_ts, tb, width, height)?)
+	render_video(footage_frame_params(p, footage, frame_ts, tb, width, height, format)?)
 }
 
 /// Rendered interleaved f32 audio (the module audio ticket payload).
@@ -1516,7 +1547,7 @@ mod tests {
 		// …and the sequence frame ticket is clamped to its 32x32 size.
 		let tb = graphops::sequence_time_base(&lock(&project).graph, seq).unwrap();
 		let params =
-			sequence_frame_params(&project, seq, 0, tb, 64, 64).expect("sequence frame params");
+			sequence_frame_params(&project, seq, 0, tb, 64, 64, None).expect("sequence frame params");
 		assert_eq!(params.force_size, Some((32, 32)), "the proxy bounds the render size");
 
 		// The decoded pixels are the proxy's (solid blue), not the source's.

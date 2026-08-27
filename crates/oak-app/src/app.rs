@@ -3034,6 +3034,19 @@ fn run_with<E: AppEngine>(args: AppArgs) {
 					..Default::default()
 				},
 				|window, cx| {
+					// The 10-bit display path: hand the window's wgpu device
+					// to the engine so it can upload RGBA16F textures gpui's
+					// renderer samples straight into the swapchain (no 8-bit
+					// quantization). Linux/FreeBSD only — `gpu_context` does
+					// not exist on other platforms, where the BGRA8 CPU path
+					// stays in effect.
+					#[cfg(any(target_os = "linux", target_os = "freebsd"))]
+					if let Some(Ok(ctx)) = window
+						.gpu_context()
+						.map(|c| c.downcast::<(Arc<wgpu::Device>, Arc<wgpu::Queue>)>())
+					{
+						crate::oakui::gpu::register_context(ctx.0, ctx.1);
+					}
 					// Compact pro-app text metrics: gpui's default rem is
 					// 16px (desktop-app large); 14px matches the design's
 					// density. All rem-based text scales; px spacing is

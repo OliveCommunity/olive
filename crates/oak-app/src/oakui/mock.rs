@@ -2756,6 +2756,10 @@ impl MockEngine {
 		let image = Arc::new(crate::oakui::frames::f32_rgba_to_bgra_image(
 			width, height, &samples,
 		));
+		// The 10-bit path: upload the F32 samples as an RGBA16F texture so
+		// the viewer samples them straight to the swapchain instead of the
+		// BGRA8 image (best-effort — no GPU, no registration, CPU path).
+		crate::oakui::gpu::register_display_frame(image.id.0, width, height, &samples);
 		cache.insert(monitor, (frame.0, image.clone(), scope));
 		image
 	}
