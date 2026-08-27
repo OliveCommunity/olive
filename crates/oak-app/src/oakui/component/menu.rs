@@ -33,6 +33,7 @@
 pub use gpui_widgets::menu::{
 	ContextMenu, ContextMenuEvent, Menu, MenuBar, MenuBarEntry, MenuBarEvent, MenuItem,
 };
+use gpui_widgets::viewer::{SafeMargins, ViewerZoom, WaveformMode, VIEWER_ZOOM_LEVELS};
 
 // ---------------------------------------------------------------------------
 // Context-menu plumbing
@@ -289,57 +290,87 @@ pub const LOCAL_VIEWER_WF_BOTH: usize = 2331;
 pub const LOCAL_VIEWER_SHOW_FPS: usize = 2332;
 pub const LOCAL_VIEWER_SAVE_FRAME: usize = 2333;
 
-/// The zoom levels the viewer's Zoom submenu offers (the C++
-/// `ViewerSizer::k_zoom_levels`).
-pub const VIEWER_ZOOM_LEVELS: [f32; 10] =
-	[0.05, 0.1, 0.25, 0.5, 0.75, 1.0, 1.5, 2.0, 4.0, 8.0];
-
-/// The zoom submenu item id for `level` (one of [`VIEWER_ZOOM_LEVELS`]).
+/// The zoom submenu item id for `level` (one of
+/// [`gpui_widgets::viewer::VIEWER_ZOOM_LEVELS`]).
 pub fn viewer_zoom_level_id(index: usize) -> usize {
 	LOCAL_VIEWER_ZOOM_LEVELS_BASE + index
 }
 
+/// The live state the viewer context menu reflects. The panels build one per
+/// right-click from the engine config and the viewer widget, so every checked
+/// entry is real: the radio groups mark the current zoom / resolution / safe
+/// margins / waveform, and the toggles mark `StopOnLastFrame` and `ShowFPS`.
+pub struct ViewerMenuState {
+	/// The current playback resolution divider (1/2/4/8).
+	pub playback_divider: i64,
+	/// The viewer widget's zoom state.
+	pub zoom: ViewerZoom,
+	/// The viewer widget's safe-margin overlay.
+	pub safe: SafeMargins,
+	/// The `StopOnLastFrame` config.
+	pub stop_on_last: bool,
+	/// The `ViewerWaveformMode` config.
+	pub waveform: WaveformMode,
+	/// Whether the frame-rate overlay is shown.
+	pub show_fps: bool,
+}
+
+impl Default for ViewerMenuState {
+	fn default() -> Self {
+		Self {
+			playback_divider: 1,
+			zoom: ViewerZoom::Fit,
+			safe: SafeMargins::Off,
+			stop_on_last: false,
+			waveform: WaveformMode::Automatic,
+			show_fps: false,
+		}
+	}
+}
+
 /// The context menu both viewer monitors show (the C++
 /// `ViewerWidget::show_context_menu`, minus the OCIO color menus and the
-/// subtitle block the engine does not surface yet). Zoom / playback
-/// resolution / safe margins / waveform / FPS are placeholders until the
-/// viewer widget grows those controls.
-pub fn viewer_menu(playback_divider: i64) -> Menu {
+/// subtitle block the engine does not surface yet).
+pub fn viewer_menu(state: &ViewerMenuState) -> Menu {
 	use crate::i18n::tr;
-	// Zoom: Fit + one entry per zoom level.
-	let mut zoom_items = vec![MenuItem::new(LOCAL_VIEWER_ZOOM_FIT, tr("viewer.context.zoom_fit"))];
+	// Zoom: Fit + one entry per zoom level, checked against the live state.
+	let mut zoom_items = vec![MenuItem::new(LOCAL_VIEWER_ZOOM_FIT, tr("viewer.context.zoom_fit"))
+		.with_checked(state.zoom == ViewerZoom::Fit)];
 	for (index, level) in VIEWER_ZOOM_LEVELS.iter().enumerate() {
-		zoom_items.push(MenuItem::new(
-			viewer_zoom_level_id(index),
-			format!("{:.0}%", level * 100.0),
-		));
+		zoom_items.push(
+			MenuItem::new(viewer_zoom_level_id(index), format!("{:.0}%", level * 100.0))
+				.with_checked(state.zoom == ViewerZoom::Level(index)),
+		);
 	}
-	// Playback resolution radio group.
 	// Playback Resolution radio group (the C++ `PlaybackDivider` config):
 	// the checked entry reflects the current divider.
 	let resolution_menu = Menu::new(vec![
 		MenuItem::new(LOCAL_VIEWER_RES_FULL, tr("viewer.context.res_full"))
-			.with_checked(playback_divider <= 1),
+			.with_checked(state.playback_divider <= 1),
 		MenuItem::new(LOCAL_VIEWER_RES_HALF, tr("viewer.context.res_half"))
-			.with_checked(playback_divider == 2),
+			.with_checked(state.playback_divider == 2),
 		MenuItem::new(LOCAL_VIEWER_RES_QUARTER, tr("viewer.context.res_quarter"))
-			.with_checked(playback_divider == 4),
+			.with_checked(state.playback_divider == 4),
 		MenuItem::new(LOCAL_VIEWER_RES_EIGHTH, tr("viewer.context.res_eighth"))
-			.with_checked(playback_divider >= 8),
+			.with_checked(state.playback_divider >= 8),
 	]);
 	// Safe margins radio group.
 	let safe_menu = Menu::new(vec![
-		MenuItem::new(LOCAL_VIEWER_SAFE_OFF, tr("viewer.context.safe_off")).with_checked(true),
-		MenuItem::new(LOCAL_VIEWER_SAFE_ON, tr("viewer.context.safe_on")).with_checked(false),
+		MenuItem::new(LOCAL_VIEWER_SAFE_OFF, tr("viewer.context.safe_off"))
+			.with_checked(state.safe == SafeMargins::Off),
+		MenuItem::new(LOCAL_VIEWER_SAFE_ON, tr("viewer.context.safe_on"))
+			.with_checked(state.safe == SafeMargins::On),
 		MenuItem::new(LOCAL_VIEWER_SAFE_CUSTOM, tr("viewer.context.safe_custom"))
-			.with_checked(false),
+			.with_checked(matches!(state.safe, SafeMargins::Custom(_, _))),
 	]);
 	// Audio waveform radio group.
 	let waveform_menu = Menu::new(vec![
 		MenuItem::new(LOCAL_VIEWER_WF_AUTOMATIC, tr("viewer.context.wf_automatic"))
-			.with_checked(true),
-		MenuItem::new(LOCAL_VIEWER_WF_ONLY, tr("viewer.context.wf_only")).with_checked(false),
-		MenuItem::new(LOCAL_VIEWER_WF_BOTH, tr("viewer.context.wf_both")).with_checked(false),
+			.with_checked(state.waveform == WaveformMode::Automatic),
+		MenuItem::new(LOCAL_VIEWER_WF_ONLY, tr("viewer.context.wf_only"))
+			.with_checked(state.waveform == WaveformMode::Only),
+		MenuItem::new(LOCAL_VIEWER_WF_BOTH, tr("viewer.context.wf_both"))
+			.with_checked(state.waveform == WaveformMode::Both),
 	]);
 
 	Menu::new(vec![
@@ -349,12 +380,87 @@ pub fn viewer_menu(playback_divider: i64) -> Menu {
 			.with_submenu(resolution_menu),
 		MenuItem::new(0, tr("viewer.context.safe_margins")).with_submenu(safe_menu).separated(),
 		MenuItem::new(LOCAL_VIEWER_STOP_ON_LAST, tr("viewer.context.stop_on_last"))
-			.with_checked(false)
+			.with_checked(state.stop_on_last)
 			.separated(),
 		MenuItem::new(0, tr("viewer.context.audio_waveform")).with_submenu(waveform_menu),
-		MenuItem::new(LOCAL_VIEWER_SHOW_FPS, tr("viewer.context.show_fps")).with_checked(false),
+		MenuItem::new(LOCAL_VIEWER_SHOW_FPS, tr("viewer.context.show_fps"))
+			.with_checked(state.show_fps),
 		MenuItem::new(LOCAL_VIEWER_SAVE_FRAME, tr("viewer.context.save_frame")).separated(),
 	])
+}
+
+/// A viewer context-menu item the panels apply directly on the viewer widget
+/// or the engine (unlike the registry items, which re-emit as
+/// [`ContextMenuTriggered`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewerMenuAction {
+	/// Zoom out to fit the whole frame.
+	ZoomFit,
+	/// Zoom to `index` of [`VIEWER_ZOOM_LEVELS`].
+	ZoomLevel(usize),
+	/// Request full-screen mode.
+	FullScreen,
+	/// Set the playback resolution divider (1/2/4/8).
+	Resolution(i64),
+	/// Turn the safe-margin overlay off.
+	SafeOff,
+	/// Show the standard safe margins.
+	SafeOn,
+	/// Show custom safe margins (the app uses the standard 0.9 × 0.8).
+	SafeCustom,
+	/// Toggle the `StopOnLastFrame` config.
+	StopOnLast,
+	/// Set the audio-waveform overlay mode.
+	Waveform(WaveformMode),
+	/// Toggle the frame-rate overlay.
+	ShowFps,
+	/// Save the current frame to a PNG.
+	SaveFrame,
+}
+
+/// Resolve a triggered viewer context-menu item id into the action the
+/// panels apply, `None` when the id belongs to another menu.
+pub fn viewer_menu_action(item: usize) -> Option<ViewerMenuAction> {
+	if item == LOCAL_VIEWER_ZOOM_FIT {
+		Some(ViewerMenuAction::ZoomFit)
+	} else if item >= LOCAL_VIEWER_ZOOM_LEVELS_BASE
+		&& item < LOCAL_VIEWER_ZOOM_LEVELS_BASE + VIEWER_ZOOM_LEVELS.len()
+	{
+		Some(ViewerMenuAction::ZoomLevel(item - LOCAL_VIEWER_ZOOM_LEVELS_BASE))
+	} else {
+		match item {
+			LOCAL_VIEWER_FULL_SCREEN => Some(ViewerMenuAction::FullScreen),
+			LOCAL_VIEWER_RES_FULL => Some(ViewerMenuAction::Resolution(1)),
+			LOCAL_VIEWER_RES_HALF => Some(ViewerMenuAction::Resolution(2)),
+			LOCAL_VIEWER_RES_QUARTER => Some(ViewerMenuAction::Resolution(4)),
+			LOCAL_VIEWER_RES_EIGHTH => Some(ViewerMenuAction::Resolution(8)),
+			LOCAL_VIEWER_SAFE_OFF => Some(ViewerMenuAction::SafeOff),
+			LOCAL_VIEWER_SAFE_ON => Some(ViewerMenuAction::SafeOn),
+			LOCAL_VIEWER_SAFE_CUSTOM => Some(ViewerMenuAction::SafeCustom),
+			LOCAL_VIEWER_STOP_ON_LAST => Some(ViewerMenuAction::StopOnLast),
+			LOCAL_VIEWER_WF_AUTOMATIC => Some(ViewerMenuAction::Waveform(WaveformMode::Automatic)),
+			LOCAL_VIEWER_WF_ONLY => Some(ViewerMenuAction::Waveform(WaveformMode::Only)),
+			LOCAL_VIEWER_WF_BOTH => Some(ViewerMenuAction::Waveform(WaveformMode::Both)),
+			LOCAL_VIEWER_SHOW_FPS => Some(ViewerMenuAction::ShowFps),
+			LOCAL_VIEWER_SAVE_FRAME => Some(ViewerMenuAction::SaveFrame),
+			_ => None,
+		}
+	}
+}
+
+/// A viewer panel request the app shell applies: full-screen goes to the
+/// window, the in/out/clear requests go to the program workarea (both
+/// monitors share one workarea, so the source monitor's requests act on it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ViewerPanelEvent {
+	/// Toggle the window's full-screen state.
+	FullScreenRequested,
+	/// Set the program workarea's in point at the playhead.
+	SetInPoint,
+	/// Set the program workarea's out point at the playhead.
+	SetOutPoint,
+	/// Clear the program workarea's in/out range.
+	ClearRange,
 }
 
 #[cfg(test)]
@@ -474,14 +580,14 @@ mod tests {
 	}
 
 	/// The viewer menu carries the zoom levels with percentage labels and
-	/// defaults each radio group to its first entry.
+	/// checks Fit / the default radio entries.
 	#[test]
 	fn viewer_menu_offers_every_zoom_level() {
 		// The label lookups below race with tests that flip the process
 		// language: pin en-US under the shared lock.
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
-		let menu = viewer_menu(1);
+		let menu = viewer_menu(&ViewerMenuState::default());
 		let zoom = menu
 			.items
 			.iter()
@@ -490,9 +596,15 @@ mod tests {
 		let zoom_items = &zoom.submenu.as_ref().unwrap().items;
 		assert_eq!(zoom_items.len(), 1 + VIEWER_ZOOM_LEVELS.len());
 		assert_eq!(zoom_items[0].id, LOCAL_VIEWER_ZOOM_FIT);
+		assert_eq!(zoom_items[0].checked, Some(true), "Fit checked by default");
 		for (index, level) in VIEWER_ZOOM_LEVELS.iter().enumerate() {
 			assert_eq!(zoom_items[index + 1].id, viewer_zoom_level_id(index));
 			assert_eq!(zoom_items[index + 1].label, format!("{:.0}%", level * 100.0));
+			assert_eq!(
+				zoom_items[index + 1].checked,
+				Some(false),
+				"zoom level {index} unchecked by default"
+			);
 		}
 	}
 
@@ -504,7 +616,7 @@ mod tests {
 		// language: pin en-US under the shared lock.
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
-		let menu = viewer_menu(1);
+		let menu = viewer_menu(&ViewerMenuState::default());
 		for label_key in [
 			"viewer.context.playback_resolution",
 			"viewer.context.safe_margins",
@@ -530,7 +642,10 @@ mod tests {
 		// Label lookup: pin en-US under the shared language lock.
 		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
 		crate::i18n::set_language_code("en-US");
-		let menu = viewer_menu(4);
+		let menu = viewer_menu(&ViewerMenuState {
+			playback_divider: 4,
+			..ViewerMenuState::default()
+		});
 		let item = menu
 			.items
 			.iter()
@@ -541,5 +656,99 @@ mod tests {
 		assert_eq!(sub[1].checked, Some(false), "half unchecked at /4");
 		assert_eq!(sub[2].checked, Some(true), "quarter checked at /4");
 		assert_eq!(sub[3].checked, Some(false), "eighth unchecked at /4");
+	}
+
+	/// Every checked entry reflects the live state the panels build.
+	#[test]
+	fn viewer_menu_reflects_live_state() {
+		// Label lookup: pin en-US under the shared language lock.
+		let _guard = crate::i18n::lang_test_lock().lock().unwrap_or_else(|e| e.into_inner());
+		crate::i18n::set_language_code("en-US");
+		let menu = viewer_menu(&ViewerMenuState {
+			playback_divider: 2,
+			zoom: ViewerZoom::Level(4),
+			safe: SafeMargins::On,
+			stop_on_last: true,
+			waveform: WaveformMode::Both,
+			show_fps: true,
+		});
+		let find_sub = |label: &'static str| {
+			menu.items
+				.iter()
+				.find(|item| item.label == crate::i18n::tr(label))
+				.unwrap_or_else(|| panic!("viewer menu missing {label}"))
+				.submenu
+				.as_ref()
+				.unwrap()
+				.items
+				.clone()
+		};
+		let zoom = find_sub("viewer.context.zoom");
+		assert_eq!(zoom[0].checked, Some(false), "Fit unchecked at 100%");
+		assert_eq!(zoom[5].checked, Some(true), "100% checked");
+		let resolution = find_sub("viewer.context.playback_resolution");
+		assert_eq!(resolution[1].checked, Some(true), "half checked");
+		let safe = find_sub("viewer.context.safe_margins");
+		assert_eq!(safe[1].checked, Some(true), "safe On checked");
+		let waveform = find_sub("viewer.context.audio_waveform");
+		assert_eq!(waveform[2].checked, Some(true), "waveform Both checked");
+		let stop = menu
+			.items
+			.iter()
+			.find(|item| item.label == crate::i18n::tr("viewer.context.stop_on_last"))
+			.expect("stop-on-last item");
+		assert_eq!(stop.checked, Some(true));
+		let fps = menu
+			.items
+			.iter()
+			.find(|item| item.label == crate::i18n::tr("viewer.context.show_fps"))
+			.expect("show-fps item");
+		assert_eq!(fps.checked, Some(true));
+	}
+
+	/// Every local viewer id resolves to its action (and non-viewer ids do
+	/// not).
+	#[test]
+	fn viewer_menu_action_parses_every_id() {
+		use ViewerMenuAction as V;
+		assert_eq!(viewer_menu_action(LOCAL_VIEWER_ZOOM_FIT), Some(V::ZoomFit));
+		assert_eq!(
+			viewer_menu_action(LOCAL_VIEWER_ZOOM_LEVELS_BASE + 4),
+			Some(V::ZoomLevel(4))
+		);
+		assert_eq!(
+			viewer_menu_action(LOCAL_VIEWER_ZOOM_LEVELS_BASE + VIEWER_ZOOM_LEVELS.len()),
+			None,
+			"zoom id past the last level"
+		);
+		assert_eq!(viewer_menu_action(LOCAL_VIEWER_FULL_SCREEN), Some(V::FullScreen));
+		for (id, divider) in [
+			(LOCAL_VIEWER_RES_FULL, 1),
+			(LOCAL_VIEWER_RES_HALF, 2),
+			(LOCAL_VIEWER_RES_QUARTER, 4),
+			(LOCAL_VIEWER_RES_EIGHTH, 8),
+		] {
+			assert_eq!(viewer_menu_action(id), Some(V::Resolution(divider)));
+		}
+		assert_eq!(viewer_menu_action(LOCAL_VIEWER_SAFE_OFF), Some(V::SafeOff));
+		assert_eq!(viewer_menu_action(LOCAL_VIEWER_SAFE_ON), Some(V::SafeOn));
+		assert_eq!(viewer_menu_action(LOCAL_VIEWER_SAFE_CUSTOM), Some(V::SafeCustom));
+		assert_eq!(viewer_menu_action(LOCAL_VIEWER_STOP_ON_LAST), Some(V::StopOnLast));
+		assert_eq!(
+			viewer_menu_action(LOCAL_VIEWER_WF_AUTOMATIC),
+			Some(V::Waveform(WaveformMode::Automatic))
+		);
+		assert_eq!(
+			viewer_menu_action(LOCAL_VIEWER_WF_ONLY),
+			Some(V::Waveform(WaveformMode::Only))
+		);
+		assert_eq!(
+			viewer_menu_action(LOCAL_VIEWER_WF_BOTH),
+			Some(V::Waveform(WaveformMode::Both))
+		);
+		assert_eq!(viewer_menu_action(LOCAL_VIEWER_SHOW_FPS), Some(V::ShowFps));
+		assert_eq!(viewer_menu_action(LOCAL_VIEWER_SAVE_FRAME), Some(V::SaveFrame));
+		assert_eq!(viewer_menu_action(0), None, "registry-range id is not local");
+		assert_eq!(viewer_menu_action(LOCAL_ID_BASE), None, "color-label id");
 	}
 }

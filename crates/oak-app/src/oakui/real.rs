@@ -677,12 +677,13 @@ impl RealClock {
 	}
 
 	/// Advances the playhead from the wall clock while playing, looping at
-	/// `length`. No-op when stopped. The advance is clamped per tick: a
+	/// `length` — or pausing on the last frame when `stop_on_last` is set.
+	/// No-op when stopped. The advance is clamped per tick: a
 	/// long stall (the first render after pressing play, a disk stall)
 	/// must not teleport the playhead past the pre-render window — the
 	/// dropped time is re-anchored away instead (NLEs drop frames during
 	/// stalls; they never jump the playhead over rendered content).
-	pub fn tick(&mut self, length: Frame) {
+	pub fn tick(&mut self, length: Frame, stop_on_last: bool) {
 		let Some((started, anchored)) = self.started else {
 			return;
 		};
@@ -701,6 +702,15 @@ impl RealClock {
 			self.started = Some((Instant::now(), frame));
 		}
 		if length.0 > 0 && frame.0 >= length.0 {
+			if stop_on_last {
+				// Stop on the last frame and pause playback (the C++ viewer's
+				// Stop on Last option): the playhead never wraps.
+				self.transport.pause();
+				self.started = None;
+				frame = Frame(length.0 - 1);
+				self.transport.seek(frame, length);
+				return;
+			}
 			frame = Frame(frame.0 % length.0);
 		}
 		self.transport.seek(frame, length);
@@ -3224,13 +3234,14 @@ impl EngineGateway for RealEngine {
 		// project's length 0 used to freeze the source playhead at 0).
 		let length = self.sequence_length();
 		let source_length = self.source_length();
+		let stop_on_last = self.stop_on_last();
 		for (clock, len) in [
 			(&self.source_clock, source_length),
 			(&self.program_clock, length),
 		] {
 			let clock = clock.clone();
 			clock.update(cx, |clock, cx| {
-				clock.tick(len);
+				clock.tick(len, stop_on_last);
 				cx.notify();
 			});
 		}

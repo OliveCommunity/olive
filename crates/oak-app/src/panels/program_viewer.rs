@@ -28,7 +28,10 @@ use gpui::{
 };
 use gpui_widgets::audio_meter::AudioLevelMeter;
 use gpui_widgets::scopes::{ChromaDataSource, Histogram, LumaDataSource, Vectorscope, Waveform};
-use gpui_widgets::viewer::{InteractPointerKind, PlaybackClock, ViewerEvent, ViewerWidget};
+use gpui_widgets::viewer::{
+	InteractPointerKind, PlaybackClock, SafeMargins, ViewerEvent, ViewerWidget, ViewerZoom,
+	WaveformMode,
+};
 
 use crate::actions::ActionId;
 use crate::oakui::component::menu;
@@ -145,6 +148,14 @@ impl<E: AppEngine> ProgramViewerPanel<E> {
 			ViewerEvent::InteractKey { down, keystroke } => {
 				this.forward_interact_key(*down, keystroke, cx)
 			}
+			// The widget already toggled its own overlay state; nothing to
+			// forward to the engine.
+			ViewerEvent::ToggleSafeFramesRequested { .. } | ViewerEvent::ToggleZoomRequested { .. } => {}
+			// The loop in/out range is the shell-owned program workarea, so
+			// the panel re-emits the request.
+			ViewerEvent::InPointRequested { .. } => cx.emit(menu::ViewerPanelEvent::SetInPoint),
+			ViewerEvent::OutPointRequested { .. } => cx.emit(menu::ViewerPanelEvent::SetOutPoint),
+			ViewerEvent::ClearRangeRequested { .. } => cx.emit(menu::ViewerPanelEvent::ClearRange),
 			event => {
 				let monitor = Monitor::Program;
 				this.engine.update(cx, |engine, cx| match event {
@@ -205,22 +216,90 @@ impl<E: AppEngine> ProgramViewerPanel<E> {
 		}
 	}
 
-	/// Handles the viewer's local (non-registry) context-menu items.
+	/// Handles the viewer's local (non-registry) context-menu items by
+	/// resolving them into [`menu::ViewerMenuAction`] and applying the action
+	/// (the id resolution and the menu construction are shared with the source
+	/// viewer, so both monitors behave identically).
 	fn on_local_menu_item(&mut self, item: usize, cx: &mut Context<Self>) {
-		use crate::oakui::component::menu as shared_menu;
-		let divider = match item {
-			shared_menu::LOCAL_VIEWER_RES_FULL => Some(1),
-			shared_menu::LOCAL_VIEWER_RES_HALF => Some(2),
-			shared_menu::LOCAL_VIEWER_RES_QUARTER => Some(4),
-			shared_menu::LOCAL_VIEWER_RES_EIGHTH => Some(8),
-			_ => None,
-		};
-		if let Some(divider) = divider {
-			let engine = self.engine.clone();
-			engine.update(cx, |engine, cx| engine.set_playback_divider(divider, cx));
+		let Some(action) = menu::viewer_menu_action(item) else {
+			println!("[program viewer] context-menu item {item} (not handled)");
 			return;
+		};
+		self.apply_viewer_action(action, cx);
+	}
+
+	/// Applies one viewer context-menu action. Zoom, safe margins and the FPS
+	/// overlay are viewer-widget state; the resolution divider, stop-on-last
+	/// and waveform mode are engine config; full-screen and the in/out range
+	/// requests are re-emitted for the app shell (the workarea is shell-owned).
+	fn apply_viewer_action(&mut self, action: menu::ViewerMenuAction, cx: &mut Context<Self>) {
+		match action {
+			menu::ViewerMenuAction::ZoomFit => {
+				let zoom = ViewerZoom::Fit;
+				self.viewer.update(cx, |viewer, cx| viewer.set_zoom(zoom, cx));
+			}
+			menu::ViewerMenuAction::ZoomLevel(index) => {
+				let zoom = ViewerZoom::Level(index);
+				self.viewer.update(cx, |viewer, cx| viewer.set_zoom(zoom, cx));
+			}
+			menu::ViewerMenuAction::Resolution(divider) => self
+				.engine
+				.update(cx, |engine, cx| engine.set_playback_divider(divider, cx)),
+			menu::ViewerMenuAction::SafeOff => {
+				let margins = SafeMargins::Off;
+				self.viewer
+					.update(cx, |viewer, cx| viewer.set_safe_margins(margins, cx));
+			}
+			menu::ViewerMenuAction::SafeOn => {
+				let margins = SafeMargins::On;
+				self.viewer
+					.update(cx, |viewer, cx| viewer.set_safe_margins(margins, cx));
+			}
+			menu::ViewerMenuAction::SafeCustom => {
+				let margins = SafeMargins::Custom(0.9, 0.8);
+				self.viewer
+					.update(cx, |viewer, cx| viewer.set_safe_margins(margins, cx));
+			}
+			menu::ViewerMenuAction::StopOnLast => {
+				let enabled = self.engine.read(cx).stop_on_last();
+				self.engine
+					.update(cx, |engine, cx| engine.set_stop_on_last(!enabled, cx));
+			}
+			menu::ViewerMenuAction::Waveform(mode) => self.engine.update(cx, |engine, cx| {
+				engine.set_waveform_mode(mode.config_value(), cx);
+			}),
+			menu::ViewerMenuAction::ShowFps => {
+				let show = self.viewer.read(cx).show_fps();
+				self.viewer.update(cx, |viewer, cx| viewer.set_show_fps(!show, cx));
+			}
+			menu::ViewerMenuAction::SaveFrame => self.save_frame(cx),
+			menu::ViewerMenuAction::FullScreen => {
+				cx.emit(menu::ViewerPanelEvent::FullScreenRequested)
+			}
 		}
-		println!("[program viewer] context-menu item {item} (not implemented yet)");
+	}
+
+	/// Saves the current program-monitor frame to a PNG in `$HOME/Pictures`
+	/// (falling back to the working directory), named after the frame number
+	/// and a timestamp. The engine's shared capture path writes the BGRA CPU
+	/// frame; there is no save dialog yet.
+	fn save_frame(&mut self, cx: &mut Context<Self>) {
+		let frame = self.engine.read(cx).clock_frame(Monitor::Program, cx).0;
+		let ts = std::time::SystemTime::now()
+			.duration_since(std::time::UNIX_EPOCH)
+			.map(|duration| duration.as_secs())
+			.unwrap_or(0);
+		let name = format!("oak-frame-program-{frame}-{ts}.png");
+		let dir = std::env::var_os("HOME")
+			.map(std::path::PathBuf::from)
+			.map(|home| home.join("Pictures"))
+			.filter(|dir| std::fs::create_dir_all(dir).is_ok())
+			.unwrap_or_else(|| std::path::PathBuf::from("."));
+		let path = dir.join(name);
+		match self.engine.read(cx).save_frame(Monitor::Program, path.clone(), cx) {
+			Ok(path) => println!("[program viewer] saved frame to {}", path.display()),
+			Err(error) => println!("[program viewer] save frame failed: {error}"),
+		}
 	}
 
 	/// Routes a transport command to the engine's program monitor through
@@ -562,12 +641,18 @@ impl<E: AppEngine> Render for ProgramViewerPanel<E> {
 			// the panel opens the shared viewer menu here.
 			.on_mouse_down(MouseButton::Right, {
 				cx.listener(|this, event: &gpui::MouseDownEvent, _window, cx| {
-					let divider = this.engine.read(cx).playback_divider();
-					this.context_menu.show(
-						event.position,
-						menu::viewer_menu(divider),
-						cx,
-					);
+					let state = menu::ViewerMenuState {
+						playback_divider: this.engine.read(cx).playback_divider(),
+						zoom: this.viewer.read(cx).zoom(),
+						safe: this.viewer.read(cx).safe_margins(),
+						stop_on_last: this.engine.read(cx).stop_on_last(),
+						waveform: WaveformMode::from_config_value(
+							this.engine.read(cx).waveform_mode(),
+						),
+						show_fps: this.viewer.read(cx).show_fps(),
+					};
+					this.context_menu
+						.show(event.position, menu::viewer_menu(&state), cx);
 				})
 			})
 			.child(
@@ -643,6 +728,8 @@ impl<E: AppEngine> PanelCommandHandler for ProgramViewerPanel<E> {
 }
 
 impl<E: AppEngine> EventEmitter<PanelEvent> for ProgramViewerPanel<E> {}
+
+impl<E: AppEngine> EventEmitter<menu::ViewerPanelEvent> for ProgramViewerPanel<E> {}
 
 impl<E: AppEngine> EventEmitter<ContextMenuTriggered> for ProgramViewerPanel<E> {}
 

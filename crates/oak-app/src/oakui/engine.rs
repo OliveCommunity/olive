@@ -808,6 +808,76 @@ pub trait AppEngine:
 	}
 
 	// -------------------------------------------------------------------
+	// Viewer options (the C++ viewer context menu): stop-on-last-frame,
+	// the audio-waveform overlay mode and saving the current frame.
+	// Defaults persist to the app config store, so every engine shares
+	// them without an implementation.
+	// -------------------------------------------------------------------
+
+	/// Whether playback stops at the last frame instead of looping (the C++
+	/// viewer `Stop on Last` toggle / `StopOnLastFrame` config).
+	fn stop_on_last(&self) -> bool {
+		oak_common::configstore::ConfigStore::instance()
+			.get_bool(None, "StopOnLastFrame", 0)
+			!= 0
+	}
+
+	/// Sets the `StopOnLastFrame` config (the next tick past the end either
+	/// pauses at the last frame or wraps around).
+	fn set_stop_on_last(&mut self, enabled: bool, cx: &mut Context<Self>) {
+		oak_common::configstore::ConfigStore::instance().set(
+			None,
+			"StopOnLastFrame",
+			if enabled { "true" } else { "false" },
+		);
+		let _ = cx;
+	}
+
+	/// The audio-waveform overlay mode as the `ViewerWaveformMode` config
+	/// value (`0` automatic / `1` only / `2` both), clamped to the valid
+	/// range.
+	fn waveform_mode(&self) -> i32 {
+		oak_common::configstore::ConfigStore::instance()
+			.get_int(None, "ViewerWaveformMode", 0)
+			.clamp(0, 2)
+	}
+
+	/// Sets the `ViewerWaveformMode` config value (clamped to `0..=2`).
+	fn set_waveform_mode(&mut self, mode: i32, cx: &mut Context<Self>) {
+		oak_common::configstore::ConfigStore::instance().set(
+			None,
+			"ViewerWaveformMode",
+			&mode.clamp(0, 2).to_string(),
+		);
+		let _ = cx;
+	}
+
+	/// Saves `monitor`'s current CPU frame as a BGRA PNG at `path` and
+	/// returns the path on success. The viewer menu's `Save Frame` entry
+	/// falls back to this for engines without a dedicated capture path.
+	fn save_frame(
+		&self,
+		monitor: Monitor,
+		path: PathBuf,
+		cx: &App,
+	) -> Result<PathBuf, String> {
+		let image = self.cpu_frame(monitor, cx);
+		let size = image.size(0);
+		let bytes = image
+			.as_bytes(0)
+			.ok_or_else(|| "empty frame: no image data".to_string())?;
+		image::save_buffer(
+			&path,
+			bytes,
+			size.width.0 as u32,
+			size.height.0 as u32,
+			image::ExtendedColorType::Bgra8,
+		)
+		.map_err(|e| format!("save frame failed: {e}"))?;
+		Ok(path)
+	}
+
+	// -------------------------------------------------------------------
 	// Project properties (the C++ File > Project Properties dialog):
 	// the per-project OCIO config override and the disk-cache location.
 	// Defaults cover engines without a project surface.

@@ -161,8 +161,9 @@ impl MockClock {
 	}
 
 	/// Advances the playhead from the wall clock while playing, looping at
-	/// `length`. No-op when stopped.
-	pub fn tick(&mut self, length: Frame) {
+	/// `length` — or pausing on the last frame when `stop_on_last` is set.
+	/// No-op when stopped.
+	pub fn tick(&mut self, length: Frame, stop_on_last: bool) {
 		let Some((started, anchored)) = self.started else {
 			return;
 		};
@@ -173,6 +174,15 @@ impl MockClock {
 					as i64,
 			);
 		if length.0 > 0 && frame.0 >= length.0 {
+			if stop_on_last {
+				// Stop on the last frame and pause playback (the C++ viewer's
+				// Stop on Last option): the playhead never wraps.
+				self.transport.pause();
+				self.started = None;
+				frame = Frame(length.0 - 1);
+				self.transport.seek(frame, length);
+				return;
+			}
 			// Loop back to the start of the sequence for the demo.
 			frame = Frame(frame.0 % length.0);
 		}
@@ -1285,10 +1295,11 @@ impl EngineGateway for MockEngine {
 
 	fn tick(&mut self, cx: &mut Context<Self>) {
 		let length = self.sequence_length();
+		let stop_on_last = self.stop_on_last();
 		for clock in [&self.source_clock, &self.program_clock] {
 			let clock = clock.clone();
 			clock.update(cx, |clock, cx| {
-				clock.tick(length);
+				clock.tick(length, stop_on_last);
 				cx.notify();
 			});
 		}
@@ -2701,6 +2712,36 @@ mod tests {
 			let frame = engine.read(app).clock_frame(Monitor::Source, app);
 			assert_eq!(frame, Frame(42));
 		});
+	}
+
+	/// The stop-on-last tick pauses on the final frame instead of wrapping.
+	#[test]
+	fn clock_tick_stops_on_the_last_frame_when_asked() {
+		use std::time::{Duration, Instant};
+		let mut clock = MockClock::new(FrameRate::new(30, 1));
+		clock.play();
+		// 10 s at 30 fps = 300 frames into a 5-frame sequence: wrapped 60×.
+		clock.started = Some((Instant::now() - Duration::from_secs(10), Frame(0)));
+
+		clock.tick(Frame(5), true);
+		assert_eq!(clock.transport.frame(), Frame(4), "pinned to the last frame");
+		assert!(!clock.transport.is_playing(), "playback stopped");
+		// A later tick is a no-op: the anchor is cleared.
+		clock.tick(Frame(5), true);
+		assert_eq!(clock.transport.frame(), Frame(4));
+	}
+
+	/// Without stop-on-last the tick wraps modulo the sequence length.
+	#[test]
+	fn clock_tick_loops_when_not_stopping() {
+		use std::time::{Duration, Instant};
+		let mut clock = MockClock::new(FrameRate::new(30, 1));
+		clock.play();
+		clock.started = Some((Instant::now() - Duration::from_secs(10), Frame(0)));
+
+		clock.tick(Frame(5), false);
+		assert_eq!(clock.transport.frame(), Frame(0), "300 % 5 = 0");
+		assert!(clock.transport.is_playing(), "still playing while looping");
 	}
 
 	#[gpui::test]

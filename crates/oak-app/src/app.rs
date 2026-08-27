@@ -523,6 +523,25 @@ impl<E: AppEngine> OakApp<E> {
 		)
 		.detach();
 
+		// The viewer panels re-emit their monitor-level requests (full-screen
+		// and the loop in/out range) for the shell to apply: full-screen
+		// toggles the window, and the in/out/clear requests act on the shared
+		// program workarea (both monitors use it).
+		cx.subscribe(
+			&panels.source_viewer,
+			|this, _panel, event: &menu::ViewerPanelEvent, cx| {
+				this.apply_viewer_panel_event(*event, cx);
+			},
+		)
+		.detach();
+		cx.subscribe(
+			&panels.program_viewer,
+			|this, _panel, event: &menu::ViewerPanelEvent, cx| {
+				this.apply_viewer_panel_event(*event, cx);
+			},
+		)
+		.detach();
+
 		// Arrange the default workspace: the design's 素材查看器 | 序列查看器 |
 		// 检查器 row (project bin docked on the left), node editor + history
 		// as tabs, timeline full width at the bottom.
@@ -950,11 +969,7 @@ impl<E: AppEngine> OakApp<E> {
 				println!("[view] toggle show all: {} (placeholder)", self.show_all);
 				self.rebuild_menu_bar(cx);
 			}
-			A::FullScreen => {
-				self.full_screen = !self.full_screen;
-				println!("[view] full screen: {} (placeholder)", self.full_screen);
-				self.rebuild_menu_bar(cx);
-			}
+			A::FullScreen => self.toggle_full_screen(cx),
 			A::Preferences => self.open_preferences(cx),
 			// --- Playback (the program monitor) ----------------------------
 			A::PlayPause => {
@@ -1392,6 +1407,38 @@ impl<E: AppEngine> OakApp<E> {
 		crate::i18n::set_language_code(code);
 		self.rebuild_menu_bar(cx);
 		cx.notify();
+	}
+
+	/// Toggles the window's full-screen state (the 视图 → 全屏 menu entry and
+	/// the viewer context menu's `FullScreenRequested`), then refreshes the
+	/// menu bar so the checkmark follows the real window state.
+	fn toggle_full_screen(&mut self, cx: &mut Context<Self>) {
+		let windows = cx.windows();
+		let Some(window) = windows.first() else {
+			return;
+		};
+		let Ok(full_screen) = cx.update_window(*window, |_root, window, _app| {
+			window.toggle_fullscreen();
+			window.is_fullscreen()
+		}) else {
+			return;
+		};
+		self.full_screen = full_screen;
+		self.rebuild_menu_bar(cx);
+	}
+
+	/// Applies a viewer panel's shell-level request: full-screen toggles the
+	/// window, and the loop-range requests move the shared program workarea
+	/// (both monitors act on it through the same undoable path as the menu).
+	fn apply_viewer_panel_event(&mut self, event: menu::ViewerPanelEvent, cx: &mut Context<Self>) {
+		match event {
+			menu::ViewerPanelEvent::FullScreenRequested => self.toggle_full_screen(cx),
+			menu::ViewerPanelEvent::SetInPoint => self.set_point_at_playhead(true, cx),
+			menu::ViewerPanelEvent::SetOutPoint => self.set_point_at_playhead(false, cx),
+			menu::ViewerPanelEvent::ClearRange => {
+				self.engine.update(cx, |engine, cx| engine.clear_workarea(cx));
+			}
+		}
 	}
 
 	/// Replaces the `MenuBar` entity with one built from the current language
