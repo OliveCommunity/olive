@@ -107,28 +107,39 @@ jobs:
       - name: Test
         run: |
           sudo apt-get install -y gdb
-          xvfb-run -a -s "-screen 0 1920x1080x24" cargo test --workspace --locked &
-          TEST_PID=$!
-          # The watchdog inherits the step's stdout/stderr; detach it so
-          # it cannot keep the runner's I/O pipes open after the step
-          # ends ("WaitDelay expired before I/O complete" otherwise).
-          (
-            sleep 1500
-            echo "::warning::test suite exceeded 1500s; dumping hung-process stacks"
-            for p in $(pgrep -f 'target/debug/deps/|target/debug/oak-worker'); do
-              echo "===== thread stacks of pid $p ($(readlink /proc/$p/exe 2>/dev/null)) ====="
-              sudo gdb -batch -ex 'thread apply all bt' -p "$p" || true
-            done
-            pkill -9 -f 'target/debug/deps/' || true
-            pkill -9 -f 'target/debug/oak-worker' || true
-          ) >/dev/null 2>&1 &
-          WATCHDOG_PID=$!
-          wait $TEST_PID
-          rc=$?
-          kill $WATCHDOG_PID 2>/dev/null || true
-          # Reap the watchdog so no child holds the step's pipes.
-          wait $WATCHDOG_PID 2>/dev/null || true
-          exit $rc
+          run_suite() {
+            xvfb-run -a -s "-screen 0 1920x1080x24" cargo test --workspace --locked &
+            TEST_PID=$!
+            # The watchdog inherits the step's stdout/stderr; detach it so
+            # it cannot keep the runner's I/O pipes open after the step
+            # ends ("WaitDelay expired before I/O complete" otherwise).
+            (
+              sleep 1500
+              echo "::warning::test suite exceeded 1500s; dumping hung-process stacks"
+              for p in $(pgrep -f 'target/debug/deps/|target/debug/oak-worker'); do
+                echo "===== thread stacks of pid $p ($(readlink /proc/$p/exe 2>/dev/null)) ====="
+                sudo gdb -batch -ex 'thread apply all bt' -p "$p" || true
+              done
+              pkill -9 -f 'target/debug/deps/' || true
+              pkill -9 -f 'target/debug/oak-worker' || true
+            ) >/dev/null 2>&1 &
+            WATCHDOG_PID=$!
+            wait $TEST_PID
+            rc=$?
+            kill $WATCHDOG_PID 2>/dev/null || true
+            # Reap the watchdog so no child holds the step's pipes.
+            wait $WATCHDOG_PID 2>/dev/null || true
+            return $rc
+          }
+          # Retry once (same policy as the Windows job): worker-pool
+          # startup under full-suite parallelism has flaked once
+          # (full_res_worker_outlives_a_dropped_project: the render
+          # manager's process dispatcher failed to start while every other
+          # test passed). A real regression fails both passes.
+          if ! run_suite; then
+            echo "first pass failed; retrying once for worker-pool flakes"
+            run_suite
+          fi
 
       # A crashing (SIGSEGV) test gives no Rust backtrace; rerun the
       # crashing test binaries under gdb to capture the native stack.

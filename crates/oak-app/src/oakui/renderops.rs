@@ -65,8 +65,13 @@ pub fn ensure_render_manager() -> bool {
 		return true;
 	}
 	// Already-initialized is success (the module reports State for a
-	// second init).
-	let _ = RenderManager::init();
+	// second init). Log the real failure before degrading to the bool —
+	// "render manager failed to start" alone is undiagnosable in CI.
+	if let Err(e) = RenderManager::init() {
+		if RenderManager::global().is_none() {
+			log::error!("render manager init failed: {e:?}");
+		}
+	}
 	RenderManager::global().is_some()
 }
 
