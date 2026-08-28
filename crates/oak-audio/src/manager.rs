@@ -193,6 +193,15 @@ impl ManagerInner {
 		Ok(())
 	}
 
+	/// Read and reset the output underrun counter (frames the callback had
+	/// to zero-fill because the buffer was empty). The playback engine
+	/// polls this per tick and resyncs after an underrun: the zero-fill
+	/// advanced the playback clock past the queued content, so without a
+	/// resync everything afterwards plays late.
+	pub fn take_output_underrun_frames(&self) -> i64 {
+		self.output_buffer.take_underrun_frames()
+	}
+
 	/// Stop the output stream.
 	///
 	/// `// CPP-PARITY: src/audio/src/audiomanager.cpp:229` (`stop_output` aborts

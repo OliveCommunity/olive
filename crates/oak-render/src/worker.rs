@@ -352,6 +352,51 @@ impl GraphSnapshotStore {
 		Ok(path_str)
 	}
 
+	/// Like [`acquire`], but always rewrites the snapshot file even when the
+	/// (uuid, revision) key is already present. Used to force the workers to
+	/// re-deserialize a project whose settings changed without an undo-stack
+	/// revision bump (color-settings resync): the dedup in [`acquire`] would
+	/// otherwise hand the workers the stale file and `load_graph` would never
+	/// re-broadcast. Atomic staging and reference counting are identical to
+	/// [`acquire`].
+	pub fn acquire_rewrite(
+		&self,
+		project: &std::sync::Mutex<oak_node::project::Project>,
+		revision: u64,
+	) -> Result<String> {
+		let (uuid, xml) = {
+			let g = lock(project);
+			let xml = oak_node::serializer::save(&g)
+				.map_err(|e| Error::Failed(format!("save graph snapshot: {e}")))?;
+			(g.uuid.clone(), xml)
+		};
+		let path = self.dir.join(format!("graph-{uuid}-{revision}.xml"));
+		let path_str = path.to_string_lossy().into_owned();
+		// Atomic staging: temp file + rename (see [`acquire`]).
+		let tmp = self
+			.dir
+			.join(format!("graph-{uuid}-{revision}.{}.tmp", std::process::id()));
+		std::fs::write(&tmp, &xml)
+			.map_err(|e| Error::Failed(format!("write snapshot temp: {e}")))?;
+		if let Err(e) = std::fs::rename(&tmp, &path) {
+			let _ = std::fs::remove_file(&tmp);
+			return Err(Error::Failed(format!("rename snapshot: {e}")));
+		}
+		let mut entries = lock(&self.entries);
+		if let Some(entry) = entries.get_mut(&path_str) {
+			entry.refs += 1;
+		} else {
+			entries.insert(
+				path_str.clone(),
+				SnapshotEntry {
+					refs: 1,
+					cached: false,
+				},
+			);
+		}
+		Ok(path_str)
+	}
+
 	/// Drop one reference. The FILE IS NOT UNLINKED: a worker may still
 	/// hold the path for a late `load_graph` (M16 S1), and per-project
 	/// filenames mean a stale snapshot is never confused with a live one.
@@ -607,5 +652,43 @@ mod tests {
 			!std::path::Path::new(&p1).exists(),
 			"cleanup removes the snapshot directory"
 		);
+	}
+
+	#[test]
+	fn acquire_rewrite_forces_file_rewrite_on_same_key() {
+		let store = GraphSnapshotStore::new();
+		let project = oak_node::project::Project::new();
+		// First snapshot: the default project (working space ACEScg).
+		let p1 = store.acquire(&project, 1).unwrap();
+		let before = std::fs::read_to_string(&p1).unwrap();
+		assert!(
+			std::path::Path::new(&p1).exists(),
+			"snapshot file written"
+		);
+		assert_eq!(store.refs(&p1), 1);
+
+		// A settings change with no revision bump: plain acquire must NOT
+		// rewrite the file (the dedup the resync exists to bypass)...
+		{
+			let mut guard = project.lock().unwrap_or_else(|e| e.into_inner());
+			guard.set_working_color_space(oak_common::colormath::WorkingColorSpace::SrgbLegacy);
+		}
+		let p2 = store.acquire(&project, 1).unwrap();
+		assert_eq!(p1, p2, "same (uuid, revision) key reuses the file");
+		assert_eq!(std::fs::read_to_string(&p1).unwrap(), before, "acquire never rewrites");
+		store.release(&p2);
+
+		// ...while acquire_rewrite rewrites it in place at the same key.
+		let p3 = store.acquire_rewrite(&project, 1).unwrap();
+		assert_eq!(p1, p3, "rewrite keeps the same path token");
+		let after = std::fs::read_to_string(&p1).unwrap();
+		assert_ne!(after, before, "rewrite replaces the snapshot content");
+		assert!(
+			after.contains("srgb_legacy"),
+			"rewritten snapshot carries the new setting: {after}"
+		);
+		store.release(&p3);
+		store.release(&p1);
+		store.cleanup();
 	}
 }

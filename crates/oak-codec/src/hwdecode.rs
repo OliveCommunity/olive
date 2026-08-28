@@ -57,17 +57,61 @@ pub static HW_TRANSFERS: std::sync::atomic::AtomicU64 = std::sync::atomic::Atomi
 /// 0 = force software). Default ON by user mandate.
 pub const CONFIG_KEY_HARDWARE_DECODING: &str = "HardwareDecoding";
 
+/// Process-wide negative cache of failed device types (a `static`, not a
+/// `const` — a const array is inlined per use site, so writes from
+/// `mark_device_unavailable` would never be visible to `device_unavailable`).
+/// Creating a hardware device context (`av_hwdevice_ctx_create`) is
+/// expensive when the driver is missing and emits FFmpeg's
+/// `[VAAPI @ ...] Failed to initialise VAAPI connection` spam every time —
+/// on a box without libva that is once per decoder open, per process, with
+/// the full log line. The cache marks a device type unavailable after its
+/// first failed creation, so every later open skips it (and its log noise)
+/// entirely. The slot count is generous: `AVHWDeviceType` values are small
+/// non-negative enumerants (< 32), 64 covers them all.
+static UNAVAILABLE_DEVICES: [std::sync::atomic::AtomicBool; 64] =
+    [const { std::sync::atomic::AtomicBool::new(false) }; 64];
+
+/// Test-only counter of `open_hw_accel` device-context creation attempts
+/// (incremented at the top of the function, before any FFmpeg call). Lets
+/// tests prove the negative cache short-circuits before FFmpeg is
+/// involved.
+#[cfg(test)]
+static CREATE_ATTEMPTS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Whether `device_type` is known unavailable — a device-context
+/// creation failed once earlier in this process.
+pub fn device_unavailable(device_type: sys::AVHWDeviceType) -> bool {
+    UNAVAILABLE_DEVICES
+        .get(device_type as usize)
+        .map(|f| f.load(std::sync::atomic::Ordering::Relaxed))
+        .unwrap_or(false)
+}
+
+/// Record that `device_type`'s device context failed to create (sticky
+/// for the process; the caller falls back to the next candidate).
+pub fn mark_device_unavailable(device_type: sys::AVHWDeviceType) {
+    if let Some(f) = UNAVAILABLE_DEVICES.get(device_type as usize) {
+        f.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+
 /// Whether hardware decoding is preferred (the config switch). Default
 /// ON by user mandate; only an explicit `"false"` turns it off (the
 /// string accessor, same convention as the app's config helpers — the
-/// store's typed `get_bool` only parses pre-typed Bool entries).
+/// store's typed `get_bool` only parses pre-typed Bool entries). The
+/// `OAK_HWACCEL` environment variable overrides both: `0` force-disables
+/// hardware decode entirely (a diagnostic escape hatch on machines where
+/// probing the device is slow or noisy).
 pub fn hardware_decoding_enabled() -> bool {
-	match oak_common::configstore::ConfigStore::instance()
-		.get(None, CONFIG_KEY_HARDWARE_DECODING)
-	{
-		Ok(value) => value != "false",
-		Err(_) => true,
-	}
+    if let Ok(v) = std::env::var("OAK_HWACCEL") {
+        return v != "0";
+    }
+    match oak_common::configstore::ConfigStore::instance()
+        .get(None, CONFIG_KEY_HARDWARE_DECODING)
+    {
+        Ok(value) => value != "false",
+        Err(_) => true,
+    }
 }
 
 /// The hardware device types to try, most preferred first. On a machine
@@ -116,6 +160,18 @@ pub fn open_hw_accel(
 	codec: ffmpeg::Codec,
 	device_type: sys::AVHWDeviceType,
 ) -> Option<(ffmpeg::codec::decoder::Opened, sys::AVHWDeviceType)> {
+	// Negative cache: a device type whose context creation failed once
+	// (no driver, headless box) is never tried again — creation is slow
+	// and logs `[VAAPI @ ...] Failed to initialise VAAPI connection` per
+	// attempt. Checked before any FFmpeg call so marked types cost
+	// nothing.
+	if device_unavailable(device_type) {
+		return None;
+	}
+	#[cfg(test)]
+	{
+		CREATE_ATTEMPTS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+	}
 	let mut context = ffmpeg::codec::Context::from_parameters(params.clone()).ok()?;
 	let mut device: *mut sys::AVBufferRef = std::ptr::null_mut();
 	// SAFETY: `device` is a valid out-pointer; on success it owns the
@@ -130,6 +186,9 @@ pub fn open_hw_accel(
 		)
 	};
 	if rc < 0 || device.is_null() {
+		// The device is unavailable (missing driver / no hardware): mark
+		// it so later opens skip the attempt and its log noise.
+		mark_device_unavailable(device_type);
 		return None;
 	}
 	// SAFETY: `hw_device_ctx` takes ownership of the reference; the codec
@@ -240,5 +299,48 @@ mod tests {
 			sys::AVHWDeviceType::AV_HWDEVICE_TYPE_VIDEOTOOLBOX,
 		);
 		assert!(opened.is_some(), "VideoToolbox hwaccel must open for H.264");
+	}
+
+	/// A device type marked unavailable is short-circuited before any
+	/// FFmpeg call: `open_hw_accel` returns None without attempting device
+	/// creation (which is what used to log
+	/// `[VAAPI @ ...] Failed to initialise VAAPI connection` every time on
+	/// boxes without the driver).
+	#[test]
+	fn negative_cache_skips_marked_device() {
+		// VDPAU is not a candidate on any supported platform, so marking
+		// it cannot disturb the platform tests in this process (e.g. the
+		// macOS VideoToolbox test above).
+		let dev = sys::AVHWDeviceType::AV_HWDEVICE_TYPE_VDPAU;
+		mark_device_unavailable(dev);
+		assert!(device_unavailable(dev));
+
+		let input = ffmpeg::format::input(&"../oak-app/tests/demo.mp4".to_string())
+			.expect("open demo.mp4");
+		let fstream = input.stream(0).expect("stream 0");
+		let params = fstream.parameters();
+		let codec = ffmpeg::decoder::find(params.id()).expect("software h264 codec");
+
+		CREATE_ATTEMPTS.store(0, std::sync::atomic::Ordering::Relaxed);
+		let opened = open_hw_accel(&params, codec, dev);
+		assert!(opened.is_none(), "marked device must not open");
+		assert_eq!(
+			CREATE_ATTEMPTS.load(std::sync::atomic::Ordering::Relaxed),
+			0,
+			"marked device must be skipped before any creation attempt"
+		);
+
+		// Restore so the (non-candidate) type stays clean for other tests.
+		UNAVAILABLE_DEVICES[dev as usize].store(false, std::sync::atomic::Ordering::Relaxed);
+	}
+
+	/// A device type never tried before is not cached as unavailable
+	/// (only a failed creation marks it). DXVA2 is not a candidate on any
+	/// supported platform (Windows uses D3D11VA/CUDA), so it is never
+	/// touched by other tests in this process.
+	#[test]
+	fn unmarked_device_type_is_not_unavailable() {
+		let dev = sys::AVHWDeviceType::AV_HWDEVICE_TYPE_DXVA2;
+		assert!(!device_unavailable(dev));
 	}
 }

@@ -1047,8 +1047,40 @@ impl WorkerSession {
 		})
 	}
 
+	/// Refresh the process-global pipeline color settings from the loaded
+	/// project snapshot (the source of truth for what this worker renders).
+	/// Returns true when the settings changed — the caller must drop the
+	/// frame cache, whose F32 bytes were produced under the old settings
+	/// (M16 S2). The resync keeps the global current via `load_graph`; this
+	/// covers tickets in flight before that IPC lands, and mirrors
+	/// [`handle_load_graph`]'s adopt step.
+	fn sync_pipeline_color_from_graph(&mut self) -> bool {
+		let Some(graph) = &self.graph else { return false; };
+		let Some(project) = &graph.project else { return false; };
+		let (working, output) = {
+			let guard = project.lock().unwrap_or_else(|e| e.into_inner());
+			(guard.working_color_space(), guard.output_color_spec())
+		};
+		if oak_render::color::pipeline_working_space() == working
+			&& oak_render::color::pipeline_output_spec() == output
+		{
+			return false;
+		}
+		oak_render::color::set_pipeline_color_settings(working, output);
+		true
+	}
+
 	/// Render `spec` into the slot's data block and fill the slot meta.
 	fn render_spec_pixels(&mut self, spec: &BatchTicketSpec, pool: &FrameSlotPool) -> Result<(), String> {
+		// Derive the pipeline colors from the loaded project on every render:
+		// eval's decode linearization and the output node below read the
+		// process global, which the resync (load_graph) keeps current — but a
+		// ticket in flight before that IPC lands must not render under stale
+		// colors. A change invalidates the F32 frame cache: cached bytes were
+		// produced under the previous settings (M16 S2).
+		if self.sync_pipeline_color_from_graph() {
+			self.frame_cache.clear();
+		}
 		let w = spec.width;
 		let h = spec.height;
 		if w <= 0 || h <= 0 {
@@ -1804,6 +1836,130 @@ mod tests {
 			.unwrap()
 			.starts_with("graph deserialization failed: "));
 		let _ = std::fs::remove_file(&bad);
+	}
+
+	#[test]
+	fn load_graph_adopts_pipeline_colors_from_snapshot() {
+		use oak_common::colormath::{OutputColorSpec, WorkingColorSpace};
+		// Reset the process global to something different from the snapshot's
+		// settings so the adopt step is observable.
+		oak_render::color::set_pipeline_color_settings(
+			WorkingColorSpace::SrgbLegacy,
+			OutputColorSpec::default(),
+		);
+		let project = oak_node::project::Project::new();
+		{
+			let mut guard = project.lock().unwrap_or_else(|e| e.into_inner());
+			guard.set_working_color_space(WorkingColorSpace::AcesCg);
+		}
+		let xml = oak_node::serializer::save(&project.lock().unwrap_or_else(|e| e.into_inner()))
+			.expect("serialize project");
+		let path = std::env::temp_dir().join("oak_worker_main_test_acescg.ove");
+		std::fs::write(&path, &xml).unwrap();
+
+		let mut s = WorkerSession::create("none").unwrap();
+		let resp = s.handle_line(
+			&json!({ "type": "load_graph", "path": path.display().to_string() }).to_string(),
+		);
+		assert!(resp.is_none(), "unexpected error: {resp:?}");
+		assert_eq!(
+			oak_render::color::pipeline_working_space(),
+			WorkingColorSpace::AcesCg,
+			"load_graph must adopt the snapshot's working space"
+		);
+		let _ = std::fs::remove_file(&path);
+		// Restore the default global so parallel tests are not disturbed.
+		oak_render::color::set_pipeline_color_settings(
+			WorkingColorSpace::default(),
+			OutputColorSpec::default(),
+		);
+	}
+
+	#[test]
+	fn sync_pipeline_color_from_graph_restores_stale_global() {
+		use oak_common::colormath::{OutputColorSpec, WorkingColorSpace};
+		let project = oak_node::project::Project::new();
+		{
+			let mut guard = project.lock().unwrap_or_else(|e| e.into_inner());
+			guard.set_working_color_space(WorkingColorSpace::AcesCg);
+		}
+		let xml = oak_node::serializer::save(&project.lock().unwrap_or_else(|e| e.into_inner()))
+			.expect("serialize project");
+		let path = std::env::temp_dir().join("oak_worker_main_test_sync.ove");
+		std::fs::write(&path, &xml).unwrap();
+		let mut s = WorkerSession::create("none").unwrap();
+		let resp = s.handle_line(
+			&json!({ "type": "load_graph", "path": path.display().to_string() }).to_string(),
+		);
+		assert!(resp.is_none(), "unexpected error: {resp:?}");
+
+		// Simulate the app committing new project settings: the process
+		// global flips immediately, but the resync (load_graph re-broadcast)
+		// reaches this worker later. A render ticket in that window must not
+		// run under the stale colors.
+		oak_render::color::set_pipeline_color_settings(
+			WorkingColorSpace::SrgbLegacy,
+			oak_render::color::pipeline_output_spec(),
+		);
+		assert!(
+			s.sync_pipeline_color_from_graph(),
+			"stale global must be refreshed from the loaded project"
+		);
+		assert_eq!(
+			oak_render::color::pipeline_working_space(),
+			WorkingColorSpace::AcesCg,
+			"sync must restore the snapshot's working space"
+		);
+		assert!(
+			!s.sync_pipeline_color_from_graph(),
+			"no change means no frame-cache invalidation"
+		);
+		let _ = std::fs::remove_file(&path);
+		oak_render::color::set_pipeline_color_settings(
+			WorkingColorSpace::default(),
+			OutputColorSpec::default(),
+		);
+	}
+
+	#[test]
+	fn acescg_pipeline_round_trip_preserves_srgb_encoded_midgray() {
+		// The ACEScg overexposure bug: F32 bytes produced by the legacy sRGB
+		// pass-through (already sRGB-encoded) are re-encoded by the ACEScg
+		// output transform, applying the sRGB OETF a second time — 0.5
+		// becomes srgb_oetf(0.5) ≈ 0.735. The correct pipeline linearizes
+		// the code (sRGB EOTF) into ACEScg and then encodes for output, so
+		// the mid-gray comes back near 0.5.
+		use oak_common::colormath::{
+			acescg_to_output_bytes, decode_to_acescg_bytes, srgb_oetf, OutputColorSpec, OutputGamut,
+			OutputTransfer, SourcePrimaries, SourceTransfer, WorkingColorSpace,
+		};
+		let spec = OutputColorSpec {
+			gamut: OutputGamut::Srgb,
+			transfer: OutputTransfer::Srgb,
+		};
+
+		// Buggy path: treating the already-encoded code as ACEScg linear.
+		let mut double_encoded = [0.5f32, 0.5, 0.5, 1.0];
+		oak_common::colormath::working_to_display_target(
+			&mut double_encoded,
+			WorkingColorSpace::AcesCg,
+			spec,
+		);
+		assert!(
+			(double_encoded[0] - srgb_oetf(0.5)).abs() < 1e-4,
+			"mis-encoding 0.5 as ACEScg-linear must yield srgb_oetf(0.5) ≈ 0.735, got {}",
+			double_encoded[0]
+		);
+
+		// Correct path: decode (sRGB EOTF) → ACEScg → output encode.
+		let mut bytes = [0.5f32, 0.5, 0.5, 1.0].map(f32::to_le_bytes).concat();
+		decode_to_acescg_bytes(&mut bytes, 1, SourcePrimaries::Bt709, SourceTransfer::SdrGamma);
+		acescg_to_output_bytes(&mut bytes, 1, spec);
+		let out = f32::from_le_bytes(bytes[0..4].try_into().unwrap());
+		assert!(
+			(out - 0.5).abs() < 1e-3,
+			"correct pipeline must preserve mid-gray, got {out}"
+		);
 	}
 
 	#[test]

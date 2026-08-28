@@ -241,7 +241,8 @@ enum FullResTarget {
 // workers, so by the time the playhead reaches a frame its pixels are
 // already sitting in a shm slot. `cpu_frame` hits this slot cache first
 // (zero copy — build the display image from the slot bytes, then release
-// the slot); the synchronous render path is the miss fallback. Frames
+// the slot); a miss falls back to the last displayed proxy frame (the
+// synchronous render is the cold-cache fallback only). Frames
 // that fall out of the window (or whose params were invalidated) release
 // their slots back to the workers.
 
@@ -268,24 +269,39 @@ struct PreviewWindow {
 }
 
 // ---------------------------------------------------------------------------
-// Playback audio prefetch (M15 S3; M16 S2: rendered inline)
+// Playback audio prefetch (M15 S3; M16 S3: rendered on the audio thread)
 // ---------------------------------------------------------------------------
 //
 // Real-time audio is pulled by the UI tick. Through the worker pool it had
 // one IPC round trip and could wait behind a busy render worker, so the
 // chunks are rendered AHEAD (tickets complete on the dispatcher's poll) and
-// buffered here. M16 S2 renders audio on the UI tick itself (the manager's
-// audio dispatch is inline — see oak_render::manager), so the prefetch
-// window now serves as the scheduling cushion instead of the delivery
-// latency: the pull never blocks on a worker. `AUDIO_PREFETCH_CHUNKS` ahead
-// ≈ 64 ms of audio at 60 fps — enough to cover the delivery latency while
-// keeping at most a handful of audio chunks in flight.
+// buffered here. M16 S3 renders each chunk on the dedicated audio-render
+// thread (see oakui::audio_thread) — never on the UI tick — and delivers it
+// into the channel asynchronously, so the prefetch window serves as the
+// scheduling cushion: the pull never blocks on a worker. `AUDIO_PREFETCH_CHUNKS`
+// ahead ≈ 64 ms of audio at 60 fps — enough to cover the delivery latency
+// while keeping at most a handful of audio chunks in flight.
 
 /// How many audio chunks are kept rendered ahead of the playhead (M15
-/// S3; M16 S2: rendered inline on the UI tick, so the window is the
+/// S3; M16 S3: rendered on the audio thread, so the window is the
 /// scheduling cushion). Each chunk is one sequence frame of audio;
-/// 4 frames ahead ≈ 66 ms at 60 fps and ≈ 160 ms at 25 fps.
-const AUDIO_PREFETCH_CHUNKS: i64 = 4;
+/// 6 frames ahead ≈ 100 ms at 60 fps and ≈ 240 ms at 25 fps — the
+/// output-device queue holds the whole window (chunks are pushed as soon
+/// as rendered), so this is also how long a UI stall can last before the
+/// device underruns.
+const AUDIO_PREFETCH_CHUNKS: i64 = 6;
+
+/// The playhead frame whose audio is playing at audio-clock time `secs`:
+/// `start_frame + (secs - start_secs)` seconds at `rate`. The wall clock
+/// anchors play() at the click instant, but the first chunk only reaches
+/// the device ~50-150 ms later, so the anchor is taken at the first push —
+/// `start_secs` is the output clock at that moment, NOT zero (on a replay
+/// the device has already padded underruns onto `output_frames_consumed`).
+/// The multiply is split into `num as f64 / den as f64` first so large
+/// frame counts cannot overflow i64.
+fn audio_target_frame(start_frame: i64, start_secs: f64, secs: f64, rate: FrameRate) -> i64 {
+	start_frame + ((secs - start_secs) * rate.num as f64 / rate.den as f64).round() as i64
+}
 
 /// The playback-audio prefetch buffer: rendered chunks ordered by start
 /// timestamp, plus the submission cursor. UI-thread-only (guarded by the
@@ -298,6 +314,12 @@ struct AudioPrefetch {
 	next_submit: i64,
 	/// Chunk length (sequence frames per tick) the buffer is built with.
 	chunk: i64,
+	/// Sequence frame of the chunk most recently served to the output
+	/// device (None until the first pop). A playhead stalled between
+	/// sequence frames (a 60 Hz tick at a 25 fps rate) presents the same
+	/// frame again; [`AudioPrefetch::needs_reset`] distinguishes that from
+	/// a genuine seek so the frame is not re-pushed.
+	last_consumed: Option<i64>,
 	/// Rendered chunks in start-ts order.
 	buffered: VecDeque<(i64, super::renderops::RenderedAudio)>,
 }
@@ -309,14 +331,25 @@ impl AudioPrefetch {
 			front_ts: i64::MIN,
 			next_submit: i64::MIN,
 			chunk: 1,
+			last_consumed: None,
 			buffered: VecDeque::new(),
 		}
 	}
 
-	/// True when `frame` lies inside the submitted window
-	/// `[front_ts, next_submit)` — the playhead is being served.
-	fn covers(&self, frame: i64) -> bool {
-		self.front_ts != i64::MIN && self.front_ts <= frame && frame < self.next_submit
+	/// True when the playhead jumped beyond what serving can follow — a
+	/// genuine seek or restart. Serving runs AHEAD of the playhead by up
+	/// to `AUDIO_PREFETCH_CHUNKS` chunks (rendered chunks are pushed to the
+	/// output device immediately so its queue rides out UI stalls), so the
+	/// served cursor normally leads the playhead; only a backward jump past
+	/// that lead (loop wrap, scrub) or a forward jump past the submitted
+	/// window means a real seek. The audio-master correction's small
+	/// re-anchors (a frame or two) stay inside the tolerance.
+	fn needs_reset(&self, frame: i64) -> bool {
+		if self.front_ts == i64::MIN {
+			return true;
+		}
+		let served = self.last_consumed.unwrap_or(self.front_ts - self.chunk);
+		frame < served - (AUDIO_PREFETCH_CHUNKS + 2) || frame >= self.next_submit
 	}
 
 	/// Reset for a (re)start at `frame`: drop every buffered chunk and
@@ -325,6 +358,7 @@ impl AudioPrefetch {
 		self.front_ts = frame;
 		self.next_submit = frame;
 		self.chunk = chunk.max(1);
+		self.last_consumed = None;
 		self.buffered.clear();
 	}
 
@@ -345,27 +379,26 @@ impl AudioPrefetch {
 		self.buffered.insert(pos, (ts, data));
 	}
 
-	/// Pop the chunk at `frame` (dropping any stale leading chunks).
-	/// Returns `None` when the chunk has not been rendered yet.
-	fn pop_at(&mut self, frame: i64) -> Option<super::renderops::RenderedAudio> {
+	/// Serve every rendered chunk in start-ts order, returning the ones to
+	/// push to the output device. Chunks whose sequence time is already
+	/// behind the playhead arrived too late — they are DROPPED rather than
+	/// played late, so an underrun/production gap costs content but never
+	/// accumulates A/V desync. On-time and future chunks are pushed
+	/// immediately (not one-per-tick): the output device's queue then
+	/// holds up to the whole prefetch window, so a stalled UI tick can no
+	/// longer starve the device into crackling.
+	fn drain_ready(&mut self, playhead: i64) -> Vec<super::renderops::RenderedAudio> {
+		let mut out = Vec::new();
 		while let Some((ts, _)) = self.buffered.front() {
-			if *ts < frame {
-				let ts = self.buffered.pop_front().unwrap().0;
-				self.front_ts = ts + self.chunk;
-			} else {
-				break;
+			let ts = *ts;
+			let (_, data) = self.buffered.pop_front().unwrap();
+			if ts >= playhead {
+				out.push(data);
 			}
-		}
-		let (ts, data) = self.buffered.pop_front()?;
-		if ts == frame {
 			self.front_ts = ts + self.chunk;
-			Some(data)
-		} else {
-			// Gap: the chunk at `frame` is still rendering. Re-insert and
-			// report nothing (the output device zero-fills this tick).
-			self.buffered.push_front((ts, data));
-			None
+			self.last_consumed = Some(ts);
 		}
+		out
 	}
 }
 
@@ -718,6 +751,19 @@ impl RealClock {
 	pub fn pause(&mut self) {
 		self.transport.pause();
 		self.started = None;
+	}
+
+	/// Re-anchors a PLAYING clock at `frame`: subsequent wall-clock ticks
+	/// advance from here. A bare `transport.seek` while playing is
+	/// overwritten by the next [`tick`](Self::tick) (it recomputes the
+	/// playhead from the `started` anchor), so external clock followers
+	/// (the audio-master correction) must re-anchor instead.
+	pub fn reanchor_while_playing(&mut self, frame: Frame, length: Frame) {
+		if self.started.is_none() {
+			return;
+		}
+		self.transport.seek(frame, length);
+		self.started = Some((Instant::now(), self.transport.frame()));
 	}
 
 	/// Advances the playhead from the wall clock while playing, looping at
@@ -1117,18 +1163,31 @@ pub struct RealEngine {
 	audio_tx: Mutex<mpsc::Sender<(i64, super::renderops::RenderedAudio)>>,
 	/// The audio prefetch buffer (see [`AudioPrefetch`]).
 	audio_prefetch: Mutex<AudioPrefetch>,
+	/// Audio-mastered playback anchor `(playhead_frame, output_clock_secs)`
+	/// recorded at the first chunk push of a play run (M12 P1a). While set,
+	/// the tick loop re-anchors the program playhead onto the frame the
+	/// output device is actually consuming (`manager.seconds()`), fixing
+	/// the fixed startup offset and letting playback catch up after
+	/// underruns. Cleared on pause / seek / stop; `None` falls back to the
+	/// wall clock.
+	audio_playback: Option<(i64, f64)>,
+	/// Cooldown for the underrun self-heal resync in `pull_audio_tick`
+	/// (without it a resync retriggers every tick while the fresh chunks
+	/// are still rendering).
+	last_audio_resync: Option<std::time::Instant>,
 }
 
 impl RealEngine {
 	/// Render one tick's worth of audio at the program playhead and queue
-	/// it for playback (M12 P1; M15 S3: worker-pool prefetch; M16 S2: the
-	/// manager's audio dispatch is inline, so each chunk renders
-	/// synchronously on this tick and lands in the channel before the drain
-	/// below). The chunks are submitted AHEAD of the playhead and buffered
-	/// by [`AudioPrefetch`], so the real-time pull never blocks on a render
-	/// worker or an IPC round trip. Failures degrade to silence; when the
-	/// manager is down the channel stays empty and playback continues
-	/// video-only.
+	/// it for playback (M12 P1; M15 S3: worker-pool prefetch; M16 S3: each
+	/// chunk is queued on the dedicated audio-render thread — see
+	/// [`renderops::submit_audio_chunk`](super::renderops::submit_audio_chunk)
+	/// — and delivered asynchronously into the channel, drained below, so
+	/// the render never runs on the UI tick). The chunks are submitted AHEAD
+	/// of the playhead and buffered by [`AudioPrefetch`], so the real-time
+	/// pull never blocks on a render worker or an IPC round trip. Failures
+	/// degrade to silence; when the audio thread is down the channel stays
+	/// empty and playback continues video-only.
 	fn pull_audio_tick(&mut self, cx: &mut Context<Self>) {
 		let (Some(project), Some(seq)) = (self.project.clone(), self.sequence) else {
 			return;
@@ -1151,9 +1210,9 @@ impl RealEngine {
 			.audio_prefetch
 			.lock()
 			.unwrap_or_else(|e| e.into_inner());
-		// Reset on seek / (re)start: the playhead must lie inside the
-		// submitted window [front_ts, next_submit).
-		if !st.covers(frame) {
+		// Reset on seek / restart (see needs_reset): serving runs ahead of
+		// the playhead, so only genuine jumps re-arm the buffer.
+		if st.needs_reset(frame) {
 			st.reset(frame, chunk);
 		}
 		// Submit chunks to cover [next_submit, frame + PREFETCH ahead). In
@@ -1173,35 +1232,104 @@ impl RealEngine {
 			}
 			st.next_submit += chunk;
 		}
-		// Drain completed chunks. With the M16 S2 inline audio dispatch the
-		// submit above already ran each chunk synchronously into the channel;
-		// the drain stays for the worker-pool path (Threads/other backends).
+		// Drain completed chunks. With the M16 S3 audio thread the submit
+		// above only queues; the render lands here asynchronously, so the
+		// drain is the sole delivery path.
 		let rx = self.audio_rx.lock().unwrap_or_else(|e| e.into_inner());
 		while let Ok((ts, data)) = rx.try_recv() {
 			st.insert(ts, data);
 		}
 		drop(rx);
-		// Push the chunk at the current playhead to the output device.
-		let Some(buf) = st.pop_at(frame) else {
-			return;
-		};
-		if buf.sample_rate <= 0 || buf.channel_count <= 0 || buf.data.is_empty() {
-			return;
+		// Underrun self-heal: zero-padding advanced the output clock past
+		// the queued content, so everything audible from here on would
+		// play late (the classic "audio drifts behind video"). Resync by
+		// dropping the device queue and re-rendering from the playhead;
+		// the anchor is re-recorded at the next push. Cooldown prevents a
+		// resync storm while the fresh chunks are still rendering.
+		if self.audio_playback.is_some() {
+			let cooldown_ok = self
+				.last_audio_resync
+				.map(|t| t.elapsed() > std::time::Duration::from_secs(1))
+				.unwrap_or(true);
+			let underrun = oak_audio::manager::instance()
+				.map(|m| m.take_output_underrun_frames())
+				.unwrap_or(0);
+			if cooldown_ok && underrun > 480 {
+				if let Some(mut manager) = oak_audio::manager::instance() {
+					let _ = manager.clear_buffered_output();
+				}
+				st.reset(frame, chunk);
+				self.audio_playback = None;
+				self.last_audio_resync = Some(std::time::Instant::now());
+				return;
+			}
 		}
-		// Packed F32; layout: 1ch → mono mask, else stereo.
-		let layout: u64 = if buf.channel_count == 1 { 0x4 } else { 0x3 };
-		let bytes: Vec<u8> = buf.data.iter().flat_map(|v| v.to_ne_bytes()).collect();
+		// Push every rendered chunk to the output device in ts order (the
+		// device queue is the cushion that rides out UI stalls); chunks
+		// whose time already passed are dropped inside drain_ready.
+		for buf in st.drain_ready(frame) {
+			if buf.sample_rate <= 0 || buf.channel_count <= 0 || buf.data.is_empty() {
+				continue;
+			}
+			// Packed F32; layout: 1ch → mono mask, else stereo.
+			let layout: u64 = if buf.channel_count == 1 { 0x4 } else { 0x3 };
+			let bytes: Vec<u8> = buf.data.iter().flat_map(|v| v.to_ne_bytes()).collect();
+			if let Some(mut manager) = oak_audio::manager::instance() {
+				let _ = manager.push_to_output(
+					oak_audio::params::AudioParams {
+						sample_rate: buf.sample_rate,
+						channel_layout: layout,
+						format: oak_core::SampleFormat::F32,
+					},
+					&bytes,
+					&mut [],
+				);
+				// M12 P1a: anchor the audio master clock at the first push of a
+				// play run. Recording the CURRENT output clock (not 0) keeps the
+				// anchor honest on a replay — the device has been padding
+				// underruns onto `output_frames_consumed` since reset, so the
+				// correction starts from the frame actually audible right now
+				// instead of teleporting the playhead back to the push position.
+				drop(manager);
+				if self.audio_playback.is_none() {
+					let mut secs = -1.0;
+					if let Some(manager) = oak_audio::manager::instance() {
+						if manager.seconds(&mut secs).is_ok() && secs >= 0.0 {
+							self.audio_playback = Some((frame, secs));
+							// Zeros padded before this first push (stream
+							// startup, or the whole paused interval) are
+							// not a playback underrun — reset the counter
+							// so the self-heal doesn't fire spuriously.
+							let _ = manager.take_output_underrun_frames();
+						}
+					}
+				}
+			}
+		}
+	}
+
+	/// Stop program playback: clear the play flag and silence the audio
+	/// output (drop the queued samples and re-anchor the output clock so
+	/// a later play() starts clean). Shared by [`AppEngine::pause`] and
+	/// the Stop-on-Last auto-stop — a clock that stopped itself leaves
+	/// `program_playing` set, and without this the last frame's audio
+	/// re-pushes forever.
+	fn stop_program_playback(&mut self, cx: &mut Context<Self>) {
+		self.program_playing = false;
+		self.audio_playback = None;
 		if let Some(mut manager) = oak_audio::manager::instance() {
-			let _ = manager.push_to_output(
-				oak_audio::params::AudioParams {
-					sample_rate: buf.sample_rate,
-					channel_layout: layout,
-					format: oak_core::SampleFormat::F32,
-				},
-				&bytes,
-				&mut [],
-			);
+			let _ = manager.stop_output();
+			let _ = manager.reset_output_clock();
 		}
+		// Reset the prefetch at the resting playhead so a later play()
+		// re-renders it: `last_consumed` would otherwise suppress the
+		// re-push of the very frame still on screen.
+		let frame = self.program_clock.read(cx).transport.frame().0;
+		let mut st = self
+			.audio_prefetch
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		st.reset(frame, 1);
 	}
 
 	/// Builds an engine with no project open.
@@ -1255,6 +1383,8 @@ impl RealEngine {
 			audio_rx: Mutex::new(audio_rx),
 			audio_tx: Mutex::new(audio_tx),
 			audio_prefetch: Mutex::new(AudioPrefetch::new()),
+			audio_playback: None,
+			last_audio_resync: None,
 		}
 	}
 
@@ -1750,8 +1880,8 @@ impl RealEngine {
 	/// changed; slots that fell behind the playhead are released (credit
 	/// returns to the workers).
 	fn update_preview_window(&mut self, monitor: Monitor, cx: &mut Context<Self>) {
-		// Only during playback: a paused viewer uses the synchronous miss
-		// path (and the resting full-res fill).
+		// Only during playback: a paused viewer displays the last proxy
+		// frame (the resting full-res fill replaces it).
 		let playing = self.clock(monitor).read(cx).transport.is_playing();
 		if !playing {
 			return;
@@ -3332,6 +3462,24 @@ impl EngineGateway for RealEngine {
 			}
 			cx.notify();
 		});
+		if monitor == Monitor::Program {
+			// A seek must not keep playing audio queued for the old
+			// playhead: clear the output buffer and reset the prefetch so
+			// the new position renders from scratch (without the reset the
+			// dedup guard could suppress the re-push of the seek target).
+			// The audio master anchor is dropped too — the next play run
+			// re-anchors at its own first push.
+			self.audio_playback = None;
+			if let Some(mut manager) = oak_audio::manager::instance() {
+				let _ = manager.clear_buffered_output();
+				let _ = manager.reset_output_clock();
+			}
+			let mut st = self
+				.audio_prefetch
+				.lock()
+				.unwrap_or_else(|e| e.into_inner());
+			st.reset(frame.0, 1);
+		}
 		self.mirror_program_playhead(cx);
 		self.update_ofx_viewer_time(cx);
 		cx.notify();
@@ -3340,6 +3488,10 @@ impl EngineGateway for RealEngine {
 	fn play(&mut self, monitor: Monitor, cx: &mut Context<Self>) {
 		if monitor == Monitor::Program {
 			self.program_playing = true;
+			// A new play run re-anchors the audio master clock at its first
+			// chunk push; a stale anchor (previous run, since cleared by
+			// pause/stop/seek) must not leak into the new one.
+			self.audio_playback = None;
 		}
 		let clock = self.clock(monitor).clone();
 		clock.update(cx, |clock, cx| {
@@ -3351,14 +3503,14 @@ impl EngineGateway for RealEngine {
 	}
 
 	fn pause(&mut self, monitor: Monitor, cx: &mut Context<Self>) {
-		if monitor == Monitor::Program {
-			self.program_playing = false;
-		}
 		let clock = self.clock(monitor).clone();
 		clock.update(cx, |clock, cx| {
 			clock.pause();
 			cx.notify();
 		});
+		if monitor == Monitor::Program {
+			self.stop_program_playback(cx);
+		}
 		cx.notify();
 	}
 
@@ -3393,6 +3545,56 @@ impl EngineGateway for RealEngine {
 				clock.tick(len, stop_on_last);
 				cx.notify();
 			});
+		}
+		// M12 P1a: while the program plays with an audio anchor, re-anchor
+		// the playhead onto the frame the output device is actually
+		// consuming. The wall clock anchored play() at the click instant,
+		// but the first chunk reaches the device 50-150 ms later (tick
+		// interval + inline mix + cpal open) — a fixed startup offset every
+		// play run — and underruns pad the output with silence while still
+		// advancing `output_frames_consumed`, so playback also drifts.
+		// `manager.seconds()` is the truth: the playhead is set to the
+		// audible frame (loop playback wraps with the sequence). The strict
+		// `secs > start_secs` guard is the fail-safe: if the device never
+		// opens, seconds() stays 0/-1 and playback falls back to the wall
+		// clock untouched.
+		if self.program_playing && self.program_clock.read(cx).is_playing() {
+			if let Some((start_frame, start_secs)) = self.audio_playback {
+				let mut secs = -1.0;
+				if let Some(manager) = oak_audio::manager::instance() {
+					if manager.seconds(&mut secs).is_ok() && secs > start_secs {
+						let rate = self.program_clock.read(cx).frame_rate();
+						let mut target =
+							audio_target_frame(start_frame, start_secs, secs, rate);
+						if length.0 > 0 && target >= length.0 {
+							target %= length.0;
+						}
+						let clock = self.program_clock.clone();
+						clock.update(cx, |clock, cx| {
+							// Re-anchor (not transport.seek): the next
+							// wall-clock tick recomputes from this anchor,
+							// so the playhead keeps following the output
+							// device's consumed-sample clock instead of
+							// snapping back to the click-instant anchor.
+							clock.reanchor_while_playing(Frame(target), length);
+							cx.notify();
+						});
+					} else if secs < 0.0 {
+						// No running output stream (device closed): drop the
+						// anchor and stay on the wall clock.
+						self.audio_playback = None;
+					}
+				} else {
+					self.audio_playback = None;
+				}
+			}
+		}
+		// A Stop-on-Last clock pauses itself at the last frame; mirror
+		// that into the engine's play state like pause() (the transport is
+		// already stopped, so the output must go silent too — otherwise
+		// the last frame's audio re-pushes and the UI re-renders forever).
+		if self.program_playing && !self.program_clock.read(cx).is_playing() {
+			self.stop_program_playback(cx);
 		}
 		self.mirror_program_playhead(cx);
 		self.update_ofx_viewer_time(cx);
@@ -3619,8 +3821,8 @@ impl AppEngine for RealEngine {
 			gpui_widgets::viewer::clear_gpu_frames();
 		}
 		// The full-resolution fill replaces the proxy when its frame matches
-		// the playhead; otherwise the proxy frame is displayed (rendered
-		// synchronously below on a cache miss, filled by the background
+		// the playhead; otherwise the proxy frame is displayed (cached
+		// misses fall back to the last proxy below, filled by the background
 		// worker once the playhead rests).
 		if let Some(image) = cache.entry(monitor).or_default().image_for(frame.0) {
 			return image.clone();
@@ -3636,21 +3838,23 @@ impl AppEngine for RealEngine {
 			});
 			return image;
 		}
-		// During playback a cache miss must NOT block the UI thread on a
-		// synchronous render: the wait starves the tick loop that feeds
-		// the pre-render window, and the seek-priority ticket steals
-		// worker capacity from it, so the window never catches up (every
-		// painted frame blocked in `TicketArena::wait` — the choppy
-		// playback regression). Show the last displayed frame while the
-		// window warms up; the workers catch up within a few frames and
-		// the window then serves every playhead frame.
-		if self.clock(monitor).read(cx).transport.is_playing() {
-			if let Some(image) = cache
-				.get(&monitor)
-				.and_then(|e| e.proxy.as_ref().map(|p| p.image.clone()))
-			{
-				return image;
-			}
+		// A cache miss must NOT block the UI thread on a synchronous render
+		// while the cache has ever displayed a frame: during playback the
+		// wait starves the tick loop that feeds the pre-render window, and
+		// the seek-priority ticket steals worker capacity from it, so the
+		// window never catches up (every painted frame blocked in
+		// `TicketArena::wait` — the choppy playback regression); after a
+		// pause or a paused seek the same wait stalls the UI for as long as
+		// the worker takes to render the resting playhead (the "freeze on
+		// pause" report). Show the last displayed frame instead — the
+		// background full-res fill (schedule_full_res on the tick) replaces
+		// it within a few frames. Only a fully cold cache (nothing ever
+		// displayed) falls through to the synchronous render below.
+		if let Some(image) = cache
+			.get(&monitor)
+			.and_then(|e| e.proxy.as_ref().map(|p| p.image.clone()))
+		{
+			return image;
 		}
 		// Both monitors render through the oakrender ticket arena (falling
 		// back to the synthetic pattern when rendering is unavailable): the
@@ -4990,6 +5194,15 @@ impl AppEngine for RealEngine {
 		// The app-side transforms read the process global; the workers pick
 		// the new settings up with the next graph upload.
 		oak_render::color::set_pipeline_color_settings(working, spec);
+		// The workers derive their pipeline colors from the uploaded project
+		// snapshot; a settings change alone does not bump the undo-stack
+		// revision (the manager dedups re-uploads on it), so push an explicit
+		// resync — the workers re-deserialize the rewritten snapshot, adopt
+		// the new working space/output spec and drop their cached frames.
+		if let Some(m) = RenderManager::global() {
+			let revision = oak_undo::global::index().unwrap_or(0).max(0) as u64;
+			let _ = m.resync_graph_snapshot(&project, revision);
+		}
 		// The pipeline colorspace changed: every cached frame (CPU image,
 		// GPU texture, preview slot) was rendered under the old space.
 		super::displaycolor::invalidate();
@@ -8483,9 +8696,8 @@ mod tests {
 	#[test]
 	fn audio_prefetch_orders_and_serves_chunks() {
 		let mut st = AudioPrefetch::new();
-		assert!(!st.covers(0), "uninitialized prefetch covers nothing");
+		assert!(st.needs_reset(0), "uninitialized prefetch needs a reset");
 		st.reset(0, 10);
-		assert!(!st.covers(0), "nothing submitted yet");
 		st.next_submit = 40; // pretend 4 chunks were submitted (0..40)
 
 		// Out-of-order arrivals (different workers) are reordered.
@@ -8497,16 +8709,25 @@ mod tests {
 			vec![0, 20, 30],
 			"sorted by start ts"
 		);
-		// The chunk at the playhead is served.
-		let got = st.pop_at(0).expect("chunk 0 buffered");
-		assert_eq!(got.sample_rate, 48000);
-		assert_eq!(st.buffered.len(), 2);
-		// A not-yet-rendered chunk reports nothing.
-		assert!(st.pop_at(10).is_none());
-		// Stale arrivals (a seek raced the render) are dropped.
+		// drain_ready serves everything rendered, in ts order — on-time
+		// and future chunks alike (the device queue is the cushion).
+		let served = st.drain_ready(0);
+		assert_eq!(served.len(), 3);
+		assert_eq!(served[0].sample_rate, 48000);
+		assert_eq!(st.buffered.len(), 0);
+		assert_eq!(st.last_consumed, Some(30));
+		// Stale arrivals (a seek raced the render) are dropped by insert.
 		st.insert(-10, audio_chunk(-10).1);
 		st.insert(100, audio_chunk(100).1);
-		assert_eq!(st.buffered.len(), 2, "stale chunks dropped");
+		assert_eq!(st.buffered.len(), 0, "stale chunks dropped");
+		// A chunk that arrives after its playback time passed is dropped,
+		// not played late (A/V sync beats completeness).
+		st.reset(0, 1);
+		st.next_submit = 10;
+		st.insert(3, audio_chunk(3).1);
+		let served = st.drain_ready(5);
+		assert!(served.is_empty(), "late chunk dropped");
+		assert_eq!(st.last_consumed, Some(3));
 	}
 
 	#[test]
@@ -8515,20 +8736,14 @@ mod tests {
 		st.reset(0, 10);
 		st.next_submit = 40;
 		st.insert(10, audio_chunk(10).1);
-		// A seek far ahead: the playhead is outside [front_ts, next_submit).
-		assert!(!st.covers(200));
+		let _ = st.drain_ready(10); // served cursor now 20
+		// A seek far ahead (past the submitted window) resets.
+		assert!(st.needs_reset(200));
+		// A backward seek past the serve-ahead lead resets too.
+		assert!(st.needs_reset(0), "playhead jumped back behind the served cursor");
 		st.reset(200, 10);
 		assert_eq!(st.buffered.len(), 0, "old chunks dropped");
-		assert!(st.pop_at(200).is_none());
-		// A backward seek (the playhead behind the buffer front after it
-		// advanced) is a reset too.
-		st.reset(0, 10);
-		st.next_submit = 40;
-		st.insert(10, audio_chunk(10).1);
-		let _ = st.pop_at(10); // front_ts now 20
-		assert!(!st.covers(5), "chunk 5 is behind the front");
-		st.reset(5, 10);
-		assert_eq!(st.buffered.len(), 0);
+		assert!(st.drain_ready(200).is_empty());
 	}
 
 	#[test]
@@ -8539,6 +8754,119 @@ mod tests {
 		st.insert(10, audio_chunk(10).1);
 		st.insert(10, audio_chunk(10).1);
 		assert_eq!(st.buffered.len(), 1, "duplicates dropped");
+	}
+
+	#[test]
+	fn audio_prefetch_does_not_repeat_a_stalled_playhead() {
+		let mut st = AudioPrefetch::new();
+		st.reset(0, 1);
+		st.next_submit = 7; // pretend chunks 0..7 were submitted
+		st.insert(0, audio_chunk(0).1);
+		st.insert(1, audio_chunk(1).1);
+		// Serving runs ahead: both rendered chunks are pushed at once.
+		assert_eq!(st.drain_ready(0).len(), 2);
+		assert_eq!(st.last_consumed, Some(1));
+		// The next ticks (60 Hz vs 25 fps) still show frame 0: a stalled
+		// playhead is neither a reset nor a re-push.
+		assert!(!st.needs_reset(0), "a stalled playhead is not a reset");
+		assert!(st.drain_ready(0).is_empty(), "nothing new to serve");
+		// Small audio-master corrections stay inside the tolerance.
+		assert!(!st.needs_reset(-2));
+		// A genuine seek (far ahead, or a loop wrap back to 0 after the
+		// served cursor advanced) still resets.
+		assert!(st.needs_reset(200), "a seek is a reset");
+		st.reset(200, 1);
+		assert_eq!(st.last_consumed, None, "a reset forgets the old playhead");
+		// After serving the new frame the guard re-arms.
+		st.next_submit = 207;
+		st.insert(200, audio_chunk(200).1);
+		assert_eq!(st.drain_ready(200).len(), 1);
+		assert!(!st.needs_reset(200), "a stall at 200 is not a reset either");
+	}
+
+	// ---- M12 P1a audio-mastered playhead ----------------------------------
+
+	/// The audio-clock → frame conversion: an anchor recorded late (the
+	/// first chunk reaches the device ~50-150 ms after play()) must land
+	/// the playhead on the frame actually audible, and drift/underruns must
+	/// let it catch up.
+	#[test]
+	fn audio_target_frame_anchors_and_converts() {
+		let rate = FrameRate::new(25, 1);
+		// Startup offset: the anchor was taken 0.1 s after play(); by
+		// audio-clock 1.1 s exactly 1.0 s has played → 25 frames past the
+		// anchor frame.
+		assert_eq!(audio_target_frame(0, 0.1, 1.1, rate), 25);
+		// Catch-up: the device already consumed audio before the anchor.
+		assert_eq!(audio_target_frame(100, 2.0, 4.0, rate), 150);
+		// Fractional seconds round to the nearest frame.
+		assert_eq!(audio_target_frame(0, 0.0, 0.02, rate), 1, "0.5 s rounds up");
+		assert_eq!(audio_target_frame(0, 0.0, 0.018, rate), 0, "0.45 s rounds down");
+		// NTSC 29.97: num/den stays a rational, not rounded to 30.
+		let ntsc = FrameRate::NTSC_2997;
+		assert_eq!(audio_target_frame(0, 0.0, 1.0, ntsc), 30);
+		assert_eq!(audio_target_frame(0, 0.0, 10.0, ntsc), 300);
+		// Large frame counts must not overflow (num/den split before the
+		// multiply).
+		assert_eq!(audio_target_frame(1 << 40, 0.0, 1.0, rate), (1 << 40) + 25);
+	}
+
+	/// The audio-master anchor must not survive without a live output
+	/// stream: the tick drops it and playback falls back to the wall clock
+	/// (the fail-safe that keeps playback alive when the device is closed
+	/// or headless).
+	#[gpui::test]
+	async fn audio_master_anchor_falls_back_to_wall_clock(cx: &mut gpui::TestAppContext) {
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				// A stale anchor (as if the first chunk was pushed).
+				engine.audio_playback = Some((0, 0.0));
+				engine.play(Monitor::Program, cx);
+				engine.tick(cx);
+				assert!(
+					engine.audio_playback.is_none(),
+					"no output stream → anchor dropped, wall clock drives"
+				);
+			});
+		});
+	}
+
+	/// A paused playhead miss (seek while paused, worker still rendering)
+	/// must serve the last displayed frame instead of blocking the UI on a
+	/// synchronous render — the "freeze on pause" regression. The engine
+	/// has no project, so any render path would fail; returning the cached
+	/// proxy proves the non-blocking fallback.
+	#[gpui::test]
+	async fn paused_playhead_miss_serves_last_displayed_frame(cx: &mut gpui::TestAppContext) {
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		let (width, height, samples) = synthetic_frame_samples(Frame(0));
+		let scope = analyze_f32_rgba(width, height, &samples);
+		let image = Arc::new(f32_rgba_to_bgra_image(width, height, &samples));
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				// The cache already displayed a frame (the proxy).
+				engine
+					.cpu_frame_cache
+					.lock()
+					.unwrap()
+					.entry(Monitor::Program)
+					.or_default()
+					.proxy = Some(ProxyEntry {
+					frame: 0,
+					image: image.clone(),
+					scope,
+				});
+				// Seek the (paused) playhead to a frame that is NOT cached:
+				// the display must fall back to the last displayed frame.
+				engine.request_frame(Monitor::Program, Frame(24), cx);
+			});
+		});
+		let got = cx.read(|app| engine.read(app).cpu_frame(Monitor::Program, app));
+		assert!(
+			Arc::ptr_eq(&image, &got),
+			"a paused miss serves the last displayed frame"
+		);
 	}
 
 	// ---- sequence management (engine facade) ------------------------------

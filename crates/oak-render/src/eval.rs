@@ -1198,7 +1198,18 @@ fn audio_layout(params: &crate::ticket::AudioTicketParams) -> Result<(i32, u64, 
 	if seconds <= 0.0 || seconds > 3600.0 {
 		return Err(Error::Invalid);
 	}
-	let total_frames = (seconds * rate as f64).round() as usize;
+
+    // Anchor each chunk to the absolute sample grid (`round(out·rate) -
+	// round(in·rate)`) instead of rounding the duration: at fractional
+	// frame rates (29.97 fps → 1601.6 samples/frame) a duration-round
+	// would emit 1602 samples for every chunk and accumulate ~12 extra
+	// samples per second, slowly desyncing audio from video. Per-chunk
+	// anchoring keeps the total exact and matches the decode side
+	// (`FFmpegDecoder::retrieve_audio_to` fills `round(out·rate) -
+	// round(in·rate)` samples).
+	let total_frames = ((params.range.out().to_f64() * rate as f64).round()
+		- (params.range.in_().to_f64() * rate as f64).round())
+		.max(0.0) as usize;
 	Ok((rate, params.channel_layout, channels, total_frames))
 }
 
@@ -1230,8 +1241,11 @@ fn mix_audio_montage(
 		if out_time <= in_time {
 			continue;
 		}
-		let start_frame = ((in_time - params.range.in_()).to_f64() * rate as f64) as usize;
-		let end_frame = ((out_time - params.range.in_()).to_f64() * rate as f64) as usize;
+		// Round to the absolute sample grid like the decode side (which
+		// anchors at `round(media_start·rate)`): truncation would shift a
+		// clip's mix by up to one sample per chunk.
+		let start_frame = ((in_time - params.range.in_()).to_f64() * rate as f64).round() as usize;
+		let end_frame = ((out_time - params.range.in_()).to_f64() * rate as f64).round() as usize;
 		if start_frame >= total_frames {
 			continue;
 		}

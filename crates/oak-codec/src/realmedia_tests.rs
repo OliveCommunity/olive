@@ -179,6 +179,85 @@ fn audio_decode_is_non_empty() {
 	assert!(peak > 0.0, "decoded audio is all silence");
 }
 
+/// Contiguous audio chunks (each chunk's start is exactly where the
+/// previous chunk ended) must continue the decode without re-seeking:
+/// the seek count stays flat, and the concatenated chunks must match a
+/// one-shot decode of the same span. A non-contiguous chunk re-seeks.
+/// This is the regression test for the boundary pops/clicks caused by the
+/// per-chunk `av_seek_frame` + decoder flush + resampler reset.
+#[test]
+fn contiguous_audio_chunks_skip_seek_and_match_oneshot() {
+	let d = FFmpegDecoder::new();
+	let s = CodecStream::with_block(demo_path().to_string_lossy().into_owned(), 1, None);
+	d.open(&s).expect("open audio stream");
+
+	// Chunk [0s, 1s): opens the session (one seek inside retrieve).
+	let mut c1 = vec![0f32; 48000 * 2];
+	d.retrieve_audio(
+		&mut c1,
+		&TimeRange::new(Rational::new(0, 1), Rational::new(1, 1)),
+		48000,
+		0x3,
+	)
+	.expect("chunk [0,1)");
+	assert!(c1.iter().any(|&v| v != 0.0), "chunk [0,1) is all silence");
+	let seeks_after_first = d.audio_seek_count();
+
+	// Chunk [1s, 2s): contiguous with the previous one — must not seek.
+	let mut c2 = vec![0f32; 48000 * 2];
+	d.retrieve_audio(
+		&mut c2,
+		&TimeRange::new(Rational::new(1, 1), Rational::new(2, 1)),
+		48000,
+		0x3,
+	)
+	.expect("chunk [1,2)");
+	assert!(
+		d.audio_seek_count() == seeks_after_first,
+		"contiguous chunk must skip the seek ({} -> {})",
+		seeks_after_first,
+		d.audio_seek_count()
+	);
+	assert!(c2.iter().any(|&v| v != 0.0), "chunk [1,2) is all silence");
+
+	// Chunk [3s, 4s): not contiguous — must seek again.
+	let mut c4 = vec![0f32; 48000 * 2];
+	d.retrieve_audio(
+		&mut c4,
+		&TimeRange::new(Rational::new(3, 1), Rational::new(4, 1)),
+		48000,
+		0x3,
+	)
+	.expect("chunk [3,4)");
+	assert!(
+		d.audio_seek_count() > seeks_after_first,
+		"non-contiguous chunk must seek"
+	);
+
+	// Concatenating [0,1)+[1,2) must equal a one-shot decode of [0,2):
+	// both read the same decoder continuously from sample 0, so the
+	// samples must match exactly (the second chunk only differs in that it
+	// skipped its seek — no flush/resampler reset was involved).
+	let mut combined = c1;
+	combined.extend_from_slice(&c2);
+	let mut oneshot = vec![0f32; 48000 * 2 * 2];
+	d.retrieve_audio(
+		&mut oneshot,
+		&TimeRange::new(Rational::new(0, 1), Rational::new(2, 1)),
+		48000,
+		0x3,
+	)
+	.expect("oneshot [0,2)");
+	let mut max_diff = 0.0f32;
+	for (a, b) in combined.iter().zip(oneshot.iter()) {
+		max_diff = max_diff.max((a - b).abs());
+	}
+	assert!(
+		max_diff < 0.01,
+		"contiguous chunks diverge from one-shot decode (max diff {max_diff})"
+	);
+}
+
 #[test]
 fn encode_h264_roundtrip_to_tmp() {
 	let out = std::env::temp_dir().join(format!("oakcodec_roundtrip_{}.mp4", std::process::id()));

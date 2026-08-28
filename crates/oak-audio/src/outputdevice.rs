@@ -131,6 +131,9 @@ impl PortAudioOutput {
 				}
 			}
 			sink_cb.add_output_frames((total / channels_usize) as i64);
+			// Account the zero-filled tail separately so the engine can
+			// resync after an underrun instead of drifting out of sync.
+			sink_cb.add_underrun_frames((total / channels_usize - frames_got) as i64);
 		};
 		let err_callback = |err: cpal::Error| {
 			eprintln!("output stream error: {err}");

@@ -232,6 +232,33 @@ impl RenderManager {
 		Ok(())
 	}
 
+	/// M16 S1 graph mode: force the workers to re-load the current project
+	/// snapshot even when the undo-stack revision is unchanged. The
+	/// color-settings dialog writes project settings directly (no undo
+	/// command), so the revision-based dedup in [`set_graph_snapshot`] would
+	/// never re-send the snapshot — workers would keep rendering under the
+	/// colors they loaded at project-load time. The snapshot file is
+	/// rewritten (see [`GraphSnapshotStore::acquire_rewrite`]) and
+	/// `load_graph` re-broadcast to every live worker (the dispatcher's
+	/// re-send has no dedup).
+	pub fn resync_graph_snapshot(
+		&self,
+		project: &std::sync::Mutex<oak_node::project::Project>,
+		revision: u64,
+	) -> Result<()> {
+		if self.stopping.load(Ordering::Acquire) {
+			return Ok(()); // teardown: no re-arm after the drain
+		}
+		let path = self.snapshots.acquire_rewrite(project, revision)?;
+		if let Some(old) = lock(&self.current_snapshot).replace(path.clone()) {
+			self.snapshots.release(&old);
+		}
+		self.dispatch.set_graph_snapshot(Some(path));
+		let uuid = lock(project).uuid.clone();
+		*lock(&self.current_key) = Some((uuid, revision));
+		Ok(())
+	}
+
 	/// M16 S1 graph mode: drop the current snapshot (project closed). The
 	/// protocol has no clear message, so alive workers keep their loaded
 	/// graph; new/restarted workers no longer load it and the snapshot file

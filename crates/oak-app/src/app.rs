@@ -105,6 +105,7 @@ pub(crate) mod menu_ids {
 	pub const FOCUS_TIMELINE: usize = ActionId::FocusTimeline.menu_id();
 	pub const FOCUS_EFFECT_LIBRARY: usize = ActionId::FocusEffectLibrary.menu_id();
 	pub const FOCUS_MULTICAM: usize = ActionId::FocusMulticam.menu_id();
+	pub const RESET_DEFAULT_LAYOUT: usize = ActionId::ResetDefaultLayout.menu_id();
 }
 
 /// Modal-dialog control ids (see [`ModalEvent::control`]).
@@ -636,32 +637,10 @@ impl<E: AppEngine> OakApp<E> {
 			);
 		});
 
-		// Tune the default split ratios: viewers 60% / timeline 40%, project
-		// bin 17% of the row. The timeline share leaves room for all four
-		// tracks (V2/V1 video + A1/A2 audio) plus the ruler and toolbar at
-		// 1600×900; the viewers keep the remaining ~60%. The program viewer
-		// (with its audio level strip) is the active tab of its group, so the
-		// shell opens on the design's visible 素材查看器 | 序列查看器 row rather
-		// than on the node editor.
+		// Tune the default split ratios and active tabs — the shared tuning
+		// block (`tune_default_layout`) that 窗口 → 重置布局 also applies.
 		let mut layout: DockLayout = dock.read(cx).layout().clone();
-		layout.resize_split(&NodePath(vec![]), 0.60);
-		layout.resize_split(&NodePath(vec![0]), 0.17);
-		// The program viewer's transport row (six transport buttons, the
-		// timecode, the 安全框/缩放 toggles) plus its 26px meter strip needs
-		// ~430px at 1600×900 — more than an equal share of the row gives it,
-		// and the design makes the program monitor the prominent viewer. Tilt
-		// the source/program and program/inspector boundaries accordingly so
-		// the transport's trailing toggles are not clipped.
-		layout.resize_split_child(&NodePath(vec![0]), 1, 0.52);
-		layout.resize_split_child(&NodePath(vec![0]), 2, 0.62);
-		if let Some(path) = layout.find_panel(PROGRAM_VIEWER) {
-			layout.set_tabs_active(&path, PROGRAM_VIEWER);
-		}
-		// The project bin is the active tab of its group (the effect library
-		// sits behind it).
-		if let Some(path) = layout.find_panel(PROJECT) {
-			layout.set_tabs_active(&path, PROJECT);
-		}
+		tune_default_layout(&mut layout);
 		dock.update(cx, |dock, cx| dock.set_layout(layout, cx));
 
 		// --- status bar ----------------------------------------------------
@@ -1104,6 +1083,7 @@ impl<E: AppEngine> OakApp<E> {
 			A::FocusTimeline => self.toggle_panel(TIMELINE, cx),
 			A::FocusEffectLibrary => self.toggle_panel(EFFECT_LIBRARY, cx),
 			A::FocusMulticam => self.toggle_panel(MULTICAM, cx),
+			A::ResetDefaultLayout => self.reset_default_layout(cx),
 			// --- Tools -----------------------------------------------------
 			A::Snapping => {
 				let enabled = !self.timeline.read(cx).state.snap_enabled;
@@ -1429,6 +1409,53 @@ impl<E: AppEngine> OakApp<E> {
 			MULTICAM => Some(PanelHandle::new(self.panels.multicam.clone(), cx)),
 			_ => None,
 		}
+	}
+
+	/// 窗口 → 重置布局: rebuilds the dock from scratch with every panel at its
+	/// design position and the default ratios and active tabs restored.
+	/// Docked panels are removed through the dock's remove flow; floating
+	/// (tear-off) panels have their window closed for good.
+	fn reset_default_layout(&mut self, cx: &mut Context<Self>) {
+		let dock = self.dock.clone();
+		let ids: Vec<PanelId> = WINDOW_PANELS
+			.iter()
+			.map(|(id, _)| *id)
+			.filter(|id| dock.read(cx).is_panel_visible(*id))
+			.collect();
+		dock.update(cx, |dock, cx| {
+			for id in ids {
+				if dock.is_floating(id) {
+					dock.close_floating(id, cx);
+				} else {
+					let _ = dock.remove_panel(id, cx);
+				}
+			}
+		});
+		self.apply_default_layout(cx);
+		self.rebuild_menu_bar(cx);
+		cx.notify();
+	}
+
+	/// (Re-)seeds every panel at its design position, mirroring the seeding in
+	/// [`OakApp::new`]: panels are added in the 窗口 menu's order
+	/// ([`WINDOW_PANELS`]) at their [`default_dock_target`] placement, then
+	/// the default split ratios and active tabs are applied.
+	fn apply_default_layout(&mut self, cx: &mut Context<Self>) {
+		let mut panels = Vec::new();
+		for (id, _) in WINDOW_PANELS {
+			if let Some(handle) = self.panel_handle(id, cx) {
+				panels.push((handle, default_dock_target(id)));
+			}
+		}
+		let dock = self.dock.clone();
+		dock.update(cx, |dock, cx| {
+			for (handle, target) in panels {
+				let _ = dock.add_panel(handle, target, cx);
+			}
+			let mut layout = dock.layout().clone();
+			tune_default_layout(&mut layout);
+			dock.set_layout(layout, cx);
+		});
 	}
 
 	/// Switches the UI language live: updates the [`i18n`] global, rebuilds
@@ -2602,6 +2629,29 @@ fn panel_bit(id: PanelId) -> u16 {
 	1u16 << (id.raw() as u16)
 }
 
+/// Applies the design's default split ratios and active tabs to `layout`,
+/// shared by [`OakApp::new`] and the 窗口 → 重置布局 action.
+///
+/// Viewers 60% / timeline 40%, project bin 17% of the row — the timeline
+/// share leaves room for all four tracks (V2/V1 video + A1/A2 audio) plus
+/// the ruler and toolbar at 1600×900, the viewers keep the remaining ~60%.
+/// The program viewer's transport row plus its 26px meter strip needs ~430px
+/// at 1600×900, so the source/program and program/inspector boundaries are
+/// tilted (0.52 / 0.62) to keep the transport's trailing toggles unclipped.
+/// The program viewer and project bin end up active in their groups.
+fn tune_default_layout(layout: &mut DockLayout) {
+	layout.resize_split(&NodePath(vec![]), 0.60);
+	layout.resize_split(&NodePath(vec![0]), 0.17);
+	layout.resize_split_child(&NodePath(vec![0]), 1, 0.52);
+	layout.resize_split_child(&NodePath(vec![0]), 2, 0.62);
+	if let Some(path) = layout.find_panel(PROGRAM_VIEWER) {
+		layout.set_tabs_active(&path, PROGRAM_VIEWER);
+	}
+	if let Some(path) = layout.find_panel(PROJECT) {
+		layout.set_tabs_active(&path, PROJECT);
+	}
+}
+
 /// The design's default dock position for each panel, mirroring the seeding
 /// in [`OakApp::new`] — 项目 | 素材查看器 | 序列查看器+节点编辑器 |
 /// 检查器+历史记录 row, timeline full width at the bottom. Used to re-open a
@@ -3319,6 +3369,107 @@ mod tests {
 		cx.run_until_parked();
 		assert!(cx.read(|app| root.read(app).dock.read(app).is_docked(INSPECTOR)));
 		assert_eq!(cx.read(|app| inspector_checked(app)), Some(true));
+	}
+
+	/// 窗口 → 重置布局 tears the current dock arrangement down and rebuilds
+	/// every panel at its design position with the default ratios: panels
+	/// dismissed via the 窗口 menu come back, floating (tear-off) panels'
+	/// windows are closed for good, and tilted splits are restored.
+	#[gpui::test]
+	async fn reset_layout_restores_the_default_workspace(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		let _guard = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		let (_window, root) = mock_shell(cx);
+
+		// Distort the workspace on every axis: dismiss two panels, tear the
+		// timeline off into its own window, and tilt the root split to 0.5.
+		cx.update(|app| root.update(app, |app, cx| app.on_menu(menu_ids::FOCUS_INSPECTOR, cx)));
+		cx.update(|app| root.update(app, |app, cx| app.on_menu(menu_ids::FOCUS_HISTORY, cx)));
+		cx.run_until_parked();
+		cx.update(|app| {
+			root.update(app, |app, cx| {
+				let dock = app.dock.clone();
+				dock.update(cx, |dock, cx| {
+					assert!(dock.float_panel(TIMELINE, cx));
+				});
+			});
+		});
+		cx.run_until_parked();
+		cx.update(|app| {
+			root.update(app, |app, cx| {
+				let mut layout = app.dock.read(cx).layout().clone();
+				layout.resize_split(&NodePath(vec![]), 0.5);
+				let dock = app.dock.clone();
+				dock.update(cx, |dock, cx| dock.set_layout(layout, cx));
+			});
+		});
+		cx.run_until_parked();
+
+		// The distorted state is in place.
+		assert_eq!(
+			cx.read(|app| {
+				let dock = root.read(app).dock.read(app);
+				(
+					dock.is_docked(INSPECTOR),
+					dock.is_docked(HISTORY),
+					dock.is_floating(TIMELINE),
+					dock
+						.layout()
+						.split_ratios(&NodePath(vec![]))
+						.map(|r| r[0]),
+				)
+			}),
+			(false, false, true, Some(0.5))
+		);
+
+		// 窗口 → 重置布局 restores every panel to its design position.
+		cx.update(|app| {
+			root.update(app, |app, cx| app.on_menu(menu_ids::RESET_DEFAULT_LAYOUT, cx));
+		});
+		cx.run_until_parked();
+
+		assert!(
+			cx.read(|app| {
+				let dock = root.read(app).dock.read(app);
+				let all_docked =
+					WINDOW_PANELS.iter().all(|(panel, _)| dock.is_docked(*panel));
+				let none_floating =
+					WINDOW_PANELS.iter().all(|(panel, _)| !dock.is_floating(*panel));
+				let root_ratio = dock
+					.layout()
+					.split_ratios(&NodePath(vec![]))
+					.map(|r| r[0]);
+				all_docked && none_floating && (root_ratio.unwrap_or(0.0) - 0.60).abs() < 1e-4
+			}),
+			"every panel is docked at the default 0.60 split after the reset"
+		);
+
+		// The 窗口 menu's checkmarks follow the restored visible-panel set.
+		let mask = cx.read(|app| open_panels_mask(root.read(app).dock.read(app)));
+		let mut state = MenuState::new(true);
+		state.open_panels = mask;
+		let window_menu = make_menus(state)
+			.into_iter()
+			.find(|e| e.title == crate::i18n::tr("menu.window"))
+			.expect("Window menu exists")
+			.menu;
+		for (panel, action) in WINDOW_PANELS {
+			let item = window_menu
+				.items
+				.iter()
+				.find(|item| item.id == action.menu_id())
+				.unwrap_or_else(|| panic!("Window menu is missing panel {}", panel.raw()));
+			assert_eq!(
+				item.checked,
+				Some(true),
+				"{} is re-checked after the reset",
+				panel.raw()
+			);
+		}
 	}
 
 	/// Closing a panel via its tab ✕ — the dock's own close flow — also

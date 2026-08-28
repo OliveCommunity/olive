@@ -35,6 +35,12 @@ pub struct PreviewAudioDevice {
 	/// Frames consumed by the output callback (playback clock, includes
 	/// underrun zero-fill).
 	output_frames_consumed: AtomicI64,
+	/// Frames the output callback had to zero-fill (buffer was empty).
+	/// Kept separate from the playback clock so the engine can detect
+	/// underruns and resync — zero-fill advances the playback clock past
+	/// the queued content, so everything queued afterwards would play
+	/// late (the classic audio-behind-video drift).
+	underrun_frames: AtomicI64,
 }
 
 struct PreviewAudioDeviceInner {
@@ -62,6 +68,7 @@ impl PreviewAudioDevice {
 				notify_callback: None,
 			}),
 			output_frames_consumed: AtomicI64::new(0),
+			underrun_frames: AtomicI64::new(0),
 		}
 	}
 
@@ -174,6 +181,19 @@ impl PreviewAudioDevice {
 	pub fn add_output_frames(&self, frame_count: i64) {
 		self.output_frames_consumed
 			.fetch_add(frame_count, Ordering::Relaxed);
+	}
+
+	/// Account for frames the output callback zero-filled (underrun).
+	pub fn add_underrun_frames(&self, frame_count: i64) {
+		if frame_count > 0 {
+			self.underrun_frames
+				.fetch_add(frame_count, Ordering::Relaxed);
+		}
+	}
+
+	/// Read and reset the underrun counter (the engine polls it per tick).
+	pub fn take_underrun_frames(&self) -> i64 {
+		self.underrun_frames.swap(0, Ordering::Relaxed)
 	}
 
 	/// Frames consumed by the output callback.

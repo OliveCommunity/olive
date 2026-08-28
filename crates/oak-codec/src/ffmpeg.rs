@@ -250,6 +250,15 @@ impl FFmpegDecoder {
 			.and_then(|s| s.hw_device.map(crate::hwdecode::device_type_name))
 			.map(|name| name.to_string())
 	}
+
+	/// Test-only: how many `seek()` calls the open session has performed.
+	/// Contiguous audio chunks must not increase this (they continue the
+	/// decode without re-seeking); a non-contiguous chunk must.
+	#[cfg(test)]
+	pub(crate) fn audio_seek_count(&self) -> u64 {
+		let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+		state.as_ref().map(|s| s.audio_seeks).unwrap_or(0)
+	}
 }
 
 impl Default for FFmpegDecoder {
@@ -481,6 +490,10 @@ struct DecoderState {
 	eof: bool,
 	video: Option<VideoDecodeState>,
 	audio: Option<AudioDecodeState>,
+	/// Test-only counter of `seek()` calls (proves contiguous audio chunks
+	/// skip the seek).
+	#[cfg(test)]
+	audio_seeks: u64,
 }
 
 enum DecoderInner {
@@ -523,6 +536,14 @@ struct ScalingCache {
 /// Audio decode state: a resampler keyed by (rate, layout).
 struct AudioDecodeState {
 	resampler: Option<(u32, u64, AudioResampler)>,
+	/// The first sample of the next contiguous chunk: the sample index
+	/// (at the current `sample_rate`) one past the last decoded chunk.
+	/// Set on every successful `retrieve_audio_to`; cleared on every seek
+	/// (any seek resets the decoder and resampler, breaking continuity).
+	/// When the next chunk's start sample equals this, the decode can
+	/// continue without re-seeking — skipping the per-chunk decoder flush
+	/// and resampler reset that cause boundary artifacts (pops/clicks).
+	contiguous_end_sample: Option<i64>,
 }
 
 /// A swresample conversion context.
@@ -641,7 +662,10 @@ impl DecoderState {
 			None
 		};
 		let audio = if matches!(medium, MediaType::Audio) {
-			Some(AudioDecodeState { resampler: None })
+			Some(AudioDecodeState {
+				resampler: None,
+				contiguous_end_sample: None,
+			})
 		} else {
 			None
 		};
@@ -661,6 +685,8 @@ impl DecoderState {
 			eof: false,
 			video,
 			audio,
+			#[cfg(test)]
+			audio_seeks: 0,
 		})
 	}
 
@@ -784,7 +810,16 @@ impl DecoderState {
 			DecoderInner::Video(d) => d.flush(),
 			DecoderInner::Audio(d) => d.flush(),
 		}
+		#[cfg(test)]
+		{
+			self.audio_seeks += 1;
+		}
 		self.eof = false;
+		// Any seek breaks audio continuity (decoder flush + resampler
+		// reset): the next audio chunk must not skip its own seek.
+		if let Some(a) = &mut self.audio {
+			a.contiguous_end_sample = None;
+		}
 		Ok(())
 	}
 
@@ -1137,88 +1172,71 @@ impl DecoderState {
 
 		dest.fill(0.0);
 
-		// Seek to just before the range start.
-		let start_ts =
-			oak_rational(self.stream_time_base).time_to_timestamp(Rational::from_double(start_sec));
-		self.seek(start_ts)?;
-
-		// Take the cached resampler out (or create one) so the decode loop
-		// below can borrow `self` freely; it is put back before returning.
-		let src_layout = channel_layout_from_mask(self.input_channel_layout_mask);
-		let mut resampler = match self.audio.as_mut().expect("audio session").resampler.take() {
-			Some((rate, layout, rs)) if rate == sample_rate as u32 && layout == channel_layout => {
-				rs
-			}
-			_ => AudioResampler::get(
-				self.input_sample_format,
-				src_layout,
-				self.input_sample_rate,
-				Sample::F32(SampleType::Packed),
-				dst_layout,
-				sample_rate as u32,
-			)?,
-		};
-		let stream_time_base = self.stream_time_base;
-
-		let mut next_sample: Option<i64> = None;
-		let dest_frames = (dest.len() / dst_channels) as i64;
-
-		while let Some(frame) = self.next_frame()? {
-			let DecodedFrame::Audio(audio) = frame else {
-				continue;
-			};
-			let converted = resample_to_interleaved_f32(&mut resampler, &audio)?;
-			if converted.is_empty() {
-				continue;
-			}
-			let chunk_samples = (converted.len() / dst_channels) as i64;
-			let frame_start = match audio.pts() {
-				Some(pts) => {
-					let secs = oak_rational(stream_time_base)
-						.timestamp_to_time(pts)
-						.to_f64();
-					(secs * sample_rate as f64).round() as i64
-				}
-				None => next_sample.unwrap_or(start_sample),
-			};
-			let offset = frame_start - start_sample;
-			if offset < dest_frames && offset + chunk_samples > 0 {
-				let copy_start = offset.max(0) as usize;
-				let copy_end = (offset + chunk_samples).min(dest_frames).max(0) as usize;
-				if copy_end > copy_start {
-					let src_off = (copy_start as i64 - offset) as usize * dst_channels;
-					let n = (copy_end - copy_start) * dst_channels;
-					let dst_off = copy_start * dst_channels;
-					if dst_off + n <= dest.len() {
-						dest[dst_off..dst_off + n]
-							.copy_from_slice(&converted[src_off..src_off + n]);
-					}
-				}
-			}
-			next_sample = Some(frame_start + chunk_samples);
-			if offset + chunk_samples >= dest_frames {
-				break;
-			}
+		// Continuity fast path: when this chunk's start sample equals the
+		// sample one past the previous chunk's end, the decoder and
+		// resampler are still positioned exactly there — continue without
+		// seeking. Skipping the per-chunk seek avoids the decoder flush and
+		// resampler reset whose boundary artifacts (silence gaps, phase
+		// resets) were audible as pops/clicks at chunk edges. The caller's
+		// anchored sample grid (`round(out·rate) − round(in·rate)`) makes
+		// the next chunk's start exactly the previous chunk's recorded end,
+		// so exact comparison is correct.
+		let contiguous = self
+			.audio
+			.as_ref()
+			.map(|a| a.contiguous_end_sample == Some(start_sample))
+			.unwrap_or(false);
+		if !contiguous {
+			// Seek to just before the range start.
+			let start_ts =
+				oak_rational(self.stream_time_base).time_to_timestamp(Rational::from_double(start_sec));
+			self.seek(start_ts)?;
 		}
 
-		// Put the resampler back into the cache for the next call.
-		self.audio.as_mut().expect("audio session").resampler =
-			Some((sample_rate as u32, channel_layout, resampler));
+		// The fill+decode+flush body runs in a closure so the success path
+		// can record the chunk's end sample (continuity) and an error path
+		// can clear it (the decoder/resampler position is unknown after a
+		// mid-chunk failure).
+		let read = (|| -> crate::error::Result<RetrieveAudioStatus> {
+			// Take the cached resampler out (or create one) so the decode loop
+			// below can borrow `self` freely; it is put back before returning.
+			let src_layout = channel_layout_from_mask(self.input_channel_layout_mask);
+			let mut resampler = match self.audio.as_mut().expect("audio session").resampler.take() {
+				Some((rate, layout, rs)) if rate == sample_rate as u32 && layout == channel_layout => {
+					rs
+				}
+				_ => AudioResampler::get(
+					self.input_sample_format,
+					src_layout,
+					self.input_sample_rate,
+					Sample::F32(SampleType::Packed),
+					dst_layout,
+					sample_rate as u32,
+				)?,
+			};
+			let stream_time_base = self.stream_time_base;
 
-		// Flush any samples still buffered in the resampler (rate conversion
-		// tail), appending after the last decoded sample.
-		let resampler = self
-			.audio
-			.as_mut()
-			.expect("audio session")
-			.resampler
-			.as_mut()
-			.map(|r| &mut r.2)
-			.unwrap();
-		if let Some(flush) = flush_resampler_interleaved_f32(resampler)? {
-			if !flush.is_empty() {
-				let chunk_samples = (flush.len() / dst_channels) as i64;
-				let frame_start = next_sample.unwrap_or(start_sample);
+			let mut next_sample: Option<i64> = None;
+			let dest_frames = (dest.len() / dst_channels) as i64;
+
+			while let Some(frame) = self.next_frame()? {
+				let DecodedFrame::Audio(audio) = frame else {
+					continue;
+				};
+				let converted = resample_to_interleaved_f32(&mut resampler, &audio)?;
+				if converted.is_empty() {
+					continue;
+				}
+				let chunk_samples = (converted.len() / dst_channels) as i64;
+				let frame_start = match audio.pts() {
+					Some(pts) => {
+						let secs = oak_rational(stream_time_base)
+							.timestamp_to_time(pts)
+							.to_f64();
+						(secs * sample_rate as f64).round() as i64
+					}
+					None => next_sample.unwrap_or(start_sample),
+				};
 				let offset = frame_start - start_sample;
 				if offset < dest_frames && offset + chunk_samples > 0 {
 					let copy_start = offset.max(0) as usize;
@@ -1229,14 +1247,70 @@ impl DecoderState {
 						let dst_off = copy_start * dst_channels;
 						if dst_off + n <= dest.len() {
 							dest[dst_off..dst_off + n]
-								.copy_from_slice(&flush[src_off..src_off + n]);
+								.copy_from_slice(&converted[src_off..src_off + n]);
+						}
+					}
+				}
+				next_sample = Some(frame_start + chunk_samples);
+				if offset + chunk_samples >= dest_frames {
+					break;
+				}
+			}
+
+			// Put the resampler back into the cache for the next call.
+			self.audio.as_mut().expect("audio session").resampler =
+				Some((sample_rate as u32, channel_layout, resampler));
+
+			// Flush any samples still buffered in the resampler (rate conversion
+			// tail), appending after the last decoded sample.
+			let resampler = self
+				.audio
+				.as_mut()
+				.expect("audio session")
+				.resampler
+				.as_mut()
+				.map(|r| &mut r.2)
+				.unwrap();
+			if let Some(flush) = flush_resampler_interleaved_f32(resampler)? {
+				if !flush.is_empty() {
+					let chunk_samples = (flush.len() / dst_channels) as i64;
+					let frame_start = next_sample.unwrap_or(start_sample);
+					let offset = frame_start - start_sample;
+					if offset < dest_frames && offset + chunk_samples > 0 {
+						let copy_start = offset.max(0) as usize;
+						let copy_end = (offset + chunk_samples).min(dest_frames).max(0) as usize;
+						if copy_end > copy_start {
+							let src_off = (copy_start as i64 - offset) as usize * dst_channels;
+							let n = (copy_end - copy_start) * dst_channels;
+							let dst_off = copy_start * dst_channels;
+							if dst_off + n <= dest.len() {
+								dest[dst_off..dst_off + n]
+									.copy_from_slice(&flush[src_off..src_off + n]);
+							}
 						}
 					}
 				}
 			}
-		}
 
-		Ok(RetrieveAudioStatus::Success)
+			// Record the end sample: the next chunk starting exactly here
+			// continues without a seek.
+			self.audio.as_mut().expect("audio session").contiguous_end_sample =
+				Some(start_sample + dest_frames);
+
+			Ok(RetrieveAudioStatus::Success)
+		})();
+
+		match read {
+			Ok(status) => Ok(status),
+			Err(e) => {
+				// A failed chunk leaves the decoder/resampler position
+				// unknown: force a fresh seek on the next chunk.
+				if let Some(a) = &mut self.audio {
+					a.contiguous_end_sample = None;
+				}
+				Err(e)
+			}
+		}
 	}
 
 	/// Conform the open stream's audio into per-channel PCM files, mirroring
