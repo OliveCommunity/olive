@@ -164,6 +164,15 @@ impl ExportTask {
 		params.subtitles_enabled = self.encoding_params.subtitles_enabled as i32;
 		params.export_length_num = self.encoding_params.export_length_num;
 		params.export_length_den = self.encoding_params.export_length_den;
+		// Delivery colorimetry: tag the output container with the project's
+		// output colorspace (H.273 code points → mov `colr` atom / VUI).
+		// Limited range is the video-delivery convention; the encoder's
+		// RGB→YCbCr runs limited.
+		let (_working, spec) = self.delivery_color();
+		params.color_primaries = spec.gamut.av_color_primaries();
+		params.color_trc = spec.transfer.av_color_trc();
+		params.color_space = spec.gamut.av_color_space();
+		params.color_range = 1; // AVCOL_RANGE_MPEG (limited)
 		params
 	}
 
@@ -192,6 +201,57 @@ impl ExportTask {
 		}
 		let length = nodeops::node_length(&self.viewer_node.0, self.viewer_node.1);
 		TimeRange::new(Rational::new(0, 1), length)
+	}
+
+	/// The project's pipeline color settings (working colorspace + the
+	/// delivery output spec) read off the exported node's project — the
+	/// export renders to the project's delivery target, not to the display.
+	fn delivery_color(&self) -> (
+		oak_common::colormath::WorkingColorSpace,
+		oak_common::colormath::OutputColorSpec,
+	) {
+		let guard = self
+			.viewer_node
+			.0
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		(guard.working_color_space(), guard.output_color_spec())
+	}
+
+	/// Convert an F32 codec frame from the pipeline working space to the
+	/// project's delivery colorspace (row-wise — the codec frame rows are
+	/// 32-byte aligned, so each row is handled through the byte-based
+	/// transform). A no-op for non-F32 frames and in the legacy sRGB
+	/// working space.
+	fn apply_output_node(&self, frame: &mut oak_codec::frame::Frame) {
+		if frame.format() != oak_core::PixelFormat::F32 {
+			return;
+		}
+		let (working, spec) = self.delivery_color();
+		if working == oak_common::colormath::WorkingColorSpace::SrgbLegacy {
+			return;
+		}
+		let w = frame.width().max(0) as usize;
+		let h = frame.height().max(0) as usize;
+		if w == 0 || h == 0 {
+			return;
+		}
+		let row_bytes = w * 16; // F32 RGBA
+		let linesize = frame.linesize_bytes() as usize;
+		let Some(data) = frame.data_mut() else {
+			return;
+		};
+		for y in 0..h {
+			let start = y * linesize;
+			if start + row_bytes > data.len() {
+				break;
+			}
+			oak_common::colormath::acescg_to_output_bytes(
+				&mut data[start..start + row_bytes],
+				w,
+				spec,
+			);
+		}
 	}
 
 	/// Copy a rendered `oakrender` CPU texture into an `oakcodec` frame
@@ -317,7 +377,12 @@ impl RenderTaskBehavior for ExportTask {
 		let Some(encoder) = &self.encoder else {
 			return Ok(());
 		};
-		let codec_frame = Self::to_codec_frame(frame)?;
+		let mut codec_frame = Self::to_codec_frame(frame)?;
+		// Output node: the rendered frame is in the pipeline working space
+		// (ACEScg linear by default); the export converts it to the
+		// project's delivery colorspace before encoding. (No-op in the
+		// legacy sRGB working space.)
+		self.apply_output_node(&mut codec_frame);
 		if let Err(_) = encoder.write_video(&codec_frame) {
 			let err = encoder.get_error();
 			task.set_error(&err);

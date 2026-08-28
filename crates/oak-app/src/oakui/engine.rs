@@ -925,6 +925,33 @@ pub trait AppEngine:
 		let _ = (setting, custom_path, cx);
 	}
 
+	/// The project's color pipeline settings:
+	/// `(working colorspace, output gamut, output transfer)` as the
+	/// persisted setting strings (see `oak_common::colormath`). The
+	/// working colorspace is the pipeline's scene space (ACEScg by
+	/// default, not hard-coded sRGB); the output pair is the delivery
+	/// target for export and presentation.
+	fn project_color_settings(&self) -> (String, String, String) {
+		(
+			oak_common::colormath::WorkingColorSpace::default().as_setting().to_string(),
+			oak_common::colormath::OutputGamut::default().as_setting().to_string(),
+			oak_common::colormath::OutputTransfer::default().as_setting().to_string(),
+		)
+	}
+
+	/// Applies the project color pipeline settings: stores them in the
+	/// project properties and invalidates every cached frame (they were
+	/// rendered under the old pipeline).
+	fn set_project_color_settings(
+		&mut self,
+		working: String,
+		gamut: String,
+		transfer: String,
+		cx: &mut Context<Self>,
+	) {
+		let _ = (working, gamut, transfer, cx);
+	}
+
 	// -------------------------------------------------------------------
 	// Sequence management (the C++ File > New Sequence / New Folder and
 	// the project-explorer sequence context menu): creating, querying and

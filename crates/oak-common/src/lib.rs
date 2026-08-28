@@ -22,6 +22,7 @@
 #![warn(missing_docs)]
 
 pub mod cancelatom;
+pub mod colormath;
 pub mod colortransform;
 pub mod commandlineparser;
 pub mod configstore;

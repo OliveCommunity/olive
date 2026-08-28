@@ -717,7 +717,11 @@ impl<E: AppEngine> OakApp<E> {
 				cx.background_executor()
 					.timer(Duration::from_millis(16))
 					.await;
-				let _ = cx.update(|_window, app| {
+				let _ = cx.update(|window, app| {
+					// Multi-monitor: track which physical display the window
+					// sits on so the self-managed display transform follows
+					// window moves (throttled inside `poll_monitor`).
+					crate::oakui::displaycolor::poll_monitor(window, app);
 					if let Some(this) = this.upgrade() {
 						this.update(app, |this, cx| this.tick(cx));
 					}
@@ -1990,6 +1994,9 @@ impl<E: AppEngine> OakApp<E> {
 					crate::dialogs::PreferencesEvent::ShortcutsChanged => {
 						this.rebind_keys(cx);
 					}
+					crate::dialogs::PreferencesEvent::DisplayColorChanged => {
+						this.reapply_display_color(cx);
+					}
 				},
 			)
 			.detach();
@@ -2002,6 +2009,10 @@ impl<E: AppEngine> OakApp<E> {
 		if let ModalState::Preferences { content, .. } = &self.modal {
 			content.update(cx, |content, cx| content.commit_cache_dir(cx));
 		}
+		// The committed custom-ICC path may change the effective display
+		// transform (or the policy, if the profile availability flipped):
+		// re-declare on every window.
+		self.reapply_display_color(cx);
 	}
 
 	/// Re-applies the global key bindings and rebuilds the menu bar after a
@@ -2012,6 +2023,20 @@ impl<E: AppEngine> OakApp<E> {
 		cx.clear_key_bindings();
 		cx.bind_keys(crate::actions::key_bindings());
 		self.rebuild_menu_bar(cx);
+		cx.notify();
+	}
+
+	/// Re-evaluates the display color policy and retags every window after
+	/// the color-management preference changed (the single-mapping rule must
+	/// hold at runtime, not just at startup). Drops the cached display
+	/// processors, then re-declares the policy on each open window.
+	fn reapply_display_color(&mut self, cx: &mut Context<Self>) {
+		crate::oakui::displaycolor::invalidate();
+		for handle in cx.windows() {
+			let _ = cx.update_window(handle, |_root, window, _app| {
+				crate::oakui::displaycolor::apply_to_window(window);
+			});
+		}
 		cx.notify();
 	}
 
@@ -3001,20 +3026,15 @@ fn run_with<E: AppEngine>(args: AppArgs) {
 		if plugin_count > 0 {
 			println!("[ofx] registered {plugin_count} OFX plugin node type(s)");
 		}
-		// Display color management: when the app transforms viewer frames
-		// through the display ICC itself, the macOS Metal layer must be
-		// tagged with the display colorspace so ColorSync passes the
-		// pixels through (otherwise the OS re-corrects them). Read by
-		// gpui_macos at layer creation, which happens below.
-		if crate::oakui::displaycolor::is_active() {
-			// SAFETY: single-threaded startup, before any window exists.
-			unsafe { std::env::set_var("OAK_MACOS_LAYER_COLORSPACE", "display") };
-		}
+		// Display color management: the platform layer must know who maps
+		// the pixels to the display (the single-mapping rule). Declared
+		// per-window below, right after the window exists, and re-declared
+		// whenever the preference changes (see displaycolor::apply_to_window).
 		// Display bit depth: the wgpu window layer must pick the swapchain
 		// format before the surface is created, so surface the persisted
-		// choice the same way the colorspace tag is passed to the platform
-		// layer above. Read by gpui_wgpu as OAK_DISPLAY_BIT_DEPTH ("8" opts
-		// into the 8-bit pair; anything else requests 10-bit).
+		// choice through the process environment. Read by gpui_wgpu as
+		// OAK_DISPLAY_BIT_DEPTH ("8" opts into the 8-bit pair; anything
+		// else requests 10-bit).
 		let bit_depth = oak_render::backend::DisplayBitDepth::from_config_string(
 			&crate::oakui::real::config_get_string(
 				oak_render::backend::CONFIG_KEY_DISPLAY_BIT_DEPTH,
@@ -3034,6 +3054,9 @@ fn run_with<E: AppEngine>(args: AppArgs) {
 					..Default::default()
 				},
 				|window, cx| {
+					// Declare who maps this window's pixels to the display
+					// before the first frame paints.
+					crate::oakui::displaycolor::apply_to_window(window);
 					// The 10-bit display path: hand the window's wgpu device
 					// to the engine so it can upload RGBA16F textures gpui's
 					// renderer samples straight into the swapchain (no 8-bit

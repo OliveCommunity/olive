@@ -57,6 +57,7 @@ use ffmpeg::{ChannelLayout, Dictionary, Error as FfmpegError, Rational as FfRati
 use ffmpeg_next as ffmpeg;
 
 use oak_common::cancelatom::CancelAtom;
+use oak_common::colormath::YuvMatrix;
 use oak_common::ocioutils::PixelFormat as OakPixelFormat;
 use oak_common::videoparams::{Interlacing, VideoParams, VideoType};
 use oak_core::{PixelFormat, Rational, SampleFormat, TimeRange};
@@ -70,6 +71,22 @@ use crate::frame::Frame;
 
 /// `OAKCOMMON_COLOR_RANGE_FULL`.
 const OAKCOMMON_COLOR_RANGE_FULL: i32 = 1;
+/// `OAKCOMMON_COLOR_RANGE_LIMITED`.
+const OAKCOMMON_COLOR_RANGE_LIMITED: i32 = 0;
+/// `AVCOL_RANGE_JPEG` (full range; AVCOL_RANGE_MPEG = 1 is limited).
+const AVCOL_RANGE_JPEG: i32 = 2;
+/// swscale colorspace ids (`SWS_CS_*`, libswscale/swscale.h).
+const SWS_CS_ITU709: i32 = 1;
+const SWS_CS_ITU601: i32 = 5;
+const SWS_CS_SMPTE240M: i32 = 7;
+const SWS_CS_BT2020: i32 = 9;
+/// AVCOL_SPC_* code points that map onto each swscale colorspace.
+const AVCOL_SPC_BT709: i32 = 1;
+const AVCOL_SPC_BT470BG: i32 = 5;
+const AVCOL_SPC_SMPTE170M: i32 = 6;
+const AVCOL_SPC_SMPTE240M: i32 = 7;
+const AVCOL_SPC_BT2020_NCL: i32 = 9;
+const AVCOL_SPC_BT2020_CL: i32 = 10;
 /// The format-level time base (microseconds), `FB_TIME_BASE` in the bridge.
 const FB_TIME_BASE: i64 = 1_000_000;
 /// `AV_NOPTS_VALUE`.
@@ -332,8 +349,20 @@ impl Decoder for FFmpegDecoder {
 		let f = decoded?
 			.ok_or_else(|| fail("no video frame available at the requested time"))?;
 
-		let (w, h, bytes) = state.scale_video_to_f32(f, p.force_range, p.target_size)?;
-		let frame = copy_rgba_f32_to_frame(w, h, &bytes, p.time)?;
+		let (w, h, bytes, color_meta) =
+			state.scale_video_to_f32(f, p.force_range, p.target_size)?;
+		let mut frame = copy_rgba_f32_to_frame(w, h, &bytes, p.time)?;
+		// Carry the source colorimetry on the frame params: the render
+		// layer maps it to its input transform (source → working space).
+		if let Some(params) = frame.params.as_mut() {
+			params.set_color_primaries(color_meta.color_primaries);
+			params.set_color_transfer(color_meta.color_trc);
+			params.set_color_range(if color_meta.full_range {
+				oak_common::videoparams::ColorRange::Full
+			} else {
+				oak_common::videoparams::ColorRange::Limited
+			});
+		}
 		Ok(Arc::new(frame))
 	}
 
@@ -949,8 +978,10 @@ impl DecoderState {
 	}
 
 	/// Scale a decoded frame to float RGBA (F32, 4 channels), returning the
-	/// raw pixel bytes plus dimensions. Mirrors `pre_process_frame` +
-	/// `retrieve_video_frame_internal` scaling with the color-range forcing.
+	/// raw pixel bytes, dimensions, and the source colorimetry. Mirrors
+	/// `pre_process_frame` + `retrieve_video_frame_internal` scaling; unlike
+	/// the old bridge path the YUV→RGB honors the frame's own colorspace
+	/// (BT.601/709/2020) and range instead of assuming BT.601 limited.
 	/// `target_size` resizes in the same swscale pass (native → RGBA/F32 at
 	/// the target size) instead of converting at native size first — the
 	/// caller's downscale then degenerates to a plain copy, and no
@@ -960,18 +991,45 @@ impl DecoderState {
 		f: ffmpeg::frame::Video,
 		force_range: i32,
 		target_size: Option<(u32, u32)>,
-	) -> crate::error::Result<(u32, u32, Vec<u8>)> {
+	) -> crate::error::Result<(u32, u32, Vec<u8>, crate::decoder::DecodedColorMeta)> {
 		let video = self
 			.video
 			.as_mut()
 			.expect("scale_video_to_f32 requires a video session");
 
+		// The frame's own colorimetry (set by the decoder from the
+		// bitstream); raw code points pass through to the render layer.
+		let (raw_primaries, raw_trc, raw_space, raw_range) = unsafe {
+			let av = f.as_ptr();
+			(
+				(*av).color_primaries as i32,
+				(*av).color_trc as i32,
+				(*av).colorspace as i32,
+				(*av).color_range as i32,
+			)
+		};
+
 		// # CPP-PARITY ffmpegdecoder.cpp:376: disregard "JPEG" pixel formats
-		// and force the color range to whatever the caller requested.
-		let src_format = convert_jpeg_space_to_regular_space(f.format());
+		// — but a YUVJ source is full range by definition, so remember it
+		// for the range decision below.
+		let orig_format = f.format();
+		let src_format = convert_jpeg_space_to_regular_space(orig_format);
+		let yuvj_full = orig_format != src_format;
 		let mut f = f;
 		f.set_format(src_format);
-		f.set_color_range(if force_range == OAKCOMMON_COLOR_RANGE_FULL {
+
+		// The effective color range: the caller's force wins; otherwise the
+		// frame's own metadata (YUVJ sources are full range). The old path
+		// forced MPEG/limited for everything, crushing full-range screen
+		// captures and JPEG-derived footage.
+		let full_range = if force_range == OAKCOMMON_COLOR_RANGE_FULL {
+			true
+		} else if force_range == OAKCOMMON_COLOR_RANGE_LIMITED {
+			false
+		} else {
+			yuvj_full || raw_range == AVCOL_RANGE_JPEG
+		};
+		f.set_color_range(if full_range {
 			ffmpeg::color::Range::JPEG
 		} else {
 			ffmpeg::color::Range::MPEG
@@ -990,24 +1048,67 @@ impl DecoderState {
 		// float context there can abort instead of erroring — RGBA64 is
 		// REPORTED supported but still aborts, so only RGBAF32LE is
 		// probed (on the builds that have it, e.g. the system FFmpeg,
-		// it works); everything else takes the universal 8-bit RGBA
-		// path converted in Rust.
+		// it works). High-bit-depth YUV sources fall back to 16-bit
+		// planar YUV 4:4:4 (converted to F32 RGBA in Rust) so their
+		// precision survives; 8-bit and RGB sources take the universal
+		// 8-bit RGBA path.
 		let supported = ffmpeg::software::scaling::support::output(Pixel::RGBAF32LE);
+		let (depth, is_yuv) = pix_fmt_depth_and_yuv(src_format);
 		let (out_fmt, f32_ok) = if supported {
 			(Pixel::RGBAF32LE, true)
+		} else if depth > 8 && is_yuv {
+			(Pixel::YUV444P16LE, false)
 		} else {
 			(Pixel::RGBA, false)
 		};
 		let ctx = get_or_create_scaler(&mut video.scaler, src_format, src_w, src_h, out_fmt, w, h)?;
+		if out_fmt == Pixel::YUV444P16LE {
+			// YUV→YUV pass-through: the 16-bit code values must reach the
+			// Rust matrix conversion bit-exact. sws_setColorspaceDetails
+			// has to see the SAME coefficient table for source and
+			// destination — differing tables would insert a cascaded
+			// YUV→RGB→YUV round trip — and both ranges are set full so
+			// the YUV→YUV range recompression is skipped entirely (it
+			// only runs when src_range != dst_range). The matrix and
+			// full/limited expansion happen later, in
+			// convert_yuv444p16_to_rgba_f32.
+			unsafe {
+				let table = sys::sws_getCoefficients(sws_colorspace_for(raw_space, src_w, src_h));
+				sys::sws_setColorspaceDetails(
+					ctx.as_mut_ptr(),
+					table,
+					1, // src full range (no recompression)
+					table,
+					1, // dst full range (no recompression)
+					0,
+					1 << 16,
+					1 << 16,
+				);
+			}
+		} else {
+			// The YUV→RGB matrix: BT.601/709/2020 per the frame's
+			// colorspace tag, with the full/limited range decided above.
+			// RGB sources are untouched by the colorspace tables (swscale
+			// ignores them there).
+			apply_sws_colorspace(ctx, raw_space, full_range, src_w, src_h);
+		}
 		let mut out = ffmpeg::frame::Video::empty();
 		ctx.run(&f, &mut out).map_err(ffmpeg_err)?;
-		let stride = out.stride(0);
 		let bytes = if f32_ok {
+			let stride = out.stride(0);
 			convert_rgba_f32_le(&out.data(0), w, h, stride)
+		} else if out_fmt == Pixel::YUV444P16LE {
+			convert_yuv444p16_to_rgba_f32(&out, w, h, yuv_matrix_for(raw_space, src_w, src_h), full_range)
 		} else {
+			let stride = out.stride(0);
 			convert_rgba8_to_f32(&out.data(0), w, h, stride)
 		};
-		Ok((w, h, bytes))
+		let meta = crate::decoder::DecodedColorMeta {
+			color_primaries: raw_primaries,
+			color_trc: raw_trc,
+			full_range,
+		};
+		Ok((w, h, bytes, meta))
 	}
 
 	/// Fill `dest` (interleaved f32) with the decoded audio covering
@@ -1467,6 +1568,90 @@ fn get_or_create_scaler(
 	Ok(&mut cache.as_mut().expect("set above").ctx)
 }
 
+/// Map a frame's `AVCOL_SPC_*` tag to a swscale colorspace id (the YUV→RGB
+/// coefficient set). Untagged frames fall back by size (HD material is
+/// overwhelmingly BT.709, SD is BT.601 — the old code used BT.601 for
+/// everything, tinting every HD source).
+fn sws_colorspace_for(av_colorspace: i32, src_w: u32, src_h: u32) -> i32 {
+	match av_colorspace {
+		AVCOL_SPC_BT709 => SWS_CS_ITU709,
+		AVCOL_SPC_BT470BG | AVCOL_SPC_SMPTE170M => SWS_CS_ITU601,
+		AVCOL_SPC_SMPTE240M => SWS_CS_SMPTE240M,
+		AVCOL_SPC_BT2020_NCL | AVCOL_SPC_BT2020_CL => SWS_CS_BT2020,
+		// Untagged: HD → BT.709, SD → BT.601.
+		_ => {
+			if src_w >= 1280 || src_h > 576 {
+				SWS_CS_ITU709
+			} else {
+				SWS_CS_ITU601
+			}
+		}
+	}
+}
+
+/// The Rust-side YUV→RGB matrix for a frame's `AVCOL_SPC_*` tag. Unlike
+/// [`sws_colorspace_for`] only tags with an exact matrix in [`YuvMatrix`]
+/// are honored; everything else (including SMPTE 240M and BT.2020 CL) falls
+/// back by size.
+fn yuv_matrix_for(av_colorspace: i32, src_w: u32, src_h: u32) -> YuvMatrix {
+	match av_colorspace {
+		AVCOL_SPC_BT709 => YuvMatrix::Bt709,
+		AVCOL_SPC_BT470BG | AVCOL_SPC_SMPTE170M => YuvMatrix::Bt601,
+		AVCOL_SPC_BT2020_NCL => YuvMatrix::Bt2020,
+		_ => {
+			if src_w >= 1280 || src_h > 576 {
+				YuvMatrix::Bt709
+			} else {
+				YuvMatrix::Bt601
+			}
+		}
+	}
+}
+
+/// Bit depth (bits per component) and YUV-ness of a pixel format, from its
+/// `AVPixFmtDescriptor` (8 and false for formats without one — none in
+/// practice for decoder output).
+fn pix_fmt_depth_and_yuv(fmt: Pixel) -> (i32, bool) {
+	unsafe {
+		let desc = sys::av_pix_fmt_desc_get(fmt.into());
+		if desc.is_null() {
+			(8, false)
+		} else {
+			((*desc).comp[0].depth, (*desc).flags & sys::AV_PIX_FMT_FLAG_RGB as u64 == 0)
+		}
+	}
+}
+
+/// Configure a swscale context's YUV→RGB matrix and range.
+///
+/// The range flag selects full/limited input coefficients; the RGB output is
+/// always full range. `sws_setColorspaceDetails` ignores the tables for
+/// non-YUV sources, so RGB footage passes through unchanged.
+fn apply_sws_colorspace(
+	ctx: &mut scaling::Context,
+	av_colorspace: i32,
+	full_range: bool,
+	src_w: u32,
+	src_h: u32,
+) {
+	let sws_cs = sws_colorspace_for(av_colorspace, src_w, src_h);
+	unsafe {
+		let inv_table = sys::sws_getCoefficients(sws_cs);
+		let dst_table = sys::sws_getCoefficients(SWS_CS_ITU601);
+		// brightness 0, contrast/saturation unity (16.16 fixed point).
+		sys::sws_setColorspaceDetails(
+			ctx.as_mut_ptr(),
+			inv_table,
+			full_range as i32,
+			dst_table,
+			1, // RGB out is full range
+			0,
+			1 << 16,
+			1 << 16,
+		);
+	}
+}
+
 /// The frame's presentation timestamp (NOPTS when unset).
 fn pts_of(f: Option<&ffmpeg::frame::Video>) -> Option<i64> {
 	f.and_then(|f| f.pts())
@@ -1567,6 +1752,43 @@ fn convert_rgba8_to_f32(data: &[u8], w: u32, h: u32, stride: usize) -> Vec<u8> {
 		}
 	}
 	out
+}
+
+/// Convert a 16-bit planar YUV 4:4:4 frame (YUV444P16LE, as emitted by the
+/// high-bit-depth swscale fallback) to interleaved F32 RGBA little-endian
+/// bytes. The YUV→RGB matrix and full/limited expansion run here instead of
+/// inside swscale so the 16-bit code values survive intact: swscale only
+/// converted the format (and resized), with identical source/destination
+/// colorspace tables and full ranges on both sides, so no matrix and no
+/// range recompression was applied. 10/12-bit sources arrive left-shifted
+/// to 16-bit (code << 6 / code << 4) — exactly the code-value scale
+/// [`oak_common::colormath::yuv444p16_to_rgb_f32`] expects.
+fn convert_yuv444p16_to_rgba_f32(
+	out: &ffmpeg::frame::Video,
+	w: u32,
+	h: u32,
+	matrix: YuvMatrix,
+	full_range: bool,
+) -> Vec<u8> {
+	let mut rgba = vec![0.0f32; (w as usize) * (h as usize) * 4];
+	oak_common::colormath::yuv444p16_to_rgb_f32(
+		out.data(0),
+		out.stride(0),
+		out.data(1),
+		out.stride(1),
+		out.data(2),
+		out.stride(2),
+		w as usize,
+		h as usize,
+		matrix,
+		full_range,
+		&mut rgba,
+	);
+	let mut bytes = vec![0u8; rgba.len() * 4];
+	for (dst, v) in bytes.chunks_exact_mut(4).zip(&rgba) {
+		dst.copy_from_slice(&v.to_le_bytes());
+	}
+	bytes
 }
 
 /// Build an allocated [`Frame`] (F32, RGBA) from raw pixel bytes.
@@ -1696,6 +1918,17 @@ fn probe_file(filename: &str, cancelled: Option<&CancelAtom>) -> Option<FootageD
 				vp.set_time_base(tb.0 as i32, tb.1 as i32);
 				vp.set_duration(stream.duration());
 				vp.set_premultiplied_alpha(false);
+				// Stream colorimetry (drives the input→working transform
+				// and lets the UI show what the footage is).
+				unsafe {
+					vp.set_color_primaries((*raw).color_primaries as i32);
+					vp.set_color_transfer((*raw).color_trc as i32);
+					vp.set_color_range(if (*raw).color_range as i32 == AVCOL_RANGE_JPEG {
+						oak_common::videoparams::ColorRange::Full
+					} else {
+						oak_common::videoparams::ColorRange::Limited
+					});
+				}
 				desc.push_stream(StreamEntry::Video(vp));
 			}
 			MediaType::Audio => {
@@ -1980,11 +2213,68 @@ impl Encoder for FFmpegEncoder {
 	}
 }
 
+/// Apply the export's delivery color metadata (H.273 code points, carried
+/// in [`EncodingParams`]) to the video encoder before it opens. The values
+/// are FFmpeg's own enum numbering, so each is re-interpreted into the
+/// matching sys enum and handed to the typed setter; 0 (unset) fields keep
+/// the codec default.
+fn set_encoder_color_metadata(
+	encoder: &mut ffmpeg::codec::encoder::video::Video,
+	params: &EncodingParams,
+) {
+	if params.color_primaries != 0 {
+		let v: sys::AVColorPrimaries =
+			unsafe { std::mem::transmute(params.color_primaries) };
+		encoder.set_color_primaries(v.into());
+	}
+	if params.color_trc != 0 {
+		let v: sys::AVColorTransferCharacteristic =
+			unsafe { std::mem::transmute(params.color_trc) };
+		encoder.set_color_transfer_characteristic(v.into());
+	}
+	if params.color_space != 0 {
+		let v: sys::AVColorSpace = unsafe { std::mem::transmute(params.color_space) };
+		encoder.set_colorspace(v.into());
+	}
+	if params.color_range != 0 {
+		let v: sys::AVColorRange = unsafe { std::mem::transmute(params.color_range) };
+		encoder.set_color_range(v.into());
+	}
+}
+
+/// Configure the encoder's RGB→YUV scaler so the produced YUV matches the
+/// delivery tag written by [`set_encoder_color_metadata`] (otherwise swscale
+/// defaults to BT.601/limited regardless of the tag, and players decode with
+/// the wrong matrix). `params.color_space` is the `AVCOL_SPC_*` value; the
+/// range follows `params.color_range` (1 = limited, 2 = full; 0 → limited).
+fn apply_sws_output_colorspace(scaler: &mut scaling::Context, params: &EncodingParams) {
+	let sws_cs = match params.color_space {
+		1 => SWS_CS_ITU709,      // AVCOL_SPC_BT709
+		9 | 10 => SWS_CS_BT2020, // AVCOL_SPC_BT2020_NCL / _CL
+		_ => SWS_CS_ITU601,
+	};
+	let full_range = params.color_range == 2; // AVCOL_RANGE_JPEG
+	unsafe {
+		let table = sys::sws_getCoefficients(sws_cs);
+		// src is RGB (always full range); dst is YUV with the delivery
+		// matrix and range.
+		sys::sws_setColorspaceDetails(
+			scaler.as_mut_ptr(),
+			table, // inv_table unused for an RGB source
+			1,
+			table,
+			full_range as i32,
+			0,
+			1 << 16,
+			1 << 16,
+		);
+	}
+}
+
 impl EncoderState {
 	/// Open the output file, create the streams and encoders and write the
 	/// header.
-	fn open(&mut self, params: &EncodingParams) -> crate::error::Result<()> {
-		if self.output.is_some() {
+	fn open(&mut self, params: &EncodingParams) -> crate::error::Result<()> {		if self.output.is_some() {
 			return Ok(());
 		}
 		let filename = c_string_1024(&params.filename);
@@ -2055,6 +2345,12 @@ impl EncoderState {
 				.unwrap_or_else(|| default_pixel_format_for_codec(codec_id));
 			encoder.set_format(pix_fmt);
 
+			// Delivery color metadata (H.273 code points) → the container's
+			// colr atom / H.264-HEVC VUI, so the exported file declares its
+			// colorimetry instead of leaving players to guess. Only set when
+			// the export populated them (0 = leave the codec default).
+			set_encoder_color_metadata(&mut encoder, params);
+
 			let opened = encoder.open().map_err(|e| { eprintln!("DBG-AUD: audio open failed: {e:?}"); ffmpeg_err(e) })?;
 			stream.set_parameters(&opened);
 			// The encoder may adjust the time base during `open` (x264
@@ -2077,7 +2373,7 @@ impl EncoderState {
 			let frame_duration = (time_base.1 as i64 * i64::from(frame_rate.1))
 				/ (i64::from(time_base.0) * i64::from(frame_rate.0)).max(1);
 
-			let scaler = scaling::Context::get(
+			let mut scaler = scaling::Context::get(
 				Pixel::RGBA,
 				width,
 				height,
@@ -2087,6 +2383,9 @@ impl EncoderState {
 				scaling::Flags::BILINEAR,
 			)
 			.map_err(ffmpeg_err)?;
+			// Match the RGB→YUV conversion to the delivery color tag so
+			// players decode with the matrix/range the container declares.
+			apply_sws_output_colorspace(&mut scaler, params);
 
 			video = Some(VideoEncoderState {
 				encoder: opened,
@@ -2664,5 +2963,85 @@ mod tests {
 		p.format = 2;
 		let e = FFmpegEncoder::with_params(p);
 		assert!(e.open().is_err());
+	}
+
+	#[test]
+	fn pix_fmt_depth_and_yuv_detects_depth_and_kind() {
+		// YUV luma depths (on the YUVJ→regular-normalized format).
+		assert_eq!(pix_fmt_depth_and_yuv(Pixel::YUV420P), (8, true));
+		assert_eq!(pix_fmt_depth_and_yuv(Pixel::YUV420P10LE), (10, true));
+		assert_eq!(pix_fmt_depth_and_yuv(Pixel::YUV444P16LE), (16, true));
+		// RGB formats never take the high-bit-depth YUV fallback.
+		assert_eq!(pix_fmt_depth_and_yuv(Pixel::RGBA), (8, false));
+		assert_eq!(pix_fmt_depth_and_yuv(Pixel::RGB48LE), (16, false));
+	}
+
+	#[test]
+	fn yuv_matrix_mapping_is_strict() {
+		use oak_common::colormath::YuvMatrix;
+		assert_eq!(yuv_matrix_for(AVCOL_SPC_BT709, 1920, 1080), YuvMatrix::Bt709);
+		assert_eq!(yuv_matrix_for(AVCOL_SPC_BT470BG, 640, 480), YuvMatrix::Bt601);
+		assert_eq!(yuv_matrix_for(AVCOL_SPC_SMPTE170M, 1920, 1080), YuvMatrix::Bt601);
+		assert_eq!(yuv_matrix_for(AVCOL_SPC_BT2020_NCL, 1920, 1080), YuvMatrix::Bt2020);
+		// SMPTE 240M / BT.2020 CL / unknown tags are NOT mapped directly —
+		// they fall back by size (HD → BT.709, SD → BT.601).
+		assert_eq!(yuv_matrix_for(AVCOL_SPC_SMPTE240M, 1920, 1080), YuvMatrix::Bt709);
+		assert_eq!(yuv_matrix_for(AVCOL_SPC_BT2020_CL, 640, 480), YuvMatrix::Bt601);
+		assert_eq!(yuv_matrix_for(0, 1920, 1080), YuvMatrix::Bt709);
+		assert_eq!(yuv_matrix_for(0, 640, 480), YuvMatrix::Bt601);
+		assert_eq!(yuv_matrix_for(0, 1000, 600), YuvMatrix::Bt709); // h > 576
+		assert_eq!(yuv_matrix_for(0, 720, 576), YuvMatrix::Bt601); // 576 is SD
+	}
+
+	#[test]
+	fn sws_colorspace_mapping_keeps_legacy_behavior() {
+		assert_eq!(sws_colorspace_for(AVCOL_SPC_BT709, 0, 0), SWS_CS_ITU709);
+		assert_eq!(sws_colorspace_for(AVCOL_SPC_BT470BG, 0, 0), SWS_CS_ITU601);
+		assert_eq!(sws_colorspace_for(AVCOL_SPC_SMPTE170M, 0, 0), SWS_CS_ITU601);
+		assert_eq!(sws_colorspace_for(AVCOL_SPC_SMPTE240M, 0, 0), SWS_CS_SMPTE240M);
+		assert_eq!(sws_colorspace_for(AVCOL_SPC_BT2020_NCL, 0, 0), SWS_CS_BT2020);
+		assert_eq!(sws_colorspace_for(AVCOL_SPC_BT2020_CL, 0, 0), SWS_CS_BT2020);
+		assert_eq!(sws_colorspace_for(0, 1920, 1080), SWS_CS_ITU709);
+		assert_eq!(sws_colorspace_for(0, 640, 480), SWS_CS_ITU601);
+	}
+
+	/// A 2×1 YUV444P16LE frame: full-range white (Y=65535, neutral C) left,
+	/// full-range black (Y=0, neutral C) right. Each sample is a u16.
+	fn synthetic_yuv444p16_frame() -> ffmpeg::frame::Video {
+		let mut f = ffmpeg::frame::Video::new(Pixel::YUV444P16LE, 2, 1);
+		for plane in 0..3 {
+			let data = f.data_mut(plane);
+			for (px, v) in data.chunks_exact_mut(2).take(2).enumerate() {
+				let code = match plane {
+					0 => [65535u16, 0u16][px], // luma: white, black
+					_ => 32768u16,             // chroma: neutral
+				};
+				v[..2].copy_from_slice(&code.to_le_bytes());
+			}
+		}
+		f
+	}
+
+	#[test]
+	fn yuv444p16_fallback_round_trips_full_range_white_and_black() {
+		let f = synthetic_yuv444p16_frame();
+		let bytes = convert_yuv444p16_to_rgba_f32(&f, 2, 1, YuvMatrix::Bt709, true);
+		let px = |i: usize| -> [f32; 4] {
+			let b = &bytes[i * 16..i * 16 + 16];
+			[
+				f32::from_le_bytes(b[0..4].try_into().unwrap()),
+				f32::from_le_bytes(b[4..8].try_into().unwrap()),
+				f32::from_le_bytes(b[8..12].try_into().unwrap()),
+				f32::from_le_bytes(b[12..16].try_into().unwrap()),
+			]
+		};
+		let white = px(0);
+		let black = px(1);
+		for c in 0..3 {
+			assert!((white[c] - 1.0).abs() < 1e-6, "white[{c}] = {}", white[c]);
+			assert!(black[c].abs() < 1e-6, "black[{c}] = {}", black[c]);
+		}
+		assert_eq!(white[3], 1.0);
+		assert_eq!(black[3], 1.0);
 	}
 }

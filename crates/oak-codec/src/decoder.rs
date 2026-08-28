@@ -145,6 +145,21 @@ pub struct RetrieveVideoParams {
 	pub target_size: Option<(u32, u32)>,
 }
 
+/// The colorimetry of a decoded frame, as carried out of the bitstream
+/// (raw ISO/IEC 23001-8 / H.273 code points — the same numbering FFmpeg's
+/// `AVCodecParameters` uses). The render layer maps these to its input
+/// transform (source colorspace → the pipeline working space).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct DecodedColorMeta {
+	/// Color primaries code point (`AVCOL_PRI_*`; 0/2 = unknown).
+	pub color_primaries: i32,
+	/// Transfer characteristic code point (`AVCOL_TRC_*`; 0/2 = unknown).
+	pub color_trc: i32,
+	/// True when the decoded RGB is full range (the YUV→RGB used the
+	/// full-range coefficients).
+	pub full_range: bool,
+}
+
 /// `Decoder::RetrieveAudioStatus` — outcome of an audio retrieve.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RetrieveAudioStatus {

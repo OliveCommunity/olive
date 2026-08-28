@@ -193,6 +193,42 @@ impl ColorProcessor {
 		Self::create_display_icc_impl(src_space, icc_path, true)
 	}
 
+	/// Create the display-output processor for content the caller has already
+	/// converted to CIE XYZ (D65, unit luminance) — the non-sRGB project
+	/// output gamut path. [`create_display_icc`](Self::create_display_icc)
+	/// starts from an OCIO named space (sRGB and friends); P3/BT.2020
+	/// targets have no named space in the builtin configs, so the caller
+	/// linearizes and gamut-maps to XYZ itself
+	/// (`oak_common::colormath::output_spec_to_xyz_d65`) and this chain only
+	/// needs the ICC half: it runs the existing builder with the config's
+	/// `cie_xyz_d65_interchange` role as the source space (XYZ → linear
+	/// Rec.709, whose inverse the builder's leg 2 immediately undoes — a
+	/// no-op round trip, leaving the ICC FileTransform to map the XYZ PCS
+	/// to device values).
+	///
+	/// Returns `None` (not a pass-through) when the chain cannot build — e.g.
+	/// the config rejects the interchange role — so callers can fall back to
+	/// the sRGB chain instead of silently mapping wrong content.
+	pub fn create_display_icc_xyz(icc_path: &str) -> Option<Self> {
+		Self::create_display_icc_xyz_impl(icc_path, false)
+	}
+
+	/// The [`create_display_icc_xyz`](Self::create_display_icc_xyz) chain
+	/// with R/B-swapping matrices baked around it for BGRA8 buffers (see
+	/// [`create_display_icc_bgra8`](Self::create_display_icc_bgra8)).
+	pub fn create_display_icc_xyz_bgra8(icc_path: &str) -> Option<Self> {
+		Self::create_display_icc_xyz_impl(icc_path, true)
+	}
+
+	fn create_display_icc_xyz_impl(icc_path: &str, bgra: bool) -> Option<Self> {
+		let p = Self::create_display_icc_impl("cie_xyz_d65_interchange", icc_path, bgra)?;
+		// A failed OCIO lookup yields a pass-through processor (the
+		// non-fatal convention above); for the XYZ chain that must surface as
+		// `None` so the caller can fall back to the sRGB degradation instead
+		// of feeding XYZ values through a no-op.
+		p.is_valid().then_some(p)
+	}
+
 	/// Shared builder: `bgra` wraps the chain in R/B swap matrices.
 	fn create_display_icc_impl(src_space: &str, icc_path: &str, bgra: bool) -> Option<Self> {
 		let config = default_config()?;
@@ -383,6 +419,48 @@ fn bytemuck_f32_slice(data: &mut [u8]) -> Option<&mut [f32]> {
 }
 
 // ---- process-wide default config (C++ ColorManager statics) ----------------
+
+/// The process-wide pipeline color settings (the project properties that
+/// drive the ACEScg + F32 pipeline): the working colorspace and the
+/// output/delivery spec. Defaults to ACEScg working + sRGB output; the app
+/// updates this from the open project's properties (and again on every
+/// project-properties commit). Render and export paths read it — a single
+/// project is open at a time, so a process global is the same shape as the
+/// OCIO default config above.
+static PIPELINE_COLOR: LazyLock<Mutex<(oak_common::colormath::WorkingColorSpace, oak_common::colormath::OutputColorSpec)>> =
+	LazyLock::new(|| Mutex::new((
+		oak_common::colormath::WorkingColorSpace::default(),
+		oak_common::colormath::OutputColorSpec::default(),
+	)));
+
+/// Set the pipeline color settings (working space + output spec).
+pub fn set_pipeline_color_settings(
+	working: oak_common::colormath::WorkingColorSpace,
+	output: oak_common::colormath::OutputColorSpec,
+) {
+	*PIPELINE_COLOR.lock().unwrap_or_else(|e| e.into_inner()) = (working, output);
+}
+
+/// The pipeline working colorspace.
+pub fn pipeline_working_space() -> oak_common::colormath::WorkingColorSpace {
+	PIPELINE_COLOR.lock().unwrap_or_else(|e| e.into_inner()).0
+}
+
+/// The pipeline output/delivery spec.
+pub fn pipeline_output_spec() -> oak_common::colormath::OutputColorSpec {
+	PIPELINE_COLOR.lock().unwrap_or_else(|e| e.into_inner()).1
+}
+
+/// The pipeline working colorspace as an OFX colorspace name (the value
+/// written to `kOfxImageClipPropColourspace` so plugins are told the
+/// true space of the pixels they receive — ACEScg in the default pipeline,
+/// sRGB in the legacy pass-through mode).
+pub fn pipeline_working_ofx_name() -> &'static str {
+	match pipeline_working_space() {
+		oak_common::colormath::WorkingColorSpace::AcesCg => "ACEScg",
+		oak_common::colormath::WorkingColorSpace::SrgbLegacy => "sRGB",
+	}
+}
 
 /// Send+Sync wrapper around `ocio_rs::Config` (a `NonNull`-based handle;
 /// the underlying OCIO config is a shared pointer safe for concurrent
@@ -827,6 +905,72 @@ mod tests {
 		assert!((out[0] - out[1]).abs() < 1e-3 && (out[1] - out[2]).abs() < 1e-3,
 			"grey stays grey: {out:?}");
 		assert!((out[3] - 1.0).abs() < 1e-5, "alpha preserved");
+	}
+
+	/// The non-sRGB project output gamut display path: content converted to
+	/// CIE XYZ (D65, unit luminance) by
+	/// `oak_common::colormath::output_spec_to_xyz_d65` must flow through the
+	/// display ICC. Builds by running the classic builder with the config's
+	/// `cie_xyz_d65_interchange` role as the source space — the feasibility
+	/// question this test answers is whether OCIO accepts the role name as a
+	/// `ColorSpaceTransform` source (it is a role, not a bare colorspace, in
+	/// the OCIO 2.2+ builtin configs).
+	#[test]
+	fn display_icc_xyz_accepts_interchange_role() {
+		let _lock = config_lock();
+		if set_up_default_config().is_err() {
+			return;
+		}
+		// Any display-class ICC; probe the usual macOS + Linux system profile
+		// locations (CI runners may have none — skip then).
+		let icc = [
+			"/System/Library/ColorSync/Profiles/sRGB Profile.icc",
+			"/System/Library/ColorSync/Profiles/Display P3.icc",
+			"/usr/share/color/icc/colord/sRGB.icc",
+			"/usr/share/color/icc/ghostscript/srgb.icc",
+			"/usr/local/share/color/icc/colord/sRGB.icc",
+		]
+		.into_iter()
+		.find(|p| std::path::Path::new(p).exists());
+		let Some(icc) = icc else {
+			eprintln!("no system ICC profile; skipping");
+			return;
+		};
+		let p = ColorProcessor::create_display_icc_xyz(icc)
+			.expect("handle always returned or explicit None");
+		assert!(
+			p.is_valid(),
+			"the cie_xyz_d65_interchange role must build the XYZ→ICC chain from {icc}"
+		);
+		// Numeric sanity: the XYZ chain fed with `output_spec_to_xyz_d65` of
+		// an sRGB-encoded mid-grey must match the classic chain applied to
+		// the same encoded values — legs 1+2 (XYZ→lin709→XYZ) are the inverse
+		// round trip of the classic chain's lin709→XYZ leg, so both must land
+		// on the same device values.
+		let spec = oak_common::colormath::OutputColorSpec::default();
+		let encoded = [0.5f32, 0.5, 0.5, 1.0];
+		let mut xyz_in = encoded;
+		oak_common::colormath::output_spec_to_xyz_d65(&mut xyz_in, spec);
+		let mut via_xyz = xyz_in;
+		let _ = p.convert_f32_rgba(&mut via_xyz, 1);
+		let srgb = ColorProcessor::create_display_icc("sRGB Encoded Rec.709 (sRGB)", icc)
+			.expect("handle always returned");
+		let mut via_srgb = encoded;
+		let _ = srgb.convert_f32_rgba(&mut via_srgb, 1);
+		for c in 0..3 {
+			assert!(
+				(via_xyz[c] - via_srgb[c]).abs() < 0.02,
+				"channel {c}: XYZ chain {} vs sRGB chain {} (round trip must be identity)",
+				via_xyz[c],
+				via_srgb[c]
+			);
+		}
+		// Grey stays grey; alpha preserved.
+		assert!(
+			(via_xyz[0] - via_xyz[1]).abs() < 1e-3 && (via_xyz[1] - via_xyz[2]).abs() < 1e-3,
+			"grey stays grey: {via_xyz:?}"
+		);
+		assert!((via_xyz[3] - 1.0).abs() < 1e-5, "alpha preserved");
 	}
 
 	/// The exact chain the viewers use (BGRA8, display-class ICC from

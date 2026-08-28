@@ -910,7 +910,55 @@ pub fn render_footage_frame(
 			dh,
 		);
 	}
+	// Input node: source colorspace → the pipeline working space (ACEScg
+	// by default; the legacy sRGB working space keeps the pass-through).
+	convert_decoded_to_working(&mut dst, &decoded);
 	Ok(Texture::wrap_frame(dst))
+}
+
+/// Convert a decoded footage frame (display-referred RGB in the source's
+/// own colorspace) into the pipeline working space, driven by the frame's
+/// colorimetry metadata (carried on the codec frame's params). A no-op in
+/// the legacy sRGB working space or when the frame has no pixel data.
+fn convert_decoded_to_working(dst: &mut Frame, decoded: &oak_codec::frame::Frame) {
+	use oak_common::colormath::{
+		WorkingColorSpace, source_primaries_from_av, source_transfer_from_av,
+	};
+	if crate::color::pipeline_working_space() == WorkingColorSpace::SrgbLegacy {
+		return;
+	}
+	// Frames without colorimetry metadata get the generic fallback (sRGB
+	// primaries, sRGB transfer) instead of passing through unconverted;
+	// the missing tag is warned once per process.
+	let (primaries, transfer) = match decoded.params() {
+		Some(params) => (
+			source_primaries_from_av(params.color_primaries()),
+			source_transfer_from_av(params.color_transfer()),
+		),
+		None => {
+			warn_missing_colorimetry_once();
+			(source_primaries_from_av(2), source_transfer_from_av(2))
+		}
+	};
+	let w = dst.width.max(0) as usize;
+	let h = dst.height.max(0) as usize;
+	if w == 0 || h == 0 {
+		return;
+	}
+	let row_bytes = w * 16; // F32 RGBA
+	let linesize = dst.linesize_bytes();
+	for y in 0..h {
+		let start = y * linesize;
+		if start + row_bytes > dst.data.len() {
+			break;
+		}
+		oak_common::colormath::decode_to_acescg_bytes(
+			&mut dst.data[start..start + row_bytes],
+			w,
+			primaries,
+			transfer,
+		);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -933,7 +981,9 @@ fn main(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let s = textureLoad(src_tex, coord, 0);
     let d = textureLoad(dst_tex, coord, 0);
     let a = clamp(s.a, 0.0, 1.0);
-    return clamp(vec4<f32>(s.rgb * a + d.rgb * (1.0 - a), a + d.a * (1.0 - a)), vec4<f32>(0.0), vec4<f32>(1.0));
+    // RGB keeps the working-space values unclamped (HDR/WCG can exceed
+    // 1.0); only the alpha of the result is clamped to the valid range.
+    return vec4<f32>(s.rgb * a + d.rgb * (1.0 - a), clamp(a + d.a * (1.0 - a), 0.0, 1.0));
 }
 "#;
 
@@ -1290,9 +1340,13 @@ fn scale_rgba_f32(
 			let sx = sx.max(0.0);
 			let px = sample(sx, sy);
 			let off = (y as usize) * (dst_stride as usize) + (x as usize) * 16;
+			// RGB is not clamped: bilinear lerp is a convex combination,
+			// so values cannot overshoot the source range, and HDR/WCG
+			// working-space pixels may legitimately exceed 1.0. Only the
+			// alpha channel is clamped to its valid range.
 			for i in 0..4 {
-				dst[off + i * 4..off + i * 4 + 4]
-					.copy_from_slice(&px[i].clamp(0.0, 1.0).to_le_bytes());
+				let v = if i == 3 { px[i].clamp(0.0, 1.0) } else { px[i] };
+				dst[off + i * 4..off + i * 4 + 4].copy_from_slice(&v.to_le_bytes());
 			}
 		}
 	}
@@ -1393,8 +1447,11 @@ pub fn composite_over(
 				a + d[3] * (1.0 - a),
 			];
 			let off = (y as usize) * (dst_stride as usize) + (x as usize) * 16;
+			// RGB keeps the working-space values unclamped (HDR/WCG can
+			// exceed 1.0); only alpha is clamped to its valid range.
 			for i in 0..4 {
-				dst[off + i * 4..off + i * 4 + 4].copy_from_slice(&out[i].clamp(0.0, 1.0).to_le_bytes());
+				let v = if i == 3 { out[i].clamp(0.0, 1.0) } else { out[i] };
+				dst[off + i * 4..off + i * 4 + 4].copy_from_slice(&v.to_le_bytes());
 			}
 		}
 	}
@@ -1427,6 +1484,15 @@ fn warn_unsupported_once(type_id: &str, reason: &str) {
 	if unsupported_warned().insert(type_id.to_string()) {
 		eprintln!("montage effect \"{type_id}\" passes through unchanged: {reason}");
 	}
+}
+
+/// Warn once (per process) when a decoded frame carries no colorimetry
+/// metadata and falls back to the generic sRGB assumptions.
+fn warn_missing_colorimetry_once() {
+	static WARNED: std::sync::Once = std::sync::Once::new();
+	WARNED.call_once(|| {
+		eprintln!("decoded frame has no colorimetry metadata; assuming sRGB");
+	});
 }
 
 /// Run a clip's effect stack over its decoded frame (source-first order;

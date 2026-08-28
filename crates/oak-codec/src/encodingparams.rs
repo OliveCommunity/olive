@@ -121,6 +121,20 @@ pub struct EncodingParams {
 	pub custom_range_out_num: i64,
 	/// Custom range out denominator.
 	pub custom_range_out_den: i64,
+
+	/// Delivery color metadata written into the output container
+	/// (ISO/IEC 23001-8 / H.273 code points — the same numbering FFmpeg's
+	/// `AVCodecContext` uses; 0 = leave unset). The export sets these from
+	/// the project's output colorspace so the file declares its
+	/// colorimetry (the mov `colr` atom / H.264-HEVC VUI) instead of
+	/// leaving players to guess.
+	pub color_primaries: i32,
+	/// Delivery transfer characteristic code point (`AVCOL_TRC_*`).
+	pub color_trc: i32,
+	/// Delivery matrix coefficients code point (`AVCOL_SPC_*`; 0 = RGB).
+	pub color_space: i32,
+	/// Delivery color range (`AVCOL_RANGE_*`: 1 = limited, 2 = full).
+	pub color_range: i32,
 }
 
 impl Default for EncodingParams {
@@ -170,6 +184,11 @@ impl Default for EncodingParams {
 			custom_range_in_den: 0,
 			custom_range_out_num: 0,
 			custom_range_out_den: 0,
+
+			color_primaries: 0,
+			color_trc: 0,
+			color_space: 0,
+			color_range: 0,
 		}
 	}
 }
@@ -1069,15 +1088,16 @@ mod tests {
 		]
 	}
 
-	/// `oakcodec_encoding_params` byte-level layout lock, verified against
-	/// the real header with a C++ `offsetof` probe (see the crate notes):
-	/// every field offset and the total size must match `include/codec/
-	/// encoder.h` exactly so a C caller's POD is read in place.
+	/// `oakcodec_encoding_params` byte-level layout lock. The original C
+	/// ABI (`include/codec/encoder.h`) has been retired, but the offsets of
+	/// the pre-existing fields stay frozen so any on-disk/IPC copy of the
+	/// POD still reads in place; the delivery color-metadata fields are
+	/// appended at the end.
 	#[test]
 	fn encoding_params_c_abi_layout() {
 		use std::mem::{offset_of, size_of};
 
-		assert_eq!(size_of::<EncodingParams>(), 1536);
+		assert_eq!(size_of::<EncodingParams>(), 1552);
 		assert_eq!(offset_of!(EncodingParams, filename), 0);
 		assert_eq!(offset_of!(EncodingParams, format), 1024);
 		assert_eq!(offset_of!(EncodingParams, video_enabled), 1028);
@@ -1091,5 +1111,10 @@ mod tests {
 		assert_eq!(offset_of!(EncodingParams, has_custom_range), 1496);
 		assert_eq!(offset_of!(EncodingParams, custom_range_in_num), 1504);
 		assert_eq!(offset_of!(EncodingParams, custom_range_out_den), 1528);
+		// Appended delivery color metadata (H.273 code points).
+		assert_eq!(offset_of!(EncodingParams, color_primaries), 1536);
+		assert_eq!(offset_of!(EncodingParams, color_trc), 1540);
+		assert_eq!(offset_of!(EncodingParams, color_space), 1544);
+		assert_eq!(offset_of!(EncodingParams, color_range), 1548);
 	}
 }

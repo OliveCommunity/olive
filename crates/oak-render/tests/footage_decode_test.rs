@@ -34,6 +34,15 @@ fn test_clip_path() -> std::path::PathBuf {
 
 #[test]
 fn footage_decode_renders_known_content() {
+	// This test verifies DECODE correctness (known red/blue content), not
+	// the color pipeline. Pin the working space to the legacy sRGB
+	// pass-through so the decoded pixels stay display-referred and the
+	// assertions below hold regardless of the ACEScg default.
+	oak_render::color::set_pipeline_color_settings(
+		oak_common::colormath::WorkingColorSpace::SrgbLegacy,
+		oak_common::colormath::OutputColorSpec::default(),
+	);
+
 	// Program-generated media: 10 frames at 10fps, 64x64, known pattern
 	// (left half red, right half blue on frame 0).
 	let path = test_clip_path();

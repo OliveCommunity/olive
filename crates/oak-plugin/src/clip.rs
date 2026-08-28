@@ -82,10 +82,14 @@ impl ClipInstance {
 		let props = desc.props.clone();
 		let name = desc.name.clone();
 		if name != "Output" {
+			// The working colorspace follows the pipeline setting (project
+			// property): ACEScg in the default pipeline, sRGB in the legacy
+			// pass-through mode — plugins must be told the true space of the
+			// pixels they receive.
 			props.set_one(
 				crate::host::PROP_CLIP_COLOURSPACE,
 				crate::property::Value::String(
-					std::ffi::CString::new(crate::host::WORKING_COLOURSPACE).unwrap(),
+					std::ffi::CString::new(oak_render::color::pipeline_working_ofx_name()).unwrap(),
 				),
 			);
 		}

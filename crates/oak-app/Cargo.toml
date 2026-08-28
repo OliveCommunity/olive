@@ -61,6 +61,10 @@ gpui_elements = { path = "../../gpui/crates/gpui_elements" }
 # runtime (bundled with the app, user-extensible) with the compiled-in
 # English table as the fallback.
 serde_yaml = "0.9"
+# The gpui/wgpu stack logs through the `log` facade; the app installs the
+# stderr backend (see oakapp::logging) so validation errors and warnings
+# are actually visible (RUST_LOG selects the verbosity).
+log = "0.4"
 
 # M14 R3: the app is a PURE module-crate consumer — every engine call is a
 # direct Rust call into the oak* rlibs (oak-node for the project graph,

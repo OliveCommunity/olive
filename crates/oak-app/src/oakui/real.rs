@@ -629,6 +629,7 @@ fn rendered_to_owned_image(rendered: &super::renderops::RenderedFrame) -> Option
 				// image below is only the CPU fallback (scope / eyedropper /
 				// cached fills without a GPU).
 				let mut samples = repack_f32_row_bytes(meta.width, meta.height, meta.linesize, data)?;
+				apply_output_node_f32(&mut samples);
 				super::displaycolor::apply_f32_rgba(&mut samples, (w * h) as i64);
 				let image = f32_rgba_to_bgra_image(w, h, &samples);
 				super::gpu::register_display_frame(image.id.0, w, h, &samples);
@@ -637,12 +638,26 @@ fn rendered_to_owned_image(rendered: &super::renderops::RenderedFrame) -> Option
 			bgra_bytes_to_render_image(w, h, data).map(Arc::new)
 		}
 		super::renderops::RenderedFrame::CpuF32 { .. } => {
-			let (w, h, samples) = read_f32_frame(rendered)?;
+			let (w, h, mut samples) = read_f32_frame(rendered)?;
+			// Output node + display transform, same as the shm F32 path, so
+			// cached fills match the on-screen picture regardless of backend.
+			apply_output_node_f32(&mut samples);
+			super::displaycolor::apply_f32_rgba(&mut samples, (w * h) as i64);
 			let image = f32_rgba_to_bgra_image(w, h, &samples);
 			super::gpu::register_display_frame(image.id.0, w, h, &samples);
 			Some(Arc::new(image))
 		}
 	}
+}
+
+/// The app-side output node for F32 frames (working colorspace → the
+/// project's output colorspace); pass-through in the legacy working space.
+fn apply_output_node_f32(samples: &mut [f32]) {
+	oak_common::colormath::working_to_display_target(
+		samples,
+		oak_render::color::pipeline_working_space(),
+		oak_render::color::pipeline_output_spec(),
+	);
 }
 
 /// Repack one F32 RGBA shm slot (rows padded to `linesize`) into tightly
@@ -2788,6 +2803,16 @@ impl RealEngine {
 		};
 		self.project = Some(project.clone());
 		self.storage = Some(AuxHandle(graphops::storage_bind(&project)));
+		// The project's color pipeline properties (working colorspace +
+		// delivery target) drive the app-side decode/output transforms;
+		// the render workers pick them up at graph-load time.
+		{
+			let guard = graphops::lock(&project);
+			oak_render::color::set_pipeline_color_settings(
+				guard.working_color_space(),
+				guard.output_color_spec(),
+			);
+		}
 
 		// Footage loaded from a file may lack stream metadata (C++ projects
 		// have no `<streams>` segment; older Rust saves predate the probe
@@ -2813,6 +2838,9 @@ impl RealEngine {
 		// The project's stored OCIO override (if any) drives the display
 		// color pipeline from here on.
 		Self::apply_project_color_config(Some(&project));
+		// The project's colorspace settings may differ from the previous
+		// project's: re-declare the display policy on every open window.
+		self.reapply_display_policy_to_windows(cx);
 
 		// 全局代理开关开启时，工程里未就绪素材的代理在后台自动生成
 		// （打开长素材工程不等待：生成走任务线程）。
@@ -4897,6 +4925,79 @@ impl AppEngine for RealEngine {
 		cx.notify();
 	}
 
+	fn project_color_settings(&self) -> (String, String, String) {
+		let Some(project) = self.project_ref() else {
+			return (
+				oak_common::colormath::WorkingColorSpace::default().as_setting().to_string(),
+				oak_common::colormath::OutputGamut::default().as_setting().to_string(),
+				oak_common::colormath::OutputTransfer::default().as_setting().to_string(),
+			);
+		};
+		let guard = graphops::lock(project);
+		let get = |key: &str, default: &str| {
+			guard
+				.settings
+				.get(key)
+				.map(String::as_str)
+				.unwrap_or(default)
+				.to_string()
+		};
+		(
+			get(
+				oak_node::project::SETTING_WORKING_COLOR_SPACE,
+				oak_common::colormath::WorkingColorSpace::default().as_setting(),
+			),
+			get(
+				oak_node::project::SETTING_OUTPUT_GAMUT,
+				oak_common::colormath::OutputGamut::default().as_setting(),
+			),
+			get(
+				oak_node::project::SETTING_OUTPUT_TRANSFER,
+				oak_common::colormath::OutputTransfer::default().as_setting(),
+			),
+		)
+	}
+
+	fn set_project_color_settings(
+		&mut self,
+		working: String,
+		gamut: String,
+		transfer: String,
+		cx: &mut Context<Self>,
+	) {
+		let Some(project) = self.project.clone() else {
+			return;
+		};
+		// Normalize through the parsers so only canonical values persist.
+		let working = oak_common::colormath::WorkingColorSpace::from_setting(&working);
+		let spec = oak_common::colormath::OutputColorSpec::from_settings(&gamut, &transfer);
+		{
+			let mut guard = graphops::lock(&project);
+			guard.settings.insert(
+				oak_node::project::SETTING_WORKING_COLOR_SPACE.to_string(),
+				working.as_setting().to_string(),
+			);
+			guard.settings.insert(
+				oak_node::project::SETTING_OUTPUT_GAMUT.to_string(),
+				spec.gamut.as_setting().to_string(),
+			);
+			guard.settings.insert(
+				oak_node::project::SETTING_OUTPUT_TRANSFER.to_string(),
+				spec.transfer.as_setting().to_string(),
+			);
+			guard.modified = true;
+		}
+		// The app-side transforms read the process global; the workers pick
+		// the new settings up with the next graph upload.
+		oak_render::color::set_pipeline_color_settings(working, spec);
+		// The pipeline colorspace changed: every cached frame (CPU image,
+		// GPU texture, preview slot) was rendered under the old space.
+		super::displaycolor::invalidate();
+		self.invalidate_rendered_frames();
+		self.reapply_display_policy_to_windows(cx);
+		cx.notify();
+	}
+
 	fn entry_is_sequence(&self, id: u64) -> bool {
 		let Some(project) = self.project_ref() else {
 			return false;
@@ -5649,6 +5750,23 @@ impl ProjectFormat {
 }
 
 impl RealEngine {
+	/// Re-declares the display color policy (and the content colorspace) on
+	/// every open window after the project's color pipeline settings changed.
+	/// Runs deferred: [`Self::set_project_color_settings`] is committed from
+	/// inside the settings dialog's window update, where a direct
+	/// `update_window` would fail; `defer` re-enters the app after that
+	/// update completes.
+	fn reapply_display_policy_to_windows(&self, cx: &mut Context<Self>) {
+		let windows = cx.windows();
+		cx.defer(move |app| {
+			for handle in windows {
+				let _ = app.update_window(handle, |_root, window, _app| {
+					crate::oakui::displaycolor::apply_to_window(window);
+				});
+			}
+		});
+	}
+
 	/// Auto-creates a sequence for a footage drop onto an empty timeline (see
 	/// `drop_footage`): the format mirrors the footage's first video stream;
 	/// pure-audio footage uses the default sequence format. Returns the new

@@ -76,6 +76,9 @@ pub enum PreferencesEvent {
 	/// must re-bind the global key map and rebuild the menu bar so the new
 	/// keys take effect immediately.
 	ShortcutsChanged,
+	/// The display color-management mode changed (the host re-evaluates the
+	/// platform policy and retags the windows immediately — no restart).
+	DisplayColorChanged,
 }
 
 impl gpui::EventEmitter<PreferencesEvent> for PreferencesContent {}
@@ -373,8 +376,8 @@ impl PreferencesContent {
 		// --- 色彩 Color: display ICC color management -----------------------
 		// On by default: the viewer frames are transformed through the
 		// display's ICC profile (system profile, or a custom file below).
-		// The macOS layer tag is applied at startup, so a mode change takes
-		// effect after a restart.
+		// A mode change re-evaluates the platform display policy and
+		// retags the windows immediately (no restart).
 		use crate::oakui::displaycolor::{CONFIG_KEY_COLOR_MODE, CONFIG_KEY_CUSTOM_ICC};
 		let display_icc = cx.new(|cx| {
 			let mode = config_get_string(CONFIG_KEY_COLOR_MODE);
@@ -395,6 +398,10 @@ impl PreferencesContent {
 				let enabled = *state == CheckState::Checked;
 				config_set_string(CONFIG_KEY_COLOR_MODE, if enabled { "icc" } else { "off" });
 				check.update(cx, |check, cx| check.set_state(*state, cx));
+				// Drop the cached processors and tell the host to retag the
+				// windows for the new policy.
+				crate::oakui::displaycolor::invalidate();
+				cx.emit(PreferencesEvent::DisplayColorChanged);
 			}
 		})
 		.detach();
@@ -1557,6 +1564,12 @@ pub struct ProjectPropertiesContent<E: crate::oakui::engine::AppEngine> {
 	/// 1 = alongside the project, 2 = custom path; see
 	/// [`crate::oakui::engine::AppEngine::project_cache_location`]).
 	cache_setting: i32,
+	/// The pipeline working colorspace combo (ACEScg / sRGB legacy).
+	working_space: Entity<ComboBox>,
+	/// The delivery output gamut combo (sRGB / Display P3 / BT.2020).
+	output_gamut: Entity<ComboBox>,
+	/// The delivery output transfer combo (sRGB / gamma 2.2 / PQ / HLG).
+	output_transfer: Entity<ComboBox>,
 	/// The commit error shown under the OCIO row (an invalid config keeps
 	/// the dialog open, like the C++ accept()).
 	error: Option<String>,
@@ -1608,12 +1621,54 @@ impl<E: crate::oakui::engine::AppEngine> ProjectPropertiesContent<E> {
 		});
 		custom_cache_path.update(cx, |field, cx| field.set_path(custom_path, cx));
 
+		// --- Color pipeline: working colorspace + delivery output --------
+		let working_options = vec![
+			ComboBoxOption::new(0, i18n::tr("projprops.color.working.acescg")),
+			ComboBoxOption::new(1, i18n::tr("projprops.color.working.srgb")),
+		];
+		let working_space = cx.new(|cx| ComboBox::new(30, working_options, window, cx));
+		let gamut_options = vec![
+			ComboBoxOption::new(0, i18n::tr("projprops.color.gamut.srgb")),
+			ComboBoxOption::new(1, i18n::tr("projprops.color.gamut.p3")),
+			ComboBoxOption::new(2, i18n::tr("projprops.color.gamut.bt2020")),
+		];
+		let output_gamut = cx.new(|cx| ComboBox::new(30, gamut_options, window, cx));
+		let transfer_options = vec![
+			ComboBoxOption::new(0, i18n::tr("projprops.color.transfer.srgb")),
+			ComboBoxOption::new(1, i18n::tr("projprops.color.transfer.gamma22")),
+			ComboBoxOption::new(2, i18n::tr("projprops.color.transfer.pq")),
+			ComboBoxOption::new(3, i18n::tr("projprops.color.transfer.hlg")),
+		];
+		let output_transfer = cx.new(|cx| ComboBox::new(30, transfer_options, window, cx));
+		let (working, gamut, transfer) = engine.read(cx).project_color_settings();
+		working_space.update(cx, |combo, cx| {
+			combo.set_selected(
+				Some(oak_common::colormath::WorkingColorSpace::from_setting(&working) as usize),
+				cx,
+			)
+		});
+		output_gamut.update(cx, |combo, cx| {
+			combo.set_selected(
+				Some(oak_common::colormath::OutputGamut::from_setting(&gamut) as usize),
+				cx,
+			)
+		});
+		output_transfer.update(cx, |combo, cx| {
+			combo.set_selected(
+				Some(oak_common::colormath::OutputTransfer::from_setting(&transfer) as usize),
+				cx,
+			)
+		});
+
 		Self {
 			engine,
 			ocio_config,
 			cache_location,
 			custom_cache_path,
 			cache_setting,
+			working_space,
+			output_gamut,
+			output_transfer,
 			error: None,
 		}
 	}
@@ -1660,7 +1715,8 @@ impl<E: crate::oakui::engine::AppEngine> ProjectPropertiesContent<E> {
 
 	/// Applies the edited settings (the C++ `accept()`): validates and
 	/// applies the OCIO config override first — an invalid config keeps the
-	/// dialog open — then the disk-cache location. Ok clears the error row.
+	/// dialog open — then the disk-cache location and the color pipeline
+	/// settings. Ok clears the error row.
 	pub fn commit(&mut self, cx: &mut Context<Self>) -> Result<(), String> {
 		let ocio = self.ocio_config_path(cx).to_string();
 		self.engine
@@ -1671,8 +1727,55 @@ impl<E: crate::oakui::engine::AppEngine> ProjectPropertiesContent<E> {
 		self.engine.update(cx, |engine, cx| {
 			engine.set_project_cache_location(setting, path, cx)
 		});
+		// The color pipeline settings: combo index → canonical setting
+		// string via the colormath enums (single source of truth).
+		let (working, gamut, transfer) = self.color_settings(cx);
+		self.engine.update(cx, |engine, cx| {
+			engine.set_project_color_settings(working, gamut, transfer, cx)
+		});
 		self.set_error(None, cx);
 		Ok(())
+	}
+
+	/// The color pipeline settings currently selected in the combos, as
+	/// the canonical persisted strings.
+	fn color_settings(&self, cx: &App) -> (String, String, String) {
+		use oak_common::colormath::{OutputGamut, OutputTransfer, WorkingColorSpace};
+		let working = self
+			.working_space
+			.read(cx)
+			.selected()
+			.map(|i| match i {
+				1 => WorkingColorSpace::SrgbLegacy,
+				_ => WorkingColorSpace::AcesCg,
+			})
+			.unwrap_or_default();
+		let gamut = self
+			.output_gamut
+			.read(cx)
+			.selected()
+			.map(|i| match i {
+				1 => OutputGamut::DisplayP3,
+				2 => OutputGamut::Bt2020,
+				_ => OutputGamut::Srgb,
+			})
+			.unwrap_or_default();
+		let transfer = self
+			.output_transfer
+			.read(cx)
+			.selected()
+			.map(|i| match i {
+				1 => OutputTransfer::Gamma22,
+				2 => OutputTransfer::Pq,
+				3 => OutputTransfer::Hlg,
+				_ => OutputTransfer::Srgb,
+			})
+			.unwrap_or_default();
+		(
+			working.as_setting().to_string(),
+			gamut.as_setting().to_string(),
+			transfer.as_setting().to_string(),
+		)
 	}
 
 	/// The error shown under the OCIO row after a rejected commit.
@@ -1771,6 +1874,21 @@ impl<E: crate::oakui::engine::AppEngine> Render for ProjectPropertiesContent<E> 
 				self.cache_location.clone(),
 			))
 			.child(custom_row)
+			.child(form_row(
+				&colors,
+				i18n::tr("projprops.color.working").into(),
+				self.working_space.clone(),
+			))
+			.child(form_row(
+				&colors,
+				i18n::tr("projprops.color.gamut").into(),
+				self.output_gamut.clone(),
+			))
+			.child(form_row(
+				&colors,
+				i18n::tr("projprops.color.transfer").into(),
+				self.output_transfer.clone(),
+			))
 	}
 }
 
@@ -1827,6 +1945,9 @@ impl PreferencesDialogContent {
 				}
 				PreferencesEvent::LanguageChanged => cx.emit(PreferencesEvent::LanguageChanged),
 				PreferencesEvent::ShortcutsChanged => {}
+				PreferencesEvent::DisplayColorChanged => {
+					cx.emit(PreferencesEvent::DisplayColorChanged);
+				}
 			},
 		)
 		.detach();

@@ -83,6 +83,15 @@ pub const SETTING_ROOT: &str = "root";
 pub const SETTING_CACHE_LOCATION: &str = "cachesetting";
 /// Setting key for the custom cache path (C++ `k_cache_path_key`).
 pub const SETTING_CACHE_PATH: &str = "customcachepath";
+/// Setting key: the pipeline working colorspace ("acescg" | "srgb_legacy").
+/// Absent = the default (ACEScg).
+pub const SETTING_WORKING_COLOR_SPACE: &str = "workingcolorspace";
+/// Setting key: the output/delivery gamut ("srgb" | "displayp3" | "bt2020").
+/// Absent = sRGB.
+pub const SETTING_OUTPUT_GAMUT: &str = "outputgamut";
+/// Setting key: the output/delivery transfer ("srgb" | "gamma22" | "pq" |
+/// "hlg"). Absent = sRGB.
+pub const SETTING_OUTPUT_TRANSFER: &str = "outputtransfer";
 
 impl Project {
 	/// New empty project (no root folder until [`Project::initialize`]).
@@ -127,6 +136,37 @@ impl Project {
 		self.graph = Graph::new();
 		self.root = NodeId::INVALID;
 		Ok(())
+	}
+
+	/// The pipeline working colorspace (project property; ACEScg when the
+	/// setting is absent).
+	pub fn working_color_space(&self) -> oak_common::colormath::WorkingColorSpace {
+		oak_common::colormath::WorkingColorSpace::from_setting(
+			self.settings.get(SETTING_WORKING_COLOR_SPACE).map(String::as_str).unwrap_or(""),
+		)
+	}
+
+	/// The output/delivery colorspace (project property; sRGB when the
+	/// settings are absent).
+	pub fn output_color_spec(&self) -> oak_common::colormath::OutputColorSpec {
+		oak_common::colormath::OutputColorSpec::from_settings(
+			self.settings.get(SETTING_OUTPUT_GAMUT).map(String::as_str).unwrap_or(""),
+			self.settings.get(SETTING_OUTPUT_TRANSFER).map(String::as_str).unwrap_or(""),
+		)
+	}
+
+	/// Set the pipeline working colorspace property.
+	pub fn set_working_color_space(&mut self, space: oak_common::colormath::WorkingColorSpace) {
+		self.settings
+			.insert(SETTING_WORKING_COLOR_SPACE.to_string(), space.as_setting().to_string());
+	}
+
+	/// Set the output/delivery colorspace properties.
+	pub fn set_output_color_spec(&mut self, spec: oak_common::colormath::OutputColorSpec) {
+		self.settings
+			.insert(SETTING_OUTPUT_GAMUT.to_string(), spec.gamut.as_setting().to_string());
+		self.settings
+			.insert(SETTING_OUTPUT_TRANSFER.to_string(), spec.transfer.as_setting().to_string());
 	}
 
 	/// Deep-copy the whole project for background render isolation

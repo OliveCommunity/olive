@@ -23,6 +23,12 @@
 //! viewer costs nothing and no frame is ever walked twice. The scope widgets
 //! own the graphing math (histogram binning, waveform envelopes, vectorscope
 //! projection); this module only turns pixels into their input samples.
+//!
+//! The samples are the pipeline / output-colorspace signal, taken BEFORE the
+//! display-ICC transform is applied: a scope reads the content's colorimetry,
+//! not the viewing monitor's mapping, so the display transform must never
+//! feed the scopes (it would make the readings depend on which monitor the
+//! app happens to run on).
 
 use std::sync::Arc;
 
@@ -79,11 +85,13 @@ pub(crate) fn analyze_f32_rgba(width: u32, height: u32, samples: &[f32]) -> Scop
 
 /// Analyzes one BGRA8 frame (the process backend's slot format, M15 S2)
 /// into its [`ScopeData`]. The worker converts its F32 pipeline output to
-/// BGRA8 at the end of the render, so the scopes read exactly the
-/// displayed values with the viewer's 8-bit quantization — precision loss
-/// vs the F32 analysis is bounded by 1/255 per channel (acceptable for
-/// the scopes; the F32 path stays for the in-process test backend).
-/// `bytes` must hold at least `width * height * 4` values.
+/// BGRA8 at the end of the render, so the scopes read the output-colorspace
+/// signal with the viewer's 8-bit quantization — precision loss vs the F32
+/// analysis is bounded by 1/255 per channel (acceptable for the scopes; the
+/// F32 path stays for the in-process test backend). Like the F32 path, this
+/// runs before the display-ICC transform: scopes read the content signal,
+/// not the monitor mapping. `bytes` must hold at least `width * height * 4`
+/// values.
 pub(crate) fn analyze_bgra8(width: u32, height: u32, bytes: &[u8]) -> ScopeData {
 	let pixels = (width * height) as usize;
 	let mut luma = Vec::with_capacity(pixels);

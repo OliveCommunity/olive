@@ -336,6 +336,14 @@ mod tests {
 			"1/2",
 			"1/4",
 			"1/8",
+			// Standard colorimetry names — identical across languages.
+			"sRGB / Rec.709",
+			"Display P3",
+			"Rec.2020",
+			"sRGB",
+			"Gamma 2.2",
+			"PQ (ST 2084)",
+			"HLG",
 		];
 		let tables = tables().read().unwrap_or_else(|e| e.into_inner());
 		let en = tables.get("en-US").unwrap();

@@ -54,10 +54,14 @@ fn main() {
 	);
 	println!("cargo:rerun-if-env-changed=FFMPEG_DIR");
 	let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-	println!(
-		"cargo:rerun-if-changed={}",
-		manifest.join("../..").join(".env").display()
-	);
+	// Emitting rerun-if-changed for a MISSING file makes cargo re-run this
+	// build script on every single build (the "missing" state never
+	// stabilizes into a fingerprint), cascading rebuilds through every
+	// dependent crate. Only track the file once it actually exists.
+	let dotenv = manifest.join("../..").join(".env");
+	if dotenv.exists() {
+		println!("cargo:rerun-if-changed={}", dotenv.display());
+	}
 
 	let pkg_path = env_or_dotenv("PKG_CONFIG_PATH").unwrap_or_default();
 	let output = Command::new("pkg-config")

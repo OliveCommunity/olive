@@ -143,17 +143,28 @@ pub(crate) fn bgra_bytes_to_render_image(
 /// 1.0), so every displayable code survives the round trip. Samples must
 /// hold exactly `width * height * 4` values (tightly packed rows); values
 /// clamp to `0.0..=1.0` before packing.
-pub(crate) fn f32_rgba_to_16f_bytes(width: u32, height: u32, samples: &[f32]) -> Option<Vec<u8>> {
-	if samples.len() != (width * height * 4) as usize {
-		return None;
+///
+/// Returns `(bytes, bytes_per_row)`: rows are padded to wgpu's
+/// `COPY_BYTES_PER_ROW_ALIGNMENT` (256) because `write_texture` requires
+/// an explicit, aligned row pitch for multi-row copies — a `None` pitch
+/// fails validation and the texture stays black.
+pub(crate) fn f32_rgba_to_16f_bytes(width: u32, height: u32, samples: &[f32]) -> Option<(Vec<u8>, u32)> {
+		if samples.len() != (width * height * 4) as usize {
+			return None;
+		}
+		let row_samples = (width * 4) as usize;
+		let unpadded_row_bytes = row_samples * 2;
+		let row_bytes = unpadded_row_bytes.next_multiple_of(256);
+		let mut bytes = vec![0u8; row_bytes * height as usize];
+		for (row, chunk) in samples.chunks_exact(row_samples).enumerate() {
+			let dst = &mut bytes[row * row_bytes..row * row_bytes + unpadded_row_bytes];
+			for (i, &v) in chunk.iter().enumerate() {
+				let h = half::f16::from_f32(v.clamp(0.0, 1.0));
+				dst[i * 2..i * 2 + 2].copy_from_slice(&h.to_bits().to_le_bytes());
+			}
+		}
+		Some((bytes, row_bytes as u32))
 	}
-	let mut bytes = Vec::with_capacity(samples.len() * 2);
-	for &v in samples {
-		let h = half::f16::from_f32(v.clamp(0.0, 1.0));
-		bytes.extend_from_slice(&h.to_bits().to_le_bytes());
-	}
-	Some(bytes)
-}
 
 #[cfg(test)]
 mod tests {
@@ -178,8 +189,11 @@ mod tests {
 		// same code 255.
 		let (v1, v2) = (1022.0f32 / 1023.0, 1.0f32);
 		let samples = [v1, 0.0, 0.0, 1.0, v2, 0.0, 0.0, 1.0];
-		let bytes = f32_rgba_to_16f_bytes(2, 1, &samples).expect("packed 16f bytes");
-		assert_eq!(bytes.len(), 2 * 1 * 4 * 2, "two pixels, four f16 channels");
+		let (bytes, row_bytes) = f32_rgba_to_16f_bytes(2, 1, &samples).expect("packed 16f bytes");
+		// Two pixels = 16 content bytes; the row pads to the 256-byte
+		// copy alignment.
+		assert_eq!(bytes.len(), 256, "one padded row");
+		assert_eq!(row_bytes, 256);
 		let code_of = |value: f32| {
 			let h = half::f16::from_f32(value);
 			((h.to_f32() * 1023.0).round()) as u32
@@ -200,5 +214,21 @@ mod tests {
 			(v2 * 255.0).round() as u32,
 			"the same two values collapse in 8-bit — proving the 16f path carries the resolution"
 		);
+	}
+
+	#[test]
+	fn f32_to_16f_packs_multi_row_with_padding() {
+		// A 3x2 frame: unpadded row is 3*4*2 = 24 bytes, padded to 256.
+		let samples = vec![0.5f32; 3 * 2 * 4];
+		let (bytes, row_bytes) = f32_rgba_to_16f_bytes(3, 2, &samples).expect("packed");
+		assert_eq!(row_bytes, 256);
+		assert_eq!(bytes.len(), 512);
+		// First pixel of each row carries the 0.5 code; padding is zero.
+		let half_bits = half::f16::from_f32(0.5).to_bits();
+		for row in 0..2 {
+			let off = row * 256;
+			assert_eq!(&bytes[off..off + 2], &half_bits.to_le_bytes());
+			assert_eq!(&bytes[off + 24..off + 28], &[0, 0, 0, 0], "padding zeroed");
+		}
 	}
 }

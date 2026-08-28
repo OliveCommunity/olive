@@ -576,6 +576,10 @@ impl WorkerSession {
 				};
 				match oak_node::serializer::load_with_id_map(&content) {
 					Ok((project, id_map)) => {
+						let (working, output_spec) = {
+							let guard = project.lock().unwrap_or_else(|e| e.into_inner());
+							(guard.working_color_space(), guard.output_color_spec())
+						};
 						let project_uuid = project
 							.lock()
 							.unwrap_or_else(|e| e.into_inner())
@@ -588,6 +592,10 @@ impl WorkerSession {
 							id_map,
 							project_copy: 0,
 						});
+						// The project's color pipeline properties drive this
+						// process's input/output transforms (the oakrender
+						// process global read by eval + the output node).
+						oak_render::color::set_pipeline_color_settings(working, output_spec);
 						// A fresh graph snapshot can change what any viewer
 						// identity renders; cached pixels from the previous
 						// graph must not be served (M16 S2 frame cache).
@@ -1098,8 +1106,12 @@ impl WorkerSession {
 			// BGRA8: the F32 pipeline frame comes from the cache or the
 			// session scratch, then converts into the slot (the end-of-pipe
 			// format convert is not an extra frame copy, design §3.1).
-			match &cached {
+			// Before quantization the output node runs: working space
+			// (ACEScg) → the project's output colorspace, so the 8-bit
+			// pixels carry gamma-encoded display values, not linear light.
+			match cached.as_mut() {
 				Some(c) => {
+					apply_output_node(c, (w * h) as usize);
 					convert_f32_rgba_to_bgra8(&c[..f32_need], &mut dst[..dst_need]);
 				}
 				None => {
@@ -1116,6 +1128,7 @@ impl WorkerSession {
 					)?;
 					self.frame_cache
 						.insert(key, self.f32_scratch[..f32_need].to_vec());
+					apply_output_node(&mut self.f32_scratch, (w * h) as usize);
 					convert_f32_rgba_to_bgra8(&self.f32_scratch[..f32_need], &mut dst[..dst_need]);
 				}
 			}
@@ -1311,6 +1324,22 @@ fn convert_f32_rgba_to_bgra8(src: &[u8], dst: &mut [u8]) {
 		d[2] = to_u8(r);
 		d[3] = to_u8(a);
 	}
+}
+
+/// The output node for the BGRA8 delivery path: convert the first
+/// `pixels` pixels of an F32 RGBA byte buffer from the pipeline working
+/// space to the project's output colorspace (in place), so the 8-bit
+/// quantization encodes display-referred values instead of linear light.
+/// A no-op in the legacy sRGB working space (content already is
+/// display-referred sRGB).
+fn apply_output_node(bytes: &mut [u8], pixels: usize) {
+	if oak_render::color::pipeline_working_space()
+		== oak_common::colormath::WorkingColorSpace::SrgbLegacy
+	{
+		return;
+	}
+	let spec = oak_render::color::pipeline_output_spec();
+	oak_common::colormath::acescg_to_output_bytes(bytes, pixels, spec);
 }
 
 // ---------------------------------------------------------------------------

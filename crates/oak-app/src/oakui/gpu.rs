@@ -69,7 +69,8 @@ pub fn upload_rgba16f(
 		let ctx = GPU_CONTEXT.lock().ok()?;
 		ctx.as_ref().map(|(d, q)| (d.clone(), q.clone()))?
 	};
-	let bytes = super::frames::f32_rgba_to_16f_bytes(width, height, samples)?;
+	let (bytes, bytes_per_row) =
+		super::frames::f32_rgba_to_16f_bytes(width, height, samples)?;
 	let texture = device.create_texture(&wgpu::TextureDescriptor {
 		label: Some("oak_display_rgba16f"),
 		size: wgpu::Extent3d {
@@ -94,7 +95,9 @@ pub fn upload_rgba16f(
 		&bytes,
 		wgpu::TexelCopyBufferLayout {
 			offset: 0,
-			bytes_per_row: None,
+			// Multi-row copies require an explicit, 256-aligned pitch; a
+			// `None` pitch fails validation and the texture stays black.
+			bytes_per_row: Some(bytes_per_row),
 			rows_per_image: None,
 		},
 		wgpu::Extent3d {

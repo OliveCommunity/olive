@@ -60,11 +60,16 @@ pub mod actions;
 pub mod app;
 pub mod dialogs;
 pub mod i18n;
+pub mod logging;
 pub mod manager;
 pub mod oakui;
 pub mod panels;
 
 /// The application entry point (called from `main.rs`).
 pub fn run() {
+	// Install the stderr `log` backend before anything else runs, so wgpu
+	// validation errors and platform warnings are visible (RUST_LOG sets
+	// the verbosity; default is warn).
+	logging::init();
 	app::run();
 }

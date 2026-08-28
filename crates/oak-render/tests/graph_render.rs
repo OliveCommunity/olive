@@ -43,10 +43,23 @@ fn clip_path(tag: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("oakrender_graph_{tag}_{}.mp4", std::process::id()))
 }
 
+/// These tests verify graph/decode/composite MECHANICS (stacking, scaling,
+/// effects), not the color pipeline. Pin the working space to the legacy
+/// sRGB pass-through so the decoded pixels stay display-referred and the
+/// pixel-value assertions hold regardless of the ACEScg default. All tests
+/// in this binary set the same value, so the shared global is race-free.
+fn pin_legacy_working_space() {
+    oak_render::color::set_pipeline_color_settings(
+        oak_common::colormath::WorkingColorSpace::SrgbLegacy,
+        oak_common::colormath::OutputColorSpec::default(),
+    );
+}
+
 /// One sequence + one video track list with one track per clip
 /// `(filename, [in, out))`. The LAST entry's track composites on top
 /// (NLE stacking: the highest-numbered track is topmost).
 fn build_project(clips: &[(&str, Rational, Rational)]) -> (Arc<Mutex<Project>>, NodeId) {
+    pin_legacy_working_space();
     let project = Project::new();
     let seq;
     {
@@ -269,6 +282,7 @@ fn build_effect_project(
     clip: (&str, Rational, Rational),
     insert_effect: impl FnOnce(&mut Project, NodeId, NodeId) -> NodeId,
 ) -> (Arc<Mutex<Project>>, NodeId) {
+    pin_legacy_working_space();
     let project = Project::new();
     let seq;
     {

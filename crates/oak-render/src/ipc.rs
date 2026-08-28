@@ -1235,13 +1235,16 @@ pub struct SharedMemoryRegion {
 /// binaries finish via `std::process::exit` (libtest), which skips Rust
 /// static destructors — the process-wide render-manager singleton never
 /// runs `Drop`, its `shm_unlink` never fires, and every test run leaks one
-/// ~66 MiB segment per worker until `/dev/shm` fills up (the next create
-/// then `memset`s a mapping backed by a full tmpfs and faults with SIGBUS).
+/// ~66 MiB segment per worker until `/dev/shm` fills up.
 /// `libc::atexit` handlers DO run under `process::exit`, so each `Create`
 /// registers its key here and [`SharedMemoryRegion::atexit_cleanup_owned_shm`]
 /// unlinks them all at exit. Unlinking while a peer still maps the segment
 /// is safe — POSIX only removes the name; the mapping lives until the last
 /// `munmap` (the workers attach without owning, so they never register).
+/// A SIGKILL'd process skips even atexit; those orphans are swept by
+/// [`SharedMemoryRegion::cleanup_stale_owned_segments`] at the next create,
+/// and the eager `posix_fallocate` reservation turns quota exhaustion into
+/// a graceful open failure instead of a SIGBUS at first touch.
 #[cfg(unix)]
 static OWNED_SHM_KEYS: std::sync::Mutex<Option<Vec<String>>> = std::sync::Mutex::new(None);
 #[cfg(unix)]
@@ -1292,6 +1295,48 @@ impl SharedMemoryRegion {
 		}
 	}
 
+	/// Sweep owned segments (`olive-rw-<pid>-…`) whose owner pid no longer
+	/// exists and unlink them. A SIGKILL'd / aborted owner never runs its
+	/// atexit unlink, and because the key embeds the dead pid nobody else
+	/// ever reuses the name — on a quota'd `/dev/shm` the accumulation
+	/// eventually turns the next create into ENOSPC/EDQUOT. Runs once per
+	/// process, before the first create. Unlinking only removes the name:
+	/// a peer still mapping the segment keeps its memory until munmap.
+	#[cfg(target_os = "linux")]
+	pub fn cleanup_stale_owned_segments() {
+		static ONCE: std::sync::Once = std::sync::Once::new();
+		ONCE.call_once(|| {
+			let Ok(entries) = std::fs::read_dir("/dev/shm") else {
+				return;
+			};
+			for entry in entries.flatten() {
+				let Some(name) = entry.file_name().to_str().map(str::to_string) else {
+					continue;
+				};
+				let Some(rest) = name.strip_prefix("olive-rw-") else {
+					continue;
+				};
+				let pid_digits: String =
+					rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+				if pid_digits.is_empty() {
+					continue;
+				}
+				// A live owner (or a pid reuse) means the segment is owned;
+				// only dead owners are swept.
+				if std::path::Path::new(&format!("/proc/{pid_digits}")).exists() {
+					continue;
+				}
+				Self::unlink_key(&name);
+			}
+		});
+	}
+
+	/// No-op outside Linux: POSIX shm segments are not visible as files on
+	/// every unix (macOS keeps them in a kernel namespace), so there is no
+	/// directory to sweep.
+	#[cfg(all(unix, not(target_os = "linux")))]
+	pub fn cleanup_stale_owned_segments() {}
+
 	/// Remember `key` so it is unlinked at process exit (see
 	/// [`OWNED_SHM_KEYS`]). Safe to call from any thread; duplicate keys
 	/// are harmless (the unlink is idempotent).
@@ -1334,6 +1379,14 @@ impl SharedMemoryRegion {
 		self.key = key.to_string();
 		self.size = size;
 		self.mode = mode;
+
+		if mode == ShmMode::Create {
+			// A crashed owner leaks its segments (the name embeds the dead
+			// pid, so nobody ever reuses or unlinks them); on a quota'd
+			// tmpfs the accumulation eventually kills the next create.
+			// Sweep the orphans of dead owners before creating anything.
+			Self::cleanup_stale_owned_segments();
+		}
 
 		// POSIX shared-memory names must start with a single slash and
 		// contain no others.
@@ -1412,7 +1465,31 @@ impl SharedMemoryRegion {
 
 		if mode == ShmMode::Create {
 			Self::track_owned_key(&self.key);
-			unsafe { ptr::write_bytes(self.data, 0, size) };
+			// Reserve (and zero) the whole segment up front. `ftruncate`
+			// alone does not reserve on tmpfs: the pages fault in on first
+			// touch, and when the tmpfs is full / the user quota is
+			// exhausted that touch is a SIGBUS that kills the process.
+			// `posix_fallocate` performs the reservation eagerly and reports
+			// ENOSPC/EDQUOT as a return value, so quota exhaustion degrades
+			// to a render-manager fallback instead of a crash. The fresh
+			// segment is already zero-filled (O_EXCL + stale unlink above),
+			// so no separate memset pass is needed on success.
+			let rc = unsafe { libc::posix_fallocate(fd, 0, size as libc::off_t) };
+			if rc != 0 && rc != libc::EOPNOTSUPP && rc != libc::ENOSYS {
+				self.error = format!(
+					"reserving {} bytes of shared memory failed: {}",
+					size,
+					std::io::Error::from_raw_os_error(rc)
+				);
+				self.close();
+				return false;
+			}
+			if rc != 0 {
+				// Filesystem without fallocate support: fall back to
+				// touching every page now (still better than faulting
+				// lazily mid-render).
+				unsafe { ptr::write_bytes(self.data, 0, size) };
+			}
 		}
 		true
 	}

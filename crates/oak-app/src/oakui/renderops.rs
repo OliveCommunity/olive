@@ -464,16 +464,23 @@ impl RenderedFrame {
 				let (w, h) = (meta.width.max(0) as u32, meta.height.max(0) as u32);
 				let pixels = f.shm.slot_bytes(f.slot);
 				let data = pixels.get(..meta.data_size.max(0) as usize)?;
-				if meta.format == PIXEL_FORMAT_F32 {
-					// M15 S3: the worker rendered F32 (the 10-bit display
-					// path) — repack the padded rows, transform and hand the
-					// samples back for the RGBA16F texture.
-					let mut samples = repack_f32_rows(meta.width, meta.height, meta.linesize, data)?;
-					let scope = analyze_f32_rgba(w, h, &samples);
-					super::displaycolor::apply_f32_rgba(&mut samples, (w * h) as i64);
-					let image = f32_rgba_to_bgra_image(w, h, &samples);
-					Some((image, scope, Some(samples)))
-				} else {
+			if meta.format == PIXEL_FORMAT_F32 {
+				// M15 S3: the worker rendered F32 (the 10-bit display
+				// path) — repack the padded rows, transform and hand the
+				// samples back for the RGBA16F texture.
+				let mut samples = repack_f32_rows(meta.width, meta.height, meta.linesize, data)?;
+				// Output node: working space → the project's output
+				// colorspace. The scopes below read the output-colorspace
+				// signal (same convention as the BGRA8 slot); the display
+				// policy then decides whether the display ICC is applied on
+				// top (self-managed) or the OS maps the declared content
+				// colorspace (OS-managed).
+				apply_output_node_f32(&mut samples);
+				let scope = analyze_f32_rgba(w, h, &samples);
+				super::displaycolor::apply_f32_rgba(&mut samples, (w * h) as i64);
+				let image = f32_rgba_to_bgra_image(w, h, &samples);
+				Some((image, scope, Some(samples)))
+			} else {
 					// BGRA8 slot: the worker already downconverted — wrap the
 					// bytes directly (no 10-bit path available for them).
 					let scope = analyze_bgra8(w, h, data);
@@ -492,6 +499,9 @@ impl RenderedFrame {
 			} => {
 				let (w, h) = ((*width).max(0) as u32, (*height).max(0) as u32);
 				let mut samples = repack_f32_rows(*width, *height, *linesize, data)?;
+				// Output node first, as in the shm path: the scopes read the
+				// output-colorspace signal (BGRA8-slot convention).
+				apply_output_node_f32(&mut samples);
 				let scope = analyze_f32_rgba(w, h, &samples);
 				super::displaycolor::apply_f32_rgba(&mut samples, (w * h) as i64);
 				Some((
@@ -502,6 +512,17 @@ impl RenderedFrame {
 			}
 		}
 	}
+}
+
+/// The app-side output node for F32 delivery frames: working colorspace →
+/// the project's output colorspace, in place on tightly packed samples.
+/// Pass-through in the legacy sRGB working space.
+fn apply_output_node_f32(samples: &mut [f32]) {
+	oak_common::colormath::working_to_display_target(
+		samples,
+		oak_render::color::pipeline_working_space(),
+		oak_render::color::pipeline_output_spec(),
+	);
 }
 
 /// Repack one F32 RGBA rendered frame (rows padded to `linesize`) into
@@ -1195,6 +1216,14 @@ mod tests {
 	#[test]
 	fn montage_effect_stack_reaches_the_rendered_pixels() {
 		let _media = media_lock();
+		// This test verifies the effect stack MECHANICS (opacity changes
+		// pixels; disabling restores them), not the color pipeline. Pin the
+		// legacy sRGB pass-through so the pixel-value assertions hold
+		// regardless of the ACEScg default.
+		oak_render::color::set_pipeline_color_settings(
+			oak_common::colormath::WorkingColorSpace::SrgbLegacy,
+			oak_common::colormath::OutputColorSpec::default(),
+		);
 		oak_undo::global::clear().unwrap();
 		let media =
 			std::env::temp_dir().join(format!("oakapp_montage_fx_{}.mp4", std::process::id()));
