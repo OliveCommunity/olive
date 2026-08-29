@@ -1,0 +1,4 @@
+[env]
+FFMPEG_DIR = { value = ".cache/ffmpeg", relative = true }
+OCIO_RS_LINK = "static"
+OCIO_RS_ENABLE_REAL = "1"
