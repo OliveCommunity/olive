@@ -129,13 +129,27 @@ impl SequenceBehavior {
 		let width = config.get_int(None, "DefaultSequenceWidth", 1920);
 		let height = config.get_int(None, "DefaultSequenceHeight", 1080);
 		let sample_rate = config.get_int(None, "DefaultSequenceAudioFrequency", 48000);
-		let fps_num = config.get_int(None, "DefaultSequenceFrameRateNum", 30);
-		let fps_den = config.get_int(None, "DefaultSequenceFrameRateDen", 1);
+		// The canonical setting is the "num/den" string
+		// `DefaultSequenceFrameRate` (a frame DURATION; the rate is
+		// den/num, see oak-task's footage import). The `...Num`/`...Den`
+		// keys this used to read never existed anywhere in the config, so
+		// every sequence silently fell back to 30/1 — while the app-side
+		// playback clock defaulted to 25, and the audio chunks (sized by
+		// the sequence time base) chronically underfed the output device.
+		let (tb_num, tb_den) = config
+			.get(None, "DefaultSequenceFrameRate")
+			.ok()
+			.and_then(|s| {
+				let (n, d) = s.split_once('/')?;
+				Some((n.trim().parse::<i64>().ok()?, d.trim().parse::<i64>().ok()?))
+			})
+			.filter(|(n, d)| *n > 0 && *d > 0)
+			.unwrap_or((1001, 30000));
 
 		self.video_params = vec![VideoParams {
 			width,
 			height,
-			frame_rate: oak_core::Rational::new(fps_num as i64, fps_den as i64),
+			frame_rate: oak_core::Rational::new(tb_den, tb_num),
 			pixel_format: 4, // f32
 			channels: 4,
 			interlaced: false,
