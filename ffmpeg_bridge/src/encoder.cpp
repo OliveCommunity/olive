@@ -1084,13 +1084,13 @@ int fb_encoder_codec_get_pixel_formats(int codec, const char **names,
 									   int max_names)
 {
 	const AVCodec *codec_info = FindEncoder(codec, FB_SAMPLE_FMT_NONE);
-	if (!codec_info || !avcodec_get_pix_fmts(codec_info)) {
+	if (!codec_info || !codec_info->pix_fmts) {
 		return 0;
 	}
 
 	int count = 0;
-	for (int i = 0; avcodec_get_pix_fmts(codec_info)[i] != AV_PIX_FMT_NONE; i++) {
-		AVPixelFormat fmt = avcodec_get_pix_fmts(codec_info)[i];
+	for (int i = 0; codec_info->pix_fmts[i] != AV_PIX_FMT_NONE; i++) {
+		AVPixelFormat fmt = codec_info->pix_fmts[i];
 		if (ConvertJPEGSpaceToRegularSpace(fmt) != fmt) {
 			// This is a deprecated "JPEG" space, skip it
 			continue;
@@ -1108,14 +1108,14 @@ int fb_encoder_codec_get_pixel_formats(int codec, const char **names,
 int fb_encoder_codec_get_sample_formats(int codec, int *fmts, int max_fmts)
 {
 	const AVCodec *codec_info = FindEncoder(codec, FB_SAMPLE_FMT_NONE);
-	if (!codec_info || !avcodec_get_sample_fmts(codec_info)) {
+	if (!codec_info || !codec_info->sample_fmts) {
 		return 0;
 	}
 
 	int count = 0;
-	for (int i = 0; avcodec_get_sample_fmts(codec_info)[i] != AV_SAMPLE_FMT_NB; i++) {
+	for (int i = 0; codec_info->sample_fmts[i] != AV_SAMPLE_FMT_NB; i++) {
 		if (fmts && count < max_fmts) {
-			fmts[count] = avcodec_get_sample_fmts(codec_info)[i];
+			fmts[count] = codec_info->sample_fmts[i];
 		}
 		count++;
 	}
