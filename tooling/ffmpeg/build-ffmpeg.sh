@@ -210,4 +210,11 @@ Done. To build Oak against this FFmpeg:
   cargo build
 
 (Unset FFMPEG_DIR to go back to the system pkg-config FFmpeg.)
+
+NOTE: ffmpeg-sys-next's \`static\` feature BUNDLES these archives into its
+rlib at build time, and cargo does not track archive changes — after
+rebuilding this FFmpeg you MUST force the re-bundle, or every binary
+silently keeps the previous FFmpeg objects:
+
+  cargo clean -p ffmpeg-sys-next
 EOF
