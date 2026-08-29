@@ -1169,7 +1169,8 @@ pub fn render_graph_frame(
 
 /// Render the audio montage over `params.range` (M12 P1): every clip
 /// overlapping the range is decoded (interleaved f32 at the output rate
-/// and layout) and mixed with its gain; uncovered parts stay silent.
+/// and layout) and mixed with its gain; uncovered parts stay silent. The
+/// mixed output is clamped to [-1, 1].
 pub fn render_audio_samples(
 	params: &crate::ticket::AudioTicketParams,
 ) -> Result<crate::ticket::TicketPayload> {
@@ -1272,6 +1273,12 @@ fn mix_audio_montage(
 		for i in 0..written * channels as usize {
 			acc[start_frame * channels as usize + i] += buf[i] * clip.gain;
 		}
+	}
+	// Clamp to [-1, 1]: overlapping clips sum linearly and can exceed
+	// full scale, and the playback sink (cpal) forwards samples without
+	// any clamping of its own.
+	for sample in acc.iter_mut() {
+		*sample = sample.clamp(-1.0, 1.0);
 	}
 	Ok(())
 }
