@@ -193,6 +193,18 @@ impl ManagerInner {
 		Ok(())
 	}
 
+	/// Frames currently queued for the output callback (diagnostics).
+	pub fn output_queued_frames(&self) -> i64 {
+		self.output_buffer.queued_frames()
+	}
+
+	/// Drop up to `frames` stale frames from the front of the output queue
+	/// (underrun resync without a full clear; see
+	/// [`PreviewAudioDevice::drop_front_frames`]). Returns frames dropped.
+	pub fn drop_output_frames(&self, frames: i64) -> i64 {
+		self.output_buffer.drop_front_frames(frames)
+	}
+
 	/// Read and reset the output underrun counter (frames the callback had
 	/// to zero-fill because the buffer was empty). The playback engine
 	/// polls this per tick and resyncs after an underrun: the zero-fill

@@ -393,13 +393,35 @@ impl AudioPrefetch {
 			let ts = *ts;
 			let (_, data) = self.buffered.pop_front().unwrap();
 			if ts >= playhead {
+				audio_dbg(&format!("push chunk {ts} (lead {} vs playhead {playhead})", ts - playhead));
 				out.push(data);
+			} else {
+				audio_dbg(&format!(
+					"chunk {ts} arrived late (playhead {playhead}) -> dropped"
+				));
 			}
 			self.front_ts = ts + self.chunk;
 			self.last_consumed = Some(ts);
 		}
 		out
 	}
+}
+
+/// OAK_DEBUG_AUDIO-gated playback diagnostics: the events below (prefetch
+/// resets, late-chunk drops, underrun heals) each produce an audible
+/// discontinuity, so their timestamps correlate with pops/crackles.
+pub(crate) fn audio_dbg_enabled() -> bool {
+	static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+	*ENABLED.get_or_init(|| std::env::var_os("OAK_DEBUG_AUDIO").is_some())
+}
+
+pub(crate) fn audio_dbg(msg: &str) {
+	if !audio_dbg_enabled() {
+		return;
+	}
+	static T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+	let ms = T0.get_or_init(std::time::Instant::now).elapsed().as_millis();
+	eprintln!("[audio {ms:>8}ms] {msg}");
 }
 
 /// One background full-resolution render request (built on the UI thread
@@ -1213,6 +1235,10 @@ impl RealEngine {
 		// Reset on seek / restart (see needs_reset): serving runs ahead of
 		// the playhead, so only genuine jumps re-arm the buffer.
 		if st.needs_reset(frame) {
+			audio_dbg(&format!(
+				"prefetch reset at frame {frame} (seek/restart; next_submit was {})",
+				st.next_submit
+			));
 			st.reset(frame, chunk);
 		}
 		// Submit chunks to cover [next_submit, frame + PREFETCH ahead). In
@@ -1224,6 +1250,7 @@ impl RealEngine {
 			.unwrap_or_else(|e| e.into_inner())
 			.clone();
 		let target = frame + chunk * AUDIO_PREFETCH_CHUNKS;
+		let mut submitted = 0i32;
 		while st.next_submit < target {
 			let ts = st.next_submit;
 			let p = project.clone();
@@ -1231,6 +1258,7 @@ impl RealEngine {
 				break;
 			}
 			st.next_submit += chunk;
+			submitted += 1;
 		}
 		// Drain completed chunks. With the M16 S3 audio thread the submit
 		// above only queues; the render lands here asynchronously, so the
@@ -1243,9 +1271,14 @@ impl RealEngine {
 		// Underrun self-heal: zero-padding advanced the output clock past
 		// the queued content, so everything audible from here on would
 		// play late (the classic "audio drifts behind video"). Resync by
-		// dropping the device queue and re-rendering from the playhead;
-		// the anchor is re-recorded at the next push. Cooldown prevents a
-		// resync storm while the fresh chunks are still rendering.
+		// trimming just the stale lead from the device queue — the rest
+		// stays audible and the master-clock anchor stays valid (the
+		// clock already advanced past the zero-fill). The old full
+		// clear + prefetch reset + re-anchor skipped ~190 ms of unheard
+		// content and re-rendered already-played audio whenever the
+		// playhead lagged (audible as a pop plus a repeated phrase), and
+		// the reset that followed always dropped its first re-rendered
+		// chunk as "late" — a ~1.1 s periodic skip/repeat cycle.
 		if self.audio_playback.is_some() {
 			let cooldown_ok = self
 				.last_audio_resync
@@ -1254,19 +1287,26 @@ impl RealEngine {
 			let underrun = oak_audio::manager::instance()
 				.map(|m| m.take_output_underrun_frames())
 				.unwrap_or(0);
+			if underrun > 0 {
+				let q = oak_audio::manager::instance()
+					.map(|m| m.output_queued_frames())
+					.unwrap_or(-1);
+				audio_dbg(&format!("underrun +{underrun} frames (device queue {q})"));
+			}
 			if cooldown_ok && underrun > 480 {
-				if let Some(mut manager) = oak_audio::manager::instance() {
-					let _ = manager.clear_buffered_output();
-				}
-				st.reset(frame, chunk);
-				self.audio_playback = None;
+				let dropped = oak_audio::manager::instance()
+					.map(|m| m.drop_output_frames(underrun))
+					.unwrap_or(0);
+				audio_dbg(&format!(
+					"underrun heal: trimmed {dropped} stale frames (underrun {underrun}) at frame {frame}"
+				));
 				self.last_audio_resync = Some(std::time::Instant::now());
-				return;
 			}
 		}
 		// Push every rendered chunk to the output device in ts order (the
 		// device queue is the cushion that rides out UI stalls); chunks
 		// whose time already passed are dropped inside drain_ready.
+		let mut pushed = 0i32;
 		for buf in st.drain_ready(frame) {
 			if buf.sample_rate <= 0 || buf.channel_count <= 0 || buf.data.is_empty() {
 				continue;
@@ -1284,6 +1324,7 @@ impl RealEngine {
 					&bytes,
 					&mut [],
 				);
+				pushed += 1;
 				// M12 P1a: anchor the audio master clock at the first push of a
 				// play run. Recording the CURRENT output clock (not 0) keeps the
 				// anchor honest on a replay — the device has been padding
@@ -1305,6 +1346,18 @@ impl RealEngine {
 					}
 				}
 			}
+		}
+		if audio_dbg_enabled() {
+			let mut secs = -1.0;
+			let mut q = -1i64;
+			if let Some(manager) = oak_audio::manager::instance() {
+				let _ = manager.seconds(&mut secs);
+				q = manager.output_queued_frames();
+			}
+			audio_dbg(&format!(
+				"tick f={frame} secs={secs:.3} buf={} sub={submitted} push={pushed} q={q}",
+				st.buffered.len()
+			));
 		}
 	}
 
@@ -3529,6 +3582,24 @@ impl EngineGateway for RealEngine {
 	}
 
 	fn tick(&mut self, cx: &mut Context<Self>) {
+		// Keep the playback clocks on the sequence's actual rate. The
+		// clocks are created at engine init with the fallback rate
+		// (hd_1080p25), before any sequence is loaded; a sequence whose
+		// video params say otherwise (e.g. 29.97 from the config default)
+		// would otherwise play on a stale clock — the audio chunks are
+		// sized by the SEQUENCE time base while the playhead advances at
+		// the CLOCK rate, and a mismatch chronically underfeeds the
+		// output device (every few words a slice of silence).
+		let seq_rate = self.frame_rate();
+		for clock in [&self.source_clock, &self.program_clock] {
+			let stale = {
+				let r = &clock.read(cx).rate;
+				r.num != seq_rate.num || r.den != seq_rate.den
+			};
+			if stale {
+				clock.update(cx, |c, _cx| c.rate = seq_rate);
+			}
+		}
 		// Each clock loops at its own monitor's length: the program at the
 		// sequence length, the source at the selected footage's duration
 		// (the sequence length is wrong for footage playback — an empty
@@ -3568,6 +3639,12 @@ impl EngineGateway for RealEngine {
 							audio_target_frame(start_frame, start_secs, secs, rate);
 						if length.0 > 0 && target >= length.0 {
 							target %= length.0;
+						}
+						let cur = self.clock_frame(Monitor::Program, cx).0;
+						if (target - cur).abs() > 2 {
+							audio_dbg(&format!(
+								"playhead reanchor jump {cur} -> {target} (secs {secs:.3}, anchor f{start_frame}@{start_secs:.3})"
+							));
 						}
 						let clock = self.program_clock.clone();
 						clock.update(cx, |clock, cx| {

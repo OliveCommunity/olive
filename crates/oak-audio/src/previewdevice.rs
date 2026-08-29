@@ -176,6 +176,36 @@ impl PreviewAudioDevice {
 		self.output_frames_consumed.store(0, Ordering::Relaxed);
 	}
 
+	/// Frames currently queued for the output callback (diagnostics).
+	pub fn queued_frames(&self) -> i64 {
+		let inner = self.lock.lock().unwrap();
+		if inner.bytes_per_frame <= 0 {
+			return 0;
+		}
+		inner.buffer.len() as i64 / inner.bytes_per_frame as i64
+	}
+
+	/// Drop up to `frames` frames from the FRONT of the queued buffer,
+	/// returning the frames actually dropped. Underrun resync: zero-fill
+	/// advanced the output clock past this much queued content, so it
+	/// would all play late — trimming just the stale lead resyncs playback
+	/// WITHOUT the full clear + re-render storm a `clear()` causes (the
+	/// rest of the queue stays audible and the master-clock anchor stays
+	/// valid, since the anchor maps the clock to sequence frames and the
+	/// clock already advanced past the zero-fill).
+	pub fn drop_front_frames(&self, frames: i64) -> i64 {
+		if frames <= 0 {
+			return 0;
+		}
+		let mut inner = self.lock.lock().unwrap();
+		if inner.bytes_per_frame <= 0 {
+			return 0;
+		}
+		let bytes = (frames * inner.bytes_per_frame as i64).min(inner.buffer.len() as i64) as usize;
+		inner.buffer.drain(..bytes);
+		bytes as i64 / inner.bytes_per_frame as i64
+	}
+
 	/// Account for frames consumed by the output callback (including
 	/// underrun zero-fill).
 	pub fn add_output_frames(&self, frame_count: i64) {
