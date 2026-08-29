@@ -195,7 +195,7 @@ pub fn open_hw_accel(
 	// context frees it with the context.
 	unsafe { (*context.as_mut_ptr()).hw_device_ctx = device };
 	let mut opts = Dictionary::new();
-	opts.set("threads", "auto");
+	opts.set("threads", &crate::ffmpeg::decoder_threads());
 	context
 		.decoder()
 		.open_as_with(codec, opts)

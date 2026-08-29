@@ -559,6 +559,21 @@ struct AudioDecodeState {
 	carry_format: (u32, u64),
 }
 
+/// The frame-thread count handed to every FFmpeg decoder's `threads`
+/// option. `auto` lets libavcodec spawn one decode thread per logical
+/// core (16 observed on a 24-core box) PER DECODER; with ~`cores - 2`
+/// render workers decoding concurrently that oversubscribes the machine
+/// several times over and starves the playback-audio thread (late chunks
+/// are dropped -> pops). 4 threads decode 1080p h264 far past real-time --
+/// preview throughput comes from the worker pool, not from per-decoder
+/// threading.
+pub(crate) fn decoder_threads() -> String {
+	let cores = std::thread::available_parallelism()
+		.map(|n| n.get())
+		.unwrap_or(4);
+	cores.min(4).to_string()
+}
+
 /// A swresample conversion context.
 struct AudioResampler {
 	ctx: resampling::Context,
@@ -635,7 +650,7 @@ impl DecoderState {
 				let codec = ffmpeg::decoder::find(codec_id)
 					.ok_or_else(|| fail(format!("no decoder for codec {codec_id:?}")))?;
 				let mut open_opts = Dictionary::new();
-				open_opts.set("threads", "auto");
+				open_opts.set("threads", &decoder_threads());
 				ffmpeg::codec::Context::from_parameters(params)
 					.map_err(ffmpeg_err)?
 					.decoder()
