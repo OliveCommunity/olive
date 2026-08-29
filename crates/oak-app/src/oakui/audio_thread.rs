@@ -44,6 +44,8 @@ struct AudioJob {
 	params: AudioTicketParams,
 	start_ts: i64,
 	done: mpsc::Sender<(i64, RenderedAudio)>,
+	/// When the job was queued (diagnostics: submit→render latency).
+	enqueued: std::time::Instant,
 }
 
 /// The audio-render thread's job queue (set on first use; the sender is
@@ -59,8 +61,13 @@ pub fn submit(
 	done: mpsc::Sender<(i64, RenderedAudio)>,
 ) -> Result<(), String> {
 	let tx = ensure_thread();
-	tx.send(AudioJob { params, start_ts, done })
-		.map_err(|_| "the audio render thread has exited".to_string())
+	tx.send(AudioJob {
+		params,
+		start_ts,
+		done,
+		enqueued: std::time::Instant::now(),
+	})
+	.map_err(|_| "the audio render thread has exited".to_string())
 }
 
 /// The queue sender, starting the render thread on first use.
@@ -83,6 +90,8 @@ fn ensure_thread() -> mpsc::Sender<AudioJob> {
 /// The render loop: one job at a time; failures degrade to silence.
 fn render_loop(rx: mpsc::Receiver<AudioJob>) {
 	while let Ok(job) = rx.recv() {
+		let wait_ms = job.enqueued.elapsed().as_millis();
+		let t0 = std::time::Instant::now();
 		let data = match oak_render::eval::render_audio_samples(&job.params) {
 			Ok(TicketPayload::Audio(samples)) => RenderedAudio {
 				data: samples.samples,
@@ -91,6 +100,11 @@ fn render_loop(rx: mpsc::Receiver<AudioJob>) {
 			},
 			_ => silence_for(&job.params),
 		};
+		let ms = t0.elapsed().as_millis();
+		super::real::audio_dbg(&format!(
+			"chunk {} render: waited {wait_ms}ms, rendered in {ms}ms",
+			job.start_ts
+		));
 		let _ = job.done.send((job.start_ts, data));
 	}
 }

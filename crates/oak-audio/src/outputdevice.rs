@@ -39,6 +39,12 @@ use crate::previewdevice::PreviewAudioDevice;
 /// (clamped to the device's supported range).
 const FRAMES_PER_BUFFER: u32 = 512;
 
+/// OAK_DEBUG_AUDIO-gated diagnostics for the output stream.
+fn stream_dbg_enabled() -> bool {
+	static ENABLED: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+	*ENABLED.get_or_init(|| std::env::var_os("OAK_DEBUG_AUDIO").is_some())
+}
+
 /// An open (or openable) cpal output stream.
 pub struct PortAudioOutput {
 	/// Audio host/session (created lazily; `None` when unavailable).
@@ -103,6 +109,14 @@ impl PortAudioOutput {
 		let output_device = resolve_device(&host, device)
 			.ok_or_else(|| "no output device available".to_string())?;
 		let config = pick_config(&output_device, rate, channels)?;
+		if stream_dbg_enabled() {
+			eprintln!(
+				"[audio-stream] config: {} Hz, {} ch, buffer {:?}",
+				u32::from(config.sample_rate),
+				config.channels,
+				config.buffer_size
+			);
+		}
 
 		// The callback pulls whole frames from the shared device and
 		// advances the output clock (underrun → silence). `read` locks
@@ -112,8 +126,30 @@ impl PortAudioOutput {
 		let channels_usize = channels.max(1) as usize;
 		let sink_cb = sink.clone();
 		let scratch = RefCell::new(Vec::<u8>::new());
+		// OAK_DEBUG_AUDIO: true device-side request rate (callbacks/s and
+		// frames/s), aggregated once per second — this is the ground truth
+		// for production/consumption mismatch hunts.
+		let dbg_stats = RefCell::new((0u64, 0u64, std::time::Instant::now()));
 		let callback = move |out: &mut [f32], _info: &cpal::OutputCallbackInfo| {
 			let total = out.len();
+			if stream_dbg_enabled() {
+				let mut st = dbg_stats.borrow_mut();
+				st.0 += total as u64;
+				st.1 += 1;
+				let el = st.2.elapsed();
+				if el >= std::time::Duration::from_secs(1) {
+					let secs = el.as_secs_f64();
+					eprintln!(
+						"[audio-stream] callback: {:.1} calls/s, {:.0} samples/s ({} ch)",
+						st.1 as f64 / secs,
+						st.0 as f64 / secs,
+						channels_usize
+					);
+					st.0 = 0;
+					st.1 = 0;
+					st.2 = std::time::Instant::now();
+				}
+			}
 			let mut scratch = scratch.borrow_mut();
 			scratch.resize(total * 4, 0);
 			let got = sink_cb.read(scratch.as_mut_slice());
