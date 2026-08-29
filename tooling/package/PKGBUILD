@@ -16,7 +16,9 @@
 
 # Arch package build. The release binaries are built by the caller
 # (tooling/package/build-pkg.sh) before makepkg runs; depends lists the
-# base-OS packages the binaries link (FFmpeg/OCIO are statically linked).
+# base-OS packages the binaries link (FFmpeg is statically linked; OCIO is
+# static when built from the vendored source, and build-pkg.sh appends
+# 'opencolorio' when the binaries link the system OCIO dynamically).
 pkgname=oak-editor
 pkgver=@VERSION@
 pkgrel=1

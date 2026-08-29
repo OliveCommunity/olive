@@ -27,6 +27,12 @@ rm -rf "$WORK"
 mkdir -p "$WORK"
 sed "s/@VERSION@/$VERSION/" tooling/package/PKGBUILD > "$WORK/PKGBUILD"
 
+# OCIO is linked dynamically whenever the build used the system package
+# (Arch ships no static libOpenColorIO); declare the dependency then.
+if ldd target/release/oak-editor 2>/dev/null | grep -q libOpenColorIO; then
+	sed -i "s/'fontconfig' 'freetype2')/'fontconfig' 'freetype2' 'opencolorio')/" "$WORK/PKGBUILD"
+fi
+
 if [ "$(id -u)" = "0" ]; then
 	useradd -m builder 2>/dev/null || true
 	chown -R builder:builder "$WORK" target/release

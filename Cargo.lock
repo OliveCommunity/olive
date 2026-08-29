@@ -5208,11 +5208,11 @@ dependencies = [
 [[package]]
 name = "ocio-sys"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e63251d72d848de5eda39d59cd6490260cf031738ebd518ea37d76b5aae614ec"
+source = "git+https://github.com/shaloong/ocio-rs.git#933c65dc4e8e4e22767174f0e22b07fe7af42e07"
 dependencies = [
  "cc",
  "cmake",
+ "system-deps",
 ]
 
 [[package]]

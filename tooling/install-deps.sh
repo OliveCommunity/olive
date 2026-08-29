@@ -78,7 +78,8 @@ case "$(uname -s)" in
 				libopenh264-dev libopenjp2-7-dev libtheora-dev libwebp-dev \
 				libmp3lame-dev libopus-dev libvorbis-dev libspeex-dev \
 				libsnappy-dev libass-dev libfreetype-dev libfribidi-dev \
-				libfontconfig-dev libgnutls28-dev
+				libfontconfig-dev libgnutls28-dev \
+				libffnvcodec-dev
 		elif command -v dnf >/dev/null; then
 			run sudo dnf install -y gcc gcc-c++ pkgconf-pkg-config nasm \
 				x264-devel x265-devel dav1d-devel libvpx-devel \
@@ -90,7 +91,7 @@ case "$(uname -s)" in
 			run sudo pacman -S --needed --noconfirm base-devel pkgconf nasm \
 				x264 x265 dav1d libvpx openh264 openjpeg2 libtheora libwebp \
 				lame opus libvorbis speex snappy libass freetype2 fribidi \
-				fontconfig gnutls
+				fontconfig gnutls ffnvcodec-headers
 		else
 			echo "Unsupported Linux distribution (need apt-get, dnf or pacman)." >&2
 			exit 1

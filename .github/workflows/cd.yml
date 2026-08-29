@@ -69,7 +69,7 @@ jobs:
                 libasound2-dev libpulse-dev libsndfile1-dev \
                 libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
                 libvulkan-dev libxkbcommon-dev libxkbcommon-x11-dev \
-                librsvg2-bin
+                librsvg2-bin libffnvcodec-dev libopencolorio-dev
               ;;
             fedora)
               dnf install -y \
@@ -79,23 +79,29 @@ jobs:
                 mesa-libGL-devel mesa-vulkan-drivers \
                 vulkan-headers vulkan-loader-devel \
                 libxkbcommon-devel libxkbcommon-x11-devel \
-                rpm-build librsvg2-tools
+                rpm-build librsvg2-tools OpenColorIO-devel
+              # ffnvcodec headers (NVDEC for the project FFmpeg build) are
+              # not in Fedora's base repos (RPM Fusion only); they are
+              # distribution-free headers, so install them from source.
+              git clone --depth 1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git /tmp/nv-codec-headers
+              make -C /tmp/nv-codec-headers install PREFIX=/usr
               ;;
             arch)
               pacman -S --needed --noconfirm \
                 base-devel cmake pkgconf nasm \
                 pipewire jack2 alsa-lib libpulse libsndfile \
                 mesa vulkan-headers vulkan-icd-loader \
-                libxkbcommon libxkbcommon-x11 librsvg
+                libxkbcommon libxkbcommon-x11 librsvg \
+                ffnvcodec-headers opencolorio
               ;;
           esac
 
       - name: Configure build environment
         run: |
-          # OCIO builds from the ocio-sys vendored source (static) on
-          # Linux; the distro packages are too old for the bridge.
-          echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
-          echo "OCIO_RS_LINK=static" >> "$GITHUB_ENV"
+          # tooling/ocio-env.sh: use a system OCIO >= 2.5 when present
+          # (vendored 2.5.2 fails on GCC >= 16), static when the package
+          # ships libOpenColorIO.a; otherwise the vendored static build.
+          tooling/ocio-env.sh >> "$GITHUB_ENV"
 
       # TEMP: cache disabled until the Gitea instance cache is provisioned (Cache cargo artifacts)
       #   uses: Swatinem/rust-cache@v2
@@ -165,12 +171,11 @@ jobs:
             libpipewire-0.3-dev libspa-0.2-dev libjack-jackd2-dev \
             libasound2-dev libpulse-dev libsndfile1-dev \
             libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
-            libvulkan-dev libxkbcommon-dev libxkbcommon-x11-dev
+            libvulkan-dev libxkbcommon-dev libxkbcommon-x11-dev \
+            libffnvcodec-dev libopencolorio-dev
 
       - name: Configure build environment
-        run: |
-          echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
-          echo "OCIO_RS_LINK=static" >> "$GITHUB_ENV"
+        run: tooling/ocio-env.sh >> "$GITHUB_ENV"
 
       # TEMP: cache disabled until the Gitea instance cache is provisioned (Cache cargo artifacts)
       #   uses: Swatinem/rust-cache@v2
@@ -339,16 +344,17 @@ jobs:
           pacman -S --needed --noconfirm \
             mingw-w64-ucrt-x86_64-cmake \
             mingw-w64-ucrt-x86_64-opencolorio \
-            mingw-w64-ucrt-x86_64-librsvg
+            mingw-w64-ucrt-x86_64-librsvg \
+            mingw-w64-ucrt-x86_64-ffnvcodec-headers \
+            mingw-w64-ucrt-x86_64-pkgconf
 
       - name: Configure build environment
         run: |
-          # Windows uses the MSYS2 OpenColorIO package (the exact 2.5.2 the
-          # bridge targets; the vendored source needs MSVC-only constructs).
-          # Dynamic; the DLLs are packaged next to the binaries.
-          echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
-          echo "OCIO_INSTALL_DIR=/ucrt64" >> "$GITHUB_ENV"
-          echo "OCIO_RS_LINK=dynamic" >> "$GITHUB_ENV"
+          # System OCIO (MSYS2, the exact 2.5.2 the bridge targets);
+          # tooling/ocio-env.sh links it STATICALLY when the package ships
+          # libOpenColorIO.a, dynamically otherwise (the DLL bundling step
+          # below then still applies).
+          tooling/ocio-env.sh >> "$GITHUB_ENV"
           # ocio-sys' build.rs force-adds the MSVC + Windows SDK include
           # dirs on Windows (meant for MSVC hosts); with the GNU toolchain
           # that drags MSVC-only headers into the g++ compile. Unpack the

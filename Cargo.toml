@@ -67,3 +67,9 @@ debug-assertions = false
 
 [profile.dev]
 opt-level = 1
+
+# ocio-sys 0.2.1's vendored yaml-cpp misses <cstdint> and fails to build on
+# GCC >= 16; the fork carries exactly that fix (d39c509) until a fixed
+# release lands on crates.io.
+[patch.crates-io]
+ocio-sys = { git = "https://github.com/shaloong/ocio-rs.git" }

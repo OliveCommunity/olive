@@ -41,6 +41,7 @@ jobs:
           # X11, software Mesa Vulkan (lavapipe) and xvfb.
           sudo apt-get install -y \
             cmake \
+            libopencolorio-dev \
             libpipewire-0.3-dev libspa-0.2-dev libjack-jackd2-dev \
             libasound2-dev libpulse-dev libsndfile1-dev \
             libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
@@ -52,13 +53,12 @@ jobs:
       # ocio-sys builds a stub bridge unless these are set; the oak-common
       # ocioutils tests need the real library (see crates/oak-common/.cargo/
       # config.toml, which only applies to builds run from that directory).
-      # ocio-sys builds its vendored OpenColorIO from source on Linux (the
-      # `bundled` feature; the distro package is too old for the bridge),
-      # so no OCIO_INSTALL_DIR here.
+      # tooling/ocio-env.sh picks a system OCIO >= 2.5 when present
+      # (vendored 2.5.2 fails on GCC >= 16) and otherwise falls back to
+      # the vendored static build.
       - name: Configure build environment
         run: |
-          echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
-          echo "OCIO_RS_LINK=static" >> "$GITHUB_ENV"
+          tooling/ocio-env.sh >> "$GITHUB_ENV"
           echo "RUSTUP_HOME=/opt/rust/rustup" >> "$GITHUB_ENV"
           echo "CARGO_HOME=/opt/rust/cargo" >> "$GITHUB_ENV"
           echo "PATH=$PATH:/opt/rust/cargo/bin" >> "$GITHUB_ENV"
@@ -96,8 +96,11 @@ jobs:
       # ------------------------------------------------------------------
       # Build & test
       # ------------------------------------------------------------------
+      # `cargo check` (not build): the Test step links the test binaries
+      # anyway, and a full build would codegen every workspace crate twice
+      # (once without and once with cfg(test)).
       - name: Build
-        run: cargo build --workspace --locked
+        run: cargo check --workspace --locked
 
       # xvfb + 24-bit screen: the gpui #[gpui::test] tests open real windows
       # and render through wgpu on Mesa's software Vulkan (lavapipe).
@@ -224,6 +227,8 @@ jobs:
           pacman -S --needed --noconfirm \
             mingw-w64-ucrt-x86_64-cmake \
             mingw-w64-ucrt-x86_64-opencolorio \
+            mingw-w64-ucrt-x86_64-ffnvcodec-headers \
+            mingw-w64-ucrt-x86_64-pkgconf \
             mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-clang-libs git
 
       # ------------------------------------------------------------------
@@ -236,9 +241,10 @@ jobs:
         run: |
           cd "$GITHUB_WORKSPACE"
           export PATH="/ucrt64/bin:$PATH"
-          echo "OCIO_RS_ENABLE_REAL=1" >> "$GITHUB_ENV"
-          echo "OCIO_INSTALL_DIR=/ucrt64" >> "$GITHUB_ENV"
-          echo "OCIO_RS_LINK=dynamic" >> "$GITHUB_ENV"
+          # System OCIO (MSYS2, the exact 2.5.2 the bridge targets);
+          # tooling/ocio-env.sh links it STATICALLY when the package ships
+          # libOpenColorIO.a, dynamically otherwise.
+          tooling/ocio-env.sh >> "$GITHUB_ENV"
           echo "FFMPEG_DIR=.cache/ffmpeg" >> "$GITHUB_ENV"
           # ocio-sys' build.rs force-adds the MSVC + Windows SDK include
           # dirs on Windows (meant for MSVC hosts); with the GNU toolchain
@@ -292,6 +298,9 @@ jobs:
       # ------------------------------------------------------------------
       # Build & test
       # ------------------------------------------------------------------
+      # `cargo check` (not build): the Test step links the test binaries
+      # anyway, and a full build would codegen every workspace crate twice
+      # (once without and once with cfg(test)).
       - name: Build
         run: |
           cd "$GITHUB_WORKSPACE"
@@ -306,7 +315,7 @@ jobs:
           # __imp___msvcrt_assert unresolved. A trailing -lmsvcrt re-scans
           # the CRT import lib after libmingwex.
           # export RUSTFLAGS="-C link-args=-lmsvcrt"
-          cargo build --workspace --locked
+          cargo check --workspace --locked
 
       - name: Test
         run: |
