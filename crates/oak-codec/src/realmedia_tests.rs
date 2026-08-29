@@ -258,6 +258,86 @@ fn contiguous_audio_chunks_skip_seek_and_match_oneshot() {
 	);
 }
 
+/// Playback-shaped chunks (one 25 fps frame = 1920 samples at 48 kHz) tile
+/// the AAC 1024-sample grid badly: the codec frame crossing each chunk end
+/// leaves a 128..896-sample tail past the chunk, and because the decoder
+/// has already consumed that frame the next chunk used to start with a
+/// hole of exactly that size (7 of 8 chunks — the periodic stutter). The
+/// overflow carry (`AudioDecodeState::carry`) must make chunked decoding
+/// sample-exact against a one-shot decode of the same span. The fixture is
+/// a continuous 440 Hz tone (demo.mp4's audio is digital silence and
+/// cannot expose the holes).
+#[test]
+fn playback_sized_chunks_match_oneshot_sample_exact() {
+	let d = FFmpegDecoder::new();
+	let tone = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../oak-app/tests/tone48k.mp4");
+	let s = CodecStream::with_block(tone.to_string_lossy().into_owned(), 0, None);
+	d.open(&s).expect("open tone audio stream");
+
+	const CHUNK: usize = 1920; // one 25 fps frame at 48 kHz
+	const CHUNKS: usize = 175; // 7 seconds (the tone is 8 s)
+	let mut chunked = Vec::with_capacity(CHUNK * CHUNKS * 2);
+	for i in 0..CHUNKS as i64 {
+		let mut dest = vec![0f32; CHUNK * 2];
+		d.retrieve_audio(
+			&mut dest,
+			&TimeRange::new(Rational::new(i, 25), Rational::new(i + 1, 25)),
+			48000,
+			0x3,
+		)
+		.expect("playback-sized chunk");
+		chunked.extend_from_slice(&dest);
+	}
+
+	// Guard against a vacuous pass on silent media: the span must
+	// contain real content.
+	let peak = chunked.iter().fold(0.0f32, |a, &v| a.max(v.abs()));
+	assert!(peak > 0.05, "tone span is unexpectedly quiet");
+
+	// A separate fresh decoder: both paths decode the span straight from
+	// a seek to 0, so the only tolerated difference is the chunking
+	// itself (none — the carry makes them sample-exact). NOTE: decoding
+	// on the SAME decoder after a seek is NOT bit-identical to a fresh
+	// decode (libavcodec/demuxer priming state survives avcodec_flush;
+	// ~1e-2 wobble, inaudible) — a separate pre-existing quirk, not what
+	// this test guards.
+	let d2 = FFmpegDecoder::new();
+	let s2 = CodecStream::with_block(tone.to_string_lossy().into_owned(), 0, None);
+	d2.open(&s2).expect("open tone audio stream (oneshot)");
+	let mut oneshot = vec![0f32; CHUNK * CHUNKS * 2];
+	d2.retrieve_audio(
+		&mut oneshot,
+		&TimeRange::new(Rational::new(0, 1), Rational::new(7, 1)),
+		48000,
+		0x3,
+	)
+	.expect("oneshot [0,7)");
+
+	let mut max_diff = 0.0f32;
+	let mut worst: Vec<(usize, f32)> = Vec::new();
+	for (i, (a, b)) in chunked.iter().zip(oneshot.iter()).enumerate() {
+		let d = (a - b).abs();
+		max_diff = max_diff.max(d);
+		if d > 1e-6 {
+			worst.push((i, d));
+		}
+	}
+	if !worst.is_empty() {
+		worst.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+		let positions: Vec<String> = worst
+			.iter()
+			.take(20)
+			.map(|(i, d)| format!("{}(chunk {},+{},{:.4})", i, i / (CHUNK * 2), (i / 2) % CHUNK, d))
+			.collect();
+		eprintln!("diffs>1e-6: {} total; worst: {}", worst.len(), positions.join(" "));
+	}
+	assert!(
+		max_diff < 1e-6,
+		"playback-sized chunks diverge from one-shot decode (max diff {max_diff}); \
+		 the chunk-end overflow carry is dropping samples"
+	);
+}
+
 #[test]
 fn encode_h264_roundtrip_to_tmp() {
 	let out = std::env::temp_dir().join(format!("oakcodec_roundtrip_{}.mp4", std::process::id()));

@@ -544,6 +544,19 @@ struct AudioDecodeState {
 	/// continue without re-seeking — skipping the per-chunk decoder flush
 	/// and resampler reset that cause boundary artifacts (pops/clicks).
 	contiguous_end_sample: Option<i64>,
+	/// Tail of the last decoded codec frame that fell PAST the previous
+	/// chunk's end, interleaved in the chunk's destination format;
+	/// `carry_start` is the output-sample index `carry[0]` belongs to and
+	/// `carry_format` the `(sample_rate, channel_layout)` it was rendered
+	/// for. The decoder consumes whole codec frames, so without this
+	/// carry the overflow (up to one codec frame — 1024 samples for AAC)
+	/// would be lost and every chunk whose end does not align with the
+	/// codec frame grid would start with a hole (a periodic stutter).
+	/// Served at the start of the next contiguous chunk; cleared on
+	/// seek, on format change, and on chunk failure.
+	carry: Vec<f32>,
+	carry_start: i64,
+	carry_format: (u32, u64),
 }
 
 /// A swresample conversion context.
@@ -665,6 +678,9 @@ impl DecoderState {
 			Some(AudioDecodeState {
 				resampler: None,
 				contiguous_end_sample: None,
+				carry: Vec::new(),
+				carry_start: 0,
+				carry_format: (0, 0),
 			})
 		} else {
 			None
@@ -816,9 +832,15 @@ impl DecoderState {
 		}
 		self.eof = false;
 		// Any seek breaks audio continuity (decoder flush + resampler
-		// reset): the next audio chunk must not skip its own seek.
+		// reset): the next audio chunk must not skip its own seek, the
+		// carried overflow belongs to the pre-seek position, and the
+		// cached resampler's internal state is stale — drop it so a
+		// post-seek decode is identical to a fresh one (reusing it
+		// measurably shifted the output).
 		if let Some(a) = &mut self.audio {
 			a.contiguous_end_sample = None;
+			a.carry.clear();
+			a.resampler = None;
 		}
 		Ok(())
 	}
@@ -1193,6 +1215,30 @@ impl DecoderState {
 			self.seek(start_ts)?;
 		}
 
+		// Serve the overflow tail carried over from the previous chunk:
+		// it belongs exactly at this chunk's start (the anchored grid
+		// makes positions exact). A stale or format-mismatched carry is
+		// discarded (a pre-seek carry was already cleared by seek()).
+		let mut carried_frames: i64 = 0;
+		{
+			let a = self.audio.as_mut().expect("audio session");
+			let valid = contiguous
+				&& a.carry_format == (sample_rate as u32, channel_layout)
+				&& a.carry_start == start_sample;
+			if valid && !a.carry.is_empty() {
+				let dest_frames = dest.len() / dst_channels;
+				let n_frames = (a.carry.len() / dst_channels).min(dest_frames);
+				dest[..n_frames * dst_channels].copy_from_slice(&a.carry[..n_frames * dst_channels]);
+				carried_frames = n_frames as i64;
+				// A chunk shorter than the carry (degenerate grid) keeps
+				// the remainder for the next chunk.
+				a.carry.drain(..n_frames * dst_channels);
+				a.carry_start += n_frames as i64;
+			} else {
+				a.carry.clear();
+			}
+		}
+
 		// The fill+decode+flush body runs in a closure so the success path
 		// can record the chunk's end sample (continuity) and an error path
 		// can clear it (the decoder/resampler position is unknown after a
@@ -1216,8 +1262,18 @@ impl DecoderState {
 			};
 			let stream_time_base = self.stream_time_base;
 
-			let mut next_sample: Option<i64> = None;
+			let mut next_sample: Option<i64> = if carried_frames > 0 {
+				Some(start_sample + carried_frames)
+			} else {
+				None
+			};
 			let dest_frames = (dest.len() / dst_channels) as i64;
+			// Overflow past this chunk's end (see AudioDecodeState::carry):
+			// the decoder consumes whole codec frames, so the tail of the
+			// last frame crossing the chunk end would otherwise be lost
+			// and the next chunk would start with a hole.
+			let mut new_carry: Vec<f32> = Vec::new();
+			let mut new_carry_start: i64 = start_sample + dest_frames;
 
 			while let Some(frame) = self.next_frame()? {
 				let DecodedFrame::Audio(audio) = frame else {
@@ -1250,6 +1306,22 @@ impl DecoderState {
 								.copy_from_slice(&converted[src_off..src_off + n]);
 						}
 					}
+				}
+				if offset + chunk_samples > dest_frames {
+					let inside = (dest_frames - offset).clamp(0, chunk_samples) as usize;
+					let pos = frame_start + inside as i64;
+					if !new_carry.is_empty()
+						&& pos != new_carry_start + (new_carry.len() / dst_channels) as i64
+					{
+						// Non-adjacent overflow (should not happen): keep
+						// only the latest contiguous run.
+						new_carry.clear();
+						new_carry_start = pos;
+					}
+					if new_carry.is_empty() {
+						new_carry_start = pos;
+					}
+					new_carry.extend_from_slice(&converted[inside * dst_channels..]);
 				}
 				next_sample = Some(frame_start + chunk_samples);
 				if offset + chunk_samples >= dest_frames {
@@ -1289,13 +1361,33 @@ impl DecoderState {
 							}
 						}
 					}
+					if offset + chunk_samples > dest_frames {
+						let inside = (dest_frames - offset).clamp(0, chunk_samples) as usize;
+						let pos = frame_start + inside as i64;
+						if !new_carry.is_empty()
+							&& pos != new_carry_start + (new_carry.len() / dst_channels) as i64
+						{
+							new_carry.clear();
+							new_carry_start = pos;
+						}
+						if new_carry.is_empty() {
+							new_carry_start = pos;
+						}
+						new_carry.extend_from_slice(&flush[inside * dst_channels..]);
+					}
 				}
 			}
 
 			// Record the end sample: the next chunk starting exactly here
-			// continues without a seek.
-			self.audio.as_mut().expect("audio session").contiguous_end_sample =
-				Some(start_sample + dest_frames);
+			// continues without a seek — and is served the carried overflow
+			// first (see the chunk entry above).
+			{
+				let a = self.audio.as_mut().expect("audio session");
+				a.carry = new_carry;
+				a.carry_start = new_carry_start;
+				a.carry_format = (sample_rate as u32, channel_layout);
+				a.contiguous_end_sample = Some(start_sample + dest_frames);
+			}
 
 			Ok(RetrieveAudioStatus::Success)
 		})();
@@ -1307,6 +1399,7 @@ impl DecoderState {
 				// unknown: force a fresh seek on the next chunk.
 				if let Some(a) = &mut self.audio {
 					a.contiguous_end_sample = None;
+					a.carry.clear();
 				}
 				Err(e)
 			}
