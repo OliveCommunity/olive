@@ -58,5 +58,12 @@ panic = "unwind"
 [profile.dev.package."*"]
 opt-level = 1
 
+# wgpu-core's debug-only "snatch lock" tracing captures a std Backtrace on
+# EVERY device/queue lock acquisition (wgpu-core/src/snatch.rs), which cost
+# ~35% of UI-thread CPU in profiling (perf: _Unwind_Find_FDE + Backtrace::create)
+# and starved playback-audio chunk scheduling (late chunks get dropped → pops).
+[profile.dev.package.wgpu-core]
+debug-assertions = false
+
 [profile.dev]
 opt-level = 1
