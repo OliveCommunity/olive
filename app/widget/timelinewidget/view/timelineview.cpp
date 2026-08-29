@@ -485,7 +485,7 @@ void TimelineView::DrawBlock(QPainter *painter, bool foreground, Block *block,
 						int underline_y = text_rect.y() + text_height;
 
 						painter->drawLine(text_rect.x(), underline_y,
-										  text_ text_rect.x(),
+										  text_width + text_rect.x(),
 										  underline_y);
 					}
 				}
