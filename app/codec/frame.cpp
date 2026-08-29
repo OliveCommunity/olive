@@ -87,13 +87,17 @@ FramePtr Frame::Interlace(FramePtr top, FramePtr bottom)
 	return interlaced;
 }
 
-int Frame::generate_linesize_bytes(int width, PixelFormat format,
-								   int channel_count)
+
+int Frame::generate_linesize_bytes(int width, PixelFormat format, int channel_count)
 {
-	// Align to 32 bytes (not sure if this is necessary?)
-	return VideoParams::GetBytesPerPixel(format, channel_count) *
-		   ((width + 31) & ~31);
+    int bpp = VideoParams::GetBytesPerPixel(format, channel_count);
+    int row_bytes = width * bpp;
+    // 按 4 字节对齐（CPU/GPU 内存填充的行业标准）
+    // 如果需要更高对齐（如 64 字节用于 AVX-512），可以改为 (row_bytes + 63) & ~63
+    return (row_bytes + 3) & ~3;
 }
+
+
 
 Color Frame::get_pixel(int x, int y) const
 {
@@ -105,7 +109,7 @@ Color Frame::get_pixel(int x, int y) const
 		y * linesize_bytes() + x * video_params().GetBytesPerPixel();
 
 	return Color(reinterpret_cast<const char *>(data_ + byte_offset),
-				 video_params().format(), video_params().channel_count());
+			video_params().format(), video_params().channel_count());
 }
 
 bool Frame::contains_pixel(int x, int y) const

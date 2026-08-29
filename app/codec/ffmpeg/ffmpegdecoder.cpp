@@ -284,7 +284,9 @@ TexturePtr FFmpegDecoder::ProcessFrameIntoTexture(AVFramePtr f,
 
 		VideoParams plane_params = vp;
 		plane_params.set_channel_count(1);
-		plane_params.set_format(native_fmt);
+		// YUV 平面是单通道原始数据：8bit 用 U8，10/12bit 用 U16
+		plane_params.set_format(px_size == 1 ? PixelFormat::U8 : PixelFormat::U16);
+	
 
 		TexturePtr y_plane = p.renderer->CreateTexture(
 			plane_params, hw_in->data(0), hw_in->linesize(0) / px_size);
@@ -733,8 +735,14 @@ FootageDescription FFmpegDecoder::Probe(const QString &filename,
 			desc.SetSourceStartTime(source_start_time.time,
 									source_start_time.source);
 		}
-
-		if (video_streams == 0 && audio_streams > 0 && still_streams > 0) {
+		if (video_streams > 0 && still_streams > 0) {
+			// 同时存在普通视频流和静态图片流（如 DJI 缩略图），只禁用静态图片流
+			for (VideoParams &vp : desc.GetVideoStreams()) {
+				if (vp.video_type() == VideoParams::kVideoTypeStill) {
+					vp.set_enabled(false);
+				}
+			}
+		} else if (video_streams == 0 && audio_streams > 0 && still_streams > 0) {
 			// This footage has no video streams, but has audio and image streams. We've probably
 			// imported a song with embedded album art that most people don't care about. We'll keep the
 			// stills referenced in case users do, but we'll default them to disabled so they're
