@@ -31,7 +31,7 @@
 //! hardware surface.
 //!
 //! - **macOS**: `AV_HWDEVICE_TYPE_VIDEOTOOLBOX`
-//! - **Linux**: `VAAPI`, then `CUDA` (NVDEC)
+//! - **Linux**: `CUDA` (NVDEC, the discrete-GPU path), then `VAAPI`
 //! - **Windows**: `D3D11VA`, then `CUDA` (NVDEC)
 //!
 //! Device creation can fail on machines without the device/driver (a
@@ -131,9 +131,16 @@ pub fn device_type_candidates() -> &'static [sys::AVHWDeviceType] {
 	}
 	#[cfg(all(unix, not(target_os = "macos")))]
 	{
+		// CUDA (native NVDEC) first: it is the discrete-GPU path, and on
+		// multi-GPU boxes VAAPI's default render node can point at a
+		// device with no VA driver (e.g. NVIDIA without
+		// libva-nvidia-driver) while the AMD/Intel node would work —
+		// trying NVDEC first sidesteps that misdirection. VAAPI stays as
+		// the fallback for AMD/Intel-only machines (CUDA device creation
+		// fails fast without libcuda).
 		&[
-			sys::AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI,
 			sys::AVHWDeviceType::AV_HWDEVICE_TYPE_CUDA,
+			sys::AVHWDeviceType::AV_HWDEVICE_TYPE_VAAPI,
 		]
 	}
 }
