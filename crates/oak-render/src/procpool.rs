@@ -562,11 +562,58 @@ pub(crate) fn hwdecode_available() -> bool {
 	oak_codec::hwdecode::hardware_decoding_enabled()
 }
 
-/// Free / total GPU video memory in bytes (NVIDIA `nvidia-smi --query`,
-/// the platform's one query that covers the NVDEC path everywhere).
-/// Returns `None` when no NVIDIA GPU (or no nvidia-smi) — AMD/Intel
-/// machines cannot be queried this way and fall back to the RAM policy.
+/// Free / total GPU video memory in bytes, queried per platform/vendor:
+///
+/// 1. **NVIDIA** (the NVDEC acceleration path): `nvidia-smi
+///    --query-gpu=memory.free,memory.total` — available on every
+///    NVIDIA-equipped machine regardless of OS (the NVIDIA driver ships
+///    `nvidia-smi` on Linux, Windows and Intel-Mac alike), returns MiB.
+/// 2. **AMD / Intel on Linux**: the DRM `mem_info_vram_*` sysfs
+///    attributes (`/sys/class/drm/card*/device/mem_info_vram_total` and
+///    `mem_info_vram_used`) — provided by the amdgpu, i915 and Xe
+///    kernel drivers, queried without any driver CLI. Free = total −
+///    used. The first card that reports a non-zero total wins (the
+///    primary device; on iGPU+discrete boxes the discrete card has the
+///    vram the decode chain uses).
+/// 3. **Apple Silicon (macOS)**: unified memory — there is NO separate
+///    GPU vram to exhaust; the GPU's decode surfaces and render targets
+///    live in the same physical RAM the CPU uses. The RAM/4 budget in
+///    [`default_worker_count`] IS the correct vram bound on UMA, so no
+///    query here (an explicit `ram_budget` would double-count the same
+///    pool). Intel Macs with a discrete NVIDIA GPU take path 1; an AMD
+///    eGPU on macOS falls back to the RAM policy (the eGPU's own vram
+///    cannot be split from the host pool anyway — its decode surfaces
+///    also spill into system RAM on UMA-ish forwarding).
+/// 4. **Windows AMD / Intel**: no standard CLI exists (DXGI
+///    `QueryVideoMemoryInfo` is the real API, not exposed by wgpu);
+///    without a query the fallback RAM policy is SAFE-side —
+///    underestimating the pool only loses throughput, never OOMs the
+///    device. AMD/Intel discrete graphics on Windows ship with sensible
+///    system ram; `physical_memory_bytes/4` under-covers their vram, and
+///    the worker threads bound by cores anyway.
+///
+/// Returns `None` when no query path matched (headless / no GPU /
+/// missing support): the caller falls back to the pure RAM policy.
 pub fn gpu_vram_bytes() -> Option<(u64, u64)> {
+	// NVIDIA first: the query is precise (free, not total−used) and
+	// covers the discrete GPU the decode chain prefers on multi-GPU
+	// boxes.
+	if let Some(v) = nvidia_vram_bytes() {
+		return Some(v);
+	}
+	// AMD / Intel: sysfs DRM attrs.
+	#[cfg(target_os = "linux")]
+	if let Some(v) = linux_drm_vram_bytes() {
+		return Some(v);
+	}
+	// macOS: unified memory (see the type comment) — the RAM budget is
+	// the correct bound. Windows AMD/Intel: no portable query; the RAM
+	// policy is safe-side. Both: None.
+	None
+}
+
+/// NVIDIA vram pair (`(free, total)` bytes) via `nvidia-smi`.
+fn nvidia_vram_bytes() -> Option<(u64, u64)> {
 	let output = std::process::Command::new("nvidia-smi")
 		.args([
 			"--query-gpu=memory.free,memory.total",
@@ -587,6 +634,64 @@ pub fn gpu_vram_bytes() -> Option<(u64, u64)> {
 		return None;
 	}
 	Some(((free as u64) << 20, (total as u64) << 20))
+}
+
+/// AMD / Intel vram pair on Linux: the DRM `mem_info_vram_*` sysfs
+/// attributes looped over the cards, first non-zero total wins.
+#[cfg(target_os = "linux")]
+fn linux_drm_vram_bytes() -> Option<(u64, u64)> {
+	linux_drm_vram_bytes_from(std::path::Path::new("/sys/class/drm"))
+}
+
+/// The sysfs walk behind [`linux_drm_vram_bytes`], split out so tests
+/// can point it at a fixture directory.
+#[cfg(target_os = "linux")]
+fn linux_drm_vram_bytes_from(dir: &std::path::Path) -> Option<(u64, u64)> {
+	// The attribute files are device-tree attachments under card-N:
+	//   /sys/class/drm/card<idx>/device/mem_info_vram_total
+	//   /sys/class/drm/card<idx>/device/mem_info_vram_used
+	// Both are plain decimal byte counts (amdgpu, i915, Xe). A card
+	// whose driver does not expose them (e.g. a static display device,
+	// or a card with no render node) has no mem_info_vram_total —
+	// `read_to_string` fails and the loop moves on.
+	let entries = std::fs::read_dir(dir).ok()?;
+	let mut cards: Vec<u32> = entries
+		.filter_map(|e| e.ok())
+		.filter_map(|e| {
+			let name = e.file_name();
+			let name = name.to_str()?;
+			name.strip_prefix("card")?.parse::<u32>().ok()
+		})
+		.collect();
+	cards.sort_unstable();
+	cards.dedup();
+	for card in cards {
+		let base = dir.join(format!("card{card}")).join("device");
+		// A card without the attrs (or a transient read error) skips to
+		// the next one — one broken card never aborts the whole walk.
+		let Ok(total_text) = std::fs::read_to_string(base.join("mem_info_vram_total")) else {
+			continue;
+		};
+		let Ok(total) = total_text.trim().parse::<u64>() else {
+			continue;
+		};
+		if total == 0 {
+			continue;
+		}
+		let used: u64 = std::fs::read_to_string(base.join("mem_info_vram_used"))
+			.ok()
+			.and_then(|s| s.trim().parse().ok())
+			.unwrap_or(0);
+		let free = total.saturating_sub(used);
+		return Some((free, total));
+	}
+	None
+}
+
+/// Android / non-Linux non-NVIDIA: no query (see [`gpu_vram_bytes`]).
+#[cfg(not(target_os = "linux"))]
+fn linux_drm_vram_bytes() -> Option<(u64, u64)> {
+	None
 }
 
 /// Slot-count policy when a segment grows (M15 S3 grow-on-demand): cap
@@ -2422,6 +2527,64 @@ mod tests {
 		// With tiny slots the core policy dominates (>= 1).
 		let n = default_worker_count(1, 64);
 		assert!(n >= 1);
+	}
+
+	/// The Linux sysfs walk reads total/used per card, picks the first
+	/// non-zero total, and skips (not aborts on) cards without the
+	/// attributes — the AMD/Intel query path (amdgpu, i915, Xe expose
+	/// `mem_info_vram_*`; an iGPU with no dedicated vram reports 0 and is
+	/// skipped for the discrete card).
+	#[cfg(target_os = "linux")]
+	#[test]
+	fn linux_drm_vram_walk_reads_cards_and_skips_missing() {
+		let dir = std::env::temp_dir().join(format!(
+			"oak_vram_fixture_{}_{}",
+			std::process::id(),
+			std::thread::current().name().unwrap_or("t")
+		));
+		let _ = std::fs::remove_dir_all(&dir);
+		let write = |card: u32, total: Option<u64>, used: u64| {
+			let base = dir.join(format!("card{card}")).join("device");
+			std::fs::create_dir_all(&base).unwrap();
+			if let Some(total) = total {
+				std::fs::write(base.join("mem_info_vram_total"), total.to_string()).unwrap();
+			}
+			std::fs::write(base.join("mem_info_vram_used"), used.to_string()).unwrap();
+		};
+		// card0: no attributes (a display-only card) -> skipped.
+		let card0 = dir.join("card0").join("device");
+		std::fs::create_dir_all(&card0).unwrap();
+		// card1: 8 GiB total, 2 GiB used -> the winner.
+		write(1, Some(8 << 30), 2 << 30);
+		// card2: 0 total (iGPU without dedicated memory) -> skipped.
+		write(2, Some(0), 0);
+
+		let (free, total) = linux_drm_vram_bytes_from(&dir)
+			.expect("the walk must find the first non-zero card");
+		assert_eq!(total, 8 << 30);
+		assert_eq!(free, 6 << 30);
+
+		// No non-zero card -> None (a totally attr-less tree).
+		for f in [&dir.join("card1"), &dir.join("card0")] {
+			let _ = std::fs::remove_dir_all(f);
+		}
+		assert!(linux_drm_vram_bytes_from(&dir).is_none());
+
+		let _ = std::fs::remove_dir_all(&dir);
+	}
+
+	/// `per_worker_gpu_budget` follows the pixel-count figure: 1080p is
+	/// the 1 GiB + 256 MiB baseline, 4K ~4× of it, and higher fps
+	/// over-provisions slightly (more surfaces in flight).
+	#[test]
+	fn per_worker_budget_scales_with_frame_size() {
+		let hd = per_worker_gpu_budget((1920, 1080), 24);
+		let fhd = per_worker_gpu_budget((1920, 1080), 60);
+		let uhd = per_worker_gpu_budget((3840, 2160), 24);
+		assert!(uhd > hd * 3, "4K budget must be ~4× 1080p ({uhd} vs {hd})");
+		assert!(fhd >= hd, "60 fps must over-provision ({fhd} vs {hd})");
+		// 1080p24 = 1 GiB + 256 MiB exactly.
+		assert_eq!(hd, (1 << 30) + (256 << 20));
 	}
 
 	/// The GPU-vram worker budget scales with the frame's pixel count: a
