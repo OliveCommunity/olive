@@ -614,8 +614,10 @@ impl CheckBox {
 	}
 }
 
-/// The checkbox's fill: the theme selection colour when checked, white when
-/// not (the user wants the unchecked box to stand out as a white well).
+/// The checkbox's fill: the theme selection colour when checked, opaque
+/// white when not (the design's unchecked box is a white well with a
+/// black border — theme-independent, so it reads the same on the dark
+/// panel where the theme border is a light blue).
 /// Kept as a pure function so the unit test below pins the colours without
 /// needing pixel reads.
 fn checkbox_fill(colors: &gpui::colors::Colors, checked: bool) -> gpui::Rgba {

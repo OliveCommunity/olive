@@ -1460,7 +1460,8 @@ impl OfxColorPicker {
 				b
 			},
 			move |b, _content, window, cx| paint_sv_palette(b, hue, window, cx),
-		);
+		)
+		.size_full();
 		let sv_panel = div()
 			.id(ElementId::named_usize("ofx-color-sv-palette", control))
 			.debug_selector(|| "ofx-color-sv-palette".into())
@@ -1515,7 +1516,8 @@ impl OfxColorPicker {
 				b
 			},
 			|b, _content, window, cx| paint_hue_bar(b, window, cx),
-		);
+		)
+		.size_full();
 		let hue_bar = div()
 			.id(ElementId::named_usize("ofx-color-hue-bar", control))
 			.debug_selector(|| "ofx-color-hue-bar".into())
@@ -1591,7 +1593,8 @@ impl OfxColorPicker {
 			move |bounds, _content, window, cx| {
 				paint_checker_swatch(bounds, draft, window, cx);
 			},
-		);
+		)
+		.size_full();
 		let preview = div()
 			.w(px(36.0))
 			.h(px(24.0))
@@ -1780,7 +1783,8 @@ impl Render for OfxColorPicker {
 				move |bounds, _content, window, cx| {
 					paint_checker_swatch(bounds, swatch_color, window, cx);
 				},
-			));
+			)
+			.size_full());
 
 		let popup = if self.open {
 			self.popup_anchored(cx, &colors)
@@ -2109,6 +2113,81 @@ mod tests {
 		assert!(
 			visual.debug_bounds("ofx-color-swatch").is_some(),
 			"the colour swatch should be painted"
+		);
+	}
+
+	/// The palette (SV square) mapping works from inside the popup: the
+	/// canvas records its layout bounds each frame and the click maps them
+	/// to (s, v). Regression test for the bare canvases — without
+	/// `.size_full()` the canvas leaf collapses to zero height in the
+	/// block layout, the recorded bounds are 0 tall, and a click at the
+	/// palette centre maps to v ≈ 0 (black) instead of v ≈ 0.5: the popup
+	/// opens but shows/behaves as an empty box (the reported "色板没显示
+	/// 出来").
+	#[gpui::test]
+	async fn palette_click_maps_center_to_mid_saturation_value(cx: &mut TestAppContext) {
+		cx.update(|cx| cx.init_colors());
+		let window = cx.open_window(size(px(320.0), px(560.0)), |window, cx| {
+			OfxColorPicker::new(
+				1,
+				Rgba {
+					r: 0.4,
+					g: 0.2,
+					b: 0.8,
+					a: 0.5,
+				},
+				window,
+				cx,
+			)
+		});
+		cx.run_until_parked();
+
+		let mut visual = gpui::VisualTestContext::from_window(window.into(), cx).into_mut();
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+
+		// Open the popup by clicking the swatch, then re-draw so the popup's
+		// deferred layer is laid out (and the palette canvas records its
+		// bounds for the click mapping).
+		let swatch = visual.debug_bounds("ofx-color-swatch").expect("swatch painted");
+		let swatch_center = Point::new(
+			swatch.origin.x + swatch.size.width * 0.5,
+			swatch.origin.y + swatch.size.height * 0.5,
+		);
+		visual.simulate_click(swatch_center, Modifiers::default());
+		visual.update(|window, cx| {
+			window.draw(cx).clear();
+		});
+
+		// Click the centre of the SV palette.
+		let sv = visual
+			.debug_bounds("ofx-color-sv-palette")
+			.expect("sv palette bounds");
+		assert!(
+			f32::from(sv.size.height) >= 170.0,
+			"sv palette height collapsed to {}",
+			f32::from(sv.size.height)
+		);
+		let sv_center = Point::new(
+			sv.origin.x + sv.size.width * 0.5,
+			sv.origin.y + sv.size.height * 0.5,
+		);
+		visual.simulate_click(sv_center, Modifiers::default());
+		cx.run_until_parked();
+
+		// The centre of the palette maps to ~(0.5, 0.5); the hue bar still
+		// shows the initial colour's hue is kept (reading the draft's s/v).
+		let picker = window.root(cx).expect("picker root");
+		let draft = cx.read(|cx| picker.read(cx).draft);
+		let (_, s, v) = rgb_to_hsv(draft.r, draft.g, draft.b);
+		assert!(
+			(s - 0.5).abs() < 0.05,
+			"centre click maps to mid saturation (got {s})"
+		);
+		assert!(
+			(v - 0.5).abs() < 0.05,
+			"centre click maps to mid value, not the collapsed-canvas 0 (got {v})"
 		);
 	}
 

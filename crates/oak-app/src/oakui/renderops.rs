@@ -1086,6 +1086,57 @@ mod tests {
 		(project, seq, footage)
 	}
 
+	/// The Chroma Key effect's boolean inputs read as `Boolean(false)`
+	/// through the inspector's parameter path (`effect_params`), so the
+	/// OfxParamsView checkboxes start UNCHECKED (white fill, black border
+	/// in the app's `CheckBox`). Regression guard for the "Invert Mask 复
+	/// 选框是水蓝色" report: if the boolean value ever reads as
+	/// `Boolean(true)` (or anything else that maps to `Checked`) the
+	/// unchecked boxes would render with the blue accent fill.
+	#[test]
+	fn chromakey_boolean_params_start_unchecked() {
+		let _media = media_lock();
+		let project = graphops::create_project();
+		let clip = {
+			let mut g = graphops::lock(&project);
+			let (core, behavior) = oak_node::block::clip_create();
+			g.graph.add_node(core, behavior)
+		};
+		let fx = crate::oakui::effectchain::insert(
+			&project,
+			clip,
+			usize::MAX,
+			"org.olivevideoeditor.Olive.chromakey",
+		)
+		.expect("insert the chromakey effect");
+
+		let params = {
+			let g = graphops::lock(&project);
+			crate::oakui::effectchain::effect_params(&g.graph, fx).expect("params")
+		};
+		let invert = params
+			.iter()
+			.find(|p| p.input_id == "invert_in")
+			.expect("invert_in param");
+		let mask_only = params
+			.iter()
+			.find(|p| p.input_id == "mask_only_in")
+			.expect("mask_only_in param");
+		// Exactly `Boolean(false)` (NOT None / Int / anything else): a
+		// different shape would still map to Unchecked, but a `true`
+		// would make the checkbox render as the blue accent fill.
+		assert_eq!(
+			invert.value,
+			oak_node::value::NodeValue::Boolean(false),
+			"invert_in must start false"
+		);
+		assert_eq!(
+			mask_only.value,
+			oak_node::value::NodeValue::Boolean(false),
+			"mask_only_in must start false"
+		);
+	}
+
 	#[test]
 	fn video_montage_covers_the_clip_range() {
 		let _media = media_lock();

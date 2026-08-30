@@ -22,11 +22,12 @@ use std::process::Command;
 use gpui::colors::DefaultColors;
 use gpui::dock::{DockPanel, PanelEvent};
 use gpui::{
-	div, px, prelude::*, AnyElement, App, Context, Entity, EventEmitter, MouseButton,
+	div, px, prelude::*, AnyElement, App, ClickEvent, Context, Entity, EventEmitter, MouseButton,
 	PathPromptOptions, Pixels, Point, Render, SharedString, Window,
 };
 use crate::oakui::component::menu::{Menu, MenuItem};
 use gpui_widgets::project_explorer::{ProjectExplorer, ProjectExplorerEvent};
+use gpui_widgets::tooltip::tooltip_view;
 
 use crate::actions::ActionId;
 use crate::oakui::component::menu::{ContextMenuHandle, ContextMenuTriggered};
@@ -209,6 +210,44 @@ impl<E: AppEngine> PanelCommandHandler for ProjectExplorerPanel<E> {}
 impl<E: AppEngine> Render for ProjectExplorerPanel<E> {
 	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let colors = cx.default_colors().clone();
+
+		// The panel title row, per the design's panel headers: the
+		// widget below only shows the bare tree/icon view toggles, so
+		// without this row the panel reads as anonymous. The trailing 新建
+		// 序列 button mirrors the blank-area context menu's new-sequence
+		// item (and the File > New > Sequence… action).
+		let new_sequence_button = div()
+			.id("project-new-sequence")
+			.debug_selector(|| "project-new-sequence".into())
+			.px_2()
+			.py_0p5()
+			.rounded_sm()
+			.flex()
+			.items_center()
+			.cursor_pointer()
+			.text_color(colors.text)
+			.text_xs()
+			.hover(|style| style.bg(colors.selected))
+			.tooltip(move |window, cx| {
+				tooltip_view(crate::i18n::tr("project.new_sequence").into(), window, cx)
+			})
+			.on_click(cx.listener(|this, _event: &ClickEvent, _window, cx| {
+				cx.emit(NewSequenceRequested);
+			}))
+			.child(crate::i18n::tr("project.new_sequence"));
+		let header = div()
+			.flex()
+			.items_center()
+			.h(px(28.0))
+			.flex_shrink_0()
+			.px_2()
+			.border_b_1()
+			.border_color(colors.border)
+			.bg(colors.container)
+			.text_sm()
+			.text_color(colors.text)
+			.child(div().flex_1().child(crate::i18n::tr("panel.project")))
+			.child(new_sequence_button);
 		div()
 			.size_full()
 			.flex()
@@ -221,23 +260,7 @@ impl<E: AppEngine> Render for ProjectExplorerPanel<E> {
 					cx.emit(PanelEvent::Focused);
 				})
 			})
-			// The panel title row, per the design's panel headers: the
-			// widget below only shows the bare tree/icon view toggles, so
-			// without this row the panel reads as anonymous.
-			.child(
-				div()
-					.flex()
-					.items_center()
-					.h(px(28.0))
-					.flex_shrink_0()
-					.px_2()
-					.border_b_1()
-					.border_color(colors.border)
-					.bg(colors.container)
-					.text_sm()
-					.text_color(colors.text)
-					.child(crate::i18n::tr("panel.project")),
-			)
+			.child(header)
 			.child(
 				div()
 					.flex_1()
@@ -259,6 +282,12 @@ impl<E: AppEngine> EventEmitter<ContextMenuTriggered> for ProjectExplorerPanel<E
 pub struct SequencePropertiesRequested(pub u64);
 
 impl<E: AppEngine> EventEmitter<SequencePropertiesRequested> for ProjectExplorerPanel<E> {}
+
+/// The project explorer asked the shell to open the new-sequence dialog.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NewSequenceRequested;
+
+impl<E: AppEngine> EventEmitter<NewSequenceRequested> for ProjectExplorerPanel<E> {}
 
 impl<E: AppEngine> DockPanel for ProjectExplorerPanel<E> {
 	fn panel_id(&self) -> gpui::dock::PanelId {

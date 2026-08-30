@@ -20,6 +20,7 @@
 
 use crate::factory::NodeMeta;
 use crate::node::{Category, NodeBehavior, NodeCore};
+use crate::nodes::jobs::ShaderJobPayload;
 
 /// Texture input id (C++ `k_texture_input`). Type: texture; flags:
 /// not-keyframable; this is the node's effect input.
@@ -186,6 +187,13 @@ impl NodeBehavior for ColorDifferenceKeyNode {
 	/// Evaluate outputs (C++ `value()`): no texture on `tex_in` ->
 	/// push nothing; texture present -> push a `ShaderJob` with the
 	/// whole input row inserted.
+	///
+	/// The job is boxed here as a [`ShaderJobPayload`] that the
+	/// renderer's resolve hook executes and replaces with the result
+	/// texture (exactly like despill). The previous null-handle
+	/// "deferred job" marker was never resolved by the Rust renderer,
+	/// so the node's output table handed the downstream clip a null
+	/// texture and the rendered frame lost the whole clip.
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -193,21 +201,22 @@ impl NodeBehavior for ColorDifferenceKeyNode {
 		time: oak_core::Rational,
 		table: &mut crate::value::NodeValueTable,
 	) {
-		let _ = (core, time);
 		match inputs.get(TEXTURE_INPUT) {
 			Some(crate::value::NodeValue::Texture(_)) => {}
 			_ => return,
 		}
-
-		// `// CPP-PARITY: colordifferencekey.cpp` `value()` — the C++
-		// builds a ShaderJob over the whole input row and pushes
-		// `tex->to_job(job)`. The Rust model has no shader-job payload:
-		// the renderer seam resolves the deferred job (and the
-		// `garbage_in_enabled`/`core_in_enabled` uniforms derived from
-		// input presence) from this null handle.
 		table.push(
 			crate::value::ValueType::Texture,
-			crate::value::NodeValue::Texture(crate::handle::CHandle::null()),
+			crate::value::NodeValue::Texture(crate::handle::make_owned(ShaderJobPayload {
+				node_id: crate::id::NodeId::INVALID,
+				time,
+				iterations: 1,
+				type_id: self.type_id().to_string(),
+				shader_id: String::new(),
+				effect_input: core.effect_input.clone(),
+				params: inputs.clone(),
+				iterative_input: String::new(),
+			})),
 			None,
 		);
 	}
@@ -368,7 +377,7 @@ mod tests {
 	}
 
 	#[test]
-	fn value_with_texture_pushes_deferred_shader_job() {
+	fn value_with_texture_pushes_shader_job_payload() {
 		let (core, behavior) = create();
 		let inputs = crate::value::NodeValueRow::from([(
 			TEXTURE_INPUT.to_string(),
@@ -376,7 +385,16 @@ mod tests {
 		)]);
 		let mut table = NodeValueTable::default();
 		behavior.value(&core, &inputs, Rational::new(0, 1), &mut table);
-		assert!(table.get(ValueType::Texture).is_some());
+		let NodeValue::Texture(handle) = table.get(ValueType::Texture).unwrap() else {
+			panic!("expected a texture-typed value");
+		};
+		let payload =
+			unsafe { crate::handle::get_checked::<ShaderJobPayload>(handle) }
+				.expect("payload boxed behind the handle");
+		assert_eq!(payload.type_id, "org.olivevideoeditor.Olive.colordifferencekey");
+		assert_eq!(payload.iterations, 1);
+		assert_eq!(payload.effect_input, TEXTURE_INPUT);
+		assert!(payload.params.contains_key(TEXTURE_INPUT));
 	}
 
 	#[test]

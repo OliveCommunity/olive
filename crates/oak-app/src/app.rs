@@ -57,7 +57,9 @@ use gpui_widgets::theme::{apply_theme, OakTheme};
 use gpui_widgets::viewer::PlaybackClock;
 
 use crate::actions::{ActionId, TimelineToolExt, Tool};
-use crate::dialogs::{ExportDialogContent, PreferencesDialogContent};
+use crate::dialogs::{
+	DropSequenceChoice, ExportDialogContent, PreferencesDialogContent, SequenceFormatSeed,
+};
 use crate::oakui::{AppEngine, ExportSession, MockEngine, Monitor, RealEngine};
 use crate::panels::commands as panel_commands;
 use crate::panels::effect_library::EffectLibraryPanel;
@@ -70,7 +72,7 @@ use crate::panels::program_viewer::ProgramViewerPanel;
 use crate::panels::project_explorer::ProjectExplorerPanel;
 use crate::panels::source_viewer::SourceViewerPanel;
 use crate::panels::status_bar::StatusBar;
-use crate::panels::timeline::TimelinePanel;
+use crate::panels::timeline::{FootageDropNeedsSequence, TimelinePanel};
 
 // Menu item ids: thin aliases over the action registry's menu ids (the
 // registry is the single source; these keep the test call sites readable).
@@ -131,6 +133,9 @@ mod modal_ids {
 	/// The sequence properties dialog (right-click a sequence in the
 	/// project explorer > Sequence Properties).
 	pub const SEQUENCE_PROPERTIES: usize = 15;
+	/// The drop-onto-empty-timeline choice (probe the footage's params as
+	/// the sequence's, or set them up manually).
+	pub const DROP_SEQUENCE_CHOICE: usize = 16;
 }
 
 /// What a picked platform-dialog path should do.
@@ -210,6 +215,12 @@ enum ModalState<E: AppEngine> {
 		modal: Entity<Modal>,
 		content: Entity<crate::dialogs::SequencePropertiesContent<E>>,
 	},
+	/// The drop-onto-empty-timeline choice (拖入素材到没有序列的时间轴):
+	/// probe the footage's params as the sequence's, or open the manual
+	/// setup dialog. The skipped drop is resumed by the shell once a
+	/// sequence exists (the paused drop lives in [`OakApp::pending_drop`]).
+	/// The buttons carry the decision, so the state keeps only the modal.
+	DropSequenceChoice { modal: Entity<Modal> },
 }
 
 /// A running export: the session the tick loop drains for progress.
@@ -233,7 +244,8 @@ impl<E: AppEngine> ModalState<E> {
 			| ModalState::ProjectProperties { modal, .. }
 			| ModalState::About { modal }
 			| ModalState::NewSequence { modal, .. }
-			| ModalState::SequenceProperties { modal, .. } => Some(modal.clone()),
+			| ModalState::SequenceProperties { modal, .. }
+			| ModalState::DropSequenceChoice { modal, .. } => Some(modal.clone()),
 		}
 	}
 }
@@ -352,6 +364,10 @@ pub struct OakApp<E: AppEngine> {
 	shell_focus: gpui::FocusHandle,
 	/// The running export session, if any.
 	export: Option<ExportRun>,
+	/// A footage drop paused on the empty-timeline drop choice: kept while
+	/// its modal (the choice dialog, or the new-sequence dialog it spawns)
+	/// is up; performed when a sequence exists. `None` outside the flow.
+	pending_drop: Option<FootageDropNeedsSequence>,
 	/// Whether the progress modal currently on screen is the OFX plugin
 	/// progress dialog (as opposed to the export progress). Guards
 	/// [`poll_plugin_progress`] from hijacking the export's bar.
@@ -538,6 +554,29 @@ impl<E: AppEngine> OakApp<E> {
 			 event: &crate::panels::project_explorer::SequencePropertiesRequested,
 			 cx| {
 				this.open_sequence_properties(event.0, cx);
+			},
+		)
+		.detach();
+
+		// The project explorer's 新建序列 button opens the new-sequence
+		// dialog (the same one File > New > Sequence… uses).
+		cx.subscribe(
+			&panels.project,
+			|this,
+			 _panel,
+			 _event: &crate::panels::project_explorer::NewSequenceRequested,
+			 cx| {
+				this.open_new_sequence(cx);
+			},
+		)
+		.detach();
+
+		// A footage drop onto a timeline with no open sequence goes through
+		// the probe-vs-manual choice before any sequence is created.
+		cx.subscribe(
+			&panels.timeline,
+			|this, _panel, event: &FootageDropNeedsSequence, cx| {
+				this.on_footage_drop_needs_sequence(*event, cx);
 			},
 		)
 		.detach();
@@ -730,6 +769,7 @@ impl<E: AppEngine> OakApp<E> {
 			modal: ModalState::None,
 			shell_focus,
 			export: None,
+			pending_drop: None,
 			pending_export: None,
 			plugin_progress_open: false,
 			plugin_progress_rx: Mutex::new(plugin_progress_rx),
@@ -2233,12 +2273,47 @@ impl<E: AppEngine> OakApp<E> {
 	/// `NewSequenceDialog`): the sequence name plus the format fields. The
 	/// OK button creates the sequence through the content's `commit`.
 	fn open_new_sequence(&mut self, cx: &mut Context<Self>) {
+		self.spawn_new_sequence(SequenceFormatSeed::hd_1080p25(), cx);
+	}
+
+	/// Opens the new-sequence dialog seeded from the footage's probed video
+	/// parameters (the drop-onto-empty-timeline flow), named like the
+	/// footage so the user's OK match the media.
+	fn open_new_sequence_for_footage(
+		&mut self,
+		drop: FootageDropNeedsSequence,
+		cx: &mut Context<Self>,
+	) {
+		let probe = self
+			.engine
+			.read(cx)
+			.footage_video_params(drop.footage_id);
+		let seed = probe
+			.map(|(width, height, rate, interlaced)| {
+				SequenceFormatSeed::from_format(
+					&crate::oakui::engine::VideoFormat { width, height, rate },
+					interlaced,
+				)
+			})
+			.unwrap_or_else(SequenceFormatSeed::hd_1080p25);
+		self.spawn_new_sequence(seed, cx);
+	}
+
+	/// Opens the new-sequence dialog with the given format seed, while no
+	/// other modal is up.
+	fn spawn_new_sequence(
+		&mut self,
+		seed: SequenceFormatSeed,
+		cx: &mut Context<Self>,
+	) {
 		if !matches!(self.modal, ModalState::None) {
 			return;
 		}
 		let engine = self.engine.clone();
 		self.spawn_modal(cx, move |window, app| {
-			let content = app.new(|cx| crate::dialogs::NewSequenceContent::new(engine, window, cx));
+			let content = app.new(|cx| {
+				crate::dialogs::NewSequenceContent::new_seeded(engine, seed, window, cx)
+			});
 			let modal = app.new(|cx| {
 				Modal::new(
 					modal_ids::NEW_SEQUENCE,
@@ -2254,6 +2329,92 @@ impl<E: AppEngine> OakApp<E> {
 				.with_content(content.clone())
 			});
 			ModalState::NewSequence { modal, content }
+		});
+	}
+
+	/// A footage drop landed on the timeline while no sequence is open: the
+	/// shell pauses it and asks whether to probe the footage's parameters
+	/// as the sequence's, or set them up manually.
+	fn on_footage_drop_needs_sequence(
+		&mut self,
+		drop: FootageDropNeedsSequence,
+		cx: &mut Context<Self>,
+	) {
+		if !matches!(self.modal, ModalState::None) {
+			// A modal is already up (the drop cannot have been committed
+			// against it): resume the drop through the probe path, keeping
+			// the engine's auto-create behaviour.
+			println!("[shell] drop while a modal is up: using the footage probe params");
+			self.engine.update(cx, |engine, cx| {
+				engine.drop_footage(drop.footage_id, drop.track_kind, drop.track_index, drop.time, cx);
+			});
+			return;
+		}
+		self.pending_drop = Some(drop);
+		let probe = self.engine.read(cx).footage_video_params(drop.footage_id);
+		self.spawn_modal(cx, move |window, app| {
+			let content = app.new(|_cx| crate::dialogs::DropSequenceChoiceContent::new(probe));
+			let modal = app.new(|cx| {
+				Modal::new(
+					modal_ids::DROP_SEQUENCE_CHOICE,
+					ModalOptions::new(crate::i18n::tr("seqprops.drop.title"), px(440.0))
+						.with_button(DialogButton::primary(crate::i18n::tr(
+							"seqprops.drop.use_footage",
+						)))
+						.with_button(DialogButton::new(
+							crate::i18n::tr("seqprops.drop.manual"),
+							gpui_widgets::dialog::DialogButtonRole::Secondary,
+						))
+						.with_button(DialogButton::cancel(crate::i18n::tr("dialog.cancel"))),
+					window,
+					cx,
+				)
+				.with_content(content.clone())
+			});
+			ModalState::DropSequenceChoice { modal }
+		});
+	}
+
+	/// The drop-pause flow's chosen outcome: resume the paused drop, open
+	/// the manual setup dialog, or drop nothing (cancel).
+	fn resolve_drop_sequence_choice(
+		&mut self,
+		choice: DropSequenceChoice,
+		cx: &mut Context<Self>,
+	) {
+		let Some(drop) = self.pending_drop.take() else {
+			self.close_modal(cx);
+			return;
+		};
+		match choice {
+			DropSequenceChoice::UseFootageParams => {
+				// The engine's drop-footage path sizes the new sequence
+				// from the footage's probed video stream (the NLE
+				// convention); close the choice and place the clip.
+				self.engine.update(cx, |engine, cx| {
+					engine.drop_footage(drop.footage_id, drop.track_kind, drop.track_index, drop.time, cx);
+				});
+				self.close_modal(cx);
+			}
+			DropSequenceChoice::SpecifyManually => {
+				// The manual path re-stashes the drop; the new-sequence
+				// dialog's OK resumes it through the same commit below.
+				self.pending_drop = Some(drop);
+				self.close_modal(cx);
+				self.open_new_sequence_for_footage(drop, cx);
+			}
+		}
+	}
+
+	/// The paused drop's last chance to place its clip: called after a
+	/// manual new-sequence commit succeeded (the new sequence is open, so
+	/// the original floor coordinates still resolve).
+	fn resume_pending_drop(&mut self, cx: &mut Context<Self>) {
+		let Some(drop) = self.pending_drop.take() else {
+			return;
+		};
+		self.engine.update(cx, |engine, cx| {
+			engine.drop_footage(drop.footage_id, drop.track_kind, drop.track_index, drop.time, cx);
 		});
 	}
 
@@ -2517,13 +2678,40 @@ impl<E: AppEngine> OakApp<E> {
 							// OK: create the sequence; a rejected create
 							// keeps the dialog open with the error shown.
 							match content.update(cx, |dialog, cx| dialog.commit(cx)) {
-								Ok(()) => self.close_modal(cx),
+								Ok(()) => {
+									self.close_modal(cx);
+									// The manual path of the drop-onto-empty-
+									// timeline flow resumes the paused drop
+									// now that a sequence is open.
+									self.resume_pending_drop(cx);
+								}
 								Err(err) => {
 									content
 										.update(cx, |dialog, cx| dialog.set_error(Some(err), cx));
 								}
 							}
 						} else {
+							// Cancel: any paused drop is abandoned too.
+							self.pending_drop = None;
+							self.close_modal(cx);
+						}
+					}
+				}
+				modal_ids::DROP_SEQUENCE_CHOICE => {
+					// 0 = handle it from the footage probe, 1 = manual
+					// dialog, 2 = cancel.
+					match *button {
+						0 => self.resolve_drop_sequence_choice(
+							DropSequenceChoice::UseFootageParams,
+							cx,
+						),
+						1 => self.resolve_drop_sequence_choice(
+							DropSequenceChoice::SpecifyManually,
+							cx,
+						),
+						_ => {
+							// Cancel: abandon the paused drop.
+							self.pending_drop = None;
 							self.close_modal(cx);
 						}
 					}
@@ -2568,6 +2756,12 @@ impl<E: AppEngine> OakApp<E> {
 				// Escape / backdrop close the project properties dialog
 				// without applying (only OK commits).
 				modal_ids::PROJECT_PROPERTIES => self.close_modal(cx),
+				// Escape from the drop choice (or the manual new-sequence
+				// dialog it spawned) abandons the paused drop.
+				modal_ids::DROP_SEQUENCE_CHOICE | modal_ids::NEW_SEQUENCE => {
+					self.pending_drop = None;
+					self.close_modal(cx);
+				}
 				_ => self.close_modal(cx),
 			},
 		}

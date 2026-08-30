@@ -2956,8 +2956,11 @@ const SEQUENCE_RATES: &[(u32, u32)] = &[
 /// The frame-rate labels, in the same order as [`SEQUENCE_RATES`].
 const SEQUENCE_RATE_OPTIONS: &[&str] = &["23.98", "24", "25", "29.97", "30", "50", "59.94", "60"];
 
-/// The preset formats offered for a sequence (0 = custom, which leaves the
-/// width / height / frame-rate fields free).
+/// The number of preset entries (indices 1..=COUNT; 0 is the custom entry,
+/// which leaves the width / height / frame-rate fields free).
+const SEQUENCE_PRESET_COUNT: usize = 6;
+
+/// The preset formats offered for a sequence.
 fn sequence_preset_options() -> Vec<ComboBoxOption> {
 	vec![
 		ComboBoxOption::new(0, i18n::tr("seqprops.preset.custom")),
@@ -2965,6 +2968,8 @@ fn sequence_preset_options() -> Vec<ComboBoxOption> {
 		ComboBoxOption::new(2, i18n::tr("seqprops.preset.ntsc")),
 		ComboBoxOption::new(3, i18n::tr("seqprops.preset.hd_1080_25")),
 		ComboBoxOption::new(4, i18n::tr("seqprops.preset.hd_1080_30")),
+		ComboBoxOption::new(5, i18n::tr("seqprops.preset.uhd_4k")),
+		ComboBoxOption::new(6, i18n::tr("seqprops.preset.dci_4k")),
 	]
 }
 
@@ -2976,6 +2981,8 @@ fn sequence_preset_format(index: usize) -> Option<(u32, u32, u32, u32)> {
 		2 => Some((720, 480, 30000, 1001)), // NTSC
 		3 => Some((1920, 1080, 25, 1)),     // HD 1080p25
 		4 => Some((1920, 1080, 30, 1)),     // HD 1080p30
+		5 => Some((3840, 2160, 25, 1)),     // 4K UHD
+		6 => Some((4096, 2160, 24, 1)),     // 4K DCI
 		_ => None,
 	}
 }
@@ -3038,6 +3045,49 @@ pub struct SequenceFormatSeed {
 	pub rate: Option<usize>,
 	/// Whether the interlaced checkbox is checked.
 	pub interlaced: bool,
+}
+
+impl SequenceFormatSeed {
+	/// The defaults the new-sequence dialog starts from: HD 1080p25.
+	pub fn hd_1080p25() -> Self {
+		Self {
+			preset: 3,
+			width: 1920,
+			height: 1080,
+			rate: Some(2),
+			interlaced: false,
+		}
+	}
+
+	/// Builds a seed matching a source format (a footage's probed video
+	/// stream, or a sequence's current parameters): the matching preset
+	/// when the dimensions/rate appear in it, the custom entry otherwise,
+	/// and the rate pick's exact match when the rate is one of the common
+	/// options (else the custom default 25 must be selected explicitly —
+	/// the drop-choice seed follows the probe, so it only seeds what is
+	/// known).
+	pub fn from_format(format: &crate::oakui::engine::VideoFormat, interlaced: bool) -> Self {
+		let preset = (1..=SEQUENCE_PRESET_COUNT)
+			.find(|i| {
+				sequence_preset_format(*i) == Some((
+					format.width,
+					format.height,
+					format.rate.num,
+					format.rate.den,
+				))
+			})
+			.unwrap_or(0);
+		let rate = SEQUENCE_RATES
+			.iter()
+			.position(|r| *r == (format.rate.num, format.rate.den));
+		Self {
+			preset,
+			width: format.width,
+			height: format.height,
+			rate,
+			interlaced,
+		}
+	}
 }
 
 /// The format controls shared by the new-sequence and sequence-properties
@@ -3257,6 +3307,18 @@ impl<E: crate::oakui::engine::AppEngine> NewSequenceContent<E> {
 	/// Builds the content seeded with the default name and the HD 1080p25
 	/// preset.
 	pub fn new(engine: Entity<E>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+		Self::new_seeded(engine, SequenceFormatSeed::hd_1080p25(), window, cx)
+	}
+
+	/// Builds the content seeded with the default name and `seed`'s format
+	/// (the footage-probe seed when a drop created the dialog, the HD
+	/// 1080p25 defaults otherwise).
+	pub fn new_seeded(
+		engine: Entity<E>,
+		seed: SequenceFormatSeed,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> Self {
 		let name = cx.new(|cx| {
 			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
 			TextValue { editor }
@@ -3265,19 +3327,7 @@ impl<E: crate::oakui::engine::AppEngine> NewSequenceContent<E> {
 			field.set_value(i18n::tr("seqprops.default_name"), cx)
 		});
 
-		let format = cx.new(|cx| {
-			SequenceFormatFields::build(
-				SequenceFormatSeed {
-					preset: 3,
-					width: 1920,
-					height: 1080,
-					rate: Some(2),
-					interlaced: false,
-				},
-				window,
-				cx,
-			)
-		});
+		let format = cx.new(|cx| SequenceFormatFields::build(seed, window, cx));
 
 		Self {
 			engine,
@@ -3389,7 +3439,7 @@ impl<E: crate::oakui::engine::AppEngine> SequencePropertiesContent<E> {
 
 		let seed = match &current {
 			Some(params) => {
-				let preset = (1..=4)
+				let preset = (1..=SEQUENCE_PRESET_COUNT)
 					.find(|i| {
 						sequence_preset_format(*i)
 							== Some((
@@ -3506,12 +3556,158 @@ impl<E: crate::oakui::engine::AppEngine> Render for SequencePropertiesContent<E>
 	}
 }
 
+/// The outcome of the drop-onto-empty-timeline choice (拖到空时间轴上的素材
+/// 需要先创建一个序列：探测素材参数作为序列参数，还是手工指定参数)。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DropSequenceChoice {
+	/// Create the sequence from the footage's probed video parameters
+	/// (the previous auto-create behaviour; the engine's `drop_footage`
+	/// sizes the new sequence from the probe).
+	UseFootageParams,
+	/// Open the new-sequence dialog (seeded with the probed parameters)
+	/// and create the sequence with the user's entered settings.
+	SpecifyManually,
+}
+
+/// The content of the drop-onto-empty-timeline choice dialog: the
+/// footage's probed video parameters (or a note when the footage is
+/// pure audio). The host routes the modal's buttons to
+/// [`DropSequenceChoice`].
+pub struct DropSequenceChoiceContent {
+	/// The footage's first probed video stream (`width, height, rate,
+	/// interlaced`), when the footage carries one.
+	probed: Option<(u32, u32, gpui::timeline::FrameRate, bool)>,
+}
+
+impl DropSequenceChoiceContent {
+	/// Builds the content seeded with the footage's probed video stream.
+	pub fn new(probed: Option<(u32, u32, gpui::timeline::FrameRate, bool)>) -> Self {
+		Self { probed }
+	}
+
+	/// The footage's probed parameters shown in the body.
+	pub fn probed(&self) -> Option<(u32, u32, gpui::timeline::FrameRate, bool)> {
+		self.probed
+	}
+}
+
+impl Render for DropSequenceChoiceContent {
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let colors = cx.default_colors().clone();
+		let body = match self.probed {
+			Some((width, height, rate, interlaced)) => {
+				let base = format!(
+					"{} × {}, {}",
+					width,
+					height,
+					crate::oakui::timecode::format_fps(rate),
+				);
+				if interlaced {
+					format!("{base} · {}", i18n::tr("seqprops.interlaced"))
+				} else {
+					base
+				}
+			}
+			None => i18n::tr("seqprops.drop.no_video").to_string(),
+		};
+		div()
+			.flex()
+			.flex_col()
+			.gap_3()
+			.w_full()
+			.child(
+				div()
+					.text_color(colors.disabled)
+					.child(i18n::tr("seqprops.drop.caption")),
+			)
+			.child(
+				div()
+					.debug_selector(|| "drop-choice-params".into())
+					.text_color(colors.text)
+					.text_sm()
+					.child(body),
+			)
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
 
 	fn keystroke(key: &str) -> Keystroke {
 		gpui::Keystroke::parse(key).unwrap()
+	}
+
+	/// The 4K presets are in the dropdown and resolve to their formats
+	/// (4K UHD 3840×2160@25, 4K DCI 4096×2160@24).
+	#[test]
+	fn four_k_presets_are_offered_and_resolve() {
+		let options = sequence_preset_options();
+		let labels: Vec<&str> = options.iter().map(|o| o.label.as_ref()).collect();
+		assert_eq!(options.len(), 7);
+		assert_eq!(sequence_preset_format(5), Some((3840, 2160, 25, 1)));
+		assert_eq!(sequence_preset_format(6), Some((4096, 2160, 24, 1)));
+		assert_eq!(sequence_preset_format(7), None);
+		// The preset labels come from the language packs (default English
+		// here): the 4K entries say what they set.
+		assert!(labels[5].contains("3840×2160"), "4K UHD label: {}", labels[5]);
+		assert!(labels[6].contains("4096×2160"), "4K DCI label: {}", labels[6]);
+	}
+
+	/// A probed footage format seeds the new-sequence fields: an exact
+	/// preset match selects the preset, otherwise the custom entry with the
+	/// probed dimensions/rate already filled in.
+	#[test]
+	fn seed_from_format_matches_presets_and_falls_back_to_custom() {
+		let hd = crate::oakui::engine::VideoFormat {
+			width: 1920,
+			height: 1080,
+			rate: FrameRate::new(25, 1),
+		};
+		let seed = SequenceFormatSeed::from_format(&hd, false);
+		assert_eq!(seed.preset, 3);
+		assert_eq!((seed.width, seed.height), (1920, 1080));
+		assert_eq!(seed.rate, Some(2));
+
+		let custom = crate::oakui::engine::VideoFormat {
+			width: 512,
+			height: 512,
+			rate: FrameRate::new(1234, 100),
+		};
+		let seed = SequenceFormatSeed::from_format(&custom, true);
+		assert_eq!(seed.preset, 0);
+		assert_eq!((seed.width, seed.height), (512, 512));
+		assert_eq!(seed.rate, None);
+		assert!(seed.interlaced);
+
+		let dci = crate::oakui::engine::VideoFormat {
+			width: 4096,
+			height: 2160,
+			rate: FrameRate::new(24, 1),
+		};
+		let seed = SequenceFormatSeed::from_format(&dci, false);
+		assert_eq!(seed.preset, 6, "4K DCI resolves to its preset");
+	}
+
+	/// The sequence properties dialog seeds the preset dropdown correctly for
+	/// every preset value, so reopening properties on a 4K sequence keeps
+	/// 4K selected (not "custom").
+	#[test]
+	fn properties_seed_matches_all_presets_including_4k() {
+		for index in 1..=SEQUENCE_PRESET_COUNT {
+			let (w, h, num, den) = sequence_preset_format(index).unwrap();
+			let params = crate::oakui::engine::SequenceParameters {
+				name: "4K".into(),
+				format: crate::oakui::engine::VideoFormat {
+					width: w,
+					height: h,
+					rate: FrameRate::new(num, den),
+				},
+				interlaced: false,
+			};
+			let seed = SequenceFormatSeed::from_format(&params.format, params.interlaced);
+			assert_eq!(seed.preset, index, "preset {index} reselects itself");
+		}
 	}
 
 	#[test]

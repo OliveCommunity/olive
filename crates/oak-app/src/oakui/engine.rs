@@ -767,6 +767,15 @@ pub trait AppEngine:
 		None
 	}
 
+	/// The footage's first probed video stream as `(width, height, rate,
+	/// interlaced)` — the "use footage params" path of a footage drop
+	/// onto an empty timeline (what the auto-created sequence would pick).
+	/// `None` when the entry is not footage or has no probed video stream
+	/// (pure-audio footage falls back to the default sequence format).
+	fn footage_video_params(&self, _id: u64) -> Option<(u32, u32, FrameRate, bool)> {
+		None
+	}
+
 	/// Starts an export of the current sequence in `format` to `path` and
 	/// returns a session the host polls for progress and can cancel.
 	///

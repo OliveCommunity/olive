@@ -542,3 +542,100 @@ fn shader_job_blur_smooths_edge() {
 
     let _ = std::fs::remove_file(&path);
 }
+
+/// Chroma Key on a green clip: the keying node's job payload flows through
+/// the whole graph path (footage → chromakey → clip → traverser → GPU
+/// shader job → composite), and the key color actually drives the mask — a
+/// green key on a green frame makes the frame transparent, a red key keeps
+/// it opaque. Regression test for the chromakey node's old value(): gated
+/// on the OCIO processor (never populated without the render bridge), it
+/// pushed an empty output table, the traverser handed the clip
+/// `NodeValue::None`, and the rendered frame lost the clip entirely.
+/// Skipped when no GPU adapter or OCIO config exists.
+#[test]
+fn chromakey_job_keys_green_with_ociobased_stub() {
+    if oak_render::backend::GpuContext::shared().is_none() {
+        eprintln!("skipping chromakey_job_keys_green_with_ociobased_stub: no GPU adapter");
+        return;
+    }
+    if oak_render::color::set_up_default_config().is_err() {
+        eprintln!("skipping chromakey_job_keys_green_with_ociobased_stub: no OCIO config");
+        return;
+    }
+
+    let path = clip_path("chromakey_job");
+    oak_codec::testmedia::write_test_clip_solid(&path, 64, 64, 10, 10, [0.0, 1.0, 0.0, 1.0])
+        .expect("green clip generation");
+
+    // The chromakey built from the factory (the same `create()` the
+    // inspector's effect stack uses), defaulting to the green key color.
+    let render = |key: [f64; 4]| {
+        let (project, seq) = build_effect_project(
+            (&path.to_string_lossy(), Rational::new(0, 1), Rational::new(1, 1)),
+            |p, footage, clip| {
+                let (ecore, ebehavior) =
+                    oak_node::factory::Factory::global()
+                        .create_any("org.olivevideoeditor.Olive.chromakey")
+                        .expect("chromakey factory entry");
+                let effect = p.graph.add_node(ecore, ebehavior);
+                p.graph
+                    .disconnect(footage, clip, oak_node::block::clip_input::TEXTURE_INPUT, -1);
+                p.graph
+                    .connect(footage, effect, "tex_in", -1)
+                    .expect("connect footage to chromakey");
+                p.graph
+                    .connect(effect, clip, oak_node::block::clip_input::TEXTURE_INPUT, -1)
+                    .expect("connect chromakey to clip");
+                p.graph
+                    .get_mut(effect)
+                    .unwrap()
+                    .core
+                    .set_standard_value("color_key", -1, oak_node::value::NodeValue::Color(key));
+                effect
+            },
+        );
+        let tex = oak_render::eval::render_graph_frame(
+            &project,
+            seq,
+            Rational::new(0, 1),
+            (64, 64),
+            PixelFormat::F32,
+        )
+        .expect("chromakey render");
+        frame_data(&tex).to_vec()
+    };
+
+    // Sum the RGB channels over a 48x48 center crop (MPEG-2 chroma bleed
+    // stays near the edges); a keyed-out frame contributes nothing.
+    let energy = |frame: &[u8]| -> f32 {
+        let mut total = 0.0f32;
+        for y in 8..56 {
+            for x in 8..56 {
+                let off = (y * 64 + x) * 16;
+                for c in 0..3 {
+                    total += f32::from_le_bytes(frame[off + c * 4..off + c * 4 + 4].try_into().unwrap());
+                }
+            }
+        }
+        total
+    };
+
+    // Green key on the green clip: fully keyed (transparent black).
+    let green_keyed = render([0.0, 1.0, 0.0, 1.0]);
+    assert!(
+        energy(&green_keyed) < 1.0,
+        "green frame against the green key must key out (energy {})",
+        energy(&green_keyed)
+    );
+
+    // Red key on the green clip: far from the key color, mask ~1, the
+    // frame stays opaque — the key color parametrizes the result.
+    let red_keyed = render([1.0, 0.0, 0.0, 1.0]);
+    assert!(
+        energy(&red_keyed) > 10.0,
+        "green frame against the red key must stay (energy {})",
+        energy(&red_keyed)
+    );
+
+    let _ = std::fs::remove_file(&path);
+}

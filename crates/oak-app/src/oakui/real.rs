@@ -3134,6 +3134,17 @@ impl RealEngine {
 			},
 			length,
 		});
+		// The worker pool's size follows the sequence resolution: the GPU
+		// vram budget per worker grows with the pixel count (an NVDEC 4K
+		// decoder needs ~4× the 1080p surface memory), so a 1080p pool of
+		// 20+ workers exhausts a consumer GPU the moment the sequence
+		// switches to 4K and every decoder open starts OOMing. Resize the
+		// pool to what fits now; the size change on the OTHER sequence's
+		// update re-expands it.
+		if let Some(m) = oak_render::manager::RenderManager::global() {
+			let fps = (rate.num as f64 / rate.den.max(1) as f64).round().max(1.0) as u32;
+			m.set_workspace_size(width as i32, height as i32, fps);
+		}
 		// Stage 6b: keep the OFX normalised-coordinate default conversion in
 		// sync with the current sequence's extent.
 		crate::oakui::ofx::update_project_extent(width as f64, height as f64);
@@ -5042,6 +5053,22 @@ impl AppEngine for RealEngine {
 		let fps = self.frame_rate();
 		let fps_f = fps.num as f64 / fps.den.max(1) as f64;
 		Some((seconds * fps_f).round().max(1.0) as i64)
+	}
+
+	fn footage_video_params(&self, id: u64) -> Option<(u32, u32, FrameRate, bool)> {
+		let project = self.project_ref()?;
+		let node = graphops::id_of(id)?;
+		let guard = graphops::lock(project);
+		let vp = graphops::footage_behavior(&guard.graph, node)?.video_params(0)?;
+		Some((
+			vp.width.max(1) as u32,
+			vp.height.max(1) as u32,
+			FrameRate::new(
+				vp.frame_rate.numerator().max(1) as u32,
+				vp.frame_rate.denominator().max(1) as u32,
+			),
+			vp.interlaced,
+		))
 	}
 
 	// --- project library (M13 D4) --------------------------------------
@@ -9156,6 +9183,63 @@ mod tests {
 		// The drop placed a clip on the auto-created sequence's timeline.
 		let placed = cx.read(|app| engine.read(app).tracks.iter().any(|t| !t.clips.is_empty()));
 		assert!(placed, "the footage landed on the auto-created timeline");
+
+		let _ = std::fs::remove_file(&media);
+	}
+
+	/// The drop-choice flow reads the footage's probed video stream through
+	/// `footage_video_params`: the same values the auto-create path picks,
+	/// so the "use footage params" prompt offers what the sequence would
+	/// get.
+	#[gpui::test]
+	async fn footage_video_params_returns_the_probed_stream(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		let media = std::env::temp_dir().join(format!("oak_probe_params_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate");
+		cx.update(|app| {
+			engine
+				.update(app, |engine, cx| engine.import_footage(media.clone(), cx))
+				.expect("import")
+		});
+		let name = media.file_name().unwrap().to_string_lossy().into_owned();
+		let entry = cx
+			.read(|app| {
+				engine
+					.read(app)
+					.roots()
+					.into_iter()
+					.find(|e| e.name.as_ref() == name)
+			})
+			.expect("imported footage is listed");
+
+		let (width, height, rate_num, rate_den) =
+			cx.read(|app| {
+				let result: Option<(u32, u32, u32, u32)> = engine
+					.read(app)
+					.footage_video_params(entry.id)
+					.map(|(w, h, rate, _)| (w, h, rate.num, rate.den));
+				result.expect("probed video stream")
+			});
+		// The values match the probe (not hard-coded).
+		let expected = {
+			let project = cx.read(|app| engine.read(app).project.clone().expect("project"));
+			let guard = graphops::lock(&project);
+			let node = graphops::id_of(entry.id).expect("footage node");
+			let vp = graphops::footage_behavior(&guard.graph, node)
+				.and_then(|f| f.video_params(0))
+				.expect("a video stream");
+			(
+				vp.width.max(1) as u32,
+				vp.height.max(1) as u32,
+				vp.frame_rate.numerator().max(1) as u32,
+				vp.frame_rate.denominator().max(1) as u32,
+			)
+		};
+		assert_eq!((width, height), (expected.0, expected.1));
+		assert_eq!((rate_num, rate_den), (expected.2, expected.3));
 
 		let _ = std::fs::remove_file(&media);
 	}

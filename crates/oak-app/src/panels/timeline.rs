@@ -407,6 +407,12 @@ impl<E: AppEngine> TimelinePanel<E> {
 	/// Applies a finished footage drop: routes the payload's footage id with
 	/// the last hovered track + frame to the engine, which resolves the
 	/// footage, validates the track and places the clip (undoable).
+	///
+	/// A drop onto a timeline with no open sequence cannot place a clip:
+	/// the panel hands the pending drop back to the shell through
+	/// [`FootageDropNeedsSequence`], which shows the probe-vs-manual
+	/// choice (the shell re-routes the drop through [`AppEngine::drop_footage`]
+	/// once a sequence exists).
 	fn finish_footage_drop(&mut self, drag: &FootageDrag, cx: &mut Context<Self>) {
 		let Some(target) = self.footage_drop.take() else {
 			return;
@@ -417,6 +423,16 @@ impl<E: AppEngine> TimelinePanel<E> {
 			time,
 			..
 		} = target;
+		if self.engine.read(cx).current_sequence().is_none() {
+			cx.emit(FootageDropNeedsSequence {
+				footage_id: drag.0,
+				track_kind,
+				track_index,
+				time,
+			});
+			cx.notify();
+			return;
+		}
 		self.engine.update(cx, |engine, cx| {
 			engine.drop_footage(drag.0, track_kind, track_index, time, cx);
 		});
@@ -1024,6 +1040,26 @@ impl<E: AppEngine> Render for TimelinePanel<E> {
 impl<E: AppEngine> EventEmitter<PanelEvent> for TimelinePanel<E> {}
 
 impl<E: AppEngine> EventEmitter<ContextMenuTriggered> for TimelinePanel<E> {}
+
+/// A footage drop landed onto the timeline while no sequence is open: the
+/// shell must set up a sequence first (probe the footage's params as the
+/// sequence's, or open the manual setup dialog) before the clip can be
+/// placed. Re-issued by the shell through
+/// [`AppEngine::drop_footage`](crate::oakui::AppEngine::drop_footage) once
+/// the sequence exists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FootageDropNeedsSequence {
+	/// The footage's project-explorer entry id (the drag payload).
+	pub footage_id: u64,
+	/// The pointed display track kind.
+	pub track_kind: TrackKind,
+	/// The pointed display track index.
+	pub track_index: usize,
+	/// The start frame at the pointer.
+	pub time: Frame,
+}
+
+impl<E: AppEngine> EventEmitter<FootageDropNeedsSequence> for TimelinePanel<E> {}
 
 impl<E: AppEngine> DockPanel for TimelinePanel<E> {
 	fn panel_id(&self) -> gpui::dock::PanelId {
