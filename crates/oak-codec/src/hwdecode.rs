@@ -203,11 +203,23 @@ pub fn open_hw_accel(
 	unsafe { (*context.as_mut_ptr()).hw_device_ctx = device };
 	let mut opts = Dictionary::new();
 	opts.set("threads", &crate::ffmpeg::decoder_threads());
-	context
-		.decoder()
-		.open_as_with(codec, opts)
-		.ok()
-		.map(|opened| (opened, device_type))
+	let opened = match context.decoder().open_as_with(codec, opts) {
+		Ok(opened) => opened,
+		Err(_) => {
+			// The device context was created but the hardware DECODER
+			// could not be created for this stream (e.g. NVDEC
+			// `cuvidCreateDecoder` out-of-memory at 4K — 4K surface pools
+			// need tens of MB of video memory, and a full/too-small GPU
+			// would otherwise spam its error on EVERY decoder open for
+			// the life of the process). Same treatment as a failed
+			// device-context creation: mark the type so later opens skip
+			// the attempt and its log noise; the caller falls back to the
+			// next candidate / software decode.
+			mark_device_unavailable(device_type);
+			return None;
+		}
+	};
+	Some((opened, device_type))
 }
 
 /// Whether a decoded frame's pixel format is a hardware surface that

@@ -331,6 +331,11 @@ impl Decoder for FFmpegDecoder {
 			.unwrap_or_else(CodecStream::new)
 	}
 
+	fn hardware_decoding(&self) -> bool {
+		let state = self.state.lock().unwrap_or_else(|e| e.into_inner());
+		state.as_ref().is_some_and(|s| s.hw_device.is_some())
+	}
+
 	fn retrieve_video_frame(&self, p: &RetrieveVideoParams) -> crate::error::Result<Arc<Frame>> {
 		ffmpeg_init()?;
 		let mut state = self.state.lock().unwrap_or_else(|e| e.into_inner());

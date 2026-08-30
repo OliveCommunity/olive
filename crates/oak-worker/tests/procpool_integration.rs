@@ -141,6 +141,76 @@ fn pump_until(dispatcher: &ProcessDispatcher, results: &Mutex<Vec<TicketResult>>
 	}
 }
 
+/// A pool resize (the GPU-vram-driven shrink/grow on a resolution
+/// switch): shrinking 3→1 retires the tail workers WITHOUT killing a busy
+/// one — a shrink mid-wave finishes every in-flight ticket AND the
+/// retired workers exit by themselves (the shutdown signal + natural
+/// drain, no kill). Growing 1→3 spawns the missing workers and the pool
+/// delivers again. Slots are released as frames arrive (the credit-based
+/// flow control), exactly like [`two_workers_render_two_waves_zero_copy`].
+#[test]
+fn pool_resize_drains_shrunk_workers_and_regrows() {
+	let _guard = lock_test();
+	let dispatcher = ProcessDispatcher::new(config(3, 4)).expect("dispatcher config");
+	dispatcher.start().expect("workers start + handshake");
+	assert_eq!(dispatcher.worker_count(), 3);
+
+	// Wave 1: enough tickets to keep all three workers busy while the
+	// shrink lands; every frame is released on arrival.
+	let results = Arc::new(Mutex::new(Vec::new()));
+	submit(&dispatcher, &results, 12, None);
+	dispatcher.set_target_workers(1);
+
+	let mut completed = 0usize;
+	let deadline = Instant::now() + Duration::from_secs(60);
+	while completed < 12 {
+		dispatcher.poll();
+		let drained: Vec<TicketResult> =
+			results.lock().unwrap_or_else(|e| e.into_inner()).drain(..).collect();
+		for result in drained {
+			let payload = result.expect("frame rendered");
+			let TicketPayload::ShmFrame(frame) = payload else {
+				panic!("process backend must deliver ShmFrame payloads");
+			};
+			dispatcher.release_frame(&frame);
+			completed += 1;
+		}
+		if Instant::now() > deadline {
+			panic!("timeout draining the shrunken pool: {completed}/12");
+		}
+		std::thread::sleep(Duration::from_millis(2));
+	}
+	assert_eq!(completed, 12, "all tickets completed before the resize settles");
+	// The pool reached the target (the shrink took effect).
+	assert_eq!(dispatcher.worker_count(), 1);
+	// Let the retired children exit naturally (their EOF is reaped on
+	// the next poll); never kill them mid-frame.
+	std::thread::sleep(Duration::from_millis(100));
+	dispatcher.poll();
+
+	// Grow back to 3: fresh workers spawn, a new wave renders fine.
+	dispatcher.set_target_workers(3);
+	let deadline = Instant::now() + Duration::from_secs(60);
+	while dispatcher.worker_count() < 3 && Instant::now() < deadline {
+		dispatcher.poll();
+		std::thread::sleep(Duration::from_millis(5));
+	}
+	assert_eq!(dispatcher.worker_count(), 3);
+	let results2 = Arc::new(Mutex::new(Vec::new()));
+	submit(&dispatcher, &results2, 6, None);
+	pump_until(&dispatcher, &results2, 6);
+	let frames: Vec<TicketResult> =
+		results2.lock().unwrap_or_else(|e| e.into_inner()).drain(..).collect();
+	assert_eq!(frames.len(), 6, "the regrown pool renders a new wave");
+	for result in frames {
+		let payload = result.expect("regrown wave rendered");
+		if let TicketPayload::ShmFrame(frame) = payload {
+			dispatcher.release_frame(&frame);
+		}
+	}
+	dispatcher.shutdown();
+}
+
 /// Two real workers render two waves of generated frames into shm slots;
 /// the main process never copies frame bytes. Slots are released as
 /// frames arrive (the dispatcher's credit-based flow control then keeps

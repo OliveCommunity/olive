@@ -171,6 +171,22 @@ impl<P: Clone> PreviewScheduler<P> {
 		self.workers
 	}
 
+	/// Change the worker count at run time (dynamic pool resize driven by
+	/// the GPU-vram budget on resolution switches: 1080p can run the full
+	/// CPU-bound pool, 4K only a vram-bounded fraction). The sharding
+	/// modulus follows the new count immediately — pending frames are
+	/// re-sharded on their next claim, so a shrink only reshuffles the
+	/// not-yet-claimed queue (in-flight frames stay on their worker).
+	/// `batch_size` is recomputed for the new count (the design figure
+	/// `120 / W`).
+	pub fn set_worker_count(&mut self, workers: usize) {
+		let workers = workers.max(1);
+		let old = std::mem::replace(&mut self.workers, workers);
+		if old != workers {
+			self.batch_size = (120 / workers).max(1).min(self.batch_size.max(1));
+		}
+	}
+
 	/// The configured batch size.
 	pub fn batch_size(&self) -> usize {
 		self.batch_size

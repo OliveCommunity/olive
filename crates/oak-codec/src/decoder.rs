@@ -320,6 +320,15 @@ pub trait Decoder: Send + Sync {
 		cancelled: Option<&CancelAtom>,
 	) -> crate::error::Result<()>;
 
+	/// Unless the media requires it, prefer hardware over software (e.g. the
+	/// FFmpeg decoder's platform hwaccel). The decode-session cache evicts
+	/// hardware sessions first: each one pins GPU memory (an NVDEC 4K
+	/// decoder holds ~10 surface frames of `4096×2160×1.5` ≈ 100+ MB of
+	/// CUDA memory), while software sessions pin only system RAM.
+	fn hardware_decoding(&self) -> bool {
+		false
+	}
+
 	/// Offset of the audio start relative to the video (rational seconds).
 	fn get_audio_start_offset(&self) -> Rational {
 		// C++ default `virtual Rational get_audio_start_offset() const { return 0; }`

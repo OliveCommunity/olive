@@ -88,6 +88,10 @@ pub struct RenderManager {
 	/// `clear_graph_snapshot` become no-ops afterwards so a stale push
 	/// from a dying test/app cannot re-arm the worker pool mid-shutdown.
 	stopping: AtomicBool,
+	/// The process pool, when running the Processes backend (the resize
+	/// target of [`RenderManager::set_workspace_size`]). `None` on the
+	/// inline (test) backend.
+	process_pool: Option<Arc<ProcessDispatcher>>,
 }
 
 impl RenderManager {
@@ -111,16 +115,17 @@ impl RenderManager {
 			eval::render_produced_frame(time, params)
 				.map(crate::ticket::TicketPayload::Video)
 		});
-		let (dispatch, audio_dispatch, audio_fallback): (
+		let (dispatch, audio_dispatch, audio_fallback, process_pool): (
 			Arc<dyn JobDispatch>,
 			Arc<dyn JobDispatch>,
 			Option<Arc<dyn JobDispatch>>,
+			Option<Arc<ProcessDispatcher>>,
 		) = match choice {
 			RenderBackendChoice::Threads => {
 				// Test-only inline backend: synchronous execution on the
 				// calling thread, shared by video and audio.
 				let inline = InlineDispatcher::sync();
-				(inline.clone(), inline, None)
+				(inline.clone(), inline, None, None)
 			}
 			RenderBackendChoice::Processes(config) => {
 				let dispatcher = ProcessDispatcher::new(config)?;
@@ -138,7 +143,7 @@ impl RenderManager {
 				// audio-side plugin crash now takes down the main process,
 				// and the mix cost lands on the UI tick.
 				let inline = InlineDispatcher::sync();
-				(dispatcher.clone(), inline, None)
+				(dispatcher.clone(), inline, None, Some(dispatcher))
 			}
 		};
 		let tickets = Arc::new(TicketArena::new_with_audio_fallback(
@@ -159,6 +164,7 @@ impl RenderManager {
 			current_snapshot: Mutex::new(None),
 			current_key: Mutex::new(None),
 			stopping: AtomicBool::new(false),
+			process_pool,
 		}));
 		Ok(())
 	}
@@ -272,6 +278,26 @@ impl RenderManager {
 		}
 		*lock(&self.current_key) = None;
 		self.dispatch.set_graph_snapshot(None);
+	}
+
+	/// Announce the current frame size to the manager (a sequence
+	/// resolution change). The process dispatcher re-evaluates the
+	/// GPU-vram-aware worker count for the new size and resizes the pool
+	/// (1080p can run the CPU-bound count; 4K only a vram-bounded
+	/// fraction — see [`crate::procpool::worker_count_for_size`]).
+	/// No-op on backends that hold no process pool.
+	pub fn set_workspace_size(&self, width: i32, height: i32, fps: u32) {
+		let Some(pool) = &self.process_pool else {
+			return;
+		};
+		let slots = pool.slots_per_worker();
+		let slot_bytes = crate::procpool::slot_bytes_for(
+			width.max(1),
+			height.max(1),
+			pool.slot_format(),
+		);
+		let target = crate::procpool::worker_count_for_size(slots, slot_bytes, (width, height), fps);
+		pool.set_target_workers(target);
 	}
 
 	/// Pump the video backend's control plane (M15 S2): the process

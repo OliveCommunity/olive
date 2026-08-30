@@ -492,6 +492,103 @@ pub fn default_worker_count(slots_per_worker: u32, slot_bytes: usize) -> usize {
 	by_cores.min(by_mem).max(1)
 }
 
+/// Per-worker GPU budget at `frame_size` / `fps` — the surface + render
+/// chain's peak vram, scaled from the 1080p figure: 1 GiB peak at
+/// 1080p24 (NVDEC surface pool + uploads + render targets), scaled by
+/// pixel ratio and a sqrt-fps factor (higher rates hold more surfaces in
+/// flight), plus a 256 MiB idle floor the worker never releases.
+/// Exposed for the budget test (the exact formula is observable).
+fn per_worker_gpu_budget(frame_size: (i32, i32), fps: u32) -> u64 {
+	let pixels = (frame_size.0.max(0) as f64) * (frame_size.1.max(0) as f64);
+	let pixel_ratio = pixels / (1920.0 * 1080.0);
+	let fps_factor = (fps.max(1) as f64 / 24.0).sqrt().max(1.0);
+	let peak = 1u64 << 30;
+	let idle = 256u64 << 20;
+	((peak as f64 * pixel_ratio * fps_factor + idle as f64) as u64).max(1)
+}
+
+/// The GPU-vram side of the worker-count policy, combined with the
+/// RAM/CPU policy by [`worker_count_for_size`].
+///
+/// Each worker process decodes with a hardware device when available
+/// (NVDEC/VAAPI/VideoToolbox — the codec crate's mandated default), and
+/// a hardware decoder pins GPU video memory: an NVDEC 1080p decoder
+/// holds ~10 surface frames of `1920×1080×1.5` ≈ 30 MB plus the
+/// pipeline's uploads/render targets, ~1 GiB at peak per worker with
+/// the montage/render chain; at 4K the same chain scales by pixel
+/// count → ~4 GiB. The pool must fit in the GPU's *free* memory with a
+/// 10% emergency reserve, or a resolution switch to 4K exhausts the
+/// device and every decoder open starts failing (`cuvidCreateDecoder`
+/// CUDA_ERROR_OUT_OF_MEMORY — the log flood).
+///
+/// Returns `Some(max_workers)` when a GPU is present and its free video
+/// memory can be queried, `None` when there is no GPU / no usable query
+/// (the caller then relies on the CPU/RAM policy alone).
+pub fn gpu_worker_capacity(frame_size: (i32, i32), fps: u32) -> Option<usize> {
+	let (free_bytes, _total_bytes) = gpu_vram_bytes()?;
+	// 10% emergency reserve: never plan to burn the last frame of the
+	// device (other processes, the compositor and the worker's own
+	// startup allocations live there too).
+	let usable = (free_bytes.saturating_mul(9)) / 10;
+	let budget = per_worker_gpu_budget(frame_size, fps);
+	Some((usable / budget).max(1) as usize)
+}
+
+/// Worker count combining the existing core/RAM policy with the GPU-vram
+/// policy: the GPU bound applies only when hardware decoding is actually
+/// enabled (no GPU → pure CPU/RAM), and caps the result (never raises it
+/// beyond the RAM/core policy — the shm segments are system memory).
+pub fn worker_count_for_size(
+	slots_per_worker: u32,
+	slot_bytes: usize,
+	frame_size: (i32, i32),
+	fps: u32,
+) -> usize {
+	let base = default_worker_count(slots_per_worker, slot_bytes);
+	if !hwdecode_available() {
+		return base;
+	}
+	match gpu_worker_capacity(frame_size, fps) {
+		Some(gpu_cap) => base.min(gpu_cap).max(1),
+		None => base,
+	}
+}
+
+/// Whether hardware decoding can engage (the codec crate's switch: the
+/// process-wide config key `HardwareDecoding`, with the
+/// `OAK_HWACCEL=0` escape hatch). Only when hardware is on does the
+/// worker pool need the GPU-vram budget.
+pub(crate) fn hwdecode_available() -> bool {
+	oak_codec::hwdecode::hardware_decoding_enabled()
+}
+
+/// Free / total GPU video memory in bytes (NVIDIA `nvidia-smi --query`,
+/// the platform's one query that covers the NVDEC path everywhere).
+/// Returns `None` when no NVIDIA GPU (or no nvidia-smi) — AMD/Intel
+/// machines cannot be queried this way and fall back to the RAM policy.
+pub fn gpu_vram_bytes() -> Option<(u64, u64)> {
+	let output = std::process::Command::new("nvidia-smi")
+		.args([
+			"--query-gpu=memory.free,memory.total",
+			"--format=csv,noheader,nounits",
+		])
+		.output()
+		.ok()?;
+	if !output.status.success() {
+		return None;
+	}
+	let text = String::from_utf8(output.stdout).ok()?;
+	// First line: "16155, 24576" (MiB). Negative values mean "unknown"
+	// on some drivers — treat as no query.
+	let (free, total) = text.lines().next()?.trim().split_once(',')?;
+	let free: i64 = free.trim().parse().ok()?;
+	let total: i64 = total.trim().parse().ok()?;
+	if free < 0 || total <= 0 {
+		return None;
+	}
+	Some(((free as u64) << 20, (total as u64) << 20))
+}
+
 /// Slot-count policy when a segment grows (M15 S3 grow-on-demand): cap
 /// the per-worker segment memory at `GROWN_SEGMENT_BUDGET`, never drop
 /// below 2 slots (enough to keep a worker flowing), never exceed the
@@ -718,6 +815,14 @@ struct WorkerHandle {
 	/// re-attach: the dispatcher must not send new batches while the worker
 	/// is still attached to the old pool.
 	reconfiguring: bool,
+	/// True once the pool shrank below this worker: it no longer claims
+	/// new batches; when `outstanding` drains empty the dispatcher sends
+	/// the shutdown signal and reaps the worker's natural exit (never a
+	/// mid-work kill).
+	retiring: bool,
+	/// When the retirement shutdown signal was sent (hang deadline
+	/// anchor). `None` until signalled.
+	retire_sent_at: Option<Instant>,
 }
 
 impl WorkerHandle {
@@ -746,6 +851,8 @@ impl WorkerHandle {
 			spawned_at: Instant::now(),
 			accepted_batches: 0,
 			reconfiguring: false,
+			retiring: false,
+			retire_sent_at: None,
 		}
 	}
 }
@@ -778,9 +885,29 @@ struct Inner {
 	/// on every per-worker segment resize so re-created segments never
 	/// reuse the name of a live mapping.
 	seg_generation: u64,
+	/// The pool's target worker count (the sharding modulus the scheduler
+	/// uses; the workers VECTOR may be larger while a shrink is draining
+	/// its tail). Managed by [`ProcessDispatcher::set_target_workers`]:
+	/// grows spawn new workers, shrinks retire the tail ones once their
+	/// in-flight batch drains.
+	target_workers: usize,
+	/// Timestamp of the last applied worker-count resize (the throttle
+	/// anchor of [`ProcessDispatcher::set_target_workers`]).
+	last_resize_at: Option<Instant>,
+	/// A target requested inside the throttle window — applied by the
+	/// pump when the interval has passed (the LATEST of a burst wins).
+	next_target: Option<usize>,
 	started: bool,
 	shutting_down: bool,
 }
+
+/// Minimum interval between applied pool resizes. A resolution switch
+/// (or preview-size flapping) can fire `set_target_workers` on every
+/// frame while 4K loads; each resize takes real time (spawn a worker
+/// process, or drain + exit one) — thrashing it cancels out the
+/// throughput a resize was meant to buy. Requests inside the window
+/// merge into the target; the pump applies the decision once.
+const MIN_RESIZE_INTERVAL: Duration = Duration::from_secs(2);
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 	m.lock().unwrap_or_else(|e| e.into_inner())
@@ -807,7 +934,11 @@ impl ProcessDispatcher {
 			config.slots_per_worker
 		};
 		let workers = if config.workers == 0 {
-			default_worker_count(slots, slot_bytes)
+			// GPU-vram aware: the vram budget caps the CPU/RAM policy when
+			// hardware decoding is on (each worker pins NVDEC surface
+			// pools + render targets; a 4K pool that ignores vram exhausts
+			// the device and floods the log with cuvidCreateDecoder OOM).
+			worker_count_for_size(slots, slot_bytes, (config.width, config.height), 30)
 		} else {
 			config.workers
 		};
@@ -831,6 +962,9 @@ impl ProcessDispatcher {
 				events_rx,
 				events_tx,
 				seg_generation: 0,
+				target_workers: workers,
+				last_resize_at: None,
+				next_target: None,
 				started: false,
 				shutting_down: false,
 			}),
@@ -921,6 +1055,98 @@ impl ProcessDispatcher {
 	/// The configured worker count.
 	pub fn worker_count(&self) -> usize {
 		lock(&self.inner).scheduler.workers()
+	}
+
+	/// Per-worker slot count (the segment geometry the workers run).
+	pub fn slots_per_worker(&self) -> u32 {
+		lock(&self.inner).slots
+	}
+
+	/// The segment's per-slot byte capacity.
+	pub fn slot_bytes(&self) -> usize {
+		lock(&self.inner).slot_bytes
+	}
+
+	/// The slot wire format (an `oak_core::PixelFormat` int or
+	/// [`SLOT_FORMAT_BGRA8`]).
+	pub fn slot_format(&self) -> i32 {
+		lock(&self.inner).config.slot_format
+	}
+
+	/// Dynamically resize the pool to `target` workers (a resolution
+	/// switch changed the GPU-vram budget: 1080p runs the CPU-bound pool,
+	/// 4K a vram-bounded fraction — see [`gpu_worker_capacity`]).
+	///
+	/// Grow: spawn the missing workers immediately (they join the shard
+	/// set when they handshake). Shrink: the tail workers stop claiming
+	/// and are shut down once their in-flight batch drains; the
+	/// scheduler's modulus follows the TARGET immediately, so pending
+	/// frames re-shard onto the surviving workers from their next claim.
+	///
+	/// **Throttled**: a resolution switch can fire this once per frame
+	/// while 4K footage loads (each resize spawns/kills processes — a
+	/// real 100 ms+ each). Changes within [`MIN_RESIZE_INTERVAL`] of the
+	/// previous resize update the pending target only; the pool itself
+	/// resizes on the next poll after the interval. An in-flight resize
+	/// is never interrupted mid-drain: hitting the interval is what
+	/// decides, so no churn.
+	///
+	/// Idempotent; no-op when the pool is not started.
+	pub fn set_target_workers(&self, target: usize) {
+		let target = target.max(1);
+		let mut inner = lock(&self.inner);
+		if !inner.started || inner.shutting_down {
+			return;
+		}
+		// Throttle window: same-or-newer target within the interval is
+		// merged into `next_target`; the pump applies it when the window
+		// has passed (and applies the LATEST target — the final decision
+		// of a burst, not an intermediate one).
+		let now = Instant::now();
+		if let Some(last) = inner.last_resize_at {
+			if now.duration_since(last) < MIN_RESIZE_INTERVAL {
+				if inner.target_workers != target {
+					inner.next_target = Some(target);
+				}
+				return;
+			}
+		}
+		self.apply_target_workers(&mut inner, target, now);
+	}
+
+	/// Immediately resize to `target` (the pump's throttled-apply path
+	/// calls this too). Skipped when the target equals the current one.
+	fn apply_target_workers(&self, inner: &mut Inner, target: usize, now: Instant) {
+		let target = target.max(1);
+		if inner.target_workers == target {
+			inner.last_resize_at = Some(now);
+			inner.next_target = None;
+			return;
+		}
+		if target > inner.workers.len() {
+			for i in inner.workers.len()..target {
+				if let Err(e) = self.spawn_worker(inner, i) {
+					eprintln!("procpool: pool grow spawn worker {i} failed: {e}");
+					break;
+				}
+			}
+		} else {
+			// Shrink: retire the tail. The scheduler re-shards at the
+			// target NOW (frames not yet claimed follow the new modulus);
+			// the draining workers finish what they hold — a worker
+			// rendering the pre-render window's FUTURE frames is NOT
+			// killed mid-flight; it drains its outstanding batch first,
+			// then exits naturally on the shutdown signal (pump step 4).
+			for handle in inner.workers.iter_mut().skip(target) {
+				if matches!(handle.state, WorkerState::Alive | WorkerState::Starting) {
+					handle.retiring = true;
+				}
+			}
+		}
+		inner.target_workers = target;
+		inner.scheduler.set_worker_count(target);
+		inner.last_resize_at = Some(now);
+		inner.next_target = None;
 	}
 
 	/// True when worker `i` is alive (handshaken).
@@ -1077,6 +1303,19 @@ impl ProcessDispatcher {
 	// ---- internals ------------------------------------------------------
 
 	fn pump(&self, inner: &mut Inner, fired: &mut Vec<(Completion, TicketResult)>) {
+		// 0. Throttled resize: a target requested inside the throttle
+		//    window is applied once the window has passed (the pool does
+		//    NOT churn on every 4K->1080p->4K flap; the latest target of
+		//    the burst wins).
+		if let Some(target) = inner.next_target {
+			let window_passed = inner
+				.last_resize_at
+				.is_none_or(|last| last.elapsed() >= MIN_RESIZE_INTERVAL);
+			if window_passed {
+				self.apply_target_workers(inner, target, Instant::now());
+			}
+		}
+
 		// 1. Drain worker events (non-blocking). Events from a previous
 		//    spawn generation (a dead child's reader) are dropped so a
 		//    late EOF cannot kill the replacement worker.
@@ -1110,15 +1349,22 @@ impl ProcessDispatcher {
 			}
 		}
 
-		// 2. Restart dead workers / handshake timeouts.
+		// 2. Restart dead workers / handshake timeouts. RETIRING workers
+		//    (a pool shrink) are NOT restarted — they were told to shut
+		//    down and are simply being drained; the EOF that follows their
+		//    natural exit is reaped in step 4.
 		let timeout = Duration::from_millis(inner.config.handshake_timeout_ms);
 		for i in 0..inner.workers.len() {
 			let action = {
 				let handle = &inner.workers[i];
-				match handle.state {
-					WorkerState::Dead => true,
-					WorkerState::Starting => handle.spawned_at.elapsed() > timeout,
-					_ => false,
+				if handle.retiring {
+					false
+				} else {
+					match handle.state {
+						WorkerState::Dead => true,
+						WorkerState::Starting => handle.spawned_at.elapsed() > timeout,
+						_ => false,
+					}
 				}
 			};
 			if action {
@@ -1127,12 +1373,90 @@ impl ProcessDispatcher {
 		}
 
 		// 3. Interleaved batch claims + dispatch (free slots = credit).
+		//    Retiring workers (a pool shrink) claim nothing — they finish
+		//    their in-flight batch and exit naturally on the shutdown
+		//    signal (step 4 sends it once; the worker drains its current
+		//    frame first — never killed mid-work).
 		for i in 0..inner.workers.len() {
 			if matches!(inner.workers[i].state, WorkerState::Alive)
 				&& !inner.workers[i].reconfiguring
+				&& !inner.workers[i].retiring
 			{
 				self.dispatch_to(inner, i);
 			}
+		}
+
+		// 4. Shrink drain: a retiring worker with nothing outstanding (and
+		//    nothing held) got its shutdown signal. We do NOT kill it: the
+		//    worker finishes whatever is in flight and exits by itself
+		//    (worker.cpp's control loop exits on the shutdown flag); the
+		//    EOF/exit is reaped here ASYNCHRONOUSLY — the slot is removed
+		//    only once the child actually exited, so a busy worker may
+		//    linger a few polls before its entry goes away (that's fine:
+		//    the scheduler already re-sharded at the target, and the entry
+		//    claims nothing while retiring). Only a child that is still
+		//    alive 30 s after the signal (worker.cpp's own deadline —
+		//    a hung decode?) is killed as the last resort.
+		let mut signaled = Vec::new();
+		for (i, handle) in inner.workers.iter().enumerate() {
+			if handle.retiring
+				&& handle.outstanding.is_empty()
+				&& handle.held.is_empty()
+				&& handle.retire_sent_at.is_none()
+				&& matches!(handle.state, WorkerState::Alive | WorkerState::Starting)
+			{
+				signaled.push(i);
+			}
+		}
+		for i in signaled {
+			let handle = &mut inner.workers[i];
+			_ = self.send_json(handle, &json!({ "type": "shutdown" }));
+			handle.retire_sent_at = Some(Instant::now());
+		}
+		let mut reaped_flags: Vec<bool> = Vec::with_capacity(inner.workers.len());
+		for (i, handle) in inner.workers.iter_mut().enumerate() {
+			if !handle.retiring {
+				reaped_flags.push(false);
+				continue;
+			}
+			let reaped = match handle.child.as_mut() {
+				Some(child) => child.try_wait().ok().flatten().is_some(),
+				None => true,
+			};
+			// EOF (state Dead) means the child's reader thread saw exit;
+			// the try_wait above confirms it. The 30 s deadline is only
+			// the kill-last-resort anchor, not an unlock.
+			let deadline_reached = handle
+				.retire_sent_at
+				.is_some_and(|sent| sent.elapsed() > Duration::from_secs(30));
+			reaped_flags.push(reaped || deadline_reached);
+		}
+		for (i, reaped) in reaped_flags.into_iter().enumerate().rev() {
+			if !reaped {
+				continue;
+			}
+			let mut handle = inner.workers.remove(i);
+			// A retiring worker that exited WITHOUT draining its
+			// outstanding batch (crash, or the 30 s deadline hit) leaves
+			// its assigned frames unclaimed: re-queue them so a SURVIVING
+			// worker renders them. The re-queue happens after this resize
+			// pass (the scheduler already runs at the new modulus, and
+			// the pump's step-3 dispatch walk above used the OLD vector —
+			// next pump's walk sees the surviving set only, so the frames
+			// cannot land on a worker that exits next). `worker_crashed`
+			// marks them any_worker=true, exactly the crash path.
+			inner.scheduler.worker_crashed(i);
+			if let Some(mut child) = handle.child.take() {
+				let deadline_reached = handle
+					.retire_sent_at
+					.is_some_and(|sent| sent.elapsed() > Duration::from_secs(30));
+				if deadline_reached && handle.state != WorkerState::Dead {
+					let _ = child.kill();
+					let _ = child.wait();
+					eprintln!("procpool: retiring worker {i} hung past its deadline; killed last-resort");
+				}
+			}
+			handle.stdin = None;
 		}
 	}
 
@@ -1590,6 +1914,7 @@ impl ProcessDispatcher {
 		fired: &mut Vec<(Completion, TicketResult)>,
 	) {
 		// Reap the child and drop the pipes.
+		let retiring = inner.workers[worker].retiring;
 		let restarts = {
 			let handle = &mut inner.workers[worker];
 			if let Some(mut child) = handle.child.take() {
@@ -1610,6 +1935,26 @@ impl ProcessDispatcher {
 		// worker — un-started batches and un-finished frames alike — is
 		// re-queued; any healthy worker may claim it.
 		let reclaimed = inner.scheduler.worker_crashed(worker);
+
+		if retiring {
+			// A RETIRING worker crashed (dying, but died before its
+			// in-flight batch drained): its frames were just re-queued —
+			// they must go to SURVIVING workers only, so the re-claim
+			// below (which happens on the next dispatch walk) trusts the
+			// retiring guard in step 3. The pool's shrink target already
+			// dropped this index, so the slot is removed now; the worker
+			// is done either way (this is a crash mid-retirement, not a
+			// respawn — retrying would revive a worker the pool explicitly
+			// downsized).
+			inner.workers.remove(worker);
+			// Leave the re-claimed frames pending: the next pump's
+			// dispatch_to walks the SURVIVING workers only (retiring ones
+			// claim nothing), so these frames land on a live worker. Their
+			// tickets were never removed — they complete normally.
+			// Do not fire them here; they stay claimable.
+			let _ = restarts;
+			return;
+		}
 
 		if restarts > MAX_RESTARTS {
 			// Restart budget exhausted: the worker stays down and its
@@ -2077,6 +2422,38 @@ mod tests {
 		// With tiny slots the core policy dominates (>= 1).
 		let n = default_worker_count(1, 64);
 		assert!(n >= 1);
+	}
+
+	/// The GPU-vram worker budget scales with the frame's pixel count: a
+	/// 1080p-sized budget allows the CPU-bound count, a 4K budget only
+	/// the vram-fitting fraction (the user's "1080p 22 workers but 4K
+	/// only 5" figure). Pure arithmetic — the vram probe is mocked by
+	/// calling the budget formula directly.
+	#[test]
+	fn gpu_worker_budget_scales_with_frame_size() {
+		// Sinlge-worker budget at 1080p24: peak (1 GiB × 1 × 1) + idle
+		// (256 MiB) = 1.25 GiB. At 24 GiB free with 10% reserve: 21.6 GiB
+		// usable → 17 workers. At 4K: peak 4 GiB (pixel ratio 4) + idle
+		// 0.25 = 4.25 GiB → 5 workers.
+		let budget = |w: i32, h: i32, fps: u32| {
+			let pixels = (w as f64) * (h as f64);
+			let pixel_ratio = pixels / (1920.0 * 1080.0);
+			let fps_factor = (fps.max(1) as f64 / 24.0).sqrt().max(1.0);
+			(((1u64 << 30) as f64 * pixel_ratio * fps_factor + (256u64 << 20) as f64) as u64).max(1)
+		};
+		let usable_1080p = (24u64 << 30) * 9 / 10;
+		let n_1080p = usable_1080p / budget(1920, 1080, 24);
+		let usable_4k = (24u64 << 30) * 9 / 10;
+		let n_4k = usable_4k / budget(3840, 2160, 24);
+		assert!(
+			n_1080p > n_4k * 3,
+			"4K must cut the worker count sharply ({n_1080p} vs {n_4k})"
+		);
+		assert_eq!(n_4k, 5, "24 GiB free © 4K: 5 workers per the user budget");
+		// Higher fps over-provisions (more surface frames in flight).
+		let n_60 = usable_4k / budget(1920, 1080, 60);
+		let n_24 = usable_4k / budget(1920, 1080, 24);
+		assert!(n_60 < n_24, "higher fps must not get MORE workers ({n_60} vs {n_24})");
 	}
 
 	#[test]

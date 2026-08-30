@@ -793,6 +793,14 @@ static DECODERS: std::sync::OnceLock<
 /// covers heavy multi-clip montages without reopen thrash; eviction only
 /// drops the map entry — an in-flight render keeps its Arc alive and the
 /// session dies with the last reference (Drop releases FFmpeg).
+///
+/// Eviction is hardware-first: hardware sessions pin GPU memory (each
+/// NVDEC decoder holds a surface pool — ~100 MB at 4K), so a full cache
+/// with live hardware sessions can exhaust the GPU's video memory and
+/// make the NEXT decoder open fail with `cuvidCreateDecoder` OOM (the
+/// "4K 切换后大量 CUDA_ERROR_OUT_OF_MEMORY 报错" log flood). Software
+/// sessions (system RAM only) are evicted only when nothing else is
+/// available.
 const MAX_CACHED_DECODERS: usize = 16;
 
 /// LRU tick source for [`DECODERS`].
@@ -807,6 +815,29 @@ fn decoders(
 		.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
 		.lock()
 		.unwrap_or_else(|e| e.into_inner())
+}
+
+/// Pick the victim to evict under the LRU cap: the least-recently-used
+/// HARDWARE session when one exists (freeing GPU video memory first,
+/// which is the scarce resource), otherwise the least-recently-used
+/// session of any kind.
+fn eviction_victim(
+	cache: &std::collections::HashMap<
+		(String, i32),
+		(Arc<dyn oak_codec::decoder::Decoder>, u64),
+	>,
+) -> Option<(String, i32)> {
+	cache
+		.iter()
+		.filter(|(_, (decoder, _))| decoder.hardware_decoding())
+		.min_by_key(|(_, (_, t))| *t)
+		.map(|(k, _)| k.clone())
+		.or_else(|| {
+			cache
+				.iter()
+				.min_by_key(|(_, (_, t))| *t)
+				.map(|(k, _)| k.clone())
+		})
 }
 
 /// Open (or reuse) the decoder session for `(filename, stream_index)`.
@@ -826,14 +857,13 @@ fn open_decoder(filename: &str, stream_index: i32) -> Result<Arc<dyn oak_codec::
 		.open(&stream)
 		.map_err(|e| Error::Failed(format!("footage decode open: {e:?}")))?;
 	let mut cache = decoders();
-	// LRU eviction: the session is dropped here, but an in-flight render
-	// holds its own Arc — the FFmpeg context dies with the last reference.
+	// LRU eviction: hardware-first (free the GPU memory a full cache of
+	// hardware sessions pins — the scarcity that breaks the next open);
+	// the victim is dropped here, but an in-flight render holds its own
+	// Arc — the FFmpeg context (and its GPU surface pool) dies with the
+	// last reference.
 	while cache.len() >= MAX_CACHED_DECODERS {
-		let victim = cache
-			.iter()
-			.min_by_key(|(_, (_, t))| *t)
-			.map(|(k, _)| k.clone());
-		let Some(victim) = victim else {
+		let Some(victim) = eviction_victim(&cache) else {
 			break;
 		};
 		cache.remove(&victim);
