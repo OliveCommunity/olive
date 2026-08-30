@@ -69,7 +69,7 @@ jobs:
                 libasound2-dev libpulse-dev libsndfile1-dev \
                 libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
                 libvulkan-dev libxkbcommon-dev libxkbcommon-x11-dev \
-                librsvg2-bin libffnvcodec-dev libopencolorio-dev
+                librsvg2-bin libffnvcodec-dev
               ;;
             fedora)
               dnf install -y \
@@ -79,7 +79,7 @@ jobs:
                 mesa-libGL-devel mesa-vulkan-drivers \
                 vulkan-headers vulkan-loader-devel \
                 libxkbcommon-devel libxkbcommon-x11-devel \
-                rpm-build librsvg2-tools OpenColorIO-devel
+                rpm-build librsvg2-tools
               # ffnvcodec headers (NVDEC for the project FFmpeg build) are
               # not in Fedora's base repos (RPM Fusion only); they are
               # distribution-free headers, so install them from source.
@@ -92,15 +92,15 @@ jobs:
                 pipewire jack2 alsa-lib libpulse libsndfile \
                 mesa vulkan-headers vulkan-icd-loader \
                 libxkbcommon libxkbcommon-x11 librsvg \
-                ffnvcodec-headers opencolorio
+                ffnvcodec-headers
               ;;
           esac
 
       - name: Configure build environment
         run: |
-          # tooling/ocio-env.sh: use a system OCIO >= 2.5 when present
-          # (vendored 2.5.2 fails on GCC >= 16), static when the package
-          # ships libOpenColorIO.a; otherwise the vendored static build.
+          # tooling/ocio-env.sh: vendored static OCIO everywhere it
+          # builds (the [patch.crates-io] ocio-sys tracks shaloong/ocio-rs
+          # main, whose vendored sources build on GCC >= 16).
           tooling/ocio-env.sh >> "$GITHUB_ENV"
 
       # TEMP: cache disabled until the Gitea instance cache is provisioned (Cache cargo artifacts)
@@ -172,7 +172,7 @@ jobs:
             libasound2-dev libpulse-dev libsndfile1-dev \
             libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
             libvulkan-dev libxkbcommon-dev libxkbcommon-x11-dev \
-            libffnvcodec-dev libopencolorio-dev
+            libffnvcodec-dev
 
       - name: Configure build environment
         run: tooling/ocio-env.sh >> "$GITHUB_ENV"
@@ -234,11 +234,10 @@ jobs:
 
       - name: Configure build environment
         run: |
+          # Vendored static OCIO (same as every non-Windows platform via
+          # tooling/ocio-env.sh); no OCIO_INSTALL_DIR override.
+          tooling/ocio-env.sh >> "$GITHUB_ENV"
           {
-            # OCIO comes from the ocio-sys vendored source build (same on
-            # every platform); no OCIO_INSTALL_DIR override.
-            echo "OCIO_RS_ENABLE_REAL=1"
-            echo "OCIO_RS_LINK=static"
             echo "CFLAGS=-I/opt/homebrew/include"
             echo "LDFLAGS=-L/opt/homebrew/lib"
             echo "PKG_CONFIG_PATH=/opt/homebrew/lib/pkgconfig/openjpeg"

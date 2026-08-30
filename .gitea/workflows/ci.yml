@@ -41,7 +41,6 @@ jobs:
           # X11, software Mesa Vulkan (lavapipe) and xvfb.
           sudo apt-get install -y \
             cmake \
-            libopencolorio-dev \
             libpipewire-0.3-dev libspa-0.2-dev libjack-jackd2-dev \
             libasound2-dev libpulse-dev libsndfile1-dev \
             libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
@@ -53,9 +52,9 @@ jobs:
       # ocio-sys builds a stub bridge unless these are set; the oak-common
       # ocioutils tests need the real library (see crates/oak-common/.cargo/
       # config.toml, which only applies to builds run from that directory).
-      # tooling/ocio-env.sh picks a system OCIO >= 2.5 when present
-      # (vendored 2.5.2 fails on GCC >= 16) and otherwise falls back to
-      # the vendored static build.
+      # tooling/ocio-env.sh: vendored static OCIO (the [patch.crates-io]
+      # ocio-sys tracks shaloong/ocio-rs main, whose vendored sources build
+      # on GCC >= 16).
       - name: Configure build environment
         run: |
           tooling/ocio-env.sh >> "$GITHUB_ENV"

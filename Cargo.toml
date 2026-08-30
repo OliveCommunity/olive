@@ -72,4 +72,4 @@ opt-level = 1
 # GCC >= 16; the fork carries exactly that fix (d39c509) until a fixed
 # release lands on crates.io.
 [patch.crates-io]
-ocio-sys = { git = "https://github.com/shaloong/ocio-rs.git" }
+ocio-sys = { git = "https://github.com/shaloong/ocio-rs.git", branch = "main" }

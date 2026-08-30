@@ -19,18 +19,14 @@
 # line — append to $GITHUB_ENV in CI/CD (`tooling/ocio-env.sh >> "$GITHUB_ENV"`)
 # or eval locally.
 #
-# Policy:
-#   1. Prefer a SYSTEM OpenColorIO >= 2.5 (the bridge's API floor). The
-#      vendored 2.5.2 source build FAILS on GCC >= 16 — its bundled
-#      yaml-cpp relied on stdint.h being included transitively, which
-#      GCC 16 no longer does (measured: yaml-cpp emitterutils.cpp).
-#      Link the system OCIO STATICALLY when the package ships
-#      libOpenColorIO.a (e.g. MSYS2); distro packages that only ship the
-#      shared object (Arch, Debian, Fedora) leave dynamic as the only
-#      way to use the prebuilt library.
-#   2. With no suitable system OCIO (too old or absent), fall back to
-#      the vendored-source static build (ocio-sys `bundled`, no
-#      OCIO_INSTALL_DIR) — which needs GCC < 16.
+# Policy: VENDORED OpenColorIO, statically linked, everywhere it builds.
+# The [patch.crates-io] ocio-sys tracks shaloong/ocio-rs main, whose
+# vendored yaml-cpp carries the <cstdint> include the 0.2.1 crate is
+# missing (without it the vendored build fails on GCC >= 16).
+# Windows/MinGW is the exception: the vendored OCIO source needs
+# MSVC-only constructs, so the MSYS2 system package is used instead —
+# statically when it ships libOpenColorIO.a, dynamically otherwise (the
+# CD packaging then bundles the DLL next to the binaries).
 #
 # Pre-set OCIO_RS_LINK / OCIO_INSTALL_DIR are honored, never clobbered.
 
@@ -45,20 +41,29 @@ fi
 
 echo "OCIO_RS_ENABLE_REAL=1"
 
-if pkg-config --exists 'OpenColorIO >= 2.5' 2>/dev/null; then
-	libdir=$(pkg-config --variable=libdir OpenColorIO)
-	prefix=$(pkg-config --variable=prefix OpenColorIO)
-	link=dynamic
-	for dir in "$libdir" "$prefix/lib" "$prefix"; do
-		if [ -f "$dir/libOpenColorIO.a" ]; then
-			link=static
-			break
+case "$(uname -s)" in
+	MINGW* | MSYS* | CYGWIN*)
+		if pkg-config --exists 'OpenColorIO >= 2.5' 2>/dev/null; then
+			libdir=$(pkg-config --variable=libdir OpenColorIO)
+			prefix=$(pkg-config --variable=prefix OpenColorIO)
+			link=dynamic
+			for dir in "$libdir" "$prefix/lib" "$prefix"; do
+				if [ -f "$dir/libOpenColorIO.a" ]; then
+					link=static
+					break
+				fi
+			done
+			echo "OCIO_INSTALL_DIR=$prefix"
+			echo "OCIO_RS_LINK=$link"
+			exit 0
 		fi
-	done
-	echo "OCIO_INSTALL_DIR=$prefix"
-	echo "OCIO_RS_LINK=$link"
-	exit 0
-fi
-
-# No usable system OCIO: vendored-source static build (needs GCC < 16).
-echo "OCIO_RS_LINK=static"
+		echo "error: no system OpenColorIO >= 2.5 on Windows, and the vendored" >&2
+		echo "source does not build with MinGW — cannot configure OCIO." >&2
+		exit 1
+		;;
+	*)
+		# Vendored-source static build (ocio-sys `bundled`; no
+		# OCIO_INSTALL_DIR).
+		echo "OCIO_RS_LINK=static"
+		;;
+esac
