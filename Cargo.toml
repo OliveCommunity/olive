@@ -68,8 +68,10 @@ debug-assertions = false
 [profile.dev]
 opt-level = 1
 
-# ocio-sys 0.2.1's vendored yaml-cpp misses <cstdint> and fails to build on
-# GCC >= 16; the fork carries exactly that fix (d39c509) until a fixed
-# release lands on crates.io.
+# ocio-sys 0.2.1's vendored sources fail to build on GCC >= 16 (yaml-cpp
+# misses <cstdint>) and misdetect a system zlib-ng (minizip-ng then emits
+# zng_* symbols the vendored zlib cannot satisfy). The fork tracks
+# shaloong/ocio-rs main plus both build fixes; return to the crates.io
+# release once it carries them.
 [patch.crates-io]
-ocio-sys = { git = "https://github.com/shaloong/ocio-rs.git", branch = "main" }
+ocio-sys = { git = "https://github.com/Mike-Solar/ocio-rs.git", branch = "main" }

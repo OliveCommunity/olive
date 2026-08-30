@@ -5208,7 +5208,7 @@ dependencies = [
 [[package]]
 name = "ocio-sys"
 version = "0.2.1"
-source = "git+https://github.com/shaloong/ocio-rs.git?branch=main#933c65dc4e8e4e22767174f0e22b07fe7af42e07"
+source = "git+https://github.com/Mike-Solar/ocio-rs.git?branch=main#ddb677d8a71d1047c2dd3f8a04fc88f7c5c23ccc"
 dependencies = [
  "cc",
  "cmake",
