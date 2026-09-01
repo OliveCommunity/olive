@@ -40,7 +40,7 @@ use gpui::node_graph::{NodeGraphDataSource, NodeGraphEvent};
 use gpui::timeline::{
 	ClipId, Frame, FrameRate, TimelineDataSource, TimelineEvent, TrackData, TrackKind,
 };
-use gpui::{App, Context, Entity, Pixels, Point, Rgba, RenderImage};
+use gpui::{App, Context, Entity, Pixels, Point, Rgba, RenderImage, SharedString};
 use gpui_widgets::audio_meter::AudioMeterDataSource;
 use gpui_widgets::project_explorer::ProjectDataSource;
 use gpui_widgets::viewer::PlaybackClock;
@@ -532,6 +532,12 @@ pub trait AppEngine:
 		None
 	}
 
+	/// The display name of project-entry `id` (the rename dialog's seed).
+	fn project_entry_name(&self, id: u64) -> Option<SharedString> {
+		let _ = id;
+		None
+	}
+
 	/// Replaces the footage of project-explorer entry `id` with the media
 	/// file at `path` (the C++ `ReplaceFootage` flow). Default:
 	/// unsupported.
@@ -543,6 +549,19 @@ pub trait AppEngine:
 	) -> Result<(), String> {
 		let _ = (id, path, cx);
 		Err("replace footage not supported".into())
+	}
+
+	/// Renames the project-explorer entry `id` (footage / folder /
+	/// sequence) in the project model. Default: unsupported.
+	fn rename_entry(&mut self, id: u64, new_name: String, cx: &mut Context<Self>) {
+		let _ = (id, new_name, cx);
+	}
+
+	/// Deletes the project-explorer entry `id` (footage / folder /
+	/// sequence) and its graph neighborhoods — ONE undoable entry. Default:
+	/// unsupported.
+	fn delete_entry(&mut self, id: u64, cx: &mut Context<Self>) {
+		let _ = (id, cx);
 	}
 
 	// -------------------------------------------------------------------
@@ -974,6 +993,13 @@ pub trait AppEngine:
 		false
 	}
 
+	/// Opens the sequence `id` in the timeline (the project-explorer
+	/// double-click on a sequence entry). Default no-op for engines
+	/// without sequence tabs.
+	fn open_sequence_id(&mut self, id: u64, cx: &mut Context<Self>) {
+		let _ = (id, cx);
+	}
+
 	/// The sequence parameters of `id` (the sequence-properties dialog
 	/// seed), or `None` when the entry is not a sequence.
 	fn sequence_parameters(&self, id: u64) -> Option<SequenceParameters> {
@@ -1210,6 +1236,50 @@ pub trait AppEngine:
 	/// the status bar.
 	fn backend_name(&self) -> &'static str;
 
+	// -------------------------------------------------------------------
+	// Multicam wizard (the C++ Multicam dialog + auto-sync): creating a
+	// new multicam sequence from a set of footage angles, with optional
+	// audio-waveform auto alignment. Defaults degrade to "unsupported",
+	// so engines without the real project surface keep compiling.
+	// -------------------------------------------------------------------
+
+	/// The footage entries the multicam wizard can offer (project-root
+	/// footage not already inside a multicam). `None` = no wizard data
+	/// source (the dialog's angle picker stays empty).
+	fn multicam_wizard_footage(&self) -> Option<Vec<WizardFootage>> {
+		None
+	}
+
+	/// Estimate the audio alignment offsets between the wizard's selected
+	/// angles (the first selected footage is the reference; each other
+	/// angle gets a sample offset relative to it, estimated by the RMS
+	/// envelope correlation). Returns `Err` when the engine cannot run
+	/// the correlation (missing audio / too short) — the wizard then falls
+	/// back to timecode alignment.
+	fn multicam_wizard_sync_offsets(
+		&self,
+		_selected: &[WizardFootage],
+	) -> Result<Vec<WizardSyncOffset>, String> {
+		Err("offline sync not supported".to_string())
+	}
+
+	/// Creates the multicam sequence: a new sequence with one video track
+	/// per selected angle (top track = angle 0), each track carrying a
+	/// clip of the corresponding footage placed at `offsets[i]` seconds
+	/// (waveform-sync offsets, or the source timecode delta, or 0), plus a
+	/// multicam node feeding a fresh clip on the CURRENT timeline's top
+	/// video track at the playhead. One undo entry. Returns the sequence
+	/// identity (the app opens it).
+	fn multicam_create_sequence(
+		&mut self,
+		_selected: Vec<WizardFootage>,
+		_offsets: Vec<f64>,
+		_name: String,
+		_cx: &mut Context<Self>,
+	) -> Result<u64, String> {
+		Err("multicam wizard not supported".to_string())
+	}
+
 	/// Arms or disarms the program viewer's eyedropper. While armed the
 	/// viewer samples the pixel under the cursor on click and reports it via
 	/// [`Self::eyedropper_picked`]; the OFX color picker drives both.
@@ -1258,6 +1328,41 @@ pub struct MulticamState {
 	pub source_count: i32,
 	/// The currently selected source index (`current_in`).
 	pub current_source: i32,
+}
+
+/// One angle candidate of the multicam wizard: a root-level footage entry
+/// the user can pick for the new multicam sequence.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WizardFootage {
+	/// The project-explorer entry id (the footage node identity).
+	pub id: u64,
+	/// Display name (the explorer label — usually the file name).
+	pub name: SharedString,
+	/// The footage's source timecode, if the media carries one (the
+	/// absolute reference for the no-audio sync fallback).
+	pub source_timecode: Option<i64>,
+	/// The footage's duration in seconds (`None` = not probed).
+	pub duration_s: Option<f64>,
+	/// Whether the footage has a decodable audio stream (sync via RMS
+	/// envelope requires one; `None` = not probed).
+	pub has_audio: Option<bool>,
+}
+
+/// The audio-sync alignment result of one angle relative to the wizard's
+/// reference angle (`estimate_offset` semantics: the candidate's media
+/// time that matches the reference's media time 0 — a NEGATIVE offset
+/// means the candidate starts earlier).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct WizardSyncOffset {
+	/// The angle's project-explorer entry id (the same value the wizard
+	/// selected).
+	pub footage: u64,
+	/// Offset in seconds relative to the reference (the first selected
+	/// footage gets 0.0).
+	pub offset_s: f64,
+	/// Normalized correlation confidence in `[0, 1]` (`None` when the
+	/// offset came from timecode alignment, not the audio correlation).
+	pub confidence: Option<f64>,
 }
 
 /// The lifecycle state of one footage's proxy (the UI mirror of

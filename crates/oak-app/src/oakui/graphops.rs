@@ -389,6 +389,19 @@ pub fn node_type_id(g: &Graph, id: NodeId) -> String {
 		.unwrap_or_default()
 }
 
+/// The project's multicam nodes (the wizard/sequence drop rewire uses the
+/// one whose source sequence matches).
+pub fn multicam_nodes(g: &Graph) -> Vec<NodeId> {
+	g.node_ids()
+		.into_iter()
+		.filter(|&id| {
+			g.get(id)
+				.map(|e| e.behavior.type_id() == "org.olivevideoeditor.Olive.multicam")
+				.unwrap_or(false)
+		})
+		.collect()
+}
+
 /// The sequence's video format `(width, height, rate)` from its first
 /// video stream.
 pub fn sequence_video_params(g: &Graph, seq: NodeId) -> Option<(i32, i32, Rational)> {
@@ -1488,6 +1501,86 @@ pub fn place_footage_clip(
 	)
 	.to_command();
 	let edge = connect_command(p, footage, clip, oak_node::block::clip_input::TEXTURE_INPUT)?;
+	push_multi(vec![place, edge], "Add Clip")?;
+	Ok(clip)
+}
+
+/// Places ONE video clip fed by a sequence node — a nested-sequence clip
+/// (drag a sequence entry from the project explorer onto the timeline).
+/// The clip reads the sequence's output during playback; the sequence's
+/// own tracks stay in the source sequence (a frame, not a folder of
+/// tracks, on the host timeline).
+pub fn place_nested_sequence_clip(
+	p: &ProjectRef,
+	host_seq: NodeId,
+	source_seq: NodeId,
+	track_index: usize,
+	in_ts: i64,
+	out_ts: i64,
+) -> Result<NodeId, String> {
+	if in_ts < 0 || out_ts <= in_ts {
+		return Err("invalid clip range (need 0 <= in < out)".to_string());
+	}
+	let (tb, list, source_behavior) = {
+		let g = lock(p);
+		let s = sequence_behavior(&g.graph, source_seq)
+			.ok_or_else(|| "the source sequence is not in the project".to_string())?;
+		let tb = sequence_time_base(&g.graph, host_seq)
+			.ok_or_else(|| "host sequence has no valid frame rate".to_string())?;
+		let list = track_list_of(&g.graph, host_seq, TrackType::Video)
+			.ok_or_else(|| "host sequence has no video track list".to_string())?;
+		let label = format!("{}（序列）", node_label(&g.graph, source_seq));
+		(tb, list, label)
+	};
+	let track_count = {
+		let g = lock(p);
+		track_list_behavior(&g.graph, list)
+			.map(|l| l.tracks.len())
+			.unwrap_or(0)
+	};
+	if track_index >= track_count {
+		return Err(format!(
+			"track index {track_index} out of range ({track_count} tracks)"
+		));
+	}
+
+	let in_r = ts_to_rational(in_ts, tb);
+	let out_r = ts_to_rational(out_ts, tb);
+	let length = out_r - in_r;
+
+	let clip = {
+		let mut g = lock(p);
+		let (ccore, cbehavior) = oak_node::block::clip_create();
+		let mut core = ccore;
+		core.label = source_behavior;
+		g.graph.add_node(core, cbehavior)
+	};
+	{
+		let mut g = lock(p);
+		let Some(clip_behavior) = g
+			.graph
+			.get_mut(clip)
+			.and_then(|e| e.behavior.as_any_mut())
+			.and_then(|a| a.downcast_mut::<oak_node::block::ClipBlockBehavior>())
+		else {
+			return Err("clip node is not a clip".to_string());
+		};
+		clip_behavior.core.range = oak_core::TimeRange::new(in_r, length);
+	}
+
+	let place = oak_timeline::undopointer::TrackPlaceBlockCommand::new(
+		node_ref(p, list),
+		track_index as i32,
+		node_ref(p, clip),
+		in_r,
+	)
+	.to_command();
+	let edge = connect_command(
+		p,
+		source_seq,
+		clip,
+		oak_node::block::clip_input::TEXTURE_INPUT,
+	)?;
 	push_multi(vec![place, edge], "Add Clip")?;
 	Ok(clip)
 }

@@ -87,7 +87,7 @@ use oak_timeline::util::NodeRef;
 
 use super::engine::{
 	AppEngine, EngineGateway, ExportSession, LibraryProject, Monitor, MulticamState, Project,
-	ScopeData, Sequence, SequenceParameters, VideoFormat,
+	ScopeData, Sequence, SequenceParameters, VideoFormat, WizardFootage, WizardSyncOffset,
 };
 use super::frames::{bgra_bytes_to_render_image, f32_rgba_to_bgra_image, synthetic_frame_samples};
 use super::graphops::{self, ProjectRef};
@@ -859,6 +859,9 @@ pub struct RealClip {
 	color: Hsla,
 	/// The block node in the project graph.
 	block: NodeId,
+	/// The clip's texture chain contains a multicam node (the timeline
+	/// overlay + the panel's detection read the same truth).
+	multicam: bool,
 }
 
 impl ClipData for RealClip {
@@ -880,6 +883,10 @@ impl ClipData for RealClip {
 
 	fn color(&self) -> Option<Hsla> {
 		Some(self.color)
+	}
+
+	fn is_multicam(&self) -> bool {
+		self.multicam
 	}
 }
 
@@ -1197,9 +1204,137 @@ pub struct RealEngine {
 	/// (without it a resync retriggers every tick while the fresh chunks
 	/// are still rendering).
 	last_audio_resync: Option<std::time::Instant>,
+	/// Debounced graph-snapshot upload: the last undo revision the workers
+	/// were told about, and the time the latest push was requested. Rapid
+	/// edits (multicam switching) coalesce into ONE serialization + worker
+	/// load instead of blocking the UI tick on every edit (the "switch
+	/// several times and everything grinds to a halt" report).
+	pending_snapshot: Option<u64>,
+	last_snapshot_push: Option<std::time::Instant>,
 }
 
 impl RealEngine {
+	/// The AFV half of a switch: commands that re-point the host AFV audio
+	/// clip (the clip linked to the multicam `clip`) to the CURRENT source's
+	/// audio stream. `None` when the clip has no AFV audio (no linked audio
+	/// clip, or the multicam has no audio angles).
+	///
+	/// The audio clip's own range stays; only its TEXTURE_INPUT edge moves
+	/// to the new angle's audio footage. Two commands (disconnect the old,
+	/// connect the new) join the caller's multi: one undo restores the
+	/// previous source.
+	fn afv_audio_switch_commands(
+		&self,
+		project_ref: &ProjectRef,
+		clip: NodeId,
+		source: i32,
+	) -> Option<Vec<oak_undo::undocommand::UndoCommand>> {
+		let project = project_ref.clone();
+		let (audio_clip, old_footage) = {
+			let g = graphops::lock(&project);
+			let mut audio_clip = None;
+			for &link in &g.graph.links_of(clip) {
+				let Some(track) = graphops::clip_track(&g.graph, link) else {
+					continue;
+				};
+				if !graphops::track_behavior(&g.graph, track)
+					.map(|t| t.kind == TrackType::Audio)
+					.unwrap_or(false)
+				{
+					continue;
+				}
+				audio_clip = Some(link);
+				break;
+			}
+			let audio_clip = audio_clip?;
+			let old_footage = graphops::find_input_footage(&g.graph, audio_clip);
+			(audio_clip, old_footage)
+		};
+		let old_footage = old_footage?;
+		// The multicam node for `clip` and its source sequence — then the
+		// source's AUDIO track at `source`, the angle audio clip, and its
+		// footage as the re-point target.
+		let target_footage = {
+			let g = graphops::lock(&project);
+			let mc = g
+				.graph
+				.connected_output(clip, oak_node::block::clip_input::TEXTURE_INPUT, -1)?;
+			let seq = g
+				.graph
+				.connected_output(mc, oak_node::nodes::multicamnode::SEQUENCE_INPUT, -1)?;
+			let list = graphops::track_list_of(&g.graph, seq, TrackType::Audio)?;
+			let list_behavior = graphops::track_list_behavior(&g.graph, list)?;
+			let audio_track = list_behavior.tracks.get(source as usize)?;
+			let track_behavior = graphops::track_behavior(&g.graph, *audio_track)?;
+			let angle_audio_clip = track_behavior.blocks.first()?;
+			graphops::find_input_footage(&g.graph, *angle_audio_clip)?
+		};
+		if old_footage == target_footage {
+			return Some(Vec::new());
+		}
+		// Disconnect the old edge + connect the new (undoable pair).
+		let p_undo = project.clone();
+		let p_redo = project.clone();
+		let aclip = audio_clip;
+		let old = old_footage;
+		let new_footage = target_footage;
+		let disconnect = oak_undo::undocommand::UndoCommand::from_closures(
+			move || {
+				let mut g = graphops::lock(&p_undo);
+				for (from, input, element) in g.graph.input_connections(aclip) {
+					if input.as_str() == oak_node::block::clip_input::TEXTURE_INPUT {
+						let _ = g.graph.disconnect(from, aclip, &input, element);
+					}
+				}
+			},
+			move || {
+				let mut g = graphops::lock(&p_redo);
+				let _ = g.graph.connect(
+					old,
+					aclip,
+					oak_node::block::clip_input::TEXTURE_INPUT,
+					-1,
+				);
+			},
+		);
+		let p_connect = project.clone();
+		let connect = oak_undo::undocommand::UndoCommand::from_closures(
+			move || {
+				let mut g = graphops::lock(&p_connect);
+				for (from, input, element) in g.graph.input_connections(aclip) {
+					if input.as_str() == oak_node::block::clip_input::TEXTURE_INPUT {
+						let _ = g.graph.disconnect(from, aclip, &input, element);
+					}
+				}
+				let _ = g.graph.connect(
+					new_footage,
+					aclip,
+					oak_node::block::clip_input::TEXTURE_INPUT,
+					-1,
+				);
+			},
+			{
+				let p = project.clone();
+				let nf = new_footage;
+				move || {
+					let mut g = graphops::lock(&p);
+					for (from, input, element) in g.graph.input_connections(aclip) {
+						if input.as_str() == oak_node::block::clip_input::TEXTURE_INPUT {
+							let _ = g.graph.disconnect(from, aclip, &input, element);
+						}
+					}
+					let _ = g.graph.connect(
+						old,
+						aclip,
+						oak_node::block::clip_input::TEXTURE_INPUT,
+						-1,
+					);
+				}
+			},
+		);
+		Some(vec![disconnect, connect])
+	}
+
 	/// Render one tick's worth of audio at the program playhead and queue
 	/// it for playback (M12 P1; M15 S3: worker-pool prefetch; M16 S3: each
 	/// chunk is queued on the dedicated audio-render thread — see
@@ -1438,6 +1573,8 @@ impl RealEngine {
 			audio_prefetch: Mutex::new(AudioPrefetch::new()),
 			audio_playback: None,
 			last_audio_resync: None,
+			pending_snapshot: None,
+			last_snapshot_push: None,
 		}
 	}
 
@@ -2948,14 +3085,37 @@ impl RealEngine {
 	/// M16 S1 graph mode: pushes the current project state to the worker
 	/// pool (snapshot serialized once per undo-stack revision; the worker
 	/// renders node-graph tickets from it).
-	fn push_graph_snapshot(&self) {
+	fn push_graph_snapshot(&mut self) {
+		// Debounced: record the wanted revision, flush on the next tick
+		// after the debounce window (or immediately when no edit raced
+		// recently). Rapid edits coalesce instead of serializing +
+		// uploading the whole project snapshot on every keystroke.
+		let revision = oak_undo::global::index().unwrap_or(0).max(0) as u64;
+		self.pending_snapshot = Some(revision);
+	}
+
+	/// Flushes the pending snapshot upload when the debounce window passed
+	/// (called from the engine tick; the window lets a burst of edits
+	/// coalesce into one serialization + one worker load).
+	fn flush_snapshot_if_due(&mut self, cx: &mut Context<Self>) {
+		let Some(revision) = self.pending_snapshot.take() else {
+			return;
+		};
+		let due = match self.last_snapshot_push {
+			Some(last) => last.elapsed().as_millis() >= 150,
+			None => true,
+		};
+		if !due {
+			return;
+		}
 		let Some(project) = self.project.clone() else {
 			return;
 		};
 		if let Some(m) = RenderManager::global() {
-			let revision = oak_undo::global::index().unwrap_or(0).max(0) as u64;
 			let _ = m.set_graph_snapshot(&project, revision);
 		}
+		self.last_snapshot_push = Some(std::time::Instant::now());
+		cx.notify();
 	}
 
 	/// Adopts a newly created/loaded project, dropping any previous one,
@@ -2995,6 +3155,12 @@ impl RealEngine {
 				guard.working_color_space(),
 				guard.output_color_spec(),
 			);
+		}
+		// The inline (test) render backend's node-graph source: the live
+		// project, so preview frames evaluate through the traverser just
+		// like the worker pool's process snapshot does.
+		if let Some(m) = oak_render::manager::RenderManager::global() {
+			m.set_inline_project(project.clone());
 		}
 
 		// Footage loaded from a file may lack stream metadata (C++ projects
@@ -3261,6 +3427,8 @@ impl RealEngine {
 				} else {
 					entry.core.label.clone()
 				};
+				let multicam =
+					super::multicam::clip_is_multicam(graph, block);
 				Some(RealClip {
 					id: ClipId(block.identity()),
 					range: FrameRange::new(Frame(to_ts(in_r)), Frame(to_ts(out_r))),
@@ -3268,6 +3436,7 @@ impl RealEngine {
 					label: label.into(),
 					color,
 					block,
+					multicam,
 				})
 			})
 			.collect();
@@ -3719,6 +3888,9 @@ impl EngineGateway for RealEngine {
 		self.drain_multicam_frames(cx);
 		self.schedule_full_res(Monitor::Source, cx);
 		self.schedule_full_res(Monitor::Program, cx);
+		// Debounced snapshot upload: burst edits (multicam switching)
+		// coalesce into one worker load instead of per-edit serialization.
+		self.flush_snapshot_if_due(cx);
 		cx.notify();
 	}
 }
@@ -4848,6 +5020,19 @@ impl AppEngine for RealEngine {
 		Some(PathBuf::from(&behavior.filename))
 	}
 
+	fn project_entry_name(&self, id: u64) -> Option<SharedString> {
+		let project = self.project_ref()?;
+		let node = graphops::id_of(id)?;
+		let guard = graphops::lock(project);
+		if !guard.graph.is_valid(node) {
+			return None;
+		}
+		guard
+			.graph
+			.get(node)
+			.map(|e| e.core.label.clone().into())
+	}
+
 	fn replace_footage(
 		&mut self,
 		id: u64,
@@ -4887,6 +5072,43 @@ impl AppEngine for RealEngine {
 		Ok(())
 	}
 
+	fn rename_entry(&mut self, id: u64, new_name: String, cx: &mut Context<Self>) {
+		let Some(project) = self.project.clone() else {
+			return;
+		};
+		let Some(node) = graphops::id_of(id) else {
+			return;
+		};
+		let result = {
+			let mut guard = graphops::lock(&project);
+			let Some(entry) = guard.graph.get_mut(node) else {
+				return;
+			};
+			entry.core.label = new_name;
+			Ok::<(), String>(())
+		};
+		self.apply_edit(result, "rename entry", cx);
+	}
+
+	fn delete_entry(&mut self, id: u64, cx: &mut Context<Self>) {
+		let Some(project) = self.project.clone() else {
+			return;
+		};
+		let Some(node) = graphops::id_of(id) else {
+			return;
+		};
+		// A folder removal is already one command; a footage/sequence
+		// entry removes the node itself (the C++ Delete behaviour: the
+		// node and its connections; timeline clips referencing a removed
+		// footage keep their blocks but their decode source is gone —
+		// matching the C++ path, which is undoable).
+		let result = graphops::push_command(
+			oak_task::nodeops::remove_node_command(project, node),
+			"Delete Entry",
+		);
+		self.apply_edit(result, "delete entry", cx);
+	}
+
 	fn drop_footage(
 		&mut self,
 		id: u64,
@@ -4904,6 +5126,20 @@ impl AppEngine for RealEngine {
 			println!("[real engine] drop footage: entry {id} is not a footage node");
 			return;
 		};
+		// Sequence entry drop: a NESTED-SEQUENCE clip (one row, not the
+		// sequence's tracks — a sequence is a frame, not a folder of
+		// tracks, on the timeline). The dropped clip feeds from the
+		// sequence node (TEXTURE_INPUT, like `clip_connected_sequence`
+		// resolves), so a multicam source sequence drops as a single
+		// multi-cam clip the panel detects.
+		let is_sequence = {
+			let guard = graphops::lock(&project);
+			graphops::sequence_behavior(&guard.graph, footage).is_some()
+		};
+		if is_sequence {
+			self.drop_sequence_entry(&project, footage, track_index, time, cx);
+			return;
+		}
 		let (filename, video_streams, total_streams, seconds) = {
 			let guard = graphops::lock(&project);
 			let Some(f) = graphops::footage_behavior(&guard.graph, footage) else {
@@ -4970,8 +5206,41 @@ impl AppEngine for RealEngine {
 			let Some(video_target) = ensure_track(self, TrackKind::Video, cx) else {
 				return;
 			};
-			let Some(audio_target) = ensure_track(self, TrackKind::Audio, cx) else {
-				return;
+			// The A/V drop pairs the audio with the SAME track number as
+			// the video (V2 → A2, V1 → A1): the group lands together and
+			// later drops no longer pile every audio clip onto A1. A
+			// missing same-numbered audio track (e.g. A2 was removed) is
+			// recreated so the pair stays aligned; the user is free to
+			// rearrange afterwards.
+			let audio_target = loop {
+				let video_number = self.tracks[video_target].track_index;
+				if let Some(index) = self.tracks.iter().position(|t| {
+					t.kind == TrackKind::Audio && t.track_index == video_number
+				}) {
+					break index;
+				}
+				let audio_count = self.tracks.iter().filter(|t| t.kind == TrackKind::Audio).count();
+				if audio_count > video_number {
+					// Same-numbered audio tracks have run out without a
+					// hit (should not happen: counting is contiguous).
+					println!(
+						"[real engine] drop footage: no audio track A{} for \"{}\"",
+						video_number + 1,
+						filename
+					);
+					return;
+				}
+				self.add_track(TrackKind::Audio, cx);
+				let after = self.tracks.iter().filter(|t| t.kind == TrackKind::Audio).count();
+				if after == audio_count {
+					// The track add failed: give up this drop.
+					println!(
+						"[real engine] drop footage: could not create audio track A{} for \"{}\"",
+						video_number + 1,
+						filename
+					);
+					return;
+				}
 			};
 			let (video_index, audio_index) = (
 				self.tracks[video_target].track_index,
@@ -5324,6 +5593,35 @@ impl AppEngine for RealEngine {
 		};
 		let guard = graphops::lock(project);
 		graphops::sequence_behavior(&guard.graph, node).is_some()
+	}
+
+	fn open_sequence_id(&mut self, id: u64, cx: &mut Context<Self>) {
+		let Some(project) = self.project.clone() else {
+			return;
+		};
+		let Some(node) = graphops::id_of(id) else {
+			return;
+		};
+		let is_seq = {
+			let guard = graphops::lock(&project);
+			graphops::sequence_behavior(&guard.graph, node).is_some()
+		};
+		if !is_seq {
+			return;
+		}
+		// Switch the current sequence: the timeline rebuilds against the
+		// opened sequence (the "open a sequence entry" behavior — same
+		// refresh as project open).
+		if self.sequence == Some(node) {
+			return;
+		}
+		self.sequence = Some(node);
+		graphops::ensure_sequences_mounted(&project);
+		self.refresh_sequence_info();
+		self.rebuild_timeline();
+		self.invalidate_rendered_frames();
+		self.push_graph_snapshot();
+		cx.notify();
 	}
 
 	fn sequence_parameters(&self, id: u64) -> Option<SequenceParameters> {
@@ -6016,6 +6314,16 @@ impl AppEngine for RealEngine {
 		if source < 0 || source >= state.source_count {
 			return;
 		}
+		// No-op guard: switching to the ALREADY current source must not
+		// push an undo command. The playback-time "revision advances every
+		// frame" report traced back to the multicam panel queue replaying
+		// the same switch on every tick — each replay pushed a useless
+		// undo entry, re-uploaded the whole 130 KB graph snapshot to every
+		// worker and re-serialized it per frame (the "picture barely
+		// updates" freeze).
+		if state.current_source == source {
+			return;
+		}
 		let Some(clip) = graphops::id_of(state.clip_id) else {
 			return;
 		};
@@ -6026,12 +6334,491 @@ impl AppEngine for RealEngine {
 			split_clip,
 			playhead,
 		);
-		let result = graphops::push_command(cmd, oak_timeline::multicam::SWITCH_LABEL);
+		let afv_cmds = self.afv_audio_switch_commands(&project, clip, source);
+		let result = match afv_cmds {
+			// ONE undo entry: video switch + AFV audio re-point.
+			Some(children) if !children.is_empty() => {
+				let mut all = vec![cmd];
+				all.extend(children);
+				graphops::push_multi_command(all, oak_timeline::multicam::SWITCH_LABEL)
+			}
+			_ => graphops::push_command(cmd, oak_timeline::multicam::SWITCH_LABEL),
+		};
 		self.apply_edit(result, "multicam switch", cx);
+	}
+
+	// --- multicam wizard ------------------------------------------------
+
+	fn multicam_wizard_footage(&self) -> Option<Vec<WizardFootage>> {
+		let project = self.project_ref()?;
+		Some(super::multicam::wizard_footage(&project))
+	}
+
+	fn multicam_wizard_sync_offsets(
+		&self,
+		selected: &[WizardFootage],
+	) -> Result<Vec<WizardSyncOffset>, String> {
+		let Some(reference) = selected.first() else {
+			return Ok(Vec::new());
+		};
+		// One angle is enough: nothing to align.
+		if selected.len() == 1 {
+			return Ok(vec![WizardSyncOffset {
+				footage: reference.id,
+				offset_s: 0.0,
+				confidence: Some(1.0),
+			}]);
+		}
+		// Extract each angle's RMS envelope (100 ms windows) through the
+		// audio waveform extractor over the footage's media file. The
+		// reference angle is angle 0.
+		let source_paths: Vec<(u64, String, i32)> = {
+			let project = self.project_ref().ok_or("no project open")?;
+			let g = graphops::lock(&project);
+			let mut out = Vec::new();
+			for entry in selected {
+				let node = graphops::id_of(entry.id).ok_or("angle missing")?;
+				let f = graphops::footage_behavior(&g.graph, node).ok_or("angle is not footage")?;
+				out.push((
+					entry.id,
+					f.filename.clone(),
+					f.streams
+						.iter()
+						.find(|s| !s.is_video)
+						.map(|s| s.index)
+						.unwrap_or(1),
+				));
+			}
+			out
+		};
+		let mut envelopes: Vec<Vec<f64>> = Vec::new();
+		for (_, filename, stream) in &source_paths {
+			let envelope = crate::oakui::waveform::extract_audio_envelope(filename, *stream)
+				.ok_or_else(|| format!("failed to extract audio from {filename}"))?;
+			envelopes.push(envelope);
+		}
+		let reference_envelope = envelopes[0].clone();
+		let offsets = super::multicam::estimate_wizard_offsets(
+			&reference_envelope,
+			&envelopes[1..],
+		);
+		let mut out = vec![WizardSyncOffset {
+			footage: reference.id,
+			offset_s: 0.0,
+			confidence: Some(1.0),
+		}];
+		for (entry, offset_s) in selected[1..].iter().zip(offsets.iter()) {
+			out.push(WizardSyncOffset {
+				footage: entry.id,
+				offset_s: *offset_s,
+				confidence: Some(0.0), // the wizard's confidence is UI-only for now
+			});
+		}
+		Ok(out)
+	}
+
+	fn multicam_create_sequence(
+		&mut self,
+		selected: Vec<WizardFootage>,
+		offsets: Vec<f64>,
+		name: String,
+		cx: &mut Context<Self>,
+	) -> Result<u64, String> {
+		let Some(project) = self.project.clone() else {
+			return Err(crate::i18n::tr("seqprops.error.no_project").to_string());
+		};
+		let name = if name.trim().is_empty() {
+			"Multi-Cam".to_string()
+		} else {
+			name.trim().to_string()
+		};
+		// Build the source sequence (one clip per angle on its own track,
+		// offset by the sync result) plus the multicam node over it.
+		let (source_seq, mc_node) = super::multicam::build_multicam_sequence(
+			&project,
+			&selected,
+			&offsets,
+			&name,
+		)?;
+		// Mount the source sequence under the root folder (non-undoable,
+		// like `create_sequence` does).
+		let root = graphops::lock(&project).root;
+		oak_task::nodeops::folder_add_child_command(
+			(project.clone(), root),
+			(project.clone(), source_seq),
+		)
+		.redo_now();
+
+		// The host clip: the clip under the program playhead on the
+		// current sequence. A clip whose texture input is rewired to the
+		// multicam output (the switch source feeds it). When the host
+		// sequence has no video clip at or anywhere on the video tracks
+		// (a fresh sequence), one is PLACED at the playhead from the
+		// first selected footage first — the wizard needs no pre-existing
+		// clip on an otherwise empty timeline.
+		let playhead = self
+			.sequence
+			.map(|seq| graphops::sequence_playhead(&graphops::lock(&project).graph, seq));
+		let host = match self.find_existing_multicam_host_clip(&project, playhead) {
+			Ok(host_id) => Ok(host_id),
+			Err(no_clip) => {
+				// No candidate: place the first angle's footage at the
+				// playhead (one video clip on the pointed/first video
+				// track), then re-resolve.
+				let angle = selected
+					.first()
+					.cloned()
+					.ok_or_else(|| "no selected angles".to_string())?;
+				self.place_host_clip_for_wizard(&project, playhead, angle)
+					.map_err(|e| format!("{no_clip} — placing skipped: {e}"))
+			}
+		};
+		let host_id = match &host {
+			Ok(id) => *id,
+			Err(e) => {
+				self.apply_edit(Err(e.clone()), "create multicam sequence", cx);
+				return Err(e.clone());
+			}
+		};
+		// Rewire: host clip texture input -> multicam output.
+		let result = {
+			let mut g = graphops::lock(&project);
+			// Disconnect the raw footage edge first (place_footage_clip
+			// wired footage->clip).
+			for (from, input, element) in g.graph.input_connections(host_id) {
+				if input.as_str() == oak_node::block::clip_input::TEXTURE_INPUT {
+					let _ = g.graph.disconnect(from, host_id, &input, element);
+				}
+			}
+			g.graph
+				.connect(
+					mc_node,
+					host_id,
+					oak_node::block::clip_input::TEXTURE_INPUT,
+					-1,
+				)
+				.map_err(|e| format!("connect multicam to host clip: {e:?}"))
+		};
+		match result {
+			Ok(()) => {
+				// The wizard's payload stays on the SOURCE sequence (the
+				// angles' clips + the multicam node); the user's editing
+				// sequence is UNCHANGED — its host clip (under the
+				// playhead) now feeds from the multicam output and IS the
+				// "multi-cam clip" the panel detects. Switching the current
+				// sequence to the source one used to open the angles' rows
+				// (N tracks for N cameras) and left the panel with no clip
+				// resolution ("未检测到多机位片段").
+				// AFV: when the angles carry audio, the host clip's LINKED
+				// audio clip is placed on the host sequence (same range,
+				// linked both ways); its source starts at angle 0's audio
+				// and follows every switch. Muting the host audio track
+				// disables the follow-through audio.
+				if let Err(e) =
+					self.ensure_host_afv_audio(&project, host_id, &selected, cx)
+				{
+					println!("[real engine] AFV audio placement skipped: {e}");
+				}
+				self.apply_edit(Ok(()), "create multicam sequence", cx);
+				Ok(self.sequence.unwrap_or(source_seq).identity())
+			}
+			Err(e) => {
+				self.apply_edit(Err(e.clone()), "create multicam sequence", cx);
+				Err(e)
+			}
+		}
 	}
 
 	fn backend_name(&self) -> &'static str {
 		"real"
+	}
+}
+
+impl RealEngine {
+	/// AFV: places the audio clip paired with the multicam `host_clip` on
+	/// the host sequence — same range, linked both ways (grouped edits
+	/// move them together). Its media source is ANGLE 0's audio stream:
+	/// `multicam_switch_to` re-points it to the switching target's audio
+	/// clip. The host audio track keeps the regular mute/solo controls, so
+	/// muting that track disables the follow-through audio.
+	fn ensure_host_afv_audio(
+		&mut self,
+		project: &ProjectRef,
+		host_clip: NodeId,
+		selected: &[WizardFootage],
+		cx: &mut Context<Self>,
+	) -> Result<NodeId, String> {
+		let Some(host_seq) = self.sequence else {
+			return Err("no sequence open".to_string());
+		};
+		let Some(reference) = selected.first() else {
+			return Err("no selected angles".to_string());
+		};
+		if !reference.has_audio.unwrap_or(false) {
+			return Err("the reference angle has no audio".to_string());
+		}
+		let angle_footage = graphops::id_of(reference.id)
+			.ok_or_else(|| "angle 0 footage is not in the project".to_string())?;
+		// The host audio track: the first audio track, created when the
+		// host sequence has none.
+		let audio_index = match self.tracks.iter().position(|t| t.kind == TrackKind::Audio) {
+			Some(i) => self.tracks[i].track_index,
+			None => {
+				self.add_track(TrackKind::Audio, cx);
+				self.tracks
+					.iter()
+					.find(|t| t.kind == TrackKind::Audio)
+					.map(|t| t.track_index)
+					.ok_or_else(|| "could not add an audio track".to_string())?
+			}
+		};
+		// The clip range on the host timeline (in host sequence frames).
+		let (host_in_ts, host_out_ts) = {
+			let g = graphops::lock(project);
+			let in_r = graphops::clip_range(&g.graph, host_clip)
+				.ok_or_else(|| "host clip has no range".to_string())?
+				.0;
+			let out_r = graphops::clip_range(&g.graph, host_clip)
+				.ok_or_else(|| "host clip has no range".to_string())?
+				.1;
+			let tb = graphops::sequence_time_base(&g.graph, host_seq)
+				.unwrap_or((1, 25));
+			(graphops::rational_to_ts(in_r, tb), graphops::rational_to_ts(out_r, tb))
+		};
+		let audio_clip = graphops::place_footage_clip(
+			project,
+			host_seq,
+			angle_footage,
+			TrackType::Audio,
+			audio_index,
+			host_in_ts,
+			host_out_ts,
+			0,
+		)?;
+		// Link the A/V pair both ways (grouped edits move them together).
+		graphops::set_clips_linked(project, &[host_clip, audio_clip], true)?;
+		Ok(audio_clip)
+	}
+
+	/// Drops a sequence-project entry on the timeline as a NESTED-SEQUENCE
+	/// clip: ONE video clip on the video track (not the sequence's tracks —
+	/// a frame, not a folder, of tracks), fed from the sequence node. This
+	/// is also how a multicam source sequence lands in the timeline: the
+	/// clip is the single multi-cam row the panel detects. Undoable as one
+	/// "Add Clip".
+	fn drop_sequence_entry(
+		&mut self,
+		project: &ProjectRef,
+		source_seq: NodeId,
+		track_index: usize,
+		time: Frame,
+		cx: &mut Context<Self>,
+	) {
+		let Some(host_seq) = self.sequence else {
+			println!("[real engine] drop sequence: no sequence open");
+			return;
+		};
+		// The target video track: the pointed display row when it is a
+		// video track, else the first video track (the footage policy).
+		let video_target = if self
+			.tracks
+			.get(track_index)
+			.is_some_and(|t| t.kind == TrackKind::Video)
+		{
+			track_index
+		} else if let Some(index) = self.tracks.iter().position(|t| t.kind == TrackKind::Video)
+		{
+			index
+		} else {
+			println!("[real engine] drop sequence: no video track");
+			return;
+		};
+		let video_index = self.tracks[video_target].track_index;
+		// The clip length: the source sequence's length converted into the
+		// host sequence's frame timestamps (the drop ghost's extent).
+		let (in_ts, length_ts) = {
+			let guard = graphops::lock(project);
+			let Ok(tb) = graphops::sequence_time_base(&guard.graph, host_seq)
+				.ok_or_else(|| "host sequence has no frame rate".to_string())
+			else {
+				println!("[real engine] drop sequence: host has no frame rate");
+				return;
+			};
+			let fps_f = tb.1.max(1) as f64 / tb.0.max(1) as f64;
+			let source_seconds = graphops::sequence_length(&guard.graph, source_seq).to_f64();
+			let length_ts = ((source_seconds * fps_f).round() as i64).max(1);
+			(time.0.max(0), length_ts)
+		};
+		let placed = graphops::place_nested_sequence_clip(
+			project,
+			host_seq,
+			source_seq,
+			video_index,
+			in_ts,
+			in_ts + length_ts,
+		);
+		let placed = match placed {
+			Ok(clip) => clip,
+			Err(e) => {
+				self.apply_edit(Err(e.clone()), "drop sequence", cx);
+				return;
+			}
+		};
+		// A source sequence with a multicam node drops as the multi-cam
+		// clip itself (its texture feeds from the multicam output, so the
+		// panel detects it — "未检测到多机位片段" when it nur fed the
+		// raw source sequence).
+		// Collect the candidate multicam ids under the lock FIRST, then
+		// match each with `multicam_sequence` OUTSIDE the guard (that
+		// helper locks the project itself — a live guard re-enters the
+		// non-recursive mutex, exactly the wizard-freeze shape).
+		let candidates = {
+			let guard = graphops::lock(project);
+			graphops::multicam_nodes(&guard.graph)
+		};
+		let mc_for_source = candidates
+			.iter()
+			.copied()
+			.find(|&mc| super::multicam::multicam_sequence(project, mc) == Some(source_seq));
+		if let Some(mc) = mc_for_source {
+			let result = {
+				let mut g = graphops::lock(project);
+				for (from, input, element) in g.graph.input_connections(placed) {
+					if input.as_str() == oak_node::block::clip_input::TEXTURE_INPUT {
+						let _ = g.graph.disconnect(from, placed, &input, element);
+					}
+				}
+				g.graph
+					.connect(
+						mc,
+						placed,
+						oak_node::block::clip_input::TEXTURE_INPUT,
+						-1,
+					)
+					.map_err(|e| format!("connect multicam to dropped clip: {e:?}"))
+			};
+			self.apply_edit(result, "drop sequence (multicam)", cx);
+		} else {
+			self.apply_edit(Ok(()), "drop sequence", cx);
+		}
+	}
+
+	/// The clip that will host the multicam output: the clip under the
+	/// current sequence's playhead (on any video track), or the first
+	/// clip on any video track when the playhead sits in a gap. Does NOT
+	/// create a clip ([`Self::place_host_clip_for_wizard`] does).
+	fn find_existing_multicam_host_clip(
+		&self,
+		project: &ProjectRef,
+		playhead: Option<oak_core::Rational>,
+	) -> Result<oak_node::id::NodeId, String> {
+		let Some(seq) = self.sequence else {
+			return Err("no sequence open".to_string());
+		};
+		// 1. The clip covering the playhead on the topmost video track.
+		let covering = {
+			let g = graphops::lock(project);
+			// Walk the video tracks topmost-first for a clip covering the
+			// playhead.
+			let mut found = None;
+			let tracks = graphops::track_ids(&g.graph, seq, TrackType::Video);
+			for &track_id in tracks.iter().rev() {
+				let Some(track) = graphops::track_behavior(&g.graph, track_id) else {
+					continue;
+				};
+				for &block in &track.blocks {
+					let Some(clip) = graphops::clip_behavior(&g.graph, block) else {
+						continue;
+					};
+					if playhead.is_none_or(|t| t >= clip.core.in_() && t < clip.core.out()) {
+						found = Some(block);
+						break;
+					}
+				}
+				if found.is_some() {
+					break;
+				}
+			}
+			found
+		};
+		if let Some(block) = covering {
+			return Ok(block);
+		}
+		// 2. No clip at the playhead: fall back to the FIRST clip on any
+		//    video track, so the wizard still works when the playhead
+		//    sits in a gap.
+		let any_clip = {
+			let g = graphops::lock(project);
+			graphops::track_ids(&g.graph, seq, TrackType::Video)
+				.into_iter()
+				.find_map(|track_id| {
+					graphops::track_behavior(&g.graph, track_id)
+						.and_then(|t| t.blocks.first().copied())
+				})
+		};
+		any_clip.ok_or_else(|| "no clip under the playhead to host the multicam".to_string())
+	}
+
+	/// Places a fresh host clip for the wizard on an empty (or clip-less)
+	/// host sequence: `angle`'s footage at the program playhead on the top
+	/// video track, standard-length — then the wizard rewire slot runs.
+	/// Returns the placed clip's node.
+	fn place_host_clip_for_wizard(
+		&mut self,
+		project: &ProjectRef,
+		playhead: Option<oak_core::Rational>,
+		angle: WizardFootage,
+	) -> Result<oak_node::id::NodeId, String> {
+		let Some(seq) = self.sequence else {
+			return Err("no sequence open".to_string());
+		};
+		let Some(angle) = graphops::id_of(angle.id) else {
+			return Err("the angle footage is not in the project".to_string());
+		};
+		let video_target = if let Some(index) =
+			self.tracks.iter().position(|t| t.kind == TrackKind::Video)
+		{
+			index
+		} else {
+			return Err("no video track on the host sequence".to_string());
+		};
+		let video_index = self.tracks[video_target].track_index;
+		let (length, in_ts) = {
+			let tb = self.frame_rate();
+			let fps_f = tb.num.max(1) as f64 / tb.den.max(1) as f64;
+			let seconds = {
+				let guard = graphops::lock(project);
+				graphops::footage_duration_seconds(&guard.graph, angle)
+			};
+			let length = match seconds {
+				Some(s) => (s * fps_f).round().max(1.0) as i64,
+				None => (10.0 * fps_f).round().max(1.0) as i64,
+			};
+			let in_ts = match playhead {
+				Some(t) => {
+					let (num, den) = (t.numerator(), t.denominator().max(1));
+					let fps_f = fps_f as i64;
+					((num * fps_f) / den).max(0)
+				}
+				None => 0,
+			};
+			(length, in_ts)
+		};
+		let clip = graphops::place_footage_clip(
+			project,
+			seq,
+			angle,
+			TrackType::Video,
+			video_index,
+			in_ts,
+			in_ts + length,
+			0,
+		)
+		.map_err(|e| format!("place host clip: {e}"))?;
+		self.refresh_sequence_info();
+		self.rebuild_timeline();
+		self.invalidate_rendered_frames();
+		Ok(clip)
 	}
 }
 
@@ -7049,6 +7836,39 @@ mod tests {
 		let _ = std::fs::remove_file(&media);
 	}
 
+	/// The multicam wizard's data path on the REAL engine: the footage
+	/// enumeration must return the imported entry (an A/V file appearing in
+	/// the wizard as one angle), no deadlock. This mirrors what the wizard
+	/// modal runs on open ("click 窗口→多机位向导 freezes" regression).
+	#[gpui::test]
+	async fn real_engine_wizard_footage_lists_imported_media(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		// Use the repo's committed fixture media (the same file the other
+		// engine tests import): write_test_clip is omitted because this
+		// test targets the WIZARD path, not media generation.
+		let media = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/demo.mp4");
+		let imported = cx.update(|app| {
+			engine.update(app, |engine, cx| engine.import_footage(media.clone(), cx))
+		});
+		assert!(imported.is_ok(), "import succeeds: {imported:?}");
+
+		// The same read the wizard modal performs on open.
+		let footage = cx.read(|app| engine.read(app).multicam_wizard_footage());
+		let footage = footage.expect("wizard footage exists");
+		let name = media.file_name().unwrap().to_string_lossy().into_owned();
+		assert!(
+			footage.iter().any(|f| f.name.as_ref() == name),
+			"the imported file is offered as a wizard angle"
+		);
+		assert!(
+			footage.iter().all(|f| f.has_audio.is_some()),
+			"audio presence is probed"
+		);
+	}
+
 	/// The material-bin thumbnail pipeline end to end: importing a real media
 	/// file (tests/demo.mp4) lists a footage entry whose icon-view thumbnail
 	/// is rendered on a background worker, drained on the tick, and cached as
@@ -8030,6 +8850,135 @@ mod tests {
 			(video_clips, audio_clips),
 			(1, 1),
 			"one redo restores both clips"
+		);
+	}
+
+	/// The A/V drop pairs the audio with the SAME track number as the
+	/// video: dropping onto the V2 row places the video on V2 and the
+	/// linked audio on A2, not on A1 (the multi-drop piles onto A1
+	/// regression).
+	#[gpui::test]
+	async fn drop_av_footage_same_numbered_tracks(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		let media = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/demo.mp4");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.import_footage(media.clone(), cx).expect("import")
+			})
+		});
+		let name = media.file_name().unwrap().to_string_lossy().into_owned();
+		let entry = cx
+			.read(|app| {
+				engine
+					.read(app)
+					.roots()
+					.into_iter()
+					.find(|e| e.name.as_ref() == name)
+			})
+			.expect("imported footage is listed");
+
+		// The default layout is [V2, V1, A1, A2]: display row 0 is V2.
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(40), cx)
+			})
+		});
+
+		let (video_row, audio_row) = cx.read(|app| {
+			let engine = engine.read(app);
+			let v = engine
+				.tracks
+				.iter()
+				.position(|t| t.kind == TrackKind::Video && !t.clips.is_empty());
+			let a = engine
+				.tracks
+				.iter()
+				.position(|t| t.kind == TrackKind::Audio && !t.clips.is_empty());
+			(v.expect("video row"), a.expect("audio row"))
+		});
+		let (video_index, audio_index) = cx.read(|app| {
+			let engine = engine.read(app);
+			(engine.tracks[video_row].track_index, engine.tracks[audio_row].track_index)
+		});
+		assert_eq!(
+			video_index, 1,
+			"the video clip lands on V2 (per-type index 1)"
+		);
+		assert_eq!(
+			audio_index, 1,
+			"the audio clip lands on A2 (same track number), not A1"
+		);
+	}
+
+	/// When the same-numbered audio track is missing (A2 removed), the A/V
+	/// drop recreates it so the pair stays aligned; the first audio track
+	/// does not absorb the clip.
+	#[gpui::test]
+	async fn drop_av_footage_recreates_missing_same_numbered_audio_track(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		let media = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/demo.mp4");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.import_footage(media.clone(), cx).expect("import")
+			})
+		});
+		let name = media.file_name().unwrap().to_string_lossy().into_owned();
+		let entry = cx
+			.read(|app| {
+				engine
+					.read(app)
+					.roots()
+					.into_iter()
+					.find(|e| e.name.as_ref() == name)
+			})
+			.expect("imported footage is listed");
+
+		// Remove A2 (display row 3 in the default [V2, V1, A1, A2] layout).
+		cx.update(|app| {
+			engine.update(app, |engine, cx| engine.remove_track(3, cx))
+		});
+		// Drop onto V2 (row 0): the audio has no A2 to go to.
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.drop_footage(entry.id, TrackKind::Video, 0, Frame(40), cx)
+			})
+		});
+
+		let (audio_rows, audio_clip_row) = cx.read(|app| {
+			let engine = engine.read(app);
+			let rows: Vec<usize> = engine
+				.tracks
+				.iter()
+				.enumerate()
+				.filter(|(_, t)| t.kind == TrackKind::Audio)
+				.map(|(i, _)| i)
+				.collect();
+			let clip = engine
+				.tracks
+				.iter()
+				.position(|t| t.kind == TrackKind::Audio && !t.clips.is_empty());
+			(rows, clip)
+		});
+		assert_eq!(
+			audio_rows.len(),
+			2,
+			"A2 was recreated (default A1 + new A2)"
+		);
+		let audio_index = cx.read(|app| {
+			let engine = engine.read(app);
+			engine.tracks[audio_clip_row.expect("audio clip row")].track_index
+		});
+		assert_eq!(
+			audio_index, 1,
+			"the audio clip lands on the recreated A2"
 		);
 	}
 
@@ -9050,6 +9999,33 @@ mod tests {
 			(24000, 1001)
 		);
 		assert!(params.interlaced, "the interlaced flag round-trips");
+
+		// Double-click opens the sequence: the current sequence switches
+		// to the double-clicked one (the "explorer double-click on a
+		// sequence entry has no effect" regression). The 4K sequence's
+		// format becomes the timeline's baseline.
+		cx.update(|app| {
+			engine.update(app, |engine, cx| engine.open_sequence_id(seq, cx));
+		});
+		let current = cx.read(|app| engine.read(app).current_sequence().cloned());
+		assert_eq!(
+			current.map(|s| s.format.width),
+			Some(3840),
+			"the double-clicked sequence opens in the timeline"
+		);
+		// A folder or stale id is ignored.
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.open_sequence_id(folder, cx);
+				engine.open_sequence_id(0xdead_beef, cx);
+			})
+		});
+		let still = cx.read(|app| engine.read(app).current_sequence().cloned());
+		assert_eq!(
+			still.map(|s| s.format.width),
+			Some(3840),
+			"non-sequence ids do not switch the current sequence"
+		);
 	}
 
 	/// `update_sequence_parameters` rewrites the name, the format and the
@@ -9242,5 +10218,447 @@ mod tests {
 		assert_eq!((rate_num, rate_den), (expected.2, expected.3));
 
 		let _ = std::fs::remove_file(&media);
+	}
+
+	/// The wizard's create keeps the USER's sequence open (its playhead
+	/// clip becomes the multi-cam clip; switching to the source sequence
+	/// left N camera rows on the timeline and an "未检测到多机位片段" panel).
+	#[gpui::test]
+	async fn wizard_create_keeps_host_sequence_and_panel_detects(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		let media = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/demo.mp4");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.import_footage(media.clone(), cx).expect("import")
+			})
+		});
+		let footage = cx
+			.read(|app| engine.read(app).multicam_wizard_footage())
+			.expect("wizard footage");
+		let name = media.file_name().unwrap().to_string_lossy();
+		let entry = footage.iter().find(|f| f.name.as_ref() == name).cloned();
+		let entry = entry.expect("the imported file is a wizard angle");
+		let host_before = cx.read(|app| {
+			engine.read(app).current_sequence().map(|s| s.name.clone())
+		});
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine
+					.multicam_create_sequence(vec![entry], vec![0.0], "MultiCam".to_string(), cx)
+					.expect("create multicam")
+			})
+		});
+		let host_after = cx.read(|app| {
+			engine.read(app).current_sequence().map(|s| s.name.clone())
+		});
+		assert_eq!(
+			host_after, host_before,
+			"the user's sequence stays current (no camera rows on the timeline)"
+		);
+		assert_eq!(
+			host_after, Some("Sequence 1".to_string()),
+			"the fresh project's default sequence stays open"
+		);
+		// The panel resolves the playhead clip to the multicam state now.
+		let state = cx.read(|app| engine.read(app).multicam_state());
+		assert!(
+			state.is_some(),
+			"the panel detects the multi-cam clip at the playhead"
+		);
+		assert_eq!(state.map(|s| s.source_count), Some(1));
+
+		// The timeline snapshot flags the host clip as a multi-cam clip (the
+		// special overlay drives off `ClipData::is_multicam`).
+		let multicam_flags = cx.read(|app| {
+			let engine = engine.read(app);
+			engine
+				.tracks
+				.iter()
+				.filter(|t| t.kind == TrackKind::Video)
+				.flat_map(|t| t.clips.iter().map(|c| c.is_multicam()))
+				.collect::<Vec<bool>>()
+		});
+		assert_eq!(
+			multicam_flags,
+			vec![true],
+			"the single video clip is the multi-cam clip"
+		);
+
+		// AFV: the host clip's linked audio clip was placed on the host
+		// sequence (same range, linked both ways) so the audio follows the
+		// switched camera.
+		let (audio_clips, audio_linked) = cx.read(|app| {
+			let engine = engine.read(app);
+			let audio: Vec<_> = engine
+				.tracks
+				.iter()
+				.filter(|t| t.kind == TrackKind::Audio)
+				.flat_map(|t| t.clips.iter().map(|c| c.block))
+				.collect();
+			let project = engine.project.as_ref().cloned();
+			let linked = match (project, audio.first()) {
+				(Some(p), Some(audio_clip)) => {
+					let g = graphops::lock(&p);
+					let host = engine
+						.tracks
+						.iter()
+						.filter(|t| t.kind == TrackKind::Video)
+						.flat_map(|t| t.clips.iter().map(|c| c.block))
+						.next()
+						.map(|b| b);
+					host.map(|h| g.graph.links_of(h).contains(audio_clip))
+						.unwrap_or(false)
+				}
+				_ => false,
+			};
+			(audio.len(), linked)
+		});
+		assert_eq!(
+			audio_clips, 1,
+			"the AFV audio clip was placed on the host sequence"
+		);
+		assert!(
+			audio_linked,
+			"the AFV audio clip links to the multi-cam host clip"
+		);
+
+		// Muting the host audio track disables the AFV audio (the track
+		// edit path the user controls). The graph flag reads back directly
+		// (the in-memory snapshot refreshes on the next engine event).
+		cx.update(|app| {
+			engine.update(app, |engine, _cx| {
+				let Some(project) = engine.project.clone() else {
+					return;
+				};
+				if let Some(audio_row) =
+					engine.tracks.iter().position(|t| t.kind == TrackKind::Audio)
+				{
+					let track = engine.tracks[audio_row].track;
+					let _ = graphops::set_track_muted(&project, track, true);
+				}
+			})
+		});
+		let muted = cx.read(|app| {
+			let engine = engine.read(app);
+			let project = engine.project.clone().unwrap();
+			let g = graphops::lock(&project);
+			engine
+				.tracks
+				.iter()
+				.find(|t| t.kind == TrackKind::Audio)
+				.map(|t| graphops::track_behavior(&g.graph, t.track).map(|b| b.muted).unwrap_or(false))
+				.unwrap_or(false)
+		});
+		assert!(muted, "the AFV audio track is muted — no audio follows");
+	}
+
+	/// Dragging a multicam SOURCE sequence entry from the project explorer
+	/// onto the timeline places ONE nested-sequence clip on the video track
+	/// (no camera rows) and rewires it to the multicam node, so the panel
+	/// resolves that clip to the multi-cam state — the "not detected"
+	/// report's drag shape.
+	#[gpui::test]
+	async fn drop_multicam_sequence_places_one_clip_and_panel_detects(
+		cx: &mut gpui::TestAppContext,
+	) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		// The wizard create (host clip placed on the default sequence).
+		let media = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/demo.mp4");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.import_footage(media.clone(), cx).expect("import")
+			})
+		});
+		let footage = cx
+			.read(|app| engine.read(app).multicam_wizard_footage())
+			.expect("wizard footage");
+		let name = media.file_name().unwrap().to_string_lossy();
+		let entry = footage.iter().find(|f| f.name.as_ref() == name).cloned();
+		let entry = entry.expect("the imported file is a wizard angle");
+		let source_seq = cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine
+					.multicam_create_sequence(
+						vec![entry.clone()],
+						vec![0.0],
+						"MultiCam".to_string(),
+						cx,
+					)
+					.expect("create multicam")
+			})
+		});
+		let clip_count = |engine: &RealEngine| -> usize {
+			engine
+				.tracks
+				.iter()
+				.filter(|t| t.kind == TrackKind::Video)
+				.map(|t| t.clips.len())
+				.sum()
+		};
+		// After the wizard create the default (host) sequence has ONE
+		// video clip.
+		let before = cx.read(|app| {
+			let engine = engine.read(app);
+			clip_count(engine)
+		});
+		assert_eq!(before, 1, "host clip on the default sequence");
+
+		// Simulate the project-explorer drag: drop the SOURCE sequence's
+		// entry at frame 80. The wizard source sequence lists as
+		// "MultiCam" under the project root (id is its own identity, NOT
+		// the return value — the return value is the host sequence kept
+		// current).
+		let project = cx.read(|app| engine.read(app).project.clone().expect("project"));
+		let source_entry_id = cx.read(|app| {
+			let engine = engine.read(app);
+			engine
+				.roots()
+				.into_iter()
+				.find(|e| e.name.as_ref() == "MultiCam")
+				.map(|e| e.id)
+				.expect("the multicam source sequence lists in the project")
+		});
+		assert_ne!(source_entry_id, source_seq, "the return value is the host sequence id");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.drop_footage(source_entry_id, TrackKind::Video, 0, Frame(80), cx)
+			})
+		});
+		let after = cx.read(|app| {
+			let engine = engine.read(app);
+			clip_count(engine)
+		});
+		assert_eq!(after, 2, "the drop added ONE nested-sequence clip");
+
+		// The dropped clip feeds from the multicam node (NOT the raw
+		// source sequence), so the panel detects it.
+		let (dropped_clip, state) = cx.read(|app| {
+			let engine = engine.read(app);
+			let track = engine
+				.tracks
+				.iter()
+				.find(|t| t.kind == TrackKind::Video)
+				.expect("video track");
+			let clip = track
+				.clips
+				.iter()
+				.find(|c| c.range.start.0 >= 80)
+				.expect("the dropped clip at frame 80")
+				.block;
+			let state = engine.multicam_state();
+			(clip.identity(), state)
+		});
+		let guard = graphops::lock(&project);
+		let dropped_node = graphops::id_of(dropped_clip).expect("clip node");
+		let src = guard
+			.graph
+			.connected_output(dropped_node, oak_node::block::clip_input::TEXTURE_INPUT, -1);
+		assert!(
+			src.is_some(),
+			"the dropped clip has a texture source"
+		);
+		let is_multicam = src.is_some_and(|s| {
+			graphops::node_type_id(&guard.graph, s) == "org.olivevideoeditor.Olive.multicam"
+		});
+		assert!(
+			is_multicam,
+			"the drop rewire feeds from the multicam node"
+		);
+		drop(guard);
+		assert!(
+			state.is_some(),
+			"the dropped multi-cam clip is detected by the panel"
+		);
+
+		// The sequence-viewer montage must resolve playable media for the
+		// dropped clip (the "dragging a multicam sequence into another
+		// sequence shows black" report): the montage carries the CURRENT
+		// angle's footage. NOTE: the project guard is NOT held across
+		// `video_montage` (it locks the project itself — the same
+		// non-recursive-mutex reentry that froze the wizard).
+		let seq = cx.read(|app| engine.read(app).sequence).expect("current sequence node");
+		let montage_files = {
+			let time = {
+				let g = graphops::lock(&project);
+				graphops::sequence_playhead(&g.graph, seq)
+			};
+			let montage = crate::oakui::renderops::video_montage(&project, seq, time);
+			montage
+				.iter()
+				.map(|m| m.filename.clone())
+				.collect::<Vec<String>>()
+		};
+		assert!(
+			!montage_files.is_empty(),
+			"the dropped multi-cam clip's montage resolves media (not black)"
+		);
+		assert_eq!(
+			montage_files.len(), 1,
+			"the host clip's current angle is the montage's only entry"
+		);
+	}
+
+	/// AFV switch-follow: with two audio-bearing angles, switching to
+	/// source 1 re-points the host audio clip to angle 1's audio footage —
+	/// one undo restores the previous source's audio.
+	#[gpui::test]
+	async fn multicam_switch_follows_audio_to_the_new_source(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		let media_a =
+			std::env::temp_dir().join(format!("oakapp_afv_a_{}.mp4", std::process::id()));
+		let media_b =
+			std::env::temp_dir().join(format!("oakapp_afv_b_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip(&media_a, 64, 64, 10, 10).expect("media A");
+		oak_codec::testmedia::write_test_clip(&media_b, 64, 64, 10, 10).expect("media B");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.import_footage(media_a.clone(), cx).expect("import A");
+				engine.import_footage(media_b.clone(), cx).expect("import B");
+			})
+		});
+		let footage = cx
+			.read(|app| engine.read(app).multicam_wizard_footage())
+			.expect("wizard footage");
+		let names = [&media_a, &media_b];
+		let angles: Vec<_> = names
+			.iter()
+			.map(|m| {
+				let n = m.file_name().unwrap().to_string_lossy();
+				footage
+					.iter()
+					.find(|f| f.name.as_ref() == n)
+					.cloned()
+					.expect("angle listed")
+			})
+			.collect();
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine
+					.multicam_create_sequence(
+						angles.clone(),
+						vec![0.0, 0.0],
+						"AFV".to_string(),
+						cx,
+					)
+					.expect("create multicam")
+			})
+		});
+
+		let audio_source = |engine: &RealEngine| -> Option<String> {
+			let project = engine.project.clone()?;
+			let g = graphops::lock(&project);
+			let audio = engine
+				.tracks
+				.iter()
+				.find(|t| t.kind == TrackKind::Audio)?
+				.clips
+				.first()?
+				.block;
+			let footage = graphops::find_input_footage(&g.graph, audio)?;
+			let f = graphops::footage_behavior(&g.graph, footage)?;
+			Some(f.filename.clone())
+		};
+		let before = cx.read(|app| audio_source(engine.read(app))).expect("AFV audio before");
+
+		// Switch to source 1 (the second angle).
+		cx.update(|app| {
+			engine.update(app, |engine, cx| engine.multicam_switch_to(1, false, cx));
+		});
+		let after = cx.read(|app| audio_source(engine.read(app))).expect("AFV audio after switch");
+		let b_name = media_b.to_string_lossy().into_owned();
+		assert_eq!(after, b_name, "the AFV audio follows to angle 1's media");
+		assert_ne!(before, after, "the audio source actually changed");
+
+		// ONE undo returns to angle 0's audio.
+		cx.update(|app| {
+			engine.update(app, |engine, cx| engine.undo(cx));
+		});
+		let undone =
+			cx.read(|app| audio_source(engine.read(app))).expect("AFV audio after undo");
+		assert_eq!(undone, before, "undo restores the previous source's audio");
+
+		let _ = std::fs::remove_file(&media_a);
+		let _ = std::fs::remove_file(&media_b);
+	}
+
+	/// The project explorer's rename + delete work on real entries: the
+	/// imported footage renames through the engine (the label lands on the
+	/// node) and deletes with ONE undoable entry (the footage node is gone,
+	/// one undo restores it).
+	#[gpui::test]
+	async fn entry_rename_and_delete_are_real(cx: &mut gpui::TestAppContext) {
+		let _media = media_lock();
+		let engine = cx.update(|cx| cx.new(|cx| RealEngine::create(cx)));
+		cx.update(|app| engine.update(app, |engine, cx| engine.new_project(cx)));
+
+		let media = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/demo.mp4");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.import_footage(media.clone(), cx).expect("import")
+			})
+		});
+		let entry = cx
+			.read(|app| {
+				engine
+					.read(app)
+					.roots()
+					.into_iter()
+					.find(|e| e.name.as_ref() == "demo.mp4")
+					.expect("imported")
+			});
+
+		// Rename: the node label changes.
+		cx.update(|app| {
+			engine.update(app, |engine, cx| {
+				engine.rename_entry(entry.id, "renamed-clip".to_string(), cx)
+			})
+		});
+		let name = cx.read(|app| engine.read(app).project_entry_name(entry.id));
+		assert_eq!(
+			name.as_deref(),
+			Some(SharedString::from("renamed-clip").as_ref()),
+			"the entry's display name changes"
+		);
+
+		// Delete: the entry leaves the project browser; ONE undo brings it
+		// back with the rename still applied.
+		cx.update(|app| {
+			engine.update(app, |engine, cx| engine.delete_entry(entry.id, cx))
+		});
+		let gone = cx.read(|app| {
+			engine
+				.read(app)
+				.roots()
+				.iter()
+				.any(|e| e.id == entry.id)
+		});
+		assert!(!gone, "the deleted entry leaves the project browser");
+		cx.update(|app| {
+			engine.update(app, |engine, cx| engine.undo(cx));
+		});
+		let back = cx.read(|app| {
+			engine
+				.read(app)
+				.roots()
+				.iter()
+				.find(|e| e.id == entry.id)
+				.map(|e| e.name.clone())
+		});
+		assert_eq!(
+			back,
+			Some(SharedString::from("renamed-clip")),
+			"one undo restores the entry (with its rename)"
+		);
 	}
 }

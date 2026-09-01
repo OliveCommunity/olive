@@ -801,10 +801,47 @@ static DECODERS: std::sync::OnceLock<
 /// "4K 切换后大量 CUDA_ERROR_OUT_OF_MEMORY 报错" log flood). Software
 /// sessions (system RAM only) are evicted only when nothing else is
 /// available.
-const MAX_CACHED_DECODERS: usize = 16;
+const MAX_CACHED_DECODERS: usize = 6;
 
 /// LRU tick source for [`DECODERS`].
 static DECODER_TICK: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+/// Cap on decoded FRAMES cached per process (release builds of the graph
+/// renderer re-decode every frame the pre-render window pulls — each is a
+/// seek+decode on the shared decoder session, which serializes the graph
+/// path behind the montage baseline. A small frame LRU lets playback pull
+/// the forward window from cache instead of thrashing the decoder: the
+/// window is sequential, so a short FIFO of recently decoded frames hits
+/// on every pre-render restart and on repeat plays).
+const MAX_CACHED_FRAMES: usize = 24;
+
+/// Decoded-frame LRU: `(filename, stream, time, w, h)` -> F32 CPU frame.
+/// Frame data is the expensive part (a 1080p frame ≈ 31 MB); the decoder
+/// session cache alone still re-decodes every `render_footage_frame`.
+/// The size is part of the key: the same media at a different target
+/// resolution is a different frame (an interleaved source-monitor/proxy
+/// request must not reuse a wrongly-sized pixel buffer).
+static DECODED_FRAMES: std::sync::OnceLock<
+	std::sync::Mutex<
+		std::collections::HashMap<(String, i32, (i64, i64), i32, i32), (Frame, u64)>,
+	>,
+> = std::sync::OnceLock::new();
+
+fn decoded_frames(
+) -> std::sync::MutexGuard<
+	'static,
+	std::collections::HashMap<(String, i32, (i64, i64), i32, i32), (Frame, u64)>,
+> {
+	DECODED_FRAMES
+		.get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+		.lock()
+		.unwrap_or_else(|e| e.into_inner())
+}
+
+/// Time-key rational (the frame-LRU's deterministic key half).
+fn time_key(t: &Rational) -> (i64, i64) {
+	(t.numerator(), t.denominator())
+}
 
 fn decoders(
 ) -> std::sync::MutexGuard<
@@ -853,6 +890,33 @@ fn open_decoder(filename: &str, stream_index: i32) -> Result<Arc<dyn oak_codec::
 	}
 	let decoder: Arc<dyn oak_codec::decoder::Decoder> = Arc::new(FFmpegDecoder::new());
 	let stream = CodecStream::with_block(filename.to_string(), stream_index, None);
+	// NVDEC surface-pool budget BEFORE opening: each HARDWARE session
+	// pins big GPU memory chunks (a 1080p-4K HEVC pool ≈ 300-1000 MB).
+	// Several worker processes × sessions each exceed even a 16 GB card —
+	// the `CUDA_ERROR_OUT_OF_MEMORY` log flood. Per process O N L Y one
+	// hardware session may coexist (the video being played is shared, so
+	// one NVDEC context serves every montage/graph frame); when one is
+	// already open, evict it now so the new open has the VRAM budget.
+	// Eviction before open matters: post-open eviction is too late — the
+	// failing open was already trying to allocate.
+	{
+		let mut cache = decoders();
+		const MAX_HARDWARE_SESSIONS: usize = 1;
+		let hw_count = cache
+			.iter()
+			.filter(|(_, (d, _))| d.hardware_decoding())
+			.count();
+		if hw_count >= MAX_HARDWARE_SESSIONS {
+			if let Some(victim) = cache
+				.iter()
+				.filter(|(_, (d, _))| d.hardware_decoding())
+				.min_by_key(|(_, (_, t))| *t)
+				.map(|(k, _)| k.clone())
+			{
+				cache.remove(&victim);
+			}
+		}
+	}
 	decoder
 		.open(&stream)
 		.map_err(|e| Error::Failed(format!("footage decode open: {e:?}")))?;
@@ -874,15 +938,32 @@ fn open_decoder(filename: &str, stream_index: i32) -> Result<Arc<dyn oak_codec::
 
 /// Decode the footage frame at `time` and copy/scale it into an
 /// oakrender F32 frame of `(w, h)`.
-pub fn render_footage_frame(
-	filename: &str,
-	stream_index: i32,
-	time: Rational,
-	size: (i32, i32),
-	format: PixelFormat,
-) -> Result<Texture> {
-	let decoder = open_decoder(filename, stream_index)?;
-	let (w, h) = size;
+	pub fn render_footage_frame(
+		filename: &str,
+		stream_index: i32,
+		time: Rational,
+		size: (i32, i32),
+		format: PixelFormat,
+	) -> Result<Texture> {
+		// Decoded frame LRU: playback asks for the same (or nearby)
+		// (file, stream, time) repeatedly (pre-render restarts, repeated
+		// scale-up at the same time, graph + montage interleaving); the
+		// decode itself is the expensive part and must not re-run per
+		// request. The target size is part of the key (see the cache
+		// type's doc).
+		let (w, h) = size;
+		let cache_size = if w > 0 && h > 0 { (w, h) } else { (-1, -1) };
+		let cache_key = (filename.to_string(), stream_index, time_key(&time), cache_size.0, cache_size.1);
+		{
+			let mut cache = decoded_frames();
+			let tick = DECODER_TICK.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+			let frame = cache.get(&cache_key).map(|(f, _)| f.clone());
+			if let Some(frame) = frame {
+				cache.insert(cache_key.clone(), (frame.clone(), tick));
+				return Ok(Texture::wrap_frame(frame));
+			}
+		}
+		let decoder = open_decoder(filename, stream_index)?;
 	let params = RetrieveVideoParams {
 		stream: CodecStream::with_block(filename.to_string(), stream_index, None),
 		time,
@@ -943,6 +1024,24 @@ pub fn render_footage_frame(
 	// Input node: source colorspace → the pipeline working space (ACEScg
 	// by default; the legacy sRGB working space keeps the pass-through).
 	convert_decoded_to_working(&mut dst, &decoded);
+	// Memoize the finished working-space frame (LRU-capped).
+	{
+		let mut cache = decoded_frames();
+		let tick = DECODER_TICK.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+		if !cache.contains_key(&cache_key) {
+			if cache.len() >= MAX_CACHED_FRAMES {
+				if let Some(victim) = cache
+					.iter()
+					.filter(|(_, (_, t))| *t > 0)
+					.min_by_key(|(_, (_, t))| *t)
+					.map(|(k, _)| k.clone())
+				{
+					cache.remove(&victim);
+				}
+			}
+			cache.insert(cache_key.clone(), (dst.clone(), tick));
+		}
+	}
 	Ok(Texture::wrap_frame(dst))
 }
 
@@ -1056,15 +1155,37 @@ fn composite_tracks_gpu(
 /// CPU composite of `frames` into one `size` frame — the fallback when no
 /// GPU device is available (or the pass fails): bottom (last) to top
 /// (first) via [`composite_over`].
+///
+/// GPU failures are remembered: a device whose wgpu pipeline fails
+/// validation (e.g. an adapter that advertises ComputePipeline yet lacks
+/// the required features) fails EVERY frame otherwise — each attempt
+/// recompiles the shader, surfaces a validation error and stalls the
+/// playback tick (the "picture barely updates on NVIDIA" report). After
+/// one failure the composite stays on the CPU path for the process.
+static GPU_COMPOSITE_FAILED: std::sync::atomic::AtomicBool =
+	std::sync::atomic::AtomicBool::new(false);
+
 fn composite_tracks(frames: Vec<Frame>, size: (i32, i32)) -> Frame {
 	let (w, h) = size;
 	if w <= 0 || h <= 0 {
 		return Frame::dummy();
 	}
-	if let Some(ctx) = crate::backend::GpuContext::shared() {
-		match composite_tracks_gpu(&ctx, &frames, (w, h)) {
-			Ok(frame) => return frame,
-			Err(err) => eprintln!("GPU track composite failed, using CPU: {err:#}"),
+	if !GPU_COMPOSITE_FAILED.load(std::sync::atomic::Ordering::Relaxed) {
+		// Single-frame composites (the common preview case) stay on the
+		// CPU path: the GPU route costs an upload+download round trip per
+		// frame for no benefit until two or more tracks overlap.
+		if frames.len() > 1 {
+			if let Some(ctx) = crate::backend::GpuContext::shared() {
+				match composite_tracks_gpu(&ctx, &frames, (w, h)) {
+					Ok(frame) => return frame,
+					Err(err) => {
+						eprintln!(
+							"GPU track composite failed, using CPU (and staying there): {err:#}"
+						);
+						GPU_COMPOSITE_FAILED.store(true, std::sync::atomic::Ordering::Relaxed);
+					}
+				}
+			}
 		}
 	}
 	let Ok(mut acc) = generate_frame(Rational::new(0, 1), (w, h), PixelFormat::F32) else {

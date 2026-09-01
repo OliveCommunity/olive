@@ -83,7 +83,12 @@ pub struct RenderManager {
 	/// for (M16 S1: dedup key — revisions alone collide across projects,
 	/// since every fresh project shares small revision numbers).
 	current_key: Mutex<Option<(String, u64)>>,
-	/// Teardown in progress (M16 S1): set first thing in
+	/// The live project the current snapshot was written from — the
+	/// INLINE (test) backend's graph-mode render source. The process
+	/// backend loads the snapshot file in its workers instead; this slot
+	/// only exists so `render_produced_frame` can run the same
+	/// [`oak_node::traverser`] graph evaluation without forking a child.
+	inline_graph: Mutex<Option<(String, std::sync::Arc<std::sync::Mutex<oak_node::project::Project>>)>>,	/// Teardown in progress (M16 S1): set first thing in
 	/// [`RenderManager::shutdown`]; `set_graph_snapshot` /
 	/// `clear_graph_snapshot` become no-ops afterwards so a stale push
 	/// from a dying test/app cannot re-arm the worker pool mid-shutdown.
@@ -112,6 +117,35 @@ impl RenderManager {
 		}
 		let backend = BackendKind::from_user_config();
 		let producer: crate::ticket::Producer = Arc::new(|time, params| {
+			// M16 S1 graph mode on the INLINE (test) backend: when the
+			// ticket names a viewer of the snapshotted project, evaluate
+			// the node graph (the same path the oak-worker pool runs in
+			// the process backend) instead of the montage shortcut — the
+			// preview must show the node graph, not the decoded-only
+			// montage.
+			if params.viewer != 0 && !params.project.is_empty() {
+				if let Some(m) = crate::manager::RenderManager::global() {
+					if let Some((uuid, project)) = m.inline_graph() {
+						if uuid == params.project {
+							if let Some(viewer_id) =
+								oak_node::id::NodeId::from_identity(params.viewer)
+							{
+								if let Ok(texture) = eval::render_graph_frame(
+									&project,
+									viewer_id,
+									time,
+									params.render_size(),
+									oak_core::PixelFormat::F32,
+								) {
+									return Ok(crate::ticket::TicketPayload::Video(
+										texture,
+									));
+								}
+							}
+						}
+					}
+				}
+			}
 			eval::render_produced_frame(time, params)
 				.map(crate::ticket::TicketPayload::Video)
 		});
@@ -163,10 +197,20 @@ impl RenderManager {
 			snapshots: GraphSnapshotStore::new(),
 			current_snapshot: Mutex::new(None),
 			current_key: Mutex::new(None),
+			inline_graph: Mutex::new(None),
 			stopping: AtomicBool::new(false),
 			process_pool,
 		}));
 		Ok(())
+	}
+
+	/// The inline backend's graph-mode render source: the live project the
+	/// current snapshot was written for, with its uuid. `None` when there
+	/// is no snapshot (or the process pool answers frames instead).
+	pub fn inline_graph(
+		&self,
+	) -> Option<(String, std::sync::Arc<std::sync::Mutex<oak_node::project::Project>>)> {
+		lock(&self.inline_graph).clone()
 	}
 
 	/// Global access; `None` before init.
@@ -226,6 +270,12 @@ impl RenderManager {
 			return Ok(()); // teardown: no re-arm after the drain
 		}
 		let uuid = lock(project).uuid.clone();
+		if std::env::var_os("OAK_DEBUG_SNAPSHOT").is_some() {
+			eprintln!(
+				"[snapshot] set_graph_snapshot uuid {uuid} revision {revision} key {:?}",
+				*lock(&self.current_key)
+			);
+		}
 		if *lock(&self.current_key) == Some((uuid.clone(), revision)) {
 			return Ok(()); // unchanged state: no rewrite, no re-send
 		}
@@ -234,8 +284,28 @@ impl RenderManager {
 			self.snapshots.release(&old);
 		}
 		self.dispatch.set_graph_snapshot(Some(path));
+		// Keep a live graph handle for the inline backend's graph mode
+		// (the same snapshot content, in-process, no file required).
+		// `project` arrives by reference (the snapshot store's lifetime);
+		// oak-app installs the Arc via [`RenderManager::set_inline_project`]
+		// — the inline graph slot is only armed there, never from a
+		// borrowed reference.
 		*lock(&self.current_key) = Some((uuid, revision));
 		Ok(())
+	}
+
+	/// Installs the live project the inline backend's graph mode renders
+	/// from (oak-app calls this on project adoption; it also arms the uuid
+	/// the snapshot dedups against). The process backend ignores it.
+	pub fn set_inline_project(
+		&self,
+		project: std::sync::Arc<std::sync::Mutex<oak_node::project::Project>>,
+	) {
+		let uuid = match project.lock() {
+			Ok(g) => g.uuid.clone(),
+			Err(p) => p.into_inner().uuid.clone(),
+		};
+		*lock(&self.inline_graph) = Some((uuid, project));
 	}
 
 	/// M16 S1 graph mode: force the workers to re-load the current project
@@ -277,6 +347,7 @@ impl RenderManager {
 			self.snapshots.release(&old);
 		}
 		*lock(&self.current_key) = None;
+		*lock(&self.inline_graph) = None;
 		self.dispatch.set_graph_snapshot(None);
 	}
 

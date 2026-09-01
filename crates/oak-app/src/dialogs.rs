@@ -36,8 +36,8 @@ use gpui::colors::DefaultColors;
 use gpui::prelude::*;
 use gpui::timeline::FrameRate;
 use gpui::{
-	div, px, App, Context, ElementId, Entity, EventEmitter, FocusHandle, Focusable, Keystroke,
-	PathPromptOptions, Render, SharedString, Window,
+	div, px, App, ClickEvent, Context, ElementId, Entity, EventEmitter, FocusHandle, Focusable,
+	InteractiveElement, Keystroke, PathPromptOptions, Render, SharedString, Window,
 };
 use gpui_elements::editable_text::{EditableTextState, StringStorage, TextChanged};
 
@@ -3630,10 +3630,236 @@ impl Render for DropSequenceChoiceContent {
 	}
 }
 
+/// The multicam wizard dialog content: pick the angle footage, choose
+/// the sync mode, name the multicam sequence. The host reads the inputs
+/// through [`Self::selection`] / [`Self::sync_mode`] / [`Self::name`]
+/// when the OK button fires.
+pub struct MulticamWizardContent<E: crate::oakui::engine::AppEngine> {
+	engine: Entity<E>,
+	/// The name field (prefilled "Multi-Cam").
+	name: Entity<TextValue>,
+	/// Sync mode combo (0 = audio waveform, 1 = source timecode, 2 = no
+	/// alignment).
+	sync: Entity<ComboBox>,
+	/// Selection state per footage row: `(entry, checked)`.
+	rows: Vec<(crate::oakui::engine::WizardFootage, bool)>,
+	/// The wheel to scroll the long angle list.
+	scrolled: bool,
+}
+
+/// The wizard's sync mode combo values (display order).
+const WIZARD_SYNC_MODES: &[&str] = &[
+	"multicam.sync.audio",
+	"multicam.sync.timecode",
+	"multicam.sync.none",
+];
+
+impl<E: crate::oakui::engine::AppEngine> MulticamWizardContent<E> {
+	/// Builds the content seeded with the engine's wizard footage.
+	pub fn new(
+		engine: Entity<E>,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) -> Self {
+		let name = cx.new(|cx| {
+			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
+			TextValue { editor }
+		});
+		name.update(cx, |field, cx| {
+			field.set_value(i18n::tr("multicam.wizard.default_name"), cx)
+		});
+		let sync = cx.new(|cx| {
+			let options = WIZARD_SYNC_MODES
+				.iter()
+				.enumerate()
+				.map(|(i, key)| ComboBoxOption::new(i, i18n::tr(key)))
+				.collect();
+			ComboBox::new(60, options, window, cx)
+		});
+		sync.update(cx, |combo, cx| combo.set_selected(Some(0), cx));
+		let rows = engine
+			.read(cx)
+			.multicam_wizard_footage()
+			.unwrap_or_default()
+			.into_iter()
+			.map(|entry| (entry, false))
+			.collect();
+		Self {
+			engine,
+			name,
+			sync,
+			rows,
+			scrolled: false,
+		}
+	}
+
+	/// Toggles the checked state of row `index`.
+	pub fn toggle_row(&mut self, index: usize, cx: &mut Context<Self>) {
+		if let Some(row) = self.rows.get_mut(index) {
+			row.1 = !row.1;
+			cx.notify();
+		}
+	}
+
+	/// The angle entries currently checked, in row order.
+	pub fn selection(&self) -> Vec<crate::oakui::engine::WizardFootage> {
+		self.rows
+			.iter()
+			.filter(|row| row.1)
+			.map(|row| row.0.clone())
+			.collect()
+	}
+
+	/// The selected sync mode (0 = audio, 1 = timecode, 2 = none).
+	pub fn sync_mode(&self, cx: &App) -> usize {
+		self.sync.read(cx).selected().unwrap_or(0)
+	}
+
+	/// The sequence name entered.
+	pub fn name(&self, cx: &App) -> SharedString {
+		self.name.read(cx).value(cx)
+	}
+
+	/// Whether the engine offers any wizard footage (drives the empty
+	/// hint row).
+	pub fn has_rows(&self) -> bool {
+		!self.rows.is_empty()
+	}
+
+	/// The engine entity (the host needs it to run the sync + create).
+	pub fn engine(&self) -> &Entity<E> {
+		&self.engine
+	}
+}
+
+impl<E: crate::oakui::engine::AppEngine> Render for MulticamWizardContent<E> {
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let colors = cx.default_colors().clone();
+		let mut rows_div = div().flex().flex_col().gap_1().w_full();
+		for (index, (entry, checked)) in self.rows.iter().enumerate() {
+			let is_checked = *checked;
+			let row = div()
+				.id(ElementId::named_usize("multicam-wizard-angle", index))
+				.flex()
+				.items_center()
+				.gap_2()
+				.px_1()
+				.py_0p5()
+				.rounded_sm()
+				.hover(|style| style.bg(colors.container))
+				.cursor_pointer()
+				.on_click(cx.listener(
+					move |this: &mut Self, _event: &ClickEvent, _window, cx| {
+						this.toggle_row(index, cx);
+					},
+				))
+				.child(
+					div()
+						.size(px(12.0))
+						.flex()
+						.items_center()
+						.justify_center()
+						.bg(if is_checked { colors.selected } else { colors.background })
+						.text_color(colors.text)
+						.child(if is_checked { "✓" } else { "" }),
+				)
+				.child(
+					div()
+						.flex_1()
+						.text_color(colors.text)
+						.child(entry.name.clone()),
+				)
+				.child(
+					div()
+						.text_xs()
+						.text_color(colors.disabled)
+						.child(entry.duration_s.map(|d| format!("{d:.1}s")).unwrap_or_default()),
+				);
+			rows_div = rows_div.child(row);
+		}
+		let angles = div()
+			.id("multicam-wizard-angles")
+			.max_h(px(220.0))
+			.overflow_y_scroll()
+			.child(rows_div);
+		let stock = if self.rows.is_empty() {
+			div()
+				.text_color(colors.disabled)
+				.text_xs()
+				.child(i18n::tr("multicam.wizard.no_footage"))
+				.into_any_element()
+		} else {
+			div().into_any_element()
+		};
+		div()
+			.flex()
+			.flex_col()
+			.gap_3()
+			.w_full()
+			.child(form_row(
+				&colors,
+				i18n::tr("multicam.wizard.name").into(),
+				self.name.clone(),
+			))
+			.child(form_row(
+				&colors,
+				i18n::tr("multicam.wizard.sync").into(),
+				self.sync.clone(),
+			))
+			.child(
+				div()
+					.text_sm()
+					.text_color(colors.text)
+					.child(i18n::tr("multicam.wizard.angles_label")),
+			)
+			.child(angles)
+			.child(stock)
+	}
+}
+
+/// The rename dialog: a single text field prefilled with the entry's
+/// current name (the project-explorer 重命名 context item; the host reads
+/// [`Self::value`] on OK and calls the engine's `rename_entry`).
+pub struct RenameContent {
+	field: Entity<TextValue>,
+}
+
+impl RenameContent {
+	/// Builds the dialog seeded with the current name.
+	pub fn new(current: SharedString, window: &mut Window, cx: &mut Context<Self>) -> Self {
+		let field = cx.new(|cx| {
+			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
+			TextValue { editor }
+		});
+		field.update(cx, |field, cx| field.set_value(current, cx));
+		Self { field }
+	}
+
+	/// The name to apply.
+	pub fn value(&self, cx: &App) -> SharedString {
+		self.field.read(cx).value(cx)
+	}
+}
+
+impl Render for RenameContent {
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let colors = cx.default_colors().clone();
+		div()
+			.flex()
+			.flex_col()
+			.gap_3()
+			.w_full()
+			.child(form_row(
+				&colors,
+				i18n::tr("project.context.rename").into(),
+				self.field.clone(),
+			))
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
-
 	fn keystroke(key: &str) -> Keystroke {
 		gpui::Keystroke::parse(key).unwrap()
 	}

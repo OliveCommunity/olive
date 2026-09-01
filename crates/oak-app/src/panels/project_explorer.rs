@@ -56,10 +56,16 @@ impl<E: AppEngine> ProjectExplorerPanel<E> {
 			&explorer,
 			|this, _explorer, event: &ProjectExplorerEvent, cx| match event {
 				ProjectExplorerEvent::OpenRequested { id, .. } => {
-					// Open the item in the engine's model (double-click on a
-					// footage entry selects it for the source viewer).
-					this.engine
-						.update(cx, |engine, cx| engine.select_item(*id, cx));
+					// A sequence entry opens in the timeline (the
+					// double-click on a sequence acts like opening it);
+					// footage entries select into the source viewer.
+					if this.engine.read(cx).entry_is_sequence(*id) {
+						this.engine
+							.update(cx, |engine, cx| engine.open_sequence_id(*id, cx));
+					} else {
+						this.engine
+							.update(cx, |engine, cx| engine.select_item(*id, cx));
+					}
 				}
 				ProjectExplorerEvent::FileDropRequested { paths, .. } => {
 					// Drag-and-drop import: probe and add each dropped file
@@ -152,7 +158,19 @@ impl<E: AppEngine> ProjectExplorerPanel<E> {
 				})
 				.detach();
 			}
-			LOCAL_RENAME | LOCAL_DELETE | LOCAL_OPEN_IN_NEW_TAB => {
+			LOCAL_RENAME => {
+				let Some(id) = self.context_entry else {
+					return;
+				};
+				cx.emit(RenameRequested(id));
+			}
+			LOCAL_DELETE => {
+				let Some(id) = self.context_entry else {
+					return;
+				};
+				cx.emit(DeleteRequested(id));
+			}
+			LOCAL_OPEN_IN_NEW_TAB => {
 				println!("[project explorer] menu action {item} (not implemented yet)");
 			}
 			LOCAL_PROPERTIES => {
@@ -289,6 +307,18 @@ pub struct NewSequenceRequested;
 
 impl<E: AppEngine> EventEmitter<NewSequenceRequested> for ProjectExplorerPanel<E> {}
 
+/// The project explorer asked the shell to rename entry `id`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RenameRequested(pub u64);
+
+impl<E: AppEngine> EventEmitter<RenameRequested> for ProjectExplorerPanel<E> {}
+
+/// The project explorer asked the shell to delete entry `id`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DeleteRequested(pub u64);
+
+impl<E: AppEngine> EventEmitter<DeleteRequested> for ProjectExplorerPanel<E> {}
+
 impl<E: AppEngine> DockPanel for ProjectExplorerPanel<E> {
 	fn panel_id(&self) -> gpui::dock::PanelId {
 		PROJECT
@@ -395,15 +425,22 @@ pub(crate) fn footage_menu(
 }
 
 /// A non-footage entry's context menu (folder / sequence): open-in-new-tab,
-/// then rename / delete / properties.
+/// then rename / delete / properties. Open-in-new-tab and the window
+/// variant are pending the sequence tabs.
 pub(crate) fn entry_menu() -> Menu {
+	let open_tab = MenuItem::new(
+		LOCAL_OPEN_IN_NEW_TAB,
+		crate::i18n::tr("project.context.open_in_new_tab"),
+	)
+	.disabled();
+	let open_window = MenuItem::new(
+		LOCAL_OPEN_IN_NEW_WINDOW,
+		crate::i18n::tr("project.context.open_in_new_window"),
+	)
+	.disabled();
 	Menu::new(vec![
-		MenuItem::new(LOCAL_OPEN_IN_NEW_TAB, crate::i18n::tr("project.context.open_in_new_tab")),
-		MenuItem::new(
-			LOCAL_OPEN_IN_NEW_WINDOW,
-			crate::i18n::tr("project.context.open_in_new_window"),
-		)
-		.separated(),
+		open_tab,
+		open_window.separated(),
 		MenuItem::new(LOCAL_RENAME, crate::i18n::tr("project.context.rename")).separated(),
 		MenuItem::new(LOCAL_DELETE, crate::i18n::tr("project.context.delete")),
 		MenuItem::new(LOCAL_PROPERTIES, crate::i18n::tr("menu.context.properties")).separated(),

@@ -502,7 +502,16 @@ fn per_worker_gpu_budget(frame_size: (i32, i32), fps: u32) -> u64 {
 	let pixels = (frame_size.0.max(0) as f64) * (frame_size.1.max(0) as f64);
 	let pixel_ratio = pixels / (1920.0 * 1080.0);
 	let fps_factor = (fps.max(1) as f64 / 24.0).sqrt().max(1.0);
-	let peak = 1u64 << 30;
+	// Peak-vs-quiet spread: a worker sustains a NVDEC session (surface
+	// pool + an in-flight frame upload) plus the wgpu pipeline and a
+	// couple of montage uploads. The 1 GiB 1080p / 4 GiB 4K estimates
+	// have been shown to still exhaust a 16 GB card when the pool pushes
+	// them simultaneously on several sources (the CUDA_ERROR_OUT_OF_MEMORY
+	// mid-playback flood), so the budget includes an extra headroom
+	// factor for undetected spikes (shared decoder surface growth during
+	// long GOP scans at a keyframe miss).
+	let headroom = 2;
+	let peak = (1u64 << 30) * headroom;
 	let idle = 256u64 << 20;
 	((peak as f64 * pixel_ratio * fps_factor + idle as f64) as u64).max(1)
 }

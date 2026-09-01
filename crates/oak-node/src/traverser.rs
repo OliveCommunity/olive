@@ -254,6 +254,11 @@ fn build_row(
 		// which elements are live at this time (C++
 		// `GetActiveElementsAtTime` — a track pulls only the blocks
 		// covering the frame). An empty answer means "no restriction".
+		// Element-tagged keys: an array input's per-element values coexist
+		// in the row under `{input}[{element}]` (C++ `GetValueAtTime`
+		// indexes the array; the multi-cam node reads exactly the element
+		// of its current source — a plain `id` key would collapse the
+		// array to its last element).
 		if conns.iter().any(|(_, e)| *e >= 0) {
 			let active = entry.behavior.active_elements_at_time(id, time);
 			if !active.is_empty() {
@@ -271,7 +276,12 @@ fn build_row(
 				.get(&(from, upstream_time))
 				.map(|t| pick_value(t, entry.core.input_data_type(id)))
 				.unwrap_or(NodeValue::None);
-			row.insert(id.to_string(), value);
+			let key = if element >= 0 {
+				format!("{id}[{element}]")
+			} else {
+				id.to_string()
+			};
+			row.insert(key, value);
 		}
 	}
 	row

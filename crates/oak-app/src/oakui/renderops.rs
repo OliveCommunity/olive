@@ -147,6 +147,67 @@ fn clip_preview_media(
 	Some(preview_footage_media(f, is_video))
 }
 
+/// A multi-cam host clip's playable media: the CURRENT source's angle clip
+/// (footage + media_in) rendered across the host clip's span.
+///
+/// `None` when `clip` is not fed from a multicam node (or the resolved
+/// angle has no footage). The montage clip's `media_in` maps the host
+/// timeline position into the angle's media: `angle_media_in + (host_in -
+/// angle_in)`.
+///
+/// CALLER HOLDS THE PROJECT LOCK: this is pure `Graph` walking — the
+/// `multicam::*` project-locking helpers MUST NOT be called from here
+/// (non-recursive mutex).
+fn clip_multicam_media(
+	g: &oak_node::graph::Graph,
+	clip: NodeId,
+	host_in: oak_core::Rational,
+) -> Option<(String, i32, oak_core::Rational)> {
+	use oak_node::nodes::multicamnode::{CURRENT_INPUT, SEQUENCE_INPUT, SEQUENCE_TYPE_INPUT};
+	// The clip's texture source must be a multicam node.
+	let mc = g.connected_output(clip, oak_node::block::clip_input::TEXTURE_INPUT, -1)?;
+	let mc_entry = g.get(mc)?;
+	if mc_entry.behavior.type_id() != "org.olivevideoeditor.Olive.multicam" {
+		return None;
+	}
+	let source = mc_entry.core.standard_value(CURRENT_INPUT, -1).to_double() as i32;
+	if source < 0 {
+		return None;
+	}
+	// The source sequence and the current source's track.
+	let seq = g.connected_output(mc, SEQUENCE_INPUT, -1)?;
+	let kind = {
+		let t = mc_entry.core.standard_value(SEQUENCE_TYPE_INPUT, -1).to_double() as i32;
+		oak_node::track::TrackType::from_c(t).unwrap_or(oak_node::track::TrackType::Video)
+	};
+	let seq_pos = super::graphops::track_list_of(g, seq, kind)?;
+	let list = super::graphops::track_list_behavior(g, seq_pos)?;
+	let track = *list.tracks.get(source as usize)?;
+	let track_behavior = super::graphops::track_behavior(g, track)?;
+	// The angle clip covering the host position.
+	let angle = track_behavior.blocks.iter().find_map(|&block_id| {
+		let clip = super::graphops::clip_behavior(g, block_id)?;
+		let in_ = clip.core.in_();
+		let out = clip.core.out();
+		if host_in < in_ || host_in >= out {
+			return None;
+		}
+		let footage_id = super::graphops::find_input_footage(g, block_id)?;
+		let f = super::graphops::footage_behavior(g, footage_id)?;
+		if f.filename.is_empty() {
+			return None;
+		}
+		let (filename, stream_index) = preview_footage_media(f, true);
+		// Host position → angle media position: the host sits at angle
+		// media_in when the host's in == the angle's in; the offset shifts
+		// it by the difference.
+		let host_delta = host_in - in_;
+		let media_in = clip.core.media_in + host_delta;
+		Some((filename, stream_index, media_in))
+	})?;
+	Some(angle)
+}
+
 /// The clip block's effect stack as montage effect descriptors
 /// (source-first order — the chain walk's signal order, so the renderer
 /// applies them media-side first). The chain walk runs all the way to
@@ -214,17 +275,30 @@ pub fn video_montage(p: &ProjectRef, seq: NodeId, time: Rational) -> Vec<Montage
 				if time < in_ || time >= out {
 					continue;
 				}
-				let Some((filename, stream_index)) =
-					clip_preview_media(&g.graph, block_id, true)
-				else {
-					continue;
+				// A multi-cam host clip decodes through its multicam node's
+				// CURRENT source: the montage carries that angle's angle-clip
+				// media (footage + the angle clip's media_in), rendered at the
+				// host clip's timeline span. Without this the host clip's
+				// texture chain has no footage to preview (the sequence viewer
+				// painted black).
+				let montage_media = clip_multicam_media(&g.graph, block_id, in_);
+				let (filename, stream_index, media_in) = match montage_media {
+					Some(mc) => mc,
+					None => {
+						let Some((filename, stream_index)) =
+							clip_preview_media(&g.graph, block_id, true)
+						else {
+							continue;
+						};
+						(filename, stream_index, clip.core.media_in)
+					}
 				};
 				clips.push(MontageClip {
 					filename,
 					stream_index,
 					in_time: in_,
 					out_time: out,
-					media_in: clip.core.media_in,
+					media_in,
 					gain: 1.0,
 					effects: clip_effects(&g.graph, block_id),
 				});
@@ -309,7 +383,16 @@ pub fn multicam_angle_frame_params(
 	// initializers and deadlock the reentrant lock in `single_track_video_montage`.
 	let project = lock(p).uuid.clone();
 	Ok(VideoTicketParams {
-		viewer: seq.identity(),
+		// The angle grid is a single-track MONTAGE render, not a full
+		// sequence-graph frame: viewer stays 0 so the worker takes the
+		// montage path. A nonzero viewer (the source sequence identity)
+		// made every angle request re-evaluate the WHOLE source sequence
+		// through the traverser — three grid cells × every tick of
+		// playback ground the machine to a halt ("switch then everything
+		// crawls"), and the graph render of the source sequence returned
+		// the stacked composite (all angles at once) rather than this
+		// one angle, which is why the cells showed the wrong/no picture.
+		viewer: 0,
 		project,
 		time,
 		force_size: Some((width, height)),
@@ -1359,7 +1442,349 @@ mod tests {
 		let _ = std::fs::remove_file(&media);
 	}
 
-	/// The original media decodes from the footage's actual first stream of
+	/// A multi-cam HOST clip's montage media is the CURRENT source's angle
+	/// clip (footage + media-in mapped from the host position) — without
+	/// this the host clip's texture chain has no footage and the sequence
+	/// viewer paints black.
+	#[test]
+	fn clip_multicam_media_resolves_the_current_angle() {
+		let _media = media_lock();
+		let media =
+			std::env::temp_dir().join(format!("oakapp_mcmedia_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip(&media, 64, 64, 10, 10).expect("generate test media");
+
+		let (project, seq, footage) = project_with_clip(&media);
+		// Build the multicam shape: source seq (the angle track), multicam
+		// node, host seq with a clip fed from the multicam output.
+		let source_seq = graphops::create_sequence(&project, "Angles");
+		graphops::add_track(&project, source_seq, TrackType::Video).expect("angle track");
+		graphops::place_footage_clip(&project, source_seq, footage, TrackType::Video, 0, 0, 10, 0)
+			.expect("place the angle clip");
+		let angle_clip = {
+			let g2 = graphops::lock(&project);
+			let track = graphops::track_ids(&g2.graph, source_seq, TrackType::Video)[0];
+			graphops::track_behavior(&g2.graph, track)
+				.expect("angle track")
+				.blocks
+				.first()
+				.copied()
+				.expect("angle clip")
+		};
+		let mc = {
+			let mut g = graphops::lock(&project);
+			let (core, behavior) = oak_node::nodes::multicamnode::create();
+			let id = g.graph.add_node(core, behavior);
+			// Default current source: 0.
+			if let Some(core) = g.graph.get_mut(id).map(|e| &mut e.core) {
+				core.set_standard_value(
+					oak_node::nodes::multicamnode::CURRENT_INPUT,
+					-1,
+					oak_node::value::NodeValue::Combo(0),
+				);
+				}
+			g.graph
+				.connect(source_seq, id, oak_node::nodes::multicamnode::SEQUENCE_INPUT, -1)
+				.unwrap();
+			// The angle CLIP feeds the source array at element 0 (the
+			// traverser's `active_elements_at_time` keeps only the current
+			// source, so multi `value()` forwards exactly it).
+			g.graph
+				.input_array_insert(
+					id,
+					oak_node::nodes::multicamnode::SOURCES_INPUT,
+					0,
+				)
+				.unwrap();
+			g.graph
+				.connect(
+					angle_clip,
+					id,
+					oak_node::nodes::multicamnode::SOURCES_INPUT,
+					0,
+				)
+				.unwrap();
+			id
+		};
+		// A host clip on the host sequence (default layout V1) fed from the
+		// multicam output; the clip's own input must first be connected.
+		let host_clip = graphops::place_footage_clip(&project, seq, footage, TrackType::Video, 0, 0, 10, 0)
+			.expect("place the host clip");
+		{
+			let mut g = graphops::lock(&project);
+			let _ = g
+				.graph
+				.disconnect(footage, host_clip, oak_node::block::clip_input::TEXTURE_INPUT, -1);
+			g.graph
+				.connect(mc, host_clip, oak_node::block::clip_input::TEXTURE_INPUT, -1)
+				.unwrap();
+		}
+		// The montage at host time 0 resolves to the angle's media.
+		let tb = graphops::sequence_time_base(&lock(&project).graph, seq).unwrap();
+		let montage = {
+			let g = graphops::lock(&project);
+			clip_multicam_media(&g.graph, host_clip, graphops::ts_to_rational(0, tb))
+		};
+		let (filename, _stream, _media_in) = montage.expect("the current angle resolves");
+		assert_eq!(
+			filename,
+			media.to_string_lossy(),
+			"the angle's footage decodes for the host clip"
+		);
+
+		// The FULL sequence-viewer path: video_montage of the host sequence
+		// -> render_montage_frame_into must produce a non-black frame (the
+		// host clip's angle media reaches the pixels — the "multi-cam clip
+		// shows black in the sequence viewer" report).
+		let montage = video_montage(&project, seq, graphops::ts_to_rational(0, tb));
+		assert_eq!(montage.len(), 1, "the host clip is the only video entry");
+		let params = VideoTicketParams {
+			viewer: 0,
+			project: String::new(),
+			time: graphops::ts_to_rational(0, tb),
+			force_size: Some((64, 64)),
+			force_format: Some(oak_core::PixelFormat::F32),
+			cache: None,
+			cache_dir: None,
+			cache_id: None,
+			cache_timebase: None,
+			footage: None,
+			montage,
+		};
+		let mut dst = vec![0u8; 64 * 64 * 16];
+		oak_render::eval::render_montage_frame_into(
+			graphops::ts_to_rational(0, tb),
+			&params,
+			(64, 64),
+			&mut dst,
+			64 * 16,
+		)
+		.expect("montage render");
+		let off = (8 * 64 + 8) * 16;
+		let r = f32::from_le_bytes(dst[off..off + 4].try_into().unwrap());
+		assert!(
+			r > 0.05,
+			"the sequence viewer shows the angle's frame, not black (r={r})"
+		);
+
+		// The NODE-GRAPH evaluation path: `render_graph_frame` must also
+		// produce the current angle (footage → angle clip → multi →
+		// host clip → composite, all through `traverser::evaluate` + the
+		// value() chain — the "preview bypasses the node graph" fix).
+		// Needs the render manager initialized? No — this inline eval is
+		// pure (render_footage_frame decodes directly).
+		let graph_frame = oak_render::eval::render_graph_frame(
+			&project,
+			seq,
+			graphops::ts_to_rational(0, tb),
+			(64, 64),
+			oak_core::PixelFormat::F32,
+		)
+		.expect("graph render");
+		let grow;
+		let gdata;
+		let goff;
+		{
+			let oak_render::texture::Texture::Cpu(ref gf) = &graph_frame else {
+				panic!("graph render produced a non-CPU frame");
+			};
+			grow = gf.linesize_bytes();
+			gdata = gf.data.clone();
+		}
+		goff = (8 * grow as usize + 8 * 16) as usize;
+		let gr = f32::from_le_bytes(gdata[goff..goff + 4].try_into().unwrap());
+		assert!(
+			gr > 0.05,
+			"the node-graph preview shows the angle's frame, not black (r={gr})"
+		);
+
+		oak_undo::global::clear().unwrap();
+		let _ = std::fs::remove_file(&media);
+	}
+
+	/// The multi-cam NODE-GRAPH source switch: two solid-color angles
+	/// (red/blue), the traverser evaluates `sources_in[source]` — the
+	/// rendered frame turns blue when `current_in` switches to source 1
+	/// (the "value() always read None / the node graph is bypassed"
+	/// report's full regression).
+	#[test]
+	fn graph_render_switches_multicam_source() {
+		let _media = media_lock();
+		let red = std::env::temp_dir().join(format!("oakapp_mcsw_r_{}.mp4", std::process::id()));
+		let blue = std::env::temp_dir().join(format!("oakapp_mcsw_b_{}.mp4", std::process::id()));
+		oak_codec::testmedia::write_test_clip_solid(&red, 64, 64, 10, 10, [1.0, 0.0, 0.0, 1.0])
+			.expect("red angle");
+		oak_codec::testmedia::write_test_clip_solid(&blue, 64, 64, 10, 10, [0.0, 0.0, 1.0, 1.0])
+			.expect("blue angle");
+
+		let (project, seq, _rfoot) = project_with_clip(&red);
+		let bfoot = graphops::import_footage(&project, &blue).expect("import blue");
+		graphops::add_track(&project, seq, TrackType::Video).expect("track 1");
+		graphops::place_footage_clip(&project, seq, _rfoot, TrackType::Video, 1, 0, 10, 0)
+			.expect("red angle slot");
+
+		// The multicam: order matters — source 0 = red, source 1 = blue.
+		let track_red = {
+			let g = graphops::lock(&project);
+			graphops::track_ids(&g.graph, seq, TrackType::Video)[0]
+		};
+		let red_clip = {
+			let g = graphops::lock(&project);
+			graphops::track_behavior(&g.graph, track_red)
+				.expect("track 0")
+				.blocks
+				.first()
+				.copied()
+				.expect("red clip")
+		};
+		let blue_clip = graphops::place_footage_clip(&project, seq, bfoot, TrackType::Video, 1, 0, 10, 0)
+			.expect("blue angle slot");
+		let mc = {
+			let mut g = graphops::lock(&project);
+			let (core, behavior) = oak_node::nodes::multicamnode::create();
+			let id = g.graph.add_node(core, behavior);
+			if let Some(core) = g.graph.get_mut(id).map(|e| &mut e.core) {
+				core.set_standard_value(
+					oak_node::nodes::multicamnode::CURRENT_INPUT,
+					-1,
+					oak_node::value::NodeValue::Combo(0),
+				);
+			}
+			g.graph
+				.input_array_insert(id, oak_node::nodes::multicamnode::SOURCES_INPUT, 0)
+				.unwrap();
+			g.graph
+				.connect(red_clip, id, oak_node::nodes::multicamnode::SOURCES_INPUT, 0)
+				.unwrap();
+			g.graph
+				.input_array_insert(id, oak_node::nodes::multicamnode::SOURCES_INPUT, 1)
+				.unwrap();
+			g.graph
+				.connect(blue_clip, id, oak_node::nodes::multicamnode::SOURCES_INPUT, 1)
+				.unwrap();
+			id
+		};
+		// Host clip fed from the multicam output.
+		let host_clip =
+			graphops::place_footage_clip(&project, seq, _rfoot, TrackType::Video, 2, 0, 10, 0)
+				.expect("host clip");
+		{
+			let mut g = graphops::lock(&project);
+			let _ = g.graph.disconnect(
+				_rfoot,
+				host_clip,
+				oak_node::block::clip_input::TEXTURE_INPUT,
+				-1,
+			);
+			g.graph
+				.connect(mc, host_clip, oak_node::block::clip_input::TEXTURE_INPUT, -1)
+				.unwrap();
+		}
+
+		let tb = graphops::sequence_time_base(&lock(&project).graph, seq).unwrap();
+		let at = graphops::ts_to_rational(0, tb);
+		let render_rgb = |mc_id: u64| -> (f32, f32) {
+			let pixel = {
+				let texture = oak_render::eval::render_graph_frame(
+					&project,
+					seq,
+					at,
+					(64, 64),
+					oak_core::PixelFormat::F32,
+				)
+				.expect("graph render");
+				let oak_render::texture::Texture::Cpu(ref gf) = texture else {
+					panic!("non-CPU frame");
+				};
+				let stride = gf.linesize_bytes();
+				let off = (8 * stride as usize + 8 * 16) as usize;
+				(
+					f32::from_le_bytes(gf.data[off..off + 4].try_into().unwrap()),
+					f32::from_le_bytes(gf.data[off + 8..off + 12].try_into().unwrap()),
+				)
+			};
+			let _ = mc_id;
+			pixel
+		};
+		// Source 0 = red angle.
+		let (r0, b0) = render_rgb(0);
+		assert!(r0 > 0.4 && b0 < 0.4, "source 0 is the red angle (r={r0} b={b0})");
+
+		// Switch to source 1: current_in drives the element the multi
+		// `value()` forwards — the frame must turn blue.
+		{
+			let mut g = graphops::lock(&project);
+			if let Some(core) = g.graph.get_mut(mc).map(|e| &mut e.core) {
+				core.set_standard_value(
+					oak_node::nodes::multicamnode::CURRENT_INPUT,
+					-1,
+					oak_node::value::NodeValue::Combo(1),
+				);
+			}
+		}
+		let (r1, b1) = render_rgb(0);
+		assert!(
+			b1 > 0.4 && r1 < 0.4,
+			"source 1 switches the node-graph frame to blue (r={r1} b={b1})"
+		);
+
+		// Playback load profile: 30 sequential graph frames vs the montage
+		// shortcut — the "now that the graph renders, previews crawl"
+		// report's baseline (in-process, no worker). A wide gap means the
+		// graph path needs a frame/decoder cache, not just correctness.
+		let measure_frames = |graph_mode: bool| -> f64 {
+			let start = std::time::Instant::now();
+			let mut frames = 0;
+			for f in 1..=30 {
+				if graph_mode {
+					let texture = oak_render::eval::render_graph_frame(
+						&project,
+						seq,
+						graphops::ts_to_rational(f, tb),
+						(64, 64),
+						oak_core::PixelFormat::F32,
+					)
+					.expect("graph frame");
+					let _ = texture;
+				} else {
+					let montage = video_montage(&project, seq, graphops::ts_to_rational(f, tb));
+					let params = VideoTicketParams {
+						viewer: 0,
+						project: String::new(),
+						time: graphops::ts_to_rational(f, tb),
+						force_size: Some((64, 64)),
+						force_format: Some(oak_core::PixelFormat::F32),
+						cache: None,
+						cache_dir: None,
+						cache_id: None,
+						cache_timebase: None,
+						footage: None,
+						montage,
+					};
+					let mut dst = vec![0u8; 64 * 64 * 16];
+					oak_render::eval::render_montage_frame_into(
+						graphops::ts_to_rational(f, tb),
+						&params,
+						(64, 64),
+						&mut dst,
+						64 * 16,
+					)
+					.expect("montage frame");
+				}
+				frames += 1;
+			}
+			start.elapsed().as_secs_f64() / frames as f64
+		};
+		let graph_ms = measure_frames(true) * 1000.0;
+		let montage_ms = measure_frames(false) * 1000.0;
+		eprintln!(
+			"[perf] graph {:?} ms/frame vs montage {:?} ms/frame (30 frames, 64x64)",
+			graph_ms, montage_ms
+		);
+
+		oak_undo::global::clear().unwrap();
+		let _ = std::fs::remove_file(&red);
+		let _ = std::fs::remove_file(&blue);
+	}
 	/// the kind (not the hardcoded 0/1 of a typical layout): a file whose
 	/// video stream is not stream 0 must still decode its own video when
 	/// the proxy switch is off or the proxy is not ready.

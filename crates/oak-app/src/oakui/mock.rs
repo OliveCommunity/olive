@@ -68,7 +68,7 @@ use oak_timeline::util::{block_clip_create, track_append_block};
 
 use super::engine::{
 	AppEngine, EngineGateway, ExportEvent, ExportSession, LibraryProject, Monitor, MulticamState,
-	Project, ScopeData, Sequence, VideoFormat,
+	Project, ScopeData, Sequence, VideoFormat, WizardFootage, WizardSyncOffset,
 };
 use super::graphops;
 use super::transport::TransportState;
@@ -2337,6 +2337,81 @@ impl AppEngine for MockEngine {
 		drop(guard);
 		self.multicam_frames.lock().unwrap().clear();
 		cx.notify();
+	}
+
+	// --- multicam wizard (mock: the demo footage entries) ---------------
+
+	fn multicam_wizard_footage(&self) -> Option<Vec<WizardFootage>> {
+		Some(vec![
+			WizardFootage {
+				id: 3,
+				name: "第一稿.mp4".into(),
+				source_timecode: Some(0),
+				duration_s: Some(30.0),
+				has_audio: Some(true),
+			},
+			WizardFootage {
+				id: 10,
+				name: "intro.mov".into(),
+				source_timecode: Some(1000),
+				duration_s: Some(45.0),
+				has_audio: Some(true),
+			},
+			WizardFootage {
+				id: 11,
+				name: "b-roll.mp4".into(),
+				source_timecode: Some(2000),
+				duration_s: Some(60.0),
+				has_audio: Some(true),
+			},
+			WizardFootage {
+				id: 12,
+				name: "interview.mov".into(),
+				source_timecode: Some(500),
+				duration_s: Some(90.0),
+				has_audio: Some(true),
+			},
+		])
+	}
+
+	fn multicam_wizard_sync_offsets(
+		&self,
+		selected: &[WizardFootage],
+	) -> Result<Vec<WizardSyncOffset>, String> {
+		// The mock's correlation is a demo: each angle's offset is derived
+		// from its source timecode relative to the reference (angle 0).
+		let reference_tc = selected
+			.first()
+			.and_then(|f| f.source_timecode)
+			.unwrap_or(0) as f64;
+		Ok(selected
+			.iter()
+			.map(|f| WizardSyncOffset {
+				footage: f.id,
+				offset_s: f.source_timecode.map(|t| t as f64 / 1000.0).unwrap_or(0.0)
+					- reference_tc / 1000.0,
+				confidence: f.has_audio.unwrap_or(false).then_some(0.95),
+			})
+			.collect())
+	}
+
+	fn multicam_create_sequence(
+		&mut self,
+		selected: Vec<WizardFootage>,
+		offsets: Vec<f64>,
+		name: String,
+		cx: &mut Context<Self>,
+	) -> Result<u64, String> {
+		let _ = (&selected, offsets);
+		// The mock has no project graph for a NEW sequence outside its
+		// demo: report the creation by switching the demo's name and
+		// returning a stable identity (the panel already shows the demo
+		// multicam — the wizard's create is a verbose success).
+		if self.sequence.name.is_empty() {
+			self.sequence.name = name;
+		}
+		cx.notify();
+		Ok(1)
 	}
 
 	fn backend_name(&self) -> &'static str {

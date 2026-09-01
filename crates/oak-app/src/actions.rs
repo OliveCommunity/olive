@@ -207,6 +207,9 @@ define_actions! {
 	FocusTimeline { cpp: "focustimeline", i18n: "menu.window.timeline", keys: [], route: Global, menu_id: 607 };
 	FocusEffectLibrary { cpp: "focuseffectlibrary", i18n: "menu.window.effect_library", keys: [], route: Global, menu_id: 608 };
 	FocusMulticam { cpp: "focusmulticam", i18n: "menu.window.multicam", keys: [], route: Global, menu_id: 609 };
+	// The multicam wizard (窗口 → 多机位向导; create a multi-angle
+	// sequence from selected footage with auto-sync alignment).
+	MulticamWizard { cpp: "multicamwizard", i18n: "menu.sequence.multicam_wizard", keys: [], route: Global, menu_id: 613 };
 	MaximizePanel { cpp: "maximizepanel", i18n: "menu.window.maximize_panel", keys: ["`"], route: Global, menu_id: 1070 };
 	ResetDefaultLayout { cpp: "resetdefaultlayout", i18n: "menu.window.reset_layout", keys: [], route: Global, menu_id: 1071 };
 

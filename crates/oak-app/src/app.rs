@@ -136,6 +136,10 @@ mod modal_ids {
 	/// The drop-onto-empty-timeline choice (probe the footage's params as
 	/// the sequence's, or set them up manually).
 	pub const DROP_SEQUENCE_CHOICE: usize = 16;
+	/// The multicam wizard (窗口 → 多机位向导).
+	pub const MULTICAM_WIZARD: usize = 17;
+	/// The rename dialog (project explorer 重命名).
+	pub const RENAME: usize = 18;
 }
 
 /// What a picked platform-dialog path should do.
@@ -221,6 +225,20 @@ enum ModalState<E: AppEngine> {
 	/// sequence exists (the paused drop lives in [`OakApp::pending_drop`]).
 	/// The buttons carry the decision, so the state keeps only the modal.
 	DropSequenceChoice { modal: Entity<Modal> },
+	/// The multicam wizard (窗口 → 多机位向导): pick the angle footage,
+	/// choose the sync mode, then create the multicam sequence. The OK
+	/// button runs the sync + creation through the content.
+	MulticamWizard {
+		modal: Entity<Modal>,
+		content: Entity<crate::dialogs::MulticamWizardContent<E>>,
+	},
+	/// The project-explorer rename dialog (right-click → 重命名): the
+	/// content's field is prefilled with the entry's current name.
+	EntryRename {
+		modal: Entity<Modal>,
+		content: Entity<crate::dialogs::RenameContent>,
+		entry_id: u64,
+	},
 }
 
 /// A running export: the session the tick loop drains for progress.
@@ -245,7 +263,9 @@ impl<E: AppEngine> ModalState<E> {
 			| ModalState::About { modal }
 			| ModalState::NewSequence { modal, .. }
 			| ModalState::SequenceProperties { modal, .. }
-			| ModalState::DropSequenceChoice { modal, .. } => Some(modal.clone()),
+			| ModalState::DropSequenceChoice { modal, .. }
+			| ModalState::MulticamWizard { modal, .. }
+			| ModalState::EntryRename { modal, .. } => Some(modal.clone()),
 		}
 	}
 }
@@ -558,6 +578,30 @@ impl<E: AppEngine> OakApp<E> {
 		)
 		.detach();
 
+		// The project explorer's 重命名 / 删除 context items operate on
+		// the project's entry (rename prompts; delete removes the node).
+		cx.subscribe(
+			&panels.project,
+			|this,
+			 _panel,
+			 event: &crate::panels::project_explorer::RenameRequested,
+			 cx| {
+				this.open_entry_rename(event.0, cx);
+			},
+		)
+		.detach();
+		cx.subscribe(
+			&panels.project,
+			|this,
+			 _panel,
+			 event: &crate::panels::project_explorer::DeleteRequested,
+			 cx| {
+				this.engine
+					.update(cx, |engine, cx| engine.delete_entry(event.0, cx));
+			},
+		)
+		.detach();
+
 		// The project explorer's 新建序列 button opens the new-sequence
 		// dialog (the same one File > New > Sequence… uses).
 		cx.subscribe(
@@ -663,13 +707,16 @@ impl<E: AppEngine> OakApp<E> {
 				}),
 				cx,
 			);
-			// The multicam panel tabs behind the program viewer (the C++
+			// The multicam panel tabs behind the SOURCE viewer (the C++
 			// default is hidden; the 窗口 menu's Focus Multicam brings it
-			// forward). The program viewer stays the group's active tab.
+			// forward). Sharing the source viewer's pane lets the user
+			// toggle between inspecting source media and switching angles
+			// in the same window-half — the multicam is NOT tabbed with
+			// the node editor.
 			dock.add_panel(
 				PanelHandle::new(multicam_panel, cx),
 				Some(DropTarget {
-					panel: Some(PROGRAM_VIEWER),
+					panel: Some(SOURCE_VIEWER),
 					zone: DropZone::Center,
 				}),
 				cx,
@@ -1157,6 +1204,7 @@ impl<E: AppEngine> OakApp<E> {
 			}
 			A::ProxySettings => self.open_proxy_dialog(cx),
 			A::ProjectProperties => self.open_project_properties(cx),
+			A::MulticamWizard => self.open_multicam_wizard(cx),
 			A::NewSequence => self.open_new_sequence(cx),
 			A::NewFolder => {
 				if let Err(err) = self
@@ -2458,6 +2506,155 @@ impl<E: AppEngine> OakApp<E> {
 		});
 	}
 
+	/// Opens the rename dialog for the project-entry `id` (the project
+	/// explorer's 重命名 context item), prefilled with the current name.
+	fn open_entry_rename(&mut self, id: u64, cx: &mut Context<Self>) {
+		if !matches!(self.modal, ModalState::None) {
+			return;
+		}
+		let current = self
+			.engine
+			.read(cx)
+			.project_entry_name(id)
+			.unwrap_or_default();
+		self.spawn_modal(cx, move |window, app| {
+			let content = app.new(|cx| {
+				crate::dialogs::RenameContent::new(current.clone(), window, cx)
+			});
+			let modal = app.new(|cx| {
+				Modal::new(
+					modal_ids::RENAME,
+					ModalOptions::new(
+						crate::i18n::tr("project.context.rename"),
+						px(420.0),
+					)
+					.with_button(DialogButton::primary(crate::i18n::tr("dialog.ok")))
+					.with_button(DialogButton::new(
+						crate::i18n::tr("dialog.cancel"),
+						gpui_widgets::dialog::DialogButtonRole::Secondary,
+					)),
+					window,
+					cx,
+				)
+				.with_content(content.clone())
+			});
+			ModalState::EntryRename { modal, content, entry_id: id }
+		});
+	}
+
+	/// Opens the multicam wizard (窗口 → 多机位向导): pick the angle
+	/// footage, choose the sync mode, then create the multicam sequence.
+	fn open_multicam_wizard(&mut self, cx: &mut Context<Self>) {
+		if !matches!(self.modal, ModalState::None) {
+			return;
+		}
+		let engine = self.engine.clone();
+		self.spawn_modal(cx, move |window, app| {
+			let content = app.new(|cx| {
+				crate::dialogs::MulticamWizardContent::new(engine, window, cx)
+			});
+			let modal = app.new(|cx| {
+				Modal::new(
+					modal_ids::MULTICAM_WIZARD,
+					ModalOptions::new(
+						crate::i18n::tr("multicam.wizard.title"),
+						px(480.0),
+					)
+					.with_button(DialogButton::primary(crate::i18n::tr("multicam.wizard.create")))
+					.with_button(DialogButton::new(
+						crate::i18n::tr("dialog.cancel"),
+						gpui_widgets::dialog::DialogButtonRole::Secondary,
+					)),
+					window,
+					cx,
+				)
+				.with_content(content.clone())
+			});
+			ModalState::MulticamWizard { modal, content }
+		});
+	}
+
+	/// The wizard's OK: run the sync (or use timecode/no-align per the
+	/// chosen mode), create the multicam sequence, then close. A rejected
+	/// create keeps the dialog open with a message row.
+	fn commit_multicam_wizard(
+		&mut self,
+		content: &Entity<crate::dialogs::MulticamWizardContent<E>>,
+		cx: &mut Context<Self>,
+	) -> Result<(), String> {
+		let selection = content.read(cx).selection();
+		if selection.len() < 2 {
+			return Err(crate::i18n::tr("multicam.wizard.need_two").to_string());
+		}
+		let sync_mode = content.read(cx).sync_mode(cx);
+		let name = content.read(cx).name(cx).to_string();
+		// Sync: audio-waveform correlation (0), source timecode (1), or
+		// no alignment (2 — all angles start at 0). The engine's sync
+		// fails when the reference angle has no decodable audio: the
+		// wizard then falls back to source timecode deltas (absolute
+		// timestamps, so the first angle is the alignment reference).
+		let offsets: Vec<f64> = match sync_mode {
+			0 => {
+				let synced = self
+					.engine
+					.read(cx)
+					.multicam_wizard_sync_offsets(&selection);
+				match synced {
+					Ok(offsets) => {
+						let reference_tc = selection[0].source_timecode;
+						let mut by_id = std::collections::HashMap::new();
+						for off in &offsets {
+							by_id.insert(off.footage, off.offset_s);
+						}
+						selection
+							.iter()
+							.map(|f| {
+								by_id.get(&f.id).copied().unwrap_or_else(|| {
+									// No audio-sync answer for this angle:
+									// the source timecode delta relative to
+									// the reference (the fallback).
+									let ref_tc = reference_tc.unwrap_or(0);
+									f.source_timecode.unwrap_or(0) as f64 / 1000.0
+										- ref_tc as f64 / 1000.0
+								})
+							})
+							.collect()
+					}
+					Err(_) => {
+						let reference_tc = selection[0].source_timecode.
+							map(|t| t as f64 / 1000.0).unwrap_or(0.0);
+						selection
+							.iter()
+							.map(|f| {
+								f.source_timecode.map(|t| t as f64 / 1000.0)
+									.unwrap_or(0.0)
+									- reference_tc
+							})
+							.collect()
+					}
+				}
+			}
+			1 => {
+				let reference_tc = selection[0].source_timecode.map(|t| t as f64 / 1000.0)
+					.unwrap_or(0.0);
+				selection
+					.iter()
+					.map(|f| {
+						f.source_timecode.map(|t| t as f64 / 1000.0).unwrap_or(0.0)
+							- reference_tc
+					})
+					.collect()
+			}
+			_ => vec![0.0; selection.len()],
+		};
+		let result = self
+			.engine
+			.update(cx, |engine, cx| {
+				engine.multicam_create_sequence(selection, offsets, name, cx)
+			});
+		result.map(|_| ())
+	}
+
 	/// Opens the export dialog.
 	fn open_export_dialog(&mut self, cx: &mut Context<Self>) {
 		if self.engine.read(cx).current_sequence().is_none() {
@@ -2716,6 +2913,39 @@ impl<E: AppEngine> OakApp<E> {
 						}
 					}
 				}
+				modal_ids::MULTICAM_WIZARD => {
+					if let ModalState::MulticamWizard { content, .. } = &self.modal {
+						let content = content.clone();
+						if *button == 0 {
+							// OK: create the multicam; a rejected create
+							// keeps the dialog open.
+							match self.commit_multicam_wizard(&content, cx) {
+								Ok(()) => self.close_modal(cx),
+								Err(err) => {
+									println!("[multicam wizard] {err}");
+								}
+							}
+						} else {
+							self.close_modal(cx);
+						}
+					}
+				}
+				modal_ids::RENAME => {
+					if let ModalState::EntryRename { content, entry_id, .. } = &self.modal {
+						if *button == 0 {
+							// OK: apply the new name.
+							let name = content.read(cx).value(cx);
+							let id = *entry_id;
+							let engine = self.engine.clone();
+							engine.update(cx, |engine, cx| {
+								engine.rename_entry(id, name.to_string(), cx)
+							});
+							self.close_modal(cx);
+						} else {
+							self.close_modal(cx);
+						}
+					}
+				}
 				modal_ids::SEQUENCE_PROPERTIES => {
 					if let ModalState::SequenceProperties { content, .. } = &self.modal {
 						let content = content.clone();
@@ -2867,7 +3097,7 @@ fn default_dock_target(id: PanelId) -> Option<DropTarget> {
 			panel: None,
 			zone: DropZone::Bottom,
 		}),
-		MULTICAM => Some(t(PROGRAM_VIEWER, DropZone::Center)),
+		MULTICAM => Some(t(SOURCE_VIEWER, DropZone::Center)),
 		_ => Some(t(PROJECT, DropZone::Center)),
 	}
 }
@@ -3114,6 +3344,7 @@ fn make_menus(state: MenuState) -> Vec<MenuBarEntry> {
 				menu_item(A::SeqCacheInOut),
 				menu_item(A::SeqCacheClear).separated(),
 				menu_item(A::SequenceSettings).disabled(),
+				menu_item(A::MulticamWizard).separated(),
 			]),
 		),
 		MenuBarEntry::new(
@@ -3132,7 +3363,7 @@ fn make_menus(state: MenuState) -> Vec<MenuBarEntry> {
 					last.separator_after = true;
 				}
 				window_items.push(menu_item(A::MaximizePanel));
-				window_items.push(menu_item(A::ResetDefaultLayout));
+				window_items.push(menu_item(A::ResetDefaultLayout).separated());
 				window_items
 			}),
 		),
@@ -4453,6 +4684,43 @@ mod tests {
 			cx.read(|app| matches!(root.read(app).modal, ModalState::None)),
 			"escape closes the action search dialog"
 		);
+	}
+
+	/// The 窗口/Window → 多机位向导 menu item opens the wizard modal with
+	/// the engine's wizard footage rows (the mock offers a demo list), and
+	/// the created modal carries the content entity (the "click freezes"
+	/// regression guard).
+	#[gpui::test]
+	async fn multicam_wizard_menu_opens_the_modal(cx: &mut TestAppContext) {
+		let _guard = crate::actions::shortcuts_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		let _lang = crate::i18n::lang_test_lock()
+			.lock()
+			.unwrap_or_else(|e| e.into_inner());
+		let (window, root) = mock_shell(cx);
+
+		cx.update(|app| {
+			root.update(app, |app, cx| {
+				app.on_menu(ActionId::MulticamWizard.menu_id(), cx)
+			})
+		});
+		cx.run_until_parked();
+		cx.update_window(window.into(), |_root, window, cx| {
+			window.draw(cx).clear();
+		})
+		.expect("window is still open");
+		let modal_rows = cx.read(|app| match &root.read(app).modal {
+			ModalState::MulticamWizard { content, .. } => content.read(app).selection().len(),
+			_ => panic!("the multicam wizard modal should be open"),
+		});
+		// The mock offers four demo footage rows.
+		let footage = cx.read(|app| {
+			let engine = root.read(app).engine.read(app);
+			engine.multicam_wizard_footage().unwrap_or_default()
+		});
+		assert_eq!(footage.len(), 4, "the mock exposes the demo footage list");
+		assert_eq!(modal_rows, 0, "no angles are pre-checked");
 	}
 
 	/// Arrow keys move the search selection and Enter runs the selected action

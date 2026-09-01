@@ -18,6 +18,7 @@
 //! `src/node/src/input/multicam/multicamnode.{h,cpp}`,
 //! `olive::MultiCamNode`).
 
+use std::any::Any;
 use crate::factory::NodeMeta;
 use crate::id::NodeId;
 use crate::node::{Category, NodeBehavior, NodeCore};
@@ -256,14 +257,12 @@ impl NodeBehavior for MultiCamNode {
 		}
 	}
 
-	/// Evaluate outputs (C++ `value()`): pushes the first value of the
-	/// `sources_in` value array (which, per
-	/// `active_elements_at_time`, is the currently selected source);
-	/// pushes nothing when the array is empty.
-	///
-	/// The Rust row carries no array payload (the `sources_in` value is
-	/// the single active element), so the connected value is pushed
-	/// through as-is; when the input is absent nothing is pushed.
+	/// Evaluate outputs (C++ `value()`): pushes the ARRAY element of
+	/// `sources_in` selected by `current_in` (the current source) — the
+	/// traverser stores array elements under `{input}[{element}]` keys
+	/// ([`crate::traverser`]), so the selected source's texture is the
+	/// value at `sources_in[source]`. A missing element (or an absent
+	/// array) pushes nothing.
 	fn value(
 		&self,
 		core: &NodeCore,
@@ -271,7 +270,19 @@ impl NodeBehavior for MultiCamNode {
 		time: Rational,
 		table: &mut NodeValueTable,
 	) {
-		let _ = (core, time);
+		let _ = time;
+		let source = core.standard_value(CURRENT_INPUT, -1).to_double() as i32;
+		let key = if source >= 0 {
+			format!("{SOURCES_INPUT}[{source}]")
+		} else {
+			SOURCES_INPUT.to_string()
+		};
+		if let Some(v) = inputs.get(&key) {
+			table.push(v.value_type(), v.clone(), None);
+			return;
+		}
+		// Fallback: an unindexed source value (single-source wiring from
+		// before the element-tagged rows).
 		if let Some(v) = inputs.get(SOURCES_INPUT) {
 			table.push(v.value_type(), v.clone(), None);
 		}

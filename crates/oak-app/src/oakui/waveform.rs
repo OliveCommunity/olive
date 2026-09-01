@@ -143,6 +143,41 @@ impl WaveformCache {
 	})
 }
 
+/// Extract an audio RMS peak envelope directly from a media file's
+/// audio stream — the multicam wizard's sync correlation input. Uses
+/// the oakaudio waveform extractor's min/max points (per 256 source
+/// samples), keeps the first channel, and maps each point onto a tiny
+/// norm that the envelope correlator can compare across angles (the
+/// point's peak = max(|min|, |max|), windowed 1/10 s).
+///
+/// Returns `None` when the file has no decodable audio (the wizard then
+/// falls back to timecode alignment).
+pub fn extract_audio_envelope(filename: &str, stream_index: i32) -> Option<Vec<f64>> {
+	let cname = std::ffi::CString::new(filename).ok()?;
+	const SAMPLES_PER_POINT: i32 = 256;
+	const WINDOW_POINTS: usize = 10; // ~100 ms windows at 48 kHz
+	let outcome = oak_audio::waveform::extract(&cname, stream_index, SAMPLES_PER_POINT).ok()?;
+	if outcome.channels <= 0 || outcome.points.is_empty() {
+		return None;
+	}
+	let channel_count = outcome.channels.max(1) as usize;
+	let count = outcome.points.len() / channel_count;
+	// Peaks of the first channel.
+	let mut peaks: Vec<f64> = (0..count)
+		.map(|i| {
+			let p = outcome.points[i * channel_count];
+			f64::max(f64::from(p.min).abs(), f64::from(p.max).abs())
+		})
+		.collect();
+	// Window: every WINDOW_POINTS points collapses to one max (the
+	// envelope the correlator slides).
+	let mut envelope = Vec::with_capacity(count.div_ceil(WINDOW_POINTS));
+	for chunk in peaks.chunks_mut(WINDOW_POINTS) {
+		envelope.push(chunk.iter().copied().fold(0.0, f64::max));
+	}
+	Some(envelope)
+}
+
 /// The timeline's clip decorator: draws extracted waveforms into audio
 /// clips (M12 P4). Reads the engine-populated cache.
 pub struct OakClipDecorator {
