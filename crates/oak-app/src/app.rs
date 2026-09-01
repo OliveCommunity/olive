@@ -3344,7 +3344,6 @@ fn make_menus(state: MenuState) -> Vec<MenuBarEntry> {
 				menu_item(A::SeqCacheInOut),
 				menu_item(A::SeqCacheClear).separated(),
 				menu_item(A::SequenceSettings).disabled(),
-				menu_item(A::MulticamWizard).separated(),
 			]),
 		),
 		MenuBarEntry::new(
@@ -4688,8 +4687,10 @@ mod tests {
 
 	/// The 窗口/Window → 多机位向导 menu item opens the wizard modal with
 	/// the engine's wizard footage rows (the mock offers a demo list), and
-	/// the created modal carries the content entity (the "click freezes"
-	/// regression guard).
+	/// The multicam wizard action still opens the modal via the direct
+	/// dispatch path (the 窗口 → 多机位向导 MENU ITEM was cut from v0.5 —
+	/// the feature is out of the shipped surface, but the action code path
+	/// keeps its guard).
 	#[gpui::test]
 	async fn multicam_wizard_menu_opens_the_modal(cx: &mut TestAppContext) {
 		let _guard = crate::actions::shortcuts_test_lock()
@@ -4702,7 +4703,10 @@ mod tests {
 
 		cx.update(|app| {
 			root.update(app, |app, cx| {
-				app.on_menu(ActionId::MulticamWizard.menu_id(), cx)
+				app.dispatch_action_id(
+					crate::actions::ActionId::MulticamWizard,
+					cx,
+				)
 			})
 		});
 		cx.run_until_parked();
