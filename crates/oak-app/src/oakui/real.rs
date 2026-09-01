@@ -246,8 +246,14 @@ enum FullResTarget {
 // that fall out of the window (or whose params were invalidated) release
 // their slots back to the workers.
 
-/// The default forward pre-render window (frames).
-pub const DEFAULT_PREVIEW_WINDOW_FORWARD: i64 = 120;
+/// The default forward pre-render window (frames). Kept small: each
+/// frame is slow on some hardware (multi-clip montage decodes through
+/// FFmpeg), and a large window queues far ahead of the playhead — the
+/// workers never catch up, the painted frame lags seconds behind the
+/// crown and playback looks frozen. A shorter window bounds the backlog
+/// to what the pool can render in a fraction of a second, so the
+/// displayed frame tracks the playhead instead of chasing it.
+pub const DEFAULT_PREVIEW_WINDOW_FORWARD: i64 = 12;
 /// Config key for the forward pre-render window size (frames).
 pub const CONFIG_KEY_PREVIEW_WINDOW: &str = "PlaybackPreRenderFrames";
 

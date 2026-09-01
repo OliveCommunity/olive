@@ -1304,11 +1304,21 @@ pub fn render_graph_frame(
 	let mut perf_collect = perf.then(std::time::Instant::now);
 	let mut perf_collect_ms = 0.0f64;
 	let mut frames: Vec<Frame> = Vec::new();
-	for clip in clips {
+	let mut perf_clip_hist: Vec<(oak_node::id::NodeId, f64)> = Vec::new();
+	for clip in clips.clone() {
+		let clip_sw = perf.then(std::time::Instant::now);
 		let request = oak_node::traverser::EvalRequest::new(clip, time);
 		let table = traverser.evaluate(graph, &request, &mut hooks).map_err(|e| {
 			Error::Failed(format!("graph evaluation of clip {clip:?} failed: {e:?}"))
 		})?;
+		if perf {
+			perf_clip_hist.push((
+				clip,
+				clip_sw
+					.map(|t| t.elapsed().as_secs_f64() * 1000.0)
+					.unwrap_or(0.0),
+			));
+		}
 		if let Some(t0) = &perf_collect {
 			perf_collect_ms += t0.elapsed().as_secs_f64() * 1000.0;
 			perf_collect = Some(std::time::Instant::now());
@@ -1337,6 +1347,9 @@ pub fn render_graph_frame(
 		let composite_ms = composite_started
 			.map(|t| t.elapsed().as_secs_f64() * 1000.0)
 			.unwrap_or(0.0);
+		for (clip, ms) in &perf_clip_hist {
+			eprintln!("[perf]   clip {clip:?} evaluate {ms:.1}ms");
+		}
 		eprintln!(
 			"[perf] graph frame time {time:?} size {size:?}: evaluate {perf_collect_ms:.1}ms composite {composite_ms:.1}ms total {}ms",
 			perf_collect_ms + composite_ms
