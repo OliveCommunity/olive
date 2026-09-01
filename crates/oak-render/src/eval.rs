@@ -881,42 +881,28 @@ fn eviction_victim(
 fn open_decoder(filename: &str, stream_index: i32) -> Result<Arc<dyn oak_codec::decoder::Decoder>> {
 	let key = (filename.to_string(), stream_index);
 	let tick = DECODER_TICK.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+	if std::env::var_os("OAK_PERF").is_some() {
+		eprintln!("[open] {:?} s{} (request)", filename, stream_index);
+	}
 	{
 		let mut cache = decoders();
 		if let Some((d, t)) = cache.get_mut(&key) {
 			*t = tick;
+			if std::env::var_os("OAK_PERF").is_some() {
+				eprintln!("[open] {:?} s{} CACHED", filename, stream_index);
+			}
 			return Ok(d.clone());
 		}
 	}
+	// Hardware-session budget is now handled by the LRU cap below (and the
+	// GPU-vram worker-count policy): the "evict the ONLY hardware session
+	// before every new open" guard below was eviction-on-every-frame — a
+	// live session was dropped before the NEXT request for the same file
+	// could hit it, so every frame re-opened the decoder (~0.5 s each) and
+	// playback could never keep up (the [open] (request) log flood without
+	// a single CACHED hit).
 	let decoder: Arc<dyn oak_codec::decoder::Decoder> = Arc::new(FFmpegDecoder::new());
 	let stream = CodecStream::with_block(filename.to_string(), stream_index, None);
-	// NVDEC surface-pool budget BEFORE opening: each HARDWARE session
-	// pins big GPU memory chunks (a 1080p-4K HEVC pool ≈ 300-1000 MB).
-	// Several worker processes × sessions each exceed even a 16 GB card —
-	// the `CUDA_ERROR_OUT_OF_MEMORY` log flood. Per process O N L Y one
-	// hardware session may coexist (the video being played is shared, so
-	// one NVDEC context serves every montage/graph frame); when one is
-	// already open, evict it now so the new open has the VRAM budget.
-	// Eviction before open matters: post-open eviction is too late — the
-	// failing open was already trying to allocate.
-	{
-		let mut cache = decoders();
-		const MAX_HARDWARE_SESSIONS: usize = 1;
-		let hw_count = cache
-			.iter()
-			.filter(|(_, (d, _))| d.hardware_decoding())
-			.count();
-		if hw_count >= MAX_HARDWARE_SESSIONS {
-			if let Some(victim) = cache
-				.iter()
-				.filter(|(_, (d, _))| d.hardware_decoding())
-				.min_by_key(|(_, (_, t))| *t)
-				.map(|(k, _)| k.clone())
-			{
-				cache.remove(&victim);
-			}
-		}
-	}
 	decoder
 		.open(&stream)
 		.map_err(|e| Error::Failed(format!("footage decode open: {e:?}")))?;
@@ -945,7 +931,31 @@ fn open_decoder(filename: &str, stream_index: i32) -> Result<Arc<dyn oak_codec::
 		size: (i32, i32),
 		format: PixelFormat,
 	) -> Result<Texture> {
-		// Decoded frame LRU: playback asks for the same (or nearby)
+		let started = std::time::Instant::now();
+		let result = render_footage_frame_inner(filename, stream_index, time, size, format);
+		if std::env::var_os("OAK_PERF").is_some() {
+			eprintln!(
+				"[decode] {:?} s{} time {}/{} ({:.3}s) size {:?} -> {:.3}s {:?}",
+				filename,
+				stream_index,
+				time.numerator(),
+				time.denominator(),
+				time.to_f64(),
+				size,
+				started.elapsed().as_secs_f64(),
+				result.is_ok()
+			);
+		}
+		result
+	}
+
+	fn render_footage_frame_inner(
+		filename: &str,
+		stream_index: i32,
+		time: Rational,
+		size: (i32, i32),
+		format: PixelFormat,
+	) -> Result<Texture> {
 		// (file, stream, time) repeatedly (pre-render restarts, repeated
 		// scale-up at the same time, graph + montage interleaving); the
 		// decode itself is the expensive part and must not re-run per
@@ -1290,12 +1300,19 @@ pub fn render_graph_frame(
 	let mut traverser = oak_node::traverser::Traverser::new();
 	let mut hooks = RenderEvalHooks::new();
 	hooks.frame_size = Some(size);
+	let perf = std::env::var_os("OAK_PERF").is_some();
+	let mut perf_collect = perf.then(std::time::Instant::now);
+	let mut perf_collect_ms = 0.0f64;
 	let mut frames: Vec<Frame> = Vec::new();
 	for clip in clips {
 		let request = oak_node::traverser::EvalRequest::new(clip, time);
 		let table = traverser.evaluate(graph, &request, &mut hooks).map_err(|e| {
 			Error::Failed(format!("graph evaluation of clip {clip:?} failed: {e:?}"))
 		})?;
+		if let Some(t0) = &perf_collect {
+			perf_collect_ms += t0.elapsed().as_secs_f64() * 1000.0;
+			perf_collect = Some(std::time::Instant::now());
+		}
 		let Some(NodeValue::Texture(handle)) = table.get(oak_node::value::ValueType::Texture)
 		else {
 			continue;
@@ -1313,8 +1330,18 @@ pub fn render_graph_frame(
 		}
 	}
 
+	let composite_started = perf.then(std::time::Instant::now);
 	let mut frame = composite_tracks(frames, size);
 	frame.timestamp = time;
+	if perf {
+		let composite_ms = composite_started
+			.map(|t| t.elapsed().as_secs_f64() * 1000.0)
+			.unwrap_or(0.0);
+		eprintln!(
+			"[perf] graph frame time {time:?} size {size:?}: evaluate {perf_collect_ms:.1}ms composite {composite_ms:.1}ms total {}ms",
+			perf_collect_ms + composite_ms
+		);
+	}
 	Ok(Texture::wrap_frame(frame))
 }
 
