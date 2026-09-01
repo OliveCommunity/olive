@@ -1643,6 +1643,12 @@ impl RealEngine {
 	/// stays tiny to keep the block short; the background job renders the
 	/// full-resolution frame off-thread at the divider-scaled size (M12
 	/// P5a, see [`RealEngine::schedule_full_res`]).
+	///
+	/// When an active proxy covers the program playhead, its OWN size is
+	/// the preview default ("预览分辨率默认跟代理"): a 720p proxy renders
+	/// as 720p instead of the 480/divider guess; the playback divider
+	/// (菜单 Playback Resolution) still scales it down when the user
+	/// lowers it. Without a proxy the old 480/divider policy holds.
 	fn proxy_render_size(&self) -> Option<(i32, i32)> {
 		let info = self.sequence_info.as_ref()?;
 		let (w, h) = (info.format.width.max(1), info.format.height.max(1));
@@ -1651,10 +1657,63 @@ impl RealEngine {
 		// so slower machines (or debug builds) can still play in real time.
 		let divider = self.playback_divider().max(1) as u32;
 		let max_long_edge = 480 / divider;
-		let scale = max_long_edge as f64 / w.max(h) as f64;
+		let mut scale = max_long_edge as f64 / w.max(h) as f64;
+		// Proxy-first default: the active proxy's own resolution sets the
+		// preview ceiling (never upscale below the sequence's own size).
+		if let Some(proxy) = self.active_proxy_resolution() {
+			let proxy_long = proxy.0.max(proxy.1) as f64;
+			// at least the proxy's long edge, divided when the user cut it
+			let proxy_edge = (proxy_long / divider as f64).max(1.0);
+			let proxy_scale = proxy_edge / w.max(h) as f64;
+			scale = scale.max(proxy_scale);
+		}
 		let width = ((w as f64 * scale).round() as u32).max(2);
 		let height = ((h as f64 * scale).round() as u32).max(2);
 		Some((width as i32, height as i32))
+	}
+
+	/// The proxy resolution of the clip covering the program playhead on
+	/// the topmost video track, WHEN that clip actually renders through
+	/// its proxy (the same application checks as [`proxy_limits_at`]:
+	/// UseProxyMedia on, footage proxy enabled + Ready). `None` when no
+	/// proxy governs the current frame.
+	fn active_proxy_resolution(&self) -> Option<(i32, i32)> {
+		let (project, seq) = (self.project_ref()?, self.sequence?);
+		let playhead = {
+			let g = graphops::lock(project);
+			graphops::sequence_playhead(&g.graph, seq)
+		};
+		let g = graphops::lock(project);
+		let tracks = graphops::track_ids(&g.graph, seq, oak_node::track::TrackType::Video);
+		for &track_id in tracks.iter().rev() {
+			let Some(track) = graphops::track_behavior(&g.graph, track_id) else {
+				continue;
+			};
+			for &block_id in &track.blocks {
+				let Some(clip) = graphops::clip_behavior(&g.graph, block_id) else {
+					continue;
+				};
+				if playhead < clip.core.in_() || playhead >= clip.core.out() {
+					continue;
+				}
+				let Some(footage_id) =
+					super::graphops::find_input_footage(&g.graph, block_id)
+				else {
+					continue;
+				};
+				let Some(f) = super::graphops::footage_behavior(&g.graph, footage_id) else {
+					continue;
+				};
+				// Only when the proxy actually stands in (same test as the
+				// montage path — otherwise a stale proxy flag would bind
+				// the render to a file that is not used).
+				if super::renderops::preview_footage_media(f, true).0 != f.proxy {
+					continue;
+				}
+				return super::renderops::proxy_resolution(f);
+			}
+		}
+		None
 	}
 
 	/// Renders one program-monitor frame through the oakrender ticket
@@ -6344,6 +6403,26 @@ impl AppEngine for RealEngine {
 			}
 			_ => graphops::push_command(cmd, oak_timeline::multicam::SWITCH_LABEL),
 		};
+		if let Err(e) = &result {
+			println!("[real engine] multicam switch failed: {e}");
+		}
+		// A NO-SPLIT switch only changes the multicam node's current source
+		// (the timeline structure is untouched): the lightweight path skips
+		// the shared full rebuild — `apply_edit` re-snapshots every track,
+		// invalidates the whole pre-render window and (150 ms later) pushes
+		// a full 192 KB graph upload, which is exactly the "switch once,
+		// everything grinds" hit. The pre-render window refresh below keeps
+		// the graph snapshot + invalidation (the worker's picture must
+		// follow the new source), but nothing else churns.
+		if !split_clip {
+			// The current-source change is an undoable edit: snapshot +
+			// invalidate the preview windows so the workers re-render the
+			// new source.
+			self.push_graph_snapshot();
+			self.invalidate_rendered_frames();
+			cx.notify();
+			return;
+		}
 		self.apply_edit(result, "multicam switch", cx);
 	}
 

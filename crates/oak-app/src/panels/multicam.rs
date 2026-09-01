@@ -61,6 +61,14 @@ use crate::panels::chip;
 /// The number of sources refreshed per tick during playback (the rest keep
 /// their last frame until their turn — the task's round-robin throttle).
 const PLAYBACK_REFRESH_PER_TICK: i32 = 2;
+/// A refresh cycle runs once every this many ticks (a tick is one frame
+/// at the sequence rate). Decoding one angle is an FFmpeg keyframe-
+/// scanning seek (~10-50 ms even on a 720p proxy); re-requesting ALL
+/// sources EVERY tick made those seek costs compound — the "switch once,
+/// then everything grinds" report's persistent half. The grid still
+/// refreshes each source in turn, just at a third of the frame rate;
+/// resting playheads and just-after-switch still do a full refresh.
+const PLAYBACK_REFRESH_STRIDE: i32 = 3;
 
 /// One pending switch (the C++ `MulticamWidget`'s `play_queue_`): the
 /// switch applies once the program playhead reaches `target`.
@@ -92,6 +100,10 @@ pub struct MulticamPanel<E: AppEngine> {
 	play_queue: VecDeque<QueuedSwitch>,
 	/// Round-robin cursor over the sources (playback refresh throttle).
 	refresh_cursor: i32,
+	/// Tick counter for the playback refresh cycle (stride-scaled).
+	refresh_tick_toggle: u64,
+	/// The refresh cycle seen last (dedups re-requests within a cycle).
+	last_refresh_cycle: i64,
 	/// The last program playhead (detects a jump / rest).
 	last_playhead: i64,
 	/// Set when a switch cleared the frames: the next refresh pass covers
@@ -121,6 +133,8 @@ impl<E: AppEngine> MulticamPanel<E> {
 			frames: HashMap::new(),
 			play_queue: VecDeque::new(),
 			refresh_cursor: 0,
+			refresh_tick_toggle: 0,
+			last_refresh_cycle: -1,
 			last_playhead: i64::MIN,
 			full_refresh: true,
 			focus: _cx.focus_handle(),
@@ -177,12 +191,21 @@ impl<E: AppEngine> MulticamPanel<E> {
 			}
 			self.refresh_cursor = 0;
 		} else {
-			// Playback: round-robin a couple of sources per tick.
-			for _ in 0..state.source_count.min(PLAYBACK_REFRESH_PER_TICK) {
-				let source = self.refresh_cursor % state.source_count;
-				self.refresh_cursor += 1;
-				self.request_angle(source, cx);
+			// Playback: one refresh cycle per PLAYBACK_REFRESH_STRIDE
+			// ticks, round-robin a couple of sources per cycle (the old
+			// per-tick round-robin requested decodes faster than they can
+			// complete — each is a keyframe-scanning seek).
+			let cycle = (self.refresh_tick_toggle / PLAYBACK_REFRESH_STRIDE as u64) as i64;
+			if cycle != self.last_refresh_cycle {
+				self.last_refresh_cycle = cycle;
+				self.refresh_cursor += 0;
+				for _ in 0..state.source_count.min(PLAYBACK_REFRESH_PER_TICK) {
+					let source = self.refresh_cursor % state.source_count;
+					self.refresh_cursor += 1;
+					self.request_angle(source, cx);
+				}
 			}
+			self.refresh_tick_toggle = self.refresh_tick_toggle.wrapping_add(1);
 		}
 		self.full_refresh = false;
 		self.last_playhead = playhead;
