@@ -664,7 +664,7 @@ pub fn full_res_render_size(seq_width: u32, seq_height: u32, divider: u32) -> (i
 /// configured, otherwise the source video resolution divided by the
 /// proxy divider. `None` when there is no probed video stream to base a
 /// divider mode on.
-pub fn proxy_resolution(f: &oak_node::footage::FootageBehavior) -> Option<(i32, i32)> {
+fn proxy_resolution(f: &oak_node::footage::FootageBehavior) -> Option<(i32, i32)> {
 	let params = f
 		.custom_proxy_params
 		.clone()

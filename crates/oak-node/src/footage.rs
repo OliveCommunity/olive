@@ -25,13 +25,6 @@ use crate::input::Input;
 use crate::node::{Category, NodeBehavior, NodeCore};
 use crate::value::{AudioParams, NodeValue, NodeValueRow, NodeValueTable, ValueType, VideoParams};
 
-/// Whether the footage's proxy state value means "the proxy file is
-/// ready on disk" (the C++ `ProxyState::Ready` = 2; the footage behavior
-/// stores it raw to avoid a codec-crate dependency here).
-pub(crate) fn proxymanager_proxy_state_ready(state: i32) -> bool {
-	state == 2
-}
-
 /// One media stream inside a footage file.
 #[derive(Clone, Debug)]
 pub struct StreamInfo {
@@ -358,13 +351,6 @@ impl NodeBehavior for FootageBehavior {
 	/// boxed [`crate::nodes::jobs::FootageJobPayload`] the render hooks
 	/// resolve to the decoded frame. A footage with no probed video stream
 	/// (or no filename) outputs nothing.
-	///
-	/// A ready proxy stands in for the original media (the node-graph
-	/// renderer's counterpart of the montage path's proxy selection): the
-	/// payload then names the proxy file/stream instead of the 4K
-	/// original — without this the node-graph preview decodes full
-	/// resolution even with proxies enabled (the "proxy on but preview is
-	/// still 4K and the GPU crawls" report).
 	fn value(
 		&self,
 		_core: &NodeCore,
@@ -378,23 +364,9 @@ impl NodeBehavior for FootageBehavior {
 		let Some(stream) = self.streams.iter().find(|s| s.is_video) else {
 			return;
 		};
-		// Proxy selection mirrors the montage path's
-		// `preview_footage_media`: enabled + Ready state, and the proxy
-		// replaces the first video stream only (C++ matches the proxy's
-		// video stream index against the footage's first video stream).
-		let proxy_ready = proxymanager_proxy_state_ready(self.proxy_state);
-		let use_proxy = self.proxy_enabled
-			&& !self.proxy.is_empty()
-			&& proxy_ready
-			&& self.proxy_video_stream_index == stream.index;
-		let (filename, stream_index) = if use_proxy {
-			(self.proxy.clone(), 0)
-		} else {
-			(self.filename.clone(), stream.index)
-		};
 		let payload = crate::nodes::jobs::FootageJobPayload {
-			filename,
-			stream_index,
+			filename: self.filename.clone(),
+			stream_index: stream.index,
 			time,
 		};
 		table.push(
