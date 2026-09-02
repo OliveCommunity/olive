@@ -810,6 +810,15 @@ pub trait AppEngine:
 	/// [`ExportSession`] carries the event channel and the cancel handle.
 	fn start_export(&mut self, format: i32, path: PathBuf) -> Result<ExportSession, String>;
 
+	/// Like [`Self::start_export`] but with the full dialog settings
+	/// (codecs, color space/bit depth, size/rate/bitrate, range). The
+	/// default start_export stays for the legacy callers.
+	fn start_export_with(
+		&mut self,
+		settings: &ExportSettings,
+		path: PathBuf,
+	) -> Result<ExportSession, String>;
+
 	// -------------------------------------------------------------------
 	// Proxy media (the C++ Tools > proxy pipeline): global switch, per
 	// footage state and the generate / delete / reveal entries. Defaults
@@ -1504,8 +1513,59 @@ pub enum ExportEvent {
 /// A running export: the event channel the host drains plus the cancel
 /// handle. Dropping the session does not abort the export thread; the
 /// thread owns the task and frees it when it finishes.
-pub struct ExportSession {
-	/// The event receiver (the background thread's sender lives as long as
+/// The export dialog's settings (文件 → 导出媒体…): container format,
+/// video/audio codecs, color space + bit depth, output size / rate /
+/// bitrate and the export range. The engine's `start_export` consumes
+/// these to build the oak-task `EncodingParams` (the codec tables gate
+/// which combos are selectable — an incompatible codec is never offered).
+#[derive(Debug, Clone)]
+pub struct ExportSettings {
+	/// The container format id ([`oak_codec::exportformat::Format`]).
+	pub format: i32,
+	/// The video codec ([`oak_codec::exportcodec::Codec`]).
+	pub video_codec: i32,
+	/// The audio codec ([`oak_codec::exportcodec::Codec`]).
+	pub audio_codec: i32,
+	/// Output size (`(width, height)`; `(0,0)` keeps the sequence size).
+	pub size: (i32, i32),
+	/// Output frame rate (fps; `0` = the sequence rate).
+	pub frame_rate: f64,
+	/// Video bitrate in bit/s (`0` = codec default).
+	pub video_bitrate: i64,
+	/// Audio bitrate in bit/s (`0` = codec default).
+	pub audio_bitrate: i64,
+	/// Bit depth: 8 → U8, 10 → U10 (SDR / HDR respectively).
+	pub bit_depth: i32,
+	/// AVColorPrimaries (SDR 709 = 1, HDR 2020 = 9).
+	pub color_primaries: i32,
+	/// AVColorTransferCharacteristic (SDR 709 = 1, HDR PQ = 16).
+	pub color_transfer: i32,
+	/// AVColorSpace (SDR 709 = 1, HDR 2020 = 9).
+	pub color_space: i32,
+	/// Export range: `None` = whole sequence, `Some((in_s, out_s))`.
+	pub range: Option<(f64, f64)>,
+}
+
+impl Default for ExportSettings {
+	fn default() -> Self {
+		Self {
+			format: 2, // MPEG4Video (.mp4)
+			video_codec: 1,  // H.264
+			audio_codec: 12, // AAC
+			size: (0, 0),
+			frame_rate: 0.0,
+			video_bitrate: 0,
+			audio_bitrate: 0,
+			bit_depth: 8,
+			color_primaries: 1,
+			color_transfer: 1,
+			color_space: 1,
+			range: None,
+		}
+	}
+}
+
+pub struct ExportSession {	/// The event receiver (the background thread's sender lives as long as
 	/// the session's `cancel` side, so a dropped receiver just stops
 	/// delivering).
 	pub events: std::sync::mpsc::Receiver<ExportEvent>,

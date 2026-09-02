@@ -105,14 +105,29 @@ pub struct EncodingParams {
 	/// set, [`ExportTask::export_range`] renders exactly `[in, out)` instead
 	/// of the whole viewer length.
 	pub has_custom_range: bool,
-	/// Custom range in point numerator (seconds rational).
+	/// Custom range in, rational seconds.
 	pub custom_range_in_num: i32,
-	/// Custom range in point denominator.
+	/// Custom range in denominator.
 	pub custom_range_in_den: i32,
-	/// Custom range out point numerator (seconds rational).
+	/// Custom range out, rational seconds.
 	pub custom_range_out_num: i32,
-	/// Custom range out point denominator.
+	/// Custom range out denominator.
 	pub custom_range_out_den: i32,
+	/// Video bit rate (bit/s; 0 = codec default).
+	pub video_bit_rate: i64,
+	/// Audio bit rate (bit/s; 0 = codec default).
+	pub audio_bit_rate: i64,
+	/// Delivery colorimetry override flags: `0` = use the project's output
+	/// spec (legacy), `1` = apply the `color_*` code points from the export
+	/// dialog (SDR 709 / HDR 2020 selection).
+	pub color_override_enabled: bool,
+	/// AVColorPrimaries (SDR 709 = 1, HDR BT.2020 = 9).
+	pub color_primaries: i32,
+	/// AVColorTransferCharacteristic (SDR 709 = 1, HDR PQ = 16).
+	pub color_trc: i32,
+	/// AVColorSpace (SDR 709 = 1, HDR BT.2020 = 9).
+	pub color_space: i32,
+
 }
 
 impl ExportTask {
@@ -164,15 +179,25 @@ impl ExportTask {
 		params.subtitles_enabled = self.encoding_params.subtitles_enabled as i32;
 		params.export_length_num = self.encoding_params.export_length_num;
 		params.export_length_den = self.encoding_params.export_length_den;
-		// Delivery colorimetry: tag the output container with the project's
+		params.video_bit_rate = self.encoding_params.video_bit_rate;
+		params.audio_bit_rate = self.encoding_params.audio_bit_rate;
+		// Delivery colorimetry: the EXPORT DIALOG's choice (SDR 709 8-bit /
+		// HDR 2020 10-bit) wins when enabled; otherwise the project's
 		// output colorspace (H.273 code points → mov `colr` atom / VUI).
 		// Limited range is the video-delivery convention; the encoder's
 		// RGB→YCbCr runs limited.
-		let (_working, spec) = self.delivery_color();
-		params.color_primaries = spec.gamut.av_color_primaries();
-		params.color_trc = spec.transfer.av_color_trc();
-		params.color_space = spec.gamut.av_color_space();
-		params.color_range = 1; // AVCOL_RANGE_MPEG (limited)
+		if self.encoding_params.color_override_enabled {
+			params.color_primaries = self.encoding_params.color_primaries;
+			params.color_trc = self.encoding_params.color_trc;
+			params.color_space = self.encoding_params.color_space;
+			params.color_range = 1; // AVCOL_RANGE_MPEG (limited)
+		} else {
+			let (_working, spec) = self.delivery_color();
+			params.color_primaries = spec.gamut.av_color_primaries();
+			params.color_trc = spec.transfer.av_color_trc();
+			params.color_space = spec.gamut.av_color_space();
+			params.color_range = 1; // AVCOL_RANGE_MPEG (limited)
+		}
 		params
 	}
 

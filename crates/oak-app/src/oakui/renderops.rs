@@ -1096,6 +1096,119 @@ pub fn encoding_params(
 		custom_range_in_den: range_in.denominator() as i32,
 		custom_range_out_num: range_out.numerator() as i32,
 		custom_range_out_den: range_out.denominator() as i32,
+		video_bit_rate: 0,
+		audio_bit_rate: 0,
+		color_override_enabled: false,
+		color_primaries: 0,
+		color_trc: 0,
+		color_space: 0,
+	})
+}
+
+/// Like [`encoding_params`] but with the dialog's full settings: chosen
+/// video/audio codecs, color space + bit depth, output size / rate /
+/// bitrate and the export range. The sequence's parameters fill anything
+/// the settings left at zero.
+pub fn encoding_params_with_settings(
+	p: &ProjectRef,
+	seq: NodeId,
+	settings: &crate::oakui::engine::ExportSettings,
+	path: &std::path::Path,
+	workarea: Option<(i64, i64)>,
+	length_frames: i64,
+) -> Result<oak_task::export::EncodingParams, String> {
+	let container = oak_codec::exportformat::Format::from_i32(settings.format)
+		.ok_or_else(|| format!("unknown export format {}", settings.format))?;
+	// ONLY the codecs the container supports are selectable upstream (the
+	// dialog rebuilds its lists from these tables); the chosen codec must
+	// be in the table — a mismatch is a hard error, not a silent default.
+	let video_codec = oak_codec::exportformat::Format::get_video_codecs(container)
+		.iter()
+		.find(|c| **c as i32 == settings.video_codec)
+		.copied()
+		.ok_or_else(|| format!("codec {} not supported by {container:?}", settings.video_codec))?;
+	let audio_codec = oak_codec::exportformat::Format::get_audio_codecs(container)
+		.iter()
+		.find(|c| **c as i32 == settings.audio_codec)
+		.copied()
+		.ok_or_else(|| format!("audio codec {} not supported by {container:?}", settings.audio_codec))?;
+	let (mut width, mut height, rate) = {
+		let g = lock(p);
+		super::graphops::sequence_video_params(&g.graph, seq)
+			.ok_or_else(|| "the sequence has no video parameters".to_string())?
+	};
+	if settings.size.0 > 0 && settings.size.1 > 0 {
+		width = settings.size.0;
+		height = settings.size.1;
+	}
+	let mut rate_num = rate.numerator().max(1) as i32;
+	let mut rate_den = rate.denominator().max(1) as i32;
+	if settings.frame_rate > 0.0 {
+		// Round to the nearest 1/1 frame; 29.97 etc. stay as-is.
+		rate_num = settings.frame_rate.round().max(1.0) as i32;
+		rate_den = 1;
+	}
+
+	let (has_custom_range, range_in, range_out, length) = match settings.range {
+		Some((in_s, out_s)) if out_s > in_s && in_s >= 0.0 => {
+			let fps = i64::from(rate_num.max(1));
+			(
+				true,
+				Rational::new((in_s * fps as f64).round().max(0.0) as i64, fps),
+				Rational::new((out_s * fps as f64).round().max(0.0) as i64, fps),
+				Rational::new(((out_s - in_s) * fps as f64).round().max(0.0) as i64, fps),
+			)
+		}
+		_ => match workarea.filter(|(s, e)| e > s) {
+			Some((in_ts, out_ts)) => (
+				true,
+				Rational::new(in_ts * i64::from(rate_den.max(1)), i64::from(rate_num.max(1))),
+				Rational::new(out_ts * i64::from(rate_den.max(1)), i64::from(rate_num.max(1))),
+				Rational::new((out_ts - in_ts) * i64::from(rate_den.max(1)), i64::from(rate_num.max(1))),
+			),
+			None => (
+				false,
+				Rational::new(0, 1),
+				Rational::new(0, 1),
+				Rational::new(length_frames.max(0) * i64::from(rate_den.max(1)), i64::from(rate_num.max(1))),
+			),
+		},
+	};
+	let bit_depth = settings.bit_depth;
+	let pixel_format = match bit_depth {
+		10 => 1, // PixelFormat::U10 (only when the codec supports it; the
+		         // dialog gates 10-bit behind HDR — codecs without 10-bit
+		         // stay at the 8-bit default and the dialog disables HDR).
+		_ => 0,  // PixelFormat::U8
+	};
+	Ok(oak_task::export::EncodingParams {
+		filename: path.to_string_lossy().into_owned(),
+		format: settings.format,
+		video_enabled: true,
+		video_codec: video_codec as i32,
+		video_width: width.max(1),
+		video_height: height.max(1),
+		video_time_base_num: rate_den.max(1),
+		video_time_base_den: rate_num.max(1),
+		video_pixel_format: pixel_format,
+		audio_enabled: true,
+		audio_codec: audio_codec as i32,
+		audio_sample_rate: EXPORT_SAMPLE_RATE,
+		audio_channel_layout: EXPORT_CHANNEL_LAYOUT,
+		subtitles_enabled: false,
+		export_length_num: length.numerator() as i32,
+		export_length_den: length.denominator() as i32,
+		has_custom_range,
+		custom_range_in_num: range_in.numerator() as i32,
+		custom_range_in_den: range_in.denominator() as i32,
+		custom_range_out_num: range_out.numerator() as i32,
+		custom_range_out_den: range_out.denominator() as i32,
+		video_bit_rate: settings.video_bitrate,
+		audio_bit_rate: settings.audio_bitrate,
+		color_override_enabled: true,
+		color_primaries: settings.color_primaries,
+		color_trc: settings.color_transfer,
+		color_space: settings.color_space,
 	})
 }
 

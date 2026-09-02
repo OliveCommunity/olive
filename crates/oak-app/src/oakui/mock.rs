@@ -2012,6 +2012,14 @@ impl AppEngine for MockEngine {
 	}
 
 	fn start_export(&mut self, _format: i32, _path: PathBuf) -> Result<ExportSession, String> {
+		self.start_export_with(&crate::oakui::engine::ExportSettings::default(), _path)
+	}
+
+	fn start_export_with(
+		&mut self,
+		_settings: &crate::oakui::engine::ExportSettings,
+		_path: PathBuf,
+	) -> Result<ExportSession, String> {
 		// Mock export: fake progress on a background thread, no file.
 		let (tx, rx) = mpsc::channel::<ExportEvent>();
 		std::thread::spawn(move || {

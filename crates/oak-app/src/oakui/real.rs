@@ -6196,14 +6196,26 @@ impl AppEngine for RealEngine {
 	}
 
 	fn start_export(&mut self, format: i32, path: PathBuf) -> Result<ExportSession, String> {
+		let settings = super::engine::ExportSettings {
+			format,
+			..Default::default()
+		};
+		self.start_export_with(&settings, path)
+	}
+
+	fn start_export_with(
+		&mut self,
+		settings: &super::engine::ExportSettings,
+		path: PathBuf,
+	) -> Result<ExportSession, String> {
 		let (Some(project), Some(seq)) = (self.project.clone(), self.sequence) else {
 			return Err("no sequence open".into());
 		};
 		let workarea = self.workarea().map(|(s, e)| (s.0, e.0));
-		let params = super::renderops::encoding_params(
+		let params = super::renderops::encoding_params_with_settings(
 			&project,
 			seq,
-			format,
+			settings,
 			&path,
 			workarea,
 			self.sequence_length().0,
