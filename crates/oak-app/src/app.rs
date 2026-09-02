@@ -424,6 +424,8 @@ pub struct OakApp<E: AppEngine> {
 	plugin_progress_rx: Mutex<mpsc::Receiver<crate::oakui::ofx::PluginProgressEvent>>,
 	/// The library row pending an export save dialog (manager 导出).
 	pending_export: Option<String>,
+	/// The suggested file stem for the export-project system save dialog.
+	export_suggested_name: String,
 	/// The panel that most recently took focus (the target of
 	/// [`Route::FocusedPanel`](crate::actions::Route::FocusedPanel)
 	/// commands; `None` before any panel is focused).
@@ -843,6 +845,7 @@ impl<E: AppEngine> OakApp<E> {
 			export: None,
 			pending_drop: None,
 			pending_export: None,
+			export_suggested_name: String::new(),
 			plugin_progress_open: false,
 			plugin_progress_rx: Mutex::new(plugin_progress_rx),
 			focused_panel: None,
@@ -2018,6 +2021,17 @@ impl<E: AppEngine> OakApp<E> {
 					directories: false,
 					multiple: action == FileAction::ImportFootage,
 					prompt: Some(prompt.into()),
+					allowed_extensions: if action == FileAction::Open {
+						// Project files only: OVE / OTIO / FCPXML.
+						vec![
+							"ove".to_string(),
+							"ovexml".to_string(),
+							"otio".to_string(),
+							"fcpxml".to_string(),
+						]
+					} else {
+						Vec::new()
+					},
 				});
 				cx.spawn(async move |this, cx| {
 					if let Ok(Ok(Some(paths))) = receiver.await {
@@ -2615,8 +2629,9 @@ impl<E: AppEngine> OakApp<E> {
 	}
 
 	/// Opens the 导出工程文件 dialog: choose the project file format
-	/// (OTIO / OVE / FCPXML) and the output path; the OK button runs the
-	/// engine's export_project_path with the picked extension.
+	/// (OTIO / OVE / FCPXML); the OK button then asks the SYSTEM save
+	/// dialog for the output path (the suggested file name carries the
+	/// chosen extension).
 	fn open_export_project_dfd(&mut self, cx: &mut Context<Self>) {
 		if !matches!(self.modal, ModalState::None) {
 			return;
@@ -2633,14 +2648,10 @@ impl<E: AppEngine> OakApp<E> {
 					.map(|name| name.to_string_lossy().into_owned())
 			})
 			.unwrap_or_else(|| "untitled".to_string());
+		self.export_suggested_name = suggested;
 		self.spawn_modal(cx, move |window, app| {
 			let content = app.new(|cx| {
 				crate::dialogs::ExportProjectDialogContent::new(window, cx)
-			});
-			// Default selection is OTIO: pre-fill the pathway with the
-			// correct extension, the OK handler applies the chosen one.
-			content.update(app, |content, cx| {
-				content.set_path(format!("{suggested}.otio"), cx)
 			});
 			let modal = app.new(|cx| {
 				Modal::new(
@@ -3128,35 +3139,33 @@ impl<E: AppEngine> OakApp<E> {
 				modal_ids::EXPORT_PROJECT_DFD => {
 					if let ModalState::ExportProjectDfd { content, .. } = &self.modal {
 						if *button == 0 {
-							// OK: export with the chosen format — the path
-							// gets the format's extension appended.
+							// OK: keep the chosen format; the SYSTEM save
+							// dialog then picks the output path (the
+							// suggested name carries the format's
+							// extension).
 							let format = content.read(cx).format(cx);
 							let ext = match format {
 								crate::dialogs::PROJECT_FORMAT_OVE => "ove",
 								crate::dialogs::PROJECT_FORMAT_FCPXML => "fcpxml",
 								_ => "otio",
 							};
-							let path = content.read(cx).path(cx).to_string();
-							let path = if path.to_ascii_lowercase().ends_with(".otio")
-								|| path.to_ascii_lowercase().ends_with(".ove")
-								|| path.to_ascii_lowercase().ends_with(".fcpxml")
-							{
-								// Stem swap: the entered name already has
-								// an extension — replace it.
-								let stem = path
-									.split('.')
-									.next()
-									.unwrap_or(&path)
-									.to_string();
-								format!("{stem}.{ext}")
-							} else {
-								format!("{path}.{ext}")
-							};
-							let engine = self.engine.clone();
-							engine.update(cx, |engine, cx| {
-								engine.export_project_path(PathBuf::from(path), cx)
-							});
+							let suggested = self.export_suggested_name.clone();
+							let receiver = cx.prompt_for_new_path(
+								std::path::Path::new("."),
+								Some(&format!("{suggested}.{ext}")),
+							);
 							self.close_modal(cx);
+							cx.spawn(async move |this, cx| {
+								if let Ok(Ok(Some(path))) = receiver.await {
+									this.update(cx, |this, cx| {
+										let engine = this.engine.clone();
+										engine.update(cx, |engine, cx| {
+											engine.export_project_path(path, cx)
+										});
+									});
+								}
+							})
+							.detach();
 						} else {
 							self.close_modal(cx);
 						}

@@ -585,6 +585,7 @@ impl PreferencesContent {
 			directories: false,
 			multiple: false,
 			prompt: Some(i18n::tr("preferences.color.browse").into()),
+			allowed_extensions: Vec::new(),
 		});
 		cx.spawn(async move |this, cx| {
 			let Ok(Ok(Some(paths))) = receiver.await else {
@@ -623,6 +624,7 @@ impl PreferencesContent {
 			directories: true,
 			multiple: false,
 			prompt: Some(i18n::tr("preferences.cache.browse").into()),
+			allowed_extensions: Vec::new(),
 		});
 		cx.spawn(async move |this, cx| {
 			let Ok(Ok(Some(paths))) = receiver.await else {
@@ -2095,6 +2097,7 @@ impl<E: crate::oakui::engine::AppEngine> Render for ProjectPropertiesContent<E> 
 						directories: false,
 						multiple: false,
 						prompt: None,
+				allowed_extensions: Vec::new(),
 					});
 					cx.spawn(async move |this, cx| {
 						if let Ok(Ok(Some(paths))) = receiver.await {
@@ -2569,6 +2572,7 @@ impl KeyboardTabContent {
 			directories: false,
 			multiple: false,
 			prompt: Some(i18n::tr("preferences.keyboard.import").into()),
+			allowed_extensions: Vec::new(),
 		});
 		cx.spawn(async move |this, cx| {
 			let Ok(Ok(Some(paths))) = receiver.await else {

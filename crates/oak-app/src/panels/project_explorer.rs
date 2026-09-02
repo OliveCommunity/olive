@@ -142,6 +142,7 @@ impl<E: AppEngine> ProjectExplorerPanel<E> {
 					directories: false,
 					multiple: false,
 					prompt: Some(crate::i18n::tr("project.context.replace_footage").into()),
+				allowed_extensions: Vec::new(),
 				});
 				cx.spawn(async move |this, cx| {
 					if let Ok(Ok(Some(paths))) = receiver.await {
