@@ -57,7 +57,7 @@ jobs:
       # on GCC >= 16).
       - name: Configure build environment
         run: |
-          tooling/ocio-env.sh >> "$GITHUB_ENV"
+          bash tooling/ocio-env.sh >> "$GITHUB_ENV"
           echo "RUSTUP_HOME=/opt/rust/rustup" >> "$GITHUB_ENV"
           echo "CARGO_HOME=/opt/rust/cargo" >> "$GITHUB_ENV"
           echo "PATH=$PATH:/opt/rust/cargo/bin" >> "$GITHUB_ENV"
@@ -243,25 +243,18 @@ jobs:
           # System OCIO (MSYS2, the exact 2.5.2 the bridge targets);
           # tooling/ocio-env.sh links it STATICALLY when the package ships
           # libOpenColorIO.a, dynamically otherwise.
-          tooling/ocio-env.sh >> "$GITHUB_ENV"
+          bash tooling/ocio-env.sh >> "$GITHUB_ENV"
           echo "FFMPEG_DIR=.cache/ffmpeg" >> "$GITHUB_ENV"
-          # ocio-sys' build.rs force-adds the MSVC + Windows SDK include
-          # dirs on Windows (meant for MSVC hosts); with the GNU toolchain
-          # that drags MSVC-only headers into the g++ compile. Unpack the
-          # crate and gate that block behind OCIO_RS_NO_MSVC_INCLUDES.
+          # ocio-sys is the GIT fork (Mike-Solar/ocio-rs main, pinned in
+          # the root manifest): its build.rs already carries the
+          # fork's GNU-toolchain fix, so NO crate-unpack/glob patch step
+          # applies here. The old code unpacked `ocio-sys-0.2.1.crate`
+          # from the registry cache — impossible for a git dependency
+          # (no .crate archive; git sources land under
+          # registry/src/git/<hash>), hence the
+          # "ls .../ocio-sys-0.2.1/build.rs: No such file" Windows CI
+          # failure.
           echo "OCIO_RS_NO_MSVC_INCLUDES=1" >> "$GITHUB_ENV"
-          CH=$(cygpath -u "${CARGO_HOME:-$HOME/.cargo}")
-          cargo fetch --locked
-          for cache in "$CH"/registry/cache/*/; do
-            src="$CH/registry/src/$(basename "$cache")"
-            mkdir -p "$src"
-            [ -f "$cache/ocio-sys-0.2.1.crate" ] && tar xzf "$cache/ocio-sys-0.2.1.crate" -C "$src"
-          done
-          BS=$(ls "$CH"/registry/src/*/ocio-sys-0.2.1/build.rs)
-          grep -q 'OCIO_RS_NO_MSVC_INCLUDES' "$BS" || sed -i \
-            's|if cfg!(target_os = "windows") && has_real_ocio {|if cfg!(target_os = "windows") \&\& has_real_ocio \&\& std::env::var_os("OCIO_RS_NO_MSVC_INCLUDES").is_none() {|' \
-            "$BS"
-          grep -q 'OCIO_RS_NO_MSVC_INCLUDES' "$BS"
 
       # ------------------------------------------------------------------
       # Caches
