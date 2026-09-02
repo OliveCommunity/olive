@@ -372,6 +372,7 @@
 "actionsearch.no_actions": "没有可用动作"
 "export.title": "导出序列"
 "export.format": "格式"
+"project.export.format": "项目格式"
 "export.format.placeholder": "选择格式…"
 "export.path": "输出路径"
 "export.run": "导出"

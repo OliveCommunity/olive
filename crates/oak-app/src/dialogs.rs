@@ -3857,6 +3857,101 @@ impl Render for RenameContent {
 	}
 }
 
+/// The project export dialog (文件 → 导出工程文件…): choose the project
+/// file format (OTIO / OVE / FCPXML) and the output path. The host reads
+/// [`Self::format`] + [`Self::path`] on OK.
+pub struct ExportProjectDialogContent {
+	format: Entity<ComboBox>,
+	path: Entity<PathField>,
+	/// (format id, display name) in dropdown order.
+	formats: Vec<(i32, String)>,
+}
+
+/// The project-file format ids (mirror the engine's serializer dispatch;
+/// the extension is derived on the host).
+pub const PROJECT_FORMAT_OTIO: i32 = 0;
+pub const PROJECT_FORMAT_OVE: i32 = 1;
+pub const PROJECT_FORMAT_FCPXML: i32 = 2;
+
+impl ExportProjectDialogContent {
+	/// Builds the dialog (OTIO default, empty path).
+	pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+		let formats: Vec<(i32, String)> = vec![
+			(PROJECT_FORMAT_OTIO, "OpenTimelineIO (.otio)".to_string()),
+			(PROJECT_FORMAT_OVE, "Oak (.ove)".to_string()),
+			(PROJECT_FORMAT_FCPXML, "Final Cut Pro XML (.fcpxml)".to_string()),
+		];
+		let options = formats
+			.iter()
+			.enumerate()
+			.map(|(i, (_, name))| ComboBoxOption::new(i, name.clone()))
+			.collect();
+		let format = cx.new(|cx| {
+			ComboBox::new(4, options, window, cx)
+				.with_placeholder(i18n::tr("project.export.format"))
+		});
+		format.update(cx, |combo, cx| combo.set_selected(Some(PROJECT_FORMAT_OTIO as usize), cx));
+		let path = cx.new(|cx| {
+			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
+			PathField { editor, enabled: true }
+		});
+		Self { format, path, formats }
+	}
+
+	/// The selected project format id.
+	pub fn format(&self, cx: &App) -> i32 {
+		let Some(selected) = self.format.read(cx).selected() else {
+			return PROJECT_FORMAT_OTIO;
+		};
+		self.formats
+			.get(selected)
+			.map(|(id, _)| *id)
+			.unwrap_or(PROJECT_FORMAT_OTIO)
+	}
+
+	/// The format's file extension (no dot).
+	pub fn extension(&self, cx: &App) -> &'static str {
+		match self.format(cx) {
+			PROJECT_FORMAT_OVE => "ove",
+			PROJECT_FORMAT_FCPXML => "fcpxml",
+			_ => "otio",
+		}
+	}
+
+	/// The output path currently entered.
+	pub fn path(&self, cx: &App) -> SharedString {
+		self.path.read(cx).path(cx)
+	}
+
+	/// Pre-fills the output path (the suggested file name).
+	pub fn set_path(&mut self, path: impl Into<SharedString>, cx: &mut Context<Self>) {
+		let path = path.into();
+		self.path.update(cx, |field, cx| field.set_path(path, cx));
+		cx.notify();
+	}
+}
+
+impl Render for ExportProjectDialogContent {
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let colors = cx.default_colors().clone();
+		div()
+			.flex()
+			.flex_col()
+			.gap_3()
+			.w_full()
+			.child(form_row(
+				&colors,
+				i18n::tr("project.export.format").into(),
+				self.format.clone(),
+			))
+			.child(form_row(
+				&colors,
+				i18n::tr("export.path").into(),
+				self.path.clone(),
+			))
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

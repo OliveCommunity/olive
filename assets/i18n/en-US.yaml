@@ -372,6 +372,7 @@
 "actionsearch.no_actions": "No actions available"
 "export.title": "Export Sequence"
 "export.format": "Format"
+"project.export.format": "Project Format"
 "export.format.placeholder": "Select a format…"
 "export.path": "Output path"
 "export.run": "Export"

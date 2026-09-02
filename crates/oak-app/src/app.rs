@@ -140,6 +140,8 @@ mod modal_ids {
 	pub const MULTICAM_WIZARD: usize = 17;
 	/// The rename dialog (project explorer 重命名).
 	pub const RENAME: usize = 18;
+	/// The project export dialog (文件 → 导出工程文件…).
+	pub const EXPORT_PROJECT_DFD: usize = 19;
 }
 
 /// What a picked platform-dialog path should do.
@@ -239,6 +241,12 @@ enum ModalState<E: AppEngine> {
 		content: Entity<crate::dialogs::RenameContent>,
 		entry_id: u64,
 	},
+	/// The project export dialog (文件 → 导出工程文件…): choose the
+	/// project format (OTIO / OVE / FCPXML) + the output path.
+	ExportProjectDfd {
+		modal: Entity<Modal>,
+		content: Entity<crate::dialogs::ExportProjectDialogContent>,
+	},
 }
 
 /// A running export: the session the tick loop drains for progress.
@@ -266,6 +274,7 @@ impl<E: AppEngine> ModalState<E> {
 			| ModalState::DropSequenceChoice { modal, .. }
 			| ModalState::MulticamWizard { modal, .. }
 			| ModalState::EntryRename { modal, .. } => Some(modal.clone()),
+			| ModalState::ExportProjectDfd { modal, .. } => Some(modal.clone()),
 		}
 	}
 }
@@ -1014,9 +1023,8 @@ impl<E: AppEngine> OakApp<E> {
 			A::OpenProject => self.open_file_dialog(FileAction::Open, cx),
 			A::OpenFromLibrary | A::ProjectManager => self.show_project_manager(cx),
 			A::Import => self.open_file_dialog(FileAction::ImportFootage, cx),
-			A::SaveProject | A::SaveProjectAs => {
-				self.open_file_dialog(FileAction::ExportProjectFile, cx)
-			}
+			// The 导出工程文件… dialog: choose OTIO / OVE / FCPXML + path.
+			A::SaveProject | A::SaveProjectAs => self.open_export_project_dfd(cx),
 			A::CloseProject => self
 				.engine
 				.update(cx, |engine, cx| engine.close_project(cx)),
@@ -2542,6 +2550,55 @@ impl<E: AppEngine> OakApp<E> {
 		});
 	}
 
+	/// Opens the 导出工程文件 dialog: choose the project file format
+	/// (OTIO / OVE / FCPXML) and the output path; the OK button runs the
+	/// engine's export_project_path with the picked extension.
+	fn open_export_project_dfd(&mut self, cx: &mut Context<Self>) {
+		if !matches!(self.modal, ModalState::None) {
+			return;
+		}
+		let current = self
+			.engine
+			.read(cx)
+			.project()
+			.map(|p| p.path.clone())
+			.filter(|p| !p.as_os_str().is_empty());
+		let suggested = current
+			.and_then(|path| {
+				path.file_stem()
+					.map(|name| name.to_string_lossy().into_owned())
+			})
+			.unwrap_or_else(|| "untitled".to_string());
+		self.spawn_modal(cx, move |window, app| {
+			let content = app.new(|cx| {
+				crate::dialogs::ExportProjectDialogContent::new(window, cx)
+			});
+			// Default selection is OTIO: pre-fill the pathway with the
+			// correct extension, the OK handler applies the chosen one.
+			content.update(app, |content, cx| {
+				content.set_path(format!("{suggested}.otio"), cx)
+			});
+			let modal = app.new(|cx| {
+				Modal::new(
+					modal_ids::EXPORT_PROJECT_DFD,
+					ModalOptions::new(
+						crate::i18n::tr("menu.file.export_project"),
+						px(480.0),
+					)
+					.with_button(DialogButton::primary(crate::i18n::tr("dialog.ok")))
+					.with_button(DialogButton::new(
+						crate::i18n::tr("dialog.cancel"),
+						gpui_widgets::dialog::DialogButtonRole::Secondary,
+					)),
+					window,
+					cx,
+				)
+				.with_content(content.clone())
+			});
+			ModalState::ExportProjectDfd { modal, content }
+		});
+	}
+
 	/// Opens the multicam wizard (窗口 → 多机位向导): pick the angle
 	/// footage, choose the sync mode, then create the multicam sequence.
 	fn open_multicam_wizard(&mut self, cx: &mut Context<Self>) {
@@ -2939,6 +2996,43 @@ impl<E: AppEngine> OakApp<E> {
 							let engine = self.engine.clone();
 							engine.update(cx, |engine, cx| {
 								engine.rename_entry(id, name.to_string(), cx)
+							});
+							self.close_modal(cx);
+						} else {
+							self.close_modal(cx);
+						}
+					}
+				}
+				modal_ids::EXPORT_PROJECT_DFD => {
+					if let ModalState::ExportProjectDfd { content, .. } = &self.modal {
+						if *button == 0 {
+							// OK: export with the chosen format — the path
+							// gets the format's extension appended.
+							let format = content.read(cx).format(cx);
+							let ext = match format {
+								crate::dialogs::PROJECT_FORMAT_OVE => "ove",
+								crate::dialogs::PROJECT_FORMAT_FCPXML => "fcpxml",
+								_ => "otio",
+							};
+							let path = content.read(cx).path(cx).to_string();
+							let path = if path.to_ascii_lowercase().ends_with(".otio")
+								|| path.to_ascii_lowercase().ends_with(".ove")
+								|| path.to_ascii_lowercase().ends_with(".fcpxml")
+							{
+								// Stem swap: the entered name already has
+								// an extension — replace it.
+								let stem = path
+									.split('.')
+									.next()
+									.unwrap_or(&path)
+									.to_string();
+								format!("{stem}.{ext}")
+							} else {
+								format!("{path}.{ext}")
+							};
+							let engine = self.engine.clone();
+							engine.update(cx, |engine, cx| {
+								engine.export_project_path(PathBuf::from(path), cx)
 							});
 							self.close_modal(cx);
 						} else {

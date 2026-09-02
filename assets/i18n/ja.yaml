@@ -374,6 +374,7 @@
 "actionsearch.no_actions": "利用可能なアクションがありません"
 "export.title": "シーケンスを書き出し"
 "export.format": "フォーマット"
+"project.export.format": "プロジェクト形式"
 "export.format.placeholder": "フォーマットを選択…"
 "export.path": "出力先"
 "export.run": "書き出し"

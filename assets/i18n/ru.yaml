@@ -374,6 +374,7 @@
 "actionsearch.no_actions": "Нет доступных действий"
 "export.title": "Экспорт последовательности"
 "export.format": "Формат"
+"project.export.format": "Формат проекта"
 "export.format.placeholder": "Выберите формат…"
 "export.path": "Путь вывода"
 "export.run": "Экспортировать"
