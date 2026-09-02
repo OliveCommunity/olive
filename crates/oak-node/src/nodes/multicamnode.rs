@@ -421,7 +421,7 @@ mod tests {
 	#[test]
 	fn create_wires_inputs() {
 		let (core, behavior) = create();
-		assert_eq!(behavior.type_id(), "org.olivevideoeditor.Olive.multicam");
+		assert_eq!(NodeBehavior::type_id(&*behavior), "org.olivevideoeditor.Olive.multicam");
 		assert_eq!(
 			core.get_input(CURRENT_INPUT).unwrap().value_type,
 			ValueType::Combo
@@ -570,7 +570,7 @@ mod tests {
 			sequence: Some(seq),
 		};
 		let copy = node.duplicate(&NodeCore::new()).unwrap();
-		assert_eq!(copy.type_id(), "org.olivevideoeditor.Olive.multicam");
+		assert_eq!(NodeBehavior::type_id(&*copy), "org.olivevideoeditor.Olive.multicam");
 		let down = copy
 			.as_any()
 			.unwrap()

@@ -162,7 +162,7 @@ fn info_on_the_fixture_prints_the_project() {
 	assert!(stdout.contains("Modified: no"), "{stdout}");
 	assert!(stdout.contains("Sequences: 1"), "{stdout}");
 	assert!(stdout.contains("[0] \"Fixture Sequence\""), "{stdout}");
-	assert!(stdout.contains("frame rate: 30/1 (30.000 fps)"), "{stdout}");
+	assert!(stdout.contains("frame rate: 30000/1001 (29.970 fps)"), "{stdout}");
 	assert!(stdout.contains("Footage: 1"), "{stdout}");
 	// The C++ fixture stores the footage path relative to the project;
 	// the CLI resolves it against the project directory and reports it

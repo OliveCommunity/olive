@@ -2592,8 +2592,8 @@ mod tests {
 		let uhd = per_worker_gpu_budget((3840, 2160), 24);
 		assert!(uhd > hd * 3, "4K budget must be ~4× 1080p ({uhd} vs {hd})");
 		assert!(fhd >= hd, "60 fps must over-provision ({fhd} vs {hd})");
-		// 1080p24 = 1 GiB + 256 MiB exactly.
-		assert_eq!(hd, (1 << 30) + (256 << 20));
+		// 1080p24 = 2 GiB peak (1 GiB × headroom 2) + 256 MiB idle.
+		assert_eq!(hd, (2 << 30) + (256 << 20));
 	}
 
 	/// The GPU-vram worker budget scales with the frame's pixel count: a
@@ -2603,29 +2603,22 @@ mod tests {
 	/// calling the budget formula directly.
 	#[test]
 	fn gpu_worker_budget_scales_with_frame_size() {
-		// Sinlge-worker budget at 1080p24: peak (1 GiB × 1 × 1) + idle
-		// (256 MiB) = 1.25 GiB. At 24 GiB free with 10% reserve: 21.6 GiB
-		// usable → 17 workers. At 4K: peak 4 GiB (pixel ratio 4) + idle
-		// 0.25 = 4.25 GiB → 5 workers.
-		let budget = |w: i32, h: i32, fps: u32| {
-			let pixels = (w as f64) * (h as f64);
-			let pixel_ratio = pixels / (1920.0 * 1080.0);
-			let fps_factor = (fps.max(1) as f64 / 24.0).sqrt().max(1.0);
-			(((1u64 << 30) as f64 * pixel_ratio * fps_factor + (256u64 << 20) as f64) as u64).max(1)
-		};
-		let usable_1080p = (24u64 << 30) * 9 / 10;
-		let n_1080p = usable_1080p / budget(1920, 1080, 24);
-		let usable_4k = (24u64 << 30) * 9 / 10;
-		let n_4k = usable_4k / budget(3840, 2160, 24);
+		// Use the real budget formula (headroom included): at 1080p24 the
+		// per-worker budget is 2 GiB peak + 256 MiB idle = 2.25 GiB; at
+		// 4K it is 4× that (pixel ratio 4) + idle = 8.25 GiB. With 24 GiB
+		// free / 10% reserve (21.6 GiB usable): 9 workers at 1080p, 2 at
+		// 4K — the pool must shrink sharply on resolution switch.
+		let usable = (24u64 << 30) * 9 / 10;
+		let n_1080p = usable / per_worker_gpu_budget((1920, 1080), 24);
+		let n_4k = usable / per_worker_gpu_budget((3840, 2160), 24);
+		let n_60 = usable / per_worker_gpu_budget((1920, 1080), 60);
+		let n_24_1080 = usable / per_worker_gpu_budget((1920, 1080), 24);
 		assert!(
 			n_1080p > n_4k * 3,
 			"4K must cut the worker count sharply ({n_1080p} vs {n_4k})"
 		);
-		assert_eq!(n_4k, 5, "24 GiB free © 4K: 5 workers per the user budget");
-		// Higher fps over-provisions (more surface frames in flight).
-		let n_60 = usable_4k / budget(1920, 1080, 60);
-		let n_24 = usable_4k / budget(1920, 1080, 24);
-		assert!(n_60 < n_24, "higher fps must not get MORE workers ({n_60} vs {n_24})");
+		assert_eq!(n_4k, 2, "24 GiB free @ 4K with the headroom budget: 2 workers");
+		assert!(n_60 < n_24_1080, "higher fps must not get MORE workers ({n_60} vs {n_24_1080})");
 	}
 
 	#[test]
