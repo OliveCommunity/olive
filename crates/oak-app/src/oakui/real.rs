@@ -5387,6 +5387,26 @@ impl AppEngine for RealEngine {
 			.map_err(|e| format!("failed to duplicate the project: {e}"))
 	}
 
+	/// 另存为: duplicate the open project into the library under a new
+	/// (named) row, then open that copy as the current project. The
+	/// duplicator applies the new name to the copy's row and projectname.
+	fn save_project_as(&mut self, name: &str, cx: &mut Context<Self>) -> Result<(), String> {
+		let Some(project) = self.project.clone() else {
+			return Err("no project open".to_string());
+		};
+		let current_uuid = {
+			let guard = graphops::lock(&project);
+			guard.uuid.clone()
+		};
+		let new_uuid = graphops::library_duplicate(&current_uuid)
+			.map_err(|e| format!("duplicate failed: {e}"))?;
+		graphops::library_rename(&new_uuid, name.trim())
+			.map_err(|e| format!("rename copy failed: {e}"))?;
+		// Open the new row (adopt switches the current project).
+		self.open_library_project(&new_uuid, cx)?;
+		Ok(())
+	}
+
 	fn library_import_project(&mut self, path: PathBuf) -> Result<String, String> {
 		graphops::library_import(&path)
 			.map_err(|e| format!("failed to import \"{}\": {e}", path.display()))

@@ -726,6 +726,14 @@ pub trait AppEngine:
 		Err("project library not supported".into())
 	}
 
+	/// 另存为: saves the OPEN project into the library as a differently-
+	/// named copy and switches the current project to that copy. Default:
+	/// unsupported.
+	fn save_project_as(&mut self, name: &str, cx: &mut Context<Self>) -> Result<(), String> {
+		let _ = (name, cx);
+		Err("save-as not supported".into())
+	}
+
 	/// Imports a `.ove` / `.otio` / `.fcpxml` project file into the library
 	/// as a new row; returns the new row's uuid.
 	fn library_import_project(&mut self, path: PathBuf) -> Result<String, String> {

@@ -144,6 +144,8 @@ mod modal_ids {
 	pub const EXPORT_PROJECT_DFD: usize = 19;
 	/// The new-project dialog (文件 → 新建项目).
 	pub const NEW_PROJECT: usize = 20;
+	/// The save-as dialog (文件 → 另存为).
+	pub const SAVE_AS: usize = 21;
 }
 
 /// What a picked platform-dialog path should do.
@@ -254,6 +256,11 @@ enum ModalState<E: AppEngine> {
 		modal: Entity<Modal>,
 		content: Entity<crate::dialogs::NewProjectContent>,
 	},
+	/// The save-as dialog (文件 → 另存为): the copy's name.
+	SaveAs {
+		modal: Entity<Modal>,
+		content: Entity<crate::dialogs::RenameContent>,
+	},
 }
 
 /// A running export: the session the tick loop drains for progress.
@@ -283,6 +290,7 @@ impl<E: AppEngine> ModalState<E> {
 			| ModalState::EntryRename { modal, .. } => Some(modal.clone()),
 			| ModalState::ExportProjectDfd { modal, .. } => Some(modal.clone()),
 			| ModalState::NewProject { modal, .. } => Some(modal.clone()),
+			| ModalState::SaveAs { modal, .. } => Some(modal.clone()),
 		}
 	}
 }
@@ -1032,7 +1040,8 @@ impl<E: AppEngine> OakApp<E> {
 			A::OpenFromLibrary | A::ProjectManager => self.show_project_manager(cx),
 			A::Import => self.open_file_dialog(FileAction::ImportFootage, cx),
 			// The 导出工程文件… dialog: choose OTIO / OVE / FCPXML + path.
-			A::SaveProject | A::SaveProjectAs => self.open_export_project_dfd(cx),
+			A::SaveProject => self.open_export_project_dfd(cx),
+			A::SaveProjectAs => self.open_save_as(cx),
 			A::CloseProject => self
 				.engine
 				.update(cx, |engine, cx| engine.close_project(cx)),
@@ -2654,6 +2663,64 @@ impl<E: AppEngine> OakApp<E> {
 		});
 	}
 
+	/// Opens the 另存为 dialog: the copy's new name (prefilled with the
+	/// current project name). OK duplicates the project into the library
+	/// under that name and switches to the copy.
+	fn open_save_as(&mut self, cx: &mut Context<Self>) {
+		if !matches!(self.modal, ModalState::None) {
+			return;
+		}
+		let current_name = self
+			.engine
+			.read(cx)
+			.project()
+			.map(|p| p.name.clone())
+			.unwrap_or_else(|| crate::i18n::tr("manager.new.default_name").to_string());
+		let mut name = current_name.clone();
+		if let Some((stem, _)) = name.rsplit_once('.') {
+			name = stem.to_string();
+		}
+		name = format!("{name} Copy");
+		self.spawn_modal(cx, move |window, app| {
+			let content = app.new(|cx| {
+				crate::dialogs::RenameContent::new(name.clone().into(), window, cx)
+			});
+			let modal = app.new(|cx| {
+				Modal::new(
+					modal_ids::SAVE_AS,
+					ModalOptions::new(
+						crate::i18n::tr("menu.file.save_as"),
+						px(420.0),
+					)
+					.with_button(DialogButton::primary(crate::i18n::tr("dialog.ok")))
+					.with_button(DialogButton::new(
+						crate::i18n::tr("dialog.cancel"),
+						gpui_widgets::dialog::DialogButtonRole::Secondary,
+					)),
+					window,
+					cx,
+				)
+				.with_content(content.clone())
+			});
+			ModalState::SaveAs { modal, content }
+		});
+	}
+
+	/// Confirms the save-as dialog: duplicate + switch to the copy.
+	fn commit_save_as(
+		&mut self,
+		content: &Entity<crate::dialogs::RenameContent>,
+		cx: &mut Context<Self>,
+	) {
+		let name = content.read(cx).value(cx).to_string();
+		let engine = self.engine.clone();
+		let result = engine.update(cx, |engine, cx| engine.save_project_as(&name, cx));
+		if let Err(err) = result {
+			println!("[file] save as failed: {err}");
+		}
+		self.close_modal(cx);
+	}
+
 	/// Opens the multicam wizard (窗口 → 多机位向导): pick the angle
 	/// footage, choose the sync mode, then create the multicam sequence.
 	fn open_multicam_wizard(&mut self, cx: &mut Context<Self>) {
@@ -3100,6 +3167,16 @@ impl<E: AppEngine> OakApp<E> {
 						if *button == 0 {
 							let content = content.clone();
 							self.commit_new_project(&content, cx);
+						} else {
+							self.close_modal(cx);
+						}
+					}
+				}
+				modal_ids::SAVE_AS => {
+					if let ModalState::SaveAs { content, .. } = &self.modal {
+						if *button == 0 {
+							let content = content.clone();
+							self.commit_save_as(&content, cx);
 						} else {
 							self.close_modal(cx);
 						}
