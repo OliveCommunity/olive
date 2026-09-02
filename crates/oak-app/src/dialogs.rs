@@ -997,6 +997,10 @@ pub struct ExportDialogContent {
 	audio_codec: Entity<ComboBox>,
 	color: Entity<ComboBox>,
 	range: Entity<ComboBox>,
+	resolution_w: Entity<SpinBox>,
+	resolution_h: Entity<SpinBox>,
+	frame_rate: Entity<SpinBox>,
+	bitrate: Entity<SpinBox>,
 	path: Entity<PathField>,
 	/// (format id, display name, extension) in dropdown order.
 	formats: Vec<(i32, String, String)>,
@@ -1101,6 +1105,43 @@ impl ExportDialogContent {
 		});
 		range.update(cx, |combo, cx| combo.set_selected(Some(0), cx));
 
+		// Resolution / frame rate / bitrate SPIN boxes: 0 = keep the
+		// sequence's / the codec's default (the engine treats 0 that way),
+		// any typed value is honored (the backend accepts arbitrary
+		// width/height/rate/bitrate).
+		let resolution_w = cx.new(|cx| {
+			SpinBox::new(
+				9,
+				SliderModel::new(ValueKind::Integer, 0.0, 16384.0, 4.0, 0.0),
+				window,
+				cx,
+			)
+		});
+		let resolution_h = cx.new(|cx| {
+			SpinBox::new(
+				12,
+				SliderModel::new(ValueKind::Integer, 0.0, 16384.0, 4.0, 0.0),
+				window,
+				cx,
+			)
+		});
+		let frame_rate = cx.new(|cx| {
+			SpinBox::new(
+				10,
+				SliderModel::new(ValueKind::Float, 0.0, 240.0, 0.1, 0.0),
+				window,
+				cx,
+			)
+		});
+		let bitrate = cx.new(|cx| {
+			SpinBox::new(
+				11,
+				SliderModel::new(ValueKind::Integer, 0.0, 500_000_000.0, 1_000_000.0, 0.0),
+				window,
+				cx,
+			)
+		});
+
 		let path = cx.new(|cx| {
 			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
 			PathField {
@@ -1115,6 +1156,10 @@ impl ExportDialogContent {
 			audio_codec,
 			color,
 			range,
+			resolution_w,
+			resolution_h,
+			frame_rate,
+			bitrate,
 			path,
 			formats,
 			active_format,
@@ -1197,9 +1242,10 @@ impl ExportDialogContent {
 		cx.notify();
 	}
 
-	/// The full export settings (codec/color/bit-depth/range) the engine
-	/// consumes. The codec combos expose only the container's compatible
-	/// codes, so the picked ids are always valid for `format`.
+	/// The full export settings (codec/color/bit-depth/range/size/fps/
+	/// bitrate) the engine consumes. The codec combos expose only the
+	/// container's compatible codes, so the picked ids are always valid
+	/// for `format`.
 	pub fn settings(&self, cx: &App) -> crate::oakui::engine::ExportSettings {
 		let video_codec = compatible_video_codecs(self.active_format)
 			.get(self.video_codec.read(cx).selected().unwrap_or(0))
@@ -1211,13 +1257,18 @@ impl ExportDialogContent {
 			.unwrap_or(12);
 		let hdr = self.color.read(cx).selected() == Some(1);
 		let in_out = self.range.read(cx).selected() == Some(1);
+		let w = self.resolution_w.read(cx).value().to_f64().round() as i32;
+		let h = self.resolution_h.read(cx).value().to_f64().round() as i32;
+		let size = if w > 0 && h > 0 { (w, h) } else { (0, 0) };
+		let frame_rate = self.frame_rate.read(cx).value().to_f64();
+		let video_bitrate = self.bitrate.read(cx).value().to_f64().round() as i64;
 		crate::oakui::engine::ExportSettings {
 			format: self.active_format,
 			video_codec,
 			audio_codec,
-			size: (0, 0),
-			frame_rate: 0.0,
-			video_bitrate: 0,
+			size,
+			frame_rate,
+			video_bitrate,
 			audio_bitrate: 0,
 			bit_depth: if hdr { 10 } else { 8 },
 			color_primaries: if hdr { 9 } else { 1 },
@@ -1283,6 +1334,29 @@ impl Render for ExportDialogContent {
 				&colors,
 				i18n::tr("export.range").into(),
 				self.range.clone(),
+			))
+			.child(form_row(
+				&colors,
+				i18n::tr("export.resolution").into(),
+				div()
+					.flex()
+					.gap_2()
+					.child(self.resolution_w.clone())
+					.child(div()
+						.text_color(colors.disabled)
+						.text_xs()
+						.child("×"))
+					.child(self.resolution_h.clone()),
+			))
+			.child(form_row(
+				&colors,
+				i18n::tr("export.framerate").into(),
+				self.frame_rate.clone(),
+			))
+			.child(form_row(
+				&colors,
+				i18n::tr("export.bitrate").into(),
+				self.bitrate.clone(),
 			))
 			.child(form_row(
 				&colors,
