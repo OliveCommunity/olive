@@ -806,6 +806,12 @@ pub fn export_sequence(
 		custom_range_in_den: fr_num,
 		custom_range_out_num: out_num as i32,
 		custom_range_out_den: fr_num,
+		video_bit_rate: 0,
+		audio_bit_rate: 0,
+		color_override_enabled: false,
+		color_primaries: 0,
+		color_trc: 0,
+		color_space: 0,
 	};
 	let inner = oak_task::export::ExportTask::new((project.clone(), seq_id), encoding);
 	let mut driver = oak_task::task::Task::new("Exporting...", None);
