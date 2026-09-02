@@ -3952,6 +3952,64 @@ impl Render for ExportProjectDialogContent {
 	}
 }
 
+/// The new-project dialog (文件 → 新建项目): project name + the first
+/// sequence's format (preset / custom width-height-rate / interlaced).
+/// The host reads [`Self::name`] + [`Self::format`]; the engine's
+/// library_create_project then seeds the first sequence.
+pub struct NewProjectContent {
+	name: Entity<TextValue>,
+	format: Entity<SequenceFormatFields>,
+}
+
+impl NewProjectContent {
+	/// Builds the dialog (default name, HD 1080p25).
+	pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+		let name = cx.new(|cx| {
+			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
+			TextValue { editor }
+		});
+		name.update(cx, |field, cx| {
+			field.set_value(i18n::tr("manager.new.default_name"), cx)
+		});
+		let format = cx.new(|cx| {
+			SequenceFormatFields::build(SequenceFormatSeed::hd_1080p25(), window, cx)
+		});
+		Self { name, format }
+	}
+
+	/// The project name entered.
+	pub fn name(&self, cx: &App) -> SharedString {
+		self.name.read(cx).value(cx)
+	}
+
+	/// The format selected.
+	pub fn format(&self, cx: &App) -> crate::oakui::engine::VideoFormat {
+		self.format.read(cx).format(cx)
+	}
+
+	/// The interlaced flag.
+	pub fn interlaced(&self, cx: &App) -> bool {
+		self.format.read(cx).interlaced(cx)
+	}
+}
+
+impl Render for NewProjectContent {
+	fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+		let colors = cx.default_colors().clone();
+		div()
+			.flex()
+			.flex_col()
+			.gap_3()
+			.w_full()
+			.child(form_row(
+				&colors,
+				i18n::tr("manager.new.project_name").into(),
+				self.name.clone(),
+			))
+			.child(self.format.read(cx).rows(&colors))
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;

@@ -142,6 +142,8 @@ mod modal_ids {
 	pub const RENAME: usize = 18;
 	/// The project export dialog (文件 → 导出工程文件…).
 	pub const EXPORT_PROJECT_DFD: usize = 19;
+	/// The new-project dialog (文件 → 新建项目).
+	pub const NEW_PROJECT: usize = 20;
 }
 
 /// What a picked platform-dialog path should do.
@@ -247,6 +249,11 @@ enum ModalState<E: AppEngine> {
 		modal: Entity<Modal>,
 		content: Entity<crate::dialogs::ExportProjectDialogContent>,
 	},
+	/// The new-project dialog (文件 → 新建项目): name + sequence format.
+	NewProject {
+		modal: Entity<Modal>,
+		content: Entity<crate::dialogs::NewProjectContent>,
+	},
 }
 
 /// A running export: the session the tick loop drains for progress.
@@ -275,6 +282,7 @@ impl<E: AppEngine> ModalState<E> {
 			| ModalState::MulticamWizard { modal, .. }
 			| ModalState::EntryRename { modal, .. } => Some(modal.clone()),
 			| ModalState::ExportProjectDfd { modal, .. } => Some(modal.clone()),
+			| ModalState::NewProject { modal, .. } => Some(modal.clone()),
 		}
 	}
 }
@@ -1019,7 +1027,7 @@ impl<E: AppEngine> OakApp<E> {
 		use crate::actions::ActionId as A;
 		match action {
 			// --- File ------------------------------------------------------
-			A::NewProject => self.new_project(cx),
+			A::NewProject => self.open_new_project(cx),
 			A::OpenProject => self.open_file_dialog(FileAction::Open, cx),
 			A::OpenFromLibrary | A::ProjectManager => self.show_project_manager(cx),
 			A::Import => self.open_file_dialog(FileAction::ImportFootage, cx),
@@ -1257,14 +1265,61 @@ impl<E: AppEngine> OakApp<E> {
 	/// 新建项目: creates a blank project in the library and opens it (the
 	/// write-through persists it from the first edit). Falls back to the
 	/// engine's plain new-project path when the library is unavailable.
-	fn new_project(&mut self, cx: &mut Context<Self>) {
-		let name = crate::i18n::tr("manager.new.default_name").to_string();
-		let result = self
-			.engine
-			.update(cx, |engine, cx| engine.library_create_project(&name, cx));
-		if let Err(err) = result {
-			println!("[file] library create failed ({err}); plain new project");
-			self.engine.update(cx, |engine, cx| engine.new_project(cx));
+	fn open_new_project(&mut self, cx: &mut Context<Self>) {
+		if !matches!(self.modal, ModalState::None) {
+			return;
+		}
+		self.spawn_modal(cx, move |window, app| {
+			let content = app.new(|cx| crate::dialogs::NewProjectContent::new(window, cx));
+			let modal = app.new(|cx| {
+				Modal::new(
+					modal_ids::NEW_PROJECT,
+					ModalOptions::new(
+						crate::i18n::tr("menu.file.new_project"),
+						px(480.0),
+					)
+					.with_button(DialogButton::primary(crate::i18n::tr("dialog.ok")))
+					.with_button(DialogButton::new(
+						crate::i18n::tr("dialog.cancel"),
+						gpui_widgets::dialog::DialogButtonRole::Secondary,
+					)),
+					window,
+					cx,
+				)
+				.with_content(content.clone())
+			});
+			ModalState::NewProject { modal, content }
+		});
+	}
+
+	/// Creates the project from the dialog's name + format, then seeds its
+	/// first sequence (the old `new_project` path kept for manager fallback).
+	fn commit_new_project(&mut self, content: &Entity<crate::dialogs::NewProjectContent>, cx: &mut Context<Self>) {
+		let name = content.read(cx).name(cx).to_string();
+		let format = content.read(cx).format(cx);
+		let interlaced = content.read(cx).interlaced(cx);
+		let engine = self.engine.clone();
+		let result = engine.update(cx, |engine, cx| {
+			engine.library_create_project(&name, cx)
+		});
+		match result {
+			Ok(()) => {
+				self.close_modal(cx);
+				let engine = self.engine.clone();
+				engine.update(cx, |engine, cx| {
+					let _ = engine.create_sequence_with_params(
+						crate::i18n::tr("manager.new.default_name").to_string(),
+						format,
+						interlaced,
+						cx,
+					);
+				});
+			}
+			Err(err) => {
+				println!("[file] library create failed ({err}); plain new project");
+				self.close_modal(cx);
+				self.engine.update(cx, |engine, cx| engine.new_project(cx));
+			}
 		}
 	}
 
@@ -3035,6 +3090,16 @@ impl<E: AppEngine> OakApp<E> {
 								engine.export_project_path(PathBuf::from(path), cx)
 							});
 							self.close_modal(cx);
+						} else {
+							self.close_modal(cx);
+						}
+					}
+				}
+				modal_ids::NEW_PROJECT => {
+					if let ModalState::NewProject { content, .. } = &self.modal {
+						if *button == 0 {
+							let content = content.clone();
+							self.commit_new_project(&content, cx);
 						} else {
 							self.close_modal(cx);
 						}
@@ -4845,15 +4910,17 @@ mod tests {
 		);
 
 		// Down selects the first listed action, Enter runs it. The empty query
-		// lists every menu-bar action, so the first one is New Project.
+		// lists every menu-bar action, so the first one is New Project — the
+		// v0.5 flow opens the new-project dialog (name + format), so the
+		// search dialog hands off to it.
 		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("down").unwrap());
 		cx.run_until_parked();
 		cx.dispatch_keystroke(window.into(), gpui::Keystroke::parse("enter").unwrap());
 		cx.run_until_parked();
 
 		assert!(
-			cx.read(|app| matches!(root.read(app).modal, ModalState::None)),
-			"executing the selected action closes the dialog"
+			cx.read(|app| matches!(root.read(app).modal, ModalState::NewProject { .. })),
+			"the search dialog hands off to the new-project dialog"
 		);
 	}
 
