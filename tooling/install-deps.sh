@@ -72,14 +72,20 @@ case "$(uname -s)" in
 		;;
 	Linux)
 		if command -v apt-get >/dev/null; then
-			run sudo apt-get update
-			run sudo apt-get install -y build-essential pkg-config nasm \
-				libx264-dev libx265-dev libdav1d-dev libvpx-dev \
-				libopenh264-dev libopenjp2-7-dev libtheora-dev libwebp-dev \
-				libmp3lame-dev libopus-dev libvorbis-dev libspeex-dev \
-				libsnappy-dev libass-dev libfreetype-dev libfribidi-dev \
-				libfontconfig-dev libgnutls28-dev \
-				libffnvcodec-dev
+		run sudo apt-get update
+		run sudo apt-get install -y build-essential pkg-config nasm \
+			libx264-dev libx265-dev libdav1d-dev libvpx-dev \
+			libopenh264-dev libopenjp2-7-dev libtheora-dev libwebp-dev \
+			libmp3lame-dev libopus-dev libvorbis-dev libspeex-dev \
+			libsnappy-dev libass-dev libfreetype-dev libfribidi-dev \
+			libfontconfig-dev libgnutls28-dev \
+			git
+		# ffnvcodec headers (NVDEC for the project FFmpeg build) are NOT
+		# in Debian/Ubuntu apt under a stable name: `libffnvcodec-dev`
+		# was dropped from noble. The headers are distribution-free, so
+		# install them from source (the Fedora branch does the same).
+		run sudo git clone --depth 1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git /tmp/nv-codec-headers
+		run sudo make -C /tmp/nv-codec-headers install PREFIX=/usr
 		elif command -v dnf >/dev/null; then
 			run sudo dnf install -y gcc gcc-c++ pkgconf-pkg-config nasm \
 				x264-devel x265-devel dav1d-devel libvpx-devel \

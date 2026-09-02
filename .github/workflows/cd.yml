@@ -69,7 +69,15 @@ jobs:
                 libasound2-dev libpulse-dev libsndfile1-dev \
                 libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
                 libvulkan-dev libxkbcommon-dev libxkbcommon-x11-dev \
-                librsvg2-bin libffnvcodec-dev
+                librsvg2-bin
+              # ffnvcodec headers (NVDEC for the project FFmpeg build) are
+              # NOT in Ubuntu/Debian's apt index under a stable name
+              # (the old libffnvcodec-dev was dropped from noble; the
+              # community replacement is distro-version specific). The
+              # headers are distribution-free, so install them from
+              # source like the Fedora branch.
+              git clone --depth 1 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git /tmp/nv-codec-headers
+              make -C /tmp/nv-codec-headers install PREFIX=/usr
               ;;
             fedora)
               dnf install -y \
@@ -171,8 +179,11 @@ jobs:
             libpipewire-0.3-dev libspa-0.2-dev libjack-jackd2-dev \
             libasound2-dev libpulse-dev libsndfile1-dev \
             libgl1-mesa-dev libgl1-mesa-dri mesa-vulkan-drivers \
-            libvulkan-dev libxkbcommon-dev libxkbcommon-x11-dev \
-            libffnvcodec-dev
+            libvulkan-dev libxkbcommon-dev libxkbcommon-x11-dev
+          # ffnvcodec headers (NVDEC for the project FFmpeg build) are
+          # handled by install-deps.sh (source install; the Ubuntu package
+          # name differs per release and `libffnvcodec-dev` is gone on
+          # noble) — do NOT apt-install them here.
 
       - name: Configure build environment
         run: tooling/ocio-env.sh >> "$GITHUB_ENV"
@@ -354,23 +365,16 @@ jobs:
           # libOpenColorIO.a, dynamically otherwise (the DLL bundling step
           # below then still applies).
           tooling/ocio-env.sh >> "$GITHUB_ENV"
-          # ocio-sys' build.rs force-adds the MSVC + Windows SDK include
-          # dirs on Windows (meant for MSVC hosts); with the GNU toolchain
-          # that drags MSVC-only headers into the g++ compile. Unpack the
-          # crate and gate that block behind OCIO_RS_NO_MSVC_INCLUDES.
+          # ocio-sys is the GIT fork (Mike-Solar/ocio-rs main, pinned in
+          # the root manifest): its build.rs already carries the
+          # fork's GNU-toolchain fix, so NO crate-unpack/glob patch step
+          # applies here. The old code unpacked `ocio-sys-0.2.1.crate`
+          # from the registry cache — impossible for a git dependency
+          # (no .crate archive; git sources land under
+          # registry/src/git/<hash>), hence the
+          # "ls .../ocio-sys-0.2.1/build.rs: No such file" Windows CI
+          # failure.
           echo "OCIO_RS_NO_MSVC_INCLUDES=1" >> "$GITHUB_ENV"
-          CH=$(cygpath -u "${CARGO_HOME:-$HOME/.cargo}")
-          cargo fetch --locked
-          for cache in "$CH"/registry/cache/*/; do
-            src="$CH/registry/src/$(basename "$cache")"
-            mkdir -p "$src"
-            [ -f "$cache/ocio-sys-0.2.1.crate" ] && tar xzf "$cache/ocio-sys-0.2.1.crate" -C "$src"
-          done
-          BS=$(ls "$CH"/registry/src/*/ocio-sys-0.2.1/build.rs)
-          grep -q 'OCIO_RS_NO_MSVC_INCLUDES' "$BS" || sed -i \
-            's|if cfg!(target_os = "windows") && has_real_ocio {|if cfg!(target_os = "windows") \&\& has_real_ocio \&\& std::env::var_os("OCIO_RS_NO_MSVC_INCLUDES").is_none() {|' \
-            "$BS"
-          grep -q 'OCIO_RS_NO_MSVC_INCLUDES' "$BS"
 
       # TEMP: cache disabled until the Gitea instance cache is provisioned (Cache cargo artifacts)
       #   uses: Swatinem/rust-cache@v2
