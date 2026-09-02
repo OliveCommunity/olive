@@ -993,14 +993,23 @@ impl Render for PathField {
 /// path field.
 pub struct ExportDialogContent {
 	format: Entity<ComboBox>,
+	video_codec: Entity<ComboBox>,
+	audio_codec: Entity<ComboBox>,
+	color: Entity<ComboBox>,
+	range: Entity<ComboBox>,
 	path: Entity<PathField>,
 	/// (format id, display name, extension) in dropdown order.
 	formats: Vec<(i32, String, String)>,
+	/// The container format for the current codec lists.
+	active_format: i32,
 }
 
 impl ExportDialogContent {
 	/// Builds the content: the format list comes from the oakcodec encoding
-	/// enumeration (MP4 default), the path starts empty.
+	/// enumeration (MP4 default), the codec lists follow the container's
+	/// compatible tables (switching container rebuilds them — an
+	/// unsupported codec is never offered), the color defaults to SDR
+	/// Rec.709 8-bit, the range to the whole sequence.
 	pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
 		let formats: Vec<(i32, String, String)> = encoding_formats()
 			.into_iter()
@@ -1021,6 +1030,77 @@ impl ExportDialogContent {
 			.unwrap_or(0);
 		format.update(cx, |combo, cx| combo.set_selected(Some(mp4_index), cx));
 
+		let active_format = formats
+			.get(mp4_index)
+			.map(|(id, _, _)| *id)
+			.unwrap_or(EXPORT_FORMAT_MP4);
+
+		// Video / audio codec combo boxes, populated by the container.
+		// The lists come straight from `Format::get_video_codecs` /
+		// `get_audio_codecs`: only codecs the container supports appear,
+		// so an incompatible codec is unselectable by construction.
+		let codec_options = |codes: Vec<i32>| {
+			codes
+				.iter()
+				.enumerate()
+				.map(|(i, code)| {
+					ComboBoxOption::new(
+						i,
+						oak_codec::exportcodec::Codec::get_codec_name(
+							oak_codec::exportcodec::Codec::from_i32(*code)
+								.unwrap_or(oak_codec::exportcodec::Codec::H264),
+						),
+					)
+				})
+				.collect::<Vec<_>>()
+		};
+		let video_codecs = compatible_video_codecs(active_format);
+		let audio_codecs = compatible_audio_codecs(active_format);
+		let video_codec = cx.new(|cx| {
+			ComboBox::new(5, codec_options(video_codecs), window, cx)
+				.with_placeholder(i18n::tr("export.video_codec"))
+		});
+		video_codec.update(cx, |combo, cx| combo.set_selected(Some(0), cx));
+		let audio_codec = cx.new(|cx| {
+			ComboBox::new(6, codec_options(audio_codecs), window, cx)
+				.with_placeholder(i18n::tr("export.audio_codec"))
+		});
+		audio_codec.update(cx, |combo, cx| combo.set_selected(Some(0), cx));
+
+		// Container change → rebuild the codec lists (and re-select the
+		// first compatible entry) so a stale incompatible codec can never
+		// survive a format switch.
+		cx.subscribe(&format, |this, _format, event: &ComboBoxEvent, cx| {
+			if let ComboBoxEvent::Selected { value } = event {
+				let fmt = this
+					.formats
+					.get(*value)
+					.map(|(id, _, _)| *id)
+					.unwrap_or(EXPORT_FORMAT_MP4);
+				this.apply_format(fmt, cx);
+			}
+		});
+
+		let color = cx.new(|cx| {
+			let options = vec![
+				ComboBoxOption::new(0, i18n::tr("export.color.sdr")),
+				ComboBoxOption::new(1, i18n::tr("export.color.hdr")),
+			];
+			ComboBox::new(7, options, window, cx)
+				.with_placeholder(i18n::tr("export.color"))
+		});
+		color.update(cx, |combo, cx| combo.set_selected(Some(0), cx));
+
+		let range = cx.new(|cx| {
+			let options = vec![
+				ComboBoxOption::new(0, i18n::tr("export.range.all")),
+				ComboBoxOption::new(1, i18n::tr("export.range.inout")),
+			];
+			ComboBox::new(8, options, window, cx)
+				.with_placeholder(i18n::tr("export.range"))
+		});
+		range.update(cx, |combo, cx| combo.set_selected(Some(0), cx));
+
 		let path = cx.new(|cx| {
 			let editor = cx.new(|cx| EditableTextState::new(StringStorage::default(), cx));
 			PathField {
@@ -1031,9 +1111,55 @@ impl ExportDialogContent {
 
 		Self {
 			format,
+			video_codec,
+			audio_codec,
+			color,
+			range,
 			path,
 			formats,
+			active_format,
 		}
+	}
+
+	/// Rebuilds the codec lists for `fmt` and re-selects the first entry.
+	fn apply_format(&mut self, fmt: i32, cx: &mut Context<Self>) {
+		let video_codes = compatible_video_codecs(fmt);
+		let audio_codes = compatible_audio_codecs(fmt);
+		let v_opts = video_codes
+			.iter()
+			.enumerate()
+			.map(|(i, code)| {
+				ComboBoxOption::new(
+					i,
+					oak_codec::exportcodec::Codec::get_codec_name(
+						oak_codec::exportcodec::Codec::from_i32(*code)
+							.unwrap_or(oak_codec::exportcodec::Codec::H264),
+					),
+				)
+			})
+			.collect::<Vec<_>>();
+		let a_opts = audio_codes
+			.iter()
+			.enumerate()
+			.map(|(i, code)| {
+				ComboBoxOption::new(
+					i,
+					oak_codec::exportcodec::Codec::get_codec_name(
+						oak_codec::exportcodec::Codec::from_i32(*code)
+							.unwrap_or(oak_codec::exportcodec::Codec::AAC),
+					),
+				)
+			})
+			.collect::<Vec<_>>();
+		self.video_codec
+			.update(cx, |combo, cx| combo.set_options(v_opts, cx));
+		self.video_codec
+			.update(cx, |combo, cx| combo.set_selected(Some(0), cx));
+		self.audio_codec
+			.update(cx, |combo, cx| combo.set_options(a_opts, cx));
+		self.audio_codec
+			.update(cx, |combo, cx| combo.set_selected(Some(0), cx));
+		self.active_format = fmt;
 	}
 
 	/// The selected format id.
@@ -1070,6 +1196,59 @@ impl ExportDialogContent {
 			.update(cx, |content, cx| content.set_path(path, cx));
 		cx.notify();
 	}
+
+	/// The full export settings (codec/color/bit-depth/range) the engine
+	/// consumes. The codec combos expose only the container's compatible
+	/// codes, so the picked ids are always valid for `format`.
+	pub fn settings(&self, cx: &App) -> crate::oakui::engine::ExportSettings {
+		let video_codec = compatible_video_codecs(self.active_format)
+			.get(self.video_codec.read(cx).selected().unwrap_or(0))
+			.copied()
+			.unwrap_or(1);
+		let audio_codec = compatible_audio_codecs(self.active_format)
+			.get(self.audio_codec.read(cx).selected().unwrap_or(0))
+			.copied()
+			.unwrap_or(12);
+		let hdr = self.color.read(cx).selected() == Some(1);
+		let in_out = self.range.read(cx).selected() == Some(1);
+		crate::oakui::engine::ExportSettings {
+			format: self.active_format,
+			video_codec,
+			audio_codec,
+			size: (0, 0),
+			frame_rate: 0.0,
+			video_bitrate: 0,
+			audio_bitrate: 0,
+			bit_depth: if hdr { 10 } else { 8 },
+			color_primaries: if hdr { 9 } else { 1 },
+			color_transfer: if hdr { 16 } else { 1 },
+			color_space: if hdr { 9 } else { 1 },
+			range: if in_out { Some((0.0, 0.0)) } else { None },
+		}
+	}
+}
+
+/// The video codecs the container `format` accepts (the compatibility
+/// table; the dialog only offers these).
+pub fn compatible_video_codecs(format: i32) -> Vec<i32> {
+	let Some(container) = oak_codec::exportformat::Format::from_i32(format) else {
+		return vec![1]; // H.264 fallback
+	};
+	oak_codec::exportformat::Format::get_video_codecs(container)
+		.iter()
+		.map(|c| *c as i32)
+		.collect()
+}
+
+/// The audio codecs the container `format` accepts.
+pub fn compatible_audio_codecs(format: i32) -> Vec<i32> {
+	let Some(container) = oak_codec::exportformat::Format::from_i32(format) else {
+		return vec![12]; // AAC fallback
+	};
+	oak_codec::exportformat::Format::get_audio_codecs(container)
+		.iter()
+		.map(|c| *c as i32)
+		.collect()
 }
 
 impl Render for ExportDialogContent {
@@ -1084,6 +1263,26 @@ impl Render for ExportDialogContent {
 				&colors,
 				i18n::tr("export.format").into(),
 				self.format.clone(),
+			))
+			.child(form_row(
+				&colors,
+				i18n::tr("export.video_codec").into(),
+				self.video_codec.clone(),
+			))
+			.child(form_row(
+				&colors,
+				i18n::tr("export.audio_codec").into(),
+				self.audio_codec.clone(),
+			))
+			.child(form_row(
+				&colors,
+				i18n::tr("export.color").into(),
+				self.color.clone(),
+			))
+			.child(form_row(
+				&colors,
+				i18n::tr("export.range").into(),
+				self.range.clone(),
 			))
 			.child(form_row(
 				&colors,

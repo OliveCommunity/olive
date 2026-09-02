@@ -789,6 +789,16 @@ impl ComboBox {
 		self.selected
 	}
 
+	/// Replaces the option list (a container/format switch rebuilds the
+	/// compatible codec lists); selection resets to the first entry.
+	pub fn set_options(&mut self, options: Vec<ComboBoxOption>, cx: &mut Context<Self>) {
+		self.options = options;
+		self.selected = None;
+		self.highlight = 0;
+		self.open = false;
+		cx.notify();
+	}
+
 	/// The selected option index (external sync; also repaints).
 	pub fn set_selected(&mut self, selected: Option<usize>, _cx: &mut Context<Self>) {
 		self.selected = selected;

@@ -2883,7 +2883,7 @@ impl<E: AppEngine> OakApp<E> {
 		let ModalState::Export { content, .. } = &self.modal else {
 			return;
 		};
-		let format = content.read(cx).format(cx);
+		let settings = content.read(cx).settings(cx);
 		let ext = content.read(cx).extension(cx);
 		let mut path = content.read(cx).path(cx).to_string();
 		if path.trim().is_empty() {
@@ -2899,7 +2899,7 @@ impl<E: AppEngine> OakApp<E> {
 		}
 
 		let result = self.engine.update(cx, |engine, _cx| {
-			engine.start_export(format, PathBuf::from(&path))
+			engine.start_export_with(&settings, PathBuf::from(&path))
 		});
 		match result {
 			Ok(session) => {
